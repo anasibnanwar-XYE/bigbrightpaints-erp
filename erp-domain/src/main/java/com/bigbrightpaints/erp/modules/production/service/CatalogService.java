@@ -88,6 +88,7 @@ public class CatalogService {
     private final SizeVariantRepository sizeVariantRepository;
     private final FinishedGoodRepository finishedGoodRepository;
     private final RawMaterialRepository rawMaterialRepository;
+    private final SkuReadinessService skuReadinessService;
 
     public CatalogService(CompanyContextService companyContextService,
                           CompanyEntityLookup companyEntityLookup,
@@ -95,7 +96,8 @@ public class CatalogService {
                           ProductionProductRepository productRepository,
                           SizeVariantRepository sizeVariantRepository,
                           FinishedGoodRepository finishedGoodRepository,
-                          RawMaterialRepository rawMaterialRepository) {
+                          RawMaterialRepository rawMaterialRepository,
+                          SkuReadinessService skuReadinessService) {
         this.companyContextService = companyContextService;
         this.companyEntityLookup = companyEntityLookup;
         this.brandRepository = brandRepository;
@@ -103,6 +105,7 @@ public class CatalogService {
         this.sizeVariantRepository = sizeVariantRepository;
         this.finishedGoodRepository = finishedGoodRepository;
         this.rawMaterialRepository = rawMaterialRepository;
+        this.skuReadinessService = skuReadinessService;
     }
 
     @Transactional
@@ -1051,7 +1054,8 @@ public class CatalogService {
                 product.getMinDiscountPercent(),
                 product.getMinSellingPrice(),
                 metadata,
-                product.isActive());
+                product.isActive(),
+                skuReadinessService.forProduct(product.getCompany(), product));
     }
 
     private Map<String, Object> snapshotMetadata(Map<String, Object> metadata, boolean includeAccountingMetadata) {

@@ -1,0 +1,212 @@
+package com.bigbrightpaints.erp.modules.production.service;
+
+import com.bigbrightpaints.erp.modules.company.domain.Company;
+import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
+import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatch;
+import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatchRepository;
+import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodRepository;
+import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial;
+import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialRepository;
+import com.bigbrightpaints.erp.modules.production.domain.ProductionProduct;
+import com.bigbrightpaints.erp.modules.production.domain.ProductionProductRepository;
+import com.bigbrightpaints.erp.modules.production.dto.SkuReadinessDto;
+import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import java.util.Optional;
+import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
+
+@Service
+public class SkuReadinessService {
+
+    public enum ExpectedStockType {
+        FINISHED_GOOD,
+        RAW_MATERIAL
+    }
+
+    private static final List<String> RAW_MATERIAL_CATEGORIES = List.of(
+            "RAW_MATERIAL",
+            "RAW MATERIAL",
+            "RAW-MATERIAL"
+    );
+
+    private final ProductionProductRepository productRepository;
+    private final FinishedGoodRepository finishedGoodRepository;
+    private final FinishedGoodBatchRepository finishedGoodBatchRepository;
+    private final RawMaterialRepository rawMaterialRepository;
+
+    public SkuReadinessService(ProductionProductRepository productRepository,
+                               FinishedGoodRepository finishedGoodRepository,
+                               FinishedGoodBatchRepository finishedGoodBatchRepository,
+                               RawMaterialRepository rawMaterialRepository) {
+        this.productRepository = productRepository;
+        this.finishedGoodRepository = finishedGoodRepository;
+        this.finishedGoodBatchRepository = finishedGoodBatchRepository;
+        this.rawMaterialRepository = rawMaterialRepository;
+    }
+
+    public SkuReadinessDto forProduct(Company company, ProductionProduct product) {
+        if (product == null) {
+            throw new IllegalArgumentException("product is required");
+        }
+        return buildSnapshot(
+                company,
+                normalizeSku(product.getSkuCode()),
+                product,
+                null);
+    }
+
+    public SkuReadinessDto forSku(Company company, String sku, ExpectedStockType expectedStockType) {
+        String normalizedSku = normalizeSku(sku);
+        ProductionProduct product = StringUtils.hasText(normalizedSku)
+                ? productRepository.findByCompanyAndSkuCode(company, normalizedSku).orElse(null)
+                : null;
+        return buildSnapshot(company, normalizedSku, product, expectedStockType);
+    }
+
+    private SkuReadinessDto buildSnapshot(Company company,
+                                          String normalizedSku,
+                                          ProductionProduct product,
+                                          ExpectedStockType expectedStockType) {
+        String sku = StringUtils.hasText(normalizedSku)
+                ? normalizedSku
+                : Optional.ofNullable(product).map(ProductionProduct::getSkuCode).map(this::normalizeSku).orElse(null);
+        FinishedGood finishedGood = StringUtils.hasText(sku)
+                ? finishedGoodRepository.findByCompanyAndProductCode(company, sku).orElse(null)
+                : null;
+        RawMaterial rawMaterial = StringUtils.hasText(sku)
+                ? rawMaterialRepository.findByCompanyAndSku(company, sku).orElse(null)
+                : null;
+        ExpectedStockType effectiveStockType = resolveExpectedStockType(product, rawMaterial, expectedStockType);
+
+        List<String> catalogBlockers = new ArrayList<>();
+        if (product == null) {
+            catalogBlockers.add("PRODUCT_MASTER_MISSING");
+        } else if (!product.isActive()) {
+            catalogBlockers.add("PRODUCT_INACTIVE");
+        }
+
+        List<String> inventoryBlockers = new ArrayList<>();
+        if (effectiveStockType == ExpectedStockType.RAW_MATERIAL) {
+            if (product != null && !isRawMaterialCategory(product.getCategory())) {
+                inventoryBlockers.add("RAW_MATERIAL_CATEGORY_REQUIRED");
+            }
+            if (rawMaterial == null) {
+                inventoryBlockers.add("RAW_MATERIAL_MIRROR_MISSING");
+            } else if (rawMaterial.getInventoryAccountId() == null) {
+                inventoryBlockers.add("RAW_MATERIAL_INVENTORY_ACCOUNT_MISSING");
+            }
+        } else {
+            if (product != null && isRawMaterialCategory(product.getCategory())) {
+                inventoryBlockers.add("FINISHED_GOOD_CATEGORY_REQUIRED");
+            }
+            if (finishedGood == null) {
+                inventoryBlockers.add("FINISHED_GOOD_MIRROR_MISSING");
+            } else {
+                if (finishedGood.getValuationAccountId() == null) {
+                    inventoryBlockers.add("FINISHED_GOOD_VALUATION_ACCOUNT_MISSING");
+                }
+                if (finishedGood.getCogsAccountId() == null) {
+                    inventoryBlockers.add("FINISHED_GOOD_COGS_ACCOUNT_MISSING");
+                }
+                if (finishedGood.getRevenueAccountId() == null) {
+                    inventoryBlockers.add("FINISHED_GOOD_REVENUE_ACCOUNT_MISSING");
+                }
+                if (finishedGood.getTaxAccountId() == null) {
+                    inventoryBlockers.add("FINISHED_GOOD_TAX_ACCOUNT_MISSING");
+                }
+            }
+        }
+
+        List<String> productionBlockers = new ArrayList<>();
+        productionBlockers.addAll(catalogBlockers);
+        productionBlockers.addAll(inventoryBlockers);
+        if (effectiveStockType == ExpectedStockType.FINISHED_GOOD) {
+            Long wipAccountId = metadataLong(product, "wipAccountId");
+            if (wipAccountId == null) {
+                productionBlockers.add("WIP_ACCOUNT_MISSING");
+            }
+        }
+
+        List<String> salesBlockers = new ArrayList<>();
+        if (effectiveStockType == ExpectedStockType.RAW_MATERIAL) {
+            salesBlockers.add("RAW_MATERIAL_SKU_NOT_SALES_ORDERABLE");
+        } else {
+            salesBlockers.addAll(catalogBlockers);
+            salesBlockers.addAll(inventoryBlockers);
+            if (!hasSaleReadyBatch(finishedGood)) {
+                salesBlockers.add("NO_FINISHED_GOOD_BATCH_STOCK");
+            }
+        }
+
+        return new SkuReadinessDto(
+                sku,
+                stage(catalogBlockers),
+                stage(inventoryBlockers),
+                stage(productionBlockers),
+                stage(salesBlockers));
+    }
+
+    private ExpectedStockType resolveExpectedStockType(ProductionProduct product,
+                                                       RawMaterial rawMaterial,
+                                                       ExpectedStockType expectedStockType) {
+        if (expectedStockType != null) {
+            return expectedStockType;
+        }
+        if (product != null && isRawMaterialCategory(product.getCategory())) {
+            return ExpectedStockType.RAW_MATERIAL;
+        }
+        if (rawMaterial != null) {
+            return ExpectedStockType.RAW_MATERIAL;
+        }
+        return ExpectedStockType.FINISHED_GOOD;
+    }
+
+    private boolean hasSaleReadyBatch(FinishedGood finishedGood) {
+        if (finishedGood == null) {
+            return false;
+        }
+        List<FinishedGoodBatch> batches = finishedGoodBatchRepository.findByFinishedGoodOrderByManufacturedAtAsc(finishedGood);
+        return batches.stream()
+                .map(FinishedGoodBatch::getQuantityAvailable)
+                .map(quantity -> quantity == null ? BigDecimal.ZERO : quantity)
+                .anyMatch(quantity -> quantity.compareTo(BigDecimal.ZERO) > 0);
+    }
+
+    private SkuReadinessDto.Stage stage(List<String> blockers) {
+        List<String> effectiveBlockers = blockers == null ? List.of() : List.copyOf(blockers);
+        return new SkuReadinessDto.Stage(effectiveBlockers.isEmpty(), effectiveBlockers);
+    }
+
+    private boolean isRawMaterialCategory(String category) {
+        if (!StringUtils.hasText(category)) {
+            return false;
+        }
+        String normalized = category.trim().toUpperCase(Locale.ROOT);
+        return RAW_MATERIAL_CATEGORIES.contains(normalized);
+    }
+
+    private Long metadataLong(ProductionProduct product, String key) {
+        if (product == null || product.getMetadata() == null || !StringUtils.hasText(key)) {
+            return null;
+        }
+        Object candidate = product.getMetadata().get(key);
+        if (candidate instanceof Number number) {
+            return number.longValue();
+        }
+        if (candidate instanceof String stringValue && StringUtils.hasText(stringValue)) {
+            try {
+                return Long.parseLong(stringValue.trim());
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    private String normalizeSku(String sku) {
+        return StringUtils.hasText(sku) ? sku.trim().toUpperCase(Locale.ROOT) : null;
+    }
+}

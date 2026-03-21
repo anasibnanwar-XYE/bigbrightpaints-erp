@@ -13,6 +13,7 @@ import com.bigbrightpaints.erp.modules.production.domain.ProductionBrandReposito
 import com.bigbrightpaints.erp.modules.production.domain.ProductionProduct;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionProductRepository;
 import com.bigbrightpaints.erp.modules.production.dto.CatalogProductDto;
+import com.bigbrightpaints.erp.modules.production.dto.SkuReadinessDto;
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.CriteriaQuery;
 import jakarta.persistence.criteria.Expression;
@@ -62,6 +63,7 @@ class CatalogServiceCanonicalCoverageTest {
     @Mock private SizeVariantRepository sizeVariantRepository;
     @Mock private FinishedGoodRepository finishedGoodRepository;
     @Mock private RawMaterialRepository rawMaterialRepository;
+    @Mock private SkuReadinessService skuReadinessService;
 
     private CatalogService service;
     private Company company;
@@ -76,7 +78,8 @@ class CatalogServiceCanonicalCoverageTest {
                 productRepository,
                 sizeVariantRepository,
                 finishedGoodRepository,
-                rawMaterialRepository);
+                rawMaterialRepository,
+                skuReadinessService);
 
         company = new Company();
         ReflectionTestUtils.setField(company, "id", 200L);
@@ -162,6 +165,7 @@ class CatalogServiceCanonicalCoverageTest {
     void toProductDto_usesFallbackVariants_andEmptyMetadataWhenSourceIsNull() {
         ProductionProduct product = new ProductionProduct();
         ReflectionTestUtils.setField(product, "id", 701L);
+        product.setCompany(company);
         product.setBrand(brand);
         product.setProductName("Primer");
         product.setSkuCode("BBR-PRIMER-001");
@@ -185,6 +189,33 @@ class CatalogServiceCanonicalCoverageTest {
         assertThat(dto.cartonSizes())
                 .extracting(item -> item.size() + ":" + item.piecesPerCarton())
                 .containsExactly("1L:6");
+    }
+
+    @Test
+    void toProductDto_includesReadinessSnapshot() {
+        ProductionProduct product = new ProductionProduct();
+        ReflectionTestUtils.setField(product, "id", 702L);
+        product.setCompany(company);
+        product.setBrand(brand);
+        product.setProductName("Primer Ready");
+        product.setSkuCode("BBR-PRIMER-READY-001");
+        product.setCategory("FINISHED_GOOD");
+        product.setActive(true);
+        product.setColors(new LinkedHashSet<>(List.of("White")));
+        product.setSizes(new LinkedHashSet<>(List.of("1L")));
+
+        SkuReadinessDto readiness = new SkuReadinessDto(
+                "BBR-PRIMER-READY-001",
+                new SkuReadinessDto.Stage(true, List.of()),
+                new SkuReadinessDto.Stage(true, List.of()),
+                new SkuReadinessDto.Stage(true, List.of()),
+                new SkuReadinessDto.Stage(false, List.of("NO_FINISHED_GOOD_BATCH_STOCK"))
+        );
+        when(skuReadinessService.forProduct(company, product)).thenReturn(readiness);
+
+        CatalogProductDto dto = ReflectionTestUtils.invokeMethod(service, "toProductDto", product);
+
+        assertThat(dto.readiness()).isSameAs(readiness);
     }
 
     @Test

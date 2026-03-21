@@ -19,6 +19,7 @@ import com.bigbrightpaints.erp.modules.production.dto.BulkVariantRequest;
 import com.bigbrightpaints.erp.modules.production.dto.BulkVariantResponse;
 import com.bigbrightpaints.erp.modules.production.dto.CatalogProductEntryRequest;
 import com.bigbrightpaints.erp.modules.production.dto.CatalogProductEntryResponse;
+import com.bigbrightpaints.erp.modules.production.dto.SkuReadinessDto;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -60,6 +61,7 @@ class ProductionCatalogServiceCanonicalEntryTest {
     @Mock private CompanyDefaultAccountsService companyDefaultAccountsService;
     @Mock private CatalogImportRepository catalogImportRepository;
     @Mock private AuditService auditService;
+    @Mock private SkuReadinessService skuReadinessService;
     @Mock private PlatformTransactionManager transactionManager;
 
     private ProductionCatalogService service;
@@ -78,6 +80,7 @@ class ProductionCatalogServiceCanonicalEntryTest {
                 companyDefaultAccountsService,
                 catalogImportRepository,
                 auditService,
+                skuReadinessService,
                 transactionManager);
 
         company = new Company();
@@ -308,6 +311,42 @@ class ProductionCatalogServiceCanonicalEntryTest {
                 .containsEntry("fgRevenueAccountId", 103L)
                 .containsEntry("fgDiscountAccountId", 104L)
                 .containsEntry("fgTaxAccountId", 105L);
+    }
+
+    @Test
+    void createOrPreviewCatalogProducts_createIncludesReadinessOnCreatedMembers() {
+        company.setDefaultInventoryAccountId(9001L);
+        when(companyEntityLookup.requireAccount(company, 9001L)).thenReturn(account(9001L));
+        when(productRepository.findByCompanyAndSkuCode(company, "BBR-PRIMER-WHITE-1L")).thenReturn(Optional.empty());
+        when(productRepository.save(any(ProductionProduct.class))).thenAnswer(invocation -> {
+            ProductionProduct saved = invocation.getArgument(0);
+            ReflectionTestUtils.setField(saved, "id", 901L);
+            ReflectionTestUtils.setField(saved, "publicId", UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"));
+            return saved;
+        });
+        when(rawMaterialRepository.findByCompanyAndSku(company, "BBR-PRIMER-WHITE-1L")).thenReturn(Optional.empty());
+        when(rawMaterialRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        SkuReadinessDto readiness = new SkuReadinessDto(
+                "BBR-PRIMER-WHITE-1L",
+                new SkuReadinessDto.Stage(true, List.of()),
+                new SkuReadinessDto.Stage(true, List.of()),
+                new SkuReadinessDto.Stage(true, List.of()),
+                new SkuReadinessDto.Stage(false, List.of("RAW_MATERIAL_SKU_NOT_SALES_ORDERABLE"))
+        );
+        when(skuReadinessService.forSku(
+                company,
+                "BBR-PRIMER-WHITE-1L",
+                SkuReadinessService.ExpectedStockType.RAW_MATERIAL
+        )).thenReturn(readiness);
+
+        CatalogProductEntryResponse response = service.createOrPreviewCatalogProducts(
+                request("RAW_MATERIAL", List.of("WHITE"), List.of("1L")),
+                false);
+
+        assertThat(response.members()).hasSize(1);
+        assertThat(response.members().getFirst().sku()).isEqualTo("BBR-PRIMER-WHITE-1L");
+        assertThat(response.members().getFirst().readiness()).isEqualTo(readiness);
     }
 
     @Test

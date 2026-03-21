@@ -130,6 +130,7 @@ public class ProductionCatalogService {
     private final CompanyDefaultAccountsService companyDefaultAccountsService;
     private final CatalogImportRepository catalogImportRepository;
     private final AuditService auditService;
+    private final SkuReadinessService skuReadinessService;
     private final TransactionTemplate transactionTemplate;
     private final TransactionTemplate rowTransactionTemplate;
     private final IdempotencyReservationService idempotencyReservationService = new IdempotencyReservationService();
@@ -143,6 +144,7 @@ public class ProductionCatalogService {
                                     CompanyDefaultAccountsService companyDefaultAccountsService,
                                     CatalogImportRepository catalogImportRepository,
                                     AuditService auditService,
+                                    SkuReadinessService skuReadinessService,
                                     PlatformTransactionManager transactionManager) {
         this.companyContextService = companyContextService;
         this.brandRepository = brandRepository;
@@ -153,6 +155,7 @@ public class ProductionCatalogService {
         this.companyDefaultAccountsService = companyDefaultAccountsService;
         this.catalogImportRepository = catalogImportRepository;
         this.auditService = auditService;
+        this.skuReadinessService = skuReadinessService;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
         this.rowTransactionTemplate = new TransactionTemplate(transactionManager);
         this.rowTransactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
@@ -417,7 +420,8 @@ public class ProductionCatalogService {
                         product.skuCode(),
                         product.productName(),
                         product.defaultColour(),
-                        product.sizeLabel()));
+                        product.sizeLabel(),
+                        skuReadinessService.forSku(company, product.skuCode(), expectedStockType(plan.category()))));
             } catch (RuntimeException ex) {
                 if (isVariantDuplicateConflict(ex, company, candidate.sku())) {
                     CatalogProductEntryResponse conflictResponse = toCatalogProductEntryResponse(
@@ -633,7 +637,7 @@ public class ProductionCatalogService {
         List<CatalogProductEntryResponse.Conflict> conflicts = new ArrayList<>();
         List<CatalogProductCandidate> candidatesToCreate = new ArrayList<>();
         for (CatalogProductCandidate candidate : generatedCandidates) {
-            generatedMembers.add(candidate.toMember(null, null));
+            generatedMembers.add(candidate.toMember(null, null, null));
             String skuKey = normalizeSkuKey(candidate.sku());
             String productNameKey = normalizeKey(candidate.productName());
             if (duplicateSkuKeys.contains(skuKey)) {
@@ -702,6 +706,12 @@ public class ProductionCatalogService {
                 plan.downstreamEffects(),
                 plan.generatedMembers(),
                 effectiveConflicts);
+    }
+
+    private SkuReadinessService.ExpectedStockType expectedStockType(String category) {
+        return isRawMaterialCategory(category)
+                ? SkuReadinessService.ExpectedStockType.RAW_MATERIAL
+                : SkuReadinessService.ExpectedStockType.FINISHED_GOOD;
     }
 
     private ApplicationException catalogProductEntryConflict(CatalogProductEntryResponse response, String message) {
@@ -2358,8 +2368,10 @@ public class ProductionCatalogService {
                                            String size,
                                            String productName,
                                            ProductCreateRequest createRequest) {
-        private CatalogProductEntryResponse.Member toMember(Long id, UUID publicId) {
-            return new CatalogProductEntryResponse.Member(id, publicId, sku, productName, color, size);
+        private CatalogProductEntryResponse.Member toMember(Long id,
+                                                            UUID publicId,
+                                                            com.bigbrightpaints.erp.modules.production.dto.SkuReadinessDto readiness) {
+            return new CatalogProductEntryResponse.Member(id, publicId, sku, productName, color, size, readiness);
         }
 
         private CatalogProductEntryResponse.Conflict toConflict(String reason) {

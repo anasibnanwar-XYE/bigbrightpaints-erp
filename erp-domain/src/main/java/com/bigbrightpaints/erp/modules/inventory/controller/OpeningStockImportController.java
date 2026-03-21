@@ -1,6 +1,5 @@
 package com.bigbrightpaints.erp.modules.inventory.controller;
 
-import com.bigbrightpaints.erp.core.util.IdempotencyHeaderUtils;
 import com.bigbrightpaints.erp.modules.inventory.dto.OpeningStockImportHistoryItem;
 import com.bigbrightpaints.erp.modules.inventory.dto.OpeningStockImportResponse;
 import com.bigbrightpaints.erp.modules.inventory.service.OpeningStockImportService;
@@ -32,10 +31,8 @@ public class OpeningStockImportController {
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING','ROLE_FACTORY')")
     public ResponseEntity<ApiResponse<OpeningStockImportResponse>> importOpeningStock(
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
-            @RequestHeader(value = "X-Idempotency-Key", required = false) String legacyIdempotencyKey,
             @RequestPart("file") MultipartFile file) {
-        String resolvedIdempotencyKey = IdempotencyHeaderUtils.resolveHeaderKey(idempotencyKey, legacyIdempotencyKey);
-        OpeningStockImportResponse response = openingStockImportService.importOpeningStock(file, resolvedIdempotencyKey);
+        OpeningStockImportResponse response = openingStockImportService.importOpeningStock(file, idempotencyKey);
         return ResponseEntity.ok(ApiResponse.success("Opening stock import processed", response));
     }
 
