@@ -18,6 +18,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodReposit
 import com.bigbrightpaints.erp.modules.reports.service.InventoryValuationService;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -79,7 +80,7 @@ class TS_RuntimeInventoryValuationExecutableCoverageTest {
         when(productionProductRepository.findByCompanyOrderByProductNameAsc(company)).thenReturn(List.of());
         when(accountingPeriodRepository.findByCompanyAndYearAndMonth(company, 2026, 3)).thenReturn(java.util.Optional.empty());
 
-        InventoryValuationService.InventorySnapshot snapshot = service.currentSnapshot(company);
+        InventoryValuationService.InventorySnapshot snapshot = service.snapshotAsOf(company, LocalDate.of(2026, 3, 1));
 
         assertThat(snapshot.totalValue()).isEqualByComparingTo("150.00");
         assertThat(snapshot.lowStockItems()).isEqualTo(0L);

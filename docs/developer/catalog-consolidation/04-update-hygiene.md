@@ -26,23 +26,25 @@ When catalog route ownership or write behavior changes, update together:
 - `docs/developer/catalog-consolidation/01-current-state-flow.md`
 - `docs/developer/catalog-consolidation/02-target-accounting-product-entry-flow.md`
 - `docs/developer/catalog-consolidation/03-definition-of-done-and-parallel-scope.md`
-- `docs/developer/accounting-flows/12-accounting-outward-flow-map.md`
-- `docs/developer/accounting-flows/13-catalog-sku-and-product-flows.md`
+- repo-root `README.md`
 - `openapi.json`
-- any frontend or endpoint handoff docs that expose product routes
+- `.factory/library/frontend-handoff.md`
+- `erp-domain/docs/endpoint_inventory.tsv`
+- route-anchored tests/helpers that expose catalog hosts or contract examples
 
 ### Delete Stale Mentions, Do Not Leave Split Truth
 
 - if a route host is retired, remove it from docs in the same packet
 - if a service stops owning writes, remove that claim in the same packet
-- if a duplicate host remains temporarily during a transition, call it out
-  explicitly with deletion criteria
+- if a referenced doc no longer exists, remove the dead reference instead of
+  leaving a stale pointer behind
 
 ### Keep Docs Grounded In Code
 
 When changing these docs, verify:
 
 - controller annotations
+- do docs still imply inline brand creation inside the product payload
 - service entry methods
 - persistence targets
 - downstream inventory / production / sales dependencies
