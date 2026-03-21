@@ -1,34 +1,22 @@
 {
   "featureId": "catalog-contract-cleanup-and-proof",
-  "reviewedAt": "2026-03-21T06:27:25.877143+00:00",
-  "commitId": "385cfadd",
+  "reviewedAt": "2026-03-21T07:17:01.978880+00:00",
+  "commitId": "095cfe36243717ee56b21f63c7f00509f92808e4",
   "transcriptSkeletonReviewed": true,
   "diffReviewed": true,
   "status": "fail",
   "codeReview": {
-    "summary": "The feature correctly removes the retired catalog hosts from the route inventory, OpenAPI surface, README, and the two explicitly named catalog tests, but it does not fully satisfy the contract-alignment goal. The frontend handoff still contains stale catalog DTO field bullets that no longer match the surviving request contracts, and the packet also bundles two explicitly out-of-scope validator fixes into this catalog cleanup feature.",
+    "summary": "The re-review fixes one of the round-1 blockers: `.factory/library/frontend-handoff.md` now drops the stale retired-catalog request bullets and points accounting consumers at the surviving catalog DTOs, and `SalesControllerIT` has been restored to its pre-feature expectation. However, the packet still does not satisfy the required narrowing because the unrelated runtime valuation truth-suite change introduced by `385cfadd` remains present in the current tree.",
     "issues": [
       {
-        "file": ".factory/library/frontend-handoff.md",
-        "line": 882,
+        "file": "erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite/runtime/TS_RuntimeInventoryValuationExecutableCoverageTest.java",
+        "line": 83,
         "severity": "blocking",
-        "description": "The accounting handoff section still contains stale catalog request-field bullets (`sizeLabel`, `basePrice`, `minSellingPrice`, `metadata`) immediately after stating that public accounting catalog DTOs are retired. Those fields do not match the surviving `CatalogProductRequest` (`erp-domain/src/main/java/com/bigbrightpaints/erp/modules/production/dto/CatalogProductRequest.java:12-28`) and therefore leave the required frontend-handoff contract cleanup incomplete."
-      },
-      {
-        "file": "erp-domain/src/test/java/com/bigbrightpaints/erp/modules/sales/SalesControllerIT.java",
-        "line": 361,
-        "severity": "blocking",
-        "description": "This packet widens scope by changing `SalesControllerIT` here and `erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite/runtime/TS_RuntimeInventoryValuationExecutableCoverageTest.java:83` to repair two known pre-existing non-catalog failures, even though mission guidance explicitly marks those failures as out of scope and says workers must not widen scope to fix them (`/home/realnigga/.factory/missions/6976bae7-c2fe-4bf5-a28a-485480ce262a/AGENTS.md:41-45`)."
+        "description": "The final packet still includes the out-of-scope valuation test edit that switched this assertion from `currentSnapshot(company)` to `snapshotAsOf(company, LocalDate.of(2026, 3, 1))`. Mission guidance explicitly marks this truth-suite failure as outside the catalog packet (`/home/realnigga/.factory/missions/6976bae7-c2fe-4bf5-a28a-485480ce262a/AGENTS.md:41-45`), and `git diff --name-only 385cfadd^..095cfe36 -- erp-domain/src/test/java/com/bigbrightpaints/erp/modules/sales/SalesControllerIT.java erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite/runtime/TS_RuntimeInventoryValuationExecutableCoverageTest.java` still lists `TS_RuntimeInventoryValuationExecutableCoverageTest.java`, showing the packet has not been fully narrowed back to in-scope cleanup work."
       }
     ]
   },
-  "sharedStateObservations": [
-    {
-      "area": "knowledge",
-      "observation": "Catalog cleanup guidance documents only the repo-root `openapi.json`, but the repo also carries `erp-domain/openapi.json` and this feature's worker had to manually compare hashes and copy the root snapshot into that secondary location during the run.",
-      "evidence": "`docs/developer/catalog-consolidation/04-update-hygiene.md:30` names only `openapi.json`, while the transcript skeleton for worker `1e057612-f0b9-4493-96d2-affdd541beb9` shows a hash-compare command followed by `cp \"/home/realnigga/Desktop/Mission-control/openapi.json\" \"/home/realnigga/Desktop/Mission-control/erp-domain/openapi.json\"`."
-    }
-  ],
-  "addressesFailureFrom": null,
-  "summary": "Fail: the packet leaves stale contract text in `.factory/library/frontend-handoff.md` and also bundles two explicitly out-of-scope validator fixes (`SalesControllerIT` and `TS_RuntimeInventoryValuationExecutableCoverageTest`) into a catalog cleanup feature."
+  "sharedStateObservations": [],
+  "addressesFailureFrom": "/home/realnigga/Desktop/Mission-control/.factory/validation/catalog-surface-consolidation/scrutiny/reviews/catalog-contract-cleanup-and-proof.json",
+  "summary": "Fail: the stale frontend-handoff bullets are fixed and the `SalesControllerIT` scope drift is gone, but the current repo still retains the unrelated `TS_RuntimeInventoryValuationExecutableCoverageTest` edit, so the cleanup-proof packet is not yet fully narrow."
 }
