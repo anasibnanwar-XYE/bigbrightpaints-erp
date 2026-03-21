@@ -258,6 +258,7 @@ class LeaveServiceTest {
 
     @AfterEach
     void tearDown() {
+        ReflectionTestUtils.setField(CompanyTime.class, "companyClock", null);
         SecurityContextHolder.clearContext();
     }
 
