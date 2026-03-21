@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.production.service;
 
+import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.factory.domain.SizeVariantRepository;
@@ -27,6 +28,7 @@ import static org.mockito.Mockito.when;
 class CatalogServiceBrandCrudTest {
 
     @Mock private CompanyContextService companyContextService;
+    @Mock private CompanyEntityLookup companyEntityLookup;
     @Mock private ProductionBrandRepository brandRepository;
     @Mock private ProductionProductRepository productRepository;
     @Mock private SizeVariantRepository sizeVariantRepository;
@@ -40,6 +42,7 @@ class CatalogServiceBrandCrudTest {
     void setUp() {
         service = new CatalogService(
                 companyContextService,
+                companyEntityLookup,
                 brandRepository,
                 productRepository,
                 sizeVariantRepository,

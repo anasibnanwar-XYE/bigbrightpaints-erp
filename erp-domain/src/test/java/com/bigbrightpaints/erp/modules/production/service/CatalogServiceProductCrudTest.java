@@ -1,5 +1,7 @@
 package com.bigbrightpaints.erp.modules.production.service;
 
+import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
+import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.factory.domain.SizeVariantRepository;
@@ -39,6 +41,8 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.lenient;
 
@@ -48,6 +52,7 @@ import static org.mockito.Mockito.lenient;
 class CatalogServiceProductCrudTest {
 
     @Mock private CompanyContextService companyContextService;
+    @Mock private CompanyEntityLookup companyEntityLookup;
     @Mock private ProductionBrandRepository brandRepository;
     @Mock private ProductionProductRepository productRepository;
     @Mock private SizeVariantRepository sizeVariantRepository;
@@ -62,6 +67,7 @@ class CatalogServiceProductCrudTest {
     void setUp() {
         service = new CatalogService(
                 companyContextService,
+                companyEntityLookup,
                 brandRepository,
                 productRepository,
                 sizeVariantRepository,
@@ -70,6 +76,11 @@ class CatalogServiceProductCrudTest {
         company = new Company();
         ReflectionTestUtils.setField(company, "id", 200L);
         company.setCode("BBP");
+        company.setDefaultInventoryAccountId(9001L);
+        company.setDefaultCogsAccountId(9002L);
+        company.setDefaultRevenueAccountId(9003L);
+        company.setDefaultDiscountAccountId(9005L);
+        company.setDefaultTaxAccountId(9004L);
 
         brand = new ProductionBrand();
         ReflectionTestUtils.setField(brand, "id", 11L);
@@ -79,6 +90,11 @@ class CatalogServiceProductCrudTest {
         brand.setActive(true);
 
         when(companyContextService.requireCurrentCompany()).thenReturn(company);
+        lenient().when(companyEntityLookup.requireAccount(eq(company), anyLong())).thenAnswer(invocation -> {
+            Account account = new Account();
+            ReflectionTestUtils.setField(account, "id", invocation.getArgument(1, Long.class));
+            return account;
+        });
         lenient().when(finishedGoodRepository.findByCompanyAndProductCode(any(), any())).thenReturn(Optional.empty());
         lenient().when(rawMaterialRepository.findByCompanyAndSku(any(), any())).thenReturn(Optional.empty());
     }
@@ -317,6 +333,175 @@ class CatalogServiceProductCrudTest {
                 .containsEntry("wipAccountId", 801L)
                 .containsEntry("wastageAccountId", 802L)
                 .containsEntry("productType", "decorative");
+    }
+
+    @Test
+    void updateProduct_preservesCanonicalFamilyLinkage_whenMemberNameIsUnchanged() {
+        ProductionProduct existing = new ProductionProduct();
+        ReflectionTestUtils.setField(existing, "id", 505L);
+        existing.setCompany(company);
+        existing.setBrand(brand);
+        existing.setProductName("Premium Primer WHITE 1L");
+        existing.setProductFamilyName("Premium Primer");
+        existing.setCategory("FINISHED_GOOD");
+        existing.setSkuCode("BBR-PREMIUMPRIM-WHITE-1L");
+        existing.setActive(true);
+        existing.setColors(new LinkedHashSet<>(List.of("WHITE")));
+        existing.setSizes(new LinkedHashSet<>(List.of("1L")));
+        existing.setCartonSizes(new LinkedHashMap<>(java.util.Map.of("1L", 1)));
+        existing.setUnitOfMeasure("LITER");
+        existing.setHsnCode("320910");
+        UUID variantGroupId = ReflectionTestUtils.invokeMethod(
+                service,
+                "buildVariantGroupId",
+                company,
+                brand,
+                "Premium Primer",
+                "FINISHED_GOOD",
+                "LITER",
+                "320910");
+        existing.setVariantGroupId(variantGroupId);
+        existing.setMetadata(new LinkedHashMap<>(Map.of("productType", "decorative")));
+
+        CatalogProductRequest request = new CatalogProductRequest(
+                11L,
+                "Premium Primer WHITE 1L",
+                List.of("WHITE"),
+                List.of("1L"),
+                List.of(new CatalogProductCartonSizeRequest("1L", 1)),
+                "LITER",
+                "320910",
+                new BigDecimal("1325.00"),
+                new BigDecimal("18.00"),
+                new BigDecimal("7.50"),
+                new BigDecimal("1225.00"),
+                Map.of("wipAccountId", 801L),
+                true
+        );
+
+        when(brandRepository.findByCompanyAndId(company, 11L)).thenReturn(Optional.of(brand));
+        when(productRepository.findByCompanyAndId(company, 505L)).thenReturn(Optional.of(existing));
+        when(productRepository.findByBrandAndProductNameIgnoreCase(brand, "Premium Primer WHITE 1L"))
+                .thenReturn(Optional.of(existing));
+        when(productRepository.save(any(ProductionProduct.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        CatalogProductDto response = service.updateProduct(505L, request);
+
+        assertThat(response.name()).isEqualTo("Premium Primer WHITE 1L");
+        assertThat(response.productFamilyName()).isEqualTo("Premium Primer");
+        assertThat(response.variantGroupId()).isEqualTo(variantGroupId);
+    }
+
+    @Test
+    void updateProduct_recomputesCanonicalFamilyLinkage_whenMemberSuffixIsRetained() {
+        ProductionProduct existing = new ProductionProduct();
+        ReflectionTestUtils.setField(existing, "id", 507L);
+        existing.setCompany(company);
+        existing.setBrand(brand);
+        existing.setProductName("Premium Primer WHITE 1L");
+        existing.setProductFamilyName("Premium Primer");
+        existing.setCategory("FINISHED_GOOD");
+        existing.setSkuCode("BBR-PREMIUMPRIM-WHITE-1L");
+        existing.setActive(true);
+        existing.setColors(new LinkedHashSet<>(List.of("WHITE")));
+        existing.setSizes(new LinkedHashSet<>(List.of("1L")));
+        existing.setCartonSizes(new LinkedHashMap<>(java.util.Map.of("1L", 1)));
+        existing.setUnitOfMeasure("LITER");
+        existing.setHsnCode("320910");
+        UUID originalVariantGroupId = ReflectionTestUtils.invokeMethod(
+                service,
+                "buildVariantGroupId",
+                company,
+                brand,
+                "Premium Primer",
+                "FINISHED_GOOD",
+                "LITER",
+                "320910");
+        existing.setVariantGroupId(originalVariantGroupId);
+        existing.setMetadata(new LinkedHashMap<>(Map.of("productType", "decorative")));
+
+        CatalogProductRequest request = new CatalogProductRequest(
+                11L,
+                "Premium Primer Updated WHITE 1L",
+                List.of("WHITE"),
+                List.of("1L"),
+                List.of(new CatalogProductCartonSizeRequest("1L", 1)),
+                "LITER",
+                "320910",
+                new BigDecimal("1325.00"),
+                new BigDecimal("18.00"),
+                new BigDecimal("7.50"),
+                new BigDecimal("1225.00"),
+                Map.of("wipAccountId", 801L),
+                true
+        );
+
+        when(brandRepository.findByCompanyAndId(company, 11L)).thenReturn(Optional.of(brand));
+        when(productRepository.findByCompanyAndId(company, 507L)).thenReturn(Optional.of(existing));
+        when(productRepository.findByBrandAndProductNameIgnoreCase(brand, "Premium Primer Updated WHITE 1L"))
+                .thenReturn(Optional.of(existing));
+        when(productRepository.save(any(ProductionProduct.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        CatalogProductDto response = service.updateProduct(507L, request);
+        UUID updatedVariantGroupId = ReflectionTestUtils.invokeMethod(
+                service,
+                "buildVariantGroupId",
+                company,
+                brand,
+                "Premium Primer Updated",
+                "FINISHED_GOOD",
+                "LITER",
+                "320910");
+
+        assertThat(response.name()).isEqualTo("Premium Primer Updated WHITE 1L");
+        assertThat(response.productFamilyName()).isEqualTo("Premium Primer Updated");
+        assertThat(response.variantGroupId()).isEqualTo(updatedVariantGroupId);
+        assertThat(response.variantGroupId()).isNotEqualTo(originalVariantGroupId);
+    }
+
+    @Test
+    void updateProduct_rejectsInvalidFinishedGoodAccountMetadataBeforeInventorySync() {
+        ProductionProduct existing = new ProductionProduct();
+        ReflectionTestUtils.setField(existing, "id", 506L);
+        existing.setCompany(company);
+        existing.setBrand(brand);
+        existing.setProductName("Primer");
+        existing.setProductFamilyName("Primer");
+        existing.setVariantGroupId(UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"));
+        existing.setCategory("FINISHED_GOOD");
+        existing.setSkuCode("BBR-PRIMER-003");
+        existing.setActive(true);
+        existing.setColors(new LinkedHashSet<>(List.of("White")));
+        existing.setSizes(new LinkedHashSet<>(List.of("1L")));
+        existing.setCartonSizes(new LinkedHashMap<>(java.util.Map.of("1L", 12)));
+        existing.setUnitOfMeasure("LITER");
+        existing.setHsnCode("320910");
+        existing.setMetadata(new LinkedHashMap<>(Map.of("productType", "decorative")));
+
+        CatalogProductRequest request = new CatalogProductRequest(
+                11L,
+                "Primer",
+                List.of("White"),
+                List.of("1L"),
+                List.of(new CatalogProductCartonSizeRequest("1L", 12)),
+                "LITER",
+                "320910",
+                new BigDecimal("710.00"),
+                new BigDecimal("18.00"),
+                new BigDecimal("4.00"),
+                new BigDecimal("690.00"),
+                Map.of("fgValuationAccountId", 999L),
+                true
+        );
+
+        when(brandRepository.findByCompanyAndId(company, 11L)).thenReturn(Optional.of(brand));
+        when(productRepository.findByCompanyAndId(company, 506L)).thenReturn(Optional.of(existing));
+        when(productRepository.findByBrandAndProductNameIgnoreCase(brand, "Primer")).thenReturn(Optional.of(existing));
+        when(companyEntityLookup.requireAccount(company, 999L)).thenThrow(new IllegalArgumentException("Account not found"));
+
+        assertThatThrownBy(() -> service.updateProduct(506L, request))
+                .hasMessageContaining("invalid account id 999")
+                .hasMessageContaining("fgValuationAccountId");
     }
 
     @Test

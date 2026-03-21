@@ -144,7 +144,7 @@ class CatalogControllerCanonicalProductIT extends AbstractIntegrationTest {
 
         Map<String, Object> updatePayload = new LinkedHashMap<>();
         updatePayload.put("brandId", activeBrand.getId());
-        updatePayload.put("name", "Premium Primer Updated");
+        updatePayload.put("name", detailData.get("name"));
         updatePayload.put("colors", detailData.get("colors"));
         updatePayload.put("sizes", detailData.get("sizes"));
         updatePayload.put("cartonSizes", detailData.get("cartonSizes"));
@@ -168,9 +168,9 @@ class CatalogControllerCanonicalProductIT extends AbstractIntegrationTest {
         assertThat(updateResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
         Map<String, Object> updatedProduct = data(updateResponse);
         UUID updatedVariantGroupId = UUID.fromString(String.valueOf(updatedProduct.get("variantGroupId")));
-        assertThat(updatedProduct.get("name")).isEqualTo("Premium Primer Updated");
-        assertThat(updatedProduct.get("productFamilyName")).isEqualTo("Premium Primer Updated");
-        assertThat(updatedVariantGroupId).isNotEqualTo(variantGroupId);
+        assertThat(updatedProduct.get("name")).isEqualTo(detailData.get("name"));
+        assertThat(updatedProduct.get("productFamilyName")).isEqualTo("Premium Primer");
+        assertThat(updatedVariantGroupId).isEqualTo(variantGroupId);
         assertThat(decimalValue(updatedProduct.get("basePrice"))).isEqualByComparingTo("1325.00");
         assertThat(decimalValue(updatedProduct.get("minDiscountPercent"))).isEqualByComparingTo("7.50");
         assertThat(decimalValue(updatedProduct.get("minSellingPrice"))).isEqualByComparingTo("1225.00");
@@ -187,13 +187,54 @@ class CatalogControllerCanonicalProductIT extends AbstractIntegrationTest {
         assertThat(updatedDetailResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
         Map<String, Object> updatedDetail = data(updatedDetailResponse);
         assertThat(UUID.fromString(String.valueOf(updatedDetail.get("variantGroupId")))).isEqualTo(updatedVariantGroupId);
-        assertThat(updatedDetail.get("productFamilyName")).isEqualTo("Premium Primer Updated");
+        assertThat(updatedDetail.get("productFamilyName")).isEqualTo("Premium Primer");
         assertThat(decimalValue(updatedDetail.get("basePrice"))).isEqualByComparingTo("1325.00");
         assertThat(decimalValue(updatedDetail.get("minDiscountPercent"))).isEqualByComparingTo("7.50");
         assertThat(decimalValue(updatedDetail.get("minSellingPrice"))).isEqualByComparingTo("1225.00");
         Map<String, Object> updatedDetailMetadata = metadata(updatedDetail);
         assertThat(((Number) updatedDetailMetadata.get("wipAccountId")).longValue()).isEqualTo(wipAccount.getId());
         assertThat(((Number) updatedDetailMetadata.get("wastageAccountId")).longValue()).isEqualTo(company.getDefaultCogsAccountId());
+    }
+
+    @Test
+    void updateProduct_rejectsInvalidFinishedGoodAccountMetadata() {
+        ProductionBrand activeBrand = saveBrand("Canonical Invalid Account " + shortId(), true);
+        ResponseEntity<Map> createResponse = postCatalogProducts(basePayload(activeBrand.getId()), false);
+        assertThat(createResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        Long productId = Long.valueOf(String.valueOf(members(data(createResponse)).getFirst().get("id")));
+        ResponseEntity<Map> detailResponse = rest.exchange(
+                "/api/v1/catalog/products/" + productId,
+                HttpMethod.GET,
+                new HttpEntity<>(headers),
+                Map.class);
+        assertThat(detailResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        Map<String, Object> detailData = data(detailResponse);
+        Map<String, Object> updatePayload = new LinkedHashMap<>();
+        updatePayload.put("brandId", activeBrand.getId());
+        updatePayload.put("name", detailData.get("name"));
+        updatePayload.put("colors", detailData.get("colors"));
+        updatePayload.put("sizes", detailData.get("sizes"));
+        updatePayload.put("cartonSizes", detailData.get("cartonSizes"));
+        updatePayload.put("unitOfMeasure", detailData.get("unitOfMeasure"));
+        updatePayload.put("hsnCode", detailData.get("hsnCode"));
+        updatePayload.put("basePrice", detailData.get("basePrice"));
+        updatePayload.put("gstRate", detailData.get("gstRate"));
+        updatePayload.put("minDiscountPercent", detailData.get("minDiscountPercent"));
+        updatePayload.put("minSellingPrice", detailData.get("minSellingPrice"));
+        updatePayload.put("metadata", Map.of("fgValuationAccountId", 999999L));
+        updatePayload.put("active", true);
+
+        ResponseEntity<Map> updateResponse = rest.exchange(
+                "/api/v1/catalog/products/" + productId,
+                HttpMethod.PUT,
+                new HttpEntity<>(updatePayload, headers),
+                Map.class);
+        assertThat(updateResponse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(String.valueOf(errorData(updateResponse).get("reason")))
+                .contains("invalid account id 999999")
+                .contains("fgValuationAccountId");
     }
 
     @Test

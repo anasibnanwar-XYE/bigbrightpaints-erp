@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.production.service;
 
+import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.factory.domain.SizeVariant;
@@ -55,6 +56,7 @@ import static org.mockito.Mockito.when;
 class CatalogServiceCanonicalCoverageTest {
 
     @Mock private CompanyContextService companyContextService;
+    @Mock private CompanyEntityLookup companyEntityLookup;
     @Mock private ProductionBrandRepository brandRepository;
     @Mock private ProductionProductRepository productRepository;
     @Mock private SizeVariantRepository sizeVariantRepository;
@@ -69,6 +71,7 @@ class CatalogServiceCanonicalCoverageTest {
     void setUp() {
         service = new CatalogService(
                 companyContextService,
+                companyEntityLookup,
                 brandRepository,
                 productRepository,
                 sizeVariantRepository,
@@ -406,7 +409,7 @@ class CatalogServiceCanonicalCoverageTest {
         legacyProduct.setUnitOfMeasure("LITER");
         legacyProduct.setHsnCode("320910");
 
-        ReflectionTestUtils.invokeMethod(service, "refreshCanonicalFamilyLinkage", legacyProduct, brand);
+        ReflectionTestUtils.invokeMethod(service, "refreshCanonicalFamilyLinkage", legacyProduct, brand, null, null);
 
         assertThat(generatedSku).isEqualTo("BBR-PRIMER-009");
         assertThat(fallbackCode).isEqualTo("CAT");
