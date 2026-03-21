@@ -35,6 +35,7 @@ None.
    - no separate public bulk product-create route
    - preserve reserved SKU semantics such as `-BULK`
    - stay inside catalog/product/SKU flow plus downstream inventory/sales/factory readiness and aligned docs/tests/OpenAPI
+6. Proof-only work is valid for this skill when the assigned feature is about tightening regression evidence or contract-surface alignment for behavior that already exists; you still must follow the same verification bar.
 
 ### Step 2: Write or replace failing tests first
 1. Encode the assigned validation assertions in tests before implementation.
@@ -67,7 +68,8 @@ None.
    - `.factory/library/frontend-handoff.md` when it exposes affected catalog routes/contracts
    - README / packet docs assigned by the feature
 2. Follow `04-update-hygiene.md` exactly. Do not leave split truth behind.
-3. If a referenced doc is missing, either create the required replacement or remove the stale reference in the same feature; do not hand-wave the gap.
+3. If the mission feature list assigns a later dedicated cleanup/proof feature, keep the current feature's contract-surface updates limited to what is necessary for its changed runtime truth, and leave broader stale-surface cleanup to the dedicated cleanup feature.
+4. If a referenced doc is missing, either create the required replacement or remove the stale reference in the responsible feature; do not hand-wave the gap.
 
 ### Step 5: Verify thoroughly
 1. Run the targeted packet suite or narrower targeted command for the changed surface.
