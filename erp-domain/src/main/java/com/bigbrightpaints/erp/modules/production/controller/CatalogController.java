@@ -2,11 +2,12 @@ package com.bigbrightpaints.erp.modules.production.controller;
 
 import com.bigbrightpaints.erp.modules.production.dto.CatalogBrandDto;
 import com.bigbrightpaints.erp.modules.production.dto.CatalogBrandRequest;
-import com.bigbrightpaints.erp.modules.production.dto.CatalogProductBulkItemRequest;
-import com.bigbrightpaints.erp.modules.production.dto.CatalogProductBulkResponse;
+import com.bigbrightpaints.erp.modules.production.dto.CatalogProductEntryRequest;
+import com.bigbrightpaints.erp.modules.production.dto.CatalogProductEntryResponse;
 import com.bigbrightpaints.erp.modules.production.dto.CatalogProductDto;
 import com.bigbrightpaints.erp.modules.production.dto.CatalogProductRequest;
 import com.bigbrightpaints.erp.modules.production.service.CatalogService;
+import com.bigbrightpaints.erp.modules.production.service.ProductionCatalogService;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 import com.bigbrightpaints.erp.shared.dto.PageResponse;
 import jakarta.validation.Valid;
@@ -30,9 +31,12 @@ import java.util.List;
 public class CatalogController {
 
     private final CatalogService catalogService;
+    private final ProductionCatalogService productionCatalogService;
 
-    public CatalogController(CatalogService catalogService) {
+    public CatalogController(CatalogService catalogService,
+                             ProductionCatalogService productionCatalogService) {
         this.catalogService = catalogService;
+        this.productionCatalogService = productionCatalogService;
     }
 
     @PostMapping("/brands")
@@ -63,8 +67,12 @@ public class CatalogController {
     }
 
     @PostMapping("/products")
-    public ResponseEntity<ApiResponse<CatalogProductDto>> createProduct(@Valid @RequestBody CatalogProductRequest request) {
-        return ResponseEntity.ok(ApiResponse.success("Product created", catalogService.createProduct(request)));
+    public ResponseEntity<ApiResponse<CatalogProductEntryResponse>> createProduct(
+            @Valid @RequestBody CatalogProductEntryRequest request,
+            @RequestParam(value = "preview", defaultValue = "false") boolean preview) {
+        String message = preview ? "Product preview generated" : "Products created";
+        return ResponseEntity.ok(ApiResponse.success(message,
+                productionCatalogService.createOrPreviewCatalogProducts(request, preview)));
     }
 
     @GetMapping("/products")
@@ -98,11 +106,5 @@ public class CatalogController {
     @DeleteMapping("/products/{productId}")
     public ResponseEntity<ApiResponse<CatalogProductDto>> deactivateProduct(@PathVariable Long productId) {
         return ResponseEntity.ok(ApiResponse.success("Product deactivated", catalogService.deactivateProduct(productId)));
-    }
-
-    @PostMapping("/products/bulk")
-    public ResponseEntity<ApiResponse<CatalogProductBulkResponse>> bulkUpsertProducts(
-            @Valid @RequestBody List<@Valid CatalogProductBulkItemRequest> request) {
-        return ResponseEntity.ok(ApiResponse.success("Bulk product request processed", catalogService.bulkUpsertProducts(request)));
     }
 }

@@ -1,0 +1,386 @@
+package com.bigbrightpaints.erp.modules.production.controller;
+
+import com.bigbrightpaints.erp.modules.accounting.domain.Account;
+import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
+import com.bigbrightpaints.erp.modules.company.domain.Company;
+import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
+import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodRepository;
+import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialRepository;
+import com.bigbrightpaints.erp.modules.production.domain.ProductionBrand;
+import com.bigbrightpaints.erp.modules.production.domain.ProductionBrandRepository;
+import com.bigbrightpaints.erp.modules.production.domain.ProductionProduct;
+import com.bigbrightpaints.erp.modules.production.domain.ProductionProductRepository;
+import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+
+import java.math.BigDecimal;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.stream.Collectors;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+class CatalogControllerCanonicalProductIT extends AbstractIntegrationTest {
+
+    private static final String COMPANY_CODE = "CAT-CANONICAL";
+    private static final String PASSWORD = "Catalog123!";
+    private static final String ACCOUNTING_EMAIL = "catalog-canonical@bbp.com";
+
+    @Autowired private TestRestTemplate rest;
+    @Autowired private CompanyRepository companyRepository;
+    @Autowired private AccountRepository accountRepository;
+    @Autowired private ProductionBrandRepository brandRepository;
+    @Autowired private ProductionProductRepository productRepository;
+    @Autowired private FinishedGoodRepository finishedGoodRepository;
+    @Autowired private RawMaterialRepository rawMaterialRepository;
+
+    private Company company;
+    private HttpHeaders headers;
+
+    @BeforeEach
+    void setUp() {
+        company = dataSeeder.ensureCompany(COMPANY_CODE, "Canonical Catalog Co");
+        dataSeeder.ensureUser(ACCOUNTING_EMAIL, PASSWORD, "Canonical Accounting", COMPANY_CODE, List.of("ROLE_ADMIN"));
+        configureDefaultAccounts();
+        headers = authHeaders();
+    }
+
+    @Test
+    void createProduct_requiresActiveBrandId_rejectsFallbackFieldsAnd_persistsSingleCanonicalSku() {
+        ProductionBrand activeBrand = saveBrand("Canonical Active " + shortId(), true);
+        ProductionBrand inactiveBrand = saveBrand("Canonical Inactive " + shortId(), false);
+
+        ResponseEntity<Map> missingBrandResponse = postCatalogProducts(basePayload(null), false);
+        assertThat(missingBrandResponse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(errors(missingBrandResponse)).containsKey("brandId");
+
+        ResponseEntity<Map> nonexistentBrandResponse = postCatalogProducts(basePayload(999999L), false);
+        assertThat(nonexistentBrandResponse.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(errorData(nonexistentBrandResponse)).containsEntry("code", "BUS_003");
+
+        ResponseEntity<Map> inactiveBrandResponse = postCatalogProducts(basePayload(inactiveBrand.getId()), false);
+        assertThat(inactiveBrandResponse.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(String.valueOf(errorData(inactiveBrandResponse).get("reason"))).contains("inactive");
+
+        Map<String, Object> inlineFallbackPayload = basePayload(activeBrand.getId());
+        inlineFallbackPayload.put("brandName", "Inline Brand");
+        ResponseEntity<Map> inlineFallbackResponse = postCatalogProducts(inlineFallbackPayload, false);
+        assertThat(inlineFallbackResponse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(String.valueOf(errorData(inlineFallbackResponse).get("reason"))).contains("Unsupported fields");
+
+        Map<String, Object> packedTokenPayload = basePayload(activeBrand.getId());
+        packedTokenPayload.put("colors", List.of("WHITE/BLACK"));
+        ResponseEntity<Map> packedTokenResponse = postCatalogProducts(packedTokenPayload, false);
+        assertThat(packedTokenResponse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(String.valueOf(errorData(packedTokenResponse).get("reason"))).contains("packed multi-value tokens");
+
+        ResponseEntity<Map> successResponse = postCatalogProducts(basePayload(activeBrand.getId()), false);
+        assertThat(successResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        Map<String, Object> data = data(successResponse);
+        assertThat(data).containsEntry("preview", false);
+        assertThat(data).containsEntry("category", "FINISHED_GOOD");
+        assertThat(data).containsEntry("unitOfMeasure", "LITER");
+        assertThat(data).containsEntry("hsnCode", "320910");
+        assertThat(decimalValue(data.get("basePrice"))).isEqualByComparingTo("1200.00");
+        assertThat(decimalValue(data.get("gstRate"))).isEqualByComparingTo("18.00");
+        assertThat(decimalValue(data.get("minDiscountPercent"))).isEqualByComparingTo("5.00");
+        assertThat(decimalValue(data.get("minSellingPrice"))).isEqualByComparingTo("1140.00");
+        assertThat(metadata(data)).containsEntry("productType", "decorative");
+
+        UUID variantGroupId = UUID.fromString(String.valueOf(data.get("variantGroupId")));
+        List<Map<String, Object>> members = members(data);
+        assertThat(members).hasSize(1);
+        Map<String, Object> member = members.getFirst();
+        assertThat(member.get("id")).isNotNull();
+        assertThat(member.get("publicId")).isNotNull();
+        assertThat(member.get("sku")).isEqualTo(buildCanonicalSku(activeBrand.getCode(), "Premium Primer", "WHITE", "1L"));
+        assertThat(member.get("productName")).isEqualTo("Premium Primer WHITE 1L");
+        assertThat(productRepository.countByCompanyAndVariantGroupId(company, variantGroupId)).isEqualTo(1);
+        assertThat(productRepository.findByCompanyAndSkuCode(company, String.valueOf(member.get("sku")))).isPresent();
+        assertThat(finishedGoodRepository.findByCompanyAndProductCode(company, String.valueOf(member.get("sku")))).isPresent();
+    }
+
+    @Test
+    void previewAndCommit_matrixCreate_shareCandidatePlan_and_previewDoesNotPersist() {
+        ProductionBrand activeBrand = saveBrand("Canonical Matrix " + shortId(), true);
+        Map<String, Object> payload = matrixPayload(activeBrand.getId(), "Premium Emulsion " + shortId());
+
+        ResponseEntity<Map> previewResponse = postCatalogProducts(payload, true);
+        assertThat(previewResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        Map<String, Object> previewData = data(previewResponse);
+        UUID previewVariantGroupId = UUID.fromString(String.valueOf(previewData.get("variantGroupId")));
+        List<Map<String, Object>> previewMembers = members(previewData);
+        assertThat(previewData).containsEntry("preview", true);
+        assertThat(previewData).containsEntry("candidateCount", 16);
+        assertThat(previewMembers).hasSize(16);
+        assertThat(conflicts(previewData)).isEmpty();
+        assertThat(downstreamEffects(previewData)).containsEntry("finishedGoodMembers", 16);
+        assertThat(productRepository.countByCompanyAndVariantGroupId(company, previewVariantGroupId)).isZero();
+        for (Map<String, Object> member : previewMembers) {
+            String sku = String.valueOf(member.get("sku"));
+            assertThat(member.get("id")).isNull();
+            assertThat(member.get("publicId")).isNull();
+            assertThat(productRepository.findByCompanyAndSkuCode(company, sku)).isEmpty();
+            assertThat(finishedGoodRepository.findByCompanyAndProductCode(company, sku)).isEmpty();
+        }
+
+        ResponseEntity<Map> commitResponse = postCatalogProducts(payload, false);
+        assertThat(commitResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        Map<String, Object> commitData = data(commitResponse);
+        UUID commitVariantGroupId = UUID.fromString(String.valueOf(commitData.get("variantGroupId")));
+        List<Map<String, Object>> commitMembers = members(commitData);
+        assertThat(commitData).containsEntry("preview", false);
+        assertThat(commitData).containsEntry("candidateCount", 16);
+        assertThat(commitMembers).hasSize(16);
+        assertThat(commitVariantGroupId).isEqualTo(previewVariantGroupId);
+        assertThat(commitMembers.stream().map(member -> String.valueOf(member.get("sku"))).collect(Collectors.toSet()))
+                .isEqualTo(previewMembers.stream().map(member -> String.valueOf(member.get("sku"))).collect(Collectors.toSet()));
+        assertThat(commitMembers.stream().map(member -> String.valueOf(member.get("id"))).collect(Collectors.toSet())).hasSize(16);
+        assertThat(commitMembers.stream().map(member -> String.valueOf(member.get("publicId"))).collect(Collectors.toSet())).hasSize(16);
+        assertThat(productRepository.countByCompanyAndVariantGroupId(company, commitVariantGroupId)).isEqualTo(16);
+        for (Map<String, Object> member : commitMembers) {
+            String sku = String.valueOf(member.get("sku"));
+            assertThat(productRepository.findByCompanyAndSkuCode(company, sku)).isPresent();
+            assertThat(finishedGoodRepository.findByCompanyAndProductCode(company, sku)).isPresent();
+        }
+    }
+
+    @Test
+    void commitConflict_failsClosedWithoutPartialPersistence_and_bulkRouteIsRetired() {
+        ProductionBrand activeBrand = saveBrand("Canonical Conflict " + shortId(), true);
+        Map<String, Object> payload = matrixPayload(activeBrand.getId(), "Conflict Family " + shortId());
+
+        ResponseEntity<Map> previewResponse = postCatalogProducts(payload, true);
+        assertThat(previewResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> previewData = data(previewResponse);
+        UUID previewVariantGroupId = UUID.fromString(String.valueOf(previewData.get("variantGroupId")));
+        List<Map<String, Object>> previewMembers = members(previewData);
+        Map<String, Object> conflictingMember = previewMembers.getFirst();
+        String conflictingSku = String.valueOf(conflictingMember.get("sku"));
+
+        seedExistingProduct(activeBrand, conflictingSku, String.valueOf(conflictingMember.get("productName")),
+                String.valueOf(conflictingMember.get("color")), String.valueOf(conflictingMember.get("size")));
+
+        ResponseEntity<Map> conflictResponse = postCatalogProducts(payload, false);
+        assertThat(conflictResponse.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        Map<String, Object> errorData = errorData(conflictResponse);
+        assertThat(errorData).containsEntry("code", "CONC_001");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> details = (Map<String, Object>) errorData.get("details");
+        assertThat(details).isNotNull();
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> conflictDetails = (List<Map<String, Object>>) details.get("conflicts");
+        assertThat(conflictDetails)
+                .extracting(detail -> String.valueOf(detail.get("sku")))
+                .contains(conflictingSku);
+        assertThat(productRepository.countByCompanyAndVariantGroupId(company, previewVariantGroupId)).isZero();
+        for (Map<String, Object> member : previewMembers) {
+            String sku = String.valueOf(member.get("sku"));
+            if (conflictingSku.equals(sku)) {
+                assertThat(productRepository.findByCompanyAndSkuCode(company, sku)).isPresent();
+                continue;
+            }
+            assertThat(productRepository.findByCompanyAndSkuCode(company, sku)).isEmpty();
+            assertThat(finishedGoodRepository.findByCompanyAndProductCode(company, sku)).isEmpty();
+            assertThat(rawMaterialRepository.findByCompanyAndSku(company, sku)).isEmpty();
+        }
+
+        ResponseEntity<Map> bulkRouteResponse = rest.exchange(
+                "/api/v1/catalog/products/bulk",
+                HttpMethod.POST,
+                new HttpEntity<>(List.of(Map.of("ignored", "payload")), headers),
+                Map.class);
+        assertThat(bulkRouteResponse.getStatusCode().is4xxClientError()).isTrue();
+        assertThat(bulkRouteResponse.getStatusCode()).isNotEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    private void configureDefaultAccounts() {
+        Account inventory = ensureAccount("INV-" + shortId(), "Inventory", AccountType.ASSET);
+        Account cogs = ensureAccount("COGS-" + shortId(), "COGS", AccountType.COGS);
+        Account revenue = ensureAccount("REV-" + shortId(), "Revenue", AccountType.REVENUE);
+        Account tax = ensureAccount("GST-" + shortId(), "GST", AccountType.LIABILITY);
+        company.setDefaultInventoryAccountId(inventory.getId());
+        company.setDefaultCogsAccountId(cogs.getId());
+        company.setDefaultRevenueAccountId(revenue.getId());
+        company.setDefaultTaxAccountId(tax.getId());
+        companyRepository.save(company);
+    }
+
+    private Account ensureAccount(String code, String name, AccountType type) {
+        return accountRepository.findByCompanyAndCodeIgnoreCase(company, code)
+                .orElseGet(() -> {
+                    Account account = new Account();
+                    account.setCompany(company);
+                    account.setCode(code);
+                    account.setName(name);
+                    account.setType(type);
+                    return accountRepository.save(account);
+                });
+    }
+
+    private ProductionBrand saveBrand(String name, boolean active) {
+        ProductionBrand brand = new ProductionBrand();
+        brand.setCompany(company);
+        brand.setName(name);
+        brand.setCode(buildBrandCode(name));
+        brand.setActive(active);
+        return brandRepository.save(brand);
+    }
+
+    private void seedExistingProduct(ProductionBrand brand,
+                                     String sku,
+                                     String productName,
+                                     String color,
+                                     String size) {
+        ProductionProduct product = new ProductionProduct();
+        product.setCompany(company);
+        product.setBrand(brand);
+        product.setProductName(productName);
+        product.setCategory("FINISHED_GOOD");
+        product.setDefaultColour(color);
+        product.setSizeLabel(size);
+        product.setUnitOfMeasure("LITER");
+        product.setHsnCode("320910");
+        product.setSkuCode(sku);
+        product.setActive(true);
+        product.setBasePrice(new BigDecimal("999.00"));
+        product.setGstRate(new BigDecimal("18.00"));
+        productRepository.saveAndFlush(product);
+    }
+
+    private HttpHeaders authHeaders() {
+        Map<String, Object> loginPayload = Map.of(
+                "email", ACCOUNTING_EMAIL,
+                "password", PASSWORD,
+                "companyCode", COMPANY_CODE
+        );
+        ResponseEntity<Map> loginResponse = rest.postForEntity("/api/v1/auth/login", loginPayload, Map.class);
+        assertThat(loginResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        String token = String.valueOf(loginResponse.getBody().get("accessToken"));
+
+        HttpHeaders httpHeaders = new HttpHeaders();
+        httpHeaders.setBearerAuth(token);
+        httpHeaders.set("X-Company-Code", COMPANY_CODE);
+        return httpHeaders;
+    }
+
+    private ResponseEntity<Map> postCatalogProducts(Map<String, Object> payload, boolean preview) {
+        String path = preview ? "/api/v1/catalog/products?preview=true" : "/api/v1/catalog/products";
+        return rest.exchange(path, HttpMethod.POST, new HttpEntity<>(payload, headers), Map.class);
+    }
+
+    private Map<String, Object> basePayload(Long brandId) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        if (brandId != null) {
+            payload.put("brandId", brandId);
+        }
+        payload.put("baseProductName", "Premium Primer");
+        payload.put("category", "FINISHED_GOOD");
+        payload.put("unitOfMeasure", "LITER");
+        payload.put("hsnCode", "320910");
+        payload.put("gstRate", new BigDecimal("18.00"));
+        payload.put("basePrice", new BigDecimal("1200.00"));
+        payload.put("minDiscountPercent", new BigDecimal("5.00"));
+        payload.put("minSellingPrice", new BigDecimal("1140.00"));
+        payload.put("colors", List.of("WHITE"));
+        payload.put("sizes", List.of("1L"));
+        payload.put("metadata", Map.of("productType", "decorative"));
+        return payload;
+    }
+
+    private Map<String, Object> matrixPayload(Long brandId, String baseProductName) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("brandId", brandId);
+        payload.put("baseProductName", baseProductName);
+        payload.put("category", "FINISHED_GOOD");
+        payload.put("unitOfMeasure", "LITER");
+        payload.put("hsnCode", "320910");
+        payload.put("gstRate", new BigDecimal("18.00"));
+        payload.put("basePrice", new BigDecimal("1600.00"));
+        payload.put("minDiscountPercent", new BigDecimal("7.50"));
+        payload.put("minSellingPrice", new BigDecimal("1480.00"));
+        payload.put("colors", List.of("WHITE", "BLUE", "GREEN", "BLACK"));
+        payload.put("sizes", List.of("1L", "4L", "10L", "20L"));
+        payload.put("metadata", Map.of("productType", "decorative"));
+        return payload;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> data(ResponseEntity<Map> response) {
+        assertThat(response.getBody()).isNotNull();
+        return (Map<String, Object>) response.getBody().get("data");
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> errorData(ResponseEntity<Map> response) {
+        assertThat(response.getBody()).isNotNull();
+        return (Map<String, Object>) response.getBody().get("data");
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> errors(ResponseEntity<Map> response) {
+        return (Map<String, Object>) errorData(response).get("errors");
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> members(Map<String, Object> data) {
+        return (List<Map<String, Object>>) data.get("members");
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> conflicts(Map<String, Object> data) {
+        return (List<Map<String, Object>>) data.get("conflicts");
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> metadata(Map<String, Object> data) {
+        return (Map<String, Object>) data.get("metadata");
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> downstreamEffects(Map<String, Object> data) {
+        return (Map<String, Object>) data.get("downstreamEffects");
+    }
+
+    private BigDecimal decimalValue(Object value) {
+        if (value instanceof Number number) {
+            return new BigDecimal(String.valueOf(number));
+        }
+        return new BigDecimal(String.valueOf(value));
+    }
+
+    private String buildCanonicalSku(String brandCode, String baseProductName, String color, String size) {
+        return List.of(brandCode, baseProductName, color, size).stream()
+                .map(this::sanitizeSkuFragment)
+                .collect(Collectors.joining("-"))
+                .replaceAll("-{2,}", "-");
+    }
+
+    private String sanitizeSkuFragment(String value) {
+        return value == null ? "" : value.trim().toUpperCase().replaceAll("[^A-Z0-9-]", "");
+    }
+
+    private String buildBrandCode(String name) {
+        String sanitized = sanitizeSkuFragment(name).replace("-", "");
+        return sanitized.length() > 12 ? sanitized.substring(0, 12) : sanitized;
+    }
+
+    private String shortId() {
+        return UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+    }
+}

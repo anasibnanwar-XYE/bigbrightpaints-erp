@@ -78,6 +78,7 @@ class ProductionCatalogFinishedGoodInvariantIT extends AbstractIntegrationTest {
                 "WHITE",
                 "1L",
                 "UNIT",
+                "320910",
                 skuCode,
                 new BigDecimal("100.00"),
                 new BigDecimal("18.00"),
@@ -116,6 +117,7 @@ class ProductionCatalogFinishedGoodInvariantIT extends AbstractIntegrationTest {
                 "BLUE",
                 "1L",
                 "UNIT",
+                "320910",
                 skuCode,
                 new BigDecimal("90.00"),
                 new BigDecimal("18.00"),
@@ -156,6 +158,7 @@ class ProductionCatalogFinishedGoodInvariantIT extends AbstractIntegrationTest {
                 "WHITE",
                 "1L",
                 "UNIT",
+                "320910",
                 "FG-LF015-" + token + "-BULK",
                 new BigDecimal("100.00"),
                 new BigDecimal("18.00"),
@@ -165,7 +168,7 @@ class ProductionCatalogFinishedGoodInvariantIT extends AbstractIntegrationTest {
         );
 
         assertThatThrownBy(() -> productionCatalogService.createProduct(request))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(com.bigbrightpaints.erp.core.exception.ApplicationException.class)
                 .hasMessageContaining("reserved");
     }
 

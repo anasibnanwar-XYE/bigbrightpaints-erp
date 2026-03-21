@@ -23,6 +23,8 @@ import com.bigbrightpaints.erp.modules.production.domain.ProductionProduct;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionProductRepository;
 import com.bigbrightpaints.erp.modules.production.dto.BulkVariantRequest;
 import com.bigbrightpaints.erp.modules.production.dto.BulkVariantResponse;
+import com.bigbrightpaints.erp.modules.production.dto.CatalogProductEntryRequest;
+import com.bigbrightpaints.erp.modules.production.dto.CatalogProductEntryResponse;
 import com.bigbrightpaints.erp.modules.production.dto.CatalogImportResponse;
 import com.bigbrightpaints.erp.modules.production.dto.ProductCreateRequest;
 import com.bigbrightpaints.erp.modules.production.dto.ProductUpdateRequest;
@@ -64,6 +66,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -75,6 +78,7 @@ public class ProductionCatalogService {
     private static final Pattern NON_ALPHANUM = Pattern.compile("[^A-Z0-9]");
     private static final Pattern NON_SKU_CHAR = Pattern.compile("[^A-Z0-9-]");
     private static final Pattern MULTI_VALUE_DELIMITER = Pattern.compile("[,;\\n]");
+    private static final Pattern PACKED_MULTI_VALUE_TOKEN = Pattern.compile("[/,;\\r\\n]");
     private static final Pattern SEQUENCE_PATTERN = Pattern.compile(".*-(\\d{3})$");
     private static final String SEMI_FINISHED_SUFFIX = "-BULK";
     private static final int MAX_CATALOG_FIELD_LENGTH = 2048;
@@ -104,6 +108,7 @@ public class ProductionCatalogService {
     private static final String VARIANT_REASON_SKU_ALREADY_EXISTS = "SKU_ALREADY_EXISTS";
     private static final String VARIANT_REASON_DUPLICATE_IN_REQUEST = "DUPLICATE_IN_REQUEST";
     private static final String VARIANT_REASON_CONCURRENT_CONFLICT = "CONCURRENT_SKU_CONFLICT";
+    private static final String CATALOG_ENTRY_OPERATION = "catalog-product-entry";
     private static final int BULK_VARIANT_AUDIT_SAMPLE_LIMIT = 12;
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper()
             .configure(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS, true);
@@ -374,6 +379,76 @@ public class ProductionCatalogService {
 
     @Transactional
     public ProductionProductDto createProduct(ProductCreateRequest request) {
+        return createProduct(request, null, null);
+    }
+
+    @Transactional
+    public CatalogProductEntryResponse createOrPreviewCatalogProducts(CatalogProductEntryRequest request, boolean preview) {
+        Company company = companyContextService.requireCurrentCompany();
+        CatalogProductEntryPlan plan = prepareCatalogProductEntryPlan(company, request);
+        CatalogProductEntryResponse previewResponse = toCatalogProductEntryResponse(plan, List.of(), preview);
+
+        if (preview) {
+            return previewResponse;
+        }
+
+        if (!plan.conflicts().isEmpty()) {
+            throw catalogProductEntryConflict(previewResponse,
+                    "Canonical product request has SKU conflicts. Resolve conflicts and retry.");
+        }
+
+        List<CatalogProductEntryResponse.Member> created = new ArrayList<>();
+        for (CatalogProductCandidate candidate : plan.candidatesToCreate()) {
+            try {
+                ProductionProductDto product = createProduct(
+                        candidate.createRequest(),
+                        plan.variantGroupId(),
+                        plan.productFamilyName());
+                created.add(new CatalogProductEntryResponse.Member(
+                        product.id(),
+                        product.publicId(),
+                        product.skuCode(),
+                        product.productName(),
+                        product.defaultColour(),
+                        product.sizeLabel()));
+            } catch (RuntimeException ex) {
+                if (isVariantDuplicateConflict(ex, company, candidate.sku())) {
+                    CatalogProductEntryResponse conflictResponse = toCatalogProductEntryResponse(
+                            plan,
+                            List.of(candidate.toConflict(VARIANT_REASON_CONCURRENT_CONFLICT)),
+                            false);
+                    throw catalogProductEntryConflict(conflictResponse,
+                            "Canonical product write conflict for SKU " + candidate.sku()
+                                    + ". Re-run with preview=true and resubmit.");
+                }
+                throw ex;
+            }
+        }
+
+        return new CatalogProductEntryResponse(
+                false,
+                plan.variantGroupId(),
+                plan.productFamilyName(),
+                plan.brand().getId(),
+                plan.brand().getName(),
+                plan.brand().getCode(),
+                plan.category(),
+                plan.unitOfMeasure(),
+                plan.hsnCode(),
+                plan.basePrice(),
+                plan.gstRate(),
+                plan.minDiscountPercent(),
+                plan.minSellingPrice(),
+                plan.metadata(),
+                plan.generatedMembers().size(),
+                plan.downstreamEffects(),
+                List.copyOf(created),
+                List.of());
+    }
+
+    private ProductionProductDto createProduct(ProductCreateRequest request,
+                                               UUID variantGroupId,
+                                               String productFamilyName) {
         Company company = companyContextService.requireCurrentCompany();
         if (request.brandId() == null && !StringUtils.hasText(request.brandName())) {
             throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Either brandId or brandName must be provided");
@@ -404,7 +479,10 @@ public class ProductionCatalogService {
         product.setDefaultColour(cleanValue(request.defaultColour()));
         product.setSizeLabel(cleanValue(sizeLabel));
         product.setUnitOfMeasure(cleanValue(request.unitOfMeasure()));
+        product.setHsnCode(cleanValue(request.hsnCode()));
         product.setSkuCode(sku);
+        product.setVariantGroupId(variantGroupId);
+        product.setProductFamilyName(cleanValue(productFamilyName));
         product.setActive(true);
         product.setBasePrice(money(request.basePrice()));
         product.setGstRate(percent(request.gstRate()));
@@ -419,6 +497,233 @@ public class ProductionCatalogService {
         ensureCatalogFinishedGood(company, saved);
         syncRawMaterial(company, saved);
         return toProductDto(saved);
+    }
+
+    private CatalogProductEntryPlan prepareCatalogProductEntryPlan(Company company, CatalogProductEntryRequest request) {
+        if (request == null) {
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Canonical product request is required");
+        }
+        if (!request.getUnknownFields().isEmpty()) {
+            String unsupported = request.getUnknownFields().keySet().stream()
+                    .sorted()
+                    .collect(Collectors.joining(", "));
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+                    "Unsupported fields in canonical product request: " + unsupported);
+        }
+
+        ProductionBrand brand = requireActiveBrand(company, request.getBrandId());
+        String productFamilyName = requireCanonicalToken(request.getBaseProductName(), "baseProductName");
+        String normalizedCategory = normalizeCategory(request.getCategory());
+        String unitOfMeasure = requireCanonicalToken(request.getUnitOfMeasure(), "unitOfMeasure");
+        String hsnCode = requireCanonicalToken(request.getHsnCode(), "hsnCode");
+        BigDecimal basePrice = money(request.getBasePrice());
+        BigDecimal gstRate = percent(request.getGstRate());
+        BigDecimal minDiscountPercent = percent(request.getMinDiscountPercent());
+        BigDecimal minSellingPrice = money(request.getMinSellingPrice());
+        Map<String, Object> metadata = normalizeMetadata(request.getMetadata());
+
+        List<String> colors = normalizeCanonicalTokens(request.getColors(), "colors");
+        List<String> sizes = normalizeCanonicalTokens(request.getSizes(), "sizes");
+        UUID variantGroupId = buildVariantGroupId(company, brand, productFamilyName, normalizedCategory, unitOfMeasure, hsnCode, colors, sizes);
+
+        List<CatalogProductCandidate> generatedCandidates = new ArrayList<>();
+        String brandPrefix = sanitizeSkuFragment(brand.getCode());
+        String productFamilyCode = requireCanonicalSkuFragment("baseProductName", productFamilyName, Integer.MAX_VALUE);
+        for (String color : colors) {
+            String colorCode = requireCanonicalSkuFragment("colors", color, 16);
+            for (String size : sizes) {
+                String sizeCode = requireCanonicalSkuFragment("sizes", size, 16);
+                String sku = String.join("-", List.of(brandPrefix, productFamilyCode, colorCode, sizeCode))
+                        .replaceAll("-{2,}", "-");
+                assertNotReservedSemiFinishedSku(sku);
+                String productName = productFamilyName + " " + color + " " + size;
+                ProductCreateRequest createRequest = new ProductCreateRequest(
+                        brand.getId(),
+                        null,
+                        null,
+                        productName,
+                        normalizedCategory,
+                        color,
+                        size,
+                        unitOfMeasure,
+                        hsnCode,
+                        sku,
+                        basePrice,
+                        gstRate,
+                        minDiscountPercent,
+                        minSellingPrice,
+                        metadata
+                );
+                generatedCandidates.add(new CatalogProductCandidate(sku, color, size, productName, createRequest));
+            }
+        }
+
+        Set<String> duplicateSkuKeys = generatedCandidates.stream()
+                .collect(Collectors.groupingBy(candidate -> normalizeSkuKey(candidate.sku()), LinkedHashMap::new, Collectors.counting()))
+                .entrySet().stream()
+                .filter(entry -> entry.getValue() > 1)
+                .map(Map.Entry::getKey)
+                .collect(Collectors.toSet());
+
+        Set<String> generatedSkuKeys = generatedCandidates.stream()
+                .map(CatalogProductCandidate::sku)
+                .map(ProductionCatalogService::normalizeSkuKey)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+
+        Set<String> existingSkuKeys = generatedSkuKeys.isEmpty()
+                ? Set.of()
+                : productRepository.findByCompanyAndSkuCodeIn(company, generatedSkuKeys).stream()
+                .map(ProductionProduct::getSkuCode)
+                .map(ProductionCatalogService::normalizeSkuKey)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+
+        List<CatalogProductEntryResponse.Member> generatedMembers = new ArrayList<>();
+        List<CatalogProductEntryResponse.Conflict> conflicts = new ArrayList<>();
+        List<CatalogProductCandidate> candidatesToCreate = new ArrayList<>();
+        for (CatalogProductCandidate candidate : generatedCandidates) {
+            generatedMembers.add(candidate.toMember(null, null));
+            String skuKey = normalizeSkuKey(candidate.sku());
+            if (duplicateSkuKeys.contains(skuKey)) {
+                conflicts.add(candidate.toConflict(VARIANT_REASON_DUPLICATE_IN_REQUEST));
+                continue;
+            }
+            if (existingSkuKeys.contains(skuKey)) {
+                conflicts.add(candidate.toConflict(VARIANT_REASON_SKU_ALREADY_EXISTS));
+                continue;
+            }
+            candidatesToCreate.add(candidate);
+        }
+
+        CatalogProductEntryResponse.DownstreamEffects downstreamEffects = new CatalogProductEntryResponse.DownstreamEffects(
+                isRawMaterialCategory(normalizedCategory) ? 0 : generatedMembers.size(),
+                isRawMaterialCategory(normalizedCategory) ? generatedMembers.size() : 0);
+
+        return new CatalogProductEntryPlan(
+                brand,
+                variantGroupId,
+                productFamilyName,
+                normalizedCategory,
+                unitOfMeasure,
+                hsnCode,
+                basePrice,
+                gstRate,
+                minDiscountPercent,
+                minSellingPrice,
+                metadata,
+                List.copyOf(candidatesToCreate),
+                List.copyOf(generatedMembers),
+                List.copyOf(conflicts),
+                downstreamEffects);
+    }
+
+    private CatalogProductEntryResponse toCatalogProductEntryResponse(CatalogProductEntryPlan plan,
+                                                                     List<CatalogProductEntryResponse.Conflict> conflicts,
+                                                                     boolean preview) {
+        List<CatalogProductEntryResponse.Conflict> effectiveConflicts = conflicts == null || conflicts.isEmpty()
+                ? plan.conflicts()
+                : List.copyOf(conflicts);
+        return new CatalogProductEntryResponse(
+                preview,
+                plan.variantGroupId(),
+                plan.productFamilyName(),
+                plan.brand().getId(),
+                plan.brand().getName(),
+                plan.brand().getCode(),
+                plan.category(),
+                plan.unitOfMeasure(),
+                plan.hsnCode(),
+                plan.basePrice(),
+                plan.gstRate(),
+                plan.minDiscountPercent(),
+                plan.minSellingPrice(),
+                plan.metadata(),
+                plan.generatedMembers().size(),
+                plan.downstreamEffects(),
+                plan.generatedMembers(),
+                effectiveConflicts);
+    }
+
+    private ApplicationException catalogProductEntryConflict(CatalogProductEntryResponse response, String message) {
+        return new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT, message)
+                .withDetail("operation", CATALOG_ENTRY_OPERATION)
+                .withDetail("generated", response.members())
+                .withDetail("conflicts", response.conflicts())
+                .withDetail("wouldCreate", response.members().stream()
+                        .filter(member -> response.conflicts().stream()
+                                .noneMatch(conflict -> normalizeSkuKey(conflict.sku()).equals(normalizeSkuKey(member.sku()))))
+                        .toList())
+                .withDetail("created", List.of());
+    }
+
+    private ProductionBrand requireActiveBrand(Company company, Long brandId) {
+        if (brandId == null) {
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("brandId is required");
+        }
+        ProductionBrand brand = brandRepository.findByCompanyAndId(company, brandId)
+                .orElseThrow(() -> new ApplicationException(
+                        ErrorCode.BUSINESS_ENTITY_NOT_FOUND,
+                        "Brand not found for id " + brandId));
+        if (!brand.isActive()) {
+            throw new ApplicationException(ErrorCode.BUSINESS_INVALID_STATE,
+                    "Brand '" + brand.getName() + "' is inactive");
+        }
+        return brand;
+    }
+
+    private List<String> normalizeCanonicalTokens(List<String> rawValues, String fieldName) {
+        if (rawValues == null || rawValues.isEmpty()) {
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(fieldName + " must contain at least one value");
+        }
+        List<String> normalized = new ArrayList<>();
+        for (String rawValue : rawValues) {
+            String cleaned = requireCanonicalToken(rawValue, fieldName);
+            if (PACKED_MULTI_VALUE_TOKEN.matcher(cleaned).find()) {
+                throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+                        fieldName + " entries must be single canonical values; packed multi-value tokens are not supported");
+            }
+            normalized.add(cleaned);
+        }
+        return List.copyOf(normalized);
+    }
+
+    private String requireCanonicalToken(String value, String fieldName) {
+        String cleaned = cleanValue(value);
+        if (!StringUtils.hasText(cleaned)) {
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(fieldName + " is required");
+        }
+        return cleaned;
+    }
+
+    private UUID buildVariantGroupId(Company company,
+                                     ProductionBrand brand,
+                                     String productFamilyName,
+                                     String category,
+                                     String unitOfMeasure,
+                                     String hsnCode,
+                                     List<String> colors,
+                                     List<String> sizes) {
+        String fingerprint = String.join("|",
+                String.valueOf(company != null ? company.getId() : null),
+                String.valueOf(brand != null ? brand.getId() : null),
+                productFamilyName,
+                category,
+                unitOfMeasure,
+                hsnCode,
+                String.join(",", colors),
+                String.join(",", sizes));
+        return UUID.nameUUIDFromBytes(fingerprint.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private String requireCanonicalSkuFragment(String fieldName, String rawValue, int maxLength) {
+        String sanitized = sanitizeSkuFragment(rawValue);
+        sanitized = maxLength > 0 ? truncate(sanitized, maxLength) : sanitized;
+        if (!StringUtils.hasText(sanitized)) {
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+                    "Canonical product " + fieldName + " must contain at least one alphanumeric SKU character");
+        }
+        return sanitized;
     }
 
     /**
@@ -522,7 +827,7 @@ public class ProductionCatalogService {
                         brandPlan.brandId() == null ? brandPlan.brandName() : null,
                         brandPlan.brandId() == null ? brandPlan.brandCode() : null,
                         baseName + " " + color + " " + size,
-                        normalizedCategory, color, size, unit, sku,
+                        normalizedCategory, color, size, unit, null, sku,
                         request.basePrice(), request.gstRate(),
                         request.minDiscountPercent(), request.minSellingPrice(),
                         request.metadata()
@@ -1582,7 +1887,10 @@ public class ProductionCatalogService {
                 product.getDefaultColour(),
                 product.getSizeLabel(),
                 product.getUnitOfMeasure(),
+                product.getHsnCode(),
                 product.getSkuCode(),
+                product.getVariantGroupId(),
+                product.getProductFamilyName(),
                 product.isActive(),
                 product.getBasePrice(),
                 product.getGstRate(),
@@ -1882,6 +2190,23 @@ public class ProductionCatalogService {
                                         List<BulkVariantResponse.VariantItem> wouldCreate) {
     }
 
+    private record CatalogProductEntryPlan(ProductionBrand brand,
+                                           UUID variantGroupId,
+                                           String productFamilyName,
+                                           String category,
+                                           String unitOfMeasure,
+                                           String hsnCode,
+                                           BigDecimal basePrice,
+                                           BigDecimal gstRate,
+                                           BigDecimal minDiscountPercent,
+                                           BigDecimal minSellingPrice,
+                                           Map<String, Object> metadata,
+                                           List<CatalogProductCandidate> candidatesToCreate,
+                                           List<CatalogProductEntryResponse.Member> generatedMembers,
+                                           List<CatalogProductEntryResponse.Conflict> conflicts,
+                                           CatalogProductEntryResponse.DownstreamEffects downstreamEffects) {
+    }
+
     private record VariantBrandPlan(Long brandId,
                                     String brandName,
                                     String brandCode) {
@@ -1894,6 +2219,20 @@ public class ProductionCatalogService {
                                     ProductCreateRequest createRequest) {
         private BulkVariantResponse.VariantItem toItem(String reason) {
             return new BulkVariantResponse.VariantItem(sku, reason, productName, color, size);
+        }
+    }
+
+    private record CatalogProductCandidate(String sku,
+                                           String color,
+                                           String size,
+                                           String productName,
+                                           ProductCreateRequest createRequest) {
+        private CatalogProductEntryResponse.Member toMember(Long id, UUID publicId) {
+            return new CatalogProductEntryResponse.Member(id, publicId, sku, productName, color, size);
+        }
+
+        private CatalogProductEntryResponse.Conflict toConflict(String reason) {
+            return new CatalogProductEntryResponse.Conflict(sku, reason, productName, color, size);
         }
     }
 
