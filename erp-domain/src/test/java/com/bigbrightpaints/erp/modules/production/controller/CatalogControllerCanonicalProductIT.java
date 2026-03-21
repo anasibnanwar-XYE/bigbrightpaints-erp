@@ -36,7 +36,10 @@ class CatalogControllerCanonicalProductIT extends AbstractIntegrationTest {
 
     private static final String COMPANY_CODE = "CAT-CANONICAL";
     private static final String PASSWORD = "changeme";
-    private static final String ACCOUNTING_EMAIL = "catalog-canonical@bbp.com";
+    private static final String ADMIN_EMAIL = "catalog-canonical-admin@bbp.com";
+    private static final String ACCOUNTING_EMAIL = "catalog-canonical-accounting@bbp.com";
+    private static final String SALES_EMAIL = "catalog-canonical-sales@bbp.com";
+    private static final String FACTORY_EMAIL = "catalog-canonical-factory@bbp.com";
 
     @Autowired private TestRestTemplate rest;
     @Autowired private CompanyRepository companyRepository;
@@ -52,7 +55,10 @@ class CatalogControllerCanonicalProductIT extends AbstractIntegrationTest {
     @BeforeEach
     void setUp() {
         company = dataSeeder.ensureCompany(COMPANY_CODE, "Canonical Catalog Co");
-        dataSeeder.ensureUser(ACCOUNTING_EMAIL, PASSWORD, "Canonical Accounting", COMPANY_CODE, List.of("ROLE_ADMIN"));
+        dataSeeder.ensureUser(ADMIN_EMAIL, PASSWORD, "Canonical Admin", COMPANY_CODE, List.of("ROLE_ADMIN"));
+        dataSeeder.ensureUser(ACCOUNTING_EMAIL, PASSWORD, "Canonical Accounting", COMPANY_CODE, List.of("ROLE_ACCOUNTING"));
+        dataSeeder.ensureUser(SALES_EMAIL, PASSWORD, "Canonical Sales", COMPANY_CODE, List.of("ROLE_SALES"));
+        dataSeeder.ensureUser(FACTORY_EMAIL, PASSWORD, "Canonical Factory", COMPANY_CODE, List.of("ROLE_FACTORY"));
         configureDefaultAccounts();
         headers = authHeaders();
     }
@@ -229,6 +235,33 @@ class CatalogControllerCanonicalProductIT extends AbstractIntegrationTest {
         assertThat(bulkRouteResponse.getStatusCode()).isNotEqualTo(HttpStatus.FORBIDDEN);
     }
 
+    @Test
+    void createProduct_allowsAdminAndAccounting_only() {
+        ProductionBrand activeBrand = saveBrand("Canonical Roles " + shortId(), true);
+        Map<String, Object> payload = basePayload(activeBrand.getId());
+
+        ResponseEntity<Map> adminResponse = postCatalogProducts(payload, true, authHeaders());
+        assertThat(adminResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        ResponseEntity<Map> accountingResponse = postCatalogProducts(
+                payload,
+                true,
+                authHeaders(ACCOUNTING_EMAIL, PASSWORD, COMPANY_CODE));
+        assertThat(accountingResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        ResponseEntity<Map> salesResponse = postCatalogProducts(
+                payload,
+                true,
+                authHeaders(SALES_EMAIL, PASSWORD, COMPANY_CODE));
+        assertThat(salesResponse.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+
+        ResponseEntity<Map> factoryResponse = postCatalogProducts(
+                payload,
+                true,
+                authHeaders(FACTORY_EMAIL, PASSWORD, COMPANY_CODE));
+        assertThat(factoryResponse.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
     private void configureDefaultAccounts() {
         Account inventory = ensureAccount("INV-" + shortId(), "Inventory", AccountType.ASSET);
         Account cogs = ensureAccount("COGS-" + shortId(), "COGS", AccountType.COGS);
@@ -284,10 +317,14 @@ class CatalogControllerCanonicalProductIT extends AbstractIntegrationTest {
     }
 
     private HttpHeaders authHeaders() {
+        return authHeaders(ADMIN_EMAIL, PASSWORD, COMPANY_CODE);
+    }
+
+    private HttpHeaders authHeaders(String email, String password, String companyCode) {
         Map<String, Object> loginPayload = Map.of(
-                "email", ACCOUNTING_EMAIL,
-                "password", PASSWORD,
-                "companyCode", COMPANY_CODE
+                "email", email,
+                "password", password,
+                "companyCode", companyCode
         );
         ResponseEntity<Map> loginResponse = rest.postForEntity("/api/v1/auth/login", loginPayload, Map.class);
         assertThat(loginResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -295,13 +332,17 @@ class CatalogControllerCanonicalProductIT extends AbstractIntegrationTest {
 
         HttpHeaders httpHeaders = new HttpHeaders();
         httpHeaders.setBearerAuth(token);
-        httpHeaders.set("X-Company-Code", COMPANY_CODE);
+        httpHeaders.set("X-Company-Code", companyCode);
         return httpHeaders;
     }
 
     private ResponseEntity<Map> postCatalogProducts(Map<String, Object> payload, boolean preview) {
+        return postCatalogProducts(payload, preview, headers);
+    }
+
+    private ResponseEntity<Map> postCatalogProducts(Map<String, Object> payload, boolean preview, HttpHeaders requestHeaders) {
         String path = preview ? "/api/v1/catalog/products?preview=true" : "/api/v1/catalog/products";
-        return rest.exchange(path, HttpMethod.POST, new HttpEntity<>(payload, headers), Map.class);
+        return rest.exchange(path, HttpMethod.POST, new HttpEntity<>(payload, requestHeaders), Map.class);
     }
 
     @SuppressWarnings("unchecked")

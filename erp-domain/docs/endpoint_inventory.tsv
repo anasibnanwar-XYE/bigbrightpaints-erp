@@ -70,6 +70,7 @@ GET	/api/v1/catalog/brands	com.bigbrightpaints.erp.modules.production.controller
 GET	/api/v1/catalog/brands/{brandId}	com.bigbrightpaints.erp.modules.production.controller.CatalogController#getBrand	src/main/java/com/bigbrightpaints/erp/modules/production/controller/CatalogController.java
 PUT	/api/v1/catalog/brands/{brandId}	com.bigbrightpaints.erp.modules.production.controller.CatalogController#updateBrand	src/main/java/com/bigbrightpaints/erp/modules/production/controller/CatalogController.java
 DELETE	/api/v1/catalog/brands/{brandId}	com.bigbrightpaints.erp.modules.production.controller.CatalogController#deactivateBrand	src/main/java/com/bigbrightpaints/erp/modules/production/controller/CatalogController.java
+POST	/api/v1/catalog/import	com.bigbrightpaints.erp.modules.production.controller.CatalogController#importCatalog	src/main/java/com/bigbrightpaints/erp/modules/production/controller/CatalogController.java
 POST	/api/v1/catalog/products	com.bigbrightpaints.erp.modules.production.controller.CatalogController#createProduct	src/main/java/com/bigbrightpaints/erp/modules/production/controller/CatalogController.java
 GET	/api/v1/catalog/products	com.bigbrightpaints.erp.modules.production.controller.CatalogController#searchProducts	src/main/java/com/bigbrightpaints/erp/modules/production/controller/CatalogController.java
 GET	/api/v1/catalog/products/{productId}	com.bigbrightpaints.erp.modules.production.controller.CatalogController#getProduct	src/main/java/com/bigbrightpaints/erp/modules/production/controller/CatalogController.java

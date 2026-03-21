@@ -1,7 +1,9 @@
 package com.bigbrightpaints.erp.modules.production.controller;
 
+import com.bigbrightpaints.erp.core.util.IdempotencyHeaderUtils;
 import com.bigbrightpaints.erp.modules.production.dto.CatalogBrandDto;
 import com.bigbrightpaints.erp.modules.production.dto.CatalogBrandRequest;
+import com.bigbrightpaints.erp.modules.production.dto.CatalogImportResponse;
 import com.bigbrightpaints.erp.modules.production.dto.CatalogProductEntryRequest;
 import com.bigbrightpaints.erp.modules.production.dto.CatalogProductEntryResponse;
 import com.bigbrightpaints.erp.modules.production.dto.CatalogProductDto;
@@ -11,6 +13,7 @@ import com.bigbrightpaints.erp.modules.production.service.ProductionCatalogServi
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 import com.bigbrightpaints.erp.shared.dto.PageResponse;
 import jakarta.validation.Valid;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -19,9 +22,12 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -66,7 +72,19 @@ public class CatalogController {
         return ResponseEntity.ok(ApiResponse.success("Brand deactivated", catalogService.deactivateBrand(brandId)));
     }
 
+    @PostMapping(value = "/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
+    public ResponseEntity<ApiResponse<CatalogImportResponse>> importCatalog(
+            @RequestPart("file") MultipartFile file,
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+            @RequestHeader(value = "X-Idempotency-Key", required = false) String legacyIdempotencyKey) {
+        String resolvedKey = IdempotencyHeaderUtils.resolveHeaderKey(idempotencyKey, legacyIdempotencyKey);
+        return ResponseEntity.ok(ApiResponse.success("Catalog import processed",
+                productionCatalogService.importCatalog(file, resolvedKey)));
+    }
+
     @PostMapping("/products")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
     public ResponseEntity<ApiResponse<CatalogProductEntryResponse>> createProduct(
             @Valid @RequestBody CatalogProductEntryRequest request,
             @RequestParam(value = "preview", defaultValue = "false") boolean preview) {

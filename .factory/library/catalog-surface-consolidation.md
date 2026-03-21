@@ -28,12 +28,12 @@ Mission-specific notes for the narrow catalog/product/SKU consolidation packet.
 - Preserve reserved SKU semantics such as `-BULK`.
 - Delimiter parsing is UI-only convenience; backend must accept arrays and reject packed multi-value tokens.
 
-## Current Split Truth To Collapse
+## Historical Split Truth (Pre-Consolidation)
 
-- `AccountingCatalogController` -> `ProductionCatalogService` currently owns the stronger downstream-ready write path under `/api/v1/accounting/catalog/**`.
-- `CatalogController` -> `CatalogService` currently owns `/api/v1/catalog/**`, but its product write path is weaker and still exposes `/api/v1/catalog/products/bulk`.
-- `ProductionCatalogController` still exposes competing browse under `/api/v1/production/**`.
-- `CatalogService` and `ProductionCatalogService` currently implement competing SKU/product creation rules.
+- Historically, `AccountingCatalogController` -> `ProductionCatalogService` owned the stronger downstream-ready write path under `/api/v1/accounting/catalog/**`.
+- Historically, `CatalogController` -> `CatalogService` owned `/api/v1/catalog/**`, but its product write path was weaker and exposed `/api/v1/catalog/products/bulk`.
+- Historically, `ProductionCatalogController` exposed competing browse under `/api/v1/production/**`.
+- Historically, `CatalogService` and `ProductionCatalogService` implemented competing SKU/product creation rules before the canonical public host was collapsed to `/api/v1/catalog/**`.
 
 ## Downstream Readiness Requirements
 

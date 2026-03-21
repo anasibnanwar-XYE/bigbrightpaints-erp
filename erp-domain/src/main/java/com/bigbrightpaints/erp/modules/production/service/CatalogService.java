@@ -40,6 +40,7 @@ import org.springframework.util.StringUtils;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -624,7 +625,7 @@ public class CatalogService {
                 .toList();
         Map<String, Object> metadata = product.getMetadata() == null
                 ? Map.of()
-                : Map.copyOf(product.getMetadata());
+                : Collections.unmodifiableMap(new LinkedHashMap<>(product.getMetadata()));
 
         return new CatalogProductDto(
                 product.getId(),

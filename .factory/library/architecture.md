@@ -59,8 +59,8 @@ Each module follows: `domain/` (entities + repos), `service/`, `controller/`, `d
 - See `.factory/library/tenant-runtime-control-plane.md` for the worker-facing packet contract and catching-lane notes.
 
 ## Catalog Surface Consolidation Notes
-- The current catalog flow is split across three public hosts: `/api/v1/accounting/catalog/**`, `/api/v1/catalog/**`, and `/api/v1/production/**`.
-- `ProductionCatalogService` is the stronger downstream-ready write path today; `CatalogService` is the weaker public-host write path and still exposes duplicate product mutation behavior.
+- Historically, the catalog flow was split across three public hosts: `/api/v1/accounting/catalog/**`, `/api/v1/catalog/**`, and `/api/v1/production/**`. The surviving canonical public host is now `/api/v1/catalog/**`.
+- `ProductionCatalogService` remains the downstream-ready write path behind the canonical public host, and duplicate product mutation behavior on retired hosts must stay removed.
 - The packet contract is to keep only `/api/v1/catalog/**` as the public host, keep `POST /api/v1/catalog/brands` separate from product create, and keep `POST /api/v1/catalog/products` as the only public product-create surface.
 - Explicit persisted family/group linkage is required for multi-SKU creates; do not rely on naming conventions alone.
 - Preserve reserved SKU semantics such as `-BULK` and keep downstream finished-good/raw-material readiness in the same write path.

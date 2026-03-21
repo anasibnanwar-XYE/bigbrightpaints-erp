@@ -17,14 +17,18 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
 
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -38,6 +42,9 @@ class AccountingCatalogControllerSecurityIT extends AbstractIntegrationTest {
     private static final String COMPANY_CODE = "CAT-SURFACE-RETIRE";
     private static final String PASSWORD = "changeme";
     private static final String ADMIN_EMAIL = "catalog-surface-retire@bbp.com";
+    private static final String ACCOUNTING_EMAIL = "catalog-surface-accounting@bbp.com";
+    private static final String SALES_EMAIL = "catalog-surface-sales@bbp.com";
+    private static final String FACTORY_EMAIL = "catalog-surface-factory@bbp.com";
 
     @Autowired private TestRestTemplate rest;
     @Autowired private CompanyRepository companyRepository;
@@ -74,6 +81,9 @@ class AccountingCatalogControllerSecurityIT extends AbstractIntegrationTest {
         companyRepository.save(company);
 
         dataSeeder.ensureUser(ADMIN_EMAIL, PASSWORD, "Catalog Surface Admin", COMPANY_CODE, List.of("ROLE_ADMIN"));
+        dataSeeder.ensureUser(ACCOUNTING_EMAIL, PASSWORD, "Catalog Surface Accounting", COMPANY_CODE, List.of("ROLE_ACCOUNTING"));
+        dataSeeder.ensureUser(SALES_EMAIL, PASSWORD, "Catalog Surface Sales", COMPANY_CODE, List.of("ROLE_SALES"));
+        dataSeeder.ensureUser(FACTORY_EMAIL, PASSWORD, "Catalog Surface Factory", COMPANY_CODE, List.of("ROLE_FACTORY"));
         headers = authHeaders();
     }
 
@@ -144,6 +154,36 @@ class AccountingCatalogControllerSecurityIT extends AbstractIntegrationTest {
         assertRetiredRouteNotFound(HttpMethod.POST, "/api/v1/accounting/catalog/products/bulk-variants?dryRun=true", Map.of("ignored", true));
         assertRetiredRouteNotFound(HttpMethod.GET, "/api/v1/production/brands", null);
         assertRetiredRouteNotFound(HttpMethod.GET, "/api/v1/production/brands/999/products", null);
+    }
+
+    @Test
+    void canonicalImportRoute_allowsAdminAndAccounting_only() {
+        String csvRows = "brand,product_name,sku,category,unit_of_measure,hsn_code,gst_rate,base_price,color,size\n"
+                + "Surface Brand,Surface Primer,SURFACE-PRIMER-001,FINISHED_GOOD,LITER,320910,18,1200,WHITE,1L\n";
+
+        ResponseEntity<Map> adminResponse = importCatalog(
+                authHeaders(ADMIN_EMAIL, PASSWORD, COMPANY_CODE),
+                csvRows,
+                "catalog-import-admin.csv");
+        assertThat(adminResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        ResponseEntity<Map> accountingResponse = importCatalog(
+                authHeaders(ACCOUNTING_EMAIL, PASSWORD, COMPANY_CODE),
+                csvRows,
+                "catalog-import-accounting.csv");
+        assertThat(accountingResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        ResponseEntity<Map> salesResponse = importCatalog(
+                authHeaders(SALES_EMAIL, PASSWORD, COMPANY_CODE),
+                csvRows,
+                "catalog-import-sales.csv");
+        assertThat(salesResponse.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+
+        ResponseEntity<Map> factoryResponse = importCatalog(
+                authHeaders(FACTORY_EMAIL, PASSWORD, COMPANY_CODE),
+                csvRows,
+                "catalog-import-factory.csv");
+        assertThat(factoryResponse.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
     }
 
     private DownstreamFlowResult runDownstreamReadyFlow(Long brandId, String baseProductName) {
@@ -230,19 +270,49 @@ class AccountingCatalogControllerSecurityIT extends AbstractIntegrationTest {
     }
 
     private HttpHeaders authHeaders() {
+        return authHeaders(ADMIN_EMAIL, PASSWORD, COMPANY_CODE);
+    }
+
+    private HttpHeaders authHeaders(String email, String password, String companyCode) {
         Map<String, Object> loginPayload = Map.of(
-                "email", ADMIN_EMAIL,
-                "password", PASSWORD,
-                "companyCode", COMPANY_CODE
+                "email", email,
+                "password", password,
+                "companyCode", companyCode
         );
         ResponseEntity<Map> loginResponse = rest.postForEntity("/api/v1/auth/login", loginPayload, Map.class);
         assertThat(loginResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
 
         HttpHeaders authHeaders = new HttpHeaders();
         authHeaders.setBearerAuth(String.valueOf(loginResponse.getBody().get("accessToken")));
-        authHeaders.set("X-Company-Code", COMPANY_CODE);
+        authHeaders.set("X-Company-Code", companyCode);
         authHeaders.setContentType(MediaType.APPLICATION_JSON);
         return authHeaders;
+    }
+
+    private ResponseEntity<Map> importCatalog(HttpHeaders requestHeaders, String csvPayload, String fileName) {
+        MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
+        HttpHeaders fileHeaders = new HttpHeaders();
+        fileHeaders.setContentType(MediaType.parseMediaType("text/csv"));
+        body.add("file", new HttpEntity<>(csvResource(fileName, csvPayload), fileHeaders));
+
+        HttpHeaders multipartHeaders = new HttpHeaders();
+        multipartHeaders.putAll(requestHeaders);
+        multipartHeaders.setContentType(MediaType.MULTIPART_FORM_DATA);
+
+        return rest.exchange(
+                "/api/v1/catalog/import",
+                HttpMethod.POST,
+                new HttpEntity<>(body, multipartHeaders),
+                Map.class);
+    }
+
+    private ByteArrayResource csvResource(String fileName, String csvPayload) {
+        return new ByteArrayResource(csvPayload.getBytes(StandardCharsets.UTF_8)) {
+            @Override
+            public String getFilename() {
+                return fileName;
+            }
+        };
     }
 
     private Map<String, Object> canonicalFinishedGoodPayload(Long brandId, String baseProductName) {

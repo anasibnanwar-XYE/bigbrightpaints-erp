@@ -177,7 +177,10 @@ class CatalogServiceProductCrudTest {
         product.setGstRate(new BigDecimal("18.00"));
         product.setMinDiscountPercent(new BigDecimal("5.00"));
         product.setMinSellingPrice(new BigDecimal("760.00"));
-        product.setMetadata(new LinkedHashMap<>(Map.of("productType", "decorative")));
+        LinkedHashMap<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("productType", "decorative");
+        metadata.put("legacyFlag", null);
+        product.setMetadata(metadata);
 
         ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
         when(productRepository.findAll(any(Specification.class), pageableCaptor.capture()))
@@ -198,6 +201,7 @@ class CatalogServiceProductCrudTest {
         assertThat(response.content().get(0).minDiscountPercent()).isEqualByComparingTo("5.00");
         assertThat(response.content().get(0).minSellingPrice()).isEqualByComparingTo("760.00");
         assertThat(response.content().get(0).metadata()).containsEntry("productType", "decorative");
+        assertThat(response.content().get(0).metadata()).containsEntry("legacyFlag", null);
         assertThat(pageableCaptor.getValue().getPageNumber()).isEqualTo(1);
         assertThat(pageableCaptor.getValue().getPageSize()).isEqualTo(5);
         assertThat(pageableCaptor.getValue().getSort().getOrderFor("productName")).isNotNull();
