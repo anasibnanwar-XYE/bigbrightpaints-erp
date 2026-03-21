@@ -165,6 +165,37 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
+    void productionCatalogBulkVariantsConflictIncludesStructuredDetails() throws Exception {
+        GlobalExceptionHandler handler = new GlobalExceptionHandler();
+        setActiveProfile(handler, "prod");
+
+        ApplicationException ex = new ApplicationException(
+                ErrorCode.CONCURRENCY_CONFLICT,
+                "Bulk variant creation has SKU conflicts. Resolve conflicts and retry.")
+                .withDetail("operation", "catalog-bulk-variants")
+                .withDetail("generated", List.of(Map.of("sku", "HB-SKU-RED-1L")))
+                .withDetail("conflicts", List.of(Map.of("sku", "HB-SKU-RED-1L", "reason", "SKU_ALREADY_EXISTS")))
+                .withDetail("wouldCreate", List.of())
+                .withDetail("created", List.of())
+                .withDetail("internalLeak", Map.of("sql", "select * from products"));
+
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setRequestURI("/api/v1/catalog/products/bulk-variants");
+
+        ResponseEntity<ApiResponse<Map<String, Object>>> response = handler.handleApplicationException(ex, request);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        ApiResponse<Map<String, Object>> body = response.getBody();
+        assertThat(body).isNotNull();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> details = (Map<String, Object>) body.data().get("details");
+        assertThat(details)
+                .containsOnlyKeys("generated", "conflicts", "wouldCreate", "created", "operation")
+                .containsEntry("operation", "catalog-bulk-variants")
+                .doesNotContainKey("internalLeak");
+    }
+
+    @Test
     void productionBulkVariantConflictNonMatchingUriRemainsRedacted() throws Exception {
         GlobalExceptionHandler handler = new GlobalExceptionHandler();
         setActiveProfile(handler, "prod");
