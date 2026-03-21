@@ -24,6 +24,8 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
+import java.util.Map;
+import java.util.UUID;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -159,14 +161,23 @@ class CatalogServiceProductCrudTest {
         product.setCompany(company);
         product.setBrand(brand);
         product.setProductName("Primer");
+        product.setCategory("FINISHED_GOOD");
         product.setSkuCode("BBR-PRIMER-001");
+        product.setDefaultColour("Red");
+        product.setSizeLabel("20L");
+        product.setVariantGroupId(UUID.fromString("11111111-1111-1111-1111-111111111111"));
+        product.setProductFamilyName("Primer");
         product.setActive(true);
         product.setColors(new LinkedHashSet<>(List.of("Red")));
         product.setSizes(new LinkedHashSet<>(List.of("20L")));
         product.setCartonSizes(new LinkedHashMap<>(java.util.Map.of("20L", 1)));
         product.setUnitOfMeasure("LITER");
         product.setHsnCode("320810");
+        product.setBasePrice(new BigDecimal("799.00"));
         product.setGstRate(new BigDecimal("18.00"));
+        product.setMinDiscountPercent(new BigDecimal("5.00"));
+        product.setMinSellingPrice(new BigDecimal("760.00"));
+        product.setMetadata(new LinkedHashMap<>(Map.of("productType", "decorative")));
 
         ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
         when(productRepository.findAll(any(Specification.class), pageableCaptor.capture()))
@@ -179,6 +190,14 @@ class CatalogServiceProductCrudTest {
         assertThat(response.totalElements()).isEqualTo(11);
         assertThat(response.content()).hasSize(1);
         assertThat(response.content().get(0).sku()).isEqualTo("BBR-PRIMER-001");
+        assertThat(response.content().get(0).category()).isEqualTo("FINISHED_GOOD");
+        assertThat(response.content().get(0).variantGroupId())
+                .isEqualTo(UUID.fromString("11111111-1111-1111-1111-111111111111"));
+        assertThat(response.content().get(0).productFamilyName()).isEqualTo("Primer");
+        assertThat(response.content().get(0).basePrice()).isEqualByComparingTo("799.00");
+        assertThat(response.content().get(0).minDiscountPercent()).isEqualByComparingTo("5.00");
+        assertThat(response.content().get(0).minSellingPrice()).isEqualByComparingTo("760.00");
+        assertThat(response.content().get(0).metadata()).containsEntry("productType", "decorative");
         assertThat(pageableCaptor.getValue().getPageNumber()).isEqualTo(1);
         assertThat(pageableCaptor.getValue().getPageSize()).isEqualTo(5);
         assertThat(pageableCaptor.getValue().getSort().getOrderFor("productName")).isNotNull();

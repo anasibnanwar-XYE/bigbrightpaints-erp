@@ -331,13 +331,19 @@ public class CatalogService {
                 predicates.add(cb.equal(root.get("active"), active));
             }
             if (StringUtils.hasText(color)) {
+                String normalizedColor = color.toLowerCase(Locale.ROOT);
                 Join<ProductionProduct, String> colors = root.joinSet("colors", JoinType.LEFT);
-                predicates.add(cb.equal(cb.lower(colors), color.toLowerCase(Locale.ROOT)));
+                predicates.add(cb.or(
+                        cb.equal(cb.lower(root.get("defaultColour")), normalizedColor),
+                        cb.equal(cb.lower(colors), normalizedColor)));
                 query.distinct(true);
             }
             if (StringUtils.hasText(size)) {
+                String normalizedSize = size.toLowerCase(Locale.ROOT);
                 Join<ProductionProduct, String> sizes = root.joinSet("sizes", JoinType.LEFT);
-                predicates.add(cb.equal(cb.lower(sizes), size.toLowerCase(Locale.ROOT)));
+                predicates.add(cb.or(
+                        cb.equal(cb.lower(root.get("sizeLabel")), normalizedSize),
+                        cb.equal(cb.lower(sizes), normalizedSize)));
                 query.distinct(true);
             }
             return cb.and(predicates.toArray(Predicate[]::new));
@@ -609,13 +615,16 @@ public class CatalogService {
     }
 
     private CatalogProductDto toProductDto(ProductionProduct product) {
-        List<String> colors = product.getColors() == null ? List.of() : List.copyOf(product.getColors());
-        List<String> sizes = product.getSizes() == null ? List.of() : List.copyOf(product.getSizes());
+        List<String> colors = toVariantList(product.getColors(), product.getDefaultColour());
+        List<String> sizes = toVariantList(product.getSizes(), product.getSizeLabel());
         List<CatalogProductCartonSizeDto> cartonSizeDtos = product.getCartonSizes() == null
                 ? List.of()
                 : product.getCartonSizes().entrySet().stream()
                 .map(entry -> new CatalogProductCartonSizeDto(entry.getKey(), entry.getValue()))
                 .toList();
+        Map<String, Object> metadata = product.getMetadata() == null
+                ? Map.of()
+                : Map.copyOf(product.getMetadata());
 
         return new CatalogProductDto(
                 product.getId(),
@@ -625,13 +634,28 @@ public class CatalogService {
                 product.getBrand().getCode(),
                 product.getProductName(),
                 product.getSkuCode(),
+                product.getCategory(),
+                product.getVariantGroupId(),
+                product.getProductFamilyName(),
                 colors,
                 sizes,
                 cartonSizeDtos,
                 product.getUnitOfMeasure(),
                 product.getHsnCode(),
+                product.getBasePrice(),
                 product.getGstRate(),
+                product.getMinDiscountPercent(),
+                product.getMinSellingPrice(),
+                metadata,
                 product.isActive());
+    }
+
+    private List<String> toVariantList(Set<String> values, String fallback) {
+        if (values != null && !values.isEmpty()) {
+            return List.copyOf(values);
+        }
+        String normalizedFallback = normalizeOptionalText(fallback);
+        return normalizedFallback == null ? List.of() : List.of(normalizedFallback);
     }
 
     private record ProductMutationOutcome(String action, CatalogProductDto product) {

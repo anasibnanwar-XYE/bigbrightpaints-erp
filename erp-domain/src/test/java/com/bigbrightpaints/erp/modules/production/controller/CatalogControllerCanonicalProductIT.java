@@ -111,6 +111,26 @@ class CatalogControllerCanonicalProductIT extends AbstractIntegrationTest {
         assertThat(productRepository.countByCompanyAndVariantGroupId(company, variantGroupId)).isEqualTo(1);
         assertThat(productRepository.findByCompanyAndSkuCode(company, String.valueOf(member.get("sku")))).isPresent();
         assertThat(finishedGoodRepository.findByCompanyAndProductCode(company, String.valueOf(member.get("sku")))).isPresent();
+
+        ResponseEntity<Map> listResponse = rest.exchange(
+                "/api/v1/catalog/products?brandId=" + activeBrand.getId(),
+                HttpMethod.GET,
+                new HttpEntity<>(headers),
+                Map.class);
+        assertThat(listResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> listItem = pageContent(listResponse).stream()
+                .filter(item -> String.valueOf(member.get("id")).equals(String.valueOf(item.get("id"))))
+                .findFirst()
+                .orElseThrow();
+        assertCatalogReadFields(listItem, variantGroupId, "Premium Primer", "WHITE", "1L");
+
+        ResponseEntity<Map> detailResponse = rest.exchange(
+                "/api/v1/catalog/products/" + member.get("id"),
+                HttpMethod.GET,
+                new HttpEntity<>(headers),
+                Map.class);
+        assertThat(detailResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertCatalogReadFields(data(detailResponse), variantGroupId, "Premium Primer", "WHITE", "1L");
     }
 
     @Test
@@ -284,6 +304,11 @@ class CatalogControllerCanonicalProductIT extends AbstractIntegrationTest {
         return rest.exchange(path, HttpMethod.POST, new HttpEntity<>(payload, headers), Map.class);
     }
 
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> pageContent(ResponseEntity<Map> response) {
+        return (List<Map<String, Object>>) data(response).get("content");
+    }
+
     private Map<String, Object> basePayload(Long brandId) {
         Map<String, Object> payload = new LinkedHashMap<>();
         if (brandId != null) {
@@ -355,6 +380,30 @@ class CatalogControllerCanonicalProductIT extends AbstractIntegrationTest {
     @SuppressWarnings("unchecked")
     private Map<String, Object> downstreamEffects(Map<String, Object> data) {
         return (Map<String, Object>) data.get("downstreamEffects");
+    }
+
+    private void assertCatalogReadFields(Map<String, Object> product,
+                                         UUID variantGroupId,
+                                         String productFamilyName,
+                                         String color,
+                                         String size) {
+        assertThat(product.get("variantGroupId")).isEqualTo(variantGroupId.toString());
+        assertThat(product.get("productFamilyName")).isEqualTo(productFamilyName);
+        assertThat(product.get("category")).isEqualTo("FINISHED_GOOD");
+        assertThat(product.get("unitOfMeasure")).isEqualTo("LITER");
+        assertThat(product.get("hsnCode")).isEqualTo("320910");
+        assertThat(decimalValue(product.get("basePrice"))).isEqualByComparingTo("1200.00");
+        assertThat(decimalValue(product.get("gstRate"))).isEqualByComparingTo("18.00");
+        assertThat(decimalValue(product.get("minDiscountPercent"))).isEqualByComparingTo("5.00");
+        assertThat(decimalValue(product.get("minSellingPrice"))).isEqualByComparingTo("1140.00");
+        assertThat(listOfStrings(product.get("colors"))).containsExactly(color);
+        assertThat(listOfStrings(product.get("sizes"))).containsExactly(size);
+        assertThat(metadata(product)).containsEntry("productType", "decorative");
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<String> listOfStrings(Object value) {
+        return value == null ? List.of() : ((List<Object>) value).stream().map(String::valueOf).toList();
     }
 
     private BigDecimal decimalValue(Object value) {

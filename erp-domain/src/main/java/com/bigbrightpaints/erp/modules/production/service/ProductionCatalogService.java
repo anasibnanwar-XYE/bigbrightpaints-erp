@@ -60,6 +60,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -478,6 +479,8 @@ public class ProductionCatalogService {
         product.setCategory(normalizedCategory);
         product.setDefaultColour(cleanValue(request.defaultColour()));
         product.setSizeLabel(cleanValue(sizeLabel));
+        product.setColors(singleVariantSet(product.getDefaultColour()));
+        product.setSizes(singleVariantSet(product.getSizeLabel()));
         product.setUnitOfMeasure(cleanValue(request.unitOfMeasure()));
         product.setHsnCode(cleanValue(request.hsnCode()));
         product.setSkuCode(sku);
@@ -497,6 +500,13 @@ public class ProductionCatalogService {
         ensureCatalogFinishedGood(company, saved);
         syncRawMaterial(company, saved);
         return toProductDto(saved);
+    }
+
+    private Set<String> singleVariantSet(String value) {
+        String cleaned = cleanValue(value);
+        return StringUtils.hasText(cleaned)
+                ? new LinkedHashSet<>(List.of(cleaned))
+                : new LinkedHashSet<>();
     }
 
     private CatalogProductEntryPlan prepareCatalogProductEntryPlan(Company company, CatalogProductEntryRequest request) {
