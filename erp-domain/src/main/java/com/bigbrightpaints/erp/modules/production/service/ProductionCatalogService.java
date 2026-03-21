@@ -1098,7 +1098,7 @@ public class ProductionCatalogService {
         if (MULTI_VALUE_DELIMITER.matcher(value).find()) {
             throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
                     "Multiple values in '" + fieldName + "' are not supported for single-product create/update. "
-                            + "Use /api/v1/accounting/catalog/products/bulk-variants for color/size matrix input.");
+                            + "Use POST /api/v1/catalog/products with array-based colors and sizes for matrix input.");
         }
     }
 
