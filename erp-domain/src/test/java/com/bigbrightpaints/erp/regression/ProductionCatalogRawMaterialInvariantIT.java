@@ -49,7 +49,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @DisplayName("Regression: Catalog -> RawMaterial accounting invariants")
 class ProductionCatalogRawMaterialInvariantIT extends AbstractIntegrationTest {
 
-    private static final String PASSWORD = "Catalog123!";
+    private static final String PASSWORD = "ChangeMe123!";
 
     @Autowired private TestRestTemplate rest;
     @Autowired private CompanyRepository companyRepository;
