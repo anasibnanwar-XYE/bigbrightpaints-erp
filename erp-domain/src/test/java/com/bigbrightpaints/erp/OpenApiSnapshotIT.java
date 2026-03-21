@@ -83,6 +83,39 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
     }
 
     @Test
+    void catalog_surface_contract_exposes_only_canonical_public_routes() throws IOException {
+        JsonNode root = fetchCurrentSpecNode();
+
+        assertOperationContract(root, "/api/v1/catalog/brands", "get",
+                null, "200", "#/components/schemas/ApiResponseListCatalogBrandDto");
+        assertQueryParameter(root, "/api/v1/catalog/brands", "get", "active");
+        assertOperationContract(root, "/api/v1/catalog/brands", "post",
+                "#/components/schemas/CatalogBrandRequest", "200", "#/components/schemas/ApiResponseCatalogBrandDto");
+
+        assertMultipartBinaryRequest(root, "/api/v1/catalog/import", "post", "file");
+        assertOperationResponse(root, "/api/v1/catalog/import", "post",
+                "200", "#/components/schemas/ApiResponseCatalogImportResponse");
+        assertOperationContract(root, "/api/v1/catalog/products", "get",
+                null, "200", "#/components/schemas/ApiResponsePageResponseCatalogProductDto");
+        assertQueryParameter(root, "/api/v1/catalog/products", "get", "brandId");
+        assertOperationContract(root, "/api/v1/catalog/products", "post",
+                "#/components/schemas/CatalogProductEntryRequest", "200", "#/components/schemas/ApiResponseCatalogProductEntryResponse");
+        assertOperationContract(root, "/api/v1/catalog/products/single", "post",
+                "#/components/schemas/ProductCreateRequest", "200", "#/components/schemas/ApiResponseProductionProductDto");
+        assertOperationContract(root, "/api/v1/catalog/products/bulk-variants", "post",
+                "#/components/schemas/BulkVariantRequest", "200", "#/components/schemas/ApiResponseBulkVariantResponse");
+        assertQueryParameter(root, "/api/v1/catalog/products/bulk-variants", "post", "dryRun");
+
+        assertOperationMissing(root, "/api/v1/accounting/catalog/import", "post");
+        assertOperationMissing(root, "/api/v1/accounting/catalog/products", "get");
+        assertOperationMissing(root, "/api/v1/accounting/catalog/products", "post");
+        assertOperationMissing(root, "/api/v1/accounting/catalog/products/{id}", "put");
+        assertOperationMissing(root, "/api/v1/accounting/catalog/products/bulk-variants", "post");
+        assertOperationMissing(root, "/api/v1/production/brands", "get");
+        assertOperationMissing(root, "/api/v1/production/brands/{brandId}/products", "get");
+    }
+
+    @Test
     void report_contract_paths_use_canonical_namespace_only() throws IOException {
         JsonNode root = fetchCurrentSpecNode();
 
@@ -354,6 +387,77 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
         JsonNode operation = root.path("paths").path(path).path(method);
         assertThat(operation.isMissingNode())
                 .withFailMessage("Did not expect %s %s in generated OpenAPI spec", method.toUpperCase(), path)
+                .isTrue();
+    }
+
+    private void assertMultipartBinaryRequest(JsonNode root, String path, String method, String partName) {
+        JsonNode operation = root.path("paths").path(path).path(method);
+        assertThat(operation.isMissingNode())
+                .withFailMessage("Missing %s %s from generated OpenAPI spec", method.toUpperCase(), path)
+                .isFalse();
+
+        JsonNode schema = operation.path("requestBody")
+                .path("content")
+                .path("multipart/form-data")
+                .path("schema");
+        assertThat(schema.path("type").asText())
+                .withFailMessage("Expected multipart/form-data request schema for %s %s", method.toUpperCase(), path)
+                .isEqualTo("object");
+        assertThat(schema.path("properties").path(partName).path("type").asText())
+                .withFailMessage("Expected multipart part %s on %s %s", partName, method.toUpperCase(), path)
+                .isEqualTo("string");
+        assertThat(schema.path("properties").path(partName).path("format").asText())
+                .withFailMessage("Expected multipart part %s to be binary on %s %s", partName, method.toUpperCase(), path)
+                .isEqualTo("binary");
+    }
+
+    private void assertOperationResponse(JsonNode root,
+                                         String path,
+                                         String method,
+                                         String expectedResponseCode,
+                                         String expectedResponseRef) {
+        JsonNode operation = root.path("paths").path(path).path(method);
+        assertThat(operation.isMissingNode())
+                .withFailMessage("Missing %s %s from generated OpenAPI spec", method.toUpperCase(), path)
+                .isFalse();
+
+        JsonNode responses = operation.path("responses");
+        List<String> documentedResponseCodes = new ArrayList<>();
+        responses.fieldNames().forEachRemaining(documentedResponseCodes::add);
+        assertThat(responses.has(expectedResponseCode))
+                .withFailMessage("Expected %s response for %s %s but found %s",
+                        expectedResponseCode,
+                        method.toUpperCase(),
+                        path,
+                        documentedResponseCodes)
+                .isTrue();
+
+        JsonNode content = responses.path(expectedResponseCode).path("content");
+        JsonNode schema = content.path("*/*").path("schema");
+        if (schema.isMissingNode()) {
+            schema = content.path("application/json").path("schema");
+        }
+        assertThat(schema.path("$ref").asText())
+                .withFailMessage("Unexpected response contract for %s %s %s", expectedResponseCode, method.toUpperCase(), path)
+                .isEqualTo(expectedResponseRef);
+    }
+
+    private void assertQueryParameter(JsonNode root, String path, String method, String parameterName) {
+        JsonNode parameters = root.path("paths").path(path).path(method).path("parameters");
+        assertThat(parameters.isArray())
+                .withFailMessage("Expected query/header parameters on %s %s", method.toUpperCase(), path)
+                .isTrue();
+
+        boolean found = false;
+        for (JsonNode parameter : parameters) {
+            if (parameterName.equals(parameter.path("name").asText())) {
+                found = true;
+                break;
+            }
+        }
+
+        assertThat(found)
+                .withFailMessage("Expected parameter '%s' on %s %s", parameterName, method.toUpperCase(), path)
                 .isTrue();
     }
 }

@@ -77,7 +77,7 @@ public class CriticalPathSmokeTest extends AbstractIntegrationTest {
         HttpHeaders h = new HttpHeaders();
         h.setBearerAuth(token);
         h.setContentType(MediaType.APPLICATION_JSON);
-        h.set("X-Company-Id", COMPANY_CODE);
+        h.set("X-Company-Code", COMPANY_CODE);
         return h;
     }
 
@@ -124,12 +124,19 @@ public class CriticalPathSmokeTest extends AbstractIntegrationTest {
     void createProductSuccess() {
         Company company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
 
-        // Create brand first
-        ProductionBrand brand = new ProductionBrand();
-        brand.setCompany(company);
-        brand.setCode("CP-BRAND");
-        brand.setName("Critical Path Brand");
-        brand = brandRepository.save(brand);
+        Map<String, Object> brandReq = Map.of(
+                "name", "Critical Path Brand"
+        );
+
+        ResponseEntity<Map> brandResponse = rest.exchange(
+                "/api/v1/catalog/brands",
+                HttpMethod.POST,
+                new HttpEntity<>(brandReq, headers),
+                Map.class
+        );
+
+        assertThat(brandResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Long brandId = ((Number) ((Map<?, ?>) brandResponse.getBody().get("data")).get("id")).longValue();
 
         // Provide required finished-good accounting metadata
         Long valuationId = accountRepository.findByCompanyAndCodeIgnoreCase(company, "ASSET-INV").orElseThrow().getId();
@@ -140,11 +147,13 @@ public class CriticalPathSmokeTest extends AbstractIntegrationTest {
 
         // Create product
         Map<String, Object> productReq = Map.of(
-                "customSkuCode", "CP-SKU-001",
-                "productName", "Critical Path Product",
-                "brandId", brand.getId(),
+                "brandId", brandId,
+                "baseProductName", "Critical Path Product",
                 "category", "FINISHED_GOOD",
+                "colors", List.of("WHITE"),
+                "sizes", List.of("1L"),
                 "unitOfMeasure", "UNIT",
+                "hsnCode", "320910",
                 "basePrice", new BigDecimal("150.00"),
                 "gstRate", new BigDecimal("18.00"),
                 "metadata", Map.of(
@@ -158,12 +167,14 @@ public class CriticalPathSmokeTest extends AbstractIntegrationTest {
                 )
         );
 
-        // FIX: Correct endpoint path is /api/v1/accounting/catalog/products
-        ResponseEntity<Map> response = rest.exchange("/api/v1/accounting/catalog/products",
+        ResponseEntity<Map> response = rest.exchange("/api/v1/catalog/products",
                 HttpMethod.POST, new HttpEntity<>(productReq, headers), Map.class);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(response.getBody().get("data")).isNotNull();
+        Map<?, ?> data = (Map<?, ?>) response.getBody().get("data");
+        assertThat(((Number) data.get("brandId")).longValue()).isEqualTo(brandId);
+        assertThat(((Number) data.get("candidateCount")).intValue()).isEqualTo(1);
+        assertThat(((List<?>) data.get("members"))).hasSize(1);
     }
 
     @Test

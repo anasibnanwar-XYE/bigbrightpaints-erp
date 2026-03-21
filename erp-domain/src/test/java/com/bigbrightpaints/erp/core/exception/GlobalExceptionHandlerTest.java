@@ -87,15 +87,15 @@ class GlobalExceptionHandlerTest {
 
         ApplicationException ex = new ApplicationException(
                 ErrorCode.CONCURRENCY_CONFLICT,
-                "Bulk variant request has SKU conflicts. Resolve conflicts and retry.")
-                .withDetail("operation", "catalog-bulk-variants")
+                "Catalog product entry has SKU conflicts. Resolve conflicts and retry.")
+                .withDetail("operation", "catalog-product-entry")
                 .withDetail("generated", List.of(Map.of("sku", "HB-SKU-RED-1L")))
                 .withDetail("conflicts", List.of(Map.of("sku", "HB-SKU-RED-1L", "reason", "SKU_ALREADY_EXISTS")))
                 .withDetail("wouldCreate", List.of())
                 .withDetail("created", List.of());
 
         MockHttpServletRequest request = new MockHttpServletRequest();
-        request.setRequestURI("/api/v1/accounting/catalog/products/bulk-variants");
+        request.setRequestURI("/api/v1/catalog/products");
 
         ResponseEntity<ApiResponse<Map<String, Object>>> response = handler.handleApplicationException(ex, request);
 
@@ -116,8 +116,8 @@ class GlobalExceptionHandlerTest {
 
         ApplicationException ex = new ApplicationException(
                 ErrorCode.CONCURRENCY_CONFLICT,
-                "Bulk variant request has SKU conflicts. Resolve conflicts and retry.")
-                .withDetail("operation", "catalog-bulk-variants")
+                "Catalog product entry has SKU conflicts. Resolve conflicts and retry.")
+                .withDetail("operation", "catalog-product-entry")
                 .withDetail("generated", List.of(Map.of("sku", "HB-SKU-RED-1L")))
                 .withDetail("conflicts", List.of(Map.of("sku", "HB-SKU-RED-1L", "reason", "SKU_ALREADY_EXISTS")))
                 .withDetail("wouldCreate", List.of())
@@ -125,7 +125,7 @@ class GlobalExceptionHandlerTest {
                 .withDetail("internalLeak", Map.of("sql", "select * from products"));
 
         MockHttpServletRequest request = new MockHttpServletRequest();
-        request.setRequestURI("/api/v1/accounting/catalog/products/bulk-variants");
+        request.setRequestURI("/api/v1/catalog/products");
 
         ResponseEntity<ApiResponse<Map<String, Object>>> response = handler.handleApplicationException(ex, request);
 
@@ -146,15 +146,15 @@ class GlobalExceptionHandlerTest {
 
         ApplicationException ex = new ApplicationException(
                 ErrorCode.CONCURRENCY_CONFLICT,
-                "Bulk variant request has SKU conflicts. Resolve conflicts and retry.")
-                .withDetail("operation", "catalog-bulk-variants")
+                "Catalog product entry has SKU conflicts. Resolve conflicts and retry.")
+                .withDetail("operation", "catalog-product-entry")
                 .withDetail("conflicts", List.of(Map.of("sku", "HB-SKU-RED-1L", "reason", "SKU_ALREADY_EXISTS")))
                 .withDetail("wouldCreate", List.of())
                 .withDetail("created", List.of());
 
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.setContextPath("/tenant-prefix");
-        request.setRequestURI("/tenant-prefix/api/v1/accounting/catalog/products/bulk-variants");
+        request.setRequestURI("/tenant-prefix/api/v1/catalog/products");
 
         ResponseEntity<ApiResponse<Map<String, Object>>> response = handler.handleApplicationException(ex, request);
 
@@ -171,14 +171,14 @@ class GlobalExceptionHandlerTest {
 
         ApplicationException ex = new ApplicationException(
                 ErrorCode.CONCURRENCY_CONFLICT,
-                "Bulk variant request has SKU conflicts. Resolve conflicts and retry.")
-                .withDetail("operation", "catalog-bulk-variants")
+                "Catalog product entry has SKU conflicts. Resolve conflicts and retry.")
+                .withDetail("operation", "catalog-product-entry")
                 .withDetail("conflicts", List.of(Map.of("sku", "HB-SKU-RED-1L", "reason", "SKU_ALREADY_EXISTS")))
                 .withDetail("wouldCreate", List.of())
                 .withDetail("created", List.of());
 
         MockHttpServletRequest request = new MockHttpServletRequest();
-        request.setRequestURI("/api/v1/accounting/catalog/products");
+        request.setRequestURI("/api/v1/catalog/brands");
 
         ResponseEntity<ApiResponse<Map<String, Object>>> response = handler.handleApplicationException(ex, request);
 

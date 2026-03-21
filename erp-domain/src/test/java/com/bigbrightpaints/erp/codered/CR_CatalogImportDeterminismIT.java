@@ -92,6 +92,7 @@ class CR_CatalogImportDeterminismIT extends AbstractIntegrationTest {
                 null,
                 null,
                 null,
+                null,
                 null
         );
 

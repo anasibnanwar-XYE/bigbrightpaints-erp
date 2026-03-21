@@ -291,7 +291,7 @@ Module access is enforced per tenant using `companies.enabled_modules`.
 - **Core modules (always enabled, cannot be disabled)**: `AUTH`, `ACCOUNTING`, `SALES`, `INVENTORY`
 
 Disabled module requests return `403` with `BUS_010` (`MODULE_DISABLED`). Runtime path mapping:
-- `MANUFACTURING`: `/api/v1/factory/**`, `/api/v1/production/**`
+- `MANUFACTURING`: `/api/v1/factory/**`
 - `HR_PAYROLL`: `/api/v1/hr/**`, `/api/v1/payroll/**`
 - `PURCHASING`: `/api/v1/purchasing/**`, `/api/v1/suppliers/**`
 - `PORTAL`: `/api/v1/portal/**`, `/api/v1/dealer-portal/**`
@@ -644,7 +644,9 @@ All endpoints return `ApiResponse<T>` envelopes.
 
 ### Accounting
 
-Comprehensive frontend handoff for `VAL-DOC-003` (chart of accounts, journals, settlement, period controls, reconciliation, GST, audit, catalog bridge, and temporal/reporting endpoints).
+Comprehensive frontend handoff for `VAL-DOC-003` (chart of accounts, journals, settlement, period controls, reconciliation, GST, audit, and temporal/reporting endpoints).
+
+Catalog note (2026-03-21): accounting-facing product entry now uses the canonical catalog endpoints documented in the **Product Catalog & Inventory** section (`GET/POST /api/v1/catalog/brands`, `GET/POST /api/v1/catalog/products`).
 
 > Response envelope convention: almost all endpoints return `ApiResponse<T>` where payload is in `data`; PDF endpoints return raw `byte[]`; CSV endpoint returns `text/csv` string.
 
@@ -670,11 +672,6 @@ Comprehensive frontend handoff for `VAL-DOC-003` (chart of accounts, journals, s
 | `GET` | `/api/v1/accounting/audit/transactions` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `—` | `PageResponse<AccountingTransactionAuditListItemDto>` |
 | `GET` | `/api/v1/accounting/audit/transactions/{journalEntryId}` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `—` | `AccountingTransactionAuditDetailDto` |
 | `POST` | `/api/v1/accounting/bad-debts/write-off` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `BadDebtWriteOffRequest` | `JournalEntryDto` |
-| `POST` | `/api/v1/accounting/catalog/import` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `multipart/form-data` | `CatalogImportResponse` |
-| `GET` | `/api/v1/accounting/catalog/products` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `—` | `List<ProductionProductDto>` |
-| `POST` | `/api/v1/accounting/catalog/products` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `ProductCreateRequest` | `ProductionProductDto` |
-| `POST` | `/api/v1/accounting/catalog/products/bulk-variants` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `BulkVariantRequest` | `BulkVariantResponse` |
-| `PUT` | `/api/v1/accounting/catalog/products/{id}` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `ProductUpdateRequest` | `ProductionProductDto` |
 | `GET` | `/api/v1/accounting/configuration/health` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `—` | `ConfigurationHealthService.ConfigurationHealthReport` |
 | `POST` | `/api/v1/accounting/credit-notes` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `CreditNoteRequest` | `JournalEntryDto` |
 | `GET` | `/api/v1/accounting/date-context` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `—` | `Map<String, Object>` |
@@ -881,48 +878,7 @@ _Total documented accounting endpoints: **83**._
   - `memo`: `String` — validation `—`
   - `idempotencyKey`: `String` — validation `—`
   - `adminOverride`: `Boolean` — validation `—`
-- **`ProductCreateRequest`**
-  - `brandId`: `Long` — validation `—`
-  - `brandName`: `String` — validation `—`
-  - `brandCode`: `String` — validation `—`
-  - `productName`: `String` — validation `@NotBlank(message = "Product name is required")`
-  - `category`: `String` — validation `@NotBlank(message = "Category is required")`
-  - `defaultColour`: `String` — validation `—`
-  - `sizeLabel`: `String` — validation `—`
-  - `unitOfMeasure`: `String` — validation `—`
-  - `customSkuCode`: `String` — validation `@JsonProperty(access = JsonProperty.Access.WRITE_ONLY)`
-  - `basePrice`: `BigDecimal` — validation `—`
-  - `gstRate`: `BigDecimal` — validation `—`
-  - `minDiscountPercent`: `BigDecimal` — validation `—`
-  - `minSellingPrice`: `BigDecimal` — validation `—`
-  - `metadata`: `Map<String, Object>` — validation `—`
-- **`BulkVariantRequest`**
-  - `brandId`: `Long` — validation `—`
-  - `brandName`: `String` — validation `—`
-  - `brandCode`: `String` — validation `—`
-  - `baseProductName`: `String` — validation `@NotBlank`
-  - `category`: `String` — validation `@NotBlank`
-  - `colors`: `List<String>` — validation `—`
-  - `sizes`: `List<String>` — validation `—`
-  - `colorSizeMatrix`: `List<ColorSizeMatrixEntry>` — validation `@Valid`
-  - `unitOfMeasure`: `String` — validation `—`
-  - `skuPrefix`: `String` — validation `—`
-  - `basePrice`: `BigDecimal` — validation `—`
-  - `gstRate`: `BigDecimal` — validation `—`
-  - `minDiscountPercent`: `BigDecimal` — validation `—`
-  - `minSellingPrice`: `BigDecimal` — validation `—`
-  - `metadata`: `Map<String, Object>` — validation `—`
-- **`ProductUpdateRequest`**
-  - `productName`: `String` — validation `—`
-  - `category`: `String` — validation `—`
-  - `defaultColour`: `String` — validation `—`
-  - `sizeLabel`: `String` — validation `—`
-  - `unitOfMeasure`: `String` — validation `—`
-  - `basePrice`: `BigDecimal` — validation `—`
-  - `gstRate`: `BigDecimal` — validation `—`
-  - `minDiscountPercent`: `BigDecimal` — validation `—`
-  - `minSellingPrice`: `BigDecimal` — validation `—`
-  - `metadata`: `Map<String, Object>` — validation `—`
+- Use `CatalogBrandRequest`, `CatalogProductEntryRequest`, and `CatalogProductRequest` from the **Product Catalog & Inventory** section for current product-entry and maintenance contracts.
 - **`CreditNoteRequest`**
   - `invoiceId`: `Long` — validation `@NotNull`
   - `amount`: `BigDecimal` — validation `@DecimalMin(value = "0.01")`
@@ -1307,54 +1263,8 @@ _Total documented accounting endpoints: **83**._
   - `createdBy`: `String`
   - `postedBy`: `String`
   - `lastModifiedBy`: `String`
-- **`CatalogImportResponse`**
-  - `rowsProcessed`: `int`
-  - `brandsCreated`: `int`
-  - `productsCreated`: `int`
-  - `productsUpdated`: `int`
-  - `rawMaterialsSeeded`: `int`
-  - `errors`: `List<ImportError>`
-- **`List<ProductionProductDto>`**
-  - `id`: `Long`
-  - `publicId`: `UUID`
-  - `brandId`: `Long`
-  - `brandName`: `String`
-  - `brandCode`: `String`
-  - `productName`: `String`
-  - `category`: `String`
-  - `defaultColour`: `String`
-  - `sizeLabel`: `String`
-  - `unitOfMeasure`: `String`
-  - `skuCode`: `String`
-  - `active`: `boolean`
-  - `basePrice`: `BigDecimal`
-  - `gstRate`: `BigDecimal`
-  - `minDiscountPercent`: `BigDecimal`
-  - `minSellingPrice`: `BigDecimal`
-  - `metadata`: `Map<String, Object>`
-- **`ProductionProductDto`**
-  - `id`: `Long`
-  - `publicId`: `UUID`
-  - `brandId`: `Long`
-  - `brandName`: `String`
-  - `brandCode`: `String`
-  - `productName`: `String`
-  - `category`: `String`
-  - `defaultColour`: `String`
-  - `sizeLabel`: `String`
-  - `unitOfMeasure`: `String`
-  - `skuCode`: `String`
-  - `active`: `boolean`
-  - `basePrice`: `BigDecimal`
-  - `gstRate`: `BigDecimal`
-  - `minDiscountPercent`: `BigDecimal`
-  - `minSellingPrice`: `BigDecimal`
-  - `metadata`: `Map<String, Object>`
-- **`BulkVariantResponse`**
-  - `generated`: `List<VariantItem>`
-  - `conflicts`: `List<VariantItem>`
-  - `wouldCreate`: `List<VariantItem>`
-  - `created`: `List<VariantItem>`
+- No public accounting-specific catalog response DTOs remain.
+- Use `CatalogBrandDto`, `CatalogProductDto`, and `CatalogProductEntryResponse` from the **Product Catalog & Inventory** section for the live catalog contract.
 - **`ConfigurationHealthService.ConfigurationHealthReport`**
   - `healthy`: `boolean` (true when no issues are present)
   - `issues`: `List<ConfigurationIssue>`
@@ -1690,7 +1600,7 @@ _Total documented accounting endpoints: **83**._
   - Account dropdowns: `GET /api/v1/accounting/accounts`
   - Dealer dropdowns/search: `GET /api/v1/dealers`, `GET /api/v1/dealers/search?query=`
   - Supplier dropdowns: `GET /api/v1/suppliers`
-  - Catalog product selection in accounting context: `GET /api/v1/accounting/catalog/products`
+  - Catalog product selection in accounting context: `GET /api/v1/catalog/products?brandId=...`
 - **Computed fields**
   - GST component split is computed server-side: `taxType=INTRA_STATE` => `cgst+sgst`; `INTER_STATE` => `igst`
   - Settlement totals (`totalApplied`, `totalDiscount`, `totalFxGain/loss`) are computed; render read-only summary cards
@@ -1734,7 +1644,7 @@ Comprehensive handoff for `VAL-DOC-004` covering catalog, inventory, dispatch, a
 - Frontend endpoint paths, request/response DTOs, and dispatch/reservation/backorder state transitions are unchanged.
 - Existing UI flows in this section remain valid; no client migration is required for this refactor.
 
-#### Endpoint Map — Catalog (brands/products/bulk/search)
+#### Endpoint Map — Catalog (brands/products/search)
 
 Auth default: `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING','ROLE_SALES','ROLE_FACTORY')`.
 
@@ -1745,14 +1655,18 @@ Auth default: `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING','ROLE_SALES','ROLE
 | GET | `/api/v1/catalog/brands/{brandId}` | — | `CatalogBrandDto` |
 | PUT | `/api/v1/catalog/brands/{brandId}` | `CatalogBrandRequest` | `CatalogBrandDto` |
 | DELETE | `/api/v1/catalog/brands/{brandId}` | — | `CatalogBrandDto` (deactivated) |
-| POST | `/api/v1/catalog/products` | `CatalogProductRequest` | `CatalogProductDto` |
+| POST | `/api/v1/catalog/products?preview=true` | `CatalogProductEntryRequest` | `CatalogProductEntryResponse` |
+| POST | `/api/v1/catalog/products` | `CatalogProductEntryRequest` | `CatalogProductEntryResponse` |
 | GET | `/api/v1/catalog/products` | Query: `brandId?`, `color?`, `size?`, `active?`, `page`, `pageSize` | `PageResponse<CatalogProductDto>` |
 | GET | `/api/v1/catalog/products/{productId}` | — | `CatalogProductDto` |
 | PUT | `/api/v1/catalog/products/{productId}` | `CatalogProductRequest` | `CatalogProductDto` |
 | DELETE | `/api/v1/catalog/products/{productId}` | — | `CatalogProductDto` (deactivated) |
-| POST | `/api/v1/catalog/products/bulk` | `List<CatalogProductBulkItemRequest>` | `CatalogProductBulkResponse` |
-| GET | `/api/v1/production/brands` | — | `List<ProductionBrandDto>` |
-| GET | `/api/v1/production/brands/{brandId}/products` | — | `List<ProductionProductDto>` |
+
+Catalog contract rules:
+
+- create a new brand on `POST /api/v1/catalog/brands`, then pass the returned active `brandId` into product preview/commit
+- product preview/commit use the canonical request fields listed below and always carry the resolved active `brandId` from that separate brand-create flow
+- frontend product entry and browse flows should call only the catalog endpoints listed in this section
 
 #### Endpoint Map — Inventory (stock, batches, movement history, adjustments, dispatch)
 
@@ -1885,11 +1799,13 @@ Auth for report controller endpoints: `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUN
 #### Required User Flows
 
 1. **Product setup flow (`create brand -> create product -> set sizes/cartons`)**
-   1. `POST /api/v1/catalog/brands`.
-   2. `GET /api/v1/catalog/brands?active=true` (brand dropdown refresh).
-   3. `POST /api/v1/catalog/products` with `colors[]`, `sizes[]`, and full `cartonSizes[]` mapping.
-   4. `GET /api/v1/catalog/products?brandId={brandId}&page=0&pageSize=20` (table refresh/search).
-   5. Optional bulk path: `POST /api/v1/catalog/products/bulk` and render row-level result states.
+   1. `GET /api/v1/catalog/brands?active=true` to populate the brand picker.
+   2. If needed, create a new brand with `POST /api/v1/catalog/brands` and capture the returned `brandId`.
+   3. `POST /api/v1/catalog/products?preview=true` with `brandId`, `colors[]`, `sizes[]`, and pricing/tax metadata.
+   4. Show the returned candidate members, conflicts, shared `variantGroupId`, and downstream-effect summary.
+   5. Commit the same payload with `POST /api/v1/catalog/products`.
+   6. Refresh browse/search via `GET /api/v1/catalog/products?brandId={brandId}&page=0&pageSize=20`.
+   7. Optional maintenance path: `PUT /api/v1/catalog/products/{productId}` for single-product metadata/carton updates after creation.
 
 2. **Production flow (`plan -> log -> pack -> stock`)**
    1. Create plan: `POST /api/v1/factory/production-plans`.
@@ -1970,16 +1886,15 @@ Operational statuses: `PENDING`, `PENDING_STOCK`, `PENDING_PRODUCTION`, `RESERVE
 
 - `CatalogBrandRequest`: `name*`, `logoUrl`, `description`, `active`.
 - `CatalogBrandDto`: `id`, `publicId`, `name`, `code`, `logoUrl`, `description`, `active`.
-- `CatalogProductRequest`: `brandId*`, `name*`, `colors[]`, `sizes[]`, `cartonSizes[]`, `unitOfMeasure*`, `hsnCode*`, `gstRate* (0..100)`, `active`.
+- `CatalogProductEntryRequest`: `brandId*`, `baseProductName*`, `category*`, `unitOfMeasure*`, `hsnCode*`, `gstRate* (0..100)`, `colors[]*`, `sizes[]*`, optional `basePrice`, optional `minDiscountPercent`, optional `minSellingPrice`, optional `metadata`.
+- `CatalogProductEntryResponse`: `preview`, `variantGroupId`, `productFamilyName`, `brandId`, `brandName`, `brandCode`, `category`, `unitOfMeasure`, `hsnCode`, pricing fields, `metadata`, `candidateCount`, `downstreamEffects`, `members[]`, `conflicts[]`.
+- `CatalogProductEntryResponse.Member`: `id?`, `publicId?`, `sku`, `productName`, `color`, `size`.
+- `CatalogProductEntryResponse.Conflict`: `sku`, `reason`, `productName`, `color`, `size`.
+- `CatalogProductRequest`: maintenance/update contract for `PUT /api/v1/catalog/products/{productId}` with `brandId*`, `name*`, `colors[]`, `sizes[]`, `cartonSizes[]`, `unitOfMeasure*`, `hsnCode*`, `gstRate* (0..100)`, `active`.
 - `CatalogProductCartonSizeRequest`: `size*`, `piecesPerCarton* (>0)`.
-- `CatalogProductDto`: `id`, `publicId`, `brandId`, `brandName`, `brandCode`, `name`, `sku`, `colors[]`, `sizes[]`, `cartonSizes[]`, `unitOfMeasure`, `hsnCode`, `gstRate`, `active`.
+- `CatalogProductDto`: browse/search and maintenance DTO with `id`, `publicId`, `brandId`, `brandName`, `brandCode`, `name`, `sku`, `colors[]`, `sizes[]`, `cartonSizes[]`, `unitOfMeasure`, `hsnCode`, `gstRate`, `active`.
 - `CatalogProductCartonSizeDto`: `size`, `piecesPerCarton`.
-- `CatalogProductBulkItemRequest`: `id?`, `sku?`, `product*`.
-- `CatalogProductBulkItemResult`: `index`, `success`, `action`, `productId`, `sku`, `message`, `product`.
-- `CatalogProductBulkResponse`: `total`, `succeeded`, `failed`, `results[]`.
 - `PageResponse<CatalogProductDto>`: `content`, `totalElements`, `totalPages`, `page`, `size`.
-- `ProductionBrandDto` (read-model): `id`, `publicId`, `name`, `code`, `productCount`.
-- `ProductionProductDto` (read-model): `id`, `publicId`, `brandId`, `brandName`, `brandCode`, `productName`, `category`, `defaultColour`, `sizeLabel`, `unitOfMeasure`, `skuCode`, `active`, pricing/tax fields, `metadata`.
 
 ##### Inventory + dispatch DTOs
 
@@ -2060,14 +1975,15 @@ Operational statuses: `PENDING`, `PENDING_STOCK`, `PENDING_PRODUCTION`, `RESERVE
 
 #### UI Hints (frontend implementation)
 
-- **Brand dropdown**: source from `GET /api/v1/catalog/brands?active=true`; store/use `brandId` only.
+- **Brand dropdown**: source from `GET /api/v1/catalog/brands?active=true`; store/use `brandId` only. If the brand does not exist, create it first via `POST /api/v1/catalog/brands` and then reuse the returned `brandId`.
 - **Color input**: chip-style multi-select; preserve order entered by user when sending `colors[]`.
-- **Size grid inputs**: render one row per selected size with mandatory `piecesPerCarton`; send to `cartonSizes[]`.
+- **Size input**: send canonical `sizes[]` for preview/commit. Use `cartonSizes[]` only on the maintenance `PUT /api/v1/catalog/products/{productId}` path if the UI exposes carton mappings.
+- **Product preview UX**: call `POST /api/v1/catalog/products?preview=true` before commit for matrix entry; render `members[]`, `conflicts[]`, `candidateCount`, and `downstreamEffects` directly from the response.
 - **HSN lookup**:
   - Backend currently validates/persists `hsnCode` but does not expose a dedicated HSN master endpoint.
   - Recommended UX: local searchable HSN dataset/autocomplete in UI + final backend validation on submit.
 - **Product search/filter**: always use server pagination (`page`, `pageSize`); backend caps `pageSize` at 100.
-- **Bulk upsert UX**: render `CatalogProductBulkResponse.results[]` row by row; retry only failed rows.
+- **Catalog route guard**: surface only the canonical catalog endpoints listed in this section for brand selection/create, product preview/commit, and catalog browse.
 - **Dispatch confirm UI**: force explicit per-line shipped quantity entry (cannot exceed ordered quantity).
 - **Slip status controls**: only expose `PENDING`, `PENDING_STOCK`, `PENDING_PRODUCTION`, `RESERVED`; do not expose direct set to `DISPATCHED/BACKORDER/CANCELLED`.
 - **Idempotency-sensitive screens**: send stable idempotency keys for finished-good adjustments, raw-material adjustments, opening-stock import, raw-material intake/batch creation, and packing records.

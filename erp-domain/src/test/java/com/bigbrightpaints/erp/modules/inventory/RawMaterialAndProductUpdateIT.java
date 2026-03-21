@@ -5,7 +5,6 @@ import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialRepository;
-import com.bigbrightpaints.erp.modules.production.domain.ProductionBrandRepository;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionProduct;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionProductRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
@@ -27,13 +26,11 @@ import java.util.Locale;
 import java.util.List;
 import java.util.Map;
 import java.util.HashMap;
-import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -54,9 +51,6 @@ class RawMaterialAndProductUpdateIT extends AbstractIntegrationTest {
 
     @Autowired
     private ProductionProductRepository productionProductRepository;
-
-    @Autowired
-    private ProductionBrandRepository productionBrandRepository;
 
     @Autowired
     private CompanyRepository companyRepository;
@@ -392,7 +386,7 @@ class RawMaterialAndProductUpdateIT extends AbstractIntegrationTest {
     }
 
     @Test
-    void production_catalog_update_adjusts_price_and_name() {
+    void catalog_product_update_uses_canonical_host_and_pre_resolved_brand_id() {
         HttpHeaders headers = authenticatedHeaders();
 
         Map<String, Long> accounts = fixtureAccountIds();
@@ -404,13 +398,23 @@ class RawMaterialAndProductUpdateIT extends AbstractIntegrationTest {
                 "fgTaxAccountId", accounts.get("GST_OUT")
         );
 
+        ResponseEntity<Map> brandCreate = rest.exchange(
+                "/api/v1/catalog/brands",
+                HttpMethod.POST,
+                new HttpEntity<>(Map.of("name", "HouseBrand Canonical"), headers),
+                Map.class
+        );
+        assertThat(brandCreate.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Long brandId = ((Number) ((Map<?, ?>) brandCreate.getBody().get("data")).get("id")).longValue();
+
         Map<String, Object> createPayload = new HashMap<>();
-        createPayload.put("productName", "Primer Base");
-        createPayload.put("brandName", "HouseBrand");
+        createPayload.put("brandId", brandId);
+        createPayload.put("baseProductName", "Primer Base");
         createPayload.put("category", "FINISHED_GOOD");
-        createPayload.put("defaultColour", "WHITE");
-        createPayload.put("sizeLabel", "1L");
-        createPayload.put("unitOfMeasure", "LTR");
+        createPayload.put("colors", List.of("WHITE"));
+        createPayload.put("sizes", List.of("1L"));
+        createPayload.put("unitOfMeasure", "LITER");
+        createPayload.put("hsnCode", "320910");
         createPayload.put("basePrice", new BigDecimal("125.50"));
         createPayload.put("gstRate", BigDecimal.ZERO);
         createPayload.put("minDiscountPercent", BigDecimal.ZERO);
@@ -418,37 +422,51 @@ class RawMaterialAndProductUpdateIT extends AbstractIntegrationTest {
         createPayload.put("metadata", metadata);
 
         ResponseEntity<Map> create = rest.exchange(
-                "/api/v1/accounting/catalog/products",
+                "/api/v1/catalog/products",
                 HttpMethod.POST,
                 new HttpEntity<>(createPayload, headers),
                 Map.class
         );
         assertThat(create.getStatusCode()).isEqualTo(HttpStatus.OK);
         Map<?, ?> createdData = (Map<?, ?>) create.getBody().get("data");
-        Long productId = ((Number) createdData.get("id")).longValue();
+        List<?> members = (List<?>) createdData.get("members");
+        assertThat(members).hasSize(1);
+        Long productId = ((Number) ((Map<?, ?>) members.getFirst()).get("id")).longValue();
 
-        Map<String, Object> updatePayload = Map.of(
-                "productName", "Primer Base Plus",
-                "basePrice", new BigDecimal("150.00"),
-                "minSellingPrice", new BigDecimal("130.00")
-        );
+        Map<String, Object> updatePayload = new HashMap<>();
+        updatePayload.put("brandId", brandId);
+        updatePayload.put("name", "Primer Base Plus");
+        updatePayload.put("colors", List.of("BLACK"));
+        updatePayload.put("sizes", List.of("4L"));
+        updatePayload.put("cartonSizes", List.of(Map.of(
+                "size", "4L",
+                "piecesPerCarton", 1
+        )));
+        updatePayload.put("unitOfMeasure", "LITER");
+        updatePayload.put("hsnCode", "320910");
+        updatePayload.put("gstRate", BigDecimal.ZERO);
+        updatePayload.put("active", true);
 
         ResponseEntity<Map> update = rest.exchange(
-                "/api/v1/accounting/catalog/products/" + productId,
+                "/api/v1/catalog/products/" + productId,
                 HttpMethod.PUT,
                 new HttpEntity<>(updatePayload, headers),
                 Map.class
         );
         assertThat(update.getStatusCode()).isEqualTo(HttpStatus.OK);
         Map<?, ?> updateData = (Map<?, ?>) update.getBody().get("data");
-        assertThat(updateData.get("productName")).isEqualTo("Primer Base Plus");
-        assertThat(new BigDecimal(updateData.get("basePrice").toString()))
-                .isEqualByComparingTo("150.00");
+        assertThat(updateData.get("name")).isEqualTo("Primer Base Plus");
+        @SuppressWarnings("unchecked")
+        List<String> updatedColors = (List<String>) updateData.get("colors");
+        @SuppressWarnings("unchecked")
+        List<String> updatedSizes = (List<String>) updateData.get("sizes");
+        assertThat(updatedColors).containsExactly("BLACK");
+        assertThat(updatedSizes).containsExactly("4L");
 
         ProductionProduct saved = productionProductRepository.findById(productId).orElseThrow();
         assertThat(saved.getProductName()).isEqualTo("Primer Base Plus");
-        assertThat(saved.getBasePrice()).isEqualByComparingTo("150.00");
-        assertThat(saved.getMinSellingPrice()).isEqualByComparingTo("130.00");
+        assertThat(saved.getDefaultColour()).isEqualTo("BLACK");
+        assertThat(saved.getSizeLabel()).isEqualTo("4L");
     }
 
     @Test
@@ -737,310 +755,6 @@ class RawMaterialAndProductUpdateIT extends AbstractIntegrationTest {
         assertThat(afterSecondFailure.get("name")).isEqualTo("FG Immutable On Invalid");
     }
 
-    @Test
-    void create_product_rejects_multi_value_color_and_size_and_points_to_bulk_variants() {
-        HttpHeaders headers = authenticatedHeaders();
-
-        Map<String, Long> accounts = fixtureAccountIds();
-        Map<String, Object> metadata = Map.of(
-                "fgValuationAccountId", accounts.get("INV"),
-                "fgCogsAccountId", accounts.get("COGS"),
-                "fgRevenueAccountId", accounts.get("REV"),
-                "fgDiscountAccountId", accounts.get("DISC"),
-                "fgTaxAccountId", accounts.get("GST_OUT")
-        );
-
-        Map<String, Object> createPayload = new HashMap<>();
-        createPayload.put("productName", "Primer QuickAdd " + UUID.randomUUID().toString().substring(0, 8));
-        createPayload.put("brandName", "HouseBrand");
-        createPayload.put("category", "FINISHED_GOOD");
-        createPayload.put("defaultColour", "RED,BLUE");
-        createPayload.put("sizeLabel", "1L,2L");
-        createPayload.put("unitOfMeasure", "LTR");
-        createPayload.put("basePrice", new BigDecimal("125.50"));
-        createPayload.put("gstRate", BigDecimal.ZERO);
-        createPayload.put("minDiscountPercent", BigDecimal.ZERO);
-        createPayload.put("minSellingPrice", new BigDecimal("110.00"));
-        createPayload.put("metadata", metadata);
-
-        ResponseEntity<Map> create = rest.exchange(
-                "/api/v1/accounting/catalog/products",
-                HttpMethod.POST,
-                new HttpEntity<>(createPayload, headers),
-                Map.class
-        );
-
-        assertThat(create.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-        Map<?, ?> errorData = (Map<?, ?>) create.getBody().get("data");
-        assertThat(String.valueOf(errorData.get("message")))
-                .contains("/api/v1/accounting/catalog/products/bulk-variants");
-    }
-
-    @Test
-    void create_product_rejects_multi_value_size_from_unit_fallback_and_points_to_bulk_variants() {
-        HttpHeaders headers = authenticatedHeaders();
-
-        Map<String, Long> accounts = fixtureAccountIds();
-        Map<String, Object> metadata = Map.of(
-                "fgValuationAccountId", accounts.get("INV"),
-                "fgCogsAccountId", accounts.get("COGS"),
-                "fgRevenueAccountId", accounts.get("REV"),
-                "fgDiscountAccountId", accounts.get("DISC"),
-                "fgTaxAccountId", accounts.get("GST_OUT")
-        );
-
-        Map<String, Object> createPayload = new HashMap<>();
-        createPayload.put("productName", "Primer Fallback " + UUID.randomUUID().toString().substring(0, 8));
-        createPayload.put("brandName", "HouseBrand");
-        createPayload.put("category", "FINISHED_GOOD");
-        createPayload.put("defaultColour", "RED");
-        createPayload.put("unitOfMeasure", "1L,2L");
-        createPayload.put("basePrice", new BigDecimal("125.50"));
-        createPayload.put("gstRate", BigDecimal.ZERO);
-        createPayload.put("minDiscountPercent", BigDecimal.ZERO);
-        createPayload.put("minSellingPrice", new BigDecimal("110.00"));
-        createPayload.put("metadata", metadata);
-
-        ResponseEntity<Map> create = rest.exchange(
-                "/api/v1/accounting/catalog/products",
-                HttpMethod.POST,
-                new HttpEntity<>(createPayload, headers),
-                Map.class
-        );
-
-        assertThat(create.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-        Map<?, ?> errorData = (Map<?, ?>) create.getBody().get("data");
-        assertThat(String.valueOf(errorData.get("message")))
-                .contains("/api/v1/accounting/catalog/products/bulk-variants");
-    }
-
-    @Test
-    void bulk_variants_expand_comma_separated_colors_and_sizes() {
-        HttpHeaders headers = authenticatedHeaders();
-
-        String baseProductName = "Primer Variant " + UUID.randomUUID().toString().substring(0, 8);
-        Map<String, Object> payload = new HashMap<>();
-        payload.put("brandName", "HouseBrand");
-        payload.put("baseProductName", baseProductName);
-        payload.put("category", "FINISHED_GOOD");
-        payload.put("colors", List.of("Red, Blue", "blue", "Green"));
-        payload.put("sizes", List.of("1L,2L", "2L"));
-        payload.put("skuPrefix", "HB");
-        payload.put("unitOfMeasure", "LTR");
-
-        ResponseEntity<Map> response = rest.exchange(
-                "/api/v1/accounting/catalog/products/bulk-variants",
-                HttpMethod.POST,
-                new HttpEntity<>(payload, headers),
-                Map.class
-        );
-
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-        Map<?, ?> data = (Map<?, ?>) response.getBody().get("data");
-        assertThat((List<?>) data.get("generated")).hasSize(6);
-        assertThat((List<?>) data.get("conflicts")).isEmpty();
-        assertThat((List<?>) data.get("wouldCreate")).hasSize(6);
-        assertThat((List<?>) data.get("created")).hasSize(6);
-
-        Company company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
-        Map<String, Set<String>> sizesByColor = productionProductRepository.findByCompanyOrderByProductNameAsc(company).stream()
-                .filter(product -> product.getProductName() != null && product.getProductName().startsWith(baseProductName + " "))
-                .collect(Collectors.groupingBy(
-                        product -> product.getDefaultColour().toUpperCase(Locale.ROOT),
-                        Collectors.mapping(ProductionProduct::getSizeLabel, Collectors.toSet())
-                ));
-
-        assertThat(sizesByColor).containsOnlyKeys("RED", "BLUE", "GREEN");
-        assertThat(sizesByColor.get("RED")).containsExactlyInAnyOrder("1L", "2L");
-        assertThat(sizesByColor.get("BLUE")).containsExactlyInAnyOrder("1L", "2L");
-        assertThat(sizesByColor.get("GREEN")).containsExactlyInAnyOrder("1L", "2L");
-    }
-
-    @Test
-    void bulk_variants_allow_color_specific_size_overrides() {
-        HttpHeaders headers = authenticatedHeaders();
-
-        String baseProductName = "Primer Matrix " + UUID.randomUUID().toString().substring(0, 8);
-        Map<String, Object> payload = new HashMap<>();
-        payload.put("brandName", "HouseBrand");
-        payload.put("baseProductName", baseProductName);
-        payload.put("category", "FINISHED_GOOD");
-        payload.put("colors", List.of("Black, White, Blue"));
-        payload.put("sizes", List.of("S,M,L,XL"));
-        payload.put("colorSizeMatrix", List.of(
-                Map.of("color", "Blue", "sizes", List.of("XS,XL")),
-                Map.of("color", "White", "sizes", List.of("M"))
-        ));
-        payload.put("skuPrefix", "HB");
-        payload.put("unitOfMeasure", "LTR");
-
-        ResponseEntity<Map> response = rest.exchange(
-                "/api/v1/accounting/catalog/products/bulk-variants",
-                HttpMethod.POST,
-                new HttpEntity<>(payload, headers),
-                Map.class
-        );
-
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-        Map<?, ?> data = (Map<?, ?>) response.getBody().get("data");
-        assertThat((List<?>) data.get("generated")).hasSize(7);
-        assertThat((List<?>) data.get("conflicts")).isEmpty();
-        assertThat((List<?>) data.get("wouldCreate")).hasSize(7);
-        assertThat((List<?>) data.get("created")).hasSize(7);
-
-        Company company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
-        Map<String, Set<String>> sizesByColor = productionProductRepository.findByCompanyOrderByProductNameAsc(company).stream()
-                .filter(product -> product.getProductName() != null && product.getProductName().startsWith(baseProductName + " "))
-                .collect(Collectors.groupingBy(
-                        product -> product.getDefaultColour().toUpperCase(Locale.ROOT),
-                        Collectors.mapping(ProductionProduct::getSizeLabel, Collectors.toSet())
-                ));
-
-        assertThat(sizesByColor).containsOnlyKeys("BLACK", "WHITE", "BLUE");
-        assertThat(sizesByColor.get("BLACK")).containsExactlyInAnyOrder("S", "M", "L", "XL");
-        assertThat(sizesByColor.get("WHITE")).containsExactly("M");
-        assertThat(sizesByColor.get("BLUE")).containsExactlyInAnyOrder("XS", "XL");
-    }
-
-    @Test
-    void bulk_variants_accept_matrix_only_colors_and_sizes() {
-        HttpHeaders headers = authenticatedHeaders();
-
-        String baseProductName = "Primer MatrixOnly " + UUID.randomUUID().toString().substring(0, 8);
-        Map<String, Object> payload = new HashMap<>();
-        payload.put("brandName", "HouseBrand");
-        payload.put("baseProductName", baseProductName);
-        payload.put("category", "FINISHED_GOOD");
-        payload.put("colors", List.of());
-        payload.put("sizes", List.of());
-        payload.put("colorSizeMatrix", List.of(
-                Map.of("color", "Amber, Teal", "sizes", List.of("250ML,500ML"))
-        ));
-        payload.put("skuPrefix", "HB");
-        payload.put("unitOfMeasure", "LTR");
-
-        ResponseEntity<Map> response = rest.exchange(
-                "/api/v1/accounting/catalog/products/bulk-variants",
-                HttpMethod.POST,
-                new HttpEntity<>(payload, headers),
-                Map.class
-        );
-
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-        Map<?, ?> data = (Map<?, ?>) response.getBody().get("data");
-        assertThat((List<?>) data.get("generated")).hasSize(4);
-        assertThat((List<?>) data.get("conflicts")).isEmpty();
-        assertThat((List<?>) data.get("wouldCreate")).hasSize(4);
-        assertThat((List<?>) data.get("created")).hasSize(4);
-
-        Company company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
-        Map<String, Set<String>> sizesByColor = productionProductRepository.findByCompanyOrderByProductNameAsc(company).stream()
-                .filter(product -> product.getProductName() != null && product.getProductName().startsWith(baseProductName + " "))
-                .collect(Collectors.groupingBy(
-                        product -> product.getDefaultColour().toUpperCase(Locale.ROOT),
-                        Collectors.mapping(ProductionProduct::getSizeLabel, Collectors.toSet())
-                ));
-
-        assertThat(sizesByColor).containsOnlyKeys("AMBER", "TEAL");
-        assertThat(sizesByColor.get("AMBER")).containsExactlyInAnyOrder("250ML", "500ML");
-        assertThat(sizesByColor.get("TEAL")).containsExactlyInAnyOrder("250ML", "500ML");
-    }
-
-    @Test
-    void bulk_variants_dry_run_returns_preview_and_writes_nothing() {
-        HttpHeaders headers = authenticatedHeaders();
-
-        String baseProductName = "Primer DryRun " + UUID.randomUUID().toString().substring(0, 8);
-        String brandName = "DryRun Brand " + UUID.randomUUID().toString().substring(0, 8);
-        String brandCode = "DRY" + UUID.randomUUID().toString().substring(0, 5).toUpperCase(Locale.ROOT);
-        Map<String, Object> payload = new HashMap<>();
-        payload.put("brandName", brandName);
-        payload.put("brandCode", brandCode);
-        payload.put("baseProductName", baseProductName);
-        payload.put("category", "FINISHED_GOOD");
-        payload.put("colors", List.of("Red, Blue"));
-        payload.put("sizes", List.of("1L,2L"));
-        payload.put("skuPrefix", "HB");
-        payload.put("unitOfMeasure", "LTR");
-
-        ResponseEntity<Map> response = rest.exchange(
-                "/api/v1/accounting/catalog/products/bulk-variants?dryRun=true",
-                HttpMethod.POST,
-                new HttpEntity<>(payload, headers),
-                Map.class
-        );
-
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-        Map<?, ?> data = (Map<?, ?>) response.getBody().get("data");
-        assertThat((List<?>) data.get("generated")).hasSize(4);
-        assertThat((List<?>) data.get("conflicts")).isEmpty();
-        assertThat((List<?>) data.get("wouldCreate")).hasSize(4);
-        assertThat((List<?>) data.get("created")).isEmpty();
-
-        Company company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
-        long createdProducts = productionProductRepository.findByCompanyOrderByProductNameAsc(company).stream()
-                .filter(product -> product.getProductName() != null && product.getProductName().startsWith(baseProductName + " "))
-                .count();
-        assertThat(createdProducts).isZero();
-        assertThat(productionBrandRepository.findByCompanyAndNameIgnoreCase(company, brandName)).isEmpty();
-    }
-
-    @Test
-    void bulk_variants_conflicts_fail_closed_and_do_not_partially_write() {
-        HttpHeaders headers = authenticatedHeaders();
-
-        String baseProductName = "Primer Conflict " + UUID.randomUUID().toString().substring(0, 8);
-        Map<String, Object> seedPayload = new HashMap<>();
-        seedPayload.put("brandName", "HouseBrand");
-        seedPayload.put("baseProductName", baseProductName);
-        seedPayload.put("category", "FINISHED_GOOD");
-        seedPayload.put("colors", List.of("Red"));
-        seedPayload.put("sizes", List.of("1L"));
-        seedPayload.put("skuPrefix", "HB");
-        seedPayload.put("unitOfMeasure", "LTR");
-
-        ResponseEntity<Map> seedResponse = rest.exchange(
-                "/api/v1/accounting/catalog/products/bulk-variants",
-                HttpMethod.POST,
-                new HttpEntity<>(seedPayload, headers),
-                Map.class
-        );
-        assertThat(seedResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
-
-        Map<String, Object> conflictingPayload = new HashMap<>();
-        conflictingPayload.put("brandName", "HouseBrand");
-        conflictingPayload.put("baseProductName", baseProductName);
-        conflictingPayload.put("category", "FINISHED_GOOD");
-        conflictingPayload.put("colors", List.of("Red,Blue"));
-        conflictingPayload.put("sizes", List.of("1L"));
-        conflictingPayload.put("skuPrefix", "HB");
-        conflictingPayload.put("unitOfMeasure", "LTR");
-
-        ResponseEntity<Map> conflictResponse = rest.exchange(
-                "/api/v1/accounting/catalog/products/bulk-variants",
-                HttpMethod.POST,
-                new HttpEntity<>(conflictingPayload, headers),
-                Map.class
-        );
-
-        assertThat(conflictResponse.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
-        Map<?, ?> errorData = (Map<?, ?>) conflictResponse.getBody().get("data");
-        assertThat(errorData.get("code")).isEqualTo("CONC_001");
-        Map<?, ?> details = (Map<?, ?>) errorData.get("details");
-        assertThat(details).isNotNull();
-        List<?> conflicts = (List<?>) details.get("conflicts");
-        assertThat(conflicts).isNotEmpty();
-        assertThat(String.valueOf(conflicts)).contains("SKU_ALREADY_EXISTS");
-
-        Company company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
-        List<ProductionProduct> variants = productionProductRepository.findByCompanyOrderByProductNameAsc(company).stream()
-                .filter(product -> product.getProductName() != null && product.getProductName().startsWith(baseProductName + " "))
-                .toList();
-
-        assertThat(variants).hasSize(1);
-        assertThat(variants.get(0).getDefaultColour()).isEqualTo("Red");
-    }
-
     private HttpHeaders authenticatedHeaders() {
         Map<String, Object> loginPayload = Map.of(
                 "email", ADMIN_EMAIL,
@@ -1053,7 +767,7 @@ class RawMaterialAndProductUpdateIT extends AbstractIntegrationTest {
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(token);
         headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.add("X-Company-Id", COMPANY_CODE);
+        headers.add("X-Company-Code", COMPANY_CODE);
         return headers;
     }
 

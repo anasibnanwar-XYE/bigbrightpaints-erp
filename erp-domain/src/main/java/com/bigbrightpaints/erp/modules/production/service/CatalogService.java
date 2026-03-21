@@ -2,11 +2,16 @@ package com.bigbrightpaints.erp.modules.production.service;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
+import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.core.validation.ValidationUtils;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.factory.domain.SizeVariant;
 import com.bigbrightpaints.erp.modules.factory.domain.SizeVariantRepository;
+import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
+import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodRepository;
+import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial;
+import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialRepository;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionBrand;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionBrandRepository;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionProduct;
@@ -39,7 +44,9 @@ import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -47,8 +54,10 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -58,25 +67,42 @@ public class CatalogService {
 
     private static final String DEFAULT_PRODUCT_CATEGORY = "FINISHED_GOOD";
     private static final int MAX_PAGE_SIZE = 100;
+    private static final String ACCOUNTING_METADATA_KEY_SUFFIX = "AccountId";
+    private static final List<String> RAW_MATERIAL_CATEGORIES = List.of("RAW_MATERIAL", "RAW MATERIAL", "RAW-MATERIAL");
     private static final Pattern NON_ALPHANUM = Pattern.compile("[^A-Z0-9]");
     private static final Pattern SKU_SEQUENCE_PATTERN = Pattern.compile("-(\\d{3})$");
     private static final Pattern SIZE_WITH_UNIT_PATTERN = Pattern.compile("^([0-9]+(?:\\.[0-9]+)?)\\s*(ML|L|LTR|LITRE|LITER)?$");
     private static final BigDecimal ONE_THOUSAND = new BigDecimal("1000");
+    private static final List<String> FINISHED_GOOD_ACCOUNT_KEYS = List.of(
+            "fgValuationAccountId",
+            "fgCogsAccountId",
+            "fgRevenueAccountId",
+            "fgDiscountAccountId",
+            "fgTaxAccountId");
     private static final Validator BULK_VALIDATOR = Validation.buildDefaultValidatorFactory().getValidator();
 
     private final CompanyContextService companyContextService;
+    private final CompanyEntityLookup companyEntityLookup;
     private final ProductionBrandRepository brandRepository;
     private final ProductionProductRepository productRepository;
     private final SizeVariantRepository sizeVariantRepository;
+    private final FinishedGoodRepository finishedGoodRepository;
+    private final RawMaterialRepository rawMaterialRepository;
 
     public CatalogService(CompanyContextService companyContextService,
+                          CompanyEntityLookup companyEntityLookup,
                           ProductionBrandRepository brandRepository,
                           ProductionProductRepository productRepository,
-                          SizeVariantRepository sizeVariantRepository) {
+                          SizeVariantRepository sizeVariantRepository,
+                          FinishedGoodRepository finishedGoodRepository,
+                          RawMaterialRepository rawMaterialRepository) {
         this.companyContextService = companyContextService;
+        this.companyEntityLookup = companyEntityLookup;
         this.brandRepository = brandRepository;
         this.productRepository = productRepository;
         this.sizeVariantRepository = sizeVariantRepository;
+        this.finishedGoodRepository = finishedGoodRepository;
+        this.rawMaterialRepository = rawMaterialRepository;
     }
 
     @Transactional
@@ -142,7 +168,7 @@ public class CatalogService {
         product.setCompany(company);
         product.setBrand(brand);
         product.setSkuCode(generateSku(company, brand, request.name()));
-        applyProductPayload(product, brand, request, true);
+        applyProductPayload(product, brand, request, true, null, null);
         ProductionProduct saved = productRepository.save(product);
         syncSizeVariants(company, saved);
         return toProductDto(saved);
@@ -150,8 +176,13 @@ public class CatalogService {
 
     @Transactional(readOnly = true)
     public CatalogProductDto getProduct(Long productId) {
+        return getProduct(productId, false);
+    }
+
+    @Transactional(readOnly = true)
+    public CatalogProductDto getProduct(Long productId, boolean includeAccountingMetadata) {
         Company company = companyContextService.requireCurrentCompany();
-        return toProductDto(requireProduct(company, productId));
+        return toProductDto(requireProduct(company, productId), includeAccountingMetadata);
     }
 
     @Transactional
@@ -159,9 +190,13 @@ public class CatalogService {
         Company company = companyContextService.requireCurrentCompany();
         ProductionProduct product = requireProduct(company, productId);
         ProductionBrand brand = requireActiveBrand(company, request.brandId());
+        String previousProductName = product.getProductName();
+        String previousProductFamilyName = product.getProductFamilyName();
         product.setBrand(brand);
-        applyProductPayload(product, brand, request, false);
+        applyProductPayload(product, brand, request, false, previousProductName, previousProductFamilyName);
+        validateInventorySyncMetadata(company, product);
         ProductionProduct saved = productRepository.save(product);
+        syncInventoryTruth(company, saved);
         syncSizeVariants(company, saved);
         return toProductDto(saved);
     }
@@ -171,7 +206,7 @@ public class CatalogService {
         Company company = companyContextService.requireCurrentCompany();
         ProductionProduct product = requireProduct(company, productId);
         product.setActive(false);
-        return toProductDto(productRepository.save(product));
+        return toPublicProductDto(productRepository.save(product));
     }
 
     @Transactional(readOnly = true)
@@ -181,6 +216,17 @@ public class CatalogService {
                                                           Boolean active,
                                                           int page,
                                                           int pageSize) {
+        return searchProducts(brandId, color, size, active, page, pageSize, false);
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<CatalogProductDto> searchProducts(Long brandId,
+                                                          String color,
+                                                          String size,
+                                                          Boolean active,
+                                                          int page,
+                                                          int pageSize,
+                                                          boolean includeAccountingMetadata) {
         Company company = companyContextService.requireCurrentCompany();
         int sanitizedPage = Math.max(page, 0);
         int sanitizedPageSize = Math.min(Math.max(pageSize, 1), MAX_PAGE_SIZE);
@@ -192,7 +238,9 @@ public class CatalogService {
                 normalizeOptionalText(size),
                 active);
         Page<ProductionProduct> result = productRepository.findAll(specification, pageable);
-        List<CatalogProductDto> content = result.getContent().stream().map(this::toProductDto).toList();
+        List<CatalogProductDto> content = result.getContent().stream()
+                .map(product -> toProductDto(product, includeAccountingMetadata))
+                .toList();
         return PageResponse.of(content, result.getTotalElements(), sanitizedPage, sanitizedPageSize);
     }
 
@@ -331,13 +379,19 @@ public class CatalogService {
                 predicates.add(cb.equal(root.get("active"), active));
             }
             if (StringUtils.hasText(color)) {
+                String normalizedColor = color.toLowerCase(Locale.ROOT);
                 Join<ProductionProduct, String> colors = root.joinSet("colors", JoinType.LEFT);
-                predicates.add(cb.equal(cb.lower(colors), color.toLowerCase(Locale.ROOT)));
+                predicates.add(cb.or(
+                        cb.equal(cb.lower(root.get("defaultColour")), normalizedColor),
+                        cb.equal(cb.lower(colors), normalizedColor)));
                 query.distinct(true);
             }
             if (StringUtils.hasText(size)) {
+                String normalizedSize = size.toLowerCase(Locale.ROOT);
                 Join<ProductionProduct, String> sizes = root.joinSet("sizes", JoinType.LEFT);
-                predicates.add(cb.equal(cb.lower(sizes), size.toLowerCase(Locale.ROOT)));
+                predicates.add(cb.or(
+                        cb.equal(cb.lower(root.get("sizeLabel")), normalizedSize),
+                        cb.equal(cb.lower(sizes), normalizedSize)));
                 query.distinct(true);
             }
             return cb.and(predicates.toArray(Predicate[]::new));
@@ -347,7 +401,9 @@ public class CatalogService {
     private void applyProductPayload(ProductionProduct product,
                                      ProductionBrand brand,
                                      CatalogProductRequest request,
-                                     boolean creating) {
+                                     boolean creating,
+                                     String previousProductName,
+                                     String previousProductFamilyName) {
         String name = normalizeRequiredText(request.name(), "Product name is required");
         Set<String> colors = normalizeOptions(request.colors(), "colors");
         Set<String> sizes = normalizeOptions(request.sizes(), "sizes");
@@ -355,7 +411,9 @@ public class CatalogService {
         assertUniqueProductName(brand, name, creating ? null : product.getId());
 
         product.setProductName(name);
-        product.setCategory(DEFAULT_PRODUCT_CATEGORY);
+        if (creating) {
+            product.setCategory(DEFAULT_PRODUCT_CATEGORY);
+        }
         product.setDefaultColour(colors.stream().findFirst().orElse(null));
         product.setSizeLabel(sizes.stream().findFirst().orElse(null));
         product.setColors(colors);
@@ -363,12 +421,167 @@ public class CatalogService {
         product.setCartonSizes(cartonSizes);
         product.setUnitOfMeasure(normalizeRequiredText(request.unitOfMeasure(), "Unit of measure is required"));
         product.setHsnCode(normalizeRequiredText(request.hsnCode(), "HSN code is required"));
+        if (request.basePrice() != null || creating) {
+            product.setBasePrice(normalizeMoney(request.basePrice()));
+        }
         product.setGstRate(normalizeRate(request.gstRate()));
+        if (request.minDiscountPercent() != null || creating) {
+            product.setMinDiscountPercent(normalizeOptionalRate(request.minDiscountPercent()));
+        }
+        if (request.minSellingPrice() != null || creating) {
+            product.setMinSellingPrice(normalizeMoney(request.minSellingPrice()));
+        }
+        if (request.metadata() != null) {
+            product.setMetadata(creating
+                    ? normalizeMetadata(request.metadata())
+                    : mergeMetadata(product.getMetadata(), request.metadata()));
+        } else if (creating) {
+            product.setMetadata(new LinkedHashMap<>());
+        }
         if (creating) {
             product.setActive(request.active() == null || request.active());
         } else if (request.active() != null) {
             product.setActive(request.active());
         }
+        refreshCanonicalFamilyLinkage(product, brand, previousProductName, previousProductFamilyName);
+    }
+
+    private void syncInventoryTruth(Company company, ProductionProduct product) {
+        if (company == null || product == null || product.getId() == null) {
+            return;
+        }
+        if (isRawMaterialCategory(product.getCategory())) {
+            syncRawMaterial(company, product);
+            return;
+        }
+        syncFinishedGood(company, product);
+    }
+
+    private void refreshCanonicalFamilyLinkage(ProductionProduct product,
+                                               ProductionBrand brand,
+                                               String previousProductName,
+                                               String previousProductFamilyName) {
+        if (product.getVariantGroupId() == null && !StringUtils.hasText(product.getProductFamilyName())) {
+            return;
+        }
+        String productFamilyName = resolveCanonicalProductFamilyName(
+                product.getProductName(),
+                previousProductName,
+                previousProductFamilyName);
+        product.setProductFamilyName(productFamilyName);
+        product.setVariantGroupId(buildVariantGroupId(
+                product.getCompany(),
+                brand,
+                productFamilyName,
+                product.getCategory(),
+                product.getUnitOfMeasure(),
+                product.getHsnCode()));
+    }
+
+    private String resolveCanonicalProductFamilyName(String currentProductName,
+                                                     String previousProductName,
+                                                     String previousProductFamilyName) {
+        String normalizedCurrentProductName = normalizeRequiredText(currentProductName, "Product name is required");
+        String normalizedPreviousProductName = normalizeOptionalText(previousProductName);
+        String normalizedPreviousProductFamilyName = normalizeOptionalText(previousProductFamilyName);
+        if (!StringUtils.hasText(normalizedPreviousProductFamilyName)) {
+            return normalizedCurrentProductName;
+        }
+        if (Objects.equals(normalizedCurrentProductName, normalizedPreviousProductName)) {
+            return normalizedPreviousProductFamilyName;
+        }
+        String canonicalMemberSuffix = extractCanonicalMemberSuffix(
+                normalizedPreviousProductName,
+                normalizedPreviousProductFamilyName);
+        if (StringUtils.hasText(canonicalMemberSuffix) && normalizedCurrentProductName.endsWith(canonicalMemberSuffix)) {
+            String derivedFamilyName = normalizeOptionalText(
+                    normalizedCurrentProductName.substring(
+                            0,
+                            normalizedCurrentProductName.length() - canonicalMemberSuffix.length()));
+            if (StringUtils.hasText(derivedFamilyName)) {
+                return derivedFamilyName;
+            }
+        }
+        return normalizedCurrentProductName;
+    }
+
+    private String extractCanonicalMemberSuffix(String productName, String productFamilyName) {
+        if (!StringUtils.hasText(productName) || !StringUtils.hasText(productFamilyName)) {
+            return null;
+        }
+        if (!productName.startsWith(productFamilyName)) {
+            return null;
+        }
+        return normalizeOptionalText(productName.substring(productFamilyName.length()));
+    }
+
+    private UUID buildVariantGroupId(Company company,
+                                     ProductionBrand brand,
+                                     String productFamilyName,
+                                     String category,
+                                     String unitOfMeasure,
+                                     String hsnCode) {
+        String fingerprint = String.join("|",
+                String.valueOf(company != null ? company.getId() : null),
+                String.valueOf(brand != null ? brand.getId() : null),
+                sanitizeSegment(productFamilyName),
+                sanitizeSegment(category),
+                sanitizeSegment(unitOfMeasure),
+                sanitizeSegment(hsnCode));
+        return UUID.nameUUIDFromBytes(fingerprint.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private String sanitizeSegment(String value) {
+        if (!StringUtils.hasText(value)) {
+            return "";
+        }
+        String upper = value.trim().toUpperCase(Locale.ROOT);
+        return NON_ALPHANUM.matcher(upper).replaceAll("");
+    }
+
+    private void syncRawMaterial(Company company, ProductionProduct product) {
+        String sku = normalizeRequiredText(product.getSkuCode(), "Product SKU is required");
+        RawMaterial material = rawMaterialRepository.findByCompanyAndSku(company, sku)
+                .orElseGet(() -> {
+                    RawMaterial created = new RawMaterial();
+                    created.setCompany(company);
+                    created.setSku(sku);
+                    created.setCurrentStock(BigDecimal.ZERO);
+                    return created;
+                });
+        material.setName(normalizeRequiredText(product.getProductName(), "Product name is required"));
+        material.setUnitType(resolveUnit(product.getUnitOfMeasure()));
+        Long inventoryAccountId = rawMaterialInventoryAccountIdFromMetadata(product);
+        if (inventoryAccountId != null) {
+            material.setInventoryAccountId(inventoryAccountId);
+        } else if (material.getInventoryAccountId() == null && company.getDefaultInventoryAccountId() != null) {
+            material.setInventoryAccountId(company.getDefaultInventoryAccountId());
+        }
+        if (product.getGstRate() != null) {
+            material.setGstRate(product.getGstRate());
+        }
+        rawMaterialRepository.save(material);
+    }
+
+    private void syncFinishedGood(Company company, ProductionProduct product) {
+        String sku = normalizeRequiredText(product.getSkuCode(), "Product SKU is required");
+        FinishedGood finishedGood = finishedGoodRepository.findByCompanyAndProductCode(company, sku)
+                .orElseGet(() -> {
+                    FinishedGood created = new FinishedGood();
+                    created.setCompany(company);
+                    created.setProductCode(sku);
+                    created.setCurrentStock(BigDecimal.ZERO);
+                    created.setReservedStock(BigDecimal.ZERO);
+                    return created;
+                });
+        finishedGood.setName(normalizeRequiredText(product.getProductName(), "Product name is required"));
+        finishedGood.setUnit(resolveUnit(product.getUnitOfMeasure()));
+        finishedGood.setValuationAccountId(metadataLong(product.getMetadata(), "fgValuationAccountId"));
+        finishedGood.setCogsAccountId(metadataLong(product.getMetadata(), "fgCogsAccountId"));
+        finishedGood.setRevenueAccountId(metadataLong(product.getMetadata(), "fgRevenueAccountId"));
+        finishedGood.setDiscountAccountId(metadataLong(product.getMetadata(), "fgDiscountAccountId"));
+        finishedGood.setTaxAccountId(metadataLong(product.getMetadata(), "fgTaxAccountId"));
+        finishedGoodRepository.save(finishedGood);
     }
 
     private Set<String> normalizeOptions(List<String> values, String fieldName) {
@@ -500,6 +713,164 @@ public class CatalogService {
         return value.setScale(4, RoundingMode.HALF_UP);
     }
 
+    private String resolveUnit(String unit) {
+        return StringUtils.hasText(unit) ? unit.trim() : "UNIT";
+    }
+
+    private Long rawMaterialInventoryAccountIdFromMetadata(ProductionProduct product) {
+        if (product == null) {
+            return null;
+        }
+        return rawMaterialInventoryAccountIdFromMetadata(product.getMetadata());
+    }
+
+    private Long rawMaterialInventoryAccountIdFromMetadata(Map<String, Object> metadata) {
+        Long accountId = metadataLong(metadata, "inventoryAccountId");
+        if (accountId == null) {
+            accountId = metadataLong(metadata, "rawMaterialInventoryAccountId");
+        }
+        return accountId;
+    }
+
+    private void validateInventorySyncMetadata(Company company, ProductionProduct product) {
+        if (company == null || product == null) {
+            return;
+        }
+        product.setMetadata(validateInventorySyncMetadata(
+                company,
+                product.getCategory(),
+                product.getSkuCode(),
+                product.getMetadata()));
+    }
+
+    private Map<String, Object> validateInventorySyncMetadata(Company company,
+                                                              String category,
+                                                              String sku,
+                                                              Map<String, Object> metadata) {
+        Map<String, Object> working = normalizeMetadata(metadata);
+        if (isRawMaterialCategory(category)) {
+            Long inventoryAccountId = rawMaterialInventoryAccountIdFromMetadata(working);
+            if (inventoryAccountId != null) {
+                Long validatedAccountId = requireRawMaterialInventoryAccount(company, inventoryAccountId, sku);
+                if (working.containsKey("inventoryAccountId")) {
+                    working.put("inventoryAccountId", validatedAccountId);
+                }
+                if (working.containsKey("rawMaterialInventoryAccountId")) {
+                    working.put("rawMaterialInventoryAccountId", validatedAccountId);
+                }
+            }
+            return working;
+        }
+        return ensureFinishedGoodAccounts(company, sku, working);
+    }
+
+    private Long requireRawMaterialInventoryAccount(Company company, Long accountId, String sku) {
+        if (accountId == null || accountId <= 0) {
+            return null;
+        }
+        try {
+            return companyEntityLookup.requireAccount(company, accountId).getId();
+        } catch (IllegalArgumentException ex) {
+            throw ValidationUtils.invalidInput(
+                    "Raw material SKU " + sku + " references an invalid inventory account id " + accountId);
+        }
+    }
+
+    private Map<String, Object> ensureFinishedGoodAccounts(Company company,
+                                                           String sku,
+                                                           Map<String, Object> metadata) {
+        Map<String, Object> working = normalizeMetadata(metadata);
+        Map<String, Long> defaults = new LinkedHashMap<>();
+        defaults.put("fgValuationAccountId", company.getDefaultInventoryAccountId());
+        defaults.put("fgCogsAccountId", company.getDefaultCogsAccountId());
+        defaults.put("fgRevenueAccountId", company.getDefaultRevenueAccountId());
+        defaults.put("fgDiscountAccountId", company.getDefaultDiscountAccountId());
+        defaults.put("fgTaxAccountId", company.getDefaultTaxAccountId());
+
+        for (String key : FINISHED_GOOD_ACCOUNT_KEYS) {
+            if (!hasLongValue(working.get(key)) && defaults.get(key) != null) {
+                working.put(key, defaults.get(key));
+            }
+        }
+
+        for (String key : List.of("fgValuationAccountId", "fgCogsAccountId", "fgRevenueAccountId", "fgTaxAccountId")) {
+            if (!hasLongValue(working.get(key))) {
+                throw ValidationUtils.invalidState(
+                        "Default " + key + " is not configured for company " + company.getCode()
+                                + ". Configure company default accounts to enable product posting.");
+            }
+        }
+
+        for (String key : FINISHED_GOOD_ACCOUNT_KEYS) {
+            Long accountId = metadataLong(working, key);
+            if (accountId == null) {
+                continue;
+            }
+            Long validatedAccountId = requireFinishedGoodAccount(company, accountId, sku, key);
+            if (!Objects.equals(accountId, validatedAccountId)) {
+                working.put(key, validatedAccountId);
+            }
+        }
+        return working;
+    }
+
+    private Long requireFinishedGoodAccount(Company company,
+                                            Long accountId,
+                                            String sku,
+                                            String key) {
+        if (accountId == null || accountId <= 0) {
+            return null;
+        }
+        try {
+            return companyEntityLookup.requireAccount(company, accountId).getId();
+        } catch (IllegalArgumentException ex) {
+            throw ValidationUtils.invalidInput(
+                    "Finished good SKU " + sku + " references an invalid account id " + accountId + " for " + key);
+        }
+    }
+
+    private boolean hasLongValue(Object value) {
+        if (value instanceof Number number) {
+            return number.longValue() > 0;
+        }
+        if (value instanceof String stringValue && StringUtils.hasText(stringValue)) {
+            try {
+                return Long.parseLong(stringValue.trim()) > 0;
+            } catch (NumberFormatException ignored) {
+                return false;
+            }
+        }
+        return false;
+    }
+
+    private Long metadataLong(Map<String, Object> metadata, String key) {
+        if (metadata == null) {
+            return null;
+        }
+        Object candidate = metadata.get(key);
+        if (candidate instanceof Number number) {
+            long value = number.longValue();
+            return value > 0 ? value : null;
+        }
+        if (candidate instanceof String text && StringUtils.hasText(text)) {
+            try {
+                long value = Long.parseLong(text.trim());
+                return value > 0 ? value : null;
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    private boolean isRawMaterialCategory(String category) {
+        if (!StringUtils.hasText(category)) {
+            return false;
+        }
+        String normalized = category.replace('-', '_').toUpperCase(Locale.ROOT);
+        return RAW_MATERIAL_CATEGORIES.stream().anyMatch(normalized::equalsIgnoreCase);
+    }
+
     private ProductionBrand requireBrand(Company company, Long brandId) {
         return brandRepository.findByCompanyAndId(company, brandId)
                 .orElseThrow(() -> new ApplicationException(
@@ -553,10 +924,10 @@ public class CatalogService {
                 next = Integer.parseInt(matcher.group(1)) + 1;
             }
         }
-        String candidate;
-        do {
+        String candidate = prefix + "-" + String.format(Locale.ROOT, "%03d", next++);
+        while (productRepository.findByCompanyAndSkuCode(company, candidate).isPresent()) {
             candidate = prefix + "-" + String.format(Locale.ROOT, "%03d", next++);
-        } while (productRepository.findByCompanyAndSkuCode(company, candidate).isPresent());
+        }
         return candidate;
     }
 
@@ -579,6 +950,39 @@ public class CatalogService {
             throw ValidationUtils.invalidInput("GST rate must be between 0 and 100");
         }
         return value;
+    }
+
+    private BigDecimal normalizeOptionalRate(BigDecimal value) {
+        if (value == null) {
+            return BigDecimal.ZERO;
+        }
+        if (value.compareTo(BigDecimal.ZERO) < 0 || value.compareTo(new BigDecimal("100")) > 0) {
+            throw ValidationUtils.invalidInput("Minimum discount percent must be between 0 and 100");
+        }
+        return value;
+    }
+
+    private BigDecimal normalizeMoney(BigDecimal value) {
+        if (value == null) {
+            return BigDecimal.ZERO;
+        }
+        if (value.compareTo(BigDecimal.ZERO) < 0) {
+            throw ValidationUtils.invalidInput("Money values cannot be negative");
+        }
+        return value;
+    }
+
+    private Map<String, Object> normalizeMetadata(Map<String, Object> metadata) {
+        if (metadata == null || metadata.isEmpty()) {
+            return new LinkedHashMap<>();
+        }
+        return new LinkedHashMap<>(metadata);
+    }
+
+    private Map<String, Object> mergeMetadata(Map<String, Object> existingMetadata, Map<String, Object> requestMetadata) {
+        Map<String, Object> merged = normalizeMetadata(existingMetadata);
+        merged.putAll(normalizeMetadata(requestMetadata));
+        return merged;
     }
 
     private String normalizeRequiredText(String value, String message) {
@@ -609,13 +1013,22 @@ public class CatalogService {
     }
 
     private CatalogProductDto toProductDto(ProductionProduct product) {
-        List<String> colors = product.getColors() == null ? List.of() : List.copyOf(product.getColors());
-        List<String> sizes = product.getSizes() == null ? List.of() : List.copyOf(product.getSizes());
+        return toProductDto(product, true);
+    }
+
+    private CatalogProductDto toPublicProductDto(ProductionProduct product) {
+        return toProductDto(product, false);
+    }
+
+    private CatalogProductDto toProductDto(ProductionProduct product, boolean includeAccountingMetadata) {
+        List<String> colors = toVariantList(product.getColors(), product.getDefaultColour());
+        List<String> sizes = toVariantList(product.getSizes(), product.getSizeLabel());
         List<CatalogProductCartonSizeDto> cartonSizeDtos = product.getCartonSizes() == null
                 ? List.of()
                 : product.getCartonSizes().entrySet().stream()
                 .map(entry -> new CatalogProductCartonSizeDto(entry.getKey(), entry.getValue()))
                 .toList();
+        Map<String, Object> metadata = snapshotMetadata(product.getMetadata(), includeAccountingMetadata);
 
         return new CatalogProductDto(
                 product.getId(),
@@ -625,13 +1038,41 @@ public class CatalogService {
                 product.getBrand().getCode(),
                 product.getProductName(),
                 product.getSkuCode(),
+                product.getCategory(),
+                product.getVariantGroupId(),
+                product.getProductFamilyName(),
                 colors,
                 sizes,
                 cartonSizeDtos,
                 product.getUnitOfMeasure(),
                 product.getHsnCode(),
+                product.getBasePrice(),
                 product.getGstRate(),
+                product.getMinDiscountPercent(),
+                product.getMinSellingPrice(),
+                metadata,
                 product.isActive());
+    }
+
+    private Map<String, Object> snapshotMetadata(Map<String, Object> metadata, boolean includeAccountingMetadata) {
+        if (metadata == null || metadata.isEmpty()) {
+            return Map.of();
+        }
+        LinkedHashMap<String, Object> snapshot = new LinkedHashMap<>();
+        metadata.forEach((key, value) -> {
+            if (includeAccountingMetadata || key == null || !key.endsWith(ACCOUNTING_METADATA_KEY_SUFFIX)) {
+                snapshot.put(key, value);
+            }
+        });
+        return snapshot.isEmpty() ? Map.of() : Collections.unmodifiableMap(snapshot);
+    }
+
+    private List<String> toVariantList(Set<String> values, String fallback) {
+        if (values != null && !values.isEmpty()) {
+            return List.copyOf(values);
+        }
+        String normalizedFallback = normalizeOptionalText(fallback);
+        return normalizedFallback == null ? List.of() : List.of(normalizedFallback);
     }
 
     private record ProductMutationOutcome(String action, CatalogProductDto product) {

@@ -16,6 +16,7 @@ import com.bigbrightpaints.erp.modules.production.domain.ProductionProductReposi
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriod;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.CostingMethod;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -57,6 +58,11 @@ class InventoryValuationServiceTest {
     void setUp() {
         lenient().when(companyClock.today(any())).thenReturn(LocalDate.of(2026, 3, 18));
         new CompanyTime(companyClock);
+    }
+
+    @AfterEach
+    void tearDown() {
+        ReflectionTestUtils.setField(CompanyTime.class, "companyClock", null);
     }
 
     @Test

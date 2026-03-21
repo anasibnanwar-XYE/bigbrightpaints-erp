@@ -17,6 +17,7 @@ public record ProductCreateRequest(
         String defaultColour,
         String sizeLabel,
         String unitOfMeasure,
+        String hsnCode,
         @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
         String customSkuCode,
         BigDecimal basePrice,

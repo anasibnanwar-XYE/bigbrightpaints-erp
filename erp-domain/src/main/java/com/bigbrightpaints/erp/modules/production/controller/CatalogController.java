@@ -1,26 +1,38 @@
 package com.bigbrightpaints.erp.modules.production.controller;
 
+import com.bigbrightpaints.erp.core.util.IdempotencyHeaderUtils;
 import com.bigbrightpaints.erp.modules.production.dto.CatalogBrandDto;
 import com.bigbrightpaints.erp.modules.production.dto.CatalogBrandRequest;
-import com.bigbrightpaints.erp.modules.production.dto.CatalogProductBulkItemRequest;
-import com.bigbrightpaints.erp.modules.production.dto.CatalogProductBulkResponse;
+import com.bigbrightpaints.erp.modules.production.dto.BulkVariantRequest;
+import com.bigbrightpaints.erp.modules.production.dto.BulkVariantResponse;
+import com.bigbrightpaints.erp.modules.production.dto.CatalogImportResponse;
+import com.bigbrightpaints.erp.modules.production.dto.CatalogProductEntryRequest;
+import com.bigbrightpaints.erp.modules.production.dto.CatalogProductEntryResponse;
 import com.bigbrightpaints.erp.modules.production.dto.CatalogProductDto;
 import com.bigbrightpaints.erp.modules.production.dto.CatalogProductRequest;
+import com.bigbrightpaints.erp.modules.production.dto.ProductCreateRequest;
+import com.bigbrightpaints.erp.modules.production.dto.ProductionProductDto;
 import com.bigbrightpaints.erp.modules.production.service.CatalogService;
+import com.bigbrightpaints.erp.modules.production.service.ProductionCatalogService;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 import com.bigbrightpaints.erp.shared.dto.PageResponse;
 import jakarta.validation.Valid;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -30,9 +42,12 @@ import java.util.List;
 public class CatalogController {
 
     private final CatalogService catalogService;
+    private final ProductionCatalogService productionCatalogService;
 
-    public CatalogController(CatalogService catalogService) {
+    public CatalogController(CatalogService catalogService,
+                             ProductionCatalogService productionCatalogService) {
         this.catalogService = catalogService;
+        this.productionCatalogService = productionCatalogService;
     }
 
     @PostMapping("/brands")
@@ -62,9 +77,43 @@ public class CatalogController {
         return ResponseEntity.ok(ApiResponse.success("Brand deactivated", catalogService.deactivateBrand(brandId)));
     }
 
+    @PostMapping(value = "/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
+    public ResponseEntity<ApiResponse<CatalogImportResponse>> importCatalog(
+            @RequestPart("file") MultipartFile file,
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+            @RequestHeader(value = "X-Idempotency-Key", required = false) String legacyIdempotencyKey) {
+        String resolvedKey = IdempotencyHeaderUtils.resolveHeaderKey(idempotencyKey, legacyIdempotencyKey);
+        return ResponseEntity.ok(ApiResponse.success("Catalog import processed",
+                productionCatalogService.importCatalog(file, resolvedKey)));
+    }
+
     @PostMapping("/products")
-    public ResponseEntity<ApiResponse<CatalogProductDto>> createProduct(@Valid @RequestBody CatalogProductRequest request) {
-        return ResponseEntity.ok(ApiResponse.success("Product created", catalogService.createProduct(request)));
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
+    public ResponseEntity<ApiResponse<CatalogProductEntryResponse>> createProduct(
+            @Valid @RequestBody CatalogProductEntryRequest request,
+            @RequestParam(value = "preview", defaultValue = "false") boolean preview) {
+        String message = preview ? "Product preview generated" : "Products created";
+        return ResponseEntity.ok(ApiResponse.success(message,
+                productionCatalogService.createOrPreviewCatalogProducts(request, preview)));
+    }
+
+    @PostMapping("/products/single")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
+    public ResponseEntity<ApiResponse<ProductionProductDto>> createSingleProduct(
+            @Valid @RequestBody ProductCreateRequest request) {
+        return ResponseEntity.ok(ApiResponse.success("Product created",
+                productionCatalogService.createProduct(request)));
+    }
+
+    @PostMapping("/products/bulk-variants")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
+    public ResponseEntity<ApiResponse<BulkVariantResponse>> createBulkVariants(
+            @Valid @RequestBody BulkVariantRequest request,
+            @RequestParam(value = "dryRun", defaultValue = "false") boolean dryRun) {
+        String message = dryRun ? "Variant preview generated" : "Variants created";
+        return ResponseEntity.ok(ApiResponse.success(message,
+                productionCatalogService.createVariants(request, dryRun)));
     }
 
     @GetMapping("/products")
@@ -74,22 +123,27 @@ public class CatalogController {
             @RequestParam(value = "size", required = false) String size,
             @RequestParam(value = "active", required = false) Boolean active,
             @RequestParam(value = "page", defaultValue = "0") int page,
-            @RequestParam(value = "pageSize", defaultValue = "20") int pageSize) {
+            @RequestParam(value = "pageSize", defaultValue = "20") int pageSize,
+            Authentication authentication) {
         return ResponseEntity.ok(ApiResponse.success(catalogService.searchProducts(
                 brandId,
                 color,
                 size,
                 active,
                 page,
-                pageSize)));
+                pageSize,
+                canViewAccountingMetadata(authentication))));
     }
 
     @GetMapping("/products/{productId}")
-    public ResponseEntity<ApiResponse<CatalogProductDto>> getProduct(@PathVariable Long productId) {
-        return ResponseEntity.ok(ApiResponse.success(catalogService.getProduct(productId)));
+    public ResponseEntity<ApiResponse<CatalogProductDto>> getProduct(@PathVariable Long productId,
+                                                                     Authentication authentication) {
+        return ResponseEntity.ok(ApiResponse.success(
+                catalogService.getProduct(productId, canViewAccountingMetadata(authentication))));
     }
 
     @PutMapping("/products/{productId}")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
     public ResponseEntity<ApiResponse<CatalogProductDto>> updateProduct(@PathVariable Long productId,
                                                                         @Valid @RequestBody CatalogProductRequest request) {
         return ResponseEntity.ok(ApiResponse.success("Product updated", catalogService.updateProduct(productId, request)));
@@ -100,9 +154,12 @@ public class CatalogController {
         return ResponseEntity.ok(ApiResponse.success("Product deactivated", catalogService.deactivateProduct(productId)));
     }
 
-    @PostMapping("/products/bulk")
-    public ResponseEntity<ApiResponse<CatalogProductBulkResponse>> bulkUpsertProducts(
-            @Valid @RequestBody List<@Valid CatalogProductBulkItemRequest> request) {
-        return ResponseEntity.ok(ApiResponse.success("Bulk product request processed", catalogService.bulkUpsertProducts(request)));
+    private boolean canViewAccountingMetadata(Authentication authentication) {
+        if (authentication == null || authentication.getAuthorities() == null) {
+            return false;
+        }
+        return authentication.getAuthorities().stream()
+                .map(grantedAuthority -> grantedAuthority.getAuthority())
+                .anyMatch(authority -> "ROLE_ADMIN".equals(authority) || "ROLE_ACCOUNTING".equals(authority));
     }
 }

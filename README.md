@@ -191,6 +191,9 @@ docker build -t erp-test -f erp-domain/Dockerfile .
 Notes:
 - Swagger/OpenAPI endpoints are intentionally disabled in production profile.
 - Enable dev profile to use interactive API docs locally.
+- Public catalog contract is `/api/v1/catalog/**` only.
+- Create brands explicitly on `POST /api/v1/catalog/brands`, then create or preview products on `POST /api/v1/catalog/products` using a resolved active `brandId`.
+- Use only the canonical catalog endpoints above for brand selection/create and product preview/commit flows.
 
 ---
 
