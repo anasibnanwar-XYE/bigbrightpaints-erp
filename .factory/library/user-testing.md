@@ -187,6 +187,8 @@ Testing surface: tools, URLs, setup steps, isolation notes, known quirks.
 - For existing-brand selection proof, seed active and inactive brands and use `GET /api/v1/catalog/brands?active=true`.
 - For new-brand proof, call `POST /api/v1/catalog/brands`, capture the returned `brandId`, and then call `POST /api/v1/catalog/products`; do not validate inline brand creation inside the product request.
 - For preview proof, confirm the preview and commit payloads produce the same candidate SKU set and that preview does not persist products, family/group rows, or mirrors.
+- After `bash scripts/reset_final_validation_runtime.sh`, verify `GET /api/v1/accounting/default-accounts` before finished-good or cross-flow probes. In the current reset runtime, `MOCK` may come up with all five default account ids unset; fix the local validation runtime by `PUT /api/v1/accounting/default-accounts` with `inventory=5`, `cogs=6`, `revenue=7`, `discount=10`, and `tax=8` before expecting canonical finished-good creates to persist.
+- Manual raw-material batch entry can return `409 BUS_004` in this runtime. For factory-readiness proof, seed namespaced raw-material stock through the canonical purchasing flow (`POST /api/v1/suppliers` -> approve/activate -> `POST /api/v1/purchasing/purchase-orders` -> approve -> `POST /api/v1/purchasing/goods-receipts`) instead of using a manual batch shortcut.
 
 ### Known Broad-Gate Reds Outside This Packet
 - `SalesControllerIT.dispatch_confirm_allows_factory_to_reach_business_validation` is currently red before catalog changes in the sales dispatch authorization path.
