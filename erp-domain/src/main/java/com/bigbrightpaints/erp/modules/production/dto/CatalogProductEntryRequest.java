@@ -37,10 +37,10 @@ public class CatalogProductEntryRequest {
     private BigDecimal gstRate;
 
     @NotEmpty(message = "colors must contain at least one value")
-    private List<@NotBlank(message = "colors must not contain blank values") String> colors;
+    private List<String> colors;
 
     @NotEmpty(message = "sizes must contain at least one value")
-    private List<@NotBlank(message = "sizes must not contain blank values") String> sizes;
+    private List<String> sizes;
 
     private BigDecimal basePrice;
     private BigDecimal minDiscountPercent;
@@ -98,17 +98,13 @@ public class CatalogProductEntryRequest {
         this.gstRate = gstRate;
     }
 
-    public List<String> getColors() {
-        return colors;
-    }
+    public List<@NotBlank(message = "colors must not contain blank values") String> getColors() { return colors; }
 
     public void setColors(List<String> colors) {
         this.colors = colors;
     }
 
-    public List<String> getSizes() {
-        return sizes;
-    }
+    public List<@NotBlank(message = "sizes must not contain blank values") String> getSizes() { return sizes; }
 
     public void setSizes(List<String> sizes) {
         this.sizes = sizes;
