@@ -21,6 +21,8 @@ class TS_RuntimeGlobalExceptionHandlerExecutableCoverageTest {
 
     private static final String CATALOG_PRODUCT_ENTRY_PATH = "/api/v1/catalog/products";
     private static final String CATALOG_PRODUCT_ENTRY_OPERATION = "catalog-product-entry";
+    private static final String CATALOG_BULK_VARIANTS_PATH = "/api/v1/catalog/products/bulk-variants";
+    private static final String CATALOG_BULK_VARIANTS_OPERATION = "catalog-bulk-variants";
 
     @Test
     void production_conflict_exposes_allowlisted_details_for_canonical_and_prefixed_paths() throws Exception {
@@ -93,6 +95,32 @@ class TS_RuntimeGlobalExceptionHandlerExecutableCoverageTest {
                 handler.handleApplicationException(wrongPath, prefixedNonMatchingRequest);
         assertThat(wrongPathResponse.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
         assertThat(requireBodyData(wrongPathResponse)).doesNotContainKey("details");
+    }
+
+    @Test
+    void production_conflict_exposes_allowlisted_details_for_bulk_variant_contract() throws Exception {
+        GlobalExceptionHandler handler = new GlobalExceptionHandler();
+        setActiveProfile(handler, "prod");
+
+        ApplicationException ex = catalogBulkVariantConflictException()
+                .withDetail("generated", List.of(Map.of("sku", "HB-SKU-RED-1L")))
+                .withDetail("conflicts", List.of(Map.of("sku", "HB-SKU-RED-1L", "reason", "SKU_ALREADY_EXISTS")))
+                .withDetail("wouldCreate", List.of())
+                .withDetail("created", List.of())
+                .withDetail("internalLeak", Map.of("sql", "select * from products"));
+
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setRequestURI(CATALOG_BULK_VARIANTS_PATH);
+
+        ResponseEntity<ApiResponse<Map<String, Object>>> response =
+                handler.handleApplicationException(ex, request);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        Map<String, Object> details = requireDetails(response);
+        assertThat(details)
+                .containsOnlyKeys("generated", "conflicts", "wouldCreate", "created", "operation")
+                .containsEntry("operation", CATALOG_BULK_VARIANTS_OPERATION)
+                .doesNotContainKey("internalLeak");
     }
 
     @Test
@@ -264,6 +292,13 @@ class TS_RuntimeGlobalExceptionHandlerExecutableCoverageTest {
                 ErrorCode.CONCURRENCY_CONFLICT,
                 "Catalog product entry has SKU conflicts. Resolve conflicts and retry.")
                 .withDetail("operation", CATALOG_PRODUCT_ENTRY_OPERATION);
+    }
+
+    private static ApplicationException catalogBulkVariantConflictException() {
+        return new ApplicationException(
+                ErrorCode.CONCURRENCY_CONFLICT,
+                "Bulk variant creation has SKU conflicts. Resolve conflicts and retry.")
+                .withDetail("operation", CATALOG_BULK_VARIANTS_OPERATION);
     }
 
     private static Map<String, Object> requireBodyData(ResponseEntity<ApiResponse<Map<String, Object>>> response) {
