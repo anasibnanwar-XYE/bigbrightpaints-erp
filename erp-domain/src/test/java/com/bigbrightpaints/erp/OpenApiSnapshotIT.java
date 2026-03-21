@@ -100,6 +100,11 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
         assertQueryParameter(root, "/api/v1/catalog/products", "get", "brandId");
         assertOperationContract(root, "/api/v1/catalog/products", "post",
                 "#/components/schemas/CatalogProductEntryRequest", "200", "#/components/schemas/ApiResponseCatalogProductEntryResponse");
+        assertOperationContract(root, "/api/v1/catalog/products/single", "post",
+                "#/components/schemas/ProductCreateRequest", "200", "#/components/schemas/ApiResponseProductionProductDto");
+        assertOperationContract(root, "/api/v1/catalog/products/bulk-variants", "post",
+                "#/components/schemas/BulkVariantRequest", "200", "#/components/schemas/ApiResponseBulkVariantResponse");
+        assertQueryParameter(root, "/api/v1/catalog/products/bulk-variants", "post", "dryRun");
 
         assertOperationMissing(root, "/api/v1/accounting/catalog/import", "post");
         assertOperationMissing(root, "/api/v1/accounting/catalog/products", "get");

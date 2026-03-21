@@ -176,8 +176,13 @@ public class CatalogService {
 
     @Transactional(readOnly = true)
     public CatalogProductDto getProduct(Long productId) {
+        return getProduct(productId, false);
+    }
+
+    @Transactional(readOnly = true)
+    public CatalogProductDto getProduct(Long productId, boolean includeAccountingMetadata) {
         Company company = companyContextService.requireCurrentCompany();
-        return toPublicProductDto(requireProduct(company, productId));
+        return toProductDto(requireProduct(company, productId), includeAccountingMetadata);
     }
 
     @Transactional
@@ -211,6 +216,17 @@ public class CatalogService {
                                                           Boolean active,
                                                           int page,
                                                           int pageSize) {
+        return searchProducts(brandId, color, size, active, page, pageSize, false);
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<CatalogProductDto> searchProducts(Long brandId,
+                                                          String color,
+                                                          String size,
+                                                          Boolean active,
+                                                          int page,
+                                                          int pageSize,
+                                                          boolean includeAccountingMetadata) {
         Company company = companyContextService.requireCurrentCompany();
         int sanitizedPage = Math.max(page, 0);
         int sanitizedPageSize = Math.min(Math.max(pageSize, 1), MAX_PAGE_SIZE);
@@ -222,7 +238,9 @@ public class CatalogService {
                 normalizeOptionalText(size),
                 active);
         Page<ProductionProduct> result = productRepository.findAll(specification, pageable);
-        List<CatalogProductDto> content = result.getContent().stream().map(this::toPublicProductDto).toList();
+        List<CatalogProductDto> content = result.getContent().stream()
+                .map(product -> toProductDto(product, includeAccountingMetadata))
+                .toList();
         return PageResponse.of(content, result.getTotalElements(), sanitizedPage, sanitizedPageSize);
     }
 

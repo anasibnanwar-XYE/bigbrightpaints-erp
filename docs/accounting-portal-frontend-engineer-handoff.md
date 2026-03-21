@@ -90,11 +90,11 @@ These are cross-portal APIs reused in Accounting Portal for auth/session/profile
 
 | Function | Method | Path | Required params | Optional params | Cache | Debounce | Idempotent |
 |---|---|---|---|---|---|---|---|
-| `acctCatalogImportCatalog` | POST | `/api/v1/accounting/catalog/import` | file (multipart body; if file-part `Content-Type` is absent, filename must end with `.csv`) | Idempotency-Key (header) | No | No | No |
-| `acctCatalogListProducts` | GET | `/api/v1/accounting/catalog/products` | - | - | Yes | No | Yes |
-| `acctCatalogCreateProduct` | POST | `/api/v1/accounting/catalog/products` | category (body), productName (body) | basePrice (body), brandCode (body), brandId (body), brandName (body), customSkuCode (body), defaultColour (body), gstRate (body), metadata (body), minDiscountPercent (body), minSellingPrice (body), sizeLabel (body), unitOfMeasure (body) | No | No | No |
-| `acctCatalogCreateVariants` | POST | `/api/v1/accounting/catalog/products/bulk-variants` | baseProductName (body), category (body), colors (body), sizes (body) | basePrice (body), brandCode (body), brandId (body), brandName (body), gstRate (body), metadata (body), minDiscountPercent (body), minSellingPrice (body), skuPrefix (body), unitOfMeasure (body) | No | No | No |
-| `acctCatalogUpdateProduct` | PUT | `/api/v1/accounting/catalog/products/{id}` | id (path) | basePrice (body), category (body), defaultColour (body), gstRate (body), metadata (body), minDiscountPercent (body), minSellingPrice (body), productName (body), sizeLabel (body), unitOfMeasure (body) | No | No | Yes |
+| `acctCatalogImportCatalog` | POST | `/api/v1/catalog/import` | file (multipart body; if file-part `Content-Type` is absent, filename must end with `.csv`) | Idempotency-Key (header) | No | No | No |
+| `acctCatalogListProducts` | GET | `/api/v1/catalog/products` | - | active (query), brandId (query), color (query), page (query), pageSize (query), size (query) | Yes | No | Yes |
+| `acctCatalogCreateProduct` | POST | `/api/v1/catalog/products/single` | category (body), productName (body) | basePrice (body), brandCode (body), brandId (body), brandName (body), customSkuCode (body), defaultColour (body), gstRate (body), hsnCode (body), metadata (body), minDiscountPercent (body), minSellingPrice (body), sizeLabel (body), unitOfMeasure (body) | No | No | No |
+| `acctCatalogCreateVariants` | POST | `/api/v1/catalog/products/bulk-variants` | baseProductName (body), category (body) | basePrice (body), brandCode (body), brandId (body), brandName (body), colorSizeMatrix (body), colors (body), dryRun (query), gstRate (body), metadata (body), minDiscountPercent (body), minSellingPrice (body), sizes (body), skuPrefix (body), unitOfMeasure (body) | No | No | No |
+| `acctCatalogUpdateProduct` | PUT | `/api/v1/catalog/products/{id}` | brandId (body), id (path), name (body) | active (body), basePrice (body), cartonSizes (body), colors (body), gstRate (body), hsnCode (body), metadata (body), minDiscountPercent (body), minSellingPrice (body), sizes (body), unitOfMeasure (body) | No | No | Yes |
 | `acctConfigHealth` | GET | `/api/v1/accounting/configuration/health` | - | - | Yes | No | Yes |
 | `acctAccounts` | GET | `/api/v1/accounting/accounts` | - | - | Yes | No | Yes |
 | `acctCreateAccount` | POST | `/api/v1/accounting/accounts` | code (body), name (body), type (body) | parentId (body) | No | No | No |
@@ -290,8 +290,8 @@ These rows are required for the period-close maker-checker UX, but they live out
 - `PUT /api/v1/accounting/raw-materials/{id}` is mutating but defines only `200` (missing richer status semantics).
 - `DELETE /api/v1/accounting/raw-materials/{id}` documents no explicit error responses (only: 200).
 - `DELETE /api/v1/accounting/raw-materials/{id}` is mutating but defines only `200` (missing richer status semantics).
-- `PUT /api/v1/accounting/catalog/products/{id}` documents no explicit error responses (only: 200).
-- `PUT /api/v1/accounting/catalog/products/{id}` is mutating but defines only `200` (missing richer status semantics).
+- `PUT /api/v1/catalog/products/{id}` documents no explicit error responses (only: 200).
+- `PUT /api/v1/catalog/products/{id}` is mutating but defines only `200` (missing richer status semantics).
 - `GET /api/v1/suppliers` documents no explicit error responses (only: 200).
 - `POST /api/v1/suppliers` documents no explicit error responses (only: 200).
 - `POST /api/v1/suppliers` is mutating but defines only `200` (missing richer status semantics).
@@ -358,12 +358,12 @@ These rows are required for the period-close maker-checker UX, but they live out
 - `POST /api/v1/accounting/raw-materials` is mutating but defines only `200` (missing richer status semantics).
 - `POST /api/v1/accounting/payroll/payments/batch` documents no explicit error responses (only: 200).
 - `POST /api/v1/accounting/payroll/payments/batch` is mutating but defines only `200` (missing richer status semantics).
-- `GET /api/v1/accounting/catalog/products` documents no explicit error responses (only: 200).
-- `POST /api/v1/accounting/catalog/products` documents no explicit error responses (only: 200).
-- `POST /api/v1/accounting/catalog/products` is mutating but defines only `200` (missing richer status semantics).
-- `POST /api/v1/accounting/catalog/products/bulk-variants` documents no explicit error responses (only: 200).
-- `POST /api/v1/accounting/catalog/products/bulk-variants` is mutating but defines only `200` (missing richer status semantics).
-- `POST /api/v1/accounting/catalog/import` now documents multipart guard semantics: missing/empty file -> 400, explicit disallowed MIME -> 422 (`FILE_003`), idempotency mismatch -> 409 (`CONC_001`).
+- `GET /api/v1/catalog/products` documents no explicit error responses (only: 200).
+- `POST /api/v1/catalog/products/single` documents no explicit error responses (only: 200).
+- `POST /api/v1/catalog/products/single` is mutating but defines only `200` (missing richer status semantics).
+- `POST /api/v1/catalog/products/bulk-variants` documents no explicit error responses (only: 200).
+- `POST /api/v1/catalog/products/bulk-variants` is mutating but defines only `200` (missing richer status semantics).
+- `POST /api/v1/catalog/import` now documents multipart guard semantics: missing/empty file -> 400, explicit disallowed MIME -> 422 (`FILE_003`), idempotency mismatch -> 409 (`CONC_001`).
 - `PATCH /api/v1/hr/leave-requests/{id}/status` documents no explicit error responses (only: 200).
 - `PATCH /api/v1/hr/leave-requests/{id}/status` is mutating but defines only `200` (missing richer status semantics).
 - `GET /api/v1/reports/wastage` documents no explicit error responses (only: 200).
@@ -519,7 +519,8 @@ These rows are required for the period-close maker-checker UX, but they live out
 - Empty state: no products created yet for selected company.
 - Error state: row-level import error grid (from catalog import response), inline form errors for SKU collisions and invalid account defaults.
 - Suggested table columns: SKU, productName, brand, category, defaultColour, sizeLabel, unitOfMeasure, basePrice, gstRate, minDiscountPercent, minSellingPrice, active.
-- Suggested form fields: From `ProductCreateRequest`/`ProductUpdateRequest` and `BulkVariantRequest` (brand, category, productName/baseProductName, color/size matrix, skuPrefix/customSkuCode, price/tax controls, metadata).
+- Suggested form fields: From `ProductCreateRequest`, `CatalogProductRequest`, `BulkVariantRequest`, and `CatalogProductEntryRequest` (brand, category, productName/baseProductName, singleton or matrix color/size input, cartonSizes, skuPrefix/customSkuCode, price/tax controls, metadata).
+- Current-state contract notes: the retired `/api/v1/accounting/catalog/**` host is replaced by `/api/v1/catalog/**`; single-SKU accounting create uses `/api/v1/catalog/products/single`, sparse/dry-run variant generation uses `/api/v1/catalog/products/bulk-variants`, and rectangular canonical family generation remains on `POST /api/v1/catalog/products`.
 - Role/permission gate: `ROLE_ADMIN or ROLE_ACCOUNTING` (exact backend).
 
 ### `/accounting/inventory/raw-materials`

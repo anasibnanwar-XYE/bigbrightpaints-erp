@@ -213,6 +213,104 @@ class CatalogControllerCanonicalProductIT extends AbstractIntegrationTest {
     }
 
     @Test
+    void searchAndGetProducts_includeAccountingMetadata_forAdminAndAccounting_only() {
+        ProductionBrand activeBrand = saveBrand("Canonical Metadata " + shortId(), true);
+        Account wipAccount = ensureAccount("WIP-R-" + shortId(), "Read WIP", AccountType.ASSET);
+
+        ResponseEntity<Map> createResponse = postCatalogProducts(basePayload(activeBrand.getId()), false);
+        assertThat(createResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> member = members(data(createResponse)).getFirst();
+        Long productId = ((Number) member.get("id")).longValue();
+
+        ResponseEntity<Map> detailResponse = rest.exchange(
+                "/api/v1/catalog/products/" + productId,
+                HttpMethod.GET,
+                new HttpEntity<>(headers),
+                Map.class);
+        assertThat(detailResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> detailData = data(detailResponse);
+
+        Map<String, Object> updatePayload = new LinkedHashMap<>();
+        updatePayload.put("brandId", activeBrand.getId());
+        updatePayload.put("name", detailData.get("name"));
+        updatePayload.put("colors", detailData.get("colors"));
+        updatePayload.put("sizes", detailData.get("sizes"));
+        updatePayload.put("cartonSizes", detailData.get("cartonSizes"));
+        updatePayload.put("unitOfMeasure", detailData.get("unitOfMeasure"));
+        updatePayload.put("hsnCode", detailData.get("hsnCode"));
+        updatePayload.put("basePrice", detailData.get("basePrice"));
+        updatePayload.put("gstRate", detailData.get("gstRate"));
+        updatePayload.put("minDiscountPercent", detailData.get("minDiscountPercent"));
+        updatePayload.put("minSellingPrice", detailData.get("minSellingPrice"));
+        updatePayload.put("metadata", Map.of(
+                "productType", "decorative",
+                "wipAccountId", wipAccount.getId(),
+                "wastageAccountId", company.getDefaultCogsAccountId()));
+        updatePayload.put("active", true);
+
+        ResponseEntity<Map> updateResponse = rest.exchange(
+                "/api/v1/catalog/products/" + productId,
+                HttpMethod.PUT,
+                new HttpEntity<>(updatePayload, headers),
+                Map.class);
+        assertThat(updateResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        ResponseEntity<Map> adminDetailResponse = rest.exchange(
+                "/api/v1/catalog/products/" + productId,
+                HttpMethod.GET,
+                new HttpEntity<>(authHeaders()),
+                Map.class);
+        assertThat(adminDetailResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(metadata(data(adminDetailResponse)))
+                .containsEntry("productType", "decorative")
+                .containsKeys("wipAccountId", "wastageAccountId");
+
+        ResponseEntity<Map> accountingDetailResponse = rest.exchange(
+                "/api/v1/catalog/products/" + productId,
+                HttpMethod.GET,
+                new HttpEntity<>(authHeaders(ACCOUNTING_EMAIL, PASSWORD, COMPANY_CODE)),
+                Map.class);
+        assertThat(accountingDetailResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(metadata(data(accountingDetailResponse)))
+                .containsEntry("productType", "decorative")
+                .containsKeys("wipAccountId", "wastageAccountId");
+
+        ResponseEntity<Map> salesDetailResponse = rest.exchange(
+                "/api/v1/catalog/products/" + productId,
+                HttpMethod.GET,
+                new HttpEntity<>(authHeaders(SALES_EMAIL, PASSWORD, COMPANY_CODE)),
+                Map.class);
+        assertThat(salesDetailResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(metadata(data(salesDetailResponse)))
+                .containsEntry("productType", "decorative")
+                .doesNotContainKeys("wipAccountId", "wastageAccountId");
+
+        ResponseEntity<Map> adminListResponse = rest.exchange(
+                "/api/v1/catalog/products?brandId=" + activeBrand.getId(),
+                HttpMethod.GET,
+                new HttpEntity<>(authHeaders()),
+                Map.class);
+        assertThat(adminListResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> adminListItem = pageContent(adminListResponse).stream()
+                .filter(item -> String.valueOf(productId).equals(String.valueOf(item.get("id"))))
+                .findFirst()
+                .orElseThrow();
+        assertThat(metadata(adminListItem)).containsKeys("wipAccountId", "wastageAccountId");
+
+        ResponseEntity<Map> salesListResponse = rest.exchange(
+                "/api/v1/catalog/products?brandId=" + activeBrand.getId(),
+                HttpMethod.GET,
+                new HttpEntity<>(authHeaders(SALES_EMAIL, PASSWORD, COMPANY_CODE)),
+                Map.class);
+        assertThat(salesListResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> salesListItem = pageContent(salesListResponse).stream()
+                .filter(item -> String.valueOf(productId).equals(String.valueOf(item.get("id"))))
+                .findFirst()
+                .orElseThrow();
+        assertThat(metadata(salesListItem)).doesNotContainKeys("wipAccountId", "wastageAccountId");
+    }
+
+    @Test
     void updateProduct_rejectsInvalidFinishedGoodAccountMetadata() {
         ProductionBrand activeBrand = saveBrand("Canonical Invalid Account " + shortId(), true);
         ResponseEntity<Map> createResponse = postCatalogProducts(basePayload(activeBrand.getId()), false);

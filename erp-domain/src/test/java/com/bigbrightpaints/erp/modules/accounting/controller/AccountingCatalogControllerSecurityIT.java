@@ -188,6 +188,85 @@ class AccountingCatalogControllerSecurityIT extends AbstractIntegrationTest {
         assertThat(factoryResponse.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
     }
 
+    @Test
+    void canonicalSingleCreateRoute_allowsAdminAndAccounting_only() {
+        ProductionBrand activeBrand = saveBrand("Single Route Brand " + shortId(), true);
+        String adminSku = "CAT-SINGLE-" + shortId();
+        String accountingSku = "CAT-SINGLE-" + shortId();
+
+        ResponseEntity<Map> adminResponse = rest.exchange(
+                "/api/v1/catalog/products/single",
+                HttpMethod.POST,
+                new HttpEntity<>(singleProductPayload(activeBrand.getId(), adminSku), authHeaders()),
+                Map.class);
+        assertThat(adminResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(data(adminResponse)).containsEntry("skuCode", adminSku);
+
+        ResponseEntity<Map> accountingResponse = rest.exchange(
+                "/api/v1/catalog/products/single",
+                HttpMethod.POST,
+                new HttpEntity<>(singleProductPayload(activeBrand.getId(), accountingSku),
+                        authHeaders(ACCOUNTING_EMAIL, PASSWORD, COMPANY_CODE)),
+                Map.class);
+        assertThat(accountingResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(data(accountingResponse)).containsEntry("skuCode", accountingSku);
+
+        ResponseEntity<Map> salesResponse = rest.exchange(
+                "/api/v1/catalog/products/single",
+                HttpMethod.POST,
+                new HttpEntity<>(singleProductPayload(activeBrand.getId(), "CAT-SINGLE-" + shortId()),
+                        authHeaders(SALES_EMAIL, PASSWORD, COMPANY_CODE)),
+                Map.class);
+        assertThat(salesResponse.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+
+        ResponseEntity<Map> factoryResponse = rest.exchange(
+                "/api/v1/catalog/products/single",
+                HttpMethod.POST,
+                new HttpEntity<>(singleProductPayload(activeBrand.getId(), "CAT-SINGLE-" + shortId()),
+                        authHeaders(FACTORY_EMAIL, PASSWORD, COMPANY_CODE)),
+                Map.class);
+        assertThat(factoryResponse.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
+    void canonicalBulkVariantsRoute_allowsAdminAndAccounting_only_andSupportsDryRun() {
+        String brandCode = "N" + shortId().substring(0, 5);
+        String brandName = "Dry Run Brand " + shortId();
+
+        ResponseEntity<Map> adminResponse = rest.exchange(
+                "/api/v1/catalog/products/bulk-variants?dryRun=true",
+                HttpMethod.POST,
+                new HttpEntity<>(bulkVariantPayload(brandName, brandCode), authHeaders()),
+                Map.class);
+        assertThat(adminResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(dataListMap(adminResponse, "wouldCreate")).isNotEmpty();
+
+        ResponseEntity<Map> accountingResponse = rest.exchange(
+                "/api/v1/catalog/products/bulk-variants?dryRun=true",
+                HttpMethod.POST,
+                new HttpEntity<>(bulkVariantPayload(brandName, brandCode),
+                        authHeaders(ACCOUNTING_EMAIL, PASSWORD, COMPANY_CODE)),
+                Map.class);
+        assertThat(accountingResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        ResponseEntity<Map> salesResponse = rest.exchange(
+                "/api/v1/catalog/products/bulk-variants?dryRun=true",
+                HttpMethod.POST,
+                new HttpEntity<>(bulkVariantPayload(brandName, brandCode),
+                        authHeaders(SALES_EMAIL, PASSWORD, COMPANY_CODE)),
+                Map.class);
+        assertThat(salesResponse.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+
+        ResponseEntity<Map> factoryResponse = rest.exchange(
+                "/api/v1/catalog/products/bulk-variants?dryRun=true",
+                HttpMethod.POST,
+                new HttpEntity<>(bulkVariantPayload(brandName, brandCode),
+                        authHeaders(FACTORY_EMAIL, PASSWORD, COMPANY_CODE)),
+                Map.class);
+        assertThat(factoryResponse.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(productionBrandRepository.findByCompanyAndCodeIgnoreCase(company, brandCode)).isEmpty();
+    }
+
     private DownstreamFlowResult runDownstreamReadyFlow(Long brandId, String baseProductName) {
         ResponseEntity<Map> createResponse = rest.exchange(
                 "/api/v1/catalog/products",
@@ -338,6 +417,48 @@ class AccountingCatalogControllerSecurityIT extends AbstractIntegrationTest {
         return payload;
     }
 
+    private Map<String, Object> singleProductPayload(Long brandId, String customSkuCode) {
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("wipAccountId", wipAccount.getId());
+        metadata.put("productType", "decorative");
+
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("brandId", brandId);
+        payload.put("productName", "Single Route Primer " + shortId());
+        payload.put("category", "FINISHED_GOOD");
+        payload.put("defaultColour", "WHITE");
+        payload.put("sizeLabel", "1L");
+        payload.put("unitOfMeasure", "LITER");
+        payload.put("hsnCode", "320910");
+        payload.put("customSkuCode", customSkuCode);
+        payload.put("basePrice", new BigDecimal("1200.00"));
+        payload.put("gstRate", new BigDecimal("18.00"));
+        payload.put("minDiscountPercent", new BigDecimal("5.00"));
+        payload.put("minSellingPrice", new BigDecimal("1140.00"));
+        payload.put("metadata", metadata);
+        return payload;
+    }
+
+    private Map<String, Object> bulkVariantPayload(String brandName, String brandCode) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("brandName", brandName);
+        payload.put("brandCode", brandCode);
+        payload.put("baseProductName", "Dry Run Primer");
+        payload.put("category", "FINISHED_GOOD");
+        payload.put("colors", List.of("WHITE", "BLUE"));
+        payload.put("colorSizeMatrix", List.of(
+                Map.of("color", "WHITE", "sizes", List.of("1L", "4L")),
+                Map.of("color", "BLUE", "sizes", List.of("10L"))));
+        payload.put("unitOfMeasure", "LITER");
+        payload.put("skuPrefix", "DRYRUN");
+        payload.put("basePrice", new BigDecimal("1500.00"));
+        payload.put("gstRate", new BigDecimal("18.00"));
+        payload.put("minDiscountPercent", new BigDecimal("4.00"));
+        payload.put("minSellingPrice", new BigDecimal("1380.00"));
+        payload.put("metadata", Map.of("productType", "decorative"));
+        return payload;
+    }
+
     private Map<String, Object> salesOrderPayload(String sku) {
         Map<String, Object> item = new LinkedHashMap<>();
         item.put("productCode", sku);
@@ -409,6 +530,12 @@ class AccountingCatalogControllerSecurityIT extends AbstractIntegrationTest {
     private List<Map<String, Object>> dataList(ResponseEntity<Map> response) {
         assertThat(response.getBody()).isNotNull();
         return (List<Map<String, Object>>) response.getBody().get("data");
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> dataListMap(ResponseEntity<Map> response, String key) {
+        assertThat(response.getBody()).isNotNull();
+        return (List<Map<String, Object>>) data(response).get(key);
     }
 
     private String shortId() {
