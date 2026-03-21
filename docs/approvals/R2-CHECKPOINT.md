@@ -69,3 +69,56 @@
 - Review should block any attempt to preserve `/api/v1/accounting/reports/**` as a supported public surface or to reintroduce `AccountingController` compatibility constructors, wrapper helpers, or default-manufacturing report fallbacks.
 - The new GST fail-fast behavior is intentional: taxed posted invoice lines without canonical taxable amounts are now rejected, including the `unknown` invoice-reference path when an invoice number is unavailable.
 - The period-close request/approve flow remains explicit and auditable; ERP-20 does not widen scope into supplier-ledger cleanup, portal split cleanup, or unrelated control-plane refactors.
+
+## Post-Merge Repair Addendum
+
+### Scope
+- Feature: `ERP-20 post-merge mainline gate-core repair`
+- PR: `#127`
+- PR branch: `feature/mainline-openapi-contract-drift-fix`
+- Why this remains R2: the repair is bounded, but it still updates accounting-packet approval evidence for a mainline incident tied to the ERP-20 accounting cleanup and its required truth-lane proof.
+
+### Risk Trigger
+- Triggered by a merged-main incident after PR `#126` where `gate-core` failed on contract drift, then exposed stale accounting truthsuite coverage once the first blocker was cleared.
+- Repair scope is intentionally narrow:
+  - refresh the recorded OpenAPI snapshot sha in `docs/endpoint-inventory.md`
+  - rewrite `TS_RuntimeAccountingPayrollPostingExecutableCoverageTest` to assert the canonical `createStandardJournal(...)` seam instead of the retired `createJournalEntry(...)` seam
+- Runtime accounting behavior is unchanged by this addendum packet; the repair restores doc truth and canonical proof alignment for the already-merged accounting cleanup.
+
+### Approval Authority
+- Mode: human
+- Approver: `Anas ibn Anwar`
+- Approval status: `pending PR review and merge approval`
+- Basis: the bounded post-merge repair proof is green locally and the remaining gate is explicit human approval on PR `#127` after CI settles.
+
+### Escalation Decision
+- Human escalation required: yes
+- Reason: even though the runtime code path is unchanged, this repair touches accounting-packet evidence and accounting truthsuite coverage on the branch that restores `main`, so the R2 approval gate remains explicit.
+
+### Rollback Owner
+- Owner: `Anas ibn Anwar`
+- Rollback method: revert PR `#127`, restore the prior `main` head, and re-run `guard_openapi_contract_drift` plus `gate_core` before deciding on any broader repair.
+- Rollback trigger:
+  - `docs/endpoint-inventory.md` no longer matches repo-root `openapi.json`
+  - payroll posting truthsuite coverage drifts away from the canonical `createStandardJournal(...)` path
+  - PR `#127` introduces any runtime-bearing accounting behavior change beyond the bounded repair scope above
+
+### Expiry
+- Valid until: `2026-03-28`
+- Re-evaluate if: PR `#127` grows beyond the bounded mainline repair scope or any additional accounting/runtime change lands on top of it before merge.
+
+### Verification Evidence
+- OpenAPI drift proof on repair branch:
+  - `OPENAPI_CONTRACT_DRIFT_MODE=verify bash scripts/guard_openapi_contract_drift.sh`
+  - result: `OK`
+- Focused stale-test repair proof on repair branch:
+  - `cd erp-domain && mvn -B -ntp -Dtest=TS_RuntimeAccountingPayrollPostingExecutableCoverageTest test`
+  - result: `BUILD SUCCESS`
+  - tests: `4 run, 0 failures, 0 errors, 0 skipped`
+- Mainline repair lane proof on repair branch:
+  - `GATE_CANONICAL_BASE_REF=origin/main bash scripts/gate_core.sh`
+  - result: `OK`
+  - truthsuite summary: `439 run, 0 failures, 0 errors, 0 skipped`
+- Hygiene proof:
+  - `git diff --check`
+  - result: clean
