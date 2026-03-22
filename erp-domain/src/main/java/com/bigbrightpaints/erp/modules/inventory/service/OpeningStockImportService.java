@@ -143,7 +143,6 @@ public class OpeningStockImportService {
         if (file == null || file.isEmpty()) {
             throw ValidationUtils.invalidInput("CSV file is required");
         }
-        assertImportAllowed();
         String fileHash = resolveFileHash(file);
         String normalizedKey = normalizeIdempotencyKey(idempotencyKey);
         String importReference = resolveImportReference(company, normalizedKey);
@@ -154,6 +153,8 @@ public class OpeningStockImportService {
             assertIdempotencyMatch(existing, fileHash, normalizedKey);
             return toResponse(existing);
         }
+
+        assertImportAllowed();
 
         if (journalEntryRepository.findByCompanyAndReferenceNumber(company, importReference).isPresent()) {
             throw new ApplicationException(ErrorCode.BUSINESS_DUPLICATE_ENTRY,

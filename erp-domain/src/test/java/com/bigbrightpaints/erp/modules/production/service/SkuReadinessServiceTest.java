@@ -406,17 +406,17 @@ class SkuReadinessServiceTest {
         ReflectionTestUtils.setField(rawMaterialProduct, "id", 102L);
         rawMaterialProduct.setCategory("RAW_MATERIAL");
 
-        FinishedGood finishedGood = finishedGood("Fg-Browse", 11L, 22L, 33L, 44L);
+        FinishedGood finishedGood = finishedGood("fg-browse", 11L, 22L, 33L, 44L);
         ReflectionTestUtils.setField(finishedGood, "id", 501L);
         FinishedGoodBatch saleReadyBatch = new FinishedGoodBatch();
         saleReadyBatch.setFinishedGood(finishedGood);
         saleReadyBatch.setQuantityAvailable(new BigDecimal("7"));
 
-        RawMaterial rawMaterial = rawMaterial("Rm-Browse", 77L);
+        RawMaterial rawMaterial = rawMaterial("rm-browse", 77L);
 
-        when(finishedGoodRepository.findByCompanyAndProductCodeIn(eq(company), anyCollection()))
+        when(finishedGoodRepository.findByCompanyAndProductCodeInIgnoreCase(eq(company), anyCollection()))
                 .thenReturn(List.of(finishedGood));
-        when(rawMaterialRepository.findByCompanyAndSkuIn(eq(company), anyCollection()))
+        when(rawMaterialRepository.findByCompanyAndSkuInIgnoreCase(eq(company), anyCollection()))
                 .thenReturn(List.of(rawMaterial));
         when(finishedGoodBatchRepository.findByFinishedGoodIn(anyCollection()))
                 .thenReturn(List.of(saleReadyBatch));
@@ -426,11 +426,13 @@ class SkuReadinessServiceTest {
         assertThat(readiness).containsOnlyKeys(101L, 102L);
         assertThat(readiness.get(101L).sales().ready()).isTrue();
         assertThat(readiness.get(102L).inventory().ready()).isTrue();
+        assertThat(readiness.get(101L).sku()).isEqualTo("FG-BROWSE");
+        assertThat(readiness.get(102L).sku()).isEqualTo("RM-BROWSE");
 
-        verify(finishedGoodRepository).findByCompanyAndProductCodeIn(eq(company), argThat(skus ->
-                skus.size() == 2 && skus.containsAll(List.of("Fg-Browse", "Rm-Browse"))));
-        verify(rawMaterialRepository).findByCompanyAndSkuIn(eq(company), argThat(skus ->
-                skus.size() == 2 && skus.containsAll(List.of("Fg-Browse", "Rm-Browse"))));
+        verify(finishedGoodRepository).findByCompanyAndProductCodeInIgnoreCase(eq(company), argThat(skus ->
+                skus.size() == 2 && skus.containsAll(List.of("fg-browse", "rm-browse"))));
+        verify(rawMaterialRepository).findByCompanyAndSkuInIgnoreCase(eq(company), argThat(skus ->
+                skus.size() == 2 && skus.containsAll(List.of("fg-browse", "rm-browse"))));
         verify(finishedGoodBatchRepository).findByFinishedGoodIn(argThat(finishedGoods ->
                 finishedGoods.size() == 1 && finishedGoods.contains(finishedGood)));
         verify(finishedGoodBatchRepository, never()).findByFinishedGoodOrderByManufacturedAtAsc(any(FinishedGood.class));
@@ -508,9 +510,9 @@ class SkuReadinessServiceTest {
         FinishedGoodBatch orphanBatch = new FinishedGoodBatch();
         orphanBatch.setQuantityAvailable(new BigDecimal("8"));
 
-        when(finishedGoodRepository.findByCompanyAndProductCodeIn(eq(company), anyCollection()))
+        when(finishedGoodRepository.findByCompanyAndProductCodeInIgnoreCase(eq(company), anyCollection()))
                 .thenReturn(List.of(primaryMirror, duplicateMirror));
-        when(rawMaterialRepository.findByCompanyAndSkuIn(eq(company), anyCollection()))
+        when(rawMaterialRepository.findByCompanyAndSkuInIgnoreCase(eq(company), anyCollection()))
                 .thenReturn(List.of());
         when(finishedGoodBatchRepository.findByFinishedGoodIn(anyCollection()))
                 .thenReturn(List.of(zeroBatch, saleReadyBatch, orphanBatch));
@@ -518,10 +520,16 @@ class SkuReadinessServiceTest {
         Map<Long, SkuReadinessDto> readiness = service.forProducts(company, List.of(firstFinishedGood, secondFinishedGood));
 
         assertThat(readiness).containsOnlyKeys(301L, 302L);
+        assertThat(readiness.get(301L).sku()).isEqualTo("FG-DUP");
+        assertThat(readiness.get(302L).sku()).isEqualTo("FG-DUP");
         assertThat(readiness.get(301L).inventory().ready()).isTrue();
         assertThat(readiness.get(301L).sales().ready()).isTrue();
         assertThat(readiness.get(302L).inventory().ready()).isTrue();
         assertThat(readiness.get(302L).sales().ready()).isTrue();
+        verify(finishedGoodRepository).findByCompanyAndProductCodeInIgnoreCase(eq(company), argThat(skus ->
+                skus.size() == 1 && skus.contains("fg-dup")));
+        verify(rawMaterialRepository).findByCompanyAndSkuInIgnoreCase(eq(company), argThat(skus ->
+                skus.size() == 1 && skus.contains("fg-dup")));
     }
 
     @Test

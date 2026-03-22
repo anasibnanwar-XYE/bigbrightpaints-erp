@@ -535,6 +535,66 @@ class OpeningStockImportServiceTest {
     }
 
     @Test
+    void importOpeningStock_replaysPersistedImportWhenProdProfileDisablesNewImports() throws Exception {
+        OpeningStockImportService disabledService = new OpeningStockImportService(
+                companyContextService,
+                rawMaterialRepository,
+                rawMaterialBatchRepository,
+                rawMaterialMovementRepository,
+                finishedGoodRepository,
+                finishedGoodBatchRepository,
+                inventoryMovementRepository,
+                skuReadinessService,
+                batchNumberService,
+                accountingFacade,
+                accountRepository,
+                journalEntryRepository,
+                openingStockImportRepository,
+                auditService,
+                new ObjectMapper(),
+                companyClock,
+                environment,
+                new ResourcelessTransactionManager(),
+                false
+        );
+        MockMultipartFile file = csvFile(String.join("\n",
+                "type,sku,name,unit,unit_type,batch_code,quantity,unit_cost,material_type",
+                "RAW_MATERIAL,RM-1,Resin,KG,KG,RM-B1,10,5.00,PRODUCTION"
+        ));
+        String fileHash = com.bigbrightpaints.erp.core.idempotency.IdempotencyUtils.sha256Hex(file.getBytes());
+
+        OpeningStockImport existing = new OpeningStockImport();
+        existing.setCompany(company);
+        existing.setIdempotencyKey("same-key");
+        existing.setIdempotencyHash(fileHash);
+        existing.setRowsProcessed(2);
+        existing.setRawMaterialBatchesCreated(1);
+        existing.setResultsJson("""
+                [{"rowNumber":1,"sku":"RM-1","stockType":"RAW_MATERIAL","readiness":{"sku":"RM-1","catalog":{"ready":true,"blockers":[]},"inventory":{"ready":true,"blockers":[]},"production":{"ready":true,"blockers":[]},"sales":{"ready":false,"blockers":["RAW_MATERIAL_SKU_NOT_SALES_ORDERABLE"]}}}]
+                """);
+
+        when(openingStockImportRepository.findByCompanyAndIdempotencyKey(company, "same-key"))
+                .thenReturn(Optional.of(existing));
+
+        OpeningStockImportResponse replay = disabledService.importOpeningStock(file, "same-key");
+
+        assertThat(replay.rowsProcessed()).isEqualTo(2);
+        assertThat(replay.results()).hasSize(1);
+        assertThat(replay.results().getFirst().sku()).isEqualTo("RM-1");
+        verify(journalEntryRepository, never()).findByCompanyAndReferenceNumber(any(), any());
+        verify(accountingFacade, never()).postInventoryAdjustment(
+                any(String.class),
+                any(String.class),
+                any(Long.class),
+                any(Map.class),
+                any(Boolean.class),
+                any(Boolean.class),
+                any(String.class),
+                any(LocalDate.class)
+        );
+    }
+
+    @Test
     void importOpeningStock_reportsRowParseErrorsWithoutSkuOrReadiness() {
         MockMultipartFile file = csvFile(String.join("\n",
                 "type,sku,name,unit,unit_type,batch_code,quantity,unit_cost,material_type",

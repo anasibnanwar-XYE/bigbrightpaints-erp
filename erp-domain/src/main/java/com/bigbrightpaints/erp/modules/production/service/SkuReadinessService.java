@@ -110,25 +110,24 @@ public class SkuReadinessService {
                         product -> product,
                         (left, right) -> left,
                         LinkedHashMap::new));
-        List<String> lookupSkus = productsBySku.values().stream()
-                .map(ProductionProduct::getSkuCode)
-                .map(this::sanitizeSku)
+        List<String> lookupSkuKeys = productsBySku.keySet().stream()
+                .map(this::normalizeSkuLookupKey)
                 .filter(StringUtils::hasText)
                 .distinct()
                 .toList();
 
-        Map<String, FinishedGood> finishedGoodsBySku = lookupSkus.isEmpty()
+        Map<String, FinishedGood> finishedGoodsBySku = lookupSkuKeys.isEmpty()
                 ? Map.of()
-                : finishedGoodRepository.findByCompanyAndProductCodeIn(company, lookupSkus).stream()
+                : finishedGoodRepository.findByCompanyAndProductCodeInIgnoreCase(company, lookupSkuKeys).stream()
                 .filter(finishedGood -> StringUtils.hasText(finishedGood.getProductCode()))
                 .collect(Collectors.toMap(
                         finishedGood -> normalizeSkuKey(finishedGood.getProductCode()),
                         finishedGood -> finishedGood,
                         (left, right) -> left,
                         LinkedHashMap::new));
-        Map<String, RawMaterial> rawMaterialsBySku = lookupSkus.isEmpty()
+        Map<String, RawMaterial> rawMaterialsBySku = lookupSkuKeys.isEmpty()
                 ? Map.of()
-                : rawMaterialRepository.findByCompanyAndSkuIn(company, lookupSkus).stream()
+                : rawMaterialRepository.findByCompanyAndSkuInIgnoreCase(company, lookupSkuKeys).stream()
                 .filter(rawMaterial -> StringUtils.hasText(rawMaterial.getSku()))
                 .collect(Collectors.toMap(
                         rawMaterial -> normalizeSkuKey(rawMaterial.getSku()),
@@ -152,7 +151,6 @@ public class SkuReadinessService {
                 continue;
             }
             String normalizedSku = normalizeSkuKey(product.getSkuCode());
-            String exactSku = sanitizeSku(product.getSkuCode());
             FinishedGood finishedGood = StringUtils.hasText(normalizedSku)
                     ? finishedGoodsBySku.get(normalizedSku)
                     : null;
@@ -163,7 +161,7 @@ public class SkuReadinessService {
                     && Boolean.TRUE.equals(saleReadyBatchByFinishedGoodId.get(finishedGood.getId()));
             readinessByProductId.put(productId, buildSnapshot(
                     company,
-                    exactSku,
+                    normalizedSku,
                     product,
                     finishedGood,
                     rawMaterial,
@@ -428,5 +426,10 @@ public class SkuReadinessService {
     private String normalizeSkuKey(String sku) {
         String sanitized = sanitizeSku(sku);
         return StringUtils.hasText(sanitized) ? sanitized.toUpperCase(Locale.ROOT) : null;
+    }
+
+    private String normalizeSkuLookupKey(String sku) {
+        String normalized = normalizeSkuKey(sku);
+        return StringUtils.hasText(normalized) ? normalized.toLowerCase(Locale.ROOT) : null;
     }
 }
