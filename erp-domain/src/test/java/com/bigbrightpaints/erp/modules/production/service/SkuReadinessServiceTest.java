@@ -11,9 +11,11 @@ import com.bigbrightpaints.erp.modules.production.domain.ProductionProduct;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionProductRepository;
 import com.bigbrightpaints.erp.modules.production.dto.SkuReadinessDto;
 import java.math.BigDecimal;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -22,7 +24,13 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyCollection;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -235,6 +243,165 @@ class SkuReadinessServiceTest {
         assertThat(readiness.catalog().blockers()).containsExactly("PRODUCT_INACTIVE");
         assertThat(readiness.production().blockers()).doesNotContain("WIP_ACCOUNT_MISSING");
         assertThat(readiness.sales().blockers()).contains("PRODUCT_INACTIVE", "NO_FINISHED_GOOD_BATCH_STOCK");
+    }
+
+    @Test
+    void forProducts_batchesMirrorAndBatchLookupsForCatalogBrowse() {
+        ProductionProduct finishedGoodProduct = finishedGoodProduct("FG-BROWSE");
+        ReflectionTestUtils.setField(finishedGoodProduct, "id", 101L);
+        finishedGoodProduct.setMetadata(Map.of("wipAccountId", 44L));
+
+        ProductionProduct rawMaterialProduct = finishedGoodProduct("RM-BROWSE");
+        ReflectionTestUtils.setField(rawMaterialProduct, "id", 102L);
+        rawMaterialProduct.setCategory("RAW_MATERIAL");
+
+        FinishedGood finishedGood = finishedGood("FG-BROWSE", 11L, 22L, 33L, 44L);
+        ReflectionTestUtils.setField(finishedGood, "id", 501L);
+        FinishedGoodBatch saleReadyBatch = new FinishedGoodBatch();
+        saleReadyBatch.setFinishedGood(finishedGood);
+        saleReadyBatch.setQuantityAvailable(new BigDecimal("7"));
+
+        RawMaterial rawMaterial = rawMaterial("RM-BROWSE", 77L);
+
+        when(finishedGoodRepository.findByCompanyAndProductCodeIn(eq(company), anyCollection()))
+                .thenReturn(List.of(finishedGood));
+        when(rawMaterialRepository.findByCompanyAndSkuIn(eq(company), anyCollection()))
+                .thenReturn(List.of(rawMaterial));
+        when(finishedGoodBatchRepository.findByFinishedGoodIn(anyCollection()))
+                .thenReturn(List.of(saleReadyBatch));
+
+        Map<Long, SkuReadinessDto> readiness = service.forProducts(company, List.of(finishedGoodProduct, rawMaterialProduct));
+
+        assertThat(readiness).containsOnlyKeys(101L, 102L);
+        assertThat(readiness.get(101L).sales().ready()).isTrue();
+        assertThat(readiness.get(102L).inventory().ready()).isTrue();
+
+        verify(finishedGoodRepository).findByCompanyAndProductCodeIn(eq(company), argThat(skus ->
+                skus.size() == 2 && skus.containsAll(List.of("FG-BROWSE", "RM-BROWSE"))));
+        verify(rawMaterialRepository).findByCompanyAndSkuIn(eq(company), argThat(skus ->
+                skus.size() == 2 && skus.containsAll(List.of("FG-BROWSE", "RM-BROWSE"))));
+        verify(finishedGoodBatchRepository).findByFinishedGoodIn(argThat(finishedGoods ->
+                finishedGoods.size() == 1 && finishedGoods.contains(finishedGood)));
+        verify(finishedGoodBatchRepository, never()).findByFinishedGoodOrderByManufacturedAtAsc(any(FinishedGood.class));
+    }
+
+    @Test
+    void sanitizeForCatalogViewer_hidesAccountSpecificBlockersBehindGenericMarker() {
+        SkuReadinessDto readiness = new SkuReadinessDto(
+                "FG-SECURITY",
+                new SkuReadinessDto.Stage(true, List.of()),
+                new SkuReadinessDto.Stage(false, List.of(
+                        "FINISHED_GOOD_VALUATION_ACCOUNT_MISSING",
+                        "FINISHED_GOOD_REVENUE_ACCOUNT_MISSING")),
+                new SkuReadinessDto.Stage(false, List.of(
+                        "WIP_ACCOUNT_MISSING",
+                        "PRODUCT_INACTIVE")),
+                new SkuReadinessDto.Stage(false, List.of(
+                        "FINISHED_GOOD_COGS_ACCOUNT_MISSING",
+                        "NO_FINISHED_GOOD_BATCH_STOCK"))
+        );
+
+        SkuReadinessDto sanitized = service.sanitizeForCatalogViewer(readiness, false);
+
+        assertThat(service.sanitizeForCatalogViewer(readiness, true)).isSameAs(readiness);
+        assertThat(sanitized.inventory().blockers()).containsExactly("ACCOUNTING_CONFIGURATION_REQUIRED");
+        assertThat(sanitized.production().blockers())
+                .containsExactly("PRODUCT_INACTIVE", "ACCOUNTING_CONFIGURATION_REQUIRED");
+        assertThat(sanitized.sales().blockers())
+                .containsExactly("NO_FINISHED_GOOD_BATCH_STOCK", "ACCOUNTING_CONFIGURATION_REQUIRED");
+    }
+
+    @Test
+    void forProducts_returnsEmptyForNullOrNullOnlyCollections() {
+        assertThat(service.forProducts(company, null)).isEmpty();
+        assertThat(service.forProducts(company, Arrays.asList((ProductionProduct) null))).isEmpty();
+        verifyNoInteractions(finishedGoodRepository, rawMaterialRepository, finishedGoodBatchRepository);
+    }
+
+    @Test
+    void forProducts_skipsBlankSkuLookupsAndNullIds() {
+        ProductionProduct blankSku = finishedGoodProduct("   ");
+        ReflectionTestUtils.setField(blankSku, "id", 201L);
+
+        ProductionProduct noId = finishedGoodProduct("   ");
+
+        Map<Long, SkuReadinessDto> readiness = service.forProducts(company, Arrays.asList(blankSku, noId));
+
+        assertThat(readiness).containsOnlyKeys(201L);
+        assertThat(readiness.get(201L).inventory().blockers()).containsExactly("FINISHED_GOOD_MIRROR_MISSING");
+        verifyNoInteractions(finishedGoodRepository, rawMaterialRepository, finishedGoodBatchRepository);
+    }
+
+    @Test
+    void forProducts_deduplicatesMirrorRowsAndBatchSignals() {
+        ProductionProduct firstFinishedGood = finishedGoodProduct("FG-DUP");
+        ReflectionTestUtils.setField(firstFinishedGood, "id", 301L);
+        firstFinishedGood.setMetadata(Map.of("wipAccountId", 44L));
+
+        ProductionProduct secondFinishedGood = finishedGoodProduct(" fg-dup ");
+        ReflectionTestUtils.setField(secondFinishedGood, "id", 302L);
+        secondFinishedGood.setMetadata(Map.of("wipAccountId", 44L));
+
+        FinishedGood primaryMirror = finishedGood("FG-DUP", 11L, 22L, 33L, 44L);
+        ReflectionTestUtils.setField(primaryMirror, "id", 601L);
+        FinishedGood duplicateMirror = finishedGood("FG-DUP", null, null, null, null);
+        ReflectionTestUtils.setField(duplicateMirror, "id", 602L);
+
+        FinishedGoodBatch zeroBatch = new FinishedGoodBatch();
+        zeroBatch.setFinishedGood(primaryMirror);
+        zeroBatch.setQuantityAvailable(BigDecimal.ZERO);
+        FinishedGoodBatch saleReadyBatch = new FinishedGoodBatch();
+        saleReadyBatch.setFinishedGood(primaryMirror);
+        saleReadyBatch.setQuantityAvailable(new BigDecimal("3"));
+        FinishedGoodBatch orphanBatch = new FinishedGoodBatch();
+        orphanBatch.setQuantityAvailable(new BigDecimal("8"));
+
+        when(finishedGoodRepository.findByCompanyAndProductCodeIn(eq(company), anyCollection()))
+                .thenReturn(List.of(primaryMirror, duplicateMirror));
+        when(rawMaterialRepository.findByCompanyAndSkuIn(eq(company), anyCollection()))
+                .thenReturn(List.of());
+        when(finishedGoodBatchRepository.findByFinishedGoodIn(anyCollection()))
+                .thenReturn(List.of(zeroBatch, saleReadyBatch, orphanBatch));
+
+        Map<Long, SkuReadinessDto> readiness = service.forProducts(company, List.of(firstFinishedGood, secondFinishedGood));
+
+        assertThat(readiness).containsOnlyKeys(301L, 302L);
+        assertThat(readiness.get(301L).inventory().ready()).isTrue();
+        assertThat(readiness.get(301L).sales().ready()).isTrue();
+        assertThat(readiness.get(302L).inventory().ready()).isTrue();
+        assertThat(readiness.get(302L).sales().ready()).isTrue();
+    }
+
+    @Test
+    void sanitizeForCatalogViewer_handlesNullReadinessNullStagesAndExistingGenericMarker() {
+        assertThat(service.sanitizeForCatalogViewer(null, false)).isNull();
+
+        SkuReadinessDto.Stage nullBlockers = new SkuReadinessDto.Stage(false, null);
+        assertThat((Object) ReflectionTestUtils.invokeMethod(service, "sanitizeStage", nullBlockers)).isSameAs(nullBlockers);
+
+        @SuppressWarnings("unchecked")
+        SkuReadinessDto.Stage synthesizedEmptyStage = (SkuReadinessDto.Stage) ReflectionTestUtils.invokeMethod(
+                service,
+                "stage",
+                (Object) null);
+        assertThat(synthesizedEmptyStage.ready()).isTrue();
+        assertThat(synthesizedEmptyStage.blockers()).isEmpty();
+
+        SkuReadinessDto readiness = new SkuReadinessDto(
+                "FG-GENERIC",
+                new SkuReadinessDto.Stage(true, List.of()),
+                new SkuReadinessDto.Stage(false, List.of(
+                        "ACCOUNTING_CONFIGURATION_REQUIRED",
+                        "FINISHED_GOOD_VALUATION_ACCOUNT_MISSING")),
+                new SkuReadinessDto.Stage(false, List.of("ACCOUNTING_CONFIGURATION_REQUIRED", "WIP_ACCOUNT_MISSING")),
+                new SkuReadinessDto.Stage(false, List.of("ACCOUNTING_CONFIGURATION_REQUIRED"))
+        );
+
+        SkuReadinessDto sanitized = service.sanitizeForCatalogViewer(readiness, false);
+
+        assertThat(sanitized.inventory().blockers()).containsExactly("ACCOUNTING_CONFIGURATION_REQUIRED");
+        assertThat(sanitized.production().blockers()).containsExactly("ACCOUNTING_CONFIGURATION_REQUIRED");
+        assertThat(sanitized.sales().blockers()).containsExactly("ACCOUNTING_CONFIGURATION_REQUIRED");
     }
 
     private ProductionProduct finishedGoodProduct(String sku) {

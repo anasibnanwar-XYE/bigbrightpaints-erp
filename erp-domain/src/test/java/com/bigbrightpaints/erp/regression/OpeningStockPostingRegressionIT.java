@@ -30,7 +30,6 @@ import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -209,7 +208,8 @@ class OpeningStockPostingRegressionIT extends AbstractIntegrationTest {
         ProductionBrand brand = new ProductionBrand();
         brand.setCompany(company);
         brand.setName(name);
-        brand.setCode(("LF" + Long.toString(System.nanoTime(), 36)).toUpperCase(Locale.ROOT).substring(0, 10));
+        String brandCode = ("LF" + Long.toString(System.nanoTime(), 36)).toUpperCase(Locale.ROOT);
+        brand.setCode(brandCode.length() <= 10 ? brandCode : brandCode.substring(0, 10));
         brand.setActive(true);
         return productionBrandRepository.save(brand);
     }

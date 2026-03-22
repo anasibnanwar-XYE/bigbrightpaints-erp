@@ -508,22 +508,9 @@ public class OpeningStockImportService {
         }
     }
 
-    private SkuReadinessDto readinessFor(Company company, String sku, StockType stockType) {
-        if (!StringUtils.hasText(sku)) {
-            return null;
-        }
-        return skuReadinessService.forSku(
-                company,
-                sku,
-                stockType == StockType.RAW_MATERIAL
-                        ? SkuReadinessService.ExpectedStockType.RAW_MATERIAL
-                        : SkuReadinessService.ExpectedStockType.FINISHED_GOOD
-        );
-    }
-
     private OpeningMovementResult handleRawMaterial(Company company, OpeningRow row) {
         String sku = requirePreparedSku(row);
-        requireOpeningStockReady(
+        SkuReadinessDto readiness = requireOpeningStockReady(
                 company,
                 sku,
                 row,
@@ -573,14 +560,14 @@ public class OpeningStockImportService {
                 sku,
                 inventoryAccountId,
                 MoneyUtils.safeMultiply(quantity, unitCost),
-                readinessFor(company, sku, row.type),
+                readiness,
                 savedMovement,
                 null);
     }
 
     private OpeningMovementResult handleFinishedGood(Company company, OpeningRow row) {
         String sku = requirePreparedSku(row);
-        requireOpeningStockReady(
+        SkuReadinessDto readiness = requireOpeningStockReady(
                 company,
                 sku,
                 row,
@@ -627,7 +614,7 @@ public class OpeningStockImportService {
                 sku,
                 inventoryAccountId,
                 MoneyUtils.safeMultiply(quantity, unitCost),
-                readinessFor(company, sku, row.type),
+                readiness,
                 null,
                 savedMovement);
     }
@@ -707,6 +694,13 @@ public class OpeningStockImportService {
             throw openingStockReadinessFailure(sku, row, "inventory", readiness.inventory().blockers(), readiness);
         }
         return readiness;
+    }
+
+    private SkuReadinessDto readinessFor(Company company, String sku, StockType stockType) {
+        SkuReadinessService.ExpectedStockType expectedStockType = stockType == StockType.RAW_MATERIAL
+                ? SkuReadinessService.ExpectedStockType.RAW_MATERIAL
+                : SkuReadinessService.ExpectedStockType.FINISHED_GOOD;
+        return skuReadinessService.forSku(company, sku, expectedStockType);
     }
 
     private ApplicationException openingStockReadinessFailure(String sku,

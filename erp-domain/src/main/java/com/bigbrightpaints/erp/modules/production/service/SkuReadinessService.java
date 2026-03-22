@@ -12,9 +12,15 @@ import com.bigbrightpaints.erp.modules.production.domain.ProductionProductReposi
 import com.bigbrightpaints.erp.modules.production.dto.SkuReadinessDto;
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -31,6 +37,7 @@ public class SkuReadinessService {
             "RAW MATERIAL",
             "RAW-MATERIAL"
     );
+    private static final String ACCOUNTING_CONFIGURATION_REQUIRED = "ACCOUNTING_CONFIGURATION_REQUIRED";
 
     private final ProductionProductRepository productRepository;
     private final FinishedGoodRepository finishedGoodRepository;
@@ -66,6 +73,87 @@ public class SkuReadinessService {
         return buildSnapshot(company, normalizedSku, product, expectedStockType);
     }
 
+    public Map<Long, SkuReadinessDto> forProducts(Company company, Collection<ProductionProduct> products) {
+        if (products == null || products.isEmpty()) {
+            return Map.of();
+        }
+        List<ProductionProduct> candidates = products.stream()
+                .filter(Objects::nonNull)
+                .toList();
+        if (candidates.isEmpty()) {
+            return Map.of();
+        }
+
+        Map<String, ProductionProduct> productsBySku = candidates.stream()
+                .filter(product -> StringUtils.hasText(normalizeSku(product.getSkuCode())))
+                .collect(Collectors.toMap(
+                        product -> normalizeSku(product.getSkuCode()),
+                        product -> product,
+                        (left, right) -> left,
+                        LinkedHashMap::new));
+        Set<String> skus = productsBySku.keySet();
+
+        Map<String, FinishedGood> finishedGoodsBySku = skus.isEmpty()
+                ? Map.of()
+                : finishedGoodRepository.findByCompanyAndProductCodeIn(company, skus).stream()
+                .filter(finishedGood -> StringUtils.hasText(finishedGood.getProductCode()))
+                .collect(Collectors.toMap(
+                        finishedGood -> normalizeSku(finishedGood.getProductCode()),
+                        finishedGood -> finishedGood,
+                        (left, right) -> left,
+                        LinkedHashMap::new));
+        Map<String, RawMaterial> rawMaterialsBySku = skus.isEmpty()
+                ? Map.of()
+                : rawMaterialRepository.findByCompanyAndSkuIn(company, skus).stream()
+                .filter(rawMaterial -> StringUtils.hasText(rawMaterial.getSku()))
+                .collect(Collectors.toMap(
+                        rawMaterial -> normalizeSku(rawMaterial.getSku()),
+                        rawMaterial -> rawMaterial,
+                        (left, right) -> left,
+                        LinkedHashMap::new));
+        Map<Long, Boolean> saleReadyBatchByFinishedGoodId = finishedGoodsBySku.isEmpty()
+                ? Map.of()
+                : finishedGoodBatchRepository.findByFinishedGoodIn(finishedGoodsBySku.values()).stream()
+                .filter(batch -> batch.getFinishedGood() != null && batch.getFinishedGood().getId() != null)
+                .collect(Collectors.toMap(
+                        batch -> batch.getFinishedGood().getId(),
+                        this::hasPositiveAvailableQuantity,
+                        Boolean::logicalOr,
+                        LinkedHashMap::new));
+
+        Map<Long, SkuReadinessDto> readinessByProductId = new LinkedHashMap<>();
+        for (ProductionProduct product : candidates) {
+            Long productId = product.getId();
+            if (productId == null) {
+                continue;
+            }
+            String normalizedSku = normalizeSku(product.getSkuCode());
+            FinishedGood finishedGood = StringUtils.hasText(normalizedSku)
+                    ? finishedGoodsBySku.get(normalizedSku)
+                    : null;
+            RawMaterial rawMaterial = StringUtils.hasText(normalizedSku)
+                    ? rawMaterialsBySku.get(normalizedSku)
+                    : null;
+            boolean hasSaleReadyBatch = finishedGood != null
+                    && Boolean.TRUE.equals(saleReadyBatchByFinishedGoodId.get(finishedGood.getId()));
+            readinessByProductId.put(productId, buildSnapshot(normalizedSku, product, finishedGood, rawMaterial, null, hasSaleReadyBatch));
+        }
+        return readinessByProductId;
+    }
+
+    public SkuReadinessDto sanitizeForCatalogViewer(SkuReadinessDto readiness, boolean includeAccountingDetail) {
+        if (includeAccountingDetail || readiness == null) {
+            return readiness;
+        }
+        return new SkuReadinessDto(
+                readiness.sku(),
+                sanitizeStage(readiness.catalog()),
+                sanitizeStage(readiness.inventory()),
+                sanitizeStage(readiness.production()),
+                sanitizeStage(readiness.sales())
+        );
+    }
+
     private SkuReadinessDto buildSnapshot(Company company,
                                           String normalizedSku,
                                           ProductionProduct product,
@@ -79,6 +167,22 @@ public class SkuReadinessService {
         RawMaterial rawMaterial = StringUtils.hasText(sku)
                 ? rawMaterialRepository.findByCompanyAndSku(company, sku).orElse(null)
                 : null;
+        return buildSnapshot(
+                sku,
+                product,
+                finishedGood,
+                rawMaterial,
+                expectedStockType,
+                hasSaleReadyBatch(finishedGood)
+        );
+    }
+
+    private SkuReadinessDto buildSnapshot(String sku,
+                                          ProductionProduct product,
+                                          FinishedGood finishedGood,
+                                          RawMaterial rawMaterial,
+                                          ExpectedStockType expectedStockType,
+                                          boolean hasSaleReadyBatch) {
         ExpectedStockType effectiveStockType = resolveExpectedStockType(product, rawMaterial, expectedStockType);
 
         List<String> catalogBlockers = new ArrayList<>();
@@ -136,7 +240,7 @@ public class SkuReadinessService {
         } else {
             salesBlockers.addAll(catalogBlockers);
             salesBlockers.addAll(inventoryBlockers);
-            if (!hasSaleReadyBatch(finishedGood)) {
+            if (!hasSaleReadyBatch) {
                 salesBlockers.add("NO_FINISHED_GOOD_BATCH_STOCK");
             }
         }
@@ -175,9 +279,37 @@ public class SkuReadinessService {
                 .anyMatch(quantity -> quantity.compareTo(BigDecimal.ZERO) > 0);
     }
 
+    private boolean hasPositiveAvailableQuantity(FinishedGoodBatch batch) {
+        BigDecimal quantity = batch.getQuantityAvailable();
+        return quantity != null && quantity.compareTo(BigDecimal.ZERO) > 0;
+    }
+
     private SkuReadinessDto.Stage stage(List<String> blockers) {
         List<String> effectiveBlockers = blockers == null ? List.of() : List.copyOf(blockers);
         return new SkuReadinessDto.Stage(effectiveBlockers.isEmpty(), effectiveBlockers);
+    }
+
+    private SkuReadinessDto.Stage sanitizeStage(SkuReadinessDto.Stage stage) {
+        if (stage == null || stage.blockers() == null || stage.blockers().isEmpty()) {
+            return stage;
+        }
+        List<String> visibleBlockers = new ArrayList<>();
+        boolean hiddenAccountingBlocker = false;
+        for (String blocker : stage.blockers()) {
+            if (isAccountingBlocker(blocker)) {
+                hiddenAccountingBlocker = true;
+                continue;
+            }
+            visibleBlockers.add(blocker);
+        }
+        if (hiddenAccountingBlocker && !visibleBlockers.contains(ACCOUNTING_CONFIGURATION_REQUIRED)) {
+            visibleBlockers.add(ACCOUNTING_CONFIGURATION_REQUIRED);
+        }
+        return new SkuReadinessDto.Stage(visibleBlockers.isEmpty(), List.copyOf(visibleBlockers));
+    }
+
+    private boolean isAccountingBlocker(String blocker) {
+        return StringUtils.hasText(blocker) && blocker.endsWith("_ACCOUNT_MISSING");
     }
 
     private boolean isRawMaterialCategory(String category) {

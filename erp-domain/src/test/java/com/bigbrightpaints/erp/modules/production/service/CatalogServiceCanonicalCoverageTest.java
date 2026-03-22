@@ -32,6 +32,9 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -44,8 +47,10 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verify;
@@ -212,10 +217,48 @@ class CatalogServiceCanonicalCoverageTest {
                 new SkuReadinessDto.Stage(false, List.of("NO_FINISHED_GOOD_BATCH_STOCK"))
         );
         when(skuReadinessService.forProduct(company, product)).thenReturn(readiness);
+        when(skuReadinessService.sanitizeForCatalogViewer(readiness, true)).thenReturn(readiness);
 
         CatalogProductDto dto = ReflectionTestUtils.invokeMethod(service, "toProductDto", product);
 
         assertThat(dto.readiness()).isSameAs(readiness);
+    }
+
+    @Test
+    void searchProducts_usesBatchReadinessSnapshotInsteadOfPerProductLookups() {
+        ProductionProduct first = finishedGoodProduct(1001L, "BBR-PRIMER-001", "Primer One");
+        ProductionProduct second = finishedGoodProduct(1002L, "BBR-PRIMER-002", "Primer Two");
+        Page<ProductionProduct> page = new PageImpl<>(List.of(first, second), PageRequest.of(0, 20), 2);
+
+        SkuReadinessDto firstReadiness = new SkuReadinessDto(
+                "BBR-PRIMER-001",
+                new SkuReadinessDto.Stage(true, List.of()),
+                new SkuReadinessDto.Stage(true, List.of()),
+                new SkuReadinessDto.Stage(true, List.of()),
+                new SkuReadinessDto.Stage(false, List.of("NO_FINISHED_GOOD_BATCH_STOCK"))
+        );
+        SkuReadinessDto secondReadiness = new SkuReadinessDto(
+                "BBR-PRIMER-002",
+                new SkuReadinessDto.Stage(true, List.of()),
+                new SkuReadinessDto.Stage(false, List.of("ACCOUNTING_CONFIGURATION_REQUIRED")),
+                new SkuReadinessDto.Stage(false, List.of("ACCOUNTING_CONFIGURATION_REQUIRED")),
+                new SkuReadinessDto.Stage(false, List.of("NO_FINISHED_GOOD_BATCH_STOCK", "ACCOUNTING_CONFIGURATION_REQUIRED"))
+        );
+
+        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+        when(productRepository.findAll(any(Specification.class), any(org.springframework.data.domain.Pageable.class)))
+                .thenReturn(page);
+        when(skuReadinessService.forProducts(company, List.of(first, second)))
+                .thenReturn(Map.of(1001L, firstReadiness, 1002L, secondReadiness));
+        when(skuReadinessService.sanitizeForCatalogViewer(firstReadiness, false)).thenReturn(firstReadiness);
+        when(skuReadinessService.sanitizeForCatalogViewer(secondReadiness, false)).thenReturn(secondReadiness);
+
+        var response = service.searchProducts(brand.getId(), null, null, true, 0, 20, false);
+
+        assertThat(response.content()).extracting(CatalogProductDto::readiness)
+                .containsExactly(firstReadiness, secondReadiness);
+        verify(skuReadinessService).forProducts(company, List.of(first, second));
+        verify(skuReadinessService, never()).forProduct(any(), any());
     }
 
     @Test
@@ -466,6 +509,21 @@ class CatalogServiceCanonicalCoverageTest {
         product.setCategory("RAW_MATERIAL");
         product.setUnitOfMeasure(unitOfMeasure);
         product.setGstRate(gstRate);
+        return product;
+    }
+
+    private ProductionProduct finishedGoodProduct(Long id, String sku, String name) {
+        ProductionProduct product = new ProductionProduct();
+        ReflectionTestUtils.setField(product, "id", id);
+        product.setCompany(company);
+        product.setBrand(brand);
+        product.setProductName(name);
+        product.setSkuCode(sku);
+        product.setCategory("FINISHED_GOOD");
+        product.setActive(true);
+        product.setColors(new LinkedHashSet<>(List.of("White")));
+        product.setSizes(new LinkedHashSet<>(List.of("1L")));
+        product.setMetadata(new LinkedHashMap<>());
         return product;
     }
 }

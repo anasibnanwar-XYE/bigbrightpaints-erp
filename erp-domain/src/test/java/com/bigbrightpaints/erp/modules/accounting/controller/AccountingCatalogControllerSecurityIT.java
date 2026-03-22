@@ -12,6 +12,8 @@ import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatchReposito
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialRepository;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionBrand;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionBrandRepository;
+import com.bigbrightpaints.erp.modules.production.domain.ProductionProduct;
+import com.bigbrightpaints.erp.modules.production.domain.ProductionProductRepository;
 import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -52,6 +54,7 @@ class AccountingCatalogControllerSecurityIT extends AbstractIntegrationTest {
     @Autowired private CompanyRepository companyRepository;
     @Autowired private AccountRepository accountRepository;
     @Autowired private ProductionBrandRepository productionBrandRepository;
+    @Autowired private ProductionProductRepository productionProductRepository;
     @Autowired private FinishedGoodRepository finishedGoodRepository;
     @Autowired private RawMaterialRepository rawMaterialRepository;
     @Autowired private RawMaterialBatchRepository rawMaterialBatchRepository;
@@ -235,6 +238,106 @@ class AccountingCatalogControllerSecurityIT extends AbstractIntegrationTest {
                 singleProductPayload(activeBrand.getId(), "CAT-SINGLE-" + shortId()));
         assertRetiredWriteRouteUnavailable("/api/v1/catalog/products/bulk-variants?dryRun=true",
                 bulkVariantPayload("Dry Run Brand " + shortId(), "N" + shortId().substring(0, 5)));
+    }
+
+    @Test
+    void catalogReadiness_masksAccountingSpecificBlockersForNonAccountingReaders() {
+        ProductionBrand brand = saveBrand("Readiness Mask " + shortId(), true);
+
+        ResponseEntity<Map> createResponse = rest.exchange(
+                "/api/v1/catalog/products",
+                HttpMethod.POST,
+                new HttpEntity<>(canonicalFinishedGoodPayload(brand.getId(), "Readiness Mask Product " + shortId()), headers),
+                Map.class);
+        assertThat(createResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        Map<String, Object> createdMember = dataListMap(createResponse, "members").getFirst();
+        String sku = String.valueOf(createdMember.get("sku"));
+
+        Map<String, Object> browsedProduct = browseProduct(authHeaders(), brand.getId(), sku);
+        Long productId = ((Number) browsedProduct.get("id")).longValue();
+
+        ProductionProduct product = productionProductRepository.findByCompanyAndSkuCode(company, sku).orElseThrow();
+        Map<String, Object> degradedMetadata = new LinkedHashMap<>(product.getMetadata());
+        degradedMetadata.remove("wipAccountId");
+        product.setMetadata(degradedMetadata);
+        productionProductRepository.save(product);
+
+        finishedGoodRepository.findByCompanyAndProductCode(company, sku).ifPresentOrElse(finishedGood -> {
+            finishedGood.setValuationAccountId(null);
+            finishedGood.setCogsAccountId(null);
+            finishedGood.setRevenueAccountId(null);
+            finishedGood.setTaxAccountId(null);
+            finishedGoodRepository.save(finishedGood);
+        }, () -> {
+            throw new AssertionError("expected finished-good mirror for sku " + sku);
+        });
+
+        ResponseEntity<Map> salesBrowseResponse = rest.exchange(
+                "/api/v1/catalog/products?brandId=" + brand.getId(),
+                HttpMethod.GET,
+                new HttpEntity<>(authHeaders(SALES_EMAIL, PASSWORD, COMPANY_CODE)),
+                Map.class);
+        ResponseEntity<Map> accountingBrowseResponse = rest.exchange(
+                "/api/v1/catalog/products?brandId=" + brand.getId(),
+                HttpMethod.GET,
+                new HttpEntity<>(authHeaders(ACCOUNTING_EMAIL, PASSWORD, COMPANY_CODE)),
+                Map.class);
+        ResponseEntity<Map> salesReadResponse = rest.exchange(
+                "/api/v1/catalog/products/" + productId,
+                HttpMethod.GET,
+                new HttpEntity<>(authHeaders(SALES_EMAIL, PASSWORD, COMPANY_CODE)),
+                Map.class);
+        ResponseEntity<Map> accountingReadResponse = rest.exchange(
+                "/api/v1/catalog/products/" + productId,
+                HttpMethod.GET,
+                new HttpEntity<>(authHeaders(ACCOUNTING_EMAIL, PASSWORD, COMPANY_CODE)),
+                Map.class);
+
+        Map<String, Object> salesBrowseProduct = browseProduct(salesBrowseResponse, sku);
+        Map<String, Object> accountingBrowseProduct = browseProduct(accountingBrowseResponse, sku);
+        Map<String, Object> salesReadProduct = data(salesReadResponse);
+        Map<String, Object> accountingReadProduct = data(accountingReadResponse);
+
+        assertThat(readinessBlockers(salesBrowseProduct, "inventory"))
+                .containsExactly("ACCOUNTING_CONFIGURATION_REQUIRED");
+        assertThat(readinessBlockers(salesBrowseProduct, "production"))
+                .containsExactly("ACCOUNTING_CONFIGURATION_REQUIRED");
+        assertThat(readinessBlockers(salesBrowseProduct, "sales"))
+                .containsExactly("NO_FINISHED_GOOD_BATCH_STOCK", "ACCOUNTING_CONFIGURATION_REQUIRED");
+        assertThat(readinessBlockers(salesReadProduct, "inventory"))
+                .containsExactly("ACCOUNTING_CONFIGURATION_REQUIRED");
+        assertThat(readinessBlockers(salesReadProduct, "production"))
+                .containsExactly("ACCOUNTING_CONFIGURATION_REQUIRED");
+        assertThat(readinessBlockers(salesReadProduct, "sales"))
+                .containsExactly("NO_FINISHED_GOOD_BATCH_STOCK", "ACCOUNTING_CONFIGURATION_REQUIRED");
+
+        assertThat(readinessBlockers(accountingBrowseProduct, "inventory"))
+                .containsExactlyInAnyOrder(
+                        "FINISHED_GOOD_VALUATION_ACCOUNT_MISSING",
+                        "FINISHED_GOOD_COGS_ACCOUNT_MISSING",
+                        "FINISHED_GOOD_REVENUE_ACCOUNT_MISSING",
+                        "FINISHED_GOOD_TAX_ACCOUNT_MISSING");
+        assertThat(readinessBlockers(accountingBrowseProduct, "production"))
+                .containsExactlyInAnyOrder(
+                        "FINISHED_GOOD_VALUATION_ACCOUNT_MISSING",
+                        "FINISHED_GOOD_COGS_ACCOUNT_MISSING",
+                        "FINISHED_GOOD_REVENUE_ACCOUNT_MISSING",
+                        "FINISHED_GOOD_TAX_ACCOUNT_MISSING",
+                        "WIP_ACCOUNT_MISSING");
+        assertThat(readinessBlockers(accountingReadProduct, "inventory"))
+                .containsExactlyInAnyOrder(
+                        "FINISHED_GOOD_VALUATION_ACCOUNT_MISSING",
+                        "FINISHED_GOOD_COGS_ACCOUNT_MISSING",
+                        "FINISHED_GOOD_REVENUE_ACCOUNT_MISSING",
+                        "FINISHED_GOOD_TAX_ACCOUNT_MISSING");
+        assertThat(readinessBlockers(accountingReadProduct, "production"))
+                .containsExactlyInAnyOrder(
+                        "FINISHED_GOOD_VALUATION_ACCOUNT_MISSING",
+                        "FINISHED_GOOD_COGS_ACCOUNT_MISSING",
+                        "FINISHED_GOOD_REVENUE_ACCOUNT_MISSING",
+                        "FINISHED_GOOD_TAX_ACCOUNT_MISSING",
+                        "WIP_ACCOUNT_MISSING");
     }
 
     private DownstreamFlowResult runDownstreamReadyFlow(Long brandId, String baseProductName) {
@@ -497,6 +600,34 @@ class AccountingCatalogControllerSecurityIT extends AbstractIntegrationTest {
         batch.setReceivedAt(Instant.now());
         rawMaterialBatchRepository.save(batch);
         return saved;
+    }
+
+    private Map<String, Object> browseProduct(HttpHeaders requestHeaders, Long brandId, String sku) {
+        ResponseEntity<Map> browseResponse = rest.exchange(
+                "/api/v1/catalog/products?brandId=" + brandId,
+                HttpMethod.GET,
+                new HttpEntity<>(requestHeaders),
+                Map.class);
+        assertThat(browseResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        return browseProduct(browseResponse, sku);
+    }
+
+    private Map<String, Object> browseProduct(ResponseEntity<Map> response, String sku) {
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> browseContent = (List<Map<String, Object>>) data(response).get("content");
+        return browseContent.stream()
+                .filter(candidate -> sku.equals(String.valueOf(candidate.get("sku"))))
+                .findFirst()
+                .orElseThrow();
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<String> readinessBlockers(Map<String, Object> product, String stage) {
+        Map<String, Object> readiness = (Map<String, Object>) product.get("readiness");
+        assertThat(readiness).isNotNull();
+        Map<String, Object> stageData = (Map<String, Object>) readiness.get(stage);
+        assertThat(stageData).isNotNull();
+        return (List<String>) stageData.get("blockers");
     }
 
     @SuppressWarnings("unchecked")

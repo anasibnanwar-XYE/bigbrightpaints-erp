@@ -62,6 +62,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -136,7 +137,7 @@ class OpeningStockImportServiceTest {
         company = new Company();
         company.setCode("ACME");
         company.setTimezone("UTC");
-        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+        lenient().when(companyContextService.requireCurrentCompany()).thenReturn(company);
         lenient().when(environment.acceptsProfiles(any(org.springframework.core.env.Profiles.class))).thenReturn(false);
         lenient().when(companyClock.today(company)).thenReturn(LocalDate.of(2026, 2, 3));
         lenient().when(skuReadinessService.forSku(eq(company), any(String.class), any()))
@@ -344,6 +345,10 @@ class OpeningStockImportServiceTest {
         assertThat(capturedLines)
                 .containsEntry(11L, new BigDecimal("50.00"))
                 .containsEntry(33L, new BigDecimal("48.00"));
+        verify(skuReadinessService, times(1))
+                .forSku(company, "RM-1", SkuReadinessService.ExpectedStockType.RAW_MATERIAL);
+        verify(skuReadinessService, times(1))
+                .forSku(company, "FG-1", SkuReadinessService.ExpectedStockType.FINISHED_GOOD);
     }
 
     @Test
@@ -358,6 +363,92 @@ class OpeningStockImportServiceTest {
                     assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD);
                     assertThat(ex.getMessage()).isEqualTo("Idempotency key is required for opening stock imports");
                 });
+    }
+
+    @Test
+    void importOpeningStock_reportsUnknownBlockerWhenReadinessFailsWithoutDetail() {
+        MockMultipartFile file = csvFile(String.join("\n",
+                "type,sku,name,unit,unit_type,batch_code,quantity,unit_cost,material_type",
+                "RAW_MATERIAL,RM-UNKNOWN,Resin,KG,KG,RM-B1,10,5.00,PRODUCTION"
+        ));
+
+        stubDefaultImportState(file);
+        when(skuReadinessService.forSku(company, "RM-UNKNOWN", SkuReadinessService.ExpectedStockType.RAW_MATERIAL))
+                .thenReturn(new SkuReadinessDto(
+                        "RM-UNKNOWN",
+                        new SkuReadinessDto.Stage(true, List.of()),
+                        new SkuReadinessDto.Stage(false, List.of()),
+                        new SkuReadinessDto.Stage(true, List.of()),
+                        new SkuReadinessDto.Stage(true, List.of())
+                ));
+
+        OpeningStockImportResponse response = service.importOpeningStock(file, "unknown-blocker-key");
+
+        assertThat(response.rowsProcessed()).isZero();
+        assertThat(response.errors()).hasSize(1);
+        assertThat(response.errors().getFirst().message())
+                .isEqualTo("SKU RM-UNKNOWN is not inventory-ready for opening stock: UNKNOWN");
+    }
+
+    @Test
+    void importOpeningStock_reportsMirrorLookupDriftForPreparedSkus() {
+        MockMultipartFile file = csvFile(String.join("\n",
+                "type,sku,name,unit,unit_type,batch_code,quantity,unit_cost,material_type,manufactured_at",
+                "RAW_MATERIAL,RM-READY,Resin,KG,KG,RM-B1,10,5.00,PRODUCTION,",
+                "FINISHED_GOOD,FG-READY,Gloss Paint,L,L,FG-B1,4,12.00,,2026-02-01"
+        ));
+
+        stubDefaultImportState(file);
+
+        OpeningStockImportResponse response = service.importOpeningStock(file, "missing-mirror-key");
+
+        assertThat(response.rowsProcessed()).isZero();
+        assertThat(response.errors()).hasSize(2);
+        assertThat(response.errors())
+                .extracting(error -> error.message())
+                .containsExactlyInAnyOrder(
+                        "Raw material mirror missing for prepared SKU RM-READY",
+                        "Finished good mirror missing for prepared SKU FG-READY"
+                );
+        verifyNoInteractions(accountingFacade);
+    }
+
+    @Test
+    void serializeResults_returnsNullForEmptyAndSerializationFailure() throws Exception {
+        assertThat((Object) ReflectionTestUtils.invokeMethod(service, "serializeResults", List.of())).isNull();
+
+        ObjectMapper failingObjectMapper = org.mockito.Mockito.mock(ObjectMapper.class);
+        when(failingObjectMapper.writeValueAsString(any()))
+                .thenThrow(new RuntimeException("boom"));
+
+        OpeningStockImportService failingService = new OpeningStockImportService(
+                companyContextService,
+                rawMaterialRepository,
+                rawMaterialBatchRepository,
+                rawMaterialMovementRepository,
+                finishedGoodRepository,
+                finishedGoodBatchRepository,
+                inventoryMovementRepository,
+                skuReadinessService,
+                batchNumberService,
+                accountingFacade,
+                accountRepository,
+                journalEntryRepository,
+                openingStockImportRepository,
+                auditService,
+                failingObjectMapper,
+                companyClock,
+                environment,
+                new ResourcelessTransactionManager(),
+                true
+        );
+
+        String serialized = ReflectionTestUtils.invokeMethod(
+                failingService,
+                "serializeResults",
+                List.of(new OpeningStockImportResponse.ImportRowResult(1L, "FG-1", "FINISHED_GOOD", readyReadiness("FG-1"))));
+
+        assertThat(serialized).isNull();
     }
 
     @Test
