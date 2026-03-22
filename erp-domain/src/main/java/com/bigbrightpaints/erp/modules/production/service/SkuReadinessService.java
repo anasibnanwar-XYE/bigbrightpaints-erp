@@ -319,12 +319,17 @@ public class SkuReadinessService {
             return expectedStockType;
         }
         if (product != null) {
-            if (isPackagingSku(product.getSkuCode())) {
-                return ExpectedStockType.PACKAGING_RAW_MATERIAL;
+            if (isRawMaterialCategory(product.getCategory())) {
+                if (rawMaterial != null && rawMaterial.getMaterialType() != null) {
+                    return rawMaterial.getMaterialType() == MaterialType.PACKAGING
+                            ? ExpectedStockType.PACKAGING_RAW_MATERIAL
+                            : ExpectedStockType.RAW_MATERIAL;
+                }
+                return isPackagingSku(product.getSkuCode())
+                        ? ExpectedStockType.PACKAGING_RAW_MATERIAL
+                        : ExpectedStockType.RAW_MATERIAL;
             }
-            return isRawMaterialCategory(product.getCategory())
-                    ? ExpectedStockType.RAW_MATERIAL
-                    : ExpectedStockType.FINISHED_GOOD;
+            return ExpectedStockType.FINISHED_GOOD;
         }
         if (rawMaterial != null) {
             return rawMaterial.getMaterialType() == MaterialType.PACKAGING || isPackagingSku(rawMaterial.getSku())

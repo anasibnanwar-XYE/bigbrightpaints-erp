@@ -551,7 +551,7 @@ public class ProductionCatalogService {
                 "productFamilyName",
                 MAX_PRODUCT_FAMILY_NAME_LENGTH,
                 "shorten baseProductName");
-        String normalizedItemClass = normalizeItemClass(request.getItemClass());
+        String normalizedItemClass = resolveEntryItemClass(request);
         String normalizedCategory = categoryForItemClass(normalizedItemClass);
         String unitOfMeasure = requireCanonicalToken(request.getUnitOfMeasure(), "unitOfMeasure");
         validateCanonicalPersistedTextLength(
@@ -2198,6 +2198,16 @@ public class ProductionCatalogService {
 
     private static String normalizeCategory(String category) {
         return StringUtils.hasText(category) ? category.trim().replace(' ', '_').toUpperCase() : "GENERAL";
+    }
+
+    private String resolveEntryItemClass(CatalogProductEntryRequest request) {
+        if (request == null) {
+            return normalizeItemClass(null);
+        }
+        String candidate = StringUtils.hasText(request.getItemClass())
+                ? request.getItemClass()
+                : request.getCategory();
+        return normalizeItemClass(candidate);
     }
 
     private String normalizeItemClass(String itemClass) {

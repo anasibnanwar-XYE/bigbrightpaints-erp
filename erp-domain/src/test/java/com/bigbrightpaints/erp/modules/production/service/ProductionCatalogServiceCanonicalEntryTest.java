@@ -483,6 +483,19 @@ class ProductionCatalogServiceCanonicalEntryTest {
     }
 
     @Test
+    void createOrPreviewCatalogProducts_acceptsLegacyCategoryWhenItemClassMissing() {
+        CatalogProductEntryRequest request = request(null, List.of("WHITE"), List.of("1L"));
+        request.setCategory("RAW_MATERIAL");
+
+        CatalogProductEntryResponse response = service.createOrPreviewCatalogProducts(request, true);
+
+        assertThat(response.preview()).isTrue();
+        assertThat(response.members()).hasSize(1);
+        assertThat(response.members().getFirst().sku()).isEqualTo("RM-BBR-PRIMER-WHITE-1L");
+        assertThat(response.members().getFirst().itemClass()).isEqualTo("RAW_MATERIAL");
+    }
+
+    @Test
     void createOrPreviewCatalogProducts_rethrowsUnexpectedCreateFailures() {
         CatalogProductEntryRequest request = request("RAW_MATERIAL", List.of("WHITE"), List.of("1L"));
         when(productRepository.save(any(ProductionProduct.class))).thenThrow(new RuntimeException("boom"));

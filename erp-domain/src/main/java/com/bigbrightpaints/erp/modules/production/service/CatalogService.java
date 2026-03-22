@@ -898,7 +898,9 @@ public class CatalogService {
         return switch (normalized) {
             case ITEM_CLASS_RAW_MATERIAL, "PRODUCTION", "PRODUCTION_RAW_MATERIAL" -> ITEM_CLASS_RAW_MATERIAL;
             case ITEM_CLASS_PACKAGING_RAW_MATERIAL, "PACKAGING" -> ITEM_CLASS_PACKAGING_RAW_MATERIAL;
-            default -> ITEM_CLASS_FINISHED_GOOD;
+            case ITEM_CLASS_FINISHED_GOOD -> ITEM_CLASS_FINISHED_GOOD;
+            default -> throw ValidationUtils.invalidInput(
+                    "itemClass must be FINISHED_GOOD, RAW_MATERIAL, or PACKAGING_RAW_MATERIAL");
         };
     }
 

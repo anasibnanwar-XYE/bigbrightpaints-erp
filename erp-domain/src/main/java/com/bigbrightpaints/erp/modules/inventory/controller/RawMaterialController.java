@@ -56,13 +56,10 @@ public class RawMaterialController {
     public ResponseEntity<ApiResponse<RawMaterialBatchDto>> intake(
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
             @RequestHeader(value = "X-Idempotency-Key", required = false) String legacyIdempotencyKey,
-            @Valid @RequestBody RawMaterialIntakeRequest request
-    ) {
+            @Valid @RequestBody RawMaterialIntakeRequest request) {
         String resolvedKey = IdempotencyHeaderUtils.resolveHeaderKey(idempotencyKey, legacyIdempotencyKey);
-        return ResponseEntity.ok(ApiResponse.success(
-                "Raw material intake processed",
-                rawMaterialService.intake(request, resolvedKey)
-        ));
+        return ResponseEntity.ok(ApiResponse.success("Raw material intake processed",
+                rawMaterialService.intake(request, resolvedKey)));
     }
 
     @PostMapping("/inventory/raw-materials/adjustments")

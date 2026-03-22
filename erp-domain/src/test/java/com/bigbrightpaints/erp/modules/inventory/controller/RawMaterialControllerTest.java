@@ -4,6 +4,8 @@ import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.modules.inventory.dto.InventoryExpiringBatchDto;
 import com.bigbrightpaints.erp.modules.inventory.dto.RawMaterialAdjustmentRequest;
+import com.bigbrightpaints.erp.modules.inventory.dto.RawMaterialIntakeRequest;
+import com.bigbrightpaints.erp.modules.inventory.dto.StockSummaryDto;
 import com.bigbrightpaints.erp.modules.inventory.service.InventoryBatchQueryService;
 import com.bigbrightpaints.erp.modules.inventory.service.RawMaterialService;
 import jakarta.validation.ConstraintViolationException;
@@ -18,6 +20,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -103,6 +106,71 @@ class RawMaterialControllerTest {
     }
 
     @Test
+    void intake_usesPrimaryIdempotencyHeader() {
+        RawMaterialController controller = controller();
+        RawMaterialIntakeRequest request = intakeRequest();
+
+        controller.intake("header-key", null, request);
+
+        verify(rawMaterialService).intake(request, "header-key");
+    }
+
+    @Test
+    void intake_fallsBackToLegacyIdempotencyHeader() {
+        RawMaterialController controller = controller();
+        RawMaterialIntakeRequest request = intakeRequest();
+
+        controller.intake(null, "legacy-key", request);
+
+        verify(rawMaterialService).intake(request, "legacy-key");
+    }
+
+    @Test
+    void intake_rejectsMismatchedIdempotencyHeaders() {
+        RawMaterialController controller = controller();
+
+        assertThatThrownBy(() -> controller.intake("header-key", "legacy-key", intakeRequest()))
+                .isInstanceOfSatisfying(ApplicationException.class, ex -> {
+                    assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_INVALID_INPUT);
+                    assertThat(ex.getMessage()).isEqualTo("Idempotency key mismatch between Idempotency-Key and X-Idempotency-Key headers");
+                });
+
+        verifyNoInteractions(rawMaterialService);
+    }
+
+    @Test
+    void lowStock_delegatesToRawMaterialService() {
+        RawMaterialController controller = controller();
+
+        controller.lowStock();
+
+        verify(rawMaterialService).listLowStock();
+    }
+
+    @Test
+    void stockSummary_delegatesToRawMaterialService() {
+        RawMaterialController controller = controller();
+        StockSummaryDto summary = new StockSummaryDto(
+                11L,
+                UUID.randomUUID(),
+                "RM-SUMMARY",
+                "Summary",
+                new BigDecimal("12.00"),
+                BigDecimal.ONE,
+                new BigDecimal("11.00"),
+                new BigDecimal("120.00"),
+                10L,
+                2L,
+                1L,
+                5L);
+        when(rawMaterialService.summarizeStock()).thenReturn(summary);
+
+        assertThat(controller.stockSummary().getBody()).isNotNull();
+
+        verify(rawMaterialService).summarizeStock();
+    }
+
+    @Test
     void expiringSoonBatches_clampsNegativeDaysToZero() {
         RawMaterialController controller = controller();
 
@@ -133,6 +201,18 @@ class RawMaterialControllerTest {
                         new BigDecimal("120.00"),
                         "count"
                 ))
+        );
+    }
+
+    private RawMaterialIntakeRequest intakeRequest() {
+        return new RawMaterialIntakeRequest(
+                11L,
+                "RM-B1",
+                new BigDecimal("3.00"),
+                "KG",
+                new BigDecimal("120.00"),
+                77L,
+                "count"
         );
     }
 

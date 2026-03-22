@@ -25,7 +25,6 @@ public class CatalogProductEntryRequest {
 
     private String category;
 
-    @NotBlank(message = "itemClass is required")
     private String itemClass;
 
     @NotBlank(message = "unitOfMeasure is required")

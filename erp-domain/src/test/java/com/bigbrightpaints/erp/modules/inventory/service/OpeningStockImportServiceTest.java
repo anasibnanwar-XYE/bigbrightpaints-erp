@@ -397,6 +397,24 @@ class OpeningStockImportServiceTest {
     }
 
     @Test
+    void helperMethods_buildReplayProtectionKeyPrefersCompanyIdAndFallsBackToSanitizedCode() {
+        Company legacyCompany = new Company();
+        legacyCompany.setCode(" acme-west ");
+        Company blankCodeCompany = new Company();
+
+        assertThat((String) ReflectionTestUtils.invokeMethod(service, "replayProtectionCompanyScope", company))
+                .isEqualTo("CID-77");
+        assertThat((String) ReflectionTestUtils.invokeMethod(service, "replayProtectionCompanyScope", legacyCompany))
+                .isEqualTo("ACMEWEST");
+        assertThat((String) ReflectionTestUtils.invokeMethod(service, "replayProtectionCompanyScope", blankCodeCompany))
+                .isEqualTo("COMPANY");
+        assertThat((String) ReflectionTestUtils.invokeMethod(service, "buildReplayProtectionKey", company, "hash-1"))
+                .isEqualTo("OPENING-STOCK|CID-77|hash-1");
+        assertThat((String) ReflectionTestUtils.invokeMethod(service, "buildReplayProtectionKey", legacyCompany, "hash-2"))
+                .isEqualTo("OPENING-STOCK|ACMEWEST|hash-2");
+    }
+
+    @Test
     void importOpeningStock_rethrowsNonDataIntegrityRuntimeFailures() {
         MockMultipartFile file = csvFile(String.join("\n",
                 "type,sku,name,unit,unit_type,batch_code,quantity,unit_cost,material_type",

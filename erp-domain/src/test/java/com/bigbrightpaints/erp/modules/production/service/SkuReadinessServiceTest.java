@@ -267,6 +267,37 @@ class SkuReadinessServiceTest {
     }
 
     @Test
+    void resolveExpectedStockType_prefersStoredFinishedGoodCategoryOverPackagingPrefix() {
+        ProductionProduct product = finishedGoodProduct("PKG-FG-1");
+
+        SkuReadinessService.ExpectedStockType stockType = ReflectionTestUtils.invokeMethod(
+                service,
+                "resolveExpectedStockType",
+                product,
+                null,
+                null);
+
+        assertThat(stockType).isEqualTo(SkuReadinessService.ExpectedStockType.FINISHED_GOOD);
+    }
+
+    @Test
+    void resolveExpectedStockType_prefersRawMaterialMirrorTypeOverPackagingPrefix() {
+        ProductionProduct product = finishedGoodProduct("PKG-RM-1");
+        product.setCategory("RAW_MATERIAL");
+        RawMaterial rawMaterial = rawMaterial("PKG-RM-1", 77L);
+        rawMaterial.setMaterialType(MaterialType.PRODUCTION);
+
+        SkuReadinessService.ExpectedStockType stockType = ReflectionTestUtils.invokeMethod(
+                service,
+                "resolveExpectedStockType",
+                product,
+                rawMaterial,
+                null);
+
+        assertThat(stockType).isEqualTo(SkuReadinessService.ExpectedStockType.RAW_MATERIAL);
+    }
+
+    @Test
     void forSku_preservesStoredSkuCasingWhenResolvingReadinessMirrors() {
         ProductionProduct product = finishedGoodProduct("Fg-Mixed-1");
         product.setMetadata(finishedGoodProductionMetadata(44L, 55L, 66L));
