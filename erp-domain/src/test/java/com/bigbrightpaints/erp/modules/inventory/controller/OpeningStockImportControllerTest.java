@@ -47,8 +47,16 @@ class OpeningStockImportControllerTest {
     void importOpeningStock_sanitizesReadinessForFactoryUsers() {
         OpeningStockImportController controller = new OpeningStockImportController(openingStockImportService, skuReadinessService);
         MockMultipartFile file = csvFile();
-        SkuReadinessDto rawReadiness = readiness(false, List.of("WIP_ACCOUNT_MISSING"));
-        SkuReadinessDto sanitizedReadiness = readiness(false, List.of("ACCOUNTING_CONFIGURATION_REQUIRED"));
+        SkuReadinessDto rawReadiness = readiness(
+                List.of("WIP_ACCOUNT_MISSING"),
+                List.of("WIP_ACCOUNT_MISSING"),
+                List.of("WIP_ACCOUNT_MISSING"),
+                List.of());
+        SkuReadinessDto sanitizedReadiness = readiness(
+                List.of("ACCOUNTING_CONFIGURATION_REQUIRED"),
+                List.of("ACCOUNTING_CONFIGURATION_REQUIRED"),
+                List.of("ACCOUNTING_CONFIGURATION_REQUIRED"),
+                List.of());
         OpeningStockImportResponse response = new OpeningStockImportResponse(
                 1,
                 0,
@@ -56,7 +64,12 @@ class OpeningStockImportControllerTest {
                 0,
                 1,
                 List.of(new OpeningStockImportResponse.ImportRowResult(1L, "FG-1", "FINISHED_GOOD", rawReadiness)),
-                List.of(new OpeningStockImportResponse.ImportError(2L, "blocked", "FG-2", "FINISHED_GOOD", rawReadiness))
+                List.of(new OpeningStockImportResponse.ImportError(
+                        2L,
+                        "SKU FG-2 is not inventory-ready for opening stock: WIP_ACCOUNT_MISSING",
+                        "FG-2",
+                        "FINISHED_GOOD",
+                        rawReadiness))
         );
         when(openingStockImportService.importOpeningStock(file, "factory-key")).thenReturn(response);
         when(skuReadinessService.sanitizeForCatalogViewer(rawReadiness, false)).thenReturn(sanitizedReadiness);
@@ -68,6 +81,8 @@ class OpeningStockImportControllerTest {
 
         assertThat(payload.results().getFirst().readiness()).isEqualTo(sanitizedReadiness);
         assertThat(payload.errors().getFirst().readiness()).isEqualTo(sanitizedReadiness);
+        assertThat(payload.errors().getFirst().message())
+                .isEqualTo("SKU FG-2 is not inventory-ready for opening stock: ACCOUNTING_CONFIGURATION_REQUIRED");
         verify(skuReadinessService, org.mockito.Mockito.times(2)).sanitizeForCatalogViewer(rawReadiness, false);
     }
 
@@ -117,13 +132,16 @@ class OpeningStockImportControllerTest {
         );
     }
 
-    private SkuReadinessDto readiness(boolean salesReady, List<String> salesBlockers) {
+    private SkuReadinessDto readiness(List<String> inventoryBlockers,
+                                      List<String> productionBlockers,
+                                      List<String> salesBlockers,
+                                      List<String> catalogBlockers) {
         return new SkuReadinessDto(
                 "FG-1",
-                new SkuReadinessDto.Stage(true, List.of()),
-                new SkuReadinessDto.Stage(true, List.of()),
-                new SkuReadinessDto.Stage(true, List.of()),
-                new SkuReadinessDto.Stage(salesReady, salesBlockers)
+                new SkuReadinessDto.Stage(catalogBlockers.isEmpty(), catalogBlockers),
+                new SkuReadinessDto.Stage(inventoryBlockers.isEmpty(), inventoryBlockers),
+                new SkuReadinessDto.Stage(productionBlockers.isEmpty(), productionBlockers),
+                new SkuReadinessDto.Stage(salesBlockers.isEmpty(), salesBlockers)
         );
     }
 }

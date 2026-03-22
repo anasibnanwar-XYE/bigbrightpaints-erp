@@ -317,7 +317,7 @@ class ProductionCatalogServiceCanonicalEntryTest {
 
     @Test
     void createOrPreviewCatalogProducts_previewEnrichesFinishedGoodsWithPostingDefaults() {
-        when(companyDefaultAccountsService.requireDefaults()).thenReturn(
+        when(companyDefaultAccountsService.getDefaults()).thenReturn(
                 new CompanyDefaultAccountsService.DefaultAccounts(101L, 102L, 103L, 104L, 105L));
         when(companyEntityLookup.requireAccount(company, 101L)).thenReturn(account(101L));
         when(companyEntityLookup.requireAccount(company, 102L)).thenReturn(account(102L));
@@ -336,6 +336,39 @@ class ProductionCatalogServiceCanonicalEntryTest {
                 .containsEntry("fgRevenueAccountId", 103L)
                 .containsEntry("fgDiscountAccountId", 104L)
                 .containsEntry("fgTaxAccountId", 105L);
+    }
+
+    @Test
+    void createOrPreviewCatalogProducts_previewReturnsFinishedGoodReadinessWhenDefaultsAreMissing() {
+        when(companyDefaultAccountsService.getDefaults()).thenReturn(
+                new CompanyDefaultAccountsService.DefaultAccounts(null, null, null, null, null));
+        SkuReadinessDto readiness = new SkuReadinessDto(
+                "BBR-PRIMER-WHITE-1L",
+                new SkuReadinessDto.Stage(true, List.of()),
+                new SkuReadinessDto.Stage(false, List.of("ACCOUNTING_CONFIGURATION_REQUIRED")),
+                new SkuReadinessDto.Stage(false, List.of("ACCOUNTING_CONFIGURATION_REQUIRED", "WIP_ACCOUNT_MISSING")),
+                new SkuReadinessDto.Stage(false, List.of("ACCOUNTING_CONFIGURATION_REQUIRED"))
+        );
+        when(skuReadinessService.forPlannedProduct(
+                any(ProductionProduct.class),
+                eq(SkuReadinessService.ExpectedStockType.FINISHED_GOOD),
+                any(),
+                any()
+        )).thenReturn(readiness);
+
+        CatalogProductEntryResponse response = service.createOrPreviewCatalogProducts(
+                request("FINISHED_GOOD", List.of("WHITE"), List.of("1L")),
+                true);
+
+        assertThat(response.preview()).isTrue();
+        assertThat(response.members()).hasSize(1);
+        assertThat(response.members().getFirst().sku()).isEqualTo("BBR-PRIMER-WHITE-1L");
+        assertThat(response.members().getFirst().readiness()).isEqualTo(readiness);
+        assertThat(response.metadata()).doesNotContainKeys(
+                "fgValuationAccountId",
+                "fgCogsAccountId",
+                "fgRevenueAccountId",
+                "fgTaxAccountId");
     }
 
     @Test

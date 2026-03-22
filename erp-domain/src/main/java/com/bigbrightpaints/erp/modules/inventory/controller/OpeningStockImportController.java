@@ -3,13 +3,16 @@ package com.bigbrightpaints.erp.modules.inventory.controller;
 import com.bigbrightpaints.erp.modules.inventory.dto.OpeningStockImportHistoryItem;
 import com.bigbrightpaints.erp.modules.inventory.dto.OpeningStockImportResponse;
 import com.bigbrightpaints.erp.modules.inventory.service.OpeningStockImportService;
+import com.bigbrightpaints.erp.modules.production.dto.SkuReadinessDto;
 import com.bigbrightpaints.erp.modules.production.service.SkuReadinessService;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 import com.bigbrightpaints.erp.shared.dto.PageResponse;
+import java.util.List;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -72,13 +75,60 @@ public class OpeningStockImportController {
                                 skuReadinessService.sanitizeForCatalogViewer(result.readiness(), false)))
                         .toList(),
                 response.errors().stream()
-                        .map(error -> new OpeningStockImportResponse.ImportError(
-                                error.rowNumber(),
-                                error.message(),
-                                error.sku(),
-                                error.stockType(),
-                                skuReadinessService.sanitizeForCatalogViewer(error.readiness(), false)))
+                        .map(error -> {
+                            SkuReadinessDto sanitizedReadiness =
+                                    skuReadinessService.sanitizeForCatalogViewer(error.readiness(), false);
+                            return new OpeningStockImportResponse.ImportError(
+                                    error.rowNumber(),
+                                    sanitizeErrorMessage(error.message(), error.sku(), sanitizedReadiness),
+                                    error.sku(),
+                                    error.stockType(),
+                                    sanitizedReadiness);
+                        })
                         .toList());
+    }
+
+    private String sanitizeErrorMessage(String message, String sku, SkuReadinessDto sanitizedReadiness) {
+        String stage = stageFromOpeningStockErrorMessage(message);
+        if (!StringUtils.hasText(stage) || sanitizedReadiness == null) {
+            return message;
+        }
+        List<String> blockers = blockersForStage(sanitizedReadiness, stage);
+        String blockerText = blockers == null || blockers.isEmpty() ? "UNKNOWN" : String.join(", ", blockers);
+        String effectiveSku = StringUtils.hasText(sku) ? sku : sanitizedReadiness.sku();
+        if (!StringUtils.hasText(effectiveSku)) {
+            return message;
+        }
+        return "SKU " + effectiveSku + " is not " + stage + "-ready for opening stock: " + blockerText;
+    }
+
+    private String stageFromOpeningStockErrorMessage(String message) {
+        if (!StringUtils.hasText(message) || !message.contains("ready for opening stock:")) {
+            return null;
+        }
+        if (message.contains("not catalog-ready")) {
+            return "catalog";
+        }
+        if (message.contains("not inventory-ready")) {
+            return "inventory";
+        }
+        if (message.contains("not production-ready")) {
+            return "production";
+        }
+        if (message.contains("not sales-ready")) {
+            return "sales";
+        }
+        return null;
+    }
+
+    private List<String> blockersForStage(SkuReadinessDto readiness, String stage) {
+        return switch (stage) {
+            case "catalog" -> readiness.catalog() == null ? List.of() : readiness.catalog().blockers();
+            case "inventory" -> readiness.inventory() == null ? List.of() : readiness.inventory().blockers();
+            case "production" -> readiness.production() == null ? List.of() : readiness.production().blockers();
+            case "sales" -> readiness.sales() == null ? List.of() : readiness.sales().blockers();
+            default -> List.of();
+        };
     }
 
     private boolean canViewAccountingMetadata(Authentication authentication) {
