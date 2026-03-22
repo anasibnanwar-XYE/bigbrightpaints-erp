@@ -291,6 +291,55 @@ class OpeningStockImportControllerTest {
     }
 
     @Test
+    void sanitizeErrorMessage_usesUnknownWhenStageBlockersAreEmpty() {
+        OpeningStockImportController controller = new OpeningStockImportController(openingStockImportService, skuReadinessService);
+        SkuReadinessDto emptyProductionBlockers = new SkuReadinessDto(
+                "FG-11",
+                new SkuReadinessDto.Stage(true, List.of()),
+                new SkuReadinessDto.Stage(true, List.of()),
+                new SkuReadinessDto.Stage(false, List.of()),
+                new SkuReadinessDto.Stage(true, List.of())
+        );
+
+        assertThat(sanitizeErrorMessage(
+                controller,
+                "SKU FG-11 is not production-ready for opening stock: LABOR_APPLIED_ACCOUNT_MISSING",
+                "FG-11",
+                emptyProductionBlockers)).isEqualTo(
+                        "SKU FG-11 is not production-ready for opening stock: UNKNOWN");
+    }
+
+    @Test
+    void sanitizeImportException_preservesNullAndNonAccountingFailures() {
+        OpeningStockImportController controller = new OpeningStockImportController(openingStockImportService, skuReadinessService);
+        ApplicationException nonAccountingFailure =
+                new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "SKU FG-1 is not inventory-ready for opening stock");
+
+        assertThat(sanitizeImportException(controller, null)).isNull();
+        assertThat(sanitizeImportException(controller, nonAccountingFailure)).isSameAs(nonAccountingFailure);
+    }
+
+    @Test
+    void isAccountingSensitiveImportFailure_detectsEveryTrackedKeyword() {
+        OpeningStockImportController controller = new OpeningStockImportController(openingStockImportService, skuReadinessService);
+
+        assertThat(isAccountingSensitiveImportFailure(controller, null)).isFalse();
+        assertThat(isAccountingSensitiveImportFailure(controller, "   ")).isFalse();
+        assertThat(isAccountingSensitiveImportFailure(controller, "plain validation failure")).isFalse();
+        assertThat(isAccountingSensitiveImportFailure(controller, " open-bal missing ")).isTrue();
+        assertThat(isAccountingSensitiveImportFailure(controller, "inventory account missing")).isTrue();
+        assertThat(isAccountingSensitiveImportFailure(controller, "valuation account missing")).isTrue();
+        assertThat(isAccountingSensitiveImportFailure(controller, "cogs account missing")).isTrue();
+        assertThat(isAccountingSensitiveImportFailure(controller, "revenue account missing")).isTrue();
+        assertThat(isAccountingSensitiveImportFailure(controller, "tax account missing")).isTrue();
+        assertThat(isAccountingSensitiveImportFailure(controller, "gst output account missing")).isTrue();
+        assertThat(isAccountingSensitiveImportFailure(controller, "discount account missing")).isTrue();
+        assertThat(isAccountingSensitiveImportFailure(controller, "wip account missing")).isTrue();
+        assertThat(isAccountingSensitiveImportFailure(controller, "labor applied account missing")).isTrue();
+        assertThat(isAccountingSensitiveImportFailure(controller, "overhead applied account missing")).isTrue();
+    }
+
+    @Test
     void canViewAccountingMetadata_allowsOnlyAdminAndAccountingAuthorities() {
         OpeningStockImportController controller = new OpeningStockImportController(openingStockImportService, skuReadinessService);
         Authentication authenticationWithNullAuthorities = mock(Authentication.class);
@@ -353,6 +402,15 @@ class OpeningStockImportControllerTest {
 
     private boolean canViewAccountingMetadata(OpeningStockImportController controller, Authentication authentication) {
         Boolean result = ReflectionTestUtils.invokeMethod(controller, "canViewAccountingMetadata", authentication);
+        return Boolean.TRUE.equals(result);
+    }
+
+    private ApplicationException sanitizeImportException(OpeningStockImportController controller, ApplicationException ex) {
+        return ReflectionTestUtils.invokeMethod(controller, "sanitizeImportException", ex);
+    }
+
+    private boolean isAccountingSensitiveImportFailure(OpeningStockImportController controller, String message) {
+        Boolean result = ReflectionTestUtils.invokeMethod(controller, "isAccountingSensitiveImportFailure", message);
         return Boolean.TRUE.equals(result);
     }
 }
