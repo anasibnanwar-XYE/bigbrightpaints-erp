@@ -14,9 +14,14 @@ import com.bigbrightpaints.erp.modules.production.domain.ProductionBrand;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionBrandRepository;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionProduct;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionProductRepository;
+import com.bigbrightpaints.erp.modules.production.dto.CatalogItemDto;
+import com.bigbrightpaints.erp.modules.production.dto.CatalogItemRequest;
 import com.bigbrightpaints.erp.modules.production.dto.CatalogProductCartonSizeRequest;
 import com.bigbrightpaints.erp.modules.production.dto.CatalogProductDto;
 import com.bigbrightpaints.erp.modules.production.dto.CatalogProductRequest;
+import com.bigbrightpaints.erp.modules.production.dto.ProductCreateRequest;
+import com.bigbrightpaints.erp.modules.production.dto.ProductUpdateRequest;
+import com.bigbrightpaints.erp.modules.production.dto.ProductionProductDto;
 import com.bigbrightpaints.erp.shared.dto.PageResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -1291,5 +1296,272 @@ class CatalogServiceProductCrudTest {
                         && skus.contains("pkg-bbr-bucket-white-1l")
                         && !skus.contains("Pkg-Bbr-Bucket-White-1L")));
         verify(rawMaterialRepository, never()).findByCompanyAndSkuIgnoreCase(any(), any());
+    }
+
+    @Test
+    void createItem_translatesCanonicalRequestAndHydratesPackagingMirror() {
+        CatalogItemRequest request = new CatalogItemRequest(
+                11L,
+                "Bucket Shell",
+                "PACKAGING_RAW_MATERIAL",
+                "WHITE",
+                "1L",
+                "UNIT",
+                "392310",
+                new BigDecimal("12.00"),
+                new BigDecimal("18.00"),
+                BigDecimal.ZERO,
+                new BigDecimal("12.00"),
+                Map.of("inventoryAccountId", 9001L),
+                true
+        );
+
+        ProductionProduct created = new ProductionProduct();
+        ReflectionTestUtils.setField(created, "id", 801L);
+        created.setCompany(company);
+        created.setBrand(brand);
+        created.setProductName("Bucket Shell WHITE 1L");
+        created.setCategory("RAW_MATERIAL");
+        created.setSkuCode("PKG-BBR-BUCKET-WHITE-1L");
+        created.setDefaultColour("WHITE");
+        created.setSizeLabel("1L");
+        created.setUnitOfMeasure("UNIT");
+        created.setHsnCode("392310");
+        created.setBasePrice(new BigDecimal("12.00"));
+        created.setGstRate(new BigDecimal("18.00"));
+        created.setMinDiscountPercent(BigDecimal.ZERO);
+        created.setMinSellingPrice(new BigDecimal("12.00"));
+        created.setMetadata(new LinkedHashMap<>(Map.of("inventoryAccountId", 9001L)));
+        created.setActive(true);
+
+        RawMaterial rawMaterial = new RawMaterial();
+        ReflectionTestUtils.setField(rawMaterial, "id", 8801L);
+        rawMaterial.setCompany(company);
+        rawMaterial.setSku("PKG-BBR-BUCKET-WHITE-1L");
+        rawMaterial.setMaterialType(MaterialType.PACKAGING);
+        rawMaterial.setCurrentStock(new BigDecimal("7.50"));
+
+        when(productionCatalogService.createProduct(any(ProductCreateRequest.class))).thenReturn(new ProductionProductDto(
+                801L,
+                null,
+                11L,
+                brand.getName(),
+                brand.getCode(),
+                created.getProductName(),
+                created.getCategory(),
+                created.getDefaultColour(),
+                created.getSizeLabel(),
+                created.getUnitOfMeasure(),
+                created.getHsnCode(),
+                created.getSkuCode(),
+                null,
+                "Bucket Shell",
+                true,
+                created.getBasePrice(),
+                created.getGstRate(),
+                created.getMinDiscountPercent(),
+                created.getMinSellingPrice(),
+                created.getMetadata()
+        ));
+        when(productRepository.findByCompanyAndId(company, 801L)).thenReturn(Optional.of(created));
+        when(rawMaterialRepository.findByCompanyAndSkuIgnoreCase(company, "PKG-BBR-BUCKET-WHITE-1L"))
+                .thenReturn(Optional.of(rawMaterial));
+        when(skuReadinessService.forProduct(company, created)).thenReturn(null);
+
+        CatalogItemDto response = service.createItem(request);
+
+        ArgumentCaptor<ProductCreateRequest> requestCaptor = ArgumentCaptor.forClass(ProductCreateRequest.class);
+        verify(productionCatalogService).createProduct(requestCaptor.capture());
+        assertThat(requestCaptor.getValue().itemClass()).isEqualTo("PACKAGING_RAW_MATERIAL");
+        assertThat(requestCaptor.getValue().defaultColour()).isEqualTo("WHITE");
+        assertThat(requestCaptor.getValue().sizeLabel()).isEqualTo("1L");
+        assertThat(response.id()).isEqualTo(801L);
+        assertThat(response.itemClass()).isEqualTo("PACKAGING_RAW_MATERIAL");
+        assertThat(response.rawMaterialId()).isEqualTo(8801L);
+        assertThat(response.stock().onHandQuantity()).isEqualByComparingTo("7.50");
+        assertThat(response.stock().availableQuantity()).isEqualByComparingTo("7.50");
+    }
+
+    @Test
+    void updateItem_delegatesCanonicalUpdateAndHydratesFinishedGoodMirror() {
+        ProductionProduct existing = new ProductionProduct();
+        ReflectionTestUtils.setField(existing, "id", 802L);
+        existing.setCompany(company);
+        existing.setBrand(brand);
+        existing.setProductName("Primer");
+        existing.setCategory("FINISHED_GOOD");
+        existing.setSkuCode("BBR-PRIMER-001");
+        existing.setDefaultColour("WHITE");
+        existing.setSizeLabel("20L");
+        existing.setUnitOfMeasure("LITER");
+        existing.setHsnCode("320810");
+        existing.setBasePrice(new BigDecimal("799.00"));
+        existing.setGstRate(new BigDecimal("18.00"));
+        existing.setMinDiscountPercent(new BigDecimal("5.00"));
+        existing.setMinSellingPrice(new BigDecimal("760.00"));
+        existing.setActive(true);
+
+        FinishedGood finishedGood = new FinishedGood();
+        finishedGood.setCompany(company);
+        finishedGood.setProductCode("BBR-PRIMER-001");
+        finishedGood.setCurrentStock(new BigDecimal("12.00"));
+        finishedGood.setReservedStock(new BigDecimal("2.00"));
+        finishedGood.setUnit("LITER");
+
+        CatalogItemRequest request = new CatalogItemRequest(
+                11L,
+                "Primer Updated",
+                "FINISHED_GOOD",
+                "WHITE",
+                "20L",
+                "LITER",
+                "320810",
+                new BigDecimal("820.00"),
+                new BigDecimal("18.00"),
+                new BigDecimal("4.00"),
+                new BigDecimal("790.00"),
+                Map.of("productType", "decorative"),
+                false
+        );
+
+        when(productRepository.findByCompanyAndId(company, 802L)).thenReturn(Optional.of(existing));
+        when(finishedGoodRepository.findByCompanyAndProductCodeIgnoreCase(company, "BBR-PRIMER-001"))
+                .thenReturn(Optional.of(finishedGood));
+        when(skuReadinessService.forProduct(company, existing)).thenReturn(null);
+        when(productionCatalogService.updateProduct(eq(802L), any(ProductUpdateRequest.class))).thenAnswer(invocation -> {
+            existing.setProductName("Primer Updated");
+            existing.setActive(false);
+            existing.setBasePrice(new BigDecimal("820.00"));
+            existing.setMinDiscountPercent(new BigDecimal("4.00"));
+            existing.setMinSellingPrice(new BigDecimal("790.00"));
+            return new ProductionProductDto(
+                    802L,
+                    null,
+                    11L,
+                    brand.getName(),
+                    brand.getCode(),
+                    existing.getProductName(),
+                    existing.getCategory(),
+                    existing.getDefaultColour(),
+                    existing.getSizeLabel(),
+                    existing.getUnitOfMeasure(),
+                    existing.getHsnCode(),
+                    existing.getSkuCode(),
+                    null,
+                    "Primer",
+                    existing.isActive(),
+                    existing.getBasePrice(),
+                    existing.getGstRate(),
+                    existing.getMinDiscountPercent(),
+                    existing.getMinSellingPrice(),
+                    Map.of("productType", "decorative")
+            );
+        });
+
+        CatalogItemDto response = service.updateItem(802L, request);
+
+        ArgumentCaptor<ProductUpdateRequest> requestCaptor = ArgumentCaptor.forClass(ProductUpdateRequest.class);
+        verify(productionCatalogService).updateProduct(eq(802L), requestCaptor.capture());
+        assertThat(requestCaptor.getValue().itemClass()).isEqualTo("FINISHED_GOOD");
+        assertThat(requestCaptor.getValue().active()).isFalse();
+        assertThat(response.active()).isFalse();
+        assertThat(response.stock().onHandQuantity()).isEqualByComparingTo("12.00");
+        assertThat(response.stock().reservedQuantity()).isEqualByComparingTo("2.00");
+        assertThat(response.stock().availableQuantity()).isEqualByComparingTo("10.00");
+    }
+
+    @Test
+    void deactivateItem_marksItemInactiveAndReturnsHydratedMirror() {
+        ProductionProduct existing = new ProductionProduct();
+        ReflectionTestUtils.setField(existing, "id", 803L);
+        existing.setCompany(company);
+        existing.setBrand(brand);
+        existing.setProductName("Titanium Dioxide");
+        existing.setCategory("RAW_MATERIAL");
+        existing.setSkuCode("RM-TIO2-001");
+        existing.setUnitOfMeasure("KG");
+        existing.setHsnCode("282300");
+        existing.setActive(true);
+
+        RawMaterial rawMaterial = new RawMaterial();
+        ReflectionTestUtils.setField(rawMaterial, "id", 8803L);
+        rawMaterial.setCompany(company);
+        rawMaterial.setSku("RM-TIO2-001");
+        rawMaterial.setMaterialType(MaterialType.PRODUCTION);
+        rawMaterial.setCurrentStock(new BigDecimal("3.00"));
+
+        when(productRepository.findByCompanyAndId(company, 803L)).thenReturn(Optional.of(existing));
+        when(productRepository.save(any(ProductionProduct.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(rawMaterialRepository.findByCompanyAndSkuIgnoreCase(company, "RM-TIO2-001")).thenReturn(Optional.of(rawMaterial));
+        when(skuReadinessService.forProduct(company, existing)).thenReturn(null);
+
+        CatalogItemDto response = service.deactivateItem(803L);
+
+        assertThat(existing.isActive()).isFalse();
+        assertThat(response.active()).isFalse();
+        assertThat(response.rawMaterialId()).isEqualTo(8803L);
+        assertThat(response.stock().availableQuantity()).isEqualByComparingTo("3.00");
+    }
+
+    @Test
+    void searchItems_filtersByItemClassAndIncludesStock() {
+        ProductionProduct packaging = new ProductionProduct();
+        ReflectionTestUtils.setField(packaging, "id", 804L);
+        packaging.setCompany(company);
+        packaging.setBrand(brand);
+        packaging.setProductName("Bucket Shell WHITE 1L");
+        packaging.setCategory("RAW_MATERIAL");
+        packaging.setSkuCode("Pkg-Bbr-Bucket-White-1L");
+        packaging.setDefaultColour("WHITE");
+        packaging.setSizeLabel("1L");
+        packaging.setUnitOfMeasure("UNIT");
+        packaging.setHsnCode("392310");
+        packaging.setMetadata(new LinkedHashMap<>(Map.of("inventoryAccountId", 9001L)));
+        packaging.setActive(true);
+
+        ProductionProduct finishedGoodProduct = new ProductionProduct();
+        ReflectionTestUtils.setField(finishedGoodProduct, "id", 805L);
+        finishedGoodProduct.setCompany(company);
+        finishedGoodProduct.setBrand(brand);
+        finishedGoodProduct.setProductName("Primer");
+        finishedGoodProduct.setCategory("FINISHED_GOOD");
+        finishedGoodProduct.setSkuCode("BBR-PRIMER-002");
+        finishedGoodProduct.setUnitOfMeasure("LITER");
+        finishedGoodProduct.setHsnCode("320810");
+        finishedGoodProduct.setActive(true);
+
+        RawMaterial packagingMirror = new RawMaterial();
+        ReflectionTestUtils.setField(packagingMirror, "id", 8804L);
+        packagingMirror.setCompany(company);
+        packagingMirror.setSku("PKG-BBR-BUCKET-WHITE-1L");
+        packagingMirror.setMaterialType(MaterialType.PACKAGING);
+        packagingMirror.setCurrentStock(new BigDecimal("9.00"));
+
+        when(productRepository.findAll(any(Specification.class), any(org.springframework.data.domain.Sort.class)))
+                .thenReturn(List.of(packaging, finishedGoodProduct));
+        when(rawMaterialRepository.findByCompanyAndSkuInIgnoreCase(eq(company), anyCollection()))
+                .thenReturn(List.of(packagingMirror));
+        when(finishedGoodRepository.findByCompanyAndProductCodeInIgnoreCase(eq(company), anyCollection()))
+                .thenReturn(List.of());
+        when(skuReadinessService.forProducts(company, List.of(packaging))).thenReturn(Map.of());
+
+        PageResponse<CatalogItemDto> response = service.searchItems(
+                "bucket",
+                "PACKAGING_RAW_MATERIAL",
+                true,
+                true,
+                0,
+                20,
+                false
+        );
+
+        assertThat(response.content()).hasSize(1);
+        assertThat(response.content().getFirst().id()).isEqualTo(804L);
+        assertThat(response.content().getFirst().itemClass()).isEqualTo("PACKAGING_RAW_MATERIAL");
+        assertThat(response.content().getFirst().rawMaterialId()).isEqualTo(8804L);
+        assertThat(response.content().getFirst().stock().availableQuantity()).isEqualByComparingTo("9.00");
+        assertThat(response.content().getFirst().metadata()).doesNotContainKey("inventoryAccountId");
+        verify(rawMaterialRepository).findByCompanyAndSkuInIgnoreCase(eq(company), argThat(skus ->
+                skus.contains("pkg-bbr-bucket-white-1l") && skus.contains("bbr-primer-002")));
     }
 }

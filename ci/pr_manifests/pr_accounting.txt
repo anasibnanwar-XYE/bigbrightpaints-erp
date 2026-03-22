@@ -32,6 +32,7 @@ com.bigbrightpaints.erp.modules.reports.controller.ReportControllerContractTest
 com.bigbrightpaints.erp.modules.reports.controller.ReportControllerRouteContractIT
 com.bigbrightpaints.erp.modules.reports.service.BalanceSheetReportQueryServiceTest
 com.bigbrightpaints.erp.modules.reports.service.ReportServiceInventoryAndGstTest
+com.bigbrightpaints.erp.modules.reports.service.TrialBalanceReportQueryServiceTest
 com.bigbrightpaints.erp.modules.accounting.service.ClosedPeriodPostingExceptionServiceTest
 com.bigbrightpaints.erp.modules.accounting.service.ReferenceNumberServiceTest
 com.bigbrightpaints.erp.modules.accounting.service.SettlementServiceTest

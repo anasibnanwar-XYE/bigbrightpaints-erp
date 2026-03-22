@@ -979,6 +979,7 @@ class OpeningStockImportServiceTest {
         ReflectionTestUtils.setField(first, "id", 9L);
         first.setCompany(company);
         first.setIdempotencyKey("key-1");
+        first.setOpeningStockBatchKey("batch-1");
         first.setReferenceNumber("OPEN-STOCK-ACME-001");
         first.setFileName("opening-1.csv");
         first.setJournalEntryId(700L);
@@ -1020,6 +1021,7 @@ class OpeningStockImportServiceTest {
         OpeningStockImportHistoryItem item1 = history.content().getFirst();
         assertThat(item1.id()).isEqualTo(9L);
         assertThat(item1.idempotencyKey()).isEqualTo("key-1");
+        assertThat(item1.openingStockBatchKey()).isEqualTo("batch-1");
         assertThat(item1.referenceNumber()).isEqualTo("OPEN-STOCK-ACME-001");
         assertThat(item1.fileName()).isEqualTo("opening-1.csv");
         assertThat(item1.journalEntryId()).isEqualTo(700L);
@@ -1052,6 +1054,7 @@ class OpeningStockImportServiceTest {
         existing.setCompany(company);
         existing.setIdempotencyKey("same-key");
         existing.setIdempotencyHash(fileHash);
+        existing.setOpeningStockBatchKey("batch-key-1");
         existing.setRowsProcessed(4);
         existing.setRawMaterialsCreated(1);
         existing.setRawMaterialBatchesCreated(1);
@@ -1064,6 +1067,7 @@ class OpeningStockImportServiceTest {
 
         OpeningStockImportResponse replay = importOpeningStock(file, "same-key");
 
+        assertThat(replay.openingStockBatchKey()).isEqualTo("batch-key-1");
         assertThat(replay.rowsProcessed()).isEqualTo(4);
         assertThat(replay.rawMaterialBatchesCreated()).isEqualTo(1);
         assertThat(replay.finishedGoodBatchesCreated()).isEqualTo(1);
@@ -1096,6 +1100,7 @@ class OpeningStockImportServiceTest {
         existing.setCompany(company);
         existing.setIdempotencyKey("same-key");
         existing.setIdempotencyHash(fileHash);
+        existing.setOpeningStockBatchKey("batch-key-2");
         existing.setRowsProcessed(1);
         existing.setRawMaterialsCreated(0);
         existing.setRawMaterialBatchesCreated(1);
@@ -1113,6 +1118,7 @@ class OpeningStockImportServiceTest {
 
         OpeningStockImportResponse replay = importOpeningStock(file, "same-key");
 
+        assertThat(replay.openingStockBatchKey()).isEqualTo("batch-key-2");
         assertThat(replay.results()).hasSize(1);
         assertThat(replay.results().getFirst().sku()).isEqualTo("RM-1");
         assertThat(replay.results().getFirst().readiness().sales().blockers())
@@ -1120,6 +1126,20 @@ class OpeningStockImportServiceTest {
         assertThat(replay.errors()).hasSize(1);
         assertThat(replay.errors().getFirst().sku()).isEqualTo("RM-2");
         assertThat(replay.errors().getFirst().message()).isEqualTo("Invalid quantity");
+    }
+
+    @Test
+    void openingStockImport_entityExposesReplayProtectionAndFileMetadata() {
+        OpeningStockImport entity = new OpeningStockImport();
+        entity.setOpeningStockBatchKey("batch-key");
+        entity.setReplayProtectionKey("replay-key");
+        entity.setFileHash("file-hash");
+        entity.setFileName("opening.csv");
+
+        assertThat(entity.getOpeningStockBatchKey()).isEqualTo("batch-key");
+        assertThat(entity.getReplayProtectionKey()).isEqualTo("replay-key");
+        assertThat(entity.getFileHash()).isEqualTo("file-hash");
+        assertThat(entity.getFileName()).isEqualTo("opening.csv");
     }
 
     @Test

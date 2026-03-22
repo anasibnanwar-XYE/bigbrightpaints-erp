@@ -67,6 +67,7 @@ import com.bigbrightpaints.erp.modules.invoice.service.InvoiceSettlementPolicy;
 import com.bigbrightpaints.erp.core.audit.AuditService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -1018,6 +1019,39 @@ class AccountingServiceTest {
         assertThat(posted.entryDate()).isEqualTo(LocalDate.of(2026, 2, 12));
         assertThat(posted.memo()).isEqualTo("Payroll - LEGACY-44");
         assertThat(posted.lines()).isEqualTo(lines);
+    }
+
+    @Test
+    @Tag("critical")
+    void resolvePayrollRunToken_appendsRunIdWhenRunNumberDoesNotContainSuffix() {
+        String token = ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "resolvePayrollRunToken",
+                "FEB-2026",
+                44L
+        );
+
+        assertThat(token).isEqualTo("FEB-2026-44");
+    }
+
+    @Test
+    @Tag("critical")
+    void resolvePayrollRunToken_preservesLegacyAndSuffixRunNumbers() {
+        String legacyToken = ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "resolvePayrollRunToken",
+                "LEGACY-44",
+                44L
+        );
+        String suffixedToken = ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "resolvePayrollRunToken",
+                "FEB-2026-44",
+                44L
+        );
+
+        assertThat(legacyToken).isEqualTo("LEGACY-44");
+        assertThat(suffixedToken).isEqualTo("FEB-2026-44");
     }
 
     @Test
