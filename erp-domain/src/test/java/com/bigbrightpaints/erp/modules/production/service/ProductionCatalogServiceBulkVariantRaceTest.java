@@ -96,7 +96,7 @@ class ProductionCatalogServiceBulkVariantRaceTest {
 
     @Test
     void createVariants_failsClosedWhenConcurrentInsertRaisesDataIntegrityDuplicate() {
-        String sku = "FG-PRIMER-RED-20L";
+        String sku = "FG-BBP-PRIMER-RED-20L";
         when(productRepository.findByCompanyAndSkuCode(company, sku))
                 .thenReturn(Optional.of(existingProduct(sku)));
         doThrow(new DataIntegrityViolationException("duplicate key value violates unique constraint"))
@@ -122,7 +122,7 @@ class ProductionCatalogServiceBulkVariantRaceTest {
 
     @Test
     void createVariants_failsClosedWhenConcurrentInsertRaisesSkuAlreadyExistsValidation() {
-        String sku = "FG-PRIMER-RED-20L";
+        String sku = "FG-BBP-PRIMER-RED-20L";
         when(productRepository.findByCompanyAndSkuCode(company, sku))
                 .thenReturn(Optional.of(existingProduct(sku)));
         doThrow(new IllegalArgumentException("SKU " + sku + " already exists"))
@@ -170,7 +170,7 @@ class ProductionCatalogServiceBulkVariantRaceTest {
                 true);
 
         assertThat(response.wouldCreate()).hasSize(1);
-        assertThat(response.wouldCreate().getFirst().sku()).isEqualTo("FG-PRIMER-RED-20L");
+        assertThat(response.wouldCreate().getFirst().sku()).isEqualTo("FG-BBP-PRIMER-RED-20L");
     }
 
     @Test

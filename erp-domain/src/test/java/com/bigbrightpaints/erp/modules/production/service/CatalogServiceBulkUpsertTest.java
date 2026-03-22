@@ -47,6 +47,7 @@ class CatalogServiceBulkUpsertTest {
     @Mock private FinishedGoodRepository finishedGoodRepository;
     @Mock private RawMaterialRepository rawMaterialRepository;
     @Mock private SkuReadinessService skuReadinessService;
+    @Mock private ProductionCatalogService productionCatalogService;
 
     private CatalogService service;
     private Company company;
@@ -62,7 +63,8 @@ class CatalogServiceBulkUpsertTest {
                 sizeVariantRepository,
                 finishedGoodRepository,
                 rawMaterialRepository,
-                skuReadinessService);
+                skuReadinessService,
+                productionCatalogService);
         company = new Company();
         ReflectionTestUtils.setField(company, "id", 301L);
         company.setCode("BBP");
@@ -100,7 +102,7 @@ class CatalogServiceBulkUpsertTest {
                 new CatalogProductRequest(
                         1L,
                         "Weather Shield",
-                        null,
+                        "FINISHED_GOOD",
                         List.of("Red"),
                         List.of("1L"),
                         List.of(new CatalogProductCartonSizeRequest("1L", 24)),
@@ -120,7 +122,7 @@ class CatalogServiceBulkUpsertTest {
                 new CatalogProductRequest(
                         1L,
                         "Bad Product",
-                        null,
+                        "FINISHED_GOOD",
                         List.of("Blue"),
                         List.of("4L"),
                         List.of(),

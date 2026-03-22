@@ -10,9 +10,11 @@ public record ProductUpdateRequest(
         String defaultColour,
         String sizeLabel,
         String unitOfMeasure,
+        String hsnCode,
         BigDecimal basePrice,
         BigDecimal gstRate,
         BigDecimal minDiscountPercent,
         BigDecimal minSellingPrice,
-        Map<String, Object> metadata
+        Map<String, Object> metadata,
+        Boolean active
 ) {}

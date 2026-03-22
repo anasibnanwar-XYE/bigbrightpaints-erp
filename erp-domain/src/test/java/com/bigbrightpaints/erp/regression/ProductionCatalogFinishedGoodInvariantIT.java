@@ -86,6 +86,7 @@ class ProductionCatalogFinishedGoodInvariantIT extends AbstractIntegrationTest {
         company.setDefaultRevenueAccountId(revenueAccount.getId());
         company.setDefaultDiscountAccountId(discountAccount.getId());
         company.setDefaultTaxAccountId(taxAccount.getId());
+        company.setGstOutputTaxAccountId(taxAccount.getId());
         companyRepository.save(company);
 
         adminEmail = "catalog-ready-" + companyCode.toLowerCase() + "@bbp.com";
@@ -127,7 +128,7 @@ class ProductionCatalogFinishedGoodInvariantIT extends AbstractIntegrationTest {
         FinishedGood fg = finishedGoodRepository.findByCompanyAndProductCode(company, skuCode)
                 .orElseThrow();
 
-        assertThat(fg.getName()).isEqualTo(productName);
+        assertThat(fg.getName()).isEqualTo(productName + " WHITE 1L");
         assertThat(fg.getUnit()).isEqualTo("UNIT");
         assertThat(fg.getValuationAccountId()).isEqualTo(inventoryAccount.getId());
         assertThat(fg.getCogsAccountId()).isEqualTo(cogsAccount.getId());
@@ -138,7 +139,7 @@ class ProductionCatalogFinishedGoodInvariantIT extends AbstractIntegrationTest {
     }
 
     @Test
-    void updateProductSynchronizesFinishedGoodNameAndUnit() {
+    void updateProductSynchronizesFinishedGoodName() {
         String token = uniqueToken();
         String sourceName = "LF-015 Sync Product " + token;
         String updatedName = "LF-015 Sync Product Renamed " + token;
@@ -168,7 +169,9 @@ class ProductionCatalogFinishedGoodInvariantIT extends AbstractIntegrationTest {
                 null,
                 null,
                 null,
-                "LITER",
+                null,
+                null,
+                null,
                 null,
                 null,
                 null,
@@ -179,8 +182,8 @@ class ProductionCatalogFinishedGoodInvariantIT extends AbstractIntegrationTest {
         FinishedGood fg = finishedGoodRepository.findByCompanyAndProductCode(company, skuCode)
                 .orElseThrow();
 
-        assertThat(fg.getName()).isEqualTo(updatedName);
-        assertThat(fg.getUnit()).isEqualTo("LITER");
+        assertThat(fg.getName()).isEqualTo(updatedName + " BLUE 1L");
+        assertThat(fg.getUnit()).isEqualTo("UNIT");
     }
 
     @Test
@@ -215,16 +218,14 @@ class ProductionCatalogFinishedGoodInvariantIT extends AbstractIntegrationTest {
         ProductionBrand brand = saveBrand("LF-015 Ready " + uniqueToken(), true);
 
         ResponseEntity<Map> createResponse = rest.exchange(
-                "/api/v1/catalog/products",
+                "/api/v1/catalog/items",
                 HttpMethod.POST,
                 new HttpEntity<>(canonicalFinishedGoodPayload(brand.getId()), headers),
                 Map.class);
 
         assertThat(createResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
         Map<String, Object> createData = data(createResponse);
-        @SuppressWarnings("unchecked")
-        Map<String, Object> createdMember = ((List<Map<String, Object>>) createData.get("members")).getFirst();
-        String sku = String.valueOf(createdMember.get("sku"));
+        String sku = String.valueOf(createData.get("code"));
 
         FinishedGood finishedGood = finishedGoodRepository.findByCompanyAndProductCode(company, sku)
                 .orElseThrow();
@@ -237,7 +238,7 @@ class ProductionCatalogFinishedGoodInvariantIT extends AbstractIntegrationTest {
         assertThat(finishedGood.getTaxAccountId()).isEqualTo(taxAccount.getId());
 
         ResponseEntity<Map> browseResponse = rest.exchange(
-                "/api/v1/catalog/products?brandId=" + brand.getId(),
+                "/api/v1/catalog/items?q=" + sku + "&includeStock=true&includeReadiness=true",
                 HttpMethod.GET,
                 new HttpEntity<>(headers),
                 Map.class);
@@ -246,7 +247,7 @@ class ProductionCatalogFinishedGoodInvariantIT extends AbstractIntegrationTest {
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> browseContent = (List<Map<String, Object>>) data(browseResponse).get("content");
         Map<String, Object> browsedProduct = browseContent.stream()
-                .filter(candidate -> sku.equals(String.valueOf(candidate.get("sku"))))
+                .filter(candidate -> sku.equals(String.valueOf(candidate.get("code"))))
                 .findFirst()
                 .orElseThrow();
 
@@ -320,21 +321,19 @@ class ProductionCatalogFinishedGoodInvariantIT extends AbstractIntegrationTest {
     private Map<String, Object> canonicalFinishedGoodPayload(Long brandId) {
         Map<String, Object> metadata = new LinkedHashMap<>();
         metadata.put("wipAccountId", wipAccount.getId());
-        metadata.put("semiFinishedAccountId", inventoryAccount.getId());
 
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("brandId", brandId);
-        payload.put("baseProductName", "LF-015 Ready Primer");
-        payload.put("category", "FINISHED_GOOD");
+        payload.put("name", "LF-015 Ready Primer");
         payload.put("itemClass", "FINISHED_GOOD");
+        payload.put("color", "WHITE");
+        payload.put("size", "1L");
         payload.put("unitOfMeasure", "LITER");
         payload.put("hsnCode", "320910");
         payload.put("gstRate", new BigDecimal("18.00"));
         payload.put("basePrice", new BigDecimal("1200.00"));
         payload.put("minDiscountPercent", new BigDecimal("5.00"));
         payload.put("minSellingPrice", new BigDecimal("1140.00"));
-        payload.put("colors", List.of("WHITE"));
-        payload.put("sizes", List.of("1L"));
         payload.put("metadata", metadata);
         return payload;
     }

@@ -67,6 +67,7 @@ class CatalogServiceProductCrudTest {
     @Mock private FinishedGoodRepository finishedGoodRepository;
     @Mock private RawMaterialRepository rawMaterialRepository;
     @Mock private SkuReadinessService skuReadinessService;
+    @Mock private ProductionCatalogService productionCatalogService;
 
     private CatalogService service;
     private Company company;
@@ -82,7 +83,8 @@ class CatalogServiceProductCrudTest {
                 sizeVariantRepository,
                 finishedGoodRepository,
                 rawMaterialRepository,
-                skuReadinessService);
+                skuReadinessService,
+                productionCatalogService);
         company = new Company();
         ReflectionTestUtils.setField(company, "id", 200L);
         company.setCode("BBP");
@@ -116,7 +118,7 @@ class CatalogServiceProductCrudTest {
         CatalogProductRequest request = new CatalogProductRequest(
                 11L,
                 "Exterior Emulsion",
-                null,
+                "FINISHED_GOOD",
                 List.of("Red", "Blue"),
                 List.of("1L", "4L"),
                 List.of(
@@ -966,7 +968,7 @@ class CatalogServiceProductCrudTest {
     }
 
     @Test
-    void helperMethods_coverRequestedItemClassAndPackagingInferenceBranches() {
+    void helperMethods_coverRequestedItemClassAndRawMaterialResolutionBranches() {
         ProductionProduct legacyPackagingSkuProduct = new ProductionProduct();
         legacyPackagingSkuProduct.setCompany(company);
         legacyPackagingSkuProduct.setCategory("RAW_MATERIAL");
@@ -975,22 +977,11 @@ class CatalogServiceProductCrudTest {
         RawMaterial legacyProductionMirror = new RawMaterial();
         legacyProductionMirror.setMaterialType(MaterialType.PRODUCTION);
 
-        ProductionProduct packagingByName = new ProductionProduct();
-        packagingByName.setCategory("RAW_MATERIAL");
-        packagingByName.setProductName("Bucket Label");
-        packagingByName.setSkuCode("RM-PACK");
-
-        ProductionProduct packagingByCategory = new ProductionProduct();
-        packagingByCategory.setCategory("Bucket");
-        packagingByCategory.setProductName("Resin Base");
-
         ProductionProduct plainRaw = new ProductionProduct();
         plainRaw.setCategory("RAW_MATERIAL");
         plainRaw.setProductName("Resin Base");
         plainRaw.setSkuCode("RM-PLAIN");
 
-        RawMaterial packagingMirror = new RawMaterial();
-        packagingMirror.setMaterialType(MaterialType.PACKAGING);
         RawMaterial productionMirror = new RawMaterial();
         productionMirror.setMaterialType(MaterialType.PRODUCTION);
         RawMaterial duplicateMirror = new RawMaterial();
@@ -1011,20 +1002,18 @@ class CatalogServiceProductCrudTest {
         when(rawMaterialRepository.findByCompanyAndSkuInIgnoreCase(company, List.of("pkg-duplicate")))
                 .thenReturn(List.of(duplicateMirror, duplicateMirror2));
 
-        assertThat((String) ReflectionTestUtils.invokeMethod(service, "resolveRequestedItemClass", null, null, true))
-                .isEqualTo("FINISHED_GOOD");
+        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(service, "resolveRequestedItemClass", null, null, true))
+                .hasMessageContaining("itemClass must be FINISHED_GOOD, RAW_MATERIAL, or PACKAGING_RAW_MATERIAL");
         assertThat((String) ReflectionTestUtils.invokeMethod(service, "resolveRequestedItemClass", legacyPackagingSkuProduct, null, false))
                 .isEqualTo("RAW_MATERIAL");
-        assertThat((String) ReflectionTestUtils.invokeMethod(service, "normalizeItemClass", (Object) null))
-                .isEqualTo("FINISHED_GOOD");
+        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(service, "normalizeItemClass", (Object) null))
+                .hasMessageContaining("itemClass must be FINISHED_GOOD, RAW_MATERIAL, or PACKAGING_RAW_MATERIAL");
         assertThat((String) ReflectionTestUtils.invokeMethod(service, "normalizeItemClass", "packaging"))
                 .isEqualTo("PACKAGING_RAW_MATERIAL");
         assertThat((String) ReflectionTestUtils.invokeMethod(service, "normalizeItemClass", "production"))
                 .isEqualTo("RAW_MATERIAL");
         assertThat((String) ReflectionTestUtils.invokeMethod(service, "categoryForItemClass", "PACKAGING_RAW_MATERIAL"))
                 .isEqualTo("RAW_MATERIAL");
-        assertThat((Boolean) ReflectionTestUtils.invokeMethod(service, "isPackagingSku", "RM-001"))
-                .isFalse();
         assertThat((String) ReflectionTestUtils.invokeMethod(service, "normalizeSkuKey", " pkg-001 "))
                 .isEqualTo("PKG-001");
         assertThat((String) ReflectionTestUtils.invokeMethod(service, "normalizeSkuLookupKey", " pkg-001 "))
@@ -1041,53 +1030,37 @@ class CatalogServiceProductCrudTest {
                 .isEmpty();
         assertThat((Map<?, ?>) ReflectionTestUtils.invokeMethod(service, "rawMaterialsBySku", company, List.of(duplicateSkuProduct)))
                 .hasSize(1);
-        assertThat((MaterialType) ReflectionTestUtils.invokeMethod(service, "resolveRawMaterialMaterialType", packagingByName, null, null))
-                .isEqualTo(MaterialType.PACKAGING);
         assertThat((MaterialType) ReflectionTestUtils.invokeMethod(service, "resolveRawMaterialMaterialType", plainRaw, productionMirror, null))
                 .isEqualTo(MaterialType.PRODUCTION);
-        assertThat((MaterialType) ReflectionTestUtils.invokeMethod(service, "resolveRawMaterialMaterialType", plainRaw, packagingMirror, null))
-                .isEqualTo(MaterialType.PACKAGING);
         assertThat((MaterialType) ReflectionTestUtils.invokeMethod(service, "resolveRawMaterialMaterialType", plainRaw, null, "RAW_MATERIAL"))
                 .isEqualTo(MaterialType.PRODUCTION);
         assertThat((MaterialType) ReflectionTestUtils.invokeMethod(service, "resolveRawMaterialMaterialType", plainRaw, null, "PACKAGING"))
                 .isEqualTo(MaterialType.PACKAGING);
-        assertThat((Boolean) ReflectionTestUtils.invokeMethod(service, "containsAnyPackagingToken", "Bucket label"))
-                .isTrue();
-        assertThat((Boolean) ReflectionTestUtils.invokeMethod(service, "containsAnyPackagingToken", "Resin"))
-                .isFalse();
-        assertThat((Boolean) ReflectionTestUtils.invokeMethod(service, "isLikelyPackagingMaterial", packagingByCategory))
-                .isTrue();
-        assertThat((Boolean) ReflectionTestUtils.invokeMethod(service, "isLikelyPackagingMaterial", plainRaw))
-                .isFalse();
         assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(service, "normalizeItemClass", "LEGACY"))
                 .hasMessageContaining("itemClass must be FINISHED_GOOD, RAW_MATERIAL, or PACKAGING_RAW_MATERIAL");
     }
 
     @Test
-    void helperMethods_detectAllPackagingTokensAndShortCircuits() {
-        for (String token : List.of("pack", "bucket", "can", "tin", "label", "bottle", "container")) {
-            assertThat((Boolean) ReflectionTestUtils.invokeMethod(service, "containsAnyPackagingToken", "prefix-" + token))
-                    .isTrue();
-        }
-        assertThat((Boolean) ReflectionTestUtils.invokeMethod(service, "containsAnyPackagingToken", "   "))
-                .isFalse();
+    void helperMethods_coverSkuNormalizationAndDefaultItemClassResolution() {
+        ProductionProduct rawProduct = new ProductionProduct();
+        rawProduct.setCategory("RAW_MATERIAL");
+        rawProduct.setSkuCode("PKG-BBR-PACK-1");
 
-        ProductionProduct packagingSkuProduct = new ProductionProduct();
-        packagingSkuProduct.setSkuCode("PKG-BBR-PACK-1");
-        packagingSkuProduct.setCategory("RAW_MATERIAL");
+        ProductionProduct finishedGoodProduct = new ProductionProduct();
+        finishedGoodProduct.setCategory("FINISHED_GOOD");
 
-        ProductionProduct packagingCategoryProduct = new ProductionProduct();
-        packagingCategoryProduct.setCategory("Container");
-        packagingCategoryProduct.setProductName("Neutral base");
-
-        assertThat((Boolean) ReflectionTestUtils.invokeMethod(service, "isLikelyPackagingMaterial", new Object[]{null}))
-                .isFalse();
-        assertThat((Boolean) ReflectionTestUtils.invokeMethod(service, "isLikelyPackagingMaterial", packagingSkuProduct))
-                .isTrue();
-        assertThat((Boolean) ReflectionTestUtils.invokeMethod(service, "isLikelyPackagingMaterial", packagingCategoryProduct))
-                .isTrue();
-        assertThat((Boolean) ReflectionTestUtils.invokeMethod(service, "isPackagingSku", (Object) null))
-                .isFalse();
+        assertThat((String) ReflectionTestUtils.invokeMethod(service, "normalizeSkuKey", " pkg-bbr-pack-1 "))
+                .isEqualTo("PKG-BBR-PACK-1");
+        assertThat((String) ReflectionTestUtils.invokeMethod(service, "normalizeSkuLookupKey", " pkg-bbr-pack-1 "))
+                .isEqualTo("pkg-bbr-pack-1");
+        assertThat((String) ReflectionTestUtils.invokeMethod(service, "normalizeSkuKey", "   "))
+                .isNull();
+        assertThat((String) ReflectionTestUtils.invokeMethod(service, "itemClassForProduct", new Object[]{null}))
+                .isEqualTo("FINISHED_GOOD");
+        assertThat((String) ReflectionTestUtils.invokeMethod(service, "itemClassForProduct", finishedGoodProduct))
+                .isEqualTo("FINISHED_GOOD");
+        assertThat((String) ReflectionTestUtils.invokeMethod(service, "itemClassForProduct", rawProduct))
+                .isEqualTo("RAW_MATERIAL");
     }
 
     @Test
@@ -1131,7 +1104,7 @@ class CatalogServiceProductCrudTest {
                 service,
                 "itemClassForProduct",
                 packagingSkuRaw,
-                unresolvedMirror)).isEqualTo("PACKAGING_RAW_MATERIAL");
+                unresolvedMirror)).isEqualTo("RAW_MATERIAL");
 
         verifyNoInteractions(rawMaterialRepository);
     }

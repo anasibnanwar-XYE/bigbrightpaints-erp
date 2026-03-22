@@ -1,6 +1,7 @@
 package com.bigbrightpaints.erp.modules.production.service;
 
 import com.bigbrightpaints.erp.modules.company.domain.Company;
+import com.bigbrightpaints.erp.modules.factory.domain.PackagingSizeMappingRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatch;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatchRepository;
@@ -47,6 +48,8 @@ class SkuReadinessServiceTest {
     private FinishedGoodBatchRepository finishedGoodBatchRepository;
     @Mock
     private RawMaterialRepository rawMaterialRepository;
+    @Mock
+    private PackagingSizeMappingRepository packagingSizeMappingRepository;
 
     private SkuReadinessService service;
     private Company company;
@@ -57,7 +60,8 @@ class SkuReadinessServiceTest {
                 productRepository,
                 finishedGoodRepository,
                 finishedGoodBatchRepository,
-                rawMaterialRepository
+                rawMaterialRepository,
+                packagingSizeMappingRepository
         );
         company = new Company();
         company.setCode("ACME");
@@ -536,9 +540,15 @@ class SkuReadinessServiceTest {
                         "WIP_ACCOUNT_MISSING",
                         "PRODUCT_INACTIVE")),
                 new SkuReadinessDto.Stage(false, List.of(
+                        "WIP_ACCOUNT_MISSING",
+                        "PRODUCT_INACTIVE")),
+                new SkuReadinessDto.Stage(false, List.of(
                         "FINISHED_GOOD_COGS_ACCOUNT_MISSING",
                         "FINISHED_GOOD_GST_OUTPUT_ACCOUNT_MISMATCH",
-                        "NO_FINISHED_GOOD_BATCH_STOCK"))
+                        "NO_FINISHED_GOOD_BATCH_STOCK")),
+                new SkuReadinessDto.Stage(false, List.of(
+                        "FINISHED_GOOD_VALUATION_ACCOUNT_MISSING",
+                        "FINISHED_GOOD_COGS_ACCOUNT_MISSING"))
         );
 
         SkuReadinessDto sanitized = service.sanitizeForCatalogViewer(readiness, false);
@@ -640,9 +650,11 @@ class SkuReadinessServiceTest {
                         "ACCOUNTING_CONFIGURATION_REQUIRED",
                         "FINISHED_GOOD_VALUATION_ACCOUNT_MISSING")),
                 new SkuReadinessDto.Stage(false, List.of("ACCOUNTING_CONFIGURATION_REQUIRED", "WIP_ACCOUNT_MISSING")),
+                new SkuReadinessDto.Stage(false, List.of("ACCOUNTING_CONFIGURATION_REQUIRED", "PACKAGING_MAPPING_MISSING")),
                 new SkuReadinessDto.Stage(false, List.of(
                         "ACCOUNTING_CONFIGURATION_REQUIRED",
-                        "FINISHED_GOOD_GST_OUTPUT_ACCOUNT_MISMATCH"))
+                        "FINISHED_GOOD_GST_OUTPUT_ACCOUNT_MISMATCH")),
+                new SkuReadinessDto.Stage(false, List.of("ACCOUNTING_CONFIGURATION_REQUIRED"))
         );
 
         SkuReadinessDto sanitized = service.sanitizeForCatalogViewer(readiness, false);

@@ -302,7 +302,9 @@ class ProductionCatalogServiceCanonicalEntryTest {
                 new SkuReadinessDto.Stage(true, List.of()),
                 new SkuReadinessDto.Stage(false, List.of("RAW_MATERIAL_INVENTORY_ACCOUNT_MISSING")),
                 new SkuReadinessDto.Stage(false, List.of("RAW_MATERIAL_INVENTORY_ACCOUNT_MISSING")),
-                new SkuReadinessDto.Stage(false, List.of("RAW_MATERIAL_SKU_NOT_SALES_ORDERABLE"))
+                new SkuReadinessDto.Stage(true, List.of()),
+                new SkuReadinessDto.Stage(false, List.of("RAW_MATERIAL_SKU_NOT_SALES_ORDERABLE")),
+                new SkuReadinessDto.Stage(false, List.of("RAW_MATERIAL_INVENTORY_ACCOUNT_MISSING"))
         );
         when(skuReadinessService.forPlannedProduct(
                 any(ProductionProduct.class),
@@ -352,6 +354,8 @@ class ProductionCatalogServiceCanonicalEntryTest {
                 new SkuReadinessDto.Stage(true, List.of()),
                 new SkuReadinessDto.Stage(false, List.of("ACCOUNTING_CONFIGURATION_REQUIRED")),
                 new SkuReadinessDto.Stage(false, List.of("ACCOUNTING_CONFIGURATION_REQUIRED", "WIP_ACCOUNT_MISSING")),
+                new SkuReadinessDto.Stage(false, List.of("ACCOUNTING_CONFIGURATION_REQUIRED")),
+                new SkuReadinessDto.Stage(false, List.of("ACCOUNTING_CONFIGURATION_REQUIRED")),
                 new SkuReadinessDto.Stage(false, List.of("ACCOUNTING_CONFIGURATION_REQUIRED"))
         );
         when(skuReadinessService.forPlannedProduct(
@@ -385,7 +389,9 @@ class ProductionCatalogServiceCanonicalEntryTest {
                 new SkuReadinessDto.Stage(true, List.of()),
                 new SkuReadinessDto.Stage(false, List.of("ACCOUNTING_CONFIGURATION_REQUIRED")),
                 new SkuReadinessDto.Stage(false, List.of("ACCOUNTING_CONFIGURATION_REQUIRED", "WIP_ACCOUNT_MISSING")),
-                new SkuReadinessDto.Stage(false, List.of("GST_OUTPUT_ACCOUNT_MISSING"))
+                new SkuReadinessDto.Stage(false, List.of("ACCOUNTING_CONFIGURATION_REQUIRED")),
+                new SkuReadinessDto.Stage(false, List.of("GST_OUTPUT_ACCOUNT_MISSING")),
+                new SkuReadinessDto.Stage(false, List.of("ACCOUNTING_CONFIGURATION_REQUIRED"))
         );
         when(skuReadinessService.forPlannedProduct(
                 argThat(product -> product.getGstRate() != null
@@ -422,7 +428,9 @@ class ProductionCatalogServiceCanonicalEntryTest {
                 new SkuReadinessDto.Stage(true, List.of()),
                 new SkuReadinessDto.Stage(true, List.of()),
                 new SkuReadinessDto.Stage(true, List.of()),
-                new SkuReadinessDto.Stage(false, List.of("RAW_MATERIAL_SKU_NOT_SALES_ORDERABLE"))
+                new SkuReadinessDto.Stage(true, List.of()),
+                new SkuReadinessDto.Stage(false, List.of("RAW_MATERIAL_SKU_NOT_SALES_ORDERABLE")),
+                new SkuReadinessDto.Stage(true, List.of())
         );
         when(skuReadinessService.forSku(
                 company,
@@ -462,7 +470,9 @@ class ProductionCatalogServiceCanonicalEntryTest {
                 new SkuReadinessDto.Stage(true, List.of()),
                 new SkuReadinessDto.Stage(true, List.of()),
                 new SkuReadinessDto.Stage(true, List.of()),
-                new SkuReadinessDto.Stage(false, List.of("RAW_MATERIAL_SKU_NOT_SALES_ORDERABLE"))
+                new SkuReadinessDto.Stage(true, List.of()),
+                new SkuReadinessDto.Stage(false, List.of("RAW_MATERIAL_SKU_NOT_SALES_ORDERABLE")),
+                new SkuReadinessDto.Stage(true, List.of())
         );
         when(skuReadinessService.forSku(
                 company,
@@ -483,16 +493,13 @@ class ProductionCatalogServiceCanonicalEntryTest {
     }
 
     @Test
-    void createOrPreviewCatalogProducts_acceptsLegacyCategoryWhenItemClassMissing() {
+    void createOrPreviewCatalogProducts_requiresExplicitItemClassWhenLegacyCategoryProvided() {
         CatalogProductEntryRequest request = request(null, List.of("WHITE"), List.of("1L"));
         request.setCategory("RAW_MATERIAL");
 
-        CatalogProductEntryResponse response = service.createOrPreviewCatalogProducts(request, true);
-
-        assertThat(response.preview()).isTrue();
-        assertThat(response.members()).hasSize(1);
-        assertThat(response.members().getFirst().sku()).isEqualTo("RM-BBR-PRIMER-WHITE-1L");
-        assertThat(response.members().getFirst().itemClass()).isEqualTo("RAW_MATERIAL");
+        assertThatThrownBy(() -> service.createOrPreviewCatalogProducts(request, true))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("itemClass is required");
     }
 
     @Test
@@ -514,7 +521,9 @@ class ProductionCatalogServiceCanonicalEntryTest {
                 new SkuReadinessDto.Stage(true, List.of()),
                 new SkuReadinessDto.Stage(false, List.of("RAW_MATERIAL_INVENTORY_ACCOUNT_MISSING")),
                 new SkuReadinessDto.Stage(false, List.of("RAW_MATERIAL_INVENTORY_ACCOUNT_MISSING")),
-                new SkuReadinessDto.Stage(false, List.of("RAW_MATERIAL_SKU_NOT_SALES_ORDERABLE"))
+                new SkuReadinessDto.Stage(true, List.of()),
+                new SkuReadinessDto.Stage(false, List.of("RAW_MATERIAL_SKU_NOT_SALES_ORDERABLE")),
+                new SkuReadinessDto.Stage(false, List.of("RAW_MATERIAL_INVENTORY_ACCOUNT_MISSING"))
         );
         when(skuReadinessService.forPlannedProduct(
                 any(ProductionProduct.class),
@@ -705,7 +714,7 @@ class ProductionCatalogServiceCanonicalEntryTest {
     }
 
     @Test
-    void updateProduct_itemClassHint_reclassifiesRawMaterialMirrorAsPackaging() {
+    void updateProduct_itemClassHint_rejectsItemClassReclassification() {
         ProductionProduct product = new ProductionProduct();
         ReflectionTestUtils.setField(product, "id", 41L);
         product.setCompany(company);
@@ -726,12 +735,10 @@ class ProductionCatalogServiceCanonicalEntryTest {
         material.setMaterialType(MaterialType.PRODUCTION);
 
         when(companyEntityLookup.requireProductionProduct(company, 41L)).thenReturn(product);
-        when(productRepository.save(any(ProductionProduct.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(rawMaterialRepository.findByCompanyAndSku(company, "RM-PRIMER")).thenReturn(Optional.of(material));
         when(rawMaterialRepository.findByCompanyAndSkuIgnoreCase(company, "RM-PRIMER")).thenReturn(Optional.of(material));
-        when(rawMaterialRepository.save(any(RawMaterial.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        ProductionProductDto response = service.updateProduct(
+        assertThatThrownBy(() -> service.updateProduct(
                 41L,
                 new ProductUpdateRequest(
                         "Primer",
@@ -740,15 +747,15 @@ class ProductionCatalogServiceCanonicalEntryTest {
                         null,
                         null,
                         "KG",
+                        null,
                         new BigDecimal("100.00"),
                         new BigDecimal("18.00"),
                         BigDecimal.ZERO,
                         new BigDecimal("95.00"),
-                        Map.of()));
-
-        assertThat(response.category()).isEqualTo("RAW_MATERIAL");
-        assertThat(product.getCategory()).isEqualTo("RAW_MATERIAL");
-        assertThat(material.getMaterialType()).isEqualTo(MaterialType.PACKAGING);
+                        Map.of(),
+                        null)))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("itemClass is immutable");
     }
 
     @Test
@@ -784,10 +791,6 @@ class ProductionCatalogServiceCanonicalEntryTest {
 
     @Test
     void canonicalHelperMethods_coverItemClassAndMaterialTypeMappings() {
-        assertThat((Boolean) ReflectionTestUtils.invokeMethod(service, "containsAnyPackagingToken", "pack liner"))
-                .isTrue();
-        assertThat((Boolean) ReflectionTestUtils.invokeMethod(service, "containsAnyPackagingToken", "container shell"))
-                .isTrue();
         assertThat((String) ReflectionTestUtils.invokeMethod(service, "normalizeItemClass", "FINISHED_GOOD"))
                 .isEqualTo("FINISHED_GOOD");
         assertThat((String) ReflectionTestUtils.invokeMethod(service, "normalizeItemClass", "RAW_MATERIAL"))
@@ -901,7 +904,7 @@ class ProductionCatalogServiceCanonicalEntryTest {
                 packagingProduct,
                 heuristicPackagingMaterial,
                 null))
-                .isEqualTo(MaterialType.PACKAGING);
+                .isEqualTo(MaterialType.PRODUCTION);
         assertThat((MaterialType) ReflectionTestUtils.invokeMethod(
                 service,
                 "resolveRawMaterialMaterialType",

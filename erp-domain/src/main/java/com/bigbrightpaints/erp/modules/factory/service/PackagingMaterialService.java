@@ -20,7 +20,6 @@ import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatchReposito
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovement;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovementRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialRepository;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -34,9 +33,6 @@ import java.util.Optional;
 
 @Service
 public class PackagingMaterialService {
-
-    @Value("${erp.benchmark.require-packaging:false}")
-    private boolean requirePackaging;
 
     private final CompanyContextService companyContextService;
     private final PackagingSizeMappingRepository mappingRepository;
@@ -170,16 +166,8 @@ public class PackagingMaterialService {
                 .findActiveByCompanyAndPackagingSizeIgnoreCase(company, normalizedSize);
 
         if (mappings.isEmpty()) {
-            if (requirePackaging) {
-                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
-                        "Packaging BOM is required for size: " + normalizedSize);
-            }
-            return new PackagingConsumptionResult(
-                    false,
-                    BigDecimal.ZERO,
-                    BigDecimal.ZERO,
-                    Map.of(),
-                    "No packaging material mapping configured for size: " + normalizedSize);
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    "Packaging BOM is required for size: " + normalizedSize);
         }
 
         BigDecimal totalCost = BigDecimal.ZERO;
@@ -218,7 +206,7 @@ public class PackagingMaterialService {
             consumedMaterials.add(material);
         }
 
-        if (requirePackaging && totalCost.compareTo(BigDecimal.ZERO) <= 0) {
+        if (totalCost.compareTo(BigDecimal.ZERO) <= 0) {
             throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
                     "Packaging consumption produced zero cost for size: " + normalizedSize);
         }

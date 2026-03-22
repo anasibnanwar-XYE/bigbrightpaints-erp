@@ -2,6 +2,7 @@ package com.bigbrightpaints.erp.modules.inventory;
 
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
+import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialRepository;
@@ -75,11 +76,10 @@ class RawMaterialAndProductUpdateIT extends AbstractIntegrationTest {
         Long brandId = ensureCatalogBrand(headers, "RM Host Brand");
         Map<String, Object> createPayload = new HashMap<>();
         createPayload.put("brandId", brandId);
-        createPayload.put("baseProductName", "Titanium Oxide");
-        createPayload.put("category", "RAW_MATERIAL");
+        createPayload.put("name", "Titanium Oxide");
         createPayload.put("itemClass", "RAW_MATERIAL");
-        createPayload.put("colors", List.of("BASE"));
-        createPayload.put("sizes", List.of("STD"));
+        createPayload.put("color", "BASE");
+        createPayload.put("size", "STD");
         createPayload.put("unitOfMeasure", "KG");
         createPayload.put("hsnCode", "320910");
         createPayload.put("basePrice", BigDecimal.ZERO);
@@ -89,27 +89,27 @@ class RawMaterialAndProductUpdateIT extends AbstractIntegrationTest {
         createPayload.put("metadata", Map.of("inventoryAccountId", accounts.get("INV")));
 
         ResponseEntity<Map> create = rest.exchange(
-                "/api/v1/catalog/products",
+                "/api/v1/catalog/items",
                 HttpMethod.POST,
                 new HttpEntity<>(createPayload, headers),
                 Map.class
         );
 
         assertThat(create.getStatusCode()).isEqualTo(HttpStatus.OK);
-        Map<?, ?> createdData = (Map<?, ?>) create.getBody().get("data");
-        Map<?, ?> member = (Map<?, ?>) ((List<?>) createdData.get("members")).getFirst();
-        String sku = (String) member.get("sku");
+        Map<?, ?> createdData = responseData(create);
+        String sku = String.valueOf(createdData.get("code"));
 
         Company company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
         RawMaterial rawMaterial = rawMaterialRepository.findByCompanyAndSku(company, sku).orElseThrow();
         ProductionProduct linked = productionProductRepository.findByCompanyAndSkuCode(company, sku).orElseThrow();
 
         assertThat(sku).startsWith("RM-");
-        assertThat(((Number) member.get("rawMaterialId")).longValue()).isEqualTo(rawMaterial.getId());
-        assertThat(rawMaterial.getName()).isEqualTo("Titanium Oxide BASE STD");
+        assertThat(((Number) createdData.get("rawMaterialId")).longValue()).isEqualTo(rawMaterial.getId());
+        assertThat(rawMaterial.getName()).isEqualTo("Titanium Oxide BASE");
         assertThat(rawMaterial.getInventoryAccountId()).isEqualTo(accounts.get("INV"));
         assertThat(linked.getProductName()).isEqualTo(rawMaterial.getName());
         assertThat(linked.getCategory()).isEqualTo("RAW_MATERIAL");
+        assertThat(linked.getSizeLabel()).isEqualTo("STD");
     }
 
     @Test
@@ -120,11 +120,9 @@ class RawMaterialAndProductUpdateIT extends AbstractIntegrationTest {
         Long brandId = ensureCatalogBrand(headers, "Packaging Host Brand");
         Map<String, Object> createPayload = new HashMap<>();
         createPayload.put("brandId", brandId);
-        createPayload.put("baseProductName", "Plastic Bucket");
-        createPayload.put("category", "RAW_MATERIAL");
+        createPayload.put("name", "Plastic Bucket");
         createPayload.put("itemClass", "PACKAGING_RAW_MATERIAL");
-        createPayload.put("colors", List.of("WHITE"));
-        createPayload.put("sizes", List.of("1L"));
+        createPayload.put("size", "1L");
         createPayload.put("unitOfMeasure", "UNIT");
         createPayload.put("hsnCode", "392310");
         createPayload.put("basePrice", BigDecimal.ZERO);
@@ -134,38 +132,36 @@ class RawMaterialAndProductUpdateIT extends AbstractIntegrationTest {
         createPayload.put("metadata", Map.of("inventoryAccountId", accounts.get("INV")));
 
         ResponseEntity<Map> create = rest.exchange(
-                "/api/v1/catalog/products",
+                "/api/v1/catalog/items",
                 HttpMethod.POST,
                 new HttpEntity<>(createPayload, headers),
                 Map.class
         );
 
         assertThat(create.getStatusCode()).isEqualTo(HttpStatus.OK);
-        Map<?, ?> createdData = (Map<?, ?>) create.getBody().get("data");
-        Map<?, ?> member = (Map<?, ?>) ((List<?>) createdData.get("members")).getFirst();
-        String sku = (String) member.get("sku");
+        Map<?, ?> createdData = responseData(create);
+        String sku = String.valueOf(createdData.get("code"));
 
         Company company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
         RawMaterial rawMaterial = rawMaterialRepository.findByCompanyAndSku(company, sku).orElseThrow();
 
         assertThat(sku).startsWith("PKG-");
-        assertThat(((Number) member.get("rawMaterialId")).longValue()).isEqualTo(rawMaterial.getId());
+        assertThat(((Number) createdData.get("rawMaterialId")).longValue()).isEqualTo(rawMaterial.getId());
         assertThat(rawMaterial.getMaterialType().name()).isEqualTo("PACKAGING");
     }
 
     @Test
-    void catalog_product_update_can_reclassify_raw_material_to_packaging() {
+    void catalog_product_update_rejects_reclassifying_raw_material_to_packaging() {
         HttpHeaders headers = authenticatedHeaders();
 
         Map<String, Long> accounts = fixtureAccountIds();
         Long brandId = ensureCatalogBrand(headers, "Reclass Brand");
         Map<String, Object> createPayload = new HashMap<>();
         createPayload.put("brandId", brandId);
-        createPayload.put("baseProductName", "Bucket Shell");
-        createPayload.put("category", "RAW_MATERIAL");
+        createPayload.put("name", "Bucket Shell");
         createPayload.put("itemClass", "RAW_MATERIAL");
-        createPayload.put("colors", List.of("WHITE"));
-        createPayload.put("sizes", List.of("1L"));
+        createPayload.put("color", "WHITE");
+        createPayload.put("size", "1L");
         createPayload.put("unitOfMeasure", "UNIT");
         createPayload.put("hsnCode", "392310");
         createPayload.put("basePrice", BigDecimal.ZERO);
@@ -175,48 +171,44 @@ class RawMaterialAndProductUpdateIT extends AbstractIntegrationTest {
         createPayload.put("metadata", Map.of("inventoryAccountId", accounts.get("INV")));
 
         ResponseEntity<Map> create = rest.exchange(
-                "/api/v1/catalog/products",
+                "/api/v1/catalog/items",
                 HttpMethod.POST,
                 new HttpEntity<>(createPayload, headers),
                 Map.class
         );
 
         assertThat(create.getStatusCode()).isEqualTo(HttpStatus.OK);
-        Map<?, ?> createdData = (Map<?, ?>) create.getBody().get("data");
-        Map<?, ?> member = (Map<?, ?>) ((List<?>) createdData.get("members")).getFirst();
-        Long productId = ((Number) member.get("id")).longValue();
-        Long rawMaterialId = ((Number) member.get("rawMaterialId")).longValue();
+        Map<?, ?> createdData = responseData(create);
+        Long productId = ((Number) createdData.get("id")).longValue();
+        Long rawMaterialId = ((Number) createdData.get("rawMaterialId")).longValue();
 
         Map<String, Object> updatePayload = new HashMap<>();
         updatePayload.put("brandId", brandId);
-        updatePayload.put("name", "Bucket Shell WHITE 1L");
+        updatePayload.put("name", "Bucket Shell");
         updatePayload.put("itemClass", "PACKAGING_RAW_MATERIAL");
-        updatePayload.put("colors", List.of("WHITE"));
-        updatePayload.put("sizes", List.of("1L"));
-        updatePayload.put("cartonSizes", List.of(Map.of(
-                "size", "1L",
-                "piecesPerCarton", 1
-        )));
+        updatePayload.put("color", "WHITE");
+        updatePayload.put("size", "1L");
         updatePayload.put("unitOfMeasure", "UNIT");
         updatePayload.put("hsnCode", "392310");
+        updatePayload.put("basePrice", BigDecimal.ZERO);
         updatePayload.put("gstRate", BigDecimal.ZERO);
+        updatePayload.put("minDiscountPercent", BigDecimal.ZERO);
+        updatePayload.put("minSellingPrice", BigDecimal.ZERO);
         updatePayload.put("active", true);
 
         ResponseEntity<Map> update = rest.exchange(
-                "/api/v1/catalog/products/" + productId,
+                "/api/v1/catalog/items/" + productId,
                 HttpMethod.PUT,
                 new HttpEntity<>(updatePayload, headers),
                 Map.class
         );
 
-        assertThat(update.getStatusCode()).isEqualTo(HttpStatus.OK);
-        Map<?, ?> updateData = (Map<?, ?>) update.getBody().get("data");
-        assertThat(updateData.get("itemClass")).isEqualTo("PACKAGING_RAW_MATERIAL");
-        assertThat(((Number) updateData.get("rawMaterialId")).longValue()).isEqualTo(rawMaterialId);
+        assertThat(update.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(String.valueOf(update.getBody())).contains("itemClass is immutable");
 
         Company company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
         RawMaterial updatedMaterial = rawMaterialRepository.findByCompanyAndId(company, rawMaterialId).orElseThrow();
-        assertThat(updatedMaterial.getMaterialType().name()).isEqualTo("PACKAGING");
+        assertThat(updatedMaterial.getMaterialType().name()).isEqualTo("PRODUCTION");
     }
 
     @Test
@@ -228,11 +220,10 @@ class RawMaterialAndProductUpdateIT extends AbstractIntegrationTest {
 
         Map<String, Object> payload = new HashMap<>();
         payload.put("brandId", ensureCatalogBrand(headers, "RM Invalid Brand"));
-        payload.put("baseProductName", "Bad Raw Material");
-        payload.put("category", "RAW_MATERIAL");
+        payload.put("name", "Bad Raw Material");
         payload.put("itemClass", "RAW_MATERIAL");
-        payload.put("colors", List.of("BASE"));
-        payload.put("sizes", List.of("STD"));
+        payload.put("color", "BASE");
+        payload.put("size", "STD");
         payload.put("unitOfMeasure", "KG");
         payload.put("hsnCode", "320910");
         payload.put("basePrice", BigDecimal.ZERO);
@@ -245,7 +236,7 @@ class RawMaterialAndProductUpdateIT extends AbstractIntegrationTest {
         ));
 
         ResponseEntity<Map> create = rest.exchange(
-                "/api/v1/catalog/products",
+                "/api/v1/catalog/items",
                 HttpMethod.POST,
                 new HttpEntity<>(payload, headers),
                 Map.class
@@ -280,11 +271,10 @@ class RawMaterialAndProductUpdateIT extends AbstractIntegrationTest {
 
         Map<String, Object> createPayload = new HashMap<>();
         createPayload.put("brandId", brandId);
-        createPayload.put("baseProductName", "Primer Base");
-        createPayload.put("category", "FINISHED_GOOD");
+        createPayload.put("name", "Primer Base");
         createPayload.put("itemClass", "FINISHED_GOOD");
-        createPayload.put("colors", List.of("WHITE"));
-        createPayload.put("sizes", List.of("1L"));
+        createPayload.put("color", "WHITE");
+        createPayload.put("size", "1L");
         createPayload.put("unitOfMeasure", "LITER");
         createPayload.put("hsnCode", "320910");
         createPayload.put("basePrice", new BigDecimal("125.50"));
@@ -294,62 +284,56 @@ class RawMaterialAndProductUpdateIT extends AbstractIntegrationTest {
         createPayload.put("metadata", metadata);
 
         ResponseEntity<Map> create = rest.exchange(
-                "/api/v1/catalog/products",
+                "/api/v1/catalog/items",
                 HttpMethod.POST,
                 new HttpEntity<>(createPayload, headers),
                 Map.class
         );
         assertThat(create.getStatusCode()).isEqualTo(HttpStatus.OK);
-        Map<?, ?> createdData = (Map<?, ?>) create.getBody().get("data");
-        List<?> members = (List<?>) createdData.get("members");
-        assertThat(members).hasSize(1);
-        Long productId = ((Number) ((Map<?, ?>) members.getFirst()).get("id")).longValue();
+        Map<?, ?> createdData = responseData(create);
+        Long productId = ((Number) createdData.get("id")).longValue();
+        String originalCode = String.valueOf(createdData.get("code"));
 
         Map<String, Object> updatePayload = new HashMap<>();
         updatePayload.put("brandId", brandId);
         updatePayload.put("name", "Primer Base Plus");
-        updatePayload.put("colors", List.of("BLACK"));
-        updatePayload.put("sizes", List.of("4L"));
-        updatePayload.put("cartonSizes", List.of(Map.of(
-                "size", "4L",
-                "piecesPerCarton", 1
-        )));
+        updatePayload.put("itemClass", "FINISHED_GOOD");
+        updatePayload.put("color", "WHITE");
+        updatePayload.put("size", "1L");
         updatePayload.put("unitOfMeasure", "LITER");
         updatePayload.put("hsnCode", "320910");
+        updatePayload.put("basePrice", new BigDecimal("125.50"));
         updatePayload.put("gstRate", BigDecimal.ZERO);
+        updatePayload.put("minDiscountPercent", BigDecimal.ZERO);
+        updatePayload.put("minSellingPrice", new BigDecimal("110.00"));
         updatePayload.put("active", true);
 
         ResponseEntity<Map> update = rest.exchange(
-                "/api/v1/catalog/products/" + productId,
+                "/api/v1/catalog/items/" + productId,
                 HttpMethod.PUT,
                 new HttpEntity<>(updatePayload, headers),
                 Map.class
         );
         assertThat(update.getStatusCode()).isEqualTo(HttpStatus.OK);
-        Map<?, ?> updateData = (Map<?, ?>) update.getBody().get("data");
-        assertThat(updateData.get("name")).isEqualTo("Primer Base Plus");
-        @SuppressWarnings("unchecked")
-        List<String> updatedColors = (List<String>) updateData.get("colors");
-        @SuppressWarnings("unchecked")
-        List<String> updatedSizes = (List<String>) updateData.get("sizes");
-        assertThat(updatedColors).containsExactly("BLACK");
-        assertThat(updatedSizes).containsExactly("4L");
+        Map<?, ?> updateData = responseData(update);
+        assertThat(updateData.get("name")).isEqualTo("Primer Base Plus WHITE 1L");
+        assertThat(updateData.get("code")).isEqualTo(originalCode);
 
         ProductionProduct saved = productionProductRepository.findById(productId).orElseThrow();
-        assertThat(saved.getProductName()).isEqualTo("Primer Base Plus");
-        assertThat(saved.getDefaultColour()).isEqualTo("BLACK");
-        assertThat(saved.getSizeLabel()).isEqualTo("4L");
+        assertThat(saved.getProductName()).isEqualTo("Primer Base Plus WHITE 1L");
+        assertThat(saved.getDefaultColour()).isEqualTo("WHITE");
+        assertThat(saved.getSizeLabel()).isEqualTo("1L");
     }
 
     @Test
-    void finished_good_create_normalizes_weighted_average_alias_to_wac() {
+    void finished_good_write_routes_are_retired_for_create_and_update() {
         HttpHeaders headers = authenticatedHeaders();
 
         Map<String, Object> payload = new HashMap<>();
-        payload.put("productCode", "FG-NORM-" + UUID.randomUUID().toString().substring(0, 8));
-        payload.put("name", "FG Normalization");
+        payload.put("productCode", "FG-RET-" + UUID.randomUUID().toString().substring(0, 8));
+        payload.put("name", "FG Retired Write");
         payload.put("unit", "UNIT");
-        payload.put("costingMethod", " weighted-average ");
+        payload.put("costingMethod", "FIFO");
 
         ResponseEntity<Map> create = rest.exchange(
                 "/api/v1/finished-goods",
@@ -358,108 +342,40 @@ class RawMaterialAndProductUpdateIT extends AbstractIntegrationTest {
                 Map.class
         );
 
-        assertThat(create.getStatusCode()).isEqualTo(HttpStatus.OK);
-        Map<?, ?> data = (Map<?, ?>) create.getBody().get("data");
-        assertThat(data.get("costingMethod")).isEqualTo("WAC");
-    }
+        assertThat(create.getStatusCode()).isIn(HttpStatus.METHOD_NOT_ALLOWED, HttpStatus.NOT_FOUND);
 
-    @Test
-    void finished_good_create_preserves_lifo_method() {
-        HttpHeaders headers = authenticatedHeaders();
-
-        Map<String, Object> payload = new HashMap<>();
-        payload.put("productCode", "FG-LIFO-" + UUID.randomUUID().toString().substring(0, 8));
-        payload.put("name", "FG LIFO");
-        payload.put("unit", "UNIT");
-        payload.put("costingMethod", " lifo ");
-
-        ResponseEntity<Map> create = rest.exchange(
-                "/api/v1/finished-goods",
-                HttpMethod.POST,
-                new HttpEntity<>(payload, headers),
-                Map.class
-        );
-
-        assertThat(create.getStatusCode()).isEqualTo(HttpStatus.OK);
-        Map<?, ?> data = (Map<?, ?>) create.getBody().get("data");
-        assertThat(data.get("costingMethod")).isEqualTo("LIFO");
-    }
-
-    @Test
-    void finished_good_update_normalizes_weighted_average_alias_to_wac() {
-        HttpHeaders headers = authenticatedHeaders();
-
-        Map<String, Object> createPayload = new HashMap<>();
-        createPayload.put("productCode", "FG-UPD-" + UUID.randomUUID().toString().substring(0, 8));
-        createPayload.put("name", "FG Update");
-        createPayload.put("unit", "UNIT");
-        createPayload.put("costingMethod", "FIFO");
-
-        ResponseEntity<Map> create = rest.exchange(
-                "/api/v1/finished-goods",
-                HttpMethod.POST,
-                new HttpEntity<>(createPayload, headers),
-                Map.class
-        );
-        assertThat(create.getStatusCode()).isEqualTo(HttpStatus.OK);
-        Map<?, ?> createdData = (Map<?, ?>) create.getBody().get("data");
-        Long finishedGoodId = ((Number) createdData.get("id")).longValue();
-
-        Map<String, Object> updatePayload = new HashMap<>();
-        updatePayload.put("productCode", createPayload.get("productCode"));
-        updatePayload.put("name", "FG Update Normalized");
-        updatePayload.put("unit", "UNIT");
-        updatePayload.put("costingMethod", "weighted_average");
+        Company company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
+        FinishedGood existing = new FinishedGood();
+        existing.setCompany(company);
+        existing.setProductCode("FG-RET-UPD-" + UUID.randomUUID().toString().substring(0, 8));
+        existing.setName("FG Retired Update");
+        existing.setUnit("UNIT");
+        existing.setCurrentStock(BigDecimal.ZERO);
+        existing.setReservedStock(BigDecimal.ZERO);
+        existing = finishedGoodRepository.save(existing);
 
         ResponseEntity<Map> update = rest.exchange(
-                "/api/v1/finished-goods/" + finishedGoodId,
+                "/api/v1/finished-goods/" + existing.getId(),
                 HttpMethod.PUT,
-                new HttpEntity<>(updatePayload, headers),
-                Map.class
-        );
-
-        assertThat(update.getStatusCode()).isEqualTo(HttpStatus.OK);
-        Map<?, ?> updatedData = (Map<?, ?>) update.getBody().get("data");
-        assertThat(updatedData.get("costingMethod")).isEqualTo("WAC");
-    }
-
-    @Test
-    void finished_good_create_rejects_unsupported_costing_method() {
-        HttpHeaders headers = authenticatedHeaders();
-
-        Map<String, Object> payload = new HashMap<>();
-        payload.put("productCode", "FG-BAD-" + UUID.randomUUID().toString().substring(0, 8));
-        payload.put("name", "FG Bad Method");
-        payload.put("unit", "UNIT");
-        payload.put("costingMethod", "ABC");
-
-        ResponseEntity<Map> create = rest.exchange(
-                "/api/v1/finished-goods",
-                HttpMethod.POST,
                 new HttpEntity<>(payload, headers),
                 Map.class
         );
 
-        assertThat(create.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-        assertThat(String.valueOf(create.getBody())).contains("Unsupported costing method");
+        assertThat(update.getStatusCode()).isIn(HttpStatus.METHOD_NOT_ALLOWED, HttpStatus.NOT_FOUND);
     }
 
     @Test
-    void finished_good_create_rejects_malformed_costing_token_without_side_effects() {
+    void finished_good_retired_create_route_does_not_create_side_effects() {
         HttpHeaders headers = authenticatedHeaders();
         Company company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
         long beforeCount = finishedGoodRepository.findByCompanyOrderByProductCodeAsc(company).size();
-        String productCode = "FG-BAD-MAL-" + UUID.randomUUID().toString().substring(0, 8);
-        Company foreignCompany = dataSeeder.ensureCompany(
-                "FG-FOREIGN-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase(),
-                "Finished Good Foreign Co"
-        );
+        String productCode = "FG-RET-NOOP-" + UUID.randomUUID().toString().substring(0, 8);
 
         Map<String, Object> payload = new HashMap<>();
         payload.put("productCode", productCode);
-        payload.put("name", "FG Bad Malformed Method");
+        payload.put("name", "FG Retired Noop");
         payload.put("unit", "UNIT");
-        payload.put("costingMethod", "WAC;DROP");
+        payload.put("costingMethod", "FIFO");
 
         ResponseEntity<Map> create = rest.exchange(
                 "/api/v1/finished-goods",
@@ -468,163 +384,10 @@ class RawMaterialAndProductUpdateIT extends AbstractIntegrationTest {
                 Map.class
         );
 
-        assertThat(create.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-        assertThat(String.valueOf(create.getBody())).contains("Unsupported costing method");
+        assertThat(create.getStatusCode()).isIn(HttpStatus.METHOD_NOT_ALLOWED, HttpStatus.NOT_FOUND);
         assertThat(finishedGoodRepository.findByCompanyAndProductCode(company, productCode)).isEmpty();
-        assertThat(finishedGoodRepository.findByCompanyAndProductCode(foreignCompany, productCode)).isEmpty();
         long afterCount = finishedGoodRepository.findByCompanyOrderByProductCodeAsc(company).size();
         assertThat(afterCount).isEqualTo(beforeCount);
-    }
-
-    @Test
-    void finished_good_update_rejects_unsupported_costing_method() {
-        HttpHeaders headers = authenticatedHeaders();
-
-        Map<String, Object> createPayload = new HashMap<>();
-        createPayload.put("productCode", "FG-UPD-BAD-" + UUID.randomUUID().toString().substring(0, 8));
-        createPayload.put("name", "FG Update Bad Method");
-        createPayload.put("unit", "UNIT");
-        createPayload.put("costingMethod", "FIFO");
-
-        ResponseEntity<Map> create = rest.exchange(
-                "/api/v1/finished-goods",
-                HttpMethod.POST,
-                new HttpEntity<>(createPayload, headers),
-                Map.class
-        );
-        assertThat(create.getStatusCode()).isEqualTo(HttpStatus.OK);
-        Map<?, ?> createdData = (Map<?, ?>) create.getBody().get("data");
-        Long finishedGoodId = ((Number) createdData.get("id")).longValue();
-
-        Map<String, Object> updatePayload = new HashMap<>();
-        updatePayload.put("productCode", createPayload.get("productCode"));
-        updatePayload.put("name", "FG Update Bad Method");
-        updatePayload.put("unit", "UNIT");
-        updatePayload.put("costingMethod", "ABC");
-
-        ResponseEntity<Map> update = rest.exchange(
-                "/api/v1/finished-goods/" + finishedGoodId,
-                HttpMethod.PUT,
-                new HttpEntity<>(updatePayload, headers),
-                Map.class
-        );
-
-        assertThat(update.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-        assertThat(String.valueOf(update.getBody())).contains("Unsupported costing method");
-    }
-
-    @Test
-    void finished_good_update_alias_replay_stays_canonical_wac() {
-        HttpHeaders headers = authenticatedHeaders();
-
-        Map<String, Object> createPayload = new HashMap<>();
-        createPayload.put("productCode", "FG-ALIAS-" + UUID.randomUUID().toString().substring(0, 8));
-        createPayload.put("name", "FG Alias Replay");
-        createPayload.put("unit", "UNIT");
-        createPayload.put("costingMethod", "FIFO");
-
-        ResponseEntity<Map> create = rest.exchange(
-                "/api/v1/finished-goods",
-                HttpMethod.POST,
-                new HttpEntity<>(createPayload, headers),
-                Map.class
-        );
-        assertThat(create.getStatusCode()).isEqualTo(HttpStatus.OK);
-        Map<?, ?> createdData = (Map<?, ?>) create.getBody().get("data");
-        Long finishedGoodId = ((Number) createdData.get("id")).longValue();
-
-        Map<String, Object> updatePayload = new HashMap<>();
-        updatePayload.put("productCode", createPayload.get("productCode"));
-        updatePayload.put("name", "FG Alias Replay A");
-        updatePayload.put("unit", "UNIT");
-        updatePayload.put("costingMethod", " weighted-average ");
-        ResponseEntity<Map> updateWeightedAverage = rest.exchange(
-                "/api/v1/finished-goods/" + finishedGoodId,
-                HttpMethod.PUT,
-                new HttpEntity<>(updatePayload, headers),
-                Map.class
-        );
-        assertThat(updateWeightedAverage.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(((Map<?, ?>) updateWeightedAverage.getBody().get("data")).get("costingMethod")).isEqualTo("WAC");
-
-        updatePayload.put("name", "FG Alias Replay B");
-        updatePayload.put("costingMethod", "WAC");
-        ResponseEntity<Map> updateWac = rest.exchange(
-                "/api/v1/finished-goods/" + finishedGoodId,
-                HttpMethod.PUT,
-                new HttpEntity<>(updatePayload, headers),
-                Map.class
-        );
-        assertThat(updateWac.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(((Map<?, ?>) updateWac.getBody().get("data")).get("costingMethod")).isEqualTo("WAC");
-
-        updatePayload.put("name", "FG Alias Replay C");
-        updatePayload.put("costingMethod", "weighted_average");
-        ResponseEntity<Map> updateWeightedUnderscore = rest.exchange(
-                "/api/v1/finished-goods/" + finishedGoodId,
-                HttpMethod.PUT,
-                new HttpEntity<>(updatePayload, headers),
-                Map.class
-        );
-        assertThat(updateWeightedUnderscore.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(((Map<?, ?>) updateWeightedUnderscore.getBody().get("data")).get("costingMethod")).isEqualTo("WAC");
-
-        Map<?, ?> fetched = fetchFinishedGoodData(headers, finishedGoodId);
-        assertThat(fetched.get("costingMethod")).isEqualTo("WAC");
-    }
-
-    @Test
-    void finished_good_invalid_alias_replay_does_not_mutate_persisted_method() {
-        HttpHeaders headers = authenticatedHeaders();
-
-        Map<String, Object> createPayload = new HashMap<>();
-        createPayload.put("productCode", "FG-IMM-" + UUID.randomUUID().toString().substring(0, 8));
-        createPayload.put("name", "FG Immutable On Invalid");
-        createPayload.put("unit", "UNIT");
-        createPayload.put("costingMethod", "FIFO");
-
-        ResponseEntity<Map> create = rest.exchange(
-                "/api/v1/finished-goods",
-                HttpMethod.POST,
-                new HttpEntity<>(createPayload, headers),
-                Map.class
-        );
-        assertThat(create.getStatusCode()).isEqualTo(HttpStatus.OK);
-        Map<?, ?> createdData = (Map<?, ?>) create.getBody().get("data");
-        Long finishedGoodId = ((Number) createdData.get("id")).longValue();
-
-        Map<String, Object> invalidUpdatePayload = new HashMap<>();
-        invalidUpdatePayload.put("productCode", createPayload.get("productCode"));
-        invalidUpdatePayload.put("name", "FG Invalid Attempt A");
-        invalidUpdatePayload.put("unit", "UNIT");
-        invalidUpdatePayload.put("costingMethod", "NOT_A_METHOD");
-
-        ResponseEntity<Map> invalidFirst = rest.exchange(
-                "/api/v1/finished-goods/" + finishedGoodId,
-                HttpMethod.PUT,
-                new HttpEntity<>(invalidUpdatePayload, headers),
-                Map.class
-        );
-        assertThat(invalidFirst.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-        assertThat(String.valueOf(invalidFirst.getBody())).contains("Unsupported costing method");
-
-        Map<?, ?> afterFirstFailure = fetchFinishedGoodData(headers, finishedGoodId);
-        assertThat(afterFirstFailure.get("costingMethod")).isEqualTo("FIFO");
-        assertThat(afterFirstFailure.get("name")).isEqualTo("FG Immutable On Invalid");
-
-        invalidUpdatePayload.put("name", "FG Invalid Attempt B");
-        ResponseEntity<Map> invalidSecond = rest.exchange(
-                "/api/v1/finished-goods/" + finishedGoodId,
-                HttpMethod.PUT,
-                new HttpEntity<>(invalidUpdatePayload, headers),
-                Map.class
-        );
-        assertThat(invalidSecond.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-        assertThat(String.valueOf(invalidSecond.getBody())).contains("Unsupported costing method");
-
-        Map<?, ?> afterSecondFailure = fetchFinishedGoodData(headers, finishedGoodId);
-        assertThat(afterSecondFailure.get("costingMethod")).isEqualTo("FIFO");
-        assertThat(afterSecondFailure.get("name")).isEqualTo("FG Immutable On Invalid");
     }
 
     private HttpHeaders authenticatedHeaders() {
@@ -688,7 +451,13 @@ class RawMaterialAndProductUpdateIT extends AbstractIntegrationTest {
         company.setDefaultRevenueAccountId(rev);
         company.setDefaultDiscountAccountId(disc);
         company.setDefaultTaxAccountId(tax);
+        company.setGstOutputTaxAccountId(tax);
         companyRepository.save(company);
+    }
+
+    private Map<?, ?> responseData(ResponseEntity<Map> response) {
+        assertThat(response.getBody()).isNotNull();
+        return (Map<?, ?>) response.getBody().get("data");
     }
 
     private Long findAccountId(Company company, String code) {

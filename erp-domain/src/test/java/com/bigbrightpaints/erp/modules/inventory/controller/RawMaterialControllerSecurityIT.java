@@ -64,7 +64,7 @@ class RawMaterialControllerSecurityIT extends AbstractIntegrationTest {
     }
 
     @Test
-    void admin_reachesLegacyIntakeContract_andGetsDisabledConflict() {
+    void admin_legacyIntakeRoute_isRetired_withoutPlatformOnlyInterference() {
         HttpHeaders headers = jsonHeaders(ADMIN_EMAIL);
         headers.set("Idempotency-Key", "rawmat-admin-intake-disabled");
 
@@ -83,7 +83,7 @@ class RawMaterialControllerSecurityIT extends AbstractIntegrationTest {
                 Map.class
         );
 
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
         assertNotPlatformOnly(response);
     }
 

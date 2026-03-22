@@ -92,8 +92,6 @@ class BulkPackingServiceIdempotencyTest {
         BulkPackRequest request = new BulkPackRequest(
                 10L,
                 List.of(new BulkPackRequest.PackLine(200L, new BigDecimal("5"), "1L", "L")),
-                null,
-                true,
                 LocalDate.of(2026, 2, 12),
                 "factory-user",
                 "idempotent replay",
@@ -121,8 +119,6 @@ class BulkPackingServiceIdempotencyTest {
                         new BulkPackRequest.PackLine(200L, new BigDecimal("2"), "1L", "L"),
                         new BulkPackRequest.PackLine(200L, new BigDecimal("3"), "1L", "L")
                 ),
-                null,
-                true,
                 LocalDate.of(2026, 2, 12),
                 "factory-user",
                 "duplicate child line",
@@ -146,8 +142,6 @@ class BulkPackingServiceIdempotencyTest {
         BulkPackRequest request = new BulkPackRequest(
                 10L,
                 List.of(new BulkPackRequest.PackLine(200L, BigDecimal.ZERO, "1L", "L")),
-                null,
-                true,
                 LocalDate.of(2026, 2, 12),
                 "factory-user",
                 "zero quantity",

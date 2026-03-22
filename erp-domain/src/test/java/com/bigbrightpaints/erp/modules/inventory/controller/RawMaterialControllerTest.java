@@ -4,7 +4,6 @@ import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.modules.inventory.dto.InventoryExpiringBatchDto;
 import com.bigbrightpaints.erp.modules.inventory.dto.RawMaterialAdjustmentRequest;
-import com.bigbrightpaints.erp.modules.inventory.dto.RawMaterialIntakeRequest;
 import com.bigbrightpaints.erp.modules.inventory.dto.StockSummaryDto;
 import com.bigbrightpaints.erp.modules.inventory.service.InventoryBatchQueryService;
 import com.bigbrightpaints.erp.modules.inventory.service.RawMaterialService;
@@ -106,30 +105,28 @@ class RawMaterialControllerTest {
     }
 
     @Test
-    void intake_usesPrimaryIdempotencyHeader() {
+    void adjustRawMaterials_fallsBackToLegacyIdempotencyHeader() {
         RawMaterialController controller = controller();
-        RawMaterialIntakeRequest request = intakeRequest();
+        RawMaterialAdjustmentRequest request = adjustmentRequest(null);
 
-        controller.intake("header-key", null, request);
+        controller.adjustRawMaterials(null, "legacy-key", request);
 
-        verify(rawMaterialService).intake(request, "header-key");
+        verify(rawMaterialService).adjustStock(eq(new RawMaterialAdjustmentRequest(
+                request.adjustmentDate(),
+                request.direction(),
+                request.adjustmentAccountId(),
+                request.reason(),
+                request.adminOverride(),
+                "legacy-key",
+                request.lines()
+        )));
     }
 
     @Test
-    void intake_fallsBackToLegacyIdempotencyHeader() {
-        RawMaterialController controller = controller();
-        RawMaterialIntakeRequest request = intakeRequest();
-
-        controller.intake(null, "legacy-key", request);
-
-        verify(rawMaterialService).intake(request, "legacy-key");
-    }
-
-    @Test
-    void intake_rejectsMismatchedIdempotencyHeaders() {
+    void adjustRawMaterials_rejectsMismatchedIdempotencyHeaders() {
         RawMaterialController controller = controller();
 
-        assertThatThrownBy(() -> controller.intake("header-key", "legacy-key", intakeRequest()))
+        assertThatThrownBy(() -> controller.adjustRawMaterials("header-key", "legacy-key", adjustmentRequest(null)))
                 .isInstanceOfSatisfying(ApplicationException.class, ex -> {
                     assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_INVALID_INPUT);
                     assertThat(ex.getMessage()).isEqualTo("Idempotency key mismatch between Idempotency-Key and X-Idempotency-Key headers");
@@ -201,18 +198,6 @@ class RawMaterialControllerTest {
                         new BigDecimal("120.00"),
                         "count"
                 ))
-        );
-    }
-
-    private RawMaterialIntakeRequest intakeRequest() {
-        return new RawMaterialIntakeRequest(
-                11L,
-                "RM-B1",
-                new BigDecimal("3.00"),
-                "KG",
-                new BigDecimal("120.00"),
-                77L,
-                "count"
         );
     }
 

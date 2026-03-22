@@ -87,22 +87,21 @@ class PackagingMaterialServiceTest {
     }
 
     @Test
-    void consumePackagingMaterial_returnsNoMappingWhenOptional() {
-        ReflectionTestUtils.setField(packagingMaterialService, "requirePackaging", false);
+    void consumePackagingMaterial_throwsWhenMappingMissing() {
         when(mappingRepository.findActiveByCompanyAndPackagingSizeIgnoreCase(company, "1L"))
                 .thenReturn(List.of());
 
-        PackagingConsumptionResult result = packagingMaterialService.consumePackagingMaterial("1L", 2, "PACK-REF");
-
-        assertThat(result.mappingFound()).isFalse();
-        assertThat(result.totalCost()).isEqualByComparingTo(BigDecimal.ZERO);
-        assertThat(result.quantity()).isEqualByComparingTo(BigDecimal.ZERO);
-        assertThat(result.accountTotalsOrEmpty()).isEmpty();
+        assertThatThrownBy(() -> packagingMaterialService.consumePackagingMaterial("1L", 2, "PACK-REF"))
+                .isInstanceOf(ApplicationException.class)
+                .satisfies(ex -> {
+                    ApplicationException appEx = (ApplicationException) ex;
+                    assertThat(appEx.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_INVALID_INPUT);
+                    assertThat(appEx.getMessage()).contains("Packaging BOM is required");
+                });
     }
 
     @Test
     void consumePackagingMaterial_throwsWhenMappingRequiredAndMissing() {
-        ReflectionTestUtils.setField(packagingMaterialService, "requirePackaging", true);
         when(mappingRepository.findActiveByCompanyAndPackagingSizeIgnoreCase(company, "1L"))
                 .thenReturn(List.of());
 
@@ -117,7 +116,6 @@ class PackagingMaterialServiceTest {
 
     @Test
     void consumePackagingMaterial_usesUnitsPerPackAndFifoCosts() {
-        ReflectionTestUtils.setField(packagingMaterialService, "requirePackaging", false);
         RawMaterial material = rawMaterial(11L, 500L, new BigDecimal("10"), null);
         PackagingSizeMapping mapping = packagingMapping(material, 2);
 
@@ -148,7 +146,6 @@ class PackagingMaterialServiceTest {
 
     @Test
     void consumePackagingMaterial_usesWeightedAverageCostWhenConfigured() {
-        ReflectionTestUtils.setField(packagingMaterialService, "requirePackaging", false);
         RawMaterial material = rawMaterial(12L, 600L, new BigDecimal("10"), "WAC");
         PackagingSizeMapping mapping = packagingMapping(material, 1);
 
@@ -180,7 +177,6 @@ class PackagingMaterialServiceTest {
 
     @Test
     void consumePackagingMaterial_wacNullAverageFallsBackToBatchCostDeterministically() {
-        ReflectionTestUtils.setField(packagingMaterialService, "requirePackaging", false);
         RawMaterial material = rawMaterial(13L, 700L, new BigDecimal("10"), "WAC");
         PackagingSizeMapping mapping = packagingMapping(material, 1);
 
@@ -224,7 +220,6 @@ class PackagingMaterialServiceTest {
 
     @Test
     void consumePackagingMaterial_wacNullAverageRejectsZeroCostWhenPackagingRequired() {
-        ReflectionTestUtils.setField(packagingMaterialService, "requirePackaging", true);
         RawMaterial material = rawMaterial(14L, 800L, new BigDecimal("5"), "WAC");
         PackagingSizeMapping mapping = packagingMapping(material, 1);
         RawMaterialBatch batchA = batch(401L, new BigDecimal("2"), null);

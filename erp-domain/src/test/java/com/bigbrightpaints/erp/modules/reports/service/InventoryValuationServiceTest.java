@@ -104,7 +104,7 @@ class InventoryValuationServiceTest {
 
         assertThat(snapshot.totalValue()).isEqualByComparingTo("150.00");
         assertThat(snapshot.lowStockItems()).isZero();
-        assertThat(snapshot.costingMethod()).isEqualTo("WEIGHTED_AVERAGE");
+        assertThat(snapshot.costingMethod()).isEqualTo("FIFO");
         assertThat(snapshot.items()).hasSize(1);
     }
 

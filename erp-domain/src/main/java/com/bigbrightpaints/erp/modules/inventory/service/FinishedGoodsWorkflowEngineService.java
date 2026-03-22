@@ -84,7 +84,10 @@ public class FinishedGoodsWorkflowEngineService {
                 inventoryMovementRepository,
                 eventPublisher,
                 companyClock);
-        this.inventoryValuationService = new InventoryValuationService(finishedGoodBatchRepository);
+        this.inventoryValuationService = new InventoryValuationService(
+                finishedGoodBatchRepository,
+                costingMethodService,
+                companyClock);
         this.packagingSlipService = new PackagingSlipService(
                 companyContextService,
                 packagingSlipRepository,

@@ -265,7 +265,7 @@ class AuditFixesIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void dispatchUsesWeightedAverageCostWhenConfigured() {
+    void dispatchUsesFifoCostWhenWeightedAverageAliasIsConfigured() {
         Company company = dataSeeder.ensureCompany("DISP-WAC", "Dispatch WAC");
 
         FinishedGood fg = new FinishedGood();
@@ -328,8 +328,7 @@ class AuditFixesIntegrationTest extends AbstractIntegrationTest {
 
         List<DispatchPosting> postings = finishedGoodsService.markSlipDispatched(order.getId(), slip);
 
-        BigDecimal expectedWac = new BigDecimal("15");
-        BigDecimal expectedCost = expectedWac.multiply(new BigDecimal("4"));
+        BigDecimal expectedCost = new BigDecimal("10").multiply(new BigDecimal("4"));
         assertEquals(1, postings.size());
         assertEquals(0, postings.getFirst().cost().compareTo(expectedCost));
     }

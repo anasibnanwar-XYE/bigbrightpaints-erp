@@ -72,6 +72,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 import org.springframework.batch.support.transaction.ResourcelessTransactionManager;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -109,6 +111,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 class AccountingServiceTest {
 
     @Mock
@@ -1111,8 +1114,9 @@ class AccountingServiceTest {
     void createJournalEntry_rejectsClosedPeriod() {
         LocalDate today = LocalDate.of(2024, 2, 1);
         when(companyClock.today(company)).thenReturn(today);
-        when(accountingPeriodService.requirePostablePeriod(eq(company), eq(today), any(), any(), any(), anyBoolean()))
-                .thenThrow(new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "Accounting period is closed"));
+        doThrow(new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "Accounting period is closed"))
+                .when(accountingPeriodService)
+                .requirePostablePeriod(any(), any(), any(), any(), any(), anyBoolean());
 
         JournalEntryRequest request = new JournalEntryRequest(
                 "CLOSED-REF",

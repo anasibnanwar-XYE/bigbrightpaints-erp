@@ -69,6 +69,7 @@ class CatalogServiceCanonicalCoverageTest {
     @Mock private FinishedGoodRepository finishedGoodRepository;
     @Mock private RawMaterialRepository rawMaterialRepository;
     @Mock private SkuReadinessService skuReadinessService;
+    @Mock private ProductionCatalogService productionCatalogService;
 
     private CatalogService service;
     private Company company;
@@ -84,7 +85,8 @@ class CatalogServiceCanonicalCoverageTest {
                 sizeVariantRepository,
                 finishedGoodRepository,
                 rawMaterialRepository,
-                skuReadinessService);
+                skuReadinessService,
+                productionCatalogService);
 
         company = new Company();
         ReflectionTestUtils.setField(company, "id", 200L);
@@ -214,7 +216,9 @@ class CatalogServiceCanonicalCoverageTest {
                 new SkuReadinessDto.Stage(true, List.of()),
                 new SkuReadinessDto.Stage(true, List.of()),
                 new SkuReadinessDto.Stage(true, List.of()),
-                new SkuReadinessDto.Stage(false, List.of("NO_FINISHED_GOOD_BATCH_STOCK"))
+                new SkuReadinessDto.Stage(true, List.of()),
+                new SkuReadinessDto.Stage(false, List.of("NO_FINISHED_GOOD_BATCH_STOCK")),
+                new SkuReadinessDto.Stage(true, List.of())
         );
         when(skuReadinessService.forProduct(company, product)).thenReturn(readiness);
         when(skuReadinessService.sanitizeForCatalogViewer(readiness, true)).thenReturn(readiness);
@@ -235,14 +239,18 @@ class CatalogServiceCanonicalCoverageTest {
                 new SkuReadinessDto.Stage(true, List.of()),
                 new SkuReadinessDto.Stage(true, List.of()),
                 new SkuReadinessDto.Stage(true, List.of()),
-                new SkuReadinessDto.Stage(false, List.of("NO_FINISHED_GOOD_BATCH_STOCK"))
+                new SkuReadinessDto.Stage(true, List.of()),
+                new SkuReadinessDto.Stage(false, List.of("NO_FINISHED_GOOD_BATCH_STOCK")),
+                new SkuReadinessDto.Stage(true, List.of())
         );
         SkuReadinessDto secondReadiness = new SkuReadinessDto(
                 "BBR-PRIMER-002",
                 new SkuReadinessDto.Stage(true, List.of()),
                 new SkuReadinessDto.Stage(false, List.of("ACCOUNTING_CONFIGURATION_REQUIRED")),
                 new SkuReadinessDto.Stage(false, List.of("ACCOUNTING_CONFIGURATION_REQUIRED")),
-                new SkuReadinessDto.Stage(false, List.of("NO_FINISHED_GOOD_BATCH_STOCK", "ACCOUNTING_CONFIGURATION_REQUIRED"))
+                new SkuReadinessDto.Stage(true, List.of()),
+                new SkuReadinessDto.Stage(false, List.of("NO_FINISHED_GOOD_BATCH_STOCK", "ACCOUNTING_CONFIGURATION_REQUIRED")),
+                new SkuReadinessDto.Stage(false, List.of("ACCOUNTING_CONFIGURATION_REQUIRED"))
         );
 
         when(companyContextService.requireCurrentCompany()).thenReturn(company);

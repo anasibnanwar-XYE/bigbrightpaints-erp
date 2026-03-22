@@ -15,6 +15,7 @@ import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatch;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatchRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.InventoryReference;
+import com.bigbrightpaints.erp.modules.inventory.domain.MaterialType;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatch;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatchRepository;
@@ -34,7 +35,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-@DisplayName("Regression: Bulk pack can skip packaging consumption")
+@DisplayName("Regression: Bulk pack consumes packaging via mappings")
 class BulkPackingSkipPackagingConsumptionRegressionIT extends AbstractIntegrationTest {
 
     private static final String COMPANY_CODE = "LF-017";
@@ -68,7 +69,7 @@ class BulkPackingSkipPackagingConsumptionRegressionIT extends AbstractIntegratio
     }
 
     @Test
-    void skipPackagingConsumptionLeavesPackagingStockUntouched() {
+    void packagingMappingsConsumePackagingStock() {
         FinishedGood bulkFg = createFinishedGood("FG-BULK-LF017", "Bulk Paint", "L", bulkInventory);
         FinishedGood child = createFinishedGood("FG-1L-LF017", "Paint 1L", "UNIT", fgInventory);
         FinishedGoodBatch bulkBatch = createBulkBatch(bulkFg, new BigDecimal("10"), new BigDecimal("5"));
@@ -82,8 +83,6 @@ class BulkPackingSkipPackagingConsumptionRegressionIT extends AbstractIntegratio
         BulkPackResponse response = bulkPackingService.pack(new BulkPackRequest(
                 bulkBatch.getId(),
                 List.of(new BulkPackRequest.PackLine(child.getId(), new BigDecimal("2"), "1L", "L")),
-                null,
-                true,
                 LocalDate.now(),
                 "packer",
                 null,
@@ -91,13 +90,11 @@ class BulkPackingSkipPackagingConsumptionRegressionIT extends AbstractIntegratio
         ));
 
         RawMaterial refreshed = rawMaterialRepository.findById(packaging.getId()).orElseThrow();
-        assertThat(refreshed.getCurrentStock()).isEqualByComparingTo(startingStock);
-        assertThat(response.packagingCost()).isEqualByComparingTo(BigDecimal.ZERO);
-
-        String reference = "BULK-PACK-" + bulkBatch.getBatchCode();
-        assertThat(rawMaterialMovementRepository
-                .findByReferenceTypeAndReferenceId(InventoryReference.PACKING_RECORD, reference))
-                .isEmpty();
+        assertThat(refreshed.getCurrentStock()).isEqualByComparingTo(startingStock.subtract(new BigDecimal("2")));
+        assertThat(response.packagingCost()).isGreaterThan(BigDecimal.ZERO);
+        assertThat(rawMaterialMovementRepository.findByRawMaterialBatchOrderByCreatedAtAsc(
+                rawMaterialBatchRepository.findByRawMaterial(packaging).getFirst()))
+                .hasSize(1);
     }
 
     private Account ensureAccount(String code, AccountType type) {
@@ -147,6 +144,7 @@ class BulkPackingSkipPackagingConsumptionRegressionIT extends AbstractIntegratio
         rm.setSku(sku);
         rm.setName(sku);
         rm.setUnitType("UNIT");
+        rm.setMaterialType(MaterialType.PACKAGING);
         rm.setInventoryAccountId(inventoryAccount.getId());
         rm.setCurrentStock(stock);
         return rawMaterialRepository.save(rm);
