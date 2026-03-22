@@ -16,11 +16,15 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.mock;
 
 @ExtendWith(MockitoExtension.class)
 @Tag("critical")
@@ -87,6 +91,55 @@ class OpeningStockImportControllerTest {
     }
 
     @Test
+    void importOpeningStock_keepsAccountingMetadataForAccountingUsers() {
+        OpeningStockImportController controller = new OpeningStockImportController(openingStockImportService, skuReadinessService);
+        MockMultipartFile file = csvFile();
+        SkuReadinessDto rawReadiness = readiness(
+                List.of("WIP_ACCOUNT_MISSING"),
+                List.of("WIP_ACCOUNT_MISSING"),
+                List.of("WIP_ACCOUNT_MISSING"),
+                List.of());
+        OpeningStockImportResponse response = new OpeningStockImportResponse(
+                1,
+                0,
+                0,
+                0,
+                1,
+                List.of(new OpeningStockImportResponse.ImportRowResult(1L, "FG-1", "FINISHED_GOOD", rawReadiness)),
+                List.of(new OpeningStockImportResponse.ImportError(
+                        2L,
+                        "SKU FG-2 is not inventory-ready for opening stock: WIP_ACCOUNT_MISSING",
+                        "FG-2",
+                        "FINISHED_GOOD",
+                        rawReadiness))
+        );
+        when(openingStockImportService.importOpeningStock(file, "accounting-key")).thenReturn(response);
+
+        OpeningStockImportResponse payload = controller
+                .importOpeningStock("accounting-key", file, authentication("ROLE_ACCOUNTING"))
+                .getBody()
+                .data();
+
+        assertThat(payload).isSameAs(response);
+        verifyNoInteractions(skuReadinessService);
+    }
+
+    @Test
+    void importOpeningStock_returnsNullPayloadWhenServiceReturnsNull() {
+        OpeningStockImportController controller = new OpeningStockImportController(openingStockImportService, skuReadinessService);
+        MockMultipartFile file = csvFile();
+        when(openingStockImportService.importOpeningStock(file, "null-key")).thenReturn(null);
+
+        OpeningStockImportResponse payload = controller
+                .importOpeningStock("null-key", file, null)
+                .getBody()
+                .data();
+
+        assertThat(payload).isNull();
+        verifyNoInteractions(skuReadinessService);
+    }
+
+    @Test
     void importHistory_delegatesToServiceWithPagination() {
         OpeningStockImportController controller = new OpeningStockImportController(openingStockImportService, skuReadinessService);
         PageResponse<OpeningStockImportHistoryItem> page = PageResponse.of(
@@ -113,6 +166,106 @@ class OpeningStockImportControllerTest {
         controller.importHistory(0, 20);
 
         verify(openingStockImportService).listImportHistory(0, 20);
+    }
+
+    @Test
+    void stageFromOpeningStockErrorMessage_detectsSupportedStagesOnly() {
+        OpeningStockImportController controller = new OpeningStockImportController(openingStockImportService, skuReadinessService);
+
+        assertThat(stageFromOpeningStockErrorMessage(controller, null)).isNull();
+        assertThat(stageFromOpeningStockErrorMessage(controller, "plain validation failure")).isNull();
+        assertThat(stageFromOpeningStockErrorMessage(
+                controller,
+                "SKU FG-1 is not catalog-ready for opening stock: MISSING")).isEqualTo("catalog");
+        assertThat(stageFromOpeningStockErrorMessage(
+                controller,
+                "SKU FG-1 is not inventory-ready for opening stock: MISSING")).isEqualTo("inventory");
+        assertThat(stageFromOpeningStockErrorMessage(
+                controller,
+                "SKU FG-1 is not production-ready for opening stock: MISSING")).isEqualTo("production");
+        assertThat(stageFromOpeningStockErrorMessage(
+                controller,
+                "SKU FG-1 is not sales-ready for opening stock: MISSING")).isEqualTo("sales");
+        assertThat(stageFromOpeningStockErrorMessage(
+                controller,
+                "SKU FG-1 is not finance-ready for opening stock: MISSING")).isNull();
+    }
+
+    @Test
+    void blockersForStage_returnsStageSpecificBlockersAndHandlesMissingStages() {
+        OpeningStockImportController controller = new OpeningStockImportController(openingStockImportService, skuReadinessService);
+        SkuReadinessDto populated = new SkuReadinessDto(
+                "FG-1",
+                new SkuReadinessDto.Stage(false, List.of("CATALOG_BLOCKER")),
+                new SkuReadinessDto.Stage(false, List.of("INVENTORY_BLOCKER")),
+                new SkuReadinessDto.Stage(false, List.of("PRODUCTION_BLOCKER")),
+                new SkuReadinessDto.Stage(false, List.of("SALES_BLOCKER"))
+        );
+        SkuReadinessDto missing = new SkuReadinessDto("FG-1", null, null, null, null);
+
+        assertThat(blockersForStage(controller, populated, "catalog")).containsExactly("CATALOG_BLOCKER");
+        assertThat(blockersForStage(controller, populated, "inventory")).containsExactly("INVENTORY_BLOCKER");
+        assertThat(blockersForStage(controller, populated, "production")).containsExactly("PRODUCTION_BLOCKER");
+        assertThat(blockersForStage(controller, populated, "sales")).containsExactly("SALES_BLOCKER");
+        assertThat(blockersForStage(controller, populated, "unknown")).isEmpty();
+        assertThat(blockersForStage(controller, missing, "catalog")).isEmpty();
+        assertThat(blockersForStage(controller, missing, "inventory")).isEmpty();
+        assertThat(blockersForStage(controller, missing, "production")).isEmpty();
+        assertThat(blockersForStage(controller, missing, "sales")).isEmpty();
+    }
+
+    @Test
+    void sanitizeErrorMessage_preservesOriginalMessageWhenStageOrSkuContextIsMissing() {
+        OpeningStockImportController controller = new OpeningStockImportController(openingStockImportService, skuReadinessService);
+        String plainMessage = "CSV row is malformed";
+        String inventoryMessage = "SKU FG-1 is not inventory-ready for opening stock: WIP_ACCOUNT_MISSING";
+        SkuReadinessDto noSkuReadiness = new SkuReadinessDto(
+                " ",
+                new SkuReadinessDto.Stage(true, List.of()),
+                new SkuReadinessDto.Stage(false, List.of("ACCOUNTING_CONFIGURATION_REQUIRED")),
+                new SkuReadinessDto.Stage(true, List.of()),
+                new SkuReadinessDto.Stage(true, List.of())
+        );
+
+        assertThat(sanitizeErrorMessage(controller, plainMessage, "FG-1", readiness(
+                List.of("ACCOUNTING_CONFIGURATION_REQUIRED"),
+                List.of(),
+                List.of(),
+                List.of()))).isEqualTo(plainMessage);
+        assertThat(sanitizeErrorMessage(controller, inventoryMessage, "FG-1", null)).isEqualTo(inventoryMessage);
+        assertThat(sanitizeErrorMessage(controller, inventoryMessage, " ", noSkuReadiness)).isEqualTo(inventoryMessage);
+    }
+
+    @Test
+    void sanitizeErrorMessage_usesReadinessSkuAndUnknownWhenBlockersAreUnavailable() {
+        OpeningStockImportController controller = new OpeningStockImportController(openingStockImportService, skuReadinessService);
+        SkuReadinessDto unknownBlockers = new SkuReadinessDto(
+                "FG-9",
+                new SkuReadinessDto.Stage(true, List.of()),
+                new SkuReadinessDto.Stage(false, null),
+                new SkuReadinessDto.Stage(true, List.of()),
+                new SkuReadinessDto.Stage(true, List.of())
+        );
+
+        assertThat(sanitizeErrorMessage(
+                controller,
+                "SKU FG-9 is not inventory-ready for opening stock: WIP_ACCOUNT_MISSING",
+                " ",
+                unknownBlockers)).isEqualTo(
+                        "SKU FG-9 is not inventory-ready for opening stock: UNKNOWN");
+    }
+
+    @Test
+    void canViewAccountingMetadata_allowsOnlyAdminAndAccountingAuthorities() {
+        OpeningStockImportController controller = new OpeningStockImportController(openingStockImportService, skuReadinessService);
+        Authentication authenticationWithNullAuthorities = mock(Authentication.class);
+        when(authenticationWithNullAuthorities.getAuthorities()).thenReturn(null);
+
+        assertThat(canViewAccountingMetadata(controller, null)).isFalse();
+        assertThat(canViewAccountingMetadata(controller, authenticationWithNullAuthorities)).isFalse();
+        assertThat(canViewAccountingMetadata(controller, authentication("ROLE_FACTORY"))).isFalse();
+        assertThat(canViewAccountingMetadata(controller, authentication("ROLE_ADMIN"))).isTrue();
+        assertThat(canViewAccountingMetadata(controller, authentication("ROLE_ACCOUNTING"))).isTrue();
     }
 
     private MockMultipartFile csvFile() {
@@ -143,5 +296,28 @@ class OpeningStockImportControllerTest {
                 new SkuReadinessDto.Stage(productionBlockers.isEmpty(), productionBlockers),
                 new SkuReadinessDto.Stage(salesBlockers.isEmpty(), salesBlockers)
         );
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<String> blockersForStage(OpeningStockImportController controller,
+                                          SkuReadinessDto readiness,
+                                          String stage) {
+        return (List<String>) ReflectionTestUtils.invokeMethod(controller, "blockersForStage", readiness, stage);
+    }
+
+    private String sanitizeErrorMessage(OpeningStockImportController controller,
+                                        String message,
+                                        String sku,
+                                        SkuReadinessDto readiness) {
+        return ReflectionTestUtils.invokeMethod(controller, "sanitizeErrorMessage", message, sku, readiness);
+    }
+
+    private String stageFromOpeningStockErrorMessage(OpeningStockImportController controller, String message) {
+        return ReflectionTestUtils.invokeMethod(controller, "stageFromOpeningStockErrorMessage", message);
+    }
+
+    private boolean canViewAccountingMetadata(OpeningStockImportController controller, Authentication authentication) {
+        Boolean result = ReflectionTestUtils.invokeMethod(controller, "canViewAccountingMetadata", authentication);
+        return Boolean.TRUE.equals(result);
     }
 }
