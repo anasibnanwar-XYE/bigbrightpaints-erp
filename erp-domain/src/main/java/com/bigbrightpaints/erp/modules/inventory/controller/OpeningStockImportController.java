@@ -30,7 +30,7 @@ public class OpeningStockImportController {
     @PostMapping(value = "/opening-stock", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING','ROLE_FACTORY')")
     public ResponseEntity<ApiResponse<OpeningStockImportResponse>> importOpeningStock(
-            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+            @RequestHeader("Idempotency-Key") String idempotencyKey,
             @RequestPart("file") MultipartFile file) {
         OpeningStockImportResponse response = openingStockImportService.importOpeningStock(file, idempotencyKey);
         return ResponseEntity.ok(ApiResponse.success("Opening stock import processed", response));

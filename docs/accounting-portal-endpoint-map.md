@@ -190,7 +190,7 @@ Maker-checker period-close note:
 
 | Endpoint | Frontend should put | Backend expects | Returns |
 |---|---|---|---|
-| `POST /api/v1/inventory/opening-stock` | create-form; req: file (multipart body); opt: Idempotency-Key (header); states: loading, error, success, partial-success | path=-; query=-; body=required (multipart/form-data with `file`); ct=multipart/form-data; accounting side-effect=posts opening-stock journal (inventory Dr / `OPEN-BAL` Cr) | ok 200; err - |
+| `POST /api/v1/inventory/opening-stock` | create-form; req: file (multipart body), Idempotency-Key (header); states: loading, error, success, partial-success | path=-; query=-; body=required (multipart/form-data with `file`); ct=multipart/form-data; accounting side-effect=posts opening-stock journal (inventory Dr / `OPEN-BAL` Cr) | ok 200; err - |
 
 ## HR & Payroll
 

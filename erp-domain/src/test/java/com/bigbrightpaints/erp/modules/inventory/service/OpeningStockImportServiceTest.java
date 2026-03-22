@@ -922,7 +922,7 @@ class OpeningStockImportServiceTest {
                 .isInstanceOfSatisfying(ApplicationException.class, ex -> {
                     assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_INVALID_STATE);
                     assertThat(ex.getMessage()).isEqualTo(
-                            "Opening balance account OPEN-BAL is missing; onboard the tenant with seeded defaults before importing opening stock");
+                            "Opening balance account OPEN-BAL is missing; complete company defaults and repair seeded accounts before importing opening stock");
                 });
     }
 
