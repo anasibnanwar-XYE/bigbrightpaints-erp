@@ -291,6 +291,31 @@ class ProductionCatalogServiceCanonicalEntryTest {
     }
 
     @Test
+    void createOrPreviewCatalogProducts_previewIncludesReadinessOnGeneratedMembers() {
+        SkuReadinessDto readiness = new SkuReadinessDto(
+                "BBR-PRIMER-WHITE-1L",
+                new SkuReadinessDto.Stage(true, List.of()),
+                new SkuReadinessDto.Stage(false, List.of("RAW_MATERIAL_INVENTORY_ACCOUNT_MISSING")),
+                new SkuReadinessDto.Stage(false, List.of("RAW_MATERIAL_INVENTORY_ACCOUNT_MISSING")),
+                new SkuReadinessDto.Stage(false, List.of("RAW_MATERIAL_SKU_NOT_SALES_ORDERABLE"))
+        );
+        when(skuReadinessService.forPlannedProduct(
+                any(ProductionProduct.class),
+                eq(SkuReadinessService.ExpectedStockType.RAW_MATERIAL),
+                any(),
+                any()
+        )).thenReturn(readiness);
+
+        CatalogProductEntryResponse response = service.createOrPreviewCatalogProducts(
+                request("RAW_MATERIAL", List.of("WHITE"), List.of("1L")),
+                true);
+
+        assertThat(response.members()).hasSize(1);
+        assertThat(response.members().getFirst().sku()).isEqualTo("BBR-PRIMER-WHITE-1L");
+        assertThat(response.members().getFirst().readiness()).isEqualTo(readiness);
+    }
+
+    @Test
     void createOrPreviewCatalogProducts_previewEnrichesFinishedGoodsWithPostingDefaults() {
         when(companyDefaultAccountsService.requireDefaults()).thenReturn(
                 new CompanyDefaultAccountsService.DefaultAccounts(101L, 102L, 103L, 104L, 105L));
@@ -363,6 +388,19 @@ class ProductionCatalogServiceCanonicalEntryTest {
     void createOrPreviewCatalogProducts_translatesWriteTimeDuplicateIntoConcurrencyConflict() {
         CatalogProductEntryRequest request = request("RAW_MATERIAL", List.of("WHITE", "BLUE"), List.of("1L"));
         String conflictingSku = canonicalSku("Primer", "WHITE", "1L");
+        SkuReadinessDto readiness = new SkuReadinessDto(
+                canonicalSku("Primer", "BLUE", "1L"),
+                new SkuReadinessDto.Stage(true, List.of()),
+                new SkuReadinessDto.Stage(false, List.of("RAW_MATERIAL_INVENTORY_ACCOUNT_MISSING")),
+                new SkuReadinessDto.Stage(false, List.of("RAW_MATERIAL_INVENTORY_ACCOUNT_MISSING")),
+                new SkuReadinessDto.Stage(false, List.of("RAW_MATERIAL_SKU_NOT_SALES_ORDERABLE"))
+        );
+        when(skuReadinessService.forPlannedProduct(
+                any(ProductionProduct.class),
+                eq(SkuReadinessService.ExpectedStockType.RAW_MATERIAL),
+                any(),
+                any()
+        )).thenReturn(readiness);
         when(productRepository.findByCompanyAndSkuCode(company, conflictingSku))
                 .thenReturn(Optional.empty(), Optional.of(existingProduct(conflictingSku)));
         when(productRepository.save(any(ProductionProduct.class)))
@@ -379,6 +417,7 @@ class ProductionCatalogServiceCanonicalEntryTest {
                     assertThat(wouldCreate)
                             .extracting(CatalogProductEntryResponse.Member::sku)
                             .containsExactly(canonicalSku("Primer", "BLUE", "1L"));
+                    assertThat(wouldCreate.getFirst().readiness()).isEqualTo(readiness);
                 });
     }
 

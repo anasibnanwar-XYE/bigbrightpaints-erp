@@ -248,6 +248,44 @@ class SkuReadinessServiceTest {
     }
 
     @Test
+    void forPlannedProduct_finishedGoodUsesProjectedMirrorAndNoBatchState() {
+        ProductionProduct product = finishedGoodProduct("FG-PLAN");
+        product.setMetadata(Map.of());
+        FinishedGood finishedGood = finishedGood("FG-PLAN", 11L, 22L, 33L, 44L);
+
+        SkuReadinessDto readiness = service.forPlannedProduct(
+                product,
+                SkuReadinessService.ExpectedStockType.FINISHED_GOOD,
+                finishedGood,
+                null);
+
+        assertThat(readiness.catalog().ready()).isTrue();
+        assertThat(readiness.inventory().ready()).isTrue();
+        assertThat(readiness.production().blockers()).containsExactly("WIP_ACCOUNT_MISSING");
+        assertThat(readiness.sales().blockers()).containsExactly("NO_FINISHED_GOOD_BATCH_STOCK");
+        verifyNoInteractions(productRepository, finishedGoodRepository, rawMaterialRepository, finishedGoodBatchRepository);
+    }
+
+    @Test
+    void forPlannedProduct_rawMaterialUsesProjectedMirrorWithoutRepositoryLookups() {
+        ProductionProduct product = finishedGoodProduct("RM-PLAN");
+        product.setCategory("RAW_MATERIAL");
+        RawMaterial rawMaterial = rawMaterial("RM-PLAN", 77L);
+
+        SkuReadinessDto readiness = service.forPlannedProduct(
+                product,
+                SkuReadinessService.ExpectedStockType.RAW_MATERIAL,
+                null,
+                rawMaterial);
+
+        assertThat(readiness.catalog().ready()).isTrue();
+        assertThat(readiness.inventory().ready()).isTrue();
+        assertThat(readiness.production().ready()).isTrue();
+        assertThat(readiness.sales().blockers()).containsExactly("RAW_MATERIAL_SKU_NOT_SALES_ORDERABLE");
+        verifyNoInteractions(productRepository, finishedGoodRepository, rawMaterialRepository, finishedGoodBatchRepository);
+    }
+
+    @Test
     void forProducts_batchesMirrorAndBatchLookupsForCatalogBrowse() {
         ProductionProduct finishedGoodProduct = finishedGoodProduct("FG-BROWSE");
         ReflectionTestUtils.setField(finishedGoodProduct, "id", 101L);

@@ -30,6 +30,7 @@ import com.bigbrightpaints.erp.modules.production.dto.ProductCreateRequest;
 import com.bigbrightpaints.erp.modules.production.dto.ProductUpdateRequest;
 import com.bigbrightpaints.erp.modules.production.dto.ProductionBrandDto;
 import com.bigbrightpaints.erp.modules.production.dto.ProductionProductDto;
+import com.bigbrightpaints.erp.modules.production.dto.SkuReadinessDto;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.DeserializationFeature;
@@ -637,7 +638,7 @@ public class ProductionCatalogService {
         List<CatalogProductEntryResponse.Conflict> conflicts = new ArrayList<>();
         List<CatalogProductCandidate> candidatesToCreate = new ArrayList<>();
         for (CatalogProductCandidate candidate : generatedCandidates) {
-            generatedMembers.add(candidate.toMember(null, null, null));
+            generatedMembers.add(candidate.toMember(null, null, previewMemberReadiness(company, normalizedCategory, candidate)));
             String skuKey = normalizeSkuKey(candidate.sku());
             String productNameKey = normalizeKey(candidate.productName());
             if (duplicateSkuKeys.contains(skuKey)) {
@@ -706,6 +707,51 @@ public class ProductionCatalogService {
                 plan.downstreamEffects(),
                 plan.generatedMembers(),
                 effectiveConflicts);
+    }
+
+    private SkuReadinessDto previewMemberReadiness(Company company,
+                                                   String category,
+                                                   CatalogProductCandidate candidate) {
+        ProductionProduct draftProduct = new ProductionProduct();
+        draftProduct.setCompany(company);
+        draftProduct.setSkuCode(candidate.sku());
+        draftProduct.setProductName(candidate.productName());
+        draftProduct.setCategory(category);
+        draftProduct.setDefaultColour(candidate.color());
+        draftProduct.setSizeLabel(candidate.size());
+        draftProduct.setUnitOfMeasure(cleanValue(candidate.createRequest().unitOfMeasure()));
+        draftProduct.setMetadata(normalizeMetadata(candidate.createRequest().metadata()));
+        draftProduct.setActive(true);
+
+        if (isRawMaterialCategory(category)) {
+            RawMaterial projectedRawMaterial = new RawMaterial();
+            projectedRawMaterial.setCompany(company);
+            projectedRawMaterial.setSku(candidate.sku());
+            projectedRawMaterial.setName(candidate.productName());
+            projectedRawMaterial.setUnitType(resolveUnit(draftProduct.getUnitOfMeasure()));
+            projectedRawMaterial.setInventoryAccountId(resolveRawMaterialInventoryAccountId(company, draftProduct));
+            return skuReadinessService.forPlannedProduct(
+                    draftProduct,
+                    SkuReadinessService.ExpectedStockType.RAW_MATERIAL,
+                    null,
+                    projectedRawMaterial);
+        }
+
+        FinishedGood projectedFinishedGood = new FinishedGood();
+        projectedFinishedGood.setCompany(company);
+        projectedFinishedGood.setProductCode(candidate.sku());
+        projectedFinishedGood.setName(candidate.productName());
+        projectedFinishedGood.setUnit(resolveUnit(draftProduct.getUnitOfMeasure()));
+        projectedFinishedGood.setValuationAccountId(metadataLong(draftProduct, "fgValuationAccountId"));
+        projectedFinishedGood.setCogsAccountId(metadataLong(draftProduct, "fgCogsAccountId"));
+        projectedFinishedGood.setRevenueAccountId(metadataLong(draftProduct, "fgRevenueAccountId"));
+        projectedFinishedGood.setTaxAccountId(metadataLong(draftProduct, "fgTaxAccountId"));
+        projectedFinishedGood.setDiscountAccountId(metadataLong(draftProduct, "fgDiscountAccountId"));
+        return skuReadinessService.forPlannedProduct(
+                draftProduct,
+                SkuReadinessService.ExpectedStockType.FINISHED_GOOD,
+                projectedFinishedGood,
+                null);
     }
 
     private SkuReadinessService.ExpectedStockType expectedStockType(String category) {

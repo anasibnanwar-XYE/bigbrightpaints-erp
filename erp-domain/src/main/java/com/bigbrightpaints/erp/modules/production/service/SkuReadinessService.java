@@ -65,6 +65,22 @@ public class SkuReadinessService {
                 null);
     }
 
+    public SkuReadinessDto forPlannedProduct(ProductionProduct product,
+                                             ExpectedStockType expectedStockType,
+                                             FinishedGood finishedGood,
+                                             RawMaterial rawMaterial) {
+        if (product == null) {
+            throw new IllegalArgumentException("product is required");
+        }
+        return buildSnapshot(
+                normalizeSku(product.getSkuCode()),
+                product,
+                finishedGood,
+                rawMaterial,
+                expectedStockType,
+                false);
+    }
+
     public SkuReadinessDto forSku(Company company, String sku, ExpectedStockType expectedStockType) {
         String normalizedSku = normalizeSku(sku);
         ProductionProduct product = StringUtils.hasText(normalizedSku)
