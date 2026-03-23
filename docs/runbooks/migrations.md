@@ -1,6 +1,6 @@
 # Migration Runbook
 
-## 2026-03-23 — `migration_v2/V48__credit_request_requester_identity.sql`
+## 2026-03-23 — `migration_v2/V164__credit_request_requester_identity.sql`
 
 - **Purpose:** persist dealer-portal submitter identity on `credit_requests` so ERP-32 durable credit-limit approvals no longer surface anonymous maker rows when dealer users submit permanent limit requests.
 - **Forward plan:** add nullable `credit_requests.requester_user_id` and `credit_requests.requester_email`, deploy the backend packet that writes requester identity from the authenticated dealer portal principal, and keep existing historical rows nullable because legacy sales/admin-created durable requests intentionally remain without portal maker metadata.
