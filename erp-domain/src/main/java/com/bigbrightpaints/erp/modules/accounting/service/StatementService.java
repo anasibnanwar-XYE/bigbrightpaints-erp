@@ -211,8 +211,33 @@ public class StatementService {
     }
 
     public List<OverdueInvoiceDto> dealerOverdueInvoices(Dealer dealer, LocalDate asOf) {
+        LocalDate ref = asOf == null ? companyClock.today(companyContextService.requireCurrentCompany()) : asOf;
+        return buildDealerInvoiceLines(dealer, ref).stream()
+                .filter(DealerOverdueInvoiceLine::overdue)
+                .filter(line -> line.outstandingAmount().compareTo(BigDecimal.ZERO) > 0)
+                .sorted(Comparator.comparing(
+                                DealerOverdueInvoiceLine::dueDate,
+                                Comparator.nullsLast(Comparator.naturalOrder()))
+                        .thenComparing(DealerOverdueInvoiceLine::issueDate)
+                        .thenComparing(DealerOverdueInvoiceLine::sequence))
+                .map(line -> new OverdueInvoiceDto(
+                        line.invoiceNumber(),
+                        line.issueDate(),
+                        line.dueDate(),
+                        line.daysOverdue(),
+                        line.outstandingAmount()))
+                .toList();
+    }
+
+    public long dealerOpenInvoiceCount(Dealer dealer, LocalDate asOf) {
+        LocalDate ref = asOf == null ? companyClock.today(companyContextService.requireCurrentCompany()) : asOf;
+        return buildDealerInvoiceLines(dealer, ref).stream()
+                .filter(line -> line.outstandingAmount().compareTo(BigDecimal.ZERO) > 0)
+                .count();
+    }
+
+    private List<DealerOverdueInvoiceLine> buildDealerInvoiceLines(Dealer dealer, LocalDate ref) {
         Company company = companyContextService.requireCurrentCompany();
-        LocalDate ref = asOf == null ? companyClock.today(company) : asOf;
         List<DealerLedgerEntry> entries = dealerLedgerRepository.findByCompanyAndDealerAndEntryDateLessThanEqualOrderByEntryDateAscIdAsc(
                 company,
                 dealer,
@@ -258,21 +283,7 @@ public class StatementService {
                 creditPool = creditPool.subtract(applied);
             }
         }
-        return invoiceLines.stream()
-                .filter(DealerOverdueInvoiceLine::overdue)
-                .filter(line -> line.outstandingAmount().compareTo(BigDecimal.ZERO) > 0)
-                .sorted(Comparator.comparing(
-                                DealerOverdueInvoiceLine::dueDate,
-                                Comparator.nullsLast(Comparator.naturalOrder()))
-                        .thenComparing(DealerOverdueInvoiceLine::issueDate)
-                        .thenComparing(DealerOverdueInvoiceLine::sequence))
-                .map(line -> new OverdueInvoiceDto(
-                        line.invoiceNumber(),
-                        line.issueDate(),
-                        line.dueDate(),
-                        line.daysOverdue(),
-                        line.outstandingAmount()))
-                .toList();
+        return invoiceLines;
     }
 
     public AgingSummaryResponse supplierAging(Long supplierId, LocalDate asOf, String bucketParam) {

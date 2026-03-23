@@ -2,6 +2,7 @@ package com.bigbrightpaints.erp.modules.sales.dto;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import java.math.BigDecimal;
@@ -9,6 +10,8 @@ import java.util.Objects;
 
 public final class CreditLimitRequestCreateRequest {
 
+    @NotNull
+    @Schema(requiredMode = Schema.RequiredMode.REQUIRED)
     private final Long dealerId;
     @NotNull
     @Positive

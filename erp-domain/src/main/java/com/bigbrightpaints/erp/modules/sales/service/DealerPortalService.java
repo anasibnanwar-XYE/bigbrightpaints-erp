@@ -236,6 +236,7 @@ public class DealerPortalService {
     @Transactional(readOnly = true)
     public Map<String, Object> getMyDashboard() {
         Dealer dealer = getCurrentDealer();
+        LocalDate today = companyClock.today(dealer.getCompany());
         
         BigDecimal currentBalance = dealerLedgerService.currentBalance(dealer.getId());
         Map<String, Object> aging = buildAgingView(dealer);
@@ -243,11 +244,7 @@ public class DealerPortalService {
                 dealer.getCreditLimit() != null ? dealer.getCreditLimit() : BigDecimal.ZERO,
                 (BigDecimal) aging.get("creditUsed")));
 
-        List<Invoice> invoices = invoiceRepository.findByCompanyAndDealerOrderByIssueDateDesc(
-                dealer.getCompany(), dealer);
-        long pendingInvoices = invoices.stream()
-                .filter(i -> i.getOutstandingAmount() != null && i.getOutstandingAmount().compareTo(BigDecimal.ZERO) > 0)
-                .count();
+        long pendingInvoices = statementService.dealerOpenInvoiceCount(dealer, today);
         long pendingOrderCount = ((Number) aging.get("pendingOrderCount")).longValue();
         BigDecimal pendingOrderExposure = (BigDecimal) aging.get("pendingOrderExposure");
 

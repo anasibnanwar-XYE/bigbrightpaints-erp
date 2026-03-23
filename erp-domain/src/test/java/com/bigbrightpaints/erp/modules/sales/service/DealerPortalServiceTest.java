@@ -258,10 +258,7 @@ class DealerPortalServiceTest {
         when(dealerRepository.findAllByCompanyAndPortalUserId(company, 100L)).thenReturn(List.of(dealer));
         when(dealerLedgerService.currentBalance(21L)).thenReturn(new BigDecimal("550"));
 
-        var invoice = new com.bigbrightpaints.erp.modules.invoice.domain.Invoice();
-        invoice.setOutstandingAmount(new BigDecimal("550"));
-        invoice.setDueDate(LocalDate.now().minusDays(10));
-        when(invoiceRepository.findByCompanyAndDealerOrderByIssueDateDesc(company, dealer)).thenReturn(List.of(invoice));
+        when(statementService.dealerOpenInvoiceCount(eq(dealer), any(LocalDate.class))).thenReturn(1L);
 
         when(salesOrderRepository.sumPendingCreditExposureByCompanyAndDealer(
                 eq(company), eq(dealer), any(), isNull())).thenReturn(new BigDecimal("300"));
@@ -330,13 +327,7 @@ class DealerPortalServiceTest {
         when(dealerRepository.findByCompanyAndId(company, 21L)).thenReturn(java.util.Optional.of(dealer));
         when(dealerLedgerService.currentBalance(21L)).thenReturn(new BigDecimal("900"));
 
-        var positive = new com.bigbrightpaints.erp.modules.invoice.domain.Invoice();
-        positive.setOutstandingAmount(new BigDecimal("100"));
-        var zero = new com.bigbrightpaints.erp.modules.invoice.domain.Invoice();
-        zero.setOutstandingAmount(BigDecimal.ZERO);
-        var missing = new com.bigbrightpaints.erp.modules.invoice.domain.Invoice();
-        when(invoiceRepository.findByCompanyAndDealerOrderByIssueDateDesc(company, dealer))
-                .thenReturn(List.of(positive, zero, missing));
+        when(statementService.dealerOpenInvoiceCount(eq(dealer), any(LocalDate.class))).thenReturn(1L);
 
         when(salesOrderRepository.sumPendingCreditExposureByCompanyAndDealer(
                 eq(company), eq(dealer), any(), isNull())).thenReturn(new BigDecimal("200"));
@@ -383,6 +374,38 @@ class DealerPortalServiceTest {
                         .containsEntry("issueDate", LocalDate.of(2026, 1, 2))
                         .containsEntry("daysOverdue", 22L)
                         .containsEntry("outstandingAmount", new BigDecimal("100")));
+    }
+
+    @Test
+    void getMyDashboard_countsPendingInvoicesFromLedgerNetting() {
+        UserAccount user = userWithId(100L, "dealer@tenant.com");
+        Dealer dealer = dealerWithId(21L);
+        dealer.setName("Dealer Name");
+        dealer.setCode("DLR-21");
+        dealer.setCreditLimit(new BigDecimal("1000"));
+        dealer.setCompany(company);
+
+        authenticate(user, "ROLE_DEALER");
+        when(dealerRepository.findAllByCompanyAndPortalUserId(company, 100L)).thenReturn(List.of(dealer));
+        when(dealerLedgerService.currentBalance(21L)).thenReturn(BigDecimal.ZERO);
+        when(statementService.dealerOpenInvoiceCount(eq(dealer), any(LocalDate.class))).thenReturn(0L);
+        when(salesOrderRepository.sumPendingCreditExposureByCompanyAndDealer(
+                eq(company), eq(dealer), any(), isNull())).thenReturn(BigDecimal.ZERO);
+        when(salesOrderRepository.countPendingCreditExposureByCompanyAndDealer(
+                eq(company), eq(dealer), any(), isNull())).thenReturn(0L);
+        when(statementService.dealerAging(eq(dealer), any(LocalDate.class), eq("0-0,1-30,31-60,61-90,91")))
+                .thenReturn(new AgingSummaryResponse(
+                        21L,
+                        "Dealer Name",
+                        BigDecimal.ZERO,
+                        List.of()
+                ));
+        when(statementService.dealerOverdueInvoices(eq(dealer), any(LocalDate.class))).thenReturn(List.of());
+
+        Map<String, Object> dashboard = dealerPortalService.getMyDashboard();
+
+        assertThat(dashboard.get("pendingInvoices")).isEqualTo(0L);
+        verify(invoiceRepository, never()).findByCompanyAndDealerOrderByIssueDateDesc(company, dealer);
     }
 
     @Test
