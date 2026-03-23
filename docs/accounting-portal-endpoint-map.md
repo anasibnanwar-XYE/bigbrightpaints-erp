@@ -97,8 +97,8 @@ Maker-checker period-close note:
 | `POST /api/v1/catalog/import` | create-form; req: file (multipart body); opt: Idempotency-Key (header); states: loading, error, success | path=-; query=-; body=required (multipart/form-data with `file` part); ct=multipart/form-data; file-part content-type allowlist=`text/csv`,`application/csv`,`application/vnd.ms-excel`; fallback=missing file-part content-type accepted only when filename ends with `.csv` | ok 200; err 400, 409 (`CONC_001`), 422 (`FILE_003`) |
 | `GET /api/v1/catalog/brands` | list-view; req: -; opt: active (query); states: loading, error, success, empty | path=-; query=active; body=none; ct=- | ok 200; err - |
 | `POST /api/v1/catalog/brands` | create-form; req: name (body); opt: active (body), description (body), logoUrl (body); states: loading, error, success | path=-; query=-; body=required; ct=application/json | ok 200; err - |
-| `GET /api/v1/catalog/products` | list-view; req: -; opt: active (query), brandId (query), color (query), page (query), pageSize (query), size (query); states: loading, error, success, empty | path=-; query=active, brandId, color, page, pageSize, size; body=none; ct=- | ok 200; err - |
-| `POST /api/v1/catalog/products` | create-form; req: baseProductName (body), brandId (body), category (body), colors (body), gstRate (body), hsnCode (body), sizes (body), unitOfMeasure (body); opt: basePrice (body), metadata (body), minDiscountPercent (body), minSellingPrice (body), preview (query); states: loading, error, success | path=-; query=preview; body=required; ct=application/json | ok 200; err - |
+| `GET /api/v1/catalog/items` | list-view; req: -; opt: includeReadiness (query), includeStock (query), itemClass (query), page (query), pageSize (query), q (query); states: loading, error, success, empty | path=-; query=includeReadiness, includeStock, itemClass, page, pageSize, q; body=none; ct=- | ok 200; err - |
+| `POST /api/v1/catalog/items` | create-form; req: brandId (body), gstRate (body), hsnCode (body), itemClass (body), name (body), unitOfMeasure (body); opt: active (body), basePrice (body), color (body), metadata (body), minDiscountPercent (body), minSellingPrice (body), size (body); states: loading, error, success | path=-; query=-; body=required; ct=application/json | ok 200; err - |
 
 ### accounting-configuration-controller (1)
 
@@ -155,11 +155,11 @@ Maker-checker period-close note:
 
 | Endpoint | Frontend should put | Backend expects | Returns |
 |---|---|---|---|
-| `GET /api/v1/catalog/products` | list-view; req: -; opt: active (query), brandId (query), color (query), page (query), pageSize (query), size (query); states: loading, error, success, empty | path=-; query=active,brandId,color,page,pageSize,size; body=none; ct=- | ok 200; err - |
-| `POST /api/v1/catalog/products` | create-form; req: baseProductName (body), brandId (body), colors (body), gstRate (body), hsnCode (body), sizes (body), unitOfMeasure (body); opt: basePrice (body), category (body legacy alias), itemClass (body), metadata (body), minDiscountPercent (body), minSellingPrice (body), preview (query); states: loading, error, success | path=-; query=preview; body=required; ct=application/json | ok 200; err - |
-| `DELETE /api/v1/catalog/products/{productId}` | delete-action; req: productId (path); opt: -; states: loading, error, success | path=productId; query=-; body=none; ct=- | ok 200; err - |
-| `PUT /api/v1/catalog/products/{productId}` | edit-form; req: productId (path), brandId (body), gstRate (body), hsnCode (body), name (body), unitOfMeasure (body); opt: active (body), basePrice (body), cartonSizes (body), colors (body), itemClass (body), metadata (body), minDiscountPercent (body), minSellingPrice (body), sizes (body); states: loading, error, success | path=productId; query=-; body=required; ct=application/json | ok 200; err - |
-| `GET /api/v1/catalog/products/{productId}` | detail-view; req: productId (path); opt: -; states: loading, error, success, empty | path=productId; query=-; body=none; ct=- | ok 200; err - |
+| `GET /api/v1/catalog/items` | list-view; req: -; opt: includeReadiness (query), includeStock (query), itemClass (query), page (query), pageSize (query), q (query); states: loading, error, success, empty | path=-; query=includeReadiness,includeStock,itemClass,page,pageSize,q; body=none; ct=- | ok 200; err - |
+| `POST /api/v1/catalog/items` | create-form; req: brandId (body), gstRate (body), hsnCode (body), itemClass (body), name (body), unitOfMeasure (body); opt: active (body), basePrice (body), color (body), metadata (body), minDiscountPercent (body), minSellingPrice (body), size (body); states: loading, error, success | path=-; query=-; body=required; ct=application/json | ok 200; err - |
+| `DELETE /api/v1/catalog/items/{itemId}` | delete-action; req: itemId (path); opt: -; states: loading, error, success | path=itemId; query=-; body=none; ct=- | ok 200; err - |
+| `PUT /api/v1/catalog/items/{itemId}` | edit-form; req: itemId (path), brandId (body), gstRate (body), hsnCode (body), itemClass (body), name (body), unitOfMeasure (body); opt: active (body), basePrice (body), color (body), metadata (body), minDiscountPercent (body), minSellingPrice (body), size (body); states: loading, error, success | path=itemId; query=-; body=required; ct=application/json | ok 200; err - |
+| `GET /api/v1/catalog/items/{itemId}` | detail-view; req: itemId (path); opt: includeReadiness (query), includeStock (query); states: loading, error, success, empty | path=itemId; query=includeReadiness,includeStock; body=none; ct=- | ok 200; err - |
 | `POST /api/v1/inventory/raw-materials/adjustments` | create-form; req: adjustmentAccountId (body), direction (body), lines (body), lines[].quantity (body), lines[].rawMaterialId (body); opt: Idempotency-Key (header), X-Idempotency-Key (header), adjustmentDate (body), adminOverride (body), idempotencyKey (body), lines[].note (body), lines[].unitCost (body), reason (body); states: loading, error, success | path=-; query=-; body=required; ct=application/json | ok 200; err - |
 | `POST /api/v1/raw-materials/intake` | create-form; req: costPerUnit (body), quantity (body), rawMaterialId (body), supplierId (body), unit (body); opt: Idempotency-Key (header), X-Idempotency-Key (header), batchCode (body), expiryDate (body), manufacturingDate (body), notes (body); states: loading, error, success | path=-; query=-; body=required; ct=application/json | ok 200; err - |
 | `GET /api/v1/raw-materials/stock` | list-view; req: -; opt: -; states: loading, error, success, empty | path=-; query=-; body=none; ct=- | ok 200; err - |
@@ -190,7 +190,7 @@ Maker-checker period-close note:
 
 | Endpoint | Frontend should put | Backend expects | Returns |
 |---|---|---|---|
-| `POST /api/v1/inventory/opening-stock` | create-form; req: file (multipart body), Idempotency-Key (header); states: loading, error, success, partial-success | path=-; query=-; body=required (multipart/form-data with `file`); ct=multipart/form-data; accounting side-effect=posts opening-stock journal (inventory Dr / `OPEN-BAL` Cr) | ok 200; err - |
+| `POST /api/v1/inventory/opening-stock` | create-form; req: file (multipart body), Idempotency-Key (header), openingStockBatchKey (query); states: loading, error, success, partial-success | path=-; query=openingStockBatchKey; body=required (multipart/form-data with `file`); ct=multipart/form-data; accounting side-effect=posts opening-stock journal (inventory Dr / `OPEN-BAL` Cr) | ok 200; err - |
 
 ## HR & Payroll
 
@@ -267,5 +267,5 @@ Maker-checker period-close note:
 - Security requirements are often `unspecified` in OpenAPI; enforce RBAC in frontend via `auth/me` permission claims and backend policy.
 - Workflow actions that should be safely repeatable (`close/lock/reopen/approve/post`) are exposed as `POST`; idempotency guarantees are not explicit.
 - `POST /api/v1/inventory/opening-stock` defines only `200`; partial-row errors and idempotency-conflict behavior are runtime/business errors not strongly typed in OpenAPI.
-- `POST /api/v1/inventory/opening-stock` now requires explicit `Idempotency-Key`; frontend must not rely on legacy headers or file-hash fallback behavior.
+- `POST /api/v1/inventory/opening-stock` now requires explicit `Idempotency-Key` plus query `openingStockBatchKey`; frontend must not rely on legacy header fallback or file-hash-derived replay behavior.
 - Reporting endpoints are canonical under `/api/v1/reports/*`; `/api/v1/accounting/reports/*` is retired.

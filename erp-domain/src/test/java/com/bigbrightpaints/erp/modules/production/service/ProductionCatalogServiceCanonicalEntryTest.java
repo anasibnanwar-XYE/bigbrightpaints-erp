@@ -7,6 +7,7 @@ import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.service.CompanyDefaultAccountsService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
+import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
 import com.bigbrightpaints.erp.modules.inventory.domain.MaterialType;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
@@ -50,6 +51,8 @@ import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.anySet;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -767,6 +770,81 @@ class ProductionCatalogServiceCanonicalEntryTest {
 
         assertThat((Boolean) ReflectionTestUtils.invokeMethod(service, "syncRawMaterial", company, finishedGood, "FINISHED_GOOD"))
                 .isFalse();
+    }
+
+    @Test
+    void syncInventoryTruth_deletesFinishedGoodMirrorForRawMaterialProducts() {
+        ProductionProduct rawProduct = new ProductionProduct();
+        ReflectionTestUtils.setField(rawProduct, "id", 41L);
+        rawProduct.setCompany(company);
+        rawProduct.setCategory("RAW_MATERIAL");
+        rawProduct.setSkuCode("RM-PRIMER");
+        rawProduct.setProductName("Primer");
+        rawProduct.setUnitOfMeasure("KG");
+        rawProduct.setMetadata(Map.of());
+
+        RawMaterial rawMaterial = new RawMaterial();
+        ReflectionTestUtils.setField(rawMaterial, "id", 51L);
+        rawMaterial.setCompany(company);
+        rawMaterial.setSku("RM-PRIMER");
+        rawMaterial.setName("Primer");
+        rawMaterial.setUnitType("KG");
+        rawMaterial.setMaterialType(MaterialType.PRODUCTION);
+
+        FinishedGood staleFinishedGood = new FinishedGood();
+        staleFinishedGood.setCompany(company);
+        staleFinishedGood.setProductCode("RM-PRIMER");
+
+        when(rawMaterialRepository.findByCompanyAndSku(company, "RM-PRIMER")).thenReturn(Optional.of(rawMaterial));
+        when(finishedGoodRepository.findByCompanyAndProductCode(company, "RM-PRIMER"))
+                .thenReturn(Optional.of(staleFinishedGood));
+
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(service, "syncInventoryTruth", company, rawProduct, "RAW_MATERIAL"))
+                .isFalse();
+
+        verify(rawMaterialRepository).save(rawMaterial);
+        verify(finishedGoodRepository).delete(staleFinishedGood);
+    }
+
+    @Test
+    void syncInventoryTruth_deletesRawMaterialMirrorForFinishedGoods() {
+        ProductionProduct finishedProduct = new ProductionProduct();
+        ReflectionTestUtils.setField(finishedProduct, "id", 42L);
+        finishedProduct.setCompany(company);
+        finishedProduct.setCategory("FINISHED_GOOD");
+        finishedProduct.setSkuCode("FG-PRIMER");
+        finishedProduct.setProductName("Primer");
+        finishedProduct.setUnitOfMeasure("L");
+        finishedProduct.setMetadata(Map.of(
+                "fgValuationAccountId", 101L,
+                "fgCogsAccountId", 102L,
+                "fgRevenueAccountId", 103L,
+                "fgTaxAccountId", 104L));
+
+        FinishedGood finishedGood = new FinishedGood();
+        finishedGood.setCompany(company);
+        finishedGood.setProductCode("FG-PRIMER");
+        finishedGood.setName("Primer");
+        finishedGood.setUnit("L");
+        finishedGood.setValuationAccountId(101L);
+        finishedGood.setCogsAccountId(102L);
+        finishedGood.setRevenueAccountId(103L);
+        finishedGood.setTaxAccountId(104L);
+
+        RawMaterial staleRawMaterial = new RawMaterial();
+        staleRawMaterial.setCompany(company);
+        staleRawMaterial.setSku("FG-PRIMER");
+
+        when(finishedGoodRepository.findByCompanyAndProductCode(company, "FG-PRIMER"))
+                .thenReturn(Optional.of(finishedGood), Optional.of(finishedGood));
+        when(rawMaterialRepository.findByCompanyAndSku(company, "FG-PRIMER"))
+                .thenReturn(Optional.of(staleRawMaterial));
+
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(service, "syncInventoryTruth", company, finishedProduct, "FINISHED_GOOD"))
+                .isFalse();
+
+        verify(finishedGoodRepository, never()).delete(any());
+        verify(rawMaterialRepository).delete(staleRawMaterial);
     }
 
     @Test

@@ -515,8 +515,7 @@ public class ProductionCatalogService {
         }
         product.setMetadata(metadata);
         ProductionProduct saved = productRepository.save(product);
-        ensureCatalogFinishedGood(company, saved);
-        syncRawMaterial(company, saved, normalizedItemClass);
+        syncInventoryTruth(company, saved, normalizedItemClass);
         return toProductDto(saved);
     }
 
@@ -1467,8 +1466,7 @@ public class ProductionCatalogService {
             product.setActive(request.active());
         }
         ProductionProduct saved = productRepository.save(product);
-        ensureCatalogFinishedGood(company, saved);
-        syncRawMaterial(company, saved, currentItemClass);
+        syncInventoryTruth(company, saved, currentItemClass);
         return toProductDto(saved);
     }
 
@@ -1535,11 +1533,11 @@ public class ProductionCatalogService {
                 created,
                 context.validatedRawMaterialInventoryAccounts());
         ProductionProduct saved = productRepository.save(product);
-        ensureCatalogFinishedGood(company, saved);
         cacheProduct(context, saved);
-        boolean seeded = syncRawMaterial(
+        boolean seeded = syncInventoryTruth(
                 company,
                 saved,
+                null,
                 context.validatedRawMaterialInventoryAccounts(),
                 hasExplicitRawMaterialInventoryAccount(row));
         return new ProcessOutcome(resolution.created(), created, seeded);
@@ -1822,6 +1820,40 @@ public class ProductionCatalogService {
         return syncRawMaterial(company, product, null, null, rawMaterialInventoryAccountIdFromMetadata(product) != null);
     }
 
+    private boolean syncInventoryTruth(Company company,
+                                       ProductionProduct product,
+                                       String itemClassHint) {
+        return syncInventoryTruth(
+                company,
+                product,
+                itemClassHint,
+                null,
+                rawMaterialInventoryAccountIdFromMetadata(product) != null);
+    }
+
+    private boolean syncInventoryTruth(Company company,
+                                       ProductionProduct product,
+                                       String itemClassHint,
+                                       Map<Long, Long> validatedRawMaterialInventoryAccounts,
+                                       boolean hasExplicitInventoryAccountMapping) {
+        if (company == null || product == null || product.getId() == null) {
+            return false;
+        }
+        if (isRawMaterialCategory(product.getCategory())) {
+            boolean seeded = syncRawMaterial(
+                    company,
+                    product,
+                    itemClassHint,
+                    validatedRawMaterialInventoryAccounts,
+                    hasExplicitInventoryAccountMapping);
+            deleteFinishedGoodMirror(company, product);
+            return seeded;
+        }
+        ensureCatalogFinishedGood(company, product);
+        deleteRawMaterialMirror(company, product);
+        return false;
+    }
+
     private boolean syncRawMaterial(Company company,
                                     ProductionProduct product,
                                     String itemClassHint) {
@@ -2094,6 +2126,22 @@ public class ProductionCatalogService {
                 }
             }
         }
+    }
+
+    private void deleteRawMaterialMirror(Company company, ProductionProduct product) {
+        String sku = product != null ? cleanValue(product.getSkuCode()) : null;
+        if (!StringUtils.hasText(sku)) {
+            return;
+        }
+        rawMaterialRepository.findByCompanyAndSku(company, sku).ifPresent(rawMaterialRepository::delete);
+    }
+
+    private void deleteFinishedGoodMirror(Company company, ProductionProduct product) {
+        String sku = product != null ? cleanValue(product.getSkuCode()) : null;
+        if (!StringUtils.hasText(sku)) {
+            return;
+        }
+        finishedGoodRepository.findByCompanyAndProductCode(company, sku).ifPresent(finishedGoodRepository::delete);
     }
 
     private String resolveUnit(String unit) {

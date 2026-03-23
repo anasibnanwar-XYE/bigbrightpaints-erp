@@ -1,0 +1,18 @@
+ALTER TABLE opening_stock_imports
+    ADD COLUMN IF NOT EXISTS opening_stock_batch_key VARCHAR(128),
+    ADD COLUMN IF NOT EXISTS results_json TEXT;
+
+UPDATE opening_stock_imports
+SET opening_stock_batch_key = COALESCE(NULLIF(opening_stock_batch_key, ''), idempotency_key)
+WHERE opening_stock_batch_key IS NULL
+   OR opening_stock_batch_key = '';
+
+ALTER TABLE opening_stock_imports
+    ALTER COLUMN opening_stock_batch_key SET NOT NULL;
+
+DROP INDEX IF EXISTS idx_opening_stock_import_company_batch_key;
+DROP INDEX IF EXISTS idx_opening_stock_imports_replay_protection;
+ALTER TABLE opening_stock_imports DROP COLUMN IF EXISTS replay_protection_key;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_opening_stock_import_company_batch_key
+    ON opening_stock_imports(company_id, opening_stock_batch_key);

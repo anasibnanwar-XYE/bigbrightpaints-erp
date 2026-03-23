@@ -59,8 +59,8 @@ These are cross-portal APIs reused in Accounting Portal for auth/session/profile
 |---|---|---|---|
 | Tenant bootstrap | Super-admin tenant onboarding | `GET /api/v1/superadmin/tenants/coa-templates`, `POST /api/v1/superadmin/tenants/onboard` | Tenant is created, chart is seeded, `OPEN-BAL` exists, first admin exists, and the next step is company-default completion |
 | Company-default completion | Company defaults/setup | `GET/PUT /api/v1/accounting/default-accounts`; super-admin correction path `PUT /api/v1/companies/{id}` when company metadata is wrong | Default inventory/COGS/revenue/discount/tax accounts, plus timezone/state/default GST truth when relevant |
-| Stock-bearing product setup | `/accounting/inventory/sku-catalog` | `GET/POST /api/v1/catalog/brands`, `GET /api/v1/catalog/products`, `POST /api/v1/catalog/products?preview=true`, `POST /api/v1/catalog/products` | One canonical create flow for single or matrix entry, plus readiness for every returned SKU |
-| Opening-stock loading | `/accounting/inventory/opening-stock` | `POST /api/v1/inventory/opening-stock`, `GET /api/v1/inventory/opening-stock` | Explicit `Idempotency-Key`, prepared SKUs only, and row-level readiness/errors with no hidden repair path |
+| Stock-bearing product setup | `/accounting/inventory/sku-catalog` | `GET/POST /api/v1/catalog/brands`, `GET/POST /api/v1/catalog/items`, `GET/PUT/DELETE /api/v1/catalog/items/{itemId}` | Single-item catalog maintenance with explicit item class, stock/readiness toggles, and no legacy product-write aliases |
+| Opening-stock loading | `/accounting/inventory/opening-stock` | `POST /api/v1/inventory/opening-stock`, `GET /api/v1/inventory/opening-stock` | Explicit `Idempotency-Key` plus `openingStockBatchKey`, prepared SKUs only, and row-level readiness/errors with no hidden repair path |
 
 ## Task 1: Endpoint Expectations
 
@@ -102,8 +102,8 @@ These are cross-portal APIs reused in Accounting Portal for auth/session/profile
 | `acctCatalogImportCatalog` | POST | `/api/v1/catalog/import` | file (multipart body; if file-part `Content-Type` is absent, filename must end with `.csv`) | Idempotency-Key (header) | No | No | No |
 | `acctCatalogListBrands` | GET | `/api/v1/catalog/brands` | - | active (query) | Yes | No | Yes |
 | `acctCatalogCreateBrand` | POST | `/api/v1/catalog/brands` | name (body) | active (body), description (body), logoUrl (body) | No | No | No |
-| `acctCatalogListProducts` | GET | `/api/v1/catalog/products` | - | active (query), brandId (query), color (query), page (query), pageSize (query), size (query) | Yes | No | Yes |
-| `acctCatalogUpsertProducts` | POST | `/api/v1/catalog/products` | baseProductName (body), brandId (body), category (body), colors (body), gstRate (body), hsnCode (body), sizes (body), unitOfMeasure (body) | basePrice (body), metadata (body), minDiscountPercent (body), minSellingPrice (body), preview (query) | No | No | No |
+| `acctCatalogListItems` | GET | `/api/v1/catalog/items` | - | includeReadiness (query), includeStock (query), itemClass (query), page (query), pageSize (query), q (query) | Yes | No | Yes |
+| `acctCatalogCreateItem` | POST | `/api/v1/catalog/items` | brandId (body), gstRate (body), hsnCode (body), itemClass (body), name (body), unitOfMeasure (body) | active (body), basePrice (body), color (body), metadata (body), minDiscountPercent (body), minSellingPrice (body), size (body) | No | No | No |
 | `acctConfigHealth` | GET | `/api/v1/accounting/configuration/health` | - | - | Yes | No | Yes |
 | `acctAccounts` | GET | `/api/v1/accounting/accounts` | - | - | Yes | No | Yes |
 | `acctCreateAccount` | POST | `/api/v1/accounting/accounts` | code (body), name (body), type (body) | parentId (body) | No | No | No |
@@ -216,11 +216,11 @@ These rows are required for the period-close maker-checker UX, but they live out
 | `finishedGoodRegisterBatch` | POST | `/api/v1/finished-goods/{id}/batches` | finishedGoodId (body), id (path), quantity (body), unitCost (body) | batchCode (body), expiryDate (body), manufacturedAt (body) | No | No | No |
 | `inventoryAdjustmentListAdjustments` | GET | `/api/v1/inventory/adjustments` | - | - | Yes | No | Yes |
 | `inventoryAdjustmentCreateAdjustment` | POST | `/api/v1/inventory/adjustments` | adjustmentAccountId (body), lines (body), lines[].finishedGoodId (body), lines[].quantity (body), lines[].unitCost (body), type (body) | Idempotency-Key (header), adjustmentDate (body), adminOverride (body), idempotencyKey (body), lines[].note (body), reason (body) | No | No | No |
-| `inventoryImportOpeningStock` | POST | `/api/v1/inventory/opening-stock` | file (multipart body), Idempotency-Key (header) | - | No | No | Conditional |
-| `rawMaterialListRawMaterials` | GET | `/api/v1/catalog/products` | - | active (query), brandId (query), color (query), page (query), pageSize (query), size (query) | Yes | No | Yes |
-| `rawMaterialCreateRawMaterial` | POST | `/api/v1/catalog/products` | baseProductName (body), brandId (body), colors (body), gstRate (body), hsnCode (body), itemClass (body), sizes (body), unitOfMeasure (body) | basePrice (body), category (body, legacy/ignored), metadata (body), minDiscountPercent (body), minSellingPrice (body), preview (query) | No | No | No |
-| `rawMaterialDeleteRawMaterial` | DELETE | `/api/v1/catalog/products/{productId}` | productId (path) | - | No | No | Yes |
-| `rawMaterialUpdateRawMaterial` | PUT | `/api/v1/catalog/products/{productId}` | brandId (body), gstRate (body), hsnCode (body), name (body), productId (path), unitOfMeasure (body) | active (body), basePrice (body), cartonSizes (body), colors (body), itemClass (body), metadata (body), minDiscountPercent (body), minSellingPrice (body), sizes (body) | No | No | Yes |
+| `inventoryImportOpeningStock` | POST | `/api/v1/inventory/opening-stock` | file (multipart body), Idempotency-Key (header), openingStockBatchKey (query) | - | No | No | Conditional |
+| `rawMaterialListRawMaterials` | GET | `/api/v1/catalog/items` | - | includeReadiness (query), includeStock (query), itemClass (query), page (query), pageSize (query), q (query) | Yes | No | Yes |
+| `rawMaterialCreateRawMaterial` | POST | `/api/v1/catalog/items` | brandId (body), gstRate (body), hsnCode (body), itemClass (body), name (body), unitOfMeasure (body) | active (body), basePrice (body), color (body), metadata (body), minDiscountPercent (body), minSellingPrice (body), size (body) | No | No | No |
+| `rawMaterialDeleteRawMaterial` | DELETE | `/api/v1/catalog/items/{itemId}` | itemId (path) | - | No | No | Yes |
+| `rawMaterialUpdateRawMaterial` | PUT | `/api/v1/catalog/items/{itemId}` | brandId (body), gstRate (body), hsnCode (body), itemClass (body), itemId (path), name (body), unitOfMeasure (body) | active (body), basePrice (body), color (body), metadata (body), minDiscountPercent (body), minSellingPrice (body), size (body) | No | No | Yes |
 | `rawMaterialCreateAdjustment` | POST | `/api/v1/inventory/raw-materials/adjustments` | adjustmentAccountId (body), direction (body), Idempotency-Key (header), lines (body), lines[].quantity (body), lines[].rawMaterialId (body) | X-Idempotency-Key (header), adjustmentDate (body), adminOverride (body), idempotencyKey (body), lines[].unitCost (body), reason (body) | No | No | No |
 | `rawMaterialIntake` | POST | `/api/v1/raw-materials/intake` | costPerUnit (body), Idempotency-Key (header), quantity (body), rawMaterialId (body), supplierId (body), unit (body) | X-Idempotency-Key (header), batchCode (body), expiryDate (body), manufacturingDate (body), notes (body) | No | No | No |
 | `rawMaterialStockSummary` | GET | `/api/v1/raw-materials/stock` | - | - | Yes | No | Yes |
@@ -298,8 +298,8 @@ These rows are required for the period-close maker-checker UX, but they live out
 - `retired raw-material CRUD endpoint` is mutating but defines only `200` (missing richer status semantics).
 - `retired raw-material CRUD endpoint` documents no explicit error responses (only: 200).
 - `retired raw-material CRUD endpoint` is mutating but defines only `200` (missing richer status semantics).
-- `PUT /api/v1/catalog/products/{productId}` documents no explicit error responses (only: 200).
-- `PUT /api/v1/catalog/products/{productId}` is mutating but defines only `200` (missing richer status semantics).
+- `PUT /api/v1/catalog/items/{itemId}` documents no explicit error responses (only: 200).
+- `PUT /api/v1/catalog/items/{itemId}` is mutating but defines only `200` (missing richer status semantics).
 - `GET /api/v1/suppliers` documents no explicit error responses (only: 200).
 - `POST /api/v1/suppliers` documents no explicit error responses (only: 200).
 - `POST /api/v1/suppliers` is mutating but defines only `200` (missing richer status semantics).
@@ -361,16 +361,16 @@ These rows are required for the period-close maker-checker UX, but they live out
 - `GET /api/v1/finished-goods/{id}/batches` documents no explicit error responses (only: 200).
 - `POST /api/v1/finished-goods/{id}/batches` documents no explicit error responses (only: 200).
 - `POST /api/v1/finished-goods/{id}/batches` is mutating but defines only `200` (missing richer status semantics).
-- `retired raw-material CRUD endpoint (replaced by /api/v1/catalog/products itemClass workflow)` documents no explicit error responses (only: 200).
-- `retired raw-material CRUD endpoint (replaced by /api/v1/catalog/products itemClass workflow)` documents no explicit error responses (only: 200).
-- `retired raw-material CRUD endpoint (replaced by /api/v1/catalog/products itemClass workflow)` is mutating but defines only `200` (missing richer status semantics).
+- `retired raw-material CRUD endpoint (replaced by /api/v1/catalog/items itemClass workflow)` documents no explicit error responses (only: 200).
+- `retired raw-material CRUD endpoint (replaced by /api/v1/catalog/items itemClass workflow)` documents no explicit error responses (only: 200).
+- `retired raw-material CRUD endpoint (replaced by /api/v1/catalog/items itemClass workflow)` is mutating but defines only `200` (missing richer status semantics).
 - `POST /api/v1/accounting/payroll/payments/batch` documents no explicit error responses (only: 200).
 - `POST /api/v1/accounting/payroll/payments/batch` is mutating but defines only `200` (missing richer status semantics).
-- `GET /api/v1/catalog/products` documents no explicit error responses (only: 200).
+- `GET /api/v1/catalog/items` documents no explicit error responses (only: 200).
 - `GET /api/v1/catalog/brands` documents no explicit error responses (only: 200).
 - `POST /api/v1/catalog/brands` documents no explicit error responses (only: 200).
-- `POST /api/v1/catalog/products` documents no explicit error responses (only: 200).
-- `POST /api/v1/catalog/products` is mutating but defines only `200` even though runtime validation and conflict failures are richer than the OpenAPI shape suggests.
+- `POST /api/v1/catalog/items` documents no explicit error responses (only: 200).
+- `POST /api/v1/catalog/items` is mutating but defines only `200` even though runtime validation and conflict failures are richer than the OpenAPI shape suggests.
 - `POST /api/v1/catalog/import` now documents multipart guard semantics: missing/empty file -> 400, explicit disallowed MIME -> 422 (`FILE_003`), idempotency mismatch -> 409 (`CONC_001`).
 - `PATCH /api/v1/hr/leave-requests/{id}/status` documents no explicit error responses (only: 200).
 - `PATCH /api/v1/hr/leave-requests/{id}/status` is mutating but defines only `200` (missing richer status semantics).
@@ -414,7 +414,7 @@ These rows are required for the period-close maker-checker UX, but they live out
 - Reporting APIs are canonical under `/api/v1/reports/*`; remove any client routing that still targets `/api/v1/accounting/reports/*`.
 - HR payroll appears in both `/api/v1/hr/payroll-runs` and `/api/v1/payroll/runs`; treat `/api/v1/payroll/runs` as canonical run-processing surface unless backend clarifies otherwise.
 - `POST /api/v1/inventory/opening-stock` defines only `200`; import-row failures and idempotency conflicts are business/runtime errors not strongly typed in OpenAPI.
-- `POST /api/v1/inventory/opening-stock` requires explicit `Idempotency-Key`; runtime no longer accepts legacy header fallback or file-hash fallback.
+- `POST /api/v1/inventory/opening-stock` requires explicit `Idempotency-Key` plus query `openingStockBatchKey`; runtime no longer accepts legacy header fallback or file-hash-derived replay fallback.
 
 ## Task 3: Enterprise Accounting Route Map
 
@@ -522,13 +522,13 @@ These rows are required for the period-close maker-checker UX, but they live out
 
 ### `/accounting/inventory/sku-catalog`
 - Purpose: Maintain the canonical stock-bearing SKU catalog used by inventory, production, and sales, including explicit readiness visibility per SKU.
-- Required API calls: `acctCatalogListBrands`, `acctCatalogCreateBrand`, `acctCatalogListProducts`, `acctCatalogUpsertProducts`, `acctCatalogImportCatalog`
+- Required API calls: `acctCatalogListBrands`, `acctCatalogCreateBrand`, `acctCatalogListItems`, `acctCatalogCreateItem`, `acctCatalogImportCatalog`
 - Loading state: catalog grid skeleton, import-job progress indicator, optimistic row update feedback after create/update.
-- Empty state: no products created yet for selected company.
-- Error state: row-level import error grid (from catalog import response), inline form errors for SKU collisions, and explicit readiness/default-account blockers on create or preview.
-- Suggested table columns: sku, productName, brand, category, unitOfMeasure, basePrice, gstRate, active, `readiness.catalog.ready`, `readiness.inventory.ready`, `readiness.production.ready`, `readiness.sales.ready`.
-- Suggested form fields: from `CatalogBrandRequest` and `CatalogProductEntryRequest` (`brandId`, `baseProductName`, `category`, `unitOfMeasure`, `hsnCode`, `gstRate`, `colors[]`, `sizes[]`, `basePrice`, `minDiscountPercent`, `minSellingPrice`, `metadata`).
-- Current-state contract notes: the retired `/api/v1/accounting/catalog/**` host is replaced by `/api/v1/catalog/**`; single-SKU and matrix creation both use `POST /api/v1/catalog/products`; preview uses the same request contract with `preview=true`; maintenance edits remain on `PUT /api/v1/catalog/products/{productId}`.
+- Empty state: no stock-bearing items created yet for selected company.
+- Error state: row-level import error grid (from catalog import response), inline form errors for SKU collisions, and explicit readiness/default-account blockers on create/update.
+- Suggested table columns: sku, name, brand, itemClass, unitOfMeasure, basePrice, gstRate, active, `readiness.catalog.ready`, `readiness.inventory.ready`, `readiness.production.ready`, `readiness.sales.ready`.
+- Suggested form fields: from `CatalogBrandRequest` and `CatalogItemRequest` (`brandId`, `name`, `itemClass`, `color`, `size`, `unitOfMeasure`, `hsnCode`, `gstRate`, `basePrice`, `minDiscountPercent`, `minSellingPrice`, `metadata`, `active`).
+- Current-state contract notes: the retired `/api/v1/accounting/catalog/**` host is replaced by `/api/v1/catalog/**`; stock-bearing maintenance now uses `GET/POST /api/v1/catalog/items` with `GET/PUT/DELETE /api/v1/catalog/items/{itemId}` and no legacy preview/product-write aliases.
 - Exact readiness blockers frontend must render from the payload instead of inferring: `PRODUCT_MASTER_MISSING`, `PRODUCT_INACTIVE`, `RAW_MATERIAL_MIRROR_MISSING`, `RAW_MATERIAL_INVENTORY_ACCOUNT_MISSING`, `FINISHED_GOOD_MIRROR_MISSING`, `FINISHED_GOOD_VALUATION_ACCOUNT_MISSING`, `FINISHED_GOOD_COGS_ACCOUNT_MISSING`, `FINISHED_GOOD_REVENUE_ACCOUNT_MISSING`, `FINISHED_GOOD_TAX_ACCOUNT_MISSING`, `WIP_ACCOUNT_MISSING`, `LABOR_APPLIED_ACCOUNT_MISSING`, `OVERHEAD_APPLIED_ACCOUNT_MISSING`, `DISCOUNT_ACCOUNT_MISSING`, `GST_OUTPUT_ACCOUNT_MISSING`, `FINISHED_GOOD_GST_OUTPUT_ACCOUNT_MISMATCH`, `NO_FINISHED_GOOD_BATCH_STOCK`.
 - Role/permission gate: `ROLE_ADMIN or ROLE_ACCOUNTING` (exact backend).
 
@@ -538,9 +538,9 @@ These rows are required for the period-close maker-checker UX, but they live out
 - Loading state: inventory grid loader; low-stock alert empty/non-empty states; manual intake or adjustment posting spinner with stock refresh.
 - Empty state: no rows / no open items / no period data for selected filters.
 - Error state: inline widget errors + page-level retry + action-level toast; preserve user filters and unsaved inputs.
-- Suggested table columns: From `CatalogProductDto` + stock/readiness payloads: `rawMaterialId`, sku, name, itemClass, unitOfMeasure, onHandQty, stockStatus, readiness blockers.
-- Suggested form fields: create from `CatalogProductEntryRequest`; maintenance edits from `CatalogProductRequest`; stock corrections from `RawMaterialAdjustmentRequest`; legacy/manual intake from `RawMaterialIntakeRequest`.
-- Current-state contract notes: raw-material masters live on `/api/v1/catalog/products`; purchasing screens should consume `rawMaterialId` from `CatalogProductDto`/catalog detail responses; `/api/v1/raw-materials/intake` remains a legacy manual-receipt endpoint and is default-disabled unless `erp.raw-material.intake.enabled=true`.
+- Suggested table columns: From `CatalogItemDto` + stock/readiness payloads: `rawMaterialId`, sku, name, itemClass, unitOfMeasure, onHandQty, stockStatus, readiness blockers.
+- Suggested form fields: create/update from `CatalogItemRequest`; stock corrections from `RawMaterialAdjustmentRequest`; legacy/manual intake from `RawMaterialIntakeRequest`.
+- Current-state contract notes: raw-material masters live on `/api/v1/catalog/items`; purchasing screens should consume `rawMaterialId` from `CatalogItemDto`/catalog detail responses; `/api/v1/raw-materials/intake` remains a legacy manual-receipt endpoint and is default-disabled unless `erp.raw-material.intake.enabled=true`.
 - Role/permission gate: stock reads allow `ROLE_ADMIN|ROLE_ACCOUNTING|ROLE_FACTORY`; catalog create/update/delete and adjustments require `ROLE_ADMIN|ROLE_ACCOUNTING`; intake is restricted to `ROLE_ADMIN|ROLE_ACCOUNTING`.
 
 ### `/accounting/inventory/opening-stock`
@@ -551,8 +551,8 @@ These rows are required for the period-close maker-checker UX, but they live out
 - Empty state: no prior imports or no current upload selection.
 - Error state: row-level error table from `errors[]`; explicit conflict message for idempotency key reuse with different payload; explicit orphan/not-ready SKU messaging from returned `message` and `readiness`; preserve selected file metadata and idempotency key input.
 - Suggested table columns: import summary from `OpeningStockImportResponse` (`rowsProcessed`, `rawMaterialBatchesCreated`, `finishedGoodBatchesCreated`); history grid from `OpeningStockImportHistoryItem` (`referenceNumber`, `fileName`, `errorCount`, `createdAt`); success grid from `results[]` (`rowNumber`, `sku`, `stockType`, readiness columns); error grid from `errors[]` (`rowNumber`, `sku`, `stockType`, `message`, readiness columns).
-- Suggested form fields: required `file` (CSV), required `Idempotency-Key`, and a mandatory confirmation checkbox noting accounting impact. Do not show file-hash-derived identity as part of the current-state contract.
-- Exact error conditions frontend must handle here: missing explicit idempotency key, idempotency replay conflict, missing SKU, `stage=catalog` failures (`PRODUCT_MASTER_MISSING`, `PRODUCT_INACTIVE`), and `stage=inventory` failures (`RAW_MATERIAL_CATEGORY_REQUIRED`, `RAW_MATERIAL_MIRROR_MISSING`, `RAW_MATERIAL_INVENTORY_ACCOUNT_MISSING`, `FINISHED_GOOD_CATEGORY_REQUIRED`, `FINISHED_GOOD_MIRROR_MISSING`, `FINISHED_GOOD_VALUATION_ACCOUNT_MISSING`, `FINISHED_GOOD_COGS_ACCOUNT_MISSING`, `FINISHED_GOOD_REVENUE_ACCOUNT_MISSING`, `FINISHED_GOOD_TAX_ACCOUNT_MISSING`). For top-level accounting drift, `ROLE_ADMIN|ROLE_ACCOUNTING` can still receive exact `OPEN-BAL` repair errors, while `ROLE_FACTORY` receives a generic accounting-configuration failure message instead of raw chart details.
+- Suggested form fields: required `file` (CSV), required `Idempotency-Key`, required `openingStockBatchKey`, and a mandatory confirmation checkbox noting accounting impact. Do not show file-hash-derived identity as part of the current-state contract.
+- Exact error conditions frontend must handle here: missing explicit idempotency key, missing `openingStockBatchKey`, idempotency replay conflict (including batch-key mismatch), missing SKU, `stage=catalog` failures (`PRODUCT_MASTER_MISSING`, `PRODUCT_INACTIVE`), and `stage=inventory` failures (`RAW_MATERIAL_CATEGORY_REQUIRED`, `RAW_MATERIAL_MIRROR_MISSING`, `RAW_MATERIAL_INVENTORY_ACCOUNT_MISSING`, `FINISHED_GOOD_CATEGORY_REQUIRED`, `FINISHED_GOOD_MIRROR_MISSING`, `FINISHED_GOOD_VALUATION_ACCOUNT_MISSING`, `FINISHED_GOOD_COGS_ACCOUNT_MISSING`, `FINISHED_GOOD_REVENUE_ACCOUNT_MISSING`, `FINISHED_GOOD_TAX_ACCOUNT_MISSING`). For top-level accounting drift, `ROLE_ADMIN|ROLE_ACCOUNTING` can still receive exact `OPEN-BAL` repair errors, while `ROLE_FACTORY` receives a generic accounting-configuration failure message instead of raw chart details.
 - Role/permission gate: `ROLE_ADMIN or ROLE_ACCOUNTING or ROLE_FACTORY` (exact backend). In production, backend can block this flow unless `erp.inventory.opening-stock.enabled=true`.
 
 ### `/accounting/inventory/finished-goods`
