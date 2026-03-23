@@ -128,7 +128,7 @@ class PurchaseReturnServiceTest {
         lenient().when(companyContextService.requireCurrentCompany()).thenReturn(company);
         lenient().when(companyEntityLookup.requireSupplier(company, 10L)).thenReturn(supplier);
         lenient().when(purchaseRepository.lockByCompanyAndId(company, 30L)).thenReturn(Optional.of(purchase));
-        lenient().when(rawMaterialRepository.lockByCompanyAndId(company, 20L)).thenReturn(Optional.of(material));
+        lenient().when(companyEntityLookup.lockActiveRawMaterial(company, 20L)).thenReturn(material);
         lenient().when(movementRepository.findByRawMaterialCompanyAndReferenceTypeAndReferenceId(eq(company), eq(com.bigbrightpaints.erp.modules.inventory.domain.InventoryReference.PURCHASE_RETURN), eq("PR-30")))
                 .thenReturn(List.of());
     }
@@ -352,7 +352,7 @@ class PurchaseReturnServiceTest {
         ReflectionTestUtils.setField(otherMaterial, "id", 21L);
         otherMaterial.setCompany(company);
         otherMaterial.setName("Solvent");
-        when(rawMaterialRepository.lockByCompanyAndId(company, 21L)).thenReturn(Optional.of(otherMaterial));
+        when(companyEntityLookup.lockActiveRawMaterial(company, 21L)).thenReturn(otherMaterial);
 
         assertThatThrownBy(() -> purchaseReturnService.previewPurchaseReturn(new PurchaseReturnRequest(
                 10L,

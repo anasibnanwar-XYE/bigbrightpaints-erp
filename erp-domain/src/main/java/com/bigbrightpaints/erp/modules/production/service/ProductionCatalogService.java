@@ -504,7 +504,7 @@ public class ProductionCatalogService {
         product.setSkuCode(sku);
         product.setVariantGroupId(variantGroupId);
         product.setProductFamilyName(cleanValue(productFamilyName != null ? productFamilyName : baseName));
-        product.setActive(true);
+        product.setActive(request.active() == null || request.active());
         product.setBasePrice(money(request.basePrice()));
         product.setGstRate(percent(request.gstRate()));
         product.setMinDiscountPercent(percent(request.minDiscountPercent()));
@@ -887,11 +887,13 @@ public class ProductionCatalogService {
                     requireCanonicalSkuFragment("size", sizeLabel, 24)));
             case ITEM_CLASS_RAW_MATERIAL -> String.join("-", List.of(
                     "RM",
+                    requireCanonicalSkuFragment("brandCode", brand != null ? brand.getCode() : null, 12),
                     requireCanonicalSkuFragment("name", baseName, 48),
                     requireCanonicalSkuFragment("spec", detail, 24),
                     requireCanonicalSkuFragment("unitOfMeasure", unitOfMeasure, 16)));
             case ITEM_CLASS_PACKAGING_RAW_MATERIAL -> String.join("-", List.of(
                     "PKG",
+                    requireCanonicalSkuFragment("brandCode", brand != null ? brand.getCode() : null, 12),
                     requireCanonicalSkuFragment("packType", baseName, 32),
                     requireCanonicalSkuFragment("size", sizeLabel, 24),
                     requireCanonicalSkuFragment("unitOfMeasure", unitOfMeasure, 16)));

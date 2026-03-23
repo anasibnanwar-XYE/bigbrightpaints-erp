@@ -405,8 +405,13 @@ public class RawMaterialService {
         }
         List<Long> uniqueMaterialIds = materialIds.stream().distinct().toList();
         List<RawMaterial> lockedMaterials = uniqueMaterialIds.stream()
-                .map(id -> rawMaterialRepository.lockByCompanyAndId(company, id)
-                        .orElseThrow(() -> ValidationUtils.invalidInput("Raw material not found")))
+                .map(id -> {
+                    try {
+                        return companyEntityLookup.lockActiveRawMaterial(company, id);
+                    } catch (IllegalArgumentException ex) {
+                        throw ValidationUtils.invalidInput("Raw material not found");
+                    }
+                })
                 .toList();
         Map<Long, RawMaterial> materialsById = new HashMap<>();
         lockedMaterials.forEach(material -> materialsById.put(material.getId(), material));
@@ -623,8 +628,11 @@ public class RawMaterialService {
     private RawMaterial requireMaterial(Long rawMaterialId) {
         // This method is used by write flows (receipts/intake/adjustments). Keep locking semantics.
         Company company = companyContextService.requireCurrentCompany();
-        return rawMaterialRepository.lockByCompanyAndId(company, rawMaterialId)
-                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Raw material not found"));
+        try {
+            return companyEntityLookup.lockActiveRawMaterial(company, rawMaterialId);
+        } catch (IllegalArgumentException ex) {
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Raw material not found");
+        }
     }
 
     private RawMaterialDto toDto(RawMaterial material) {

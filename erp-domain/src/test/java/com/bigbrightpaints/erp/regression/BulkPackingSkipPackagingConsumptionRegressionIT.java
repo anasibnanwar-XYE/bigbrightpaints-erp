@@ -35,7 +35,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-@DisplayName("Regression: Bulk pack consumes packaging via mappings")
+@DisplayName("Regression: Bulk pack can skip packaging already consumed upstream")
 class BulkPackingSkipPackagingConsumptionRegressionIT extends AbstractIntegrationTest {
 
     private static final String COMPANY_CODE = "LF-017";
@@ -69,7 +69,7 @@ class BulkPackingSkipPackagingConsumptionRegressionIT extends AbstractIntegratio
     }
 
     @Test
-    void packagingMappingsConsumePackagingStock() {
+    void packagingAlreadyConsumedSkipsAdditionalPackagingIssue() {
         FinishedGood bulkFg = createFinishedGood("FG-BULK-LF017", "Bulk Paint", "L", bulkInventory);
         FinishedGood child = createFinishedGood("FG-1L-LF017", "Paint 1L", "UNIT", fgInventory);
         FinishedGoodBatch bulkBatch = createBulkBatch(bulkFg, new BigDecimal("10"), new BigDecimal("5"));
@@ -86,15 +86,16 @@ class BulkPackingSkipPackagingConsumptionRegressionIT extends AbstractIntegratio
                 LocalDate.now(),
                 "packer",
                 null,
-                null
+                null,
+                true
         ));
 
         RawMaterial refreshed = rawMaterialRepository.findById(packaging.getId()).orElseThrow();
-        assertThat(refreshed.getCurrentStock()).isEqualByComparingTo(startingStock.subtract(new BigDecimal("2")));
-        assertThat(response.packagingCost()).isGreaterThan(BigDecimal.ZERO);
+        assertThat(refreshed.getCurrentStock()).isEqualByComparingTo(startingStock);
+        assertThat(response.packagingCost()).isEqualByComparingTo(BigDecimal.ZERO);
         assertThat(rawMaterialMovementRepository.findByRawMaterialBatchOrderByCreatedAtAsc(
                 rawMaterialBatchRepository.findByRawMaterial(packaging).getFirst()))
-                .hasSize(1);
+                .isEmpty();
     }
 
     private Account ensureAccount(String code, AccountType type) {

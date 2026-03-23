@@ -121,7 +121,7 @@ class CatalogControllerCanonicalProductIT extends AbstractIntegrationTest {
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
 
         Map<String, Object> item = data(response);
-        assertThat(item.get("code")).isEqualTo("PKG-PLASTICBUCKET-1L-UNIT");
+        assertThat(item.get("code")).isEqualTo("PKG-" + brand.getCode() + "-PLASTICBUCKET-1L-UNIT");
         assertThat(item.get("name")).isEqualTo("Plastic Bucket 1L");
         Long rawMaterialId = ((Number) item.get("rawMaterialId")).longValue();
         RawMaterial rawMaterial = rawMaterialRepository.findById(rawMaterialId).orElseThrow();
@@ -133,7 +133,9 @@ class CatalogControllerCanonicalProductIT extends AbstractIntegrationTest {
     void searchItems_filtersByItemClass_andIncludesStockAndReadiness() {
         ProductionBrand brand = saveBrand("Search Brand", true);
         postCatalogItem(finishedGoodPayload(brand.getId(), "Search Paint"), adminHeaders);
-        postCatalogItem(rawMaterialPayload(brand.getId(), "Titanium Dioxide", "RUTILE"), adminHeaders);
+        Map<String, Object> rawMaterialPayload = rawMaterialPayload(brand.getId(), "Titanium Dioxide", "RUTILE");
+        rawMaterialPayload.put("active", false);
+        postCatalogItem(rawMaterialPayload, adminHeaders);
 
         ResponseEntity<Map> searchResponse = rest.exchange(
                 "/api/v1/catalog/items?q=titanium&itemClass=RAW_MATERIAL&includeStock=true&includeReadiness=true",
@@ -145,9 +147,10 @@ class CatalogControllerCanonicalProductIT extends AbstractIntegrationTest {
         List<Map<String, Object>> content = pageContent(searchResponse);
         assertThat(content).hasSize(1);
         Map<String, Object> item = content.getFirst();
+        assertThat(item.get("active")).isEqualTo(false);
         assertThat(item.get("itemClass")).isEqualTo("RAW_MATERIAL");
         assertThat(item.get("name")).isEqualTo("Titanium Dioxide RUTILE");
-        assertThat(item.get("code")).isEqualTo("RM-TITANIUMDIOXIDE-RUTILE-KG");
+        assertThat(item.get("code")).isEqualTo("RM-" + brand.getCode() + "-TITANIUMDIOXIDE-RUTILE-KG");
         assertThat(item).containsKey("stock");
         assertThat(item).containsKey("readiness");
     }

@@ -215,7 +215,7 @@ public class CatalogService {
         ProductionProduct saved = productRepository.save(product);
         RawMaterial rawMaterial = rawMaterialForProduct(saved);
         FinishedGood finishedGood = finishedGoodForProduct(saved);
-        return toItemDto(saved, true, true, skuReadinessService.forProduct(company, saved), rawMaterial, finishedGood);
+        return toItemDto(saved, false, true, skuReadinessService.forProduct(company, saved), rawMaterial, finishedGood);
     }
 
     @Transactional(readOnly = true)
@@ -229,35 +229,21 @@ public class CatalogService {
         Company company = companyContextService.requireCurrentCompany();
         int sanitizedPage = Math.max(page, 0);
         int sanitizedPageSize = Math.min(Math.max(pageSize, 1), MAX_PAGE_SIZE);
-        List<ProductionProduct> candidates = productRepository.findAll(
-                buildItemSpecification(company, normalizeOptionalText(q)),
-                Sort.by(Sort.Direction.ASC, "productName"));
-
-        Map<String, RawMaterial> rawMaterialsBySku = rawMaterialsBySku(company, candidates);
-        Map<String, FinishedGood> finishedGoodsBySku = finishedGoodsBySku(company, candidates);
         String normalizedItemClass = StringUtils.hasText(itemClass) ? normalizeItemClass(itemClass) : null;
-        List<ProductionProduct> filtered = candidates.stream()
-                .filter(product -> {
-                    if (!StringUtils.hasText(normalizedItemClass)) {
-                        return true;
-                    }
-                    String skuKey = normalizeSkuKey(product.getSkuCode());
-                    return Objects.equals(
-                            normalizedItemClass,
-                            itemClassForProduct(product, skuKey != null ? rawMaterialsBySku.get(skuKey) : null));
-                })
-                .toList();
-
-        int fromIndex = Math.min(sanitizedPage * sanitizedPageSize, filtered.size());
-        int toIndex = Math.min(fromIndex + sanitizedPageSize, filtered.size());
-        List<ProductionProduct> pageContent = filtered.subList(fromIndex, toIndex);
+        Pageable pageable = PageRequest.of(sanitizedPage, sanitizedPageSize, Sort.by(Sort.Direction.ASC, "productName"));
+        Page<ProductionProduct> result = productRepository.findAll(
+                buildItemSpecification(company, normalizeOptionalText(q), normalizedItemClass),
+                pageable);
+        List<ProductionProduct> pageContent = result.getContent();
+        Map<String, RawMaterial> rawMaterialsBySku = rawMaterialsBySku(company, pageContent);
+        Map<String, FinishedGood> finishedGoodsBySku = finishedGoodsBySku(company, pageContent);
         Map<Long, com.bigbrightpaints.erp.modules.production.dto.SkuReadinessDto> readinessByProductId = includeReadiness
                 ? skuReadinessService.forProducts(company, pageContent)
                 : Map.of();
 
         List<CatalogItemDto> content = pageContent.stream()
                 .map(product -> {
-                    String skuKey = normalizeSkuKey(product.getSkuCode());
+                    String skuKey = normalizeSkuLookupKey(product.getSkuCode());
                     RawMaterial rawMaterial = skuKey != null ? rawMaterialsBySku.get(skuKey) : null;
                     FinishedGood finishedGood = skuKey != null ? finishedGoodsBySku.get(skuKey) : null;
                     return toItemDto(
@@ -269,7 +255,7 @@ public class CatalogService {
                             finishedGood);
                 })
                 .toList();
-        return PageResponse.of(content, filtered.size(), sanitizedPage, sanitizedPageSize);
+        return PageResponse.of(content, result.getTotalElements(), sanitizedPage, sanitizedPageSize);
     }
 
     @Transactional
@@ -359,7 +345,7 @@ public class CatalogService {
                         product,
                         includeAccountingMetadata,
                         readinessByProductId.get(product.getId()),
-                        rawMaterialsBySku.get(normalizeSkuKey(product.getSkuCode()))))
+                        rawMaterialsBySku.get(normalizeSkuLookupKey(product.getSkuCode()))))
                 .toList();
         return PageResponse.of(content, result.getTotalElements(), sanitizedPage, sanitizedPageSize);
     }
@@ -518,17 +504,38 @@ public class CatalogService {
         };
     }
 
-    private Specification<ProductionProduct> buildItemSpecification(Company company, String q) {
+    private Specification<ProductionProduct> buildItemSpecification(Company company, String q, String itemClass) {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
             predicates.add(cb.equal(root.get("company"), company));
-            predicates.add(cb.isTrue(root.get("active")));
             if (StringUtils.hasText(q)) {
                 String token = "%" + q.toLowerCase(Locale.ROOT) + "%";
                 predicates.add(cb.or(
                         cb.like(cb.lower(root.get("productName")), token),
                         cb.like(cb.lower(root.get("skuCode")), token),
                         cb.like(cb.lower(root.get("brand").get("name")), token)));
+            }
+            if (StringUtils.hasText(itemClass)) {
+                String normalizedItemClass = normalizeItemClass(itemClass);
+                switch (normalizedItemClass) {
+                    case ITEM_CLASS_FINISHED_GOOD -> predicates.add(cb.notEqual(cb.upper(root.get("category")), ITEM_CLASS_RAW_MATERIAL));
+                    case ITEM_CLASS_RAW_MATERIAL, ITEM_CLASS_PACKAGING_RAW_MATERIAL -> {
+                        predicates.add(cb.equal(cb.upper(root.get("category")), ITEM_CLASS_RAW_MATERIAL));
+                        var rawMaterialMatch = query.subquery(Long.class);
+                        var rawMaterialRoot = rawMaterialMatch.from(RawMaterial.class);
+                        MaterialType expectedType = ITEM_CLASS_PACKAGING_RAW_MATERIAL.equals(normalizedItemClass)
+                                ? MaterialType.PACKAGING
+                                : MaterialType.PRODUCTION;
+                        rawMaterialMatch.select(rawMaterialRoot.get("id"));
+                        rawMaterialMatch.where(
+                                cb.equal(rawMaterialRoot.get("company"), company),
+                                cb.equal(cb.lower(rawMaterialRoot.get("sku")), cb.lower(root.get("skuCode"))),
+                                cb.equal(rawMaterialRoot.get("materialType"), expectedType));
+                        predicates.add(cb.exists(rawMaterialMatch));
+                    }
+                    default -> {
+                    }
+                }
             }
             return cb.and(predicates.toArray(Predicate[]::new));
         };
@@ -551,7 +558,8 @@ public class CatalogService {
                 request.gstRate(),
                 request.minDiscountPercent(),
                 request.minSellingPrice(),
-                request.metadata());
+                request.metadata(),
+                request.active());
     }
 
     private ProductUpdateRequest toUpdateRequest(CatalogItemRequest request) {
@@ -766,7 +774,7 @@ public class CatalogService {
         if (!StringUtils.hasText(sku)) {
             return;
         }
-        rawMaterialRepository.findByCompanyAndSkuIgnoreCase(company, sku).ifPresent(rawMaterialRepository::delete);
+        rawMaterialRepository.findByCompanyAndSku(company, sku).ifPresent(rawMaterialRepository::delete);
     }
 
     private void deleteFinishedGoodMirror(Company company, ProductionProduct product) {
@@ -1117,7 +1125,7 @@ public class CatalogService {
         return rawMaterialRepository.findByCompanyAndSkuInIgnoreCase(company, skus).stream()
                 .filter(rawMaterial -> StringUtils.hasText(rawMaterial.getSku()))
                 .collect(Collectors.toMap(
-                        rawMaterial -> normalizeSkuKey(rawMaterial.getSku()),
+                        rawMaterial -> normalizeSkuLookupKey(rawMaterial.getSku()),
                         rawMaterial -> rawMaterial,
                         (left, right) -> left,
                         LinkedHashMap::new));
@@ -1309,7 +1317,7 @@ public class CatalogService {
         return finishedGoodRepository.findByCompanyAndProductCodeInIgnoreCase(company, lookupKeys).stream()
                 .filter(finishedGood -> StringUtils.hasText(finishedGood.getProductCode()))
                 .collect(Collectors.toMap(
-                        finishedGood -> normalizeSkuKey(finishedGood.getProductCode()),
+                        finishedGood -> normalizeSkuLookupKey(finishedGood.getProductCode()),
                         finishedGood -> finishedGood,
                         (left, right) -> left,
                         LinkedHashMap::new));
@@ -1334,11 +1342,12 @@ public class CatalogService {
                 ? null
                 : skuReadinessService.sanitizeForCatalogViewer(readinessSnapshot, includeAccountingMetadata);
         String itemClass = itemClassForProduct(product, rawMaterial);
-        CatalogItemStockDto stock = includeStock ? toItemStock(product, rawMaterial, finishedGood) : null;
+        RawMaterial resolvedRawMaterial = ITEM_CLASS_FINISHED_GOOD.equals(itemClass) ? null : rawMaterial;
+        CatalogItemStockDto stock = includeStock ? toItemStock(product, resolvedRawMaterial, finishedGood) : null;
         return new CatalogItemDto(
                 product.getId(),
                 product.getPublicId(),
-                rawMaterial != null ? rawMaterial.getId() : null,
+                resolvedRawMaterial != null ? resolvedRawMaterial.getId() : null,
                 product.getBrand().getId(),
                 product.getBrand().getName(),
                 product.getBrand().getCode(),
@@ -1417,11 +1426,12 @@ public class CatalogService {
         com.bigbrightpaints.erp.modules.production.dto.SkuReadinessDto readiness =
                 skuReadinessService.sanitizeForCatalogViewer(readinessSnapshot, includeAccountingMetadata);
         String itemClass = itemClassForProduct(product, rawMaterial);
+        RawMaterial resolvedRawMaterial = ITEM_CLASS_FINISHED_GOOD.equals(itemClass) ? null : rawMaterial;
 
         return new CatalogProductDto(
                 product.getId(),
                 product.getPublicId(),
-                rawMaterial != null ? rawMaterial.getId() : null,
+                resolvedRawMaterial != null ? resolvedRawMaterial.getId() : null,
                 product.getBrand().getId(),
                 product.getBrand().getName(),
                 product.getBrand().getCode(),

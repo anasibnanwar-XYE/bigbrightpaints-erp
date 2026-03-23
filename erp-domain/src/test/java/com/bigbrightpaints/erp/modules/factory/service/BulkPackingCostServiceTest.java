@@ -20,6 +20,7 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -70,6 +71,26 @@ class BulkPackingCostServiceTest {
         assertThat(summary.accountTotals()).containsEntry(700L, new BigDecimal("7.00"));
         assertThat(summary.lineCosts()).containsEntry(0, new BigDecimal("7.00"));
         verify(packagingMaterialService).consumePackagingMaterial("1L", 3, "PACK-REF");
+    }
+
+    @Test
+    void consumePackagingIfRequired_skipsConsumptionWhenAlreadyConsumedUpstream() {
+        BulkPackCostSummary summary = bulkPackingCostService.consumePackagingIfRequired(
+                company,
+                new BulkPackRequest(
+                        41L,
+                        List.of(new BulkPackRequest.PackLine(901L, new BigDecimal("3"), "1L", "L")),
+                        LocalDate.of(2026, 2, 1),
+                        "packer",
+                        null,
+                        null,
+                        true),
+                "PACK-REF");
+
+        assertThat(summary.totalCost()).isEqualByComparingTo("0.00");
+        assertThat(summary.accountTotals()).isEmpty();
+        assertThat(summary.lineCosts()).isEmpty();
+        verifyNoInteractions(packagingMaterialService);
     }
 
     @Test

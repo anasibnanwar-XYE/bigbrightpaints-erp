@@ -523,6 +523,7 @@ public abstract class AccountingCoreEngineCore {
         if (duplicate.isEmpty()) {
             AccountingPeriod postingPeriod;
             if (systemSettingsService.isPeriodLockEnforced()) {
+                validateEntryDate(company, entryDate, overrideRequested, overrideAuthorized);
                 postingPeriod = accountingPeriodService.requirePostablePeriod(
                         company,
                         entryDate,
@@ -530,7 +531,6 @@ public abstract class AccountingCoreEngineCore {
                         resolvePostingDocumentReference(entry),
                         request.memo(),
                         overrideRequested);
-                validateEntryDate(company, entryDate, overrideRequested, overrideAuthorized);
             } else {
                 validateEntryDate(company, entryDate, overrideRequested, overrideAuthorized);
                 postingPeriod = accountingPeriodService.ensurePeriod(company, entryDate);
@@ -951,6 +951,7 @@ public abstract class AccountingCoreEngineCore {
         }
         AccountingPeriod postingPeriod;
         if (systemSettingsService.isPeriodLockEnforced()) {
+            validateEntryDate(company, reversalDate, overrideRequested, overrideAuthorized);
             postingPeriod = accountingPeriodService.requirePostablePeriod(
                     company,
                     reversalDate,
@@ -958,7 +959,6 @@ public abstract class AccountingCoreEngineCore {
                     entry.getReferenceNumber(),
                     request != null ? request.reason() : null,
                     overrideRequested || allowClosedPeriodOverride);
-            validateEntryDate(company, reversalDate, overrideRequested, overrideAuthorized);
         } else {
             validateEntryDate(company, reversalDate, overrideRequested, overrideAuthorized);
             postingPeriod = accountingPeriodService.ensurePeriod(company, reversalDate);

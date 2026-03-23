@@ -472,7 +472,7 @@ class CatalogServiceProductCrudTest {
         when(productRepository.save(any(ProductionProduct.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(finishedGoodRepository.findByCompanyAndProductCode(company, "RM-TO-FG-001")).thenReturn(Optional.empty());
         when(finishedGoodRepository.save(any(FinishedGood.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        when(rawMaterialRepository.findByCompanyAndSkuIgnoreCase(company, "RM-TO-FG-001"))
+        when(rawMaterialRepository.findByCompanyAndSku(company, "RM-TO-FG-001"))
                 .thenReturn(Optional.of(staleRawMaterial));
 
         CatalogProductDto response = service.updateProduct(50316L, request);
@@ -1375,6 +1375,7 @@ class CatalogServiceProductCrudTest {
         assertThat(requestCaptor.getValue().itemClass()).isEqualTo("PACKAGING_RAW_MATERIAL");
         assertThat(requestCaptor.getValue().defaultColour()).isEqualTo("WHITE");
         assertThat(requestCaptor.getValue().sizeLabel()).isEqualTo("1L");
+        assertThat(requestCaptor.getValue().active()).isTrue();
         assertThat(response.id()).isEqualTo(801L);
         assertThat(response.itemClass()).isEqualTo("PACKAGING_RAW_MATERIAL");
         assertThat(response.rawMaterialId()).isEqualTo(8801L);
@@ -1537,8 +1538,8 @@ class CatalogServiceProductCrudTest {
         packagingMirror.setMaterialType(MaterialType.PACKAGING);
         packagingMirror.setCurrentStock(new BigDecimal("9.00"));
 
-        when(productRepository.findAll(any(Specification.class), any(org.springframework.data.domain.Sort.class)))
-                .thenReturn(List.of(packaging, finishedGoodProduct));
+        when(productRepository.findAll(any(Specification.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(packaging), org.springframework.data.domain.PageRequest.of(0, 20), 1));
         when(rawMaterialRepository.findByCompanyAndSkuInIgnoreCase(eq(company), anyCollection()))
                 .thenReturn(List.of(packagingMirror));
         when(finishedGoodRepository.findByCompanyAndProductCodeInIgnoreCase(eq(company), anyCollection()))
@@ -1562,6 +1563,6 @@ class CatalogServiceProductCrudTest {
         assertThat(response.content().getFirst().stock().availableQuantity()).isEqualByComparingTo("9.00");
         assertThat(response.content().getFirst().metadata()).doesNotContainKey("inventoryAccountId");
         verify(rawMaterialRepository).findByCompanyAndSkuInIgnoreCase(eq(company), argThat(skus ->
-                skus.contains("pkg-bbr-bucket-white-1l") && skus.contains("bbr-primer-002")));
+                skus.size() == 1 && skus.contains("pkg-bbr-bucket-white-1l")));
     }
 }
