@@ -178,6 +178,37 @@ class PurchaseOrderServiceTest {
     }
 
     @Test
+    @DisplayName("createPurchaseOrder rejects unknown raw materials before saving")
+    void createPurchaseOrder_rejectsUnknownRawMaterial() {
+        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+        when(companyEntityLookup.requireSupplier(company, 11L)).thenReturn(supplier);
+        when(purchaseOrderRepository.lockByCompanyAndOrderNumberIgnoreCase(company, "PO-1004"))
+                .thenReturn(Optional.empty());
+        when(companyEntityLookup.lockActiveRawMaterial(company, 21L))
+                .thenThrow(new IllegalArgumentException("Raw material not found: id=21"));
+
+        PurchaseOrderRequest request = new PurchaseOrderRequest(
+                11L,
+                "PO-1004",
+                LocalDate.of(2026, 3, 1),
+                "Unknown item order",
+                List.of(new PurchaseOrderLineRequest(
+                        21L,
+                        new BigDecimal("5.0000"),
+                        "KG",
+                        new BigDecimal("10.00"),
+                        "line note"
+                ))
+        );
+
+        assertThatThrownBy(() -> purchaseOrderService.createPurchaseOrder(request))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("Raw material not found");
+
+        verify(purchaseOrderRepository, never()).save(any(PurchaseOrder.class));
+    }
+
+    @Test
     @DisplayName("createPurchaseOrder rejects suppliers that are still reference-only")
     void createPurchaseOrder_rejectsReferenceOnlySupplierWithExplicitReason() {
         supplier.setStatus(SupplierStatus.PENDING);

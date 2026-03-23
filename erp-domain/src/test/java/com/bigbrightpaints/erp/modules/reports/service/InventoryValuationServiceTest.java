@@ -311,6 +311,46 @@ class InventoryValuationServiceTest {
     }
 
     @Test
+    void currentSnapshot_defaultsToFifoWhenAccountingPeriodHasNoCostingMethod() {
+        Company company = new Company();
+        company.setCode("CR-PERIOD-NULL");
+        company.setName("CR Period Null");
+        company.setTimezone("UTC");
+
+        AccountingPeriod period = new AccountingPeriod();
+        period.setCostingMethod(null);
+
+        when(rawMaterialRepository.findByCompanyOrderByNameAsc(company)).thenReturn(List.of());
+        when(finishedGoodRepository.findByCompanyOrderByProductCodeAsc(company)).thenReturn(List.of());
+        when(productionProductRepository.findByCompanyOrderByProductNameAsc(company)).thenReturn(List.of());
+        when(accountingPeriodRepository.findByCompanyAndYearAndMonth(company, 2026, 3)).thenReturn(java.util.Optional.of(period));
+
+        InventoryValuationService.InventorySnapshot snapshot = inventoryValuationService.currentSnapshot(company);
+
+        assertThat(snapshot.costingMethod()).isEqualTo("FIFO");
+        assertThat(snapshot.totalValue()).isEqualByComparingTo("0.00");
+    }
+
+    @Test
+    void resolveCostingMethodContext_returnsFifoDefaultsWhenCompanyMissing() {
+        Object context = ReflectionTestUtils.invokeMethod(
+                inventoryValuationService,
+                "resolveCostingMethodContext",
+                null,
+                LocalDate.of(2026, 3, 15)
+        );
+
+        assertThat((String) ReflectionTestUtils.invokeMethod(context, "canonicalMethod")).isEqualTo("FIFO");
+        assertThat((Object) ReflectionTestUtils.invokeMethod(context, "method")).isNull();
+    }
+
+    @Test
+    void canonicalMethodLabel_defaultsToFifoWhenMethodMissing() {
+        assertThat((String) ReflectionTestUtils.invokeMethod(inventoryValuationService, "canonicalMethodLabel", (Object) null))
+                .isEqualTo("FIFO");
+    }
+
+    @Test
     void snapshotAsOf_appliesMovementAdjustmentsToStockAndValuation() {
         Company company = new Company();
         company.setCode("CR-ASOF");

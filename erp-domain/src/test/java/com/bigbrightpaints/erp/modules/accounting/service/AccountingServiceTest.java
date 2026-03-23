@@ -1123,6 +1123,30 @@ class AccountingServiceTest {
     }
 
     @Test
+    void createJournalEntry_invalidDateSkipsPeriodCreationWhenLocksDisabled() {
+        LocalDate today = LocalDate.of(2024, 1, 31);
+        when(companyClock.today(company)).thenReturn(today);
+        when(systemSettingsService.isPeriodLockEnforced()).thenReturn(false);
+
+        JournalEntryRequest request = new JournalEntryRequest(
+                "OLD-NO-PERIOD",
+                today.minusDays(31),
+                "Old period posting",
+                null,
+                null,
+                Boolean.FALSE,
+                List.of(new JournalEntryRequest.JournalLineRequest(1L, "Old", new BigDecimal("10.00"), BigDecimal.ZERO))
+        );
+
+        assertThatThrownBy(() -> accountingService.createJournalEntry(request))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("Entry date cannot be more than 30 days old");
+
+        verify(accountingPeriodService, never()).ensurePeriod(any(), any());
+        verify(accountingPeriodService, never()).requirePostablePeriod(any(), any(), any(), any(), any(), anyBoolean());
+    }
+
+    @Test
     void createJournalEntry_prodIgnoresBenchmarkDateValidationBypass() {
         LocalDate today = LocalDate.of(2024, 1, 31);
         when(companyClock.today(company)).thenReturn(today);
@@ -1936,6 +1960,33 @@ class AccountingServiceTest {
         assertThatThrownBy(() -> accountingService.reverseJournalEntry(45L, request))
                 .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("CLOSED period");
+    }
+
+    @Test
+    void reverseJournalEntry_invalidDateSkipsPeriodLookup() {
+        LocalDate today = LocalDate.of(2024, 4, 1);
+        when(companyClock.today(company)).thenReturn(today);
+
+        var entry = new com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry();
+        entry.setStatus("POSTED");
+        entry.setReferenceNumber("REV-OLD-DATE");
+        entry.setEntryDate(today.minusDays(1));
+        entry.setAccountingPeriod(openPeriod(today.minusDays(1)));
+        when(companyEntityLookup.requireJournalEntry(company, 46L)).thenReturn(entry);
+
+        JournalEntryReversalRequest request = new JournalEntryReversalRequest(
+                today.minusDays(31),
+                false,
+                "Test reversal",
+                "Old reversal",
+                Boolean.FALSE
+        );
+
+        assertThatThrownBy(() -> accountingService.reverseJournalEntry(46L, request))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("Entry date cannot be more than 30 days old");
+
+        verify(accountingPeriodService, never()).requirePostablePeriod(eq(company), eq(today.minusDays(31)), any(), any(), any(), anyBoolean());
     }
 
     @Test

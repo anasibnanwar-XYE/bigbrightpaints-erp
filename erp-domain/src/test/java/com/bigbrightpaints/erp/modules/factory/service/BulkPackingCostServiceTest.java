@@ -7,6 +7,7 @@ import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatchReposito
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovementRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialRepository;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -24,6 +25,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
+@Tag("critical")
 class BulkPackingCostServiceTest {
 
     @Mock private PackagingMaterialService packagingMaterialService;
@@ -86,6 +88,16 @@ class BulkPackingCostServiceTest {
                         null,
                         true),
                 "PACK-REF");
+
+        assertThat(summary.totalCost()).isEqualByComparingTo("0.00");
+        assertThat(summary.accountTotals()).isEmpty();
+        assertThat(summary.lineCosts()).isEmpty();
+        verifyNoInteractions(packagingMaterialService);
+    }
+
+    @Test
+    void consumePackagingIfRequired_returnsEmptySummaryWhenRequestMissing() {
+        BulkPackCostSummary summary = bulkPackingCostService.consumePackagingIfRequired(company, null, "PACK-REF");
 
         assertThat(summary.totalCost()).isEqualByComparingTo("0.00");
         assertThat(summary.accountTotals()).isEmpty();

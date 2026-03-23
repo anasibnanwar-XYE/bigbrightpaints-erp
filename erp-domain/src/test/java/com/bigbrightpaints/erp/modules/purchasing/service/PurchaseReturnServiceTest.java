@@ -214,6 +214,30 @@ class PurchaseReturnServiceTest {
     }
 
     @Test
+    void recordPurchaseReturn_rejectsUnknownRawMaterial() {
+        Account payable = new Account();
+        ReflectionTestUtils.setField(payable, "id", 40L);
+        supplier.setPayableAccount(payable);
+        when(companyEntityLookup.lockActiveRawMaterial(company, 20L))
+                .thenThrow(new IllegalArgumentException("Raw material not found: id=20"));
+
+        PurchaseReturnRequest request = new PurchaseReturnRequest(
+                10L,
+                30L,
+                20L,
+                new BigDecimal("1.0000"),
+                new BigDecimal("5.00"),
+                "PR-30",
+                LocalDate.of(2026, 3, 9),
+                "Damaged"
+        );
+
+        assertThatThrownBy(() -> purchaseReturnService.recordPurchaseReturn(request))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("Raw material not found");
+    }
+
+    @Test
     void previewPurchaseReturn_computesCanonicalPreviewAndDefaults() {
         purchase.setInvoiceNumber("PI-30");
         purchase.setTaxAmount(new BigDecimal("4.00"));

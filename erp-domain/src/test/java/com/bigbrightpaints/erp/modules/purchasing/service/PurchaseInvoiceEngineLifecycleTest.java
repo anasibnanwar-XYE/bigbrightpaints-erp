@@ -311,6 +311,36 @@ class PurchaseInvoiceEngineLifecycleTest {
     }
 
     @Test
+    void createPurchase_rejectsUnknownRawMaterial() {
+        when(companyEntityLookup.lockActiveRawMaterial(company, 20L))
+                .thenThrow(new IllegalArgumentException("Raw material not found: id=20"));
+
+        RawMaterialPurchaseRequest request = new RawMaterialPurchaseRequest(
+                10L,
+                "INV-41",
+                LocalDate.of(2026, 3, 2),
+                "invoice",
+                30L,
+                40L,
+                BigDecimal.ZERO,
+                List.of(new RawMaterialPurchaseLineRequest(
+                        20L,
+                        null,
+                        new BigDecimal("10.0000"),
+                        "KG",
+                        new BigDecimal("12.50"),
+                        null,
+                        null,
+                        "line"
+                ))
+        );
+
+        assertThatThrownBy(() -> purchaseInvoiceEngine.createPurchase(request))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("Raw material not found");
+    }
+
+    @Test
     @DisplayName("createPurchase transitions purchase order to INVOICED when more GRNs remain")
     void createPurchase_transitionsToInvoicedWhenNotAllGrnsInvoiced() {
         GoodsReceipt pending = new GoodsReceipt();

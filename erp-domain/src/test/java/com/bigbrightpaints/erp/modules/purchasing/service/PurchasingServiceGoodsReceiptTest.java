@@ -451,6 +451,33 @@ class PurchasingServiceGoodsReceiptTest {
     }
 
     @Test
+    @DisplayName("createGoodsReceipt rejects unknown raw materials before receipt mutations")
+    void createGoodsReceipt_rejectsUnknownRawMaterial() {
+        GoodsReceiptRequest request = request(
+                "idem-missing-material",
+                LocalDate.of(2026, 2, 20),
+                List.of(new GoodsReceiptLineRequest(20L, "REQ-BATCH", new BigDecimal("4.0000"), "KG", new BigDecimal("5.00"), "line note"))
+        );
+
+        when(goodsReceiptRepository.findWithLinesByCompanyAndIdempotencyKey(company, "idem-missing-material"))
+                .thenReturn(Optional.empty());
+        when(purchaseOrderRepository.lockByCompanyAndId(company, 30L))
+                .thenReturn(Optional.of(purchaseOrder));
+        when(goodsReceiptRepository.lockByCompanyAndReceiptNumberIgnoreCase(company, "GRN-30-01"))
+                .thenReturn(Optional.empty());
+        when(goodsReceiptRepository.findByPurchaseOrder(purchaseOrder))
+                .thenReturn(List.of());
+        when(companyEntityLookup.lockActiveRawMaterial(company, 20L))
+                .thenThrow(new IllegalArgumentException("Raw material not found: id=20"));
+
+        assertThatThrownBy(() -> purchasingService.createGoodsReceipt(request))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("Raw material not found");
+
+        verifyNoInteractions(rawMaterialService);
+    }
+
+    @Test
     @DisplayName("createGoodsReceipt partial receipt sets statuses and records batches")
     void createGoodsReceipt_partialReceipt_setsStatusesAndRecordsBatches() {
         LocalDate manufacturingDate = LocalDate.of(2026, 2, 15);
