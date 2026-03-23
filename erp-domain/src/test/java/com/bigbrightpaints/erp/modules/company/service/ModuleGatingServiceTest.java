@@ -65,4 +65,16 @@ class ModuleGatingServiceTest {
                 .containsExactlyInAnyOrder("MANUFACTURING", "PURCHASING", "PORTAL", "REPORTS_ADVANCED")
                 .doesNotContain("HR_PAYROLL");
     }
+
+    @Test
+    void isEnabled_usesProvidedCompanyWithoutContextLookup() {
+        Company company = new Company();
+        company.setEnabledModules(Set.of(CompanyModule.PORTAL.name()));
+        ModuleGatingService service = new ModuleGatingService(companyContextService);
+
+        boolean enabled = service.isEnabled(company, CompanyModule.PORTAL);
+
+        assertThat(enabled).isTrue();
+        verify(companyContextService, never()).requireCurrentCompany();
+    }
 }

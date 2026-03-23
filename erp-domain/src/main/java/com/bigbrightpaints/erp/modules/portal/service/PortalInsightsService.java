@@ -123,7 +123,7 @@ public class PortalInsightsService {
 
     public DashboardInsights dashboard() {
         Company company = companyContextService.requireCurrentCompany();
-        boolean hrPayrollEnabled = moduleGatingService.isEnabledForCurrentCompany(CompanyModule.HR_PAYROLL);
+        boolean hrPayrollEnabled = moduleGatingService.isEnabled(company, CompanyModule.HR_PAYROLL);
         LocalDate recognizedRevenueCutoff = companyClock.today(company).minusDays(30);
         BigDecimal recognizedRevenue = sumRecognizedRevenue(company);
         BigDecimal recognizedRevenueLast30 = sumRecognizedRevenueOnOrAfter(company, recognizedRevenueCutoff);
@@ -241,8 +241,8 @@ public class PortalInsightsService {
     }
 
     public WorkforceInsights workforce() {
-        moduleGatingService.requireEnabledForCurrentCompany(CompanyModule.HR_PAYROLL, "/api/v1/portal/workforce");
         Company company = companyContextService.requireCurrentCompany();
+        moduleGatingService.requireEnabled(company, CompanyModule.HR_PAYROLL, "/api/v1/portal/workforce");
         List<Employee> employees = employeeRepository.findByCompanyOrderByFirstNameAsc(company);
         List<LeaveRequest> leaveRequests = leaveRequestRepository.findByCompanyOrderByCreatedAtDesc(company);
         List<PayrollRun> payrollRuns = payrollRunRepository.findByCompanyOrderByRunDateDesc(company);

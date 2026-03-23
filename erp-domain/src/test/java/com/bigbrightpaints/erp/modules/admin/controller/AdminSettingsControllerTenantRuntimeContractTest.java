@@ -9,6 +9,7 @@ import com.bigbrightpaints.erp.modules.admin.dto.TenantRuntimeMetricsDto;
 import com.bigbrightpaints.erp.modules.admin.dto.TenantRuntimePolicyUpdateRequest;
 import com.bigbrightpaints.erp.modules.admin.service.ExportApprovalService;
 import com.bigbrightpaints.erp.modules.admin.service.TenantRuntimePolicyService;
+import com.bigbrightpaints.erp.modules.company.service.ModuleGatingService;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.hr.domain.PayrollRunRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.CreditLimitOverrideRequestRepository;
@@ -72,7 +73,7 @@ class AdminSettingsControllerTenantRuntimeContractTest {
                 mock(CreditRequestRepository.class),
                 mock(CreditLimitOverrideRequestRepository.class),
                 mock(PayrollRunRepository.class),
-                null
+                mock(ModuleGatingService.class)
         );
 
         ApiResponse<SystemSettingsDto> response = controller.getSettings();
@@ -119,7 +120,7 @@ class AdminSettingsControllerTenantRuntimeContractTest {
                 mock(CreditRequestRepository.class),
                 mock(CreditLimitOverrideRequestRepository.class),
                 mock(PayrollRunRepository.class),
-                null
+                mock(ModuleGatingService.class)
         );
 
         ApiResponse<SystemSettingsDto> response = controller.updateSettings(request);
@@ -142,7 +143,7 @@ class AdminSettingsControllerTenantRuntimeContractTest {
                 mock(CreditRequestRepository.class),
                 mock(CreditLimitOverrideRequestRepository.class),
                 mock(PayrollRunRepository.class),
-                null
+                mock(ModuleGatingService.class)
         );
         AdminNotifyRequest request = new AdminNotifyRequest(
                 "admin.user@bigbrightpaints.com",
@@ -259,7 +260,7 @@ class AdminSettingsControllerTenantRuntimeContractTest {
                 mock(CreditRequestRepository.class),
                 mock(CreditLimitOverrideRequestRepository.class),
                 mock(PayrollRunRepository.class),
-                null
+                mock(ModuleGatingService.class)
         );
     }
 }

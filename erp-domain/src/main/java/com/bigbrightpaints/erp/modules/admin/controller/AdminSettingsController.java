@@ -195,7 +195,7 @@ public class AdminSettingsController {
                         Comparator.nullsLast(Comparator.reverseOrder())))
                 .toList();
 
-        List<AdminApprovalItemDto> payrollApprovals = isHrPayrollEnabled()
+        List<AdminApprovalItemDto> payrollApprovals = isHrPayrollEnabled(company)
                 ? payrollRunRepository
                 .findByCompanyAndStatusOrderByCreatedAtDesc(company, PayrollRun.PayrollStatus.CALCULATED)
                 .stream()
@@ -408,9 +408,8 @@ public class AdminSettingsController {
         return amount == null ? "0" : amount.stripTrailingZeros().toPlainString();
     }
 
-    private boolean isHrPayrollEnabled() {
-        return moduleGatingService == null
-                || moduleGatingService.isEnabledForCurrentCompany(CompanyModule.HR_PAYROLL);
+    private boolean isHrPayrollEnabled(Company company) {
+        return moduleGatingService.isEnabled(company, CompanyModule.HR_PAYROLL);
     }
 
     private void requireSuperAdminForPeriodLockEnforcedChange(SystemSettingsDto before,

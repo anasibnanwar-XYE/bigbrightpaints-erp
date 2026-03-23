@@ -64,6 +64,7 @@ class AdminSettingsControllerApprovalsContractTest {
         PeriodCloseRequestRepository periodCloseRequestRepository = mock(PeriodCloseRequestRepository.class);
         PayrollRunRepository payrollRunRepository = mock(PayrollRunRepository.class);
         ExportApprovalService exportApprovalService = mock(ExportApprovalService.class);
+        ModuleGatingService moduleGatingService = mock(ModuleGatingService.class);
         when(exportApprovalService.listPending()).thenReturn(List.of());
         AdminSettingsController controller = new AdminSettingsController(
                 systemSettingsService,
@@ -76,12 +77,13 @@ class AdminSettingsControllerApprovalsContractTest {
                 periodCloseRequestRepository,
                 payrollRunRepository,
                 null,
-                null
+                moduleGatingService
         );
 
         Company company = new Company();
         ReflectionTestUtils.setField(company, "id", 501L);
         when(companyContextService.requireCurrentCompany()).thenReturn(company);
+        when(moduleGatingService.isEnabled(company, CompanyModule.HR_PAYROLL)).thenReturn(true);
 
         Dealer alpha = new Dealer();
         alpha.setName("Dealer Alpha");
@@ -305,6 +307,7 @@ class AdminSettingsControllerApprovalsContractTest {
         PeriodCloseRequestRepository periodCloseRequestRepository = mock(PeriodCloseRequestRepository.class);
         PayrollRunRepository payrollRunRepository = mock(PayrollRunRepository.class);
         ExportApprovalService exportApprovalService = mock(ExportApprovalService.class);
+        ModuleGatingService moduleGatingService = mock(ModuleGatingService.class);
         when(exportApprovalService.listPending()).thenReturn(List.of());
         AdminSettingsController controller = new AdminSettingsController(
                 systemSettingsService,
@@ -317,12 +320,13 @@ class AdminSettingsControllerApprovalsContractTest {
                 periodCloseRequestRepository,
                 payrollRunRepository,
                 null,
-                null
+                moduleGatingService
         );
 
         Company company = new Company();
         ReflectionTestUtils.setField(company, "id", 503L);
         when(companyContextService.requireCurrentCompany()).thenReturn(company);
+        when(moduleGatingService.isEnabled(company, CompanyModule.HR_PAYROLL)).thenReturn(true);
 
         CreditRequest creditRequest = new CreditRequest();
         creditRequest.setCompany(company);
@@ -420,6 +424,7 @@ class AdminSettingsControllerApprovalsContractTest {
         PeriodCloseRequestRepository periodCloseRequestRepository = mock(PeriodCloseRequestRepository.class);
         PayrollRunRepository payrollRunRepository = mock(PayrollRunRepository.class);
         ExportApprovalService exportApprovalService = mock(ExportApprovalService.class);
+        ModuleGatingService moduleGatingService = mock(ModuleGatingService.class);
         when(exportApprovalService.listPending()).thenReturn(List.of());
         AdminSettingsController controller = new AdminSettingsController(
                 systemSettingsService,
@@ -432,12 +437,13 @@ class AdminSettingsControllerApprovalsContractTest {
                 periodCloseRequestRepository,
                 payrollRunRepository,
                 null,
-                null
+                moduleGatingService
         );
 
         Company company = new Company();
         ReflectionTestUtils.setField(company, "id", 502L);
         when(companyContextService.requireCurrentCompany()).thenReturn(company);
+        when(moduleGatingService.isEnabled(company, CompanyModule.HR_PAYROLL)).thenReturn(true);
 
         PayrollRun payrollRun = new PayrollRun();
         payrollRun.setCompany(company);
@@ -487,6 +493,7 @@ class AdminSettingsControllerApprovalsContractTest {
         PeriodCloseRequestRepository periodCloseRequestRepository = mock(PeriodCloseRequestRepository.class);
         PayrollRunRepository payrollRunRepository = mock(PayrollRunRepository.class);
         ExportApprovalService exportApprovalService = mock(ExportApprovalService.class);
+        ModuleGatingService moduleGatingService = mock(ModuleGatingService.class);
         when(exportApprovalService.listPending()).thenReturn(List.of());
         AdminSettingsController controller = new AdminSettingsController(
                 systemSettingsService,
@@ -499,12 +506,13 @@ class AdminSettingsControllerApprovalsContractTest {
                 periodCloseRequestRepository,
                 payrollRunRepository,
                 null,
-                null
+                moduleGatingService
         );
 
         Company company = new Company();
         ReflectionTestUtils.setField(company, "id", 504L);
         when(companyContextService.requireCurrentCompany()).thenReturn(company);
+        when(moduleGatingService.isEnabled(company, CompanyModule.HR_PAYROLL)).thenReturn(true);
 
         PeriodCloseRequest periodCloseRequest = new PeriodCloseRequest();
         periodCloseRequest.setCompany(company);
@@ -555,7 +563,6 @@ class AdminSettingsControllerApprovalsContractTest {
         ExportApprovalService exportApprovalService = mock(ExportApprovalService.class);
         ModuleGatingService moduleGatingService = mock(ModuleGatingService.class);
         when(exportApprovalService.listPending()).thenReturn(List.of());
-        when(moduleGatingService.isEnabledForCurrentCompany(CompanyModule.HR_PAYROLL)).thenReturn(false);
         AdminSettingsController controller = new AdminSettingsController(
                 systemSettingsService,
                 emailService,
@@ -573,6 +580,7 @@ class AdminSettingsControllerApprovalsContractTest {
         Company company = new Company();
         ReflectionTestUtils.setField(company, "id", 505L);
         when(companyContextService.requireCurrentCompany()).thenReturn(company);
+        when(moduleGatingService.isEnabled(company, CompanyModule.HR_PAYROLL)).thenReturn(false);
         when(creditRequestRepository.findPendingByCompanyOrderByCreatedAtDesc(company)).thenReturn(List.of());
         when(creditLimitOverrideRequestRepository.findPendingByCompanyOrderByCreatedAtDesc(company)).thenReturn(List.of());
         when(periodCloseRequestRepository.findPendingByCompanyOrderByRequestedAtDesc(company)).thenReturn(List.of());

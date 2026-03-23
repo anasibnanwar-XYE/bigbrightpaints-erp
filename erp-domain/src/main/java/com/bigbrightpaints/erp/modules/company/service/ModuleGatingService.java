@@ -24,14 +24,28 @@ public class ModuleGatingService {
             return true;
         }
         Company company = companyContextService.requireCurrentCompany();
-        return resolveEnabledGatableModules(company).contains(module.name());
+        return isEnabled(company, module);
     }
 
     public void requireEnabledForCurrentCompany(CompanyModule module, String path) {
-        if (module == null || module.isCore() || isEnabledForCurrentCompany(module)) {
+        Company company = companyContextService.requireCurrentCompany();
+        requireEnabled(company, module, path);
+    }
+
+    public boolean isEnabled(Company company, CompanyModule module) {
+        if (module == null || module.isCore()) {
+            return true;
+        }
+        return resolveEnabledGatableModules(company).contains(module.name());
+    }
+
+    public void requireEnabled(Company company, CompanyModule module, String path) {
+        if (isEnabled(company, module)) {
             return;
         }
-        String companyCode = CompanyContextHolder.getCompanyCode();
+        String companyCode = company != null && StringUtils.hasText(company.getCode())
+                ? company.getCode()
+                : CompanyContextHolder.getCompanyCode();
         ApplicationException ex = new ApplicationException(
                 ErrorCode.MODULE_DISABLED,
                 "Module " + module.name() + " is disabled for the current tenant")
