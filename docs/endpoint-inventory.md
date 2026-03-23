@@ -1,7 +1,7 @@
 # Endpoint Inventory (OpenAPI)
 
 Source: `openapi.json`
-Updated: 2026-03-22
+Updated: 2026-03-23
 
 Related behavior contract:
 - `docs/ACCOUNTING_PORTAL_SCOPE_GUARDRAIL.md`
@@ -15,9 +15,9 @@ Portal scope guardrail:
 ## Canonical API contract gate
 
 - Canonical machine contract source: repo-root `openapi.json`.
-- OpenAPI snapshot: `openapi.json` (sha256 `4bc982dcaed427d3f938fcb0e072933a20a96a27c150032795f7fcf14e4eacb5`)
-- OpenAPI total paths: `300`
-- OpenAPI total operations: `359`
+- OpenAPI snapshot: `openapi.json` (sha256 `0f2ce3b10c5e0fa07fd3f2dc19006e9b9a33a25383567e44244102c8103a3d96`)
+- OpenAPI total paths: `296`
+- OpenAPI total operations: `349`
 - Guard remediation flow: if parity drifts, regenerate this inventory from canonical `openapi.json`, then rerun `bash scripts/guard_openapi_contract_drift.sh` and `bash scripts/guard_accounting_portal_scope_contract.sh`.
 
 ## Summary by module
@@ -28,7 +28,7 @@ Portal scope guardrail:
 | `admin` | 17 | /api/v1/admin/approvals, /api/v1/admin/changelog, /api/v1/admin/changelog/{id} |
 | `audit` | 2 | /api/v1/audit/business-events, /api/v1/audit/ml-events |
 | `auth` | 12 | /api/v1/auth/login, /api/v1/auth/logout, /api/v1/auth/me |
-| `catalog` | 5 | /api/v1/catalog/brands, /api/v1/catalog/brands/{brandId}, /api/v1/catalog/import |
+| `catalog` | 5 | /api/v1/catalog/brands, /api/v1/catalog/items, /api/v1/catalog/import |
 | `changelog` | 2 | /api/v1/changelog, /api/v1/changelog/latest-highlighted |
 | `companies` | 7 | /api/v1/companies, /api/v1/companies/{id}, /api/v1/companies/{id}/lifecycle-state |
 | `credit` | 3 | /api/v1/credit/override-requests, /api/v1/credit/override-requests/{id}/approve, /api/v1/credit/override-requests/{id}/reject |
@@ -49,7 +49,7 @@ Portal scope guardrail:
 | `payroll` | 13 | /api/v1/payroll/runs, /api/v1/payroll/runs/monthly, /api/v1/payroll/runs/weekly |
 | `portal` | 3 | /api/v1/portal/dashboard, /api/v1/portal/operations, /api/v1/portal/workforce |
 | `purchasing` | 12 | /api/v1/purchasing/goods-receipts, /api/v1/purchasing/goods-receipts/{id}, /api/v1/purchasing/purchase-orders |
-| `raw-materials` | 4 | /api/v1/raw-materials/intake, /api/v1/raw-materials/stock, /api/v1/raw-materials/stock/inventory |
+| `raw-materials` | 3 | /api/v1/raw-materials/stock, /api/v1/raw-materials/stock/inventory, /api/v1/raw-materials/stock/low-stock |
 | `reports` | 20 | /api/v1/reports/account-statement, /api/v1/reports/aged-debtors, /api/v1/reports/aging/dealer/{dealerId} |
 | `sales` | 20 | /api/v1/sales/credit-requests, /api/v1/sales/credit-requests/{id}, /api/v1/sales/credit-requests/{id}/approve |
 | `superadmin` | 10 | /api/v1/superadmin/dashboard, /api/v1/superadmin/tenants, /api/v1/superadmin/tenants/coa-templates |
@@ -105,8 +105,6 @@ Portal scope guardrail:
 - `POST` `/api/v1/accounting/periods/{periodId}/reject-close`
 - `POST` `/api/v1/accounting/periods/{periodId}/reopen`
 - `POST` `/api/v1/accounting/periods/{periodId}/request-close`
-- `GET, POST` `/api/v1/catalog/products`
-- `PUT, DELETE` `/api/v1/catalog/products/{productId}`
 - `POST` `/api/v1/accounting/receipts/dealer`
 - `POST` `/api/v1/accounting/receipts/dealer/hybrid`
 - `POST` `/api/v1/accounting/reconciliation/bank`
@@ -175,8 +173,8 @@ Portal scope guardrail:
 - `GET, POST` `/api/v1/catalog/brands`
 - `GET, PUT, DELETE` `/api/v1/catalog/brands/{brandId}`
 - `POST` `/api/v1/catalog/import`
-- `GET, POST` `/api/v1/catalog/products`
-- `GET, PUT, DELETE` `/api/v1/catalog/products/{productId}`
+- `GET, POST` `/api/v1/catalog/items`
+- `GET, PUT, DELETE` `/api/v1/catalog/items/{itemId}`
 
 ## `changelog`
 
@@ -265,11 +263,11 @@ Portal scope guardrail:
 
 ## `finished-goods`
 
-- `GET, POST` `/api/v1/finished-goods`
+- `GET` `/api/v1/finished-goods`
 - `GET` `/api/v1/finished-goods/low-stock`
 - `GET` `/api/v1/finished-goods/stock-summary`
-- `GET, PUT` `/api/v1/finished-goods/{id}`
-- `GET, POST` `/api/v1/finished-goods/{id}/batches`
+- `GET` `/api/v1/finished-goods/{id}`
+- `GET` `/api/v1/finished-goods/{id}/batches`
 - `GET, PUT` `/api/v1/finished-goods/{id}/low-stock-threshold`
 
 ## `hr`
@@ -371,7 +369,6 @@ Portal scope guardrail:
 
 ## `raw-materials`
 
-- `POST` `/api/v1/raw-materials/intake`
 - `GET` `/api/v1/raw-materials/stock`
 - `GET` `/api/v1/raw-materials/stock/inventory`
 - `GET` `/api/v1/raw-materials/stock/low-stock`
