@@ -8,11 +8,13 @@ import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
 import com.bigbrightpaints.erp.modules.accounting.domain.GstRegistrationType;
+import com.bigbrightpaints.erp.modules.accounting.dto.AgingBucketDto;
+import com.bigbrightpaints.erp.modules.accounting.dto.AgingSummaryResponse;
+import com.bigbrightpaints.erp.modules.accounting.service.StatementService;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
-import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceRepository;
 import com.bigbrightpaints.erp.modules.rbac.domain.Role;
 import com.bigbrightpaints.erp.modules.rbac.service.RoleService;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
@@ -69,7 +71,7 @@ class DealerServiceTest {
     @Mock
     private com.bigbrightpaints.erp.modules.accounting.service.DealerLedgerService dealerLedgerService;
     @Mock
-    private InvoiceRepository invoiceRepository;
+    private StatementService statementService;
     @Mock
     private SalesOrderRepository salesOrderRepository;
     @Mock
@@ -89,7 +91,7 @@ class DealerServiceTest {
                 emailService,
                 accountRepository,
                 dealerLedgerService,
-                invoiceRepository,
+                statementService,
                 salesOrderRepository,
                 companyClock
         );
@@ -126,8 +128,6 @@ class DealerServiceTest {
             }
             return account;
         });
-        lenient().when(invoiceRepository.findByCompanyAndDealerOrderByIssueDateDesc(eq(company), any(Dealer.class)))
-                .thenReturn(List.of());
         lenient().when(salesOrderRepository.sumPendingCreditExposureByCompanyAndDealer(
                         eq(company), any(Dealer.class), any(), eq(null)))
                 .thenReturn(BigDecimal.ZERO);
@@ -262,10 +262,20 @@ class DealerServiceTest {
         Dealer dealer = dealer("D-AGING", new BigDecimal("1000"), "WEST");
         when(dealerRepository.findByCompanyAndId(company, 77L)).thenReturn(Optional.of(dealer));
         when(companyClock.today(company)).thenReturn(java.time.LocalDate.parse("2026-02-23"));
+        when(statementService.dealerAging(77L, java.time.LocalDate.parse("2026-02-23"), "0-0,1-30,31-60,61-90,91"))
+                .thenReturn(new AgingSummaryResponse(
+                        77L,
+                        "D-AGING Name",
+                        new BigDecimal("275"),
+                        List.of(new AgingBucketDto("1-30 days", 1, 30, new BigDecimal("275")))
+                ));
 
         var payload = dealerService.agingSummary(77L);
 
-        assertThat(payload).containsEntry("dealerId", 99L).containsEntry("dealerName", "D-AGING Name");
+        assertThat(payload)
+                .containsEntry("dealerId", 99L)
+                .containsEntry("dealerName", "D-AGING Name")
+                .containsEntry("totalOutstanding", new BigDecimal("275"));
     }
 
     @Test

@@ -4,9 +4,8 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import java.math.BigDecimal;
 
-public record CreditRequestRequest(
+public record CreditLimitRequestCreateRequest(
         Long dealerId,
         @NotNull @Positive BigDecimal amountRequested,
-        String reason,
-        String status
+        String reason
 ) {}

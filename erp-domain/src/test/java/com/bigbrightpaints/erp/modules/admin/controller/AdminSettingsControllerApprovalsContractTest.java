@@ -248,12 +248,12 @@ class AdminSettingsControllerApprovalsContractTest {
         AdminApprovalItemDto creditApproval = response.data().creditRequests().get(4);
         assertThat(creditApproval.originType()).isEqualTo(AdminApprovalItemDto.OriginType.CREDIT_REQUEST);
         assertThat(creditApproval.ownerType()).isEqualTo(AdminApprovalItemDto.OwnerType.SALES);
-        assertThat(creditApproval.reference()).isEqualTo("CR-10");
-        assertThat(creditApproval.summary()).contains("Approve dealer credit-limit increase request CR-10 for Dealer Alpha");
-        assertThat(creditApproval.actionType()).isEqualTo("APPROVE_DEALER_CREDIT_REQUEST");
-        assertThat(creditApproval.actionLabel()).isEqualTo("Approve dealer credit-limit increase");
-        assertThat(creditApproval.approveEndpoint()).isEqualTo("/api/v1/sales/credit-requests/{id}/approve");
-        assertThat(creditApproval.rejectEndpoint()).isEqualTo("/api/v1/sales/credit-requests/{id}/reject");
+        assertThat(creditApproval.reference()).isEqualTo("CLR-10");
+        assertThat(creditApproval.summary()).contains("Approve permanent dealer credit-limit request CLR-10 for Dealer Alpha");
+        assertThat(creditApproval.actionType()).isEqualTo("APPROVE_DEALER_CREDIT_LIMIT_REQUEST");
+        assertThat(creditApproval.actionLabel()).isEqualTo("Approve permanent credit limit");
+        assertThat(creditApproval.approveEndpoint()).isEqualTo("/api/v1/credit/limit-requests/{id}/approve");
+        assertThat(creditApproval.rejectEndpoint()).isEqualTo("/api/v1/credit/limit-requests/{id}/reject");
 
         assertThat(response.data().creditRequests())
                 .extracting(AdminApprovalItemDto::createdAt)
@@ -763,7 +763,7 @@ class AdminSettingsControllerApprovalsContractTest {
                 .filter(item -> item.originType() == AdminApprovalItemDto.OriginType.CREDIT_REQUEST)
                 .findFirst()
                 .orElseThrow();
-        assertThat(creditApproval.reference()).isEqualTo("CR-40");
+        assertThat(creditApproval.reference()).isEqualTo("CLR-40");
         assertThat(creditApproval.status()).isEqualTo("UNKNOWN");
         assertThat(creditApproval.ownerType()).isEqualTo(AdminApprovalItemDto.OwnerType.SALES);
         assertThat(creditApproval.summary()).contains("for Unknown dealer amount 0");

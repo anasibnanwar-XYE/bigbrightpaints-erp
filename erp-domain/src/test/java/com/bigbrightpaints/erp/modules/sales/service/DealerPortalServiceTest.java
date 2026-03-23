@@ -1,7 +1,10 @@
 package com.bigbrightpaints.erp.modules.sales.service;
 
 import com.bigbrightpaints.erp.core.util.CompanyClock;
+import com.bigbrightpaints.erp.modules.accounting.dto.AgingBucketDto;
+import com.bigbrightpaints.erp.modules.accounting.dto.AgingSummaryResponse;
 import com.bigbrightpaints.erp.modules.accounting.service.DealerLedgerService;
+import com.bigbrightpaints.erp.modules.accounting.service.StatementService;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserPrincipal;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
@@ -62,6 +65,8 @@ class DealerPortalServiceTest {
     private SalesOrderRepository salesOrderRepository;
     @Mock
     private CompanyClock companyClock;
+    @Mock
+    private StatementService statementService;
 
     private DealerPortalService dealerPortalService;
     private Company company;
@@ -76,7 +81,8 @@ class DealerPortalServiceTest {
                 invoicePdfService,
                 dealerService,
                 salesOrderRepository,
-                companyClock
+                companyClock,
+                statementService
         );
         company = new Company();
         ReflectionTestUtils.setField(company, "id", 9L);
@@ -248,6 +254,13 @@ class DealerPortalServiceTest {
                 eq(company), eq(dealer), any(), isNull())).thenReturn(new BigDecimal("300"));
         when(salesOrderRepository.countPendingCreditExposureByCompanyAndDealer(
                 eq(company), eq(dealer), any(), isNull())).thenReturn(2L);
+        when(statementService.dealerAging(eq(21L), any(LocalDate.class), eq("0-0,1-30,31-60,61-90,91")))
+                .thenReturn(new AgingSummaryResponse(
+                        21L,
+                        "Dealer Name",
+                        new BigDecimal("550"),
+                        List.of(new AgingBucketDto("1-30 days", 1, 30, new BigDecimal("550")))
+                ));
 
         Map<String, Object> dashboard = dealerPortalService.getMyDashboard();
 
