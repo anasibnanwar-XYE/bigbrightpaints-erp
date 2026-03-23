@@ -30,6 +30,7 @@ import com.bigbrightpaints.erp.modules.accounting.service.ReconciliationService;
 import com.bigbrightpaints.erp.modules.accounting.domain.ReconciliationDiscrepancyRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.ReconciliationDiscrepancyStatus;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
+import com.bigbrightpaints.erp.modules.company.domain.CompanyModule;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.hr.domain.PayrollRun;
 import com.bigbrightpaints.erp.modules.hr.domain.PayrollRunRepository;
@@ -1110,13 +1111,15 @@ public class AccountingPeriodServiceCore {
                 period.getStartDate(),
                 period.getEndDate(),
                 List.of("POSTED", "PARTIAL", "PAID"));
-        long payrollUnposted = payrollRunRepository.countByCompanyAndPeriodBetweenAndStatusIn(
-                company,
-                period.getStartDate(),
-                period.getEndDate(),
-                List.of(PayrollRun.PayrollStatus.DRAFT,
-                        PayrollRun.PayrollStatus.CALCULATED,
-                        PayrollRun.PayrollStatus.APPROVED));
+        long payrollUnposted = isHrPayrollEnabled(company)
+                ? payrollRunRepository.countByCompanyAndPeriodBetweenAndStatusIn(
+                        company,
+                        period.getStartDate(),
+                        period.getEndDate(),
+                        List.of(PayrollRun.PayrollStatus.DRAFT,
+                                PayrollRun.PayrollStatus.CALCULATED,
+                                PayrollRun.PayrollStatus.APPROVED))
+                : 0L;
         return invoiceDrafts + purchaseUnposted + payrollUnposted;
     }
 
@@ -1139,12 +1142,20 @@ public class AccountingPeriodServiceCore {
                 period.getStartDate(),
                 period.getEndDate(),
                 List.of("POSTED", "PARTIAL", "PAID"));
-        long payrollUnlinked = payrollRunRepository.countByCompanyAndPeriodBetweenAndStatusInAndJournalMissing(
-                company,
-                period.getStartDate(),
-                period.getEndDate(),
-                List.of(PayrollRun.PayrollStatus.POSTED, PayrollRun.PayrollStatus.PAID));
+        long payrollUnlinked = isHrPayrollEnabled(company)
+                ? payrollRunRepository.countByCompanyAndPeriodBetweenAndStatusInAndJournalMissing(
+                        company,
+                        period.getStartDate(),
+                        period.getEndDate(),
+                        List.of(PayrollRun.PayrollStatus.POSTED, PayrollRun.PayrollStatus.PAID))
+                : 0L;
         return invoiceUnlinked + purchaseUnlinked + payrollUnlinked;
+    }
+
+    private boolean isHrPayrollEnabled(Company company) {
+        return company != null
+                && company.getEnabledModules() != null
+                && company.getEnabledModules().contains(CompanyModule.HR_PAYROLL.name());
     }
 
     private PeriodCloseRequestDto toPeriodCloseRequestDto(PeriodCloseRequest request) {

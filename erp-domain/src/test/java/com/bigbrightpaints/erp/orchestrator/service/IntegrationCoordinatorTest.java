@@ -34,7 +34,9 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -364,6 +366,33 @@ class IntegrationCoordinatorTest {
     void createAccountingEntryFailsClosedInCodeRed() {
         assertThrows(IllegalStateException.class, () ->
                 integrationCoordinator.createAccountingEntry(String.valueOf(ORDER_ID), COMPANY_ID));
+    }
+
+    @Test
+    void health_omitsEmployeeCountWhenHrPayrollPaused() {
+        company.setEnabledModules(Set.of("PORTAL"));
+        when(salesService.listOrders(null)).thenReturn(List.of());
+        when(factoryService.listPlans()).thenReturn(List.of());
+        when(accountingService.listAccounts()).thenReturn(List.of());
+
+        Map<String, Object> health = integrationCoordinator.health();
+
+        assertThat(health).doesNotContainKey("employees");
+        verify(hrService, never()).listEmployees();
+    }
+
+    @Test
+    void fetchAdminDashboard_omitsHrSnapshotWhenHrPayrollPaused() {
+        company.setEnabledModules(Set.of("PORTAL"));
+        when(salesService.listOrders(null)).thenReturn(List.of());
+        when(salesService.listDealers()).thenReturn(List.of());
+        when(accountingService.listAccounts()).thenReturn(List.of());
+
+        Map<String, Object> snapshot = integrationCoordinator.fetchAdminDashboard(COMPANY_ID);
+
+        assertThat(snapshot).doesNotContainKey("hr");
+        verify(hrService, never()).listEmployees();
+        verify(hrService, never()).listLeaveRequests();
     }
 
     @Test

@@ -13,6 +13,8 @@ import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingService;
 import com.bigbrightpaints.erp.modules.accounting.service.CompanyDefaultAccountsService;
+import com.bigbrightpaints.erp.modules.company.domain.Company;
+import com.bigbrightpaints.erp.modules.company.domain.CompanyModule;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.factory.dto.FactoryDashboardDto;
 import com.bigbrightpaints.erp.modules.factory.dto.FactoryTaskDto;
@@ -457,22 +459,29 @@ public class IntegrationCoordinator {
 
     @Transactional(readOnly = true)
     public Map<String, Object> health() {
+        Company company = companyContextService.requireCurrentCompany();
+        boolean hrPayrollEnabled = isHrPayrollEnabled(company);
         Map<String, Object> health = new HashMap<>();
         health.put("orders", salesService.listOrders(null).size());
         health.put("plans", factoryService.listPlans().size());
         health.put("accounts", accountingService.listAccounts().size());
-        health.put("employees", hrService.listEmployees().size());
+        if (hrPayrollEnabled) {
+            health.put("employees", hrService.listEmployees().size());
+        }
         return health;
     }
 
     @Transactional(readOnly = true)
     public Map<String, Object> fetchAdminDashboard(String companyId) {
         return withCompanyContext(companyId, () -> {
+            Company company = companyContextService.requireCurrentCompany();
             Map<String, Object> snapshot = new HashMap<>();
             snapshot.put("orders", fetchOrdersSnapshot());
             snapshot.put("dealers", fetchDealerSnapshot());
             snapshot.put("accounting", fetchAccountingSnapshot());
-            snapshot.put("hr", fetchHrSnapshot());
+            if (isHrPayrollEnabled(company)) {
+                snapshot.put("hr", fetchHrSnapshot());
+            }
             return snapshot;
         });
     }
@@ -536,6 +545,12 @@ public class IntegrationCoordinator {
                 .filter(l -> "APPROVED".equalsIgnoreCase(l.status()))
                 .count();
         return Map.of("activeEmployees", active, "onLeave", onLeave);
+    }
+
+    private boolean isHrPayrollEnabled(Company company) {
+        return company != null
+                && company.getEnabledModules() != null
+                && company.getEnabledModules().contains(CompanyModule.HR_PAYROLL.name());
     }
 
     private Map<String, Object> fetchInventorySnapshot() {
