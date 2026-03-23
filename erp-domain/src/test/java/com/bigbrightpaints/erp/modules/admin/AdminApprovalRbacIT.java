@@ -393,6 +393,8 @@ class AdminApprovalRbacIT extends AbstractIntegrationTest {
         assertThat(creditApproval.get("originType")).isEqualTo("CREDIT_REQUEST");
         assertThat(creditApproval.get("summary").toString())
                 .contains("Approve permanent dealer credit-limit request CLR-" + requestId);
+        assertThat(creditApproval.get("requesterEmail")).isEqualTo(DEALER_EMAIL);
+        assertThat(creditApproval.get("requesterUserId")).isNotNull();
     }
 
     private HttpHeaders authHeaders(String email, String password) {

@@ -112,6 +112,17 @@ class DealerPortalServiceTest {
     }
 
     @Test
+    void getCurrentRequesterIdentity_exposesAuthenticatedDealerUser() {
+        UserAccount user = userWithId(100L, "dealer@tenant.com");
+        authenticate(user, "ROLE_DEALER");
+
+        DealerPortalService.RequesterIdentity requesterIdentity = dealerPortalService.getCurrentRequesterIdentity();
+
+        assertThat(requesterIdentity.userId()).isEqualTo(100L);
+        assertThat(requesterIdentity.email()).isEqualTo("dealer@tenant.com");
+    }
+
+    @Test
     void getCurrentDealer_failsClosedWhenUserMapsToMultipleDealers() {
         UserAccount user = userWithId(100L, "dealer@tenant.com");
         authenticate(user, "ROLE_DEALER");

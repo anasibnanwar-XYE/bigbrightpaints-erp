@@ -100,10 +100,13 @@ public class DealerPortalController {
     public ResponseEntity<ApiResponse<CreditLimitRequestDto>> createCreditLimitRequest(
             @Valid @RequestBody DealerPortalCreditLimitRequestCreateRequest request) {
         Long dealerId = dealerPortalService.getCurrentDealer().getId();
+        DealerPortalService.RequesterIdentity requesterIdentity = dealerPortalService.getCurrentRequesterIdentity();
         CreditLimitRequestDto response = creditLimitRequestService.createRequest(new CreditLimitRequestCreateRequest(
                 dealerId,
                 request.amountRequested(),
-                request.reason()));
+                request.reason()),
+                requesterIdentity.userId(),
+                requesterIdentity.email());
         return ResponseEntity.ok(ApiResponse.success("Credit limit request submitted", response));
     }
 

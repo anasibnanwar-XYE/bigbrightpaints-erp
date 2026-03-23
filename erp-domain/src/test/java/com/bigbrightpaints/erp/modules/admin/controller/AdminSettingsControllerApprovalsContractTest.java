@@ -94,6 +94,8 @@ class AdminSettingsControllerApprovalsContractTest {
         creditRequest.setDealer(alpha);
         creditRequest.setAmountRequested(new BigDecimal("5000"));
         creditRequest.setStatus("PENDING");
+        creditRequest.setRequesterUserId(4401L);
+        creditRequest.setRequesterEmail("dealer.user@bbp.com");
         ReflectionTestUtils.setField(creditRequest, "id", 10L);
         ReflectionTestUtils.setField(creditRequest, "publicId", UUID.fromString("11111111-1111-1111-1111-111111111111"));
         ReflectionTestUtils.setField(creditRequest, "createdAt", Instant.parse("2026-02-12T11:00:00Z"));
@@ -250,6 +252,9 @@ class AdminSettingsControllerApprovalsContractTest {
         assertThat(creditApproval.ownerType()).isEqualTo(AdminApprovalItemDto.OwnerType.SALES);
         assertThat(creditApproval.reference()).isEqualTo("CLR-10");
         assertThat(creditApproval.summary()).contains("Approve permanent dealer credit-limit request CLR-10 for Dealer Alpha");
+        assertThat(creditApproval.summary()).contains("requested by dealer.user@bbp.com");
+        assertThat(creditApproval.requesterUserId()).isEqualTo(4401L);
+        assertThat(creditApproval.requesterEmail()).isEqualTo("dealer.user@bbp.com");
         assertThat(creditApproval.actionType()).isEqualTo("APPROVE_DEALER_CREDIT_LIMIT_REQUEST");
         assertThat(creditApproval.actionLabel()).isEqualTo("Approve permanent credit limit");
         assertThat(creditApproval.approveEndpoint()).isEqualTo("/api/v1/credit/limit-requests/{id}/approve");

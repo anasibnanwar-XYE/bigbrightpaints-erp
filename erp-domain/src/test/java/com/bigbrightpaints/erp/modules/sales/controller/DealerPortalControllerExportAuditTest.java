@@ -11,6 +11,7 @@ import com.bigbrightpaints.erp.modules.sales.service.DealerPortalService;
 import java.math.BigDecimal;
 import java.time.Instant;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -31,6 +32,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
+@Tag("critical")
 class DealerPortalControllerExportAuditTest {
 
     @Mock
@@ -59,6 +61,8 @@ class DealerPortalControllerExportAuditTest {
         Dealer dealer = new Dealer();
         dealer.setName("Dealer One");
         org.springframework.test.util.ReflectionTestUtils.setField(dealer, "id", 19L);
+        DealerPortalService.RequesterIdentity requesterIdentity =
+                new DealerPortalService.RequesterIdentity(4401L, "dealer.user@bbp.com");
         CreditLimitRequestDto created = new CreditLimitRequestDto(
                 501L,
                 UUID.randomUUID(),
@@ -70,7 +74,8 @@ class DealerPortalControllerExportAuditTest {
         );
 
         when(dealerPortalService.getCurrentDealer()).thenReturn(dealer);
-        when(creditLimitRequestService.createRequest(any())).thenReturn(created);
+        when(dealerPortalService.getCurrentRequesterIdentity()).thenReturn(requesterIdentity);
+        when(creditLimitRequestService.createRequest(any(), eq(4401L), eq("dealer.user@bbp.com"))).thenReturn(created);
 
         var response = controller.createCreditLimitRequest(
                 new DealerPortalCreditLimitRequestCreateRequest(new BigDecimal("1500"), "Seasonal growth"));
@@ -83,7 +88,7 @@ class DealerPortalControllerExportAuditTest {
 
         ArgumentCaptor<com.bigbrightpaints.erp.modules.sales.dto.CreditLimitRequestCreateRequest> requestCaptor =
                 ArgumentCaptor.forClass(com.bigbrightpaints.erp.modules.sales.dto.CreditLimitRequestCreateRequest.class);
-        verify(creditLimitRequestService).createRequest(requestCaptor.capture());
+        verify(creditLimitRequestService).createRequest(requestCaptor.capture(), eq(4401L), eq("dealer.user@bbp.com"));
         assertThat(requestCaptor.getValue().dealerId()).isEqualTo(19L);
         assertThat(requestCaptor.getValue().amountRequested()).isEqualByComparingTo("1500");
         assertThat(requestCaptor.getValue().reason()).isEqualTo("Seasonal growth");

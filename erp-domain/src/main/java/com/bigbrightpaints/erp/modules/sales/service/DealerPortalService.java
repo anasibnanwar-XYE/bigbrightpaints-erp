@@ -39,6 +39,9 @@ public class DealerPortalService {
 
     private static final String PORTAL_AGING_BUCKETS = "0-0,1-30,31-60,61-90,91";
 
+    public record RequesterIdentity(Long userId, String email) {
+    }
+
     private final DealerRepository dealerRepository;
     private final CompanyContextService companyContextService;
     private final DealerLedgerService dealerLedgerService;
@@ -95,6 +98,18 @@ public class DealerPortalService {
             return matchedByEmail;
         }
         throw new AccessDeniedException("Dealer mapping missing for authenticated principal");
+    }
+
+    public RequesterIdentity getCurrentRequesterIdentity() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated()) {
+            throw new AccessDeniedException("No authenticated user");
+        }
+        UserAccount authenticatedUser = resolveAuthenticatedUser(auth);
+        return new RequesterIdentity(
+                authenticatedUser != null ? authenticatedUser.getId() : null,
+                resolveAuthenticatedEmail(authenticatedUser, auth)
+        );
     }
 
     public boolean isDealerUser() {

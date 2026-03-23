@@ -21,6 +21,7 @@ BusinessDocumentTruthsTest
 DealerControllerTest
 DealerControllerSecurityIT
 DealerPortalControllerSecurityIT
+com.bigbrightpaints.erp.modules.sales.controller.DealerPortalControllerExportAuditTest
 DealerPortalServiceTest
 DealerServiceTest
 com.bigbrightpaints.erp.modules.sales.dto.CreditLimitRequestCreateRequestTest

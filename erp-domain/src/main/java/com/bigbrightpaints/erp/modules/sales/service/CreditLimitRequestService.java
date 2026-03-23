@@ -52,12 +52,21 @@ public class CreditLimitRequestService {
 
     @Transactional
     public CreditLimitRequestDto createRequest(CreditLimitRequestCreateRequest request) {
+        return createRequest(request, null, null);
+    }
+
+    @Transactional
+    public CreditLimitRequestDto createRequest(CreditLimitRequestCreateRequest request,
+                                               Long requesterUserId,
+                                               String requesterEmail) {
         Company company = companyContextService.requireCurrentCompany();
         CreditRequest creditRequest = new CreditRequest();
         creditRequest.setCompany(company);
         creditRequest.setDealer(requireDealer(company, requireDealerId(request.dealerId())));
         creditRequest.setAmountRequested(request.amountRequested());
         creditRequest.setReason(request.reason());
+        creditRequest.setRequesterUserId(requesterUserId);
+        creditRequest.setRequesterEmail(normalizeRequesterEmail(requesterEmail));
         creditRequest.setStatus(STATUS_PENDING);
         return toDto(creditRequestRepository.save(creditRequest));
     }
@@ -137,6 +146,13 @@ public class CreditLimitRequestService {
                     .withDetail("resourceType", "credit_limit_request");
         }
         return reason.trim();
+    }
+
+    private String normalizeRequesterEmail(String requesterEmail) {
+        if (!StringUtils.hasText(requesterEmail)) {
+            return null;
+        }
+        return requesterEmail.trim();
     }
 
     private Dealer requireDealerForApproval(CreditRequest creditRequest) {

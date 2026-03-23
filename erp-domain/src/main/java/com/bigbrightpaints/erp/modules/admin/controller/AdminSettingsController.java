@@ -209,6 +209,33 @@ public class AdminSettingsController {
                                               String actionLabel,
                                               String approveEndpoint, String rejectEndpoint,
                                               Instant createdAt) {
+        return approvalItem(
+                originType,
+                ownerType,
+                id,
+                publicId,
+                reference,
+                status,
+                summary,
+                null,
+                null,
+                actionType,
+                actionLabel,
+                approveEndpoint,
+                rejectEndpoint,
+                createdAt
+        );
+    }
+
+    private AdminApprovalItemDto approvalItem(AdminApprovalItemDto.OriginType originType,
+                                              AdminApprovalItemDto.OwnerType ownerType,
+                                              Long id, UUID publicId, String reference,
+                                              String status, String summary,
+                                              Long requesterUserId, String requesterEmail,
+                                              String actionType,
+                                              String actionLabel,
+                                              String approveEndpoint, String rejectEndpoint,
+                                              Instant createdAt) {
         return new AdminApprovalItemDto(
                 originType,
                 ownerType,
@@ -219,8 +246,8 @@ public class AdminSettingsController {
                 summary,
                 null,
                 null,
-                null,
-                null,
+                requesterUserId,
+                requesterEmail,
                 actionType,
                 actionLabel,
                 approveEndpoint,
@@ -239,6 +266,9 @@ public class AdminSettingsController {
         if (StringUtils.hasText(request.getReason())) {
             summary = summary + " (reason: " + request.getReason().trim() + ")";
         }
+        if (StringUtils.hasText(request.getRequesterEmail())) {
+            summary = summary + " (requested by " + request.getRequesterEmail().trim() + ")";
+        }
         return approvalItem(
                 AdminApprovalItemDto.OriginType.CREDIT_REQUEST,
                 AdminApprovalItemDto.OwnerType.SALES,
@@ -247,6 +277,8 @@ public class AdminSettingsController {
                 reference,
                 normalizeStatus(request.getStatus()),
                 summary,
+                request.getRequesterUserId(),
+                request.getRequesterEmail(),
                 CREDIT_REQUEST_APPROVAL_ACTION,
                 "Approve permanent credit limit",
                 CREDIT_REQUEST_APPROVE_ENDPOINT,

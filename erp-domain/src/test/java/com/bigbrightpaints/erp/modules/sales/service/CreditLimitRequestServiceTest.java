@@ -94,6 +94,28 @@ class CreditLimitRequestServiceTest {
     }
 
     @Test
+    void createRequestPersistsRequesterIdentityWhenProvided() {
+        Dealer dealer = dealer(18L, "Dealer Two", new BigDecimal("4000"));
+        when(dealerRepository.findByCompanyAndId(company, 18L)).thenReturn(Optional.of(dealer));
+        when(creditRequestRepository.save(any(CreditRequest.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        service.createRequest(
+                new CreditLimitRequestCreateRequest(
+                        18L,
+                        new BigDecimal("1200"),
+                        "Dealer self-service request"
+                ),
+                4401L,
+                "dealer.user@bbp.com"
+        );
+
+        ArgumentCaptor<CreditRequest> requestCaptor = ArgumentCaptor.forClass(CreditRequest.class);
+        verify(creditRequestRepository).save(requestCaptor.capture());
+        assertThat(requestCaptor.getValue().getRequesterUserId()).isEqualTo(4401L);
+        assertThat(requestCaptor.getValue().getRequesterEmail()).isEqualTo("dealer.user@bbp.com");
+    }
+
+    @Test
     void createRequestRequiresDealerId() {
         ApplicationException ex = assertThrows(ApplicationException.class, () -> service.createRequest(
                 new CreditLimitRequestCreateRequest(
