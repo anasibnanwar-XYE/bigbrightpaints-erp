@@ -275,13 +275,14 @@ class TS_RuntimeOrchestratorExecutableCoverageTest {
         when(dealerService.ledgerView(77L)).thenReturn(ledgerPayload);
         when(invoiceRepository.findByCompanyAndDealerOrderByIssueDateDesc(company, dealer)).thenReturn(List.of());
         when(companyClock.today(company)).thenReturn(LocalDate.of(2026, 2, 16));
-        when(statementService.dealerAging(77L, LocalDate.of(2026, 2, 16), "0-0,1-30,31-60,61-90,91"))
+        when(statementService.dealerAging(dealer, LocalDate.of(2026, 2, 16), "0-0,1-30,31-60,61-90,91"))
                 .thenReturn(new com.bigbrightpaints.erp.modules.accounting.dto.AgingSummaryResponse(
                         77L,
                         "Dealer",
                         BigDecimal.ZERO,
                         List.of()
                 ));
+        when(statementService.dealerOverdueInvoices(dealer, LocalDate.of(2026, 2, 16))).thenReturn(List.of());
 
         assertThat(portalService.getLedgerForDealer(77L)).isEqualTo(ledgerPayload);
         assertThat(portalService.getInvoicesForDealer(77L)).containsEntry("dealerId", 77L);

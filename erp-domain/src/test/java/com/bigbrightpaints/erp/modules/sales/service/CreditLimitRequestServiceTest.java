@@ -146,6 +146,7 @@ class CreditLimitRequestServiceTest {
 
         assertEquals(ErrorCode.VALIDATION_INVALID_INPUT, ex.getErrorCode());
         assertThat(ex.getMessage()).contains("Status is required");
+        assertThat(ex.getDetails()).containsEntry("entity", "credit_limit_request");
     }
 
     @Test
@@ -178,7 +179,9 @@ class CreditLimitRequestServiceTest {
         assertThat(metadataCaptor.getValue())
                 .containsEntry("resourceType", "credit_limit_request")
                 .containsEntry("decisionStatus", "APPROVED")
+                .containsEntry("reason", "Exposure validated by accounting review")
                 .containsEntry("decisionReason", "Exposure validated by accounting review")
+                .containsEntry("requestReason", "Temporary headroom needed")
                 .containsEntry("oldLimit", "2500")
                 .containsEntry("newLimit", "3100")
                 .containsEntry("increment", "600");

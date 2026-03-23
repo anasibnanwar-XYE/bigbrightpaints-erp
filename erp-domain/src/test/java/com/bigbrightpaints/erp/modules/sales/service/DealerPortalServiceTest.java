@@ -3,6 +3,7 @@ package com.bigbrightpaints.erp.modules.sales.service;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.modules.accounting.dto.AgingBucketDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.AgingSummaryResponse;
+import com.bigbrightpaints.erp.modules.accounting.dto.OverdueInvoiceDto;
 import com.bigbrightpaints.erp.modules.accounting.service.DealerLedgerService;
 import com.bigbrightpaints.erp.modules.accounting.service.StatementService;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
@@ -255,13 +256,14 @@ class DealerPortalServiceTest {
                 eq(company), eq(dealer), any(), isNull())).thenReturn(new BigDecimal("300"));
         when(salesOrderRepository.countPendingCreditExposureByCompanyAndDealer(
                 eq(company), eq(dealer), any(), isNull())).thenReturn(2L);
-        when(statementService.dealerAging(eq(21L), any(LocalDate.class), eq("0-0,1-30,31-60,61-90,91")))
+        when(statementService.dealerAging(eq(dealer), any(LocalDate.class), eq("0-0,1-30,31-60,61-90,91")))
                 .thenReturn(new AgingSummaryResponse(
                         21L,
                         "Dealer Name",
                         new BigDecimal("550"),
                         List.of(new AgingBucketDto("1-30 days", 1, 30, new BigDecimal("550")))
                 ));
+        when(statementService.dealerOverdueInvoices(eq(dealer), any(LocalDate.class))).thenReturn(List.of());
 
         Map<String, Object> dashboard = dealerPortalService.getMyDashboard();
 
@@ -286,8 +288,9 @@ class DealerPortalServiceTest {
                 eq(company), eq(dealer), any(), isNull())).thenReturn(new BigDecimal("50"));
         when(salesOrderRepository.countPendingCreditExposureByCompanyAndDealer(
                 eq(company), eq(dealer), any(), isNull())).thenReturn(1L);
-        when(statementService.dealerAging(eq(21L), any(LocalDate.class), eq("0-0,1-30,31-60,61-90,91")))
+        when(statementService.dealerAging(eq(dealer), any(LocalDate.class), eq("0-0,1-30,31-60,61-90,91")))
                 .thenReturn(new AgingSummaryResponse(21L, "Dealer Name", null, null));
+        when(statementService.dealerOverdueInvoices(eq(dealer), any(LocalDate.class))).thenReturn(List.of());
 
         Map<String, Object> aging = dealerPortalService.getAgingForDealer(21L);
 
@@ -313,6 +316,7 @@ class DealerPortalServiceTest {
 
         authenticate(user, "ROLE_DEALER");
         when(dealerRepository.findAllByCompanyAndPortalUserId(company, 100L)).thenReturn(List.of(dealer));
+        when(dealerRepository.findByCompanyAndId(company, 21L)).thenReturn(java.util.Optional.of(dealer));
         when(dealerLedgerService.currentBalance(21L)).thenReturn(new BigDecimal("900"));
 
         var positive = new com.bigbrightpaints.erp.modules.invoice.domain.Invoice();
@@ -327,7 +331,7 @@ class DealerPortalServiceTest {
                 eq(company), eq(dealer), any(), isNull())).thenReturn(new BigDecimal("200"));
         when(salesOrderRepository.countPendingCreditExposureByCompanyAndDealer(
                 eq(company), eq(dealer), any(), isNull())).thenReturn(2L);
-        when(statementService.dealerAging(eq(21L), any(LocalDate.class), eq("0-0,1-30,31-60,61-90,91")))
+        when(statementService.dealerAging(eq(dealer), any(LocalDate.class), eq("0-0,1-30,31-60,61-90,91")))
                 .thenReturn(new AgingSummaryResponse(
                         21L,
                         "Dealer Name",
@@ -338,13 +342,19 @@ class DealerPortalServiceTest {
                                 new AgingBucketDto("31-60 days", 31, 60, new BigDecimal("200")),
                                 new AgingBucketDto("61-90 days", 61, 90, new BigDecimal("250")),
                                 new AgingBucketDto("91+ days", 91, null, new BigDecimal("300")),
+                                new AgingBucketDto("Credit Balance", 0, 0, new BigDecimal("-40")),
                                 null,
                                 new AgingBucketDto("1-30 days", 1, 30, null),
                                 new AgingBucketDto("unknown", 10, 20, new BigDecimal("999"))
                         )
                 ));
+        when(statementService.dealerOverdueInvoices(eq(dealer), any(LocalDate.class))).thenReturn(Arrays.asList(
+                null,
+                new OverdueInvoiceDto("INV-001", LocalDate.of(2026, 2, 1), 22L, new BigDecimal("100"))
+        ));
 
         Map<String, Object> dashboard = dealerPortalService.getMyDashboard();
+        Map<String, Object> aging = dealerPortalService.getAgingForDealer(21L);
 
         assertThat(dashboard.get("pendingInvoices")).isEqualTo(1L);
         assertThat(dashboard.get("creditUsed")).isEqualTo(new BigDecimal("1100"));
@@ -355,6 +365,67 @@ class DealerPortalServiceTest {
                 .containsEntry("31-60 days", new BigDecimal("200"))
                 .containsEntry("61-90 days", new BigDecimal("250"))
                 .containsEntry("90+ days", new BigDecimal("300"));
+        assertThat((List<Map<String, Object>>) aging.get("overdueInvoices"))
+                .singleElement()
+                .satisfies(entry -> assertThat((Map<String, Object>) entry)
+                        .containsEntry("invoiceNumber", "INV-001")
+                        .containsEntry("daysOverdue", 22L)
+                        .containsEntry("outstandingAmount", new BigDecimal("100")));
+    }
+
+    @Test
+    void overdueInvoicePayloadReturnsEmptyListForNullInput() {
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> payload = (List<Map<String, Object>>) ReflectionTestUtils.invokeMethod(
+                dealerPortalService,
+                "toOverdueInvoicePayload",
+                new Object[]{null}
+        );
+
+        assertThat(payload).isEqualTo(List.of());
+    }
+
+    @Test
+    void portalAgingBucketsReturnDefaultsWhenResponseIsNull() {
+        @SuppressWarnings("unchecked")
+        Map<String, Object> buckets = (Map<String, Object>) ReflectionTestUtils.invokeMethod(
+                dealerPortalService,
+                "toPortalAgingBuckets",
+                new Object[]{null}
+        );
+
+        assertThat(buckets)
+                .containsEntry("current", BigDecimal.ZERO)
+                .containsEntry("90+ days", BigDecimal.ZERO);
+    }
+
+    @Test
+    void portalAgingBucketsIgnoreSyntheticCreditBalanceBucket() {
+        @SuppressWarnings("unchecked")
+        Map<String, Object> buckets = (Map<String, Object>) ReflectionTestUtils.invokeMethod(
+                dealerPortalService,
+                "toPortalAgingBuckets",
+                new AgingSummaryResponse(
+                        21L,
+                        "Dealer Name",
+                        BigDecimal.ZERO,
+                        List.of(new AgingBucketDto("Credit Balance", 0, 0, new BigDecimal("-25")))
+                )
+        );
+
+        assertThat(buckets).containsEntry("current", BigDecimal.ZERO);
+    }
+
+    @Test
+    void resolveCreditStatusReturnsWithinLimitBelowThreshold() {
+        String status = (String) ReflectionTestUtils.invokeMethod(
+                dealerPortalService,
+                "resolveCreditStatus",
+                new BigDecimal("1000"),
+                new BigDecimal("200")
+        );
+
+        assertThat(status).isEqualTo("WITHIN_LIMIT");
     }
 
     @Test

@@ -10,6 +10,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
 import com.bigbrightpaints.erp.modules.accounting.domain.GstRegistrationType;
 import com.bigbrightpaints.erp.modules.accounting.dto.AgingBucketDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.AgingSummaryResponse;
+import com.bigbrightpaints.erp.modules.accounting.dto.OverdueInvoiceDto;
 import com.bigbrightpaints.erp.modules.accounting.service.StatementService;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
@@ -279,13 +280,16 @@ class DealerServiceTest {
         Dealer dealer = dealer("D-AGING", new BigDecimal("1000"), "WEST");
         when(dealerRepository.findByCompanyAndId(company, 77L)).thenReturn(Optional.of(dealer));
         when(companyClock.today(company)).thenReturn(java.time.LocalDate.parse("2026-02-23"));
-        when(statementService.dealerAging(77L, java.time.LocalDate.parse("2026-02-23"), "0-0,1-30,31-60,61-90,91"))
+        when(statementService.dealerAging(dealer, java.time.LocalDate.parse("2026-02-23"), "0-0,1-30,31-60,61-90,91"))
                 .thenReturn(new AgingSummaryResponse(
                         77L,
                         "D-AGING Name",
                         new BigDecimal("275"),
                         List.of(new AgingBucketDto("1-30 days", 1, 30, new BigDecimal("275")))
                 ));
+        when(statementService.dealerOverdueInvoices(dealer, java.time.LocalDate.parse("2026-02-23"))).thenReturn(List.of(
+                new OverdueInvoiceDto("INV-900", java.time.LocalDate.parse("2026-02-10"), 13L, new BigDecimal("275"))
+        ));
 
         var payload = dealerService.agingSummary(77L);
 
@@ -293,6 +297,11 @@ class DealerServiceTest {
                 .containsEntry("dealerId", 99L)
                 .containsEntry("dealerName", "D-AGING Name")
                 .containsEntry("totalOutstanding", new BigDecimal("275"));
+        assertThat((List<java.util.Map<String, Object>>) payload.get("overdueInvoices"))
+                .singleElement()
+                .satisfies(entry -> assertThat((java.util.Map<String, Object>) entry)
+                        .containsEntry("invoiceNumber", "INV-900")
+                        .containsEntry("daysOverdue", 13L));
     }
 
     @Test
@@ -300,8 +309,9 @@ class DealerServiceTest {
         Dealer dealer = dealer("D-AGING-EMPTY", new BigDecimal("1000"), "WEST");
         when(dealerRepository.findByCompanyAndId(company, 98L)).thenReturn(Optional.of(dealer));
         when(companyClock.today(company)).thenReturn(java.time.LocalDate.parse("2026-02-23"));
-        when(statementService.dealerAging(98L, java.time.LocalDate.parse("2026-02-23"), "0-0,1-30,31-60,61-90,91"))
+        when(statementService.dealerAging(dealer, java.time.LocalDate.parse("2026-02-23"), "0-0,1-30,31-60,61-90,91"))
                 .thenReturn(new AgingSummaryResponse(98L, "D-AGING-EMPTY Name", BigDecimal.ZERO, null));
+        when(statementService.dealerOverdueInvoices(dealer, java.time.LocalDate.parse("2026-02-23"))).thenReturn(List.of());
 
         var payload = dealerService.agingSummary(98L);
 
@@ -319,7 +329,7 @@ class DealerServiceTest {
         Dealer dealer = dealer("D-AGING-MAP", new BigDecimal("1000"), "WEST");
         when(dealerRepository.findByCompanyAndId(company, 97L)).thenReturn(Optional.of(dealer));
         when(companyClock.today(company)).thenReturn(java.time.LocalDate.parse("2026-02-23"));
-        when(statementService.dealerAging(97L, java.time.LocalDate.parse("2026-02-23"), "0-0,1-30,31-60,61-90,91"))
+        when(statementService.dealerAging(dealer, java.time.LocalDate.parse("2026-02-23"), "0-0,1-30,31-60,61-90,91"))
                 .thenReturn(new AgingSummaryResponse(
                         97L,
                         "D-AGING-MAP Name",
@@ -330,11 +340,16 @@ class DealerServiceTest {
                                 new AgingBucketDto("31-60 days", 31, 60, new BigDecimal("150")),
                                 new AgingBucketDto("61-90 days", 61, 90, new BigDecimal("175")),
                                 new AgingBucketDto("91+ days", 91, null, new BigDecimal("175")),
+                                new AgingBucketDto("Credit Balance", 0, 0, new BigDecimal("-15")),
                                 null,
                                 new AgingBucketDto("1-30 days", 1, 30, null),
                                 new AgingBucketDto("unknown", 10, 20, new BigDecimal("999"))
                         )
                 ));
+        when(statementService.dealerOverdueInvoices(dealer, java.time.LocalDate.parse("2026-02-23"))).thenReturn(Arrays.asList(
+                null,
+                new OverdueInvoiceDto("INV-901", java.time.LocalDate.parse("2026-02-01"), 22L, new BigDecimal("175"))
+        ));
 
         var payload = dealerService.agingSummary(97L);
 
@@ -345,6 +360,65 @@ class DealerServiceTest {
                 .containsEntry("31-60 days", new BigDecimal("150"))
                 .containsEntry("61-90 days", new BigDecimal("175"))
                 .containsEntry("90+ days", new BigDecimal("175"));
+        assertThat((List<java.util.Map<String, Object>>) payload.get("overdueInvoices"))
+                .singleElement()
+                .satisfies(entry -> assertThat((java.util.Map<String, Object>) entry)
+                        .containsEntry("invoiceNumber", "INV-901")
+                        .containsEntry("daysOverdue", 22L));
+    }
+
+    @Test
+    void overdueInvoicePayloadReturnsEmptyListForNullInput() {
+        @SuppressWarnings("unchecked")
+        List<java.util.Map<String, Object>> payload = (List<java.util.Map<String, Object>>) ReflectionTestUtils.invokeMethod(
+                dealerService,
+                "toOverdueInvoicePayload",
+                new Object[]{null}
+        );
+
+        assertThat(payload).isEqualTo(List.of());
+    }
+
+    @Test
+    void portalAgingBucketsReturnDefaultsWhenResponseIsNull() {
+        @SuppressWarnings("unchecked")
+        java.util.Map<String, Object> buckets = (java.util.Map<String, Object>) ReflectionTestUtils.invokeMethod(
+                dealerService,
+                "toPortalAgingBuckets",
+                new Object[]{null}
+        );
+
+        assertThat(buckets)
+                .containsEntry("current", BigDecimal.ZERO)
+                .containsEntry("90+ days", BigDecimal.ZERO);
+    }
+
+    @Test
+    void portalAgingBucketsIgnoreSyntheticCreditBalanceBucket() {
+        @SuppressWarnings("unchecked")
+        java.util.Map<String, Object> buckets = (java.util.Map<String, Object>) ReflectionTestUtils.invokeMethod(
+                dealerService,
+                "toPortalAgingBuckets",
+                new AgingSummaryResponse(
+                        99L,
+                        "Dealer Name",
+                        BigDecimal.ZERO,
+                        List.of(new AgingBucketDto("Credit Balance", 0, 0, new BigDecimal("-25")))
+                )
+        );
+
+        assertThat(buckets).containsEntry("current", BigDecimal.ZERO);
+    }
+
+    @Test
+    void safeReturnsProvidedValueWhenPresent() {
+        BigDecimal value = (BigDecimal) ReflectionTestUtils.invokeMethod(
+                dealerService,
+                "safe",
+                new BigDecimal("25.00")
+        );
+
+        assertThat(value).isEqualByComparingTo("25.00");
     }
 
     @Test

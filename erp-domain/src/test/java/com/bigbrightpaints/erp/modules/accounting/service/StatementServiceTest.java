@@ -8,6 +8,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.SupplierLedgerEntry;
 import com.bigbrightpaints.erp.modules.accounting.domain.SupplierLedgerRepository;
 import com.bigbrightpaints.erp.modules.accounting.dto.AgingBucketDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.DealerBalanceView;
+import com.bigbrightpaints.erp.modules.accounting.dto.OverdueInvoiceDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.SupplierBalanceView;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
@@ -174,6 +175,20 @@ class StatementServiceTest {
     }
 
     @Test
+    void dealerAging_overloadUsesProvidedDealerWithoutRepositoryReload() {
+        Dealer dealer = new Dealer();
+        dealer.setName("Dealer Direct");
+        ReflectionTestUtils.setField(dealer, "id", 211L);
+        when(dealerLedgerRepository.findByCompanyAndDealerAndEntryDateLessThanEqualOrderByEntryDateAscIdAsc(
+                company, dealer, LocalDate.of(2026, 2, 12))).thenReturn(List.of());
+
+        var response = statementService.dealerAging(dealer, LocalDate.of(2026, 2, 12), "0-15,16-30,31");
+
+        assertThat(response.partnerId()).isEqualTo(211L);
+        verify(dealerRepository, never()).findByCompanyAndId(company, 211L);
+    }
+
+    @Test
     void dealerStatement_usesAggregateOpeningWithoutLoadingAllPriorRows() {
         Dealer dealer = new Dealer();
         dealer.setName("Dealer Aggregate");
@@ -326,6 +341,55 @@ class StatementServiceTest {
                 .map(AgingBucketDto::amount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         assertThat(bucketTotal).isEqualByComparingTo(response.totalOutstanding());
+    }
+
+    @Test
+    void dealerOverdueInvoices_returnsOnlyPositiveOverdueLedgerInvoices() {
+        Dealer dealer = new Dealer();
+        dealer.setName("Dealer Overdue");
+        ReflectionTestUtils.setField(dealer, "id", 76L);
+
+        LocalDate asOf = LocalDate.of(2026, 2, 12);
+        DealerLedgerEntry overdue = new DealerLedgerEntry();
+        ReflectionTestUtils.setField(overdue, "id", 1L);
+        overdue.setEntryDate(asOf.minusDays(20));
+        overdue.setDueDate(asOf.minusDays(5));
+        overdue.setInvoiceNumber("INV-001");
+        overdue.setDebit(new BigDecimal("500.00"));
+        overdue.setCredit(BigDecimal.ZERO);
+        overdue.setAmountPaid(new BigDecimal("100.00"));
+        overdue.setPaymentStatus("PARTIAL");
+
+        DealerLedgerEntry current = new DealerLedgerEntry();
+        ReflectionTestUtils.setField(current, "id", 2L);
+        current.setEntryDate(asOf.minusDays(3));
+        current.setDueDate(asOf);
+        current.setInvoiceNumber("INV-002");
+        current.setDebit(new BigDecimal("300.00"));
+        current.setCredit(BigDecimal.ZERO);
+        current.setAmountPaid(BigDecimal.ZERO);
+        current.setPaymentStatus("UNPAID");
+
+        DealerLedgerEntry paid = new DealerLedgerEntry();
+        ReflectionTestUtils.setField(paid, "id", 3L);
+        paid.setEntryDate(asOf.minusDays(30));
+        paid.setDueDate(asOf.minusDays(15));
+        paid.setInvoiceNumber("INV-003");
+        paid.setDebit(new BigDecimal("200.00"));
+        paid.setCredit(BigDecimal.ZERO);
+        paid.setAmountPaid(new BigDecimal("200.00"));
+        paid.setPaymentStatus("PAID");
+
+        when(dealerLedgerRepository.findByCompanyAndDealerAndEntryDateLessThanEqualOrderByEntryDateAscIdAsc(
+                company, dealer, asOf)).thenReturn(List.of(current, overdue, paid));
+
+        List<OverdueInvoiceDto> overdueInvoices = statementService.dealerOverdueInvoices(dealer, asOf);
+
+        assertThat(overdueInvoices).containsExactly(new OverdueInvoiceDto(
+                "INV-001",
+                asOf.minusDays(5),
+                5L,
+                new BigDecimal("400.00")));
     }
 
     @Test

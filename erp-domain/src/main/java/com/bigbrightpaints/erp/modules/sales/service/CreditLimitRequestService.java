@@ -170,6 +170,7 @@ public class CreditLimitRequestService {
         Map<String, String> metadata = new HashMap<>();
         metadata.put("resourceType", "credit_limit_request");
         metadata.put("decisionStatus", normalizeStatus(creditRequest.getStatus()));
+        metadata.put("reason", decisionReason);
         metadata.put("decisionReason", decisionReason);
         if (creditRequest.getId() != null) {
             metadata.put("requestId", creditRequest.getId().toString());
@@ -183,6 +184,9 @@ public class CreditLimitRequestService {
         if (creditRequest.getAmountRequested() != null) {
             metadata.put("amountRequested", creditRequest.getAmountRequested().toPlainString());
         }
+        if (StringUtils.hasText(creditRequest.getReason())) {
+            metadata.put("requestReason", creditRequest.getReason().trim());
+        }
         if (metadataOverrides != null && !metadataOverrides.isEmpty()) {
             metadata.putAll(metadataOverrides);
         }
@@ -192,7 +196,7 @@ public class CreditLimitRequestService {
     private String normalizeStatus(String status) {
         if (!StringUtils.hasText(status)) {
             throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "Status is required")
-                    .withDetail("entity", "CreditRequest");
+                    .withDetail("entity", "credit_limit_request");
         }
         String normalized = status.trim().toUpperCase(Locale.ROOT);
         if (!VALID_STATUSES.contains(normalized)) {

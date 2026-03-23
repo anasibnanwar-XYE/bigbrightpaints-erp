@@ -2,6 +2,7 @@ package com.bigbrightpaints.erp.modules.sales.service;
 
 import com.bigbrightpaints.erp.modules.accounting.dto.AgingBucketDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.AgingSummaryResponse;
+import com.bigbrightpaints.erp.modules.accounting.dto.OverdueInvoiceDto;
 import com.bigbrightpaints.erp.modules.accounting.service.DealerLedgerService;
 import com.bigbrightpaints.erp.modules.accounting.service.StatementService;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
@@ -185,11 +186,13 @@ public class DealerPortalService {
 
     private Map<String, Object> buildAgingView(Dealer dealer) {
         LocalDate today = companyClock.today(dealer.getCompany());
-        AgingSummaryResponse ledgerAging = statementService.dealerAging(dealer.getId(), today, PORTAL_AGING_BUCKETS);
+        AgingSummaryResponse ledgerAging = statementService.dealerAging(dealer, today, PORTAL_AGING_BUCKETS);
         BigDecimal totalOutstanding = ledgerAging.totalOutstanding() != null
                 ? ledgerAging.totalOutstanding()
                 : BigDecimal.ZERO;
         Map<String, Object> agingBuckets = toPortalAgingBuckets(ledgerAging);
+        List<Map<String, Object>> overdueInvoices = toOverdueInvoicePayload(
+                statementService.dealerOverdueInvoices(dealer, today));
 
         long pendingOrderCount = resolvePendingOrderCount(dealer, null);
         BigDecimal pendingOrderExposure = resolvePendingOrderExposure(dealer, null);
@@ -210,7 +213,7 @@ public class DealerPortalService {
         result.put("creditUsed", creditUsed);
         result.put("availableCredit", availableCredit);
         result.put("agingBuckets", agingBuckets);
-        result.put("overdueInvoices", List.of());
+        result.put("overdueInvoices", overdueInvoices);
         return result;
     }
 
@@ -402,18 +405,52 @@ public class DealerPortalService {
             if (bucket == null || bucket.amount() == null) {
                 continue;
             }
-            String key = switch (bucket.label()) {
-                case "0-0 days" -> "current";
-                case "1-30 days" -> "1-30 days";
-                case "31-60 days" -> "31-60 days";
-                case "61-90 days" -> "61-90 days";
-                case "91+ days" -> "90+ days";
-                default -> null;
-            };
+            String key = resolvePortalAgingBucketKey(bucket);
             if (key != null) {
                 buckets.put(key, bucket.amount());
             }
         }
         return buckets;
+    }
+
+    private String resolvePortalAgingBucketKey(AgingBucketDto bucket) {
+        if (bucket == null || "Credit Balance".equals(bucket.label())) {
+            return null;
+        }
+        if (bucket.fromDays() == 0 && Integer.valueOf(0).equals(bucket.toDays())) {
+            return "current";
+        }
+        if (bucket.fromDays() == 1 && Integer.valueOf(30).equals(bucket.toDays())) {
+            return "1-30 days";
+        }
+        if (bucket.fromDays() == 31 && Integer.valueOf(60).equals(bucket.toDays())) {
+            return "31-60 days";
+        }
+        if (bucket.fromDays() == 61 && Integer.valueOf(90).equals(bucket.toDays())) {
+            return "61-90 days";
+        }
+        if (bucket.fromDays() == 91 && bucket.toDays() == null) {
+            return "90+ days";
+        }
+        return null;
+    }
+
+    private List<Map<String, Object>> toOverdueInvoicePayload(List<OverdueInvoiceDto> overdueInvoices) {
+        if (overdueInvoices == null || overdueInvoices.isEmpty()) {
+            return List.of();
+        }
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (OverdueInvoiceDto overdueInvoice : overdueInvoices) {
+            if (overdueInvoice == null) {
+                continue;
+            }
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("invoiceNumber", overdueInvoice.invoiceNumber());
+            row.put("dueDate", overdueInvoice.dueDate());
+            row.put("daysOverdue", overdueInvoice.daysOverdue());
+            row.put("outstandingAmount", overdueInvoice.outstandingAmount());
+            rows.add(row);
+        }
+        return rows;
     }
 }

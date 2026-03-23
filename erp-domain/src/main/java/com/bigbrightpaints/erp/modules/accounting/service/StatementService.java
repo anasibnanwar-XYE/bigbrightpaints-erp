@@ -8,6 +8,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.*;
 import com.bigbrightpaints.erp.modules.accounting.dto.AgingBucketDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.AgingSummaryResponse;
 import com.bigbrightpaints.erp.modules.accounting.dto.DealerBalanceView;
+import com.bigbrightpaints.erp.modules.accounting.dto.OverdueInvoiceDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.PartnerStatementResponse;
 import com.bigbrightpaints.erp.modules.accounting.dto.StatementTransactionDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.SupplierBalanceView;
@@ -140,6 +141,11 @@ public class StatementService {
         Company company = companyContextService.requireCurrentCompany();
         Dealer dealer = dealerRepository.findByCompanyAndId(company, dealerId)
                 .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Dealer not found"));
+        return dealerAging(dealer, asOf, bucketParam);
+    }
+
+    public AgingSummaryResponse dealerAging(Dealer dealer, LocalDate asOf, String bucketParam) {
+        Company company = companyContextService.requireCurrentCompany();
         LocalDate ref = asOf == null ? companyClock.today(company) : asOf;
         List<int[]> buckets = parseBuckets(bucketParam);
         List<DealerLedgerEntry> entries =
@@ -202,6 +208,28 @@ public class StatementService {
         }
         appendResidualCreditBucket(bucketDtos, residualCredit);
         return new AgingSummaryResponse(dealer.getId(), dealer.getName(), balance, bucketDtos);
+    }
+
+    public List<OverdueInvoiceDto> dealerOverdueInvoices(Dealer dealer, LocalDate asOf) {
+        Company company = companyContextService.requireCurrentCompany();
+        LocalDate ref = asOf == null ? companyClock.today(company) : asOf;
+        return dealerLedgerRepository.findByCompanyAndDealerAndEntryDateLessThanEqualOrderByEntryDateAscIdAsc(
+                        company,
+                        dealer,
+                        ref
+                ).stream()
+                .filter(entry -> StringUtils.hasText(entry.getInvoiceNumber()))
+                .filter(entry -> entry.getOutstandingAmount().compareTo(BigDecimal.ZERO) > 0)
+                .filter(entry -> entry.isOverdue(ref))
+                .sorted(Comparator.comparing(DealerLedgerEntry::getDueDate)
+                        .thenComparing(DealerLedgerEntry::getEntryDate)
+                        .thenComparing(DealerLedgerEntry::getId, Comparator.nullsLast(Comparator.naturalOrder())))
+                .map(entry -> new OverdueInvoiceDto(
+                        entry.getInvoiceNumber(),
+                        entry.getDueDate(),
+                        entry.getDaysOverdue(ref),
+                        entry.getOutstandingAmount()))
+                .toList();
     }
 
     public AgingSummaryResponse supplierAging(Long supplierId, LocalDate asOf, String bucketParam) {
