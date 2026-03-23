@@ -7,6 +7,8 @@ import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.service.CompanyDefaultAccountsService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
+import com.bigbrightpaints.erp.modules.factory.domain.PackingRecordRepository;
+import com.bigbrightpaints.erp.modules.factory.domain.PackagingSizeMappingRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatchRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.InventoryMovementRepository;
@@ -30,6 +32,9 @@ import com.bigbrightpaints.erp.modules.production.dto.CatalogProductEntryRespons
 import com.bigbrightpaints.erp.modules.production.dto.ProductUpdateRequest;
 import com.bigbrightpaints.erp.modules.production.dto.ProductionProductDto;
 import com.bigbrightpaints.erp.modules.production.dto.SkuReadinessDto;
+import com.bigbrightpaints.erp.modules.purchasing.domain.GoodsReceiptRepository;
+import com.bigbrightpaints.erp.modules.purchasing.domain.PurchaseOrderRepository;
+import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchaseRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -75,6 +80,11 @@ class ProductionCatalogServiceCanonicalEntryTest {
     @Mock private InventoryReservationRepository inventoryReservationRepository;
     @Mock private RawMaterialBatchRepository rawMaterialBatchRepository;
     @Mock private RawMaterialMovementRepository rawMaterialMovementRepository;
+    @Mock private PurchaseOrderRepository purchaseOrderRepository;
+    @Mock private GoodsReceiptRepository goodsReceiptRepository;
+    @Mock private RawMaterialPurchaseRepository rawMaterialPurchaseRepository;
+    @Mock private PackagingSizeMappingRepository packagingSizeMappingRepository;
+    @Mock private PackingRecordRepository packingRecordRepository;
     @Mock private CompanyEntityLookup companyEntityLookup;
     @Mock private CompanyDefaultAccountsService companyDefaultAccountsService;
     @Mock private CatalogImportRepository catalogImportRepository;
@@ -99,6 +109,11 @@ class ProductionCatalogServiceCanonicalEntryTest {
                 inventoryReservationRepository,
                 rawMaterialBatchRepository,
                 rawMaterialMovementRepository,
+                purchaseOrderRepository,
+                goodsReceiptRepository,
+                rawMaterialPurchaseRepository,
+                packagingSizeMappingRepository,
+                packingRecordRepository,
                 companyEntityLookup,
                 companyDefaultAccountsService,
                 catalogImportRepository,
@@ -123,10 +138,16 @@ class ProductionCatalogServiceCanonicalEntryTest {
         when(productRepository.findByCompanyAndSkuCodeIn(eq(company), anySet())).thenReturn(List.of());
         when(productRepository.findByBrandAndProductNameIgnoreCase(eq(brand), anyString())).thenReturn(Optional.empty());
         when(finishedGoodBatchRepository.findByFinishedGoodOrderByManufacturedAtAsc(any())).thenReturn(List.of());
+        when(inventoryReservationRepository.findFirstByRawMaterialOrderByCreatedAtAsc(any())).thenReturn(Optional.empty());
         when(inventoryMovementRepository.findFirstByFinishedGoodOrderByCreatedAtAsc(any())).thenReturn(Optional.empty());
         when(inventoryReservationRepository.findFirstByFinishedGoodOrderByCreatedAtAsc(any())).thenReturn(Optional.empty());
         when(rawMaterialBatchRepository.findByRawMaterial(any())).thenReturn(List.of());
         when(rawMaterialMovementRepository.findFirstByRawMaterialOrderByCreatedAtAsc(any())).thenReturn(Optional.empty());
+        when(purchaseOrderRepository.existsByCompanyAndLinesRawMaterial(any(), any())).thenReturn(false);
+        when(goodsReceiptRepository.existsByCompanyAndLinesRawMaterial(any(), any())).thenReturn(false);
+        when(rawMaterialPurchaseRepository.existsByCompanyAndLinesRawMaterial(any(), any())).thenReturn(false);
+        when(packagingSizeMappingRepository.existsByCompanyAndRawMaterial(any(), any())).thenReturn(false);
+        when(packingRecordRepository.existsByCompanyAndPackagingMaterial(any(), any())).thenReturn(false);
     }
 
     @Test
@@ -936,6 +957,92 @@ class ProductionCatalogServiceCanonicalEntryTest {
                 .thenReturn(Optional.of(finishedGood), Optional.of(finishedGood));
         when(rawMaterialRepository.findByCompanyAndSku(company, "FG-HISTORY"))
                 .thenReturn(Optional.of(staleRawMaterial));
+
+        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(service, "syncInventoryTruth", company, finishedProduct, "FINISHED_GOOD"))
+                .isInstanceOf(ApplicationException.class)
+                .satisfies(thrown -> assertThat(((ApplicationException) thrown).getErrorCode())
+                        .isEqualTo(ErrorCode.VALIDATION_INVALID_INPUT));
+
+        verify(rawMaterialRepository, never()).delete(any());
+    }
+
+    @Test
+    void syncInventoryTruth_rejectsRawMaterialDeletionWhenPurchasingReferencesExist() {
+        ProductionProduct finishedProduct = new ProductionProduct();
+        ReflectionTestUtils.setField(finishedProduct, "id", 45L);
+        finishedProduct.setCompany(company);
+        finishedProduct.setCategory("FINISHED_GOOD");
+        finishedProduct.setSkuCode("FG-PO-REF");
+        finishedProduct.setProductName("Primer");
+        finishedProduct.setUnitOfMeasure("L");
+        finishedProduct.setMetadata(Map.of(
+                "fgValuationAccountId", 101L,
+                "fgCogsAccountId", 102L,
+                "fgRevenueAccountId", 103L,
+                "fgTaxAccountId", 104L));
+
+        FinishedGood finishedGood = new FinishedGood();
+        finishedGood.setCompany(company);
+        finishedGood.setProductCode("FG-PO-REF");
+        finishedGood.setName("Primer");
+        finishedGood.setUnit("L");
+        finishedGood.setValuationAccountId(101L);
+        finishedGood.setCogsAccountId(102L);
+        finishedGood.setRevenueAccountId(103L);
+        finishedGood.setTaxAccountId(104L);
+
+        RawMaterial staleRawMaterial = new RawMaterial();
+        staleRawMaterial.setCompany(company);
+        staleRawMaterial.setSku("FG-PO-REF");
+
+        when(finishedGoodRepository.findByCompanyAndProductCode(company, "FG-PO-REF"))
+                .thenReturn(Optional.of(finishedGood), Optional.of(finishedGood));
+        when(rawMaterialRepository.findByCompanyAndSku(company, "FG-PO-REF"))
+                .thenReturn(Optional.of(staleRawMaterial));
+        when(purchaseOrderRepository.existsByCompanyAndLinesRawMaterial(company, staleRawMaterial)).thenReturn(true);
+
+        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(service, "syncInventoryTruth", company, finishedProduct, "FINISHED_GOOD"))
+                .isInstanceOf(ApplicationException.class)
+                .satisfies(thrown -> assertThat(((ApplicationException) thrown).getErrorCode())
+                        .isEqualTo(ErrorCode.VALIDATION_INVALID_INPUT));
+
+        verify(rawMaterialRepository, never()).delete(any());
+    }
+
+    @Test
+    void syncInventoryTruth_rejectsRawMaterialDeletionWhenPackagingMappingsExist() {
+        ProductionProduct finishedProduct = new ProductionProduct();
+        ReflectionTestUtils.setField(finishedProduct, "id", 46L);
+        finishedProduct.setCompany(company);
+        finishedProduct.setCategory("FINISHED_GOOD");
+        finishedProduct.setSkuCode("FG-PKG-REF");
+        finishedProduct.setProductName("Primer");
+        finishedProduct.setUnitOfMeasure("L");
+        finishedProduct.setMetadata(Map.of(
+                "fgValuationAccountId", 101L,
+                "fgCogsAccountId", 102L,
+                "fgRevenueAccountId", 103L,
+                "fgTaxAccountId", 104L));
+
+        FinishedGood finishedGood = new FinishedGood();
+        finishedGood.setCompany(company);
+        finishedGood.setProductCode("FG-PKG-REF");
+        finishedGood.setName("Primer");
+        finishedGood.setUnit("L");
+        finishedGood.setValuationAccountId(101L);
+        finishedGood.setCogsAccountId(102L);
+        finishedGood.setRevenueAccountId(103L);
+        finishedGood.setTaxAccountId(104L);
+
+        RawMaterial staleRawMaterial = new RawMaterial();
+        staleRawMaterial.setCompany(company);
+        staleRawMaterial.setSku("FG-PKG-REF");
+
+        when(finishedGoodRepository.findByCompanyAndProductCode(company, "FG-PKG-REF"))
+                .thenReturn(Optional.of(finishedGood), Optional.of(finishedGood));
+        when(rawMaterialRepository.findByCompanyAndSku(company, "FG-PKG-REF"))
+                .thenReturn(Optional.of(staleRawMaterial));
+        when(packagingSizeMappingRepository.existsByCompanyAndRawMaterial(company, staleRawMaterial)).thenReturn(true);
 
         assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(service, "syncInventoryTruth", company, finishedProduct, "FINISHED_GOOD"))
                 .isInstanceOf(ApplicationException.class)

@@ -2,6 +2,7 @@ package com.bigbrightpaints.erp.modules.purchasing.domain;
 
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
+import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -26,6 +27,8 @@ public interface RawMaterialPurchaseRepository extends JpaRepository<RawMaterial
     @Query("select p from RawMaterialPurchase p where p.company = :company and p.supplier = :supplier order by p.invoiceDate desc")
     List<RawMaterialPurchase> findByCompanyAndSupplierWithLinesOrderByInvoiceDateDesc(@Param("company") Company company,
                                                                                       @Param("supplier") Supplier supplier);
+
+    boolean existsByCompanyAndLinesRawMaterial(Company company, RawMaterial rawMaterial);
 
     @EntityGraph(attributePaths = {"supplier", "lines"})
     List<RawMaterialPurchase> findByCompanyAndInvoiceDateBetweenOrderByInvoiceDateAsc(Company company,

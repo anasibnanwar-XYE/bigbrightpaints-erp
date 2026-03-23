@@ -10,6 +10,8 @@ import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.core.util.CostingMethodUtils;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
+import com.bigbrightpaints.erp.modules.factory.domain.PackingRecordRepository;
+import com.bigbrightpaints.erp.modules.factory.domain.PackagingSizeMappingRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatchRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.InventoryMovementRepository;
@@ -36,6 +38,9 @@ import com.bigbrightpaints.erp.modules.production.dto.ProductUpdateRequest;
 import com.bigbrightpaints.erp.modules.production.dto.ProductionBrandDto;
 import com.bigbrightpaints.erp.modules.production.dto.ProductionProductDto;
 import com.bigbrightpaints.erp.modules.production.dto.SkuReadinessDto;
+import com.bigbrightpaints.erp.modules.purchasing.domain.GoodsReceiptRepository;
+import com.bigbrightpaints.erp.modules.purchasing.domain.PurchaseOrderRepository;
+import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchaseRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.DeserializationFeature;
@@ -140,6 +145,11 @@ public class ProductionCatalogService {
     private final InventoryReservationRepository inventoryReservationRepository;
     private final RawMaterialBatchRepository rawMaterialBatchRepository;
     private final RawMaterialMovementRepository rawMaterialMovementRepository;
+    private final PurchaseOrderRepository purchaseOrderRepository;
+    private final GoodsReceiptRepository goodsReceiptRepository;
+    private final RawMaterialPurchaseRepository rawMaterialPurchaseRepository;
+    private final PackagingSizeMappingRepository packagingSizeMappingRepository;
+    private final PackingRecordRepository packingRecordRepository;
     private final CompanyEntityLookup companyEntityLookup;
     private final CompanyDefaultAccountsService companyDefaultAccountsService;
     private final CatalogImportRepository catalogImportRepository;
@@ -159,6 +169,11 @@ public class ProductionCatalogService {
                                     InventoryReservationRepository inventoryReservationRepository,
                                     RawMaterialBatchRepository rawMaterialBatchRepository,
                                     RawMaterialMovementRepository rawMaterialMovementRepository,
+                                    PurchaseOrderRepository purchaseOrderRepository,
+                                    GoodsReceiptRepository goodsReceiptRepository,
+                                    RawMaterialPurchaseRepository rawMaterialPurchaseRepository,
+                                    PackagingSizeMappingRepository packagingSizeMappingRepository,
+                                    PackingRecordRepository packingRecordRepository,
                                     CompanyEntityLookup companyEntityLookup,
                                     CompanyDefaultAccountsService companyDefaultAccountsService,
                                     CatalogImportRepository catalogImportRepository,
@@ -175,6 +190,11 @@ public class ProductionCatalogService {
         this.inventoryReservationRepository = inventoryReservationRepository;
         this.rawMaterialBatchRepository = rawMaterialBatchRepository;
         this.rawMaterialMovementRepository = rawMaterialMovementRepository;
+        this.purchaseOrderRepository = purchaseOrderRepository;
+        this.goodsReceiptRepository = goodsReceiptRepository;
+        this.rawMaterialPurchaseRepository = rawMaterialPurchaseRepository;
+        this.packagingSizeMappingRepository = packagingSizeMappingRepository;
+        this.packingRecordRepository = packingRecordRepository;
         this.companyEntityLookup = companyEntityLookup;
         this.companyDefaultAccountsService = companyDefaultAccountsService;
         this.catalogImportRepository = catalogImportRepository;
@@ -2171,16 +2191,29 @@ public class ProductionCatalogService {
     }
 
     private void assertRawMaterialMirrorDeletionSafe(RawMaterial rawMaterial) {
+        Company company = rawMaterial.getCompany();
         BigDecimal currentStock = rawMaterial.getCurrentStock() != null ? rawMaterial.getCurrentStock() : BigDecimal.ZERO;
         BigDecimal privateStock = rawMaterial.getPrivateStock() != null ? rawMaterial.getPrivateStock() : BigDecimal.ZERO;
         boolean hasBatches = !rawMaterialBatchRepository.findByRawMaterial(rawMaterial).isEmpty();
         boolean hasMovements = rawMaterialMovementRepository.findFirstByRawMaterialOrderByCreatedAtAsc(rawMaterial).isPresent();
+        boolean hasReservations = inventoryReservationRepository.findFirstByRawMaterialOrderByCreatedAtAsc(rawMaterial).isPresent();
+        boolean hasPurchaseOrders = company != null && purchaseOrderRepository.existsByCompanyAndLinesRawMaterial(company, rawMaterial);
+        boolean hasGoodsReceipts = company != null && goodsReceiptRepository.existsByCompanyAndLinesRawMaterial(company, rawMaterial);
+        boolean hasPurchases = company != null && rawMaterialPurchaseRepository.existsByCompanyAndLinesRawMaterial(company, rawMaterial);
+        boolean hasPackagingMappings = company != null && packagingSizeMappingRepository.existsByCompanyAndRawMaterial(company, rawMaterial);
+        boolean hasPackingRecords = company != null && packingRecordRepository.existsByCompanyAndPackagingMaterial(company, rawMaterial);
         if (currentStock.compareTo(BigDecimal.ZERO) > 0
                 || privateStock.compareTo(BigDecimal.ZERO) > 0
                 || hasBatches
-                || hasMovements) {
+                || hasMovements
+                || hasReservations
+                || hasPurchaseOrders
+                || hasGoodsReceipts
+                || hasPurchases
+                || hasPackagingMappings
+                || hasPackingRecords) {
             throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
-                    "SKU " + rawMaterial.getSku() + " cannot change itemClass because raw material history already exists; create a new SKU or reverse inventory before retrying");
+                    "SKU " + rawMaterial.getSku() + " cannot change itemClass because raw material history or purchasing/packaging references already exist; create a new SKU or reverse inventory before retrying");
         }
     }
 
