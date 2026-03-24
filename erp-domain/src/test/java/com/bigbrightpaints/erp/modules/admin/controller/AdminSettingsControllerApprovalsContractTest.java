@@ -474,6 +474,7 @@ class AdminSettingsControllerApprovalsContractTest {
         PeriodCloseRequestRepository periodCloseRequestRepository = mock(PeriodCloseRequestRepository.class);
         PayrollRunRepository payrollRunRepository = mock(PayrollRunRepository.class);
         ExportApprovalService exportApprovalService = mock(ExportApprovalService.class);
+        ModuleGatingService moduleGatingService = mock(ModuleGatingService.class);
         when(exportApprovalService.listPending()).thenReturn(List.of());
         AdminSettingsController controller = new AdminSettingsController(
                 systemSettingsService,
@@ -485,7 +486,8 @@ class AdminSettingsControllerApprovalsContractTest {
                 creditLimitOverrideRequestRepository,
                 periodCloseRequestRepository,
                 payrollRunRepository,
-                null
+                null,
+                moduleGatingService
         );
 
         Company company = new Company();
