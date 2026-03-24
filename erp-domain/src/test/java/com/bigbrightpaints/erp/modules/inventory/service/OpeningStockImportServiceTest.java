@@ -300,8 +300,9 @@ class OpeningStockImportServiceTest {
                     assertThat(ex.getMessage()).isEqualTo("Opening stock batch already processed for this openingStockBatchKey");
                     assertThat(ex.getDetails())
                             .containsEntry("openingStockBatchKey", batchKey("fresh-key"))
+                            .containsKey("referenceNumber")
                             .containsEntry("operatorAction",
-                                    "Reuse the original Idempotency-Key for this batch, or reverse the prior opening stock before importing a distinct batch.");
+                                    "Reverse the prior opening stock using the provided referenceNumber, then import a new opening stock batch using a distinct openingStockBatchKey and Idempotency-Key.");
                 });
     }
 

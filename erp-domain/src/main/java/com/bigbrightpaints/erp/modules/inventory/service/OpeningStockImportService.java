@@ -170,7 +170,7 @@ public class OpeningStockImportService {
                     .withDetail("openingStockBatchKey", normalizedBatchKey)
                     .withDetail("referenceNumber", importReference)
                     .withDetail("operatorAction",
-                            "Reuse the original Idempotency-Key for this batch, or reverse the prior opening stock before importing a distinct batch.");
+                            "Reverse the prior opening stock using the provided referenceNumber, then import a new opening stock batch using a distinct openingStockBatchKey and Idempotency-Key.");
         }
 
         try {
