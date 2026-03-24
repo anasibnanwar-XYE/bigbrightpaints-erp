@@ -66,9 +66,13 @@ A new tenant operator should be able to say:
   - `GET /api/v1/inventory/opening-stock`
 - UI rules:
   - `Idempotency-Key` is required, not optional
+  - `openingStockBatchKey` is required, not optional
   - only prepared SKUs can be submitted
   - response tables must show both `results[]` and `errors[]`
   - every blocked row must surface returned readiness detail
+  - same-batch retry reuses the original `Idempotency-Key`
+  - materially distinct follow-up imports use a new `Idempotency-Key` and a
+    new `openingStockBatchKey`
 
 ## Readiness States To Show
 
@@ -89,10 +93,12 @@ Each state includes:
 ### Opening stock validation failures
 
 - missing explicit idempotency key
+- missing explicit `openingStockBatchKey`
 - missing SKU in a row
 - missing `OPEN-BAL`
 - `OPEN-BAL` present but not an equity account
-- idempotency-key replay conflict with different payload
+- reused `openingStockBatchKey` under a fresh `Idempotency-Key`
+- same `Idempotency-Key` reused with a different `openingStockBatchKey`
 
 ### Orphan or not-ready SKU failures
 

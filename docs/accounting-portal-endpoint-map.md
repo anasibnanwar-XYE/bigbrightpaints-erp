@@ -267,5 +267,5 @@ Maker-checker period-close note:
 - Security requirements are often `unspecified` in OpenAPI; enforce RBAC in frontend via `auth/me` permission claims and backend policy.
 - Workflow actions that should be safely repeatable (`close/lock/reopen/approve/post`) are exposed as `POST`; idempotency guarantees are not explicit.
 - `POST /api/v1/inventory/opening-stock` defines only `200`; partial-row errors and idempotency-conflict behavior are runtime/business errors not strongly typed in OpenAPI.
-- `POST /api/v1/inventory/opening-stock` now requires explicit `Idempotency-Key` plus query `openingStockBatchKey`; frontend must not rely on legacy header fallback or file-hash-derived replay behavior.
+- `POST /api/v1/inventory/opening-stock` now requires explicit `Idempotency-Key` plus query `openingStockBatchKey`; frontend must not rely on legacy header fallback or file-hash-derived replay behavior, and must surface the deterministic duplicate error when a fresh key reuses an existing batch key.
 - Reporting endpoints are canonical under `/api/v1/reports/*`; `/api/v1/accounting/reports/*` is retired.

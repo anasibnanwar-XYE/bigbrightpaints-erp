@@ -1,5 +1,7 @@
 package com.bigbrightpaints.erp.codered;
 
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
@@ -34,6 +36,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.mock.web.MockMultipartFile;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class CR_OpeningStockImportIdempotencyIT extends AbstractIntegrationTest {
 
@@ -115,6 +118,49 @@ class CR_OpeningStockImportIdempotencyIT extends AbstractIntegrationTest {
                 .findByCompanyAndIdempotencyKey(company, IDEMPOTENCY_KEY)
                 .orElseThrow();
         assertThat(record.getJournalEntryId()).isNotNull();
+
+        List<RawMaterialMovement> rmMovements = rawMaterialMovementRepository
+                .findByRawMaterialCompanyAndReferenceTypeAndReferenceId(
+                        company, InventoryReference.OPENING_STOCK, "RM-OPEN-B1");
+        assertThat(rmMovements).hasSize(1);
+
+        List<InventoryMovement> fgMovements = inventoryMovementRepository
+                .findByFinishedGood_CompanyAndReferenceTypeAndReferenceIdOrderByCreatedAtAsc(
+                        company, InventoryReference.OPENING_STOCK, "FG-OPEN-B1");
+        assertThat(fgMovements).hasSize(1);
+    }
+
+    @Test
+    void openingStockImport_rejectsFreshIdempotencyKeyForAlreadyProcessedBatch() {
+        MockMultipartFile file = csvFile();
+
+        openingStockImportService.importOpeningStock(
+                file,
+                IDEMPOTENCY_KEY,
+                OPENING_STOCK_BATCH_KEY);
+
+        assertThatThrownBy(() -> openingStockImportService.importOpeningStock(
+                csvFile(),
+                "OPEN-STOCK-IDEMP-002",
+                OPENING_STOCK_BATCH_KEY))
+                .isInstanceOfSatisfying(ApplicationException.class, ex -> {
+                    assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.BUSINESS_DUPLICATE_ENTRY);
+                    assertThat(ex.getMessage()).contains("Opening stock batch key already exists");
+                    assertThat(ex.getDetails())
+                            .containsEntry("existingIdempotencyKey", IDEMPOTENCY_KEY)
+                            .containsEntry("openingStockBatchKey", OPENING_STOCK_BATCH_KEY)
+                            .containsEntry("attemptedIdempotencyKey", "OPEN-STOCK-IDEMP-002")
+                            .containsEntry("attemptedOpeningStockBatchKey", OPENING_STOCK_BATCH_KEY);
+                });
+
+        OpeningStockImport persisted = openingStockImportRepository
+                .findByCompanyAndOpeningStockBatchKey(company, OPENING_STOCK_BATCH_KEY)
+                .orElseThrow();
+        assertThat(persisted.getIdempotencyKey()).isEqualTo(IDEMPOTENCY_KEY);
+        assertThat(persisted.getJournalEntryId()).isNotNull();
+
+        assertThat(openingStockImportRepository.findByCompanyAndIdempotencyKey(company, "OPEN-STOCK-IDEMP-002"))
+                .isEmpty();
 
         List<RawMaterialMovement> rmMovements = rawMaterialMovementRepository
                 .findByRawMaterialCompanyAndReferenceTypeAndReferenceId(

@@ -35,17 +35,11 @@ public class OpeningStockImport extends VersionedEntity {
     @Column(name = "idempotency_key", nullable = false, length = 128)
     private String idempotencyKey;
 
-    @Column(name = "idempotency_hash", length = 64)
-    private String idempotencyHash;
-
     @Column(name = "reference_number", length = 128)
     private String referenceNumber;
 
     @Column(name = "opening_stock_batch_key", nullable = false, length = 128)
     private String openingStockBatchKey;
-
-    @Column(name = "file_hash", length = 64)
-    private String fileHash;
 
     @Column(name = "file_name", length = 256)
     private String fileName;
@@ -104,14 +98,6 @@ public class OpeningStockImport extends VersionedEntity {
         this.idempotencyKey = idempotencyKey;
     }
 
-    public String getIdempotencyHash() {
-        return idempotencyHash;
-    }
-
-    public void setIdempotencyHash(String idempotencyHash) {
-        this.idempotencyHash = idempotencyHash;
-    }
-
     public String getReferenceNumber() {
         return referenceNumber;
     }
@@ -126,14 +112,6 @@ public class OpeningStockImport extends VersionedEntity {
 
     public void setOpeningStockBatchKey(String openingStockBatchKey) {
         this.openingStockBatchKey = openingStockBatchKey;
-    }
-
-    public String getFileHash() {
-        return fileHash;
-    }
-
-    public void setFileHash(String fileHash) {
-        this.fileHash = fileHash;
     }
 
     public String getFileName() {

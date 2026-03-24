@@ -59,8 +59,8 @@ OWNER-CAPITAL,Owner Capital,EQUITY,0,335000.00,Opening capital introduced
 
 **Auth:** `ROLE_ADMIN` / `ROLE_ACCOUNTING` / `ROLE_FACTORY`  
 **Upload type:** `multipart/form-data` with part name `file`  
-**Optional idempotency headers:** `Idempotency-Key` (preferred), `X-Idempotency-Key` (legacy). If both are sent, they must match.  
-**Idempotency fallback:** if header is omitted, backend uses file hash.
+**Required replay inputs:** `Idempotency-Key` header plus `openingStockBatchKey` query parameter
+**Replay contract:** `Idempotency-Key` is the request replay key, and `openingStockBatchKey` is the opening-stock batch identity. Reuse the original `Idempotency-Key` to replay the same batch result. Use a new `openingStockBatchKey` only for a materially distinct follow-up import, or reverse the prior opening stock before rerunning the same batch from scratch.
 
 > In `prod` profile, opening stock import can be blocked unless `erp.inventory.opening-stock.enabled=true`.
 
@@ -219,8 +219,10 @@ If a group is not listed, it is returned in `unmappedGroups[]` and needs manual 
 | Error pattern | Meaning | Fix |
 |---|---|---|
 | `Opening stock import is disabled...` | Migration disabled in prod | Enable `erp.inventory.opening-stock.enabled=true` for migration window |
-| `Idempotency key mismatch between ... headers` | `Idempotency-Key` and `X-Idempotency-Key` differ | Send only one, or both with identical values |
+| `openingStockBatchKey is required...` | Missing explicit batch identity | Send a non-empty `openingStockBatchKey` query parameter |
 | `Idempotency key exceeds 128 characters` | Header key too long | Use shorter key |
+| `Opening stock batch key already exists...` | A fresh `Idempotency-Key` tried to reuse an already-processed batch | Reuse the original `Idempotency-Key` for replay, or reverse the old opening stock before rerunning that batch |
+| `Idempotency key already used with different openingStockBatchKey` | Same request replay key was reused for a different batch identity | Keep the original `openingStockBatchKey` when retrying that request, or use a new `Idempotency-Key` for a distinct batch |
 | `Duplicate SKU in import file` | Same SKU repeated in one CSV | Keep each SKU once per file |
 | `Unknown type` | Invalid `type` value | Use `RAW_MATERIAL` / `FINISHED_GOOD` (or `RM`/`FG`) |
 | `Unknown material_type` | Invalid material type | Use `PRODUCTION` or `PACKAGING` |
@@ -245,7 +247,8 @@ If a group is not listed, it is returned in `unmappedGroups[]` and needs manual 
 All three imports are designed for migration resilience:
 - Row-level failures are reported in `errors[]`
 - Valid rows continue processing
-- Replays of identical files are idempotent
+- Replaying the same opening-stock batch requires the original `Idempotency-Key`
+- Reusing an existing `openingStockBatchKey` under a fresh `Idempotency-Key` is rejected before duplicate stock or journal posting
 
 ---
 
@@ -306,7 +309,7 @@ curl -X POST "<BASE_URL>/api/v1/accounting/opening-balances" \
 2. Upload:
 
 ```bash
-curl -X POST "<BASE_URL>/api/v1/inventory/opening-stock" \
+curl -X POST "<BASE_URL>/api/v1/inventory/opening-stock?openingStockBatchKey=open-stock-batch-2026-03-01" \
   -H "Authorization: Bearer <TOKEN>" \
   -H "Idempotency-Key: open-stock-2026-03-01" \
   -F "file=@opening-stock.csv"

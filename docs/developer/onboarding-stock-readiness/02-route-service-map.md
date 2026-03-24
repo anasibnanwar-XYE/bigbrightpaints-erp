@@ -100,6 +100,7 @@ journey.
 - request contract:
   - multipart `file`
   - explicit `Idempotency-Key`
+  - explicit `openingStockBatchKey`
 
 ### `OpeningStockImportService`
 
@@ -108,12 +109,14 @@ journey.
   - verify prepared SKU readiness through `SkuReadinessService`
   - create batches and movements only for already-ready SKUs
   - post the opening-stock journal against `OPEN-BAL`
-  - persist idempotent replay state including `results[]` and `errors[]`
+  - persist idempotent replay state keyed by explicit `Idempotency-Key` and
+    `openingStockBatchKey`, including `results[]` and `errors[]`
 
 ### Important hard-cut rules
 
 - no `X-Idempotency-Key`
 - no file-hash fallback
+- no hidden payload-derived replay check
 - no raw-material auto-create
 - no finished-good auto-create
 - no `OPEN-BAL` auto-create during import
