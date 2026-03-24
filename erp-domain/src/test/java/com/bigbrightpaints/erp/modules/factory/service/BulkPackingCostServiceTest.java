@@ -76,26 +76,6 @@ class BulkPackingCostServiceTest {
     }
 
     @Test
-    void consumePackagingIfRequired_skipsConsumptionWhenAlreadyConsumedUpstream() {
-        BulkPackCostSummary summary = bulkPackingCostService.consumePackagingIfRequired(
-                company,
-                new BulkPackRequest(
-                        41L,
-                        List.of(new BulkPackRequest.PackLine(901L, new BigDecimal("3"), "1L", "L")),
-                        LocalDate.of(2026, 2, 1),
-                        "packer",
-                        null,
-                        null,
-                        true),
-                "PACK-REF");
-
-        assertThat(summary.totalCost()).isEqualByComparingTo("0.00");
-        assertThat(summary.accountTotals()).isEmpty();
-        assertThat(summary.lineCosts()).isEmpty();
-        verifyNoInteractions(packagingMaterialService);
-    }
-
-    @Test
     void consumePackagingIfRequired_returnsEmptySummaryWhenRequestMissing() {
         BulkPackCostSummary summary = bulkPackingCostService.consumePackagingIfRequired(company, null, "PACK-REF");
 

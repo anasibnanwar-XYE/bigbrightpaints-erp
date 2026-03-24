@@ -28,21 +28,8 @@ public record BulkPackRequest(
      * Optional idempotency key. If omitted, the server derives a deterministic key from the request payload.
      * Supplying a key allows callers to intentionally create multiple identical pack operations safely.
      */
-    String idempotencyKey,
-    Boolean packagingAlreadyConsumed
+    String idempotencyKey
 ) {
-    public BulkPackRequest(Long bulkBatchId,
-                           List<PackLine> packs,
-                           LocalDate packDate,
-                           String packedBy,
-                           String notes,
-                           String idempotencyKey) {
-        this(bulkBatchId, packs, packDate, packedBy, notes, idempotencyKey, null);
-    }
-
-    public boolean shouldConsumePackaging() {
-        return !Boolean.TRUE.equals(packagingAlreadyConsumed);
-    }
 
     /**
      * A single packing line: creates child batches for a specific size SKU.

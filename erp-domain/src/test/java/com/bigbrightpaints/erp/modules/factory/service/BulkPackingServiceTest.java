@@ -55,7 +55,7 @@ class BulkPackingServiceTest {
     }
 
     @Test
-    void buildPackReference_distinguishesPackagingConsumptionMode() {
+    void buildPackReference_isStableForEquivalentRequests() {
         BulkPackingService service = new BulkPackingService(
                 null,
                 null,
@@ -72,27 +72,25 @@ class BulkPackingServiceTest {
         ReflectionTestUtils.setField(bulkBatch, "id", 42L);
         bulkBatch.setBatchCode("bulk-42");
 
-        BulkPackRequest consumePackaging = new BulkPackRequest(
+        BulkPackRequest firstRequest = new BulkPackRequest(
                 42L,
                 List.of(new BulkPackRequest.PackLine(7L, new BigDecimal("10"), "1L", "L")),
                 LocalDate.of(2026, 3, 23),
                 null,
                 null,
-                null,
-                false);
-        BulkPackRequest skipPackaging = new BulkPackRequest(
+                null);
+        BulkPackRequest secondRequest = new BulkPackRequest(
                 42L,
                 List.of(new BulkPackRequest.PackLine(7L, new BigDecimal("10"), "1L", "L")),
                 LocalDate.of(2026, 3, 23),
                 null,
                 null,
-                null,
-                true);
+                null);
 
-        String consumeReference = ReflectionTestUtils.invokeMethod(service, "buildPackReference", bulkBatch, consumePackaging);
-        String skipReference = ReflectionTestUtils.invokeMethod(service, "buildPackReference", bulkBatch, skipPackaging);
+        String firstReference = ReflectionTestUtils.invokeMethod(service, "buildPackReference", bulkBatch, firstRequest);
+        String secondReference = ReflectionTestUtils.invokeMethod(service, "buildPackReference", bulkBatch, secondRequest);
 
-        assertThat(consumeReference).isNotEqualTo(skipReference);
+        assertThat(firstReference).isEqualTo(secondReference);
     }
 
     @Test
@@ -119,16 +117,14 @@ class BulkPackingServiceTest {
                 LocalDate.of(2026, 3, 23),
                 null,
                 null,
-                "KEY-1",
-                false);
+                "KEY-1");
         BulkPackRequest requestWithSecondKey = new BulkPackRequest(
                 42L,
                 List.of(new BulkPackRequest.PackLine(7L, new BigDecimal("10"), "1L", "L")),
                 LocalDate.of(2026, 3, 23),
                 null,
                 null,
-                "KEY-2",
-                false);
+                "KEY-2");
 
         String firstReference = ReflectionTestUtils.invokeMethod(service, "buildPackReference", bulkBatch, requestWithFirstKey);
         String secondReference = ReflectionTestUtils.invokeMethod(service, "buildPackReference", bulkBatch, requestWithSecondKey);

@@ -45,7 +45,7 @@ public class BulkPackingCostService {
     public BulkPackCostSummary consumePackagingIfRequired(Company company,
                                                           BulkPackRequest request,
                                                           String packReference) {
-        if (request == null || !request.shouldConsumePackaging()) {
+        if (request == null) {
             return new BulkPackCostSummary(BigDecimal.ZERO, Map.of(), Map.of());
         }
         return consumePackagingFromMappings(company, request.packs(), packReference);

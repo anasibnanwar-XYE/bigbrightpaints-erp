@@ -17,9 +17,11 @@ import jakarta.persistence.UniqueConstraint;
 import java.time.Instant;
 
 @Entity
-@Table(name = "opening_stock_imports",
-        uniqueConstraints = @UniqueConstraint(name = "uq_opening_stock_import_company_key",
-                columnNames = {"company_id", "idempotency_key"}))
+@Table(
+        name = "opening_stock_imports",
+        uniqueConstraints = { @UniqueConstraint(name = "uq_opening_stock_import_company_key",
+                columnNames = {"company_id", "idempotency_key"}),
+                @UniqueConstraint(name = "uq_opening_stock_import_company_batch_key", columnNames = {"company_id", "opening_stock_batch_key"}) })
 public class OpeningStockImport extends VersionedEntity {
 
     @Id
@@ -39,11 +41,8 @@ public class OpeningStockImport extends VersionedEntity {
     @Column(name = "reference_number", length = 128)
     private String referenceNumber;
 
-    @Column(name = "opening_stock_batch_key", length = 128)
+    @Column(name = "opening_stock_batch_key", nullable = false, length = 128)
     private String openingStockBatchKey;
-
-    @Column(name = "replay_protection_key", length = 256)
-    private String replayProtectionKey;
 
     @Column(name = "file_hash", length = 64)
     private String fileHash;
@@ -127,14 +126,6 @@ public class OpeningStockImport extends VersionedEntity {
 
     public void setOpeningStockBatchKey(String openingStockBatchKey) {
         this.openingStockBatchKey = openingStockBatchKey;
-    }
-
-    public String getReplayProtectionKey() {
-        return replayProtectionKey;
-    }
-
-    public void setReplayProtectionKey(String replayProtectionKey) {
-        this.replayProtectionKey = replayProtectionKey;
     }
 
     public String getFileHash() {

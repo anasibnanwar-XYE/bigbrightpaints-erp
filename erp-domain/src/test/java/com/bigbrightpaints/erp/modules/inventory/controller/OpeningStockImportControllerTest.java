@@ -57,24 +57,6 @@ class OpeningStockImportControllerTest {
     }
 
     @Test
-    void importOpeningStock_fallsBackToIdempotencyKeyWhenBatchKeyIsMissing() {
-        OpeningStockImportController controller = new OpeningStockImportController(openingStockImportService, skuReadinessService);
-        MockMultipartFile file = csvFile();
-        OpeningStockImportResponse response = new OpeningStockImportResponse(
-                batchKey("legacy-key"),
-                1,
-                1,
-                0,
-                List.of(),
-                List.of());
-        when(openingStockImportService.importOpeningStock(file, "legacy-key", "legacy-key")).thenReturn(response);
-
-        controller.importOpeningStock("legacy-key", null, file, authentication("ROLE_ADMIN"));
-
-        verify(openingStockImportService).importOpeningStock(file, "legacy-key", "legacy-key");
-    }
-
-    @Test
     void importOpeningStock_sanitizesReadinessForFactoryUsers() {
         OpeningStockImportController controller = new OpeningStockImportController(openingStockImportService, skuReadinessService);
         MockMultipartFile file = csvFile();

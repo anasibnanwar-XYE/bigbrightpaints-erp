@@ -1,6 +1,7 @@
 package com.bigbrightpaints.erp.modules.purchasing.domain;
 
 import com.bigbrightpaints.erp.modules.company.domain.Company;
+import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -21,6 +22,8 @@ public interface PurchaseOrderRepository extends JpaRepository<PurchaseOrder, Lo
     @Query("select po from PurchaseOrder po where po.company = :company and po.supplier = :supplier order by po.orderDate desc")
     List<PurchaseOrder> findByCompanyAndSupplierWithLinesOrderByOrderDateDesc(@Param("company") Company company,
                                                                               @Param("supplier") Supplier supplier);
+
+    boolean existsByCompanyAndLinesRawMaterial(Company company, RawMaterial rawMaterial);
 
     Optional<PurchaseOrder> findByCompanyAndId(Company company, Long id);
     Optional<PurchaseOrder> findByCompanyAndOrderNumberIgnoreCase(Company company, String orderNumber);

@@ -10,9 +10,17 @@ import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.core.util.CostingMethodUtils;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
+import com.bigbrightpaints.erp.modules.factory.domain.PackingRecordRepository;
+import com.bigbrightpaints.erp.modules.factory.domain.PackagingSizeMappingRepository;
+import com.bigbrightpaints.erp.modules.factory.domain.ProductionLogMaterialRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
+import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatchRepository;
+import com.bigbrightpaints.erp.modules.inventory.domain.InventoryMovementRepository;
+import com.bigbrightpaints.erp.modules.inventory.domain.InventoryReservationRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial;
+import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatchRepository;
+import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovementRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialRepository;
 import com.bigbrightpaints.erp.modules.accounting.service.CompanyDefaultAccountsService;
 import com.bigbrightpaints.erp.modules.production.domain.CatalogImport;
@@ -31,6 +39,10 @@ import com.bigbrightpaints.erp.modules.production.dto.ProductUpdateRequest;
 import com.bigbrightpaints.erp.modules.production.dto.ProductionBrandDto;
 import com.bigbrightpaints.erp.modules.production.dto.ProductionProductDto;
 import com.bigbrightpaints.erp.modules.production.dto.SkuReadinessDto;
+import com.bigbrightpaints.erp.modules.purchasing.domain.GoodsReceiptRepository;
+import com.bigbrightpaints.erp.modules.purchasing.domain.PurchaseOrderRepository;
+import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchaseRepository;
+import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderItemRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.DeserializationFeature;
@@ -130,6 +142,18 @@ public class ProductionCatalogService {
     private final ProductionProductRepository productRepository;
     private final FinishedGoodRepository finishedGoodRepository;
     private final RawMaterialRepository rawMaterialRepository;
+    private final FinishedGoodBatchRepository finishedGoodBatchRepository;
+    private final InventoryMovementRepository inventoryMovementRepository;
+    private final InventoryReservationRepository inventoryReservationRepository;
+    private final RawMaterialBatchRepository rawMaterialBatchRepository;
+    private final RawMaterialMovementRepository rawMaterialMovementRepository;
+    private final PurchaseOrderRepository purchaseOrderRepository;
+    private final GoodsReceiptRepository goodsReceiptRepository;
+    private final RawMaterialPurchaseRepository rawMaterialPurchaseRepository;
+    private final PackagingSizeMappingRepository packagingSizeMappingRepository;
+    private final PackingRecordRepository packingRecordRepository;
+    private final ProductionLogMaterialRepository productionLogMaterialRepository;
+    private final SalesOrderItemRepository salesOrderItemRepository;
     private final CompanyEntityLookup companyEntityLookup;
     private final CompanyDefaultAccountsService companyDefaultAccountsService;
     private final CatalogImportRepository catalogImportRepository;
@@ -144,6 +168,18 @@ public class ProductionCatalogService {
                                     ProductionProductRepository productRepository,
                                     FinishedGoodRepository finishedGoodRepository,
                                     RawMaterialRepository rawMaterialRepository,
+                                    FinishedGoodBatchRepository finishedGoodBatchRepository,
+                                    InventoryMovementRepository inventoryMovementRepository,
+                                    InventoryReservationRepository inventoryReservationRepository,
+                                    RawMaterialBatchRepository rawMaterialBatchRepository,
+                                    RawMaterialMovementRepository rawMaterialMovementRepository,
+                                    PurchaseOrderRepository purchaseOrderRepository,
+                                    GoodsReceiptRepository goodsReceiptRepository,
+                                    RawMaterialPurchaseRepository rawMaterialPurchaseRepository,
+                                    PackagingSizeMappingRepository packagingSizeMappingRepository,
+                                    PackingRecordRepository packingRecordRepository,
+                                    ProductionLogMaterialRepository productionLogMaterialRepository,
+                                    SalesOrderItemRepository salesOrderItemRepository,
                                     CompanyEntityLookup companyEntityLookup,
                                     CompanyDefaultAccountsService companyDefaultAccountsService,
                                     CatalogImportRepository catalogImportRepository,
@@ -155,6 +191,18 @@ public class ProductionCatalogService {
         this.productRepository = productRepository;
         this.finishedGoodRepository = finishedGoodRepository;
         this.rawMaterialRepository = rawMaterialRepository;
+        this.finishedGoodBatchRepository = finishedGoodBatchRepository;
+        this.inventoryMovementRepository = inventoryMovementRepository;
+        this.inventoryReservationRepository = inventoryReservationRepository;
+        this.rawMaterialBatchRepository = rawMaterialBatchRepository;
+        this.rawMaterialMovementRepository = rawMaterialMovementRepository;
+        this.purchaseOrderRepository = purchaseOrderRepository;
+        this.goodsReceiptRepository = goodsReceiptRepository;
+        this.rawMaterialPurchaseRepository = rawMaterialPurchaseRepository;
+        this.packagingSizeMappingRepository = packagingSizeMappingRepository;
+        this.packingRecordRepository = packingRecordRepository;
+        this.productionLogMaterialRepository = productionLogMaterialRepository;
+        this.salesOrderItemRepository = salesOrderItemRepository;
         this.companyEntityLookup = companyEntityLookup;
         this.companyDefaultAccountsService = companyDefaultAccountsService;
         this.catalogImportRepository = catalogImportRepository;
@@ -515,8 +563,7 @@ public class ProductionCatalogService {
         }
         product.setMetadata(metadata);
         ProductionProduct saved = productRepository.save(product);
-        ensureCatalogFinishedGood(company, saved);
-        syncRawMaterial(company, saved, normalizedItemClass);
+        syncInventoryTruth(company, saved, normalizedItemClass);
         return toProductDto(saved);
     }
 
@@ -1467,8 +1514,13 @@ public class ProductionCatalogService {
             product.setActive(request.active());
         }
         ProductionProduct saved = productRepository.save(product);
-        ensureCatalogFinishedGood(company, saved);
-        syncRawMaterial(company, saved, currentItemClass);
+        syncInventoryTruth(
+                company,
+                saved,
+                currentItemClass,
+                null,
+                rawMaterialInventoryAccountIdFromMetadata(saved) != null,
+                false);
         return toProductDto(saved);
     }
 
@@ -1507,6 +1559,7 @@ public class ProductionCatalogService {
         }
         boolean created = existing == null;
         ProductionProduct product = created ? new ProductionProduct() : existing;
+        boolean wasRawMaterialProduct = !created && isRawMaterialCategory(product.getCategory());
         if (created) {
             String sku = StringUtils.hasText(sanitizedSku)
                     ? sanitizedSku
@@ -1535,13 +1588,15 @@ public class ProductionCatalogService {
                 created,
                 context.validatedRawMaterialInventoryAccounts());
         ProductionProduct saved = productRepository.save(product);
-        ensureCatalogFinishedGood(company, saved);
         cacheProduct(context, saved);
-        boolean seeded = syncRawMaterial(
+        boolean cleanupMirror = created || wasRawMaterialProduct != isRawMaterialCategory(saved.getCategory());
+        boolean seeded = syncInventoryTruth(
                 company,
                 saved,
+                null,
                 context.validatedRawMaterialInventoryAccounts(),
-                hasExplicitRawMaterialInventoryAccount(row));
+                hasExplicitRawMaterialInventoryAccount(row),
+                cleanupMirror);
         return new ProcessOutcome(resolution.created(), created, seeded);
     }
 
@@ -1822,6 +1877,59 @@ public class ProductionCatalogService {
         return syncRawMaterial(company, product, null, null, rawMaterialInventoryAccountIdFromMetadata(product) != null);
     }
 
+    private boolean syncInventoryTruth(Company company,
+                                       ProductionProduct product,
+                                       String itemClassHint) {
+        return syncInventoryTruth(
+                company,
+                product,
+                itemClassHint,
+                null,
+                rawMaterialInventoryAccountIdFromMetadata(product) != null);
+    }
+
+    private boolean syncInventoryTruth(Company company,
+                                       ProductionProduct product,
+                                       String itemClassHint,
+                                       Map<Long, Long> validatedRawMaterialInventoryAccounts,
+                                       boolean hasExplicitInventoryAccountMapping) {
+        return syncInventoryTruth(
+                company,
+                product,
+                itemClassHint,
+                validatedRawMaterialInventoryAccounts,
+                hasExplicitInventoryAccountMapping,
+                true);
+    }
+
+    private boolean syncInventoryTruth(Company company,
+                                       ProductionProduct product,
+                                       String itemClassHint,
+                                       Map<Long, Long> validatedRawMaterialInventoryAccounts,
+                                       boolean hasExplicitInventoryAccountMapping,
+                                       boolean cleanupMirrors) {
+        if (company == null || product == null || product.getId() == null) {
+            return false;
+        }
+        if (isRawMaterialCategory(product.getCategory())) {
+            boolean seeded = syncRawMaterial(
+                    company,
+                    product,
+                    itemClassHint,
+                    validatedRawMaterialInventoryAccounts,
+                    hasExplicitInventoryAccountMapping);
+            if (cleanupMirrors) {
+                deleteFinishedGoodMirror(company, product);
+            }
+            return seeded;
+        }
+        ensureCatalogFinishedGood(company, product);
+        if (cleanupMirrors) {
+            deleteRawMaterialMirror(company, product);
+        }
+        return false;
+    }
+
     private boolean syncRawMaterial(Company company,
                                     ProductionProduct product,
                                     String itemClassHint) {
@@ -2093,6 +2201,64 @@ public class ProductionCatalogService {
                     finishedGoodRepository.save(existing);
                 }
             }
+        }
+    }
+
+    private void deleteRawMaterialMirror(Company company, ProductionProduct product) {
+        String sku = product != null ? cleanValue(product.getSkuCode()) : null;
+        if (!StringUtils.hasText(sku)) {
+            return;
+        }
+        rawMaterialRepository.findByCompanyAndSku(company, sku).ifPresent(rawMaterial -> {
+            assertRawMaterialMirrorDeletionSafe(rawMaterial);
+            rawMaterialRepository.delete(rawMaterial);
+        });
+    }
+
+    private void deleteFinishedGoodMirror(Company company, ProductionProduct product) {
+        String sku = product != null ? cleanValue(product.getSkuCode()) : null;
+        if (!StringUtils.hasText(sku)) {
+            return;
+        }
+        finishedGoodRepository.findByCompanyAndProductCode(company, sku).ifPresent(finishedGood -> {
+            assertFinishedGoodMirrorDeletionSafe(finishedGood);
+            finishedGoodRepository.delete(finishedGood);
+        });
+    }
+
+    private void assertRawMaterialMirrorDeletionSafe(RawMaterial rawMaterial) {
+        Company company = rawMaterial.getCompany();
+        BigDecimal currentStock = rawMaterial.getCurrentStock() != null ? rawMaterial.getCurrentStock() : BigDecimal.ZERO;
+        BigDecimal privateStock = rawMaterial.getPrivateStock() != null ? rawMaterial.getPrivateStock() : BigDecimal.ZERO;
+        boolean hasBatches = !rawMaterialBatchRepository.findByRawMaterial(rawMaterial).isEmpty();
+        boolean hasMovements = rawMaterialMovementRepository.findFirstByRawMaterialOrderByCreatedAtAsc(rawMaterial).isPresent();
+        boolean hasReservations = inventoryReservationRepository.findFirstByRawMaterialOrderByCreatedAtAsc(rawMaterial).isPresent();
+        boolean hasPurchaseOrders = company != null && purchaseOrderRepository.existsByCompanyAndLinesRawMaterial(company, rawMaterial);
+        boolean hasGoodsReceipts = company != null && goodsReceiptRepository.existsByCompanyAndLinesRawMaterial(company, rawMaterial);
+        boolean hasPurchases = company != null && rawMaterialPurchaseRepository.existsByCompanyAndLinesRawMaterial(company, rawMaterial);
+        boolean hasPackagingMappings = company != null && packagingSizeMappingRepository.existsByCompanyAndRawMaterial(company, rawMaterial);
+        boolean hasPackingRecords = company != null && packingRecordRepository.existsByCompanyAndPackagingMaterial(company, rawMaterial);
+        boolean hasProductionLogMaterials = company != null && productionLogMaterialRepository.existsByLogCompanyAndRawMaterial(company, rawMaterial);
+        boolean hasBlockingHistory = currentStock.compareTo(BigDecimal.ZERO) > 0 || privateStock.compareTo(BigDecimal.ZERO) > 0 || hasBatches || hasMovements || hasReservations || hasPurchaseOrders || hasGoodsReceipts || hasPurchases || hasPackagingMappings || hasPackingRecords || hasProductionLogMaterials;
+        if (hasBlockingHistory) {
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+                    "SKU " + rawMaterial.getSku() + " cannot change itemClass because raw material history or factory/purchasing/packaging references already exist; create a new SKU or reverse inventory before retrying");
+        }
+    }
+
+    private void assertFinishedGoodMirrorDeletionSafe(FinishedGood finishedGood) {
+        Company company = finishedGood.getCompany();
+        BigDecimal currentStock = finishedGood.getCurrentStock() != null ? finishedGood.getCurrentStock() : BigDecimal.ZERO;
+        BigDecimal reservedStock = finishedGood.getReservedStock() != null ? finishedGood.getReservedStock() : BigDecimal.ZERO;
+        boolean hasBatches = !finishedGoodBatchRepository.findByFinishedGoodOrderByManufacturedAtAsc(finishedGood).isEmpty();
+        boolean hasMovements = inventoryMovementRepository.findFirstByFinishedGoodOrderByCreatedAtAsc(finishedGood).isPresent();
+        boolean hasReservations = inventoryReservationRepository.findFirstByFinishedGoodOrderByCreatedAtAsc(finishedGood).isPresent();
+        boolean hasSalesOrderItems = company != null
+                && salesOrderItemRepository.existsBySalesOrderCompanyAndProductCodeIgnoreCase(company, finishedGood.getProductCode());
+        boolean hasBlockingHistory = currentStock.compareTo(BigDecimal.ZERO) > 0 || reservedStock.compareTo(BigDecimal.ZERO) > 0 || hasBatches || hasMovements || hasReservations || hasSalesOrderItems;
+        if (hasBlockingHistory) {
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+                    "SKU " + finishedGood.getProductCode() + " cannot change itemClass because finished good history or sales references already exist; create a new SKU or reverse inventory before retrying");
         }
     }
 

@@ -11,7 +11,5 @@ public interface OpeningStockImportRepository extends JpaRepository<OpeningStock
 
     Optional<OpeningStockImport> findByCompanyAndOpeningStockBatchKey(Company company, String openingStockBatchKey);
 
-    Optional<OpeningStockImport> findByCompanyAndReplayProtectionKey(Company company, String replayProtectionKey);
-
     Page<OpeningStockImport> findByCompany(Company company, Pageable pageable);
 }

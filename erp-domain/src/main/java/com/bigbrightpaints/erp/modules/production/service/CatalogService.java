@@ -22,9 +22,6 @@ import com.bigbrightpaints.erp.modules.production.dto.CatalogBrandRequest;
 import com.bigbrightpaints.erp.modules.production.dto.CatalogItemDto;
 import com.bigbrightpaints.erp.modules.production.dto.CatalogItemRequest;
 import com.bigbrightpaints.erp.modules.production.dto.CatalogItemStockDto;
-import com.bigbrightpaints.erp.modules.production.dto.CatalogProductBulkItemRequest;
-import com.bigbrightpaints.erp.modules.production.dto.CatalogProductBulkItemResult;
-import com.bigbrightpaints.erp.modules.production.dto.CatalogProductBulkResponse;
 import com.bigbrightpaints.erp.modules.production.dto.CatalogProductCartonSizeDto;
 import com.bigbrightpaints.erp.modules.production.dto.CatalogProductCartonSizeRequest;
 import com.bigbrightpaints.erp.modules.production.dto.CatalogProductDto;
@@ -32,10 +29,6 @@ import com.bigbrightpaints.erp.modules.production.dto.CatalogProductRequest;
 import com.bigbrightpaints.erp.modules.production.dto.ProductCreateRequest;
 import com.bigbrightpaints.erp.modules.production.dto.ProductUpdateRequest;
 import com.bigbrightpaints.erp.shared.dto.PageResponse;
-import jakarta.validation.ConstraintViolation;
-import jakarta.validation.ConstraintViolationException;
-import jakarta.validation.Validation;
-import jakarta.validation.Validator;
 import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
@@ -88,7 +81,6 @@ public class CatalogService {
             "fgRevenueAccountId",
             "fgDiscountAccountId",
             "fgTaxAccountId");
-    private static final Validator BULK_VALIDATOR = Validation.buildDefaultValidatorFactory().getValidator();
 
     private final CompanyContextService companyContextService;
     private final CompanyEntityLookup companyEntityLookup;
@@ -348,125 +340,6 @@ public class CatalogService {
                         rawMaterialsBySku.get(normalizeSkuLookupKey(product.getSkuCode()))))
                 .toList();
         return PageResponse.of(content, result.getTotalElements(), sanitizedPage, sanitizedPageSize);
-    }
-
-    public CatalogProductBulkResponse bulkUpsertProducts(List<CatalogProductBulkItemRequest> requests) {
-        if (requests == null || requests.isEmpty()) {
-            throw ValidationUtils.invalidInput("Bulk request must contain at least one product payload");
-        }
-        Company company = companyContextService.requireCurrentCompany();
-        List<CatalogProductBulkItemResult> results = new ArrayList<>();
-        int succeeded = 0;
-        int failed = 0;
-
-        for (int index = 0; index < requests.size(); index++) {
-            CatalogProductBulkItemRequest item = requests.get(index);
-            try {
-                validateBulkItem(item);
-
-                ProductMutationOutcome outcome = upsertBulkItem(company, item);
-                results.add(new CatalogProductBulkItemResult(
-                        index,
-                        true,
-                        outcome.action(),
-                        outcome.product().id(),
-                        outcome.product().sku(),
-                        "OK",
-                        outcome.product()));
-                succeeded++;
-            } catch (ApplicationException ex) {
-                results.add(new CatalogProductBulkItemResult(
-                        index,
-                        false,
-                        "FAILED",
-                        null,
-                        normalizeOptionalText(item != null ? item.sku() : null),
-                        ex.getMessage(),
-                        null));
-                failed++;
-            } catch (Exception ex) {
-                String message = resolveBulkFailureMessage(ex);
-                results.add(new CatalogProductBulkItemResult(
-                        index,
-                        false,
-                        "FAILED",
-                        null,
-                        normalizeOptionalText(item != null ? item.sku() : null),
-                        message,
-                        null));
-                failed++;
-            }
-        }
-
-        return new CatalogProductBulkResponse(requests.size(), succeeded, failed, results);
-    }
-
-    private void validateBulkItem(CatalogProductBulkItemRequest item) {
-        if (item == null || item.product() == null) {
-            throw ValidationUtils.invalidInput("product: payload is required");
-        }
-        Set<ConstraintViolation<CatalogProductRequest>> violations = BULK_VALIDATOR.validate(item.product());
-        if (!violations.isEmpty()) {
-            throw ValidationUtils.invalidInput(formatConstraintViolations(violations));
-        }
-    }
-
-    private String resolveBulkFailureMessage(Exception ex) {
-        String validationMessage = extractValidationMessage(ex);
-        if (validationMessage != null) {
-            return validationMessage;
-        }
-        return "Unexpected error: " + ex.getMessage();
-    }
-
-    private String extractValidationMessage(Throwable throwable) {
-        Throwable current = throwable;
-        while (current != null) {
-            if (current instanceof ConstraintViolationException cve
-                    && cve.getConstraintViolations() != null
-                    && !cve.getConstraintViolations().isEmpty()) {
-                return formatConstraintViolations(cve.getConstraintViolations());
-            }
-            current = current.getCause();
-        }
-        return null;
-    }
-
-    private String formatConstraintViolations(Set<? extends ConstraintViolation<?>> violations) {
-        return violations.stream()
-                .sorted(Comparator.comparing(violation -> violation.getPropertyPath().toString()))
-                .map(violation -> violation.getPropertyPath() + ": " + violation.getMessage())
-                .collect(Collectors.joining("; "));
-    }
-
-    private ProductMutationOutcome upsertBulkItem(Company company, CatalogProductBulkItemRequest item) {
-        ProductionProduct target = resolveBulkTarget(company, item.id(), item.sku());
-        if (target == null) {
-            CatalogProductDto created = createProduct(item.product());
-            return new ProductMutationOutcome("CREATED", created);
-        }
-        CatalogProductDto updated = updateProduct(target.getId(), item.product());
-        return new ProductMutationOutcome("UPDATED", updated);
-    }
-
-    private ProductionProduct resolveBulkTarget(Company company, Long id, String sku) {
-        String normalizedSku = normalizeOptionalText(sku);
-        ProductionProduct byId = null;
-        if (id != null) {
-            byId = requireProduct(company, id);
-        }
-        ProductionProduct bySku = null;
-        if (StringUtils.hasText(normalizedSku)) {
-            bySku = productRepository.findByCompanyAndSkuCode(company, normalizedSku)
-                    .orElseThrow(() -> new ApplicationException(
-                            ErrorCode.BUSINESS_ENTITY_NOT_FOUND,
-                            "Product not found for SKU " + normalizedSku));
-        }
-
-        if (byId != null && bySku != null && !byId.getId().equals(bySku.getId())) {
-            throw ValidationUtils.invalidInput("Bulk item id and sku refer to different products");
-        }
-        return byId != null ? byId : bySku;
     }
 
     private Specification<ProductionProduct> buildProductSpecification(Company company,
@@ -1492,6 +1365,4 @@ public class CatalogService {
         return normalizedFallback == null ? List.of() : List.of(normalizedFallback);
     }
 
-    private record ProductMutationOutcome(String action, CatalogProductDto product) {
-    }
 }

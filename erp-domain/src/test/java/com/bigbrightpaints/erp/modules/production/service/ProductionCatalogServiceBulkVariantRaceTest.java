@@ -7,7 +7,15 @@ import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.service.CompanyDefaultAccountsService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
+import com.bigbrightpaints.erp.modules.factory.domain.PackingRecordRepository;
+import com.bigbrightpaints.erp.modules.factory.domain.PackagingSizeMappingRepository;
+import com.bigbrightpaints.erp.modules.factory.domain.ProductionLogMaterialRepository;
+import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatchRepository;
+import com.bigbrightpaints.erp.modules.inventory.domain.InventoryMovementRepository;
+import com.bigbrightpaints.erp.modules.inventory.domain.InventoryReservationRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodRepository;
+import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatchRepository;
+import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovementRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialRepository;
 import com.bigbrightpaints.erp.modules.production.domain.CatalogImportRepository;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionBrand;
@@ -16,6 +24,10 @@ import com.bigbrightpaints.erp.modules.production.domain.ProductionProduct;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionProductRepository;
 import com.bigbrightpaints.erp.modules.production.dto.BulkVariantRequest;
 import com.bigbrightpaints.erp.modules.production.dto.BulkVariantResponse;
+import com.bigbrightpaints.erp.modules.purchasing.domain.GoodsReceiptRepository;
+import com.bigbrightpaints.erp.modules.purchasing.domain.PurchaseOrderRepository;
+import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchaseRepository;
+import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderItemRepository;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
@@ -47,6 +59,18 @@ class ProductionCatalogServiceBulkVariantRaceTest {
     @Mock private ProductionProductRepository productRepository;
     @Mock private FinishedGoodRepository finishedGoodRepository;
     @Mock private RawMaterialRepository rawMaterialRepository;
+    @Mock private FinishedGoodBatchRepository finishedGoodBatchRepository;
+    @Mock private InventoryMovementRepository inventoryMovementRepository;
+    @Mock private InventoryReservationRepository inventoryReservationRepository;
+    @Mock private RawMaterialBatchRepository rawMaterialBatchRepository;
+    @Mock private RawMaterialMovementRepository rawMaterialMovementRepository;
+    @Mock private PurchaseOrderRepository purchaseOrderRepository;
+    @Mock private GoodsReceiptRepository goodsReceiptRepository;
+    @Mock private RawMaterialPurchaseRepository rawMaterialPurchaseRepository;
+    @Mock private PackagingSizeMappingRepository packagingSizeMappingRepository;
+    @Mock private PackingRecordRepository packingRecordRepository;
+    @Mock private ProductionLogMaterialRepository productionLogMaterialRepository;
+    @Mock private SalesOrderItemRepository salesOrderItemRepository;
     @Mock private CompanyEntityLookup companyEntityLookup;
     @Mock private CompanyDefaultAccountsService companyDefaultAccountsService;
     @Mock private CatalogImportRepository catalogImportRepository;
@@ -66,6 +90,18 @@ class ProductionCatalogServiceBulkVariantRaceTest {
                 productRepository,
                 finishedGoodRepository,
                 rawMaterialRepository,
+                finishedGoodBatchRepository,
+                inventoryMovementRepository,
+                inventoryReservationRepository,
+                rawMaterialBatchRepository,
+                rawMaterialMovementRepository,
+                purchaseOrderRepository,
+                goodsReceiptRepository,
+                rawMaterialPurchaseRepository,
+                packagingSizeMappingRepository,
+                packingRecordRepository,
+                productionLogMaterialRepository,
+                salesOrderItemRepository,
                 companyEntityLookup,
                 companyDefaultAccountsService,
                 catalogImportRepository,

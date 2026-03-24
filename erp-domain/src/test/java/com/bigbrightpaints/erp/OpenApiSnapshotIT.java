@@ -155,6 +155,36 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
     }
 
     @Test
+    void inventory_contract_requires_explicit_opening_stock_batch_key_and_removes_packaging_bypass() throws IOException {
+        JsonNode root = fetchCurrentSpecNode();
+
+        assertMultipartBinaryRequest(root, "/api/v1/inventory/opening-stock", "post", "file");
+
+        JsonNode openingStockParameters = root.path("paths")
+                .path("/api/v1/inventory/opening-stock")
+                .path("post")
+                .path("parameters");
+        JsonNode openingStockBatchKey = null;
+        for (JsonNode parameter : openingStockParameters) {
+            if ("openingStockBatchKey".equals(parameter.path("name").asText())) {
+                openingStockBatchKey = parameter;
+                break;
+            }
+        }
+
+        assertThat(openingStockBatchKey)
+                .withFailMessage("Expected query parameter 'openingStockBatchKey' on POST /api/v1/inventory/opening-stock")
+                .isNotNull();
+        assertThat(openingStockBatchKey.path("in").asText()).isEqualTo("query");
+        assertThat(openingStockBatchKey.path("required").asBoolean()).isTrue();
+
+        JsonNode bulkPackRequest = root.path("components").path("schemas").path("BulkPackRequest");
+        assertThat(bulkPackRequest.path("properties").has("packagingAlreadyConsumed"))
+                .withFailMessage("BulkPackRequest must not expose retired packagingAlreadyConsumed bypass")
+                .isFalse();
+    }
+
+    @Test
     void openapi_snapshot_matches_repository_contract() throws IOException {
         Path openApiSnapshotPath = resolveRepoRoot().resolve("openapi.json");
         String currentSpec = canonicalizeJson(fetchCurrentSpecNode().toString());

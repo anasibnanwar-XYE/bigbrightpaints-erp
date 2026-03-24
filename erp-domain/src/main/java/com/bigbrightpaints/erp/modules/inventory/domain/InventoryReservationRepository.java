@@ -13,6 +13,7 @@ public interface InventoryReservationRepository extends JpaRepository<InventoryR
             Company company,
             String referenceType,
             String referenceId);
+    Optional<InventoryReservation> findFirstByRawMaterialOrderByCreatedAtAsc(RawMaterial rawMaterial);
     Optional<InventoryReservation> findFirstByFinishedGoodOrderByCreatedAtAsc(FinishedGood finishedGood);
 
     List<InventoryReservation> findByFinishedGood(FinishedGood finishedGood);

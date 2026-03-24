@@ -7,8 +7,17 @@ import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.service.CompanyDefaultAccountsService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
+import com.bigbrightpaints.erp.modules.factory.domain.PackingRecordRepository;
+import com.bigbrightpaints.erp.modules.factory.domain.PackagingSizeMappingRepository;
+import com.bigbrightpaints.erp.modules.factory.domain.ProductionLogMaterialRepository;
+import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
+import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatchRepository;
+import com.bigbrightpaints.erp.modules.inventory.domain.InventoryMovementRepository;
+import com.bigbrightpaints.erp.modules.inventory.domain.InventoryReservationRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.MaterialType;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial;
+import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatchRepository;
+import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovementRepository;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialRepository;
@@ -24,6 +33,10 @@ import com.bigbrightpaints.erp.modules.production.dto.CatalogProductEntryRespons
 import com.bigbrightpaints.erp.modules.production.dto.ProductUpdateRequest;
 import com.bigbrightpaints.erp.modules.production.dto.ProductionProductDto;
 import com.bigbrightpaints.erp.modules.production.dto.SkuReadinessDto;
+import com.bigbrightpaints.erp.modules.purchasing.domain.GoodsReceiptRepository;
+import com.bigbrightpaints.erp.modules.purchasing.domain.PurchaseOrderRepository;
+import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchaseRepository;
+import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderItemRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -50,6 +63,8 @@ import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.anySet;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -62,6 +77,18 @@ class ProductionCatalogServiceCanonicalEntryTest {
     @Mock private ProductionProductRepository productRepository;
     @Mock private FinishedGoodRepository finishedGoodRepository;
     @Mock private RawMaterialRepository rawMaterialRepository;
+    @Mock private FinishedGoodBatchRepository finishedGoodBatchRepository;
+    @Mock private InventoryMovementRepository inventoryMovementRepository;
+    @Mock private InventoryReservationRepository inventoryReservationRepository;
+    @Mock private RawMaterialBatchRepository rawMaterialBatchRepository;
+    @Mock private RawMaterialMovementRepository rawMaterialMovementRepository;
+    @Mock private PurchaseOrderRepository purchaseOrderRepository;
+    @Mock private GoodsReceiptRepository goodsReceiptRepository;
+    @Mock private RawMaterialPurchaseRepository rawMaterialPurchaseRepository;
+    @Mock private PackagingSizeMappingRepository packagingSizeMappingRepository;
+    @Mock private PackingRecordRepository packingRecordRepository;
+    @Mock private ProductionLogMaterialRepository productionLogMaterialRepository;
+    @Mock private SalesOrderItemRepository salesOrderItemRepository;
     @Mock private CompanyEntityLookup companyEntityLookup;
     @Mock private CompanyDefaultAccountsService companyDefaultAccountsService;
     @Mock private CatalogImportRepository catalogImportRepository;
@@ -81,6 +108,18 @@ class ProductionCatalogServiceCanonicalEntryTest {
                 productRepository,
                 finishedGoodRepository,
                 rawMaterialRepository,
+                finishedGoodBatchRepository,
+                inventoryMovementRepository,
+                inventoryReservationRepository,
+                rawMaterialBatchRepository,
+                rawMaterialMovementRepository,
+                purchaseOrderRepository,
+                goodsReceiptRepository,
+                rawMaterialPurchaseRepository,
+                packagingSizeMappingRepository,
+                packingRecordRepository,
+                productionLogMaterialRepository,
+                salesOrderItemRepository,
                 companyEntityLookup,
                 companyDefaultAccountsService,
                 catalogImportRepository,
@@ -104,6 +143,19 @@ class ProductionCatalogServiceCanonicalEntryTest {
         when(companyEntityLookup.requireProductionBrand(company, 11L)).thenReturn(brand);
         when(productRepository.findByCompanyAndSkuCodeIn(eq(company), anySet())).thenReturn(List.of());
         when(productRepository.findByBrandAndProductNameIgnoreCase(eq(brand), anyString())).thenReturn(Optional.empty());
+        when(finishedGoodBatchRepository.findByFinishedGoodOrderByManufacturedAtAsc(any())).thenReturn(List.of());
+        when(inventoryReservationRepository.findFirstByRawMaterialOrderByCreatedAtAsc(any())).thenReturn(Optional.empty());
+        when(inventoryMovementRepository.findFirstByFinishedGoodOrderByCreatedAtAsc(any())).thenReturn(Optional.empty());
+        when(inventoryReservationRepository.findFirstByFinishedGoodOrderByCreatedAtAsc(any())).thenReturn(Optional.empty());
+        when(rawMaterialBatchRepository.findByRawMaterial(any())).thenReturn(List.of());
+        when(rawMaterialMovementRepository.findFirstByRawMaterialOrderByCreatedAtAsc(any())).thenReturn(Optional.empty());
+        when(purchaseOrderRepository.existsByCompanyAndLinesRawMaterial(any(), any())).thenReturn(false);
+        when(goodsReceiptRepository.existsByCompanyAndLinesRawMaterial(any(), any())).thenReturn(false);
+        when(rawMaterialPurchaseRepository.existsByCompanyAndLinesRawMaterial(any(), any())).thenReturn(false);
+        when(packagingSizeMappingRepository.existsByCompanyAndRawMaterial(any(), any())).thenReturn(false);
+        when(packingRecordRepository.existsByCompanyAndPackagingMaterial(any(), any())).thenReturn(false);
+        when(productionLogMaterialRepository.existsByLogCompanyAndRawMaterial(any(), any())).thenReturn(false);
+        when(salesOrderItemRepository.existsBySalesOrderCompanyAndProductCodeIgnoreCase(any(), anyString())).thenReturn(false);
     }
 
     @Test
@@ -759,6 +811,54 @@ class ProductionCatalogServiceCanonicalEntryTest {
     }
 
     @Test
+    void updateProduct_rawMaterialEdit_doesNotDeleteFinishedGoodMirrorWithoutReclassification() {
+        ProductionProduct product = new ProductionProduct();
+        ReflectionTestUtils.setField(product, "id", 45L);
+        product.setCompany(company);
+        product.setBrand(brand);
+        product.setSkuCode("RM-KEEP-MIRROR");
+        product.setProductName("Primer");
+        product.setCategory("RAW_MATERIAL");
+        product.setUnitOfMeasure("KG");
+        product.setMetadata(Map.of());
+
+        RawMaterial material = new RawMaterial();
+        ReflectionTestUtils.setField(material, "id", 46L);
+        material.setCompany(company);
+        material.setSku("RM-KEEP-MIRROR");
+        material.setName("Primer");
+        material.setUnitType("KG");
+        material.setInventoryAccountId(999L);
+        material.setMaterialType(MaterialType.PRODUCTION);
+
+        when(companyEntityLookup.requireProductionProduct(company, 45L)).thenReturn(product);
+        when(rawMaterialRepository.findByCompanyAndSkuIgnoreCase(company, "RM-KEEP-MIRROR")).thenReturn(Optional.of(material));
+        when(rawMaterialRepository.findByCompanyAndSku(company, "RM-KEEP-MIRROR")).thenReturn(Optional.of(material));
+        when(productRepository.save(product)).thenReturn(product);
+
+        ProductionProductDto response = service.updateProduct(
+                45L,
+                new ProductUpdateRequest(
+                        "Primer",
+                        null,
+                        null,
+                        null,
+                        null,
+                        "KG",
+                        "HSN-001",
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        true));
+
+        assertThat(response.hsnCode()).isEqualTo("HSN-001");
+        verify(finishedGoodRepository, never()).findByCompanyAndProductCode(company, "RM-KEEP-MIRROR");
+        verify(finishedGoodRepository, never()).delete(any());
+    }
+
+    @Test
     void syncRawMaterial_returnsFalseForFinishedGoods() {
         ProductionProduct finishedGood = new ProductionProduct();
         finishedGood.setCompany(company);
@@ -767,6 +867,440 @@ class ProductionCatalogServiceCanonicalEntryTest {
 
         assertThat((Boolean) ReflectionTestUtils.invokeMethod(service, "syncRawMaterial", company, finishedGood, "FINISHED_GOOD"))
                 .isFalse();
+    }
+
+    @Test
+    void syncInventoryTruth_deletesFinishedGoodMirrorForRawMaterialProducts() {
+        ProductionProduct rawProduct = new ProductionProduct();
+        ReflectionTestUtils.setField(rawProduct, "id", 41L);
+        rawProduct.setCompany(company);
+        rawProduct.setCategory("RAW_MATERIAL");
+        rawProduct.setSkuCode("RM-PRIMER");
+        rawProduct.setProductName("Primer");
+        rawProduct.setUnitOfMeasure("KG");
+        rawProduct.setMetadata(Map.of());
+
+        RawMaterial rawMaterial = new RawMaterial();
+        ReflectionTestUtils.setField(rawMaterial, "id", 51L);
+        rawMaterial.setCompany(company);
+        rawMaterial.setSku("RM-PRIMER");
+        rawMaterial.setName("Primer");
+        rawMaterial.setUnitType("KG");
+        rawMaterial.setMaterialType(MaterialType.PRODUCTION);
+
+        FinishedGood staleFinishedGood = new FinishedGood();
+        staleFinishedGood.setCompany(company);
+        staleFinishedGood.setProductCode("RM-PRIMER");
+
+        when(rawMaterialRepository.findByCompanyAndSku(company, "RM-PRIMER")).thenReturn(Optional.of(rawMaterial));
+        when(finishedGoodRepository.findByCompanyAndProductCode(company, "RM-PRIMER"))
+                .thenReturn(Optional.of(staleFinishedGood));
+
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(service, "syncInventoryTruth", company, rawProduct, "RAW_MATERIAL"))
+                .isFalse();
+
+        verify(rawMaterialRepository).save(rawMaterial);
+        verify(finishedGoodRepository).delete(staleFinishedGood);
+    }
+
+    @Test
+    void syncInventoryTruth_deletesRawMaterialMirrorForFinishedGoods() {
+        ProductionProduct finishedProduct = new ProductionProduct();
+        ReflectionTestUtils.setField(finishedProduct, "id", 42L);
+        finishedProduct.setCompany(company);
+        finishedProduct.setCategory("FINISHED_GOOD");
+        finishedProduct.setSkuCode("FG-PRIMER");
+        finishedProduct.setProductName("Primer");
+        finishedProduct.setUnitOfMeasure("L");
+        finishedProduct.setMetadata(Map.of(
+                "fgValuationAccountId", 101L,
+                "fgCogsAccountId", 102L,
+                "fgRevenueAccountId", 103L,
+                "fgTaxAccountId", 104L));
+
+        FinishedGood finishedGood = new FinishedGood();
+        finishedGood.setCompany(company);
+        finishedGood.setProductCode("FG-PRIMER");
+        finishedGood.setName("Primer");
+        finishedGood.setUnit("L");
+        finishedGood.setValuationAccountId(101L);
+        finishedGood.setCogsAccountId(102L);
+        finishedGood.setRevenueAccountId(103L);
+        finishedGood.setTaxAccountId(104L);
+
+        RawMaterial staleRawMaterial = new RawMaterial();
+        staleRawMaterial.setCompany(company);
+        staleRawMaterial.setSku("FG-PRIMER");
+
+        when(finishedGoodRepository.findByCompanyAndProductCode(company, "FG-PRIMER"))
+                .thenReturn(Optional.of(finishedGood), Optional.of(finishedGood));
+        when(rawMaterialRepository.findByCompanyAndSku(company, "FG-PRIMER"))
+                .thenReturn(Optional.of(staleRawMaterial));
+
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(service, "syncInventoryTruth", company, finishedProduct, "FINISHED_GOOD"))
+                .isFalse();
+
+        verify(finishedGoodRepository, never()).delete(any());
+        verify(rawMaterialRepository).delete(staleRawMaterial);
+    }
+
+    @Test
+    void syncInventoryTruth_skipsRawMaterialMirrorCleanupWhenCleanupDisabled() {
+        ProductionProduct finishedProduct = finishedProductMirrorProduct("FG-KEEP-MIRROR");
+
+        FinishedGood finishedGood = finishedGoodMirror("FG-KEEP-MIRROR");
+        finishedGood.setName("Primer");
+        finishedGood.setUnit("L");
+        finishedGood.setValuationAccountId(101L);
+        finishedGood.setCogsAccountId(102L);
+        finishedGood.setRevenueAccountId(103L);
+        finishedGood.setTaxAccountId(104L);
+
+        when(finishedGoodRepository.findByCompanyAndProductCode(company, "FG-KEEP-MIRROR"))
+                .thenReturn(Optional.of(finishedGood));
+
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(
+                service,
+                "syncInventoryTruth",
+                company,
+                finishedProduct,
+                "FINISHED_GOOD",
+                null,
+                false,
+                false)).isFalse();
+
+        verify(rawMaterialRepository, never()).findByCompanyAndSku(company, "FG-KEEP-MIRROR");
+        verify(rawMaterialRepository, never()).delete(any());
+    }
+
+    @Test
+    void syncInventoryTruth_rejectsFinishedGoodDeletionWhenInventoryHistoryExists() {
+        ProductionProduct rawProduct = new ProductionProduct();
+        ReflectionTestUtils.setField(rawProduct, "id", 43L);
+        rawProduct.setCompany(company);
+        rawProduct.setCategory("RAW_MATERIAL");
+        rawProduct.setSkuCode("RM-HISTORY");
+        rawProduct.setProductName("Historic Primer");
+        rawProduct.setUnitOfMeasure("KG");
+        rawProduct.setMetadata(Map.of());
+
+        RawMaterial rawMaterial = new RawMaterial();
+        rawMaterial.setCompany(company);
+        rawMaterial.setSku("RM-HISTORY");
+        rawMaterial.setName("Historic Primer");
+        rawMaterial.setUnitType("KG");
+        rawMaterial.setMaterialType(MaterialType.PRODUCTION);
+
+        FinishedGood staleFinishedGood = new FinishedGood();
+        staleFinishedGood.setCompany(company);
+        staleFinishedGood.setProductCode("RM-HISTORY");
+        staleFinishedGood.setCurrentStock(new BigDecimal("5"));
+
+        when(rawMaterialRepository.findByCompanyAndSku(company, "RM-HISTORY")).thenReturn(Optional.of(rawMaterial));
+        when(finishedGoodRepository.findByCompanyAndProductCode(company, "RM-HISTORY"))
+                .thenReturn(Optional.of(staleFinishedGood));
+
+        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(service, "syncInventoryTruth", company, rawProduct, "RAW_MATERIAL"))
+                .isInstanceOf(ApplicationException.class)
+                .satisfies(thrown -> assertThat(((ApplicationException) thrown).getErrorCode())
+                        .isEqualTo(ErrorCode.VALIDATION_INVALID_INPUT));
+
+        verify(finishedGoodRepository, never()).delete(any());
+    }
+
+    @Test
+    void syncInventoryTruth_rejectsRawMaterialDeletionWhenInventoryHistoryExists() {
+        ProductionProduct finishedProduct = new ProductionProduct();
+        ReflectionTestUtils.setField(finishedProduct, "id", 44L);
+        finishedProduct.setCompany(company);
+        finishedProduct.setCategory("FINISHED_GOOD");
+        finishedProduct.setSkuCode("FG-HISTORY");
+        finishedProduct.setProductName("Historic Primer");
+        finishedProduct.setUnitOfMeasure("L");
+        finishedProduct.setMetadata(Map.of(
+                "fgValuationAccountId", 101L,
+                "fgCogsAccountId", 102L,
+                "fgRevenueAccountId", 103L,
+                "fgTaxAccountId", 104L));
+
+        FinishedGood finishedGood = new FinishedGood();
+        finishedGood.setCompany(company);
+        finishedGood.setProductCode("FG-HISTORY");
+        finishedGood.setName("Historic Primer");
+        finishedGood.setUnit("L");
+        finishedGood.setValuationAccountId(101L);
+        finishedGood.setCogsAccountId(102L);
+        finishedGood.setRevenueAccountId(103L);
+        finishedGood.setTaxAccountId(104L);
+
+        RawMaterial staleRawMaterial = new RawMaterial();
+        staleRawMaterial.setCompany(company);
+        staleRawMaterial.setSku("FG-HISTORY");
+        staleRawMaterial.setCurrentStock(new BigDecimal("7"));
+
+        when(finishedGoodRepository.findByCompanyAndProductCode(company, "FG-HISTORY"))
+                .thenReturn(Optional.of(finishedGood), Optional.of(finishedGood));
+        when(rawMaterialRepository.findByCompanyAndSku(company, "FG-HISTORY"))
+                .thenReturn(Optional.of(staleRawMaterial));
+
+        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(service, "syncInventoryTruth", company, finishedProduct, "FINISHED_GOOD"))
+                .isInstanceOf(ApplicationException.class)
+                .satisfies(thrown -> assertThat(((ApplicationException) thrown).getErrorCode())
+                        .isEqualTo(ErrorCode.VALIDATION_INVALID_INPUT));
+
+        verify(rawMaterialRepository, never()).delete(any());
+    }
+
+    @Test
+    void syncInventoryTruth_rejectsRawMaterialDeletionWhenPurchasingReferencesExist() {
+        ProductionProduct finishedProduct = new ProductionProduct();
+        ReflectionTestUtils.setField(finishedProduct, "id", 45L);
+        finishedProduct.setCompany(company);
+        finishedProduct.setCategory("FINISHED_GOOD");
+        finishedProduct.setSkuCode("FG-PO-REF");
+        finishedProduct.setProductName("Primer");
+        finishedProduct.setUnitOfMeasure("L");
+        finishedProduct.setMetadata(Map.of(
+                "fgValuationAccountId", 101L,
+                "fgCogsAccountId", 102L,
+                "fgRevenueAccountId", 103L,
+                "fgTaxAccountId", 104L));
+
+        FinishedGood finishedGood = new FinishedGood();
+        finishedGood.setCompany(company);
+        finishedGood.setProductCode("FG-PO-REF");
+        finishedGood.setName("Primer");
+        finishedGood.setUnit("L");
+        finishedGood.setValuationAccountId(101L);
+        finishedGood.setCogsAccountId(102L);
+        finishedGood.setRevenueAccountId(103L);
+        finishedGood.setTaxAccountId(104L);
+
+        RawMaterial staleRawMaterial = new RawMaterial();
+        staleRawMaterial.setCompany(company);
+        staleRawMaterial.setSku("FG-PO-REF");
+
+        when(finishedGoodRepository.findByCompanyAndProductCode(company, "FG-PO-REF"))
+                .thenReturn(Optional.of(finishedGood), Optional.of(finishedGood));
+        when(rawMaterialRepository.findByCompanyAndSku(company, "FG-PO-REF"))
+                .thenReturn(Optional.of(staleRawMaterial));
+        when(purchaseOrderRepository.existsByCompanyAndLinesRawMaterial(company, staleRawMaterial)).thenReturn(true);
+
+        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(service, "syncInventoryTruth", company, finishedProduct, "FINISHED_GOOD"))
+                .isInstanceOf(ApplicationException.class)
+                .satisfies(thrown -> assertThat(((ApplicationException) thrown).getErrorCode())
+                        .isEqualTo(ErrorCode.VALIDATION_INVALID_INPUT));
+
+        verify(rawMaterialRepository, never()).delete(any());
+    }
+
+    @Test
+    void syncInventoryTruth_rejectsRawMaterialDeletionWhenPackagingMappingsExist() {
+        ProductionProduct finishedProduct = new ProductionProduct();
+        ReflectionTestUtils.setField(finishedProduct, "id", 46L);
+        finishedProduct.setCompany(company);
+        finishedProduct.setCategory("FINISHED_GOOD");
+        finishedProduct.setSkuCode("FG-PKG-REF");
+        finishedProduct.setProductName("Primer");
+        finishedProduct.setUnitOfMeasure("L");
+        finishedProduct.setMetadata(Map.of(
+                "fgValuationAccountId", 101L,
+                "fgCogsAccountId", 102L,
+                "fgRevenueAccountId", 103L,
+                "fgTaxAccountId", 104L));
+
+        FinishedGood finishedGood = new FinishedGood();
+        finishedGood.setCompany(company);
+        finishedGood.setProductCode("FG-PKG-REF");
+        finishedGood.setName("Primer");
+        finishedGood.setUnit("L");
+        finishedGood.setValuationAccountId(101L);
+        finishedGood.setCogsAccountId(102L);
+        finishedGood.setRevenueAccountId(103L);
+        finishedGood.setTaxAccountId(104L);
+
+        RawMaterial staleRawMaterial = new RawMaterial();
+        staleRawMaterial.setCompany(company);
+        staleRawMaterial.setSku("FG-PKG-REF");
+
+        when(finishedGoodRepository.findByCompanyAndProductCode(company, "FG-PKG-REF"))
+                .thenReturn(Optional.of(finishedGood), Optional.of(finishedGood));
+        when(rawMaterialRepository.findByCompanyAndSku(company, "FG-PKG-REF"))
+                .thenReturn(Optional.of(staleRawMaterial));
+        when(packagingSizeMappingRepository.existsByCompanyAndRawMaterial(company, staleRawMaterial)).thenReturn(true);
+
+        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(service, "syncInventoryTruth", company, finishedProduct, "FINISHED_GOOD"))
+                .isInstanceOf(ApplicationException.class)
+                .satisfies(thrown -> assertThat(((ApplicationException) thrown).getErrorCode())
+                        .isEqualTo(ErrorCode.VALIDATION_INVALID_INPUT));
+
+        verify(rawMaterialRepository, never()).delete(any());
+    }
+
+    @Test
+    void syncInventoryTruth_returnsFalseWhenCompanyProductOrIdIsMissing() {
+        ProductionProduct productWithoutId = new ProductionProduct();
+        productWithoutId.setCategory("FINISHED_GOOD");
+        productWithoutId.setSkuCode("FG-NO-ID");
+
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(service, "syncInventoryTruth", null, finishedProductMirrorProduct("FG-NULL-COMPANY"), "FINISHED_GOOD"))
+                .isFalse();
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(service, "syncInventoryTruth", company, null, "FINISHED_GOOD"))
+                .isFalse();
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(service, "syncInventoryTruth", company, productWithoutId, "FINISHED_GOOD"))
+                .isFalse();
+    }
+
+    @Test
+    void deleteRawMaterialMirror_ignoresBlankSku() {
+        ProductionProduct product = new ProductionProduct();
+        product.setSkuCode("   ");
+
+        ReflectionTestUtils.invokeMethod(service, "deleteRawMaterialMirror", company, product);
+
+        verify(rawMaterialRepository, never()).findByCompanyAndSku(any(), anyString());
+    }
+
+    @Test
+    void deleteFinishedGoodMirror_ignoresBlankSku() {
+        ProductionProduct product = new ProductionProduct();
+        product.setSkuCode("   ");
+
+        ReflectionTestUtils.invokeMethod(service, "deleteFinishedGoodMirror", company, product);
+
+        verify(finishedGoodRepository, never()).findByCompanyAndProductCode(any(), anyString());
+    }
+
+    @Test
+    void assertRawMaterialMirrorDeletionSafe_allowsDeletionWithoutHistoryOrReferences() {
+        RawMaterial rawMaterial = rawMaterialMirror("RM-CLEAN");
+
+        ReflectionTestUtils.invokeMethod(service, "assertRawMaterialMirrorDeletionSafe", rawMaterial);
+
+        verify(purchaseOrderRepository).existsByCompanyAndLinesRawMaterial(company, rawMaterial);
+        verify(goodsReceiptRepository).existsByCompanyAndLinesRawMaterial(company, rawMaterial);
+        verify(rawMaterialPurchaseRepository).existsByCompanyAndLinesRawMaterial(company, rawMaterial);
+        verify(packagingSizeMappingRepository).existsByCompanyAndRawMaterial(company, rawMaterial);
+        verify(packingRecordRepository).existsByCompanyAndPackagingMaterial(company, rawMaterial);
+        verify(productionLogMaterialRepository).existsByLogCompanyAndRawMaterial(company, rawMaterial);
+    }
+
+    @Test
+    void assertRawMaterialMirrorDeletionSafe_allowsDeletionWhenCompanyMissingButNoHistoryExists() {
+        RawMaterial rawMaterial = rawMaterialMirror("RM-NO-COMPANY");
+        rawMaterial.setCompany(null);
+
+        ReflectionTestUtils.invokeMethod(service, "assertRawMaterialMirrorDeletionSafe", rawMaterial);
+    }
+
+    @Test
+    void assertRawMaterialMirrorDeletionSafe_rejectsPrivateStockHistory() {
+        RawMaterial rawMaterial = rawMaterialMirror("RM-PRIVATE");
+        rawMaterial.setPrivateStock(new BigDecimal("3"));
+
+        assertRawMaterialMirrorDeletionBlocked(rawMaterial);
+    }
+
+    @Test
+    void assertRawMaterialMirrorDeletionSafe_rejectsBatchHistory() {
+        RawMaterial rawMaterial = rawMaterialMirror("RM-BATCH");
+        when(rawMaterialBatchRepository.findByRawMaterial(rawMaterial))
+                .thenReturn(List.of(new com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatch()));
+
+        assertRawMaterialMirrorDeletionBlocked(rawMaterial);
+    }
+
+    @Test
+    void assertRawMaterialMirrorDeletionSafe_rejectsMovementHistory() {
+        RawMaterial rawMaterial = rawMaterialMirror("RM-MOVE");
+        when(rawMaterialMovementRepository.findFirstByRawMaterialOrderByCreatedAtAsc(rawMaterial))
+                .thenReturn(Optional.of(new com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovement()));
+
+        assertRawMaterialMirrorDeletionBlocked(rawMaterial);
+    }
+
+    @Test
+    void assertRawMaterialMirrorDeletionSafe_rejectsReservationHistory() {
+        RawMaterial rawMaterial = rawMaterialMirror("RM-RESERVE");
+        when(inventoryReservationRepository.findFirstByRawMaterialOrderByCreatedAtAsc(rawMaterial))
+                .thenReturn(Optional.of(new com.bigbrightpaints.erp.modules.inventory.domain.InventoryReservation()));
+
+        assertRawMaterialMirrorDeletionBlocked(rawMaterial);
+    }
+
+    @Test
+    void assertRawMaterialMirrorDeletionSafe_rejectsGoodsReceiptReferences() {
+        RawMaterial rawMaterial = rawMaterialMirror("RM-GRN");
+        when(goodsReceiptRepository.existsByCompanyAndLinesRawMaterial(company, rawMaterial)).thenReturn(true);
+
+        assertRawMaterialMirrorDeletionBlocked(rawMaterial);
+    }
+
+    @Test
+    void assertRawMaterialMirrorDeletionSafe_rejectsPurchaseReferences() {
+        RawMaterial rawMaterial = rawMaterialMirror("RM-PURCHASE");
+        when(rawMaterialPurchaseRepository.existsByCompanyAndLinesRawMaterial(company, rawMaterial)).thenReturn(true);
+
+        assertRawMaterialMirrorDeletionBlocked(rawMaterial);
+    }
+
+    @Test
+    void assertRawMaterialMirrorDeletionSafe_rejectsPackingRecordReferences() {
+        RawMaterial rawMaterial = rawMaterialMirror("RM-PACKING");
+        when(packingRecordRepository.existsByCompanyAndPackagingMaterial(company, rawMaterial)).thenReturn(true);
+
+        assertRawMaterialMirrorDeletionBlocked(rawMaterial);
+    }
+
+    @Test
+    void assertRawMaterialMirrorDeletionSafe_rejectsProductionLogMaterialReferences() {
+        RawMaterial rawMaterial = rawMaterialMirror("RM-PROD-LOG");
+        when(productionLogMaterialRepository.existsByLogCompanyAndRawMaterial(company, rawMaterial)).thenReturn(true);
+
+        assertRawMaterialMirrorDeletionBlocked(rawMaterial);
+    }
+
+    @Test
+    void assertFinishedGoodMirrorDeletionSafe_rejectsReservedStockHistory() {
+        FinishedGood finishedGood = finishedGoodMirror("FG-RESERVED");
+        finishedGood.setReservedStock(new BigDecimal("2"));
+
+        assertFinishedGoodMirrorDeletionBlocked(finishedGood);
+    }
+
+    @Test
+    void assertFinishedGoodMirrorDeletionSafe_rejectsBatchHistory() {
+        FinishedGood finishedGood = finishedGoodMirror("FG-BATCH");
+        when(finishedGoodBatchRepository.findByFinishedGoodOrderByManufacturedAtAsc(finishedGood))
+                .thenReturn(List.of(new com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatch()));
+
+        assertFinishedGoodMirrorDeletionBlocked(finishedGood);
+    }
+
+    @Test
+    void assertFinishedGoodMirrorDeletionSafe_rejectsMovementHistory() {
+        FinishedGood finishedGood = finishedGoodMirror("FG-MOVE");
+        when(inventoryMovementRepository.findFirstByFinishedGoodOrderByCreatedAtAsc(finishedGood))
+                .thenReturn(Optional.of(new com.bigbrightpaints.erp.modules.inventory.domain.InventoryMovement()));
+
+        assertFinishedGoodMirrorDeletionBlocked(finishedGood);
+    }
+
+    @Test
+    void assertFinishedGoodMirrorDeletionSafe_rejectsReservationHistory() {
+        FinishedGood finishedGood = finishedGoodMirror("FG-RESERVATION");
+        when(inventoryReservationRepository.findFirstByFinishedGoodOrderByCreatedAtAsc(finishedGood))
+                .thenReturn(Optional.of(new com.bigbrightpaints.erp.modules.inventory.domain.InventoryReservation()));
+
+        assertFinishedGoodMirrorDeletionBlocked(finishedGood);
+    }
+
+    @Test
+    void assertFinishedGoodMirrorDeletionSafe_rejectsSalesOrderReferences() {
+        FinishedGood finishedGood = finishedGoodMirror("FG-SALES");
+        when(salesOrderItemRepository.existsBySalesOrderCompanyAndProductCodeIgnoreCase(company, "FG-SALES")).thenReturn(true);
+
+        assertFinishedGoodMirrorDeletionBlocked(finishedGood);
     }
 
     @Test
@@ -961,6 +1495,55 @@ class ProductionCatalogServiceCanonicalEntryTest {
             default -> "FG";
         };
         return String.join("-", prefix, "BBR", "PRIMER", color, size);
+    }
+
+    private ProductionProduct finishedProductMirrorProduct(String sku) {
+        ProductionProduct product = new ProductionProduct();
+        ReflectionTestUtils.setField(product, "id", 1000L);
+        product.setCompany(company);
+        product.setCategory("FINISHED_GOOD");
+        product.setSkuCode(sku);
+        product.setProductName("Primer");
+        product.setUnitOfMeasure("L");
+        product.setMetadata(Map.of(
+                "fgValuationAccountId", 101L,
+                "fgCogsAccountId", 102L,
+                "fgRevenueAccountId", 103L,
+                "fgTaxAccountId", 104L));
+        return product;
+    }
+
+    private RawMaterial rawMaterialMirror(String sku) {
+        RawMaterial rawMaterial = new RawMaterial();
+        rawMaterial.setCompany(company);
+        rawMaterial.setSku(sku);
+        rawMaterial.setName("Primer");
+        rawMaterial.setUnitType("KG");
+        rawMaterial.setMaterialType(MaterialType.PRODUCTION);
+        return rawMaterial;
+    }
+
+    private FinishedGood finishedGoodMirror(String sku) {
+        FinishedGood finishedGood = new FinishedGood();
+        finishedGood.setCompany(company);
+        finishedGood.setProductCode(sku);
+        finishedGood.setName("Primer");
+        finishedGood.setUnit("L");
+        return finishedGood;
+    }
+
+    private void assertRawMaterialMirrorDeletionBlocked(RawMaterial rawMaterial) {
+        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(service, "assertRawMaterialMirrorDeletionSafe", rawMaterial))
+                .isInstanceOf(ApplicationException.class)
+                .satisfies(thrown -> assertThat(((ApplicationException) thrown).getErrorCode())
+                        .isEqualTo(ErrorCode.VALIDATION_INVALID_INPUT));
+    }
+
+    private void assertFinishedGoodMirrorDeletionBlocked(FinishedGood finishedGood) {
+        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(service, "assertFinishedGoodMirrorDeletionSafe", finishedGood))
+                .isInstanceOf(ApplicationException.class)
+                .satisfies(thrown -> assertThat(((ApplicationException) thrown).getErrorCode())
+                        .isEqualTo(ErrorCode.VALIDATION_INVALID_INPUT));
     }
 
     private ProductionProduct existingProduct(String sku) {

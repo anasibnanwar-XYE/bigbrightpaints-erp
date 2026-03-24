@@ -1,6 +1,7 @@
 package com.bigbrightpaints.erp.modules.purchasing.domain;
 
 import com.bigbrightpaints.erp.modules.company.domain.Company;
+import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -22,6 +23,8 @@ public interface GoodsReceiptRepository extends JpaRepository<GoodsReceipt, Long
     @Query("select gr from GoodsReceipt gr where gr.company = :company and gr.supplier = :supplier order by gr.receiptDate desc")
     List<GoodsReceipt> findByCompanyAndSupplierWithLinesOrderByReceiptDateDesc(@Param("company") Company company,
                                                                                @Param("supplier") Supplier supplier);
+
+    boolean existsByCompanyAndLinesRawMaterial(Company company, RawMaterial rawMaterial);
 
     Optional<GoodsReceipt> findByCompanyAndId(Company company, Long id);
     Optional<GoodsReceipt> findByCompanyAndReceiptNumberIgnoreCase(Company company, String receiptNumber);

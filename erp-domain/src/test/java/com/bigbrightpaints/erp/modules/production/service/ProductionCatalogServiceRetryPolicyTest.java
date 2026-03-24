@@ -4,16 +4,32 @@ import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.service.CompanyDefaultAccountsService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
+import com.bigbrightpaints.erp.modules.factory.domain.PackingRecordRepository;
+import com.bigbrightpaints.erp.modules.factory.domain.PackagingSizeMappingRepository;
+import com.bigbrightpaints.erp.modules.factory.domain.ProductionLogMaterialRepository;
+import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
+import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatchRepository;
+import com.bigbrightpaints.erp.modules.inventory.domain.InventoryMovementRepository;
+import com.bigbrightpaints.erp.modules.inventory.domain.InventoryReservationRepository;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodRepository;
+import com.bigbrightpaints.erp.modules.inventory.domain.MaterialType;
+import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial;
+import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatchRepository;
+import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovementRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialRepository;
 import com.bigbrightpaints.erp.modules.production.domain.CatalogImportRepository;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionBrand;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionBrandRepository;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionProduct;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionProductRepository;
+import com.bigbrightpaints.erp.modules.purchasing.domain.GoodsReceiptRepository;
+import com.bigbrightpaints.erp.modules.purchasing.domain.PurchaseOrderRepository;
+import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchaseRepository;
+import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderItemRepository;
 import jakarta.persistence.OptimisticLockException;
 import java.lang.reflect.Constructor;
+import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -28,7 +44,9 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.PlatformTransactionManager;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -39,6 +57,18 @@ class ProductionCatalogServiceRetryPolicyTest {
     @Mock private ProductionProductRepository productRepository;
     @Mock private FinishedGoodRepository finishedGoodRepository;
     @Mock private RawMaterialRepository rawMaterialRepository;
+    @Mock private FinishedGoodBatchRepository finishedGoodBatchRepository;
+    @Mock private InventoryMovementRepository inventoryMovementRepository;
+    @Mock private InventoryReservationRepository inventoryReservationRepository;
+    @Mock private RawMaterialBatchRepository rawMaterialBatchRepository;
+    @Mock private RawMaterialMovementRepository rawMaterialMovementRepository;
+    @Mock private PurchaseOrderRepository purchaseOrderRepository;
+    @Mock private GoodsReceiptRepository goodsReceiptRepository;
+    @Mock private RawMaterialPurchaseRepository rawMaterialPurchaseRepository;
+    @Mock private PackagingSizeMappingRepository packagingSizeMappingRepository;
+    @Mock private PackingRecordRepository packingRecordRepository;
+    @Mock private ProductionLogMaterialRepository productionLogMaterialRepository;
+    @Mock private SalesOrderItemRepository salesOrderItemRepository;
     @Mock private CompanyEntityLookup companyEntityLookup;
     @Mock private CompanyDefaultAccountsService companyDefaultAccountsService;
     @Mock private CatalogImportRepository catalogImportRepository;
@@ -56,6 +86,18 @@ class ProductionCatalogServiceRetryPolicyTest {
                 productRepository,
                 finishedGoodRepository,
                 rawMaterialRepository,
+                finishedGoodBatchRepository,
+                inventoryMovementRepository,
+                inventoryReservationRepository,
+                rawMaterialBatchRepository,
+                rawMaterialMovementRepository,
+                purchaseOrderRepository,
+                goodsReceiptRepository,
+                rawMaterialPurchaseRepository,
+                packagingSizeMappingRepository,
+                packingRecordRepository,
+                productionLogMaterialRepository,
+                salesOrderItemRepository,
                 companyEntityLookup,
                 companyDefaultAccountsService,
                 catalogImportRepository,
@@ -344,6 +386,104 @@ class ProductionCatalogServiceRetryPolicyTest {
                 .containsExactly(202L);
     }
 
+    @Test
+    void upsertProduct_existingRawMaterialImportSkipsMirrorCleanupWithoutReclassification() throws Exception {
+        Company company = company(10L, null);
+        ProductionBrand brand = brand(company, 11L, "BrandA", "BRA");
+        ProductionProduct existing = product(company, brand, 41L, "RM-PRIMER", "Primer", "RAW_MATERIAL", Map.of());
+        RawMaterial material = rawMaterial(company, 51L, "RM-PRIMER", "Primer", 999L);
+
+        Map<String, ProductionBrand> brandsByName = new HashMap<>();
+        brandsByName.put("branda", brand);
+        Map<String, ProductionProduct> productsBySku = new HashMap<>();
+        productsBySku.put("RM-PRIMER", existing);
+        Map<Object, ProductionProduct> productsByBrandName = new HashMap<>();
+        Object context = newImportContext(brandsByName, productsBySku, productsByBrandName, new HashMap<>());
+        Object importRow = newImportRow(
+                1L,
+                newCatalogRow("BrandA", "Primer", "RM-PRIMER", "RAW_MATERIAL", "KG", Map.of()),
+                "RM-PRIMER",
+                "branda",
+                "primer");
+
+        when(productRepository.findByCompanyAndId(company, 41L)).thenReturn(Optional.of(existing));
+        when(productRepository.save(existing)).thenReturn(existing);
+        when(rawMaterialRepository.findByCompanyAndSku(company, "RM-PRIMER")).thenReturn(Optional.of(material));
+
+        Object outcome = ReflectionTestUtils.invokeMethod(service, "upsertProduct", company, importRow, context);
+
+        assertThat(outcome).isNotNull();
+        verifyNoInteractions(finishedGoodRepository);
+    }
+
+    @Test
+    void upsertProduct_existingFinishedGoodReclassificationDeletesOppositeMirror() throws Exception {
+        Company company = company(10L, null);
+        ProductionBrand brand = brand(company, 11L, "BrandA", "BRA");
+        ProductionProduct existing = product(company, brand, 42L, "FG-PRIMER", "Primer", "FINISHED_GOOD", Map.of());
+        RawMaterial material = rawMaterial(company, 52L, "FG-PRIMER", "Primer", 999L);
+        FinishedGood staleFinishedGood = new FinishedGood();
+        staleFinishedGood.setCompany(company);
+        staleFinishedGood.setProductCode("FG-PRIMER");
+
+        Map<String, ProductionBrand> brandsByName = new HashMap<>();
+        brandsByName.put("branda", brand);
+        Map<String, ProductionProduct> productsBySku = new HashMap<>();
+        productsBySku.put("FG-PRIMER", existing);
+        Map<Object, ProductionProduct> productsByBrandName = new HashMap<>();
+        Object context = newImportContext(brandsByName, productsBySku, productsByBrandName, new HashMap<>());
+        Object importRow = newImportRow(
+                1L,
+                newCatalogRow("BrandA", "Primer", "FG-PRIMER", "RAW_MATERIAL", "KG", Map.of()),
+                "FG-PRIMER",
+                "branda",
+                "primer");
+
+        when(productRepository.findByCompanyAndId(company, 42L)).thenReturn(Optional.of(existing));
+        when(productRepository.save(existing)).thenReturn(existing);
+        when(rawMaterialRepository.findByCompanyAndSku(company, "FG-PRIMER")).thenReturn(Optional.of(material));
+        when(finishedGoodRepository.findByCompanyAndProductCode(company, "FG-PRIMER")).thenReturn(Optional.of(staleFinishedGood));
+
+        Object outcome = ReflectionTestUtils.invokeMethod(service, "upsertProduct", company, importRow, context);
+
+        assertThat(outcome).isNotNull();
+        verify(finishedGoodRepository).delete(staleFinishedGood);
+    }
+
+    @Test
+    void upsertProduct_newRawMaterialImportStillCleansLegacyFinishedGoodMirror() throws Exception {
+        Company company = company(10L, null);
+        ProductionBrand brand = brand(company, 11L, "BrandA", "BRA");
+        FinishedGood staleFinishedGood = new FinishedGood();
+        staleFinishedGood.setCompany(company);
+        staleFinishedGood.setProductCode("RM-NEW");
+
+        Map<String, ProductionBrand> brandsByName = new HashMap<>();
+        brandsByName.put("branda", brand);
+        Object context = newImportContext(brandsByName, new HashMap<>(), new HashMap<>(), new HashMap<>());
+        Object importRow = newImportRow(
+                1L,
+                newCatalogRow("BrandA", "Primer", "RM-NEW", "RAW_MATERIAL", "KG", Map.of()),
+                "RM-NEW",
+                "branda",
+                "primer");
+
+        when(productRepository.findByCompanyAndSkuCode(company, "RM-NEW")).thenReturn(Optional.empty());
+        when(productRepository.findByBrandAndProductNameIgnoreCase(brand, "Primer")).thenReturn(Optional.empty());
+        when(productRepository.save(any())).thenAnswer(invocation -> {
+            ProductionProduct saved = invocation.getArgument(0);
+            ReflectionTestUtils.setField(saved, "id", 99L);
+            return saved;
+        });
+        when(rawMaterialRepository.findByCompanyAndSku(company, "RM-NEW")).thenReturn(Optional.empty());
+        when(finishedGoodRepository.findByCompanyAndProductCode(company, "RM-NEW")).thenReturn(Optional.of(staleFinishedGood));
+
+        Object outcome = ReflectionTestUtils.invokeMethod(service, "upsertProduct", company, importRow, context);
+
+        assertThat(outcome).isNotNull();
+        verify(finishedGoodRepository).delete(staleFinishedGood);
+    }
+
     private boolean invokeIsRetryableImportFailure(Throwable error) {
         Boolean retryable = ReflectionTestUtils.invokeMethod(service, "isRetryableImportFailure", error);
         return Boolean.TRUE.equals(retryable);
@@ -379,6 +519,7 @@ class ProductionCatalogServiceRetryPolicyTest {
     }
 
     private Object newImportRow(long recordNumber,
+                                Object row,
                                 String sanitizedSku,
                                 String brandKey,
                                 String productKey) throws Exception {
@@ -391,6 +532,96 @@ class ProductionCatalogServiceRetryPolicyTest {
                 String.class,
                 String.class);
         constructor.setAccessible(true);
-        return constructor.newInstance(recordNumber, null, sanitizedSku, brandKey, productKey);
+        return constructor.newInstance(recordNumber, row, sanitizedSku, brandKey, productKey);
+    }
+
+    private Object newImportRow(long recordNumber,
+                                String sanitizedSku,
+                                String brandKey,
+                                String productKey) throws Exception {
+        return newImportRow(recordNumber, null, sanitizedSku, brandKey, productKey);
+    }
+
+    private Object newCatalogRow(String brand,
+                                 String productName,
+                                 String skuCode,
+                                 String category,
+                                 String unitOfMeasure,
+                                 Map<String, Object> metadata) throws Exception {
+        Class<?> catalogRowClass = Class.forName(ProductionCatalogService.class.getName() + "$CatalogRow");
+        Constructor<?> constructor = catalogRowClass.getDeclaredConstructor(
+                String.class,
+                String.class,
+                String.class,
+                String.class,
+                String.class,
+                String.class,
+                String.class,
+                BigDecimal.class,
+                BigDecimal.class,
+                BigDecimal.class,
+                BigDecimal.class,
+                Map.class);
+        constructor.setAccessible(true);
+        return constructor.newInstance(
+                brand,
+                productName,
+                skuCode,
+                category,
+                null,
+                unitOfMeasure,
+                null,
+                null,
+                null,
+                null,
+                null,
+                metadata);
+    }
+
+    private Company company(Long id, Long defaultInventoryAccountId) {
+        Company company = new Company();
+        ReflectionTestUtils.setField(company, "id", id);
+        company.setDefaultInventoryAccountId(defaultInventoryAccountId);
+        return company;
+    }
+
+    private ProductionBrand brand(Company company, Long id, String name, String code) {
+        ProductionBrand brand = new ProductionBrand();
+        ReflectionTestUtils.setField(brand, "id", id);
+        brand.setCompany(company);
+        brand.setName(name);
+        brand.setCode(code);
+        return brand;
+    }
+
+    private ProductionProduct product(Company company,
+                                      ProductionBrand brand,
+                                      Long id,
+                                      String sku,
+                                      String name,
+                                      String category,
+                                      Map<String, Object> metadata) {
+        ProductionProduct product = new ProductionProduct();
+        ReflectionTestUtils.setField(product, "id", id);
+        product.setCompany(company);
+        product.setBrand(brand);
+        product.setSkuCode(sku);
+        product.setProductName(name);
+        product.setCategory(category);
+        product.setUnitOfMeasure("KG");
+        product.setMetadata(metadata);
+        return product;
+    }
+
+    private RawMaterial rawMaterial(Company company, Long id, String sku, String name, Long inventoryAccountId) {
+        RawMaterial material = new RawMaterial();
+        ReflectionTestUtils.setField(material, "id", id);
+        material.setCompany(company);
+        material.setSku(sku);
+        material.setName(name);
+        material.setUnitType("KG");
+        material.setInventoryAccountId(inventoryAccountId);
+        material.setMaterialType(MaterialType.PRODUCTION);
+        return material;
     }
 }
