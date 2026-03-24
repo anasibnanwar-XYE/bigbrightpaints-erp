@@ -27,7 +27,11 @@ import java.io.ByteArrayOutputStream;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 @Service
 public class StatementService {
@@ -37,6 +41,7 @@ public class StatementService {
     private final SupplierRepository supplierRepository;
     private final DealerLedgerRepository dealerLedgerRepository;
     private final SupplierLedgerRepository supplierLedgerRepository;
+    private final PartnerSettlementAllocationRepository settlementAllocationRepository;
     private final CompanyClock companyClock;
 
     public StatementService(CompanyContextService companyContextService,
@@ -44,12 +49,14 @@ public class StatementService {
                             SupplierRepository supplierRepository,
                             DealerLedgerRepository dealerLedgerRepository,
                             SupplierLedgerRepository supplierLedgerRepository,
+                            PartnerSettlementAllocationRepository settlementAllocationRepository,
                             CompanyClock companyClock) {
         this.companyContextService = companyContextService;
         this.dealerRepository = dealerRepository;
         this.supplierRepository = supplierRepository;
         this.dealerLedgerRepository = dealerLedgerRepository;
         this.supplierLedgerRepository = supplierLedgerRepository;
+        this.settlementAllocationRepository = settlementAllocationRepository;
         this.companyClock = companyClock;
     }
 
@@ -243,8 +250,11 @@ public class StatementService {
                 dealer,
                 ref
         );
+        Map<Long, BigDecimal> unappliedCreditPoolByJournalEntry =
+                loadUnappliedDealerCreditByJournalEntry(company, entries, ref);
         List<DealerOverdueInvoiceLine> invoiceLines = new ArrayList<>();
         BigDecimal creditPool = BigDecimal.ZERO;
+        Set<Long> consumedNegativeJournals = new HashSet<>();
         long sequence = 0L;
         for (DealerLedgerEntry entry : entries) {
             if (entry.getEntryDate().isAfter(ref)) {
@@ -252,7 +262,12 @@ public class StatementService {
             }
             BigDecimal delta = safe(entry.getDebit()).subtract(safe(entry.getCredit()));
             if (delta.compareTo(BigDecimal.ZERO) < 0) {
-                creditPool = creditPool.add(delta.abs());
+                Long journalEntryId = entry.getJournalEntry() != null ? entry.getJournalEntry().getId() : null;
+                if (journalEntryId == null) {
+                    creditPool = creditPool.add(delta.abs());
+                } else if (consumedNegativeJournals.add(journalEntryId)) {
+                    creditPool = creditPool.add(unappliedCreditPoolByJournalEntry.getOrDefault(journalEntryId, BigDecimal.ZERO));
+                }
             }
             BigDecimal outstandingAmount = entry.getOutstandingAmount();
             if (!StringUtils.hasText(entry.getInvoiceNumber())
@@ -284,6 +299,45 @@ public class StatementService {
             }
         }
         return invoiceLines;
+    }
+
+    private Map<Long, BigDecimal> loadUnappliedDealerCreditByJournalEntry(Company company,
+                                                                           List<DealerLedgerEntry> entries,
+                                                                           LocalDate ref) {
+        Map<Long, BigDecimal> negativeCreditByJournalEntry = new HashMap<>();
+        for (DealerLedgerEntry entry : entries) {
+            if (entry.getEntryDate().isAfter(ref)) {
+                continue;
+            }
+            BigDecimal delta = safe(entry.getDebit()).subtract(safe(entry.getCredit()));
+            if (delta.compareTo(BigDecimal.ZERO) >= 0 || entry.getJournalEntry() == null || entry.getJournalEntry().getId() == null) {
+                continue;
+            }
+            negativeCreditByJournalEntry.merge(entry.getJournalEntry().getId(), delta.abs(), BigDecimal::add);
+        }
+        if (negativeCreditByJournalEntry.isEmpty()) {
+            return Map.of();
+        }
+
+        Map<Long, BigDecimal> allocatedByJournalEntry = new HashMap<>();
+        settlementAllocationRepository.findByCompanyAndJournalEntry_IdIn(company, List.copyOf(negativeCreditByJournalEntry.keySet()))
+                .stream()
+                .filter(allocation -> allocation.getInvoice() != null)
+                .filter(allocation -> allocation.getJournalEntry() != null && allocation.getJournalEntry().getId() != null)
+                .forEach(allocation -> allocatedByJournalEntry.merge(
+                        allocation.getJournalEntry().getId(),
+                        safe(allocation.getAllocationAmount()),
+                        BigDecimal::add
+                ));
+
+        Map<Long, BigDecimal> unappliedByJournalEntry = new HashMap<>();
+        negativeCreditByJournalEntry.forEach((journalEntryId, creditAmount) -> {
+            BigDecimal unapplied = creditAmount.subtract(allocatedByJournalEntry.getOrDefault(journalEntryId, BigDecimal.ZERO));
+            if (unapplied.compareTo(BigDecimal.ZERO) > 0) {
+                unappliedByJournalEntry.put(journalEntryId, unapplied);
+            }
+        });
+        return unappliedByJournalEntry;
     }
 
     public AgingSummaryResponse supplierAging(Long supplierId, LocalDate asOf, String bucketParam) {

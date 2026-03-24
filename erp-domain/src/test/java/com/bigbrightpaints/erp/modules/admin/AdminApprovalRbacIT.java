@@ -357,6 +357,7 @@ class AdminApprovalRbacIT extends AbstractIntegrationTest {
     void dealerPortalCreditRequest_createsApprovalQueueEntry() {
         HttpHeaders dealerHeaders = authHeaders(DEALER_EMAIL, PASSWORD);
         HttpHeaders adminHeaders = authHeaders(ADMIN_EMAIL, PASSWORD);
+        HttpHeaders accountingHeaders = authHeaders(ACCOUNTING_EMAIL, PASSWORD);
 
         Map<String, Object> payload = new HashMap<>();
         payload.put("amountRequested", new BigDecimal("2100"));
@@ -395,6 +396,29 @@ class AdminApprovalRbacIT extends AbstractIntegrationTest {
                 .contains("Approve permanent dealer credit-limit request CLR-" + requestId);
         assertThat(creditApproval.get("requesterEmail")).isEqualTo(DEALER_EMAIL);
         assertThat(creditApproval.get("requesterUserId")).isNotNull();
+
+        ResponseEntity<Map> accountingApprovalsResponse = rest.exchange(
+                "/api/v1/admin/approvals",
+                HttpMethod.GET,
+                new HttpEntity<>(accountingHeaders),
+                Map.class);
+        assertThat(accountingApprovalsResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<?, ?> accountingApprovalsBody = accountingApprovalsResponse.getBody();
+        assertThat(accountingApprovalsBody).isNotNull();
+        Map<?, ?> accountingApprovalsData = (Map<?, ?>) accountingApprovalsBody.get("data");
+        assertThat(accountingApprovalsData).isNotNull();
+        List<?> accountingCreditApprovals = (List<?>) accountingApprovalsData.get("creditRequests");
+        Map<?, ?> accountingCreditApproval = accountingCreditApprovals.stream()
+                .map(Map.class::cast)
+                .filter(item -> ("CLR-" + requestId).equals(item.get("reference")))
+                .findFirst()
+                .orElseThrow();
+        assertThat(accountingCreditApproval.get("originType")).isEqualTo("CREDIT_REQUEST");
+        assertThat(String.valueOf(accountingCreditApproval.get("summary")))
+                .contains("Approve permanent dealer credit-limit request CLR-" + requestId)
+                .doesNotContain(DEALER_EMAIL);
+        assertThat(accountingCreditApproval.containsKey("requesterEmail")).isFalse();
+        assertThat(accountingCreditApproval.containsKey("requesterUserId")).isFalse();
     }
 
     private HttpHeaders authHeaders(String email, String password) {

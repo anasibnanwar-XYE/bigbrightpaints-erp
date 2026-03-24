@@ -157,11 +157,11 @@ public class AdminSettingsController {
     @Transactional(readOnly = true)
     public ApiResponse<AdminApprovalsResponse> approvals() {
         Company company = companyContextService.requireCurrentCompany();
-        boolean includeSensitiveExportApprovalDetails = canViewSensitiveExportApprovalDetails();
+        boolean includeSensitiveApprovalRequesterDetails = canViewSensitiveApprovalRequesterDetails();
         List<AdminApprovalItemDto> creditRequestApprovals = creditRequestRepository
                 .findPendingByCompanyOrderByCreatedAtDesc(company)
                 .stream()
-                .map(this::toCreditRequestApprovalItem)
+                .map(request -> toCreditRequestApprovalItem(request, includeSensitiveApprovalRequesterDetails))
                 .toList();
 
         List<AdminApprovalItemDto> creditOverrideApprovals = creditLimitOverrideRequestRepository
@@ -191,7 +191,7 @@ public class AdminSettingsController {
 
         List<AdminApprovalItemDto> exportApprovals = exportApprovalService.listPending()
                 .stream()
-                .map(request -> toExportApprovalItem(request, includeSensitiveExportApprovalDetails))
+                .map(request -> toExportApprovalItem(request, includeSensitiveApprovalRequesterDetails))
                 .toList();
 
         AdminApprovalsResponse response = new AdminApprovalsResponse(
@@ -256,7 +256,8 @@ public class AdminSettingsController {
         );
     }
 
-    private AdminApprovalItemDto toCreditRequestApprovalItem(CreditRequest request) {
+    private AdminApprovalItemDto toCreditRequestApprovalItem(CreditRequest request,
+                                                             boolean includeSensitiveRequesterDetails) {
         String reference = "CLR-" + request.getId();
         String dealerLabel = request.getDealer() != null && StringUtils.hasText(request.getDealer().getName())
                 ? request.getDealer().getName()
@@ -266,8 +267,12 @@ public class AdminSettingsController {
         if (StringUtils.hasText(request.getReason())) {
             summary = summary + " (reason: " + request.getReason().trim() + ")";
         }
-        if (StringUtils.hasText(request.getRequesterEmail())) {
-            summary = summary + " (requested by " + request.getRequesterEmail().trim() + ")";
+        Long requesterUserId = includeSensitiveRequesterDetails ? request.getRequesterUserId() : null;
+        String requesterEmail = includeSensitiveRequesterDetails && StringUtils.hasText(request.getRequesterEmail())
+                ? request.getRequesterEmail().trim()
+                : null;
+        if (requesterEmail != null) {
+            summary = summary + " (requested by " + requesterEmail + ")";
         }
         return approvalItem(
                 AdminApprovalItemDto.OriginType.CREDIT_REQUEST,
@@ -277,8 +282,8 @@ public class AdminSettingsController {
                 reference,
                 normalizeStatus(request.getStatus()),
                 summary,
-                request.getRequesterUserId(),
-                request.getRequesterEmail(),
+                requesterUserId,
+                requesterEmail,
                 CREDIT_REQUEST_APPROVAL_ACTION,
                 "Approve permanent credit limit",
                 CREDIT_REQUEST_APPROVE_ENDPOINT,
@@ -406,7 +411,7 @@ public class AdminSettingsController {
         );
     }
 
-    private boolean canViewSensitiveExportApprovalDetails() {
+    private boolean canViewSensitiveApprovalRequesterDetails() {
         org.springframework.security.core.Authentication authentication =
                 org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
         if (authentication == null || authentication.getAuthorities() == null) {

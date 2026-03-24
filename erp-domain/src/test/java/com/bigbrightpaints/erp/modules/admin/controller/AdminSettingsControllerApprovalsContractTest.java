@@ -207,7 +207,13 @@ class AdminSettingsControllerApprovalsContractTest {
         when(periodCloseRequestRepository.findPendingByCompanyOrderByRequestedAtDesc(company))
                 .thenReturn(List.of(periodCloseRequest));
 
-        ApiResponse<AdminApprovalsResponse> response = controller.approvals();
+        authenticateAs("ROLE_ADMIN");
+        ApiResponse<AdminApprovalsResponse> response;
+        try {
+            response = controller.approvals();
+        } finally {
+            SecurityContextHolder.clearContext();
+        }
 
         assertThat(response.success()).isTrue();
         assertThat(response.data()).isNotNull();
@@ -448,6 +454,78 @@ class AdminSettingsControllerApprovalsContractTest {
     }
 
     @Test
+    void approvals_redactsCreditRequestRequesterIdentityForAccountingView() {
+        SystemSettingsService systemSettingsService = mock(SystemSettingsService.class);
+        EmailService emailService = mock(EmailService.class);
+        CompanyContextService companyContextService = mock(CompanyContextService.class);
+        TenantRuntimePolicyService tenantRuntimePolicyService = mock(TenantRuntimePolicyService.class);
+        CreditRequestRepository creditRequestRepository = mock(CreditRequestRepository.class);
+        CreditLimitOverrideRequestRepository creditLimitOverrideRequestRepository =
+                mock(CreditLimitOverrideRequestRepository.class);
+        PeriodCloseRequestRepository periodCloseRequestRepository = mock(PeriodCloseRequestRepository.class);
+        PayrollRunRepository payrollRunRepository = mock(PayrollRunRepository.class);
+        ExportApprovalService exportApprovalService = mock(ExportApprovalService.class);
+        when(exportApprovalService.listPending()).thenReturn(List.of());
+        AdminSettingsController controller = new AdminSettingsController(
+                systemSettingsService,
+                emailService,
+                companyContextService,
+                tenantRuntimePolicyService,
+                exportApprovalService,
+                creditRequestRepository,
+                creditLimitOverrideRequestRepository,
+                periodCloseRequestRepository,
+                payrollRunRepository,
+                null
+        );
+
+        Company company = new Company();
+        ReflectionTestUtils.setField(company, "id", 506L);
+        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+
+        Dealer dealer = new Dealer();
+        dealer.setName("Dealer Privacy");
+        CreditRequest creditRequest = new CreditRequest();
+        creditRequest.setCompany(company);
+        creditRequest.setDealer(dealer);
+        creditRequest.setAmountRequested(new BigDecimal("4200"));
+        creditRequest.setReason("Limit review");
+        creditRequest.setStatus("PENDING");
+        creditRequest.setRequesterUserId(8801L);
+        creditRequest.setRequesterEmail("dealer.privacy@bbp.com");
+        ReflectionTestUtils.setField(creditRequest, "id", 61L);
+        ReflectionTestUtils.setField(creditRequest, "publicId", UUID.fromString("61616161-6161-6161-6161-616161616161"));
+        ReflectionTestUtils.setField(creditRequest, "createdAt", Instant.parse("2026-02-14T09:00:00Z"));
+
+        when(creditRequestRepository.findPendingByCompanyOrderByCreatedAtDesc(company))
+                .thenReturn(List.of(creditRequest));
+        when(creditLimitOverrideRequestRepository.findPendingByCompanyOrderByCreatedAtDesc(company))
+                .thenReturn(List.of());
+        when(payrollRunRepository.findByCompanyAndStatusOrderByCreatedAtDesc(company, PayrollRun.PayrollStatus.CALCULATED))
+                .thenReturn(List.of());
+        when(periodCloseRequestRepository.findPendingByCompanyOrderByRequestedAtDesc(company))
+                .thenReturn(List.of());
+
+        authenticateAs("ROLE_ACCOUNTING");
+        ApiResponse<AdminApprovalsResponse> response;
+        try {
+            response = controller.approvals();
+        } finally {
+            SecurityContextHolder.clearContext();
+        }
+
+        assertThat(response.success()).isTrue();
+        assertThat(response.data()).isNotNull();
+        assertThat(response.data().creditRequests()).hasSize(1);
+        AdminApprovalItemDto creditApproval = response.data().creditRequests().get(0);
+        assertThat(creditApproval.originType()).isEqualTo(AdminApprovalItemDto.OriginType.CREDIT_REQUEST);
+        assertThat(creditApproval.summary()).contains("Approve permanent dealer credit-limit request CLR-61 for Dealer Privacy");
+        assertThat(creditApproval.summary()).doesNotContain("requested by");
+        assertThat(creditApproval.requesterUserId()).isNull();
+        assertThat(creditApproval.requesterEmail()).isNull();
+    }
+
+    @Test
     void approvals_fallsBackToUnknownStatusForExportRequests() {
         SystemSettingsService systemSettingsService = mock(SystemSettingsService.class);
         EmailService emailService = mock(EmailService.class);
@@ -547,7 +625,7 @@ class AdminSettingsControllerApprovalsContractTest {
     }
 
     @Test
-    void sensitiveExportApprovalDetails_allowSuperAdminView() {
+    void sensitiveApprovalRequesterDetails_allowSuperAdminView() {
         AdminSettingsController controller = new AdminSettingsController(
                 mock(SystemSettingsService.class),
                 mock(EmailService.class),
@@ -565,7 +643,7 @@ class AdminSettingsControllerApprovalsContractTest {
         try {
             Boolean includeSensitiveDetails = ReflectionTestUtils.invokeMethod(
                     controller,
-                    "canViewSensitiveExportApprovalDetails"
+                    "canViewSensitiveApprovalRequesterDetails"
             );
             assertThat(includeSensitiveDetails).isTrue();
         } finally {
@@ -574,7 +652,7 @@ class AdminSettingsControllerApprovalsContractTest {
     }
 
     @Test
-    void sensitiveExportApprovalDetails_rejectWhenAuthenticationAuthoritiesMissing() {
+    void sensitiveApprovalRequesterDetails_rejectWhenAuthenticationAuthoritiesMissing() {
         AdminSettingsController controller = new AdminSettingsController(
                 mock(SystemSettingsService.class),
                 mock(EmailService.class),
@@ -597,7 +675,7 @@ class AdminSettingsControllerApprovalsContractTest {
         try {
             Boolean includeSensitiveDetails = ReflectionTestUtils.invokeMethod(
                     controller,
-                    "canViewSensitiveExportApprovalDetails"
+                    "canViewSensitiveApprovalRequesterDetails"
             );
             assertThat(includeSensitiveDetails).isFalse();
         } finally {

@@ -4,6 +4,9 @@ import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.modules.accounting.domain.DealerLedgerEntry;
 import com.bigbrightpaints.erp.modules.accounting.domain.DealerLedgerRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
+import com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAllocation;
+import com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAllocationRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.SupplierLedgerEntry;
 import com.bigbrightpaints.erp.modules.accounting.domain.SupplierLedgerRepository;
 import com.bigbrightpaints.erp.modules.accounting.dto.AgingBucketDto;
@@ -12,6 +15,7 @@ import com.bigbrightpaints.erp.modules.accounting.dto.OverdueInvoiceDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.SupplierBalanceView;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
+import com.bigbrightpaints.erp.modules.invoice.domain.Invoice;
 import com.bigbrightpaints.erp.modules.purchasing.domain.Supplier;
 import com.bigbrightpaints.erp.modules.purchasing.domain.SupplierRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
@@ -56,6 +60,8 @@ class StatementServiceTest {
     @Mock
     private SupplierLedgerRepository supplierLedgerRepository;
     @Mock
+    private PartnerSettlementAllocationRepository settlementAllocationRepository;
+    @Mock
     private CompanyClock companyClock;
 
     private StatementService statementService;
@@ -69,6 +75,7 @@ class StatementServiceTest {
                 supplierRepository,
                 dealerLedgerRepository,
                 supplierLedgerRepository,
+                settlementAllocationRepository,
                 companyClock
         );
         company = new Company();
@@ -439,6 +446,56 @@ class StatementServiceTest {
                 asOf.minusDays(5),
                 5L,
                 new BigDecimal("150.00")));
+    }
+
+    @Test
+    void dealerInvoiceHelpers_doNotDoubleNetAllocatedSettlementCredits() {
+        Dealer dealer = new Dealer();
+        dealer.setName("Dealer Settled Invoice");
+        ReflectionTestUtils.setField(dealer, "id", 78L);
+
+        LocalDate asOf = LocalDate.of(2026, 2, 12);
+        JournalEntry receiptJournal = new JournalEntry();
+        ReflectionTestUtils.setField(receiptJournal, "id", 901L);
+
+        DealerLedgerEntry overdue = new DealerLedgerEntry();
+        ReflectionTestUtils.setField(overdue, "id", 1L);
+        overdue.setEntryDate(asOf.minusDays(20));
+        overdue.setDueDate(asOf.minusDays(5));
+        overdue.setInvoiceNumber("INV-020");
+        overdue.setDebit(new BigDecimal("500.00"));
+        overdue.setCredit(BigDecimal.ZERO);
+        overdue.setAmountPaid(new BigDecimal("250.00"));
+        overdue.setPaymentStatus("PARTIAL");
+
+        DealerLedgerEntry allocatedReceipt = new DealerLedgerEntry();
+        ReflectionTestUtils.setField(allocatedReceipt, "id", 2L);
+        allocatedReceipt.setEntryDate(asOf.minusDays(2));
+        allocatedReceipt.setDebit(BigDecimal.ZERO);
+        allocatedReceipt.setCredit(new BigDecimal("250.00"));
+        allocatedReceipt.setJournalEntry(receiptJournal);
+
+        PartnerSettlementAllocation allocation = new PartnerSettlementAllocation();
+        allocation.setJournalEntry(receiptJournal);
+        allocation.setAllocationAmount(new BigDecimal("250.00"));
+        allocation.setCompany(company);
+        allocation.setInvoice(new Invoice());
+
+        when(dealerLedgerRepository.findByCompanyAndDealerAndEntryDateLessThanEqualOrderByEntryDateAscIdAsc(
+                company, dealer, asOf)).thenReturn(List.of(overdue, allocatedReceipt));
+        when(settlementAllocationRepository.findByCompanyAndJournalEntry_IdIn(company, List.of(901L)))
+                .thenReturn(List.of(allocation));
+
+        List<OverdueInvoiceDto> overdueInvoices = statementService.dealerOverdueInvoices(dealer, asOf);
+        long openInvoiceCount = statementService.dealerOpenInvoiceCount(dealer, asOf);
+
+        assertThat(overdueInvoices).containsExactly(new OverdueInvoiceDto(
+                "INV-020",
+                asOf.minusDays(20),
+                asOf.minusDays(5),
+                5L,
+                new BigDecimal("250.00")));
+        assertThat(openInvoiceCount).isEqualTo(1);
     }
 
     @Test
