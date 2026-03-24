@@ -1,0 +1,79 @@
+{
+  "name": "BigBright ERP Backend",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "workspace",
+  "workspaceFolder": "/workspace",
+
+  "features": {
+    "ghcr.io/devcontainers/features/docker-outside-of-container:1": {
+      "version": "latest",
+      "moby": false
+    },
+    "ghcr.io/devcontainers/features/github-cli:1": {
+      "version": "latest"
+    }
+  },
+
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "java.configuration.updateBuildConfiguration": "automatic",
+        "java.compile.nullAnalysis.mode": "automatic",
+        "java.format.settings.url": ".factory/.java-format.xml",
+        "java.format.enabled": true,
+        "editor.formatOnSave": true,
+        "files.exclude": {
+          "**/.git": true,
+          "**/.svn": true,
+          "**/.hg": true,
+          "**/CVS": true,
+          "**/.DS_Store": true,
+          "**/target": true
+        },
+        "maven.terminal.useJavaHome": true,
+        "spring-boot.ls.problem.application-properties.enabled": true,
+        "spring-boot.ls.problem.application-yaml.enabled": true
+      },
+      "extensions": [
+        "vscjava.vscode-java-pack",
+        "vscjava.vscode-maven",
+        "redhat.java",
+        "vmware.vscode-spring-boot",
+        "vscjava.vscode-spring-initializr",
+        "vscjava.vscode-spring-boot-dashboard",
+        "redhat.vscode-xml",
+        "redhat.vscode-yaml",
+        "ms-azuretools.vscode-docker",
+        "github.vscode-github-actions",
+        "github.copilot",
+        "eamodio.gitlens"
+      ]
+    }
+  },
+
+  "forwardPorts": [8081, 9090, 15672, 8025],
+
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
+
+  "remoteUser": "vscode",
+
+  "containerEnv": {
+    "MIGRATION_SET": "v2",
+    "SPRING_PROFILES_ACTIVE": "dev",
+    "SPRING_DATASOURCE_URL": "jdbc:postgresql://db:5432/erp_domain",
+    "SPRING_DATASOURCE_USERNAME": "erp",
+    "SPRING_DATASOURCE_PASSWORD": "erp",
+    "SPRING_DATASOURCE_V2_URL": "jdbc:postgresql://db:5432/erp_domain",
+    "SPRING_DATASOURCE_V2_USERNAME": "erp",
+    "SPRING_DATASOURCE_V2_PASSWORD": "erp",
+    "SPRING_RABBITMQ_HOST": "rabbitmq",
+    "SPRING_RABBITMQ_PORT": "5672",
+    "SPRING_MAIL_HOST": "mailhog",
+    "SPRING_MAIL_PORT": "1025",
+    "SPRING_MAIL_USERNAME": "mailhog",
+    "SPRING_MAIL_PASSWORD": "mailhog",
+    "JWT_SECRET": "devcontainer-jwt-secret-min-32-bytes-placeholder",
+    "ERP_SECURITY_ENCRYPTION_KEY": "devcontainer-encryption-key-32b",
+    "DB_PORT": "5432"
+  }
+}
