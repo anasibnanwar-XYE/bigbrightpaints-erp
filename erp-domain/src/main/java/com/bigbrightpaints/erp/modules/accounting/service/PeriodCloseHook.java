@@ -8,5 +8,5 @@ import com.bigbrightpaints.erp.modules.company.domain.Company;
  * Default implementation is a no-op.
  */
 public interface PeriodCloseHook {
-    void onPeriodCloseLocked(Company company, AccountingPeriod period);
+  void onPeriodCloseLocked(Company company, AccountingPeriod period);
 }

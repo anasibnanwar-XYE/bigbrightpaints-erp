@@ -1,8 +1,9 @@
 package com.bigbrightpaints.erp.modules.sales.domain;
 
-import com.bigbrightpaints.erp.modules.company.domain.Company;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import com.bigbrightpaints.erp.modules.company.domain.Company;
+
 public interface SalesOrderItemRepository extends JpaRepository<SalesOrderItem, Long> {
-    boolean existsBySalesOrderCompanyAndProductCodeIgnoreCase(Company company, String productCode);
+  boolean existsBySalesOrderCompanyAndProductCodeIgnoreCase(Company company, String productCode);
 }

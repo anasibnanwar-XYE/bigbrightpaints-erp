@@ -15,23 +15,26 @@ import org.springframework.context.annotation.Profile;
 @Profile({"dev", "openapi"})
 public class DevRabbitConfig {
 
-    private static final Logger log = LoggerFactory.getLogger(DevRabbitConfig.class);
+  private static final Logger log = LoggerFactory.getLogger(DevRabbitConfig.class);
 
-    @Bean
-    @Primary
-    public RabbitTemplate rabbitTemplate() {
-        return new NoOpRabbitTemplate();
+  @Bean
+  @Primary
+  public RabbitTemplate rabbitTemplate() {
+    return new NoOpRabbitTemplate();
+  }
+
+  private static class NoOpRabbitTemplate extends RabbitTemplate {
+    @Override
+    public void afterPropertiesSet() {
+      // Skip ConnectionFactory validation in dev/no-broker mode
     }
 
-    private static class NoOpRabbitTemplate extends RabbitTemplate {
-        @Override
-        public void afterPropertiesSet() {
-            // Skip ConnectionFactory validation in dev/no-broker mode
-        }
-
-        @Override
-        public void convertAndSend(String exchange, String routingKey, Object message) {
-            log.debug("Dev NoOpRabbitTemplate: skipping send to exchange={}, routingKey={}", exchange, routingKey);
-        }
+    @Override
+    public void convertAndSend(String exchange, String routingKey, Object message) {
+      log.debug(
+          "Dev NoOpRabbitTemplate: skipping send to exchange={}, routingKey={}",
+          exchange,
+          routingKey);
     }
+  }
 }

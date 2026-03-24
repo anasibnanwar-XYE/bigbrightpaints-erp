@@ -1,8 +1,13 @@
 package com.bigbrightpaints.erp.modules.accounting.domain;
 
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.time.LocalDate;
+
 import com.bigbrightpaints.erp.core.domain.VersionedEntity;
 import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -16,257 +21,254 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
-import java.math.BigDecimal;
-import java.time.Instant;
-import java.time.LocalDate;
 
 @Entity
 @Table(name = "reconciliation_discrepancies")
 public class ReconciliationDiscrepancy extends VersionedEntity {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
+  private Long id;
 
-    @ManyToOne(optional = false, fetch = FetchType.LAZY)
-    @JoinColumn(name = "company_id")
-    private Company company;
+  @ManyToOne(optional = false, fetch = FetchType.LAZY)
+  @JoinColumn(name = "company_id")
+  private Company company;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "accounting_period_id")
-    private AccountingPeriod accountingPeriod;
+  @ManyToOne(fetch = FetchType.LAZY)
+  @JoinColumn(name = "accounting_period_id")
+  private AccountingPeriod accountingPeriod;
 
-    @Column(name = "period_start", nullable = false)
-    private LocalDate periodStart;
+  @Column(name = "period_start", nullable = false)
+  private LocalDate periodStart;
 
-    @Column(name = "period_end", nullable = false)
-    private LocalDate periodEnd;
+  @Column(name = "period_end", nullable = false)
+  private LocalDate periodEnd;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "discrepancy_type", nullable = false, length = 32)
-    private ReconciliationDiscrepancyType type;
+  @Enumerated(EnumType.STRING)
+  @Column(name = "discrepancy_type", nullable = false, length = 32)
+  private ReconciliationDiscrepancyType type;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "partner_type", length = 32)
-    private PartnerType partnerType;
+  @Enumerated(EnumType.STRING)
+  @Column(name = "partner_type", length = 32)
+  private PartnerType partnerType;
 
-    @Column(name = "partner_id")
-    private Long partnerId;
+  @Column(name = "partner_id")
+  private Long partnerId;
 
-    @Column(name = "partner_code", length = 128)
-    private String partnerCode;
+  @Column(name = "partner_code", length = 128)
+  private String partnerCode;
 
-    @Column(name = "partner_name", length = 255)
-    private String partnerName;
+  @Column(name = "partner_name", length = 255)
+  private String partnerName;
 
-    @Column(name = "expected_amount", nullable = false, precision = 19, scale = 2)
-    private BigDecimal expectedAmount;
+  @Column(name = "expected_amount", nullable = false, precision = 19, scale = 2)
+  private BigDecimal expectedAmount;
 
-    @Column(name = "actual_amount", nullable = false, precision = 19, scale = 2)
-    private BigDecimal actualAmount;
+  @Column(name = "actual_amount", nullable = false, precision = 19, scale = 2)
+  private BigDecimal actualAmount;
 
-    @Column(name = "variance", nullable = false, precision = 19, scale = 2)
-    private BigDecimal variance;
+  @Column(name = "variance", nullable = false, precision = 19, scale = 2)
+  private BigDecimal variance;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "status", nullable = false, length = 32)
-    private ReconciliationDiscrepancyStatus status = ReconciliationDiscrepancyStatus.OPEN;
+  @Enumerated(EnumType.STRING)
+  @Column(name = "status", nullable = false, length = 32)
+  private ReconciliationDiscrepancyStatus status = ReconciliationDiscrepancyStatus.OPEN;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "resolution", length = 32)
-    private ReconciliationDiscrepancyResolution resolution;
+  @Enumerated(EnumType.STRING)
+  @Column(name = "resolution", length = 32)
+  private ReconciliationDiscrepancyResolution resolution;
 
-    @Column(name = "resolution_note", columnDefinition = "TEXT")
-    private String resolutionNote;
+  @Column(name = "resolution_note", columnDefinition = "TEXT")
+  private String resolutionNote;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "resolution_journal_id")
-    private JournalEntry resolutionJournal;
+  @ManyToOne(fetch = FetchType.LAZY)
+  @JoinColumn(name = "resolution_journal_id")
+  private JournalEntry resolutionJournal;
 
-    @Column(name = "resolved_by", length = 255)
-    private String resolvedBy;
+  @Column(name = "resolved_by", length = 255)
+  private String resolvedBy;
 
-    @Column(name = "resolved_at")
-    private Instant resolvedAt;
+  @Column(name = "resolved_at")
+  private Instant resolvedAt;
 
-    @Column(name = "created_at", nullable = false)
-    private Instant createdAt;
+  @Column(name = "created_at", nullable = false)
+  private Instant createdAt;
 
-    @Column(name = "updated_at", nullable = false)
-    private Instant updatedAt;
+  @Column(name = "updated_at", nullable = false)
+  private Instant updatedAt;
 
-    @PrePersist
-    public void prePersist() {
-        Instant now = CompanyTime.now(company);
-        if (createdAt == null) {
-            createdAt = now;
-        }
-        if (updatedAt == null) {
-            updatedAt = now;
-        }
-        if (status == null) {
-            status = ReconciliationDiscrepancyStatus.OPEN;
-        }
+  @PrePersist
+  public void prePersist() {
+    Instant now = CompanyTime.now(company);
+    if (createdAt == null) {
+      createdAt = now;
     }
-
-    @PreUpdate
-    public void preUpdate() {
-        updatedAt = CompanyTime.now(company);
+    if (updatedAt == null) {
+      updatedAt = now;
     }
-
-    public Long getId() {
-        return id;
+    if (status == null) {
+      status = ReconciliationDiscrepancyStatus.OPEN;
     }
+  }
 
-    public Company getCompany() {
-        return company;
-    }
+  @PreUpdate
+  public void preUpdate() {
+    updatedAt = CompanyTime.now(company);
+  }
 
-    public void setCompany(Company company) {
-        this.company = company;
-    }
+  public Long getId() {
+    return id;
+  }
 
-    public AccountingPeriod getAccountingPeriod() {
-        return accountingPeriod;
-    }
+  public Company getCompany() {
+    return company;
+  }
 
-    public void setAccountingPeriod(AccountingPeriod accountingPeriod) {
-        this.accountingPeriod = accountingPeriod;
-    }
+  public void setCompany(Company company) {
+    this.company = company;
+  }
 
-    public LocalDate getPeriodStart() {
-        return periodStart;
-    }
+  public AccountingPeriod getAccountingPeriod() {
+    return accountingPeriod;
+  }
 
-    public void setPeriodStart(LocalDate periodStart) {
-        this.periodStart = periodStart;
-    }
+  public void setAccountingPeriod(AccountingPeriod accountingPeriod) {
+    this.accountingPeriod = accountingPeriod;
+  }
 
-    public LocalDate getPeriodEnd() {
-        return periodEnd;
-    }
+  public LocalDate getPeriodStart() {
+    return periodStart;
+  }
 
-    public void setPeriodEnd(LocalDate periodEnd) {
-        this.periodEnd = periodEnd;
-    }
+  public void setPeriodStart(LocalDate periodStart) {
+    this.periodStart = periodStart;
+  }
 
-    public ReconciliationDiscrepancyType getType() {
-        return type;
-    }
+  public LocalDate getPeriodEnd() {
+    return periodEnd;
+  }
 
-    public void setType(ReconciliationDiscrepancyType type) {
-        this.type = type;
-    }
+  public void setPeriodEnd(LocalDate periodEnd) {
+    this.periodEnd = periodEnd;
+  }
 
-    public PartnerType getPartnerType() {
-        return partnerType;
-    }
+  public ReconciliationDiscrepancyType getType() {
+    return type;
+  }
 
-    public void setPartnerType(PartnerType partnerType) {
-        this.partnerType = partnerType;
-    }
+  public void setType(ReconciliationDiscrepancyType type) {
+    this.type = type;
+  }
 
-    public Long getPartnerId() {
-        return partnerId;
-    }
+  public PartnerType getPartnerType() {
+    return partnerType;
+  }
 
-    public void setPartnerId(Long partnerId) {
-        this.partnerId = partnerId;
-    }
+  public void setPartnerType(PartnerType partnerType) {
+    this.partnerType = partnerType;
+  }
 
-    public String getPartnerCode() {
-        return partnerCode;
-    }
+  public Long getPartnerId() {
+    return partnerId;
+  }
 
-    public void setPartnerCode(String partnerCode) {
-        this.partnerCode = partnerCode;
-    }
+  public void setPartnerId(Long partnerId) {
+    this.partnerId = partnerId;
+  }
 
-    public String getPartnerName() {
-        return partnerName;
-    }
+  public String getPartnerCode() {
+    return partnerCode;
+  }
 
-    public void setPartnerName(String partnerName) {
-        this.partnerName = partnerName;
-    }
+  public void setPartnerCode(String partnerCode) {
+    this.partnerCode = partnerCode;
+  }
 
-    public BigDecimal getExpectedAmount() {
-        return expectedAmount;
-    }
+  public String getPartnerName() {
+    return partnerName;
+  }
 
-    public void setExpectedAmount(BigDecimal expectedAmount) {
-        this.expectedAmount = expectedAmount;
-    }
+  public void setPartnerName(String partnerName) {
+    this.partnerName = partnerName;
+  }
 
-    public BigDecimal getActualAmount() {
-        return actualAmount;
-    }
+  public BigDecimal getExpectedAmount() {
+    return expectedAmount;
+  }
 
-    public void setActualAmount(BigDecimal actualAmount) {
-        this.actualAmount = actualAmount;
-    }
+  public void setExpectedAmount(BigDecimal expectedAmount) {
+    this.expectedAmount = expectedAmount;
+  }
 
-    public BigDecimal getVariance() {
-        return variance;
-    }
+  public BigDecimal getActualAmount() {
+    return actualAmount;
+  }
 
-    public void setVariance(BigDecimal variance) {
-        this.variance = variance;
-    }
+  public void setActualAmount(BigDecimal actualAmount) {
+    this.actualAmount = actualAmount;
+  }
 
-    public ReconciliationDiscrepancyStatus getStatus() {
-        return status;
-    }
+  public BigDecimal getVariance() {
+    return variance;
+  }
 
-    public void setStatus(ReconciliationDiscrepancyStatus status) {
-        this.status = status;
-    }
+  public void setVariance(BigDecimal variance) {
+    this.variance = variance;
+  }
 
-    public ReconciliationDiscrepancyResolution getResolution() {
-        return resolution;
-    }
+  public ReconciliationDiscrepancyStatus getStatus() {
+    return status;
+  }
 
-    public void setResolution(ReconciliationDiscrepancyResolution resolution) {
-        this.resolution = resolution;
-    }
+  public void setStatus(ReconciliationDiscrepancyStatus status) {
+    this.status = status;
+  }
 
-    public String getResolutionNote() {
-        return resolutionNote;
-    }
+  public ReconciliationDiscrepancyResolution getResolution() {
+    return resolution;
+  }
 
-    public void setResolutionNote(String resolutionNote) {
-        this.resolutionNote = resolutionNote;
-    }
+  public void setResolution(ReconciliationDiscrepancyResolution resolution) {
+    this.resolution = resolution;
+  }
 
-    public JournalEntry getResolutionJournal() {
-        return resolutionJournal;
-    }
+  public String getResolutionNote() {
+    return resolutionNote;
+  }
 
-    public void setResolutionJournal(JournalEntry resolutionJournal) {
-        this.resolutionJournal = resolutionJournal;
-    }
+  public void setResolutionNote(String resolutionNote) {
+    this.resolutionNote = resolutionNote;
+  }
 
-    public String getResolvedBy() {
-        return resolvedBy;
-    }
+  public JournalEntry getResolutionJournal() {
+    return resolutionJournal;
+  }
 
-    public void setResolvedBy(String resolvedBy) {
-        this.resolvedBy = resolvedBy;
-    }
+  public void setResolutionJournal(JournalEntry resolutionJournal) {
+    this.resolutionJournal = resolutionJournal;
+  }
 
-    public Instant getResolvedAt() {
-        return resolvedAt;
-    }
+  public String getResolvedBy() {
+    return resolvedBy;
+  }
 
-    public void setResolvedAt(Instant resolvedAt) {
-        this.resolvedAt = resolvedAt;
-    }
+  public void setResolvedBy(String resolvedBy) {
+    this.resolvedBy = resolvedBy;
+  }
 
-    public Instant getCreatedAt() {
-        return createdAt;
-    }
+  public Instant getResolvedAt() {
+    return resolvedAt;
+  }
 
-    public Instant getUpdatedAt() {
-        return updatedAt;
-    }
+  public void setResolvedAt(Instant resolvedAt) {
+    this.resolvedAt = resolvedAt;
+  }
+
+  public Instant getCreatedAt() {
+    return createdAt;
+  }
+
+  public Instant getUpdatedAt() {
+    return updatedAt;
+  }
 }

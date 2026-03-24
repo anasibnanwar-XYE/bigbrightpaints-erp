@@ -1,18 +1,19 @@
 package com.bigbrightpaints.erp.modules.sales.service;
 
-import com.bigbrightpaints.erp.modules.sales.dto.SalesDashboardDto;
 import org.springframework.stereotype.Service;
+
+import com.bigbrightpaints.erp.modules.sales.dto.SalesDashboardDto;
 
 @Service
 public class SalesDashboardService {
 
-    private final SalesCoreEngine salesCoreEngine;
+  private final SalesCoreEngine salesCoreEngine;
 
-    public SalesDashboardService(SalesCoreEngine salesCoreEngine) {
-        this.salesCoreEngine = salesCoreEngine;
-    }
+  public SalesDashboardService(SalesCoreEngine salesCoreEngine) {
+    this.salesCoreEngine = salesCoreEngine;
+  }
 
-    public SalesDashboardDto getDashboard() {
-        return salesCoreEngine.getDashboard();
-    }
+  public SalesDashboardDto getDashboard() {
+    return salesCoreEngine.getDashboard();
+  }
 }

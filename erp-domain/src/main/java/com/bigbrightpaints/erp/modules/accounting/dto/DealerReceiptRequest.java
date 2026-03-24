@@ -1,20 +1,22 @@
 package com.bigbrightpaints.erp.modules.accounting.dto;
 
+import java.math.BigDecimal;
+import java.util.List;
+
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 
-import java.math.BigDecimal;
-import java.util.List;
-
 public record DealerReceiptRequest(
-        @NotNull Long dealerId,
-        @NotNull Long cashAccountId,
-        @NotNull @DecimalMin(value = "0.01") BigDecimal amount,
-        String referenceNumber,
-        String memo,
-        String idempotencyKey,
-        @NotEmpty(message = "Allocations are required for dealer receipts; use settlement endpoints or include allocations")
-        List<@Valid SettlementAllocationRequest> allocations
-) {}
+    @NotNull Long dealerId,
+    @NotNull Long cashAccountId,
+    @NotNull @DecimalMin(value = "0.01") BigDecimal amount,
+    String referenceNumber,
+    String memo,
+    String idempotencyKey,
+    @NotEmpty(
+            message =
+                "Allocations are required for dealer receipts; use settlement endpoints or include"
+                    + " allocations")
+        List<@Valid SettlementAllocationRequest> allocations) {}

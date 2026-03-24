@@ -5,10 +5,10 @@ import java.time.LocalDate;
 import java.util.List;
 
 public record PartnerStatementResponse(
-        Long partnerId,
-        String partnerName,
-        LocalDate fromDate,
-        LocalDate toDate,
-        BigDecimal openingBalance,
-        BigDecimal closingBalance,
-        List<StatementTransactionDto> transactions) {}
+    Long partnerId,
+    String partnerName,
+    LocalDate fromDate,
+    LocalDate toDate,
+    BigDecimal openingBalance,
+    BigDecimal closingBalance,
+    List<StatementTransactionDto> transactions) {}

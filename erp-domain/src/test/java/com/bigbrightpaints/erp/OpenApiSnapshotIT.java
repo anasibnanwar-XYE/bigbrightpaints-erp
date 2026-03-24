@@ -1,18 +1,6 @@
 package com.bigbrightpaints.erp;
 
-import com.fasterxml.jackson.databind.MapperFeature;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
-import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.web.client.TestRestTemplate;
-import org.springframework.http.*;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
-import org.springframework.test.context.TestPropertySource;
+import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -24,481 +12,659 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.http.*;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.test.context.TestPropertySource;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.MapperFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+
+import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
 
 @TestPropertySource(properties = "erp.security.swagger-public=true")
 public class OpenApiSnapshotIT extends AbstractIntegrationTest {
 
-    private static final String SNAPSHOT_VERIFY_PROPERTY = "erp.openapi.snapshot.verify";
-    private static final String SNAPSHOT_VERIFY_ENV = "ERP_OPENAPI_SNAPSHOT_VERIFY";
-    private static final String SNAPSHOT_REFRESH_PROPERTY = "erp.openapi.snapshot.refresh";
-    private static final String SNAPSHOT_REFRESH_ENV = "ERP_OPENAPI_SNAPSHOT_REFRESH";
-    private static final ObjectMapper CANONICAL_JSON = new ObjectMapper()
-            .enable(MapperFeature.SORT_PROPERTIES_ALPHABETICALLY)
-            .enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS);
+  private static final String SNAPSHOT_VERIFY_PROPERTY = "erp.openapi.snapshot.verify";
+  private static final String SNAPSHOT_VERIFY_ENV = "ERP_OPENAPI_SNAPSHOT_VERIFY";
+  private static final String SNAPSHOT_REFRESH_PROPERTY = "erp.openapi.snapshot.refresh";
+  private static final String SNAPSHOT_REFRESH_ENV = "ERP_OPENAPI_SNAPSHOT_REFRESH";
+  private static final ObjectMapper CANONICAL_JSON =
+      new ObjectMapper()
+          .enable(MapperFeature.SORT_PROPERTIES_ALPHABETICALLY)
+          .enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS);
 
-    @Autowired
-    private TestRestTemplate rest;
+  @Autowired private TestRestTemplate rest;
 
-    @Test
-    void auth_and_admin_contract_paths_preserve_expected_response_shapes() throws IOException {
-        JsonNode root = fetchCurrentSpecNode();
+  @Test
+  void auth_and_admin_contract_paths_preserve_expected_response_shapes() throws IOException {
+    JsonNode root = fetchCurrentSpecNode();
 
-        assertOperationContract(root, "/api/v1/auth/login", "post",
-                "#/components/schemas/LoginRequest", "200", "#/components/schemas/AuthResponse");
-        assertOperationContract(root, "/api/v1/auth/refresh-token", "post",
-                "#/components/schemas/RefreshTokenRequest", "200", "#/components/schemas/AuthResponse");
-        assertOperationContract(root, "/api/v1/auth/logout", "post",
-                null, "204", null);
-        assertOperationContract(root, "/api/v1/auth/me", "get",
-                null, "200", "#/components/schemas/ApiResponseMeResponse");
-        assertOperationContract(root, "/api/v1/auth/password/change", "post",
-                "#/components/schemas/ChangePasswordRequest", "200", "#/components/schemas/ApiResponseString");
-        assertOperationContract(root, "/api/v1/auth/password/forgot", "post",
-                "#/components/schemas/ForgotPasswordRequest", "200", "#/components/schemas/ApiResponseString");
-        assertOperationContract(root, "/api/v1/auth/password/forgot/superadmin", "post",
-                "#/components/schemas/ForgotPasswordRequest", "410", "#/components/schemas/ApiResponseMapStringString");
-        assertOperationContract(root, "/api/v1/auth/password/reset", "post",
-                "#/components/schemas/ResetPasswordRequest", "200", "#/components/schemas/ApiResponseString");
+    assertOperationContract(
+        root,
+        "/api/v1/auth/login",
+        "post",
+        "#/components/schemas/LoginRequest",
+        "200",
+        "#/components/schemas/AuthResponse");
+    assertOperationContract(
+        root,
+        "/api/v1/auth/refresh-token",
+        "post",
+        "#/components/schemas/RefreshTokenRequest",
+        "200",
+        "#/components/schemas/AuthResponse");
+    assertOperationContract(root, "/api/v1/auth/logout", "post", null, "204", null);
+    assertOperationContract(
+        root, "/api/v1/auth/me", "get", null, "200", "#/components/schemas/ApiResponseMeResponse");
+    assertOperationContract(
+        root,
+        "/api/v1/auth/password/change",
+        "post",
+        "#/components/schemas/ChangePasswordRequest",
+        "200",
+        "#/components/schemas/ApiResponseString");
+    assertOperationContract(
+        root,
+        "/api/v1/auth/password/forgot",
+        "post",
+        "#/components/schemas/ForgotPasswordRequest",
+        "200",
+        "#/components/schemas/ApiResponseString");
+    assertOperationContract(
+        root,
+        "/api/v1/auth/password/forgot/superadmin",
+        "post",
+        "#/components/schemas/ForgotPasswordRequest",
+        "410",
+        "#/components/schemas/ApiResponseMapStringString");
+    assertOperationContract(
+        root,
+        "/api/v1/auth/password/reset",
+        "post",
+        "#/components/schemas/ResetPasswordRequest",
+        "200",
+        "#/components/schemas/ApiResponseString");
 
-        assertOperationContract(root, "/api/v1/admin/settings", "get",
-                null, "200", "#/components/schemas/ApiResponseSystemSettingsDto");
-        assertOperationContract(root, "/api/v1/admin/settings", "put",
-                "#/components/schemas/SystemSettingsUpdateRequest", "200", "#/components/schemas/ApiResponseSystemSettingsDto");
-        assertOperationContract(root, "/api/v1/admin/tenant-runtime/metrics", "get",
-                null, "200", "#/components/schemas/ApiResponseTenantRuntimeMetricsDto");
-        assertOperationContract(root, "/api/v1/superadmin/tenants/onboard", "post",
-                "#/components/schemas/TenantOnboardingRequest", "200", "#/components/schemas/ApiResponseTenantOnboardingResponse");
-        assertOperationMissing(root, "/api/v1/admin/tenant-runtime/policy", "put");
-        assertOperationMissing(root, "/api/v1/companies", "post");
-        assertOperationMissing(root, "/api/v1/companies/superadmin/tenants", "post");
-        assertOperationMissing(root, "/api/v1/companies/superadmin/tenants/{id}", "put");
-        assertOperationContract(root, "/api/v1/admin/users/{userId}/force-reset-password", "post",
-                null, "200", "#/components/schemas/ApiResponseString");
-        assertOperationContract(root, "/api/v1/admin/users/{userId}/status", "put",
-                "#/components/schemas/UpdateUserStatusRequest", "200", "#/components/schemas/ApiResponseUserDto");
-        assertOperationContract(root, "/api/v1/admin/users/{id}/suspend", "patch",
-                null, "204", null);
-        assertOperationContract(root, "/api/v1/admin/users/{id}/unsuspend", "patch",
-                null, "204", null);
-        assertOperationContract(root, "/api/v1/admin/users/{id}/mfa/disable", "patch",
-                null, "204", null);
-        assertOperationContract(root, "/api/v1/admin/users/{id}", "delete",
-                null, "204", null);
+    assertOperationContract(
+        root,
+        "/api/v1/admin/settings",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseSystemSettingsDto");
+    assertOperationContract(
+        root,
+        "/api/v1/admin/settings",
+        "put",
+        "#/components/schemas/SystemSettingsUpdateRequest",
+        "200",
+        "#/components/schemas/ApiResponseSystemSettingsDto");
+    assertOperationContract(
+        root,
+        "/api/v1/admin/tenant-runtime/metrics",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseTenantRuntimeMetricsDto");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/tenants/onboard",
+        "post",
+        "#/components/schemas/TenantOnboardingRequest",
+        "200",
+        "#/components/schemas/ApiResponseTenantOnboardingResponse");
+    assertOperationMissing(root, "/api/v1/admin/tenant-runtime/policy", "put");
+    assertOperationMissing(root, "/api/v1/companies", "post");
+    assertOperationMissing(root, "/api/v1/companies/superadmin/tenants", "post");
+    assertOperationMissing(root, "/api/v1/companies/superadmin/tenants/{id}", "put");
+    assertOperationContract(
+        root,
+        "/api/v1/admin/users/{userId}/force-reset-password",
+        "post",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseString");
+    assertOperationContract(
+        root,
+        "/api/v1/admin/users/{userId}/status",
+        "put",
+        "#/components/schemas/UpdateUserStatusRequest",
+        "200",
+        "#/components/schemas/ApiResponseUserDto");
+    assertOperationContract(root, "/api/v1/admin/users/{id}/suspend", "patch", null, "204", null);
+    assertOperationContract(root, "/api/v1/admin/users/{id}/unsuspend", "patch", null, "204", null);
+    assertOperationContract(
+        root, "/api/v1/admin/users/{id}/mfa/disable", "patch", null, "204", null);
+    assertOperationContract(root, "/api/v1/admin/users/{id}", "delete", null, "204", null);
+  }
+
+  @Test
+  void catalog_surface_contract_exposes_only_canonical_public_routes() throws IOException {
+    JsonNode root = fetchCurrentSpecNode();
+
+    assertOperationContract(
+        root,
+        "/api/v1/catalog/brands",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseListCatalogBrandDto");
+    assertQueryParameter(root, "/api/v1/catalog/brands", "get", "active");
+    assertOperationContract(
+        root,
+        "/api/v1/catalog/brands",
+        "post",
+        "#/components/schemas/CatalogBrandRequest",
+        "200",
+        "#/components/schemas/ApiResponseCatalogBrandDto");
+
+    assertMultipartBinaryRequest(root, "/api/v1/catalog/import", "post", "file");
+    assertOperationResponse(
+        root,
+        "/api/v1/catalog/import",
+        "post",
+        "200",
+        "#/components/schemas/ApiResponseCatalogImportResponse");
+    assertOperationContract(
+        root,
+        "/api/v1/catalog/items",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponsePageResponseCatalogItemDto");
+    assertQueryParameter(root, "/api/v1/catalog/items", "get", "q");
+    assertQueryParameter(root, "/api/v1/catalog/items", "get", "itemClass");
+    assertOperationContract(
+        root,
+        "/api/v1/catalog/items",
+        "post",
+        "#/components/schemas/CatalogItemRequest",
+        "200",
+        "#/components/schemas/ApiResponseCatalogItemDto");
+    assertOperationContract(
+        root,
+        "/api/v1/catalog/items/{itemId}",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseCatalogItemDto");
+    assertOperationContract(
+        root,
+        "/api/v1/catalog/items/{itemId}",
+        "put",
+        "#/components/schemas/CatalogItemRequest",
+        "200",
+        "#/components/schemas/ApiResponseCatalogItemDto");
+    assertOperationContract(
+        root,
+        "/api/v1/catalog/items/{itemId}",
+        "delete",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseCatalogItemDto");
+    assertOperationMissing(root, "/api/v1/catalog/products", "get");
+    assertOperationMissing(root, "/api/v1/catalog/products", "post");
+    assertOperationMissing(root, "/api/v1/catalog/products/single", "post");
+    assertOperationMissing(root, "/api/v1/catalog/products/bulk-variants", "post");
+
+    assertOperationMissing(root, "/api/v1/accounting/catalog/import", "post");
+    assertOperationMissing(root, "/api/v1/accounting/catalog/products", "get");
+    assertOperationMissing(root, "/api/v1/accounting/catalog/products", "post");
+    assertOperationMissing(root, "/api/v1/accounting/catalog/products/{id}", "put");
+    assertOperationMissing(root, "/api/v1/accounting/catalog/products/bulk-variants", "post");
+    assertOperationMissing(root, "/api/v1/production/brands", "get");
+    assertOperationMissing(root, "/api/v1/production/brands/{brandId}/products", "get");
+  }
+
+  @Test
+  void report_contract_paths_use_canonical_namespace_only() throws IOException {
+    JsonNode root = fetchCurrentSpecNode();
+
+    assertOperationContract(
+        root,
+        "/api/v1/reports/aged-debtors",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseListAgedDebtorDto");
+    assertOperationContract(
+        root,
+        "/api/v1/reports/balance-sheet/hierarchy",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseBalanceSheetHierarchy");
+    assertOperationContract(
+        root,
+        "/api/v1/reports/income-statement/hierarchy",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseIncomeStatementHierarchy");
+    assertOperationContract(
+        root,
+        "/api/v1/reports/aging/receivables",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseAgedReceivablesReport");
+    assertOperationContract(
+        root,
+        "/api/v1/reports/aging/dealer/{dealerId}",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseDealerAgingDetail");
+    assertOperationContract(
+        root,
+        "/api/v1/reports/aging/dealer/{dealerId}/detailed",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseDealerAgingDetailedReport");
+    assertOperationContract(
+        root,
+        "/api/v1/reports/dso/dealer/{dealerId}",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseDSOReport");
+
+    assertOperationMissing(root, "/api/v1/accounting/reports/aged-debtors", "get");
+    assertOperationMissing(root, "/api/v1/accounting/reports/balance-sheet/hierarchy", "get");
+    assertOperationMissing(root, "/api/v1/accounting/reports/income-statement/hierarchy", "get");
+    assertOperationMissing(root, "/api/v1/accounting/reports/aging/receivables", "get");
+    assertOperationMissing(root, "/api/v1/accounting/reports/aging/dealer/{dealerId}", "get");
+    assertOperationMissing(
+        root, "/api/v1/accounting/reports/aging/dealer/{dealerId}/detailed", "get");
+    assertOperationMissing(root, "/api/v1/accounting/reports/dso/dealer/{dealerId}", "get");
+  }
+
+  @Test
+  void inventory_contract_requires_explicit_opening_stock_batch_key_and_removes_packaging_bypass()
+      throws IOException {
+    JsonNode root = fetchCurrentSpecNode();
+
+    assertMultipartBinaryRequest(root, "/api/v1/inventory/opening-stock", "post", "file");
+
+    JsonNode openingStockParameters =
+        root.path("paths").path("/api/v1/inventory/opening-stock").path("post").path("parameters");
+    JsonNode openingStockBatchKey = null;
+    for (JsonNode parameter : openingStockParameters) {
+      if ("openingStockBatchKey".equals(parameter.path("name").asText())) {
+        openingStockBatchKey = parameter;
+        break;
+      }
     }
 
-    @Test
-    void catalog_surface_contract_exposes_only_canonical_public_routes() throws IOException {
-        JsonNode root = fetchCurrentSpecNode();
+    assertThat(openingStockBatchKey)
+        .withFailMessage(
+            "Expected query parameter 'openingStockBatchKey' on POST"
+                + " /api/v1/inventory/opening-stock")
+        .isNotNull();
+    assertThat(openingStockBatchKey.path("in").asText()).isEqualTo("query");
+    assertThat(openingStockBatchKey.path("required").asBoolean()).isTrue();
 
-        assertOperationContract(root, "/api/v1/catalog/brands", "get",
-                null, "200", "#/components/schemas/ApiResponseListCatalogBrandDto");
-        assertQueryParameter(root, "/api/v1/catalog/brands", "get", "active");
-        assertOperationContract(root, "/api/v1/catalog/brands", "post",
-                "#/components/schemas/CatalogBrandRequest", "200", "#/components/schemas/ApiResponseCatalogBrandDto");
+    JsonNode bulkPackRequest = root.path("components").path("schemas").path("BulkPackRequest");
+    assertThat(bulkPackRequest.path("properties").has("packagingAlreadyConsumed"))
+        .withFailMessage("BulkPackRequest must not expose retired packagingAlreadyConsumed bypass")
+        .isFalse();
+  }
 
-        assertMultipartBinaryRequest(root, "/api/v1/catalog/import", "post", "file");
-        assertOperationResponse(root, "/api/v1/catalog/import", "post",
-                "200", "#/components/schemas/ApiResponseCatalogImportResponse");
-        assertOperationContract(root, "/api/v1/catalog/items", "get",
-                null, "200", "#/components/schemas/ApiResponsePageResponseCatalogItemDto");
-        assertQueryParameter(root, "/api/v1/catalog/items", "get", "q");
-        assertQueryParameter(root, "/api/v1/catalog/items", "get", "itemClass");
-        assertOperationContract(root, "/api/v1/catalog/items", "post",
-                "#/components/schemas/CatalogItemRequest", "200", "#/components/schemas/ApiResponseCatalogItemDto");
-        assertOperationContract(root, "/api/v1/catalog/items/{itemId}", "get",
-                null, "200", "#/components/schemas/ApiResponseCatalogItemDto");
-        assertOperationContract(root, "/api/v1/catalog/items/{itemId}", "put",
-                "#/components/schemas/CatalogItemRequest", "200", "#/components/schemas/ApiResponseCatalogItemDto");
-        assertOperationContract(root, "/api/v1/catalog/items/{itemId}", "delete",
-                null, "200", "#/components/schemas/ApiResponseCatalogItemDto");
-        assertOperationMissing(root, "/api/v1/catalog/products", "get");
-        assertOperationMissing(root, "/api/v1/catalog/products", "post");
-        assertOperationMissing(root, "/api/v1/catalog/products/single", "post");
-        assertOperationMissing(root, "/api/v1/catalog/products/bulk-variants", "post");
-
-        assertOperationMissing(root, "/api/v1/accounting/catalog/import", "post");
-        assertOperationMissing(root, "/api/v1/accounting/catalog/products", "get");
-        assertOperationMissing(root, "/api/v1/accounting/catalog/products", "post");
-        assertOperationMissing(root, "/api/v1/accounting/catalog/products/{id}", "put");
-        assertOperationMissing(root, "/api/v1/accounting/catalog/products/bulk-variants", "post");
-        assertOperationMissing(root, "/api/v1/production/brands", "get");
-        assertOperationMissing(root, "/api/v1/production/brands/{brandId}/products", "get");
+  @Test
+  void openapi_snapshot_matches_repository_contract() throws IOException {
+    Path openApiSnapshotPath = resolveRepoRoot().resolve("openapi.json");
+    String currentSpec = canonicalizeJson(fetchCurrentSpecNode().toString());
+    if (refreshRequested()) {
+      assertThat(verifyRequested())
+          .withFailMessage(
+              "Refresh requires verify mode. Set -D%s=true (or %s=true) together with "
+                  + "-D%s=true (or %s=true).",
+              SNAPSHOT_VERIFY_PROPERTY,
+              SNAPSHOT_VERIFY_ENV,
+              SNAPSHOT_REFRESH_PROPERTY,
+              SNAPSHOT_REFRESH_ENV)
+          .isTrue();
+      Files.writeString(openApiSnapshotPath, currentSpec, StandardCharsets.UTF_8);
+      return;
     }
 
-    @Test
-    void report_contract_paths_use_canonical_namespace_only() throws IOException {
-        JsonNode root = fetchCurrentSpecNode();
+    assertThat(Files.exists(openApiSnapshotPath))
+        .withFailMessage(
+            "Missing OpenAPI snapshot at %s. Remediation: rerun intentionally with -D%s=true "
+                + "or %s=true (with -D%s=true or %s=true) to generate it.",
+            openApiSnapshotPath,
+            SNAPSHOT_REFRESH_PROPERTY,
+            SNAPSHOT_REFRESH_ENV,
+            SNAPSHOT_VERIFY_PROPERTY,
+            SNAPSHOT_VERIFY_ENV)
+        .isTrue();
 
-        assertOperationContract(root, "/api/v1/reports/aged-debtors", "get",
-                null, "200", "#/components/schemas/ApiResponseListAgedDebtorDto");
-        assertOperationContract(root, "/api/v1/reports/balance-sheet/hierarchy", "get",
-                null, "200", "#/components/schemas/ApiResponseBalanceSheetHierarchy");
-        assertOperationContract(root, "/api/v1/reports/income-statement/hierarchy", "get",
-                null, "200", "#/components/schemas/ApiResponseIncomeStatementHierarchy");
-        assertOperationContract(root, "/api/v1/reports/aging/receivables", "get",
-                null, "200", "#/components/schemas/ApiResponseAgedReceivablesReport");
-        assertOperationContract(root, "/api/v1/reports/aging/dealer/{dealerId}", "get",
-                null, "200", "#/components/schemas/ApiResponseDealerAgingDetail");
-        assertOperationContract(root, "/api/v1/reports/aging/dealer/{dealerId}/detailed", "get",
-                null, "200", "#/components/schemas/ApiResponseDealerAgingDetailedReport");
-        assertOperationContract(root, "/api/v1/reports/dso/dealer/{dealerId}", "get",
-                null, "200", "#/components/schemas/ApiResponseDSOReport");
+    String snapshotSpec =
+        canonicalizeJson(Files.readString(openApiSnapshotPath, StandardCharsets.UTF_8));
+    String currentSpecHash = sha256Hex(currentSpec);
+    String snapshotSpecHash = sha256Hex(snapshotSpec);
+    List<String> currentOps = extractOperationSignatures(currentSpec);
+    List<String> snapshotOps = extractOperationSignatures(snapshotSpec);
 
-        assertOperationMissing(root, "/api/v1/accounting/reports/aged-debtors", "get");
-        assertOperationMissing(root, "/api/v1/accounting/reports/balance-sheet/hierarchy", "get");
-        assertOperationMissing(root, "/api/v1/accounting/reports/income-statement/hierarchy", "get");
-        assertOperationMissing(root, "/api/v1/accounting/reports/aging/receivables", "get");
-        assertOperationMissing(root, "/api/v1/accounting/reports/aging/dealer/{dealerId}", "get");
-        assertOperationMissing(root, "/api/v1/accounting/reports/aging/dealer/{dealerId}/detailed", "get");
-        assertOperationMissing(root, "/api/v1/accounting/reports/dso/dealer/{dealerId}", "get");
+    assertThat(snapshotOps)
+        .withFailMessage(
+            "OpenAPI snapshot at %s has no operations. Refresh snapshot intentionally with "
+                + "-D%s=true (or %s=true) and -D%s=true (or %s=true).",
+            openApiSnapshotPath,
+            SNAPSHOT_VERIFY_PROPERTY,
+            SNAPSHOT_VERIFY_ENV,
+            SNAPSHOT_REFRESH_PROPERTY,
+            SNAPSHOT_REFRESH_ENV)
+        .isNotEmpty();
+
+    assertThat(currentOps)
+        .withFailMessage(
+            "OpenAPI breaking operation drift detected at %s. currentOps=%d snapshotOps=%d"
+                + " (delta=%d) currentHash=%s snapshotHash=%s. Snapshot operations must remain"
+                + " present in the runtime contract. For full parity (including additive drift),"
+                + " rerun with -D%s=true (or %s=true) and refresh using -D%s=true (or %s=true).",
+            openApiSnapshotPath,
+            currentOps.size(),
+            snapshotOps.size(),
+            currentOps.size() - snapshotOps.size(),
+            currentSpecHash,
+            snapshotSpecHash,
+            SNAPSHOT_VERIFY_PROPERTY,
+            SNAPSHOT_VERIFY_ENV,
+            SNAPSHOT_REFRESH_PROPERTY,
+            SNAPSHOT_REFRESH_ENV)
+        .containsAll(snapshotOps);
+
+    if (!verifyRequested()) {
+      return;
     }
 
-    @Test
-    void inventory_contract_requires_explicit_opening_stock_batch_key_and_removes_packaging_bypass() throws IOException {
-        JsonNode root = fetchCurrentSpecNode();
+    assertThat(currentSpec)
+        .withFailMessage(
+            "OpenAPI snapshot drift detected at %s. Verify mode is non-mutating unless refresh is"
+                + " enabled. Parity signal (sha256) current=%s snapshot=%s. Remediation: rerun"
+                + " intentionally with -D%s=true (or %s=true) and -D%s=true (or %s=true), then"
+                + " commit updated openapi.json.",
+            openApiSnapshotPath,
+            currentSpecHash,
+            snapshotSpecHash,
+            SNAPSHOT_VERIFY_PROPERTY,
+            SNAPSHOT_VERIFY_ENV,
+            SNAPSHOT_REFRESH_PROPERTY,
+            SNAPSHOT_REFRESH_ENV)
+        .isEqualTo(snapshotSpec);
+  }
 
-        assertMultipartBinaryRequest(root, "/api/v1/inventory/opening-stock", "post", "file");
+  private static boolean verifyRequested() {
+    return Boolean.parseBoolean(
+        System.getProperty(
+            SNAPSHOT_VERIFY_PROPERTY, System.getenv().getOrDefault(SNAPSHOT_VERIFY_ENV, "false")));
+  }
 
-        JsonNode openingStockParameters = root.path("paths")
-                .path("/api/v1/inventory/opening-stock")
-                .path("post")
-                .path("parameters");
-        JsonNode openingStockBatchKey = null;
-        for (JsonNode parameter : openingStockParameters) {
-            if ("openingStockBatchKey".equals(parameter.path("name").asText())) {
-                openingStockBatchKey = parameter;
-                break;
-            }
-        }
+  private static boolean refreshRequested() {
+    return Boolean.parseBoolean(
+        System.getProperty(
+            SNAPSHOT_REFRESH_PROPERTY,
+            System.getenv().getOrDefault(SNAPSHOT_REFRESH_ENV, "false")));
+  }
 
-        assertThat(openingStockBatchKey)
-                .withFailMessage("Expected query parameter 'openingStockBatchKey' on POST /api/v1/inventory/opening-stock")
-                .isNotNull();
-        assertThat(openingStockBatchKey.path("in").asText()).isEqualTo("query");
-        assertThat(openingStockBatchKey.path("required").asBoolean()).isTrue();
-
-        JsonNode bulkPackRequest = root.path("components").path("schemas").path("BulkPackRequest");
-        assertThat(bulkPackRequest.path("properties").has("packagingAlreadyConsumed"))
-                .withFailMessage("BulkPackRequest must not expose retired packagingAlreadyConsumed bypass")
-                .isFalse();
+  private static Path resolveRepoRoot() {
+    Path moduleRoot = Path.of("").toAbsolutePath().normalize();
+    if (moduleRoot.getFileName() != null
+        && "erp-domain".equals(moduleRoot.getFileName().toString())) {
+      Path parent = moduleRoot.getParent();
+      if (parent != null) {
+        return parent;
+      }
     }
+    return moduleRoot;
+  }
 
-    @Test
-    void openapi_snapshot_matches_repository_contract() throws IOException {
-        Path openApiSnapshotPath = resolveRepoRoot().resolve("openapi.json");
-        String currentSpec = canonicalizeJson(fetchCurrentSpecNode().toString());
-        if (refreshRequested()) {
-            assertThat(verifyRequested())
-                    .withFailMessage("Refresh requires verify mode. Set -D%s=true (or %s=true) together with "
-                                    + "-D%s=true (or %s=true).",
-                            SNAPSHOT_VERIFY_PROPERTY,
-                            SNAPSHOT_VERIFY_ENV,
-                            SNAPSHOT_REFRESH_PROPERTY,
-                            SNAPSHOT_REFRESH_ENV)
-                    .isTrue();
-            Files.writeString(openApiSnapshotPath, currentSpec, StandardCharsets.UTF_8);
-            return;
-        }
+  private static String canonicalizeJson(String spec) throws IOException {
+    JsonNode parsedSpec = CANONICAL_JSON.readTree(spec);
+    return CANONICAL_JSON.writeValueAsString(canonicalizeNode(parsedSpec));
+  }
 
-        assertThat(Files.exists(openApiSnapshotPath))
-                .withFailMessage("Missing OpenAPI snapshot at %s. Remediation: rerun intentionally with -D%s=true "
-                                + "or %s=true (with -D%s=true or %s=true) to generate it.",
-                        openApiSnapshotPath,
-                        SNAPSHOT_REFRESH_PROPERTY,
-                        SNAPSHOT_REFRESH_ENV,
-                        SNAPSHOT_VERIFY_PROPERTY,
-                        SNAPSHOT_VERIFY_ENV)
-                .isTrue();
-
-        String snapshotSpec = canonicalizeJson(Files.readString(openApiSnapshotPath, StandardCharsets.UTF_8));
-        String currentSpecHash = sha256Hex(currentSpec);
-        String snapshotSpecHash = sha256Hex(snapshotSpec);
-        List<String> currentOps = extractOperationSignatures(currentSpec);
-        List<String> snapshotOps = extractOperationSignatures(snapshotSpec);
-
-        assertThat(snapshotOps)
-                .withFailMessage("OpenAPI snapshot at %s has no operations. Refresh snapshot intentionally with "
-                                + "-D%s=true (or %s=true) and -D%s=true (or %s=true).",
-                        openApiSnapshotPath,
-                        SNAPSHOT_VERIFY_PROPERTY,
-                        SNAPSHOT_VERIFY_ENV,
-                        SNAPSHOT_REFRESH_PROPERTY,
-                        SNAPSHOT_REFRESH_ENV)
-                .isNotEmpty();
-
-        assertThat(currentOps)
-                .withFailMessage("OpenAPI breaking operation drift detected at %s. currentOps=%d snapshotOps=%d "
-                                + "(delta=%d) currentHash=%s snapshotHash=%s. Snapshot operations must remain present "
-                                + "in the runtime contract. For full parity (including additive drift), rerun with "
-                                + "-D%s=true (or %s=true) and refresh using -D%s=true (or %s=true).",
-                        openApiSnapshotPath,
-                        currentOps.size(),
-                        snapshotOps.size(),
-                        currentOps.size() - snapshotOps.size(),
-                        currentSpecHash,
-                        snapshotSpecHash,
-                        SNAPSHOT_VERIFY_PROPERTY,
-                        SNAPSHOT_VERIFY_ENV,
-                        SNAPSHOT_REFRESH_PROPERTY,
-                        SNAPSHOT_REFRESH_ENV)
-                .containsAll(snapshotOps);
-
-        if (!verifyRequested()) {
-            return;
-        }
-
-        assertThat(currentSpec)
-                .withFailMessage("OpenAPI snapshot drift detected at %s. Verify mode is non-mutating unless refresh is enabled. "
-                                + "Parity signal (sha256) current=%s snapshot=%s. "
-                                + "Remediation: rerun intentionally with -D%s=true (or %s=true) and -D%s=true "
-                                + "(or %s=true), then commit updated openapi.json.",
-                        openApiSnapshotPath,
-                        currentSpecHash,
-                        snapshotSpecHash,
-                        SNAPSHOT_VERIFY_PROPERTY,
-                        SNAPSHOT_VERIFY_ENV,
-                        SNAPSHOT_REFRESH_PROPERTY,
-                        SNAPSHOT_REFRESH_ENV)
-                .isEqualTo(snapshotSpec);
+  private static List<String> extractOperationSignatures(String spec) throws IOException {
+    JsonNode root = CANONICAL_JSON.readTree(spec);
+    JsonNode paths = root.get("paths");
+    List<String> operations = new ArrayList<>();
+    if (paths == null || !paths.isObject()) {
+      return operations;
     }
-
-    private static boolean verifyRequested() {
-        return Boolean.parseBoolean(System.getProperty(
-                SNAPSHOT_VERIFY_PROPERTY,
-                System.getenv().getOrDefault(SNAPSHOT_VERIFY_ENV, "false")));
-    }
-
-    private static boolean refreshRequested() {
-        return Boolean.parseBoolean(System.getProperty(
-                SNAPSHOT_REFRESH_PROPERTY,
-                System.getenv().getOrDefault(SNAPSHOT_REFRESH_ENV, "false")));
-    }
-
-    private static Path resolveRepoRoot() {
-        Path moduleRoot = Path.of("").toAbsolutePath().normalize();
-        if (moduleRoot.getFileName() != null && "erp-domain".equals(moduleRoot.getFileName().toString())) {
-            Path parent = moduleRoot.getParent();
-            if (parent != null) {
-                return parent;
-            }
-        }
-        return moduleRoot;
-    }
-
-    private static String canonicalizeJson(String spec) throws IOException {
-        JsonNode parsedSpec = CANONICAL_JSON.readTree(spec);
-        return CANONICAL_JSON.writeValueAsString(canonicalizeNode(parsedSpec));
-    }
-
-    private static List<String> extractOperationSignatures(String spec) throws IOException {
-        JsonNode root = CANONICAL_JSON.readTree(spec);
-        JsonNode paths = root.get("paths");
-        List<String> operations = new ArrayList<>();
-        if (paths == null || !paths.isObject()) {
-            return operations;
-        }
-        paths.fields().forEachRemaining(pathEntry -> {
-            JsonNode methods = pathEntry.getValue();
-            if (methods == null || !methods.isObject()) {
+    paths
+        .fields()
+        .forEachRemaining(
+            pathEntry -> {
+              JsonNode methods = pathEntry.getValue();
+              if (methods == null || !methods.isObject()) {
                 return;
-            }
-            methods.fieldNames().forEachRemaining(method -> {
-                if (isHttpMethod(method)) {
-                    operations.add(method.toUpperCase() + " " + pathEntry.getKey());
-                }
+              }
+              methods
+                  .fieldNames()
+                  .forEachRemaining(
+                      method -> {
+                        if (isHttpMethod(method)) {
+                          operations.add(method.toUpperCase() + " " + pathEntry.getKey());
+                        }
+                      });
             });
-        });
-        Collections.sort(operations);
-        return operations;
+    Collections.sort(operations);
+    return operations;
+  }
+
+  private static boolean isHttpMethod(String method) {
+    return "get".equalsIgnoreCase(method)
+        || "put".equalsIgnoreCase(method)
+        || "post".equalsIgnoreCase(method)
+        || "delete".equalsIgnoreCase(method)
+        || "patch".equalsIgnoreCase(method)
+        || "options".equalsIgnoreCase(method)
+        || "head".equalsIgnoreCase(method)
+        || "trace".equalsIgnoreCase(method);
+  }
+
+  private static JsonNode canonicalizeNode(JsonNode node) {
+    if (node == null || node.isNull() || node.isValueNode()) {
+      return node;
+    }
+    if (node.isArray()) {
+      ArrayNode canonicalArray = CANONICAL_JSON.createArrayNode();
+      for (JsonNode item : node) {
+        canonicalArray.add(canonicalizeNode(item));
+      }
+      return canonicalArray;
+    }
+    if (node.isObject()) {
+      ObjectNode canonicalObject = CANONICAL_JSON.createObjectNode();
+      List<String> fieldNames = new ArrayList<>();
+      node.fieldNames().forEachRemaining(fieldNames::add);
+      Collections.sort(fieldNames);
+      for (String fieldName : fieldNames) {
+        canonicalObject.set(fieldName, canonicalizeNode(node.get(fieldName)));
+      }
+      return canonicalObject;
+    }
+    return node;
+  }
+
+  private static String sha256Hex(String value) {
+    try {
+      byte[] digest =
+          MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
+      StringBuilder builder = new StringBuilder(digest.length * 2);
+      for (byte b : digest) {
+        builder.append(Character.forDigit((b >>> 4) & 0x0f, 16));
+        builder.append(Character.forDigit(b & 0x0f, 16));
+      }
+      return builder.toString();
+    } catch (NoSuchAlgorithmException e) {
+      throw new IllegalStateException("SHA-256 algorithm is unavailable", e);
+    }
+  }
+
+  private JsonNode fetchCurrentSpecNode() throws IOException {
+    SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+    requestFactory.setConnectTimeout(30_000);
+    requestFactory.setReadTimeout(120_000);
+    rest.getRestTemplate().setRequestFactory(requestFactory);
+
+    ResponseEntity<String> json = rest.getForEntity("/v3/api-docs", String.class);
+    assertThat(json.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(json.getBody()).as("OpenAPI payload").isNotBlank();
+    return CANONICAL_JSON.readTree(json.getBody());
+  }
+
+  private void assertOperationContract(
+      JsonNode root,
+      String path,
+      String method,
+      String expectedRequestRef,
+      String expectedResponseCode,
+      String expectedResponseRef) {
+    JsonNode operation = root.path("paths").path(path).path(method);
+    assertThat(operation.isMissingNode())
+        .withFailMessage("Missing %s %s from generated OpenAPI spec", method.toUpperCase(), path)
+        .isFalse();
+
+    if (expectedRequestRef == null) {
+      assertThat(operation.path("requestBody").isMissingNode())
+          .withFailMessage("Did not expect a request body for %s %s", method.toUpperCase(), path)
+          .isTrue();
+    } else {
+      assertThat(
+              operation
+                  .path("requestBody")
+                  .path("content")
+                  .path("application/json")
+                  .path("schema")
+                  .path("$ref")
+                  .asText())
+          .withFailMessage("Unexpected request contract for %s %s", method.toUpperCase(), path)
+          .isEqualTo(expectedRequestRef);
     }
 
-    private static boolean isHttpMethod(String method) {
-        return "get".equalsIgnoreCase(method)
-                || "put".equalsIgnoreCase(method)
-                || "post".equalsIgnoreCase(method)
-                || "delete".equalsIgnoreCase(method)
-                || "patch".equalsIgnoreCase(method)
-                || "options".equalsIgnoreCase(method)
-                || "head".equalsIgnoreCase(method)
-                || "trace".equalsIgnoreCase(method);
+    JsonNode responses = operation.path("responses");
+    List<String> documentedResponseCodes = new ArrayList<>();
+    responses.fieldNames().forEachRemaining(documentedResponseCodes::add);
+    assertThat(responses.has(expectedResponseCode))
+        .withFailMessage(
+            "Expected %s response for %s %s but found %s",
+            expectedResponseCode, method.toUpperCase(), path, documentedResponseCodes)
+        .isTrue();
+
+    JsonNode response = responses.path(expectedResponseCode);
+    if (expectedResponseRef == null) {
+      assertThat(response.path("content").isMissingNode() || response.path("content").isEmpty())
+          .withFailMessage(
+              "Did not expect a response body for %s %s %s",
+              expectedResponseCode, method.toUpperCase(), path)
+          .isTrue();
+      return;
     }
 
-    private static JsonNode canonicalizeNode(JsonNode node) {
-        if (node == null || node.isNull() || node.isValueNode()) {
-            return node;
-        }
-        if (node.isArray()) {
-            ArrayNode canonicalArray = CANONICAL_JSON.createArrayNode();
-            for (JsonNode item : node) {
-                canonicalArray.add(canonicalizeNode(item));
-            }
-            return canonicalArray;
-        }
-        if (node.isObject()) {
-            ObjectNode canonicalObject = CANONICAL_JSON.createObjectNode();
-            List<String> fieldNames = new ArrayList<>();
-            node.fieldNames().forEachRemaining(fieldNames::add);
-            Collections.sort(fieldNames);
-            for (String fieldName : fieldNames) {
-                canonicalObject.set(fieldName, canonicalizeNode(node.get(fieldName)));
-            }
-            return canonicalObject;
-        }
-        return node;
+    JsonNode content = response.path("content");
+    JsonNode schema = content.path("*/*").path("schema");
+    if (schema.isMissingNode()) {
+      schema = content.path("application/json").path("schema");
+    }
+    assertThat(schema.path("$ref").asText())
+        .withFailMessage(
+            "Unexpected response contract for %s %s %s",
+            expectedResponseCode, method.toUpperCase(), path)
+        .isEqualTo(expectedResponseRef);
+  }
+
+  private void assertOperationMissing(JsonNode root, String path, String method) {
+    JsonNode operation = root.path("paths").path(path).path(method);
+    assertThat(operation.isMissingNode())
+        .withFailMessage(
+            "Did not expect %s %s in generated OpenAPI spec", method.toUpperCase(), path)
+        .isTrue();
+  }
+
+  private void assertMultipartBinaryRequest(
+      JsonNode root, String path, String method, String partName) {
+    JsonNode operation = root.path("paths").path(path).path(method);
+    assertThat(operation.isMissingNode())
+        .withFailMessage("Missing %s %s from generated OpenAPI spec", method.toUpperCase(), path)
+        .isFalse();
+
+    JsonNode schema =
+        operation.path("requestBody").path("content").path("multipart/form-data").path("schema");
+    assertThat(schema.path("type").asText())
+        .withFailMessage(
+            "Expected multipart/form-data request schema for %s %s", method.toUpperCase(), path)
+        .isEqualTo("object");
+    assertThat(schema.path("properties").path(partName).path("type").asText())
+        .withFailMessage(
+            "Expected multipart part %s on %s %s", partName, method.toUpperCase(), path)
+        .isEqualTo("string");
+    assertThat(schema.path("properties").path(partName).path("format").asText())
+        .withFailMessage(
+            "Expected multipart part %s to be binary on %s %s",
+            partName, method.toUpperCase(), path)
+        .isEqualTo("binary");
+  }
+
+  private void assertOperationResponse(
+      JsonNode root,
+      String path,
+      String method,
+      String expectedResponseCode,
+      String expectedResponseRef) {
+    JsonNode operation = root.path("paths").path(path).path(method);
+    assertThat(operation.isMissingNode())
+        .withFailMessage("Missing %s %s from generated OpenAPI spec", method.toUpperCase(), path)
+        .isFalse();
+
+    JsonNode responses = operation.path("responses");
+    List<String> documentedResponseCodes = new ArrayList<>();
+    responses.fieldNames().forEachRemaining(documentedResponseCodes::add);
+    assertThat(responses.has(expectedResponseCode))
+        .withFailMessage(
+            "Expected %s response for %s %s but found %s",
+            expectedResponseCode, method.toUpperCase(), path, documentedResponseCodes)
+        .isTrue();
+
+    JsonNode content = responses.path(expectedResponseCode).path("content");
+    JsonNode schema = content.path("*/*").path("schema");
+    if (schema.isMissingNode()) {
+      schema = content.path("application/json").path("schema");
+    }
+    assertThat(schema.path("$ref").asText())
+        .withFailMessage(
+            "Unexpected response contract for %s %s %s",
+            expectedResponseCode, method.toUpperCase(), path)
+        .isEqualTo(expectedResponseRef);
+  }
+
+  private void assertQueryParameter(
+      JsonNode root, String path, String method, String parameterName) {
+    JsonNode parameters = root.path("paths").path(path).path(method).path("parameters");
+    assertThat(parameters.isArray())
+        .withFailMessage("Expected query/header parameters on %s %s", method.toUpperCase(), path)
+        .isTrue();
+
+    boolean found = false;
+    for (JsonNode parameter : parameters) {
+      if (parameterName.equals(parameter.path("name").asText())) {
+        found = true;
+        break;
+      }
     }
 
-    private static String sha256Hex(String value) {
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
-            StringBuilder builder = new StringBuilder(digest.length * 2);
-            for (byte b : digest) {
-                builder.append(Character.forDigit((b >>> 4) & 0x0f, 16));
-                builder.append(Character.forDigit(b & 0x0f, 16));
-            }
-            return builder.toString();
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 algorithm is unavailable", e);
-        }
-    }
-
-    private JsonNode fetchCurrentSpecNode() throws IOException {
-        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
-        requestFactory.setConnectTimeout(30_000);
-        requestFactory.setReadTimeout(120_000);
-        rest.getRestTemplate().setRequestFactory(requestFactory);
-
-        ResponseEntity<String> json = rest.getForEntity("/v3/api-docs", String.class);
-        assertThat(json.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(json.getBody()).as("OpenAPI payload").isNotBlank();
-        return CANONICAL_JSON.readTree(json.getBody());
-    }
-
-    private void assertOperationContract(JsonNode root,
-                                         String path,
-                                         String method,
-                                         String expectedRequestRef,
-                                         String expectedResponseCode,
-                                         String expectedResponseRef) {
-        JsonNode operation = root.path("paths").path(path).path(method);
-        assertThat(operation.isMissingNode())
-                .withFailMessage("Missing %s %s from generated OpenAPI spec", method.toUpperCase(), path)
-                .isFalse();
-
-        if (expectedRequestRef == null) {
-            assertThat(operation.path("requestBody").isMissingNode())
-                    .withFailMessage("Did not expect a request body for %s %s", method.toUpperCase(), path)
-                    .isTrue();
-        } else {
-            assertThat(operation.path("requestBody").path("content").path("application/json").path("schema").path("$ref").asText())
-                    .withFailMessage("Unexpected request contract for %s %s", method.toUpperCase(), path)
-                    .isEqualTo(expectedRequestRef);
-        }
-
-        JsonNode responses = operation.path("responses");
-        List<String> documentedResponseCodes = new ArrayList<>();
-        responses.fieldNames().forEachRemaining(documentedResponseCodes::add);
-        assertThat(responses.has(expectedResponseCode))
-                .withFailMessage("Expected %s response for %s %s but found %s",
-                        expectedResponseCode,
-                        method.toUpperCase(),
-                        path,
-                        documentedResponseCodes)
-                .isTrue();
-
-        JsonNode response = responses.path(expectedResponseCode);
-        if (expectedResponseRef == null) {
-            assertThat(response.path("content").isMissingNode() || response.path("content").isEmpty())
-                    .withFailMessage("Did not expect a response body for %s %s %s", expectedResponseCode, method.toUpperCase(), path)
-                    .isTrue();
-            return;
-        }
-
-        JsonNode content = response.path("content");
-        JsonNode schema = content.path("*/*").path("schema");
-        if (schema.isMissingNode()) {
-            schema = content.path("application/json").path("schema");
-        }
-        assertThat(schema.path("$ref").asText())
-                .withFailMessage("Unexpected response contract for %s %s %s", expectedResponseCode, method.toUpperCase(), path)
-                .isEqualTo(expectedResponseRef);
-    }
-
-    private void assertOperationMissing(JsonNode root, String path, String method) {
-        JsonNode operation = root.path("paths").path(path).path(method);
-        assertThat(operation.isMissingNode())
-                .withFailMessage("Did not expect %s %s in generated OpenAPI spec", method.toUpperCase(), path)
-                .isTrue();
-    }
-
-    private void assertMultipartBinaryRequest(JsonNode root, String path, String method, String partName) {
-        JsonNode operation = root.path("paths").path(path).path(method);
-        assertThat(operation.isMissingNode())
-                .withFailMessage("Missing %s %s from generated OpenAPI spec", method.toUpperCase(), path)
-                .isFalse();
-
-        JsonNode schema = operation.path("requestBody")
-                .path("content")
-                .path("multipart/form-data")
-                .path("schema");
-        assertThat(schema.path("type").asText())
-                .withFailMessage("Expected multipart/form-data request schema for %s %s", method.toUpperCase(), path)
-                .isEqualTo("object");
-        assertThat(schema.path("properties").path(partName).path("type").asText())
-                .withFailMessage("Expected multipart part %s on %s %s", partName, method.toUpperCase(), path)
-                .isEqualTo("string");
-        assertThat(schema.path("properties").path(partName).path("format").asText())
-                .withFailMessage("Expected multipart part %s to be binary on %s %s", partName, method.toUpperCase(), path)
-                .isEqualTo("binary");
-    }
-
-    private void assertOperationResponse(JsonNode root,
-                                         String path,
-                                         String method,
-                                         String expectedResponseCode,
-                                         String expectedResponseRef) {
-        JsonNode operation = root.path("paths").path(path).path(method);
-        assertThat(operation.isMissingNode())
-                .withFailMessage("Missing %s %s from generated OpenAPI spec", method.toUpperCase(), path)
-                .isFalse();
-
-        JsonNode responses = operation.path("responses");
-        List<String> documentedResponseCodes = new ArrayList<>();
-        responses.fieldNames().forEachRemaining(documentedResponseCodes::add);
-        assertThat(responses.has(expectedResponseCode))
-                .withFailMessage("Expected %s response for %s %s but found %s",
-                        expectedResponseCode,
-                        method.toUpperCase(),
-                        path,
-                        documentedResponseCodes)
-                .isTrue();
-
-        JsonNode content = responses.path(expectedResponseCode).path("content");
-        JsonNode schema = content.path("*/*").path("schema");
-        if (schema.isMissingNode()) {
-            schema = content.path("application/json").path("schema");
-        }
-        assertThat(schema.path("$ref").asText())
-                .withFailMessage("Unexpected response contract for %s %s %s", expectedResponseCode, method.toUpperCase(), path)
-                .isEqualTo(expectedResponseRef);
-    }
-
-    private void assertQueryParameter(JsonNode root, String path, String method, String parameterName) {
-        JsonNode parameters = root.path("paths").path(path).path(method).path("parameters");
-        assertThat(parameters.isArray())
-                .withFailMessage("Expected query/header parameters on %s %s", method.toUpperCase(), path)
-                .isTrue();
-
-        boolean found = false;
-        for (JsonNode parameter : parameters) {
-            if (parameterName.equals(parameter.path("name").asText())) {
-                found = true;
-                break;
-            }
-        }
-
-        assertThat(found)
-                .withFailMessage("Expected parameter '%s' on %s %s", parameterName, method.toUpperCase(), path)
-                .isTrue();
-    }
+    assertThat(found)
+        .withFailMessage(
+            "Expected parameter '%s' on %s %s", parameterName, method.toUpperCase(), path)
+        .isTrue();
+  }
 }

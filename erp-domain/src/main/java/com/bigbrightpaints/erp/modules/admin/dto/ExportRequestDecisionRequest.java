@@ -1,4 +1,3 @@
 package com.bigbrightpaints.erp.modules.admin.dto;
 
-public record ExportRequestDecisionRequest(String reason) {
-}
+public record ExportRequestDecisionRequest(String reason) {}

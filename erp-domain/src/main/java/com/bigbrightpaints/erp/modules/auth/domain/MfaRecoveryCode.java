@@ -1,8 +1,10 @@
 package com.bigbrightpaints.erp.modules.auth.domain;
 
-import jakarta.persistence.*;
-import com.bigbrightpaints.erp.core.domain.VersionedEntity;
 import java.time.LocalDateTime;
+
+import com.bigbrightpaints.erp.core.domain.VersionedEntity;
+
+import jakarta.persistence.*;
 
 /**
  * Entity representing an MFA recovery code.
@@ -12,82 +14,81 @@ import java.time.LocalDateTime;
 @Table(name = "mfa_recovery_codes")
 public class MfaRecoveryCode extends VersionedEntity {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
+  private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id", nullable = false)
-    private UserAccount user;
+  @ManyToOne(fetch = FetchType.LAZY)
+  @JoinColumn(name = "user_id", nullable = false)
+  private UserAccount user;
 
-    @Column(name = "code_hash", nullable = false)
-    private String codeHash;
+  @Column(name = "code_hash", nullable = false)
+  private String codeHash;
 
-    @Column(name = "used_at")
-    private LocalDateTime usedAt;
+  @Column(name = "used_at")
+  private LocalDateTime usedAt;
 
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private LocalDateTime createdAt;
+  @Column(name = "created_at", nullable = false, updatable = false)
+  private LocalDateTime createdAt;
 
-    // Constructors
-    public MfaRecoveryCode() {
+  // Constructors
+  public MfaRecoveryCode() {}
+
+  public MfaRecoveryCode(UserAccount user, String codeHash) {
+    this.user = user;
+    this.codeHash = codeHash;
+    this.createdAt = LocalDateTime.now();
+  }
+
+  // Business methods
+  public boolean isUsed() {
+    return usedAt != null;
+  }
+
+  public void markAsUsed() {
+    if (this.usedAt == null) {
+      this.usedAt = LocalDateTime.now();
     }
+  }
 
-    public MfaRecoveryCode(UserAccount user, String codeHash) {
-        this.user = user;
-        this.codeHash = codeHash;
-        this.createdAt = LocalDateTime.now();
-    }
+  // Getters and Setters
+  public Long getId() {
+    return id;
+  }
 
-    // Business methods
-    public boolean isUsed() {
-        return usedAt != null;
-    }
+  public void setId(Long id) {
+    this.id = id;
+  }
 
-    public void markAsUsed() {
-        if (this.usedAt == null) {
-            this.usedAt = LocalDateTime.now();
-        }
-    }
+  public UserAccount getUser() {
+    return user;
+  }
 
-    // Getters and Setters
-    public Long getId() {
-        return id;
-    }
+  public void setUser(UserAccount user) {
+    this.user = user;
+  }
 
-    public void setId(Long id) {
-        this.id = id;
-    }
+  public String getCodeHash() {
+    return codeHash;
+  }
 
-    public UserAccount getUser() {
-        return user;
-    }
+  public void setCodeHash(String codeHash) {
+    this.codeHash = codeHash;
+  }
 
-    public void setUser(UserAccount user) {
-        this.user = user;
-    }
+  public LocalDateTime getUsedAt() {
+    return usedAt;
+  }
 
-    public String getCodeHash() {
-        return codeHash;
-    }
+  public void setUsedAt(LocalDateTime usedAt) {
+    this.usedAt = usedAt;
+  }
 
-    public void setCodeHash(String codeHash) {
-        this.codeHash = codeHash;
-    }
+  public LocalDateTime getCreatedAt() {
+    return createdAt;
+  }
 
-    public LocalDateTime getUsedAt() {
-        return usedAt;
-    }
-
-    public void setUsedAt(LocalDateTime usedAt) {
-        this.usedAt = usedAt;
-    }
-
-    public LocalDateTime getCreatedAt() {
-        return createdAt;
-    }
-
-    public void setCreatedAt(LocalDateTime createdAt) {
-        this.createdAt = createdAt;
-    }
+  public void setCreatedAt(LocalDateTime createdAt) {
+    this.createdAt = createdAt;
+  }
 }

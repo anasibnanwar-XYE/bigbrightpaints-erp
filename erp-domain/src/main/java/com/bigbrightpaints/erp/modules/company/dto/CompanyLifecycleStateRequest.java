@@ -5,10 +5,9 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 public record CompanyLifecycleStateRequest(
-        @NotBlank
-        @Pattern(regexp = "(?i)ACTIVE|HOLD|BLOCKED|SUSPENDED|DEACTIVATED", message = "state must be ACTIVE, HOLD, BLOCKED, SUSPENDED, or DEACTIVATED")
+    @NotBlank
+        @Pattern(
+            regexp = "(?i)ACTIVE|HOLD|BLOCKED|SUSPENDED|DEACTIVATED",
+            message = "state must be ACTIVE, HOLD, BLOCKED, SUSPENDED, or DEACTIVATED")
         String state,
-        @NotBlank
-        @Size(max = 1024)
-        String reason
-) {}
+    @NotBlank @Size(max = 1024) String reason) {}

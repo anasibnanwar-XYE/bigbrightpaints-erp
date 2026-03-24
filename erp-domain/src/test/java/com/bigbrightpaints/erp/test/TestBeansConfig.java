@@ -1,44 +1,46 @@
 package com.bigbrightpaints.erp.test;
 
+import java.time.Duration;
+
+import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
+import org.apache.hc.client5.http.impl.classic.HttpClients;
 import org.mockito.Mockito;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.web.client.RestTemplateCustomizer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
-import org.springframework.mail.javamail.JavaMailSender;
-import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
-import org.apache.hc.client5.http.impl.classic.HttpClients;
 import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
-
-import java.time.Duration;
+import org.springframework.mail.javamail.JavaMailSender;
 
 @TestConfiguration
 public class TestBeansConfig {
 
-    @Bean
-    @Primary
-    public RabbitTemplate rabbitTemplate() {
-        return Mockito.mock(RabbitTemplate.class);
-    }
+  @Bean
+  @Primary
+  public RabbitTemplate rabbitTemplate() {
+    return Mockito.mock(RabbitTemplate.class);
+  }
 
-    @Bean
-    @Primary
-    public JavaMailSender javaMailSender() {
-        return Mockito.mock(JavaMailSender.class);
-    }
+  @Bean
+  @Primary
+  public JavaMailSender javaMailSender() {
+    return Mockito.mock(JavaMailSender.class);
+  }
 
-    @Bean
-    public RestTemplateCustomizer restTemplateCustomizer() {
-        CloseableHttpClient client = HttpClients.custom()
-                .disableAutomaticRetries()
-                .disableRedirectHandling()
-                .disableAuthCaching()
-                .build();
-        HttpComponentsClientHttpRequestFactory factory = new HttpComponentsClientHttpRequestFactory(client);
-        factory.setConnectTimeout(Duration.ofSeconds(10));
-        factory.setConnectionRequestTimeout(Duration.ofSeconds(10));
+  @Bean
+  public RestTemplateCustomizer restTemplateCustomizer() {
+    CloseableHttpClient client =
+        HttpClients.custom()
+            .disableAutomaticRetries()
+            .disableRedirectHandling()
+            .disableAuthCaching()
+            .build();
+    HttpComponentsClientHttpRequestFactory factory =
+        new HttpComponentsClientHttpRequestFactory(client);
+    factory.setConnectTimeout(Duration.ofSeconds(10));
+    factory.setConnectionRequestTimeout(Duration.ofSeconds(10));
 
-        return restTemplate -> restTemplate.setRequestFactory(factory);
-    }
+    return restTemplate -> restTemplate.setRequestFactory(factory);
+  }
 }

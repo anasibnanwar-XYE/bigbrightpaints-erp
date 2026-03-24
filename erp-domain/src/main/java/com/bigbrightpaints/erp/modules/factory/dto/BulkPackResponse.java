@@ -16,18 +16,16 @@ public record BulkPackResponse(
     BigDecimal packagingCost,
     List<ChildBatchDto> childBatches,
     Long journalEntryId,
-    Instant packedAt
-) {
-    public record ChildBatchDto(
-        Long id,
-        UUID publicId,
-        String batchCode,
-        Long finishedGoodId,
-        String finishedGoodCode,
-        String finishedGoodName,
-        String sizeLabel,
-        BigDecimal quantity,
-        BigDecimal unitCost,
-        BigDecimal totalValue
-    ) {}
+    Instant packedAt) {
+  public record ChildBatchDto(
+      Long id,
+      UUID publicId,
+      String batchCode,
+      Long finishedGoodId,
+      String finishedGoodCode,
+      String finishedGoodName,
+      String sizeLabel,
+      BigDecimal quantity,
+      BigDecimal unitCost,
+      BigDecimal totalValue) {}
 }

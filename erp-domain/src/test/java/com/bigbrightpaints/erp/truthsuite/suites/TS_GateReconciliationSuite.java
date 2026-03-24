@@ -6,8 +6,7 @@ package com.bigbrightpaints.erp.truthsuite.suites;
  */
 public final class TS_GateReconciliationSuite {
 
-    public static final String GATE = "gate-reconciliation";
+  public static final String GATE = "gate-reconciliation";
 
-    private TS_GateReconciliationSuite() {
-    }
+  private TS_GateReconciliationSuite() {}
 }

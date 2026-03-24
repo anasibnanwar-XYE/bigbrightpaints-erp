@@ -9,13 +9,12 @@ import org.springframework.stereotype.Component;
 @Component
 public class AuthSecretStorageBackfillRunner implements ApplicationRunner {
 
-    private static final Logger log = LoggerFactory.getLogger(AuthSecretStorageBackfillRunner.class);
+  private static final Logger log = LoggerFactory.getLogger(AuthSecretStorageBackfillRunner.class);
 
-    public AuthSecretStorageBackfillRunner() {
-    }
+  public AuthSecretStorageBackfillRunner() {}
 
-    @Override
-    public void run(ApplicationArguments args) {
-        log.info("Auth secret storage backfill is retired; digest-only token storage is now mandatory");
-    }
+  @Override
+  public void run(ApplicationArguments args) {
+    log.info("Auth secret storage backfill is retired; digest-only token storage is now mandatory");
+  }
 }

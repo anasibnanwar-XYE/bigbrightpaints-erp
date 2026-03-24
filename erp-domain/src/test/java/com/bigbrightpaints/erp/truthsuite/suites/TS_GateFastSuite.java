@@ -6,8 +6,7 @@ package com.bigbrightpaints.erp.truthsuite.suites;
  */
 public final class TS_GateFastSuite {
 
-    public static final String GATE = "gate-fast";
+  public static final String GATE = "gate-fast";
 
-    private TS_GateFastSuite() {
-    }
+  private TS_GateFastSuite() {}
 }

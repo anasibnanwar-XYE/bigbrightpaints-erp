@@ -1,82 +1,163 @@
 package com.bigbrightpaints.erp.modules.invoice.domain;
 
-import jakarta.persistence.*;
-
 import java.math.BigDecimal;
+
 import com.bigbrightpaints.erp.core.domain.VersionedEntity;
+
+import jakarta.persistence.*;
 
 @Entity
 @Table(name = "invoice_lines")
 public class InvoiceLine extends VersionedEntity {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
+  private Long id;
 
-    @ManyToOne(optional = false, fetch = FetchType.LAZY)
-    @JoinColumn(name = "invoice_id")
-    private Invoice invoice;
+  @ManyToOne(optional = false, fetch = FetchType.LAZY)
+  @JoinColumn(name = "invoice_id")
+  private Invoice invoice;
 
-    @Column(name = "product_code")
-    private String productCode;
+  @Column(name = "product_code")
+  private String productCode;
 
-    private String description;
+  private String description;
 
-    @Column(nullable = false)
-    private BigDecimal quantity;
+  @Column(nullable = false)
+  private BigDecimal quantity;
 
-    @Column(name = "unit_price", nullable = false)
-    private BigDecimal unitPrice;
+  @Column(name = "unit_price", nullable = false)
+  private BigDecimal unitPrice;
 
-    @Column(name = "tax_rate", nullable = false)
-    private BigDecimal taxRate = BigDecimal.ZERO;
+  @Column(name = "tax_rate", nullable = false)
+  private BigDecimal taxRate = BigDecimal.ZERO;
 
-    @Column(name = "taxable_amount")
-    private BigDecimal taxableAmount;
+  @Column(name = "taxable_amount")
+  private BigDecimal taxableAmount;
 
-    @Column(name = "tax_amount")
-    private BigDecimal taxAmount;
+  @Column(name = "tax_amount")
+  private BigDecimal taxAmount;
 
-    @Column(name = "cgst_amount")
-    private BigDecimal cgstAmount;
+  @Column(name = "cgst_amount")
+  private BigDecimal cgstAmount;
 
-    @Column(name = "sgst_amount")
-    private BigDecimal sgstAmount;
+  @Column(name = "sgst_amount")
+  private BigDecimal sgstAmount;
 
-    @Column(name = "igst_amount")
-    private BigDecimal igstAmount;
+  @Column(name = "igst_amount")
+  private BigDecimal igstAmount;
 
-    @Column(name = "discount_amount")
-    private BigDecimal discountAmount;
+  @Column(name = "discount_amount")
+  private BigDecimal discountAmount;
 
-    @Column(name = "line_total", nullable = false)
-    private BigDecimal lineTotal;
+  @Column(name = "line_total", nullable = false)
+  private BigDecimal lineTotal;
 
-    public Long getId() { return id; }
-    public Invoice getInvoice() { return invoice; }
-    public void setInvoice(Invoice invoice) { this.invoice = invoice; }
-    public String getProductCode() { return productCode; }
-    public void setProductCode(String productCode) { this.productCode = productCode; }
-    public String getDescription() { return description; }
-    public void setDescription(String description) { this.description = description; }
-    public BigDecimal getQuantity() { return quantity; }
-    public void setQuantity(BigDecimal quantity) { this.quantity = quantity; }
-    public BigDecimal getUnitPrice() { return unitPrice; }
-    public void setUnitPrice(BigDecimal unitPrice) { this.unitPrice = unitPrice; }
-    public BigDecimal getTaxRate() { return taxRate; }
-    public void setTaxRate(BigDecimal taxRate) { this.taxRate = taxRate; }
-    public BigDecimal getTaxableAmount() { return taxableAmount; }
-    public void setTaxableAmount(BigDecimal taxableAmount) { this.taxableAmount = taxableAmount; }
-    public BigDecimal getTaxAmount() { return taxAmount; }
-    public void setTaxAmount(BigDecimal taxAmount) { this.taxAmount = taxAmount; }
-    public BigDecimal getCgstAmount() { return cgstAmount; }
-    public void setCgstAmount(BigDecimal cgstAmount) { this.cgstAmount = cgstAmount; }
-    public BigDecimal getSgstAmount() { return sgstAmount; }
-    public void setSgstAmount(BigDecimal sgstAmount) { this.sgstAmount = sgstAmount; }
-    public BigDecimal getIgstAmount() { return igstAmount; }
-    public void setIgstAmount(BigDecimal igstAmount) { this.igstAmount = igstAmount; }
-    public BigDecimal getDiscountAmount() { return discountAmount; }
-    public void setDiscountAmount(BigDecimal discountAmount) { this.discountAmount = discountAmount; }
-    public BigDecimal getLineTotal() { return lineTotal; }
-    public void setLineTotal(BigDecimal lineTotal) { this.lineTotal = lineTotal; }
+  public Long getId() {
+    return id;
+  }
+
+  public Invoice getInvoice() {
+    return invoice;
+  }
+
+  public void setInvoice(Invoice invoice) {
+    this.invoice = invoice;
+  }
+
+  public String getProductCode() {
+    return productCode;
+  }
+
+  public void setProductCode(String productCode) {
+    this.productCode = productCode;
+  }
+
+  public String getDescription() {
+    return description;
+  }
+
+  public void setDescription(String description) {
+    this.description = description;
+  }
+
+  public BigDecimal getQuantity() {
+    return quantity;
+  }
+
+  public void setQuantity(BigDecimal quantity) {
+    this.quantity = quantity;
+  }
+
+  public BigDecimal getUnitPrice() {
+    return unitPrice;
+  }
+
+  public void setUnitPrice(BigDecimal unitPrice) {
+    this.unitPrice = unitPrice;
+  }
+
+  public BigDecimal getTaxRate() {
+    return taxRate;
+  }
+
+  public void setTaxRate(BigDecimal taxRate) {
+    this.taxRate = taxRate;
+  }
+
+  public BigDecimal getTaxableAmount() {
+    return taxableAmount;
+  }
+
+  public void setTaxableAmount(BigDecimal taxableAmount) {
+    this.taxableAmount = taxableAmount;
+  }
+
+  public BigDecimal getTaxAmount() {
+    return taxAmount;
+  }
+
+  public void setTaxAmount(BigDecimal taxAmount) {
+    this.taxAmount = taxAmount;
+  }
+
+  public BigDecimal getCgstAmount() {
+    return cgstAmount;
+  }
+
+  public void setCgstAmount(BigDecimal cgstAmount) {
+    this.cgstAmount = cgstAmount;
+  }
+
+  public BigDecimal getSgstAmount() {
+    return sgstAmount;
+  }
+
+  public void setSgstAmount(BigDecimal sgstAmount) {
+    this.sgstAmount = sgstAmount;
+  }
+
+  public BigDecimal getIgstAmount() {
+    return igstAmount;
+  }
+
+  public void setIgstAmount(BigDecimal igstAmount) {
+    this.igstAmount = igstAmount;
+  }
+
+  public BigDecimal getDiscountAmount() {
+    return discountAmount;
+  }
+
+  public void setDiscountAmount(BigDecimal discountAmount) {
+    this.discountAmount = discountAmount;
+  }
+
+  public BigDecimal getLineTotal() {
+    return lineTotal;
+  }
+
+  public void setLineTotal(BigDecimal lineTotal) {
+    this.lineTotal = lineTotal;
+  }
 }

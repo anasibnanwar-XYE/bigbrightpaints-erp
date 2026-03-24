@@ -1,123 +1,128 @@
 package com.bigbrightpaints.erp.modules.production.domain;
 
-import com.bigbrightpaints.erp.core.util.CompanyTime;
-import com.bigbrightpaints.erp.modules.company.domain.Company;
-import jakarta.persistence.*;
-
 import java.time.Instant;
-import com.bigbrightpaints.erp.core.domain.VersionedEntity;
 import java.util.UUID;
 
+import com.bigbrightpaints.erp.core.domain.VersionedEntity;
+import com.bigbrightpaints.erp.core.util.CompanyTime;
+import com.bigbrightpaints.erp.modules.company.domain.Company;
+
+import jakarta.persistence.*;
+
 @Entity
-@Table(name = "production_brands",
-        uniqueConstraints = {
-                @UniqueConstraint(name = "uq_brand_company_code", columnNames = {"company_id", "code"}),
-                @UniqueConstraint(name = "uq_brand_company_name", columnNames = {"company_id", "name"})
-        })
+@Table(
+    name = "production_brands",
+    uniqueConstraints = {
+      @UniqueConstraint(
+          name = "uq_brand_company_code",
+          columnNames = {"company_id", "code"}),
+      @UniqueConstraint(
+          name = "uq_brand_company_name",
+          columnNames = {"company_id", "name"})
+    })
 public class ProductionBrand extends VersionedEntity {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
+  private Long id;
 
-    @Column(name = "public_id", nullable = false)
-    private UUID publicId;
+  @Column(name = "public_id", nullable = false)
+  private UUID publicId;
 
-    @ManyToOne(optional = false, fetch = FetchType.LAZY)
-    @JoinColumn(name = "company_id")
-    private Company company;
+  @ManyToOne(optional = false, fetch = FetchType.LAZY)
+  @JoinColumn(name = "company_id")
+  private Company company;
 
-    @Column(nullable = false)
-    private String name;
+  @Column(nullable = false)
+  private String name;
 
-    @Column(nullable = false)
-    private String code;
+  @Column(nullable = false)
+  private String code;
 
-    @Column(name = "logo_url")
-    private String logoUrl;
+  @Column(name = "logo_url")
+  private String logoUrl;
 
-    @Column
-    private String description;
+  @Column private String description;
 
-    @Column(name = "is_active", nullable = false)
-    private boolean active = true;
+  @Column(name = "is_active", nullable = false)
+  private boolean active = true;
 
-    @Column(name = "created_at", nullable = false)
-    private Instant createdAt;
+  @Column(name = "created_at", nullable = false)
+  private Instant createdAt;
 
-    @Column(name = "updated_at", nullable = false)
-    private Instant updatedAt;
+  @Column(name = "updated_at", nullable = false)
+  private Instant updatedAt;
 
-    @PrePersist
-    public void prePersist() {
-        if (publicId == null) {
-            publicId = UUID.randomUUID();
-        }
-        Instant now = CompanyTime.now(company);
-        if (createdAt == null) {
-            createdAt = now;
-        }
-        updatedAt = now;
+  @PrePersist
+  public void prePersist() {
+    if (publicId == null) {
+      publicId = UUID.randomUUID();
     }
-
-    @PreUpdate
-    public void preUpdate() {
-        updatedAt = CompanyTime.now(company);
+    Instant now = CompanyTime.now(company);
+    if (createdAt == null) {
+      createdAt = now;
     }
+    updatedAt = now;
+  }
 
-    public Long getId() {
-        return id;
-    }
+  @PreUpdate
+  public void preUpdate() {
+    updatedAt = CompanyTime.now(company);
+  }
 
-    public UUID getPublicId() {
-        return publicId;
-    }
+  public Long getId() {
+    return id;
+  }
 
-    public Company getCompany() {
-        return company;
-    }
+  public UUID getPublicId() {
+    return publicId;
+  }
 
-    public void setCompany(Company company) {
-        this.company = company;
-    }
+  public Company getCompany() {
+    return company;
+  }
 
-    public String getName() {
-        return name;
-    }
+  public void setCompany(Company company) {
+    this.company = company;
+  }
 
-    public void setName(String name) {
-        this.name = name;
-    }
+  public String getName() {
+    return name;
+  }
 
-    public String getCode() {
-        return code;
-    }
+  public void setName(String name) {
+    this.name = name;
+  }
 
-    public void setCode(String code) {
-        this.code = code;
-    }
+  public String getCode() {
+    return code;
+  }
 
-    public String getDescription() {
-        return description;
-    }
+  public void setCode(String code) {
+    this.code = code;
+  }
 
-    public void setDescription(String description) {
-        this.description = description;
-    }
+  public String getDescription() {
+    return description;
+  }
 
-    public String getLogoUrl() {
-        return logoUrl;
-    }
+  public void setDescription(String description) {
+    this.description = description;
+  }
 
-    public void setLogoUrl(String logoUrl) {
-        this.logoUrl = logoUrl;
-    }
+  public String getLogoUrl() {
+    return logoUrl;
+  }
 
-    public boolean isActive() {
-        return active;
-    }
+  public void setLogoUrl(String logoUrl) {
+    this.logoUrl = logoUrl;
+  }
 
-    public void setActive(boolean active) {
-        this.active = active;
-    }
+  public boolean isActive() {
+    return active;
+  }
+
+  public void setActive(boolean active) {
+    this.active = active;
+  }
 }

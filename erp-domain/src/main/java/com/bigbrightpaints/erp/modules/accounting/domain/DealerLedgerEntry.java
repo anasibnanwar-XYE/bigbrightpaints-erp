@@ -1,8 +1,14 @@
 package com.bigbrightpaints.erp.modules.accounting.domain;
 
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.time.LocalDate;
+
+import com.bigbrightpaints.erp.core.domain.VersionedEntity;
 import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -14,212 +20,209 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
-import java.math.BigDecimal;
-import java.time.Instant;
-import com.bigbrightpaints.erp.core.domain.VersionedEntity;
-import java.time.LocalDate;
 
 @Entity
-@Table(name = "dealer_ledger_entries",
-        indexes = {
-                @Index(name = "idx_dealer_ledger_company", columnList = "company_id"),
-                @Index(name = "idx_dealer_ledger_dealer", columnList = "dealer_id")
-        })
+@Table(
+    name = "dealer_ledger_entries",
+    indexes = {
+      @Index(name = "idx_dealer_ledger_company", columnList = "company_id"),
+      @Index(name = "idx_dealer_ledger_dealer", columnList = "dealer_id")
+    })
 public class DealerLedgerEntry extends VersionedEntity {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
+  private Long id;
 
-    @ManyToOne(optional = false, fetch = FetchType.LAZY)
-    @JoinColumn(name = "company_id")
-    private Company company;
+  @ManyToOne(optional = false, fetch = FetchType.LAZY)
+  @JoinColumn(name = "company_id")
+  private Company company;
 
-    @ManyToOne(optional = false, fetch = FetchType.LAZY)
-    @JoinColumn(name = "dealer_id")
-    private Dealer dealer;
+  @ManyToOne(optional = false, fetch = FetchType.LAZY)
+  @JoinColumn(name = "dealer_id")
+  private Dealer dealer;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "journal_entry_id")
-    private JournalEntry journalEntry;
+  @ManyToOne(fetch = FetchType.LAZY)
+  @JoinColumn(name = "journal_entry_id")
+  private JournalEntry journalEntry;
 
-    @Column(name = "entry_date", nullable = false)
-    private LocalDate entryDate;
+  @Column(name = "entry_date", nullable = false)
+  private LocalDate entryDate;
 
-    @Column(name = "reference_number", nullable = false)
-    private String referenceNumber;
+  @Column(name = "reference_number", nullable = false)
+  private String referenceNumber;
 
-    private String memo;
+  private String memo;
 
-    @Column(nullable = false)
-    private BigDecimal debit = BigDecimal.ZERO;
+  @Column(nullable = false)
+  private BigDecimal debit = BigDecimal.ZERO;
 
-    @Column(nullable = false)
-    private BigDecimal credit = BigDecimal.ZERO;
+  @Column(nullable = false)
+  private BigDecimal credit = BigDecimal.ZERO;
 
-    // Aging and payment tracking fields
-    @Column(name = "due_date")
-    private LocalDate dueDate;
+  // Aging and payment tracking fields
+  @Column(name = "due_date")
+  private LocalDate dueDate;
 
-    @Column(name = "paid_date")
-    private LocalDate paidDate;
+  @Column(name = "paid_date")
+  private LocalDate paidDate;
 
-    @Column(name = "invoice_number")
-    private String invoiceNumber;
+  @Column(name = "invoice_number")
+  private String invoiceNumber;
 
-    @Column(name = "payment_status")
-    private String paymentStatus = "UNPAID"; // UNPAID, PARTIAL, PAID, VOID, REVERSED
+  @Column(name = "payment_status")
+  private String paymentStatus = "UNPAID"; // UNPAID, PARTIAL, PAID, VOID, REVERSED
 
-    @Column(name = "amount_paid")
-    private BigDecimal amountPaid = BigDecimal.ZERO;
+  @Column(name = "amount_paid")
+  private BigDecimal amountPaid = BigDecimal.ZERO;
 
-    @Column(name = "created_at", nullable = false)
-    private Instant createdAt;
+  @Column(name = "created_at", nullable = false)
+  private Instant createdAt;
 
-    @PrePersist
-    public void prePersist() {
-        if (createdAt == null) {
-            createdAt = CompanyTime.now(company);
-        }
-        if (entryDate == null) {
-            throw new IllegalStateException("Dealer ledger entry date must be set before persisting");
-        }
+  @PrePersist
+  public void prePersist() {
+    if (createdAt == null) {
+      createdAt = CompanyTime.now(company);
     }
-
-    public Long getId() {
-        return id;
+    if (entryDate == null) {
+      throw new IllegalStateException("Dealer ledger entry date must be set before persisting");
     }
+  }
 
-    public Company getCompany() {
-        return company;
-    }
+  public Long getId() {
+    return id;
+  }
 
-    public void setCompany(Company company) {
-        this.company = company;
-    }
+  public Company getCompany() {
+    return company;
+  }
 
-    public Dealer getDealer() {
-        return dealer;
-    }
+  public void setCompany(Company company) {
+    this.company = company;
+  }
 
-    public void setDealer(Dealer dealer) {
-        this.dealer = dealer;
-    }
+  public Dealer getDealer() {
+    return dealer;
+  }
 
-    public JournalEntry getJournalEntry() {
-        return journalEntry;
-    }
+  public void setDealer(Dealer dealer) {
+    this.dealer = dealer;
+  }
 
-    public void setJournalEntry(JournalEntry journalEntry) {
-        this.journalEntry = journalEntry;
-    }
+  public JournalEntry getJournalEntry() {
+    return journalEntry;
+  }
 
-    public LocalDate getEntryDate() {
-        return entryDate;
-    }
+  public void setJournalEntry(JournalEntry journalEntry) {
+    this.journalEntry = journalEntry;
+  }
 
-    public void setEntryDate(LocalDate entryDate) {
-        this.entryDate = entryDate;
-    }
+  public LocalDate getEntryDate() {
+    return entryDate;
+  }
 
-    public String getReferenceNumber() {
-        return referenceNumber;
-    }
+  public void setEntryDate(LocalDate entryDate) {
+    this.entryDate = entryDate;
+  }
 
-    public void setReferenceNumber(String referenceNumber) {
-        this.referenceNumber = referenceNumber;
-    }
+  public String getReferenceNumber() {
+    return referenceNumber;
+  }
 
-    public String getMemo() {
-        return memo;
-    }
+  public void setReferenceNumber(String referenceNumber) {
+    this.referenceNumber = referenceNumber;
+  }
 
-    public void setMemo(String memo) {
-        this.memo = memo;
-    }
+  public String getMemo() {
+    return memo;
+  }
 
-    public BigDecimal getDebit() {
-        return debit;
-    }
+  public void setMemo(String memo) {
+    this.memo = memo;
+  }
 
-    public void setDebit(BigDecimal debit) {
-        this.debit = debit;
-    }
+  public BigDecimal getDebit() {
+    return debit;
+  }
 
-    public BigDecimal getCredit() {
-        return credit;
-    }
+  public void setDebit(BigDecimal debit) {
+    this.debit = debit;
+  }
 
-    public void setCredit(BigDecimal credit) {
-        this.credit = credit;
-    }
+  public BigDecimal getCredit() {
+    return credit;
+  }
 
-    public Instant getCreatedAt() {
-        return createdAt;
-    }
+  public void setCredit(BigDecimal credit) {
+    this.credit = credit;
+  }
 
-    public LocalDate getDueDate() {
-        return dueDate;
-    }
+  public Instant getCreatedAt() {
+    return createdAt;
+  }
 
-    public void setDueDate(LocalDate dueDate) {
-        this.dueDate = dueDate;
-    }
+  public LocalDate getDueDate() {
+    return dueDate;
+  }
 
-    public LocalDate getPaidDate() {
-        return paidDate;
-    }
+  public void setDueDate(LocalDate dueDate) {
+    this.dueDate = dueDate;
+  }
 
-    public void setPaidDate(LocalDate paidDate) {
-        this.paidDate = paidDate;
-    }
+  public LocalDate getPaidDate() {
+    return paidDate;
+  }
 
-    public String getInvoiceNumber() {
-        return invoiceNumber;
-    }
+  public void setPaidDate(LocalDate paidDate) {
+    this.paidDate = paidDate;
+  }
 
-    public void setInvoiceNumber(String invoiceNumber) {
-        this.invoiceNumber = invoiceNumber;
-    }
+  public String getInvoiceNumber() {
+    return invoiceNumber;
+  }
 
-    public String getPaymentStatus() {
-        return paymentStatus;
-    }
+  public void setInvoiceNumber(String invoiceNumber) {
+    this.invoiceNumber = invoiceNumber;
+  }
 
-    public void setPaymentStatus(String paymentStatus) {
-        this.paymentStatus = paymentStatus;
-    }
+  public String getPaymentStatus() {
+    return paymentStatus;
+  }
 
-    public BigDecimal getAmountPaid() {
-        return amountPaid;
-    }
+  public void setPaymentStatus(String paymentStatus) {
+    this.paymentStatus = paymentStatus;
+  }
 
-    public void setAmountPaid(BigDecimal amountPaid) {
-        this.amountPaid = amountPaid;
-    }
+  public BigDecimal getAmountPaid() {
+    return amountPaid;
+  }
 
-    public BigDecimal getOutstandingAmount() {
-        BigDecimal total = debit.subtract(credit);
-        return total.subtract(amountPaid != null ? amountPaid : BigDecimal.ZERO);
-    }
+  public void setAmountPaid(BigDecimal amountPaid) {
+    this.amountPaid = amountPaid;
+  }
 
-    public boolean isOverdue(LocalDate asOfDate) {
-        if (asOfDate == null) {
-            return false;
-        }
-        if (dueDate == null || !asOfDate.isAfter(dueDate)) {
-            return false;
-        }
-        String status = paymentStatus != null ? paymentStatus : "";
-        return !"PAID".equalsIgnoreCase(status)
-                && !"VOID".equalsIgnoreCase(status)
-                && !"REVERSED".equalsIgnoreCase(status);
-    }
+  public BigDecimal getOutstandingAmount() {
+    BigDecimal total = debit.subtract(credit);
+    return total.subtract(amountPaid != null ? amountPaid : BigDecimal.ZERO);
+  }
 
-    public long getDaysOverdue(LocalDate asOfDate) {
-        if (dueDate == null || !isOverdue(asOfDate)) {
-            return 0;
-        }
-        return java.time.temporal.ChronoUnit.DAYS.between(dueDate, asOfDate);
+  public boolean isOverdue(LocalDate asOfDate) {
+    if (asOfDate == null) {
+      return false;
     }
+    if (dueDate == null || !asOfDate.isAfter(dueDate)) {
+      return false;
+    }
+    String status = paymentStatus != null ? paymentStatus : "";
+    return !"PAID".equalsIgnoreCase(status)
+        && !"VOID".equalsIgnoreCase(status)
+        && !"REVERSED".equalsIgnoreCase(status);
+  }
+
+  public long getDaysOverdue(LocalDate asOfDate) {
+    if (dueDate == null || !isOverdue(asOfDate)) {
+      return 0;
+    }
+    return java.time.temporal.ChronoUnit.DAYS.between(dueDate, asOfDate);
+  }
 }

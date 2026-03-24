@@ -1,5 +1,39 @@
 package com.bigbrightpaints.erp.modules.sales.service;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import java.lang.reflect.Field;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.TransactionStatus;
+import org.springframework.transaction.support.SimpleTransactionStatus;
+
 import com.bigbrightpaints.erp.core.audit.AuditEvent;
 import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
@@ -31,344 +65,308 @@ import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderStatusHistoryRepos
 import com.bigbrightpaints.erp.modules.sales.domain.SalesTarget;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesTargetRepository;
 import com.bigbrightpaints.erp.modules.sales.dto.SalesTargetRequest;
+
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.security.access.AccessDeniedException;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.transaction.TransactionDefinition;
-import org.springframework.transaction.TransactionStatus;
-import org.springframework.transaction.support.SimpleTransactionStatus;
-
-import java.lang.reflect.Field;
-import java.math.BigDecimal;
-import java.math.RoundingMode;
-import java.time.LocalDate;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.lenient;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class SalesTargetGovernanceServiceTest {
 
-    @Mock
-    private CompanyContextService companyContextService;
-    @Mock
-    private DealerRepository dealerRepository;
-    @Mock
-    private SalesOrderRepository salesOrderRepository;
-    @Mock
-    private SalesOrderStatusHistoryRepository salesOrderStatusHistoryRepository;
-    @Mock
-    private PromotionRepository promotionRepository;
-    @Mock
-    private SalesTargetRepository salesTargetRepository;
-    @Mock
-    private CreditRequestRepository creditRequestRepository;
-    @Mock
-    private OrderNumberService orderNumberService;
-    @Mock
-    private ApplicationEventPublisher eventPublisher;
-    @Mock
-    private ProductionProductRepository productionProductRepository;
-    @Mock
-    private DealerLedgerService dealerLedgerService;
-    @Mock
-    private FinishedGoodRepository finishedGoodRepository;
-    @Mock
-    private FinishedGoodBatchRepository finishedGoodBatchRepository;
-    @Mock
-    private AccountRepository accountRepository;
-    @Mock
-    private CompanyEntityLookup companyEntityLookup;
-    @Mock
-    private PackagingSlipRepository packagingSlipRepository;
-    @Mock
-    private FinishedGoodsService finishedGoodsService;
-    @Mock
-    private AccountingService accountingService;
-    @Mock
-    private AccountingFacade accountingFacade;
-    @Mock
-    private com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository journalEntryRepository;
-    @Mock
-    private InvoiceNumberService invoiceNumberService;
-    @Mock
-    private InvoiceRepository invoiceRepository;
-    @Mock
-    private FactoryTaskRepository factoryTaskRepository;
-    @Mock
-    private CompanyDefaultAccountsService companyDefaultAccountsService;
-    @Mock
-    private CompanyAccountingSettingsService companyAccountingSettingsService;
-    @Mock
-    private GstService gstService;
-    @Mock
-    private CreditLimitOverrideService creditLimitOverrideService;
-    @Mock
-    private AuditService auditService;
-    @Mock
-    private CompanyClock companyClock;
+  @Mock private CompanyContextService companyContextService;
+  @Mock private DealerRepository dealerRepository;
+  @Mock private SalesOrderRepository salesOrderRepository;
+  @Mock private SalesOrderStatusHistoryRepository salesOrderStatusHistoryRepository;
+  @Mock private PromotionRepository promotionRepository;
+  @Mock private SalesTargetRepository salesTargetRepository;
+  @Mock private CreditRequestRepository creditRequestRepository;
+  @Mock private OrderNumberService orderNumberService;
+  @Mock private ApplicationEventPublisher eventPublisher;
+  @Mock private ProductionProductRepository productionProductRepository;
+  @Mock private DealerLedgerService dealerLedgerService;
+  @Mock private FinishedGoodRepository finishedGoodRepository;
+  @Mock private FinishedGoodBatchRepository finishedGoodBatchRepository;
+  @Mock private AccountRepository accountRepository;
+  @Mock private CompanyEntityLookup companyEntityLookup;
+  @Mock private PackagingSlipRepository packagingSlipRepository;
+  @Mock private FinishedGoodsService finishedGoodsService;
+  @Mock private AccountingService accountingService;
+  @Mock private AccountingFacade accountingFacade;
 
-    private final PlatformTransactionManager transactionManager = new NoopTransactionManager();
-    private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+  @Mock
+  private com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository
+      journalEntryRepository;
 
-    private SalesService salesService;
-    private Company company;
+  @Mock private InvoiceNumberService invoiceNumberService;
+  @Mock private InvoiceRepository invoiceRepository;
+  @Mock private FactoryTaskRepository factoryTaskRepository;
+  @Mock private CompanyDefaultAccountsService companyDefaultAccountsService;
+  @Mock private CompanyAccountingSettingsService companyAccountingSettingsService;
+  @Mock private GstService gstService;
+  @Mock private CreditLimitOverrideService creditLimitOverrideService;
+  @Mock private AuditService auditService;
+  @Mock private CompanyClock companyClock;
 
-    @BeforeEach
-    void setUp() {
-        salesService = new SalesService(
-                companyContextService,
-                dealerRepository,
-                salesOrderRepository,
-                salesOrderStatusHistoryRepository,
-                promotionRepository,
-                salesTargetRepository,
-                creditRequestRepository,
-                orderNumberService,
-                eventPublisher,
-                productionProductRepository,
-                dealerLedgerService,
-                finishedGoodRepository,
-                finishedGoodBatchRepository,
-                accountRepository,
-                companyEntityLookup,
-                packagingSlipRepository,
-                finishedGoodsService,
-                accountingService,
-                accountingFacade,
-                journalEntryRepository,
-                invoiceNumberService,
-                invoiceRepository,
-                factoryTaskRepository,
-                companyDefaultAccountsService,
-                companyAccountingSettingsService,
-                gstService,
-                creditLimitOverrideService,
-                auditService,
-                companyClock,
-                transactionManager,
-                meterRegistry);
+  private final PlatformTransactionManager transactionManager = new NoopTransactionManager();
+  private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
 
-        company = new Company();
-        company.setCode("COMP");
-        company.setTimezone("UTC");
-        lenient().when(companyContextService.requireCurrentCompany()).thenReturn(company);
-        lenient().when(gstService.calculateGst(any(), any(), any(), any())).thenAnswer(invocation -> {
-            BigDecimal amount = invocation.getArgument(0);
-            BigDecimal rate = invocation.getArgument(3);
-            BigDecimal taxable = amount == null ? BigDecimal.ZERO : amount;
-            BigDecimal resolvedRate = rate == null ? BigDecimal.ZERO : rate;
-            BigDecimal igst = taxable.multiply(resolvedRate).divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
-            return new GstService.GstBreakdown(taxable, BigDecimal.ZERO, BigDecimal.ZERO, igst, GstService.TaxType.INTER_STATE);
-        });
-        lenient().when(gstService.splitTaxAmount(any(), any(), any(), any())).thenAnswer(invocation -> {
-            BigDecimal taxable = invocation.getArgument(0);
-            BigDecimal tax = invocation.getArgument(1);
-            return new GstService.GstBreakdown(
-                    taxable == null ? BigDecimal.ZERO : taxable,
-                    BigDecimal.ZERO,
-                    BigDecimal.ZERO,
-                    tax == null ? BigDecimal.ZERO : tax,
-                    GstService.TaxType.INTER_STATE);
-        });
-    }
+  private SalesService salesService;
+  private Company company;
 
-    @AfterEach
-    void clearSecurityContext() {
-        SecurityContextHolder.clearContext();
-    }
+  @BeforeEach
+  void setUp() {
+    salesService =
+        new SalesService(
+            companyContextService,
+            dealerRepository,
+            salesOrderRepository,
+            salesOrderStatusHistoryRepository,
+            promotionRepository,
+            salesTargetRepository,
+            creditRequestRepository,
+            orderNumberService,
+            eventPublisher,
+            productionProductRepository,
+            dealerLedgerService,
+            finishedGoodRepository,
+            finishedGoodBatchRepository,
+            accountRepository,
+            companyEntityLookup,
+            packagingSlipRepository,
+            finishedGoodsService,
+            accountingService,
+            accountingFacade,
+            journalEntryRepository,
+            invoiceNumberService,
+            invoiceRepository,
+            factoryTaskRepository,
+            companyDefaultAccountsService,
+            companyAccountingSettingsService,
+            gstService,
+            creditLimitOverrideService,
+            auditService,
+            companyClock,
+            transactionManager,
+            meterRegistry);
 
-    @Test
-    void createTargetRejectsNonAdminAuthority() {
-        authenticate("sales@comp.com", "ROLE_SALES");
+    company = new Company();
+    company.setCode("COMP");
+    company.setTimezone("UTC");
+    lenient().when(companyContextService.requireCurrentCompany()).thenReturn(company);
+    lenient()
+        .when(gstService.calculateGst(any(), any(), any(), any()))
+        .thenAnswer(
+            invocation -> {
+              BigDecimal amount = invocation.getArgument(0);
+              BigDecimal rate = invocation.getArgument(3);
+              BigDecimal taxable = amount == null ? BigDecimal.ZERO : amount;
+              BigDecimal resolvedRate = rate == null ? BigDecimal.ZERO : rate;
+              BigDecimal igst =
+                  taxable
+                      .multiply(resolvedRate)
+                      .divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
+              return new GstService.GstBreakdown(
+                  taxable, BigDecimal.ZERO, BigDecimal.ZERO, igst, GstService.TaxType.INTER_STATE);
+            });
+    lenient()
+        .when(gstService.splitTaxAmount(any(), any(), any(), any()))
+        .thenAnswer(
+            invocation -> {
+              BigDecimal taxable = invocation.getArgument(0);
+              BigDecimal tax = invocation.getArgument(1);
+              return new GstService.GstBreakdown(
+                  taxable == null ? BigDecimal.ZERO : taxable,
+                  BigDecimal.ZERO,
+                  BigDecimal.ZERO,
+                  tax == null ? BigDecimal.ZERO : tax,
+                  GstService.TaxType.INTER_STATE);
+            });
+  }
 
-        assertThrows(AccessDeniedException.class, () -> salesService.createTarget(requestFor("rep@comp.com", "Plan kickoff")));
+  @AfterEach
+  void clearSecurityContext() {
+    SecurityContextHolder.clearContext();
+  }
 
-        verify(salesTargetRepository, never()).save(any(SalesTarget.class));
-    }
+  @Test
+  void createTargetRejectsNonAdminAuthority() {
+    authenticate("sales@comp.com", "ROLE_SALES");
 
-    @Test
-    void createTargetRejectsUnauthenticatedActor() {
-        SecurityContextHolder.clearContext();
+    assertThrows(
+        AccessDeniedException.class,
+        () -> salesService.createTarget(requestFor("rep@comp.com", "Plan kickoff")));
 
-        assertThrows(AccessDeniedException.class, () -> salesService.createTarget(requestFor("rep@comp.com", "Plan kickoff")));
+    verify(salesTargetRepository, never()).save(any(SalesTarget.class));
+  }
 
-        verify(salesTargetRepository, never()).save(any(SalesTarget.class));
-    }
+  @Test
+  void createTargetRejectsUnauthenticatedActor() {
+    SecurityContextHolder.clearContext();
 
-    @Test
-    void createTargetRejectsSelfAssignmentForAdminActor() {
-        authenticate("admin@comp.com", "ROLE_ADMIN");
+    assertThrows(
+        AccessDeniedException.class,
+        () -> salesService.createTarget(requestFor("rep@comp.com", "Plan kickoff")));
 
-        assertThrows(AccessDeniedException.class, () -> salesService.createTarget(requestFor("ADMIN@comp.com", "Self assign attempt")));
+    verify(salesTargetRepository, never()).save(any(SalesTarget.class));
+  }
 
-        verify(salesTargetRepository, never()).save(any(SalesTarget.class));
-    }
+  @Test
+  void createTargetRejectsSelfAssignmentForAdminActor() {
+    authenticate("admin@comp.com", "ROLE_ADMIN");
 
-    @Test
-    void createTargetRequiresAssigneeIdentity() {
-        authenticate("admin@comp.com", "ROLE_ADMIN");
+    assertThrows(
+        AccessDeniedException.class,
+        () -> salesService.createTarget(requestFor("ADMIN@comp.com", "Self assign attempt")));
 
-        ApplicationException ex = assertThrows(ApplicationException.class, () -> salesService.createTarget(
-                new SalesTargetRequest(
+    verify(salesTargetRepository, never()).save(any(SalesTarget.class));
+  }
+
+  @Test
+  void createTargetRequiresAssigneeIdentity() {
+    authenticate("admin@comp.com", "ROLE_ADMIN");
+
+    ApplicationException ex =
+        assertThrows(
+            ApplicationException.class,
+            () ->
+                salesService.createTarget(
+                    new SalesTargetRequest(
                         "North Region Monthly",
                         LocalDate.of(2026, 1, 1),
                         LocalDate.of(2026, 1, 31),
                         new BigDecimal("150000"),
                         BigDecimal.ZERO,
                         "   ",
-                        "Quarter 2 target assignment")
-        ));
+                        "Quarter 2 target assignment")));
 
-        assertEquals(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD, ex.getErrorCode());
-        verify(salesTargetRepository, never()).save(any(SalesTarget.class));
+    assertEquals(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD, ex.getErrorCode());
+    verify(salesTargetRepository, never()).save(any(SalesTarget.class));
+  }
+
+  @Test
+  void createTargetWritesAuditWithActorAndReasonMetadata() {
+    authenticate("admin@comp.com", "ROLE_ADMIN");
+    when(salesTargetRepository.save(any(SalesTarget.class)))
+        .thenAnswer(
+            invocation -> {
+              SalesTarget target = invocation.getArgument(0);
+              setField(target, "id", 77L);
+              setField(target, "publicId", UUID.fromString("11111111-1111-1111-1111-111111111111"));
+              return target;
+            });
+
+    salesService.createTarget(requestFor("rep@comp.com", "Quarter 2 target assignment"));
+
+    ArgumentCaptor<Map<String, String>> metadataCaptor = ArgumentCaptor.forClass(Map.class);
+    verify(auditService).logSuccess(eq(AuditEvent.DATA_CREATE), metadataCaptor.capture());
+    assertEquals("admin@comp.com", metadataCaptor.getValue().get("actor"));
+    assertEquals("Quarter 2 target assignment", metadataCaptor.getValue().get("reason"));
+    assertEquals("rep@comp.com", metadataCaptor.getValue().get("assignee"));
+  }
+
+  @Test
+  void updateTargetRejectsSelfApprovalByAssigneeActor() {
+    authenticate("owner@comp.com", "ROLE_ADMIN");
+    SalesTarget existing = existingTarget(501L, "owner@comp.com");
+    when(companyEntityLookup.requireSalesTarget(company, 501L)).thenReturn(existing);
+
+    assertThrows(
+        AccessDeniedException.class,
+        () ->
+            salesService.updateTarget(501L, requestFor("rep@comp.com", "Attempted self approval")));
+  }
+
+  @Test
+  void updateTargetRejectsSelfAssignmentInIncomingRequestBeforeEntityLookup() {
+    authenticate("owner@comp.com", "ROLE_ADMIN");
+
+    assertThrows(
+        AccessDeniedException.class,
+        () ->
+            salesService.updateTarget(
+                502L, requestFor("owner@comp.com", "Attempted self assignment in request")));
+
+    verify(companyEntityLookup, never()).requireSalesTarget(company, 502L);
+  }
+
+  @Test
+  void deleteTargetRequiresChangeReason() {
+    authenticate("admin@comp.com", "ROLE_ADMIN");
+
+    ApplicationException ex =
+        assertThrows(ApplicationException.class, () -> salesService.deleteTarget(99L, "   "));
+
+    assertEquals(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD, ex.getErrorCode());
+    verify(salesTargetRepository, never()).delete(any(SalesTarget.class));
+  }
+
+  @Test
+  void deleteTargetAuditsActorAndReason() {
+    authenticate("admin@comp.com", "ROLE_ADMIN");
+    SalesTarget existing = existingTarget(601L, "rep@comp.com");
+    when(companyEntityLookup.requireSalesTarget(company, 601L)).thenReturn(existing);
+
+    salesService.deleteTarget(601L, "Duplicate target cleanup");
+
+    verify(salesTargetRepository).delete(existing);
+    ArgumentCaptor<Map<String, String>> metadataCaptor = ArgumentCaptor.forClass(Map.class);
+    verify(auditService).logSuccess(eq(AuditEvent.DATA_DELETE), metadataCaptor.capture());
+    assertEquals("admin@comp.com", metadataCaptor.getValue().get("actor"));
+    assertEquals("Duplicate target cleanup", metadataCaptor.getValue().get("reason"));
+    assertEquals("rep@comp.com", metadataCaptor.getValue().get("assignee"));
+  }
+
+  private SalesTargetRequest requestFor(String assignee, String reason) {
+    return new SalesTargetRequest(
+        "North Region Monthly",
+        LocalDate.of(2026, 1, 1),
+        LocalDate.of(2026, 1, 31),
+        new BigDecimal("150000"),
+        BigDecimal.ZERO,
+        assignee,
+        reason);
+  }
+
+  private SalesTarget existingTarget(Long id, String assignee) {
+    SalesTarget target = new SalesTarget();
+    target.setCompany(company);
+    target.setName("Existing target");
+    target.setPeriodStart(LocalDate.of(2026, 1, 1));
+    target.setPeriodEnd(LocalDate.of(2026, 1, 31));
+    target.setTargetAmount(new BigDecimal("100000"));
+    target.setAssignee(assignee);
+    setField(target, "id", id);
+    setField(target, "publicId", UUID.fromString("22222222-2222-2222-2222-222222222222"));
+    return target;
+  }
+
+  private void authenticate(String username, String... authorities) {
+    UsernamePasswordAuthenticationToken authentication =
+        new UsernamePasswordAuthenticationToken(
+            username,
+            "n/a",
+            List.of(authorities).stream().map(SimpleGrantedAuthority::new).toList());
+    SecurityContextHolder.getContext().setAuthentication(authentication);
+  }
+
+  private void setField(Object target, String name, Object value) {
+    try {
+      Field field = target.getClass().getDeclaredField(name);
+      field.setAccessible(true);
+      field.set(target, value);
+    } catch (NoSuchFieldException | IllegalAccessException ex) {
+      throw new RuntimeException(ex);
+    }
+  }
+
+  private static class NoopTransactionManager implements PlatformTransactionManager {
+    @Override
+    public TransactionStatus getTransaction(TransactionDefinition definition) {
+      return new SimpleTransactionStatus();
     }
 
-    @Test
-    void createTargetWritesAuditWithActorAndReasonMetadata() {
-        authenticate("admin@comp.com", "ROLE_ADMIN");
-        when(salesTargetRepository.save(any(SalesTarget.class))).thenAnswer(invocation -> {
-            SalesTarget target = invocation.getArgument(0);
-            setField(target, "id", 77L);
-            setField(target, "publicId", UUID.fromString("11111111-1111-1111-1111-111111111111"));
-            return target;
-        });
+    @Override
+    public void commit(TransactionStatus status) {}
 
-        salesService.createTarget(requestFor("rep@comp.com", "Quarter 2 target assignment"));
-
-        ArgumentCaptor<Map<String, String>> metadataCaptor = ArgumentCaptor.forClass(Map.class);
-        verify(auditService).logSuccess(eq(AuditEvent.DATA_CREATE), metadataCaptor.capture());
-        assertEquals("admin@comp.com", metadataCaptor.getValue().get("actor"));
-        assertEquals("Quarter 2 target assignment", metadataCaptor.getValue().get("reason"));
-        assertEquals("rep@comp.com", metadataCaptor.getValue().get("assignee"));
-    }
-
-    @Test
-    void updateTargetRejectsSelfApprovalByAssigneeActor() {
-        authenticate("owner@comp.com", "ROLE_ADMIN");
-        SalesTarget existing = existingTarget(501L, "owner@comp.com");
-        when(companyEntityLookup.requireSalesTarget(company, 501L)).thenReturn(existing);
-
-        assertThrows(AccessDeniedException.class, () -> salesService.updateTarget(
-                501L,
-                requestFor("rep@comp.com", "Attempted self approval")
-        ));
-    }
-
-    @Test
-    void updateTargetRejectsSelfAssignmentInIncomingRequestBeforeEntityLookup() {
-        authenticate("owner@comp.com", "ROLE_ADMIN");
-
-        assertThrows(AccessDeniedException.class, () -> salesService.updateTarget(
-                502L,
-                requestFor("owner@comp.com", "Attempted self assignment in request")
-        ));
-
-        verify(companyEntityLookup, never()).requireSalesTarget(company, 502L);
-    }
-
-    @Test
-    void deleteTargetRequiresChangeReason() {
-        authenticate("admin@comp.com", "ROLE_ADMIN");
-
-        ApplicationException ex = assertThrows(ApplicationException.class, () -> salesService.deleteTarget(99L, "   "));
-
-        assertEquals(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD, ex.getErrorCode());
-        verify(salesTargetRepository, never()).delete(any(SalesTarget.class));
-    }
-
-    @Test
-    void deleteTargetAuditsActorAndReason() {
-        authenticate("admin@comp.com", "ROLE_ADMIN");
-        SalesTarget existing = existingTarget(601L, "rep@comp.com");
-        when(companyEntityLookup.requireSalesTarget(company, 601L)).thenReturn(existing);
-
-        salesService.deleteTarget(601L, "Duplicate target cleanup");
-
-        verify(salesTargetRepository).delete(existing);
-        ArgumentCaptor<Map<String, String>> metadataCaptor = ArgumentCaptor.forClass(Map.class);
-        verify(auditService).logSuccess(eq(AuditEvent.DATA_DELETE), metadataCaptor.capture());
-        assertEquals("admin@comp.com", metadataCaptor.getValue().get("actor"));
-        assertEquals("Duplicate target cleanup", metadataCaptor.getValue().get("reason"));
-        assertEquals("rep@comp.com", metadataCaptor.getValue().get("assignee"));
-    }
-
-    private SalesTargetRequest requestFor(String assignee, String reason) {
-        return new SalesTargetRequest(
-                "North Region Monthly",
-                LocalDate.of(2026, 1, 1),
-                LocalDate.of(2026, 1, 31),
-                new BigDecimal("150000"),
-                BigDecimal.ZERO,
-                assignee,
-                reason
-        );
-    }
-
-    private SalesTarget existingTarget(Long id, String assignee) {
-        SalesTarget target = new SalesTarget();
-        target.setCompany(company);
-        target.setName("Existing target");
-        target.setPeriodStart(LocalDate.of(2026, 1, 1));
-        target.setPeriodEnd(LocalDate.of(2026, 1, 31));
-        target.setTargetAmount(new BigDecimal("100000"));
-        target.setAssignee(assignee);
-        setField(target, "id", id);
-        setField(target, "publicId", UUID.fromString("22222222-2222-2222-2222-222222222222"));
-        return target;
-    }
-
-    private void authenticate(String username, String... authorities) {
-        UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
-                username,
-                "n/a",
-                List.of(authorities).stream().map(SimpleGrantedAuthority::new).toList()
-        );
-        SecurityContextHolder.getContext().setAuthentication(authentication);
-    }
-
-    private void setField(Object target, String name, Object value) {
-        try {
-            Field field = target.getClass().getDeclaredField(name);
-            field.setAccessible(true);
-            field.set(target, value);
-        } catch (NoSuchFieldException | IllegalAccessException ex) {
-            throw new RuntimeException(ex);
-        }
-    }
-
-    private static class NoopTransactionManager implements PlatformTransactionManager {
-        @Override
-        public TransactionStatus getTransaction(TransactionDefinition definition) {
-            return new SimpleTransactionStatus();
-        }
-
-        @Override
-        public void commit(TransactionStatus status) {
-        }
-
-        @Override
-        public void rollback(TransactionStatus status) {
-        }
-    }
+    @Override
+    public void rollback(TransactionStatus status) {}
+  }
 }

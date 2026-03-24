@@ -5,6 +5,5 @@ import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.stereotype.Repository;
 
 @Repository
-public interface MlInteractionEventRepository extends JpaRepository<MlInteractionEvent, Long>,
-        JpaSpecificationExecutor<MlInteractionEvent> {
-}
+public interface MlInteractionEventRepository
+    extends JpaRepository<MlInteractionEvent, Long>, JpaSpecificationExecutor<MlInteractionEvent> {}

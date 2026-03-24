@@ -1,108 +1,143 @@
 package com.bigbrightpaints.erp.modules.inventory.domain;
 
+import java.math.BigDecimal;
+import java.time.Instant;
+
+import com.bigbrightpaints.erp.core.domain.VersionedEntity;
 import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
-import jakarta.persistence.*;
 
-import java.math.BigDecimal;
-import com.bigbrightpaints.erp.core.domain.VersionedEntity;
-import java.time.Instant;
+import jakarta.persistence.*;
 
 @Entity
 @Table(name = "inventory_reservations")
 public class InventoryReservation extends VersionedEntity {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
+  private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = true)
-    @JoinColumn(name = "raw_material_id")
-    private RawMaterial rawMaterial;
+  @ManyToOne(fetch = FetchType.LAZY, optional = true)
+  @JoinColumn(name = "raw_material_id")
+  private RawMaterial rawMaterial;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "finished_good_id")
-    private FinishedGood finishedGood;
+  @ManyToOne(fetch = FetchType.LAZY)
+  @JoinColumn(name = "finished_good_id")
+  private FinishedGood finishedGood;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "finished_good_batch_id")
-    private FinishedGoodBatch finishedGoodBatch;
+  @ManyToOne(fetch = FetchType.LAZY)
+  @JoinColumn(name = "finished_good_batch_id")
+  private FinishedGoodBatch finishedGoodBatch;
 
-    @Column(name = "reference_type", nullable = false)
-    private String referenceType;
+  @Column(name = "reference_type", nullable = false)
+  private String referenceType;
 
-    @Column(name = "reference_id", nullable = false)
-    private String referenceId;
+  @Column(name = "reference_id", nullable = false)
+  private String referenceId;
 
-    @Column(nullable = false)
-    private BigDecimal quantity;
+  @Column(nullable = false)
+  private BigDecimal quantity;
 
-    @Column(name = "reserved_quantity")
-    private BigDecimal reservedQuantity;
+  @Column(name = "reserved_quantity")
+  private BigDecimal reservedQuantity;
 
-    @Column(name = "fulfilled_quantity")
-    private BigDecimal fulfilledQuantity;
+  @Column(name = "fulfilled_quantity")
+  private BigDecimal fulfilledQuantity;
 
-    @Column(nullable = false)
-    private String status;
+  @Column(nullable = false)
+  private String status;
 
-    @Column(name = "created_at", nullable = false)
-    private Instant createdAt;
+  @Column(name = "created_at", nullable = false)
+  private Instant createdAt;
 
-    @PrePersist
-    public void prePersist() {
-        if (createdAt == null) {
-            Company company = finishedGood != null ? finishedGood.getCompany() : null;
-            if (company == null && rawMaterial != null) {
-                company = rawMaterial.getCompany();
-            }
-            createdAt = CompanyTime.now(company);
-        }
+  @PrePersist
+  public void prePersist() {
+    if (createdAt == null) {
+      Company company = finishedGood != null ? finishedGood.getCompany() : null;
+      if (company == null && rawMaterial != null) {
+        company = rawMaterial.getCompany();
+      }
+      createdAt = CompanyTime.now(company);
     }
+  }
 
-    public Long getId() {
-        return id;
-    }
+  public Long getId() {
+    return id;
+  }
 
-    public RawMaterial getRawMaterial() { return rawMaterial; }
-    public void setRawMaterial(RawMaterial rawMaterial) { this.rawMaterial = rawMaterial; }
-    public FinishedGood getFinishedGood() { return finishedGood; }
-    public void setFinishedGood(FinishedGood finishedGood) { this.finishedGood = finishedGood; }
-    public FinishedGoodBatch getFinishedGoodBatch() { return finishedGoodBatch; }
-    public void setFinishedGoodBatch(FinishedGoodBatch finishedGoodBatch) { this.finishedGoodBatch = finishedGoodBatch; }
+  public RawMaterial getRawMaterial() {
+    return rawMaterial;
+  }
 
-    public String getReferenceType() {
-        return referenceType;
-    }
+  public void setRawMaterial(RawMaterial rawMaterial) {
+    this.rawMaterial = rawMaterial;
+  }
 
-    public void setReferenceType(String referenceType) {
-        this.referenceType = referenceType;
-    }
+  public FinishedGood getFinishedGood() {
+    return finishedGood;
+  }
 
-    public String getReferenceId() {
-        return referenceId;
-    }
+  public void setFinishedGood(FinishedGood finishedGood) {
+    this.finishedGood = finishedGood;
+  }
 
-    public void setReferenceId(String referenceId) {
-        this.referenceId = referenceId;
-    }
+  public FinishedGoodBatch getFinishedGoodBatch() {
+    return finishedGoodBatch;
+  }
 
-    public BigDecimal getQuantity() { return quantity; }
-    public void setQuantity(BigDecimal quantity) { this.quantity = quantity; }
-    public BigDecimal getReservedQuantity() { return reservedQuantity; }
-    public void setReservedQuantity(BigDecimal reservedQuantity) { this.reservedQuantity = reservedQuantity; }
-    public BigDecimal getFulfilledQuantity() { return fulfilledQuantity; }
-    public void setFulfilledQuantity(BigDecimal fulfilledQuantity) { this.fulfilledQuantity = fulfilledQuantity; }
+  public void setFinishedGoodBatch(FinishedGoodBatch finishedGoodBatch) {
+    this.finishedGoodBatch = finishedGoodBatch;
+  }
 
-    public String getStatus() {
-        return status;
-    }
+  public String getReferenceType() {
+    return referenceType;
+  }
 
-    public void setStatus(String status) {
-        this.status = status;
-    }
+  public void setReferenceType(String referenceType) {
+    this.referenceType = referenceType;
+  }
 
-    public Instant getCreatedAt() {
-        return createdAt;
-    }
+  public String getReferenceId() {
+    return referenceId;
+  }
+
+  public void setReferenceId(String referenceId) {
+    this.referenceId = referenceId;
+  }
+
+  public BigDecimal getQuantity() {
+    return quantity;
+  }
+
+  public void setQuantity(BigDecimal quantity) {
+    this.quantity = quantity;
+  }
+
+  public BigDecimal getReservedQuantity() {
+    return reservedQuantity;
+  }
+
+  public void setReservedQuantity(BigDecimal reservedQuantity) {
+    this.reservedQuantity = reservedQuantity;
+  }
+
+  public BigDecimal getFulfilledQuantity() {
+    return fulfilledQuantity;
+  }
+
+  public void setFulfilledQuantity(BigDecimal fulfilledQuantity) {
+    this.fulfilledQuantity = fulfilledQuantity;
+  }
+
+  public String getStatus() {
+    return status;
+  }
+
+  public void setStatus(String status) {
+    this.status = status;
+  }
+
+  public Instant getCreatedAt() {
+    return createdAt;
+  }
 }

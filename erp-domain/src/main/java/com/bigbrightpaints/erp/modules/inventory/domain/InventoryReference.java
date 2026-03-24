@@ -18,16 +18,15 @@ package com.bigbrightpaints.erp.modules.inventory.domain;
  */
 public final class InventoryReference {
 
-    public static final String PRODUCTION_LOG = "PRODUCTION_LOG";
-    public static final String RAW_MATERIAL_PURCHASE = "RAW_MATERIAL_PURCHASE";
-    public static final String OPENING_STOCK = "OPENING_STOCK";
-    public static final String SALES_ORDER = "SALES_ORDER";
-    public static final String MANUFACTURING_ORDER = "MANUFACTURING_ORDER";
-    public static final String PURCHASE_RETURN = "PURCHASE_RETURN";
-    public static final String PACKING_RECORD = "PACKING_RECORD";
-    public static final String GOODS_RECEIPT = "GOODS_RECEIPT";
-    public static final String RAW_MATERIAL_ADJUSTMENT = "RAW_MATERIAL_ADJUSTMENT";
+  public static final String PRODUCTION_LOG = "PRODUCTION_LOG";
+  public static final String RAW_MATERIAL_PURCHASE = "RAW_MATERIAL_PURCHASE";
+  public static final String OPENING_STOCK = "OPENING_STOCK";
+  public static final String SALES_ORDER = "SALES_ORDER";
+  public static final String MANUFACTURING_ORDER = "MANUFACTURING_ORDER";
+  public static final String PURCHASE_RETURN = "PURCHASE_RETURN";
+  public static final String PACKING_RECORD = "PACKING_RECORD";
+  public static final String GOODS_RECEIPT = "GOODS_RECEIPT";
+  public static final String RAW_MATERIAL_ADJUSTMENT = "RAW_MATERIAL_ADJUSTMENT";
 
-    private InventoryReference() {
-    }
+  private InventoryReference() {}
 }

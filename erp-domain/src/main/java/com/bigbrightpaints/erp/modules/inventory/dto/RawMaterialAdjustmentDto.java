@@ -6,14 +6,12 @@ import java.util.List;
 import java.util.UUID;
 
 public record RawMaterialAdjustmentDto(
-        Long id,
-        UUID publicId,
-        String referenceNumber,
-        LocalDate adjustmentDate,
-        String status,
-        String reason,
-        BigDecimal totalAmount,
-        Long journalEntryId,
-        List<RawMaterialAdjustmentLineDto> lines
-) {
-}
+    Long id,
+    UUID publicId,
+    String referenceNumber,
+    LocalDate adjustmentDate,
+    String status,
+    String reason,
+    BigDecimal totalAmount,
+    Long journalEntryId,
+    List<RawMaterialAdjustmentLineDto> lines) {}

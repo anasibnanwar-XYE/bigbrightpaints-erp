@@ -2,6 +2,14 @@
 
 Last reviewed: 2026-03-07
 
+## Code Style & Formatting
+
+- **Formatter**: Spotless Maven plugin enforces Google Java Format across all source files
+- **Run check**: `cd erp-domain && MIGRATION_SET=v2 mvn spotless:check`
+- **Auto-format**: `cd erp-domain && MIGRATION_SET=v2 mvn spotless:apply`
+- **CI integration**: Formatting check runs automatically during `verify` phase
+- **Style**: Google Java Format with import ordering (java, javax, org, com, com.bigbrightpaints)
+
 ## Review Guidelines (Required)
 
 - Use `Factory-droid` as the integration base for remediation packet review unless a packet explicitly states a narrower stacked-review base.

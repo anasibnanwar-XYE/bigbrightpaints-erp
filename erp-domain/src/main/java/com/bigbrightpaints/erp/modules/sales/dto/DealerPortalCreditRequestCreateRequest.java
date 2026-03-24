@@ -1,10 +1,9 @@
 package com.bigbrightpaints.erp.modules.sales.dto;
 
-import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Positive;
 import java.math.BigDecimal;
 
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
+
 public record DealerPortalCreditRequestCreateRequest(
-        @NotNull @Positive BigDecimal amountRequested,
-        String reason
-) {}
+    @NotNull @Positive BigDecimal amountRequested, String reason) {}

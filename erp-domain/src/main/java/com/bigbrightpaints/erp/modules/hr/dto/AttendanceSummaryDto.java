@@ -9,5 +9,4 @@ public record AttendanceSummaryDto(
     long absent,
     long halfDay,
     long onLeave,
-    long notMarked
-) {}
+    long notMarked) {}

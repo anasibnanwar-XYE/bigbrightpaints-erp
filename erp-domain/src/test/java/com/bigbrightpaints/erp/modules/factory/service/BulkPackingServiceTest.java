@@ -1,5 +1,23 @@
 package com.bigbrightpaints.erp.modules.factory.service;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.util.List;
+
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
+
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.factory.domain.ProductionLog;
@@ -8,261 +26,238 @@ import com.bigbrightpaints.erp.modules.factory.dto.PackingLineRequest;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatch;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionProduct;
-import java.math.BigDecimal;
-import java.time.Instant;
-import java.time.LocalDate;
-import java.util.List;
-import org.junit.jupiter.api.Tag;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.test.util.ReflectionTestUtils;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 @Tag("critical")
 class BulkPackingServiceTest {
 
-    @Mock
-    private CompanyEntityLookup companyEntityLookup;
-    @Mock
-    private com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodRepository finishedGoodRepository;
-    @Mock
-    private FinishedGoodBatchRegistrar finishedGoodBatchRegistrar;
-    @Mock
-    private PackingJournalBuilder packingJournalBuilder;
+  @Mock private CompanyEntityLookup companyEntityLookup;
 
-    @Test
-    void parseSizeInLitersSupportsMlAndLtr() {
-        assertThat(BulkPackingOrchestrator.parseSizeInLiters("500ML"))
-                .isEqualByComparingTo(new BigDecimal("0.500000"));
-        assertThat(BulkPackingOrchestrator.parseSizeInLiters("1LTR"))
-                .isEqualByComparingTo(new BigDecimal("1"));
-        assertThat(BulkPackingOrchestrator.parseSizeInLiters("0.5L"))
-                .isEqualByComparingTo(new BigDecimal("0.5"));
-    }
+  @Mock
+  private com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodRepository
+      finishedGoodRepository;
 
-    @Test
-    void parseSizeInLitersReturnsNullForInvalid() {
-        assertThat(BulkPackingOrchestrator.parseSizeInLiters("SIZE"))
-                .isNull();
-    }
+  @Mock private FinishedGoodBatchRegistrar finishedGoodBatchRegistrar;
+  @Mock private PackingJournalBuilder packingJournalBuilder;
 
-    @Test
-    void buildPackReference_isStableForEquivalentRequests() {
-        BulkPackingService service = new BulkPackingService(
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null);
+  @Test
+  void parseSizeInLitersSupportsMlAndLtr() {
+    assertThat(BulkPackingOrchestrator.parseSizeInLiters("500ML"))
+        .isEqualByComparingTo(new BigDecimal("0.500000"));
+    assertThat(BulkPackingOrchestrator.parseSizeInLiters("1LTR"))
+        .isEqualByComparingTo(new BigDecimal("1"));
+    assertThat(BulkPackingOrchestrator.parseSizeInLiters("0.5L"))
+        .isEqualByComparingTo(new BigDecimal("0.5"));
+  }
 
-        FinishedGoodBatch bulkBatch = new FinishedGoodBatch();
-        ReflectionTestUtils.setField(bulkBatch, "id", 42L);
-        bulkBatch.setBatchCode("bulk-42");
+  @Test
+  void parseSizeInLitersReturnsNullForInvalid() {
+    assertThat(BulkPackingOrchestrator.parseSizeInLiters("SIZE")).isNull();
+  }
 
-        BulkPackRequest firstRequest = new BulkPackRequest(
-                42L,
-                List.of(new BulkPackRequest.PackLine(7L, new BigDecimal("10"), "1L", "L")),
-                LocalDate.of(2026, 3, 23),
-                null,
-                null,
-                null);
-        BulkPackRequest secondRequest = new BulkPackRequest(
-                42L,
-                List.of(new BulkPackRequest.PackLine(7L, new BigDecimal("10"), "1L", "L")),
-                LocalDate.of(2026, 3, 23),
-                null,
-                null,
-                null);
+  @Test
+  void buildPackReference_isStableForEquivalentRequests() {
+    BulkPackingService service =
+        new BulkPackingService(null, null, null, null, null, null, null, null, null, null);
 
-        String firstReference = ReflectionTestUtils.invokeMethod(service, "buildPackReference", bulkBatch, firstRequest);
-        String secondReference = ReflectionTestUtils.invokeMethod(service, "buildPackReference", bulkBatch, secondRequest);
+    FinishedGoodBatch bulkBatch = new FinishedGoodBatch();
+    ReflectionTestUtils.setField(bulkBatch, "id", 42L);
+    bulkBatch.setBatchCode("bulk-42");
 
-        assertThat(firstReference).isEqualTo(secondReference);
-    }
+    BulkPackRequest firstRequest =
+        new BulkPackRequest(
+            42L,
+            List.of(new BulkPackRequest.PackLine(7L, new BigDecimal("10"), "1L", "L")),
+            LocalDate.of(2026, 3, 23),
+            null,
+            null,
+            null);
+    BulkPackRequest secondRequest =
+        new BulkPackRequest(
+            42L,
+            List.of(new BulkPackRequest.PackLine(7L, new BigDecimal("10"), "1L", "L")),
+            LocalDate.of(2026, 3, 23),
+            null,
+            null,
+            null);
 
-    @Test
-    void buildPackReference_includesExplicitIdempotencyKeyFingerprint() {
-        BulkPackingService service = new BulkPackingService(
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null);
+    String firstReference =
+        ReflectionTestUtils.invokeMethod(service, "buildPackReference", bulkBatch, firstRequest);
+    String secondReference =
+        ReflectionTestUtils.invokeMethod(service, "buildPackReference", bulkBatch, secondRequest);
 
-        FinishedGoodBatch bulkBatch = new FinishedGoodBatch();
-        ReflectionTestUtils.setField(bulkBatch, "id", 42L);
-        bulkBatch.setBatchCode("bulk-42");
+    assertThat(firstReference).isEqualTo(secondReference);
+  }
 
-        BulkPackRequest requestWithFirstKey = new BulkPackRequest(
-                42L,
-                List.of(new BulkPackRequest.PackLine(7L, new BigDecimal("10"), "1L", "L")),
-                LocalDate.of(2026, 3, 23),
-                null,
-                null,
-                "KEY-1");
-        BulkPackRequest requestWithSecondKey = new BulkPackRequest(
-                42L,
-                List.of(new BulkPackRequest.PackLine(7L, new BigDecimal("10"), "1L", "L")),
-                LocalDate.of(2026, 3, 23),
-                null,
-                null,
-                "KEY-2");
+  @Test
+  void buildPackReference_includesExplicitIdempotencyKeyFingerprint() {
+    BulkPackingService service =
+        new BulkPackingService(null, null, null, null, null, null, null, null, null, null);
 
-        String firstReference = ReflectionTestUtils.invokeMethod(service, "buildPackReference", bulkBatch, requestWithFirstKey);
-        String secondReference = ReflectionTestUtils.invokeMethod(service, "buildPackReference", bulkBatch, requestWithSecondKey);
+    FinishedGoodBatch bulkBatch = new FinishedGoodBatch();
+    ReflectionTestUtils.setField(bulkBatch, "id", 42L);
+    bulkBatch.setBatchCode("bulk-42");
 
-        assertThat(firstReference).isNotEqualTo(secondReference);
-    }
+    BulkPackRequest requestWithFirstKey =
+        new BulkPackRequest(
+            42L,
+            List.of(new BulkPackRequest.PackLine(7L, new BigDecimal("10"), "1L", "L")),
+            LocalDate.of(2026, 3, 23),
+            null,
+            null,
+            "KEY-1");
+    BulkPackRequest requestWithSecondKey =
+        new BulkPackRequest(
+            42L,
+            List.of(new BulkPackRequest.PackLine(7L, new BigDecimal("10"), "1L", "L")),
+            LocalDate.of(2026, 3, 23),
+            null,
+            null,
+            "KEY-2");
 
-    @Test
-    void buildPackReference_nullRequestStillExercisesDerivedFingerprintGuard() {
-        BulkPackingService service = new BulkPackingService(
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null);
+    String firstReference =
+        ReflectionTestUtils.invokeMethod(
+            service, "buildPackReference", bulkBatch, requestWithFirstKey);
+    String secondReference =
+        ReflectionTestUtils.invokeMethod(
+            service, "buildPackReference", bulkBatch, requestWithSecondKey);
 
-        FinishedGoodBatch bulkBatch = new FinishedGoodBatch();
-        ReflectionTestUtils.setField(bulkBatch, "id", 42L);
-        bulkBatch.setBatchCode("bulk-42");
+    assertThat(firstReference).isNotEqualTo(secondReference);
+  }
 
-        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(service, "buildPackReference", bulkBatch, null))
-                .isInstanceOf(RuntimeException.class);
-    }
+  @Test
+  void buildPackReference_nullRequestStillExercisesDerivedFingerprintGuard() {
+    BulkPackingService service =
+        new BulkPackingService(null, null, null, null, null, null, null, null, null, null);
 
-    @Test
-    void createChildBatch_requiresActiveFinishedGood() {
-        BulkPackingOrchestrator orchestrator = new BulkPackingOrchestrator(
-                companyEntityLookup,
-                finishedGoodRepository,
-                finishedGoodBatchRegistrar,
-                packingJournalBuilder);
-        Company company = new Company();
-        ReflectionTestUtils.setField(company, "id", 9L);
+    FinishedGoodBatch bulkBatch = new FinishedGoodBatch();
+    ReflectionTestUtils.setField(bulkBatch, "id", 42L);
+    bulkBatch.setBatchCode("bulk-42");
 
-        FinishedGood childFinishedGood = new FinishedGood();
-        ReflectionTestUtils.setField(childFinishedGood, "id", 77L);
-        childFinishedGood.setCompany(company);
-        childFinishedGood.setProductCode("FG-CHILD-1L");
-        childFinishedGood.setName("Primer 1L");
+    assertThatThrownBy(
+            () -> ReflectionTestUtils.invokeMethod(service, "buildPackReference", bulkBatch, null))
+        .isInstanceOf(RuntimeException.class);
+  }
 
-        FinishedGoodBatch parentBatch = new FinishedGoodBatch();
-        parentBatch.setFinishedGood(childFinishedGood);
-        parentBatch.setManufacturedAt(Instant.parse("2026-03-20T10:15:30Z"));
+  @Test
+  void createChildBatch_requiresActiveFinishedGood() {
+    BulkPackingOrchestrator orchestrator =
+        new BulkPackingOrchestrator(
+            companyEntityLookup,
+            finishedGoodRepository,
+            finishedGoodBatchRegistrar,
+            packingJournalBuilder);
+    Company company = new Company();
+    ReflectionTestUtils.setField(company, "id", 9L);
 
-        FinishedGoodBatch childBatch = new FinishedGoodBatch();
-        childBatch.setFinishedGood(childFinishedGood);
-        when(companyEntityLookup.lockActiveFinishedGood(company, 77L)).thenReturn(childFinishedGood);
-        when(finishedGoodBatchRegistrar.registerReceipt(any()))
-                .thenReturn(new FinishedGoodBatchRegistrar.ReceiptRegistrationResult(childBatch, null));
+    FinishedGood childFinishedGood = new FinishedGood();
+    ReflectionTestUtils.setField(childFinishedGood, "id", 77L);
+    childFinishedGood.setCompany(company);
+    childFinishedGood.setProductCode("FG-CHILD-1L");
+    childFinishedGood.setName("Primer 1L");
 
-        FinishedGoodBatch result = orchestrator.createChildBatch(
-                company,
-                parentBatch,
-                new BulkPackRequest.PackLine(77L, new BigDecimal("6"), "1L", "L"),
-                new BigDecimal("80.00"),
-                new BigDecimal("2.50"),
-                LocalDate.of(2026, 3, 23),
-                "PACK-42-REF");
+    FinishedGoodBatch parentBatch = new FinishedGoodBatch();
+    parentBatch.setFinishedGood(childFinishedGood);
+    parentBatch.setManufacturedAt(Instant.parse("2026-03-20T10:15:30Z"));
 
-        assertThat(result).isSameAs(childBatch);
-        verify(companyEntityLookup).lockActiveFinishedGood(company, 77L);
-    }
+    FinishedGoodBatch childBatch = new FinishedGoodBatch();
+    childBatch.setFinishedGood(childFinishedGood);
+    when(companyEntityLookup.lockActiveFinishedGood(company, 77L)).thenReturn(childFinishedGood);
+    when(finishedGoodBatchRegistrar.registerReceipt(any()))
+        .thenReturn(new FinishedGoodBatchRegistrar.ReceiptRegistrationResult(childBatch, null));
 
-    @Test
-    void createChildBatch_translatesUnknownChildSku() {
-        BulkPackingOrchestrator orchestrator = new BulkPackingOrchestrator(
-                companyEntityLookup,
-                finishedGoodRepository,
-                finishedGoodBatchRegistrar,
-                packingJournalBuilder);
-        Company company = new Company();
-        ReflectionTestUtils.setField(company, "id", 9L);
+    FinishedGoodBatch result =
+        orchestrator.createChildBatch(
+            company,
+            parentBatch,
+            new BulkPackRequest.PackLine(77L, new BigDecimal("6"), "1L", "L"),
+            new BigDecimal("80.00"),
+            new BigDecimal("2.50"),
+            LocalDate.of(2026, 3, 23),
+            "PACK-42-REF");
 
-        FinishedGoodBatch parentBatch = new FinishedGoodBatch();
+    assertThat(result).isSameAs(childBatch);
+    verify(companyEntityLookup).lockActiveFinishedGood(company, 77L);
+  }
 
-        when(companyEntityLookup.lockActiveFinishedGood(company, 77L))
-                .thenThrow(new IllegalArgumentException("inactive"));
+  @Test
+  void createChildBatch_translatesUnknownChildSku() {
+    BulkPackingOrchestrator orchestrator =
+        new BulkPackingOrchestrator(
+            companyEntityLookup,
+            finishedGoodRepository,
+            finishedGoodBatchRegistrar,
+            packingJournalBuilder);
+    Company company = new Company();
+    ReflectionTestUtils.setField(company, "id", 9L);
 
-        assertThatThrownBy(() -> orchestrator.createChildBatch(
-                company,
-                parentBatch,
-                new BulkPackRequest.PackLine(77L, new BigDecimal("6"), "1L", "L"),
-                new BigDecimal("80.00"),
-                new BigDecimal("2.50"),
-                LocalDate.of(2026, 3, 23),
-                "PACK-42-REF"))
-                .isInstanceOf(com.bigbrightpaints.erp.core.exception.ApplicationException.class)
-                .hasMessageContaining("Child SKU not found: 77");
-    }
+    FinishedGoodBatch parentBatch = new FinishedGoodBatch();
 
-    @Test
-    void resolveTargetFinishedGood_requiresActiveChildSku() {
-        PackingProductSupport support = new PackingProductSupport(companyEntityLookup, finishedGoodRepository);
-        Company company = new Company();
+    when(companyEntityLookup.lockActiveFinishedGood(company, 77L))
+        .thenThrow(new IllegalArgumentException("inactive"));
 
-        FinishedGood activeChild = new FinishedGood();
-        activeChild.setProductCode("FG-PARENT-1L");
-        when(companyEntityLookup.lockActiveFinishedGood(company, 88L)).thenReturn(activeChild);
+    assertThatThrownBy(
+            () ->
+                orchestrator.createChildBatch(
+                    company,
+                    parentBatch,
+                    new BulkPackRequest.PackLine(77L, new BigDecimal("6"), "1L", "L"),
+                    new BigDecimal("80.00"),
+                    new BigDecimal("2.50"),
+                    LocalDate.of(2026, 3, 23),
+                    "PACK-42-REF"))
+        .isInstanceOf(com.bigbrightpaints.erp.core.exception.ApplicationException.class)
+        .hasMessageContaining("Child SKU not found: 77");
+  }
 
-        ProductionLog log = new ProductionLog();
-        ProductionProduct product = new ProductionProduct();
-        product.setSkuCode("FG-PARENT");
-        log.setProduct(product);
+  @Test
+  void resolveTargetFinishedGood_requiresActiveChildSku() {
+    PackingProductSupport support =
+        new PackingProductSupport(companyEntityLookup, finishedGoodRepository);
+    Company company = new Company();
 
-        FinishedGood resolved = support.resolveTargetFinishedGood(
-                company,
-                log,
-                new PackingLineRequest(88L, 1, "1L", new BigDecimal("1.0"), 1, 1, 1),
-                null);
+    FinishedGood activeChild = new FinishedGood();
+    activeChild.setProductCode("FG-PARENT-1L");
+    when(companyEntityLookup.lockActiveFinishedGood(company, 88L)).thenReturn(activeChild);
 
-        assertThat(resolved).isSameAs(activeChild);
-        verify(companyEntityLookup).lockActiveFinishedGood(company, 88L);
-    }
+    ProductionLog log = new ProductionLog();
+    ProductionProduct product = new ProductionProduct();
+    product.setSkuCode("FG-PARENT");
+    log.setProduct(product);
 
-    @Test
-    void resolveTargetFinishedGood_rejectsInactiveChildSku() {
-        PackingProductSupport support = new PackingProductSupport(companyEntityLookup, finishedGoodRepository);
-        Company company = new Company();
+    FinishedGood resolved =
+        support.resolveTargetFinishedGood(
+            company,
+            log,
+            new PackingLineRequest(88L, 1, "1L", new BigDecimal("1.0"), 1, 1, 1),
+            null);
 
-        ProductionLog log = new ProductionLog();
-        ProductionProduct product = new ProductionProduct();
-        product.setSkuCode("FG-PARENT");
-        log.setProduct(product);
+    assertThat(resolved).isSameAs(activeChild);
+    verify(companyEntityLookup).lockActiveFinishedGood(company, 88L);
+  }
 
-        when(companyEntityLookup.lockActiveFinishedGood(company, 88L))
-                .thenThrow(new IllegalArgumentException("inactive"));
+  @Test
+  void resolveTargetFinishedGood_rejectsInactiveChildSku() {
+    PackingProductSupport support =
+        new PackingProductSupport(companyEntityLookup, finishedGoodRepository);
+    Company company = new Company();
 
-        assertThatThrownBy(() -> support.resolveTargetFinishedGood(
-                company,
-                log,
-                new PackingLineRequest(88L, 1, "1L", new BigDecimal("1.0"), 1, 1, 1),
-                null))
-                .isInstanceOf(com.bigbrightpaints.erp.core.exception.ApplicationException.class)
-                .hasMessageContaining("Child finished good not found: 88");
-    }
+    ProductionLog log = new ProductionLog();
+    ProductionProduct product = new ProductionProduct();
+    product.setSkuCode("FG-PARENT");
+    log.setProduct(product);
+
+    when(companyEntityLookup.lockActiveFinishedGood(company, 88L))
+        .thenThrow(new IllegalArgumentException("inactive"));
+
+    assertThatThrownBy(
+            () ->
+                support.resolveTargetFinishedGood(
+                    company,
+                    log,
+                    new PackingLineRequest(88L, 1, "1L", new BigDecimal("1.0"), 1, 1, 1),
+                    null))
+        .isInstanceOf(com.bigbrightpaints.erp.core.exception.ApplicationException.class)
+        .hasMessageContaining("Child finished good not found: 88");
+  }
 }

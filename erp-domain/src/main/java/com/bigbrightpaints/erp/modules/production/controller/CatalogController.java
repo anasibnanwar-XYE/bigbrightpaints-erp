@@ -1,16 +1,7 @@
 package com.bigbrightpaints.erp.modules.production.controller;
 
-import com.bigbrightpaints.erp.core.util.IdempotencyHeaderUtils;
-import com.bigbrightpaints.erp.modules.production.dto.CatalogBrandDto;
-import com.bigbrightpaints.erp.modules.production.dto.CatalogBrandRequest;
-import com.bigbrightpaints.erp.modules.production.dto.CatalogItemDto;
-import com.bigbrightpaints.erp.modules.production.dto.CatalogItemRequest;
-import com.bigbrightpaints.erp.modules.production.dto.CatalogImportResponse;
-import com.bigbrightpaints.erp.modules.production.service.CatalogService;
-import com.bigbrightpaints.erp.modules.production.service.ProductionCatalogService;
-import com.bigbrightpaints.erp.shared.dto.ApiResponse;
-import com.bigbrightpaints.erp.shared.dto.PageResponse;
-import jakarta.validation.Valid;
+import java.util.List;
+
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -22,83 +13,103 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
-import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.util.List;
+import com.bigbrightpaints.erp.core.util.IdempotencyHeaderUtils;
+import com.bigbrightpaints.erp.modules.production.dto.CatalogBrandDto;
+import com.bigbrightpaints.erp.modules.production.dto.CatalogBrandRequest;
+import com.bigbrightpaints.erp.modules.production.dto.CatalogImportResponse;
+import com.bigbrightpaints.erp.modules.production.dto.CatalogItemDto;
+import com.bigbrightpaints.erp.modules.production.dto.CatalogItemRequest;
+import com.bigbrightpaints.erp.modules.production.service.CatalogService;
+import com.bigbrightpaints.erp.modules.production.service.ProductionCatalogService;
+import com.bigbrightpaints.erp.shared.dto.ApiResponse;
+import com.bigbrightpaints.erp.shared.dto.PageResponse;
+
+import jakarta.validation.Valid;
 
 @RestController
 @RequestMapping("/api/v1/catalog")
 @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING','ROLE_SALES','ROLE_FACTORY')")
 public class CatalogController {
 
-    private final CatalogService catalogService;
-    private final ProductionCatalogService productionCatalogService;
+  private final CatalogService catalogService;
+  private final ProductionCatalogService productionCatalogService;
 
-    public CatalogController(CatalogService catalogService,
-                             ProductionCatalogService productionCatalogService) {
-        this.catalogService = catalogService;
-        this.productionCatalogService = productionCatalogService;
-    }
+  public CatalogController(
+      CatalogService catalogService, ProductionCatalogService productionCatalogService) {
+    this.catalogService = catalogService;
+    this.productionCatalogService = productionCatalogService;
+  }
 
-    @PostMapping("/brands")
-    public ResponseEntity<ApiResponse<CatalogBrandDto>> createBrand(@Valid @RequestBody CatalogBrandRequest request) {
-        return ResponseEntity.ok(ApiResponse.success("Brand created", catalogService.createBrand(request)));
-    }
+  @PostMapping("/brands")
+  public ResponseEntity<ApiResponse<CatalogBrandDto>> createBrand(
+      @Valid @RequestBody CatalogBrandRequest request) {
+    return ResponseEntity.ok(
+        ApiResponse.success("Brand created", catalogService.createBrand(request)));
+  }
 
-    @GetMapping("/brands")
-    public ResponseEntity<ApiResponse<List<CatalogBrandDto>>> listBrands(
-            @RequestParam(value = "active", required = false) Boolean active) {
-        return ResponseEntity.ok(ApiResponse.success(catalogService.listBrands(active)));
-    }
+  @GetMapping("/brands")
+  public ResponseEntity<ApiResponse<List<CatalogBrandDto>>> listBrands(
+      @RequestParam(value = "active", required = false) Boolean active) {
+    return ResponseEntity.ok(ApiResponse.success(catalogService.listBrands(active)));
+  }
 
-    @GetMapping("/brands/{brandId}")
-    public ResponseEntity<ApiResponse<CatalogBrandDto>> getBrand(@PathVariable Long brandId) {
-        return ResponseEntity.ok(ApiResponse.success(catalogService.getBrand(brandId)));
-    }
+  @GetMapping("/brands/{brandId}")
+  public ResponseEntity<ApiResponse<CatalogBrandDto>> getBrand(@PathVariable Long brandId) {
+    return ResponseEntity.ok(ApiResponse.success(catalogService.getBrand(brandId)));
+  }
 
-    @PutMapping("/brands/{brandId}")
-    public ResponseEntity<ApiResponse<CatalogBrandDto>> updateBrand(@PathVariable Long brandId,
-                                                                     @Valid @RequestBody CatalogBrandRequest request) {
-        return ResponseEntity.ok(ApiResponse.success("Brand updated", catalogService.updateBrand(brandId, request)));
-    }
+  @PutMapping("/brands/{brandId}")
+  public ResponseEntity<ApiResponse<CatalogBrandDto>> updateBrand(
+      @PathVariable Long brandId, @Valid @RequestBody CatalogBrandRequest request) {
+    return ResponseEntity.ok(
+        ApiResponse.success("Brand updated", catalogService.updateBrand(brandId, request)));
+  }
 
-    @DeleteMapping("/brands/{brandId}")
-    public ResponseEntity<ApiResponse<CatalogBrandDto>> deactivateBrand(@PathVariable Long brandId) {
-        return ResponseEntity.ok(ApiResponse.success("Brand deactivated", catalogService.deactivateBrand(brandId)));
-    }
+  @DeleteMapping("/brands/{brandId}")
+  public ResponseEntity<ApiResponse<CatalogBrandDto>> deactivateBrand(@PathVariable Long brandId) {
+    return ResponseEntity.ok(
+        ApiResponse.success("Brand deactivated", catalogService.deactivateBrand(brandId)));
+  }
 
-    @PostMapping(value = "/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
-    public ResponseEntity<ApiResponse<CatalogImportResponse>> importCatalog(
-            @RequestPart("file") MultipartFile file,
-            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
-            @RequestHeader(value = "X-Idempotency-Key", required = false) String legacyIdempotencyKey) {
-        String resolvedKey = IdempotencyHeaderUtils.resolveHeaderKey(idempotencyKey, legacyIdempotencyKey);
-        return ResponseEntity.ok(ApiResponse.success("Catalog import processed",
-                productionCatalogService.importCatalog(file, resolvedKey)));
-    }
+  @PostMapping(value = "/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+  @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
+  public ResponseEntity<ApiResponse<CatalogImportResponse>> importCatalog(
+      @RequestPart("file") MultipartFile file,
+      @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+      @RequestHeader(value = "X-Idempotency-Key", required = false) String legacyIdempotencyKey) {
+    String resolvedKey =
+        IdempotencyHeaderUtils.resolveHeaderKey(idempotencyKey, legacyIdempotencyKey);
+    return ResponseEntity.ok(
+        ApiResponse.success(
+            "Catalog import processed", productionCatalogService.importCatalog(file, resolvedKey)));
+  }
 
-    @PostMapping("/items")
-    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
-    public ResponseEntity<ApiResponse<CatalogItemDto>> createItem(
-            @Valid @RequestBody CatalogItemRequest request) {
-        return ResponseEntity.ok(ApiResponse.success("Item created", catalogService.createItem(request)));
-    }
+  @PostMapping("/items")
+  @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
+  public ResponseEntity<ApiResponse<CatalogItemDto>> createItem(
+      @Valid @RequestBody CatalogItemRequest request) {
+    return ResponseEntity.ok(
+        ApiResponse.success("Item created", catalogService.createItem(request)));
+  }
 
-    @GetMapping("/items")
-    public ResponseEntity<ApiResponse<PageResponse<CatalogItemDto>>> searchItems(
-            @RequestParam(value = "q", required = false) String q,
-            @RequestParam(value = "itemClass", required = false) String itemClass,
-            @RequestParam(value = "includeStock", defaultValue = "false") boolean includeStock,
-            @RequestParam(value = "includeReadiness", defaultValue = "false") boolean includeReadiness,
-            @RequestParam(value = "page", defaultValue = "0") int page,
-            @RequestParam(value = "pageSize", defaultValue = "20") int pageSize,
-            Authentication authentication) {
-        return ResponseEntity.ok(ApiResponse.success(catalogService.searchItems(
+  @GetMapping("/items")
+  public ResponseEntity<ApiResponse<PageResponse<CatalogItemDto>>> searchItems(
+      @RequestParam(value = "q", required = false) String q,
+      @RequestParam(value = "itemClass", required = false) String itemClass,
+      @RequestParam(value = "includeStock", defaultValue = "false") boolean includeStock,
+      @RequestParam(value = "includeReadiness", defaultValue = "false") boolean includeReadiness,
+      @RequestParam(value = "page", defaultValue = "0") int page,
+      @RequestParam(value = "pageSize", defaultValue = "20") int pageSize,
+      Authentication authentication) {
+    return ResponseEntity.ok(
+        ApiResponse.success(
+            catalogService.searchItems(
                 q,
                 itemClass,
                 includeStock,
@@ -106,35 +117,44 @@ public class CatalogController {
                 page,
                 pageSize,
                 canViewAccountingMetadata(authentication))));
-    }
+  }
 
-    @GetMapping("/items/{itemId}")
-    public ResponseEntity<ApiResponse<CatalogItemDto>> getItem(@PathVariable Long itemId,
-                                                               @RequestParam(value = "includeStock", defaultValue = "true") boolean includeStock,
-                                                               @RequestParam(value = "includeReadiness", defaultValue = "true") boolean includeReadiness,
-                                                               Authentication authentication) {
-        return ResponseEntity.ok(ApiResponse.success(
-                catalogService.getItem(itemId, includeStock, includeReadiness, canViewAccountingMetadata(authentication))));
-    }
+  @GetMapping("/items/{itemId}")
+  public ResponseEntity<ApiResponse<CatalogItemDto>> getItem(
+      @PathVariable Long itemId,
+      @RequestParam(value = "includeStock", defaultValue = "true") boolean includeStock,
+      @RequestParam(value = "includeReadiness", defaultValue = "true") boolean includeReadiness,
+      Authentication authentication) {
+    return ResponseEntity.ok(
+        ApiResponse.success(
+            catalogService.getItem(
+                itemId,
+                includeStock,
+                includeReadiness,
+                canViewAccountingMetadata(authentication))));
+  }
 
-    @PutMapping("/items/{itemId}")
-    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
-    public ResponseEntity<ApiResponse<CatalogItemDto>> updateItem(@PathVariable Long itemId,
-                                                                  @Valid @RequestBody CatalogItemRequest request) {
-        return ResponseEntity.ok(ApiResponse.success("Item updated", catalogService.updateItem(itemId, request)));
-    }
+  @PutMapping("/items/{itemId}")
+  @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
+  public ResponseEntity<ApiResponse<CatalogItemDto>> updateItem(
+      @PathVariable Long itemId, @Valid @RequestBody CatalogItemRequest request) {
+    return ResponseEntity.ok(
+        ApiResponse.success("Item updated", catalogService.updateItem(itemId, request)));
+  }
 
-    @DeleteMapping("/items/{itemId}")
-    public ResponseEntity<ApiResponse<CatalogItemDto>> deactivateItem(@PathVariable Long itemId) {
-        return ResponseEntity.ok(ApiResponse.success("Item deactivated", catalogService.deactivateItem(itemId)));
-    }
+  @DeleteMapping("/items/{itemId}")
+  public ResponseEntity<ApiResponse<CatalogItemDto>> deactivateItem(@PathVariable Long itemId) {
+    return ResponseEntity.ok(
+        ApiResponse.success("Item deactivated", catalogService.deactivateItem(itemId)));
+  }
 
-    private boolean canViewAccountingMetadata(Authentication authentication) {
-        if (authentication == null || authentication.getAuthorities() == null) {
-            return false;
-        }
-        return authentication.getAuthorities().stream()
-                .map(grantedAuthority -> grantedAuthority.getAuthority())
-                .anyMatch(authority -> "ROLE_ADMIN".equals(authority) || "ROLE_ACCOUNTING".equals(authority));
+  private boolean canViewAccountingMetadata(Authentication authentication) {
+    if (authentication == null || authentication.getAuthorities() == null) {
+      return false;
     }
+    return authentication.getAuthorities().stream()
+        .map(grantedAuthority -> grantedAuthority.getAuthority())
+        .anyMatch(
+            authority -> "ROLE_ADMIN".equals(authority) || "ROLE_ACCOUNTING".equals(authority));
+  }
 }

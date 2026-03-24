@@ -1,37 +1,42 @@
 package com.bigbrightpaints.erp.modules.hr.domain;
 
-import com.bigbrightpaints.erp.modules.company.domain.Company;
-import jakarta.persistence.LockModeType;
+import java.util.List;
+import java.util.Optional;
+
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
-import java.util.List;
-import java.util.Optional;
+import com.bigbrightpaints.erp.modules.company.domain.Company;
+
+import jakarta.persistence.LockModeType;
 
 public interface EmployeeRepository extends JpaRepository<Employee, Long> {
-    List<Employee> findByCompanyOrderByFirstNameAsc(Company company);
-    Optional<Employee> findByCompanyAndId(Company company, Long id);
+  List<Employee> findByCompanyOrderByFirstNameAsc(Company company);
 
-    @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("select e from Employee e where e.company = :company and e.id = :id")
-    Optional<Employee> lockByCompanyAndId(@Param("company") Company company, @Param("id") Long id);
+  Optional<Employee> findByCompanyAndId(Company company, Long id);
 
-    // Find by email (for linking to user account)
-    Optional<Employee> findByCompanyAndEmail(Company company, String email);
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
+  @Query("select e from Employee e where e.company = :company and e.id = :id")
+  Optional<Employee> lockByCompanyAndId(@Param("company") Company company, @Param("id") Long id);
 
-    List<Employee> findByCompanyAndIdIn(Company company, List<Long> ids);
+  // Find by email (for linking to user account)
+  Optional<Employee> findByCompanyAndEmail(Company company, String email);
 
-    // Find by employee type and status
-    List<Employee> findByCompanyAndEmployeeTypeAndStatus(Company company, Employee.EmployeeType type, String status);
+  List<Employee> findByCompanyAndIdIn(Company company, List<Long> ids);
 
-    // Find by payment schedule and status (for payroll)
-    List<Employee> findByCompanyAndPaymentScheduleAndStatus(Company company, Employee.PaymentSchedule schedule, String status);
+  // Find by employee type and status
+  List<Employee> findByCompanyAndEmployeeTypeAndStatus(
+      Company company, Employee.EmployeeType type, String status);
 
-    // Find all active employees
-    List<Employee> findByCompanyAndStatusOrderByFirstNameAsc(Company company, String status);
+  // Find by payment schedule and status (for payroll)
+  List<Employee> findByCompanyAndPaymentScheduleAndStatus(
+      Company company, Employee.PaymentSchedule schedule, String status);
 
-    // Count employees by status
-    long countByCompanyAndStatus(Company company, String status);
+  // Find all active employees
+  List<Employee> findByCompanyAndStatusOrderByFirstNameAsc(Company company, String status);
+
+  // Count employees by status
+  long countByCompanyAndStatus(Company company, String status);
 }

@@ -7,15 +7,18 @@ import org.springframework.scheduling.TaskScheduler;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 
 @Configuration
-@ConditionalOnProperty(value = "spring.task.scheduling.enabled", havingValue = "true", matchIfMissing = true)
+@ConditionalOnProperty(
+    value = "spring.task.scheduling.enabled",
+    havingValue = "true",
+    matchIfMissing = true)
 public class SchedulerConfig {
 
-    @Bean
-    public TaskScheduler taskScheduler() {
-        ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
-        scheduler.setThreadNamePrefix("orchestrator-scheduler-");
-        scheduler.setPoolSize(5);
-        scheduler.initialize();
-        return scheduler;
-    }
+  @Bean
+  public TaskScheduler taskScheduler() {
+    ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
+    scheduler.setThreadNamePrefix("orchestrator-scheduler-");
+    scheduler.setPoolSize(5);
+    scheduler.initialize();
+    return scheduler;
+  }
 }

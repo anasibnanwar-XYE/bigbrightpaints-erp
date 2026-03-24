@@ -1,9 +1,36 @@
 package com.bigbrightpaints.erp.modules.accounting.service;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+
+import org.apache.commons.codec.digest.DigestUtils;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
+
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.core.util.CompanyTime;
-import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
@@ -23,875 +50,897 @@ import com.bigbrightpaints.erp.modules.purchasing.domain.SupplierStatus;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
 import com.bigbrightpaints.erp.modules.sales.util.SalesOrderReference;
-import org.apache.commons.codec.digest.DigestUtils;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Tag;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.test.util.ReflectionTestUtils;
-
-import java.math.BigDecimal;
-import java.time.LocalDate;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.argThat;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.lenient;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 @Tag("critical")
 class AccountingFacadeTest {
 
-    @Mock private CompanyContextService companyContextService;
-    @Mock private AccountRepository accountRepository;
-    @Mock private AccountingService accountingService;
-    @Mock private JournalEntryRepository journalEntryRepository;
-    @Mock private ReferenceNumberService referenceNumberService;
-    @Mock private DealerRepository dealerRepository;
-    @Mock private SupplierRepository supplierRepository;
-    @Mock private CompanyClock companyClock;
-    @Mock private CompanyEntityLookup companyEntityLookup;
-    @Mock private CompanyAccountingSettingsService companyAccountingSettingsService;
-    @Mock private JournalReferenceResolver journalReferenceResolver;
-    @Mock private JournalReferenceMappingRepository journalReferenceMappingRepository;
+  @Mock private CompanyContextService companyContextService;
+  @Mock private AccountRepository accountRepository;
+  @Mock private AccountingService accountingService;
+  @Mock private JournalEntryRepository journalEntryRepository;
+  @Mock private ReferenceNumberService referenceNumberService;
+  @Mock private DealerRepository dealerRepository;
+  @Mock private SupplierRepository supplierRepository;
+  @Mock private CompanyClock companyClock;
+  @Mock private CompanyEntityLookup companyEntityLookup;
+  @Mock private CompanyAccountingSettingsService companyAccountingSettingsService;
+  @Mock private JournalReferenceResolver journalReferenceResolver;
+  @Mock private JournalReferenceMappingRepository journalReferenceMappingRepository;
 
-    private AccountingFacade accountingFacade;
-    private Company company;
+  private AccountingFacade accountingFacade;
+  private Company company;
 
-    @BeforeEach
-    void setup() {
-        accountingFacade = new AccountingFacade(
-                companyContextService,
-                accountRepository,
-                accountingService,
-                journalEntryRepository,
-                referenceNumberService,
-                dealerRepository,
-                supplierRepository,
-                companyClock,
-                companyEntityLookup,
-                companyAccountingSettingsService,
-                journalReferenceResolver,
-                journalReferenceMappingRepository
-        );
-        company = new Company();
-        company.setBaseCurrency("INR");
-        lenient().when(companyContextService.requireCurrentCompany()).thenReturn(company);
-        lenient().when(companyClock.today(company)).thenReturn(LocalDate.of(2024, 4, 9));
-    }
+  @BeforeEach
+  void setup() {
+    accountingFacade =
+        new AccountingFacade(
+            companyContextService,
+            accountRepository,
+            accountingService,
+            journalEntryRepository,
+            referenceNumberService,
+            dealerRepository,
+            supplierRepository,
+            companyClock,
+            companyEntityLookup,
+            companyAccountingSettingsService,
+            journalReferenceResolver,
+            journalReferenceMappingRepository);
+    company = new Company();
+    company.setBaseCurrency("INR");
+    lenient().when(companyContextService.requireCurrentCompany()).thenReturn(company);
+    lenient().when(companyClock.today(company)).thenReturn(LocalDate.of(2024, 4, 9));
+  }
 
-    @Test
-    void postSalesReturn_usesHashReferenceWhenBaseExists() {
-        Dealer dealer = new Dealer();
-        Account receivable = new Account();
-        receivable.setCode("AR");
-        dealer.setReceivableAccount(receivable);
-        Long dealerId = 10L;
-        ReflectionTestUtils.setField(dealer, "id", dealerId);
+  @Test
+  void postSalesReturn_usesHashReferenceWhenBaseExists() {
+    Dealer dealer = new Dealer();
+    Account receivable = new Account();
+    receivable.setCode("AR");
+    dealer.setReceivableAccount(receivable);
+    Long dealerId = 10L;
+    ReflectionTestUtils.setField(dealer, "id", dealerId);
 
-        when(companyEntityLookup.requireDealer(eq(company), eq(dealerId))).thenReturn(dealer);
+    when(companyEntityLookup.requireDealer(eq(company), eq(dealerId))).thenReturn(dealer);
 
-        String invoiceNumber = "INV-100";
-        Map<Long, BigDecimal> returnLines = Map.of(101L, new BigDecimal("100.00"));
-        BigDecimal total = new BigDecimal("100.00");
-        String reason = "Damaged";
-        String baseReference = "CRN-" + invoiceNumber;
-        String hashReference = buildExpectedHash(baseReference, dealerId, returnLines, total, reason);
+    String invoiceNumber = "INV-100";
+    Map<Long, BigDecimal> returnLines = Map.of(101L, new BigDecimal("100.00"));
+    BigDecimal total = new BigDecimal("100.00");
+    String reason = "Damaged";
+    String baseReference = "CRN-" + invoiceNumber;
+    String hashReference = buildExpectedHash(baseReference, dealerId, returnLines, total, reason);
 
-        JournalEntry existing = new JournalEntry();
-        existing.setReferenceNumber(baseReference);
-        when(journalReferenceResolver.findExistingEntry(any(), eq(hashReference))).thenReturn(Optional.empty());
-        when(journalEntryRepository.findByCompanyAndReferenceNumber(eq(company), eq(baseReference)))
-                .thenReturn(Optional.of(existing));
-        when(journalEntryRepository.findByCompanyAndReferenceNumber(eq(company), eq(hashReference)))
-                .thenReturn(Optional.empty(), Optional.of(existing));
-        when(journalReferenceMappingRepository.findByCompanyAndLegacyReferenceIgnoreCase(any(), any()))
-                .thenReturn(Optional.empty());
+    JournalEntry existing = new JournalEntry();
+    existing.setReferenceNumber(baseReference);
+    when(journalReferenceResolver.findExistingEntry(any(), eq(hashReference)))
+        .thenReturn(Optional.empty());
+    when(journalEntryRepository.findByCompanyAndReferenceNumber(eq(company), eq(baseReference)))
+        .thenReturn(Optional.of(existing));
+    when(journalEntryRepository.findByCompanyAndReferenceNumber(eq(company), eq(hashReference)))
+        .thenReturn(Optional.empty(), Optional.of(existing));
+    when(journalReferenceMappingRepository.findByCompanyAndLegacyReferenceIgnoreCase(any(), any()))
+        .thenReturn(Optional.empty());
 
-        JournalEntryDto stub = new JournalEntryDto(
-                50L,
-                null,
-                hashReference,
-                LocalDate.of(2024, 4, 9),
-                null,
-                "POSTED",
-                dealerId,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                List.<JournalLineDto>of(),
-                null,
-                null,
-                null,
-                null,
-                null,
-                null
-        );
-        ArgumentCaptor<JournalEntryRequest> requestCaptor = ArgumentCaptor.forClass(JournalEntryRequest.class);
-        doReturn(stub).when(accountingService).createJournalEntry(requestCaptor.capture());
+    JournalEntryDto stub =
+        new JournalEntryDto(
+            50L,
+            null,
+            hashReference,
+            LocalDate.of(2024, 4, 9),
+            null,
+            "POSTED",
+            dealerId,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            List.<JournalLineDto>of(),
+            null,
+            null,
+            null,
+            null,
+            null,
+            null);
+    ArgumentCaptor<JournalEntryRequest> requestCaptor =
+        ArgumentCaptor.forClass(JournalEntryRequest.class);
+    doReturn(stub).when(accountingService).createJournalEntry(requestCaptor.capture());
 
-        accountingFacade.postSalesReturn(
-                dealerId,
-                invoiceNumber,
-                returnLines,
-                total,
-                reason
-        );
+    accountingFacade.postSalesReturn(dealerId, invoiceNumber, returnLines, total, reason);
 
-        assertThat(requestCaptor.getValue().referenceNumber()).isEqualTo(hashReference);
-    }
+    assertThat(requestCaptor.getValue().referenceNumber()).isEqualTo(hashReference);
+  }
 
-    @Test
-    void postPayrollRun_delegatesToAccountingServiceCanonicalMethod() {
-        JournalEntryDto expected = new JournalEntryDto(
-                61L,
-                null,
-                "PAYROLL-PR-W-202602",
-                LocalDate.of(2026, 2, 1),
-                null,
-                "POSTED",
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                List.<JournalLineDto>of(),
-                null,
-                null,
-                null,
-                null,
-                null,
-                null
-        );
-        List<JournalEntryRequest.JournalLineRequest> lines = List.of(
-                new JournalEntryRequest.JournalLineRequest(10L, "Payroll expense", new BigDecimal("1000.00"), BigDecimal.ZERO),
-                new JournalEntryRequest.JournalLineRequest(11L, "Payroll payable", BigDecimal.ZERO, new BigDecimal("1000.00"))
-        );
-        when(accountingService.postPayrollRun("PR-W-202602", 77L, LocalDate.of(2026, 2, 1), "Payroll - PR-W-202602", lines))
-                .thenReturn(expected);
+  @Test
+  void postPayrollRun_delegatesToAccountingServiceCanonicalMethod() {
+    JournalEntryDto expected =
+        new JournalEntryDto(
+            61L,
+            null,
+            "PAYROLL-PR-W-202602",
+            LocalDate.of(2026, 2, 1),
+            null,
+            "POSTED",
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            List.<JournalLineDto>of(),
+            null,
+            null,
+            null,
+            null,
+            null,
+            null);
+    List<JournalEntryRequest.JournalLineRequest> lines =
+        List.of(
+            new JournalEntryRequest.JournalLineRequest(
+                10L, "Payroll expense", new BigDecimal("1000.00"), BigDecimal.ZERO),
+            new JournalEntryRequest.JournalLineRequest(
+                11L, "Payroll payable", BigDecimal.ZERO, new BigDecimal("1000.00")));
+    when(accountingService.postPayrollRun(
+            "PR-W-202602", 77L, LocalDate.of(2026, 2, 1), "Payroll - PR-W-202602", lines))
+        .thenReturn(expected);
 
-        JournalEntryDto actual = accountingFacade.postPayrollRun(
-                "PR-W-202602",
-                77L,
-                LocalDate.of(2026, 2, 1),
-                "Payroll - PR-W-202602",
-                lines
-        );
+    JournalEntryDto actual =
+        accountingFacade.postPayrollRun(
+            "PR-W-202602", 77L, LocalDate.of(2026, 2, 1), "Payroll - PR-W-202602", lines);
 
-        assertThat(actual).isSameAs(expected);
-        verify(accountingService).postPayrollRun("PR-W-202602", 77L, LocalDate.of(2026, 2, 1), "Payroll - PR-W-202602", lines);
-        verify(accountingService, never()).createJournalEntry(any());
-    }
+    assertThat(actual).isSameAs(expected);
+    verify(accountingService)
+        .postPayrollRun(
+            "PR-W-202602", 77L, LocalDate.of(2026, 2, 1), "Payroll - PR-W-202602", lines);
+    verify(accountingService, never()).createJournalEntry(any());
+  }
 
-    @Test
-    void postPackingJournal_delegatesToCanonicalCreateStandardJournal() {
-        String reference = " PACK-2026-001 ";
-        LocalDate entryDate = LocalDate.of(2026, 2, 10);
-        String memo = "Packing journal";
-        List<JournalEntryRequest.JournalLineRequest> lines = List.of(
-                new JournalEntryRequest.JournalLineRequest(1001L, "FG inventory", new BigDecimal("250.00"), BigDecimal.ZERO),
-                new JournalEntryRequest.JournalLineRequest(2002L, "WIP release", BigDecimal.ZERO, new BigDecimal("250.00"))
-        );
+  @Test
+  void postPackingJournal_delegatesToCanonicalCreateStandardJournal() {
+    String reference = " PACK-2026-001 ";
+    LocalDate entryDate = LocalDate.of(2026, 2, 10);
+    String memo = "Packing journal";
+    List<JournalEntryRequest.JournalLineRequest> lines =
+        List.of(
+            new JournalEntryRequest.JournalLineRequest(
+                1001L, "FG inventory", new BigDecimal("250.00"), BigDecimal.ZERO),
+            new JournalEntryRequest.JournalLineRequest(
+                2002L, "WIP release", BigDecimal.ZERO, new BigDecimal("250.00")));
 
-        when(journalEntryRepository.findByCompanyAndReferenceNumber(eq(company), eq("PACK-2026-001")))
-                .thenReturn(Optional.empty());
+    when(journalEntryRepository.findByCompanyAndReferenceNumber(eq(company), eq("PACK-2026-001")))
+        .thenReturn(Optional.empty());
 
-        JournalEntryDto expected = new JournalEntryDto(
-                91L,
-                null,
-                "PACK-2026-001",
-                entryDate,
-                null,
-                "POSTED",
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                List.<JournalLineDto>of(),
-                null,
-                null,
-                null,
-                null,
-                null,
-                null
-        );
+    JournalEntryDto expected =
+        new JournalEntryDto(
+            91L,
+            null,
+            "PACK-2026-001",
+            entryDate,
+            null,
+            "POSTED",
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            List.<JournalLineDto>of(),
+            null,
+            null,
+            null,
+            null,
+            null,
+            null);
 
-        ArgumentCaptor<JournalCreationRequest> requestCaptor = ArgumentCaptor.forClass(JournalCreationRequest.class);
-        when(accountingService.createStandardJournal(requestCaptor.capture())).thenReturn(expected);
+    ArgumentCaptor<JournalCreationRequest> requestCaptor =
+        ArgumentCaptor.forClass(JournalCreationRequest.class);
+    when(accountingService.createStandardJournal(requestCaptor.capture())).thenReturn(expected);
 
-        JournalEntryDto actual = accountingFacade.postPackingJournal(reference, entryDate, memo, lines);
+    JournalEntryDto actual = accountingFacade.postPackingJournal(reference, entryDate, memo, lines);
 
-        assertThat(actual).isSameAs(expected);
-        JournalCreationRequest forwarded = requestCaptor.getValue();
-        assertThat(forwarded.amount()).isEqualByComparingTo("250.00");
-        assertThat(forwarded.debitAccount()).isEqualTo(1001L);
-        assertThat(forwarded.creditAccount()).isEqualTo(2002L);
-        assertThat(forwarded.narration()).isEqualTo(memo);
-        assertThat(forwarded.sourceModule()).isEqualTo("FACTORY_PACKING");
-        assertThat(forwarded.sourceReference()).isEqualTo("PACK-2026-001");
-        assertThat(forwarded.lines()).hasSize(2);
-        assertThat(forwarded.entryDate()).isEqualTo(entryDate);
-        verify(accountingService).createStandardJournal(any());
-        verify(accountingService, never()).createJournalEntry(any());
-    }
+    assertThat(actual).isSameAs(expected);
+    JournalCreationRequest forwarded = requestCaptor.getValue();
+    assertThat(forwarded.amount()).isEqualByComparingTo("250.00");
+    assertThat(forwarded.debitAccount()).isEqualTo(1001L);
+    assertThat(forwarded.creditAccount()).isEqualTo(2002L);
+    assertThat(forwarded.narration()).isEqualTo(memo);
+    assertThat(forwarded.sourceModule()).isEqualTo("FACTORY_PACKING");
+    assertThat(forwarded.sourceReference()).isEqualTo("PACK-2026-001");
+    assertThat(forwarded.lines()).hasSize(2);
+    assertThat(forwarded.entryDate()).isEqualTo(entryDate);
+    verify(accountingService).createStandardJournal(any());
+    verify(accountingService, never()).createJournalEntry(any());
+  }
 
-    @Test
-    void postPurchaseJournal_legacyPrefixFallback_ignoresReversalSuffix() {
-        Long supplierId = 88L;
-        Supplier supplier = new Supplier();
-        Account payable = new Account();
-        payable.setCode("AP");
-        payable.setName("Accounts Payable");
-        ReflectionTestUtils.setField(payable, "id", 301L);
-        supplier.setPayableAccount(payable);
-        when(companyEntityLookup.requireSupplier(eq(company), eq(supplierId))).thenReturn(supplier);
+  @Test
+  void postPurchaseJournal_legacyPrefixFallback_ignoresReversalSuffix() {
+    Long supplierId = 88L;
+    Supplier supplier = new Supplier();
+    Account payable = new Account();
+    payable.setCode("AP");
+    payable.setName("Accounts Payable");
+    ReflectionTestUtils.setField(payable, "id", 301L);
+    supplier.setPayableAccount(payable);
+    when(companyEntityLookup.requireSupplier(eq(company), eq(supplierId))).thenReturn(supplier);
 
-        Long inventoryAccountId = 201L;
+    Long inventoryAccountId = 201L;
 
-        String baseReference = "RMP-ACME-SUP-INV100";
-        when(referenceNumberService.purchaseReferenceKey(eq(company), eq(supplier), eq("INV-100")))
-                .thenReturn(baseReference);
-        when(journalReferenceResolver.findExistingEntry(eq(company), eq(baseReference))).thenReturn(Optional.empty());
+    String baseReference = "RMP-ACME-SUP-INV100";
+    when(referenceNumberService.purchaseReferenceKey(eq(company), eq(supplier), eq("INV-100")))
+        .thenReturn(baseReference);
+    when(journalReferenceResolver.findExistingEntry(eq(company), eq(baseReference)))
+        .thenReturn(Optional.empty());
 
-        JournalEntry reversal = new JournalEntry();
-        ReflectionTestUtils.setField(reversal, "id", 501L);
-        reversal.setReferenceNumber(baseReference + "-0001-REV");
-        reversal.setEntryDate(LocalDate.of(2026, 1, 12));
+    JournalEntry reversal = new JournalEntry();
+    ReflectionTestUtils.setField(reversal, "id", 501L);
+    reversal.setReferenceNumber(baseReference + "-0001-REV");
+    reversal.setEntryDate(LocalDate.of(2026, 1, 12));
 
-        JournalEntry canonical = new JournalEntry();
-        ReflectionTestUtils.setField(canonical, "id", 500L);
-        canonical.setReferenceNumber(baseReference + "-0001");
-        canonical.setEntryDate(LocalDate.of(2026, 1, 13));
+    JournalEntry canonical = new JournalEntry();
+    ReflectionTestUtils.setField(canonical, "id", 500L);
+    canonical.setReferenceNumber(baseReference + "-0001");
+    canonical.setEntryDate(LocalDate.of(2026, 1, 13));
 
-        JournalEntry laterSequenceButOlderDate = new JournalEntry();
-        ReflectionTestUtils.setField(laterSequenceButOlderDate, "id", 499L);
-        laterSequenceButOlderDate.setReferenceNumber(baseReference + "-0002");
-        laterSequenceButOlderDate.setEntryDate(LocalDate.of(2026, 1, 10));
+    JournalEntry laterSequenceButOlderDate = new JournalEntry();
+    ReflectionTestUtils.setField(laterSequenceButOlderDate, "id", 499L);
+    laterSequenceButOlderDate.setReferenceNumber(baseReference + "-0002");
+    laterSequenceButOlderDate.setEntryDate(LocalDate.of(2026, 1, 10));
 
-        when(journalEntryRepository.findByCompanyAndReferenceNumberStartingWith(eq(company), eq(baseReference + "-")))
-                .thenReturn(List.of(reversal, laterSequenceButOlderDate, canonical));
-        when(journalReferenceMappingRepository.findByCompanyAndLegacyReferenceIgnoreCase(eq(company), eq(baseReference)))
-                .thenReturn(Optional.empty());
+    when(journalEntryRepository.findByCompanyAndReferenceNumberStartingWith(
+            eq(company), eq(baseReference + "-")))
+        .thenReturn(List.of(reversal, laterSequenceButOlderDate, canonical));
+    when(journalReferenceMappingRepository.findByCompanyAndLegacyReferenceIgnoreCase(
+            eq(company), eq(baseReference)))
+        .thenReturn(Optional.empty());
 
-        JournalEntryDto dto = accountingFacade.postPurchaseJournal(
-                supplierId,
-                "INV-100",
-                LocalDate.of(2026, 1, 10),
-                "legacy replay",
-                Map.of(inventoryAccountId, new BigDecimal("100.00")),
-                null,
-                new BigDecimal("100.00"),
-                null
-        );
+    JournalEntryDto dto =
+        accountingFacade.postPurchaseJournal(
+            supplierId,
+            "INV-100",
+            LocalDate.of(2026, 1, 10),
+            "legacy replay",
+            Map.of(inventoryAccountId, new BigDecimal("100.00")),
+            null,
+            new BigDecimal("100.00"),
+            null);
 
-        assertThat(dto.referenceNumber()).isEqualTo(baseReference + "-0001");
-        verify(accountingService, never()).createJournalEntry(any());
-    }
+    assertThat(dto.referenceNumber()).isEqualTo(baseReference + "-0001");
+    verify(accountingService, never()).createJournalEntry(any());
+  }
 
-    @Test
-    void postPurchaseJournal_existingBaseReference_shortCircuitsBeforeSupplierLifecycleCheck() {
-        Long supplierId = 89L;
-        Supplier supplier = new Supplier();
-        supplier.setStatus(SupplierStatus.SUSPENDED);
-        when(companyEntityLookup.requireSupplier(eq(company), eq(supplierId))).thenReturn(supplier);
+  @Test
+  void postPurchaseJournal_existingBaseReference_shortCircuitsBeforeSupplierLifecycleCheck() {
+    Long supplierId = 89L;
+    Supplier supplier = new Supplier();
+    supplier.setStatus(SupplierStatus.SUSPENDED);
+    when(companyEntityLookup.requireSupplier(eq(company), eq(supplierId))).thenReturn(supplier);
 
-        String baseReference = "RMP-ACME-SUP-INV101";
-        when(referenceNumberService.purchaseReferenceKey(eq(company), eq(supplier), eq("INV-101")))
-                .thenReturn(baseReference);
+    String baseReference = "RMP-ACME-SUP-INV101";
+    when(referenceNumberService.purchaseReferenceKey(eq(company), eq(supplier), eq("INV-101")))
+        .thenReturn(baseReference);
 
-        JournalEntry existing = new JournalEntry();
-        ReflectionTestUtils.setField(existing, "id", 777L);
-        existing.setReferenceNumber(baseReference);
-        existing.setEntryDate(LocalDate.of(2026, 1, 14));
-        existing.setStatus("POSTED");
-        when(journalReferenceResolver.findExistingEntry(eq(company), eq(baseReference))).thenReturn(Optional.of(existing));
+    JournalEntry existing = new JournalEntry();
+    ReflectionTestUtils.setField(existing, "id", 777L);
+    existing.setReferenceNumber(baseReference);
+    existing.setEntryDate(LocalDate.of(2026, 1, 14));
+    existing.setStatus("POSTED");
+    when(journalReferenceResolver.findExistingEntry(eq(company), eq(baseReference)))
+        .thenReturn(Optional.of(existing));
 
-        JournalEntryDto dto = accountingFacade.postPurchaseJournal(
-                supplierId,
-                "INV-101",
-                LocalDate.of(2026, 1, 14),
-                "replay",
-                Map.of(201L, new BigDecimal("50.00")),
-                null,
-                new BigDecimal("50.00"),
-                null
-        );
+    JournalEntryDto dto =
+        accountingFacade.postPurchaseJournal(
+            supplierId,
+            "INV-101",
+            LocalDate.of(2026, 1, 14),
+            "replay",
+            Map.of(201L, new BigDecimal("50.00")),
+            null,
+            new BigDecimal("50.00"),
+            null);
 
-        assertThat(dto.id()).isEqualTo(777L);
-        assertThat(dto.referenceNumber()).isEqualTo(baseReference);
-        verify(accountingService, never()).createJournalEntry(any());
-    }
+    assertThat(dto.id()).isEqualTo(777L);
+    assertThat(dto.referenceNumber()).isEqualTo(baseReference);
+    verify(accountingService, never()).createJournalEntry(any());
+  }
 
-    @Test
-    void postPurchaseJournal_rejectsReferenceOnlySupplierWhenCreatingNewJournal() {
-        Long supplierId = 90L;
-        Supplier supplier = new Supplier();
-        supplier.setName("Blocked Supplier");
-        supplier.setStatus(SupplierStatus.SUSPENDED);
-        Account payable = new Account();
-        ReflectionTestUtils.setField(payable, "id", 302L);
-        supplier.setPayableAccount(payable);
-        when(companyEntityLookup.requireSupplier(eq(company), eq(supplierId))).thenReturn(supplier);
+  @Test
+  void postPurchaseJournal_rejectsReferenceOnlySupplierWhenCreatingNewJournal() {
+    Long supplierId = 90L;
+    Supplier supplier = new Supplier();
+    supplier.setName("Blocked Supplier");
+    supplier.setStatus(SupplierStatus.SUSPENDED);
+    Account payable = new Account();
+    ReflectionTestUtils.setField(payable, "id", 302L);
+    supplier.setPayableAccount(payable);
+    when(companyEntityLookup.requireSupplier(eq(company), eq(supplierId))).thenReturn(supplier);
 
-        Long inventoryAccountId = 202L;
+    Long inventoryAccountId = 202L;
 
-        String baseReference = "RMP-ACME-SUP-INV102";
-        when(referenceNumberService.purchaseReferenceKey(eq(company), eq(supplier), eq("INV-102")))
-                .thenReturn(baseReference);
-        when(journalReferenceResolver.findExistingEntry(eq(company), eq(baseReference))).thenReturn(Optional.empty());
-        when(journalEntryRepository.findByCompanyAndReferenceNumberStartingWith(eq(company), eq(baseReference + "-")))
-                .thenReturn(List.of());
+    String baseReference = "RMP-ACME-SUP-INV102";
+    when(referenceNumberService.purchaseReferenceKey(eq(company), eq(supplier), eq("INV-102")))
+        .thenReturn(baseReference);
+    when(journalReferenceResolver.findExistingEntry(eq(company), eq(baseReference)))
+        .thenReturn(Optional.empty());
+    when(journalEntryRepository.findByCompanyAndReferenceNumberStartingWith(
+            eq(company), eq(baseReference + "-")))
+        .thenReturn(List.of());
 
-        assertThatThrownBy(() -> accountingFacade.postPurchaseJournal(
-                supplierId,
-                "INV-102",
-                LocalDate.of(2026, 1, 15),
-                "blocked",
-                Map.of(inventoryAccountId, new BigDecimal("25.00")),
-                null,
-                new BigDecimal("25.00"),
-                null
-        ))
-                .isInstanceOf(ApplicationException.class)
-                .hasMessageContaining("reference only")
-                .hasMessageContaining("post purchase journals");
+    assertThatThrownBy(
+            () ->
+                accountingFacade.postPurchaseJournal(
+                    supplierId,
+                    "INV-102",
+                    LocalDate.of(2026, 1, 15),
+                    "blocked",
+                    Map.of(inventoryAccountId, new BigDecimal("25.00")),
+                    null,
+                    new BigDecimal("25.00"),
+                    null))
+        .isInstanceOf(ApplicationException.class)
+        .hasMessageContaining("reference only")
+        .hasMessageContaining("post purchase journals");
 
-        verify(accountingService, never()).createJournalEntry(any());
-    }
+    verify(accountingService, never()).createJournalEntry(any());
+  }
 
-    @Test
-    void postPurchaseJournal_createsNewJournalWhenNoReplayExists() {
-        Long supplierId = 91L;
-        Supplier supplier = new Supplier();
-        supplier.setStatus(SupplierStatus.ACTIVE);
-        supplier.setName("Active Supplier");
-        Account payable = new Account();
-        payable.setCode("AP");
-        payable.setName("Accounts Payable");
-        ReflectionTestUtils.setField(payable, "id", 303L);
-        supplier.setPayableAccount(payable);
-        when(companyEntityLookup.requireSupplier(eq(company), eq(supplierId))).thenReturn(supplier);
+  @Test
+  void postPurchaseJournal_createsNewJournalWhenNoReplayExists() {
+    Long supplierId = 91L;
+    Supplier supplier = new Supplier();
+    supplier.setStatus(SupplierStatus.ACTIVE);
+    supplier.setName("Active Supplier");
+    Account payable = new Account();
+    payable.setCode("AP");
+    payable.setName("Accounts Payable");
+    ReflectionTestUtils.setField(payable, "id", 303L);
+    supplier.setPayableAccount(payable);
+    when(companyEntityLookup.requireSupplier(eq(company), eq(supplierId))).thenReturn(supplier);
 
-        Long inventoryAccountId = 203L;
-        Account inventory = new Account();
-        ReflectionTestUtils.setField(inventory, "id", inventoryAccountId);
-        when(companyEntityLookup.requireAccount(eq(company), eq(inventoryAccountId))).thenReturn(inventory);
+    Long inventoryAccountId = 203L;
+    Account inventory = new Account();
+    ReflectionTestUtils.setField(inventory, "id", inventoryAccountId);
+    when(companyEntityLookup.requireAccount(eq(company), eq(inventoryAccountId)))
+        .thenReturn(inventory);
 
-        String baseReference = "RMP-ACME-SUP-INV103";
-        String canonicalReference = baseReference + "-0001";
-        when(referenceNumberService.purchaseReferenceKey(eq(company), eq(supplier), eq("INV-103")))
-                .thenReturn(baseReference);
-        when(referenceNumberService.purchaseReference(eq(company), eq(supplier), eq("INV-103")))
-                .thenReturn(canonicalReference);
-        when(journalReferenceResolver.findExistingEntry(eq(company), eq(baseReference))).thenReturn(Optional.empty());
-        when(journalEntryRepository.findByCompanyAndReferenceNumberStartingWith(eq(company), eq(baseReference + "-")))
-                .thenReturn(List.of());
-        when(journalEntryRepository.findByCompanyAndReferenceNumber(eq(company), eq(canonicalReference)))
-                .thenReturn(Optional.empty());
+    String baseReference = "RMP-ACME-SUP-INV103";
+    String canonicalReference = baseReference + "-0001";
+    when(referenceNumberService.purchaseReferenceKey(eq(company), eq(supplier), eq("INV-103")))
+        .thenReturn(baseReference);
+    when(referenceNumberService.purchaseReference(eq(company), eq(supplier), eq("INV-103")))
+        .thenReturn(canonicalReference);
+    when(journalReferenceResolver.findExistingEntry(eq(company), eq(baseReference)))
+        .thenReturn(Optional.empty());
+    when(journalEntryRepository.findByCompanyAndReferenceNumberStartingWith(
+            eq(company), eq(baseReference + "-")))
+        .thenReturn(List.of());
+    when(journalEntryRepository.findByCompanyAndReferenceNumber(
+            eq(company), eq(canonicalReference)))
+        .thenReturn(Optional.empty());
 
-        JournalEntryDto created = new JournalEntryDto(
-                910L,
-                null,
-                canonicalReference,
-                LocalDate.of(2026, 1, 16),
-                "created",
-                "POSTED",
-                null,
-                null,
-                supplierId,
-                supplier.getName(),
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                List.of(),
-                null,
-                null,
-                null,
-                null,
-                null,
-                null
-        );
-        when(accountingService.createStandardJournal(any())).thenReturn(created);
-        JournalEntry saved = new JournalEntry();
-        ReflectionTestUtils.setField(saved, "id", 910L);
-        saved.setReferenceNumber(canonicalReference);
-        when(companyEntityLookup.requireJournalEntry(eq(company), eq(910L))).thenReturn(saved);
-        when(journalReferenceMappingRepository.findByCompanyAndLegacyReferenceIgnoreCase(eq(company), eq(baseReference)))
-                .thenReturn(Optional.empty());
+    JournalEntryDto created =
+        new JournalEntryDto(
+            910L,
+            null,
+            canonicalReference,
+            LocalDate.of(2026, 1, 16),
+            "created",
+            "POSTED",
+            null,
+            null,
+            supplierId,
+            supplier.getName(),
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            List.of(),
+            null,
+            null,
+            null,
+            null,
+            null,
+            null);
+    when(accountingService.createStandardJournal(any())).thenReturn(created);
+    JournalEntry saved = new JournalEntry();
+    ReflectionTestUtils.setField(saved, "id", 910L);
+    saved.setReferenceNumber(canonicalReference);
+    when(companyEntityLookup.requireJournalEntry(eq(company), eq(910L))).thenReturn(saved);
+    when(journalReferenceMappingRepository.findByCompanyAndLegacyReferenceIgnoreCase(
+            eq(company), eq(baseReference)))
+        .thenReturn(Optional.empty());
 
-        JournalEntryDto dto = accountingFacade.postPurchaseJournal(
-                supplierId,
-                "INV-103",
-                LocalDate.of(2026, 1, 16),
-                "new journal",
-                Map.of(inventoryAccountId, new BigDecimal("30.00")),
-                null,
-                new BigDecimal("30.00"),
-                null
-        );
+    JournalEntryDto dto =
+        accountingFacade.postPurchaseJournal(
+            supplierId,
+            "INV-103",
+            LocalDate.of(2026, 1, 16),
+            "new journal",
+            Map.of(inventoryAccountId, new BigDecimal("30.00")),
+            null,
+            new BigDecimal("30.00"),
+            null);
 
-        assertThat(dto.id()).isEqualTo(910L);
-        assertThat(dto.referenceNumber()).isEqualTo(canonicalReference);
-        verify(accountingService).createStandardJournal(any());
-    }
+    assertThat(dto.id()).isEqualTo(910L);
+    assertThat(dto.referenceNumber()).isEqualTo(canonicalReference);
+    verify(accountingService).createStandardJournal(any());
+  }
 
-    @Test
-    void postSalesJournal_idempotentHitDelegatesToAccountingServiceForDuplicateValidation() {
-        Long dealerId = 77L;
-        Dealer dealer = new Dealer();
-        Account receivable = new Account();
-        receivable.setCode("AR");
-        receivable.setName("Accounts Receivable");
-        ReflectionTestUtils.setField(receivable, "id", 701L);
-        dealer.setReceivableAccount(receivable);
-        when(companyEntityLookup.requireDealer(eq(company), eq(dealerId))).thenReturn(dealer);
+  @Test
+  void postSalesJournal_idempotentHitDelegatesToAccountingServiceForDuplicateValidation() {
+    Long dealerId = 77L;
+    Dealer dealer = new Dealer();
+    Account receivable = new Account();
+    receivable.setCode("AR");
+    receivable.setName("Accounts Receivable");
+    ReflectionTestUtils.setField(receivable, "id", 701L);
+    dealer.setReceivableAccount(receivable);
+    when(companyEntityLookup.requireDealer(eq(company), eq(dealerId))).thenReturn(dealer);
 
-        String orderNumber = "SO-1001";
-        String canonicalReference = SalesOrderReference.invoiceReference(orderNumber);
-        JournalEntry existing = new JournalEntry();
-        ReflectionTestUtils.setField(existing, "id", 777L);
-        existing.setReferenceNumber(canonicalReference);
-        existing.setEntryDate(LocalDate.of(2026, 1, 5));
-        existing.setStatus("POSTED");
-        existing.setDealer(dealer);
-        when(journalReferenceResolver.findExistingEntry(eq(company), eq(canonicalReference)))
-                .thenReturn(Optional.of(existing));
+    String orderNumber = "SO-1001";
+    String canonicalReference = SalesOrderReference.invoiceReference(orderNumber);
+    JournalEntry existing = new JournalEntry();
+    ReflectionTestUtils.setField(existing, "id", 777L);
+    existing.setReferenceNumber(canonicalReference);
+    existing.setEntryDate(LocalDate.of(2026, 1, 5));
+    existing.setStatus("POSTED");
+    existing.setDealer(dealer);
+    when(journalReferenceResolver.findExistingEntry(eq(company), eq(canonicalReference)))
+        .thenReturn(Optional.of(existing));
 
-        JournalEntryDto replay = new JournalEntryDto(
-                777L,
-                null,
-                canonicalReference,
-                LocalDate.of(2026, 1, 5),
-                null,
-                "POSTED",
-                dealerId,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                List.<JournalLineDto>of(),
-                null,
-                null,
-                null,
-                null,
-                null,
-                null
-        );
-        ArgumentCaptor<JournalCreationRequest> requestCaptor = ArgumentCaptor.forClass(JournalCreationRequest.class);
-        when(accountingService.createStandardJournal(requestCaptor.capture())).thenReturn(replay);
-        when(companyEntityLookup.requireJournalEntry(eq(company), eq(777L))).thenReturn(existing);
+    JournalEntryDto replay =
+        new JournalEntryDto(
+            777L,
+            null,
+            canonicalReference,
+            LocalDate.of(2026, 1, 5),
+            null,
+            "POSTED",
+            dealerId,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            List.<JournalLineDto>of(),
+            null,
+            null,
+            null,
+            null,
+            null,
+            null);
+    ArgumentCaptor<JournalCreationRequest> requestCaptor =
+        ArgumentCaptor.forClass(JournalCreationRequest.class);
+    when(accountingService.createStandardJournal(requestCaptor.capture())).thenReturn(replay);
+    when(companyEntityLookup.requireJournalEntry(eq(company), eq(777L))).thenReturn(existing);
 
-        JournalEntryDto dto = accountingFacade.postSalesJournal(
-                dealerId,
-                orderNumber,
-                null,
-                "sales replay",
-                Map.of(9001L, new BigDecimal("120.00")),
-                Map.of(9002L, new BigDecimal("21.60")),
-                new BigDecimal("141.60"),
-                null
-        );
+    JournalEntryDto dto =
+        accountingFacade.postSalesJournal(
+            dealerId,
+            orderNumber,
+            null,
+            "sales replay",
+            Map.of(9001L, new BigDecimal("120.00")),
+            Map.of(9002L, new BigDecimal("21.60")),
+            new BigDecimal("141.60"),
+            null);
 
-        assertThat(dto.id()).isEqualTo(777L);
-        assertThat(dto.referenceNumber()).isEqualTo(canonicalReference);
-        assertThat(requestCaptor.getValue().sourceReference()).isEqualTo(canonicalReference);
-        verify(accountingService).createStandardJournal(any());
-    }
+    assertThat(dto.id()).isEqualTo(777L);
+    assertThat(dto.referenceNumber()).isEqualTo(canonicalReference);
+    assertThat(requestCaptor.getValue().sourceReference()).isEqualTo(canonicalReference);
+    verify(accountingService).createStandardJournal(any());
+  }
 
-    @Test
-    void postSalesJournal_idempotentReplayWithoutId_keepsExistingEntryForReferenceMapping() {
-        Long dealerId = 88L;
-        Dealer dealer = new Dealer();
-        Account receivable = new Account();
-        receivable.setCode("AR");
-        receivable.setName("Accounts Receivable");
-        ReflectionTestUtils.setField(receivable, "id", 702L);
-        dealer.setReceivableAccount(receivable);
-        when(companyEntityLookup.requireDealer(eq(company), eq(dealerId))).thenReturn(dealer);
+  @Test
+  void postSalesJournal_idempotentReplayWithoutId_keepsExistingEntryForReferenceMapping() {
+    Long dealerId = 88L;
+    Dealer dealer = new Dealer();
+    Account receivable = new Account();
+    receivable.setCode("AR");
+    receivable.setName("Accounts Receivable");
+    ReflectionTestUtils.setField(receivable, "id", 702L);
+    dealer.setReceivableAccount(receivable);
+    when(companyEntityLookup.requireDealer(eq(company), eq(dealerId))).thenReturn(dealer);
 
-        String orderNumber = "SO-1002";
-        String canonicalReference = SalesOrderReference.invoiceReference(orderNumber);
-        JournalEntry existing = new JournalEntry();
-        ReflectionTestUtils.setField(existing, "id", 888L);
-        existing.setReferenceNumber(canonicalReference);
-        existing.setEntryDate(LocalDate.of(2026, 1, 6));
-        existing.setStatus("POSTED");
-        existing.setDealer(dealer);
-        when(journalReferenceResolver.findExistingEntry(eq(company), eq(canonicalReference)))
-                .thenReturn(Optional.of(existing));
+    String orderNumber = "SO-1002";
+    String canonicalReference = SalesOrderReference.invoiceReference(orderNumber);
+    JournalEntry existing = new JournalEntry();
+    ReflectionTestUtils.setField(existing, "id", 888L);
+    existing.setReferenceNumber(canonicalReference);
+    existing.setEntryDate(LocalDate.of(2026, 1, 6));
+    existing.setStatus("POSTED");
+    existing.setDealer(dealer);
+    when(journalReferenceResolver.findExistingEntry(eq(company), eq(canonicalReference)))
+        .thenReturn(Optional.of(existing));
 
-        JournalEntryDto replayWithoutId = new JournalEntryDto(
-                null,
-                null,
-                canonicalReference,
-                LocalDate.of(2026, 1, 6),
-                null,
-                "POSTED",
-                dealerId,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                List.<JournalLineDto>of(),
-                null,
-                null,
-                null,
-                null,
-                null,
-                null
-        );
-        when(accountingService.createStandardJournal(any(JournalCreationRequest.class))).thenReturn(replayWithoutId);
+    JournalEntryDto replayWithoutId =
+        new JournalEntryDto(
+            null,
+            null,
+            canonicalReference,
+            LocalDate.of(2026, 1, 6),
+            null,
+            "POSTED",
+            dealerId,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            List.<JournalLineDto>of(),
+            null,
+            null,
+            null,
+            null,
+            null,
+            null);
+    when(accountingService.createStandardJournal(any(JournalCreationRequest.class)))
+        .thenReturn(replayWithoutId);
 
-        JournalEntryDto dto = accountingFacade.postSalesJournal(
-                dealerId,
-                orderNumber,
-                null,
-                "sales replay without id",
-                Map.of(9001L, new BigDecimal("100.00")),
-                Map.of(9002L, new BigDecimal("18.00")),
-                new BigDecimal("118.00"),
-                null
-        );
+    JournalEntryDto dto =
+        accountingFacade.postSalesJournal(
+            dealerId,
+            orderNumber,
+            null,
+            "sales replay without id",
+            Map.of(9001L, new BigDecimal("100.00")),
+            Map.of(9002L, new BigDecimal("18.00")),
+            new BigDecimal("118.00"),
+            null);
 
-        assertThat(dto.referenceNumber()).isEqualTo(canonicalReference);
-        verify(accountingService).createStandardJournal(any());
-        verify(companyEntityLookup, never()).requireJournalEntry(eq(company), any(Long.class));
-    }
+    assertThat(dto.referenceNumber()).isEqualTo(canonicalReference);
+    verify(accountingService).createStandardJournal(any());
+    verify(companyEntityLookup, never()).requireJournalEntry(eq(company), any(Long.class));
+  }
 
-    @Test
-    void postSalesJournal_idempotentReplayNull_returnsNullAndSkipsEntryLookup() {
-        Long dealerId = 99L;
-        Dealer dealer = new Dealer();
-        Account receivable = new Account();
-        receivable.setCode("AR");
-        receivable.setName("Accounts Receivable");
-        ReflectionTestUtils.setField(receivable, "id", 703L);
-        dealer.setReceivableAccount(receivable);
-        when(companyEntityLookup.requireDealer(eq(company), eq(dealerId))).thenReturn(dealer);
+  @Test
+  void postSalesJournal_idempotentReplayNull_returnsNullAndSkipsEntryLookup() {
+    Long dealerId = 99L;
+    Dealer dealer = new Dealer();
+    Account receivable = new Account();
+    receivable.setCode("AR");
+    receivable.setName("Accounts Receivable");
+    ReflectionTestUtils.setField(receivable, "id", 703L);
+    dealer.setReceivableAccount(receivable);
+    when(companyEntityLookup.requireDealer(eq(company), eq(dealerId))).thenReturn(dealer);
 
-        String orderNumber = "SO-1003";
-        String canonicalReference = SalesOrderReference.invoiceReference(orderNumber);
-        JournalEntry existing = new JournalEntry();
-        ReflectionTestUtils.setField(existing, "id", 889L);
-        existing.setReferenceNumber(canonicalReference);
-        existing.setEntryDate(LocalDate.of(2026, 1, 7));
-        existing.setStatus("POSTED");
-        existing.setDealer(dealer);
-        when(journalReferenceResolver.findExistingEntry(eq(company), eq(canonicalReference)))
-                .thenReturn(Optional.of(existing));
-        when(accountingService.createStandardJournal(any(JournalCreationRequest.class))).thenReturn(null);
+    String orderNumber = "SO-1003";
+    String canonicalReference = SalesOrderReference.invoiceReference(orderNumber);
+    JournalEntry existing = new JournalEntry();
+    ReflectionTestUtils.setField(existing, "id", 889L);
+    existing.setReferenceNumber(canonicalReference);
+    existing.setEntryDate(LocalDate.of(2026, 1, 7));
+    existing.setStatus("POSTED");
+    existing.setDealer(dealer);
+    when(journalReferenceResolver.findExistingEntry(eq(company), eq(canonicalReference)))
+        .thenReturn(Optional.of(existing));
+    when(accountingService.createStandardJournal(any(JournalCreationRequest.class)))
+        .thenReturn(null);
 
-        JournalEntryDto replay = accountingFacade.postSalesJournal(
-                dealerId,
-                orderNumber,
-                null,
-                "sales replay null",
-                Map.of(9001L, new BigDecimal("100.00")),
-                Map.of(9002L, new BigDecimal("18.00")),
-                new BigDecimal("118.00"),
-                null
-        );
+    JournalEntryDto replay =
+        accountingFacade.postSalesJournal(
+            dealerId,
+            orderNumber,
+            null,
+            "sales replay null",
+            Map.of(9001L, new BigDecimal("100.00")),
+            Map.of(9002L, new BigDecimal("18.00")),
+            new BigDecimal("118.00"),
+            null);
 
-        assertThat(replay).isNull();
-        verify(accountingService).createStandardJournal(any());
-        verify(companyEntityLookup, never()).requireJournalEntry(eq(company), any(Long.class));
-    }
+    assertThat(replay).isNull();
+    verify(accountingService).createStandardJournal(any());
+    verify(companyEntityLookup, never()).requireJournalEntry(eq(company), any(Long.class));
+  }
 
-    @Test
-    void createManualJournal_routesThroughStandardJournalWithManualSource() {
-        ManualJournalRequest request = new ManualJournalRequest(
-                LocalDate.of(2026, 2, 28),
-                "Manual adjustment",
-                "manual-100",
-                false,
-                List.of(
-                        new ManualJournalRequest.LineRequest(11L, new BigDecimal("50.00"), "Debit", ManualJournalRequest.EntryType.DEBIT),
-                        new ManualJournalRequest.LineRequest(22L, new BigDecimal("50.00"), "Credit", ManualJournalRequest.EntryType.CREDIT)
-                )
-        );
-        JournalEntryDto expected = new JournalEntryDto(
-                600L,
-                null,
-                "JRN-600",
-                LocalDate.of(2026, 2, 28),
-                "Manual adjustment",
-                "POSTED",
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                List.<JournalLineDto>of(),
-                null,
-                null,
-                null,
-                null,
-                null,
-                null
-        );
-        when(accountingService.createStandardJournal(any(JournalCreationRequest.class))).thenReturn(expected);
+  @Test
+  void createManualJournal_routesThroughStandardJournalWithManualSource() {
+    ManualJournalRequest request =
+        new ManualJournalRequest(
+            LocalDate.of(2026, 2, 28),
+            "Manual adjustment",
+            "manual-100",
+            false,
+            List.of(
+                new ManualJournalRequest.LineRequest(
+                    11L, new BigDecimal("50.00"), "Debit", ManualJournalRequest.EntryType.DEBIT),
+                new ManualJournalRequest.LineRequest(
+                    22L,
+                    new BigDecimal("50.00"),
+                    "Credit",
+                    ManualJournalRequest.EntryType.CREDIT)));
+    JournalEntryDto expected =
+        new JournalEntryDto(
+            600L,
+            null,
+            "JRN-600",
+            LocalDate.of(2026, 2, 28),
+            "Manual adjustment",
+            "POSTED",
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            List.<JournalLineDto>of(),
+            null,
+            null,
+            null,
+            null,
+            null,
+            null);
+    when(accountingService.createStandardJournal(any(JournalCreationRequest.class)))
+        .thenReturn(expected);
 
-        JournalEntryDto actual = accountingFacade.createManualJournal(request);
+    JournalEntryDto actual = accountingFacade.createManualJournal(request);
 
-        assertThat(actual).isSameAs(expected);
-        verify(accountingService).createStandardJournal(argThat(journalRequest ->
-                journalRequest != null
+    assertThat(actual).isSameAs(expected);
+    verify(accountingService)
+        .createStandardJournal(
+            argThat(
+                journalRequest ->
+                    journalRequest != null
                         && "MANUAL".equals(journalRequest.sourceModule())
                         && "manual-100".equals(journalRequest.sourceReference())
                         && journalRequest.lines() != null
                         && journalRequest.lines().size() == 2
-                        && journalRequest.amount().compareTo(new BigDecimal("50.00")) == 0
-        ));
-    }
+                        && journalRequest.amount().compareTo(new BigDecimal("50.00")) == 0));
+  }
 
-    @Test
-    void createManualJournalEntry_routesThroughStandardJournalWithManualSource() {
-        JournalEntryRequest request = new JournalEntryRequest(
-                null,
-                LocalDate.of(2026, 2, 28),
-                "Manual single",
-                null,
-                null,
-                false,
-                List.of(
-                        new JournalEntryRequest.JournalLineRequest(11L, "Dr", new BigDecimal("75.00"), BigDecimal.ZERO),
-                        new JournalEntryRequest.JournalLineRequest(22L, "Cr", BigDecimal.ZERO, new BigDecimal("75.00"))
-                ),
-                null,
-                null,
-                null,
-                null,
-                null
-        );
-        JournalEntryDto expected = new JournalEntryDto(
-                601L,
-                null,
-                "JRN-601",
-                LocalDate.of(2026, 2, 28),
-                "Manual single",
-                "POSTED",
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                List.<JournalLineDto>of(),
-                null,
-                null,
-                null,
-                null,
-                null,
-                null
-        );
-        when(accountingService.createStandardJournal(any(JournalCreationRequest.class))).thenReturn(expected);
+  @Test
+  void createManualJournalEntry_routesThroughStandardJournalWithManualSource() {
+    JournalEntryRequest request =
+        new JournalEntryRequest(
+            null,
+            LocalDate.of(2026, 2, 28),
+            "Manual single",
+            null,
+            null,
+            false,
+            List.of(
+                new JournalEntryRequest.JournalLineRequest(
+                    11L, "Dr", new BigDecimal("75.00"), BigDecimal.ZERO),
+                new JournalEntryRequest.JournalLineRequest(
+                    22L, "Cr", BigDecimal.ZERO, new BigDecimal("75.00"))),
+            null,
+            null,
+            null,
+            null,
+            null);
+    JournalEntryDto expected =
+        new JournalEntryDto(
+            601L,
+            null,
+            "JRN-601",
+            LocalDate.of(2026, 2, 28),
+            "Manual single",
+            "POSTED",
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            List.<JournalLineDto>of(),
+            null,
+            null,
+            null,
+            null,
+            null,
+            null);
+    when(accountingService.createStandardJournal(any(JournalCreationRequest.class)))
+        .thenReturn(expected);
 
-        JournalEntryDto actual = accountingFacade.createManualJournalEntry(request, "MANUAL-XYZ");
+    JournalEntryDto actual = accountingFacade.createManualJournalEntry(request, "MANUAL-XYZ");
 
-        assertThat(actual).isSameAs(expected);
-        verify(accountingService).createStandardJournal(argThat(journalRequest ->
-                journalRequest != null
+    assertThat(actual).isSameAs(expected);
+    verify(accountingService)
+        .createStandardJournal(
+            argThat(
+                journalRequest ->
+                    journalRequest != null
                         && "MANUAL".equals(journalRequest.sourceModule())
                         && "MANUAL-XYZ".equals(journalRequest.sourceReference())
-                        && journalRequest.amount().compareTo(new BigDecimal("75.00")) == 0
-        ));
-    }
+                        && journalRequest.amount().compareTo(new BigDecimal("75.00")) == 0));
+  }
 
-    @Test
-    void createManualJournalEntry_defaultsNullEntryDateFromCurrentCompanyClockForGeneratedManualReference() {
-        new CompanyTime(companyClock);
-        company.setTimezone("Pacific/Auckland");
-        LocalDate tenantToday = LocalDate.of(2026, 3, 1);
-        when(companyClock.today(company)).thenReturn(tenantToday);
-        lenient().when(companyClock.today((Company) null)).thenReturn(tenantToday.minusDays(1));
+  @Test
+  void
+      createManualJournalEntry_defaultsNullEntryDateFromCurrentCompanyClockForGeneratedManualReference() {
+    new CompanyTime(companyClock);
+    company.setTimezone("Pacific/Auckland");
+    LocalDate tenantToday = LocalDate.of(2026, 3, 1);
+    when(companyClock.today(company)).thenReturn(tenantToday);
+    lenient().when(companyClock.today((Company) null)).thenReturn(tenantToday.minusDays(1));
 
-        JournalEntryRequest request = new JournalEntryRequest(
-                null,
-                null,
-                "Tenant-aware manual",
-                null,
-                null,
-                false,
-                List.of(
-                        new JournalEntryRequest.JournalLineRequest(11L, "Dr", new BigDecimal("30.00"), BigDecimal.ZERO),
-                        new JournalEntryRequest.JournalLineRequest(22L, "Cr", BigDecimal.ZERO, new BigDecimal("30.00"))
-                ),
-                null,
-                null,
-                null,
-                null,
-                null
-        );
+    JournalEntryRequest request =
+        new JournalEntryRequest(
+            null,
+            null,
+            "Tenant-aware manual",
+            null,
+            null,
+            false,
+            List.of(
+                new JournalEntryRequest.JournalLineRequest(
+                    11L, "Dr", new BigDecimal("30.00"), BigDecimal.ZERO),
+                new JournalEntryRequest.JournalLineRequest(
+                    22L, "Cr", BigDecimal.ZERO, new BigDecimal("30.00"))),
+            null,
+            null,
+            null,
+            null,
+            null);
 
-        accountingFacade.createManualJournalEntry(request, null);
+    accountingFacade.createManualJournalEntry(request, null);
 
-        verify(accountingService).createStandardJournal(argThat(journalRequest ->
-                journalRequest != null
+    verify(accountingService)
+        .createStandardJournal(
+            argThat(
+                journalRequest ->
+                    journalRequest != null
                         && tenantToday.equals(journalRequest.entryDate())
                         && journalRequest.sourceReference() != null
-                        && journalRequest.sourceReference().startsWith("MANUAL-" + tenantToday + "-")
-        ));
-    }
+                        && journalRequest
+                            .sourceReference()
+                            .startsWith("MANUAL-" + tenantToday + "-")));
+  }
 
-    @Test
-    void createManualJournalEntry_keepsExplicitEntryDateForGeneratedManualReference() {
-        LocalDate explicitDate = LocalDate.of(2026, 3, 6);
-        JournalEntryRequest request = new JournalEntryRequest(
-                null,
-                explicitDate,
-                "Explicit manual",
-                null,
-                null,
-                false,
-                List.of(
-                        new JournalEntryRequest.JournalLineRequest(11L, "Dr", new BigDecimal("30.00"), BigDecimal.ZERO),
-                        new JournalEntryRequest.JournalLineRequest(22L, "Cr", BigDecimal.ZERO, new BigDecimal("30.00"))
-                ),
-                null,
-                null,
-                null,
-                null,
-                null
-        );
+  @Test
+  void createManualJournalEntry_keepsExplicitEntryDateForGeneratedManualReference() {
+    LocalDate explicitDate = LocalDate.of(2026, 3, 6);
+    JournalEntryRequest request =
+        new JournalEntryRequest(
+            null,
+            explicitDate,
+            "Explicit manual",
+            null,
+            null,
+            false,
+            List.of(
+                new JournalEntryRequest.JournalLineRequest(
+                    11L, "Dr", new BigDecimal("30.00"), BigDecimal.ZERO),
+                new JournalEntryRequest.JournalLineRequest(
+                    22L, "Cr", BigDecimal.ZERO, new BigDecimal("30.00"))),
+            null,
+            null,
+            null,
+            null,
+            null);
 
-        accountingFacade.createManualJournalEntry(request, null);
+    accountingFacade.createManualJournalEntry(request, null);
 
-        verify(accountingService).createStandardJournal(argThat(journalRequest ->
-                journalRequest != null
+    verify(accountingService)
+        .createStandardJournal(
+            argThat(
+                journalRequest ->
+                    journalRequest != null
                         && explicitDate.equals(journalRequest.entryDate())
                         && journalRequest.sourceReference() != null
-                        && journalRequest.sourceReference().startsWith("MANUAL-" + explicitDate + "-")
-        ));
+                        && journalRequest
+                            .sourceReference()
+                            .startsWith("MANUAL-" + explicitDate + "-")));
+  }
+
+  @Test
+  void recordPayrollPayment_delegatesToAccountingService() {
+    PayrollPaymentRequest request =
+        new PayrollPaymentRequest(
+            9L, 2L, 1L, new BigDecimal("800.00"), "PAYROLL-PAY-9", "Payroll clear");
+    JournalEntryDto expected =
+        new JournalEntryDto(
+            88L,
+            null,
+            "PAYROLL-PAY-9",
+            LocalDate.of(2026, 2, 9),
+            null,
+            "POSTED",
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            List.<JournalLineDto>of(),
+            null,
+            null,
+            null,
+            null,
+            null,
+            null);
+    when(accountingService.recordPayrollPayment(request)).thenReturn(expected);
+
+    JournalEntryDto actual = accountingFacade.recordPayrollPayment(request);
+
+    assertThat(actual).isSameAs(expected);
+    verify(accountingService).recordPayrollPayment(request);
+  }
+
+  private String buildExpectedHash(
+      String base,
+      Long dealerId,
+      Map<Long, BigDecimal> returnLines,
+      BigDecimal totalAmount,
+      String reason) {
+    StringBuilder fingerprint = new StringBuilder();
+    fingerprint
+        .append(base)
+        .append("|dealer=")
+        .append(dealerId != null ? dealerId : "NA")
+        .append("|total=")
+        .append(normalizeDecimal(totalAmount))
+        .append("|reason=")
+        .append(reason != null ? reason.trim() : "");
+    returnLines.entrySet().stream()
+        .sorted(Map.Entry.comparingByKey())
+        .forEach(
+            entry ->
+                fingerprint
+                    .append("|acc=")
+                    .append(entry.getKey())
+                    .append(":")
+                    .append(normalizeDecimal(entry.getValue())));
+    String hash = DigestUtils.sha256Hex(fingerprint.toString());
+    return base + "-H" + hash.substring(0, 12);
+  }
+
+  private String normalizeDecimal(BigDecimal value) {
+    if (value == null) {
+      return "0";
     }
-
-    @Test
-    void recordPayrollPayment_delegatesToAccountingService() {
-        PayrollPaymentRequest request = new PayrollPaymentRequest(9L, 2L, 1L, new BigDecimal("800.00"), "PAYROLL-PAY-9", "Payroll clear");
-        JournalEntryDto expected = new JournalEntryDto(
-                88L,
-                null,
-                "PAYROLL-PAY-9",
-                LocalDate.of(2026, 2, 9),
-                null,
-                "POSTED",
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                List.<JournalLineDto>of(),
-                null,
-                null,
-                null,
-                null,
-                null,
-                null
-        );
-        when(accountingService.recordPayrollPayment(request)).thenReturn(expected);
-
-        JournalEntryDto actual = accountingFacade.recordPayrollPayment(request);
-
-        assertThat(actual).isSameAs(expected);
-        verify(accountingService).recordPayrollPayment(request);
-    }
-
-    private String buildExpectedHash(String base,
-                                     Long dealerId,
-                                     Map<Long, BigDecimal> returnLines,
-                                     BigDecimal totalAmount,
-                                     String reason) {
-        StringBuilder fingerprint = new StringBuilder();
-        fingerprint.append(base)
-                .append("|dealer=").append(dealerId != null ? dealerId : "NA")
-                .append("|total=").append(normalizeDecimal(totalAmount))
-                .append("|reason=").append(reason != null ? reason.trim() : "");
-        returnLines.entrySet().stream()
-                .sorted(Map.Entry.comparingByKey())
-                .forEach(entry -> fingerprint
-                        .append("|acc=").append(entry.getKey())
-                        .append(":").append(normalizeDecimal(entry.getValue())));
-        String hash = DigestUtils.sha256Hex(fingerprint.toString());
-        return base + "-H" + hash.substring(0, 12);
-    }
-
-    private String normalizeDecimal(BigDecimal value) {
-        if (value == null) {
-            return "0";
-        }
-        return value.stripTrailingZeros().toPlainString();
-    }
+    return value.stripTrailingZeros().toPlainString();
+  }
 }

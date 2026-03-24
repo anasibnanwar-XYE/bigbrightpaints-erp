@@ -2,14 +2,17 @@ package com.bigbrightpaints.erp.orchestrator.repository;
 
 import java.util.List;
 import java.util.UUID;
+
 import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface AuditRepository extends JpaRepository<AuditRecord, UUID> {
-    List<AuditRecord> findByTraceIdOrderByTimestampAsc(String traceId);
+  List<AuditRecord> findByTraceIdOrderByTimestampAsc(String traceId);
 
-    List<AuditRecord> findByTraceIdAndCompanyIdOrderByTimestampAsc(String traceId, Long companyId);
+  List<AuditRecord> findByTraceIdAndCompanyIdOrderByTimestampAsc(String traceId, Long companyId);
 
-    List<AuditRecord> findByCompanyIdAndRequestIdOrderByTimestampAsc(Long companyId, String requestId);
+  List<AuditRecord> findByCompanyIdAndRequestIdOrderByTimestampAsc(
+      Long companyId, String requestId);
 
-    List<AuditRecord> findByCompanyIdAndIdempotencyKeyOrderByTimestampAsc(Long companyId, String idempotencyKey);
+  List<AuditRecord> findByCompanyIdAndIdempotencyKeyOrderByTimestampAsc(
+      Long companyId, String idempotencyKey);
 }

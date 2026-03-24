@@ -5,21 +5,19 @@ import java.time.Instant;
 import java.util.UUID;
 
 public record SalaryStructureTemplateDto(
-        Long id,
-        UUID publicId,
-        String code,
-        String name,
-        String description,
-        BigDecimal basicPay,
-        BigDecimal hra,
-        BigDecimal da,
-        BigDecimal specialAllowance,
-        BigDecimal totalEarnings,
-        BigDecimal employeePfRate,
-        BigDecimal employeeEsiRate,
-        BigDecimal esiEligibilityThreshold,
-        BigDecimal professionalTax,
-        boolean active,
-        Instant createdAt
-) {
-}
+    Long id,
+    UUID publicId,
+    String code,
+    String name,
+    String description,
+    BigDecimal basicPay,
+    BigDecimal hra,
+    BigDecimal da,
+    BigDecimal specialAllowance,
+    BigDecimal totalEarnings,
+    BigDecimal employeePfRate,
+    BigDecimal employeeEsiRate,
+    BigDecimal esiEligibilityThreshold,
+    BigDecimal professionalTax,
+    boolean active,
+    Instant createdAt) {}

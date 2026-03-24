@@ -15,29 +15,37 @@ import org.junit.platform.launcher.listeners.TestExecutionSummary;
 @Tag("critical")
 class TS_RuntimeTicket015ExecutableCoverageBridgeTest {
 
-    @Test
-    void delegatedTicket015CoverageSuites_pass_in_truth_lane() {
-        assertDelegatedSuitePasses("com.bigbrightpaints.erp.core.config.TS_RuntimeSmtpPropertiesValidatorExecutableCoverageTest");
-        assertDelegatedSuitePasses("com.bigbrightpaints.erp.truthsuite.runtime.TS_RuntimeCompanyContextFilterExecutableCoverageTest");
-        assertDelegatedSuitePasses("com.bigbrightpaints.erp.truthsuite.runtime.TS_RuntimeAccountingFacadeExecutableCoverageTest");
-        assertDelegatedSuitePasses("com.bigbrightpaints.erp.truthsuite.runtime.TS_RuntimeCompanyControllerExecutableCoverageTest");
-        assertDelegatedSuitePasses("com.bigbrightpaints.erp.modules.company.service.TS_RuntimeTenantRuntimeEnforcementServiceExecutableCoverageTest");
-        assertDelegatedSuitePasses("com.bigbrightpaints.erp.modules.portal.service.TS_RuntimeTenantRuntimeEnforcementInterceptorExecutableCoverageTest");
-        assertDelegatedSuitePasses("com.bigbrightpaints.erp.modules.rbac.domain.TS_RuntimeSystemRoleExecutableCoverageTest");
-    }
+  @Test
+  void delegatedTicket015CoverageSuites_pass_in_truth_lane() {
+    assertDelegatedSuitePasses(
+        "com.bigbrightpaints.erp.core.config.TS_RuntimeSmtpPropertiesValidatorExecutableCoverageTest");
+    assertDelegatedSuitePasses(
+        "com.bigbrightpaints.erp.truthsuite.runtime.TS_RuntimeCompanyContextFilterExecutableCoverageTest");
+    assertDelegatedSuitePasses(
+        "com.bigbrightpaints.erp.truthsuite.runtime.TS_RuntimeAccountingFacadeExecutableCoverageTest");
+    assertDelegatedSuitePasses(
+        "com.bigbrightpaints.erp.truthsuite.runtime.TS_RuntimeCompanyControllerExecutableCoverageTest");
+    assertDelegatedSuitePasses(
+        "com.bigbrightpaints.erp.modules.company.service.TS_RuntimeTenantRuntimeEnforcementServiceExecutableCoverageTest");
+    assertDelegatedSuitePasses(
+        "com.bigbrightpaints.erp.modules.portal.service.TS_RuntimeTenantRuntimeEnforcementInterceptorExecutableCoverageTest");
+    assertDelegatedSuitePasses(
+        "com.bigbrightpaints.erp.modules.rbac.domain.TS_RuntimeSystemRoleExecutableCoverageTest");
+  }
 
-    private void assertDelegatedSuitePasses(String className) {
-        LauncherDiscoveryRequest request = LauncherDiscoveryRequestBuilder.request()
-                .selectors(DiscoverySelectors.selectClass(className))
-                .build();
-        SummaryGeneratingListener summaryListener = new SummaryGeneratingListener();
-        Launcher launcher = LauncherFactory.create();
-        launcher.registerTestExecutionListeners(summaryListener);
-        launcher.execute(request);
-        TestExecutionSummary summary = summaryListener.getSummary();
-        assertThat(summary.getTestsFoundCount()).isGreaterThan(0L);
-        assertThat(summary.getTestsSucceededCount()).isGreaterThan(0L);
-        assertThat(summary.getTestsAbortedCount()).isZero();
-        assertThat(summary.getTestsFailedCount()).isZero();
-    }
+  private void assertDelegatedSuitePasses(String className) {
+    LauncherDiscoveryRequest request =
+        LauncherDiscoveryRequestBuilder.request()
+            .selectors(DiscoverySelectors.selectClass(className))
+            .build();
+    SummaryGeneratingListener summaryListener = new SummaryGeneratingListener();
+    Launcher launcher = LauncherFactory.create();
+    launcher.registerTestExecutionListeners(summaryListener);
+    launcher.execute(request);
+    TestExecutionSummary summary = summaryListener.getSummary();
+    assertThat(summary.getTestsFoundCount()).isGreaterThan(0L);
+    assertThat(summary.getTestsSucceededCount()).isGreaterThan(0L);
+    assertThat(summary.getTestsAbortedCount()).isZero();
+    assertThat(summary.getTestsFailedCount()).isZero();
+  }
 }

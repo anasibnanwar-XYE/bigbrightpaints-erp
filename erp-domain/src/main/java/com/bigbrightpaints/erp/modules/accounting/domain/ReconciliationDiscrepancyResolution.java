@@ -1,7 +1,7 @@
 package com.bigbrightpaints.erp.modules.accounting.domain;
 
 public enum ReconciliationDiscrepancyResolution {
-    ADJUSTMENT_JOURNAL,
-    WRITE_OFF,
-    ACKNOWLEDGED
+  ADJUSTMENT_JOURNAL,
+  WRITE_OFF,
+  ACKNOWLEDGED
 }

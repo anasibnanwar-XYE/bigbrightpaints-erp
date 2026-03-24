@@ -1,7 +1,13 @@
 package com.bigbrightpaints.erp.core.audittrail;
 
+import java.time.Instant;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
+
 import com.bigbrightpaints.erp.core.domain.VersionedEntity;
 import com.bigbrightpaints.erp.core.util.CompanyTime;
+
 import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
 import jakarta.persistence.ElementCollection;
@@ -16,281 +22,291 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.MapKeyColumn;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
-import java.time.Instant;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.UUID;
 
 @Entity
-@Table(name = "ml_interaction_events", indexes = {
-        @Index(name = "idx_ml_interaction_events_company_occurred", columnList = "company_id, occurred_at"),
-        @Index(name = "idx_ml_interaction_events_company_actor_user", columnList = "company_id, actor_user_id, occurred_at"),
-        @Index(name = "idx_ml_interaction_events_company_actor_identifier", columnList = "company_id, actor_identifier, occurred_at"),
-        @Index(name = "idx_ml_interaction_events_company_module_action", columnList = "company_id, module, action, occurred_at"),
-        @Index(name = "idx_ml_interaction_events_company_trace", columnList = "company_id, trace_id, occurred_at")
-})
+@Table(
+    name = "ml_interaction_events",
+    indexes = {
+      @Index(
+          name = "idx_ml_interaction_events_company_occurred",
+          columnList = "company_id, occurred_at"),
+      @Index(
+          name = "idx_ml_interaction_events_company_actor_user",
+          columnList = "company_id, actor_user_id, occurred_at"),
+      @Index(
+          name = "idx_ml_interaction_events_company_actor_identifier",
+          columnList = "company_id, actor_identifier, occurred_at"),
+      @Index(
+          name = "idx_ml_interaction_events_company_module_action",
+          columnList = "company_id, module, action, occurred_at"),
+      @Index(
+          name = "idx_ml_interaction_events_company_trace",
+          columnList = "company_id, trace_id, occurred_at")
+    })
 public class MlInteractionEvent extends VersionedEntity {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
+  private Long id;
 
-    @Column(name = "company_id", nullable = false)
-    private Long companyId;
+  @Column(name = "company_id", nullable = false)
+  private Long companyId;
 
-    @Column(name = "occurred_at", nullable = false)
-    private Instant occurredAt;
+  @Column(name = "occurred_at", nullable = false)
+  private Instant occurredAt;
 
-    @Column(name = "module", nullable = false, length = 64)
-    private String module;
+  @Column(name = "module", nullable = false, length = 64)
+  private String module;
 
-    @Column(name = "action", nullable = false, length = 128)
-    private String action;
+  @Column(name = "action", nullable = false, length = 128)
+  private String action;
 
-    @Column(name = "interaction_type", length = 32)
-    private String interactionType;
+  @Column(name = "interaction_type", length = 32)
+  private String interactionType;
 
-    @Column(name = "screen", length = 128)
-    private String screen;
+  @Column(name = "screen", length = 128)
+  private String screen;
 
-    @Column(name = "target_id", length = 256)
-    private String targetId;
+  @Column(name = "target_id", length = 256)
+  private String targetId;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "status", nullable = false, length = 16)
-    private AuditActionEventStatus status;
+  @Enumerated(EnumType.STRING)
+  @Column(name = "status", nullable = false, length = 16)
+  private AuditActionEventStatus status;
 
-    @Column(name = "failure_reason", length = 512)
-    private String failureReason;
+  @Column(name = "failure_reason", length = 512)
+  private String failureReason;
 
-    @Column(name = "correlation_id")
-    private UUID correlationId;
+  @Column(name = "correlation_id")
+  private UUID correlationId;
 
-    @Column(name = "request_id", length = 128)
-    private String requestId;
+  @Column(name = "request_id", length = 128)
+  private String requestId;
 
-    @Column(name = "trace_id", length = 128)
-    private String traceId;
+  @Column(name = "trace_id", length = 128)
+  private String traceId;
 
-    @Column(name = "ip_address", length = 64)
-    private String ipAddress;
+  @Column(name = "ip_address", length = 64)
+  private String ipAddress;
 
-    @Column(name = "user_agent", columnDefinition = "TEXT")
-    private String userAgent;
+  @Column(name = "user_agent", columnDefinition = "TEXT")
+  private String userAgent;
 
-    @Column(name = "actor_user_id")
-    private Long actorUserId;
+  @Column(name = "actor_user_id")
+  private Long actorUserId;
 
-    @Column(name = "actor_identifier", nullable = false, length = 255)
-    private String actorIdentifier;
+  @Column(name = "actor_identifier", nullable = false, length = 255)
+  private String actorIdentifier;
 
-    @Column(name = "actor_anonymized", nullable = false)
-    private boolean actorAnonymized;
+  @Column(name = "actor_anonymized", nullable = false)
+  private boolean actorAnonymized;
 
-    @Column(name = "consent_opt_in", nullable = false)
-    private boolean consentOptIn;
+  @Column(name = "consent_opt_in", nullable = false)
+  private boolean consentOptIn;
 
-    @Column(name = "training_subject_key", length = 128)
-    private String trainingSubjectKey;
+  @Column(name = "training_subject_key", length = 128)
+  private String trainingSubjectKey;
 
-    @Column(name = "payload", columnDefinition = "TEXT")
-    private String payload;
+  @Column(name = "payload", columnDefinition = "TEXT")
+  private String payload;
 
-    @Column(name = "created_at", nullable = false)
-    private Instant createdAt;
+  @Column(name = "created_at", nullable = false)
+  private Instant createdAt;
 
-    @ElementCollection
-    @CollectionTable(name = "ml_interaction_event_metadata", joinColumns = @JoinColumn(name = "event_id"))
-    @MapKeyColumn(name = "metadata_key")
-    @Column(name = "metadata_value")
-    private Map<String, String> metadata = new HashMap<>();
+  @ElementCollection
+  @CollectionTable(
+      name = "ml_interaction_event_metadata",
+      joinColumns = @JoinColumn(name = "event_id"))
+  @MapKeyColumn(name = "metadata_key")
+  @Column(name = "metadata_value")
+  private Map<String, String> metadata = new HashMap<>();
 
-    @PrePersist
-    protected void onCreate() {
-        if (occurredAt == null) {
-            occurredAt = CompanyTime.now();
-        }
-        if (createdAt == null) {
-            createdAt = CompanyTime.now();
-        }
-        if (status == null) {
-            status = AuditActionEventStatus.SUCCESS;
-        }
+  @PrePersist
+  protected void onCreate() {
+    if (occurredAt == null) {
+      occurredAt = CompanyTime.now();
     }
-
-    public Long getId() {
-        return id;
+    if (createdAt == null) {
+      createdAt = CompanyTime.now();
     }
-
-    public Long getCompanyId() {
-        return companyId;
+    if (status == null) {
+      status = AuditActionEventStatus.SUCCESS;
     }
+  }
 
-    public void setCompanyId(Long companyId) {
-        this.companyId = companyId;
-    }
+  public Long getId() {
+    return id;
+  }
 
-    public Instant getOccurredAt() {
-        return occurredAt;
-    }
+  public Long getCompanyId() {
+    return companyId;
+  }
 
-    public void setOccurredAt(Instant occurredAt) {
-        this.occurredAt = occurredAt;
-    }
+  public void setCompanyId(Long companyId) {
+    this.companyId = companyId;
+  }
 
-    public String getModule() {
-        return module;
-    }
+  public Instant getOccurredAt() {
+    return occurredAt;
+  }
 
-    public void setModule(String module) {
-        this.module = module;
-    }
+  public void setOccurredAt(Instant occurredAt) {
+    this.occurredAt = occurredAt;
+  }
 
-    public String getAction() {
-        return action;
-    }
+  public String getModule() {
+    return module;
+  }
 
-    public void setAction(String action) {
-        this.action = action;
-    }
+  public void setModule(String module) {
+    this.module = module;
+  }
 
-    public String getInteractionType() {
-        return interactionType;
-    }
+  public String getAction() {
+    return action;
+  }
 
-    public void setInteractionType(String interactionType) {
-        this.interactionType = interactionType;
-    }
+  public void setAction(String action) {
+    this.action = action;
+  }
 
-    public String getScreen() {
-        return screen;
-    }
+  public String getInteractionType() {
+    return interactionType;
+  }
 
-    public void setScreen(String screen) {
-        this.screen = screen;
-    }
+  public void setInteractionType(String interactionType) {
+    this.interactionType = interactionType;
+  }
 
-    public String getTargetId() {
-        return targetId;
-    }
+  public String getScreen() {
+    return screen;
+  }
 
-    public void setTargetId(String targetId) {
-        this.targetId = targetId;
-    }
+  public void setScreen(String screen) {
+    this.screen = screen;
+  }
 
-    public AuditActionEventStatus getStatus() {
-        return status;
-    }
+  public String getTargetId() {
+    return targetId;
+  }
 
-    public void setStatus(AuditActionEventStatus status) {
-        this.status = status;
-    }
+  public void setTargetId(String targetId) {
+    this.targetId = targetId;
+  }
 
-    public String getFailureReason() {
-        return failureReason;
-    }
+  public AuditActionEventStatus getStatus() {
+    return status;
+  }
 
-    public void setFailureReason(String failureReason) {
-        this.failureReason = failureReason;
-    }
+  public void setStatus(AuditActionEventStatus status) {
+    this.status = status;
+  }
 
-    public UUID getCorrelationId() {
-        return correlationId;
-    }
+  public String getFailureReason() {
+    return failureReason;
+  }
 
-    public void setCorrelationId(UUID correlationId) {
-        this.correlationId = correlationId;
-    }
+  public void setFailureReason(String failureReason) {
+    this.failureReason = failureReason;
+  }
 
-    public String getRequestId() {
-        return requestId;
-    }
+  public UUID getCorrelationId() {
+    return correlationId;
+  }
 
-    public void setRequestId(String requestId) {
-        this.requestId = requestId;
-    }
+  public void setCorrelationId(UUID correlationId) {
+    this.correlationId = correlationId;
+  }
 
-    public String getTraceId() {
-        return traceId;
-    }
+  public String getRequestId() {
+    return requestId;
+  }
 
-    public void setTraceId(String traceId) {
-        this.traceId = traceId;
-    }
+  public void setRequestId(String requestId) {
+    this.requestId = requestId;
+  }
 
-    public String getIpAddress() {
-        return ipAddress;
-    }
+  public String getTraceId() {
+    return traceId;
+  }
 
-    public void setIpAddress(String ipAddress) {
-        this.ipAddress = ipAddress;
-    }
+  public void setTraceId(String traceId) {
+    this.traceId = traceId;
+  }
 
-    public String getUserAgent() {
-        return userAgent;
-    }
+  public String getIpAddress() {
+    return ipAddress;
+  }
 
-    public void setUserAgent(String userAgent) {
-        this.userAgent = userAgent;
-    }
+  public void setIpAddress(String ipAddress) {
+    this.ipAddress = ipAddress;
+  }
 
-    public Long getActorUserId() {
-        return actorUserId;
-    }
+  public String getUserAgent() {
+    return userAgent;
+  }
 
-    public void setActorUserId(Long actorUserId) {
-        this.actorUserId = actorUserId;
-    }
+  public void setUserAgent(String userAgent) {
+    this.userAgent = userAgent;
+  }
 
-    public String getActorIdentifier() {
-        return actorIdentifier;
-    }
+  public Long getActorUserId() {
+    return actorUserId;
+  }
 
-    public void setActorIdentifier(String actorIdentifier) {
-        this.actorIdentifier = actorIdentifier;
-    }
+  public void setActorUserId(Long actorUserId) {
+    this.actorUserId = actorUserId;
+  }
 
-    public boolean isActorAnonymized() {
-        return actorAnonymized;
-    }
+  public String getActorIdentifier() {
+    return actorIdentifier;
+  }
 
-    public void setActorAnonymized(boolean actorAnonymized) {
-        this.actorAnonymized = actorAnonymized;
-    }
+  public void setActorIdentifier(String actorIdentifier) {
+    this.actorIdentifier = actorIdentifier;
+  }
 
-    public boolean isConsentOptIn() {
-        return consentOptIn;
-    }
+  public boolean isActorAnonymized() {
+    return actorAnonymized;
+  }
 
-    public void setConsentOptIn(boolean consentOptIn) {
-        this.consentOptIn = consentOptIn;
-    }
+  public void setActorAnonymized(boolean actorAnonymized) {
+    this.actorAnonymized = actorAnonymized;
+  }
 
-    public String getTrainingSubjectKey() {
-        return trainingSubjectKey;
-    }
+  public boolean isConsentOptIn() {
+    return consentOptIn;
+  }
 
-    public void setTrainingSubjectKey(String trainingSubjectKey) {
-        this.trainingSubjectKey = trainingSubjectKey;
-    }
+  public void setConsentOptIn(boolean consentOptIn) {
+    this.consentOptIn = consentOptIn;
+  }
 
-    public String getPayload() {
-        return payload;
-    }
+  public String getTrainingSubjectKey() {
+    return trainingSubjectKey;
+  }
 
-    public void setPayload(String payload) {
-        this.payload = payload;
-    }
+  public void setTrainingSubjectKey(String trainingSubjectKey) {
+    this.trainingSubjectKey = trainingSubjectKey;
+  }
 
-    public Instant getCreatedAt() {
-        return createdAt;
-    }
+  public String getPayload() {
+    return payload;
+  }
 
-    public Map<String, String> getMetadata() {
-        return metadata;
-    }
+  public void setPayload(String payload) {
+    this.payload = payload;
+  }
 
-    public void setMetadata(Map<String, String> metadata) {
-        this.metadata = metadata;
-    }
+  public Instant getCreatedAt() {
+    return createdAt;
+  }
+
+  public Map<String, String> getMetadata() {
+    return metadata;
+  }
+
+  public void setMetadata(Map<String, String> metadata) {
+    this.metadata = metadata;
+  }
 }

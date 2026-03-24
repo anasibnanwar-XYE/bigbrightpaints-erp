@@ -6,8 +6,7 @@ package com.bigbrightpaints.erp.truthsuite.suites;
  */
 public final class TS_GateCoreSuite {
 
-    public static final String GATE = "gate-core";
+  public static final String GATE = "gate-core";
 
-    private TS_GateCoreSuite() {
-    }
+  private TS_GateCoreSuite() {}
 }

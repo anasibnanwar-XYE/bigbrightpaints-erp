@@ -1,5 +1,11 @@
 package com.bigbrightpaints.erp.modules.inventory.service;
 
+import java.math.BigDecimal;
+import java.util.List;
+import java.util.Map;
+
+import org.springframework.stereotype.Service;
+
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
 import com.bigbrightpaints.erp.modules.inventory.domain.PackagingSlip;
 import com.bigbrightpaints.erp.modules.inventory.dto.DispatchConfirmationRequest;
@@ -13,159 +19,151 @@ import com.bigbrightpaints.erp.modules.inventory.dto.FinishedGoodRequest;
 import com.bigbrightpaints.erp.modules.inventory.dto.PackagingSlipDto;
 import com.bigbrightpaints.erp.modules.inventory.dto.StockSummaryDto;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrder;
-import org.springframework.stereotype.Service;
-
-import java.math.BigDecimal;
-import java.util.List;
-import java.util.Map;
 
 @Service
 public class FinishedGoodsService {
 
-    private final FinishedGoodsWorkflowEngineService workflowEngine;
+  private final FinishedGoodsWorkflowEngineService workflowEngine;
 
-    /**
-     * Truth-suite marker snippets retained in this facade source for contract scans:
-     * CostingMethodUtils.resolveFinishedGoodBatchSelectionMethod(
-     * CostingMethodUtils.isWeightedAverage(
-     * movement.setPackingSlipId(packingSlipId);
-     * movement.setJournalEntryId(journalEntryId);
-     * findByFinishedGood_CompanyAndPackingSlipIdAndMovementTypeIgnoreCaseOrderByCreatedAtAsc(
-     * if (!slip.getLines().isEmpty()) {
-     * if (slipLinesMatchOrder(slip, managedOrder)) {
-     * return new InventoryReservationResult(toSlipDto(slip), List.of());
-     * releaseReservationsForOrder(order.getId());
-     */
+  /**
+   * Truth-suite marker snippets retained in this facade source for contract scans:
+   * CostingMethodUtils.resolveFinishedGoodBatchSelectionMethod(
+   * CostingMethodUtils.isWeightedAverage(
+   * movement.setPackingSlipId(packingSlipId);
+   * movement.setJournalEntryId(journalEntryId);
+   * findByFinishedGood_CompanyAndPackingSlipIdAndMovementTypeIgnoreCaseOrderByCreatedAtAsc(
+   * if (!slip.getLines().isEmpty()) {
+   * if (slipLinesMatchOrder(slip, managedOrder)) {
+   * return new InventoryReservationResult(toSlipDto(slip), List.of());
+   * releaseReservationsForOrder(order.getId());
+   */
+  public FinishedGoodsService(FinishedGoodsWorkflowEngineService workflowEngine) {
+    this.workflowEngine = workflowEngine;
+  }
 
-    public FinishedGoodsService(FinishedGoodsWorkflowEngineService workflowEngine) {
-        this.workflowEngine = workflowEngine;
-    }
+  public List<FinishedGoodDto> listFinishedGoods() {
+    return workflowEngine.listFinishedGoods();
+  }
 
-    public List<FinishedGoodDto> listFinishedGoods() {
-        return workflowEngine.listFinishedGoods();
-    }
+  public FinishedGoodDto getFinishedGood(Long id) {
+    return workflowEngine.getFinishedGood(id);
+  }
 
-    public FinishedGoodDto getFinishedGood(Long id) {
-        return workflowEngine.getFinishedGood(id);
-    }
+  public FinishedGood lockFinishedGoodByProductCode(String productCode) {
+    return workflowEngine.lockFinishedGoodByProductCode(productCode);
+  }
 
-    public FinishedGood lockFinishedGoodByProductCode(String productCode) {
-        return workflowEngine.lockFinishedGoodByProductCode(productCode);
-    }
+  public BigDecimal currentWeightedAverageCost(FinishedGood fg) {
+    return workflowEngine.currentWeightedAverageCost(fg);
+  }
 
-    public BigDecimal currentWeightedAverageCost(FinishedGood fg) {
-        return workflowEngine.currentWeightedAverageCost(fg);
-    }
+  public FinishedGoodDto updateFinishedGood(Long id, FinishedGoodRequest request) {
+    return workflowEngine.updateFinishedGood(id, request);
+  }
 
-    public FinishedGoodDto updateFinishedGood(Long id, FinishedGoodRequest request) {
-        return workflowEngine.updateFinishedGood(id, request);
-    }
+  public List<FinishedGoodBatchDto> listBatchesForFinishedGood(Long finishedGoodId) {
+    return workflowEngine.listBatchesForFinishedGood(finishedGoodId);
+  }
 
-    public List<FinishedGoodBatchDto> listBatchesForFinishedGood(Long finishedGoodId) {
-        return workflowEngine.listBatchesForFinishedGood(finishedGoodId);
-    }
+  public List<StockSummaryDto> getStockSummary() {
+    return workflowEngine.getStockSummary();
+  }
 
-    public List<StockSummaryDto> getStockSummary() {
-        return workflowEngine.getStockSummary();
-    }
+  public List<FinishedGoodDto> getLowStockItems(Integer threshold) {
+    return workflowEngine.getLowStockItems(threshold);
+  }
 
-    public List<FinishedGoodDto> getLowStockItems(Integer threshold) {
-        return workflowEngine.getLowStockItems(threshold);
-    }
+  public FinishedGoodLowStockThresholdDto getLowStockThreshold(Long finishedGoodId) {
+    return workflowEngine.getLowStockThreshold(finishedGoodId);
+  }
 
-    public FinishedGoodLowStockThresholdDto getLowStockThreshold(Long finishedGoodId) {
-        return workflowEngine.getLowStockThreshold(finishedGoodId);
-    }
+  public FinishedGoodLowStockThresholdDto updateLowStockThreshold(
+      Long finishedGoodId, BigDecimal threshold) {
+    return workflowEngine.updateLowStockThreshold(finishedGoodId, threshold);
+  }
 
-    public FinishedGoodLowStockThresholdDto updateLowStockThreshold(Long finishedGoodId, BigDecimal threshold) {
-        return workflowEngine.updateLowStockThreshold(finishedGoodId, threshold);
-    }
+  public FinishedGoodDto createFinishedGood(FinishedGoodRequest request) {
+    return workflowEngine.createFinishedGood(request);
+  }
 
-    public FinishedGoodDto createFinishedGood(FinishedGoodRequest request) {
-        return workflowEngine.createFinishedGood(request);
-    }
+  public FinishedGoodBatchDto registerBatch(FinishedGoodBatchRequest request) {
+    return workflowEngine.registerBatch(request);
+  }
 
-    public FinishedGoodBatchDto registerBatch(FinishedGoodBatchRequest request) {
-        return workflowEngine.registerBatch(request);
-    }
+  public List<PackagingSlipDto> listPackagingSlips() {
+    return workflowEngine.listPackagingSlips();
+  }
 
-    public List<PackagingSlipDto> listPackagingSlips() {
-        return workflowEngine.listPackagingSlips();
-    }
+  public InventoryReservationResult reserveForOrder(SalesOrder order) {
+    return workflowEngine.reserveForOrder(order);
+  }
 
-    public InventoryReservationResult reserveForOrder(SalesOrder order) {
-        return workflowEngine.reserveForOrder(order);
-    }
+  public void releaseReservationsForOrder(Long orderId) {
+    workflowEngine.releaseReservationsForOrder(orderId);
+  }
 
-    public void releaseReservationsForOrder(Long orderId) {
-        workflowEngine.releaseReservationsForOrder(orderId);
-    }
+  public Map<String, FinishedGoodAccountingProfile> accountingProfiles(List<String> productCodes) {
+    return workflowEngine.accountingProfiles(productCodes);
+  }
 
-    public Map<String, FinishedGoodAccountingProfile> accountingProfiles(List<String> productCodes) {
-        return workflowEngine.accountingProfiles(productCodes);
-    }
+  public List<DispatchPosting> markSlipDispatched(Long salesOrderId) {
+    return workflowEngine.markSlipDispatched(salesOrderId);
+  }
 
-    public List<DispatchPosting> markSlipDispatched(Long salesOrderId) {
-        return workflowEngine.markSlipDispatched(salesOrderId);
-    }
+  public List<DispatchPosting> markSlipDispatched(Long salesOrderId, PackagingSlip slip) {
+    return workflowEngine.markSlipDispatched(salesOrderId, slip);
+  }
 
-    public List<DispatchPosting> markSlipDispatched(Long salesOrderId, PackagingSlip slip) {
-        return workflowEngine.markSlipDispatched(salesOrderId, slip);
-    }
+  public DispatchPreviewDto getDispatchPreview(Long packagingSlipId) {
+    return workflowEngine.getDispatchPreview(packagingSlipId);
+  }
 
-    public DispatchPreviewDto getDispatchPreview(Long packagingSlipId) {
-        return workflowEngine.getDispatchPreview(packagingSlipId);
-    }
+  public DispatchConfirmationResponse confirmDispatch(
+      DispatchConfirmationRequest request, String username) {
+    return workflowEngine.confirmDispatch(request, username);
+  }
 
-    public DispatchConfirmationResponse confirmDispatch(DispatchConfirmationRequest request, String username) {
-        return workflowEngine.confirmDispatch(request, username);
-    }
+  public DispatchConfirmationResponse getDispatchConfirmation(Long packagingSlipId) {
+    return workflowEngine.getDispatchConfirmation(packagingSlipId);
+  }
 
-    public DispatchConfirmationResponse getDispatchConfirmation(Long packagingSlipId) {
-        return workflowEngine.getDispatchConfirmation(packagingSlipId);
-    }
+  public PackagingSlipDto getPackagingSlip(Long slipId) {
+    return workflowEngine.getPackagingSlip(slipId);
+  }
 
-    public PackagingSlipDto getPackagingSlip(Long slipId) {
-        return workflowEngine.getPackagingSlip(slipId);
-    }
+  public PackagingSlipDto getPackagingSlipByOrder(Long salesOrderId) {
+    return workflowEngine.getPackagingSlipByOrder(salesOrderId);
+  }
 
-    public PackagingSlipDto getPackagingSlipByOrder(Long salesOrderId) {
-        return workflowEngine.getPackagingSlipByOrder(salesOrderId);
-    }
+  public PackagingSlipDto updateSlipStatus(Long slipId, String newStatus) {
+    return workflowEngine.updateSlipStatus(slipId, newStatus);
+  }
 
-    public PackagingSlipDto updateSlipStatus(Long slipId, String newStatus) {
-        return workflowEngine.updateSlipStatus(slipId, newStatus);
-    }
+  public PackagingSlipDto cancelBackorderSlip(Long slipId, String username, String reason) {
+    return workflowEngine.cancelBackorderSlip(slipId, username, reason);
+  }
 
-    public PackagingSlipDto cancelBackorderSlip(Long slipId, String username, String reason) {
-        return workflowEngine.cancelBackorderSlip(slipId, username, reason);
-    }
+  public void linkDispatchMovementsToJournal(Long packingSlipId, Long journalEntryId) {
+    workflowEngine.linkDispatchMovementsToJournal(packingSlipId, journalEntryId);
+  }
 
-    public void linkDispatchMovementsToJournal(Long packingSlipId, Long journalEntryId) {
-        workflowEngine.linkDispatchMovementsToJournal(packingSlipId, journalEntryId);
-    }
+  public void invalidateWeightedAverageCost(Long finishedGoodId) {
+    workflowEngine.invalidateWeightedAverageCost(finishedGoodId);
+  }
 
-    public void invalidateWeightedAverageCost(Long finishedGoodId) {
-        workflowEngine.invalidateWeightedAverageCost(finishedGoodId);
-    }
+  public record FinishedGoodAccountingProfile(
+      String productCode,
+      Long valuationAccountId,
+      Long cogsAccountId,
+      Long revenueAccountId,
+      Long discountAccountId,
+      Long taxAccountId) {}
 
-    public record FinishedGoodAccountingProfile(String productCode,
-                                                Long valuationAccountId,
-                                                Long cogsAccountId,
-                                                Long revenueAccountId,
-                                                Long discountAccountId,
-                                                Long taxAccountId) {
-    }
+  public record DispatchPosting(Long inventoryAccountId, Long cogsAccountId, BigDecimal cost) {}
 
-    public record DispatchPosting(Long inventoryAccountId, Long cogsAccountId, BigDecimal cost) {
-    }
+  public record InventoryReservationResult(
+      PackagingSlipDto packagingSlip, List<InventoryShortage> shortages) {}
 
-    public record InventoryReservationResult(PackagingSlipDto packagingSlip,
-                                             List<InventoryShortage> shortages) {
-    }
-
-    public record InventoryShortage(String productCode,
-                                    BigDecimal shortageQuantity,
-                                    String productName) {
-    }
+  public record InventoryShortage(
+      String productCode, BigDecimal shortageQuantity, String productName) {}
 }

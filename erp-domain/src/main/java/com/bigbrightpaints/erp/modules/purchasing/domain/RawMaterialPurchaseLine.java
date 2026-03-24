@@ -1,97 +1,190 @@
 package com.bigbrightpaints.erp.modules.purchasing.domain;
 
+import java.math.BigDecimal;
+
+import com.bigbrightpaints.erp.core.domain.VersionedEntity;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatch;
-import jakarta.persistence.*;
 
-import java.math.BigDecimal;
-import com.bigbrightpaints.erp.core.domain.VersionedEntity;
+import jakarta.persistence.*;
 
 @Entity
 @Table(name = "raw_material_purchase_items")
 public class RawMaterialPurchaseLine extends VersionedEntity {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
+  private Long id;
 
-    @ManyToOne(optional = false, fetch = FetchType.LAZY)
-    @JoinColumn(name = "purchase_id")
-    private RawMaterialPurchase purchase;
+  @ManyToOne(optional = false, fetch = FetchType.LAZY)
+  @JoinColumn(name = "purchase_id")
+  private RawMaterialPurchase purchase;
 
-    @ManyToOne(optional = false, fetch = FetchType.LAZY)
-    @JoinColumn(name = "raw_material_id")
-    private RawMaterial rawMaterial;
+  @ManyToOne(optional = false, fetch = FetchType.LAZY)
+  @JoinColumn(name = "raw_material_id")
+  private RawMaterial rawMaterial;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "raw_material_batch_id")
-    private RawMaterialBatch rawMaterialBatch;
+  @ManyToOne(fetch = FetchType.LAZY)
+  @JoinColumn(name = "raw_material_batch_id")
+  private RawMaterialBatch rawMaterialBatch;
 
-    @Column(name = "batch_code", nullable = false)
-    private String batchCode;
+  @Column(name = "batch_code", nullable = false)
+  private String batchCode;
 
-    @Column(nullable = false)
-    private BigDecimal quantity;
+  @Column(nullable = false)
+  private BigDecimal quantity;
 
-    @Column(name = "returned_quantity", nullable = false)
-    private BigDecimal returnedQuantity = BigDecimal.ZERO;
+  @Column(name = "returned_quantity", nullable = false)
+  private BigDecimal returnedQuantity = BigDecimal.ZERO;
 
-    @Column(nullable = false)
-    private String unit;
+  @Column(nullable = false)
+  private String unit;
 
-    @Column(name = "cost_per_unit", nullable = false)
-    private BigDecimal costPerUnit;
+  @Column(name = "cost_per_unit", nullable = false)
+  private BigDecimal costPerUnit;
 
-    @Column(name = "line_total", nullable = false)
-    private BigDecimal lineTotal;
+  @Column(name = "line_total", nullable = false)
+  private BigDecimal lineTotal;
 
-    @Column(name = "tax_rate")
-    private BigDecimal taxRate;
+  @Column(name = "tax_rate")
+  private BigDecimal taxRate;
 
-    @Column(name = "tax_amount")
-    private BigDecimal taxAmount;
+  @Column(name = "tax_amount")
+  private BigDecimal taxAmount;
 
-    @Column(name = "cgst_amount")
-    private BigDecimal cgstAmount;
+  @Column(name = "cgst_amount")
+  private BigDecimal cgstAmount;
 
-    @Column(name = "sgst_amount")
-    private BigDecimal sgstAmount;
+  @Column(name = "sgst_amount")
+  private BigDecimal sgstAmount;
 
-    @Column(name = "igst_amount")
-    private BigDecimal igstAmount;
+  @Column(name = "igst_amount")
+  private BigDecimal igstAmount;
 
-    @Column(name = "notes")
-    private String notes;
+  @Column(name = "notes")
+  private String notes;
 
-    public Long getId() { return id; }
-    public RawMaterialPurchase getPurchase() { return purchase; }
-    public void setPurchase(RawMaterialPurchase purchase) { this.purchase = purchase; }
-    public RawMaterial getRawMaterial() { return rawMaterial; }
-    public void setRawMaterial(RawMaterial rawMaterial) { this.rawMaterial = rawMaterial; }
-    public RawMaterialBatch getRawMaterialBatch() { return rawMaterialBatch; }
-    public void setRawMaterialBatch(RawMaterialBatch rawMaterialBatch) { this.rawMaterialBatch = rawMaterialBatch; }
-    public String getBatchCode() { return batchCode; }
-    public void setBatchCode(String batchCode) { this.batchCode = batchCode; }
-    public BigDecimal getQuantity() { return quantity; }
-    public void setQuantity(BigDecimal quantity) { this.quantity = quantity; }
-    public BigDecimal getReturnedQuantity() { return returnedQuantity; }
-    public void setReturnedQuantity(BigDecimal returnedQuantity) { this.returnedQuantity = returnedQuantity; }
-    public String getUnit() { return unit; }
-    public void setUnit(String unit) { this.unit = unit; }
-    public BigDecimal getCostPerUnit() { return costPerUnit; }
-    public void setCostPerUnit(BigDecimal costPerUnit) { this.costPerUnit = costPerUnit; }
-    public BigDecimal getLineTotal() { return lineTotal; }
-    public void setLineTotal(BigDecimal lineTotal) { this.lineTotal = lineTotal; }
-    public BigDecimal getTaxRate() { return taxRate; }
-    public void setTaxRate(BigDecimal taxRate) { this.taxRate = taxRate; }
-    public BigDecimal getTaxAmount() { return taxAmount; }
-    public void setTaxAmount(BigDecimal taxAmount) { this.taxAmount = taxAmount; }
-    public BigDecimal getCgstAmount() { return cgstAmount; }
-    public void setCgstAmount(BigDecimal cgstAmount) { this.cgstAmount = cgstAmount; }
-    public BigDecimal getSgstAmount() { return sgstAmount; }
-    public void setSgstAmount(BigDecimal sgstAmount) { this.sgstAmount = sgstAmount; }
-    public BigDecimal getIgstAmount() { return igstAmount; }
-    public void setIgstAmount(BigDecimal igstAmount) { this.igstAmount = igstAmount; }
-    public String getNotes() { return notes; }
-    public void setNotes(String notes) { this.notes = notes; }
+  public Long getId() {
+    return id;
+  }
+
+  public RawMaterialPurchase getPurchase() {
+    return purchase;
+  }
+
+  public void setPurchase(RawMaterialPurchase purchase) {
+    this.purchase = purchase;
+  }
+
+  public RawMaterial getRawMaterial() {
+    return rawMaterial;
+  }
+
+  public void setRawMaterial(RawMaterial rawMaterial) {
+    this.rawMaterial = rawMaterial;
+  }
+
+  public RawMaterialBatch getRawMaterialBatch() {
+    return rawMaterialBatch;
+  }
+
+  public void setRawMaterialBatch(RawMaterialBatch rawMaterialBatch) {
+    this.rawMaterialBatch = rawMaterialBatch;
+  }
+
+  public String getBatchCode() {
+    return batchCode;
+  }
+
+  public void setBatchCode(String batchCode) {
+    this.batchCode = batchCode;
+  }
+
+  public BigDecimal getQuantity() {
+    return quantity;
+  }
+
+  public void setQuantity(BigDecimal quantity) {
+    this.quantity = quantity;
+  }
+
+  public BigDecimal getReturnedQuantity() {
+    return returnedQuantity;
+  }
+
+  public void setReturnedQuantity(BigDecimal returnedQuantity) {
+    this.returnedQuantity = returnedQuantity;
+  }
+
+  public String getUnit() {
+    return unit;
+  }
+
+  public void setUnit(String unit) {
+    this.unit = unit;
+  }
+
+  public BigDecimal getCostPerUnit() {
+    return costPerUnit;
+  }
+
+  public void setCostPerUnit(BigDecimal costPerUnit) {
+    this.costPerUnit = costPerUnit;
+  }
+
+  public BigDecimal getLineTotal() {
+    return lineTotal;
+  }
+
+  public void setLineTotal(BigDecimal lineTotal) {
+    this.lineTotal = lineTotal;
+  }
+
+  public BigDecimal getTaxRate() {
+    return taxRate;
+  }
+
+  public void setTaxRate(BigDecimal taxRate) {
+    this.taxRate = taxRate;
+  }
+
+  public BigDecimal getTaxAmount() {
+    return taxAmount;
+  }
+
+  public void setTaxAmount(BigDecimal taxAmount) {
+    this.taxAmount = taxAmount;
+  }
+
+  public BigDecimal getCgstAmount() {
+    return cgstAmount;
+  }
+
+  public void setCgstAmount(BigDecimal cgstAmount) {
+    this.cgstAmount = cgstAmount;
+  }
+
+  public BigDecimal getSgstAmount() {
+    return sgstAmount;
+  }
+
+  public void setSgstAmount(BigDecimal sgstAmount) {
+    this.sgstAmount = sgstAmount;
+  }
+
+  public BigDecimal getIgstAmount() {
+    return igstAmount;
+  }
+
+  public void setIgstAmount(BigDecimal igstAmount) {
+    this.igstAmount = igstAmount;
+  }
+
+  public String getNotes() {
+    return notes;
+  }
+
+  public void setNotes(String notes) {
+    this.notes = notes;
+  }
 }

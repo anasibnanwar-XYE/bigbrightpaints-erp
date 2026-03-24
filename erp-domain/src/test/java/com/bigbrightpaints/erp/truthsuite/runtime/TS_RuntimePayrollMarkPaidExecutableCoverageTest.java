@@ -7,6 +7,12 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.time.LocalDate;
+import java.util.List;
+
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
+
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
@@ -21,201 +27,197 @@ import com.bigbrightpaints.erp.modules.hr.domain.PayrollRunLine;
 import com.bigbrightpaints.erp.modules.hr.domain.PayrollRunLineRepository;
 import com.bigbrightpaints.erp.modules.hr.domain.PayrollRunRepository;
 import com.bigbrightpaints.erp.modules.hr.service.PayrollService;
-import java.time.LocalDate;
-import java.util.List;
-import org.junit.jupiter.api.Tag;
-import org.junit.jupiter.api.Test;
 
 @Tag("critical")
 @Tag("reconciliation")
 class TS_RuntimePayrollMarkPaidExecutableCoverageTest {
 
-    @Test
-    void markAsPaid_rejectsWhenPaymentJournalIsMissing() {
-        PayrollRunRepository payrollRunRepository = mock(PayrollRunRepository.class);
-        PayrollRunLineRepository payrollRunLineRepository = mock(PayrollRunLineRepository.class);
-        EmployeeRepository employeeRepository = mock(EmployeeRepository.class);
-        AttendanceRepository attendanceRepository = mock(AttendanceRepository.class);
-        AccountingFacade accountingFacade = mock(AccountingFacade.class);
-        com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository accountRepository =
-                mock(com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository.class);
-        CompanyContextService companyContextService = mock(CompanyContextService.class);
-        CompanyEntityLookup companyEntityLookup = mock(CompanyEntityLookup.class);
-        CompanyClock companyClock = mock(CompanyClock.class);
-        com.bigbrightpaints.erp.core.audit.AuditService auditService =
-                mock(com.bigbrightpaints.erp.core.audit.AuditService.class);
+  @Test
+  void markAsPaid_rejectsWhenPaymentJournalIsMissing() {
+    PayrollRunRepository payrollRunRepository = mock(PayrollRunRepository.class);
+    PayrollRunLineRepository payrollRunLineRepository = mock(PayrollRunLineRepository.class);
+    EmployeeRepository employeeRepository = mock(EmployeeRepository.class);
+    AttendanceRepository attendanceRepository = mock(AttendanceRepository.class);
+    AccountingFacade accountingFacade = mock(AccountingFacade.class);
+    com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository accountRepository =
+        mock(com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository.class);
+    CompanyContextService companyContextService = mock(CompanyContextService.class);
+    CompanyEntityLookup companyEntityLookup = mock(CompanyEntityLookup.class);
+    CompanyClock companyClock = mock(CompanyClock.class);
+    com.bigbrightpaints.erp.core.audit.AuditService auditService =
+        mock(com.bigbrightpaints.erp.core.audit.AuditService.class);
 
-        PayrollService service = new PayrollService(
-                payrollRunRepository,
-                payrollRunLineRepository,
-                employeeRepository,
-                attendanceRepository,
-                accountingFacade,
-                accountRepository,
-                companyContextService,
-                companyEntityLookup,
-                companyClock,
-                auditService
-        );
+    PayrollService service =
+        new PayrollService(
+            payrollRunRepository,
+            payrollRunLineRepository,
+            employeeRepository,
+            attendanceRepository,
+            accountingFacade,
+            accountRepository,
+            companyContextService,
+            companyEntityLookup,
+            companyClock,
+            auditService);
 
-        Company company = new Company();
-        PayrollRun run = new PayrollRun();
-        run.setStatus(PayrollRun.PayrollStatus.POSTED);
+    Company company = new Company();
+    PayrollRun run = new PayrollRun();
+    run.setStatus(PayrollRun.PayrollStatus.POSTED);
 
-        when(companyContextService.requireCurrentCompany()).thenReturn(company);
-        when(companyEntityLookup.lockPayrollRun(company, 77L)).thenReturn(run);
+    when(companyContextService.requireCurrentCompany()).thenReturn(company);
+    when(companyEntityLookup.lockPayrollRun(company, 77L)).thenReturn(run);
 
-        assertThatThrownBy(() -> service.markAsPaid(77L, "ignored"))
-                .isInstanceOf(ApplicationException.class)
-                .hasMessageContaining("Payroll payment journal is required before marking payroll as PAID");
-    }
+    assertThatThrownBy(() -> service.markAsPaid(77L, "ignored"))
+        .isInstanceOf(ApplicationException.class)
+        .hasMessageContaining("Payroll payment journal is required before marking payroll as PAID");
+  }
 
-    @Test
-    void markAsPaid_rejectsWhenCanonicalReferenceIsBlank() {
-        PayrollRunRepository payrollRunRepository = mock(PayrollRunRepository.class);
-        PayrollRunLineRepository payrollRunLineRepository = mock(PayrollRunLineRepository.class);
-        EmployeeRepository employeeRepository = mock(EmployeeRepository.class);
-        AttendanceRepository attendanceRepository = mock(AttendanceRepository.class);
-        AccountingFacade accountingFacade = mock(AccountingFacade.class);
-        com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository accountRepository =
-                mock(com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository.class);
-        CompanyContextService companyContextService = mock(CompanyContextService.class);
-        CompanyEntityLookup companyEntityLookup = mock(CompanyEntityLookup.class);
-        CompanyClock companyClock = mock(CompanyClock.class);
-        com.bigbrightpaints.erp.core.audit.AuditService auditService =
-                mock(com.bigbrightpaints.erp.core.audit.AuditService.class);
+  @Test
+  void markAsPaid_rejectsWhenCanonicalReferenceIsBlank() {
+    PayrollRunRepository payrollRunRepository = mock(PayrollRunRepository.class);
+    PayrollRunLineRepository payrollRunLineRepository = mock(PayrollRunLineRepository.class);
+    EmployeeRepository employeeRepository = mock(EmployeeRepository.class);
+    AttendanceRepository attendanceRepository = mock(AttendanceRepository.class);
+    AccountingFacade accountingFacade = mock(AccountingFacade.class);
+    com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository accountRepository =
+        mock(com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository.class);
+    CompanyContextService companyContextService = mock(CompanyContextService.class);
+    CompanyEntityLookup companyEntityLookup = mock(CompanyEntityLookup.class);
+    CompanyClock companyClock = mock(CompanyClock.class);
+    com.bigbrightpaints.erp.core.audit.AuditService auditService =
+        mock(com.bigbrightpaints.erp.core.audit.AuditService.class);
 
-        PayrollService service = new PayrollService(
-                payrollRunRepository,
-                payrollRunLineRepository,
-                employeeRepository,
-                attendanceRepository,
-                accountingFacade,
-                accountRepository,
-                companyContextService,
-                companyEntityLookup,
-                companyClock,
-                auditService
-        );
+    PayrollService service =
+        new PayrollService(
+            payrollRunRepository,
+            payrollRunLineRepository,
+            employeeRepository,
+            attendanceRepository,
+            accountingFacade,
+            accountRepository,
+            companyContextService,
+            companyEntityLookup,
+            companyClock,
+            auditService);
 
-        Company company = new Company();
-        PayrollRun run = new PayrollRun();
-        run.setStatus(PayrollRun.PayrollStatus.POSTED);
-        run.setPaymentJournalEntryId(990L);
-        JournalEntry paymentJournal = new JournalEntry();
-        paymentJournal.setReferenceNumber("   ");
+    Company company = new Company();
+    PayrollRun run = new PayrollRun();
+    run.setStatus(PayrollRun.PayrollStatus.POSTED);
+    run.setPaymentJournalEntryId(990L);
+    JournalEntry paymentJournal = new JournalEntry();
+    paymentJournal.setReferenceNumber("   ");
 
-        when(companyContextService.requireCurrentCompany()).thenReturn(company);
-        when(companyEntityLookup.lockPayrollRun(company, 77L)).thenReturn(run);
-        when(companyEntityLookup.requireJournalEntry(company, 990L)).thenReturn(paymentJournal);
+    when(companyContextService.requireCurrentCompany()).thenReturn(company);
+    when(companyEntityLookup.lockPayrollRun(company, 77L)).thenReturn(run);
+    when(companyEntityLookup.requireJournalEntry(company, 990L)).thenReturn(paymentJournal);
 
-        assertThatThrownBy(() -> service.markAsPaid(77L, "legacy-ref"))
-                .isInstanceOf(ApplicationException.class)
-                .hasMessageContaining("Payroll payment journal reference is missing");
-    }
+    assertThatThrownBy(() -> service.markAsPaid(77L, "legacy-ref"))
+        .isInstanceOf(ApplicationException.class)
+        .hasMessageContaining("Payroll payment journal reference is missing");
+  }
 
-    @Test
-    void markAsPaid_usesTrimmedCanonicalReferenceOnPayrollLines() {
-        PayrollRunRepository payrollRunRepository = mock(PayrollRunRepository.class);
-        PayrollRunLineRepository payrollRunLineRepository = mock(PayrollRunLineRepository.class);
-        EmployeeRepository employeeRepository = mock(EmployeeRepository.class);
-        AttendanceRepository attendanceRepository = mock(AttendanceRepository.class);
-        AccountingFacade accountingFacade = mock(AccountingFacade.class);
-        com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository accountRepository =
-                mock(com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository.class);
-        CompanyContextService companyContextService = mock(CompanyContextService.class);
-        CompanyEntityLookup companyEntityLookup = mock(CompanyEntityLookup.class);
-        CompanyClock companyClock = mock(CompanyClock.class);
-        com.bigbrightpaints.erp.core.audit.AuditService auditService =
-                mock(com.bigbrightpaints.erp.core.audit.AuditService.class);
+  @Test
+  void markAsPaid_usesTrimmedCanonicalReferenceOnPayrollLines() {
+    PayrollRunRepository payrollRunRepository = mock(PayrollRunRepository.class);
+    PayrollRunLineRepository payrollRunLineRepository = mock(PayrollRunLineRepository.class);
+    EmployeeRepository employeeRepository = mock(EmployeeRepository.class);
+    AttendanceRepository attendanceRepository = mock(AttendanceRepository.class);
+    AccountingFacade accountingFacade = mock(AccountingFacade.class);
+    com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository accountRepository =
+        mock(com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository.class);
+    CompanyContextService companyContextService = mock(CompanyContextService.class);
+    CompanyEntityLookup companyEntityLookup = mock(CompanyEntityLookup.class);
+    CompanyClock companyClock = mock(CompanyClock.class);
+    com.bigbrightpaints.erp.core.audit.AuditService auditService =
+        mock(com.bigbrightpaints.erp.core.audit.AuditService.class);
 
-        PayrollService service = new PayrollService(
-                payrollRunRepository,
-                payrollRunLineRepository,
-                employeeRepository,
-                attendanceRepository,
-                accountingFacade,
-                accountRepository,
-                companyContextService,
-                companyEntityLookup,
-                companyClock,
-                auditService
-        );
+    PayrollService service =
+        new PayrollService(
+            payrollRunRepository,
+            payrollRunLineRepository,
+            employeeRepository,
+            attendanceRepository,
+            accountingFacade,
+            accountRepository,
+            companyContextService,
+            companyEntityLookup,
+            companyClock,
+            auditService);
 
-        Company company = new Company();
-        PayrollRun run = new PayrollRun();
-        run.setRunType(PayrollRun.RunType.WEEKLY);
-        run.setStatus(PayrollRun.PayrollStatus.POSTED);
-        run.setPaymentJournalEntryId(991L);
+    Company company = new Company();
+    PayrollRun run = new PayrollRun();
+    run.setRunType(PayrollRun.RunType.WEEKLY);
+    run.setStatus(PayrollRun.PayrollStatus.POSTED);
+    run.setPaymentJournalEntryId(991L);
 
-        PayrollRunLine line = new PayrollRunLine();
-        JournalEntry paymentJournal = new JournalEntry();
-        paymentJournal.setReferenceNumber(" PAYROLL-PAY-2026-001 ");
-        paymentJournal.setEntryDate(LocalDate.of(2026, 2, 21));
+    PayrollRunLine line = new PayrollRunLine();
+    JournalEntry paymentJournal = new JournalEntry();
+    paymentJournal.setReferenceNumber(" PAYROLL-PAY-2026-001 ");
+    paymentJournal.setEntryDate(LocalDate.of(2026, 2, 21));
 
-        when(companyContextService.requireCurrentCompany()).thenReturn(company);
-        when(companyEntityLookup.lockPayrollRun(company, 77L)).thenReturn(run);
-        when(companyEntityLookup.requireJournalEntry(company, 991L)).thenReturn(paymentJournal);
-        when(payrollRunLineRepository.findByPayrollRun(run)).thenReturn(List.of(line));
-        when(payrollRunRepository.save(any(PayrollRun.class))).thenReturn(run);
+    when(companyContextService.requireCurrentCompany()).thenReturn(company);
+    when(companyEntityLookup.lockPayrollRun(company, 77L)).thenReturn(run);
+    when(companyEntityLookup.requireJournalEntry(company, 991L)).thenReturn(paymentJournal);
+    when(payrollRunLineRepository.findByPayrollRun(run)).thenReturn(List.of(line));
+    when(payrollRunRepository.save(any(PayrollRun.class))).thenReturn(run);
 
-        service.markAsPaid(77L, "legacy-ref");
+    service.markAsPaid(77L, "legacy-ref");
 
-        assertThat(line.getPaymentStatus()).isEqualTo(PayrollRunLine.PaymentStatus.PAID);
-        assertThat(line.getPaymentReference()).isEqualTo("PAYROLL-PAY-2026-001");
-        assertThat(run.getStatus()).isEqualTo(PayrollRun.PayrollStatus.PAID);
-        assertThat(run.getPaymentDate()).isEqualTo(LocalDate.of(2026, 2, 21));
+    assertThat(line.getPaymentStatus()).isEqualTo(PayrollRunLine.PaymentStatus.PAID);
+    assertThat(line.getPaymentReference()).isEqualTo("PAYROLL-PAY-2026-001");
+    assertThat(run.getStatus()).isEqualTo(PayrollRun.PayrollStatus.PAID);
+    assertThat(run.getPaymentDate()).isEqualTo(LocalDate.of(2026, 2, 21));
 
-        verify(payrollRunLineRepository).saveAll(any(List.class));
-        verify(payrollRunRepository).save(run);
-    }
+    verify(payrollRunLineRepository).saveAll(any(List.class));
+    verify(payrollRunRepository).save(run);
+  }
 
-    @Test
-    void markAsPaid_setsPaymentDateToCompanyTodayWhenJournalDateMissing() {
-        PayrollRunRepository payrollRunRepository = mock(PayrollRunRepository.class);
-        PayrollRunLineRepository payrollRunLineRepository = mock(PayrollRunLineRepository.class);
-        EmployeeRepository employeeRepository = mock(EmployeeRepository.class);
-        AttendanceRepository attendanceRepository = mock(AttendanceRepository.class);
-        AccountingFacade accountingFacade = mock(AccountingFacade.class);
-        com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository accountRepository =
-                mock(com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository.class);
-        CompanyContextService companyContextService = mock(CompanyContextService.class);
-        CompanyEntityLookup companyEntityLookup = mock(CompanyEntityLookup.class);
-        CompanyClock companyClock = mock(CompanyClock.class);
-        com.bigbrightpaints.erp.core.audit.AuditService auditService =
-                mock(com.bigbrightpaints.erp.core.audit.AuditService.class);
+  @Test
+  void markAsPaid_setsPaymentDateToCompanyTodayWhenJournalDateMissing() {
+    PayrollRunRepository payrollRunRepository = mock(PayrollRunRepository.class);
+    PayrollRunLineRepository payrollRunLineRepository = mock(PayrollRunLineRepository.class);
+    EmployeeRepository employeeRepository = mock(EmployeeRepository.class);
+    AttendanceRepository attendanceRepository = mock(AttendanceRepository.class);
+    AccountingFacade accountingFacade = mock(AccountingFacade.class);
+    com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository accountRepository =
+        mock(com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository.class);
+    CompanyContextService companyContextService = mock(CompanyContextService.class);
+    CompanyEntityLookup companyEntityLookup = mock(CompanyEntityLookup.class);
+    CompanyClock companyClock = mock(CompanyClock.class);
+    com.bigbrightpaints.erp.core.audit.AuditService auditService =
+        mock(com.bigbrightpaints.erp.core.audit.AuditService.class);
 
-        PayrollService service = new PayrollService(
-                payrollRunRepository,
-                payrollRunLineRepository,
-                employeeRepository,
-                attendanceRepository,
-                accountingFacade,
-                accountRepository,
-                companyContextService,
-                companyEntityLookup,
-                companyClock,
-                auditService
-        );
+    PayrollService service =
+        new PayrollService(
+            payrollRunRepository,
+            payrollRunLineRepository,
+            employeeRepository,
+            attendanceRepository,
+            accountingFacade,
+            accountRepository,
+            companyContextService,
+            companyEntityLookup,
+            companyClock,
+            auditService);
 
-        Company company = new Company();
-        PayrollRun run = new PayrollRun();
-        run.setRunType(PayrollRun.RunType.WEEKLY);
-        run.setStatus(PayrollRun.PayrollStatus.POSTED);
-        run.setPaymentJournalEntryId(111L);
+    Company company = new Company();
+    PayrollRun run = new PayrollRun();
+    run.setRunType(PayrollRun.RunType.WEEKLY);
+    run.setStatus(PayrollRun.PayrollStatus.POSTED);
+    run.setPaymentJournalEntryId(111L);
 
-        PayrollRunLine line = new PayrollRunLine();
-        JournalEntry paymentJournal = new JournalEntry();
-        paymentJournal.setReferenceNumber(" PAY-REF-101 ");
+    PayrollRunLine line = new PayrollRunLine();
+    JournalEntry paymentJournal = new JournalEntry();
+    paymentJournal.setReferenceNumber(" PAY-REF-101 ");
 
-        when(companyContextService.requireCurrentCompany()).thenReturn(company);
-        when(companyEntityLookup.lockPayrollRun(company, 13L)).thenReturn(run);
-        when(companyEntityLookup.requireJournalEntry(company, 111L)).thenReturn(paymentJournal);
-        when(companyClock.today(company)).thenReturn(LocalDate.of(2026, 3, 1));
-        when(payrollRunLineRepository.findByPayrollRun(run)).thenReturn(List.of(line));
+    when(companyContextService.requireCurrentCompany()).thenReturn(company);
+    when(companyEntityLookup.lockPayrollRun(company, 13L)).thenReturn(run);
+    when(companyEntityLookup.requireJournalEntry(company, 111L)).thenReturn(paymentJournal);
+    when(companyClock.today(company)).thenReturn(LocalDate.of(2026, 3, 1));
+    when(payrollRunLineRepository.findByPayrollRun(run)).thenReturn(List.of(line));
 
-        service.markAsPaid(13L, null);
+    service.markAsPaid(13L, null);
 
-        assertThat(run.getPaymentDate()).isEqualTo(LocalDate.of(2026, 3, 1));
-    }
+    assertThat(run.getPaymentDate()).isEqualTo(LocalDate.of(2026, 3, 1));
+  }
 }

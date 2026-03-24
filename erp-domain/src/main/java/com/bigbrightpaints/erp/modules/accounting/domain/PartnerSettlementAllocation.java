@@ -1,12 +1,17 @@
 package com.bigbrightpaints.erp.modules.accounting.domain;
 
-import com.bigbrightpaints.erp.core.util.CompanyTime;
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.time.LocalDate;
+
 import com.bigbrightpaints.erp.core.domain.VersionedEntity;
+import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.invoice.domain.Invoice;
 import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchase;
 import com.bigbrightpaints.erp.modules.purchasing.domain.Supplier;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -20,213 +25,213 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
-import java.math.BigDecimal;
-import java.time.Instant;
-import java.time.LocalDate;
 
 @Entity
-@Table(name = "partner_settlement_allocations",
-        indexes = {
-                @Index(name = "idx_partner_settlement_company", columnList = "company_id"),
-                @Index(name = "idx_partner_settlement_partner", columnList = "company_id, partner_type, dealer_id, supplier_id"),
-                @Index(name = "idx_partner_settlement_invoice", columnList = "company_id, invoice_id"),
-                @Index(name = "idx_partner_settlement_purchase", columnList = "company_id, purchase_id")
-        })
+@Table(
+    name = "partner_settlement_allocations",
+    indexes = {
+      @Index(name = "idx_partner_settlement_company", columnList = "company_id"),
+      @Index(
+          name = "idx_partner_settlement_partner",
+          columnList = "company_id, partner_type, dealer_id, supplier_id"),
+      @Index(name = "idx_partner_settlement_invoice", columnList = "company_id, invoice_id"),
+      @Index(name = "idx_partner_settlement_purchase", columnList = "company_id, purchase_id")
+    })
 public class PartnerSettlementAllocation extends VersionedEntity {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
+  private Long id;
 
-    @ManyToOne(optional = false, fetch = FetchType.LAZY)
-    @JoinColumn(name = "company_id")
-    private Company company;
+  @ManyToOne(optional = false, fetch = FetchType.LAZY)
+  @JoinColumn(name = "company_id")
+  private Company company;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "partner_type", nullable = false)
-    private PartnerType partnerType;
+  @Enumerated(EnumType.STRING)
+  @Column(name = "partner_type", nullable = false)
+  private PartnerType partnerType;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "dealer_id")
-    private Dealer dealer;
+  @ManyToOne(fetch = FetchType.LAZY)
+  @JoinColumn(name = "dealer_id")
+  private Dealer dealer;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "supplier_id")
-    private Supplier supplier;
+  @ManyToOne(fetch = FetchType.LAZY)
+  @JoinColumn(name = "supplier_id")
+  private Supplier supplier;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "invoice_id")
-    private Invoice invoice;
+  @ManyToOne(fetch = FetchType.LAZY)
+  @JoinColumn(name = "invoice_id")
+  private Invoice invoice;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "purchase_id")
-    private RawMaterialPurchase purchase;
+  @ManyToOne(fetch = FetchType.LAZY)
+  @JoinColumn(name = "purchase_id")
+  private RawMaterialPurchase purchase;
 
-    @ManyToOne(optional = false, fetch = FetchType.LAZY)
-    @JoinColumn(name = "journal_entry_id")
-    private JournalEntry journalEntry;
+  @ManyToOne(optional = false, fetch = FetchType.LAZY)
+  @JoinColumn(name = "journal_entry_id")
+  private JournalEntry journalEntry;
 
-    @Column(name = "settlement_date", nullable = false)
-    private LocalDate settlementDate;
+  @Column(name = "settlement_date", nullable = false)
+  private LocalDate settlementDate;
 
-    @Column(name = "allocation_amount", nullable = false)
-    private BigDecimal allocationAmount = BigDecimal.ZERO;
+  @Column(name = "allocation_amount", nullable = false)
+  private BigDecimal allocationAmount = BigDecimal.ZERO;
 
-    @Column(name = "discount_amount", nullable = false)
-    private BigDecimal discountAmount = BigDecimal.ZERO;
+  @Column(name = "discount_amount", nullable = false)
+  private BigDecimal discountAmount = BigDecimal.ZERO;
 
-    @Column(name = "write_off_amount", nullable = false)
-    private BigDecimal writeOffAmount = BigDecimal.ZERO;
+  @Column(name = "write_off_amount", nullable = false)
+  private BigDecimal writeOffAmount = BigDecimal.ZERO;
 
-    @Column(name = "fx_difference_amount", nullable = false)
-    private BigDecimal fxDifferenceAmount = BigDecimal.ZERO;
+  @Column(name = "fx_difference_amount", nullable = false)
+  private BigDecimal fxDifferenceAmount = BigDecimal.ZERO;
 
-    @Column(name = "currency", nullable = false)
-    private String currency = "INR";
+  @Column(name = "currency", nullable = false)
+  private String currency = "INR";
 
-    @Column(name = "idempotency_key", length = 128)
-    private String idempotencyKey;
+  @Column(name = "idempotency_key", length = 128)
+  private String idempotencyKey;
 
-    private String memo;
+  private String memo;
 
-    @Column(name = "created_at", nullable = false)
-    private Instant createdAt;
+  @Column(name = "created_at", nullable = false)
+  private Instant createdAt;
 
-    @PrePersist
-    public void prePersist() {
-        if (createdAt == null) {
-            createdAt = CompanyTime.now(company);
-        }
-        if (settlementDate == null) {
-            settlementDate = CompanyTime.today(company);
-        }
+  @PrePersist
+  public void prePersist() {
+    if (createdAt == null) {
+      createdAt = CompanyTime.now(company);
     }
-
-    public Long getId() {
-        return id;
+    if (settlementDate == null) {
+      settlementDate = CompanyTime.today(company);
     }
+  }
 
-    public Company getCompany() {
-        return company;
-    }
+  public Long getId() {
+    return id;
+  }
 
-    public void setCompany(Company company) {
-        this.company = company;
-    }
+  public Company getCompany() {
+    return company;
+  }
 
-    public PartnerType getPartnerType() {
-        return partnerType;
-    }
+  public void setCompany(Company company) {
+    this.company = company;
+  }
 
-    public void setPartnerType(PartnerType partnerType) {
-        this.partnerType = partnerType;
-    }
+  public PartnerType getPartnerType() {
+    return partnerType;
+  }
 
-    public Dealer getDealer() {
-        return dealer;
-    }
+  public void setPartnerType(PartnerType partnerType) {
+    this.partnerType = partnerType;
+  }
 
-    public void setDealer(Dealer dealer) {
-        this.dealer = dealer;
-    }
+  public Dealer getDealer() {
+    return dealer;
+  }
 
-    public Supplier getSupplier() {
-        return supplier;
-    }
+  public void setDealer(Dealer dealer) {
+    this.dealer = dealer;
+  }
 
-    public void setSupplier(Supplier supplier) {
-        this.supplier = supplier;
-    }
+  public Supplier getSupplier() {
+    return supplier;
+  }
 
-    public Invoice getInvoice() {
-        return invoice;
-    }
+  public void setSupplier(Supplier supplier) {
+    this.supplier = supplier;
+  }
 
-    public void setInvoice(Invoice invoice) {
-        this.invoice = invoice;
-    }
+  public Invoice getInvoice() {
+    return invoice;
+  }
 
-    public RawMaterialPurchase getPurchase() {
-        return purchase;
-    }
+  public void setInvoice(Invoice invoice) {
+    this.invoice = invoice;
+  }
 
-    public void setPurchase(RawMaterialPurchase purchase) {
-        this.purchase = purchase;
-    }
+  public RawMaterialPurchase getPurchase() {
+    return purchase;
+  }
 
-    public JournalEntry getJournalEntry() {
-        return journalEntry;
-    }
+  public void setPurchase(RawMaterialPurchase purchase) {
+    this.purchase = purchase;
+  }
 
-    public void setJournalEntry(JournalEntry journalEntry) {
-        this.journalEntry = journalEntry;
-    }
+  public JournalEntry getJournalEntry() {
+    return journalEntry;
+  }
 
-    public LocalDate getSettlementDate() {
-        return settlementDate;
-    }
+  public void setJournalEntry(JournalEntry journalEntry) {
+    this.journalEntry = journalEntry;
+  }
 
-    public void setSettlementDate(LocalDate settlementDate) {
-        this.settlementDate = settlementDate;
-    }
+  public LocalDate getSettlementDate() {
+    return settlementDate;
+  }
 
-    public BigDecimal getAllocationAmount() {
-        return allocationAmount;
-    }
+  public void setSettlementDate(LocalDate settlementDate) {
+    this.settlementDate = settlementDate;
+  }
 
-    public void setAllocationAmount(BigDecimal allocationAmount) {
-        this.allocationAmount = allocationAmount;
-    }
+  public BigDecimal getAllocationAmount() {
+    return allocationAmount;
+  }
 
-    public BigDecimal getDiscountAmount() {
-        return discountAmount;
-    }
+  public void setAllocationAmount(BigDecimal allocationAmount) {
+    this.allocationAmount = allocationAmount;
+  }
 
-    public void setDiscountAmount(BigDecimal discountAmount) {
-        this.discountAmount = discountAmount;
-    }
+  public BigDecimal getDiscountAmount() {
+    return discountAmount;
+  }
 
-    public BigDecimal getWriteOffAmount() {
-        return writeOffAmount;
-    }
+  public void setDiscountAmount(BigDecimal discountAmount) {
+    this.discountAmount = discountAmount;
+  }
 
-    public void setWriteOffAmount(BigDecimal writeOffAmount) {
-        this.writeOffAmount = writeOffAmount;
-    }
+  public BigDecimal getWriteOffAmount() {
+    return writeOffAmount;
+  }
 
-    public BigDecimal getFxDifferenceAmount() {
-        return fxDifferenceAmount;
-    }
+  public void setWriteOffAmount(BigDecimal writeOffAmount) {
+    this.writeOffAmount = writeOffAmount;
+  }
 
-    public void setFxDifferenceAmount(BigDecimal fxDifferenceAmount) {
-        this.fxDifferenceAmount = fxDifferenceAmount;
-    }
+  public BigDecimal getFxDifferenceAmount() {
+    return fxDifferenceAmount;
+  }
 
-    public String getCurrency() {
-        return currency;
-    }
+  public void setFxDifferenceAmount(BigDecimal fxDifferenceAmount) {
+    this.fxDifferenceAmount = fxDifferenceAmount;
+  }
 
-    public void setCurrency(String currency) {
-        this.currency = currency;
-    }
+  public String getCurrency() {
+    return currency;
+  }
 
-    public String getIdempotencyKey() {
-        return idempotencyKey;
-    }
+  public void setCurrency(String currency) {
+    this.currency = currency;
+  }
 
-    public void setIdempotencyKey(String idempotencyKey) {
-        this.idempotencyKey = idempotencyKey;
-    }
+  public String getIdempotencyKey() {
+    return idempotencyKey;
+  }
 
-    public String getMemo() {
-        return memo;
-    }
+  public void setIdempotencyKey(String idempotencyKey) {
+    this.idempotencyKey = idempotencyKey;
+  }
 
-    public void setMemo(String memo) {
-        this.memo = memo;
-    }
+  public String getMemo() {
+    return memo;
+  }
 
-    public Instant getCreatedAt() {
-        return createdAt;
-    }
+  public void setMemo(String memo) {
+    this.memo = memo;
+  }
+
+  public Instant getCreatedAt() {
+    return createdAt;
+  }
 }

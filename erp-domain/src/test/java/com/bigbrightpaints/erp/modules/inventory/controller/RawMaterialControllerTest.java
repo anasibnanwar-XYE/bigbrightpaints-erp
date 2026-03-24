@@ -1,26 +1,5 @@
 package com.bigbrightpaints.erp.modules.inventory.controller;
 
-import com.bigbrightpaints.erp.core.exception.ApplicationException;
-import com.bigbrightpaints.erp.core.exception.ErrorCode;
-import com.bigbrightpaints.erp.modules.inventory.dto.InventoryExpiringBatchDto;
-import com.bigbrightpaints.erp.modules.inventory.dto.RawMaterialAdjustmentRequest;
-import com.bigbrightpaints.erp.modules.inventory.dto.StockSummaryDto;
-import com.bigbrightpaints.erp.modules.inventory.service.InventoryBatchQueryService;
-import com.bigbrightpaints.erp.modules.inventory.service.RawMaterialService;
-import jakarta.validation.ConstraintViolationException;
-import jakarta.validation.Validation;
-import jakarta.validation.Validator;
-import org.junit.jupiter.api.Tag;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-
-import java.math.BigDecimal;
-import java.time.LocalDate;
-import java.util.List;
-import java.util.UUID;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.eq;
@@ -28,177 +7,210 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.UUID;
+
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
+import com.bigbrightpaints.erp.modules.inventory.dto.InventoryExpiringBatchDto;
+import com.bigbrightpaints.erp.modules.inventory.dto.RawMaterialAdjustmentRequest;
+import com.bigbrightpaints.erp.modules.inventory.dto.StockSummaryDto;
+import com.bigbrightpaints.erp.modules.inventory.service.InventoryBatchQueryService;
+import com.bigbrightpaints.erp.modules.inventory.service.RawMaterialService;
+
+import jakarta.validation.ConstraintViolationException;
+import jakarta.validation.Validation;
+import jakarta.validation.Validator;
+
 @ExtendWith(MockitoExtension.class)
 @Tag("critical")
 class RawMaterialControllerTest {
 
-    @Mock
-    private RawMaterialService rawMaterialService;
+  @Mock private RawMaterialService rawMaterialService;
 
-    @Mock
-    private InventoryBatchQueryService inventoryBatchQueryService;
+  @Mock private InventoryBatchQueryService inventoryBatchQueryService;
 
-    @Test
-    void adjustRawMaterials_appliesHeaderIdempotencyWhenBodyMissing() {
-        RawMaterialController controller = controller();
-        RawMaterialAdjustmentRequest request = adjustmentRequest(null);
+  @Test
+  void adjustRawMaterials_appliesHeaderIdempotencyWhenBodyMissing() {
+    RawMaterialController controller = controller();
+    RawMaterialAdjustmentRequest request = adjustmentRequest(null);
 
-        controller.adjustRawMaterials("header-key", null, request);
+    controller.adjustRawMaterials("header-key", null, request);
 
-        verify(rawMaterialService).adjustStock(eq(new RawMaterialAdjustmentRequest(
-                request.adjustmentDate(),
-                request.direction(),
-                request.adjustmentAccountId(),
-                request.reason(),
-                request.adminOverride(),
-                "header-key",
-                request.lines()
-        )));
-    }
+    verify(rawMaterialService)
+        .adjustStock(
+            eq(
+                new RawMaterialAdjustmentRequest(
+                    request.adjustmentDate(),
+                    request.direction(),
+                    request.adjustmentAccountId(),
+                    request.reason(),
+                    request.adminOverride(),
+                    "header-key",
+                    request.lines())));
+  }
 
-    @Test
-    void adjustRawMaterials_rejectsWhenHeaderBodyMismatch() {
-        RawMaterialController controller = controller();
+  @Test
+  void adjustRawMaterials_rejectsWhenHeaderBodyMismatch() {
+    RawMaterialController controller = controller();
 
-        RawMaterialAdjustmentRequest request = adjustmentRequest("body-key");
-        assertThatThrownBy(() -> controller.adjustRawMaterials("header-key", null, request))
-                .isInstanceOfSatisfying(ApplicationException.class, ex -> {
-                    assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_INVALID_INPUT);
-                    assertThat(ex.getMessage()).isEqualTo("Idempotency key mismatch between header and request body");
-                });
+    RawMaterialAdjustmentRequest request = adjustmentRequest("body-key");
+    assertThatThrownBy(() -> controller.adjustRawMaterials("header-key", null, request))
+        .isInstanceOfSatisfying(
+            ApplicationException.class,
+            ex -> {
+              assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_INVALID_INPUT);
+              assertThat(ex.getMessage())
+                  .isEqualTo("Idempotency key mismatch between header and request body");
+            });
 
-        verifyNoInteractions(rawMaterialService);
-    }
+    verifyNoInteractions(rawMaterialService);
+  }
 
-    @Test
-    void adjustRawMaterials_rejectsWhenIdempotencyMissingInBodyAndHeader() {
-        RawMaterialController controller = controller();
+  @Test
+  void adjustRawMaterials_rejectsWhenIdempotencyMissingInBodyAndHeader() {
+    RawMaterialController controller = controller();
 
-        RawMaterialAdjustmentRequest request = adjustmentRequest(null);
-        assertThatThrownBy(() -> controller.adjustRawMaterials(null, null, request))
-                .isInstanceOfSatisfying(ApplicationException.class, ex -> {
-                    assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD);
-                    assertThat(ex.getMessage()).isEqualTo("Idempotency-Key header is required");
-                });
+    RawMaterialAdjustmentRequest request = adjustmentRequest(null);
+    assertThatThrownBy(() -> controller.adjustRawMaterials(null, null, request))
+        .isInstanceOfSatisfying(
+            ApplicationException.class,
+            ex -> {
+              assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD);
+              assertThat(ex.getMessage()).isEqualTo("Idempotency-Key header is required");
+            });
 
-        verifyNoInteractions(rawMaterialService);
-    }
+    verifyNoInteractions(rawMaterialService);
+  }
 
-    @Test
-    void adjustRawMaterials_validatesResolvedRequest() {
-        RawMaterialController controller = controller();
+  @Test
+  void adjustRawMaterials_validatesResolvedRequest() {
+    RawMaterialController controller = controller();
 
-        RawMaterialAdjustmentRequest invalid = new RawMaterialAdjustmentRequest(
-                LocalDate.of(2026, 3, 4),
-                null,
-                null,
-                "reason",
-                Boolean.FALSE,
-                null,
-                List.of(new RawMaterialAdjustmentRequest.LineRequest(null, null, null, "note"))
-        );
+    RawMaterialAdjustmentRequest invalid =
+        new RawMaterialAdjustmentRequest(
+            LocalDate.of(2026, 3, 4),
+            null,
+            null,
+            "reason",
+            Boolean.FALSE,
+            null,
+            List.of(new RawMaterialAdjustmentRequest.LineRequest(null, null, null, "note")));
 
-        assertThatThrownBy(() -> controller.adjustRawMaterials("header-key", null, invalid))
-                .isInstanceOf(ConstraintViolationException.class);
+    assertThatThrownBy(() -> controller.adjustRawMaterials("header-key", null, invalid))
+        .isInstanceOf(ConstraintViolationException.class);
 
-        verifyNoInteractions(rawMaterialService);
-    }
+    verifyNoInteractions(rawMaterialService);
+  }
 
-    @Test
-    void adjustRawMaterials_fallsBackToLegacyIdempotencyHeader() {
-        RawMaterialController controller = controller();
-        RawMaterialAdjustmentRequest request = adjustmentRequest(null);
+  @Test
+  void adjustRawMaterials_fallsBackToLegacyIdempotencyHeader() {
+    RawMaterialController controller = controller();
+    RawMaterialAdjustmentRequest request = adjustmentRequest(null);
 
-        controller.adjustRawMaterials(null, "legacy-key", request);
+    controller.adjustRawMaterials(null, "legacy-key", request);
 
-        verify(rawMaterialService).adjustStock(eq(new RawMaterialAdjustmentRequest(
-                request.adjustmentDate(),
-                request.direction(),
-                request.adjustmentAccountId(),
-                request.reason(),
-                request.adminOverride(),
-                "legacy-key",
-                request.lines()
-        )));
-    }
+    verify(rawMaterialService)
+        .adjustStock(
+            eq(
+                new RawMaterialAdjustmentRequest(
+                    request.adjustmentDate(),
+                    request.direction(),
+                    request.adjustmentAccountId(),
+                    request.reason(),
+                    request.adminOverride(),
+                    "legacy-key",
+                    request.lines())));
+  }
 
-    @Test
-    void adjustRawMaterials_rejectsMismatchedIdempotencyHeaders() {
-        RawMaterialController controller = controller();
+  @Test
+  void adjustRawMaterials_rejectsMismatchedIdempotencyHeaders() {
+    RawMaterialController controller = controller();
 
-        assertThatThrownBy(() -> controller.adjustRawMaterials("header-key", "legacy-key", adjustmentRequest(null)))
-                .isInstanceOfSatisfying(ApplicationException.class, ex -> {
-                    assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_INVALID_INPUT);
-                    assertThat(ex.getMessage()).isEqualTo("Idempotency key mismatch between Idempotency-Key and X-Idempotency-Key headers");
-                });
+    assertThatThrownBy(
+            () ->
+                controller.adjustRawMaterials("header-key", "legacy-key", adjustmentRequest(null)))
+        .isInstanceOfSatisfying(
+            ApplicationException.class,
+            ex -> {
+              assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_INVALID_INPUT);
+              assertThat(ex.getMessage())
+                  .isEqualTo(
+                      "Idempotency key mismatch between Idempotency-Key and X-Idempotency-Key"
+                          + " headers");
+            });
 
-        verifyNoInteractions(rawMaterialService);
-    }
+    verifyNoInteractions(rawMaterialService);
+  }
 
-    @Test
-    void lowStock_delegatesToRawMaterialService() {
-        RawMaterialController controller = controller();
+  @Test
+  void lowStock_delegatesToRawMaterialService() {
+    RawMaterialController controller = controller();
 
-        controller.lowStock();
+    controller.lowStock();
 
-        verify(rawMaterialService).listLowStock();
-    }
+    verify(rawMaterialService).listLowStock();
+  }
 
-    @Test
-    void stockSummary_delegatesToRawMaterialService() {
-        RawMaterialController controller = controller();
-        StockSummaryDto summary = new StockSummaryDto(
-                11L,
-                UUID.randomUUID(),
-                "RM-SUMMARY",
-                "Summary",
-                new BigDecimal("12.00"),
-                BigDecimal.ONE,
-                new BigDecimal("11.00"),
-                new BigDecimal("120.00"),
-                10L,
-                2L,
-                1L,
-                5L);
-        when(rawMaterialService.summarizeStock()).thenReturn(summary);
+  @Test
+  void stockSummary_delegatesToRawMaterialService() {
+    RawMaterialController controller = controller();
+    StockSummaryDto summary =
+        new StockSummaryDto(
+            11L,
+            UUID.randomUUID(),
+            "RM-SUMMARY",
+            "Summary",
+            new BigDecimal("12.00"),
+            BigDecimal.ONE,
+            new BigDecimal("11.00"),
+            new BigDecimal("120.00"),
+            10L,
+            2L,
+            1L,
+            5L);
+    when(rawMaterialService.summarizeStock()).thenReturn(summary);
 
-        assertThat(controller.stockSummary().getBody()).isNotNull();
+    assertThat(controller.stockSummary().getBody()).isNotNull();
 
-        verify(rawMaterialService).summarizeStock();
-    }
+    verify(rawMaterialService).summarizeStock();
+  }
 
-    @Test
-    void expiringSoonBatches_clampsNegativeDaysToZero() {
-        RawMaterialController controller = controller();
+  @Test
+  void expiringSoonBatches_clampsNegativeDaysToZero() {
+    RawMaterialController controller = controller();
 
-        List<InventoryExpiringBatchDto> result = List.of();
-        when(inventoryBatchQueryService.listExpiringSoonBatches(0)).thenReturn(result);
+    List<InventoryExpiringBatchDto> result = List.of();
+    when(inventoryBatchQueryService.listExpiringSoonBatches(0)).thenReturn(result);
 
-        controller.expiringSoonBatches(-5);
+    controller.expiringSoonBatches(-5);
 
-        verify(inventoryBatchQueryService).listExpiringSoonBatches(0);
-    }
+    verify(inventoryBatchQueryService).listExpiringSoonBatches(0);
+  }
 
-    private RawMaterialController controller() {
-        Validator validator = Validation.buildDefaultValidatorFactory().getValidator();
-        return new RawMaterialController(rawMaterialService, inventoryBatchQueryService, validator);
-    }
+  private RawMaterialController controller() {
+    Validator validator = Validation.buildDefaultValidatorFactory().getValidator();
+    return new RawMaterialController(rawMaterialService, inventoryBatchQueryService, validator);
+  }
 
-    private RawMaterialAdjustmentRequest adjustmentRequest(String idempotencyKey) {
-        return new RawMaterialAdjustmentRequest(
-                LocalDate.of(2026, 3, 4),
-                RawMaterialAdjustmentRequest.AdjustmentDirection.INCREASE,
-                77L,
-                "recount",
-                Boolean.FALSE,
-                idempotencyKey,
-                List.of(new RawMaterialAdjustmentRequest.LineRequest(
-                        11L,
-                        new BigDecimal("3.00"),
-                        new BigDecimal("120.00"),
-                        "count"
-                ))
-        );
-    }
-
+  private RawMaterialAdjustmentRequest adjustmentRequest(String idempotencyKey) {
+    return new RawMaterialAdjustmentRequest(
+        LocalDate.of(2026, 3, 4),
+        RawMaterialAdjustmentRequest.AdjustmentDirection.INCREASE,
+        77L,
+        "recount",
+        Boolean.FALSE,
+        idempotencyKey,
+        List.of(
+            new RawMaterialAdjustmentRequest.LineRequest(
+                11L, new BigDecimal("3.00"), new BigDecimal("120.00"), "count")));
+  }
 }

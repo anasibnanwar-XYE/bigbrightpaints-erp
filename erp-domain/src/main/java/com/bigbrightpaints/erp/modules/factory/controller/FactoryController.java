@@ -1,100 +1,113 @@
 package com.bigbrightpaints.erp.modules.factory.controller;
 
-import com.bigbrightpaints.erp.modules.factory.dto.*;
-import com.bigbrightpaints.erp.modules.factory.service.CostAllocationService;
-import com.bigbrightpaints.erp.modules.factory.service.FactoryService;
-import com.bigbrightpaints.erp.shared.dto.ApiResponse;
-import jakarta.validation.Valid;
+import java.util.List;
+
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
+import com.bigbrightpaints.erp.modules.factory.dto.*;
+import com.bigbrightpaints.erp.modules.factory.service.CostAllocationService;
+import com.bigbrightpaints.erp.modules.factory.service.FactoryService;
+import com.bigbrightpaints.erp.shared.dto.ApiResponse;
+
+import jakarta.validation.Valid;
 
 @RestController
 @RequestMapping("/api/v1/factory")
 @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_FACTORY')")
 public class FactoryController {
 
-    private final FactoryService factoryService;
-    private final CostAllocationService costAllocationService;
+  private final FactoryService factoryService;
+  private final CostAllocationService costAllocationService;
 
-    public FactoryController(FactoryService factoryService,
-                            CostAllocationService costAllocationService) {
-        this.factoryService = factoryService;
-        this.costAllocationService = costAllocationService;
-    }
+  public FactoryController(
+      FactoryService factoryService, CostAllocationService costAllocationService) {
+    this.factoryService = factoryService;
+    this.costAllocationService = costAllocationService;
+  }
 
-    /* Plans */
-    @GetMapping("/production-plans")
-    public ResponseEntity<ApiResponse<List<ProductionPlanDto>>> plans() {
-        return ResponseEntity.ok(ApiResponse.success(factoryService.listPlans()));
-    }
+  /* Plans */
+  @GetMapping("/production-plans")
+  public ResponseEntity<ApiResponse<List<ProductionPlanDto>>> plans() {
+    return ResponseEntity.ok(ApiResponse.success(factoryService.listPlans()));
+  }
 
-    @PostMapping("/production-plans")
-    public ResponseEntity<ApiResponse<ProductionPlanDto>> createPlan(@Valid @RequestBody ProductionPlanRequest request) {
-        return ResponseEntity.ok(ApiResponse.success("Plan created", factoryService.createPlan(request)));
-    }
+  @PostMapping("/production-plans")
+  public ResponseEntity<ApiResponse<ProductionPlanDto>> createPlan(
+      @Valid @RequestBody ProductionPlanRequest request) {
+    return ResponseEntity.ok(
+        ApiResponse.success("Plan created", factoryService.createPlan(request)));
+  }
 
-    @PutMapping("/production-plans/{id}")
-    public ResponseEntity<ApiResponse<ProductionPlanDto>> updatePlan(@PathVariable Long id,
-                                                                      @Valid @RequestBody ProductionPlanRequest request) {
-        return ResponseEntity.ok(ApiResponse.success("Plan updated", factoryService.updatePlan(id, request)));
-    }
+  @PutMapping("/production-plans/{id}")
+  public ResponseEntity<ApiResponse<ProductionPlanDto>> updatePlan(
+      @PathVariable Long id, @Valid @RequestBody ProductionPlanRequest request) {
+    return ResponseEntity.ok(
+        ApiResponse.success("Plan updated", factoryService.updatePlan(id, request)));
+  }
 
-    @PatchMapping("/production-plans/{id}/status")
-    public ResponseEntity<ApiResponse<ProductionPlanDto>> updatePlanStatus(@PathVariable Long id,
-                                                                            @RequestBody StatusRequest request) {
-        return ResponseEntity.ok(ApiResponse.success("Status updated", factoryService.updatePlanStatus(id, request.status())));
-    }
+  @PatchMapping("/production-plans/{id}/status")
+  public ResponseEntity<ApiResponse<ProductionPlanDto>> updatePlanStatus(
+      @PathVariable Long id, @RequestBody StatusRequest request) {
+    return ResponseEntity.ok(
+        ApiResponse.success(
+            "Status updated", factoryService.updatePlanStatus(id, request.status())));
+  }
 
-    @DeleteMapping("/production-plans/{id}")
-    public ResponseEntity<Void> deletePlan(@PathVariable Long id) {
-        factoryService.deletePlan(id);
-        return ResponseEntity.noContent().build();
-    }
+  @DeleteMapping("/production-plans/{id}")
+  public ResponseEntity<Void> deletePlan(@PathVariable Long id) {
+    factoryService.deletePlan(id);
+    return ResponseEntity.noContent().build();
+  }
 
-    public record StatusRequest(String status) {}
+  public record StatusRequest(String status) {}
 
-    /* Batches */
-    @GetMapping("/production-batches")
-    public ResponseEntity<ApiResponse<List<ProductionBatchDto>>> batches() {
-        return ResponseEntity.ok(ApiResponse.success(factoryService.listBatches()));
-    }
+  /* Batches */
+  @GetMapping("/production-batches")
+  public ResponseEntity<ApiResponse<List<ProductionBatchDto>>> batches() {
+    return ResponseEntity.ok(ApiResponse.success(factoryService.listBatches()));
+  }
 
-    @PostMapping("/production-batches")
-    public ResponseEntity<ApiResponse<ProductionBatchDto>> logBatch(@RequestParam(required = false) Long planId,
-                                                                    @Valid @RequestBody ProductionBatchRequest request) {
-        return ResponseEntity.ok(ApiResponse.success("Batch logged", factoryService.logBatch(planId, request)));
-    }
+  @PostMapping("/production-batches")
+  public ResponseEntity<ApiResponse<ProductionBatchDto>> logBatch(
+      @RequestParam(required = false) Long planId,
+      @Valid @RequestBody ProductionBatchRequest request) {
+    return ResponseEntity.ok(
+        ApiResponse.success("Batch logged", factoryService.logBatch(planId, request)));
+  }
 
-    /* Tasks */
-    @GetMapping("/tasks")
-    public ResponseEntity<ApiResponse<List<FactoryTaskDto>>> tasks() {
-        return ResponseEntity.ok(ApiResponse.success(factoryService.listTasks()));
-    }
+  /* Tasks */
+  @GetMapping("/tasks")
+  public ResponseEntity<ApiResponse<List<FactoryTaskDto>>> tasks() {
+    return ResponseEntity.ok(ApiResponse.success(factoryService.listTasks()));
+  }
 
-    @PostMapping("/tasks")
-    public ResponseEntity<ApiResponse<FactoryTaskDto>> createTask(@Valid @RequestBody FactoryTaskRequest request) {
-        return ResponseEntity.ok(ApiResponse.success("Task created", factoryService.createTask(request)));
-    }
+  @PostMapping("/tasks")
+  public ResponseEntity<ApiResponse<FactoryTaskDto>> createTask(
+      @Valid @RequestBody FactoryTaskRequest request) {
+    return ResponseEntity.ok(
+        ApiResponse.success("Task created", factoryService.createTask(request)));
+  }
 
-    @PutMapping("/tasks/{id}")
-    public ResponseEntity<ApiResponse<FactoryTaskDto>> updateTask(@PathVariable Long id,
-                                                                   @Valid @RequestBody FactoryTaskRequest request) {
-        return ResponseEntity.ok(ApiResponse.success("Task updated", factoryService.updateTask(id, request)));
-    }
+  @PutMapping("/tasks/{id}")
+  public ResponseEntity<ApiResponse<FactoryTaskDto>> updateTask(
+      @PathVariable Long id, @Valid @RequestBody FactoryTaskRequest request) {
+    return ResponseEntity.ok(
+        ApiResponse.success("Task updated", factoryService.updateTask(id, request)));
+  }
 
-    /* Dashboard */
-    @GetMapping("/dashboard")
-    public ResponseEntity<ApiResponse<FactoryDashboardDto>> dashboard() {
-        return ResponseEntity.ok(ApiResponse.success(factoryService.dashboard()));
-    }
+  /* Dashboard */
+  @GetMapping("/dashboard")
+  public ResponseEntity<ApiResponse<FactoryDashboardDto>> dashboard() {
+    return ResponseEntity.ok(ApiResponse.success(factoryService.dashboard()));
+  }
 
-    /* Cost Allocation */
-    @PostMapping("/cost-allocation")
-    public ResponseEntity<ApiResponse<CostAllocationResponse>> allocateCosts(@Valid @RequestBody CostAllocationRequest request) {
-        CostAllocationResponse response = costAllocationService.allocateCosts(request);
-        return ResponseEntity.ok(ApiResponse.success("Costs allocated successfully", response));
-    }
+  /* Cost Allocation */
+  @PostMapping("/cost-allocation")
+  public ResponseEntity<ApiResponse<CostAllocationResponse>> allocateCosts(
+      @Valid @RequestBody CostAllocationRequest request) {
+    CostAllocationResponse response = costAllocationService.allocateCosts(request);
+    return ResponseEntity.ok(ApiResponse.success("Costs allocated successfully", response));
+  }
 }

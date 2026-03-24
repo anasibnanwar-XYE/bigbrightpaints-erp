@@ -7,18 +7,16 @@ import java.util.List;
 import java.util.UUID;
 
 public record InventoryBatchTraceabilityDto(
-        Long batchId,
-        UUID publicId,
-        String batchType,
-        String itemCode,
-        String itemName,
-        String batchNumber,
-        Instant manufacturingDate,
-        LocalDate expiryDate,
-        BigDecimal quantityTotal,
-        BigDecimal quantityAvailable,
-        BigDecimal unitCost,
-        String source,
-        List<InventoryBatchMovementDto> movements
-) {
-}
+    Long batchId,
+    UUID publicId,
+    String batchType,
+    String itemCode,
+    String itemName,
+    String batchNumber,
+    Instant manufacturingDate,
+    LocalDate expiryDate,
+    BigDecimal quantityTotal,
+    BigDecimal quantityAvailable,
+    BigDecimal unitCost,
+    String source,
+    List<InventoryBatchMovementDto> movements) {}

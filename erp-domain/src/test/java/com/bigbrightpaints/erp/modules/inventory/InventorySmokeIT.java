@@ -1,50 +1,52 @@
 package com.bigbrightpaints.erp.modules.inventory;
 
-import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.util.Map;
+
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.http.*;
 
-import java.math.BigDecimal;
-import java.util.List;
-import java.util.Map;
-
-import static org.assertj.core.api.Assertions.assertThat;
+import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
 
 public class InventorySmokeIT extends AbstractIntegrationTest {
 
-    @Autowired private TestRestTemplate rest;
-    private static final String COMPANY_CODE = "ACME";
-    private static final String ADMIN_EMAIL = "admin@bbp.com";
-    private static final String ADMIN_PASSWORD = "admin123";
+  @Autowired private TestRestTemplate rest;
+  private static final String COMPANY_CODE = "ACME";
+  private static final String ADMIN_EMAIL = "admin@bbp.com";
+  private static final String ADMIN_PASSWORD = "admin123";
 
-    @org.junit.jupiter.api.BeforeEach
-    void seed() {
-        dataSeeder.ensureUser(ADMIN_EMAIL, ADMIN_PASSWORD, "Admin", COMPANY_CODE, java.util.List.of("ROLE_ADMIN"));
-    }
+  @org.junit.jupiter.api.BeforeEach
+  void seed() {
+    dataSeeder.ensureUser(
+        ADMIN_EMAIL, ADMIN_PASSWORD, "Admin", COMPANY_CODE, java.util.List.of("ROLE_ADMIN"));
+  }
 
-    private String loginToken() {
-        Map<String, Object> req = Map.of(
-                "email", ADMIN_EMAIL,
-                "password", ADMIN_PASSWORD,
-                "companyCode", COMPANY_CODE
-        );
-        return (String) rest.postForEntity("/api/v1/auth/login", req, Map.class).getBody().get("accessToken");
-    }
+  private String loginToken() {
+    Map<String, Object> req =
+        Map.of(
+            "email", ADMIN_EMAIL,
+            "password", ADMIN_PASSWORD,
+            "companyCode", COMPANY_CODE);
+    return (String)
+        rest.postForEntity("/api/v1/auth/login", req, Map.class).getBody().get("accessToken");
+  }
 
-    @Test
-    void stock_summary_is_available_for_inventory_workbench() {
-        String token = loginToken();
+  @Test
+  void stock_summary_is_available_for_inventory_workbench() {
+    String token = loginToken();
 
-        HttpHeaders headers = new HttpHeaders();
-        headers.setBearerAuth(token);
-        headers.setContentType(MediaType.APPLICATION_JSON);
+    HttpHeaders headers = new HttpHeaders();
+    headers.setBearerAuth(token);
+    headers.setContentType(MediaType.APPLICATION_JSON);
 
-        ResponseEntity<Map> summaryResp = rest.exchange("/api/v1/raw-materials/stock", HttpMethod.GET,
-                new HttpEntity<>(headers), Map.class);
-        assertThat(summaryResp.getStatusCode()).isEqualTo(HttpStatus.OK);
-        Map data = (Map) summaryResp.getBody().get("data");
-        assertThat(data).containsKeys("totalMaterials", "lowStockMaterials", "criticalStockMaterials");
-    }
+    ResponseEntity<Map> summaryResp =
+        rest.exchange(
+            "/api/v1/raw-materials/stock", HttpMethod.GET, new HttpEntity<>(headers), Map.class);
+    assertThat(summaryResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+    Map data = (Map) summaryResp.getBody().get("data");
+    assertThat(data).containsKeys("totalMaterials", "lowStockMaterials", "criticalStockMaterials");
+  }
 }

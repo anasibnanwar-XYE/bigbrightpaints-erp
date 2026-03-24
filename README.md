@@ -67,6 +67,16 @@ Install these before running locally:
    MIGRATION_SET=v2 mvn test -Pgate-fast -Djacoco.skip=true
    ```
 
+8. **Format code (optional)**
+   ```bash
+   cd erp-domain
+   # Check formatting without making changes
+   MIGRATION_SET=v2 mvn spotless:check
+
+   # Auto-format all Java source files
+   MIGRATION_SET=v2 mvn spotless:apply
+   ```
+
 7. **(Optional) Run the compose-backed app with the same Flyway v2 profile used by the mission**
    ```bash
    SPRING_PROFILES_ACTIVE='prod,flyway-v2' \

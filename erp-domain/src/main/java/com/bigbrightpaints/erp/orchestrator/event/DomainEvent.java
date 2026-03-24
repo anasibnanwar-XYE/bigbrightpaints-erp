@@ -1,8 +1,9 @@
 package com.bigbrightpaints.erp.orchestrator.event;
 
-import com.bigbrightpaints.erp.core.util.CompanyTime;
 import java.time.Instant;
 import java.util.UUID;
+
+import com.bigbrightpaints.erp.core.util.CompanyTime;
 
 public record DomainEvent(
     UUID id,
@@ -15,12 +16,28 @@ public record DomainEvent(
     String traceId,
     String requestId,
     String idempotencyKey,
-    Object payload
-) {
-    public static DomainEvent of(String eventType, String companyId, String userId, String entity,
-                                 String entityId, Object payload, String traceId,
-                                 String requestId, String idempotencyKey) {
-        return new DomainEvent(UUID.randomUUID(), eventType, companyId, userId, entity, entityId,
-            CompanyTime.now(), traceId, requestId, idempotencyKey, payload);
-    }
+    Object payload) {
+  public static DomainEvent of(
+      String eventType,
+      String companyId,
+      String userId,
+      String entity,
+      String entityId,
+      Object payload,
+      String traceId,
+      String requestId,
+      String idempotencyKey) {
+    return new DomainEvent(
+        UUID.randomUUID(),
+        eventType,
+        companyId,
+        userId,
+        entity,
+        entityId,
+        CompanyTime.now(),
+        traceId,
+        requestId,
+        idempotencyKey,
+        payload);
+  }
 }

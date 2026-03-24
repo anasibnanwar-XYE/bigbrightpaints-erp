@@ -1,7 +1,10 @@
 package com.bigbrightpaints.erp.core.audittrail;
 
+import java.time.Instant;
+
 import com.bigbrightpaints.erp.core.domain.VersionedEntity;
 import com.bigbrightpaints.erp.core.util.CompanyTime;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -12,105 +15,108 @@ import jakarta.persistence.Lob;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
-import java.time.Instant;
 
 @Entity
-@Table(name = "audit_action_event_retries", indexes = {
-        @Index(name = "idx_audit_action_event_retries_due", columnList = "next_attempt_at, id"),
-        @Index(name = "idx_audit_action_event_retries_company_due", columnList = "company_id, next_attempt_at, id")
-})
+@Table(
+    name = "audit_action_event_retries",
+    indexes = {
+      @Index(name = "idx_audit_action_event_retries_due", columnList = "next_attempt_at, id"),
+      @Index(
+          name = "idx_audit_action_event_retries_company_due",
+          columnList = "company_id, next_attempt_at, id")
+    })
 public class AuditActionEventRetry extends VersionedEntity {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
+  private Long id;
 
-    @Column(name = "company_id", nullable = false)
-    private Long companyId;
+  @Column(name = "company_id", nullable = false)
+  private Long companyId;
 
-    @Lob
-    @Column(name = "payload", nullable = false)
-    private String payload;
+  @Lob
+  @Column(name = "payload", nullable = false)
+  private String payload;
 
-    @Column(name = "failed_attempt_count", nullable = false)
-    private int failedAttemptCount;
+  @Column(name = "failed_attempt_count", nullable = false)
+  private int failedAttemptCount;
 
-    @Column(name = "next_attempt_at", nullable = false)
-    private Instant nextAttemptAt;
+  @Column(name = "next_attempt_at", nullable = false)
+  private Instant nextAttemptAt;
 
-    @Lob
-    @Column(name = "last_error")
-    private String lastError;
+  @Lob
+  @Column(name = "last_error")
+  private String lastError;
 
-    @Column(name = "created_at", nullable = false)
-    private Instant createdAt;
+  @Column(name = "created_at", nullable = false)
+  private Instant createdAt;
 
-    @Column(name = "updated_at", nullable = false)
-    private Instant updatedAt;
+  @Column(name = "updated_at", nullable = false)
+  private Instant updatedAt;
 
-    @PrePersist
-    protected void onCreate() {
-        Instant now = CompanyTime.now();
-        if (createdAt == null) {
-            createdAt = now;
-        }
-        if (updatedAt == null) {
-            updatedAt = now;
-        }
-        if (nextAttemptAt == null) {
-            nextAttemptAt = now;
-        }
-        if (failedAttemptCount <= 0) {
-            failedAttemptCount = 1;
-        }
+  @PrePersist
+  protected void onCreate() {
+    Instant now = CompanyTime.now();
+    if (createdAt == null) {
+      createdAt = now;
     }
-
-    @PreUpdate
-    protected void onUpdate() {
-        updatedAt = CompanyTime.now();
+    if (updatedAt == null) {
+      updatedAt = now;
     }
-
-    public Long getId() {
-        return id;
+    if (nextAttemptAt == null) {
+      nextAttemptAt = now;
     }
-
-    public Long getCompanyId() {
-        return companyId;
+    if (failedAttemptCount <= 0) {
+      failedAttemptCount = 1;
     }
+  }
 
-    public void setCompanyId(Long companyId) {
-        this.companyId = companyId;
-    }
+  @PreUpdate
+  protected void onUpdate() {
+    updatedAt = CompanyTime.now();
+  }
 
-    public String getPayload() {
-        return payload;
-    }
+  public Long getId() {
+    return id;
+  }
 
-    public void setPayload(String payload) {
-        this.payload = payload;
-    }
+  public Long getCompanyId() {
+    return companyId;
+  }
 
-    public int getFailedAttemptCount() {
-        return failedAttemptCount;
-    }
+  public void setCompanyId(Long companyId) {
+    this.companyId = companyId;
+  }
 
-    public void setFailedAttemptCount(int failedAttemptCount) {
-        this.failedAttemptCount = failedAttemptCount;
-    }
+  public String getPayload() {
+    return payload;
+  }
 
-    public Instant getNextAttemptAt() {
-        return nextAttemptAt;
-    }
+  public void setPayload(String payload) {
+    this.payload = payload;
+  }
 
-    public void setNextAttemptAt(Instant nextAttemptAt) {
-        this.nextAttemptAt = nextAttemptAt;
-    }
+  public int getFailedAttemptCount() {
+    return failedAttemptCount;
+  }
 
-    public String getLastError() {
-        return lastError;
-    }
+  public void setFailedAttemptCount(int failedAttemptCount) {
+    this.failedAttemptCount = failedAttemptCount;
+  }
 
-    public void setLastError(String lastError) {
-        this.lastError = lastError;
-    }
+  public Instant getNextAttemptAt() {
+    return nextAttemptAt;
+  }
+
+  public void setNextAttemptAt(Instant nextAttemptAt) {
+    this.nextAttemptAt = nextAttemptAt;
+  }
+
+  public String getLastError() {
+    return lastError;
+  }
+
+  public void setLastError(String lastError) {
+    this.lastError = lastError;
+  }
 }

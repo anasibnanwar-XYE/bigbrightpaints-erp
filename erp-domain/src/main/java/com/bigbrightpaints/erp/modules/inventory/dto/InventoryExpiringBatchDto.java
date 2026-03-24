@@ -6,16 +6,14 @@ import java.time.LocalDate;
 import java.util.UUID;
 
 public record InventoryExpiringBatchDto(
-        String batchType,
-        Long batchId,
-        UUID publicId,
-        String itemCode,
-        String itemName,
-        String batchCode,
-        BigDecimal quantityAvailable,
-        BigDecimal unitCost,
-        Instant manufacturedAt,
-        LocalDate expiryDate,
-        Long daysUntilExpiry
-) {
-}
+    String batchType,
+    Long batchId,
+    UUID publicId,
+    String itemCode,
+    String itemName,
+    String batchCode,
+    BigDecimal quantityAvailable,
+    BigDecimal unitCost,
+    Instant manufacturedAt,
+    LocalDate expiryDate,
+    Long daysUntilExpiry) {}

@@ -1,51 +1,64 @@
 package com.bigbrightpaints.erp.modules.purchasing.domain;
 
-import com.bigbrightpaints.erp.modules.company.domain.Company;
-import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial;
-import jakarta.persistence.LockModeType;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Optional;
+
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
-import java.time.LocalDate;
-import java.util.List;
-import java.util.Optional;
+import com.bigbrightpaints.erp.modules.company.domain.Company;
+import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial;
+
+import jakarta.persistence.LockModeType;
 
 public interface GoodsReceiptRepository extends JpaRepository<GoodsReceipt, Long> {
 
-    @EntityGraph(attributePaths = {"supplier", "purchaseOrder", "lines", "lines.rawMaterial"})
-    @Query("select gr from GoodsReceipt gr where gr.company = :company order by gr.receiptDate desc")
-    List<GoodsReceipt> findByCompanyWithLinesOrderByReceiptDateDesc(@Param("company") Company company);
+  @EntityGraph(attributePaths = {"supplier", "purchaseOrder", "lines", "lines.rawMaterial"})
+  @Query("select gr from GoodsReceipt gr where gr.company = :company order by gr.receiptDate desc")
+  List<GoodsReceipt> findByCompanyWithLinesOrderByReceiptDateDesc(
+      @Param("company") Company company);
 
-    @EntityGraph(attributePaths = {"supplier", "purchaseOrder", "lines", "lines.rawMaterial"})
-    @Query("select gr from GoodsReceipt gr where gr.company = :company and gr.supplier = :supplier order by gr.receiptDate desc")
-    List<GoodsReceipt> findByCompanyAndSupplierWithLinesOrderByReceiptDateDesc(@Param("company") Company company,
-                                                                               @Param("supplier") Supplier supplier);
+  @EntityGraph(attributePaths = {"supplier", "purchaseOrder", "lines", "lines.rawMaterial"})
+  @Query(
+      "select gr from GoodsReceipt gr where gr.company = :company and gr.supplier = :supplier order"
+          + " by gr.receiptDate desc")
+  List<GoodsReceipt> findByCompanyAndSupplierWithLinesOrderByReceiptDateDesc(
+      @Param("company") Company company, @Param("supplier") Supplier supplier);
 
-    boolean existsByCompanyAndLinesRawMaterial(Company company, RawMaterial rawMaterial);
+  boolean existsByCompanyAndLinesRawMaterial(Company company, RawMaterial rawMaterial);
 
-    Optional<GoodsReceipt> findByCompanyAndId(Company company, Long id);
-    Optional<GoodsReceipt> findByCompanyAndReceiptNumberIgnoreCase(Company company, String receiptNumber);
-    Optional<GoodsReceipt> findByCompanyAndIdempotencyKey(Company company, String idempotencyKey);
+  Optional<GoodsReceipt> findByCompanyAndId(Company company, Long id);
 
-    @EntityGraph(attributePaths = {"lines", "lines.rawMaterial"})
-    List<GoodsReceipt> findByPurchaseOrder(PurchaseOrder purchaseOrder);
+  Optional<GoodsReceipt> findByCompanyAndReceiptNumberIgnoreCase(
+      Company company, String receiptNumber);
 
-    @EntityGraph(attributePaths = {"supplier", "purchaseOrder", "lines", "lines.rawMaterial"})
-    Optional<GoodsReceipt> findWithLinesByCompanyAndIdempotencyKey(Company company, String idempotencyKey);
+  Optional<GoodsReceipt> findByCompanyAndIdempotencyKey(Company company, String idempotencyKey);
 
-    boolean existsByPurchaseOrder(PurchaseOrder purchaseOrder);
+  @EntityGraph(attributePaths = {"lines", "lines.rawMaterial"})
+  List<GoodsReceipt> findByPurchaseOrder(PurchaseOrder purchaseOrder);
 
-    long countByCompanyAndReceiptDateBetweenAndStatusNot(Company company, LocalDate startDate, LocalDate endDate, GoodsReceiptStatus status);
+  @EntityGraph(attributePaths = {"supplier", "purchaseOrder", "lines", "lines.rawMaterial"})
+  Optional<GoodsReceipt> findWithLinesByCompanyAndIdempotencyKey(
+      Company company, String idempotencyKey);
 
-    @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("select gr from GoodsReceipt gr where gr.company = :company and gr.id = :id")
-    Optional<GoodsReceipt> lockByCompanyAndId(@Param("company") Company company, @Param("id") Long id);
+  boolean existsByPurchaseOrder(PurchaseOrder purchaseOrder);
 
-    @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("select gr from GoodsReceipt gr where gr.company = :company and lower(gr.receiptNumber) = lower(:receiptNumber)")
-    Optional<GoodsReceipt> lockByCompanyAndReceiptNumberIgnoreCase(@Param("company") Company company,
-                                                                   @Param("receiptNumber") String receiptNumber);
+  long countByCompanyAndReceiptDateBetweenAndStatusNot(
+      Company company, LocalDate startDate, LocalDate endDate, GoodsReceiptStatus status);
+
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
+  @Query("select gr from GoodsReceipt gr where gr.company = :company and gr.id = :id")
+  Optional<GoodsReceipt> lockByCompanyAndId(
+      @Param("company") Company company, @Param("id") Long id);
+
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
+  @Query(
+      "select gr from GoodsReceipt gr where gr.company = :company and lower(gr.receiptNumber) ="
+          + " lower(:receiptNumber)")
+  Optional<GoodsReceipt> lockByCompanyAndReceiptNumberIgnoreCase(
+      @Param("company") Company company, @Param("receiptNumber") String receiptNumber);
 }

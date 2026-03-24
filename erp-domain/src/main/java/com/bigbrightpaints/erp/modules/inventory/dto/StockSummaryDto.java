@@ -8,15 +8,15 @@ import java.util.UUID;
  * Fields not relevant to a context can be null.
  */
 public record StockSummaryDto(
-        Long id,
-        UUID publicId,
-        String code,
-        String name,
-        BigDecimal currentStock,
-        BigDecimal reservedStock,
-        BigDecimal availableStock,
-        BigDecimal weightedAverageCost,
-        Long totalMaterials,
-        Long lowStockMaterials,
-        Long criticalStockMaterials,
-        Long totalBatches) {}
+    Long id,
+    UUID publicId,
+    String code,
+    String name,
+    BigDecimal currentStock,
+    BigDecimal reservedStock,
+    BigDecimal availableStock,
+    BigDecimal weightedAverageCost,
+    Long totalMaterials,
+    Long lowStockMaterials,
+    Long criticalStockMaterials,
+    Long totalBatches) {}

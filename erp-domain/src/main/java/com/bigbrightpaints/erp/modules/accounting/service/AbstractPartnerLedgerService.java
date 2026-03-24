@@ -1,57 +1,54 @@
 package com.bigbrightpaints.erp.modules.accounting.service;
 
-import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
-
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Objects;
 
+import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
+
 abstract class AbstractPartnerLedgerService<P, Entry> {
 
-    public record LedgerContext(LocalDate entryDate,
-                                String referenceNumber,
-                                String memo,
-                                BigDecimal debit,
-                                BigDecimal credit,
-                                JournalEntry journalEntry) {
+  public record LedgerContext(
+      LocalDate entryDate,
+      String referenceNumber,
+      String memo,
+      BigDecimal debit,
+      BigDecimal credit,
+      JournalEntry journalEntry) {}
+
+  protected void recordLedgerEntry(P partner, LedgerContext context) {
+    Objects.requireNonNull(partner, "Partner is required for ledger entry");
+    Objects.requireNonNull(context, "Ledger context is required");
+
+    BigDecimal debit = normalize(context.debit());
+    BigDecimal credit = normalize(context.credit());
+    if (debit.compareTo(BigDecimal.ZERO) == 0 && credit.compareTo(BigDecimal.ZERO) == 0) {
+      return;
     }
 
-    protected void recordLedgerEntry(P partner, LedgerContext context) {
-        Objects.requireNonNull(partner, "Partner is required for ledger entry");
-        Objects.requireNonNull(context, "Ledger context is required");
+    Entry entry = createEntry();
+    populateEntry(entry, partner, context, debit, credit);
+    persistEntry(entry);
 
-        BigDecimal debit = normalize(context.debit());
-        BigDecimal credit = normalize(context.credit());
-        if (debit.compareTo(BigDecimal.ZERO) == 0 && credit.compareTo(BigDecimal.ZERO) == 0) {
-            return;
-        }
+    P managedPartner = reloadPartner(partner);
+    BigDecimal aggregate = aggregateBalance(managedPartner);
+    updateOutstandingBalance(managedPartner, aggregate);
+  }
 
-        Entry entry = createEntry();
-        populateEntry(entry, partner, context, debit, credit);
-        persistEntry(entry);
+  private BigDecimal normalize(BigDecimal amount) {
+    return amount == null ? BigDecimal.ZERO : amount;
+  }
 
-        P managedPartner = reloadPartner(partner);
-        BigDecimal aggregate = aggregateBalance(managedPartner);
-        updateOutstandingBalance(managedPartner, aggregate);
-    }
+  protected abstract Entry createEntry();
 
-    private BigDecimal normalize(BigDecimal amount) {
-        return amount == null ? BigDecimal.ZERO : amount;
-    }
+  protected abstract void persistEntry(Entry entry);
 
-    protected abstract Entry createEntry();
+  protected abstract P reloadPartner(P partner);
 
-    protected abstract void persistEntry(Entry entry);
+  protected abstract BigDecimal aggregateBalance(P partner);
 
-    protected abstract P reloadPartner(P partner);
+  protected abstract void updateOutstandingBalance(P partner, BigDecimal balance);
 
-    protected abstract BigDecimal aggregateBalance(P partner);
-
-    protected abstract void updateOutstandingBalance(P partner, BigDecimal balance);
-
-    protected abstract void populateEntry(Entry entry,
-                                          P partner,
-                                          LedgerContext context,
-                                          BigDecimal debit,
-                                          BigDecimal credit);
+  protected abstract void populateEntry(
+      Entry entry, P partner, LedgerContext context, BigDecimal debit, BigDecimal credit);
 }

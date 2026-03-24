@@ -1,147 +1,150 @@
 package com.bigbrightpaints.erp.modules.factory.domain;
 
-import com.bigbrightpaints.erp.core.util.CompanyTime;
-import com.bigbrightpaints.erp.core.domain.VersionedEntity;
-import com.bigbrightpaints.erp.modules.company.domain.Company;
-import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial;
-import jakarta.persistence.*;
-
 import java.time.Instant;
 import java.util.UUID;
+
+import com.bigbrightpaints.erp.core.domain.VersionedEntity;
+import com.bigbrightpaints.erp.core.util.CompanyTime;
+import com.bigbrightpaints.erp.modules.company.domain.Company;
+import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial;
+
+import jakarta.persistence.*;
 
 /**
  * Maps packaging sizes (e.g., "1L", "5L", "10L") to their corresponding
  * raw material (bucket) for automatic deduction during packing.
  */
 @Entity
-@Table(name = "packaging_size_mappings",
-        uniqueConstraints = @UniqueConstraint(
-                name = "uq_packaging_size_material",
-                columnNames = {"company_id", "packaging_size", "raw_material_id"}))
+@Table(
+    name = "packaging_size_mappings",
+    uniqueConstraints =
+        @UniqueConstraint(
+            name = "uq_packaging_size_material",
+            columnNames = {"company_id", "packaging_size", "raw_material_id"}))
 public class PackagingSizeMapping extends VersionedEntity {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
+  private Long id;
 
-    @Column(name = "public_id", nullable = false)
-    private UUID publicId;
+  @Column(name = "public_id", nullable = false)
+  private UUID publicId;
 
-    @ManyToOne(optional = false, fetch = FetchType.LAZY)
-    @JoinColumn(name = "company_id")
-    private Company company;
+  @ManyToOne(optional = false, fetch = FetchType.LAZY)
+  @JoinColumn(name = "company_id")
+  private Company company;
 
-    @Column(name = "packaging_size", nullable = false, length = 50)
-    private String packagingSize;
+  @Column(name = "packaging_size", nullable = false, length = 50)
+  private String packagingSize;
 
-    @ManyToOne(optional = false, fetch = FetchType.LAZY)
-    @JoinColumn(name = "raw_material_id")
-    private RawMaterial rawMaterial;
+  @ManyToOne(optional = false, fetch = FetchType.LAZY)
+  @JoinColumn(name = "raw_material_id")
+  private RawMaterial rawMaterial;
 
-    @Column(name = "units_per_pack", nullable = false)
-    private Integer unitsPerPack = 1;
+  @Column(name = "units_per_pack", nullable = false)
+  private Integer unitsPerPack = 1;
 
-    @Column(name = "carton_size")
-    private Integer cartonSize;
+  @Column(name = "carton_size")
+  private Integer cartonSize;
 
-    @Column(name = "liters_per_unit", nullable = false)
-    private java.math.BigDecimal litersPerUnit;
+  @Column(name = "liters_per_unit", nullable = false)
+  private java.math.BigDecimal litersPerUnit;
 
-    @Column(name = "active", nullable = false)
-    private boolean active = true;
+  @Column(name = "active", nullable = false)
+  private boolean active = true;
 
-    @Column(name = "created_at", nullable = false)
-    private Instant createdAt;
+  @Column(name = "created_at", nullable = false)
+  private Instant createdAt;
 
-    @Column(name = "updated_at", nullable = false)
-    private Instant updatedAt;
+  @Column(name = "updated_at", nullable = false)
+  private Instant updatedAt;
 
-    @PrePersist
-    public void prePersist() {
-        if (publicId == null) {
-            publicId = UUID.randomUUID();
-        }
-        Instant now = CompanyTime.now(company);
-        if (createdAt == null) {
-            createdAt = now;
-        }
-        updatedAt = now;
+  @PrePersist
+  public void prePersist() {
+    if (publicId == null) {
+      publicId = UUID.randomUUID();
     }
-
-    @PreUpdate
-    public void preUpdate() {
-        updatedAt = CompanyTime.now(company);
+    Instant now = CompanyTime.now(company);
+    if (createdAt == null) {
+      createdAt = now;
     }
+    updatedAt = now;
+  }
 
-    public Long getId() {
-        return id;
-    }
+  @PreUpdate
+  public void preUpdate() {
+    updatedAt = CompanyTime.now(company);
+  }
 
-    public UUID getPublicId() {
-        return publicId;
-    }
+  public Long getId() {
+    return id;
+  }
 
-    public Company getCompany() {
-        return company;
-    }
+  public UUID getPublicId() {
+    return publicId;
+  }
 
-    public void setCompany(Company company) {
-        this.company = company;
-    }
+  public Company getCompany() {
+    return company;
+  }
 
-    public String getPackagingSize() {
-        return packagingSize;
-    }
+  public void setCompany(Company company) {
+    this.company = company;
+  }
 
-    public void setPackagingSize(String packagingSize) {
-        this.packagingSize = packagingSize;
-    }
+  public String getPackagingSize() {
+    return packagingSize;
+  }
 
-    public RawMaterial getRawMaterial() {
-        return rawMaterial;
-    }
+  public void setPackagingSize(String packagingSize) {
+    this.packagingSize = packagingSize;
+  }
 
-    public void setRawMaterial(RawMaterial rawMaterial) {
-        this.rawMaterial = rawMaterial;
-    }
+  public RawMaterial getRawMaterial() {
+    return rawMaterial;
+  }
 
-    public Integer getUnitsPerPack() {
-        return unitsPerPack;
-    }
+  public void setRawMaterial(RawMaterial rawMaterial) {
+    this.rawMaterial = rawMaterial;
+  }
 
-    public void setUnitsPerPack(Integer unitsPerPack) {
-        this.unitsPerPack = unitsPerPack;
-    }
+  public Integer getUnitsPerPack() {
+    return unitsPerPack;
+  }
 
-    public Integer getCartonSize() {
-        return cartonSize;
-    }
+  public void setUnitsPerPack(Integer unitsPerPack) {
+    this.unitsPerPack = unitsPerPack;
+  }
 
-    public void setCartonSize(Integer cartonSize) {
-        this.cartonSize = cartonSize;
-    }
+  public Integer getCartonSize() {
+    return cartonSize;
+  }
 
-    public java.math.BigDecimal getLitersPerUnit() {
-        return litersPerUnit;
-    }
+  public void setCartonSize(Integer cartonSize) {
+    this.cartonSize = cartonSize;
+  }
 
-    public void setLitersPerUnit(java.math.BigDecimal litersPerUnit) {
-        this.litersPerUnit = litersPerUnit;
-    }
+  public java.math.BigDecimal getLitersPerUnit() {
+    return litersPerUnit;
+  }
 
-    public boolean isActive() {
-        return active;
-    }
+  public void setLitersPerUnit(java.math.BigDecimal litersPerUnit) {
+    this.litersPerUnit = litersPerUnit;
+  }
 
-    public void setActive(boolean active) {
-        this.active = active;
-    }
+  public boolean isActive() {
+    return active;
+  }
 
-    public Instant getCreatedAt() {
-        return createdAt;
-    }
+  public void setActive(boolean active) {
+    this.active = active;
+  }
 
-    public Instant getUpdatedAt() {
-        return updatedAt;
-    }
+  public Instant getCreatedAt() {
+    return createdAt;
+  }
+
+  public Instant getUpdatedAt() {
+    return updatedAt;
+  }
 }

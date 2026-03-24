@@ -5,7 +5,7 @@ package com.bigbrightpaints.erp.modules.auth.exception;
  */
 public class InvalidMfaException extends RuntimeException {
 
-    public InvalidMfaException(String message) {
-        super(message);
-    }
+  public InvalidMfaException(String message) {
+    super(message);
+  }
 }

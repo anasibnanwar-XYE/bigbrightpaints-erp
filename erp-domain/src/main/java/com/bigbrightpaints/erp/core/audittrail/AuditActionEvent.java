@@ -1,7 +1,14 @@
 package com.bigbrightpaints.erp.core.audittrail;
 
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
+
 import com.bigbrightpaints.erp.core.domain.VersionedEntity;
 import com.bigbrightpaints.erp.core.util.CompanyTime;
+
 import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
 import jakarta.persistence.ElementCollection;
@@ -16,321 +23,334 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.MapKeyColumn;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
-import java.math.BigDecimal;
-import java.time.Instant;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.UUID;
 
 @Entity
-@Table(name = "audit_action_events", indexes = {
-        @Index(name = "idx_audit_action_events_company_occurred", columnList = "company_id, occurred_at"),
-        @Index(name = "idx_audit_action_events_company_module_action", columnList = "company_id, module, action, occurred_at"),
-        @Index(name = "idx_audit_action_events_company_status", columnList = "company_id, status, occurred_at"),
-        @Index(name = "idx_audit_action_events_company_reference", columnList = "company_id, reference_number, occurred_at"),
-        @Index(name = "idx_audit_action_events_company_actor_user", columnList = "company_id, actor_user_id, occurred_at"),
-        @Index(name = "idx_audit_action_events_company_actor_identifier", columnList = "company_id, actor_identifier, occurred_at"),
-        @Index(name = "idx_audit_action_events_company_trace", columnList = "company_id, trace_id, occurred_at")
-})
+@Table(
+    name = "audit_action_events",
+    indexes = {
+      @Index(
+          name = "idx_audit_action_events_company_occurred",
+          columnList = "company_id, occurred_at"),
+      @Index(
+          name = "idx_audit_action_events_company_module_action",
+          columnList = "company_id, module, action, occurred_at"),
+      @Index(
+          name = "idx_audit_action_events_company_status",
+          columnList = "company_id, status, occurred_at"),
+      @Index(
+          name = "idx_audit_action_events_company_reference",
+          columnList = "company_id, reference_number, occurred_at"),
+      @Index(
+          name = "idx_audit_action_events_company_actor_user",
+          columnList = "company_id, actor_user_id, occurred_at"),
+      @Index(
+          name = "idx_audit_action_events_company_actor_identifier",
+          columnList = "company_id, actor_identifier, occurred_at"),
+      @Index(
+          name = "idx_audit_action_events_company_trace",
+          columnList = "company_id, trace_id, occurred_at")
+    })
 public class AuditActionEvent extends VersionedEntity {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
+  private Long id;
 
-    @Column(name = "company_id", nullable = false)
-    private Long companyId;
+  @Column(name = "company_id", nullable = false)
+  private Long companyId;
 
-    @Column(name = "occurred_at", nullable = false)
-    private Instant occurredAt;
+  @Column(name = "occurred_at", nullable = false)
+  private Instant occurredAt;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "source", nullable = false, length = 32)
-    private AuditActionEventSource source;
+  @Enumerated(EnumType.STRING)
+  @Column(name = "source", nullable = false, length = 32)
+  private AuditActionEventSource source;
 
-    @Column(name = "module", nullable = false, length = 64)
-    private String module;
+  @Column(name = "module", nullable = false, length = 64)
+  private String module;
 
-    @Column(name = "action", nullable = false, length = 128)
-    private String action;
+  @Column(name = "action", nullable = false, length = 128)
+  private String action;
 
-    @Column(name = "entity_type", length = 128)
-    private String entityType;
+  @Column(name = "entity_type", length = 128)
+  private String entityType;
 
-    @Column(name = "entity_id", length = 128)
-    private String entityId;
+  @Column(name = "entity_id", length = 128)
+  private String entityId;
 
-    @Column(name = "reference_number", length = 128)
-    private String referenceNumber;
+  @Column(name = "reference_number", length = 128)
+  private String referenceNumber;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "status", nullable = false, length = 16)
-    private AuditActionEventStatus status;
+  @Enumerated(EnumType.STRING)
+  @Column(name = "status", nullable = false, length = 16)
+  private AuditActionEventStatus status;
 
-    @Column(name = "failure_reason", length = 512)
-    private String failureReason;
+  @Column(name = "failure_reason", length = 512)
+  private String failureReason;
 
-    @Column(name = "amount", precision = 19, scale = 4)
-    private BigDecimal amount;
+  @Column(name = "amount", precision = 19, scale = 4)
+  private BigDecimal amount;
 
-    @Column(name = "currency", length = 16)
-    private String currency;
+  @Column(name = "currency", length = 16)
+  private String currency;
 
-    @Column(name = "correlation_id")
-    private UUID correlationId;
+  @Column(name = "correlation_id")
+  private UUID correlationId;
 
-    @Column(name = "request_id", length = 128)
-    private String requestId;
+  @Column(name = "request_id", length = 128)
+  private String requestId;
 
-    @Column(name = "trace_id", length = 128)
-    private String traceId;
+  @Column(name = "trace_id", length = 128)
+  private String traceId;
 
-    @Column(name = "ip_address", length = 64)
-    private String ipAddress;
+  @Column(name = "ip_address", length = 64)
+  private String ipAddress;
 
-    @Column(name = "user_agent", columnDefinition = "TEXT")
-    private String userAgent;
+  @Column(name = "user_agent", columnDefinition = "TEXT")
+  private String userAgent;
 
-    @Column(name = "actor_user_id")
-    private Long actorUserId;
+  @Column(name = "actor_user_id")
+  private Long actorUserId;
 
-    @Column(name = "actor_identifier", nullable = false, length = 255)
-    private String actorIdentifier;
+  @Column(name = "actor_identifier", nullable = false, length = 255)
+  private String actorIdentifier;
 
-    @Column(name = "actor_anonymized", nullable = false)
-    private boolean actorAnonymized;
+  @Column(name = "actor_anonymized", nullable = false)
+  private boolean actorAnonymized;
 
-    @Column(name = "ml_eligible", nullable = false)
-    private boolean mlEligible;
+  @Column(name = "ml_eligible", nullable = false)
+  private boolean mlEligible;
 
-    @Column(name = "training_subject_key", length = 128)
-    private String trainingSubjectKey;
+  @Column(name = "training_subject_key", length = 128)
+  private String trainingSubjectKey;
 
-    @Column(name = "training_payload", columnDefinition = "TEXT")
-    private String trainingPayload;
+  @Column(name = "training_payload", columnDefinition = "TEXT")
+  private String trainingPayload;
 
-    @Column(name = "created_at", nullable = false)
-    private Instant createdAt;
+  @Column(name = "created_at", nullable = false)
+  private Instant createdAt;
 
-    @ElementCollection
-    @CollectionTable(name = "audit_action_event_metadata", joinColumns = @JoinColumn(name = "event_id"))
-    @MapKeyColumn(name = "metadata_key")
-    @Column(name = "metadata_value")
-    private Map<String, String> metadata = new HashMap<>();
+  @ElementCollection
+  @CollectionTable(
+      name = "audit_action_event_metadata",
+      joinColumns = @JoinColumn(name = "event_id"))
+  @MapKeyColumn(name = "metadata_key")
+  @Column(name = "metadata_value")
+  private Map<String, String> metadata = new HashMap<>();
 
-    @PrePersist
-    protected void onCreate() {
-        if (occurredAt == null) {
-            occurredAt = CompanyTime.now();
-        }
-        if (createdAt == null) {
-            createdAt = CompanyTime.now();
-        }
-        if (status == null) {
-            status = AuditActionEventStatus.SUCCESS;
-        }
-        if (source == null) {
-            source = AuditActionEventSource.SYSTEM;
-        }
+  @PrePersist
+  protected void onCreate() {
+    if (occurredAt == null) {
+      occurredAt = CompanyTime.now();
     }
-
-    public Long getId() {
-        return id;
+    if (createdAt == null) {
+      createdAt = CompanyTime.now();
     }
-
-    public Long getCompanyId() {
-        return companyId;
+    if (status == null) {
+      status = AuditActionEventStatus.SUCCESS;
     }
-
-    public void setCompanyId(Long companyId) {
-        this.companyId = companyId;
+    if (source == null) {
+      source = AuditActionEventSource.SYSTEM;
     }
+  }
 
-    public Instant getOccurredAt() {
-        return occurredAt;
-    }
+  public Long getId() {
+    return id;
+  }
 
-    public void setOccurredAt(Instant occurredAt) {
-        this.occurredAt = occurredAt;
-    }
+  public Long getCompanyId() {
+    return companyId;
+  }
 
-    public AuditActionEventSource getSource() {
-        return source;
-    }
+  public void setCompanyId(Long companyId) {
+    this.companyId = companyId;
+  }
 
-    public void setSource(AuditActionEventSource source) {
-        this.source = source;
-    }
+  public Instant getOccurredAt() {
+    return occurredAt;
+  }
 
-    public String getModule() {
-        return module;
-    }
+  public void setOccurredAt(Instant occurredAt) {
+    this.occurredAt = occurredAt;
+  }
 
-    public void setModule(String module) {
-        this.module = module;
-    }
+  public AuditActionEventSource getSource() {
+    return source;
+  }
 
-    public String getAction() {
-        return action;
-    }
+  public void setSource(AuditActionEventSource source) {
+    this.source = source;
+  }
 
-    public void setAction(String action) {
-        this.action = action;
-    }
+  public String getModule() {
+    return module;
+  }
 
-    public String getEntityType() {
-        return entityType;
-    }
+  public void setModule(String module) {
+    this.module = module;
+  }
 
-    public void setEntityType(String entityType) {
-        this.entityType = entityType;
-    }
+  public String getAction() {
+    return action;
+  }
 
-    public String getEntityId() {
-        return entityId;
-    }
+  public void setAction(String action) {
+    this.action = action;
+  }
 
-    public void setEntityId(String entityId) {
-        this.entityId = entityId;
-    }
+  public String getEntityType() {
+    return entityType;
+  }
 
-    public String getReferenceNumber() {
-        return referenceNumber;
-    }
+  public void setEntityType(String entityType) {
+    this.entityType = entityType;
+  }
 
-    public void setReferenceNumber(String referenceNumber) {
-        this.referenceNumber = referenceNumber;
-    }
+  public String getEntityId() {
+    return entityId;
+  }
 
-    public AuditActionEventStatus getStatus() {
-        return status;
-    }
+  public void setEntityId(String entityId) {
+    this.entityId = entityId;
+  }
 
-    public void setStatus(AuditActionEventStatus status) {
-        this.status = status;
-    }
+  public String getReferenceNumber() {
+    return referenceNumber;
+  }
 
-    public String getFailureReason() {
-        return failureReason;
-    }
+  public void setReferenceNumber(String referenceNumber) {
+    this.referenceNumber = referenceNumber;
+  }
 
-    public void setFailureReason(String failureReason) {
-        this.failureReason = failureReason;
-    }
+  public AuditActionEventStatus getStatus() {
+    return status;
+  }
 
-    public BigDecimal getAmount() {
-        return amount;
-    }
+  public void setStatus(AuditActionEventStatus status) {
+    this.status = status;
+  }
 
-    public void setAmount(BigDecimal amount) {
-        this.amount = amount;
-    }
+  public String getFailureReason() {
+    return failureReason;
+  }
 
-    public String getCurrency() {
-        return currency;
-    }
+  public void setFailureReason(String failureReason) {
+    this.failureReason = failureReason;
+  }
 
-    public void setCurrency(String currency) {
-        this.currency = currency;
-    }
+  public BigDecimal getAmount() {
+    return amount;
+  }
 
-    public UUID getCorrelationId() {
-        return correlationId;
-    }
+  public void setAmount(BigDecimal amount) {
+    this.amount = amount;
+  }
 
-    public void setCorrelationId(UUID correlationId) {
-        this.correlationId = correlationId;
-    }
+  public String getCurrency() {
+    return currency;
+  }
 
-    public String getRequestId() {
-        return requestId;
-    }
+  public void setCurrency(String currency) {
+    this.currency = currency;
+  }
 
-    public void setRequestId(String requestId) {
-        this.requestId = requestId;
-    }
+  public UUID getCorrelationId() {
+    return correlationId;
+  }
 
-    public String getTraceId() {
-        return traceId;
-    }
+  public void setCorrelationId(UUID correlationId) {
+    this.correlationId = correlationId;
+  }
 
-    public void setTraceId(String traceId) {
-        this.traceId = traceId;
-    }
+  public String getRequestId() {
+    return requestId;
+  }
 
-    public String getIpAddress() {
-        return ipAddress;
-    }
+  public void setRequestId(String requestId) {
+    this.requestId = requestId;
+  }
 
-    public void setIpAddress(String ipAddress) {
-        this.ipAddress = ipAddress;
-    }
+  public String getTraceId() {
+    return traceId;
+  }
 
-    public String getUserAgent() {
-        return userAgent;
-    }
+  public void setTraceId(String traceId) {
+    this.traceId = traceId;
+  }
 
-    public void setUserAgent(String userAgent) {
-        this.userAgent = userAgent;
-    }
+  public String getIpAddress() {
+    return ipAddress;
+  }
 
-    public Long getActorUserId() {
-        return actorUserId;
-    }
+  public void setIpAddress(String ipAddress) {
+    this.ipAddress = ipAddress;
+  }
 
-    public void setActorUserId(Long actorUserId) {
-        this.actorUserId = actorUserId;
-    }
+  public String getUserAgent() {
+    return userAgent;
+  }
 
-    public String getActorIdentifier() {
-        return actorIdentifier;
-    }
+  public void setUserAgent(String userAgent) {
+    this.userAgent = userAgent;
+  }
 
-    public void setActorIdentifier(String actorIdentifier) {
-        this.actorIdentifier = actorIdentifier;
-    }
+  public Long getActorUserId() {
+    return actorUserId;
+  }
 
-    public boolean isActorAnonymized() {
-        return actorAnonymized;
-    }
+  public void setActorUserId(Long actorUserId) {
+    this.actorUserId = actorUserId;
+  }
 
-    public void setActorAnonymized(boolean actorAnonymized) {
-        this.actorAnonymized = actorAnonymized;
-    }
+  public String getActorIdentifier() {
+    return actorIdentifier;
+  }
 
-    public boolean isMlEligible() {
-        return mlEligible;
-    }
+  public void setActorIdentifier(String actorIdentifier) {
+    this.actorIdentifier = actorIdentifier;
+  }
 
-    public void setMlEligible(boolean mlEligible) {
-        this.mlEligible = mlEligible;
-    }
+  public boolean isActorAnonymized() {
+    return actorAnonymized;
+  }
 
-    public String getTrainingSubjectKey() {
-        return trainingSubjectKey;
-    }
+  public void setActorAnonymized(boolean actorAnonymized) {
+    this.actorAnonymized = actorAnonymized;
+  }
 
-    public void setTrainingSubjectKey(String trainingSubjectKey) {
-        this.trainingSubjectKey = trainingSubjectKey;
-    }
+  public boolean isMlEligible() {
+    return mlEligible;
+  }
 
-    public String getTrainingPayload() {
-        return trainingPayload;
-    }
+  public void setMlEligible(boolean mlEligible) {
+    this.mlEligible = mlEligible;
+  }
 
-    public void setTrainingPayload(String trainingPayload) {
-        this.trainingPayload = trainingPayload;
-    }
+  public String getTrainingSubjectKey() {
+    return trainingSubjectKey;
+  }
 
-    public Instant getCreatedAt() {
-        return createdAt;
-    }
+  public void setTrainingSubjectKey(String trainingSubjectKey) {
+    this.trainingSubjectKey = trainingSubjectKey;
+  }
 
-    public Map<String, String> getMetadata() {
-        return metadata;
-    }
+  public String getTrainingPayload() {
+    return trainingPayload;
+  }
 
-    public void setMetadata(Map<String, String> metadata) {
-        this.metadata = metadata;
-    }
+  public void setTrainingPayload(String trainingPayload) {
+    this.trainingPayload = trainingPayload;
+  }
+
+  public Instant getCreatedAt() {
+    return createdAt;
+  }
+
+  public Map<String, String> getMetadata() {
+    return metadata;
+  }
+
+  public void setMetadata(Map<String, String> metadata) {
+    this.metadata = metadata;
+  }
 }

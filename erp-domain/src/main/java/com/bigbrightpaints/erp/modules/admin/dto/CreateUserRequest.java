@@ -1,15 +1,14 @@
 package com.bigbrightpaints.erp.modules.admin.dto;
 
+import java.util.List;
+
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 
-import java.util.List;
-
 public record CreateUserRequest(
-        @Email @NotBlank String email,
-        String password,  // Optional: auto-generate if null/empty
-        @NotBlank String displayName,
-        @NotEmpty List<Long> companyIds,
-        @NotEmpty List<String> roles
-) {}
+    @Email @NotBlank String email,
+    String password, // Optional: auto-generate if null/empty
+    @NotBlank String displayName,
+    @NotEmpty List<Long> companyIds,
+    @NotEmpty List<String> roles) {}

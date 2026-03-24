@@ -1,250 +1,253 @@
 package com.bigbrightpaints.erp.modules.factory.domain;
 
-import com.bigbrightpaints.erp.core.util.CompanyTime;
-import com.bigbrightpaints.erp.core.domain.VersionedEntity;
-import com.bigbrightpaints.erp.modules.company.domain.Company;
-import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
-import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatch;
-import jakarta.persistence.*;
-import org.springframework.util.StringUtils;
-
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.UUID;
 
+import org.springframework.util.StringUtils;
+
+import com.bigbrightpaints.erp.core.domain.VersionedEntity;
+import com.bigbrightpaints.erp.core.util.CompanyTime;
+import com.bigbrightpaints.erp.modules.company.domain.Company;
+import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
+import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatch;
+
+import jakarta.persistence.*;
+
 @Entity
 @Table(name = "packing_records")
 public class PackingRecord extends VersionedEntity {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
+  private Long id;
 
-    @Column(name = "public_id", nullable = false)
-    private UUID publicId;
+  @Column(name = "public_id", nullable = false)
+  private UUID publicId;
 
-    @ManyToOne(optional = false, fetch = FetchType.LAZY)
-    @JoinColumn(name = "company_id")
-    private Company company;
+  @ManyToOne(optional = false, fetch = FetchType.LAZY)
+  @JoinColumn(name = "company_id")
+  private Company company;
 
-    @ManyToOne(optional = false, fetch = FetchType.LAZY)
-    @JoinColumn(name = "production_log_id")
-    private ProductionLog productionLog;
+  @ManyToOne(optional = false, fetch = FetchType.LAZY)
+  @JoinColumn(name = "production_log_id")
+  private ProductionLog productionLog;
 
-    @ManyToOne(optional = false, fetch = FetchType.LAZY)
-    @JoinColumn(name = "finished_good_id")
-    private FinishedGood finishedGood;
+  @ManyToOne(optional = false, fetch = FetchType.LAZY)
+  @JoinColumn(name = "finished_good_id")
+  private FinishedGood finishedGood;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "finished_good_batch_id")
-    private FinishedGoodBatch finishedGoodBatch;
+  @ManyToOne(fetch = FetchType.LAZY)
+  @JoinColumn(name = "finished_good_batch_id")
+  private FinishedGoodBatch finishedGoodBatch;
 
-    @Column(name = "packaging_size", nullable = false)
-    private String packagingSize;
+  @Column(name = "packaging_size", nullable = false)
+  private String packagingSize;
 
-    @Column(name = "quantity_packed", nullable = false)
-    private BigDecimal quantityPacked = BigDecimal.ZERO;
+  @Column(name = "quantity_packed", nullable = false)
+  private BigDecimal quantityPacked = BigDecimal.ZERO;
 
-    @Column(name = "pieces_count")
-    private Integer piecesCount;
+  @Column(name = "pieces_count")
+  private Integer piecesCount;
 
-    @Column(name = "boxes_count")
-    private Integer boxesCount;
+  @Column(name = "boxes_count")
+  private Integer boxesCount;
 
-    @Column(name = "pieces_per_box")
-    private Integer piecesPerBox;
+  @Column(name = "pieces_per_box")
+  private Integer piecesPerBox;
 
-    @Column(name = "packed_date", nullable = false)
-    private LocalDate packedDate;
+  @Column(name = "packed_date", nullable = false)
+  private LocalDate packedDate;
 
-    @Column(name = "packed_by")
-    private String packedBy;
+  @Column(name = "packed_by")
+  private String packedBy;
 
-    @Column(name = "packaging_cost")
-    private BigDecimal packagingCost = BigDecimal.ZERO;
+  @Column(name = "packaging_cost")
+  private BigDecimal packagingCost = BigDecimal.ZERO;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "packaging_material_id")
-    private com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial packagingMaterial;
+  @ManyToOne(fetch = FetchType.LAZY)
+  @JoinColumn(name = "packaging_material_id")
+  private com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial packagingMaterial;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "size_variant_id")
-    private SizeVariant sizeVariant;
+  @ManyToOne(fetch = FetchType.LAZY)
+  @JoinColumn(name = "size_variant_id")
+  private SizeVariant sizeVariant;
 
-    @Column(name = "packaging_quantity")
-    private BigDecimal packagingQuantity;
+  @Column(name = "packaging_quantity")
+  private BigDecimal packagingQuantity;
 
-    @Column(name = "child_batch_count")
-    private Integer childBatchCount;
+  @Column(name = "child_batch_count")
+  private Integer childBatchCount;
 
-    @Column(name = "created_at", nullable = false)
-    private Instant createdAt;
+  @Column(name = "created_at", nullable = false)
+  private Instant createdAt;
 
-    @Column(name = "updated_at", nullable = false)
-    private Instant updatedAt;
+  @Column(name = "updated_at", nullable = false)
+  private Instant updatedAt;
 
-    @PrePersist
-    public void prePersist() {
-        if (publicId == null) {
-            publicId = UUID.randomUUID();
-        }
-        Instant now = CompanyTime.now(company);
-        if (createdAt == null) {
-            createdAt = now;
-        }
-        updatedAt = now;
-        if (packedDate == null) {
-            packedDate = CompanyTime.today(company);
-        }
+  @PrePersist
+  public void prePersist() {
+    if (publicId == null) {
+      publicId = UUID.randomUUID();
     }
-
-    @PreUpdate
-    public void preUpdate() {
-        updatedAt = CompanyTime.now(company);
+    Instant now = CompanyTime.now(company);
+    if (createdAt == null) {
+      createdAt = now;
     }
-
-    public Long getId() {
-        return id;
+    updatedAt = now;
+    if (packedDate == null) {
+      packedDate = CompanyTime.today(company);
     }
+  }
 
-    public UUID getPublicId() {
-        return publicId;
-    }
+  @PreUpdate
+  public void preUpdate() {
+    updatedAt = CompanyTime.now(company);
+  }
 
-    public Company getCompany() {
-        return company;
-    }
+  public Long getId() {
+    return id;
+  }
 
-    public void setCompany(Company company) {
-        this.company = company;
-    }
+  public UUID getPublicId() {
+    return publicId;
+  }
 
-    public ProductionLog getProductionLog() {
-        return productionLog;
-    }
+  public Company getCompany() {
+    return company;
+  }
 
-    public void setProductionLog(ProductionLog productionLog) {
-        this.productionLog = productionLog;
-    }
+  public void setCompany(Company company) {
+    this.company = company;
+  }
 
-    public FinishedGood getFinishedGood() {
-        return finishedGood;
-    }
+  public ProductionLog getProductionLog() {
+    return productionLog;
+  }
 
-    public void setFinishedGood(FinishedGood finishedGood) {
-        this.finishedGood = finishedGood;
-    }
+  public void setProductionLog(ProductionLog productionLog) {
+    this.productionLog = productionLog;
+  }
 
-    public FinishedGoodBatch getFinishedGoodBatch() {
-        return finishedGoodBatch;
-    }
+  public FinishedGood getFinishedGood() {
+    return finishedGood;
+  }
 
-    public void setFinishedGoodBatch(FinishedGoodBatch finishedGoodBatch) {
-        this.finishedGoodBatch = finishedGoodBatch;
-    }
+  public void setFinishedGood(FinishedGood finishedGood) {
+    this.finishedGood = finishedGood;
+  }
 
-    public String getPackagingSize() {
-        return packagingSize;
-    }
+  public FinishedGoodBatch getFinishedGoodBatch() {
+    return finishedGoodBatch;
+  }
 
-    public void setPackagingSize(String packagingSize) {
-        this.packagingSize = StringUtils.hasText(packagingSize) ? packagingSize.trim() : null;
-    }
+  public void setFinishedGoodBatch(FinishedGoodBatch finishedGoodBatch) {
+    this.finishedGoodBatch = finishedGoodBatch;
+  }
 
-    public BigDecimal getQuantityPacked() {
-        return quantityPacked;
-    }
+  public String getPackagingSize() {
+    return packagingSize;
+  }
 
-    public void setQuantityPacked(BigDecimal quantityPacked) {
-        this.quantityPacked = quantityPacked;
-    }
+  public void setPackagingSize(String packagingSize) {
+    this.packagingSize = StringUtils.hasText(packagingSize) ? packagingSize.trim() : null;
+  }
 
-    public Integer getPiecesCount() {
-        return piecesCount;
-    }
+  public BigDecimal getQuantityPacked() {
+    return quantityPacked;
+  }
 
-    public void setPiecesCount(Integer piecesCount) {
-        this.piecesCount = piecesCount;
-    }
+  public void setQuantityPacked(BigDecimal quantityPacked) {
+    this.quantityPacked = quantityPacked;
+  }
 
-    public Integer getBoxesCount() {
-        return boxesCount;
-    }
+  public Integer getPiecesCount() {
+    return piecesCount;
+  }
 
-    public void setBoxesCount(Integer boxesCount) {
-        this.boxesCount = boxesCount;
-    }
+  public void setPiecesCount(Integer piecesCount) {
+    this.piecesCount = piecesCount;
+  }
 
-    public Integer getPiecesPerBox() {
-        return piecesPerBox;
-    }
+  public Integer getBoxesCount() {
+    return boxesCount;
+  }
 
-    public void setPiecesPerBox(Integer piecesPerBox) {
-        this.piecesPerBox = piecesPerBox;
-    }
+  public void setBoxesCount(Integer boxesCount) {
+    this.boxesCount = boxesCount;
+  }
 
-    public LocalDate getPackedDate() {
-        return packedDate;
-    }
+  public Integer getPiecesPerBox() {
+    return piecesPerBox;
+  }
 
-    public void setPackedDate(LocalDate packedDate) {
-        this.packedDate = packedDate;
-    }
+  public void setPiecesPerBox(Integer piecesPerBox) {
+    this.piecesPerBox = piecesPerBox;
+  }
 
-    public String getPackedBy() {
-        return packedBy;
-    }
+  public LocalDate getPackedDate() {
+    return packedDate;
+  }
 
-    public void setPackedBy(String packedBy) {
-        this.packedBy = packedBy;
-    }
+  public void setPackedDate(LocalDate packedDate) {
+    this.packedDate = packedDate;
+  }
 
-    public Instant getCreatedAt() {
-        return createdAt;
-    }
+  public String getPackedBy() {
+    return packedBy;
+  }
 
-    public Instant getUpdatedAt() {
-        return updatedAt;
-    }
+  public void setPackedBy(String packedBy) {
+    this.packedBy = packedBy;
+  }
 
-    public BigDecimal getPackagingCost() {
-        return packagingCost;
-    }
+  public Instant getCreatedAt() {
+    return createdAt;
+  }
 
-    public void setPackagingCost(BigDecimal packagingCost) {
-        this.packagingCost = packagingCost;
-    }
+  public Instant getUpdatedAt() {
+    return updatedAt;
+  }
 
-    public com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial getPackagingMaterial() {
-        return packagingMaterial;
-    }
+  public BigDecimal getPackagingCost() {
+    return packagingCost;
+  }
 
-    public void setPackagingMaterial(com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial packagingMaterial) {
-        this.packagingMaterial = packagingMaterial;
-    }
+  public void setPackagingCost(BigDecimal packagingCost) {
+    this.packagingCost = packagingCost;
+  }
 
-    public SizeVariant getSizeVariant() {
-        return sizeVariant;
-    }
+  public com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial getPackagingMaterial() {
+    return packagingMaterial;
+  }
 
-    public void setSizeVariant(SizeVariant sizeVariant) {
-        this.sizeVariant = sizeVariant;
-    }
+  public void setPackagingMaterial(
+      com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial packagingMaterial) {
+    this.packagingMaterial = packagingMaterial;
+  }
 
-    public BigDecimal getPackagingQuantity() {
-        return packagingQuantity;
-    }
+  public SizeVariant getSizeVariant() {
+    return sizeVariant;
+  }
 
-    public void setPackagingQuantity(BigDecimal packagingQuantity) {
-        this.packagingQuantity = packagingQuantity;
-    }
+  public void setSizeVariant(SizeVariant sizeVariant) {
+    this.sizeVariant = sizeVariant;
+  }
 
-    public Integer getChildBatchCount() {
-        return childBatchCount;
-    }
+  public BigDecimal getPackagingQuantity() {
+    return packagingQuantity;
+  }
 
-    public void setChildBatchCount(Integer childBatchCount) {
-        this.childBatchCount = childBatchCount;
-    }
+  public void setPackagingQuantity(BigDecimal packagingQuantity) {
+    this.packagingQuantity = packagingQuantity;
+  }
+
+  public Integer getChildBatchCount() {
+    return childBatchCount;
+  }
+
+  public void setChildBatchCount(Integer childBatchCount) {
+    this.childBatchCount = childBatchCount;
+  }
 }

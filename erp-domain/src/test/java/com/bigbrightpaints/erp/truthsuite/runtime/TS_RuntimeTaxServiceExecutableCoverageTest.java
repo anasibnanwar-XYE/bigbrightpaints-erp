@@ -5,6 +5,18 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.YearMonth;
+import java.util.List;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalLine;
@@ -17,90 +29,75 @@ import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceRepository;
 import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchaseRepository;
-import java.math.BigDecimal;
-import java.time.LocalDate;
-import java.time.YearMonth;
-import java.util.List;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Tag;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
 @Tag("critical")
 @Tag("reconciliation")
 class TS_RuntimeTaxServiceExecutableCoverageTest {
 
-    @Mock
-    private CompanyContextService companyContextService;
-    @Mock
-    private CompanyAccountingSettingsService companyAccountingSettingsService;
-    @Mock
-    private CompanyClock companyClock;
-    @Mock
-    private JournalLineRepository journalLineRepository;
-    @Mock
-    private InvoiceRepository invoiceRepository;
-    @Mock
-    private RawMaterialPurchaseRepository rawMaterialPurchaseRepository;
+  @Mock private CompanyContextService companyContextService;
+  @Mock private CompanyAccountingSettingsService companyAccountingSettingsService;
+  @Mock private CompanyClock companyClock;
+  @Mock private JournalLineRepository journalLineRepository;
+  @Mock private InvoiceRepository invoiceRepository;
+  @Mock private RawMaterialPurchaseRepository rawMaterialPurchaseRepository;
 
-    private TaxService taxService;
-    private Company company;
+  private TaxService taxService;
+  private Company company;
 
-    @BeforeEach
-    void setUp() {
-        taxService = new TaxService(
-                companyContextService,
-                companyAccountingSettingsService,
-                companyClock,
-                journalLineRepository,
-                new GstService(),
-                invoiceRepository,
-                rawMaterialPurchaseRepository);
-        company = new Company();
-        company.setCode("TRUTH");
-        when(companyContextService.requireCurrentCompany()).thenReturn(company);
-        when(companyClock.today(company)).thenReturn(LocalDate.of(2026, 2, 15));
-    }
+  @BeforeEach
+  void setUp() {
+    taxService =
+        new TaxService(
+            companyContextService,
+            companyAccountingSettingsService,
+            companyClock,
+            journalLineRepository,
+            new GstService(),
+            invoiceRepository,
+            rawMaterialPurchaseRepository);
+    company = new Company();
+    company.setCode("TRUTH");
+    when(companyContextService.requireCurrentCompany()).thenReturn(company);
+    when(companyClock.today(company)).thenReturn(LocalDate.of(2026, 2, 15));
+  }
 
-    @Test
-    void generateGstReturn_computesOutputInputAndNetDeterministically() {
-        YearMonth period = YearMonth.of(2026, 1);
-        LocalDate start = period.atDay(1);
-        LocalDate end = period.atEndOfMonth();
+  @Test
+  void generateGstReturn_computesOutputInputAndNetDeterministically() {
+    YearMonth period = YearMonth.of(2026, 1);
+    LocalDate start = period.atDay(1);
+    LocalDate end = period.atEndOfMonth();
 
-        when(companyAccountingSettingsService.requireTaxAccounts())
-                .thenReturn(new CompanyAccountingSettingsService.TaxAccountConfiguration(10L, 20L, 30L));
-        when(journalLineRepository.findLinesForAccountBetween(company, 20L, start, end))
-                .thenReturn(List.of(line(BigDecimal.ZERO, new BigDecimal("100.00"))));
-        when(journalLineRepository.findLinesForAccountBetween(company, 10L, start, end))
-                .thenReturn(List.of(line(new BigDecimal("60.00"), BigDecimal.ZERO)));
+    when(companyAccountingSettingsService.requireTaxAccounts())
+        .thenReturn(new CompanyAccountingSettingsService.TaxAccountConfiguration(10L, 20L, 30L));
+    when(journalLineRepository.findLinesForAccountBetween(company, 20L, start, end))
+        .thenReturn(List.of(line(BigDecimal.ZERO, new BigDecimal("100.00"))));
+    when(journalLineRepository.findLinesForAccountBetween(company, 10L, start, end))
+        .thenReturn(List.of(line(new BigDecimal("60.00"), BigDecimal.ZERO)));
 
-        GstReturnDto dto = taxService.generateGstReturn(period);
+    GstReturnDto dto = taxService.generateGstReturn(period);
 
-        assertThat(dto.getOutputTax()).isEqualByComparingTo("100.00");
-        assertThat(dto.getInputTax()).isEqualByComparingTo("60.00");
-        assertThat(dto.getNetPayable()).isEqualByComparingTo("40.00");
-    }
+    assertThat(dto.getOutputTax()).isEqualByComparingTo("100.00");
+    assertThat(dto.getInputTax()).isEqualByComparingTo("60.00");
+    assertThat(dto.getNetPayable()).isEqualByComparingTo("40.00");
+  }
 
-    @Test
-    void generateGstReturn_nonGstModeFailsClosedWhenGstAccountsConfigured() {
-        company.setDefaultGstRate(BigDecimal.ZERO);
-        company.setGstInputTaxAccountId(999L);
+  @Test
+  void generateGstReturn_nonGstModeFailsClosedWhenGstAccountsConfigured() {
+    company.setDefaultGstRate(BigDecimal.ZERO);
+    company.setGstInputTaxAccountId(999L);
 
-        assertThatThrownBy(() -> taxService.generateGstReturn(YearMonth.of(2026, 2)))
-                .isInstanceOf(ApplicationException.class)
-                .hasMessageContaining("Non-GST mode company cannot have GST tax accounts configured");
+    assertThatThrownBy(() -> taxService.generateGstReturn(YearMonth.of(2026, 2)))
+        .isInstanceOf(ApplicationException.class)
+        .hasMessageContaining("Non-GST mode company cannot have GST tax accounts configured");
 
-        verifyNoInteractions(companyAccountingSettingsService, journalLineRepository);
-    }
+    verifyNoInteractions(companyAccountingSettingsService, journalLineRepository);
+  }
 
-    private static JournalLine line(BigDecimal debit, BigDecimal credit) {
-        JournalLine line = new JournalLine();
-        line.setDebit(debit);
-        line.setCredit(credit);
-        return line;
-    }
+  private static JournalLine line(BigDecimal debit, BigDecimal credit) {
+    JournalLine line = new JournalLine();
+    line.setDebit(debit);
+    line.setCredit(credit);
+    return line;
+  }
 }

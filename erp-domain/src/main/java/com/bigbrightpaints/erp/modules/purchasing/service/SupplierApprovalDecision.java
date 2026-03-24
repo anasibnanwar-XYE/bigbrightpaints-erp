@@ -8,92 +8,96 @@ import java.util.Objects;
 import java.util.Set;
 
 public record SupplierApprovalDecision(
-        String approvalId,
-        String makerUserId,
-        String checkerUserId,
-        SupplierApprovalReasonCode reasonCode,
-        Instant approvedAt,
-        Map<String, String> auditMetadata
-) {
+    String approvalId,
+    String makerUserId,
+    String checkerUserId,
+    SupplierApprovalReasonCode reasonCode,
+    Instant approvedAt,
+    Map<String, String> auditMetadata) {
 
-    public SupplierApprovalDecision {
-        approvalId = requireText(approvalId, "approvalId");
-        makerUserId = requireText(makerUserId, "makerUserId");
-        checkerUserId = requireText(checkerUserId, "checkerUserId");
-        if (makerUserId.equalsIgnoreCase(checkerUserId)) {
-            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Maker and checker must be different users");
-        }
-        reasonCode = Objects.requireNonNull(reasonCode, "reasonCode");
-        approvedAt = Objects.requireNonNull(approvedAt, "approvedAt");
-        auditMetadata = toImmutableAuditMetadata(
-                approvalId,
-                makerUserId,
-                checkerUserId,
-                reasonCode,
-                approvedAt,
-                auditMetadata);
+  public SupplierApprovalDecision {
+    approvalId = requireText(approvalId, "approvalId");
+    makerUserId = requireText(makerUserId, "makerUserId");
+    checkerUserId = requireText(checkerUserId, "checkerUserId");
+    if (makerUserId.equalsIgnoreCase(checkerUserId)) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          "Maker and checker must be different users");
     }
+    reasonCode = Objects.requireNonNull(reasonCode, "reasonCode");
+    approvedAt = Objects.requireNonNull(approvedAt, "approvedAt");
+    auditMetadata =
+        toImmutableAuditMetadata(
+            approvalId, makerUserId, checkerUserId, reasonCode, approvedAt, auditMetadata);
+  }
 
-    public static SupplierApprovalDecision requireApproved(SupplierApprovalDecision approval, String context) {
-        if (approval != null) {
-            return approval;
-        }
-        String label = hasText(context) ? context.trim() : "Supplier";
-        throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState(label + " approval is required");
+  public static SupplierApprovalDecision requireApproved(
+      SupplierApprovalDecision approval, String context) {
+    if (approval != null) {
+      return approval;
     }
+    String label = hasText(context) ? context.trim() : "Supplier";
+    throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState(
+        label + " approval is required");
+  }
 
-    public Map<String, String> immutableAuditMetadata() {
-        return auditMetadata;
+  public Map<String, String> immutableAuditMetadata() {
+    return auditMetadata;
+  }
+
+  private static Map<String, String> toImmutableAuditMetadata(
+      String approvalId,
+      String makerUserId,
+      String checkerUserId,
+      SupplierApprovalReasonCode reasonCode,
+      Instant approvedAt,
+      Map<String, String> auditMetadata) {
+    Map<String, String> metadata = normalizeCallerMetadata(auditMetadata);
+    requireCallerAuditMetadata(metadata);
+    metadata.put("approvalId", approvalId);
+    metadata.put("makerUserId", makerUserId);
+    metadata.put("checkerUserId", checkerUserId);
+    metadata.put("reasonCode", reasonCode.name());
+    metadata.put("approvedAt", approvedAt.toString());
+    return Collections.unmodifiableMap(metadata);
+  }
+
+  private static Map<String, String> normalizeCallerMetadata(Map<String, String> auditMetadata) {
+    if (auditMetadata == null) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          "auditMetadata is required");
     }
-
-    private static Map<String, String> toImmutableAuditMetadata(String approvalId,
-                                                                String makerUserId,
-                                                                String checkerUserId,
-                                                                SupplierApprovalReasonCode reasonCode,
-                                                                Instant approvedAt,
-                                                                Map<String, String> auditMetadata) {
-        Map<String, String> metadata = normalizeCallerMetadata(auditMetadata);
-        requireCallerAuditMetadata(metadata);
-        metadata.put("approvalId", approvalId);
-        metadata.put("makerUserId", makerUserId);
-        metadata.put("checkerUserId", checkerUserId);
-        metadata.put("reasonCode", reasonCode.name());
-        metadata.put("approvedAt", approvedAt.toString());
-        return Collections.unmodifiableMap(metadata);
-    }
-
-    private static Map<String, String> normalizeCallerMetadata(Map<String, String> auditMetadata) {
-        if (auditMetadata == null) {
-            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("auditMetadata is required");
-        }
-        Map<String, String> metadata = new LinkedHashMap<>();
-        auditMetadata.forEach((key, value) -> {
-            if (hasText(key) && hasText(value)) {
-                metadata.put(key.trim(), value.trim());
-            }
+    Map<String, String> metadata = new LinkedHashMap<>();
+    auditMetadata.forEach(
+        (key, value) -> {
+          if (hasText(key) && hasText(value)) {
+            metadata.put(key.trim(), value.trim());
+          }
         });
-        return metadata;
-    }
+    return metadata;
+  }
 
-    private static void requireCallerAuditMetadata(Map<String, String> metadata) {
-        if (!hasText(metadata.get("ticket"))) {
-            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("auditMetadata.ticket is required");
-        }
-        Set<String> sourceKeys = Set.of("approvalSource", "source", "sourceSystem", "workflowSource");
-        boolean hasSource = sourceKeys.stream().anyMatch(key -> hasText(metadata.get(key)));
-        if (!hasSource) {
-            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("auditMetadata approval source is required");
-        }
+  private static void requireCallerAuditMetadata(Map<String, String> metadata) {
+    if (!hasText(metadata.get("ticket"))) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          "auditMetadata.ticket is required");
     }
+    Set<String> sourceKeys = Set.of("approvalSource", "source", "sourceSystem", "workflowSource");
+    boolean hasSource = sourceKeys.stream().anyMatch(key -> hasText(metadata.get(key)));
+    if (!hasSource) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          "auditMetadata approval source is required");
+    }
+  }
 
-    private static String requireText(String value, String fieldName) {
-        if (hasText(value)) {
-            return value.trim();
-        }
-        throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(fieldName + " is required");
+  private static String requireText(String value, String fieldName) {
+    if (hasText(value)) {
+      return value.trim();
     }
+    throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+        fieldName + " is required");
+  }
 
-    private static boolean hasText(String value) {
-        return value != null && !value.trim().isEmpty();
-    }
+  private static boolean hasText(String value) {
+    return value != null && !value.trim().isEmpty();
+  }
 }

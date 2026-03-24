@@ -21,5 +21,4 @@ public record AttendanceDto(
     boolean weekend,
     String remarks,
     String markedBy,
-    Instant markedAt
-) {}
+    Instant markedAt) {}

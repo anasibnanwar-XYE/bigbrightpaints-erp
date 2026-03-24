@@ -241,6 +241,24 @@
       "cross_module_critical": false
     },
     {
+      "id": "test-catalog::inventory-ts-openingstockbatchkeyv2migrationcontracttest-java",
+      "test_path": "erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite/inventory/TS_OpeningStockBatchKeyV2MigrationContractTest.java",
+      "module": "inventory",
+      "owner": "lane03-inventory-accounting",
+      "class": "critical",
+      "tags": [
+        "critical"
+      ],
+      "gate_membership": [
+        "gate-fast",
+        "gate-core",
+        "gate-release",
+        "gate-quality"
+      ],
+      "accounting_math_critical": false,
+      "cross_module_critical": false
+    },
+    {
       "id": "test-catalog::manufacturing-ts-bulkpackdeterministicreferencetest-java",
       "test_path": "erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite/manufacturing/TS_BulkPackDeterministicReferenceTest.java",
       "module": "manufacturing",
@@ -1284,6 +1302,24 @@
         "gate-quality"
       ],
       "accounting_math_critical": true,
+      "cross_module_critical": true
+    },
+    {
+      "id": "test-catalog::runtime-ts-runtimemodulegatingserviceexecutablecoveragetest-java",
+      "test_path": "erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite/runtime/TS_RuntimeModuleGatingServiceExecutableCoverageTest.java",
+      "module": "runtime",
+      "owner": "lane08-quality-governance",
+      "class": "critical",
+      "tags": [
+        "critical"
+      ],
+      "gate_membership": [
+        "gate-fast",
+        "gate-core",
+        "gate-release",
+        "gate-quality"
+      ],
+      "accounting_math_critical": false,
       "cross_module_critical": true
     },
     {
