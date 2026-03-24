@@ -1,5 +1,14 @@
 # Migration Runbook
 
+## 2026-03-24 — `migration_v2/V165__pause_hr_payroll_module.sql`
+
+- **Purpose:** default `HR_PAYROLL` off for new tenants and remove it from existing tenant `enabled_modules` so ERP-33 can hard-cut payroll/admin/portal/orchestrator HR surfaces behind the canonical tenant module gate.
+- **Forward plan:** apply `V165__pause_hr_payroll_module.sql` on both migration tracks, deploy the ERP-33 backend packet that gates `/api/v1/payroll/**`, `/api/v1/accounting/payroll/**`, admin approvals, portal workforce/dashboard HR metrics, orchestrator HR snapshots, and accounting-period payroll diagnostics, then verify the super-admin re-enable path before declaring the cut complete. This migration was renumbered to `V165` during the latest `main` merge because `V164` is now occupied by the ERP-32 credit-request requester-identity packet.
+- **Dry-run commands:**
+  - `cd "/Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/erp-33-merge-fix/erp-domain" && DOCKER_HOST=unix:///Users/anas/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock TESTCONTAINERS_HOST_OVERRIDE=192.168.64.2 mvn clean -Dtest=AccountingPeriodServiceTest,IntegrationCoordinatorTest,ModuleGatingInterceptorTest,ModuleGatingServiceTest,AdminSettingsControllerApprovalsContractTest,AdminSettingsControllerTenantRuntimeContractTest,AdminApprovalRbacIT,HrPayrollModulePauseIT test`
+  - `cd "/Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/erp-33-merge-fix" && bash ci/check-enterprise-policy.sh`
+- **Rollback strategy:** if this packet must be reverted before merge, redeploy the previous backend build first, then execute `UPDATE companies SET enabled_modules = CASE WHEN enabled_modules ? 'HR_PAYROLL' THEN enabled_modules ELSE enabled_modules || '\"HR_PAYROLL\"'::jsonb END; ALTER TABLE companies ALTER COLUMN enabled_modules SET DEFAULT '[\"MANUFACTURING\",\"PURCHASING\",\"PORTAL\",\"REPORTS_ADVANCED\",\"HR_PAYROLL\"]'::jsonb;` in the same maintenance window after confirming the reverted build is live.
+
 ## 2026-03-23 — `migration_v2/V164__credit_request_requester_identity.sql`
 
 - **Purpose:** persist dealer-portal submitter identity on `credit_requests` so ERP-32 durable credit-limit approvals no longer surface anonymous maker rows when dealer users submit permanent limit requests.

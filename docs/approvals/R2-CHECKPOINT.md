@@ -1,65 +1,52 @@
 # R2 Checkpoint
 
 ## Scope
-- Feature: `ERP-32 durable credit workflow consolidation`
-- PR: `#134`
-- PR branch: `feature/erp-32-credit-workflow-consolidation`
-- Review candidate: durable dealer credit-limit workflow split from temporary dispatch overrides on PR `#134`
-- Why this is R2: this packet changes tenant-scoped module-gated runtime surfaces, admin approval routing, and dealer/accounting outward credit truth for a permanent-credit workflow that can mutate `Dealer.creditLimit`.
+- Feature: `ERP-33 pause HR/payroll behind tenant module gate`
+- PR: `#135`
+- PR branch: `erp-33-pause-hr-payroll-module`
+- Review candidate: hard-cut `HR_PAYROLL` behind the tenant module gate while refreshing the branch onto latest `main` and preserving the reviewed pause behavior.
+- Why this is R2: this packet changes tenant-scoped module-gated runtime surfaces, admin approval routing, payroll/accounting month-end behavior, portal/orchestrator HR visibility, and a `migration_v2` schema change that auto-pauses existing tenants.
 
 ## Risk Trigger
-- Triggered by changes under `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/company/` plus dealer/admin runtime behavior updates that reshape permanent credit-limit approvals and dealer-facing credit truth.
-- Contract surfaces affected: `POST /api/v1/dealer-portal/credit-limit-requests`, `GET|POST /api/v1/credit/limit-requests`, `POST /api/v1/credit/limit-requests/{id}/approve`, `POST /api/v1/credit/limit-requests/{id}/reject`, admin approval queue summaries, dealer portal dashboard credit exposure, and sales-facing dealer credit summaries.
-- Failure mode if wrong: durable credit requests can disappear behind stale routes, admin approvals can target the wrong workflow semantics, dealer portal aging can drift away from ledger-backed accounting truth, or temporary overrides can be mistaken for permanent credit-limit changes.
+- Triggered by changes under `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/company/`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/admin/`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/portal/`, `erp-domain/src/main/java/com/bigbrightpaints/erp/orchestrator/`, and `erp-domain/src/main/resources/db/migration_v2/V165__pause_hr_payroll_module.sql`.
+- Contract surfaces affected: `GET /api/v1/admin/approvals`, `/api/v1/payroll/**`, `/api/v1/accounting/payroll/**`, `/api/v1/portal/workforce`, portal dashboard HR metrics, orchestrator admin/health HR snapshots, and accounting period-close diagnostics that previously counted payroll backlog.
+- Failure mode if wrong: paused tenants can still see or act on payroll surfaces, month-end close can be blocked by stranded payroll diagnostics, or rollback/re-enable can leave tenant module state inconsistent across existing companies.
 
 ## Approval Authority
 - Mode: human
 - Approver: `Anas ibn Anwar`
 - Canary owner: `Anas ibn Anwar`
 - Approval status: `pending green CI and explicit merge approval`
-- Basis: focused service/controller/RBAC proof, integrated ERP-32 regression proof, OpenAPI refresh, accounting-portal scope contract proof, and clean diff hygiene on PR `#134`.
+- Basis: resolved review threads on PR `#135`, refreshed merge from latest `main`, focused local unit/integration proof on Colima-backed Testcontainers, and explicit acceptance of the hard-cut decision to hide paused payroll approvals until super-admin re-enables the module.
 
 ## Escalation Decision
 - Human escalation required: yes
-- Reason: this packet changes durable dealer credit-limit approvals and tenant-scoped outward read surfaces, so merge remains gated on explicit human approval after CI settles on PR `#134`.
+- Reason: this packet changes tenant runtime gating plus schema-driven default behavior for existing tenants, so merge remains gated on explicit human approval after CI settles on PR `#135`.
 
 ## Rollback Owner
 - Owner: `Anas ibn Anwar`
-- Rollback method: revert commit `38c63edc`, redeploy the prior backend build, regenerate OpenAPI from the reverted head, and rerun the focused dealer/admin credit workflow proof before reopening credit-limit operations.
+- Rollback method: revert PR `#135` (including merge-refresh follow-ups through `e97ceaaa`), redeploy the prior backend build, then follow the `erp-33.pause-hr-payroll-module` rollback entry in `docs/runbooks/rollback.md` to restore the pre-pause module default and tenant enablement state.
 - Rollback trigger:
-  - durable credit-limit requests fail to create/list/approve/reject on the new canonical endpoints
-  - admin approval queue labels permanent credit changes as dispatch overrides or targets the wrong endpoint
-  - dealer portal or sales credit exposure drifts away from ledger-backed aging/balance truth
-  - approved temporary overrides start mutating long-term `Dealer.creditLimit`
+  - paused tenants can still access payroll, accounting-payroll, workforce, or orchestrator HR surfaces
+  - paused tenants lose the documented super-admin re-enable recovery path
+  - period close still counts payroll unposted/unlinked backlog after the hard cut
+  - the migration leaves tenant `enabled_modules` defaults or existing rows inconsistent after rollback
 
 ## Expiry
-- Valid until: `2026-03-30`
-- Re-evaluate if: scope grows beyond ERP-32 durable-vs-temporary credit workflow boundaries, the PR head changes beyond commit `38c63edc`, or CI reruns against a materially different candidate than PR `#134`.
+- Valid until: `2026-03-31`
+- Re-evaluate if: PR `#135` head changes beyond commit `e97ceaaa`, CI reruns against a materially different candidate, or scope expands beyond the ERP-33 payroll-pause hard-cut and branch-refresh packet.
 
 ## Verification Evidence
-- Compile gate:
-  - `cd "/Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/erp-32-credit-workflow-consolidation/erp-domain" && mvn -q -DskipTests compile`
+- Branch refresh proof:
+  - `cd "/Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/erp-33-merge-fix" && git merge origin/main`
+  - result: merge refresh applied on top of reviewed ERP-33 changes; remote PR head updated to `e97ceaaa`
+- Focused ERP-33 merge-validation proof:
+  - `cd "/Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/erp-33-merge-fix/erp-domain" && DOCKER_HOST=unix:///Users/anas/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock TESTCONTAINERS_HOST_OVERRIDE=192.168.64.2 mvn clean -Dtest=AccountingPeriodServiceTest,IntegrationCoordinatorTest,ModuleGatingInterceptorTest,ModuleGatingServiceTest,AdminSettingsControllerApprovalsContractTest,AdminSettingsControllerTenantRuntimeContractTest,AdminApprovalRbacIT,HrPayrollModulePauseIT test`
   - result: `BUILD SUCCESS`
-- Test compile:
-  - `cd "/Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/erp-32-credit-workflow-consolidation/erp-domain" && mvn -q -DskipTests test-compile`
-  - result: `BUILD SUCCESS`
-- Focused durable/read-surface proof:
-  - `cd "/Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/erp-32-credit-workflow-consolidation/erp-domain" && mvn -q -Dtest=CreditLimitRequestServiceTest,DealerPortalControllerExportAuditTest,DealerPortalServiceTest,DealerServiceTest,SalesControllerIdempotencyHeaderTest,TS_RuntimeDealerPortalControllerExportCoverageTest,TS_RuntimeOrchestratorExecutableCoverageTest test`
-  - result: `BUILD SUCCESS`
-- Focused RBAC/approval proof:
-  - `cd "/Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/erp-32-credit-workflow-consolidation/erp-domain" && mvn -q -Dtest=PortalRoleActionMatrixTest,DealerPortalReadOnlySecurityIT,AdminApprovalRbacIT,AdminSettingsControllerApprovalsContractTest test`
-  - result: `BUILD SUCCESS`
-- Integrated ERP-32 regression proof:
-  - `cd "/Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/erp-32-credit-workflow-consolidation/erp-domain" && mvn -q -Dtest=CreditLimitRequestServiceTest,CreditLimitRequestDecisionRequestTest,DealerPortalControllerExportAuditTest,DealerPortalServiceTest,DealerServiceTest,SalesControllerIdempotencyHeaderTest,TS_RuntimeDealerPortalControllerExportCoverageTest,TS_RuntimeOrchestratorExecutableCoverageTest,SalesControllerIT,PortalRoleActionMatrixTest,DealerPortalReadOnlySecurityIT,AdminApprovalRbacIT,AdminSettingsControllerApprovalsContractTest,OpenApiSnapshotIT -Derp.openapi.snapshot.verify=true test`
-  - result: `BUILD SUCCESS`
-- Contract and hygiene guards:
-  - `cd "/Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/erp-32-credit-workflow-consolidation" && bash scripts/guard_openapi_contract_drift.sh`
-  - result: `[guard_openapi_contract_drift] OK`
-  - `cd "/Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/erp-32-credit-workflow-consolidation" && bash scripts/guard_accounting_portal_scope_contract.sh`
-  - result: `[guard_accounting_portal_scope_contract] OK`
-  - `cd "/Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/erp-32-credit-workflow-consolidation" && git diff --check`
-  - result: clean
+- Policy / review proof:
+  - PR review threads on `#135` were checked after refresh and all review threads were confirmed resolved
+  - local secret scan over staged merge-freshness diff found no credential/private-key patterns before commit/push
 - Artifacts/links:
-  - PR: `https://github.com/anasibnanwar-XYE/bigbrightpaints-erp/pull/134`
-  - Commit: `38c63edc`
-  - OpenAPI snapshot: `/Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/erp-32-credit-workflow-consolidation/openapi.json`
+  - PR: `https://github.com/anasibnanwar-XYE/bigbrightpaints-erp/pull/135`
+  - Head commit: `e97ceaaa`
+  - Worktree: `/Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/erp-33-merge-fix`
