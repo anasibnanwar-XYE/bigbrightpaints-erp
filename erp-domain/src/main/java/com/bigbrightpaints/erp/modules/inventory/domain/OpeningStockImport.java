@@ -17,13 +17,11 @@ import jakarta.persistence.UniqueConstraint;
 import java.time.Instant;
 
 @Entity
-@Table(name = "opening_stock_imports",
-        uniqueConstraints = {
-                @UniqueConstraint(name = "uq_opening_stock_import_company_key",
-                        columnNames = {"company_id", "idempotency_key"}),
-                @UniqueConstraint(name = "uq_opening_stock_import_company_batch_key",
-                        columnNames = {"company_id", "opening_stock_batch_key"})
-        })
+@Table(
+        name = "opening_stock_imports",
+        uniqueConstraints = { @UniqueConstraint(name = "uq_opening_stock_import_company_key",
+                columnNames = {"company_id", "idempotency_key"}),
+                @UniqueConstraint(name = "uq_opening_stock_import_company_batch_key", columnNames = {"company_id", "opening_stock_batch_key"}) })
 public class OpeningStockImport extends VersionedEntity {
 
     @Id

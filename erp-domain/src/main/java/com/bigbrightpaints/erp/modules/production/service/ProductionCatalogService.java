@@ -2202,16 +2202,8 @@ public class ProductionCatalogService {
         boolean hasPurchases = company != null && rawMaterialPurchaseRepository.existsByCompanyAndLinesRawMaterial(company, rawMaterial);
         boolean hasPackagingMappings = company != null && packagingSizeMappingRepository.existsByCompanyAndRawMaterial(company, rawMaterial);
         boolean hasPackingRecords = company != null && packingRecordRepository.existsByCompanyAndPackagingMaterial(company, rawMaterial);
-        if (currentStock.compareTo(BigDecimal.ZERO) > 0
-                || privateStock.compareTo(BigDecimal.ZERO) > 0
-                || hasBatches
-                || hasMovements
-                || hasReservations
-                || hasPurchaseOrders
-                || hasGoodsReceipts
-                || hasPurchases
-                || hasPackagingMappings
-                || hasPackingRecords) {
+        boolean hasBlockingHistory = currentStock.compareTo(BigDecimal.ZERO) > 0 || privateStock.compareTo(BigDecimal.ZERO) > 0 || hasBatches || hasMovements || hasReservations || hasPurchaseOrders || hasGoodsReceipts || hasPurchases || hasPackagingMappings || hasPackingRecords;
+        if (hasBlockingHistory) {
             throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
                     "SKU " + rawMaterial.getSku() + " cannot change itemClass because raw material history or purchasing/packaging references already exist; create a new SKU or reverse inventory before retrying");
         }
@@ -2223,11 +2215,8 @@ public class ProductionCatalogService {
         boolean hasBatches = !finishedGoodBatchRepository.findByFinishedGoodOrderByManufacturedAtAsc(finishedGood).isEmpty();
         boolean hasMovements = inventoryMovementRepository.findFirstByFinishedGoodOrderByCreatedAtAsc(finishedGood).isPresent();
         boolean hasReservations = inventoryReservationRepository.findFirstByFinishedGoodOrderByCreatedAtAsc(finishedGood).isPresent();
-        if (currentStock.compareTo(BigDecimal.ZERO) > 0
-                || reservedStock.compareTo(BigDecimal.ZERO) > 0
-                || hasBatches
-                || hasMovements
-                || hasReservations) {
+        boolean hasBlockingHistory = currentStock.compareTo(BigDecimal.ZERO) > 0 || reservedStock.compareTo(BigDecimal.ZERO) > 0 || hasBatches || hasMovements || hasReservations;
+        if (hasBlockingHistory) {
             throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
                     "SKU " + finishedGood.getProductCode() + " cannot change itemClass because finished good history already exists; create a new SKU or reverse inventory before retrying");
         }

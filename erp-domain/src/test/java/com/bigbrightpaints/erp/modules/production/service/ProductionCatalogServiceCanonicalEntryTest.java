@@ -1053,6 +1053,155 @@ class ProductionCatalogServiceCanonicalEntryTest {
     }
 
     @Test
+    void syncInventoryTruth_returnsFalseWhenCompanyProductOrIdIsMissing() {
+        ProductionProduct productWithoutId = new ProductionProduct();
+        productWithoutId.setCategory("FINISHED_GOOD");
+        productWithoutId.setSkuCode("FG-NO-ID");
+
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(service, "syncInventoryTruth", null, finishedProductMirrorProduct("FG-NULL-COMPANY"), "FINISHED_GOOD"))
+                .isFalse();
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(service, "syncInventoryTruth", company, null, "FINISHED_GOOD"))
+                .isFalse();
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(service, "syncInventoryTruth", company, productWithoutId, "FINISHED_GOOD"))
+                .isFalse();
+    }
+
+    @Test
+    void deleteRawMaterialMirror_ignoresBlankSku() {
+        ProductionProduct product = new ProductionProduct();
+        product.setSkuCode("   ");
+
+        ReflectionTestUtils.invokeMethod(service, "deleteRawMaterialMirror", company, product);
+
+        verify(rawMaterialRepository, never()).findByCompanyAndSku(any(), anyString());
+    }
+
+    @Test
+    void deleteFinishedGoodMirror_ignoresBlankSku() {
+        ProductionProduct product = new ProductionProduct();
+        product.setSkuCode("   ");
+
+        ReflectionTestUtils.invokeMethod(service, "deleteFinishedGoodMirror", company, product);
+
+        verify(finishedGoodRepository, never()).findByCompanyAndProductCode(any(), anyString());
+    }
+
+    @Test
+    void assertRawMaterialMirrorDeletionSafe_allowsDeletionWithoutHistoryOrReferences() {
+        RawMaterial rawMaterial = rawMaterialMirror("RM-CLEAN");
+
+        ReflectionTestUtils.invokeMethod(service, "assertRawMaterialMirrorDeletionSafe", rawMaterial);
+
+        verify(purchaseOrderRepository).existsByCompanyAndLinesRawMaterial(company, rawMaterial);
+        verify(goodsReceiptRepository).existsByCompanyAndLinesRawMaterial(company, rawMaterial);
+        verify(rawMaterialPurchaseRepository).existsByCompanyAndLinesRawMaterial(company, rawMaterial);
+        verify(packagingSizeMappingRepository).existsByCompanyAndRawMaterial(company, rawMaterial);
+        verify(packingRecordRepository).existsByCompanyAndPackagingMaterial(company, rawMaterial);
+    }
+
+    @Test
+    void assertRawMaterialMirrorDeletionSafe_allowsDeletionWhenCompanyMissingButNoHistoryExists() {
+        RawMaterial rawMaterial = rawMaterialMirror("RM-NO-COMPANY");
+        rawMaterial.setCompany(null);
+
+        ReflectionTestUtils.invokeMethod(service, "assertRawMaterialMirrorDeletionSafe", rawMaterial);
+    }
+
+    @Test
+    void assertRawMaterialMirrorDeletionSafe_rejectsPrivateStockHistory() {
+        RawMaterial rawMaterial = rawMaterialMirror("RM-PRIVATE");
+        rawMaterial.setPrivateStock(new BigDecimal("3"));
+
+        assertRawMaterialMirrorDeletionBlocked(rawMaterial);
+    }
+
+    @Test
+    void assertRawMaterialMirrorDeletionSafe_rejectsBatchHistory() {
+        RawMaterial rawMaterial = rawMaterialMirror("RM-BATCH");
+        when(rawMaterialBatchRepository.findByRawMaterial(rawMaterial))
+                .thenReturn(List.of(new com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatch()));
+
+        assertRawMaterialMirrorDeletionBlocked(rawMaterial);
+    }
+
+    @Test
+    void assertRawMaterialMirrorDeletionSafe_rejectsMovementHistory() {
+        RawMaterial rawMaterial = rawMaterialMirror("RM-MOVE");
+        when(rawMaterialMovementRepository.findFirstByRawMaterialOrderByCreatedAtAsc(rawMaterial))
+                .thenReturn(Optional.of(new com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovement()));
+
+        assertRawMaterialMirrorDeletionBlocked(rawMaterial);
+    }
+
+    @Test
+    void assertRawMaterialMirrorDeletionSafe_rejectsReservationHistory() {
+        RawMaterial rawMaterial = rawMaterialMirror("RM-RESERVE");
+        when(inventoryReservationRepository.findFirstByRawMaterialOrderByCreatedAtAsc(rawMaterial))
+                .thenReturn(Optional.of(new com.bigbrightpaints.erp.modules.inventory.domain.InventoryReservation()));
+
+        assertRawMaterialMirrorDeletionBlocked(rawMaterial);
+    }
+
+    @Test
+    void assertRawMaterialMirrorDeletionSafe_rejectsGoodsReceiptReferences() {
+        RawMaterial rawMaterial = rawMaterialMirror("RM-GRN");
+        when(goodsReceiptRepository.existsByCompanyAndLinesRawMaterial(company, rawMaterial)).thenReturn(true);
+
+        assertRawMaterialMirrorDeletionBlocked(rawMaterial);
+    }
+
+    @Test
+    void assertRawMaterialMirrorDeletionSafe_rejectsPurchaseReferences() {
+        RawMaterial rawMaterial = rawMaterialMirror("RM-PURCHASE");
+        when(rawMaterialPurchaseRepository.existsByCompanyAndLinesRawMaterial(company, rawMaterial)).thenReturn(true);
+
+        assertRawMaterialMirrorDeletionBlocked(rawMaterial);
+    }
+
+    @Test
+    void assertRawMaterialMirrorDeletionSafe_rejectsPackingRecordReferences() {
+        RawMaterial rawMaterial = rawMaterialMirror("RM-PACKING");
+        when(packingRecordRepository.existsByCompanyAndPackagingMaterial(company, rawMaterial)).thenReturn(true);
+
+        assertRawMaterialMirrorDeletionBlocked(rawMaterial);
+    }
+
+    @Test
+    void assertFinishedGoodMirrorDeletionSafe_rejectsReservedStockHistory() {
+        FinishedGood finishedGood = finishedGoodMirror("FG-RESERVED");
+        finishedGood.setReservedStock(new BigDecimal("2"));
+
+        assertFinishedGoodMirrorDeletionBlocked(finishedGood);
+    }
+
+    @Test
+    void assertFinishedGoodMirrorDeletionSafe_rejectsBatchHistory() {
+        FinishedGood finishedGood = finishedGoodMirror("FG-BATCH");
+        when(finishedGoodBatchRepository.findByFinishedGoodOrderByManufacturedAtAsc(finishedGood))
+                .thenReturn(List.of(new com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatch()));
+
+        assertFinishedGoodMirrorDeletionBlocked(finishedGood);
+    }
+
+    @Test
+    void assertFinishedGoodMirrorDeletionSafe_rejectsMovementHistory() {
+        FinishedGood finishedGood = finishedGoodMirror("FG-MOVE");
+        when(inventoryMovementRepository.findFirstByFinishedGoodOrderByCreatedAtAsc(finishedGood))
+                .thenReturn(Optional.of(new com.bigbrightpaints.erp.modules.inventory.domain.InventoryMovement()));
+
+        assertFinishedGoodMirrorDeletionBlocked(finishedGood);
+    }
+
+    @Test
+    void assertFinishedGoodMirrorDeletionSafe_rejectsReservationHistory() {
+        FinishedGood finishedGood = finishedGoodMirror("FG-RESERVATION");
+        when(inventoryReservationRepository.findFirstByFinishedGoodOrderByCreatedAtAsc(finishedGood))
+                .thenReturn(Optional.of(new com.bigbrightpaints.erp.modules.inventory.domain.InventoryReservation()));
+
+        assertFinishedGoodMirrorDeletionBlocked(finishedGood);
+    }
+
+    @Test
     void canonicalHelperMethods_validateMimeParameterSections() {
         assertThat((Boolean) ReflectionTestUtils.invokeMethod(
                 service,
@@ -1244,6 +1393,55 @@ class ProductionCatalogServiceCanonicalEntryTest {
             default -> "FG";
         };
         return String.join("-", prefix, "BBR", "PRIMER", color, size);
+    }
+
+    private ProductionProduct finishedProductMirrorProduct(String sku) {
+        ProductionProduct product = new ProductionProduct();
+        ReflectionTestUtils.setField(product, "id", 1000L);
+        product.setCompany(company);
+        product.setCategory("FINISHED_GOOD");
+        product.setSkuCode(sku);
+        product.setProductName("Primer");
+        product.setUnitOfMeasure("L");
+        product.setMetadata(Map.of(
+                "fgValuationAccountId", 101L,
+                "fgCogsAccountId", 102L,
+                "fgRevenueAccountId", 103L,
+                "fgTaxAccountId", 104L));
+        return product;
+    }
+
+    private RawMaterial rawMaterialMirror(String sku) {
+        RawMaterial rawMaterial = new RawMaterial();
+        rawMaterial.setCompany(company);
+        rawMaterial.setSku(sku);
+        rawMaterial.setName("Primer");
+        rawMaterial.setUnitType("KG");
+        rawMaterial.setMaterialType(MaterialType.PRODUCTION);
+        return rawMaterial;
+    }
+
+    private FinishedGood finishedGoodMirror(String sku) {
+        FinishedGood finishedGood = new FinishedGood();
+        finishedGood.setCompany(company);
+        finishedGood.setProductCode(sku);
+        finishedGood.setName("Primer");
+        finishedGood.setUnit("L");
+        return finishedGood;
+    }
+
+    private void assertRawMaterialMirrorDeletionBlocked(RawMaterial rawMaterial) {
+        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(service, "assertRawMaterialMirrorDeletionSafe", rawMaterial))
+                .isInstanceOf(ApplicationException.class)
+                .satisfies(thrown -> assertThat(((ApplicationException) thrown).getErrorCode())
+                        .isEqualTo(ErrorCode.VALIDATION_INVALID_INPUT));
+    }
+
+    private void assertFinishedGoodMirrorDeletionBlocked(FinishedGood finishedGood) {
+        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(service, "assertFinishedGoodMirrorDeletionSafe", finishedGood))
+                .isInstanceOf(ApplicationException.class)
+                .satisfies(thrown -> assertThat(((ApplicationException) thrown).getErrorCode())
+                        .isEqualTo(ErrorCode.VALIDATION_INVALID_INPUT));
     }
 
     private ProductionProduct existingProduct(String sku) {
