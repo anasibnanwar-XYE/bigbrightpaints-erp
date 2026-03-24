@@ -1,5 +1,13 @@
 # Rollback Runbook
 
+## 2026-03-24 — `erp-33.pause-hr-payroll-module`
+
+- **Scope:** revert `migration_v2/V165__pause_hr_payroll_module.sql` and the ERP-33 hard-cut runtime behavior that removes `HR_PAYROLL` from tenant defaults/existing companies while hiding payroll/admin/portal/orchestrator HR surfaces behind the module gate.
+- **Application rollback:** redeploy the previous backend build before reopening traffic so runtime code stops enforcing the hard payroll cut and resumes the pre-ERP-33 mixed-surface behavior.
+- **Database rollback:** after the reverted build is live, execute `UPDATE public.companies SET enabled_modules = CASE WHEN enabled_modules ? 'HR_PAYROLL' THEN enabled_modules ELSE enabled_modules || '\"HR_PAYROLL\"'::jsonb END; ALTER TABLE public.companies ALTER COLUMN enabled_modules SET DEFAULT '[\"MANUFACTURING\",\"PURCHASING\",\"PORTAL\",\"REPORTS_ADVANCED\",\"HR_PAYROLL\"]'::jsonb;`.
+- **Tested rollback path:** the forward packet was validated with `AccountingPeriodServiceTest`, `IntegrationCoordinatorTest`, `ModuleGatingInterceptorTest`, `ModuleGatingServiceTest`, `AdminSettingsControllerApprovalsContractTest`, `AdminSettingsControllerTenantRuntimeContractTest`, `AdminApprovalRbacIT`, and `HrPayrollModulePauseIT`; rerun the same packet against the reverted build to confirm payroll surfaces and diagnostics are restored only after the backend rollback is active.
+- **Verification:** rerun `cd "/Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/erp-33-merge-fix/erp-domain" && DOCKER_HOST=unix:///Users/anas/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock TESTCONTAINERS_HOST_OVERRIDE=192.168.64.2 mvn clean -Dtest=AccountingPeriodServiceTest,IntegrationCoordinatorTest,ModuleGatingInterceptorTest,ModuleGatingServiceTest,AdminSettingsControllerApprovalsContractTest,AdminSettingsControllerTenantRuntimeContractTest,AdminApprovalRbacIT,HrPayrollModulePauseIT test` against the reverted packet and confirm tenants again expose the pre-pause payroll paths only under the restored backend contract.
+
 ## 2026-03-23 — `erp-32.credit-request-requester-identity`
 
 - **Scope:** revert `migration_v2/V164__credit_request_requester_identity.sql` and the ERP-32 dealer-portal durable credit-request path that now records `credit_requests.requester_user_id` and `credit_requests.requester_email`.

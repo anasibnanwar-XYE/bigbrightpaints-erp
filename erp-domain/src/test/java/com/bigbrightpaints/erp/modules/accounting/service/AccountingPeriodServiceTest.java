@@ -26,6 +26,7 @@ import com.bigbrightpaints.erp.modules.accounting.dto.PeriodCloseRequestDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.PeriodCloseRequestActionRequest;
 import com.bigbrightpaints.erp.modules.accounting.service.ClosedPeriodPostingExceptionService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
+import com.bigbrightpaints.erp.modules.company.domain.CompanyModule;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.hr.domain.PayrollRun;
 import com.bigbrightpaints.erp.modules.hr.domain.PayrollRunRepository;
@@ -39,6 +40,7 @@ import com.bigbrightpaints.erp.modules.reports.service.ReportService;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -441,6 +443,7 @@ class AccountingPeriodServiceTest {
     @Test
     void approvePeriodClose_failsWhenTrialBalanceIsNotBalanced() {
         Company company = company(1L, "ACME");
+        company.setEnabledModules(new LinkedHashSet<>(List.of(CompanyModule.HR_PAYROLL.name())));
         AccountingPeriod period = openPeriod(company, 2026, 2);
         ReflectionTestUtils.setField(period, "id", 34L);
         PeriodCloseRequest pending = pendingCloseRequest(company, period, 504L, "maker.user");
@@ -624,6 +627,7 @@ class AccountingPeriodServiceTest {
     @Test
     void getMonthEndChecklist_includesTrialBalancePassFailItem() {
         Company company = company(1L, "ACME");
+        company.setEnabledModules(new LinkedHashSet<>(List.of(CompanyModule.HR_PAYROLL.name())));
         AccountingPeriod period = openPeriod(company, 2026, 2);
         period.setBankReconciled(true);
         period.setInventoryCounted(true);
@@ -688,6 +692,61 @@ class AccountingPeriodServiceTest {
                 .orElseThrow();
         assertThat(trialBalanceItem.completed()).isFalse();
         assertThat(trialBalanceItem.detail()).contains("differ by");
+    }
+
+    @Test
+    void getMonthEndChecklist_ignoresPayrollDiagnosticsWhenHrPayrollModulePaused() {
+        Company company = company(1L, "ACME");
+        company.setEnabledModules(new LinkedHashSet<>(List.of(CompanyModule.PORTAL.name())));
+        AccountingPeriod period = openPeriod(company, 2026, 2);
+
+        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+        when(companyEntityLookup.requireAccountingPeriod(company, 100L)).thenReturn(period);
+        when(journalEntryRepository.countByCompanyAndEntryDateBetweenAndStatusIn(
+                company, period.getStartDate(), period.getEndDate(), List.of("DRAFT", "PENDING"))).thenReturn(0L);
+        when(reportService.inventoryReconciliation()).thenReturn(new com.bigbrightpaints.erp.modules.reports.dto.ReconciliationSummaryDto(
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO));
+        when(reconciliationService.reconcileSubledgersForPeriod(period.getStartDate(), period.getEndDate()))
+                .thenReturn(new ReconciliationService.PeriodReconciliationResult(
+                        period.getStartDate(),
+                        period.getEndDate(),
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        true,
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        true));
+        when(reconciliationService.generateGstReconciliation(java.time.YearMonth.from(period.getStartDate())))
+                .thenReturn(gstReconciliation(BigDecimal.ZERO));
+        when(reconciliationDiscrepancyRepository.countByCompanyAndAccountingPeriodAndStatus(
+                company, period, ReconciliationDiscrepancyStatus.OPEN)).thenReturn(0L);
+        when(reportService.trialBalance(period.getEndDate())).thenReturn(new TrialBalanceDto(
+                List.of(),
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                true,
+                null));
+        when(journalEntryRepository.findByCompanyAndEntryDateBetweenOrderByEntryDateAsc(
+                company, period.getStartDate(), period.getEndDate())).thenReturn(List.of());
+        when(invoiceRepository.countByCompanyAndIssueDateBetweenAndStatusNotAndJournalEntryIsNull(
+                company, period.getStartDate(), period.getEndDate(), "DRAFT")).thenReturn(0L);
+        when(rawMaterialPurchaseRepository.countByCompanyAndInvoiceDateBetweenAndStatusInAndJournalEntryIsNull(
+                company, period.getStartDate(), period.getEndDate(), List.of("POSTED", "PARTIAL", "PAID"))).thenReturn(0L);
+        when(invoiceRepository.countByCompanyAndIssueDateBetweenAndStatusIn(
+                company, period.getStartDate(), period.getEndDate(), List.of("DRAFT"))).thenReturn(0L);
+        when(rawMaterialPurchaseRepository.countByCompanyAndInvoiceDateBetweenAndStatusNotIn(
+                company, period.getStartDate(), period.getEndDate(), List.of("POSTED", "PARTIAL", "PAID"))).thenReturn(0L);
+
+        var checklist = service.getMonthEndChecklist(100L);
+
+        assertThat(checklist.items()).filteredOn(item -> "unlinkedDocuments".equals(item.key()) || "unpostedDocuments".equals(item.key()))
+                .allMatch(item -> item.completed() && item.detail().startsWith("All"));
+        verify(payrollRunRepository, never()).countByCompanyAndPeriodBetweenAndStatusInAndJournalMissing(any(), any(), any(), any());
+        verify(payrollRunRepository, never()).countByCompanyAndPeriodBetweenAndStatusIn(any(), any(), any(), any());
     }
 
     @Test
@@ -756,6 +815,7 @@ class AccountingPeriodServiceTest {
     @Test
     void getMonthEndChecklist_countsCorrectionLinkageGapsAsUnlinkedDocuments() {
         Company company = company(1L, "ACME");
+        company.setEnabledModules(new LinkedHashSet<>(List.of(CompanyModule.HR_PAYROLL.name())));
         AccountingPeriod period = openPeriod(company, 2026, 2);
         period.setBankReconciled(true);
         period.setInventoryCounted(true);
@@ -903,6 +963,7 @@ class AccountingPeriodServiceTest {
     @Test
     void getMonthEndChecklist_ignoresCorrectionEntriesWithCompleteLinkage() {
         Company company = company(1L, "ACME");
+        company.setEnabledModules(new LinkedHashSet<>(List.of(CompanyModule.HR_PAYROLL.name())));
         AccountingPeriod period = openPeriod(company, 2026, 2);
         period.setBankReconciled(true);
         period.setInventoryCounted(true);

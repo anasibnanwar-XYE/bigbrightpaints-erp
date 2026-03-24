@@ -54,4 +54,27 @@ class ModuleGatingServiceTest {
         assertThat(normalized).containsExactlyInAnyOrder("MANUFACTURING", "PORTAL");
         assertThat(normalized).doesNotContain("ACCOUNTING");
     }
+
+    @Test
+    void resolveEnabledGatableModules_defaultsExcludeHrPayroll() {
+        ModuleGatingService service = new ModuleGatingService(companyContextService);
+
+        Set<String> enabled = service.resolveEnabledGatableModules(null);
+
+        assertThat(enabled)
+                .containsExactlyInAnyOrder("MANUFACTURING", "PURCHASING", "PORTAL", "REPORTS_ADVANCED")
+                .doesNotContain("HR_PAYROLL");
+    }
+
+    @Test
+    void isEnabled_usesProvidedCompanyWithoutContextLookup() {
+        Company company = new Company();
+        company.setEnabledModules(Set.of(CompanyModule.PORTAL.name()));
+        ModuleGatingService service = new ModuleGatingService(companyContextService);
+
+        boolean enabled = service.isEnabled(company, CompanyModule.PORTAL);
+
+        assertThat(enabled).isTrue();
+        verify(companyContextService, never()).requireCurrentCompany();
+    }
 }

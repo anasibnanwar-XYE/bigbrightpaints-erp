@@ -1,10 +1,14 @@
 package com.bigbrightpaints.erp.modules.company.service;
 
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
+import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyModule;
 import java.util.LinkedHashSet;
 import java.util.Set;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 @Service
 public class ModuleGatingService {
@@ -20,7 +24,39 @@ public class ModuleGatingService {
             return true;
         }
         Company company = companyContextService.requireCurrentCompany();
+        return isEnabled(company, module);
+    }
+
+    public void requireEnabledForCurrentCompany(CompanyModule module, String path) {
+        Company company = companyContextService.requireCurrentCompany();
+        requireEnabled(company, module, path);
+    }
+
+    public boolean isEnabled(Company company, CompanyModule module) {
+        if (module == null || module.isCore()) {
+            return true;
+        }
         return resolveEnabledGatableModules(company).contains(module.name());
+    }
+
+    public void requireEnabled(Company company, CompanyModule module, String path) {
+        if (isEnabled(company, module)) {
+            return;
+        }
+        String companyCode = company != null && StringUtils.hasText(company.getCode())
+                ? company.getCode()
+                : CompanyContextHolder.getCompanyCode();
+        ApplicationException ex = new ApplicationException(
+                ErrorCode.MODULE_DISABLED,
+                "Module " + module.name() + " is disabled for the current tenant")
+                .withDetail("module", module.name());
+        if (StringUtils.hasText(companyCode)) {
+            ex.withDetail("companyCode", companyCode);
+        }
+        if (StringUtils.hasText(path)) {
+            ex.withDetail("path", path);
+        }
+        throw ex;
     }
 
     public Set<String> resolveEnabledGatableModules(Company company) {

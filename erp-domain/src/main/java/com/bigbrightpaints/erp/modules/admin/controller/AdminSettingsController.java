@@ -13,7 +13,9 @@ import com.bigbrightpaints.erp.modules.admin.dto.*;
 import com.bigbrightpaints.erp.modules.admin.service.ExportApprovalService;
 import com.bigbrightpaints.erp.modules.admin.service.TenantRuntimePolicyService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
+import com.bigbrightpaints.erp.modules.company.domain.CompanyModule;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
+import com.bigbrightpaints.erp.modules.company.service.ModuleGatingService;
 import com.bigbrightpaints.erp.modules.hr.domain.PayrollRun;
 import com.bigbrightpaints.erp.modules.hr.domain.PayrollRunRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.PackagingSlip;
@@ -65,6 +67,7 @@ public class AdminSettingsController {
     private final PeriodCloseRequestRepository periodCloseRequestRepository;
     private final PayrollRunRepository payrollRunRepository;
     private final AuditService auditService;
+    private final ModuleGatingService moduleGatingService;
 
     @Autowired
     public AdminSettingsController(SystemSettingsService systemSettingsService,
@@ -74,7 +77,8 @@ public class AdminSettingsController {
                                    ExportApprovalService exportApprovalService,
                                    CreditRequestRepository creditRequestRepository,
                                    CreditLimitOverrideRequestRepository creditLimitOverrideRequestRepository,
-                                   PayrollRunRepository payrollRunRepository) {
+                                   PayrollRunRepository payrollRunRepository,
+                                   ModuleGatingService moduleGatingService) {
         this(systemSettingsService,
                 emailService,
                 companyContextService,
@@ -84,7 +88,8 @@ public class AdminSettingsController {
                 creditLimitOverrideRequestRepository,
                 null,
                 payrollRunRepository,
-                null);
+                null,
+                moduleGatingService);
     }
 
     public AdminSettingsController(SystemSettingsService systemSettingsService,
@@ -96,7 +101,8 @@ public class AdminSettingsController {
                                    CreditLimitOverrideRequestRepository creditLimitOverrideRequestRepository,
                                    PeriodCloseRequestRepository periodCloseRequestRepository,
                                    PayrollRunRepository payrollRunRepository,
-                                   AuditService auditService) {
+                                   AuditService auditService,
+                                   ModuleGatingService moduleGatingService) {
         this.systemSettingsService = systemSettingsService;
         this.emailService = emailService;
         this.companyContextService = companyContextService;
@@ -107,6 +113,7 @@ public class AdminSettingsController {
         this.periodCloseRequestRepository = periodCloseRequestRepository;
         this.payrollRunRepository = payrollRunRepository;
         this.auditService = auditService;
+        this.moduleGatingService = moduleGatingService;
     }
 
     @GetMapping("/settings")
@@ -176,11 +183,13 @@ public class AdminSettingsController {
                         Comparator.nullsLast(Comparator.reverseOrder())))
                 .toList();
 
-        List<AdminApprovalItemDto> payrollApprovals = payrollRunRepository
+        List<AdminApprovalItemDto> payrollApprovals = isHrPayrollEnabled(company)
+                ? payrollRunRepository
                 .findByCompanyAndStatusOrderByCreatedAtDesc(company, PayrollRun.PayrollStatus.CALCULATED)
                 .stream()
                 .map(this::toPayrollApprovalItem)
-                .toList();
+                .toList()
+                : List.of();
 
         List<AdminApprovalItemDto> periodCloseApprovals = periodCloseRequestRepository == null
                 ? List.of()
@@ -452,6 +461,10 @@ public class AdminSettingsController {
 
     private String toAmountString(BigDecimal amount) {
         return amount == null ? "0" : amount.stripTrailingZeros().toPlainString();
+    }
+
+    private boolean isHrPayrollEnabled(Company company) {
+        return moduleGatingService.isEnabled(company, CompanyModule.HR_PAYROLL);
     }
 
     private void requireSuperAdminForPeriodLockEnforcedChange(SystemSettingsDto before,

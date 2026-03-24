@@ -6,6 +6,7 @@ import com.bigbrightpaints.erp.modules.admin.dto.ExportApprovalStatus;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
+import com.bigbrightpaints.erp.modules.company.domain.CompanyModule;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
@@ -59,6 +60,7 @@ class AdminApprovalRbacIT extends AbstractIntegrationTest {
         dataSeeder.ensureUser(SALES_EMAIL, PASSWORD, "Approval Sales", COMPANY_CODE, List.of("ROLE_SALES"));
         dataSeeder.ensureUser(FACTORY_EMAIL, PASSWORD, "Approval Factory", COMPANY_CODE, List.of("ROLE_FACTORY"));
         dataSeeder.ensureUser(DEALER_EMAIL, PASSWORD, "Approval Dealer", COMPANY_CODE, List.of("ROLE_DEALER"));
+        enableModule(COMPANY_CODE, CompanyModule.HR_PAYROLL);
         ensureDealerPortalMapping();
     }
 
@@ -440,7 +442,9 @@ class AdminApprovalRbacIT extends AbstractIntegrationTest {
     }
 
     private long createCreditRequest(HttpHeaders headers, String amountRequested, String reason) {
-        return createCreditRequest(headers, null, amountRequested, reason);
+        Company company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
+        Dealer dealer = dealerRepository.findByCompanyAndCodeIgnoreCase(company, DEALER_CODE).orElseThrow();
+        return createCreditRequest(headers, dealer.getId(), amountRequested, reason);
     }
 
     private long createCreditRequest(HttpHeaders headers, Long dealerId, String amountRequested, String reason) {
