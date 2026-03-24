@@ -15,9 +15,9 @@ Portal scope guardrail:
 ## Canonical API contract gate
 
 - Canonical machine contract source: repo-root `openapi.json`.
-- OpenAPI snapshot: `openapi.json` (sha256 `0b3f4ea108d856d7b820c42f6ee55063f8507301dd064ca947f904e744fda485`)
-- OpenAPI total paths: `296`
-- OpenAPI total operations: `350`
+- OpenAPI snapshot: `openapi.json` (sha256 `c210fc65f70da391961646e09c25c08ff662fef4e0bb3bedfb9f43e5c4b37cc9`)
+- OpenAPI total paths: `295`
+- OpenAPI total operations: `349`
 - Guard remediation flow: if parity drifts, regenerate this inventory from canonical `openapi.json`, then rerun `bash scripts/guard_openapi_contract_drift.sh` and `bash scripts/guard_accounting_portal_scope_contract.sh`.
 
 ## Summary by module
@@ -31,8 +31,8 @@ Portal scope guardrail:
 | `catalog` | 5 | /api/v1/catalog/brands, /api/v1/catalog/items, /api/v1/catalog/import |
 | `changelog` | 2 | /api/v1/changelog, /api/v1/changelog/latest-highlighted |
 | `companies` | 7 | /api/v1/companies, /api/v1/companies/{id}, /api/v1/companies/{id}/lifecycle-state |
-| `credit` | 3 | /api/v1/credit/override-requests, /api/v1/credit/override-requests/{id}/approve, /api/v1/credit/override-requests/{id}/reject |
-| `dealer-portal` | 7 | /api/v1/dealer-portal/aging, /api/v1/dealer-portal/credit-requests, /api/v1/dealer-portal/dashboard |
+| `credit` | 6 | /api/v1/credit/limit-requests, /api/v1/credit/limit-requests/{id}/approve, /api/v1/credit/override-requests |
+| `dealer-portal` | 7 | /api/v1/dealer-portal/aging, /api/v1/dealer-portal/credit-limit-requests, /api/v1/dealer-portal/dashboard |
 | `dealers` | 8 | /api/v1/dealers, /api/v1/dealers/search, /api/v1/dealers/{dealerId} |
 | `demo` | 1 | /api/v1/demo/ping |
 | `dispatch` | 8 | /api/v1/dispatch/backorder/{slipId}/cancel, /api/v1/dispatch/confirm, /api/v1/dispatch/order/{orderId} |
@@ -51,7 +51,7 @@ Portal scope guardrail:
 | `purchasing` | 12 | /api/v1/purchasing/goods-receipts, /api/v1/purchasing/goods-receipts/{id}, /api/v1/purchasing/purchase-orders |
 | `raw-materials` | 3 | /api/v1/raw-materials/stock, /api/v1/raw-materials/stock/inventory, /api/v1/raw-materials/stock/low-stock |
 | `reports` | 20 | /api/v1/reports/account-statement, /api/v1/reports/aged-debtors, /api/v1/reports/aging/dealer/{dealerId} |
-| `sales` | 20 | /api/v1/sales/credit-requests, /api/v1/sales/credit-requests/{id}, /api/v1/sales/credit-requests/{id}/approve |
+| `sales` | 16 | /api/v1/sales/dashboard, /api/v1/sales/dealers, /api/v1/sales/dealers/search |
 | `superadmin` | 10 | /api/v1/superadmin/dashboard, /api/v1/superadmin/tenants, /api/v1/superadmin/tenants/coa-templates |
 | `suppliers` | 5 | /api/v1/suppliers, /api/v1/suppliers/{id}, /api/v1/suppliers/{id}/activate |
 | `support` | 2 | /api/v1/support/tickets, /api/v1/support/tickets/{ticketId} |
@@ -193,6 +193,9 @@ Portal scope guardrail:
 
 ## `credit`
 
+- `GET, POST` `/api/v1/credit/limit-requests`
+- `POST` `/api/v1/credit/limit-requests/{id}/approve`
+- `POST` `/api/v1/credit/limit-requests/{id}/reject`
 - `GET, POST` `/api/v1/credit/override-requests`
 - `POST` `/api/v1/credit/override-requests/{id}/approve`
 - `POST` `/api/v1/credit/override-requests/{id}/reject`
@@ -200,7 +203,7 @@ Portal scope guardrail:
 ## `dealer-portal`
 
 - `GET` `/api/v1/dealer-portal/aging`
-- `POST` `/api/v1/dealer-portal/credit-requests`
+- `POST` `/api/v1/dealer-portal/credit-limit-requests`
 - `GET` `/api/v1/dealer-portal/dashboard`
 - `GET` `/api/v1/dealer-portal/invoices`
 - `GET` `/api/v1/dealer-portal/invoices/{invoiceId}/pdf`
@@ -398,10 +401,6 @@ Portal scope guardrail:
 
 ## `sales`
 
-- `GET, POST` `/api/v1/sales/credit-requests`
-- `PUT` `/api/v1/sales/credit-requests/{id}`
-- `POST` `/api/v1/sales/credit-requests/{id}/approve`
-- `POST` `/api/v1/sales/credit-requests/{id}/reject`
 - `GET` `/api/v1/sales/dashboard`
 - `GET` `/api/v1/sales/dealers`
 - `GET` `/api/v1/sales/dealers/search`
