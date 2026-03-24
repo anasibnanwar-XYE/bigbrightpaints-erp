@@ -52,7 +52,7 @@ This packet is hard-cut.
 - `POST /api/v1/catalog/products?preview=true` and
   `POST /api/v1/catalog/products` share the same request shape
 - `POST /api/v1/inventory/opening-stock` requires explicit `Idempotency-Key`
-  and only accepts prepared SKUs
+  plus explicit `openingStockBatchKey`, and only accepts prepared SKUs
 
 ## Related Docs
 

@@ -45,6 +45,9 @@ Keep first-time setup explicit:
 ### Opening stock is strict
 
 - explicit `Idempotency-Key` is required
+- explicit `openingStockBatchKey` is required
+- the same `openingStockBatchKey` cannot be applied twice under a fresh
+  `Idempotency-Key`
 - missing or orphan SKUs fail cleanly
 - missing mirror truth fails cleanly
 - missing readiness prerequisites fail cleanly

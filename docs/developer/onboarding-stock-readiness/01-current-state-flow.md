@@ -132,6 +132,7 @@ Single-SKU and matrix creation now share the same canonical request contract on
 ### Current contract
 
 - explicit `Idempotency-Key` is required
+- explicit `openingStockBatchKey` is required
 - only prepared SKUs are accepted
 - missing SKU fails fast
 - catalog-not-ready SKU fails with `stage=catalog`
@@ -139,6 +140,8 @@ Single-SKU and matrix creation now share the same canonical request contract on
 - missing `OPEN-BAL` fails fast
 - no legacy `X-Idempotency-Key`
 - no file-hash fallback
+- same `openingStockBatchKey` cannot be applied twice under a fresh
+  `Idempotency-Key`
 - no raw-material or finished-good auto-create
 
 ### Returned shape

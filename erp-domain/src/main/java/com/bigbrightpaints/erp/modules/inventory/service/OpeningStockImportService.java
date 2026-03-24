@@ -144,7 +144,6 @@ public class OpeningStockImportService {
         if (file == null || file.isEmpty()) {
             throw ValidationUtils.invalidInput("CSV file is required");
         }
-        String fileHash = resolveFileHash(file);
         String normalizedKey = normalizeIdempotencyKey(idempotencyKey);
         String normalizedBatchKey = normalizeOpeningStockBatchKey(openingStockBatchKey);
         String importReference = resolveImportReference(company, normalizedBatchKey);
@@ -152,7 +151,7 @@ public class OpeningStockImportService {
         OpeningStockImport existing = openingStockImportRepository.findByCompanyAndIdempotencyKey(company, normalizedKey)
                 .orElse(null);
         if (existing != null) {
-            assertReplayMatch(existing, fileHash, normalizedKey, normalizedBatchKey);
+            assertReplayMatch(existing, normalizedKey, normalizedBatchKey);
             return toResponse(existing);
         }
 
@@ -178,7 +177,6 @@ public class OpeningStockImportService {
                             file,
                             normalizedKey,
                             normalizedBatchKey,
-                            fileHash,
                             importReference));
             if (response == null) {
                 throw ValidationUtils.invalidState("Opening stock import failed to return a response");
@@ -199,7 +197,7 @@ public class OpeningStockImportService {
                 }
                 throw ex;
             }
-            assertReplayMatch(concurrent, fileHash, normalizedKey, normalizedBatchKey);
+            assertReplayMatch(concurrent, normalizedKey, normalizedBatchKey);
             return toResponse(concurrent);
         }
     }
@@ -224,15 +222,12 @@ public class OpeningStockImportService {
                                                                   MultipartFile file,
                                                                   String idempotencyKey,
                                                                   String openingStockBatchKey,
-                                                                  String fileHash,
                                                                   String importReference) {
         OpeningStockImport record = new OpeningStockImport();
         record.setCompany(company);
         record.setIdempotencyKey(idempotencyKey);
-        record.setIdempotencyHash(fileHash);
         record.setReferenceNumber(importReference);
         record.setOpeningStockBatchKey(openingStockBatchKey);
-        record.setFileHash(fileHash);
         record.setFileName(file.getOriginalFilename());
         record = openingStockImportRepository.saveAndFlush(record);
 
@@ -252,7 +247,6 @@ public class OpeningStockImportService {
         auditMetadata.put("idempotencyKey", idempotencyKey);
         auditMetadata.put("openingStockBatchKey", openingStockBatchKey);
         auditMetadata.put("referenceNumber", importReference);
-        auditMetadata.put("fileHash", fileHash);
         auditMetadata.put("rowsProcessed", Integer.toString(response.rowsProcessed()));
         if (result.journalEntryId() != null) {
             auditMetadata.put("journalEntryId", result.journalEntryId().toString());
@@ -424,7 +418,6 @@ public class OpeningStockImportService {
     }
 
     private void assertReplayMatch(OpeningStockImport record,
-                                   String expectedHash,
                                    String idempotencyKey,
                                    String openingStockBatchKey) {
         String storedBatchKey = StringUtils.hasText(record.getOpeningStockBatchKey())
@@ -437,35 +430,6 @@ public class OpeningStockImportService {
                     .withDetail("openingStockBatchKey", openingStockBatchKey)
                     .withDetail("existingOpeningStockBatchKey", storedBatchKey);
         }
-        String storedSignature = record.getIdempotencyHash();
-        if (!StringUtils.hasText(storedSignature)) {
-            storedSignature = record.getFileHash();
-        }
-        boolean dirty = false;
-        if (StringUtils.hasText(storedSignature)) {
-            if (!storedSignature.equals(expectedHash)) {
-                throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
-                        "Idempotency key already used with different payload")
-                        .withDetail("idempotencyKey", idempotencyKey);
-            }
-            if (!StringUtils.hasText(record.getOpeningStockBatchKey())) {
-                record.setOpeningStockBatchKey(openingStockBatchKey);
-                dirty = true;
-            }
-            if (!StringUtils.hasText(record.getIdempotencyHash()) || !StringUtils.hasText(record.getFileHash())) {
-                record.setIdempotencyHash(expectedHash);
-                record.setFileHash(expectedHash);
-                dirty = true;
-            }
-            if (dirty) {
-                openingStockImportRepository.save(record);
-            }
-            return;
-        }
-        record.setOpeningStockBatchKey(openingStockBatchKey);
-        record.setIdempotencyHash(expectedHash);
-        record.setFileHash(expectedHash);
-        openingStockImportRepository.save(record);
     }
 
     private OpeningStockImportResponse toResponse(OpeningStockImport record) {
@@ -580,14 +544,6 @@ public class OpeningStockImportService {
         }
         String normalized = code.trim().toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9]", "");
         return normalized.isBlank() ? "COMPANY" : normalized;
-    }
-
-    private String resolveFileHash(MultipartFile file) {
-        try {
-            return IdempotencyUtils.sha256Hex(file.getBytes());
-        } catch (Exception ex) {
-            throw ValidationUtils.invalidState("Failed to compute opening stock file hash", ex);
-        }
     }
 
     private OpeningMovementResult handleRawMaterial(Company company, OpeningRow row) {
