@@ -7,8 +7,9 @@ SET opening_stock_batch_key = COALESCE(NULLIF(opening_stock_batch_key, ''), idem
 WHERE opening_stock_batch_key IS NULL
    OR opening_stock_batch_key = '';
 
-WITH ranked_batch_keys AS (
+WITH RECURSIVE ranked_batch_keys AS (
     SELECT id,
+           company_id,
            opening_stock_batch_key,
            ROW_NUMBER() OVER (
                PARTITION BY company_id, opening_stock_batch_key
@@ -17,14 +18,49 @@ WITH ranked_batch_keys AS (
     FROM opening_stock_imports
     WHERE opening_stock_batch_key IS NOT NULL
       AND opening_stock_batch_key <> ''
-), deduplicated_batch_keys AS (
-    SELECT id,
+), dedupe_candidates AS (
+    SELECT ranked.id,
+           ranked.company_id,
+           ranked.opening_stock_batch_key,
+           0 AS suffix,
            LEFT(
-               opening_stock_batch_key,
-               GREATEST(1, 128 - LENGTH('-LEGACY-') - LENGTH(id::text))
-           ) || '-LEGACY-' || id::text AS deduplicated_batch_key
-    FROM ranked_batch_keys
-    WHERE batch_rank > 1
+               ranked.opening_stock_batch_key,
+               GREATEST(1, 128 - LENGTH('-LEGACY-') - LENGTH(ranked.id::text))
+           ) || '-LEGACY-' || ranked.id::text AS deduplicated_batch_key
+    FROM ranked_batch_keys ranked
+    WHERE ranked.batch_rank > 1
+
+    UNION ALL
+
+    SELECT candidate.id,
+           candidate.company_id,
+           candidate.opening_stock_batch_key,
+           candidate.suffix + 1,
+           LEFT(
+               candidate.opening_stock_batch_key,
+               GREATEST(1, 128 - LENGTH('-LEGACY-') - LENGTH(candidate.id::text) - LENGTH('-') - LENGTH((candidate.suffix + 1)::text))
+           ) || '-LEGACY-' || candidate.id::text || '-' || (candidate.suffix + 1)::text AS deduplicated_batch_key
+    FROM dedupe_candidates candidate
+    WHERE EXISTS (
+        SELECT 1
+        FROM opening_stock_imports imports
+        WHERE imports.company_id = candidate.company_id
+          AND imports.id <> candidate.id
+          AND imports.opening_stock_batch_key = candidate.deduplicated_batch_key
+    )
+), deduplicated_batch_keys AS (
+    SELECT DISTINCT ON (candidate.id)
+           candidate.id,
+           candidate.deduplicated_batch_key
+    FROM dedupe_candidates candidate
+    WHERE NOT EXISTS (
+        SELECT 1
+        FROM opening_stock_imports imports
+        WHERE imports.company_id = candidate.company_id
+          AND imports.id <> candidate.id
+          AND imports.opening_stock_batch_key = candidate.deduplicated_batch_key
+    )
+    ORDER BY candidate.id, candidate.suffix
 )
 UPDATE opening_stock_imports imports
 SET opening_stock_batch_key = deduplicated_batch_keys.deduplicated_batch_key
