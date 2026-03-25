@@ -1,0 +1,80 @@
+{
+  "milestone": "setup-truth",
+  "round": 1,
+  "status": "fail",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "ROOT=\"/home/realnigga/Desktop/orchestrator_erp_worktrees/ERP-38-canonical-factory-flow\" && cd \"$ROOT\" && bash scripts/gate_fast.sh",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "ROOT=\"/home/realnigga/Desktop/orchestrator_erp_worktrees/ERP-38-canonical-factory-flow\" && cd \"$ROOT/erp-domain\" && MIGRATION_SET=v2 mvn -T8 compile -q",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "ROOT=\"/home/realnigga/Desktop/orchestrator_erp_worktrees/ERP-38-canonical-factory-flow\" && cd \"$ROOT\" && bash ci/lint-knowledgebase.sh && bash ci/check-architecture.sh && bash ci/check-enterprise-policy.sh && bash ci/check-orchestrator-layer.sh && python3 scripts/check_flaky_tags.py --tests-root erp-domain/src/test/java --gate gate-fast && bash scripts/guard_openapi_contract_drift.sh",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 3,
+    "passed": 2,
+    "failed": 1,
+    "failedFeatures": [
+      "setup-canonical-item-entrypoints"
+    ]
+  },
+  "blockingIssues": [
+    {
+      "featureId": "setup-canonical-item-entrypoints",
+      "severity": "blocking",
+      "description": "Stale setup guidance still advertises `POST /api/v1/catalog/products` as canonical stock-bearing item setup in `docs/developer/onboarding-stock-readiness/README.md`, contradicting VAL-SETUP-001 and VAL-SETUP-002."
+    },
+    {
+      "featureId": "setup-canonical-item-entrypoints",
+      "severity": "blocking",
+      "description": "`.factory/library/catalog-surface-consolidation.md` still identifies `/api/v1/catalog/products` as the canonical product surface, leaving future workers pointed at the retired setup host."
+    },
+    {
+      "featureId": "setup-canonical-item-entrypoints",
+      "severity": "blocking",
+      "description": "`docs/code-review/flows/manufacturing-inventory.md` still presents `/api/v1/accounting/catalog/products*` as the canonical accounting-aware stock-bearing setup path, so the hard-cut away from retired setup hosts is incomplete."
+    }
+  ],
+  "appliedUpdates": [
+    {
+      "target": "services.yaml",
+      "description": "Added `erp38-targeted-setup-packaging` so setup-truth workers can run the combined packaging regression/security proof (`PackagingMaterialServiceTest`, `PackagingMappingControllerSecurityContractTest`, `PackingControllerTest`, `BulkPackingManualPackagingRegressionIT`) from the shared service catalog.",
+      "sourceFeature": "setup-packaging-rules-contract"
+    },
+    {
+      "target": "services.yaml",
+      "description": "Added `openapi-refresh` with the exact `OpenApiSnapshotIT` refresh flags used by setup-truth workers so OpenAPI snapshot regeneration is no longer tribal knowledge.",
+      "sourceFeature": "setup-packaging-rule-validation-and-lifecycle"
+    }
+  ],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "factory-flow-worker skill",
+      "suggestion": "Add a short recovered-diff procedure for features that inherit uncommitted work from crashed sessions, including how to validate inherited edits before re-entering the normal test-first loop.",
+      "evidence": "Feature `setup-packaging-rules-contract` reused recovered worktree changes from crashed sessions and explicitly recorded a justified deviation because the skill lacked guidance for that path.",
+      "isSystemic": false
+    },
+    {
+      "target": "AGENTS.md",
+      "suggestion": "For hard-cut cleanup features, require an explicit absence search across broader shared-state surfaces (for example `docs/developer/**`, `docs/code-review/flows/**`, and `.factory/library/**`) so contradictory retired-route guidance is not left behind outside the narrow verification checklist.",
+      "evidence": "Feature `setup-canonical-item-entrypoints` passed its scoped validation steps but scrutiny still found contradictory `/api/v1/catalog/products*` and `/api/v1/accounting/catalog/products*` guidance in `docs/developer/onboarding-stock-readiness/README.md`, `.factory/library/catalog-surface-consolidation.md`, and `docs/code-review/flows/manufacturing-inventory.md`.",
+      "isSystemic": true
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "A separate service-catalog observation said `.factory/services.yaml` was missing packaging security-contract proof coverage for setup-truth.",
+      "reason": "duplicate; it is fully addressed by the new `erp38-targeted-setup-packaging` command recorded in `appliedUpdates`."
+    }
+  ],
+  "previousRound": null
+}

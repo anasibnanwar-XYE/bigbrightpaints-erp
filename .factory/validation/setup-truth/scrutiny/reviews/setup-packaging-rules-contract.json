@@ -1,0 +1,33 @@
+{
+  "featureId": "setup-packaging-rules-contract",
+  "reviewedAt": "2026-03-25T04:58:47.731138Z",
+  "commitId": "cfc4b4c4e765cf9bc4cebb4759938cf97ead6ee6",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The feature satisfies VAL-SETUP-004 and VAL-SETUP-007: the reviewed commit rewrites the operator-facing packaging contract to Packaging Setup / Rules on the changed controller/docs surfaces, and `PackagingMaterialService` now fails pack with setup-directed validation errors when setup is missing, inactive, non-packaging, missing required accounts, or resolves to zero cost. I found one non-blocking cleanup gap in benchmark configuration.",
+    "issues": [
+      {
+        "file": "erp-domain/src/main/resources/application-benchmark.yml",
+        "line": 35,
+        "severity": "non_blocking",
+        "description": "The benchmark profile still documents `erp.benchmark.require-packaging` as an active packaging-BOM fail-fast toggle, but the feature's fail-closed behavior is now unconditional and no code references this property anymore. The stale comment/property can mislead maintainers about a configuration knob that no longer exists."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "`factory-flow-worker` does not explain how to handle features that explicitly inherit recovered uncommitted diffs from crashed sessions. The worker had a justified deviation from the 'write failing tests first' step and had to record that gap in handoff feedback.",
+      "evidence": "The transcript skeleton for worker session `464ff470-af12-42f4-a513-29bc440a5562` shows reuse of recovered worktree changes, and the handoff marks `skillFeedback.followedProcedure=false` with a suggested skill update for recovered-diff reuse guidance."
+    },
+    {
+      "area": "services",
+      "observation": "Mission guidance says to use commands from `.factory/services.yaml`, but the available `erp38-targeted-setup` command does not cover the exact packaging-contract regression proof needed for this feature, so the worker had to run a custom Maven suite.",
+      "evidence": "`.factory/services.yaml` defines `erp38-targeted-setup` as `CatalogControllerCanonicalProductIT,CatalogServiceCanonicalCoverageTest,ProductionCatalogServiceCanonicalEntryTest,SkuReadinessServiceTest,PackagingMaterialServiceTest`, while the handoff verification command ran `PackagingMaterialServiceTest,PackingControllerTest,BulkPackingManualPackagingRegressionIT`."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Pass. The reviewed commit fulfills the packaging contract assertions by replacing operator-facing BOM wording with Packaging Setup / Rules language on the scoped surfaces and by making pack fail closed with setup-directed errors for missing/inactive/unusable setup. The only issue I found is a non-blocking stale benchmark config comment/property in `erp-domain/src/main/resources/application-benchmark.yml`."
+}

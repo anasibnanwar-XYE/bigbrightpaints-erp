@@ -1,0 +1,40 @@
+{
+  "featureId": "setup-canonical-item-entrypoints",
+  "reviewedAt": "2026-03-25T04:58:29.424076+00:00",
+  "commitId": "0c6d8f16d43280f8d3a27badc87009de08e77438",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The commit correctly updates README.md and .factory/library/frontend-handoff.md and the repo still exposes readiness on the /api/v1/catalog/items read surfaces, but the feature does not finish the hard-cut promised by its own description: multiple surviving setup-oriented docs still present /api/v1/catalog/products* and /api/v1/accounting/catalog/products* as canonical stock-bearing setup hosts.",
+    "issues": [
+      {
+        "file": "docs/developer/onboarding-stock-readiness/README.md",
+        "line": 13,
+        "severity": "blocking",
+        "description": "This packet still says stock-bearing product entry is canonical on `POST /api/v1/catalog/products` and later repeats `GET/POST /api/v1/catalog/products` as the only surviving operator-facing setup routes (lines 49-53). That directly contradicts the feature requirement and VAL-SETUP-001/002 to hard-cut setup guidance to `/api/v1/catalog/items`."
+      },
+      {
+        "file": ".factory/library/catalog-surface-consolidation.md",
+        "line": 16,
+        "severity": "blocking",
+        "description": "Shared library guidance still names `POST /api/v1/catalog/products` as the canonical product endpoint and line 42 still says newly created SKUs must be discoverable via the canonical `/api/v1/catalog/products` browse/search surface. Leaving this library state behind means future workers are still pointed at the retired setup host."
+      },
+      {
+        "file": "docs/code-review/flows/manufacturing-inventory.md",
+        "line": 47,
+        "severity": "blocking",
+        "description": "The manufacturing inventory flow doc still lists `GET/POST /api/v1/accounting/catalog/products` and `POST /api/v1/accounting/catalog/products/bulk-variants` as the canonical accounting-aware stock-bearing create/import path. This leaves exactly the stale `/api/v1/accounting/catalog/products*` setup guidance that the feature description said would be removed."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "knowledge",
+      "observation": "Shared setup/canonicalization knowledge is still split across older packet docs and library notes that advertise `/api/v1/catalog/products*` or `/api/v1/accounting/catalog/products*` as current setup truth, so reviewers/workers can satisfy the narrow verification checklist while missing contradictory shared-state docs.",
+      "evidence": "docs/developer/onboarding-stock-readiness/README.md:13,49-53; docs/developer/catalog-consolidation/README.md:11,36-41; .factory/library/catalog-surface-consolidation.md:16,42; docs/code-review/flows/manufacturing-inventory.md:47"
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Fail: the feature cleaned the README and frontend handoff, and the OpenAPI/readiness contract remains aligned to `/api/v1/catalog/items`, but it did not complete the promised setup-truth hard-cut because several surviving docs/shared-state files still direct setup users or future workers to `/api/v1/catalog/products*` and `/api/v1/accounting/catalog/products*`."
+}

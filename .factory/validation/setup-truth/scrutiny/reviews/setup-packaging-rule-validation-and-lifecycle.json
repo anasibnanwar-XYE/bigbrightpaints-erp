@@ -1,0 +1,26 @@
+{
+  "featureId": "setup-packaging-rule-validation-and-lifecycle",
+  "reviewedAt": "2026-03-25T04:58:30+00:00",
+  "commitId": "a7eadb02c5a7c31132c7942d28050ae1cc3a5308",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Pass. The feature fulfills VAL-SETUP-005 and VAL-SETUP-006: `PackagingSizeMappingRequest` now makes the core write fields required, `PackagingMaterialService` rejects blank sizes, invalid or non-packaging raw materials, and duplicate mappings on create/update, `PackagingMappingController` keeps writes admin-only while allowing admin/factory reads, and the service/tests preserve the full-list vs active-list lifecycle split. The refreshed OpenAPI snapshot also exposes the required request fields and the DTO active flag on the published packaging-mappings surface.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "services",
+      "observation": "The mission service catalog does not yet include the new packaging permission proof, so future setup-truth runs that rely on `.factory/services.yaml` will miss the packaging-mappings security contract unless they remember to add a custom Maven test selector.",
+      "evidence": "Handoff verification for session `5be91956-4966-4eda-a15e-ee254b2036b0` ran `MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest=PackagingMaterialServiceTest,PackagingMappingControllerSecurityContractTest test`; `.factory/services.yaml` command `erp38-targeted-setup` still lists only `CatalogControllerCanonicalProductIT,CatalogServiceCanonicalCoverageTest,ProductionCatalogServiceCanonicalEntryTest,SkuReadinessServiceTest,PackagingMaterialServiceTest`."
+    },
+    {
+      "area": "services",
+      "observation": "OpenAPI refresh is currently tribal knowledge rather than a named repo command. The worker had to inspect `OpenApiSnapshotIT` and invoke a bespoke Maven line to refresh `openapi.json` before the drift guard could pass.",
+      "evidence": "Transcript skeleton shows reads/greps against `erp-domain/src/test/java/com/bigbrightpaints/erp/OpenApiSnapshotIT.java` followed by `MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest=OpenApiSnapshotIT -Derp.openapi.snapshot.verify=true -Derp.openapi.snapshot.refresh=true test`; `.factory/services.yaml` contains `guard_openapi_contract_drift.sh` but no corresponding OpenAPI refresh command."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Scrutiny passed for `setup-packaging-rule-validation-and-lifecycle`. I found no blocking or non-blocking product-code defects in the feature diff; the main follow-ups are shared-state gaps in `.factory/services.yaml` around the new packaging security test and the OpenAPI snapshot refresh command."
+}
