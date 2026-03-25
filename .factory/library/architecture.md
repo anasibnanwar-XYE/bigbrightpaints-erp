@@ -22,6 +22,7 @@ Base package: `com.bigbrightpaints.erp`
 - `VersionedEntity` is the optimistic-locking base type.
 - Company/tenant scoped data relies on company context and scoped queries.
 - Flyway v2 is the only migration track valid for ERP-38.
+- `SystemRole` default-permission changes do not remove retired grants from existing database roles by themselves; `RoleService` synchronization is additive-only, so role-ownership moves need explicit cleanup/backfill proof for upgraded tenants.
 
 ## ERP-38 Canonical Factory Flow Notes
 

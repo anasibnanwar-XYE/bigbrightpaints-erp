@@ -1,0 +1,45 @@
+{
+  "featureId": "close-allowed-size-coverage-and-stale-test-review",
+  "reviewedAt": "2026-03-25T15:13:59Z",
+  "commitId": "b4e4ddd542521c8368422d0a813df15d266fa9cc",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "I reviewed the mission feature metadata, worker handoff, transcript skeleton, `factory-flow-worker` guidance, commit `b4e4ddd542521c8368422d0a813df15d266fa9cc`, the touched allowed-size/config/test files, and directly related current branch state. The implementation itself closes the changed-files coverage gap for `AllowedSellableSizeDto` and `PackingAllowedSizeService`, removes the retired `erp.benchmark.require-packaging` property from `application-benchmark.yml`, and renames the live O2C truthsuite to a retired-route-boundary framing. However, the feature does not fully satisfy its branch-cleanup requirement: tracked validation artifacts outside the diff still preserve explicit proof that the retired `/api/v1/dispatch/confirm` write path is behaviorally equivalent to `/api/v1/sales/dispatch/confirm`, so the branch still carries stale supported-behavior proof for a removed ERP-38 route.",
+    "issues": [
+      {
+        "file": ".factory/validation/freeze-dispatch-seams/scrutiny/reviews/freeze-provenance-views-and-equivalence.json",
+        "line": 5,
+        "severity": "blocking",
+        "description": "This tracked scrutiny report still summarizes the old feature as proving \"cross-endpoint replay equivalence between `/api/v1/dispatch/confirm` and `/api/v1/sales/dispatch/confirm`.\" Because ERP-38 now retires `POST /api/v1/dispatch/confirm`, leaving this review artifact untouched means the branch still contains explicit supported-behavior proof for a removed route, which contradicts this feature's requirement to leave no stale supported-behavior proof behind."
+      },
+      {
+        "file": ".factory/validation/freeze-dispatch-seams/user-testing/flows/provenance-equivalence.json",
+        "line": 83,
+        "severity": "blocking",
+        "description": "The tracked user-testing artifact still records `VAL-CROSS-005` as passing because `TS_O2CDispatchProvenanceViewsAndEquivalenceTest` proved both factory-then-sales and sales-then-factory replay orderings converge on the same truth, and line 104 still preserves the targeted command for `factoryThenSalesDispatchReplay_preservesEquivalentCanonicalTruth` and `salesThenFactoryDispatchReplay_preservesEquivalentCanonicalTruth`. The current live truthsuite was renamed to `TS_O2CDispatchProvenanceAndRetiredRouteBoundaryTest` and now asserts the retired factory route is absent, so these validation artifacts are stale branch-level proof for removed behavior."
+      },
+      {
+        "file": ".factory/validation/setup-truth/scrutiny/reviews/setup-packaging-rules-contract.json",
+        "line": 15,
+        "severity": "non_blocking",
+        "description": "This tracked review artifact still says the benchmark profile documents `erp.benchmark.require-packaging` as an active packaging fail-fast toggle. The feature removed that property from `erp-domain/src/main/resources/application-benchmark.yml`, so the branch still contains stale validation-state wording about the retired toggle even though the live config was cleaned up."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The mission cleanup guidance for ERP-38 hard-cut features enumerates docs, OpenAPI, endpoint inventory, workflows, and `.factory/library`, but it does not explicitly call out tracked `.factory/validation/**` artifacts even when a feature requires branch-wide removal of stale route/toggle proof.",
+      "evidence": "`/home/realnigga/.factory/missions/638844ab-aa59-453c-ae4d-3ee78989efb4/AGENTS.md` lists cleanup surfaces such as `openapi.json`, workflow docs, endpoint inventories, and `.factory/library/*`, yet this review found stale removed-route proof still tracked under `.factory/validation/freeze-dispatch-seams/scrutiny/reviews/freeze-provenance-views-and-equivalence.json:5` and `.factory/validation/freeze-dispatch-seams/user-testing/flows/provenance-equivalence.json:83-104`."
+    },
+    {
+      "area": "skills",
+      "observation": "`factory-flow-worker` step 4 tells workers to clean published contract surfaces, but it also omits `.factory/validation/**`. For cleanup features whose acceptance criteria include \"leave the branch with no stale supported-behavior proof,\" that omission makes it easy to stop after live code/tests/docs are fixed while stale validation evidence remains tracked.",
+      "evidence": "`.factory/skills/factory-flow-worker/SKILL.md` step 4 lists `openapi.json`, endpoint inventory, workflow docs, `.factory/library/frontend-handoff.md`, `.factory/library/frontend-v2.md`, and `README.md`, but not `.factory/validation/**`. The reviewed worker followed the listed procedure and commit `b4e4ddd542521c8368422d0a813df15d266fa9cc` cleaned the live truthsuite/catalog/config surfaces while stale validation artifacts remained elsewhere in the repo."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Fail: the commit successfully clears the allowed-size changed-files coverage warning and removes the live benchmark toggle guidance, but it does not finish the branch-wide stale-proof cleanup because tracked validation artifacts still endorse retired `/api/v1/dispatch/confirm` equivalence behavior."
+}

@@ -1,0 +1,21 @@
+{
+  "featureId": "refresh-cross-flow-contract-artifacts",
+  "reviewedAt": "2026-03-25T15:09:16Z",
+  "commitId": "9e376f18d078c380a50fccba0457eb83b5d6a1f2",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "I reviewed the feature metadata, handoff, transcript skeleton, `factory-flow-worker` procedure, commit `9e376f18d078c380a50fccba0457eb83b5d6a1f2`, and the current state of the touched workflow/review/inventory artifacts plus the live controller mappings they describe. The docs-only commit stays in scope and fixes the stale ERP-38 contract guidance it targeted: `docs/workflows/inventory-management.md:14` now uses canonical item traceability support via `GET /api/v1/catalog/items/{itemId}?includeStock=true&includeReadiness=true`; `docs/code-review/risk-register.md:149-151` anchors the manufacturing setup-risk entries on `POST /api/v1/catalog/items`; `docs/code-review/flows/orchestrator-background-integration.md:119-135` keeps dispatch ownership on `POST /api/v1/sales/dispatch/confirm` while describing the retired factory batch bridge in terms of canonical `POST /api/v1/factory/production/logs`; and `erp-domain/docs/endpoint_inventory.tsv:74-76,96-100,108,115,206` now matches the live `CatalogController`, `DispatchController`, `PackingController`, `ProductionLogController`, and `SalesController` mappings. Repo searches over `docs/code-review/flows`, `docs/workflows`, and `erp-domain/docs/endpoint_inventory.tsv` found no surviving supported-behavior references to `/api/v1/factory/production-batches`, `/api/v1/factory/pack`, `/api/v1/dispatch/confirm`, `/api/v1/catalog/products`, or `/api/v1/accounting/catalog/products` in the reviewed surfaces. I found no blocking or non-blocking defects in feature scope.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The docs-only verification rule in `factory-flow-worker` is still not being applied consistently: this worker ran `gate_fast` for a docs-only feature but still marked `followedProcedure` as true in the handoff.",
+      "evidence": "`.factory/skills/factory-flow-worker/SKILL.md:62-69` says docs-only features must skip `commands.gate-fast`, while `/home/realnigga/.factory/missions/638844ab-aa59-453c-ae4d-3ee78989efb4/handoffs/2026-03-25T13-07-58-591Z__refresh-cross-flow-contract-artifacts__520473d1-73f7-4aa1-9ad6-e2b5141d80c5.json:16` records a `bash scripts/gate_fast.sh` run and the same handoff marks `followedProcedure` true at line 49."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Pass: commit `9e376f18d078c380a50fccba0457eb83b5d6a1f2` refreshes the targeted workflow/review/inventory artifacts to the surviving ERP-38 contract with no in-scope review defects, though the docs-only skill guidance is still being applied inconsistently in worker handoffs."
+}

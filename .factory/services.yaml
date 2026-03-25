@@ -25,6 +25,8 @@ commands:
     ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT/erp-domain" && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='PackagingMaterialServiceTest,PackagingMappingControllerSecurityContractTest,PackingControllerTest,BulkPackingManualPackagingRegressionIT' test
   erp38-targeted-batch-pack: >-
     ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT/erp-domain" && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='ProductionLogWipPostingRegressionIT,ProductionLaborOverheadWipIT,ProductionLogListDetailLazyLoadRegressionIT,ProductionLogPackingStatusRegressionIT,PackingControllerTest,PackingServiceTest,FactoryPackagingCostingIT,TS_PackingIdempotencyAndFacadeBoundaryTest' test
+  erp38-targeted-factory-fast-gate: >-
+    ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT/erp-domain" && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='PackagingMappingControllerSecurityContractTest,PackagingMappingControllerTest,PackingControllerTest,FactoryServiceTest,PackingReadServiceTest,PackingServiceTest,PackagingMaterialServiceTest,PackingAllowedSizeServiceTest,ProductionLogServiceCostingFallbackTest,ProductionLogPackingStatusRegressionIT,FactoryPackagingCostingIT' test
   erp38-targeted-dispatch: >-
     ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT/erp-domain" && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='DispatchControllerTest,DispatchOperationalBoundaryIT,DispatchConfirmationIT,TS_O2CDispatchCanonicalPostingTest,TS_O2COrchestratorDispatchRemovalRegressionTest,ErpInvariantsSuiteIT,OrderFulfillmentE2ETest' test
   erp38-contract-guards: >-
