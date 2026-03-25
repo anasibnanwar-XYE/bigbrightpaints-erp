@@ -19,12 +19,10 @@ Mission-specific route ownership, cleanup targets, and worker guardrails for the
 ## Delete-First Targets
 
 - internal callers that still route through the legacy batch seam
-- `POST /api/v1/factory/pack`
-- `POST /api/v1/factory/packing-records/{productionLogId}/complete`
 - pack legacy idempotency compatibility (`X-Idempotency-Key`, `X-Request-Id`, payload-derived fallback, auto-generated fallback keys)
 - `POST /api/v1/dispatch/confirm`
 - stale orchestrator dispatch aliases or canonicalPath pointers to `/api/v1/dispatch/confirm`
-- stale tests/docs/OpenAPI/frontend-handoff entries for retired surfaces
+- stale tests/docs/OpenAPI/frontend-handoff entries for retired surfaces, including any leftover references to retired pack routes or pack-completion semantics
 
 ## Terminology Rules
 
