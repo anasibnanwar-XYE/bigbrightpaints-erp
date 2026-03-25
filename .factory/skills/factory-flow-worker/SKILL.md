@@ -27,7 +27,8 @@ None.
 1. Read `mission.md`, mission `AGENTS.md`, `.factory/services.yaml`, `.factory/library/factory-canonical-flow.md`, `.factory/library/architecture.md`, `.factory/library/environment.md`, and `.factory/library/user-testing.md`.
 2. List the surviving route/term/DTO/test/doc surfaces for the feature and the retired ones that must disappear.
 3. Trace all internal callers before touching code. For ERP-38 this includes controller mappings, services, DTOs, orchestrator callers, `openapi.json`, endpoint inventories, workflow docs, frontend handoff, and any stale compatibility tests.
-4. If the feature would require preserving both canonical and retired operator paths, stop and return to orchestrator.
+4. If the feature moves a default permission between system roles, also trace startup/backfill synchronizers, persisted role-permission rows, and upgraded-tenant authority surfaces. Fresh-role tests alone are not enough.
+5. If the feature would require preserving both canonical and retired operator paths, stop and return to orchestrator.
 
 ### Step 2: Write failing tests first
 1. Add or update tests before implementation.
@@ -55,6 +56,7 @@ When the feature changes a public route, DTO, error contract, or operator term, 
 - `.factory/library/frontend-handoff.md`
 - `.factory/library/frontend-v2.md`
 - `README.md` when the feature changes the top-level public flow or final run/test guidance
+- tracked `.factory/validation/**` evidence when the feature promises no stale supported-behavior proof remains
 
 If the feature does not change a public contract, say so explicitly in the handoff.
 
