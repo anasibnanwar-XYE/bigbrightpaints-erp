@@ -1,17 +1,19 @@
 #!/bin/bash
 set -euo pipefail
 
-PROJECT_ROOT="/home/realnigga/Desktop/Mission-control"
+PROJECT_ROOT="$(git rev-parse --show-toplevel)"
 ERP_DIR="$PROJECT_ROOT/erp-domain"
 LIB_DIR="$PROJECT_ROOT/.factory/library"
+RESEARCH_DIR="$PROJECT_ROOT/.factory/research"
 
 if [ ! -f "$PROJECT_ROOT/.env" ]; then
   cp "$PROJECT_ROOT/.env.example" "$PROJECT_ROOT/.env"
 fi
 
+grep -q '^JWT_SECRET=' "$PROJECT_ROOT/.env" || echo "JWT_SECRET=YOUR_JWT_SECRET_HERE" >> "$PROJECT_ROOT/.env"
 grep -q '^ERP_SECURITY_ENCRYPTION_KEY=' "$PROJECT_ROOT/.env" || echo "ERP_SECURITY_ENCRYPTION_KEY=YOUR_ENCRYPTION_KEY_HERE" >> "$PROJECT_ROOT/.env"
 
-mkdir -p "$LIB_DIR"
+mkdir -p "$LIB_DIR" "$RESEARCH_DIR"
 
 if [ ! -f "$LIB_DIR/erp-definition-of-done.md" ]; then
   cat > "$LIB_DIR/erp-definition-of-done.md" <<'EOF'
@@ -45,13 +47,13 @@ Capture backend contract impact for frontend consumers.
 EOF
 fi
 
-if [ ! -f "$LIB_DIR/tenant-runtime-control-plane.md" ]; then
-  cat > "$LIB_DIR/tenant-runtime-control-plane.md" <<'EOF'
-# Tenant Runtime Control Plane
+if [ ! -f "$LIB_DIR/factory-canonical-flow.md" ]; then
+  cat > "$LIB_DIR/factory-canonical-flow.md" <<'EOF'
+# ERP-38 Canonical Factory Flow
 
-Mission notes for canonical tenant/runtime policy behavior, stale-path retirement, and the exact PR catching lane for Lane 01 packets.
+Mission-specific route ownership, cleanup targets, and worker guardrails for the factory hard-cut packet.
 EOF
 fi
 
 cd "$ERP_DIR"
-mvn -q -DskipTests -Djacoco.skip=true compile >/dev/null 2>&1 || true
+MIGRATION_SET=v2 mvn -q -DskipTests -Djacoco.skip=true -T8 compile >/dev/null 2>&1 || true
