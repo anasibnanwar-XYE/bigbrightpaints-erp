@@ -1,0 +1,36 @@
+{
+  "milestone": "batch-pack-hard-cut",
+  "round": 1,
+  "status": "pass",
+  "assertionsSummary": {
+    "total": 13,
+    "passed": 13,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-BATCH-001",
+    "VAL-BATCH-002",
+    "VAL-BATCH-003",
+    "VAL-BATCH-004",
+    "VAL-BATCH-005",
+    "VAL-BATCH-006",
+    "VAL-PACK-001",
+    "VAL-PACK-002",
+    "VAL-PACK-003",
+    "VAL-PACK-004",
+    "VAL-PACK-005",
+    "VAL-PACK-006",
+    "VAL-PACK-007"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [
+    {
+      "target": "user-testing.md",
+      "description": "Preserved the known-issue guidance that the default `validation-seed` runtime lacks PACKAGING-typed fixtures and size variants, so positive pack proof should use the targeted batch-pack Maven suites unless extra fixtures are seeded first.",
+      "source": "flow-report"
+    }
+  ],
+  "previousRound": null
+}

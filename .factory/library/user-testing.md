@@ -106,6 +106,7 @@ If you need a deterministic password, export `ERP_VALIDATION_SEED_PASSWORD` befo
 ## Known Issues
 
 - Plain `prod,flyway-v2` compose boot can come up with an empty DB. Use the reset harness before authenticated runtime validation.
+- The current `validation-seed` runtime starts with raw materials `RM-RESIN`, `RM-PIG`, and `RM-CAN` only; `RM-CAN` is not typed as `PACKAGING`, and there are no seeded size variants. Positive `POST /api/v1/factory/packing-records` runtime proof therefore needs extra fixtures beyond the default seed. Use the targeted batch-pack Maven suites for positive pack completion/costing/status assertions unless you explicitly seed packaging-grade fixtures first.
 - Running Maven outside `erp-domain/` can break `.mvn/settings.xml` resolution.
 - Direct `docker compose up -d db rabbitmq mailhog` still needs `JWT_SECRET` and `ERP_SECURITY_ENCRYPTION_KEY` in the environment because the compose file parses the app service too.
 - If actuator reports DOWN but the app answers `8081`, verify the target API endpoints directly before treating the runtime as unavailable.
