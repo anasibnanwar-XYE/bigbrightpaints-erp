@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -200,6 +201,29 @@ class PackagingMaterialServiceTest {
                           + " without an inventory account")
                   .contains("Update Packaging Rules before packing");
             });
+  }
+
+  @Test
+  void consumePackagingMaterial_failsClosedWhenPackagingStockIsInsufficient() {
+    RawMaterial material = rawMaterial(19L, 930L, new BigDecimal("2"), null);
+    PackagingSizeMapping mapping = packagingMapping(material, 1);
+
+    when(mappingRepository.findActiveByCompanyAndPackagingSizeIgnoreCase(company, "1L"))
+        .thenReturn(List.of(mapping));
+    when(companyEntityLookup.lockActiveRawMaterial(company, 19L)).thenReturn(material);
+
+    assertThatThrownBy(() -> packagingMaterialService.consumePackagingMaterial("1L", 3, "PACK-REF"))
+        .isInstanceOf(ApplicationException.class)
+        .satisfies(
+            ex -> {
+              ApplicationException appEx = (ApplicationException) ex;
+              assertThat(appEx.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_INVALID_INPUT);
+              assertThat(appEx.getMessage()).contains("Insufficient PACK-19. Need: 3, Available: 2");
+            });
+
+    verify(rawMaterialBatchRepository, never()).deductQuantityIfSufficient(any(), any());
+    verify(rawMaterialRepository, never()).save(any(RawMaterial.class));
+    verify(rawMaterialMovementRepository, never()).save(any(RawMaterialMovement.class));
   }
 
   @Test

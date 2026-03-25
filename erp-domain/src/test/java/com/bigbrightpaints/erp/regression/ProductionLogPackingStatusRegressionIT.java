@@ -106,7 +106,7 @@ class ProductionLogPackingStatusRegressionIT extends AbstractIntegrationTest {
   }
 
   @Test
-  void packingUpdatesStatusAndUnpackedList() {
+  void packingStatusProgressesMonotonicallyUntilBatchIsFullyPacked() {
     RawMaterial material =
         createRawMaterial("RM-LF013", rmInventory.getId(), MaterialType.PRODUCTION);
     createBatch(material, new BigDecimal("50"), new BigDecimal("10.00"));
@@ -171,6 +171,29 @@ class ProductionLogPackingStatusRegressionIT extends AbstractIntegrationTest {
                     && "LF-013 Family".equals(batch.productFamilyName())
                     && batch.allowedSellableSizes().stream()
                         .anyMatch(size -> size.childFinishedGoodId().equals(packTarget.getId())));
+
+    ProductionLogDetailDto fullyPacked =
+        packingService.recordPacking(
+            new PackingRequest(
+                log.id(),
+                LocalDate.now(),
+                "Packer",
+                List.of(
+                    new PackingLineRequest(
+                        packTarget.getId(), null, "1L", new BigDecimal("6"), 6, null, null))));
+
+    assertThat(fullyPacked.status()).isEqualTo("FULLY_PACKED");
+    assertThat(fullyPacked.totalPackedQuantity()).isEqualByComparingTo(new BigDecimal("10"));
+    assertThat(fullyPacked.allowedSellableSizes()).hasSize(1);
+    assertThat(fullyPacked.allowedSellableSizes().getFirst().childFinishedGoodId())
+        .isEqualTo(packTarget.getId());
+
+    ProductionLog fullyRefreshed = productionLogRepository.findById(log.id()).orElseThrow();
+    assertThat(fullyRefreshed.getStatus().name()).isEqualTo("FULLY_PACKED");
+    assertThat(fullyRefreshed.getTotalPackedQuantity()).isEqualByComparingTo(new BigDecimal("10"));
+
+    List<UnpackedBatchDto> remainingUnpacked = packingService.listUnpackedBatches();
+    assertThat(remainingUnpacked).noneMatch(batch -> batch.id().equals(log.id()));
   }
 
   private Account ensureAccount(String code, String name, AccountType type) {

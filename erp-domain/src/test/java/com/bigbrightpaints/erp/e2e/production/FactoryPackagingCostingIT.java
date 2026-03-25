@@ -30,6 +30,7 @@ import com.bigbrightpaints.erp.modules.factory.domain.PackingRecord;
 import com.bigbrightpaints.erp.modules.factory.domain.PackingRecordRepository;
 import com.bigbrightpaints.erp.modules.factory.domain.ProductionLog;
 import com.bigbrightpaints.erp.modules.factory.domain.ProductionLogRepository;
+import com.bigbrightpaints.erp.modules.factory.domain.ProductionLogStatus;
 import com.bigbrightpaints.erp.modules.factory.domain.SizeVariant;
 import com.bigbrightpaints.erp.modules.factory.domain.SizeVariantRepository;
 import com.bigbrightpaints.erp.modules.factory.dto.PackingLineRequest;
@@ -237,12 +238,21 @@ public class FactoryPackagingCostingIT extends AbstractIntegrationTest {
     assertThat(expectedUnitCost).isEqualByComparingTo(new BigDecimal("57.5000"));
 
     ProductionLog storedLog = productionLogRepository.findById(log.id()).orElseThrow();
+    assertThat(storedLog.getStatus()).isEqualTo(ProductionLogStatus.FULLY_PACKED);
+    assertThat(storedLog.getTotalPackedQuantity()).isEqualByComparingTo(new BigDecimal("100"));
     PackingRecord packingRecord =
         packingRecordRepository
             .findByCompanyAndProductionLogOrderByPackedDateAscIdAsc(company, storedLog)
             .stream()
             .findFirst()
             .orElseThrow();
+    assertThat(packingRecord.getPackagingQuantity()).isEqualByComparingTo(new BigDecimal("5"));
+    assertThat(packingRecord.getPackagingCost()).isEqualByComparingTo(new BigDecimal("250.00"));
+    assertThat(packingRecord.getFinishedGoodBatch()).isNotNull();
+    assertThat(packingRecord.getFinishedGoodBatch().getId()).isEqualTo(fgBatch.getId());
+
+    assertThat(fgBatch.getQuantityTotal()).isEqualByComparingTo(new BigDecimal("100"));
+    assertThat(fgBatch.getUnitCost()).isEqualByComparingTo(new BigDecimal("57.5000"));
     String packagingReference = productionCode + "-PACK-" + packingRecord.getId();
 
     JournalEntry rmJournal = requireJournal(company, productionCode + "-RM");
