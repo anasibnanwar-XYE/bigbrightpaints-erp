@@ -15,9 +15,9 @@ Portal scope guardrail:
 ## Canonical API contract gate
 
 - Canonical machine contract source: repo-root `openapi.json`.
-- OpenAPI snapshot: `openapi.json` (sha256 `a02a98909f87ecbe11962cfa1695b675963c293da5099ee65e45e2788cc68c90`)
-- OpenAPI total paths: `295`
-- OpenAPI total operations: `349`
+- OpenAPI snapshot: `openapi.json` (sha256 `8912b8326e1594e705123d37b68a229d25499c2d9f8002d8ea8e668ad5c9528e`)
+- OpenAPI total paths: `294`
+- OpenAPI total operations: `347`
 - Guard remediation flow: if parity drifts, regenerate this inventory from canonical `openapi.json`, then rerun `bash scripts/guard_openapi_contract_drift.sh` and `bash scripts/guard_accounting_portal_scope_contract.sh`.
 
 ## Summary by module
@@ -37,7 +37,7 @@ Portal scope guardrail:
 | `demo` | 1 | /api/v1/demo/ping |
 | `dispatch` | 8 | /api/v1/dispatch/backorder/{slipId}/cancel, /api/v1/dispatch/confirm, /api/v1/dispatch/order/{orderId} |
 | `exports` | 2 | /api/v1/exports/request, /api/v1/exports/{requestId}/download |
-| `factory` | 20 | /api/v1/factory/bulk-batches/{finishedGoodId}, /api/v1/factory/bulk-batches/{parentBatchId}/children, /api/v1/factory/cost-allocation |
+| `factory` | 19 | /api/v1/factory/bulk-batches/{finishedGoodId}, /api/v1/factory/bulk-batches/{parentBatchId}/children, /api/v1/factory/cost-allocation |
 | `finished-goods` | 6 | /api/v1/finished-goods, /api/v1/finished-goods/low-stock, /api/v1/finished-goods/stock-summary |
 | `hr` | 17 | /api/v1/hr/attendance/bulk-import, /api/v1/hr/attendance/bulk-mark, /api/v1/hr/attendance/date/{date} |
 | `integration` | 1 | /api/integration/health |
@@ -253,7 +253,6 @@ Portal scope guardrail:
 - `PUT, DELETE` `/api/v1/factory/packaging-mappings/{id}`
 - `POST` `/api/v1/factory/packing-records`
 - `POST` `/api/v1/factory/packing-records/{productionLogId}/complete`
-- `GET, POST` `/api/v1/factory/production-batches`
 - `GET` `/api/v1/factory/production-logs/{productionLogId}/packing-history`
 - `GET, POST` `/api/v1/factory/production-plans`
 - `PUT, DELETE` `/api/v1/factory/production-plans/{id}`

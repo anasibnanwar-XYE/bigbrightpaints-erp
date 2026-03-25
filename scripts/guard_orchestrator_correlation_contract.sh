@@ -48,6 +48,21 @@ require_literal() {
   grep -Fq -- "$needle" "$file" || fail "$label"
 }
 
+require_absent_literal() {
+  local needle="$1"
+  local file="$2"
+  local label="$3"
+  if command -v rg >/dev/null 2>&1; then
+    if rg -q --fixed-strings -- "$needle" "$file"; then
+      fail "$label"
+    fi
+    return
+  fi
+  if grep -Fq -- "$needle" "$file"; then
+    fail "$label"
+  fi
+}
+
 for path in "$DISPATCHER" "$COORDINATOR" "$SANITIZER" "$CONTROLLER" "$IDEMPOTENCY_SERVICE" "$TRACE_SERVICE" "$EVENT_PUBLISHER" "$COORDINATOR_TEST" "$DISPATCHER_TEST" "$CONTROLLER_IT" "$SANITIZER_TEST"; do
   [[ -f "$path" ]] || fail "missing required file: $path"
 done
@@ -85,8 +100,8 @@ require_multiline_pattern "public AutoApprovalResult updateFulfillment\\(String 
   "IntegrationCoordinator missing correlation-aware updateFulfillment overload"
 require_multiline_pattern "public void updateProductionStatus\\(String planId,[\\s\\S]*String traceId,[\\s\\S]*String idempotencyKey\\)" "$COORDINATOR" \
   "IntegrationCoordinator missing correlation-aware updateProductionStatus overload"
-require_multiline_pattern "public void releaseInventory\\(String batchId,[\\s\\S]*String traceId,[\\s\\S]*String idempotencyKey\\)" "$COORDINATOR" \
-  "IntegrationCoordinator missing correlation-aware releaseInventory overload"
+require_absent_literal "public void releaseInventory(" "$COORDINATOR" \
+  "IntegrationCoordinator must not expose the removed releaseInventory legacy batch seam"
 require_multiline_pattern "public void syncEmployees\\(String companyId,[\\s\\S]*String traceId,[\\s\\S]*String idempotencyKey\\)" "$COORDINATOR" \
   "IntegrationCoordinator missing correlation-aware syncEmployees overload"
 require_multiline_pattern "public PayrollRunDto generatePayroll\\(LocalDate payrollDate,[\\s\\S]*String traceId,[\\s\\S]*String idempotencyKey\\)" "$COORDINATOR" \
@@ -133,8 +148,8 @@ require_literal "updateOrderFulfillmentPropagatesTraceAndIdempotencyToCoordinato
   "CommandDispatcherTest missing fulfillment correlation propagation assertion"
 require_literal "reserveInventoryCorrelationAnnotatesProductionArtifactsAndAttachesTrace" "$COORDINATOR_TEST" \
   "IntegrationCoordinatorTest missing reserveInventory correlation assertion"
-require_literal "releaseInventoryPropagatesTraceAndIdempotencyInBatchNotes" "$COORDINATOR_TEST" \
-  "IntegrationCoordinatorTest missing releaseInventory correlation assertion"
+require_literal "integrationCoordinatorNoLongerExposesLegacyReleaseInventoryCaller" "$COORDINATOR_TEST" \
+  "IntegrationCoordinatorTest missing legacy releaseInventory removal assertion"
 require_literal "recordPayrollPaymentPropagatesTraceAndIdempotencyInMemo" "$COORDINATOR_TEST" \
   "IntegrationCoordinatorTest missing payroll correlation memo assertion"
 require_literal "recordPayrollPaymentRejectsMalformedIdempotencyKey" "$COORDINATOR_TEST" \

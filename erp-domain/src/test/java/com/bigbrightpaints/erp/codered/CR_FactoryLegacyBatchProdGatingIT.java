@@ -1,22 +1,20 @@
 package com.bigbrightpaints.erp.codered;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
+import java.util.Set;
+import java.util.TreeSet;
+
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
+import org.springframework.web.servlet.mvc.method.RequestMappingInfo;
+import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 
-import com.bigbrightpaints.erp.core.exception.ApplicationException;
-import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
-import com.bigbrightpaints.erp.modules.company.domain.Company;
-import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
-import com.bigbrightpaints.erp.modules.factory.domain.ProductionBatchRepository;
-import com.bigbrightpaints.erp.modules.factory.dto.ProductionBatchRequest;
-import com.bigbrightpaints.erp.modules.factory.service.FactoryService;
+import com.bigbrightpaints.erp.modules.factory.controller.FactoryController;
+import com.bigbrightpaints.erp.modules.factory.controller.ProductionLogController;
 import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
 
 @ActiveProfiles(
@@ -32,49 +30,44 @@ import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
       "ERP_DISPATCH_DEBIT_ACCOUNT_ID=1",
       "ERP_DISPATCH_CREDIT_ACCOUNT_ID=2",
       "management.endpoint.health.validate-group-membership=false",
-      "erp.environment.validation.enabled=false",
-      "erp.factory.legacy-batch.enabled=false"
+      "erp.environment.validation.enabled=false"
     })
 class CR_FactoryLegacyBatchProdGatingIT extends AbstractIntegrationTest {
 
-  private static final String COMPANY_CODE = "CR-FACTORY-LEGACY";
-
-  @Autowired private FactoryService factoryService;
-  @Autowired private CompanyRepository companyRepository;
-  @Autowired private ProductionBatchRepository productionBatchRepository;
-
-  private Company company;
-
-  @BeforeEach
-  void setUp() {
-    company =
-        companyRepository
-            .findByCodeIgnoreCase(COMPANY_CODE)
-            .orElseGet(
-                () -> {
-                  Company created = new Company();
-                  created.setCode(COMPANY_CODE);
-                  created.setName("CR Factory Legacy Gate");
-                  created.setTimezone("UTC");
-                  return companyRepository.save(created);
-                });
-    CompanyContextHolder.setCompanyId(COMPANY_CODE);
-  }
-
-  @AfterEach
-  void tearDown() {
-    CompanyContextHolder.clear();
-  }
+  @Autowired
+  @Qualifier("requestMappingHandlerMapping")
+  private RequestMappingHandlerMapping handlerMapping;
 
   @Test
-  void prodBlocksLegacyBatchLogging() {
-    ProductionBatchRequest request =
-        new ProductionBatchRequest("CR-LEGACY-001", 10.0, "codered", "legacy batch");
+  void prodNoLongerExposesLegacyProductionBatchRoutes() {
+    Set<String> factoryPaths = collectPathsFor(FactoryController.class);
+    Set<String> productionLogPaths = collectPathsFor(ProductionLogController.class);
 
-    ApplicationException ex =
-        assertThrows(ApplicationException.class, () -> factoryService.logBatch(null, request));
+    assertThat(factoryPaths).doesNotContain("/api/v1/factory/production-batches");
+    assertThat(productionLogPaths).contains("/api/v1/factory/production/logs");
+  }
 
-    assertThat(ex.getMessage()).contains("Legacy production batch logging is disabled");
-    assertThat(productionBatchRepository.findByCompanyOrderByProducedAtDesc(company)).isEmpty();
+  private Set<String> collectPathsFor(Class<?> controllerType) {
+    Set<String> paths = new TreeSet<>();
+    handlerMapping
+        .getHandlerMethods()
+        .forEach(
+            (mapping, handlerMethod) -> {
+              if (!controllerType.equals(handlerMethod.getBeanType())) {
+                return;
+              }
+              paths.addAll(extractPatterns(mapping));
+            });
+    return paths;
+  }
+
+  private Set<String> extractPatterns(RequestMappingInfo mapping) {
+    if (mapping.getPathPatternsCondition() != null) {
+      return mapping.getPathPatternsCondition().getPatternValues();
+    }
+    if (mapping.getPatternsCondition() != null) {
+      return new TreeSet<>(mapping.getPatternsCondition().getPatterns());
+    }
+    return Set.of();
   }
 }

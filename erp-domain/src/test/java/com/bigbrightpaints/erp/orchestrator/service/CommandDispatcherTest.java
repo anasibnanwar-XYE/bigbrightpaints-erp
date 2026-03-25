@@ -262,14 +262,6 @@ class CommandDispatcherTest {
             ArgumentMatchers.anyString(),
             ArgumentMatchers.anyString(),
             ArgumentMatchers.anyString());
-    verify(integrationCoordinator, never())
-        .releaseInventory(ArgumentMatchers.anyString(), ArgumentMatchers.anyString());
-    verify(integrationCoordinator, never())
-        .releaseInventory(
-            ArgumentMatchers.anyString(),
-            ArgumentMatchers.anyString(),
-            ArgumentMatchers.anyString(),
-            ArgumentMatchers.anyString());
     verify(policyEnforcer).checkDispatchPermissions("user-1", "COMP");
     verifyNoInteractions(eventPublisherService, traceService, idempotencyService);
   }

@@ -1738,8 +1738,6 @@ Default auth: `hasAnyAuthority('ROLE_ADMIN','ROLE_FACTORY')` unless noted.
 | PUT | `/api/v1/factory/production-plans/{id}` | `ProductionPlanRequest` | `ProductionPlanDto` |
 | PATCH | `/api/v1/factory/production-plans/{id}/status` | Body `{ status }` | `ProductionPlanDto` |
 | DELETE | `/api/v1/factory/production-plans/{id}` | — | `204 No Content` |
-| GET | `/api/v1/factory/production-batches` | — | `List<ProductionBatchDto>` |
-| POST | `/api/v1/factory/production-batches` | Query `planId?` + `ProductionBatchRequest` | `ProductionBatchDto` |
 | GET | `/api/v1/factory/tasks` | — | `List<FactoryTaskDto>` |
 | POST | `/api/v1/factory/tasks` | `FactoryTaskRequest` | `FactoryTaskDto` |
 | PUT | `/api/v1/factory/tasks/{id}` | `FactoryTaskRequest` | `FactoryTaskDto` |
@@ -1936,8 +1934,6 @@ Operational statuses: `PENDING`, `PENDING_STOCK`, `PENDING_PRODUCTION`, `RESERVE
 
 - `ProductionPlanRequest`: `planNumber*`, `productName*`, `quantity*`, `plannedDate*`, `notes`.
 - `ProductionPlanDto`: identity + plan/product/qty/date/status/notes.
-- `ProductionBatchRequest` (legacy path): `batchNumber*`, `quantityProduced*`, `loggedBy`, `notes`.
-- `ProductionBatchDto` (legacy path): identity + batch/qty/timestamp/user/notes.
 - `ProductionLogRequest`: `brandId*`, `productId*`, `batchColour`, `batchSize*`, `unitOfMeasure`, `mixedQuantity*`, `producedAt`, `notes`, `createdBy`, `salesOrderId`, `laborCost`, `overheadCost`, `materials*`.
 - `ProductionLogRequest.MaterialUsageRequest`: `rawMaterialId*`, `quantity* (>0)`, `unitOfMeasure`.
 - `ProductionLogDto`: lifecycle summary with output, packed quantity, wastage, status, cost totals.

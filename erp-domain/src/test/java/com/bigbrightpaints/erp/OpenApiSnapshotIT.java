@@ -323,6 +323,8 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
       throws IOException {
     JsonNode root = fetchCurrentSpecNode();
 
+    assertOperationMissing(root, "/api/v1/factory/production-batches", "get");
+    assertOperationMissing(root, "/api/v1/factory/production-batches", "post");
     assertOperationContract(
         root,
         "/api/v1/factory/production/logs",
@@ -330,8 +332,11 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
         "#/components/schemas/ProductionLogRequest",
         "200",
         "#/components/schemas/ApiResponseProductionLogDetailDto");
+    assertThat(root.path("components").path("schemas").has("ProductionBatchRequest")).isFalse();
+    assertThat(root.path("components").path("schemas").has("ProductionBatchDto")).isFalse();
 
-    JsonNode productionLogRequest = root.path("components").path("schemas").path("ProductionLogRequest");
+    JsonNode productionLogRequest =
+        root.path("components").path("schemas").path("ProductionLogRequest");
     JsonNode requestProperties = productionLogRequest.path("properties");
     assertThat(requestProperties.has("brandId")).isTrue();
     assertThat(requestProperties.has("productId")).isTrue();

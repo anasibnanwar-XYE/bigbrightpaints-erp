@@ -36,7 +36,6 @@ import com.bigbrightpaints.erp.modules.company.domain.CompanyModule;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.modules.factory.dto.FactoryDashboardDto;
 import com.bigbrightpaints.erp.modules.factory.dto.FactoryTaskRequest;
-import com.bigbrightpaints.erp.modules.factory.dto.ProductionBatchRequest;
 import com.bigbrightpaints.erp.modules.factory.dto.ProductionPlanDto;
 import com.bigbrightpaints.erp.modules.factory.dto.ProductionPlanRequest;
 import com.bigbrightpaints.erp.modules.factory.service.FactoryService;
@@ -299,30 +298,6 @@ public class IntegrationCoordinator {
               throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
                   "Unsupported fulfillment status: " + requestedStatus);
           }
-        });
-  }
-
-  @Transactional
-  public void releaseInventory(String batchId, String companyId) {
-    releaseInventory(batchId, companyId, null, null);
-  }
-
-  @Transactional
-  public void releaseInventory(
-      String batchId, String companyId, String traceId, String idempotencyKey) {
-    String correlation = correlationSuffix(traceId, idempotencyKey);
-    requireFactoryDispatchEnabled();
-    runWithCompanyContext(
-        companyId,
-        () -> {
-          ProductionBatchRequest request =
-              new ProductionBatchRequest(
-                  batchId + "-DISPATCH",
-                  0.0,
-                  "system",
-                  correlationMemo("Auto release for dispatch " + batchId, traceId, idempotencyKey));
-          factoryService.logBatch(null, request);
-          log.info("Logged release batch {}{}", batchId, correlation);
         });
   }
 
