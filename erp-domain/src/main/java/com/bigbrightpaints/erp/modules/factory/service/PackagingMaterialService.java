@@ -84,21 +84,16 @@ public class PackagingMaterialService {
 
     if (mappingRepository.existsByCompanyAndPackagingSizeIgnoreCaseAndRawMaterial(
         company, normalizedSize, rawMaterial)) {
-      throw new ApplicationException(
-          ErrorCode.DUPLICATE_ENTITY,
-          "Packaging size mapping already exists for: "
-              + normalizedSize
-              + " and "
-              + rawMaterial.getSku());
+      throw duplicateMapping(normalizedSize, rawMaterial);
     }
 
     PackagingSizeMapping mapping = new PackagingSizeMapping();
     mapping.setCompany(company);
     mapping.setPackagingSize(normalizedSize);
     mapping.setRawMaterial(rawMaterial);
-    mapping.setUnitsPerPack(request.unitsPerPack() != null ? request.unitsPerPack() : 1);
+    mapping.setUnitsPerPack(request.unitsPerPack());
     mapping.setCartonSize(request.cartonSize());
-    mapping.setLitersPerUnit(request.litersPerUnit());
+    mapping.setLitersPerUnit(resolveLitersPerUnit(request.litersPerUnit(), normalizedSize));
     mapping.setActive(true);
 
     return toDto(mappingRepository.save(mapping));
@@ -115,31 +110,21 @@ public class PackagingMaterialService {
                     new ApplicationException(
                         ErrorCode.BUSINESS_ENTITY_NOT_FOUND, "Mapping not found"));
 
-    if (request.rawMaterialId() != null) {
-      RawMaterial rawMaterial =
-          requireActivePackagingRawMaterial(company, request.rawMaterialId(), false);
-      requirePackagingMaterial(rawMaterial);
-      if (mappingRepository.existsByCompanyAndPackagingSizeIgnoreCaseAndRawMaterialAndIdNot(
-          company, mapping.getPackagingSize(), rawMaterial, mapping.getId())) {
-        throw new ApplicationException(
-            ErrorCode.DUPLICATE_ENTITY,
-            "Packaging size mapping already exists for: "
-                + mapping.getPackagingSize()
-                + " and "
-                + rawMaterial.getSku());
-      }
-      mapping.setRawMaterial(rawMaterial);
+    String normalizedSize = normalizePackagingSize(request.packagingSize());
+    RawMaterial rawMaterial =
+        requireActivePackagingRawMaterial(company, request.rawMaterialId(), false);
+    requirePackagingMaterial(rawMaterial);
+
+    if (mappingRepository.existsByCompanyAndPackagingSizeIgnoreCaseAndRawMaterialAndIdNot(
+        company, normalizedSize, rawMaterial, mapping.getId())) {
+      throw duplicateMapping(normalizedSize, rawMaterial);
     }
 
-    if (request.unitsPerPack() != null) {
-      mapping.setUnitsPerPack(request.unitsPerPack());
-    }
-    if (request.cartonSize() != null) {
-      mapping.setCartonSize(request.cartonSize());
-    }
-    if (request.litersPerUnit() != null) {
-      mapping.setLitersPerUnit(request.litersPerUnit());
-    }
+    mapping.setPackagingSize(normalizedSize);
+    mapping.setRawMaterial(rawMaterial);
+    mapping.setUnitsPerPack(request.unitsPerPack());
+    mapping.setCartonSize(request.cartonSize());
+    mapping.setLitersPerUnit(resolveLitersPerUnit(request.litersPerUnit(), normalizedSize));
 
     return toDto(mappingRepository.save(mapping));
   }
@@ -362,7 +347,8 @@ public class PackagingMaterialService {
             + ". Create or reactivate a Packaging Rule before packing.");
   }
 
-  private ApplicationException invalidPackagingSetupReference(String normalizedSize, String detail) {
+  private ApplicationException invalidPackagingSetupReference(
+      String normalizedSize, String detail) {
     return new ApplicationException(
         ErrorCode.VALIDATION_INVALID_REFERENCE,
         "Packaging Setup for size "
@@ -390,6 +376,26 @@ public class PackagingMaterialService {
       return material.getSku().trim();
     }
     return material.getId() != null ? "#" + material.getId() : "unknown";
+  }
+
+  private BigDecimal resolveLitersPerUnit(BigDecimal litersPerUnit, String normalizedSize) {
+    if (litersPerUnit != null) {
+      return litersPerUnit;
+    }
+    BigDecimal parsed = PackagingSizeParser.parseSizeInLitersAllowBareNumber(normalizedSize);
+    if (parsed != null && parsed.compareTo(BigDecimal.ZERO) > 0) {
+      return parsed;
+    }
+    return BigDecimal.ONE;
+  }
+
+  private ApplicationException duplicateMapping(String normalizedSize, RawMaterial rawMaterial) {
+    return new ApplicationException(
+        ErrorCode.DUPLICATE_ENTITY,
+        "Packaging size mapping already exists for: "
+            + normalizedSize
+            + " and "
+            + rawMaterial.getSku());
   }
 
   private PackagingSizeMappingDto toDto(PackagingSizeMapping mapping) {
