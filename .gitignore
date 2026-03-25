@@ -81,6 +81,7 @@ docs/iam-diagram.md
 artifacts/release-matrix-local/
 artifacts/release-matrix-local-keep/
 artifacts/reviews/predeploy-blockers-v1-*
+artifacts/gate-fast/
 artifacts/gate-release/migration-matrix-v2.json
 artifacts/gate-release/predeploy-scans-fresh-v2.txt
 artifacts/gate-release/predeploy-scans-upgrade-v2.txt
