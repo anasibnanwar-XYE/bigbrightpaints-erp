@@ -59,12 +59,17 @@ When the feature changes a public route, DTO, error contract, or operator term, 
 If the feature does not change a public contract, say so explicitly in the handoff.
 
 ### Step 5: Verify thoroughly
-1. Run `commands.compile`.
-2. Run the targeted ERP-38 command(s) for the feature from `.factory/services.yaml`.
-3. If the feature changes a public route or cross-module posting behavior, run `commands.gate-fast` unless the orchestrator explicitly scoped you to a narrower pre-validation loop.
-4. If the feature changes endpoint inventories, workflow docs, or OpenAPI, run `commands.erp38-contract-guards`.
-5. Use runtime probes only when the assertion needs live API evidence. Prefer the reset harness documented in `.factory/library/user-testing.md`.
-6. Run `git diff --check` before ending the feature.
+1. First classify whether the feature is docs-only. Docs-only means it changes only markdown/text/shared-state surfaces (including workflow docs, review docs, `.factory/library/*`, `README.md`, or `erp-domain/docs/endpoint_inventory.tsv`) and does not change runtime code, tests, config, or generated OpenAPI truth.
+2. For docs-only features:
+   - Do not run `commands.compile`, targeted JVM suites, `commands.gate-fast`, or extra scrutiny-style review loops.
+   - Run the highest-signal docs checks instead: `bash ci/lint-knowledgebase.sh`, any relevant contract/workflow guards, targeted repo scans/grep for retired strings or routes, and `git diff --check`.
+   - Explain in the handoff why docs-focused verification was sufficient.
+3. For non-docs-only features, run `commands.compile`.
+4. For non-docs-only features, run the targeted ERP-38 command(s) for the feature from `.factory/services.yaml`.
+5. If a non-docs-only feature changes a public route or cross-module posting behavior, run `commands.gate-fast` unless the orchestrator explicitly scoped you to a narrower pre-validation loop.
+6. If a feature changes endpoint inventories, workflow docs, or OpenAPI as part of a runtime contract change, run `commands.erp38-contract-guards`.
+7. Use runtime probes only when the assertion needs live API evidence. Prefer the reset harness documented in `.factory/library/user-testing.md`.
+8. Run `git diff --check` before ending the feature.
 
 ### Step 6: Produce a high-signal handoff
 1. Summarize the surviving and removed surfaces.
