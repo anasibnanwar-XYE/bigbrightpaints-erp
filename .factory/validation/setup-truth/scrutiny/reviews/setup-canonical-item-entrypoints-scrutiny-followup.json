@@ -1,0 +1,33 @@
+{
+  "featureId": "setup-canonical-item-entrypoints-scrutiny-followup",
+  "reviewedAt": "2026-03-25T10:52:29+05:30",
+  "commitId": "6a6b395e0ff23d817ececd0a96c209a392134e9b",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Pass. I reviewed both the original failed diff (`0c6d8f16d43280f8d3a27badc87009de08e77438`) and the follow-up diff (`6a6b395e0ff23d817ececd0a96c209a392134e9b`). The original commit only cleaned `README.md` and `.factory/library/frontend-handoff.md`, leaving the three scrutiny-blocking shared-state docs untouched. The follow-up commit updates those exact docs so they now point setup truth to `/api/v1/catalog/items`, preserve readiness visibility with `includeReadiness=true`, and remove the retired `/api/v1/catalog/products*` and `/api/v1/accounting/catalog/products*` setup guidance. I found no new blocking issues in the targeted scope; there is one non-blocking stale cleanup note left in the touched library file.",
+    "issues": [
+      {
+        "file": ".factory/library/catalog-surface-consolidation.md",
+        "line": 77,
+        "severity": "non_blocking",
+        "description": "The `Known Current Drift To Remove` section still says `.factory/library/frontend-handoff.md` references retired catalog hosts, but the original feature commit `0c6d8f16d43280f8d3a27badc87009de08e77438` removed those references and a current search shows no `/api/v1/catalog/products*` or `/api/v1/accounting/catalog/products*` matches there. Leaving this stale note can misdirect future cleanup work."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "`factory-flow-worker` lacks an explicit docs-only/shared-guidance cleanup branch, so a constrained scrutiny follow-up had to justify deviations from both the tests-first step and the same-feature contract-surface cleanup step.",
+      "evidence": "`.factory/skills/factory-flow-worker/SKILL.md:32-59` requires tests first and contract-surface cleanup when operator terms change, while the follow-up handoff for session `537c4ddd-3b95-4025-9a2f-9182bc6b128d` records justified deviations because the feature was limited to three shared-state docs and made no runtime/public-contract change."
+    },
+    {
+      "area": "knowledge",
+      "observation": "Broader setup-truth shared-state drift still exists outside the three scrutiny-blocking files: the developer catalog-consolidation packet still advertises `/api/v1/catalog/products*` as canonical setup flow, so future workers can still be pointed at retired setup hosts unless that packet is reconciled too.",
+      "evidence": "`docs/developer/catalog-consolidation/README.md:11,36-41,62-63` still names `POST /api/v1/catalog/products` and preview/commit on `/api/v1/catalog/products`; a broader `docs/developer/**` search also still finds retired catalog-host references in `catalog-consolidation/*` and `accounting-flows/*`."
+    }
+  ],
+  "addressesFailureFrom": ".factory/validation/setup-truth/scrutiny/reviews/setup-canonical-item-entrypoints.json",
+  "summary": "Pass: the follow-up resolves the prior blocking review findings by updating the three cited shared-state docs to point setup truth only to `/api/v1/catalog/items` and to preserve readiness visibility. No new blocking issues were introduced in the targeted scope; I noted one non-blocking stale cleanup note in `.factory/library/catalog-surface-consolidation.md` plus a broader shared-state knowledge gap in the developer catalog-consolidation packet."
+}

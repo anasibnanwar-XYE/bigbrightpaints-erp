@@ -74,6 +74,5 @@ Update or remove stale catalog-route truth in the same packet across:
 ## Known Current Drift To Remove
 
 - Catalog-consolidation docs still contain pre-clarification text that implies inline brand creation inside the stock-bearing item contract.
-- `.factory/library/frontend-handoff.md` still references retired catalog hosts.
 - `erp-domain/docs/endpoint_inventory.tsv` still inventories retired catalog hosts.
 - Existing tests/helpers still assert legacy accounting and production catalog paths in places.
