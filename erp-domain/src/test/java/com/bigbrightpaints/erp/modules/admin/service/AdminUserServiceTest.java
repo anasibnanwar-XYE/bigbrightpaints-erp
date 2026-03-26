@@ -1,6 +1,7 @@
 package com.bigbrightpaints.erp.modules.admin.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -96,7 +97,7 @@ class AdminUserServiceTest {
     company = new Company();
     ReflectionTestUtils.setField(company, "id", 1L);
     company.setCode("TEST");
-    when(companyContextService.requireCurrentCompany()).thenReturn(company);
+    lenient().when(companyContextService.requireCurrentCompany()).thenReturn(company);
     lenient().when(passwordEncoder.encode(any())).thenReturn("encoded");
     lenient()
         .when(userRepository.save(any(UserAccount.class)))
@@ -784,6 +785,99 @@ class AdminUserServiceTest {
     verify(userRepository, never()).delete(mainAdmin);
     verify(tokenBlacklistService, never()).revokeAllUserTokens("main-admin@example.com");
     verify(refreshTokenService, never()).revokeAllForUser("main-admin@example.com");
+  }
+
+  @Test
+  void assertNotProtectedMainAdmin_returnsWhenUserIsNullOrMissingId() {
+    UserAccount pendingUser = new UserAccount("pending-user@example.com", "hash", "Pending User");
+
+    assertThatCode(
+            () -> ReflectionTestUtils.invokeMethod(
+                service, "assertNotProtectedMainAdmin", null, company, "delete"))
+        .doesNotThrowAnyException();
+    assertThatCode(
+            () -> ReflectionTestUtils.invokeMethod(
+                service, "assertNotProtectedMainAdmin", pendingUser, company, "delete"))
+        .doesNotThrowAnyException();
+  }
+
+  @Test
+  void assertNotProtectedMainAdmin_ignoresNullCompaniesAndUnassignedMainAdmins() {
+    UserAccount user = new UserAccount("tenant-user@example.com", "hash", "Tenant User");
+    ReflectionTestUtils.setField(user, "id", 911L);
+    user.addCompany(null);
+    user.addCompany(new Company());
+    user.addCompany(company);
+
+    assertThatCode(
+            () -> ReflectionTestUtils.invokeMethod(
+                service, "assertNotProtectedMainAdmin", user, company, "disable"))
+        .doesNotThrowAnyException();
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void resolveActorScopedTargetCompanies_returnsEmptyWhenActorCompanyMissingId() {
+    Company actorCompanyWithoutId = new Company();
+    actorCompanyWithoutId.setCode("NO-ID");
+    UserAccount user = new UserAccount("tenant-user@example.com", "hash", "Tenant User");
+    ReflectionTestUtils.setField(user, "id", 912L);
+
+    List<Company> scopedCompanies =
+        (List<Company>)
+            ReflectionTestUtils.invokeMethod(
+                service, "resolveActorScopedTargetCompanies", user, actorCompanyWithoutId);
+
+    assertThat(scopedCompanies).isEmpty();
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void resolveActorScopedTargetCompanies_returnsActorCompanyForNullMissingOrEmptyAssignments() {
+    UserAccount userWithNullCompanies =
+        new UserAccount("null-companies@example.com", "hash", "Null Companies");
+    ReflectionTestUtils.setField(userWithNullCompanies, "id", 913L);
+    ReflectionTestUtils.setField(userWithNullCompanies, "companies", null);
+    UserAccount userWithEmptyCompanies =
+        new UserAccount("empty-companies@example.com", "hash", "Empty Companies");
+    ReflectionTestUtils.setField(userWithEmptyCompanies, "id", 914L);
+
+    List<Company> scopedForNullUser =
+        (List<Company>)
+            ReflectionTestUtils.invokeMethod(
+                service, "resolveActorScopedTargetCompanies", null, company);
+    List<Company> scopedForNullCompanies =
+        (List<Company>)
+            ReflectionTestUtils.invokeMethod(
+                service, "resolveActorScopedTargetCompanies", userWithNullCompanies, company);
+    List<Company> scopedForEmptyCompanies =
+        (List<Company>)
+            ReflectionTestUtils.invokeMethod(
+                service, "resolveActorScopedTargetCompanies", userWithEmptyCompanies, company);
+
+    assertThat(scopedForNullUser).containsExactly(company);
+    assertThat(scopedForNullCompanies).containsExactly(company);
+    assertThat(scopedForEmptyCompanies).containsExactly(company);
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void resolveActorScopedTargetCompanies_filtersToActorCompanyAndSkipsNullEntries() {
+    Company foreignCompany = new Company();
+    ReflectionTestUtils.setField(foreignCompany, "id", 21L);
+    foreignCompany.setCode("FOREIGN");
+    UserAccount user = new UserAccount("shared-user@example.com", "hash", "Shared User");
+    ReflectionTestUtils.setField(user, "id", 915L);
+    user.addCompany(null);
+    user.addCompany(company);
+    user.addCompany(foreignCompany);
+
+    List<Company> scopedCompanies =
+        (List<Company>)
+            ReflectionTestUtils.invokeMethod(
+                service, "resolveActorScopedTargetCompanies", user, company);
+
+    assertThat(scopedCompanies).containsExactly(company);
   }
 
   @Test

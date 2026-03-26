@@ -676,6 +676,20 @@ class CompanyServiceTest {
   }
 
   @Test
+  void isRuntimeAccessAllowed_failsClosedWhenConcurrentRequestTelemetryIsUnavailable() {
+    Company company = company(1L, "ACME");
+    configureHardLimitEnvelope(company);
+    when(repository.findById(1L)).thenReturn(Optional.of(company));
+    when(userAccountRepository.countDistinctByCompanies_IdAndEnabledTrue(1L)).thenReturn(50L);
+    when(auditLogRepository.countApiActivityByCompanyId(1L)).thenReturn(20L);
+    when(auditLogRepository.estimateAuditStorageBytesByCompanyId(1L)).thenReturn(10_000L);
+    when(auditLogRepository.countDistinctSessionActivityByCompanyId(1L))
+        .thenThrow(new RuntimeException("session-telemetry-down"));
+
+    assertThat(companyService.isRuntimeAccessAllowed(1L)).isFalse();
+  }
+
+  @Test
   void isRuntimeAccessAllowed_failsClosedWhenCompanyIsMissing() {
     when(repository.findById(99L)).thenReturn(Optional.empty());
 
@@ -753,6 +767,21 @@ class CompanyServiceTest {
     company.setQuotaMaxApiRequests(0L);
     company.setQuotaMaxStorageBytes(100_000L);
     company.setQuotaMaxConcurrentRequests(100L);
+    when(repository.findById(1L)).thenReturn(Optional.of(company));
+
+    assertThat(companyService.isRuntimeAccessAllowed(1L)).isFalse();
+    verifyNoInteractions(userAccountRepository, auditLogRepository);
+  }
+
+  @Test
+  void isRuntimeAccessAllowed_deniesWhenConcurrentRequestQuotaEnvelopeIsMissing() {
+    Company company = company(1L, "ACME");
+    company.setQuotaHardLimitEnabled(true);
+    company.setQuotaSoftLimitEnabled(false);
+    company.setQuotaMaxActiveUsers(100L);
+    company.setQuotaMaxApiRequests(100L);
+    company.setQuotaMaxStorageBytes(100_000L);
+    company.setQuotaMaxConcurrentRequests(0L);
     when(repository.findById(1L)).thenReturn(Optional.of(company));
 
     assertThat(companyService.isRuntimeAccessAllowed(1L)).isFalse();
