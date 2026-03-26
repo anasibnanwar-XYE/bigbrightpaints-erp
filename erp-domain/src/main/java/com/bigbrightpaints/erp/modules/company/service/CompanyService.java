@@ -384,6 +384,19 @@ public class CompanyService {
     return buildTenantMetrics(company);
   }
 
+  public CompanyTenantMetricsDto getTenantMetricsForSuperAdmin(Long companyId) {
+    Authentication authentication = requireSuperAdminForTenantMetrics(companyId);
+    Company company =
+        repository
+            .findById(companyId)
+            .orElseThrow(
+                () ->
+                    com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+                        "Company not found"));
+    auditAuthorityDecision(true, METRICS_READ_REASON, company.getCode(), authentication);
+    return buildTenantMetrics(company);
+  }
+
   public CompanySuperAdminDashboardDto getSuperAdminDashboard() {
     Authentication authentication = requireSuperAdminForTenantMetrics(null);
     List<CompanySuperAdminDashboardDto.TenantOverview> tenantOverview =
@@ -788,7 +801,7 @@ public class CompanyService {
 
   private Integer safeRuntimeLimit(long value) {
     if (value <= 0L) {
-      return 1;
+      return null;
     }
     return value > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) value;
   }

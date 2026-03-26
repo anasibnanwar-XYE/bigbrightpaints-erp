@@ -16,15 +16,15 @@ import org.springframework.http.ResponseEntity;
 
 import com.bigbrightpaints.erp.modules.company.dto.CompanyEnabledModulesDto;
 import com.bigbrightpaints.erp.modules.company.service.CompanyService;
-import com.bigbrightpaints.erp.modules.company.service.SuperAdminService;
+import com.bigbrightpaints.erp.modules.company.service.SuperAdminTenantControlPlaneService;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 
 @ExtendWith(MockitoExtension.class)
 class SuperAdminControllerTest {
 
-  @Mock private SuperAdminService superAdminService;
-
   @Mock private CompanyService companyService;
+
+  @Mock private SuperAdminTenantControlPlaneService controlPlaneService;
 
   @InjectMocks private SuperAdminController superAdminController;
 
@@ -32,7 +32,7 @@ class SuperAdminControllerTest {
   void updateTenantModules_delegatesToCompanyService() {
     CompanyEnabledModulesDto modulesDto =
         new CompanyEnabledModulesDto(15L, "ACME", Set.of("PORTAL"));
-    when(companyService.updateEnabledModules(15L, Set.of("PORTAL"))).thenReturn(modulesDto);
+    when(controlPlaneService.updateModules(15L, Set.of("PORTAL"))).thenReturn(modulesDto);
 
     ResponseEntity<ApiResponse<CompanyEnabledModulesDto>> response =
         superAdminController.updateTenantModules(
@@ -43,6 +43,6 @@ class SuperAdminControllerTest {
     assertThat(response.getBody().success()).isTrue();
     assertThat(response.getBody().message()).isEqualTo("Tenant modules updated");
     assertThat(response.getBody().data()).isEqualTo(modulesDto);
-    verify(companyService).updateEnabledModules(15L, Set.of("PORTAL"));
+    verify(controlPlaneService).updateModules(15L, Set.of("PORTAL"));
   }
 }

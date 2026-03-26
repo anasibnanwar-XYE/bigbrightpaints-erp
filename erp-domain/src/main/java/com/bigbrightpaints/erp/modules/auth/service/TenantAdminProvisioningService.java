@@ -71,7 +71,7 @@ public class TenantAdminProvisioningService {
     firstAdmin.setMustChangePassword(true);
     firstAdmin.addCompany(company);
     firstAdmin.addRole(adminRole);
-    userAccountRepository.save(firstAdmin);
+    firstAdmin = userAccountRepository.saveAndFlush(firstAdmin);
     emailService.sendUserCredentialsEmailRequired(
         firstAdmin.getEmail(), firstAdmin.getDisplayName(), temporaryPassword, company.getCode());
     return new ProvisionedTenantAdmin(firstAdmin.getId(), firstAdmin.getEmail());

@@ -202,25 +202,25 @@ class TenantRuntimeEnforcementServiceTest {
     service.holdTenant("ACME", "maintenance_hold", "ops@bbp.com");
     TenantRuntimeEnforcementService.TenantRequestAdmission heldAdmission =
         service.beginRequest(
-            "ACME", "/api/v1/companies/1/tenant-runtime/policy", "PUT", "ops@bbp.com", true);
+            "ACME", "/api/v1/superadmin/tenants/1/limits", "PUT", "ops@bbp.com", true);
     service.completeRequest(heldAdmission, 200);
 
     service.blockTenant("ACME", "incident_block", "ops@bbp.com");
     TenantRuntimeEnforcementService.TenantRequestAdmission blockedAdmission =
         service.beginRequest(
-            "ACME", "/api/v1/companies/1/tenant-runtime/policy", "PUT", "ops@bbp.com", true);
+            "ACME", "/api/v1/superadmin/tenants/1/limits", "PUT", "ops@bbp.com", true);
     TenantRuntimeEnforcementService.TenantRequestAdmission blockedAdmissionWithContextPath =
         service.beginRequest(
-            "ACME", "/erp/api/v1/companies/1/tenant-runtime/policy", "PUT", "ops@bbp.com", true);
+            "ACME", "/erp/api/v1/superadmin/tenants/1/limits", "PUT", "ops@bbp.com", true);
     TenantRuntimeEnforcementService.TenantRequestAdmission blockedMalformedPrefixAdmission =
         service.beginRequest(
-            "ACME", "/erpapi/v1/companies/1/tenant-runtime/policy", "PUT", "ops@bbp.com", true);
+            "ACME", "/erpapi/v1/superadmin/tenants/1/limits", "PUT", "ops@bbp.com", true);
     TenantRuntimeEnforcementService.TenantRequestAdmission blockedUnprivilegedControl =
         service.beginRequest(
-            "ACME", "/api/v1/companies/1/tenant-runtime/policy", "PUT", "ops@bbp.com", false);
+            "ACME", "/api/v1/superadmin/tenants/1/limits", "PUT", "ops@bbp.com", false);
     TenantRuntimeEnforcementService.TenantRequestAdmission blockedPolicyRead =
         service.beginRequest(
-            "ACME", "/api/v1/companies/1/tenant-runtime/policy", "GET", "ops@bbp.com", true);
+            "ACME", "/api/v1/superadmin/tenants/1/limits", "GET", "ops@bbp.com", true);
     TenantRuntimeEnforcementService.TenantRequestAdmission retiredAdminPath =
         service.beginRequest(
             "ACME", "/api/v1/admin/tenant-runtime/policy", "PUT", "ops@bbp.com", true);
@@ -259,7 +259,7 @@ class TenantRuntimeEnforcementServiceTest {
         service.beginRequest("ACME", "/api/v1/private", "GET", "actor@bbp.com");
     TenantRuntimeEnforcementService.TenantRequestAdmission controlAdmission =
         service.beginRequest(
-            "ACME", "/api/v1/companies/1/tenant-runtime/policy", "PUT", "ops@bbp.com", true);
+            "ACME", "/api/v1/superadmin/tenants/1/limits", "PUT", "ops@bbp.com", true);
     service.completeRequest(controlAdmission, 200);
 
     assertThat(first.isAdmitted()).isTrue();
@@ -421,7 +421,7 @@ class TenantRuntimeEnforcementServiceTest {
 
     TenantRuntimeEnforcementService.TenantRequestAdmission controlAdmission =
         service.beginRequest(
-            "ACME", "/api/v1/companies/1/tenant-runtime/policy", "PUT", "ops@bbp.com", true);
+            "ACME", "/api/v1/superadmin/tenants/1/limits", "PUT", "ops@bbp.com", true);
     assertThat(controlAdmission.isAdmitted()).isTrue();
     service.completeRequest(controlAdmission, 200);
 
@@ -447,7 +447,7 @@ class TenantRuntimeEnforcementServiceTest {
 
     TenantRuntimeEnforcementService.TenantRequestAdmission controlAdmission =
         service.beginRequest(
-            "ACME", "/api/v1/companies/1/tenant-runtime/policy", "PUT", "ops@bbp.com", true);
+            "ACME", "/api/v1/superadmin/tenants/1/limits", "PUT", "ops@bbp.com", true);
     assertThat(controlAdmission.isAdmitted()).isTrue();
 
     service.completeRequest(controlAdmission, 500);
@@ -488,7 +488,7 @@ class TenantRuntimeEnforcementServiceTest {
 
     TenantRuntimeEnforcementService.TenantRequestAdmission controlAdmission =
         service.beginRequest(
-            "ACME", "/api/v1/companies/1/tenant-runtime/policy", "PUT", "ops@bbp.com", true);
+            "ACME", "/api/v1/superadmin/tenants/1/limits", "PUT", "ops@bbp.com", true);
     assertThat(controlAdmission.isAdmitted()).isTrue();
     service.completeRequest(controlAdmission, 200);
 
@@ -527,7 +527,7 @@ class TenantRuntimeEnforcementServiceTest {
     TenantRuntimeEnforcementService.TenantRequestAdmission policyAdmission =
         service.beginRequest(
             "ACME",
-            "/api/v1/companies/1/tenant-runtime/policy",
+            "/api/v1/superadmin/tenants/1/limits",
             "PUT",
             "super-admin@bbp.com",
             true);
@@ -543,7 +543,7 @@ class TenantRuntimeEnforcementServiceTest {
 
     TenantRuntimeEnforcementService.TenantRequestAdmission policyAdmission =
         service.beginRequest(
-            "ACME", "/api/v1/companies/1/tenant-runtime/policy", "PUT", "actor@bbp.com", false);
+            "ACME", "/api/v1/superadmin/tenants/1/limits", "PUT", "actor@bbp.com", false);
 
     assertThat(policyAdmission.isAdmitted()).isFalse();
     assertThat(policyAdmission.statusCode()).isEqualTo(HttpStatus.LOCKED.value());
@@ -662,7 +662,7 @@ class TenantRuntimeEnforcementServiceTest {
         service.beginRequest("ACME", "/api/v1/private", "   ", "actor@bbp.com");
     TenantRuntimeEnforcementService.TenantRequestAdmission controlTrailingSlashAllowed =
         service.beginRequest(
-            "ACME", "/api/v1/companies/1/tenant-runtime/policy///", "PUT", "ops@bbp.com", true);
+            "ACME", "/api/v1/superadmin/tenants/1/limits///", "PUT", "ops@bbp.com", true);
     TenantRuntimeEnforcementService.TenantRequestAdmission missingPathRejected =
         service.beginRequest("ACME", null, "PUT", "ops@bbp.com", true);
 
@@ -685,7 +685,7 @@ class TenantRuntimeEnforcementServiceTest {
         .isFalse();
     assertThat(
             invokeIsPolicyControlRequest(
-                "/api/v1/companies/1/tenant-runtime/policy///", " put ", true))
+                "/api/v1/superadmin/tenants/1/limits///", " put ", true))
         .isTrue();
   }
 

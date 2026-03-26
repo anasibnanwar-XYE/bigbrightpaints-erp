@@ -450,7 +450,7 @@ public class SuperAdminTenantControlPlaneService {
   }
 
   private CompanyTenantMetricsDto buildMetrics(Company company) {
-    return companyService.getTenantMetrics(company.getId());
+    return companyService.getTenantMetricsForSuperAdmin(company.getId());
   }
 
   private List<SuperAdminTenantDetailDto.SupportTimelineEvent> buildSupportTimeline(Company company) {

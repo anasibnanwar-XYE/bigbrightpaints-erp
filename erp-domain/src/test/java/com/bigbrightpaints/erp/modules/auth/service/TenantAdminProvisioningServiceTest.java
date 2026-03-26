@@ -64,7 +64,7 @@ class TenantAdminProvisioningServiceTest {
         .thenReturn(Optional.empty());
     when(roleRepository.findByName("ROLE_ADMIN")).thenReturn(Optional.of(adminRole));
     when(passwordEncoder.encode(any())).thenReturn("encoded");
-    when(userAccountRepository.save(any(UserAccount.class)))
+    when(userAccountRepository.saveAndFlush(any(UserAccount.class)))
         .thenAnswer(
             invocation -> {
               UserAccount saved = invocation.getArgument(0);
@@ -77,7 +77,7 @@ class TenantAdminProvisioningServiceTest {
 
     assertThat(provisioned.email()).isEqualTo("new-admin@ske.com");
     assertThat(provisioned.userId()).isNotNull();
-    verify(userAccountRepository).save(any(UserAccount.class));
+    verify(userAccountRepository).saveAndFlush(any(UserAccount.class));
     verify(emailService)
         .sendUserCredentialsEmailRequired(
             eq("new-admin@ske.com"), eq("New Admin"), any(), eq("SKE"));
@@ -101,7 +101,7 @@ class TenantAdminProvisioningServiceTest {
         .thenReturn(Optional.empty());
     when(roleRepository.findByName("ROLE_ADMIN")).thenReturn(Optional.of(adminRole));
     when(passwordEncoder.encode(any())).thenReturn("encoded");
-    when(userAccountRepository.save(any(UserAccount.class)))
+    when(userAccountRepository.saveAndFlush(any(UserAccount.class)))
         .thenAnswer(invocation -> invocation.getArgument(0));
 
     TenantAdminProvisioningService.ProvisionedTenantAdmin provisioned =
@@ -132,7 +132,7 @@ class TenantAdminProvisioningServiceTest {
         .thenReturn(Optional.empty());
     when(roleRepository.findByName("ROLE_ADMIN")).thenReturn(Optional.of(persistedRole));
     when(passwordEncoder.encode(any())).thenReturn("encoded");
-    when(userAccountRepository.save(any(UserAccount.class)))
+    when(userAccountRepository.saveAndFlush(any(UserAccount.class)))
         .thenAnswer(invocation -> invocation.getArgument(0));
 
     TenantAdminProvisioningService.ProvisionedTenantAdmin provisioned =

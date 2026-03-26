@@ -445,7 +445,7 @@ class TS_RuntimeTenantPolicyControlExecutableCoverageTest {
         .thenReturn(Optional.empty());
     when(roleRepository.findByName("ROLE_ADMIN")).thenReturn(Optional.of(adminRole));
     when(passwordEncoder.encode(any())).thenReturn("encoded");
-    when(userAccountRepository.save(any(UserAccount.class)))
+    when(userAccountRepository.saveAndFlush(any(UserAccount.class)))
         .thenAnswer(invocation -> invocation.getArgument(0));
 
     TenantAdminProvisioningService.ProvisionedTenantAdmin provisioned =
