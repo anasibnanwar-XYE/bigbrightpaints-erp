@@ -15,6 +15,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 
+import com.bigbrightpaints.erp.core.security.AuthScopeService;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
@@ -100,6 +101,33 @@ class ProfileControllerIT extends AbstractIntegrationTest {
     assertThat(update.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
   }
 
+  @Test
+  void platform_scoped_profile_uses_auth_scope_code() {
+    String platformEmail = "platform-profile@bbp.com";
+    String platformScopeCode = AuthScopeService.DEFAULT_PLATFORM_AUTH_CODE;
+    UserAccount platformUser =
+        dataSeeder.ensureUser(
+            platformEmail,
+            PASSWORD,
+            "Platform Profile",
+            platformScopeCode,
+            List.of("ROLE_SUPER_ADMIN"));
+    platformUser.setMustChangePassword(false);
+    userAccountRepository.save(platformUser);
+
+    HttpHeaders headers = authenticatedHeaders(platformEmail, platformScopeCode);
+
+    ResponseEntity<Map> profile =
+        rest.exchange("/api/v1/auth/profile", HttpMethod.GET, new HttpEntity<>(headers), Map.class);
+
+    assertThat(profile.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(profile.getBody()).isNotNull();
+    @SuppressWarnings("unchecked")
+    Map<String, Object> data = (Map<String, Object>) profile.getBody().get("data");
+    assertThat(data).isNotNull();
+    assertThat(data.get("companyCode")).isEqualTo(platformScopeCode);
+  }
+
   private void markMustChangePassword() {
     UserAccount user = scopedUser();
     user.setMustChangePassword(true);
@@ -113,18 +141,22 @@ class ProfileControllerIT extends AbstractIntegrationTest {
   }
 
   private HttpHeaders authenticatedHeaders() {
+    return authenticatedHeaders(EMAIL, COMPANY);
+  }
+
+  private HttpHeaders authenticatedHeaders(String email, String companyCode) {
     Map<String, Object> loginPayload =
         Map.of(
-            "email", EMAIL,
+            "email", email,
             "password", PASSWORD,
-            "companyCode", COMPANY);
+            "companyCode", companyCode);
     ResponseEntity<Map> loginResponse =
         rest.postForEntity("/api/v1/auth/login", loginPayload, Map.class);
     assertThat(loginResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
     String token = (String) loginResponse.getBody().get("accessToken");
     HttpHeaders headers = new HttpHeaders();
     headers.setBearerAuth(token);
-    headers.add("X-Company-Code", COMPANY);
+    headers.add("X-Company-Code", companyCode);
     return headers;
   }
 }

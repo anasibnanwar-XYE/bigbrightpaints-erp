@@ -6,6 +6,8 @@ import java.util.Locale;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.StringUtils;
 
 import com.bigbrightpaints.erp.core.notification.EmailService;
@@ -48,13 +50,32 @@ public class ScopedAccountBootstrapService {
     }
     String scopeCode = authScopeService.requireScopeCode(company.getCode());
     String temporaryPassword = generateTemporaryPassword();
+    emailService.assertCredentialEmailDeliveryReady(email);
     UserAccount account =
         createScopedAccount(scopeCode, email, displayName, roles, temporaryPassword);
     account.setCompany(company);
     UserAccount saved = userAccountRepository.save(account);
-    emailService.sendUserCredentialsEmailRequired(
-        saved.getEmail(), saved.getDisplayName(), temporaryPassword, scopeCode);
+    scheduleCredentialEmailDelivery(saved, temporaryPassword, scopeCode);
     return saved;
+  }
+
+  private void scheduleCredentialEmailDelivery(
+      UserAccount saved, String temporaryPassword, String scopeCode) {
+    String email = saved.getEmail();
+    String displayName = saved.getDisplayName();
+    if (TransactionSynchronizationManager.isSynchronizationActive()
+        && TransactionSynchronizationManager.isActualTransactionActive()) {
+      TransactionSynchronizationManager.registerSynchronization(
+          new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+              emailService.sendUserCredentialsEmailRequired(
+                  email, displayName, temporaryPassword, scopeCode);
+            }
+          });
+      return;
+    }
+    emailService.sendUserCredentialsEmailRequired(email, displayName, temporaryPassword, scopeCode);
   }
 
   private UserAccount createScopedAccount(

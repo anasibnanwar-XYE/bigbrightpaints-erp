@@ -40,6 +40,8 @@ public interface UserAccountRepository extends JpaRepository<UserAccount, Long> 
 
   List<UserAccount> findByCompany_Id(Long companyId);
 
+  long countByCompany_Id(Long companyId);
+
   long countByCompany_IdAndEnabledTrue(Long companyId);
 
   Optional<UserAccount> findByIdAndCompany_Id(Long id, Long companyId);

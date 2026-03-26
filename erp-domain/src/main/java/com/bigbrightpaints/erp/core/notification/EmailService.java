@@ -72,14 +72,22 @@ public class EmailService {
     return properties.isEnabled() && properties.isSendCredentials();
   }
 
-  public void sendUserCredentialsEmailRequired(
-      String to, String displayName, String password, String companyCode) {
+  public void assertCredentialEmailDeliveryReady(String to) {
     if (!isCredentialEmailDeliveryEnabled()) {
       throw new ApplicationException(
           ErrorCode.SYSTEM_CONFIGURATION_ERROR,
           "Credential email delivery is disabled; enable erp.mail.enabled=true and"
               + " erp.mail.send-credentials=true");
     }
+    if (!StringUtils.hasText(to)) {
+      throw new ApplicationException(
+          ErrorCode.VALIDATION_INVALID_INPUT, "Email recipient is required");
+    }
+  }
+
+  public void sendUserCredentialsEmailRequired(
+      String to, String displayName, String password, String companyCode) {
+    assertCredentialEmailDeliveryReady(to);
     String subject = "Your BigBright ERP account credentials";
     Context context = new Context();
     context.setVariable("displayName", displayName);

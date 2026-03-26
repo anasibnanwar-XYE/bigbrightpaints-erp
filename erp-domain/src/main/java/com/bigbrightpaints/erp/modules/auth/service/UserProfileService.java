@@ -57,10 +57,21 @@ public class UserProfileService {
         user.getPhoneSecondary(),
         user.getSecondaryEmail(),
         user.isMfaEnabled(),
-        user.getCompany() == null || !StringUtils.hasText(user.getCompany().getCode())
-            ? null
-            : user.getCompany().getCode(),
+        resolveCompanyCode(user),
         user.getCreatedAt(),
         user.getPublicId());
+  }
+
+  private String resolveCompanyCode(UserAccount user) {
+    if (user == null) {
+      return null;
+    }
+    if (StringUtils.hasText(user.getAuthScopeCode())) {
+      return user.getAuthScopeCode();
+    }
+    if (user.getCompany() == null || !StringUtils.hasText(user.getCompany().getCode())) {
+      return null;
+    }
+    return user.getCompany().getCode();
   }
 }
