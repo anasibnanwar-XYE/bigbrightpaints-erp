@@ -526,11 +526,7 @@ class TenantRuntimeEnforcementServiceTest {
 
     TenantRuntimeEnforcementService.TenantRequestAdmission policyAdmission =
         service.beginRequest(
-            "ACME",
-            "/api/v1/superadmin/tenants/1/limits",
-            "PUT",
-            "super-admin@bbp.com",
-            true);
+            "ACME", "/api/v1/superadmin/tenants/1/limits", "PUT", "super-admin@bbp.com", true);
     service.completeRequest(policyAdmission, 200);
 
     assertThat(policyAdmission.isAdmitted()).isTrue();
@@ -684,8 +680,7 @@ class TenantRuntimeEnforcementServiceTest {
             invokeIsPolicyControlRequest("/api/v1/admin/tenant-runtime/policy///", " put ", true))
         .isFalse();
     assertThat(
-            invokeIsPolicyControlRequest(
-                "/api/v1/superadmin/tenants/1/limits///", " put ", true))
+            invokeIsPolicyControlRequest("/api/v1/superadmin/tenants/1/limits///", " put ", true))
         .isTrue();
   }
 

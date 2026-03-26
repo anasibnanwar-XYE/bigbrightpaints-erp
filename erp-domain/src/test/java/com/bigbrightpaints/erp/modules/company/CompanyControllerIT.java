@@ -107,7 +107,8 @@ class CompanyControllerIT extends AbstractIntegrationTest {
     assertThat(listResp.getStatusCode()).isEqualTo(HttpStatus.OK);
     assertThat(listResp.getBody()).isNotNull();
     @SuppressWarnings("unchecked")
-    List<Map<String, Object>> companies = (List<Map<String, Object>>) listResp.getBody().get("data");
+    List<Map<String, Object>> companies =
+        (List<Map<String, Object>>) listResp.getBody().get("data");
     assertThat(companies)
         .extracting(company -> company.get("code").toString().toUpperCase(Locale.ROOT))
         .containsExactly(COMPANY_CODE);
@@ -141,12 +142,14 @@ class CompanyControllerIT extends AbstractIntegrationTest {
             "/api/v1/companies",
             HttpMethod.GET,
             new HttpEntity<>(
-                jsonHeaders(loginToken(rootOnlySuperAdminEmail, ROOT_COMPANY_CODE), ROOT_COMPANY_CODE)),
+                jsonHeaders(
+                    loginToken(rootOnlySuperAdminEmail, ROOT_COMPANY_CODE), ROOT_COMPANY_CODE)),
             Map.class);
 
     assertThat(listResp.getStatusCode()).isEqualTo(HttpStatus.OK);
     @SuppressWarnings("unchecked")
-    List<Map<String, Object>> companies = (List<Map<String, Object>>) listResp.getBody().get("data");
+    List<Map<String, Object>> companies =
+        (List<Map<String, Object>>) listResp.getBody().get("data");
     assertThat(companies)
         .extracting(company -> company.get("code").toString().toUpperCase(Locale.ROOT))
         .contains(ROOT_COMPANY_CODE, COMPANY_CODE);
@@ -169,7 +172,8 @@ class CompanyControllerIT extends AbstractIntegrationTest {
   @Test
   void retired_company_control_plane_aliases_are_not_exposed() {
     Long companyId = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow().getId();
-    HttpHeaders headers = jsonHeaders(loginToken(SUPER_ADMIN_EMAIL, ROOT_COMPANY_CODE), ROOT_COMPANY_CODE);
+    HttpHeaders headers =
+        jsonHeaders(loginToken(SUPER_ADMIN_EMAIL, ROOT_COMPANY_CODE), ROOT_COMPANY_CODE);
 
     ResponseEntity<Map> dashboardResponse =
         rest.exchange(

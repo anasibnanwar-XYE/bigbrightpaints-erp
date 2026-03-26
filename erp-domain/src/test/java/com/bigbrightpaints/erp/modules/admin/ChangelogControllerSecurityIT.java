@@ -134,7 +134,8 @@ class ChangelogControllerSecurityIT extends AbstractIntegrationTest {
     String adminToken = login(ADMIN_EMAIL, ADMIN_PASSWORD, TENANT);
     HttpHeaders adminHeaders = authHeaders(adminToken, TENANT);
     ResponseEntity<Map> listResponse =
-        rest.exchange("/api/v1/changelog", HttpMethod.GET, new HttpEntity<>(adminHeaders), Map.class);
+        rest.exchange(
+            "/api/v1/changelog", HttpMethod.GET, new HttpEntity<>(adminHeaders), Map.class);
     ResponseEntity<Map> highlightedResponse =
         rest.exchange(
             "/api/v1/changelog/latest-highlighted",

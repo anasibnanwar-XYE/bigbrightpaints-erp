@@ -86,7 +86,9 @@ public class SuperAdminTenantControlPlaneService {
     String normalizedStatus = normalizeLifecycleFilter(statusFilter);
     return companyRepository.findAll().stream()
         .sorted(Comparator.comparing(Company::getCode, String.CASE_INSENSITIVE_ORDER))
-        .filter(company -> normalizedStatus == null || normalizedStatus.equals(resolveLifecycle(company)))
+        .filter(
+            company ->
+                normalizedStatus == null || normalizedStatus.equals(resolveLifecycle(company)))
         .map(this::toSummary)
         .toList();
   }
@@ -253,8 +255,10 @@ public class SuperAdminTenantControlPlaneService {
         company,
         "tenant-force-logout",
         Map.of(
-            "revokedUserCount", String.valueOf(users.size()),
-            "forceLogoutReason", StringUtils.hasText(reason) ? reason.trim() : "support-request"));
+            "revokedUserCount",
+            String.valueOf(users.size()),
+            "forceLogoutReason",
+            StringUtils.hasText(reason) ? reason.trim() : "support-request"));
     return new SuperAdminTenantForceLogoutDto(
         company.getId(),
         company.getCode(),
@@ -453,7 +457,8 @@ public class SuperAdminTenantControlPlaneService {
     return companyService.getTenantMetricsForSuperAdmin(company.getId());
   }
 
-  private List<SuperAdminTenantDetailDto.SupportTimelineEvent> buildSupportTimeline(Company company) {
+  private List<SuperAdminTenantDetailDto.SupportTimelineEvent> buildSupportTimeline(
+      Company company) {
     List<SuperAdminTenantDetailDto.SupportTimelineEvent> timeline = new ArrayList<>();
     for (TenantSupportWarning warning :
         tenantSupportWarningRepository.findByCompany_IdOrderByIssuedAtDesc(company.getId())) {
@@ -465,7 +470,8 @@ public class SuperAdminTenantControlPlaneService {
               warning.getIssuedBy(),
               warning.getIssuedAt()));
     }
-    for (AuditLog auditLog : auditLogRepository.findTop50ByCompanyIdOrderByTimestampDesc(company.getId())) {
+    for (AuditLog auditLog :
+        auditLogRepository.findTop50ByCompanyIdOrderByTimestampDesc(company.getId())) {
       timeline.add(
           new SuperAdminTenantDetailDto.SupportTimelineEvent(
               "AUDIT",
@@ -483,7 +489,8 @@ public class SuperAdminTenantControlPlaneService {
   }
 
   private String auditMessage(AuditLog auditLog) {
-    if (auditLog.getMetadata() != null && StringUtils.hasText(auditLog.getMetadata().get("reason"))) {
+    if (auditLog.getMetadata() != null
+        && StringUtils.hasText(auditLog.getMetadata().get("reason"))) {
       return auditLog.getMetadata().get("reason");
     }
     if (StringUtils.hasText(auditLog.getErrorMessage())) {
@@ -494,8 +501,7 @@ public class SuperAdminTenantControlPlaneService {
 
   private MainAdminSummaryDto toMainAdminSummary(Company company, UserAccount mainAdmin) {
     if (mainAdmin == null) {
-      return new MainAdminSummaryDto(
-          company.getMainAdminUserId(), null, null, false, false);
+      return new MainAdminSummaryDto(company.getMainAdminUserId(), null, null, false, false);
     }
     return new MainAdminSummaryDto(
         mainAdmin.getId(),
@@ -555,7 +561,8 @@ public class SuperAdminTenantControlPlaneService {
   }
 
   private Instant resolveLastActivityAt(Long companyId) {
-    return auditLogRepository.findTop1ByCompanyIdOrderByTimestampDesc(companyId)
+    return auditLogRepository
+        .findTop1ByCompanyIdOrderByTimestampDesc(companyId)
         .map(AuditLog::getTimestamp)
         .map(this::toInstant)
         .orElse(null);

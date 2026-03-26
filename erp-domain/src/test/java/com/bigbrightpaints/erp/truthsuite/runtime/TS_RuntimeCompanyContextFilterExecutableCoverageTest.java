@@ -1,7 +1,6 @@
 package com.bigbrightpaints.erp.truthsuite.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
@@ -12,7 +11,6 @@ import static org.mockito.Mockito.when;
 
 import java.io.IOException;
 import java.lang.reflect.Constructor;
-import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
 
@@ -94,8 +92,7 @@ class TS_RuntimeCompanyContextFilterExecutableCoverageTest {
     when(companyService.resolveLifecycleStateByCode("ACME"))
         .thenReturn(CompanyLifecycleState.DEACTIVATED);
 
-    MockHttpServletRequest request =
-        request("PUT", "/api/v1/superadmin/tenants/42/lifecycle");
+    MockHttpServletRequest request = request("PUT", "/api/v1/superadmin/tenants/42/lifecycle");
     request.setAttribute("jwtClaims", claimsFor("ROOT"));
     MockHttpServletResponse response = new MockHttpServletResponse();
 
@@ -133,8 +130,7 @@ class TS_RuntimeCompanyContextFilterExecutableCoverageTest {
   }
 
   @Test
-  void doFilter_rejectsNonActiveTenantForNonControlRequests()
-      throws ServletException, IOException {
+  void doFilter_rejectsNonActiveTenantForNonControlRequests() throws ServletException, IOException {
     authenticate("admin@bbp.com", Set.of("ROLE_ADMIN"), Set.of("ACME"));
     when(companyService.resolveLifecycleStateByCode("ACME"))
         .thenReturn(CompanyLifecycleState.DEACTIVATED);
@@ -198,7 +194,8 @@ class TS_RuntimeCompanyContextFilterExecutableCoverageTest {
   }
 
   private boolean invokeIsTenantControlRequest(String path, String method) {
-    return (Boolean) ReflectionTestUtils.invokeMethod(filter, "isTenantControlRequest", path, method);
+    return (Boolean)
+        ReflectionTestUtils.invokeMethod(filter, "isTenantControlRequest", path, method);
   }
 
   private String invokeResolveApplicationPath(MockHttpServletRequest request) {
@@ -216,7 +213,8 @@ class TS_RuntimeCompanyContextFilterExecutableCoverageTest {
 
   private boolean invokeIsTenantBusinessRequestBlockedForSuperAdmin(String path) {
     return (Boolean)
-        ReflectionTestUtils.invokeMethod(filter, "isTenantBusinessRequestBlockedForSuperAdmin", path);
+        ReflectionTestUtils.invokeMethod(
+            filter, "isTenantBusinessRequestBlockedForSuperAdmin", path);
   }
 
   private boolean invokeIsTenantAuditWorkflowRequest(String path) {
@@ -233,9 +231,7 @@ class TS_RuntimeCompanyContextFilterExecutableCoverageTest {
     UserPrincipal principal = new UserPrincipal(user);
     var granted =
         authorities.stream()
-            .map(
-                authority ->
-                    (org.springframework.security.core.GrantedAuthority) () -> authority)
+            .map(authority -> (org.springframework.security.core.GrantedAuthority) () -> authority)
             .toList();
     SecurityContextHolder.getContext()
         .setAuthentication(new UsernamePasswordAuthenticationToken(principal, "n/a", granted));

@@ -174,7 +174,8 @@ public class EmailService {
     context.setVariable("verificationToken", verificationToken);
     context.setVariable("expiresAt", expiresAt);
     context.setVariable("loginUrl", properties.getBaseUrl());
-    context.setVariable("preheader", "Use this verification token to confirm your new admin email.");
+    context.setVariable(
+        "preheader", "Use this verification token to confirm your new admin email.");
     sendHtmlEmailRequired(to, subject, "mail/admin-email-change-verification", context);
   }
 

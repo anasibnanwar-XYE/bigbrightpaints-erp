@@ -230,11 +230,7 @@ public class CompanyContextFilter extends OncePerRequestFilter {
         if (!tenantControlRequest) {
           TenantRuntimeEnforcementService.TenantRequestAdmission runtimeAdmission =
               tenantRuntimeEnforcementService.beginRequest(
-                  companyCode,
-                  runtimePath,
-                  request.getMethod(),
-                  resolveCurrentActor(),
-                  false);
+                  companyCode, runtimePath, request.getMethod(), resolveCurrentActor(), false);
           if (runtimeAdmission == null) {
             log.warn(
                 "Rejecting request because tenant runtime admission was unavailable."
@@ -375,16 +371,21 @@ public class CompanyContextFilter extends OncePerRequestFilter {
       return false;
     }
     String companyIdSegment = normalizedPath.substring(companyIdSegmentStart, companyIdSegmentEnd);
-    if (!StringUtils.hasText(companyIdSegment) || !companyIdSegment.chars().allMatch(Character::isDigit)) {
+    if (!StringUtils.hasText(companyIdSegment)
+        || !companyIdSegment.chars().allMatch(Character::isDigit)) {
       return false;
     }
     String suffix =
-        companyIdSegmentEnd >= normalizedPath.length() ? "" : normalizedPath.substring(companyIdSegmentEnd);
+        companyIdSegmentEnd >= normalizedPath.length()
+            ? ""
+            : normalizedPath.substring(companyIdSegmentEnd);
     String normalizedMethod = method.trim().toUpperCase();
     if (suffix.isEmpty()) {
       return "GET".equals(normalizedMethod);
     }
-    return ("PUT".equals(normalizedMethod) && Set.of("/lifecycle", "/limits", "/modules", "/support/context", "/admins/main").contains(suffix))
+    return ("PUT".equals(normalizedMethod)
+            && Set.of("/lifecycle", "/limits", "/modules", "/support/context", "/admins/main")
+                .contains(suffix))
         || ("POST".equals(normalizedMethod)
             && ("/support/warnings".equals(suffix)
                 || "/support/admin-password-reset".equals(suffix)

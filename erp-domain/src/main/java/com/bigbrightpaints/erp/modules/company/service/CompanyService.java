@@ -257,8 +257,9 @@ public class CompanyService {
     if (tenantLifecycleService != null) {
       CompanyLifecycleStateDto response =
           tenantLifecycleService.transition(
+              company, requestedState, lifecycleReason, authentication);
+      synchronizeRuntimePolicyWithLifecycle(
           company, requestedState, lifecycleReason, authentication);
-      synchronizeRuntimePolicyWithLifecycle(company, requestedState, lifecycleReason, authentication);
       return response;
     }
 

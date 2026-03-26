@@ -59,7 +59,8 @@ class DispatchControllerTest {
 
   @Test
   void getPendingSlips_filtersDispatchedAndRedactsFactoryView() {
-    DispatchController controller = new DispatchController(finishedGoodsService, deliveryChallanPdfService);
+    DispatchController controller =
+        new DispatchController(finishedGoodsService, deliveryChallanPdfService);
     setAuthentication("ROLE_FACTORY");
 
     PackagingSlipDto pending =
@@ -75,17 +76,7 @@ class DispatchControllerTest {
             "MH12AB1234",
             "LR-7788");
     PackagingSlipDto dispatched =
-        packagingSlip(
-            6L,
-            "PS-6",
-            "DISPATCHED",
-            333L,
-            444L,
-            List.of(),
-            null,
-            null,
-            null,
-            null);
+        packagingSlip(6L, "PS-6", "DISPATCHED", 333L, 444L, List.of(), null, null, null, null);
     when(finishedGoodsService.listPackagingSlips()).thenReturn(List.of(pending, dispatched));
 
     List<PackagingSlipDto> slips = controller.getPendingSlips().getBody().data();
@@ -98,7 +89,8 @@ class DispatchControllerTest {
 
   @Test
   void factoryViews_areRedactedForPreviewAndSlipDetails() {
-    DispatchController controller = new DispatchController(finishedGoodsService, deliveryChallanPdfService);
+    DispatchController controller =
+        new DispatchController(finishedGoodsService, deliveryChallanPdfService);
     setAuthentication("ROLE_FACTORY");
 
     DispatchPreviewDto preview =
@@ -167,7 +159,8 @@ class DispatchControllerTest {
 
   @Test
   void factorySlipView_redactsLineUnitCost() {
-    DispatchController controller = new DispatchController(finishedGoodsService, deliveryChallanPdfService);
+    DispatchController controller =
+        new DispatchController(finishedGoodsService, deliveryChallanPdfService);
     setAuthentication("ROLE_FACTORY");
 
     PackagingSlipDto slip =
@@ -205,7 +198,8 @@ class DispatchControllerTest {
 
   @Test
   void salesViewsRetainFinancialFieldsWithoutFactoryRedaction() {
-    DispatchController controller = new DispatchController(finishedGoodsService, deliveryChallanPdfService);
+    DispatchController controller =
+        new DispatchController(finishedGoodsService, deliveryChallanPdfService);
     setAuthentication("ROLE_SALES");
 
     PackagingSlipDto slip =
@@ -231,21 +225,13 @@ class DispatchControllerTest {
 
   @Test
   void getPackagingSlipByOrder_salesViewsRetainFinancialFields() {
-    DispatchController controller = new DispatchController(finishedGoodsService, deliveryChallanPdfService);
+    DispatchController controller =
+        new DispatchController(finishedGoodsService, deliveryChallanPdfService);
     setAuthentication("ROLE_SALES");
 
     PackagingSlipDto slip =
         packagingSlip(
-            9L,
-            "PS-9",
-            "READY",
-            911L,
-            922L,
-            List.of(),
-            null,
-            "Driver",
-            "MH12AB1234",
-            "LR-900");
+            9L, "PS-9", "READY", 911L, 922L, List.of(), null, "Driver", "MH12AB1234", "LR-900");
     when(finishedGoodsService.getPackagingSlipByOrder(70L)).thenReturn(slip);
 
     PackagingSlipDto response = controller.getPackagingSlipByOrder(70L).getBody().data();
@@ -257,7 +243,8 @@ class DispatchControllerTest {
 
   @Test
   void getPackagingSlip_returnsNullWhenSlipIsMissingInFactoryView() {
-    DispatchController controller = new DispatchController(finishedGoodsService, deliveryChallanPdfService);
+    DispatchController controller =
+        new DispatchController(finishedGoodsService, deliveryChallanPdfService);
     setAuthentication("ROLE_FACTORY");
     when(finishedGoodsService.getPackagingSlip(404L)).thenReturn(null);
 
@@ -266,7 +253,8 @@ class DispatchControllerTest {
 
   @Test
   void getDispatchPreview_returnsNullWhenPreviewIsMissing() {
-    DispatchController controller = new DispatchController(finishedGoodsService, deliveryChallanPdfService);
+    DispatchController controller =
+        new DispatchController(finishedGoodsService, deliveryChallanPdfService);
     setAuthentication("ROLE_FACTORY");
     when(finishedGoodsService.getDispatchPreview(404L)).thenReturn(null);
 
@@ -275,21 +263,12 @@ class DispatchControllerTest {
 
   @Test
   void accountingViewsAreNotOperationalFactoryViews() {
-    DispatchController controller = new DispatchController(finishedGoodsService, deliveryChallanPdfService);
+    DispatchController controller =
+        new DispatchController(finishedGoodsService, deliveryChallanPdfService);
     setAuthentication("ROLE_FACTORY", "ROLE_ACCOUNTING");
 
     PackagingSlipDto slip =
-        packagingSlip(
-            13L,
-            "PS-13",
-            "DISPATCHED",
-            131L,
-            232L,
-            List.of(),
-            null,
-            null,
-            null,
-            null);
+        packagingSlip(13L, "PS-13", "DISPATCHED", 131L, 232L, List.of(), null, null, null, null);
     when(finishedGoodsService.getPackagingSlip(13L)).thenReturn(slip);
 
     PackagingSlipDto response = controller.getPackagingSlip(13L).getBody().data();
@@ -300,7 +279,8 @@ class DispatchControllerTest {
 
   @Test
   void downloadDeliveryChallan_returnsInlinePdfResponse() {
-    DispatchController controller = new DispatchController(finishedGoodsService, deliveryChallanPdfService);
+    DispatchController controller =
+        new DispatchController(finishedGoodsService, deliveryChallanPdfService);
     byte[] content = new byte[] {1, 2, 3};
     when(deliveryChallanPdfService.renderDeliveryChallanPdf(99L))
         .thenReturn(new DeliveryChallanPdfService.PdfDocument("delivery-challan-99.pdf", content));

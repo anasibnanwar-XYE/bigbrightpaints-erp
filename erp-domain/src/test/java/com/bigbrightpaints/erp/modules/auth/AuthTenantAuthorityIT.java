@@ -450,7 +450,8 @@ class AuthTenantAuthorityIT extends AbstractIntegrationTest {
             log ->
                 SUPER_ADMIN_EMAIL.equalsIgnoreCase(log.getUsername())
                     && TENANT_A.equalsIgnoreCase(log.getMetadata().get("targetCompanyCode"))
-                    && "DEACTIVATED".equalsIgnoreCase(log.getMetadata().get("companyLifecycleState"))
+                    && "DEACTIVATED"
+                        .equalsIgnoreCase(log.getMetadata().get("companyLifecycleState"))
                     && blockReason.equals(log.getMetadata().get("companyLifecycleReason")));
     assertThat(blockEvidence.getMetadata().get("lifecycleEvidence"))
         .isEqualTo("immutable-audit-log");
@@ -737,7 +738,8 @@ class AuthTenantAuthorityIT extends AbstractIntegrationTest {
 
     String adminToken = login(ADMIN_EMAIL, TENANT_A);
     ResponseEntity<Map> adminResponse =
-        updateTenantLimits(tenantAId, adminToken, TENANT_A, 120L, 3_000L, 2_097_152L, 7L, false, true);
+        updateTenantLimits(
+            tenantAId, adminToken, TENANT_A, 120L, 3_000L, 2_097_152L, 7L, false, true);
     assertThat(adminResponse.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
 
     String superAdminToken = login(SUPER_ADMIN_EMAIL, TENANT_A);
@@ -900,7 +902,8 @@ class AuthTenantAuthorityIT extends AbstractIntegrationTest {
     assertThat(rolePermissionCodes("ROLE_ACCOUNTING")).doesNotContain("dispatch.confirm");
     assertThat(rolePermissionCodes("ROLE_FACTORY")).doesNotContain("dispatch.confirm");
 
-    assertThat(mePermissionCodes(login(ADMIN_EMAIL, TENANT_A), TENANT_A)).contains("dispatch.confirm");
+    assertThat(mePermissionCodes(login(ADMIN_EMAIL, TENANT_A), TENANT_A))
+        .contains("dispatch.confirm");
     assertThat(mePermissionCodes(login(SALES_SYNC_EMAIL, TENANT_A), TENANT_A))
         .contains("dispatch.confirm");
     assertThat(mePermissionCodes(login(ACCOUNTING_SYNC_EMAIL, TENANT_A), TENANT_A))
@@ -1319,7 +1322,8 @@ class AuthTenantAuthorityIT extends AbstractIntegrationTest {
     if (present) {
       role.getPermissions().add(permission);
     } else {
-      role.getPermissions().removeIf(existing -> permissionCode.equalsIgnoreCase(existing.getCode()));
+      role.getPermissions()
+          .removeIf(existing -> permissionCode.equalsIgnoreCase(existing.getCode()));
     }
     roleRepository.save(role);
   }

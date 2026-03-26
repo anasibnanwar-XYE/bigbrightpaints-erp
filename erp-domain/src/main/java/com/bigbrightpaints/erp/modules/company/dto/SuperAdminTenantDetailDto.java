@@ -50,11 +50,7 @@ public record SuperAdminTenantDetailDto(
   public record SupportContext(String supportNotes, Set<String> supportTags) {}
 
   public record SupportTimelineEvent(
-      String category,
-      String title,
-      String message,
-      String actor,
-      Instant occurredAt) {}
+      String category, String title, String message, String actor, Instant occurredAt) {}
 
   public record AvailableActions(
       boolean canUpdateLifecycle,

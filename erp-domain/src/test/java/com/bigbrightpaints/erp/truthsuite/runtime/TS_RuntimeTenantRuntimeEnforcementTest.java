@@ -11,8 +11,6 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.lang.reflect.Constructor;
-import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.AfterEach;
@@ -29,7 +27,6 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.util.ReflectionTestUtils;
 
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import com.bigbrightpaints.erp.core.security.CompanyContextFilter;
@@ -80,7 +77,8 @@ class TS_RuntimeTenantRuntimeEnforcementTest {
     filter.doFilter(request, response, new MockFilterChain());
 
     assertThat(response.getStatus()).isEqualTo(403);
-    verify(tenantRuntimeEnforcementService).completeRequest(any(), org.mockito.ArgumentMatchers.eq(403));
+    verify(tenantRuntimeEnforcementService)
+        .completeRequest(any(), org.mockito.ArgumentMatchers.eq(403));
     verifyNoInteractions(companyService);
   }
 
@@ -172,9 +170,7 @@ class TS_RuntimeTenantRuntimeEnforcementTest {
     AtomicReference<String> companyInChain = new AtomicReference<>();
 
     filter.doFilter(
-        request,
-        response,
-        (req, res) -> companyInChain.set(CompanyContextHolder.getCompanyCode()));
+        request, response, (req, res) -> companyInChain.set(CompanyContextHolder.getCompanyCode()));
 
     assertThat(response.getStatus()).isEqualTo(200);
     assertThat(companyInChain.get()).isEqualTo("ACME");
@@ -200,9 +196,7 @@ class TS_RuntimeTenantRuntimeEnforcementTest {
     AtomicReference<String> companyInChain = new AtomicReference<>();
 
     filter.doFilter(
-        request,
-        response,
-        (req, res) -> companyInChain.set(CompanyContextHolder.getCompanyCode()));
+        request, response, (req, res) -> companyInChain.set(CompanyContextHolder.getCompanyCode()));
 
     assertThat(companyInChain.get()).isEqualTo("ACME");
     assertThat(CompanyContextHolder.getCompanyCode()).isNull();
@@ -240,7 +234,10 @@ class TS_RuntimeTenantRuntimeEnforcementTest {
     assertThat(
             (Boolean)
                 ReflectionTestUtils.invokeMethod(
-                    filter, "isTenantControlRequest", "/api/v1/superadmin/tenants/7/limits", "PATCH"))
+                    filter,
+                    "isTenantControlRequest",
+                    "/api/v1/superadmin/tenants/7/limits",
+                    "PATCH"))
         .isFalse();
   }
 

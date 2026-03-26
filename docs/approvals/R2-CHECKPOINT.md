@@ -12,7 +12,7 @@
 - Failure mode if wrong: callers could integrate against retired control-plane routes, tenant binding could drift across route families, lifecycle/quota storage could disagree with runtime enforcement, or admin-governance/support recovery actions could target the wrong tenant or stale main-admin state.
 
 ## Approval Authority
-- Mode: ERP packet
+- Mode: human
 - Approver: `human R2 reviewer`
 - Canary owner: `ERP-37 packet owner`
 - Approval status: `pending green validators and human review`

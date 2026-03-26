@@ -295,8 +295,7 @@ class TS_O2CDispatchProvenanceAndRetiredRouteBoundaryTest extends AbstractIntegr
     assertThat(afterReplay.getJournalEntryId()).isEqualTo(afterFirst.getJournalEntryId());
     assertThat(afterReplay.getCogsJournalEntryId()).isEqualTo(afterFirst.getCogsJournalEntryId());
     assertThat(orderAfterReplay.getFulfillmentInvoiceId()).isEqualTo(afterFirst.getInvoiceId());
-    assertThat(orderAfterReplay.getSalesJournalEntryId())
-        .isEqualTo(afterFirst.getJournalEntryId());
+    assertThat(orderAfterReplay.getSalesJournalEntryId()).isEqualTo(afterFirst.getJournalEntryId());
     assertThat(orderAfterReplay.getCogsJournalEntryId())
         .isEqualTo(afterFirst.getCogsJournalEntryId());
     assertThat(
@@ -369,11 +368,7 @@ class TS_O2CDispatchProvenanceAndRetiredRouteBoundaryTest extends AbstractIntegr
         companyCode,
         List.of("ROLE_SALES", "dispatch.confirm"));
     dataSeeder.ensureUser(
-        factoryEmail,
-        FACTORY_PASSWORD,
-        "Truthsuite Factory",
-        companyCode,
-        List.of("ROLE_FACTORY"));
+        factoryEmail, FACTORY_PASSWORD, "Truthsuite Factory", companyCode, List.of("ROLE_FACTORY"));
 
     return new DispatchFixture(
         company, dealer, finishedGood, order, slip, adminEmail, salesEmail, factoryEmail);

@@ -62,8 +62,7 @@ class TS_RuntimeCompanyControllerExecutableCoverageTest {
     ResponseEntity<ApiResponse<CompanyAdminCredentialResetDto>> response =
         controller.resetTenantAdminPassword(
             42L,
-            new SuperAdminController.TenantAdminPasswordResetRequest(
-                "admin@ske.com", "support"));
+            new SuperAdminController.TenantAdminPasswordResetRequest("admin@ske.com", "support"));
 
     assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
     assertThat(response.getBody()).isNotNull();

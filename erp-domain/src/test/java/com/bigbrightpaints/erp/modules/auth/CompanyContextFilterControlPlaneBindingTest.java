@@ -1,7 +1,6 @@
 package com.bigbrightpaints.erp.modules.auth;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.lenient;
@@ -167,8 +166,7 @@ class CompanyContextFilterControlPlaneBindingTest {
                 "anonymous",
                 "anonymousUser",
                 List.of(new SimpleGrantedAuthority("ROLE_ANONYMOUS"))));
-    MockHttpServletRequest request =
-        request("POST", "/api/v1/superadmin/tenants/42/force-logout");
+    MockHttpServletRequest request = request("POST", "/api/v1/superadmin/tenants/42/force-logout");
     MockHttpServletResponse response = new MockHttpServletResponse();
 
     filter.doFilter(request, response, filterChain);

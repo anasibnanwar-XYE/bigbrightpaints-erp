@@ -473,8 +473,7 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
     assertThat(requestProperties.has("mixedQuantity")).isTrue();
     assertThat(requestProperties.has("materials")).isTrue();
     assertThat(requestProperties.has("addToFinishedGoods"))
-        .withFailMessage(
-            "ProductionLogRequest must not expose retired addToFinishedGoods toggle")
+        .withFailMessage("ProductionLogRequest must not expose retired addToFinishedGoods toggle")
         .isFalse();
 
     JsonNode detailDto = root.path("components").path("schemas").path("ProductionLogDetailDto");
@@ -494,7 +493,8 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
     assertThat(unpackedProperties.has("productFamilyName")).isTrue();
     assertThat(unpackedProperties.has("allowedSellableSizes")).isTrue();
 
-    JsonNode packingLineRequest = root.path("components").path("schemas").path("PackingLineRequest");
+    JsonNode packingLineRequest =
+        root.path("components").path("schemas").path("PackingLineRequest");
     List<String> packingLineRequired = new ArrayList<>();
     packingLineRequest.path("required").forEach(node -> packingLineRequired.add(node.asText()));
     assertThat(packingLineRequired).contains("childFinishedGoodId");
@@ -512,10 +512,12 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
         "#/components/schemas/PackingRequest",
         "200",
         "#/components/schemas/ApiResponseProductionLogDetailDto");
-    assertOperationMissing(root, "/api/v1/factory/packing-records/{productionLogId}/complete", "post");
+    assertOperationMissing(
+        root, "/api/v1/factory/packing-records/{productionLogId}/complete", "post");
     assertOperationMissing(root, "/api/v1/factory/pack", "post");
 
-    JsonNode parameters = root.path("paths").path("/api/v1/factory/packing-records").path("post").path("parameters");
+    JsonNode parameters =
+        root.path("paths").path("/api/v1/factory/packing-records").path("post").path("parameters");
     List<String> parameterNames = new ArrayList<>();
     parameters.forEach(parameter -> parameterNames.add(parameter.path("name").asText()));
     assertThat(parameterNames).containsExactly("Idempotency-Key");

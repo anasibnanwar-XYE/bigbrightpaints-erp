@@ -70,8 +70,7 @@ class TenantRuntimeEnforcementAuthIT extends AbstractIntegrationTest {
     String refreshToken = (String) tokens.get("refreshToken");
     Map<String, Object> blockedSnapshot =
         updateRuntimePolicy(
-            scenario.companyCode(),
-            Map.of("state", "DEACTIVATED", "reason", "ABUSE_INCIDENT"));
+            scenario.companyCode(), Map.of("state", "DEACTIVATED", "reason", "ABUSE_INCIDENT"));
 
     ResponseEntity<Map> meResponse =
         rest.exchange(
@@ -178,7 +177,8 @@ class TenantRuntimeEnforcementAuthIT extends AbstractIntegrationTest {
     assertThat(error).containsKey("traceId");
   }
 
-  private void assertLifecycleRestricted(ResponseEntity<Map> response, String expectedReasonDetail) {
+  private void assertLifecycleRestricted(
+      ResponseEntity<Map> response, String expectedReasonDetail) {
     assertThat(response.getBody()).isNotNull();
     assertThat(response.getBody()).containsEntry("success", false);
     assertThat(response.getBody()).containsEntry("message", "Access denied");
@@ -254,11 +254,7 @@ class TenantRuntimeEnforcementAuthIT extends AbstractIntegrationTest {
             : "/api/v1/superadmin/tenants/" + companyId + "/limits";
 
     ResponseEntity<Map> response =
-        rest.exchange(
-            endpoint,
-            HttpMethod.PUT,
-            new HttpEntity<>(payload, headers),
-            Map.class);
+        rest.exchange(endpoint, HttpMethod.PUT, new HttpEntity<>(payload, headers), Map.class);
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
     assertThat(response.getBody()).isNotNull();
     @SuppressWarnings("unchecked")

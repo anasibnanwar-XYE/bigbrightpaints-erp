@@ -91,7 +91,8 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
         rest.exchange(
             "/api/v1/superadmin/tenants/" + tenant.getId() + "/lifecycle",
             HttpMethod.PUT,
-            new HttpEntity<>(Map.of("state", "SUSPENDED", "reason", "ops-review"), superAdminHeaders),
+            new HttpEntity<>(
+                Map.of("state", "SUSPENDED", "reason", "ops-review"), superAdminHeaders),
             Map.class);
     assertThat(suspendResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
     assertThat(readLifecycleState(tenant.getId())).isEqualTo("SUSPENDED");

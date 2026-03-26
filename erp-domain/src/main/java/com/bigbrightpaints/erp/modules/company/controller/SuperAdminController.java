@@ -36,7 +36,8 @@ public class SuperAdminController {
   @GetMapping("/dashboard")
   public ResponseEntity<ApiResponse<CompanySuperAdminDashboardDto>> dashboard() {
     return ResponseEntity.ok(
-        ApiResponse.success("Superadmin dashboard fetched", companyService.getSuperAdminDashboard()));
+        ApiResponse.success(
+            "Superadmin dashboard fetched", companyService.getSuperAdminDashboard()));
   }
 
   @GetMapping("/tenants")
@@ -127,7 +128,8 @@ public class SuperAdminController {
 
   @PostMapping("/tenants/{id}/force-logout")
   public ResponseEntity<ApiResponse<SuperAdminTenantForceLogoutDto>> forceLogout(
-      @PathVariable("id") Long tenantId, @RequestBody(required = false) TenantForceLogoutRequest request) {
+      @PathVariable("id") Long tenantId,
+      @RequestBody(required = false) TenantForceLogoutRequest request) {
     return ResponseEntity.ok(
         ApiResponse.success(
             "Tenant sessions revoked",
@@ -209,6 +211,5 @@ public class SuperAdminController {
   public record TenantAdminEmailChangeRequest(@Email @NotBlank String newEmail) {}
 
   public record TenantAdminEmailChangeConfirmRequest(
-      @NotNull Long requestId,
-      @NotBlank @Size(max = 255) String verificationToken) {}
+      @NotNull Long requestId, @NotBlank @Size(max = 255) String verificationToken) {}
 }

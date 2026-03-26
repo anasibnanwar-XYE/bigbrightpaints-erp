@@ -4,10 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
-import static org.mockito.Mockito.times;
 
 import java.util.List;
 import java.util.Map;
@@ -89,7 +89,9 @@ class RoleServiceTest {
 
     Role ensured = service.ensureRoleExists("ROLE_SALES");
 
-    assertThat(ensured.getPermissions()).extracting(Permission::getCode).contains("dispatch.confirm");
+    assertThat(ensured.getPermissions())
+        .extracting(Permission::getCode)
+        .contains("dispatch.confirm");
     verify(roleRepository).save(sales);
   }
 
@@ -128,7 +130,8 @@ class RoleServiceTest {
             permission("factory.dispatch"),
             permission("dispatch.confirm"),
             permission("inventory.audit"));
-    when(roleRepository.findByNameIn(SystemRole.roleNames())).thenReturn(List.of(accounting, factory));
+    when(roleRepository.findByNameIn(SystemRole.roleNames()))
+        .thenReturn(List.of(accounting, factory));
     when(roleRepository.save(any(Role.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
     RoleService service = new RoleService(roleRepository, permissionRepository, auditService);
@@ -174,10 +177,7 @@ class RoleServiceTest {
   @Test
   void ensureRoleExists_backfillsMissingDescriptionForExistingSystemRole() {
     Role accounting =
-        role(
-            "ROLE_ACCOUNTING",
-            permission("portal:accounting"),
-            permission("payroll.run"));
+        role("ROLE_ACCOUNTING", permission("portal:accounting"), permission("payroll.run"));
     accounting.setDescription(" ");
     when(roleRepository.lockByName("ROLE_ACCOUNTING")).thenReturn(Optional.of(accounting));
     when(roleRepository.save(any(Role.class))).thenAnswer(invocation -> invocation.getArgument(0));
@@ -227,7 +227,9 @@ class RoleServiceTest {
         .thenReturn(Optional.of(role("ROLE_ACCOUNTING", permission("portal:accounting"))));
     when(roleRepository.lockByName("ROLE_FACTORY")).thenReturn(Optional.of(factory));
     when(roleRepository.lockByName("ROLE_SALES"))
-        .thenReturn(Optional.of(role("ROLE_SALES", permission("portal:sales"), permission("dispatch.confirm"))));
+        .thenReturn(
+            Optional.of(
+                role("ROLE_SALES", permission("portal:sales"), permission("dispatch.confirm"))));
     when(roleRepository.lockByName("ROLE_DEALER"))
         .thenReturn(Optional.of(role("ROLE_DEALER", permission("portal:dealer"))));
     when(roleRepository.save(any(Role.class))).thenAnswer(invocation -> invocation.getArgument(0));
