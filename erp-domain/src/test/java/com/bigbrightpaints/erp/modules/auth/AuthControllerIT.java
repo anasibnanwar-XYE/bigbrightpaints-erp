@@ -96,7 +96,7 @@ public class AuthControllerIT extends AbstractIntegrationTest {
     assertThat(data).isNotNull();
     assertThat(data.get("email")).isEqualTo(ADMIN_EMAIL);
     assertThat(data.get("companyCode")).isEqualTo(COMPANY_CODE);
-    assertThat(data.get("companyId")).isEqualTo(COMPANY_CODE);
+    assertThat(data).doesNotContainKey("companyId");
     List<String> roles = (List<String>) data.get("roles");
     assertThat(roles).isNotNull();
     assertThat(roles).contains("ROLE_ADMIN");
@@ -376,7 +376,9 @@ public class AuthControllerIT extends AbstractIntegrationTest {
                   rest.exchange(
                       "/api/v1/auth/password/forgot",
                       HttpMethod.POST,
-                      new HttpEntity<>(Map.of("email", USER_EMAIL), jsonHeaders()),
+                      new HttpEntity<>(
+                          Map.of("email", USER_EMAIL, "companyCode", COMPANY_CODE),
+                          jsonHeaders()),
                       Map.class));
       Future<ResponseEntity<Map>> adminForceReset =
           executor.submit(

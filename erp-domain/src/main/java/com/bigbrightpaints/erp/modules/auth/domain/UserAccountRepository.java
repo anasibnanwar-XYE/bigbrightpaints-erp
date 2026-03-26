@@ -21,6 +21,11 @@ public interface UserAccountRepository extends JpaRepository<UserAccount, Long> 
 
   boolean existsByEmailIgnoreCaseAndAuthScopeCodeIgnoreCase(String email, String authScopeCode);
 
+  boolean existsByEmailIgnoreCaseAndAuthScopeCodeIgnoreCaseAndIdNot(
+      String email, String authScopeCode, Long id);
+
+  List<UserAccount> findAllByAuthScopeCodeIgnoreCase(String authScopeCode);
+
   @Lock(LockModeType.PESSIMISTIC_WRITE)
   @Query("select u from UserAccount u where u.id = :id")
   Optional<UserAccount> lockById(@Param("id") Long id);

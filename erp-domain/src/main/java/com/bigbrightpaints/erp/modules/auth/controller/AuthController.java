@@ -8,6 +8,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -83,6 +84,9 @@ public class AuthController {
       return ResponseEntity.status(401).body(ApiResponse.failure("Unauthenticated"));
     }
     String companyCode = CompanyContextHolder.getCompanyCode();
+    if (!StringUtils.hasText(companyCode)) {
+      companyCode = principal.getUser().getAuthScopeCode();
+    }
     List<String> roles =
         principal.getUser().getRoles().stream().map(role -> role.getName()).sorted().toList();
     List<String> permissions =
