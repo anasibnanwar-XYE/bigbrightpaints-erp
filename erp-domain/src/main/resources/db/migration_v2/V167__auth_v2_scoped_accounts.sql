@@ -13,6 +13,15 @@ BEGIN
 
     IF EXISTS (
         SELECT 1
+          FROM companies
+         WHERE UPPER(TRIM(code)) = platform_scope_code
+    ) THEN
+        RAISE EXCEPTION
+            'Auth V2 hard cut requires auth.platform.code to stay unique from tenant company codes. Rename the platform auth code or the conflicting company code before rerunning migration.';
+    END IF;
+
+    IF EXISTS (
+        SELECT 1
           FROM user_companies uc
           JOIN user_roles ur ON ur.user_id = uc.user_id
           JOIN roles r ON r.id = ur.role_id
@@ -108,12 +117,27 @@ ALTER TABLE refresh_tokens
     ADD COLUMN IF NOT EXISTS user_public_id UUID,
     ADD COLUMN IF NOT EXISTS auth_scope_code VARCHAR(64);
 
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT LOWER(TRIM(rt.user_email)) AS normalized_legacy_email
+          FROM refresh_tokens rt
+          JOIN app_users u ON u.email = LOWER(TRIM(rt.user_email))
+         WHERE rt.user_public_id IS NULL
+      GROUP BY LOWER(TRIM(rt.user_email))
+        HAVING COUNT(DISTINCT u.id) > 1
+    ) THEN
+        RAISE EXCEPTION
+            'Auth V2 hard cut found ambiguous legacy refresh tokens after scoped auth split. Clear or rotate those refresh tokens before rerunning migration.';
+    END IF;
+END $$;
+
 UPDATE refresh_tokens rt
    SET user_public_id = u.public_id,
        auth_scope_code = u.auth_scope_code
   FROM app_users u
  WHERE rt.user_public_id IS NULL
-   AND LOWER(u.email) = LOWER(rt.user_email);
+   AND u.email = LOWER(TRIM(rt.user_email));
 
 DO $$
 BEGIN
