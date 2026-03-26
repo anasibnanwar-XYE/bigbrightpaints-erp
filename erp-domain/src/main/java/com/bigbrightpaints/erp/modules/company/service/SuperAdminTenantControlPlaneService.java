@@ -228,7 +228,9 @@ public class SuperAdminTenantControlPlaneService {
   public SuperAdminTenantSupportContextDto updateSupportContext(
       Long companyId, String supportNotes, Set<String> supportTags) {
     Company company = requireCompany(companyId);
-    company.setSupportNotes(supportNotes);
+    if (supportNotes != null) {
+      company.setSupportNotes(supportNotes);
+    }
     if (supportTags != null) {
       company.setSupportTags(supportTags);
     }
@@ -243,6 +245,8 @@ public class SuperAdminTenantControlPlaneService {
     Company company = requireCompany(companyId);
     String actor = currentActor();
     List<UserAccount> users = userAccountRepository.findDistinctByCompanies_Id(companyId);
+    assertTenantExclusiveUsers(company, users, "tenant force logout");
+    String normalizedReason = normalizeOptionalReason(reason, "support-request");
     for (UserAccount user : users) {
       if (!StringUtils.hasText(user.getEmail())) {
         continue;
@@ -257,15 +261,9 @@ public class SuperAdminTenantControlPlaneService {
         Map.of(
             "revokedUserCount",
             String.valueOf(users.size()),
-            "forceLogoutReason",
-            StringUtils.hasText(reason) ? reason.trim() : "support-request"));
+            "forceLogoutReason", normalizedReason));
     return new SuperAdminTenantForceLogoutDto(
-        company.getId(),
-        company.getCode(),
-        users.size(),
-        StringUtils.hasText(reason) ? reason.trim() : "support-request",
-        actor,
-        occurredAt);
+        company.getId(), company.getCode(), users.size(), normalizedReason, actor, occurredAt);
   }
 
   @Transactional
@@ -288,6 +286,7 @@ public class SuperAdminTenantControlPlaneService {
       Long companyId, Long adminUserId, String requestedEmail) {
     Company company = requireCompany(companyId);
     UserAccount adminUser = requireAssignedAdmin(company, adminUserId);
+    assertTenantExclusiveUser(company, adminUser, "tenant admin email change");
     String normalizedRequestedEmail = normalizeRequiredEmail(requestedEmail, "newEmail");
     if (normalizedRequestedEmail.equalsIgnoreCase(adminUser.getEmail())) {
       throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
@@ -338,6 +337,7 @@ public class SuperAdminTenantControlPlaneService {
       Long companyId, Long adminUserId, Long requestId, String verificationToken) {
     Company company = requireCompany(companyId);
     UserAccount adminUser = requireAssignedAdmin(company, adminUserId);
+    assertTenantExclusiveUser(company, adminUser, "tenant admin email change");
     TenantAdminEmailChangeRequest changeRequest =
         tenantAdminEmailChangeRequestRepository
             .findById(requestId)
@@ -359,6 +359,10 @@ public class SuperAdminTenantControlPlaneService {
         && changeRequest.getExpiresAt().isBefore(CompanyTime.now(company))) {
       throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState(
           "Email change verification token has expired");
+    }
+    if (!adminUser.getEmail().equalsIgnoreCase(changeRequest.getCurrentEmail())) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState(
+          "Email change request is stale because the admin email has already changed");
     }
     Instant now = CompanyTime.now(company);
     changeRequest.setVerifiedAt(now);
@@ -590,6 +594,13 @@ public class SuperAdminTenantControlPlaneService {
     return email.trim().toLowerCase(Locale.ROOT);
   }
 
+  private String normalizeOptionalReason(String value, String fallback) {
+    if (!StringUtils.hasText(value)) {
+      return fallback;
+    }
+    return value.trim();
+  }
+
   private String normalizeWarningCategory(String warningCategory) {
     return StringUtils.hasText(warningCategory)
         ? warningCategory.trim().toUpperCase(Locale.ROOT)
@@ -625,6 +636,54 @@ public class SuperAdminTenantControlPlaneService {
       return Integer.MAX_VALUE;
     }
     return value < 0L ? 0 : (int) value;
+  }
+
+  private void assertTenantExclusiveUsers(
+      Company company, List<UserAccount> users, String operationDescription) {
+    if (users == null || users.isEmpty()) {
+      return;
+    }
+    List<String> sharedUserEmails = new ArrayList<>();
+    for (UserAccount user : users) {
+      if (isSharedAcrossCompanies(user)) {
+        sharedUserEmails.add(StringUtils.hasText(user.getEmail()) ? user.getEmail().trim() : "UNKNOWN");
+      }
+    }
+    if (!sharedUserEmails.isEmpty()) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState(
+          "Cannot perform "
+              + operationDescription
+              + " while shared users are assigned to "
+              + company.getCode()
+              + ": "
+              + String.join(", ", sharedUserEmails));
+    }
+  }
+
+  private void assertTenantExclusiveUser(
+      Company company, UserAccount user, String operationDescription) {
+    if (isSharedAcrossCompanies(user)) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState(
+          "Cannot perform "
+              + operationDescription
+              + " for shared user "
+              + user.getEmail()
+              + " in "
+              + company.getCode()
+              + "; assign a tenant-exclusive admin first");
+    }
+  }
+
+  private boolean isSharedAcrossCompanies(UserAccount user) {
+    if (user == null || user.getCompanies() == null) {
+      return false;
+    }
+    return user.getCompanies().stream()
+            .filter(company -> company != null && company.getId() != null)
+            .map(Company::getId)
+            .distinct()
+            .count()
+        > 1L;
   }
 
   private String currentActor() {

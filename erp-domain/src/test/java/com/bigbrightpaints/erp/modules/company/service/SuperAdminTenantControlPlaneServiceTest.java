@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
@@ -325,6 +326,19 @@ class SuperAdminTenantControlPlaneServiceTest {
   }
 
   @Test
+  void updateSupportContext_preservesNotesWhenNotesFieldIsOmitted() {
+    Company company = company(7L, "ACME");
+    company.setSupportNotes("keep existing notes");
+    when(companyRepository.findById(7L)).thenReturn(Optional.of(company));
+
+    SuperAdminTenantSupportContextDto response =
+        service.updateSupportContext(7L, null, Set.of(" urgent "));
+
+    assertThat(response.supportNotes()).isEqualTo("keep existing notes");
+    assertThat(response.supportTags()).containsExactly("URGENT");
+  }
+
+  @Test
   void forceLogoutAllUsers_revokesNonBlankEmailsAndDefaultsReason() {
     Company company = company(7L, "ACME");
     when(companyRepository.findById(7L)).thenReturn(Optional.of(company));
@@ -340,6 +354,22 @@ class SuperAdminTenantControlPlaneServiceTest {
     verify(tokenBlacklistService).revokeAllUserTokens("admin1@acme.com");
     verify(refreshTokenService).revokeAllForUser("admin1@acme.com");
     verify(tokenBlacklistService, never()).revokeAllUserTokens("  ");
+  }
+
+  @Test
+  void forceLogoutAllUsers_rejectsSharedUsers() {
+    Company company = company(7L, "ACME");
+    Company foreignCompany = company(8L, "BETA");
+    when(companyRepository.findById(7L)).thenReturn(Optional.of(company));
+    UserAccount sharedUser = adminUser(11L, "shared-admin@acme.com", "ROLE_ADMIN", company);
+    sharedUser.addCompany(foreignCompany);
+    when(userAccountRepository.findDistinctByCompanies_Id(7L)).thenReturn(List.of(sharedUser));
+
+    assertThatThrownBy(() -> service.forceLogoutAllUsers(7L, "support"))
+        .hasMessageContaining("Cannot perform tenant force logout while shared users are assigned");
+
+    verify(tokenBlacklistService, never()).revokeAllUserTokens(any(String.class));
+    verify(refreshTokenService, never()).revokeAllForUser(any(String.class));
   }
 
   @Test
@@ -422,6 +452,23 @@ class SuperAdminTenantControlPlaneServiceTest {
 
     assertThatThrownBy(() -> service.requestAdminEmailChange(7L, 91L, "   "))
         .hasMessageContaining("newEmail is required");
+  }
+
+  @Test
+  void requestAdminEmailChange_rejectsSharedAdminAccounts() {
+    Company company = company(7L, "ACME");
+    Company foreignCompany = company(8L, "BETA");
+    when(companyRepository.findById(7L)).thenReturn(Optional.of(company));
+    UserAccount sharedAdmin = adminUser(91L, "admin@acme.com", "ROLE_ADMIN", company);
+    sharedAdmin.addCompany(foreignCompany);
+    when(userAccountRepository.findByIdAndCompanies_Id(91L, 7L)).thenReturn(Optional.of(sharedAdmin));
+
+    assertThatThrownBy(() -> service.requestAdminEmailChange(7L, 91L, "new-admin@acme.com"))
+        .hasMessageContaining("Cannot perform tenant admin email change for shared user");
+
+    verify(emailService, never())
+        .sendAdminEmailChangeVerificationRequired(
+            any(String.class), any(String.class), any(String.class), any(String.class), any(Instant.class));
   }
 
   @Test
@@ -510,6 +557,35 @@ class SuperAdminTenantControlPlaneServiceTest {
         .thenReturn(Optional.of(invalidToken));
     assertThatThrownBy(() -> service.confirmAdminEmailChange(7L, 91L, 304L, "wrong-token"))
         .hasMessageContaining("Invalid verification token");
+  }
+
+  @Test
+  void confirmAdminEmailChange_rejectsSharedAdminAccountsAndStaleRequests() {
+    Company company = company(7L, "ACME");
+    Company foreignCompany = company(8L, "BETA");
+    when(companyRepository.findById(7L)).thenReturn(Optional.of(company));
+
+    UserAccount sharedAdmin = adminUser(91L, "admin@acme.com", "ROLE_ADMIN", company);
+    sharedAdmin.addCompany(foreignCompany);
+    when(userAccountRepository.findByIdAndCompanies_Id(91L, 7L)).thenReturn(Optional.of(sharedAdmin));
+
+    assertThatThrownBy(() -> service.confirmAdminEmailChange(7L, 91L, 305L, "verify-123"))
+        .hasMessageContaining("Cannot perform tenant admin email change for shared user");
+
+    UserAccount exclusiveAdmin = adminUser(92L, "current@acme.com", "ROLE_ADMIN", company);
+    when(userAccountRepository.findByIdAndCompanies_Id(92L, 7L)).thenReturn(Optional.of(exclusiveAdmin));
+
+    TenantAdminEmailChangeRequest staleRequest = new TenantAdminEmailChangeRequest();
+    staleRequest.setCompanyId(7L);
+    staleRequest.setAdminUserId(92L);
+    staleRequest.setCurrentEmail("old@acme.com");
+    staleRequest.setRequestedEmail("new@acme.com");
+    staleRequest.setVerificationToken("verify-stale");
+    staleRequest.setExpiresAt(Instant.now().plusSeconds(600));
+    when(tenantAdminEmailChangeRequestRepository.findById(306L)).thenReturn(Optional.of(staleRequest));
+
+    assertThatThrownBy(() -> service.confirmAdminEmailChange(7L, 92L, 306L, "verify-stale"))
+        .hasMessageContaining("Email change request is stale");
   }
 
   private Company company(Long id, String code) {
