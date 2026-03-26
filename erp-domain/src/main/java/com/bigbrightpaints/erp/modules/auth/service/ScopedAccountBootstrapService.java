@@ -3,6 +3,8 @@ package com.bigbrightpaints.erp.modules.auth.service;
 import java.util.Collection;
 import java.util.Locale;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,6 +22,8 @@ import com.bigbrightpaints.erp.modules.rbac.domain.Role;
 
 @Service
 public class ScopedAccountBootstrapService {
+
+  private static final Logger log = LoggerFactory.getLogger(ScopedAccountBootstrapService.class);
 
   private final UserAccountRepository userAccountRepository;
   private final PasswordEncoder passwordEncoder;
@@ -69,13 +73,25 @@ public class ScopedAccountBootstrapService {
           new TransactionSynchronization() {
             @Override
             public void afterCommit() {
-              emailService.sendUserCredentialsEmailRequired(
-                  email, displayName, temporaryPassword, scopeCode);
+              deliverCredentialEmailAfterCommit(email, displayName, temporaryPassword, scopeCode);
             }
           });
       return;
     }
     emailService.sendUserCredentialsEmailRequired(email, displayName, temporaryPassword, scopeCode);
+  }
+
+  private void deliverCredentialEmailAfterCommit(
+      String email, String displayName, String temporaryPassword, String scopeCode) {
+    try {
+      emailService.sendUserCredentialsEmailRequired(email, displayName, temporaryPassword, scopeCode);
+    } catch (RuntimeException ex) {
+      log.error(
+          "Scoped account provisioned but credential email delivery failed after commit for {} in scope {}",
+          email,
+          scopeCode,
+          ex);
+    }
   }
 
   private UserAccount createScopedAccount(

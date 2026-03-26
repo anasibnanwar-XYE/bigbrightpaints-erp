@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
@@ -12,6 +13,7 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.mock.mockito.SpyBean;
+import org.springframework.mail.MailSendException;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -100,5 +102,47 @@ class ScopedAccountBootstrapServiceIT extends AbstractIntegrationTest {
             eq("Committed Bootstrap"),
             anyString(),
             eq("BOOT2"));
+  }
+
+  @Test
+  void provisionTenantAccount_keepsCommittedAccount_whenAfterCommitEmailFails() {
+    Company company = dataSeeder.ensureCompany("BOOT3", "Bootstrap 3 Ltd");
+    Role adminRole = roleRepository.findByName("ROLE_ADMIN").orElseGet(() -> dataSeeder.ensureUser(
+        "bootstrap-role-seed-3@bbp.com",
+        "Passw0rd!",
+        "Bootstrap Role Seed 3",
+        "BOOTROLE3",
+        List.of("ROLE_ADMIN")).getRoles().stream()
+        .filter(role -> "ROLE_ADMIN".equalsIgnoreCase(role.getName()))
+        .findFirst()
+        .orElseThrow());
+    TransactionTemplate transactionTemplate = new TransactionTemplate(transactionManager);
+
+    doThrow(new MailSendException("smtp down"))
+        .when(emailService)
+        .sendUserCredentialsEmailRequired(
+            eq("mail-failure-bootstrap@bbp.com"),
+            eq("Mail Failure Bootstrap"),
+            anyString(),
+            eq("BOOT3"));
+
+    transactionTemplate.executeWithoutResult(
+        status ->
+            scopedAccountBootstrapService.provisionTenantAccount(
+                company,
+                "mail-failure-bootstrap@bbp.com",
+                "Mail Failure Bootstrap",
+                List.of(adminRole)));
+
+    assertThat(
+            userAccountRepository.findByEmailIgnoreCaseAndAuthScopeCodeIgnoreCase(
+                "mail-failure-bootstrap@bbp.com", "BOOT3"))
+        .isPresent();
+    verify(emailService)
+        .sendUserCredentialsEmailRequired(
+            eq("mail-failure-bootstrap@bbp.com"),
+            eq("Mail Failure Bootstrap"),
+            anyString(),
+            eq("BOOT3"));
   }
 }
