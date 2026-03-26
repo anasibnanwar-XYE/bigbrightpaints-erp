@@ -35,6 +35,7 @@ import com.bigbrightpaints.erp.core.audit.AuditEvent;
 import com.bigbrightpaints.erp.core.audit.AuditLogRepository;
 import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.core.util.CompanyTime;
@@ -955,6 +956,22 @@ class CompanyServiceTest {
 
     verify(tenantAdminProvisioningService, never())
         .resetTenantAdminPassword(company, "tenant-admin@ske.com");
+  }
+
+  @Test
+  void resetTenantAdminPassword_surfacesDisabledAdminAsError() {
+    authenticateAs("ROLE_SUPER_ADMIN");
+    Company company = company(5L, "SKE");
+    when(repository.findById(5L)).thenReturn(Optional.of(company));
+    when(passwordResetService.isResetEmailDeliveryEnabled()).thenReturn(true);
+    when(tenantAdminProvisioningService.resetTenantAdminPassword(company, "tenant-admin@ske.com"))
+        .thenThrow(
+            new ApplicationException(
+                ErrorCode.AUTH_ACCOUNT_DISABLED, ErrorCode.AUTH_ACCOUNT_DISABLED.getDefaultMessage()));
+
+    assertThatThrownBy(() -> companyService.resetTenantAdminPassword(5L, "tenant-admin@ske.com"))
+        .isInstanceOf(ApplicationException.class)
+        .hasMessageContaining("Account is disabled");
   }
 
   @Test

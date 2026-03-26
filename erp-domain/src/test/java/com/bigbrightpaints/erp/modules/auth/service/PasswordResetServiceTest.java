@@ -28,8 +28,9 @@ import org.springframework.batch.support.transaction.ResourcelessTransactionMana
 import org.springframework.test.util.ReflectionTestUtils;
 
 import com.bigbrightpaints.erp.core.config.EmailProperties;
-import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.audit.AuditService;
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.notification.EmailService;
 import com.bigbrightpaints.erp.core.security.AuthScopeService;
 import com.bigbrightpaints.erp.core.security.SecurityMonitoringService;
@@ -178,6 +179,21 @@ class PasswordResetServiceTest {
 
     assertThrows(ApplicationException.class, () -> passwordResetService.requestResetByAdmin(user));
 
+    verify(tokenRepository, never()).saveAndFlush(any(PasswordResetToken.class));
+    verify(emailService, never())
+        .sendPasswordResetEmailRequired(anyString(), anyString(), anyString(), anyString());
+  }
+
+  @Test
+  void requestResetByAdminRejectsDisabledUser() {
+    UserAccount user = enabledUser("disabled-admin@example.com", TENANT_SCOPE);
+    user.setEnabled(false);
+
+    ApplicationException exception =
+        assertThrows(ApplicationException.class, () -> passwordResetService.requestResetByAdmin(user));
+
+    assertEquals(ErrorCode.AUTH_ACCOUNT_DISABLED, exception.getErrorCode());
+    assertEquals("Account is disabled", exception.getMessage());
     verify(tokenRepository, never()).saveAndFlush(any(PasswordResetToken.class));
     verify(emailService, never())
         .sendPasswordResetEmailRequired(anyString(), anyString(), anyString(), anyString());

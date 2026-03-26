@@ -123,12 +123,19 @@ public class PasswordResetService {
 
   @Transactional
   public void requestResetByAdmin(UserAccount targetUser) {
-    if (targetUser == null || !targetUser.isEnabled()) {
-      return;
+    if (targetUser == null) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          "Target user is required");
     }
     String correlationId = resolveCorrelationId();
     logTenantContextIgnoredIfPresent("admin_force_reset", correlationId);
     String scopeCode = authScopeService.requireScopeCode(targetUser.getAuthScopeCode());
+    if (!targetUser.isEnabled()) {
+      auditResetFailure(
+          "admin_force_reset", correlationId, scopeCode, targetUser.getEmail(), "user_disabled");
+      throw new ApplicationException(
+          ErrorCode.AUTH_ACCOUNT_DISABLED, ErrorCode.AUTH_ACCOUNT_DISABLED.getDefaultMessage());
+    }
     String normalizedEmail = normalizeEmail(targetUser.getEmail());
     enforceResetRateLimit("admin_force_reset", normalizedEmail, scopeCode, correlationId);
     if (dispatchResetEmail(targetUser, correlationId, "admin_force_reset")) {
