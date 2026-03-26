@@ -123,7 +123,7 @@ public class MockDataInitializer {
       seedBatches(company, batchRepository, finishedGoodRepository, fg, fgLifo, fgKit);
 
       // Seed a handful of journals for UI exploration
-      CompanyContextHolder.setCompanyId(company.getCode());
+      CompanyContextHolder.setCompanyCode(company.getCode());
       seedSalesPurchaseAndCogs(accountingService, company, dealer, supplier, accounts);
       // Add some traffic to show balances
       for (int i = 0; i < 10; i++) {
