@@ -103,7 +103,7 @@ class PasswordResetServiceTest {
     verify(emailService)
         .sendPasswordResetEmailRequired(
             eq("user@example.com"), eq("User"), emailTokenCaptor.capture());
-    verify(tokenRepository).deleteByUserAndIdNot(eq(user), anyLong());
+    verify(tokenRepository).deleteByUser(eq(user));
     assertEquals(user, tokenCaptor.getValue().getUser());
     assertEquals(TENANT_SCOPE, tokenCaptor.getValue().getUser().getAuthScopeCode());
     org.assertj.core.api.Assertions.assertThat(emailTokenCaptor.getValue()).isNotBlank();
@@ -131,6 +131,21 @@ class PasswordResetServiceTest {
         .thenReturn(Optional.of(user));
 
     assertDoesNotThrow(() -> passwordResetService.requestReset("disabled@example.com", TENANT_SCOPE));
+
+    verify(tokenRepository, never()).saveAndFlush(any(PasswordResetToken.class));
+    verify(emailService, never())
+        .sendPasswordResetEmailRequired(anyString(), anyString(), anyString());
+  }
+
+  @Test
+  void requestResetFailsFastWhenDeliveryDisabledForScopedAccount() {
+    UserAccount user = enabledUser("user@example.com", TENANT_SCOPE);
+    emailProperties.setSendPasswordReset(false);
+    when(userAccountRepository.findByEmailIgnoreCaseAndAuthScopeCodeIgnoreCase(
+            "user@example.com", TENANT_SCOPE))
+        .thenReturn(Optional.of(user));
+
+    assertThrows(ApplicationException.class, () -> passwordResetService.requestReset("user@example.com", TENANT_SCOPE));
 
     verify(tokenRepository, never()).saveAndFlush(any(PasswordResetToken.class));
     verify(emailService, never())
@@ -190,6 +205,22 @@ class PasswordResetServiceTest {
         .sendPasswordResetEmailRequired(eq("user@example.com"), eq("User"), anyString());
 
     assertThrows(RuntimeException.class, () -> passwordResetService.requestResetByAdmin(user));
+
+    verify(tokenRepository).saveAndFlush(any(PasswordResetToken.class));
+    verify(tokenRepository).deleteByTokenDigest(anyString());
+  }
+
+  @Test
+  void requestResetCleansUpIssuedTokenWhenDispatchFailsInPublicFlow() {
+    UserAccount user = enabledUser("user@example.com", TENANT_SCOPE);
+    when(userAccountRepository.findByEmailIgnoreCaseAndAuthScopeCodeIgnoreCase(
+            "user@example.com", TENANT_SCOPE))
+        .thenReturn(Optional.of(user));
+    doThrow(new RuntimeException("smtp down"))
+        .when(emailService)
+        .sendPasswordResetEmailRequired(eq("user@example.com"), eq("User"), anyString());
+
+    assertThrows(RuntimeException.class, () -> passwordResetService.requestReset("user@example.com", TENANT_SCOPE));
 
     verify(tokenRepository).saveAndFlush(any(PasswordResetToken.class));
     verify(tokenRepository).deleteByTokenDigest(anyString());
