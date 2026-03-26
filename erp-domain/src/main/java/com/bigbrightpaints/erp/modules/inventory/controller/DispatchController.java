@@ -118,23 +118,10 @@ public class DispatchController {
       @Valid @RequestBody DispatchConfirmationRequest request, Principal principal) {
     String username = principal != null ? principal.getName() : "system";
     validateFactoryDispatchMetadata(request);
-    DispatchConfirmRequest accountingRequest =
-        new DispatchConfirmRequest(
+    DispatchConfirmRequest accountingRequest = new DispatchConfirmRequest(
             request.packagingSlipId(),
             null,
-            request.lines().stream()
-                .map(
-                    line ->
-                        new DispatchConfirmRequest.DispatchLine(
-                            line.lineId(),
-                            null,
-                            line.shippedQuantity(),
-                            null,
-                            null,
-                            null,
-                            null,
-                            line.notes()))
-                .toList(),
+            request.lines().stream().map(this::toDispatchLine).toList(),
             request.notes(),
             username,
             Boolean.FALSE,
@@ -222,24 +209,7 @@ public class DispatchController {
     List<PackagingSlipLineDto> redactedLines =
         slip.lines() == null
             ? List.of()
-            : slip.lines().stream()
-                .map(
-                    line -> {
-                      BigDecimal redactedUnitCost = null;
-                      return new PackagingSlipLineDto(
-                          line.id(),
-                          line.batchPublicId(),
-                          line.batchCode(),
-                          line.productCode(),
-                          line.productName(),
-                          line.orderedQuantity(),
-                          line.shippedQuantity(),
-                          line.backorderQuantity(),
-                          line.quantity(),
-                          redactedUnitCost,
-                          line.notes());
-                    })
-                .toList();
+            : slip.lines().stream().map(this::toRedactedPackagingSlipLine).toList();
     return new PackagingSlipDto(
         slip.id(),
         slip.publicId(),
@@ -312,20 +282,7 @@ public class DispatchController {
     List<DispatchConfirmationResponse.LineResult> lineResults =
         response.lines() == null
             ? List.of()
-            : response.lines().stream()
-                .map(
-                    line ->
-                        new DispatchConfirmationResponse.LineResult(
-                            line.lineId(),
-                            line.productCode(),
-                            line.productName(),
-                            line.orderedQuantity(),
-                            line.shippedQuantity(),
-                            line.backorderQuantity(),
-                            null,
-                            null,
-                            line.notes()))
-                .toList();
+            : response.lines().stream().map(this::toDispatchConfirmationLineResult).toList();
     return new DispatchConfirmationResponse(
         response.packagingSlipId(),
         response.slipNumber(),
@@ -345,6 +302,41 @@ public class DispatchController {
         response.challanReference(),
         response.deliveryChallanNumber(),
         response.deliveryChallanPdfPath());
+  }
+
+  private DispatchConfirmRequest.DispatchLine toDispatchLine(
+      DispatchConfirmationRequest.LineConfirmation line) {
+    return new DispatchConfirmRequest.DispatchLine(
+        line.lineId(), null, line.shippedQuantity(), null, null, null, null, line.notes());
+  }
+
+  private PackagingSlipLineDto toRedactedPackagingSlipLine(PackagingSlipLineDto line) {
+    return new PackagingSlipLineDto(
+        line.id(),
+        line.batchPublicId(),
+        line.batchCode(),
+        line.productCode(),
+        line.productName(),
+        line.orderedQuantity(),
+        line.shippedQuantity(),
+        line.backorderQuantity(),
+        line.quantity(),
+        null,
+        line.notes());
+  }
+
+  private DispatchConfirmationResponse.LineResult toDispatchConfirmationLineResult(
+      DispatchConfirmationResponse.LineResult line) {
+    return new DispatchConfirmationResponse.LineResult(
+        line.lineId(),
+        line.productCode(),
+        line.productName(),
+        line.orderedQuantity(),
+        line.shippedQuantity(),
+        line.backorderQuantity(),
+        null,
+        null,
+        line.notes());
   }
 
   private boolean isOperationalFactoryView() {

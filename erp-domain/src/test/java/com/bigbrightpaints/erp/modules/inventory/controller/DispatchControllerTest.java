@@ -238,6 +238,198 @@ class DispatchControllerTest {
   }
 
   @Test
+  void confirmDispatch_usesSystemPrincipalAndDriverOnlyMetadata() {
+    DispatchController controller =
+        new DispatchController(
+            finishedGoodsService, salesDispatchReconciliationService, deliveryChallanPdfService);
+    setAuthentication("ROLE_FACTORY", "dispatch.confirm");
+
+    DispatchConfirmationRequest request =
+        new DispatchConfirmationRequest(
+            11L,
+            List.of(
+                new DispatchConfirmationRequest.LineConfirmation(
+                    111L, new BigDecimal("4.00"), "Ship full pallet")),
+            "Dispatch notes",
+            null,
+            null,
+            null,
+            "Ayaan",
+            "MH12AB4321",
+            "LR-1111");
+    when(finishedGoodsService.getPackagingSlip(11L))
+        .thenReturn(
+            packagingSlip(
+                11L,
+                "PS-11",
+                "READY",
+                11L,
+                12L,
+                List.of(),
+                null,
+                null,
+                null,
+                null));
+    when(finishedGoodsService.getDispatchConfirmation(11L))
+        .thenReturn(
+            new DispatchConfirmationResponse(
+                11L,
+                "PS-11",
+                "DISPATCHED",
+                Instant.now(),
+                "system",
+                new BigDecimal("500.00"),
+                new BigDecimal("400.00"),
+                new BigDecimal("100.00"),
+                11L,
+                12L,
+                List.of(
+                    new DispatchConfirmationResponse.LineResult(
+                        111L,
+                        "FG-11",
+                        "Primer",
+                        new BigDecimal("5.00"),
+                        new BigDecimal("4.00"),
+                        new BigDecimal("1.00"),
+                        new BigDecimal("125.00"),
+                        new BigDecimal("500.00"),
+                        "Ship full pallet")),
+                null,
+                null,
+                "Ayaan",
+                "MH12AB4321",
+                "LR-1111",
+                "DC-PS-11",
+                "/api/v1/dispatch/slip/11/challan/pdf"));
+
+    ResponseEntity<?> response = controller.confirmDispatch(request, null);
+
+    ArgumentCaptor<DispatchConfirmRequest> dispatchCaptor =
+        ArgumentCaptor.forClass(DispatchConfirmRequest.class);
+    verify(salesDispatchReconciliationService).confirmDispatch(dispatchCaptor.capture());
+    assertThat(dispatchCaptor.getValue().confirmedBy()).isEqualTo("system");
+    assertThat(dispatchCaptor.getValue().transporterName()).isNull();
+    assertThat(dispatchCaptor.getValue().driverName()).isEqualTo("Ayaan");
+
+    DispatchConfirmationResponse redacted =
+        (DispatchConfirmationResponse)
+            ((com.bigbrightpaints.erp.shared.dto.ApiResponse<?>) response.getBody()).data();
+    assertThat(redacted.lines()).hasSize(1);
+    assertThat(redacted.lines().getFirst().unitCost()).isNull();
+    assertThat(redacted.lines().getFirst().lineTotal()).isNull();
+    assertThat(redacted.driverName()).isEqualTo("Ayaan");
+
+    verify(finishedGoodsService).getPackagingSlip(11L);
+    verify(finishedGoodsService).getDispatchConfirmation(11L);
+    verifyNoMoreInteractions(salesDispatchReconciliationService, finishedGoodsService);
+  }
+
+  @Test
+  void confirmDispatch_factoryViewNormalizesNullConfirmationLines() {
+    DispatchController controller =
+        new DispatchController(
+            finishedGoodsService, salesDispatchReconciliationService, deliveryChallanPdfService);
+    setAuthentication("ROLE_FACTORY", "dispatch.confirm");
+
+    DispatchConfirmationRequest request =
+        new DispatchConfirmationRequest(
+            12L,
+            List.of(new DispatchConfirmationRequest.LineConfirmation(120L, BigDecimal.ONE, null)),
+            "Dispatch notes",
+            null,
+            null,
+            "FastMove Logistics",
+            null,
+            "MH12AB9999",
+            "LR-1212");
+    when(finishedGoodsService.getDispatchConfirmation(12L))
+        .thenReturn(
+            new DispatchConfirmationResponse(
+                12L,
+                "PS-12",
+                "DISPATCHED",
+                Instant.now(),
+                "factory.user",
+                new BigDecimal("100.00"),
+                new BigDecimal("100.00"),
+                BigDecimal.ZERO,
+                121L,
+                122L,
+                null,
+                null,
+                "FastMove Logistics",
+                null,
+                "MH12AB9999",
+                "LR-1212",
+                "DC-PS-12",
+                "/api/v1/dispatch/slip/12/challan/pdf"));
+
+    DispatchConfirmationResponse response =
+        controller.confirmDispatch(request, () -> "factory.user").getBody().data();
+
+    assertThat(response.lines()).isEmpty();
+    assertThat(response.totalShippedAmount()).isNull();
+  }
+
+  @Test
+  void confirmDispatch_withoutOperationalFactoryAuthSkipsFactoryOnlyRedaction() {
+    DispatchController controller =
+        new DispatchController(
+            finishedGoodsService, salesDispatchReconciliationService, deliveryChallanPdfService);
+    SecurityContextHolder.clearContext();
+
+    DispatchConfirmationRequest request =
+        new DispatchConfirmationRequest(
+            16L,
+            List.of(new DispatchConfirmationRequest.LineConfirmation(160L, BigDecimal.ONE, null)),
+            "Dispatch notes",
+            null,
+            null,
+            "FastMove Logistics",
+            null,
+            "MH12AB1616",
+            "LR-1616");
+    when(finishedGoodsService.getDispatchConfirmation(16L))
+        .thenReturn(
+            new DispatchConfirmationResponse(
+                16L,
+                "PS-16",
+                "DISPATCHED",
+                Instant.now(),
+                "factory.user",
+                new BigDecimal("100.00"),
+                new BigDecimal("100.00"),
+                BigDecimal.ZERO,
+                161L,
+                162L,
+                List.of(
+                    new DispatchConfirmationResponse.LineResult(
+                        160L,
+                        "FG-16",
+                        "Primer",
+                        BigDecimal.ONE,
+                        BigDecimal.ONE,
+                        BigDecimal.ZERO,
+                        new BigDecimal("100.00"),
+                        new BigDecimal("100.00"),
+                        "Ship")),
+                null,
+                "FastMove Logistics",
+                null,
+                "MH12AB1616",
+                "LR-1616",
+                "DC-PS-16",
+                "/api/v1/dispatch/slip/16/challan/pdf"));
+
+    DispatchConfirmationResponse response =
+        controller.confirmDispatch(request, () -> "factory.user").getBody().data();
+
+    assertThat(response.journalEntryId()).isEqualTo(161L);
+    assertThat(response.totalShippedAmount()).isEqualByComparingTo("100.00");
+    assertThat(response.lines().getFirst().unitCost()).isEqualByComparingTo("100.00");
+  }
+
+  @Test
   void getPendingSlips_filtersDispatchedAndRedactsFactoryView() {
     DispatchController controller =
         new DispatchController(
@@ -468,6 +660,43 @@ class DispatchControllerTest {
   }
 
   @Test
+  void getDispatchPreview_factoryViewNormalizesNullLines() {
+    DispatchController controller =
+        new DispatchController(
+            finishedGoodsService, salesDispatchReconciliationService, deliveryChallanPdfService);
+    setAuthentication("ROLE_FACTORY", "dispatch.confirm");
+
+    when(finishedGoodsService.getDispatchPreview(14L))
+        .thenReturn(
+            new DispatchPreviewDto(
+                14L,
+                "PS-14",
+                "READY",
+                74L,
+                "SO-74",
+                "Dealer",
+                "DLR-74",
+                Instant.now(),
+                new BigDecimal("300.00"),
+                new BigDecimal("300.00"),
+                new DispatchPreviewDto.GstBreakdown(
+                    new BigDecimal("250.00"),
+                    new BigDecimal("25.00"),
+                    new BigDecimal("25.00"),
+                    BigDecimal.ZERO,
+                    new BigDecimal("50.00"),
+                    new BigDecimal("300.00")),
+                null));
+
+    DispatchPreviewDto response = controller.getDispatchPreview(14L).getBody().data();
+
+    assertThat(response.lines()).isEmpty();
+    assertThat(response.totalOrderedAmount()).isNull();
+    assertThat(response.totalAvailableAmount()).isNull();
+    assertThat(response.gstBreakdown()).isNull();
+  }
+
+  @Test
   void accountingViewsAreNotOperationalFactoryViews() {
     DispatchController controller =
         new DispatchController(
@@ -492,6 +721,91 @@ class DispatchControllerTest {
 
     assertThat(response.journalEntryId()).isEqualTo(131L);
     assertThat(response.cogsJournalEntryId()).isEqualTo(232L);
+  }
+
+  @Test
+  void getPackagingSlip_treatsNullAuthoritiesAsNonFactoryView() {
+    DispatchController controller =
+        new DispatchController(
+            finishedGoodsService, salesDispatchReconciliationService, deliveryChallanPdfService);
+    org.springframework.security.core.Authentication authentication =
+        org.mockito.Mockito.mock(org.springframework.security.core.Authentication.class);
+    when(authentication.getAuthorities()).thenReturn(null);
+    SecurityContextHolder.getContext().setAuthentication(authentication);
+
+    PackagingSlipDto slip =
+        packagingSlip(
+            31L,
+            "PS-31",
+            "READY",
+            311L,
+            322L,
+            List.of(),
+            null,
+            null,
+            null,
+            null);
+    when(finishedGoodsService.getPackagingSlip(31L)).thenReturn(slip);
+
+    PackagingSlipDto response = controller.getPackagingSlip(31L).getBody().data();
+
+    assertThat(response.journalEntryId()).isEqualTo(311L);
+    assertThat(response.cogsJournalEntryId()).isEqualTo(322L);
+  }
+
+  @Test
+  void cancelBackorder_usesSystemPrincipalWhenMissing() {
+    DispatchController controller =
+        new DispatchController(
+            finishedGoodsService, salesDispatchReconciliationService, deliveryChallanPdfService);
+    PackagingSlipDto slip =
+        packagingSlip(
+            55L,
+            "PS-55",
+            "CANCELED",
+            551L,
+            552L,
+            List.of(),
+            null,
+            null,
+            null,
+            null);
+    when(finishedGoodsService.cancelBackorderSlip(55L, "system", "Damaged labels")).thenReturn(slip);
+
+    var response = controller.cancelBackorder(55L, "Damaged labels", null).getBody();
+
+    assertThat(response.message()).isEqualTo("Backorder canceled");
+    assertThat(response.data().id()).isEqualTo(55L);
+    verify(finishedGoodsService).cancelBackorderSlip(55L, "system", "Damaged labels");
+  }
+
+  @Test
+  void updateSlipStatus_redactsFactoryViewAndNormalizesNullLines() {
+    DispatchController controller =
+        new DispatchController(
+            finishedGoodsService, salesDispatchReconciliationService, deliveryChallanPdfService);
+    setAuthentication("ROLE_FACTORY", "dispatch.confirm");
+
+    PackagingSlipDto slip =
+        packagingSlip(
+            21L,
+            "PS-21",
+            "PACKING",
+            211L,
+            221L,
+            null,
+            "FastMove Logistics",
+            null,
+            "MH12AB2121",
+            "LR-2121");
+    when(finishedGoodsService.updateSlipStatus(21L, "PACKING")).thenReturn(slip);
+
+    PackagingSlipDto response = controller.updateSlipStatus(21L, "PACKING").getBody().data();
+
+    assertThat(response.lines()).isEmpty();
+    assertThat(response.journalEntryId()).isNull();
+    assertThat(response.cogsJournalEntryId()).isNull();
+    assertThat(response.vehicleNumber()).isEqualTo("MH12AB2121");
   }
 
   @Test
