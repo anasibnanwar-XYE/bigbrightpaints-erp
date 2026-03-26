@@ -10,7 +10,7 @@ This folder is the dedicated review surface for frontend follow-up from the `sec
 - `GET /api/v1/companies/superadmin/dashboard` is retired; `GET /api/v1/superadmin/dashboard` remains the public aggregate-count dashboard route and is not a drop-in replacement for the retired detailed tenant payload.
 - `POST /api/v1/auth/password/forgot` now requires `companyCode` alongside `email`, and the retired `POST /api/v1/auth/password/forgot/superadmin` alias is deleted from the canonical contract.
 - `POST /api/v1/superadmin/tenants/onboard` no longer returns plaintext password fields or `credentialsEmailSent`; onboarding now exposes only explicit bootstrap-status fields plus `adminEmail`.
-- `POST /api/v1/auth/password/forgot` still uses the same request body and generic success payload where masking is intended, but reset-token persistence failures now return a controlled non-success response instead of `200 OK`.
+- `POST /api/v1/auth/password/forgot` still masks unknown or disabled identities behind the generic success payload, but known scoped accounts now fail closed when reset-token storage or email delivery/configuration fails.
 - Tenant-admin foreign-target `suspend`, `unsuspend`, `mfa/disable`, and `delete` flows keep the same masked `400 User not found` contract; the latest regression fix only removes an internal cross-tenant lock side effect.
 - Hardened error semantics and authorization boundaries are tracked below so review does not rely on implicit knowledge.
 
