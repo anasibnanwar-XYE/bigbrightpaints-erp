@@ -217,7 +217,9 @@ public class AdminUserService {
       requiresReauth = enabledChanged;
     }
     if (request.companyId() != null) {
-      user.setCompany(resolveTargetCompanyForCreate(company, request.companyId()));
+      Company targetCompany = resolveTargetCompanyForCreate(company, request.companyId());
+      user.setCompany(targetCompany);
+      user.setAuthScopeCode(targetCompany.getCode());
       requiresReauth = true; // Company access changed
     }
     if (request.roles() != null && !request.roles().isEmpty()) {

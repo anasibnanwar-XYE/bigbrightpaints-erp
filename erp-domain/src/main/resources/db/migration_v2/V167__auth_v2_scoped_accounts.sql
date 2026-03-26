@@ -82,6 +82,22 @@ ALTER TABLE app_users
 ALTER TABLE app_users
     DROP CONSTRAINT IF EXISTS app_users_email_key;
 
+UPDATE app_users
+   SET email = LOWER(TRIM(email));
+
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT LOWER(TRIM(email)) AS normalized_email, auth_scope_code
+          FROM app_users
+      GROUP BY LOWER(TRIM(email)), auth_scope_code
+        HAVING COUNT(*) > 1
+    ) THEN
+        RAISE EXCEPTION
+            'Auth V2 hard cut found same-scope accounts that collide after email normalization. Resolve duplicate emails before rerunning migration.';
+    END IF;
+END $$;
+
 ALTER TABLE app_users
     ADD CONSTRAINT uq_app_users_email_scope UNIQUE (email, auth_scope_code);
 
