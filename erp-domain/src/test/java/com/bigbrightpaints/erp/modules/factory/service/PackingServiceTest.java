@@ -10,6 +10,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
@@ -31,6 +32,7 @@ import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
+import com.bigbrightpaints.erp.modules.accounting.dto.JournalCreationRequest;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
@@ -360,6 +362,113 @@ class PackingServiceTest {
     assertThat(result.status()).isEqualTo("FULLY_PACKED");
     assertThat(refreshedLog.getStatus()).isEqualTo(ProductionLogStatus.FULLY_PACKED);
     verify(productionLogRepository).save(refreshedLog);
+  }
+
+  @Test
+  void recordPacking_closeResidualWastage_consumesRemainingInventoryAndPostsJournal() {
+    ProductionProduct product = new ProductionProduct();
+    product.setSkuCode("SKU-1");
+    product.setProductName("Primer");
+    product.setMetadata(Map.of("wastageAccountId", 902L));
+
+    ProductionLog lockedLog = new ProductionLog();
+    ReflectionTestUtils.setField(lockedLog, "id", 1L);
+    lockedLog.setCompany(company);
+    lockedLog.setProduct(product);
+    lockedLog.setProductionCode("PROD-001");
+    lockedLog.setMixedQuantity(new BigDecimal("10.0"));
+    lockedLog.setTotalPackedQuantity(new BigDecimal("6.0"));
+    lockedLog.setProducedAt(Instant.parse("2024-01-01T00:00:00Z"));
+    lockedLog.setStatus(ProductionLogStatus.PARTIAL_PACKED);
+    lockedLog.setUnitCost(new BigDecimal("12.50"));
+
+    ProductionLog refreshedLog = new ProductionLog();
+    ReflectionTestUtils.setField(refreshedLog, "id", 1L);
+    refreshedLog.setCompany(company);
+    refreshedLog.setProduct(product);
+    refreshedLog.setProductionCode("PROD-001");
+    refreshedLog.setMixedQuantity(new BigDecimal("10.0"));
+    refreshedLog.setTotalPackedQuantity(new BigDecimal("6.0"));
+    refreshedLog.setProducedAt(Instant.parse("2024-01-01T00:00:00Z"));
+    refreshedLog.setStatus(ProductionLogStatus.PARTIAL_PACKED);
+    refreshedLog.setUnitCost(new BigDecimal("12.50"));
+
+    when(companyEntityLookup.lockProductionLog(company, 1L)).thenReturn(lockedLog);
+    when(companyEntityLookup.requireProductionLog(company, 1L)).thenReturn(refreshedLog);
+    when(productionLogRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+    when(accountingFacade.createStandardJournal(any(JournalCreationRequest.class)))
+        .thenReturn(stubEntry(91L));
+    when(packingProductSupport.requireWipAccountId(product)).thenReturn(811L);
+
+    ProductionLogDetailDto detailDto =
+        new ProductionLogDetailDto(
+            1L,
+            null,
+            "PROD-001",
+            refreshedLog.getProducedAt(),
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            refreshedLog.getMixedQuantity(),
+            "PROD-001",
+            refreshedLog.getMixedQuantity(),
+            refreshedLog.getTotalPackedQuantity(),
+            new BigDecimal("4.0"),
+            "PROCESS_LOSS",
+            "FULLY_PACKED",
+            refreshedLog.getMaterialCostTotal(),
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            List.of(),
+            List.of());
+    when(productionLogService.getLog(1L)).thenReturn(detailDto);
+
+    PackingRequest request =
+        new PackingRequest(
+            1L, LocalDate.of(2024, 1, 2), "packer", "close-loss-1", List.of(), true);
+    when(packingIdempotencyService.reserveIdempotencyRecord(
+            eq(company), eq(1L), eq("close-loss-1"), anyString()))
+        .thenReturn(new PackingIdempotencyService.IdempotencyReservation(null, null));
+    when(packingIdempotencyService.packingRequestHash(any(), eq(LocalDate.of(2024, 1, 2))))
+        .thenReturn("hash-close-loss");
+
+    ProductionLogDetailDto result = packingService.recordPacking(request);
+
+    assertThat(result.status()).isEqualTo("FULLY_PACKED");
+    assertThat(refreshedLog.getStatus()).isEqualTo(ProductionLogStatus.FULLY_PACKED);
+    assertThat(refreshedLog.getWastageQuantity()).isEqualByComparingTo(new BigDecimal("4.0"));
+    assertThat(refreshedLog.getWastageReasonCode()).isEqualTo("PROCESS_LOSS");
+    verify(packingInventoryService).consumeSemiFinishedWastage(refreshedLog, new BigDecimal("4.0"));
+    verify(accountingFacade).createStandardJournal(any(JournalCreationRequest.class));
+    verify(productionLogRepository, never()).incrementPackedQuantityAtomic(anyLong(), any());
+  }
+
+  @Test
+  void recordPacking_rejectsEmptyRequestWhenResidualCloseNotRequested() {
+    ProductionLog log = new ProductionLog();
+    ReflectionTestUtils.setField(log, "id", 1L);
+    log.setCompany(company);
+    log.setProductionCode("PROD-001");
+    log.setStatus(ProductionLogStatus.READY_TO_PACK);
+    when(companyEntityLookup.lockProductionLog(company, 1L)).thenReturn(log);
+
+    PackingRequest request =
+        new PackingRequest(1L, LocalDate.of(2024, 1, 2), "packer", "empty-1", List.of(), false);
+
+    assertThatThrownBy(() -> packingService.recordPacking(request))
+        .isInstanceOf(ApplicationException.class)
+        .hasMessageContaining("Packing lines are required unless closeResidualWastage is true");
+
+    verifyNoInteractions(packagingMaterialService);
+    verify(productionLogRepository, never()).incrementPackedQuantityAtomic(anyLong(), any());
   }
 
   @Test

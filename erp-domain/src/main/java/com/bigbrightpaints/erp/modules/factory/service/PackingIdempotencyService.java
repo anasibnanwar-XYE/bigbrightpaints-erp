@@ -38,7 +38,9 @@ public class PackingIdempotencyService {
         .append("|date=")
         .append(packedDate)
         .append("|by=")
-        .append(clean(request.packedBy()));
+        .append(clean(request.packedBy()))
+        .append("|closeResidualWastage=")
+        .append(request.closeResidualWastageRequested());
     if (request.lines() != null) {
       int idx = 0;
       for (var line : request.lines()) {

@@ -30,6 +30,7 @@ import com.bigbrightpaints.erp.modules.factory.domain.SizeVariant;
 import com.bigbrightpaints.erp.modules.factory.domain.SizeVariantRepository;
 import com.bigbrightpaints.erp.modules.factory.domain.ProductionLog;
 import com.bigbrightpaints.erp.modules.factory.domain.ProductionLogRepository;
+import com.bigbrightpaints.erp.modules.factory.domain.ProductionLogStatus;
 import com.bigbrightpaints.erp.modules.factory.dto.PackingLineRequest;
 import com.bigbrightpaints.erp.modules.factory.dto.PackingRequest;
 import com.bigbrightpaints.erp.modules.factory.dto.ProductionLogDetailDto;
@@ -198,6 +199,77 @@ class ProductionLogPackingStatusRegressionIT extends AbstractIntegrationTest {
     assertThat(remainingUnpacked).noneMatch(batch -> batch.id().equals(log.id()));
   }
 
+  @Test
+  void packingStatus_canCloseResidualProcessLossOnCanonicalPackingRoute() {
+    RawMaterial material =
+        createRawMaterial("RM-LF013-LOSS", rmInventory.getId(), MaterialType.PRODUCTION);
+    createBatch(material, new BigDecimal("50"), new BigDecimal("10.00"));
+
+    RawMaterial packaging =
+        createRawMaterial("PACK-LOSS-1L", packagingInventory.getId(), MaterialType.PACKAGING);
+    createBatch(packaging, new BigDecimal("50"), new BigDecimal("1.00"));
+    ensurePackagingMapping(packaging, "1L", BigDecimal.ONE);
+
+    ProductionLogDetailDto log =
+        productionLogService.createLog(
+            new ProductionLogRequest(
+                brand.getId(),
+                product.getId(),
+                "WHITE",
+                new BigDecimal("10"),
+                "L",
+                new BigDecimal("10"),
+                LocalDate.now().toString(),
+                null,
+                "LF-013 Loss",
+                null,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                List.of(
+                    new ProductionLogRequest.MaterialUsageRequest(
+                        material.getId(), new BigDecimal("5"), "KG"))));
+
+    ProductionLogDetailDto partial =
+        packingService.recordPacking(
+            new PackingRequest(
+                log.id(),
+                LocalDate.now(),
+                "Packer",
+                List.of(
+                    new PackingLineRequest(
+                        packTarget.getId(), null, "1L", new BigDecimal("4"), 4, null, null))));
+
+    assertThat(partial.status()).isEqualTo("PARTIAL_PACKED");
+    FinishedGood semiFinishedAfterPartial =
+        finishedGoodRepository
+            .findByCompanyAndProductCodeIgnoreCase(company, product.getSkuCode() + "-BULK")
+            .orElseThrow();
+    assertThat(semiFinishedAfterPartial.getCurrentStock()).isEqualByComparingTo(new BigDecimal("6"));
+
+    ProductionLogDetailDto closed =
+        packingService.recordPacking(
+            new PackingRequest(log.id(), LocalDate.now(), "Packer", null, List.of(), true));
+
+    assertThat(closed.status()).isEqualTo("FULLY_PACKED");
+    assertThat(closed.totalPackedQuantity()).isEqualByComparingTo(new BigDecimal("4"));
+    assertThat(closed.wastageQuantity()).isEqualByComparingTo(new BigDecimal("6"));
+    assertThat(closed.wastageReasonCode()).isEqualTo("PROCESS_LOSS");
+
+    ProductionLog stored = productionLogRepository.findById(log.id()).orElseThrow();
+    assertThat(stored.getStatus()).isEqualTo(ProductionLogStatus.FULLY_PACKED);
+    assertThat(stored.getWastageQuantity()).isEqualByComparingTo(new BigDecimal("6"));
+    assertThat(stored.getWastageReasonCode()).isEqualTo("PROCESS_LOSS");
+
+    FinishedGood semiFinishedAfterClose =
+        finishedGoodRepository
+            .findByCompanyAndProductCodeIgnoreCase(company, product.getSkuCode() + "-BULK")
+            .orElseThrow();
+    assertThat(semiFinishedAfterClose.getCurrentStock()).isEqualByComparingTo(BigDecimal.ZERO);
+
+    List<UnpackedBatchDto> remainingUnpacked = packingService.listUnpackedBatches();
+    assertThat(remainingUnpacked).noneMatch(batch -> batch.id().equals(log.id()));
+  }
+
   private Account ensureAccount(String code, String name, AccountType type) {
     return accountRepository
         .findByCompanyAndCodeIgnoreCase(company, code)
@@ -216,7 +288,7 @@ class ProductionLogPackingStatusRegressionIT extends AbstractIntegrationTest {
     ProductionBrand brand = new ProductionBrand();
     brand.setCompany(company);
     brand.setCode("BR-" + UUID.randomUUID());
-    brand.setName("LF-013 Brand");
+    brand.setName("LF-013 Brand " + UUID.randomUUID());
     return brandRepository.save(brand);
   }
 
@@ -238,6 +310,7 @@ class ProductionLogPackingStatusRegressionIT extends AbstractIntegrationTest {
     metadata.put("fgValuationAccountId", fgInventory.getId());
     metadata.put("fgCogsAccountId", cogsAccount.getId());
     metadata.put("fgRevenueAccountId", revenueAccount.getId());
+    metadata.put("wastageAccountId", cogsAccount.getId());
     metadata.put("fgDiscountAccountId", discountAccount.getId());
     metadata.put("fgTaxAccountId", taxAccount.getId());
     product.setMetadata(metadata);

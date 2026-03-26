@@ -14,7 +14,9 @@ import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.idempotency.IdempotencyReservationService;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
+import com.bigbrightpaints.erp.core.util.MoneyUtils;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
+import com.bigbrightpaints.erp.modules.accounting.dto.JournalCreationRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
@@ -116,9 +118,14 @@ public class PackingService {
       return reservation.replayResult();
     }
 
-    PackingExecution execution = executePackingLines(company, log, request, packedDate, request.packedBy());
-    applyPackedQuantity(log, execution.totalQuantity());
-    updateLogStatus(log.getId());
+    PackingExecution execution =
+        hasPackingLines(request)
+            ? executePackingLines(company, log, request, packedDate, request.packedBy())
+            : PackingExecution.empty();
+    if (execution.totalQuantity().compareTo(BigDecimal.ZERO) > 0) {
+      applyPackedQuantity(log, execution.totalQuantity());
+    }
+    updateLogState(log.getId(), packedDate, request.closeResidualWastageRequested());
     packingIdempotencyService.markCompleted(reservation, execution.firstPackingRecordId());
 
     return productionLogService.getLog(log.getId());
@@ -139,9 +146,9 @@ public class PackingService {
           ErrorCode.VALIDATION_INVALID_INPUT,
           "Production log " + log.getProductionCode() + " is already fully packed");
     }
-    if (request.lines() == null || request.lines().isEmpty()) {
+    if (!hasPackingLines(request) && !request.closeResidualWastageRequested()) {
       throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
-          "Packing lines are required");
+          "Packing lines are required unless closeResidualWastage is true");
     }
   }
 
@@ -346,11 +353,70 @@ public class PackingService {
     }
   }
 
-  private void updateLogStatus(Long logId) {
+  private void updateLogState(Long logId, LocalDate packedDate, boolean closeResidualWastage) {
     Company company = companyContextService.requireCurrentCompany();
     ProductionLog refreshedLog = companyEntityLookup.requireProductionLog(company, logId);
+    if (closeResidualWastage) {
+      closeResidualWastage(company, refreshedLog, packedDate);
+      return;
+    }
     updateStatus(refreshedLog, refreshedLog.getTotalPackedQuantity());
     productionLogRepository.save(refreshedLog);
+  }
+
+  private void closeResidualWastage(Company company, ProductionLog log, LocalDate packedDate) {
+    BigDecimal mixedQuantity = safeQuantity(log.getMixedQuantity());
+    BigDecimal packedQuantity = safeQuantity(log.getTotalPackedQuantity());
+    BigDecimal residualWastage = mixedQuantity.subtract(packedQuantity);
+    if (residualWastage.compareTo(BigDecimal.ZERO) < 0) {
+      residualWastage = BigDecimal.ZERO;
+    }
+
+    packingInventoryService.consumeSemiFinishedWastage(log, residualWastage);
+    postResidualWastageJournal(log, packedDate, residualWastage);
+
+    log.setStatus(ProductionLogStatus.FULLY_PACKED);
+    log.setWastageQuantity(residualWastage);
+    log.setWastageReasonCode(residualWastage.compareTo(BigDecimal.ZERO) > 0 ? "PROCESS_LOSS" : "NONE");
+    productionLogRepository.save(log);
+  }
+
+  private void postResidualWastageJournal(
+      ProductionLog log, LocalDate packedDate, BigDecimal residualWastage) {
+    if (residualWastage.compareTo(BigDecimal.ZERO) <= 0) {
+      return;
+    }
+
+    BigDecimal baseUnitCost = safeQuantity(log.getUnitCost());
+    if (baseUnitCost.compareTo(BigDecimal.ZERO) <= 0) {
+      baseUnitCost = calculateUnitCost(log.getMaterialCostTotal(), log.getMixedQuantity());
+    }
+    BigDecimal wastageValue = MoneyUtils.safeMultiply(baseUnitCost, residualWastage).setScale(2, RoundingMode.HALF_UP);
+    if (wastageValue.compareTo(BigDecimal.ZERO) <= 0) {
+      return;
+    }
+
+    Long wastageAccountId = packingProductSupport.metadataLong(log.getProduct(), "wastageAccountId");
+    if (wastageAccountId == null) {
+      throw new ApplicationException(
+          ErrorCode.VALIDATION_INVALID_REFERENCE,
+          "Product " + log.getProduct().getProductName() + " missing wastageAccountId metadata");
+    }
+
+    accountingFacade.createStandardJournal(
+        new JournalCreationRequest(
+            wastageValue,
+            wastageAccountId,
+            packingProductSupport.requireWipAccountId(log.getProduct()),
+            "Manufacturing wastage for " + log.getProductionCode(),
+            "FACTORY_PACKING",
+            log.getProductionCode() + "-WASTE",
+            null,
+            null,
+            packedDate,
+            null,
+            null,
+            Boolean.FALSE));
   }
 
   private void updateStatus(ProductionLog log, BigDecimal packedQuantity) {
@@ -375,7 +441,26 @@ public class PackingService {
     return value != null && value > 0 ? value : null;
   }
 
-  private record PackingExecution(BigDecimal totalQuantity, Long firstPackingRecordId) {}
+  private boolean hasPackingLines(PackingRequest request) {
+    return request.lines() != null && !request.lines().isEmpty();
+  }
+
+  private BigDecimal safeQuantity(BigDecimal value) {
+    return value == null ? BigDecimal.ZERO : value;
+  }
+
+  private BigDecimal calculateUnitCost(BigDecimal total, BigDecimal quantity) {
+    if (total == null || quantity == null || quantity.compareTo(BigDecimal.ZERO) <= 0) {
+      return BigDecimal.ZERO;
+    }
+    return total.divide(quantity, 6, RoundingMode.HALF_UP);
+  }
+
+  private record PackingExecution(BigDecimal totalQuantity, Long firstPackingRecordId) {
+    private static PackingExecution empty() {
+      return new PackingExecution(BigDecimal.ZERO, null);
+    }
+  }
 
   private record PackingLineExecution(PackingRecord record, BigDecimal quantity) {}
 }

@@ -392,6 +392,10 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
     assertThat(parameters.get(0).path("required").asBoolean()).isTrue();
 
     JsonNode packingRequest = root.path("components").path("schemas").path("PackingRequest");
+    assertThat(packingRequest.path("properties").has("closeResidualWastage"))
+        .withFailMessage(
+            "PackingRequest must expose closeResidualWastage on the canonical packing route")
+        .isTrue();
     assertThat(packingRequest.path("properties").has("idempotencyKey"))
         .withFailMessage("PackingRequest must not expose idempotencyKey in the request body")
         .isFalse();
