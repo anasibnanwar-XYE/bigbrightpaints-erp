@@ -666,7 +666,7 @@ public class AdminUserService {
       return;
     }
     boolean protectedMainAdmin =
-        resolveTargetCompanies(user, actorCompany).stream()
+        resolveActorScopedTargetCompanies(user, actorCompany).stream()
             .filter(company -> company != null && company.getMainAdminUserId() != null)
             .anyMatch(company -> user.getId().equals(company.getMainAdminUserId()));
     if (protectedMainAdmin) {
@@ -714,6 +714,22 @@ public class AdminUserService {
       return user.getCompanies().stream().distinct().toList();
     }
     return actorCompany == null ? List.of() : List.of(actorCompany);
+  }
+
+  private List<Company> resolveActorScopedTargetCompanies(UserAccount user, Company actorCompany) {
+    if (hasSuperAdminAuthority()) {
+      return resolveTargetCompanies(user, actorCompany);
+    }
+    if (actorCompany == null || actorCompany.getId() == null) {
+      return List.of();
+    }
+    if (user == null || user.getCompanies() == null || user.getCompanies().isEmpty()) {
+      return List.of(actorCompany);
+    }
+    return user.getCompanies().stream()
+        .filter(company -> company != null && actorCompany.getId().equals(company.getId()))
+        .distinct()
+        .toList();
   }
 
   private String resolveTargetCompanyCodes(UserAccount user) {

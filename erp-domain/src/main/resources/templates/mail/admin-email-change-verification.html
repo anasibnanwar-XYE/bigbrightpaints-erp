@@ -9,7 +9,7 @@
     </p>
     <p>Use the verification token below to complete the change from the superadmin control plane:</p>
     <p><strong th:text="${verificationToken}">verification-token</strong></p>
-    <p th:if="${expiresAt}" th:text="'This token expires at ' + ${#temporals.format(expiresAt, 'yyyy-MM-dd HH:mm:ss z')} + '.'">
+    <p th:if="${expiresAtUtc}" th:text="'This token expires at ' + ${expiresAtUtc} + '.'">
         This token expires soon.
     </p>
     <p>If you were not expecting this change, contact support immediately.</p>

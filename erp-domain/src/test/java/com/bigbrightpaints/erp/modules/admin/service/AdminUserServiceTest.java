@@ -791,6 +791,36 @@ class AdminUserServiceTest {
   }
 
   @Test
+  void updateUserStatus_tenantAdminIgnoresForeignMainAdminProtectionOnSharedUser() {
+    Company foreignCompany = new Company();
+    ReflectionTestUtils.setField(foreignCompany, "id", 21L);
+    foreignCompany.setCode("FOREIGN");
+    foreignCompany.setMainAdminUserId(777L);
+
+    UserAccount sharedUser = new UserAccount("shared-user@example.com", "hash", "Shared User");
+    ReflectionTestUtils.setField(sharedUser, "id", 777L);
+    sharedUser.addCompany(company);
+    sharedUser.addCompany(foreignCompany);
+    Role role = new Role();
+    role.setName("ROLE_ADMIN");
+    sharedUser.addRole(role);
+
+    when(userRepository.findById(777L)).thenReturn(Optional.of(sharedUser));
+    when(userRepository.save(any(UserAccount.class)))
+        .thenAnswer(invocation -> invocation.getArgument(0));
+    when(auditLogRepository.findFirstByEventTypeAndUsernameIgnoreCaseOrderByTimestampDesc(
+            AuditEvent.LOGIN_SUCCESS, "shared-user@example.com"))
+        .thenReturn(Optional.empty());
+
+    var response = service.updateUserStatus(777L, false);
+
+    assertThat(response.enabled()).isFalse();
+    verify(userRepository).save(sharedUser);
+    verify(tokenBlacklistService).revokeAllUserTokens("shared-user@example.com");
+    verify(refreshTokenService).revokeAllForUser("shared-user@example.com");
+  }
+
+  @Test
   void suspend_allowsSuperAdminToTargetForeignTenantUser() {
     Company foreignCompany = new Company();
     ReflectionTestUtils.setField(foreignCompany, "id", 21L);

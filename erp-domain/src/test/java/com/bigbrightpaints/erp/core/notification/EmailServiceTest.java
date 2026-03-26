@@ -8,6 +8,7 @@ import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verifyNoInteractions;
 
+import java.time.Instant;
 import java.util.Properties;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -251,5 +252,15 @@ class EmailServiceTest {
               ApplicationException appEx = (ApplicationException) ex;
               assertThat(appEx.getErrorCode()).isEqualTo(ErrorCode.SYSTEM_CONFIGURATION_ERROR);
             });
+  }
+
+  @Test
+  void sendAdminEmailChangeVerificationRequired_formatsExpiryAsDeterministicUtcText()
+      throws Exception {
+    String formatted =
+        ReflectionTestUtils.invokeMethod(
+            emailService, "formatUtcTimestamp", Instant.parse("2026-03-27T12:34:56Z"));
+
+    assertThat(formatted).isEqualTo("2026-03-27 12:34:56 UTC");
   }
 }
