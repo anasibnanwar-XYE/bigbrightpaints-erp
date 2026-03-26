@@ -2,6 +2,7 @@ package com.bigbrightpaints.erp.modules.auth.service;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.*;
 
 import java.time.Clock;
@@ -59,6 +60,16 @@ class MfaServiceTest {
 
     assertDoesNotThrow(() -> mfaService.verifyDuringLogin(user, code, null));
     verifyNoInteractions(repository);
+  }
+
+  @Test
+  void beginEnrollment_buildsScopeAwareQrLabel() {
+    UserAccount user = new UserAccount("user@bbp.dev", "MOCK", "hash", "User");
+
+    MfaService.MfaEnrollment enrollment = mfaService.beginEnrollment(user);
+
+    assertThat(enrollment.qrUri()).contains("user");
+    assertThat(enrollment.qrUri()).contains("MOCK");
   }
 
   private UserAccount userWithSecret() {

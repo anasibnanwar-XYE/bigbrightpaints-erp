@@ -73,7 +73,7 @@ class ProfileControllerIT extends AbstractIntegrationTest {
     assertThat(updateData.get("phoneSecondary")).isEqualTo("+1-202-555-0123");
     assertThat(updateData.get("secondaryEmail")).isEqualTo("portal.secondary@bbp.com");
 
-    UserAccount reloaded = userAccountRepository.findByEmailIgnoreCase(EMAIL).orElseThrow();
+    UserAccount reloaded = scopedUser();
     assertThat(reloaded.getDisplayName()).isEqualTo("Portal Admin Updated");
     assertThat(reloaded.getPreferredName()).isEqualTo("Portal");
   }
@@ -101,9 +101,15 @@ class ProfileControllerIT extends AbstractIntegrationTest {
   }
 
   private void markMustChangePassword() {
-    UserAccount user = userAccountRepository.findByEmailIgnoreCase(EMAIL).orElseThrow();
+    UserAccount user = scopedUser();
     user.setMustChangePassword(true);
     userAccountRepository.save(user);
+  }
+
+  private UserAccount scopedUser() {
+    return userAccountRepository
+        .findByEmailIgnoreCaseAndAuthScopeCodeIgnoreCase(EMAIL, COMPANY)
+        .orElseThrow();
   }
 
   private HttpHeaders authenticatedHeaders() {

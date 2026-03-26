@@ -12,8 +12,6 @@ import org.springframework.data.repository.query.Param;
 import jakarta.persistence.LockModeType;
 
 public interface UserAccountRepository extends JpaRepository<UserAccount, Long> {
-  Optional<UserAccount> findByEmailIgnoreCase(String email);
-
   Optional<UserAccount> findByPublicId(UUID publicId);
 
   Optional<UserAccount> findByEmailIgnoreCaseAndAuthScopeCodeIgnoreCase(

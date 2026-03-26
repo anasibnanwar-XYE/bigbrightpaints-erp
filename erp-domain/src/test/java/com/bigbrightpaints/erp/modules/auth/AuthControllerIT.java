@@ -221,7 +221,7 @@ public class AuthControllerIT extends AbstractIntegrationTest {
     String accessToken = loginPayload.get("accessToken").toString();
     String refreshToken = loginPayload.get("refreshToken").toString();
 
-    UserAccount user = userAccountRepository.findByEmailIgnoreCase(ADMIN_EMAIL).orElseThrow();
+    UserAccount user = scopedUser(ADMIN_EMAIL);
     passwordResetTokenRepository.deleteByUser(user);
     String resetToken = "digest-reset-token";
     passwordResetTokenRepository.save(
@@ -353,7 +353,7 @@ public class AuthControllerIT extends AbstractIntegrationTest {
 
   @Test
   void overlappingPublicAndAdminResetRequests_leaveLatestResetLinkUsable() throws Exception {
-    UserAccount resetTarget = userAccountRepository.findByEmailIgnoreCase(USER_EMAIL).orElseThrow();
+    UserAccount resetTarget = scopedUser(USER_EMAIL);
     String adminAccessToken = login(ADMIN_EMAIL, ADMIN_PASSWORD).get("accessToken").toString();
 
     CountDownLatch bothEmailsQueued = new CountDownLatch(2);
@@ -438,9 +438,15 @@ public class AuthControllerIT extends AbstractIntegrationTest {
   }
 
   private void markMustChangePassword(String email) {
-    UserAccount user = userAccountRepository.findByEmailIgnoreCase(email).orElseThrow();
+    UserAccount user = scopedUser(email);
     user.setMustChangePassword(true);
     userAccountRepository.save(user);
+  }
+
+  private UserAccount scopedUser(String email) {
+    return userAccountRepository
+        .findByEmailIgnoreCaseAndAuthScopeCodeIgnoreCase(email, COMPANY_CODE)
+        .orElseThrow();
   }
 
   private HttpHeaders bearer(String accessToken) {

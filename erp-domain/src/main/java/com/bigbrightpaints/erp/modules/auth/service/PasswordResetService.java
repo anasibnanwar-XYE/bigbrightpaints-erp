@@ -132,6 +132,7 @@ public class PasswordResetService {
     String normalizedEmail = normalizeEmail(targetUser.getEmail());
     enforceResetRateLimit("admin_force_reset", normalizedEmail, scopeCode, correlationId);
     if (dispatchResetEmail(targetUser, correlationId, "admin_force_reset")) {
+      revokeActiveSessions(targetUser);
       auditResetRequested("admin_force_reset", targetUser, scopeCode, correlationId);
       log.info(
           "event=password_reset.admin_force_reset.dispatched policy={} correlationId={} email={}"
@@ -172,8 +173,7 @@ public class PasswordResetService {
     user.setFailedLoginAttempts(0);
     user.setLockedUntil(null);
     userAccountRepository.save(user);
-    tokenBlacklistService.revokeAllUserTokens(user.getPublicId().toString());
-    refreshTokenService.revokeAllForUser(user.getPublicId());
+    revokeActiveSessions(user);
     token.markUsed();
     tokenRepository.save(token);
     tokenRepository.deleteByUser(user);
@@ -235,6 +235,11 @@ public class PasswordResetService {
           ex.getClass().getSimpleName());
       throw ex;
     }
+  }
+
+  private void revokeActiveSessions(UserAccount user) {
+    tokenBlacklistService.revokeAllUserTokens(user.getPublicId().toString());
+    refreshTokenService.revokeAllForUser(user.getPublicId());
   }
 
   private IssuedResetToken issueResetToken(
