@@ -616,6 +616,37 @@ class SuperAdminTenantControlPlaneServiceTest {
         .save(any(TenantAdminEmailChangeRequest.class));
   }
 
+  @Test
+  void confirmAdminEmailChange_allowsRequestedEmailOwnedBySameAdminRecord() {
+    Company company = company(7L, "ACME");
+    when(companyRepository.findById(7L)).thenReturn(Optional.of(company));
+    UserAccount admin = adminUser(91L, "admin@acme.com", "ROLE_ADMIN", company);
+    when(userAccountRepository.findByIdAndCompanies_Id(91L, 7L)).thenReturn(Optional.of(admin));
+
+    TenantAdminEmailChangeRequest request = new TenantAdminEmailChangeRequest();
+    ReflectionTestUtils.setField(request, "id", 308L);
+    request.setCompanyId(7L);
+    request.setAdminUserId(91L);
+    request.setCurrentEmail("admin@acme.com");
+    request.setRequestedEmail("new-admin@acme.com");
+    request.setVerificationToken("verify-123");
+    request.setExpiresAt(Instant.now().plusSeconds(600));
+    when(tenantAdminEmailChangeRequestRepository.findById(308L)).thenReturn(Optional.of(request));
+
+    UserAccount sameAdminRecord = adminUser(91L, "new-admin@acme.com", "ROLE_ADMIN", company);
+    when(userAccountRepository.findByEmailIgnoreCase("new-admin@acme.com"))
+        .thenReturn(Optional.of(sameAdminRecord));
+    when(userAccountRepository.save(admin)).thenReturn(admin);
+    when(tenantAdminEmailChangeRequestRepository.save(request)).thenReturn(request);
+
+    SuperAdminTenantAdminEmailChangeConfirmationDto response =
+        service.confirmAdminEmailChange(7L, 91L, 308L, "verify-123");
+
+    assertThat(response.updatedEmail()).isEqualTo("new-admin@acme.com");
+    verify(userAccountRepository).save(admin);
+    verify(tenantAdminEmailChangeRequestRepository).save(request);
+  }
+
   private Company company(Long id, String code) {
     Company company = new Company();
     ReflectionTestUtils.setField(company, "id", id);
