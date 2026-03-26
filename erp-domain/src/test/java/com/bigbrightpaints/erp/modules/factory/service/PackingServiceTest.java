@@ -4,12 +4,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -136,7 +138,9 @@ class PackingServiceTest {
     when(companyEntityLookup.lockProductionLog(company, 1L)).thenReturn(log);
     when(companyEntityLookup.requireProductionLog(company, 1L)).thenReturn(log);
     when(packingLineResolver.normalizePackagingSize("500ML", 1)).thenReturn("500ML");
-    when(packingAllowedSizeService.requireAllowedSellableSize(company, log, 501L, "500ML", 1))
+    when(packingAllowedSizeService.resolveAllowedSellableSizeTargets(company, log))
+        .thenReturn(List.of(allowedTarget(product, targetFinishedGood, sizeVariant)));
+    when(packingAllowedSizeService.requireAllowedSellableSize(anyList(), eq(log), eq(501L), eq("500ML"), eq(1)))
         .thenReturn(allowedTarget(product, targetFinishedGood, sizeVariant));
     when(packingLineResolver.resolvePiecesPerBox(any(), eq(sizeVariant))).thenReturn(1);
     when(packingLineResolver.resolvePiecesCountForLine(any(), eq(1), eq(1))).thenReturn(2);
@@ -280,7 +284,11 @@ class PackingServiceTest {
     when(companyEntityLookup.lockProductionLog(company, 1L)).thenReturn(lockedLog);
     when(companyEntityLookup.requireProductionLog(company, 1L)).thenReturn(refreshedLog);
     when(packingLineResolver.normalizePackagingSize("500ML", 1)).thenReturn("500ML");
-    when(packingAllowedSizeService.requireAllowedSellableSize(company, lockedLog, 501L, "500ML", 1))
+    when(packingAllowedSizeService.resolveAllowedSellableSizeTargets(company, lockedLog))
+        .thenReturn(List.of(allowedTarget(product, targetFinishedGood, sizeVariant)));
+    when(
+            packingAllowedSizeService.requireAllowedSellableSize(
+                anyList(), eq(lockedLog), eq(501L), eq("500ML"), eq(1)))
         .thenReturn(allowedTarget(product, targetFinishedGood, sizeVariant));
     when(packingLineResolver.resolvePiecesPerBox(any(), eq(sizeVariant))).thenReturn(1);
     when(packingLineResolver.resolvePiecesCountForLine(any(), eq(1), eq(1))).thenReturn(1);
@@ -656,7 +664,9 @@ class PackingServiceTest {
 
     when(companyEntityLookup.lockProductionLog(company, 1L)).thenReturn(log);
     when(packingLineResolver.normalizePackagingSize("500ML", 1)).thenReturn("500ML");
-    when(packingAllowedSizeService.requireAllowedSellableSize(company, log, 501L, "500ML", 1))
+    when(packingAllowedSizeService.resolveAllowedSellableSizeTargets(company, log))
+        .thenReturn(List.of(allowedTarget(product, targetFinishedGood, sizeVariant)));
+    when(packingAllowedSizeService.requireAllowedSellableSize(anyList(), eq(log), eq(501L), eq("500ML"), eq(1)))
         .thenReturn(allowedTarget(product, targetFinishedGood, sizeVariant));
     when(packingLineResolver.resolvePiecesPerBox(any(), eq(sizeVariant))).thenReturn(1);
     when(packingLineResolver.resolvePiecesCountForLine(any(), eq(1), eq(1))).thenReturn(2);
@@ -785,6 +795,143 @@ class PackingServiceTest {
         .hasMessageContaining("Idempotency payload mismatch");
   }
 
+  @Test
+  void recordPacking_reusesAllowedTargetsAcrossMultipleLines() {
+    ProductionProduct product = new ProductionProduct();
+    product.setSkuCode("SKU-1");
+    product.setProductName("Primer");
+
+    ProductionLog log = new ProductionLog();
+    ReflectionTestUtils.setField(log, "id", 1L);
+    log.setCompany(company);
+    log.setProduct(product);
+    log.setProductionCode("PROD-001");
+    log.setMixedQuantity(new BigDecimal("10"));
+    log.setTotalPackedQuantity(BigDecimal.ZERO);
+    log.setStatus(ProductionLogStatus.READY_TO_PACK);
+
+    FinishedGood targetFinishedGood = new FinishedGood();
+    ReflectionTestUtils.setField(targetFinishedGood, "id", 501L);
+    targetFinishedGood.setProductCode("SKU-1");
+
+    SizeVariant sizeVariant = new SizeVariant();
+    ReflectionTestUtils.setField(sizeVariant, "id", 41L);
+    sizeVariant.setSizeLabel("500ML");
+
+    PackingAllowedSizeService.AllowedSellableSizeTarget allowedTarget =
+        allowedTarget(product, targetFinishedGood, sizeVariant);
+    List<PackingAllowedSizeService.AllowedSellableSizeTarget> allowedTargets = List.of(allowedTarget);
+
+    PackingRecord firstRecord = new PackingRecord();
+    ReflectionTestUtils.setField(firstRecord, "id", 88L);
+    firstRecord.setCompany(company);
+    firstRecord.setProductionLog(log);
+
+    PackingRecord secondRecord = new PackingRecord();
+    ReflectionTestUtils.setField(secondRecord, "id", 89L);
+    secondRecord.setCompany(company);
+    secondRecord.setProductionLog(log);
+
+    when(companyEntityLookup.lockProductionLog(company, 1L)).thenReturn(log);
+    when(companyEntityLookup.requireProductionLog(company, 1L)).thenReturn(log);
+    when(packingAllowedSizeService.resolveAllowedSellableSizeTargets(company, log))
+        .thenReturn(allowedTargets);
+    when(packingLineResolver.normalizePackagingSize("500ML", 1)).thenReturn("500ML");
+    when(packingLineResolver.normalizePackagingSize("500ML", 2)).thenReturn("500ML");
+    when(
+            packingAllowedSizeService.requireAllowedSellableSize(
+                sameList(allowedTargets), eq(log), eq(501L), eq("500ML"), eq(1)))
+        .thenReturn(allowedTarget);
+    when(
+            packingAllowedSizeService.requireAllowedSellableSize(
+                sameList(allowedTargets), eq(log), eq(501L), eq("500ML"), eq(2)))
+        .thenReturn(allowedTarget);
+    when(packingLineResolver.resolvePiecesPerBox(any(), eq(sizeVariant))).thenReturn(1);
+    when(packingLineResolver.resolvePiecesCountForLine(any(), eq(1), eq(1))).thenReturn(1);
+    when(packingLineResolver.resolvePiecesCountForLine(any(), eq(1), eq(2))).thenReturn(1);
+    when(packingLineResolver.resolveQuantity(any(), eq(sizeVariant), eq("500ML"), eq(1), eq(1)))
+        .thenReturn(new BigDecimal("1.0"));
+    when(packingLineResolver.resolveQuantity(any(), eq(sizeVariant), eq("500ML"), eq(1), eq(2)))
+        .thenReturn(new BigDecimal("1.0"));
+    when(packingLineResolver.resolveChildBatchCount(any(), eq(1))).thenReturn(1);
+    when(packingRecordRepository.save(any())).thenReturn(firstRecord, secondRecord, secondRecord, secondRecord);
+    when(packagingMaterialService.consumePackagingMaterial(anyString(), anyInt(), anyString(), eq(sizeVariant), any()))
+        .thenReturn(
+            new PackagingConsumptionResult(
+                false, BigDecimal.ZERO, BigDecimal.ZERO, Map.of(), null));
+
+    PackingInventoryService.SemiFinishedConsumption semiFinishedConsumption =
+        new PackingInventoryService.SemiFinishedConsumption(
+            targetFinishedGood, null, new InventoryMovement(), new BigDecimal("5.00"));
+    when(packingInventoryService.consumeSemiFinishedInventory(eq(log), any(), anyLong()))
+        .thenReturn(semiFinishedConsumption);
+    when(packingBatchService.registerFinishedGoodBatch(
+            eq(log),
+            eq(targetFinishedGood),
+            any(PackingRecord.class),
+            any(),
+            eq(LocalDate.of(2024, 1, 1)),
+            any(PackagingConsumptionResult.class),
+            eq(semiFinishedConsumption),
+            eq(sizeVariant)))
+        .thenAnswer(
+            invocation -> {
+              var batch = new com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatch();
+              ReflectionTestUtils.setField(batch, "id", 777L);
+              batch.setBatchCode("FG-777");
+              return batch;
+            });
+    when(productionLogRepository.incrementPackedQuantityAtomic(1L, new BigDecimal("2.0")))
+        .thenReturn(1);
+    when(productionLogRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+    ProductionLogDetailDto detailDto =
+        new ProductionLogDetailDto(
+            1L,
+            null,
+            "PROD-001",
+            Instant.parse("2024-01-01T00:00:00Z"),
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            new BigDecimal("10"),
+            "PROD-001",
+            new BigDecimal("10"),
+            new BigDecimal("2.0"),
+            BigDecimal.ZERO,
+            null,
+            ProductionLogStatus.PARTIAL_PACKED.name(),
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            List.of(),
+            List.of());
+    when(productionLogService.getLog(1L)).thenReturn(detailDto);
+
+    PackingRequest request =
+        new PackingRequest(
+            1L,
+            LocalDate.of(2024, 1, 1),
+            "packer",
+            null,
+            List.of(requestLine(501L, "500ML", 1), requestLine(501L, "500ML", 1)));
+
+    ProductionLogDetailDto result = packingService.recordPacking(request);
+
+    assertThat(result.status()).isEqualTo(ProductionLogStatus.PARTIAL_PACKED.name());
+    verify(packingAllowedSizeService).resolveAllowedSellableSizeTargets(company, log);
+    verify(packingAllowedSizeService, times(2))
+        .requireAllowedSellableSize(sameList(allowedTargets), eq(log), eq(501L), eq("500ML"), anyInt());
+  }
+
   private PackingLineRequest requestLine(Long childFinishedGoodId, String size, int piecesCount) {
     return new PackingLineRequest(childFinishedGoodId, null, size, null, piecesCount, null, null);
   }
@@ -793,6 +940,12 @@ class PackingServiceTest {
       ProductionProduct product, FinishedGood finishedGood, SizeVariant sizeVariant) {
     return new PackingAllowedSizeService.AllowedSellableSizeTarget(
         product, finishedGood, sizeVariant, product.getProductName());
+  }
+
+  @SuppressWarnings("unchecked")
+  private List<PackingAllowedSizeService.AllowedSellableSizeTarget> sameList(
+      List<PackingAllowedSizeService.AllowedSellableSizeTarget> allowedTargets) {
+    return eq(allowedTargets);
   }
 
   private JournalEntryDto stubEntry(long id) {

@@ -41,11 +41,30 @@ public class PackingAllowedSizeService {
   }
 
   public List<AllowedSellableSizeDto> listAllowedSellableSizes(Company company, ProductionLog log) {
-    return loadAllowedTargets(company, log).stream().map(this::toDto).toList();
+    return resolveAllowedSellableSizeTargets(company, log).stream().map(this::toDto).toList();
+  }
+
+  public List<AllowedSellableSizeTarget> resolveAllowedSellableSizeTargets(
+      Company company, ProductionLog log) {
+    return loadAllowedTargets(company, log);
   }
 
   public AllowedSellableSizeTarget requireAllowedSellableSize(
       Company company,
+      ProductionLog log,
+      Long childFinishedGoodId,
+      String packagingSize,
+      int lineNumber) {
+    return requireAllowedSellableSize(
+        resolveAllowedSellableSizeTargets(company, log),
+        log,
+        childFinishedGoodId,
+        packagingSize,
+        lineNumber);
+  }
+
+  public AllowedSellableSizeTarget requireAllowedSellableSize(
+      List<AllowedSellableSizeTarget> allowedTargets,
       ProductionLog log,
       Long childFinishedGoodId,
       String packagingSize,
@@ -55,7 +74,7 @@ public class PackingAllowedSizeService {
     }
 
     AllowedSellableSizeTarget target =
-        loadAllowedTargets(company, log).stream()
+        allowedTargets.stream()
             .filter(candidate -> childFinishedGoodId.equals(candidate.finishedGood().getId()))
             .findFirst()
             .orElseThrow(() -> invalidAllowedSellableSizeTarget(log, childFinishedGoodId));

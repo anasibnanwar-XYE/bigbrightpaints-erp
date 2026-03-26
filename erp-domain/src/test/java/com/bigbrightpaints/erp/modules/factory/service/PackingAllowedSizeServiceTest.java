@@ -3,6 +3,8 @@ package com.bigbrightpaints.erp.modules.factory.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyCollection;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -376,6 +378,50 @@ class PackingAllowedSizeServiceTest {
     assertThat(result.finishedGood().getId()).isEqualTo(501L);
     assertThat(result.sizeVariant().getSizeLabel()).isEqualTo("20L");
     assertThat(result.productFamilyName()).isEqualTo("Primer");
+  }
+
+  @Test
+  void requireAllowedSellableSize_reusesPreloadedTargetsAcrossLines() {
+    PackingAllowedSizeService service =
+        new PackingAllowedSizeService(
+            productionProductRepository, finishedGoodRepository, sizeVariantRepository);
+
+    Company company = new Company();
+    UUID familyId = UUID.randomUUID();
+    ProductionProduct base = product("FG-BASE-20L", "Primer White 20L", "Primer", "20L", familyId);
+    ProductionProduct child = product("FG-BASE-4L", "Primer White 4L", "Primer", "4L", familyId);
+    ProductionLog log = new ProductionLog();
+    log.setCompany(company);
+    log.setProduct(base);
+
+    when(productionProductRepository.findByCompanyAndVariantGroupIdOrderByProductNameAsc(
+            company, familyId))
+        .thenReturn(List.of(base, child));
+    when(finishedGoodRepository.findByCompanyAndProductCodeInIgnoreCase(
+            org.mockito.ArgumentMatchers.eq(company), anyCollection()))
+        .thenReturn(
+            List.of(
+                finishedGood(501L, "FG-BASE-20L", "Primer White 20L"),
+                finishedGood(401L, "FG-BASE-4L", "Primer White 4L")));
+    when(sizeVariantRepository.findByCompanyAndProductOrderBySizeLabelAsc(company, base))
+        .thenReturn(List.of(sizeVariant(base, "20L", new BigDecimal("20"), 1)));
+    when(sizeVariantRepository.findByCompanyAndProductOrderBySizeLabelAsc(company, child))
+        .thenReturn(List.of(sizeVariant(child, "4L", new BigDecimal("4"), 4)));
+
+    List<PackingAllowedSizeService.AllowedSellableSizeTarget> allowedTargets =
+        service.resolveAllowedSellableSizeTargets(company, log);
+
+    assertThat(service.requireAllowedSellableSize(allowedTargets, log, 501L, "20L", 1).finishedGood().getId())
+        .isEqualTo(501L);
+    assertThat(service.requireAllowedSellableSize(allowedTargets, log, 401L, "4L", 2).finishedGood().getId())
+        .isEqualTo(401L);
+
+    verify(productionProductRepository, times(1))
+        .findByCompanyAndVariantGroupIdOrderByProductNameAsc(company, familyId);
+    verify(finishedGoodRepository, times(1))
+        .findByCompanyAndProductCodeInIgnoreCase(org.mockito.ArgumentMatchers.eq(company), anyCollection());
+    verify(sizeVariantRepository, times(1)).findByCompanyAndProductOrderBySizeLabelAsc(company, base);
+    verify(sizeVariantRepository, times(1)).findByCompanyAndProductOrderBySizeLabelAsc(company, child);
   }
 
   @Test

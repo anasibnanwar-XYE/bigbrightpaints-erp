@@ -173,6 +173,8 @@ public class PackingService {
       PackingRequest request,
       LocalDate packedDate,
       String packedBy) {
+    List<PackingAllowedSizeService.AllowedSellableSizeTarget> allowedSizeTargets =
+        packingAllowedSizeService.resolveAllowedSellableSizeTargets(company, log);
     BigDecimal sessionQuantity = BigDecimal.ZERO;
     Long firstPackingRecordId = null;
 
@@ -180,7 +182,7 @@ public class PackingService {
     for (PackingLineRequest line : request.lines()) {
       lineIndex++;
       PackingLineExecution lineExecution =
-          executeLine(company, log, line, lineIndex, packedDate, packedBy);
+          executeLine(allowedSizeTargets, log, line, lineIndex, packedDate, packedBy);
       if (firstPackingRecordId == null) {
         firstPackingRecordId = lineExecution.record().getId();
       }
@@ -195,7 +197,7 @@ public class PackingService {
   }
 
   private PackingLineExecution executeLine(
-      Company company,
+      List<PackingAllowedSizeService.AllowedSellableSizeTarget> allowedSizeTargets,
       ProductionLog log,
       PackingLineRequest line,
       int lineIndex,
@@ -205,7 +207,7 @@ public class PackingService {
         packingLineResolver.normalizePackagingSize(line.packagingSize(), lineIndex);
     PackingAllowedSizeService.AllowedSellableSizeTarget allowedSizeTarget =
         packingAllowedSizeService.requireAllowedSellableSize(
-            company, log, line.childFinishedGoodId(), normalizedSize, lineIndex);
+            allowedSizeTargets, log, line.childFinishedGoodId(), normalizedSize, lineIndex);
     SizeVariant sizeVariant = allowedSizeTarget.sizeVariant();
     Integer piecesPerBox = packingLineResolver.resolvePiecesPerBox(line, sizeVariant);
     int piecesCount = packingLineResolver.resolvePiecesCountForLine(line, piecesPerBox, lineIndex);
