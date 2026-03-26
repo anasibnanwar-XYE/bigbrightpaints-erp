@@ -3,25 +3,25 @@ package com.bigbrightpaints.erp.modules.factory.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import java.math.BigDecimal;
-import java.time.Instant;
+import java.lang.reflect.Method;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.LocalDate;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Optional;
 
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.core.env.Environment;
-import org.springframework.core.env.Profiles;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
@@ -31,29 +31,23 @@ import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.factory.domain.FactoryTask;
 import com.bigbrightpaints.erp.modules.factory.domain.FactoryTaskRepository;
-import com.bigbrightpaints.erp.modules.factory.domain.ProductionBatch;
-import com.bigbrightpaints.erp.modules.factory.domain.ProductionBatchRepository;
+import com.bigbrightpaints.erp.modules.factory.domain.ProductionLogRepository;
 import com.bigbrightpaints.erp.modules.factory.domain.ProductionPlan;
 import com.bigbrightpaints.erp.modules.factory.domain.ProductionPlanRepository;
+import com.bigbrightpaints.erp.modules.factory.dto.FactoryDashboardDto;
 import com.bigbrightpaints.erp.modules.factory.dto.FactoryTaskRequest;
-import com.bigbrightpaints.erp.modules.factory.dto.ProductionBatchDto;
-import com.bigbrightpaints.erp.modules.factory.dto.ProductionBatchRequest;
 import com.bigbrightpaints.erp.modules.factory.dto.ProductionPlanDto;
 import com.bigbrightpaints.erp.modules.factory.dto.ProductionPlanRequest;
-import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
-import com.bigbrightpaints.erp.modules.inventory.dto.FinishedGoodBatchRequest;
-import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService;
 
+@Tag("critical")
 @ExtendWith(MockitoExtension.class)
 class FactoryServiceTest {
 
   @Mock private CompanyContextService companyContextService;
   @Mock private ProductionPlanRepository planRepository;
-  @Mock private ProductionBatchRepository batchRepository;
+  @Mock private ProductionLogRepository productionLogRepository;
   @Mock private FactoryTaskRepository taskRepository;
-  @Mock private FinishedGoodsService finishedGoodsService;
   @Mock private CompanyEntityLookup companyEntityLookup;
-  @Mock private Environment environment;
 
   private FactoryService factoryService;
   private Company company;
@@ -64,15 +58,12 @@ class FactoryServiceTest {
         new FactoryService(
             companyContextService,
             planRepository,
-            batchRepository,
+            productionLogRepository,
             taskRepository,
-            finishedGoodsService,
-            companyEntityLookup,
-            environment,
-            false);
+            companyEntityLookup);
     company = new Company();
     company.setTimezone("UTC");
-    when(companyContextService.requireCurrentCompany()).thenReturn(company);
+    org.mockito.Mockito.lenient().when(companyContextService.requireCurrentCompany()).thenReturn(company);
   }
 
   @Test
@@ -186,114 +177,118 @@ class FactoryServiceTest {
   }
 
   @Test
-  void logBatch_replaySamePayloadReturnsExisting() {
-    stubNonProdProfile();
-    ProductionBatchRequest request =
-        new ProductionBatchRequest(" BATCH-001 ", 55.0, "factory-user", "good batch");
-    ProductionBatch existing = new ProductionBatch();
-    ReflectionTestUtils.setField(existing, "id", 21L);
-    existing.setCompany(company);
-    existing.setBatchNumber("BATCH-001");
-    existing.setQuantityProduced(55.0);
-    existing.setLoggedBy("factory-user");
-    existing.setNotes("good batch");
-    existing.setProducedAt(Instant.parse("2026-02-20T00:00:00Z"));
+  void createPlan_newNaturalKeyReturnsInsertedPlan() {
+    ProductionPlanRequest request =
+        new ProductionPlanRequest(
+            "PLAN-NEW-1", "Primer White", 120.0, LocalDate.of(2026, 2, 20), "fresh");
+    ProductionPlan inserted = new ProductionPlan();
+    ReflectionTestUtils.setField(inserted, "id", 14L);
+    inserted.setCompany(company);
+    inserted.setPlanNumber("PLAN-NEW-1");
+    inserted.setProductName("Primer White");
+    inserted.setQuantity(120.0);
+    inserted.setPlannedDate(LocalDate.of(2026, 2, 20));
+    inserted.setNotes("fresh");
 
-    when(batchRepository.findByCompanyAndBatchNumber(company, "BATCH-001"))
-        .thenReturn(Optional.of(existing));
+    when(planRepository.findByCompanyAndPlanNumber(company, "PLAN-NEW-1"))
+        .thenReturn(Optional.empty(), Optional.of(inserted));
+    when(planRepository.insertIfAbsent(
+            company.getId(),
+            "PLAN-NEW-1",
+            "Primer White",
+            120.0,
+            LocalDate.of(2026, 2, 20),
+            "fresh"))
+        .thenReturn(1);
 
-    ProductionBatchDto result = factoryService.logBatch(null, request);
+    ProductionPlanDto result = factoryService.createPlan(request);
 
-    assertThat(result.id()).isEqualTo(21L);
-    verify(batchRepository, never())
-        .insertIfAbsent(any(), any(), any(), any(), any(), any(), any());
-    verify(finishedGoodsService, never()).registerBatch(any(FinishedGoodBatchRequest.class));
-  }
-
-  @Test
-  void logBatch_replayCanonicalQuantityReturnsExisting() {
-    stubNonProdProfile();
-    ProductionBatchRequest request =
-        new ProductionBatchRequest("BATCH-CANON-1", 10.124, "factory-user", "same after rounding");
-    ProductionBatch existing = new ProductionBatch();
-    ReflectionTestUtils.setField(existing, "id", 211L);
-    existing.setCompany(company);
-    existing.setBatchNumber("BATCH-CANON-1");
-    existing.setQuantityProduced(10.12);
-    existing.setLoggedBy("factory-user");
-    existing.setNotes("same after rounding");
-    existing.setProducedAt(Instant.parse("2026-02-20T00:00:00Z"));
-
-    when(batchRepository.findByCompanyAndBatchNumber(company, "BATCH-CANON-1"))
-        .thenReturn(Optional.of(existing));
-
-    ProductionBatchDto result = factoryService.logBatch(null, request);
-
-    assertThat(result.id()).isEqualTo(211L);
-    verify(batchRepository, never())
-        .insertIfAbsent(any(), any(), any(), any(), any(), any(), any());
-    verify(finishedGoodsService, never()).registerBatch(any(FinishedGoodBatchRequest.class));
-  }
-
-  @Test
-  void logBatch_replayMismatchThrowsConflict() {
-    stubNonProdProfile();
-    ProductionBatchRequest request =
-        new ProductionBatchRequest("BATCH-001", 55.0, "factory-user", "good batch");
-    ProductionBatch existing = new ProductionBatch();
-    existing.setCompany(company);
-    existing.setBatchNumber("BATCH-001");
-    existing.setQuantityProduced(44.0);
-    existing.setLoggedBy("factory-user");
-    existing.setNotes("good batch");
-
-    when(batchRepository.findByCompanyAndBatchNumber(company, "BATCH-001"))
-        .thenReturn(Optional.of(existing));
-
-    assertThatThrownBy(() -> factoryService.logBatch(null, request))
-        .isInstanceOfSatisfying(
-            ApplicationException.class,
-            ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.CONCURRENCY_CONFLICT));
-  }
-
-  @Test
-  void logBatch_concurrentInsertRehydratesExisting() {
-    stubNonProdProfile();
-    ProductionBatchRequest request =
-        new ProductionBatchRequest("BATCH-RACE-1", 10.0, "factory-user", "race");
-    ProductionBatch existing = new ProductionBatch();
-    ReflectionTestUtils.setField(existing, "id", 22L);
-    existing.setCompany(company);
-    existing.setBatchNumber("BATCH-RACE-1");
-    existing.setQuantityProduced(10.0);
-    existing.setLoggedBy("factory-user");
-    existing.setNotes("race");
-
-    when(batchRepository.findByCompanyAndBatchNumber(company, "BATCH-RACE-1"))
-        .thenReturn(Optional.empty(), Optional.of(existing));
-    when(batchRepository.insertIfAbsent(
-            eq(company.getId()),
-            isNull(),
-            eq("BATCH-RACE-1"),
-            eq(10.0),
-            any(Instant.class),
-            eq("factory-user"),
-            eq("race")))
-        .thenReturn(0);
-
-    ProductionBatchDto result = factoryService.logBatch(null, request);
-
-    assertThat(result.id()).isEqualTo(22L);
-    verify(batchRepository, times(1))
+    assertThat(result.id()).isEqualTo(14L);
+    verify(planRepository)
         .insertIfAbsent(
-            eq(company.getId()),
-            isNull(),
-            eq("BATCH-RACE-1"),
-            eq(10.0),
-            any(Instant.class),
-            eq("factory-user"),
-            eq("race"));
-    verify(finishedGoodsService, never()).registerBatch(any(FinishedGoodBatchRequest.class));
+            company.getId(),
+            "PLAN-NEW-1",
+            "Primer White",
+            120.0,
+            LocalDate.of(2026, 2, 20),
+            "fresh");
+  }
+
+  @Test
+  void createPlan_withoutNaturalKeyPersistsDirectly() {
+    ProductionPlanRequest request =
+        new ProductionPlanRequest(
+            "   ", "Primer White", 120.0, LocalDate.of(2026, 2, 20), "direct save");
+    ProductionPlan saved = new ProductionPlan();
+    ReflectionTestUtils.setField(saved, "id", 13L);
+    saved.setCompany(company);
+    saved.setPlanNumber("   ");
+    saved.setProductName("Primer White");
+    saved.setQuantity(120.0);
+    saved.setPlannedDate(LocalDate.of(2026, 2, 20));
+    saved.setNotes("direct save");
+
+    when(planRepository.save(any(ProductionPlan.class))).thenReturn(saved);
+
+    ProductionPlanDto result = factoryService.createPlan(request);
+
+    assertThat(result.id()).isEqualTo(13L);
+    verify(planRepository).save(any(ProductionPlan.class));
+    verify(planRepository, never()).findByCompanyAndPlanNumber(any(), any());
+  }
+
+  @Test
+  void factoryService_noLongerExposesLegacyBatchLoggingSurface() {
+    assertThat(Arrays.stream(FactoryService.class.getDeclaredMethods()).map(Method::getName))
+        .doesNotContain(
+            "listBatches",
+            "logBatch",
+            "logBatchInternal",
+            "createBatchWithNaturalKey",
+            "resolveExistingBatch",
+            "isBatchPayloadEquivalent",
+            "assertLegacyBatchLoggingAllowed",
+            "registerFinishedGoodsBatch");
+    assertThat(
+            Files.exists(
+                Path.of(
+                    "src/main/java/com/bigbrightpaints/erp/modules/factory/dto/ProductionBatchRequest.java")))
+        .isFalse();
+    assertThat(
+            Files.exists(
+                Path.of(
+                    "src/main/java/com/bigbrightpaints/erp/modules/factory/dto/ProductionBatchDto.java")))
+        .isFalse();
+  }
+
+  @Test
+  void dashboard_countsLoggedBatchesWithoutLegacyBatchDtos() {
+    ProductionPlan completedPlan = new ProductionPlan();
+    completedPlan.setStatus("COMPLETED");
+    ProductionPlan pendingPlan = new ProductionPlan();
+    pendingPlan.setStatus("PENDING");
+
+    when(planRepository.findByCompanyOrderByPlannedDateDesc(company))
+        .thenReturn(List.of(completedPlan, pendingPlan));
+    when(productionLogRepository.countByCompany(company)).thenReturn(4L);
+
+    FactoryDashboardDto result = factoryService.dashboard();
+
+    assertThat(result.completedPlans()).isEqualTo(1);
+    assertThat(result.batchesLogged()).isEqualTo(4L);
+    assertThat(result.productionEfficiency()).isEqualTo(2.0);
+  }
+
+  @Test
+  void dashboard_returnsZeroEfficiencyWhenNoPlansExist() {
+    when(planRepository.findByCompanyOrderByPlannedDateDesc(company)).thenReturn(List.of());
+    when(productionLogRepository.countByCompany(company)).thenReturn(4L);
+
+    FactoryDashboardDto result = factoryService.dashboard();
+
+    assertThat(result.completedPlans()).isZero();
+    assertThat(result.batchesLogged()).isEqualTo(4L);
+    assertThat(result.productionEfficiency()).isZero();
   }
 
   @Test
@@ -353,65 +348,5 @@ class FactoryServiceTest {
         .isInstanceOfSatisfying(
             ApplicationException.class,
             ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.CONCURRENCY_CONFLICT));
-  }
-
-  @Test
-  void logBatch_replayDoesNotDuplicateRegisterBatchSideEffect() {
-    stubNonProdProfile();
-    ProductionBatchRequest request =
-        new ProductionBatchRequest("BATCH-FG-1", 25.0, "factory-user", "first plan batch");
-    ProductionPlan plan = new ProductionPlan();
-    ReflectionTestUtils.setField(plan, "id", 77L);
-    plan.setCompany(company);
-    plan.setProductName("FG-PRIMER");
-
-    ProductionBatch saved = new ProductionBatch();
-    ReflectionTestUtils.setField(saved, "id", 23L);
-    saved.setCompany(company);
-    saved.setPlan(plan);
-    saved.setBatchNumber("BATCH-FG-1");
-    saved.setQuantityProduced(25.0);
-    saved.setLoggedBy("factory-user");
-    saved.setNotes("first plan batch");
-    saved.setProducedAt(Instant.parse("2026-02-20T10:15:30Z"));
-
-    FinishedGood finishedGood = new FinishedGood();
-    ReflectionTestUtils.setField(finishedGood, "id", 900L);
-    finishedGood.setCompany(company);
-    finishedGood.setProductCode("FG-PRIMER");
-
-    when(companyEntityLookup.requireProductionPlan(company, 77L)).thenReturn(plan);
-    when(batchRepository.findByCompanyAndBatchNumber(company, "BATCH-FG-1"))
-        .thenReturn(Optional.empty(), Optional.of(saved));
-    when(batchRepository.insertIfAbsent(
-            eq(company.getId()),
-            eq(77L),
-            eq("BATCH-FG-1"),
-            eq(25.0),
-            any(Instant.class),
-            eq("factory-user"),
-            eq("first plan batch")))
-        .thenReturn(1);
-    when(finishedGoodsService.lockFinishedGoodByProductCode("FG-PRIMER")).thenReturn(finishedGood);
-    when(finishedGoodsService.currentWeightedAverageCost(finishedGood))
-        .thenReturn(BigDecimal.valueOf(42));
-
-    factoryService.logBatch(77L, request);
-    factoryService.logBatch(77L, request);
-
-    verify(batchRepository, times(1))
-        .insertIfAbsent(
-            eq(company.getId()),
-            eq(77L),
-            eq("BATCH-FG-1"),
-            eq(25.0),
-            any(Instant.class),
-            eq("factory-user"),
-            eq("first plan batch"));
-    verify(finishedGoodsService, times(1)).registerBatch(any(FinishedGoodBatchRequest.class));
-  }
-
-  private void stubNonProdProfile() {
-    when(environment.acceptsProfiles(any(Profiles.class))).thenReturn(false);
   }
 }

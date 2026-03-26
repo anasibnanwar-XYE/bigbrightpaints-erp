@@ -128,10 +128,11 @@ The same pattern appears in the legacy dispatch and payroll branches:
 If factory dispatch is ever re-enabled, its side effects are direct and synchronous:
 
 - `updateProductionStatus(...)` marks a production plan `COMPLETED` and can resume order auto-approval,
-- `releaseInventory(...)` logs a release batch with trace/idempotency annotations,
-- `postDispatchJournal(...)` posts a dispatch journal using explicit dispatch accounts or company default COGS/inventory accounts.
+- the retired release-batch bridge no longer exists, so the coordinator cannot recreate a second
+  factory batch-create seam alongside canonical `POST /api/v1/factory/production/logs` ownership
+  on dispatch callers.
 
-That gives the branch a clear audit trail, but it also means batch dispatch is still a multi-service side-effect bundle rather than a separately replayable workflow graph.
+That keeps the fail-closed dispatch branch from reviving a second factory batch-create seam, but it also means any future dispatch re-enable would need its own canonical execution contract.
 
 ### 4. Outbox publication is the durable boundary after synchronous side effects
 
@@ -231,7 +232,7 @@ So the repo has three different failure-routing styles at once:
 
 - Order approval can reserve inventory, attach trace ids to sales orders, queue urgent production plans/tasks, update sales workflow status, enqueue broker events, and write trace rows.
 - Fulfillment updates can cancel orders or re-enter auto-approval, but they deliberately refuse to invent dispatch truth.
-- If factory dispatch is re-enabled, it can complete plans, log release batches, and post dispatch journals in one request path.
+- If factory dispatch is re-enabled, it can complete plans and resume auto-approval, but it no longer logs release batches through the retired factory batch surface.
 - Outbox publication can write to RabbitMQ exchange `bbp.orchestrator.events`; there is no in-repo evidence of a matching consumer or dead-letter policy.
 - Enterprise audit background retries can eventually drop unpersisted audit events after max-attempt exhaustion.
 - GitHub support-ticket sync mutates ticket status, last-sync timestamps, GitHub issue links, and resolved-notification timestamps; initial create failures do not auto-retry.

@@ -319,6 +319,89 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
   }
 
   @Test
+  void production_log_contract_stays_ready_to_pack_and_removes_dead_request_toggles()
+      throws IOException {
+    JsonNode root = fetchCurrentSpecNode();
+
+    assertOperationMissing(root, "/api/v1/factory/production-batches", "get");
+    assertOperationMissing(root, "/api/v1/factory/production-batches", "post");
+    assertOperationContract(
+        root,
+        "/api/v1/factory/production/logs",
+        "post",
+        "#/components/schemas/ProductionLogRequest",
+        "200",
+        "#/components/schemas/ApiResponseProductionLogDetailDto");
+    assertThat(root.path("components").path("schemas").has("ProductionBatchRequest")).isFalse();
+    assertThat(root.path("components").path("schemas").has("ProductionBatchDto")).isFalse();
+
+    JsonNode productionLogRequest =
+        root.path("components").path("schemas").path("ProductionLogRequest");
+    JsonNode requestProperties = productionLogRequest.path("properties");
+    assertThat(requestProperties.has("brandId")).isTrue();
+    assertThat(requestProperties.has("productId")).isTrue();
+    assertThat(requestProperties.has("mixedQuantity")).isTrue();
+    assertThat(requestProperties.has("materials")).isTrue();
+    assertThat(requestProperties.has("addToFinishedGoods"))
+        .withFailMessage(
+            "ProductionLogRequest must not expose retired addToFinishedGoods toggle")
+        .isFalse();
+
+    JsonNode detailDto = root.path("components").path("schemas").path("ProductionLogDetailDto");
+    JsonNode detailProperties = detailDto.path("properties");
+    assertThat(detailProperties.has("id")).isTrue();
+    assertThat(detailProperties.has("publicId")).isTrue();
+    assertThat(detailProperties.has("productionCode")).isTrue();
+    assertThat(detailProperties.has("productFamilyName")).isTrue();
+    assertThat(detailProperties.has("outputBatchCode")).isTrue();
+    assertThat(detailProperties.has("outputQuantity")).isTrue();
+    assertThat(detailProperties.has("totalPackedQuantity")).isTrue();
+    assertThat(detailProperties.has("status")).isTrue();
+    assertThat(detailProperties.has("allowedSellableSizes")).isTrue();
+
+    JsonNode unpackedBatchDto = root.path("components").path("schemas").path("UnpackedBatchDto");
+    JsonNode unpackedProperties = unpackedBatchDto.path("properties");
+    assertThat(unpackedProperties.has("productFamilyName")).isTrue();
+    assertThat(unpackedProperties.has("allowedSellableSizes")).isTrue();
+
+    JsonNode packingLineRequest = root.path("components").path("schemas").path("PackingLineRequest");
+    List<String> packingLineRequired = new ArrayList<>();
+    packingLineRequest.path("required").forEach(node -> packingLineRequired.add(node.asText()));
+    assertThat(packingLineRequired).contains("childFinishedGoodId");
+  }
+
+  @Test
+  void packing_contract_keeps_only_canonical_write_surface_and_header_only_idempotency()
+      throws IOException {
+    JsonNode root = fetchCurrentSpecNode();
+
+    assertOperationContract(
+        root,
+        "/api/v1/factory/packing-records",
+        "post",
+        "#/components/schemas/PackingRequest",
+        "200",
+        "#/components/schemas/ApiResponseProductionLogDetailDto");
+    assertOperationMissing(root, "/api/v1/factory/packing-records/{productionLogId}/complete", "post");
+    assertOperationMissing(root, "/api/v1/factory/pack", "post");
+
+    JsonNode parameters = root.path("paths").path("/api/v1/factory/packing-records").path("post").path("parameters");
+    List<String> parameterNames = new ArrayList<>();
+    parameters.forEach(parameter -> parameterNames.add(parameter.path("name").asText()));
+    assertThat(parameterNames).containsExactly("Idempotency-Key");
+    assertThat(parameters.get(0).path("required").asBoolean()).isTrue();
+
+    JsonNode packingRequest = root.path("components").path("schemas").path("PackingRequest");
+    assertThat(packingRequest.path("properties").has("closeResidualWastage"))
+        .withFailMessage(
+            "PackingRequest must expose closeResidualWastage on the canonical packing route")
+        .isTrue();
+    assertThat(packingRequest.path("properties").has("idempotencyKey"))
+        .withFailMessage("PackingRequest must not expose idempotencyKey in the request body")
+        .isFalse();
+  }
+
+  @Test
   void openapi_snapshot_matches_repository_contract() throws IOException {
     Path openApiSnapshotPath = resolveRepoRoot().resolve("openapi.json");
     String currentSpec = canonicalizeJson(fetchCurrentSpecNode().toString());

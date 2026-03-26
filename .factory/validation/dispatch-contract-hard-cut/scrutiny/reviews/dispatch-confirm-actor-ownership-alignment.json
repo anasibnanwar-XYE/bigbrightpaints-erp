@@ -1,0 +1,34 @@
+{
+  "featureId": "dispatch-confirm-actor-ownership-alignment",
+  "reviewedAt": "2026-03-25T15:01:49Z",
+  "commitId": "3a8db8096d285146c288a31da3737f151e91b0bc",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "I reviewed the feature metadata, handoff, transcript skeleton, `factory-flow-worker` guidance, commit `3a8db8096d285146c288a31da3737f151e91b0bc`, and the current state of the touched RBAC/dispatch files. The route ownership and denial-copy changes are correct: `PortalRoleActionMatrix` now gates `POST /api/v1/sales/dispatch/confirm` to sales/admin, `DispatchController` stays on read-only `/api/v1/dispatch/**`, and the updated integration tests and frontend library notes consistently describe the sales-owned posting path. However, the feature does not fully satisfy its \"align default role permissions\" requirement for upgraded tenants. `SystemRole` removes `dispatch.confirm` from accounting/factory defaults, but the runtime synchronizers only add missing permissions and never prune retired ones from existing system-role rows, so legacy `ROLE_ACCOUNTING`/`ROLE_FACTORY` records keep stale `dispatch.confirm` grants after startup synchronization. I also found one non-blocking stale Javadoc comment in `DispatchController`.",
+    "issues": [
+      {
+        "file": "erp-domain/src/main/java/com/bigbrightpaints/erp/modules/rbac/service/RoleService.java",
+        "line": 201,
+        "severity": "blocking",
+        "description": "This feature moved `dispatch.confirm` from `ROLE_ACCOUNTING`/`ROLE_FACTORY` to `ROLE_SALES` in `SystemRole`, but both `synchronizeSystemRole(...)` and `synchronizeSystemRolePermissions(...)` are additive-only: they append missing default permissions and never remove retired ones. Because startup calls `RbacSynchronizationConfig.onApplicationEvent -> synchronizeSystemRoles()`, existing tenant roles keep legacy `dispatch.confirm` grants instead of being realigned. The gap is codified in `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/rbac/service/RoleServiceTest.java:96-121`, which still treats `ROLE_ACCOUNTING` plus `dispatch.confirm` as already aligned. That means the feature does not actually align default role permissions end-to-end for upgraded environments."
+      },
+      {
+        "file": "erp-domain/src/main/java/com/bigbrightpaints/erp/modules/inventory/controller/DispatchController.java",
+        "line": 21,
+        "severity": "non_blocking",
+        "description": "The class Javadoc still says this controller is used by factory to confirm shipped quantities before dispatch, but `/api/v1/dispatch/**` is now read-only and final dispatch posting belongs to `SalesController.confirmDispatch`. The runtime behavior is correct; the comment is just stale and misleading."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The shared `factory-flow-worker` procedure does not explicitly remind workers to audit startup/backfill synchronization when a feature moves default permissions between system roles. This feature updated `SystemRole` and contract tests, but missed the additive-only RBAC synchronizers that preserve stale permissions on existing roles.",
+      "evidence": "`.factory/skills/factory-flow-worker/SKILL.md` focuses on controller/service/test/contract surfaces and validation commands, while this review found `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/rbac/service/RoleService.java:201-257` still only adds permissions after `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/rbac/domain/SystemRole.java:38-49` changed the default dispatch ownership."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Fail: the sales-owned dispatch-confirm route/denial/docs changes look correct, but the feature leaves startup RBAC synchronization additive-only, so existing accounting/factory roles retain stale `dispatch.confirm` grants and default role permissions are not fully realigned."
+}

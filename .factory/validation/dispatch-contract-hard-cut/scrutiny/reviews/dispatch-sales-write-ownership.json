@@ -1,0 +1,28 @@
+{
+  "featureId": "dispatch-sales-write-ownership",
+  "reviewedAt": "2026-03-25T14:51:57Z",
+  "commitId": "f642bfa4e",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "I reviewed the feature metadata, handoff, transcript skeleton, `factory-flow-worker` procedure, commit `f642bfa4e`, and the current state of the touched runtime/test/contract files. `DispatchController` now exposes only GET read surfaces under `/api/v1/dispatch/**`, `SalesController.confirmDispatch` remains the sole public dispatch-confirm write owner at `POST /api/v1/sales/dispatch/confirm`, and the non-owning orchestrator paths fail closed while pointing callers to that same canonical sales route. The contract surfaces also line up: `openapi.json`, `erp-domain/docs/endpoint_inventory.tsv`, `docs/endpoint-inventory.md`, and the frontend handoff/library docs all advertise the sales-owned write path, while the only remaining `/api/v1/dispatch/confirm` references are retired-route documentation and the explicit absence regression test. I found no blocking defects in feature scope. One non-blocking stale source comment remains in `DispatchController`.",
+    "issues": [
+      {
+        "file": "erp-domain/src/main/java/com/bigbrightpaints/erp/modules/inventory/controller/DispatchController.java",
+        "line": 21,
+        "severity": "non_blocking",
+        "description": "The class Javadoc still describes `DispatchController` as the factory dispatch-confirmation workflow used to confirm shipped quantities before dispatch, but this feature removed all write verbs from `/api/v1/dispatch/**`. The runtime contract is correct; however, this stale comment now misstates ownership and should be rewritten to describe the controller as the read-only dispatch lookup/challan surface."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "`factory-flow-worker` Step 5 does not mention the resumed-session validator-repair loop the worker needed before rerunning the full dispatch validators, so the documented procedure is slightly behind current mission reality.",
+      "evidence": "`.factory/skills/factory-flow-worker/SKILL.md:61-72` defines the verification sequence only in terms of the standard targeted/gate-fast/guard commands, while `handoffs/2026-03-25T09-38-30-784Z__dispatch-sales-write-ownership__a9aa016b-ef52-4eda-a9be-fa89032749b6.json:82-90` records a justified deviation to run `ErpInvariantsSuiteIT#produceToStock_goldenPath` first and explicitly suggests updating the skill for resumed compaction sessions."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Pass: commit `f642bfa4e` correctly removes every surviving `/api/v1/dispatch/**` write surface, keeps `POST /api/v1/sales/dispatch/confirm` as the sole dispatch-confirm write owner across runtime/tests/docs, and leaves only a non-blocking stale Javadoc comment in `DispatchController`."
+}

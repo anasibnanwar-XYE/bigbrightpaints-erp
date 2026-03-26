@@ -14,8 +14,10 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.lang.reflect.Method;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -45,7 +47,6 @@ import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
-import com.bigbrightpaints.erp.modules.factory.dto.ProductionBatchRequest;
 import com.bigbrightpaints.erp.modules.factory.dto.ProductionPlanRequest;
 import com.bigbrightpaints.erp.modules.factory.service.FactoryService;
 import com.bigbrightpaints.erp.modules.hr.dto.EmployeeDto;
@@ -703,20 +704,9 @@ class IntegrationCoordinatorTest {
   }
 
   @Test
-  void releaseInventoryPropagatesTraceAndIdempotencyInBatchNotes() {
-    integrationCoordinator.releaseInventory(
-        "B-901", COMPANY_ID, "trace-release-901", "idem-release-901");
-
-    verify(factoryService)
-        .logBatch(
-            eq(null),
-            argThat(
-                (ProductionBatchRequest request) ->
-                    request != null
-                        && request.notes() != null
-                        && request.notes().contains("Auto release for dispatch B-901")
-                        && request.notes().contains("[trace=trace-release-901]")
-                        && request.notes().contains("[idem=idem-release-901]")));
+  void integrationCoordinatorNoLongerExposesLegacyReleaseInventoryCaller() {
+    assertThat(Arrays.stream(IntegrationCoordinator.class.getDeclaredMethods()).map(Method::getName))
+        .doesNotContain("releaseInventory");
   }
 
   @Test

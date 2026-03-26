@@ -1,0 +1,21 @@
+{
+  "featureId": "close-final-gate-fast-factory-coverage",
+  "reviewedAt": "2026-03-25T15:18:18Z",
+  "commitId": "803fe1eef2486209ff5049a2f6518e2eca54dd47",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "I reviewed the mission feature metadata, handoff, transcript skeleton, `factory-flow-worker` guidance, commit `803fe1eef2486209ff5049a2f6518e2eca54dd47`, the generated `artifacts/gate-fast/changed-coverage.json`, and the directly related current-file state in `erp-domain/pom.xml` plus the touched factory test classes. The implementation stays within the stated scope: it only promotes existing high-signal factory/packing tests into `pr-fast`/`gate-fast` and adds narrow controller/DTO/service assertions, with no runtime-source changes. The new coverage is aligned to the changed files called out by the artifact: `PackagingMappingControllerTest` and `PackagingMappingControllerSecurityContractTest` lock the packaging-mapping controller contract, `PackingControllerTest` covers the read/list controller paths, `PackingReadServiceTest` and `ProductionLogServiceCostingFallbackTest` prove the nullable product-family DTO fallbacks, and the expanded factory/packaging/allowed-size tests cover the remaining controller/service branches. Current branch state confirms the intended outcome: `erp-domain/pom.xml` now includes the promoted packet in both fast profiles, and `artifacts/gate-fast/changed-coverage.json` reports `passes=true` with `line_ratio=0.9817351598173516` and `branch_ratio=0.9042553191489362`, satisfying the feature's expected behavior without re-anchoring the diff base or changing runtime behavior. I found no blocking or non-blocking defects in the reviewed feature scope.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "services",
+      "observation": "The newly promoted factory coverage packet is now important enough to be part of the fast gate, but `.factory/services.yaml` still lacks a named command for that exact packet. Future workers would need to rediscover and hand-type the long Maven selector instead of using a shared repo command.",
+      "evidence": "`.factory/services.yaml:26-27` defines `commands.erp38-targeted-batch-pack` as `ProductionLogWipPostingRegressionIT,ProductionLaborOverheadWipIT,ProductionLogListDetailLazyLoadRegressionIT,ProductionLogPackingStatusRegressionIT,PackingControllerTest,PackingServiceTest,FactoryPackagingCostingIT,TS_PackingIdempotencyAndFacadeBoundaryTest`, while `handoffs/2026-03-25T14-30-22-010Z__close-final-gate-fast-factory-coverage__73664e7c-7707-43f0-80a3-a53c0f6c9fbd.json` shows the worker needed an ad-hoc packet that also included `PackagingMappingControllerSecurityContractTest`, `PackagingMappingControllerTest`, `FactoryServiceTest`, `PackingReadServiceTest`, `PackagingMaterialServiceTest`, `PackingAllowedSizeServiceTest`, and `ProductionLogServiceCostingFallbackTest` to close the gate-fast coverage debt."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Pass: commit `803fe1eef2486209ff5049a2f6518e2eca54dd47` stays test/profile-only, covers the remaining factory changed-file gaps with appropriately narrow assertions, and the current gate-fast coverage artifact confirms the ERP-38 branch now clears the 0.95 line / 0.90 branch thresholds."
+}

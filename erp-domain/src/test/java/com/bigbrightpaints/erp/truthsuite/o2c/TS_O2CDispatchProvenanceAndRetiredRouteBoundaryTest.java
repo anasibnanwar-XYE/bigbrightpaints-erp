@@ -66,9 +66,10 @@ import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
 @Tag("critical")
 @Tag("reconciliation")
 @TestPropertySource(properties = "erp.auto-approval.enabled=false")
-class TS_O2CDispatchProvenanceViewsAndEquivalenceTest extends AbstractIntegrationTest {
+class TS_O2CDispatchProvenanceAndRetiredRouteBoundaryTest extends AbstractIntegrationTest {
 
   private static final String ADMIN_PASSWORD = "admin123";
+  private static final String SALES_PASSWORD = "sales123";
   private static final String FACTORY_PASSWORD = "factory123";
   private static final String COMPANY_STATE_CODE = "27";
 
@@ -105,7 +106,7 @@ class TS_O2CDispatchProvenanceViewsAndEquivalenceTest extends AbstractIntegratio
             HttpMethod.POST,
             new HttpEntity<>(
                 salesDispatchRequest(fixture, "provenance"),
-                authHeaders(loginAdmin(fixture), fixture.company().getCode())),
+                authHeaders(loginSales(fixture), fixture.company().getCode())),
             Map.class);
 
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -207,22 +208,14 @@ class TS_O2CDispatchProvenanceViewsAndEquivalenceTest extends AbstractIntegratio
 
     ResponseEntity<Map> confirmResponse =
         rest.exchange(
-            "/api/v1/dispatch/confirm",
+            "/api/v1/sales/dispatch/confirm",
             HttpMethod.POST,
-            new HttpEntity<>(factoryDispatchRequest(fixture, "factory-redaction"), factoryHeaders),
+            new HttpEntity<>(
+                salesDispatchRequest(fixture, "factory-redaction"),
+                authHeaders(loginSales(fixture), fixture.company().getCode())),
             Map.class);
     assertThat(confirmResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
-    Map<?, ?> confirmData = requireData(confirmResponse, "factory dispatch confirm");
-    Map<?, ?> confirmLine = firstMap(confirmData, "lines");
-    assertThat(confirmData.get("journalEntryId")).isNull();
-    assertThat(confirmData.get("cogsJournalEntryId")).isNull();
-    assertThat(confirmData.get("totalOrderedAmount")).isNull();
-    assertThat(confirmData.get("totalShippedAmount")).isNull();
-    assertThat(confirmData.get("totalBackorderAmount")).isNull();
-    assertMissingKeys(
-        confirmData, "finalInvoiceId", "invoiceId", "arJournalEntryId", "gstBreakdown");
-    assertThat(confirmLine.get("unitCost")).isNull();
-    assertThat(confirmLine.get("lineTotal")).isNull();
+    requireData(confirmResponse, "sales dispatch confirm");
 
     PackagingSlip persisted =
         packagingSlipRepository
@@ -250,40 +243,40 @@ class TS_O2CDispatchProvenanceViewsAndEquivalenceTest extends AbstractIntegratio
   }
 
   @Test
-  void factoryThenSalesDispatchReplay_preservesEquivalentCanonicalTruth() {
+  void salesDispatchConfirmReplay_preservesCanonicalTruth() {
     DispatchFixture fixture =
-        bootstrapDispatchFixture("TS-ENDP-FS", new BigDecimal("111.00"), BigDecimal.ZERO);
+        bootstrapDispatchFixture("TS-ENDP-REPLAY", new BigDecimal("111.00"), BigDecimal.ZERO);
 
-    ResponseEntity<Map> factoryResponse =
+    ResponseEntity<Map> firstResponse =
         rest.exchange(
-            "/api/v1/dispatch/confirm",
+            "/api/v1/sales/dispatch/confirm",
             HttpMethod.POST,
             new HttpEntity<>(
-                factoryDispatchRequest(fixture, "factory-first"),
-                authHeaders(loginFactory(fixture), fixture.company().getCode())),
+                salesDispatchRequest(fixture, "sales-first"),
+                authHeaders(loginSales(fixture), fixture.company().getCode())),
             Map.class);
-    assertThat(factoryResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(firstResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
 
-    PackagingSlip afterFactory =
+    PackagingSlip afterFirst =
         packagingSlipRepository
             .findByIdAndCompany(fixture.slip().getId(), fixture.company())
             .orElseThrow();
     int movementCountBeforeReplay =
         inventoryMovementRepository
             .findByFinishedGood_CompanyAndPackingSlipIdAndMovementTypeIgnoreCaseOrderByCreatedAtAsc(
-                fixture.company(), afterFactory.getId(), "DISPATCH")
+                fixture.company(), afterFirst.getId(), "DISPATCH")
             .size();
 
-    ResponseEntity<Map> salesReplay =
+    ResponseEntity<Map> replayResponse =
         rest.exchange(
             "/api/v1/sales/dispatch/confirm",
             HttpMethod.POST,
             new HttpEntity<>(
                 salesDispatchRequest(fixture, "sales-replay"),
-                authHeaders(loginAdmin(fixture), fixture.company().getCode())),
+                authHeaders(loginSales(fixture), fixture.company().getCode())),
             Map.class);
-    assertThat(salesReplay.getStatusCode()).isEqualTo(HttpStatus.OK);
-    Map<?, ?> replayData = requireData(salesReplay, "sales replay after factory dispatch");
+    assertThat(replayResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    Map<?, ?> replayData = requireData(replayResponse, "sales dispatch replay");
 
     PackagingSlip afterReplay =
         packagingSlipRepository
@@ -292,20 +285,20 @@ class TS_O2CDispatchProvenanceViewsAndEquivalenceTest extends AbstractIntegratio
     SalesOrder orderAfterReplay =
         salesOrderRepository.findById(fixture.order().getId()).orElseThrow();
 
-    assertThat(longValue(replayData.get("packingSlipId"))).isEqualTo(afterFactory.getId());
+    assertThat(longValue(replayData.get("packingSlipId"))).isEqualTo(afterFirst.getId());
     assertThat(longValue(replayData.get("salesOrderId"))).isEqualTo(fixture.order().getId());
-    assertThat(longValue(replayData.get("finalInvoiceId"))).isEqualTo(afterFactory.getInvoiceId());
+    assertThat(longValue(replayData.get("finalInvoiceId"))).isEqualTo(afterFirst.getInvoiceId());
     assertThat(longValue(replayData.get("arJournalEntryId")))
-        .isEqualTo(afterFactory.getJournalEntryId());
+        .isEqualTo(afterFirst.getJournalEntryId());
     assertThat(listValue(replayData, "cogsPostings")).isEmpty();
-    assertThat(afterReplay.getInvoiceId()).isEqualTo(afterFactory.getInvoiceId());
-    assertThat(afterReplay.getJournalEntryId()).isEqualTo(afterFactory.getJournalEntryId());
-    assertThat(afterReplay.getCogsJournalEntryId()).isEqualTo(afterFactory.getCogsJournalEntryId());
-    assertThat(orderAfterReplay.getFulfillmentInvoiceId()).isEqualTo(afterFactory.getInvoiceId());
+    assertThat(afterReplay.getInvoiceId()).isEqualTo(afterFirst.getInvoiceId());
+    assertThat(afterReplay.getJournalEntryId()).isEqualTo(afterFirst.getJournalEntryId());
+    assertThat(afterReplay.getCogsJournalEntryId()).isEqualTo(afterFirst.getCogsJournalEntryId());
+    assertThat(orderAfterReplay.getFulfillmentInvoiceId()).isEqualTo(afterFirst.getInvoiceId());
     assertThat(orderAfterReplay.getSalesJournalEntryId())
-        .isEqualTo(afterFactory.getJournalEntryId());
+        .isEqualTo(afterFirst.getJournalEntryId());
     assertThat(orderAfterReplay.getCogsJournalEntryId())
-        .isEqualTo(afterFactory.getCogsJournalEntryId());
+        .isEqualTo(afterFirst.getCogsJournalEntryId());
     assertThat(
             inventoryMovementRepository
                 .findByFinishedGood_CompanyAndPackingSlipIdAndMovementTypeIgnoreCaseOrderByCreatedAtAsc(
@@ -314,32 +307,11 @@ class TS_O2CDispatchProvenanceViewsAndEquivalenceTest extends AbstractIntegratio
   }
 
   @Test
-  void salesThenFactoryDispatchReplay_preservesEquivalentCanonicalTruth() {
+  void retiredFactoryDispatchConfirmRoute_isAbsent() {
     DispatchFixture fixture =
-        bootstrapDispatchFixture("TS-ENDP-SF", new BigDecimal("119.50"), BigDecimal.ZERO);
+        bootstrapDispatchFixture("TS-ENDP-ABSENT", new BigDecimal("119.50"), BigDecimal.ZERO);
 
-    ResponseEntity<Map> salesResponse =
-        rest.exchange(
-            "/api/v1/sales/dispatch/confirm",
-            HttpMethod.POST,
-            new HttpEntity<>(
-                salesDispatchRequest(fixture, "sales-first"),
-                authHeaders(loginAdmin(fixture), fixture.company().getCode())),
-            Map.class);
-    assertThat(salesResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
-    Map<?, ?> salesData = requireData(salesResponse, "sales dispatch before factory replay");
-
-    PackagingSlip afterSales =
-        packagingSlipRepository
-            .findByIdAndCompany(fixture.slip().getId(), fixture.company())
-            .orElseThrow();
-    int movementCountBeforeReplay =
-        inventoryMovementRepository
-            .findByFinishedGood_CompanyAndPackingSlipIdAndMovementTypeIgnoreCaseOrderByCreatedAtAsc(
-                fixture.company(), afterSales.getId(), "DISPATCH")
-            .size();
-
-    ResponseEntity<Map> factoryReplay =
+    ResponseEntity<Map> retiredResponse =
         rest.exchange(
             "/api/v1/dispatch/confirm",
             HttpMethod.POST,
@@ -347,34 +319,8 @@ class TS_O2CDispatchProvenanceViewsAndEquivalenceTest extends AbstractIntegratio
                 factoryDispatchRequest(fixture, "factory-replay"),
                 authHeaders(loginFactory(fixture), fixture.company().getCode())),
             Map.class);
-    assertThat(factoryReplay.getStatusCode()).isEqualTo(HttpStatus.OK);
-    Map<?, ?> factoryData = requireData(factoryReplay, "factory replay after sales dispatch");
-
-    PackagingSlip afterReplay =
-        packagingSlipRepository
-            .findByIdAndCompany(fixture.slip().getId(), fixture.company())
-            .orElseThrow();
-    SalesOrder orderAfterReplay =
-        salesOrderRepository.findById(fixture.order().getId()).orElseThrow();
-
-    assertThat(longValue(salesData.get("finalInvoiceId"))).isEqualTo(afterSales.getInvoiceId());
-    assertThat(longValue(salesData.get("arJournalEntryId")))
-        .isEqualTo(afterSales.getJournalEntryId());
-    assertThat(factoryData.get("journalEntryId")).isNull();
-    assertThat(factoryData.get("cogsJournalEntryId")).isNull();
-    assertMissingKeys(factoryData, "finalInvoiceId", "invoiceId", "arJournalEntryId");
-    assertThat(afterReplay.getInvoiceId()).isEqualTo(afterSales.getInvoiceId());
-    assertThat(afterReplay.getJournalEntryId()).isEqualTo(afterSales.getJournalEntryId());
-    assertThat(afterReplay.getCogsJournalEntryId()).isEqualTo(afterSales.getCogsJournalEntryId());
-    assertThat(orderAfterReplay.getFulfillmentInvoiceId()).isEqualTo(afterSales.getInvoiceId());
-    assertThat(orderAfterReplay.getSalesJournalEntryId()).isEqualTo(afterSales.getJournalEntryId());
-    assertThat(orderAfterReplay.getCogsJournalEntryId())
-        .isEqualTo(afterSales.getCogsJournalEntryId());
-    assertThat(
-            inventoryMovementRepository
-                .findByFinishedGood_CompanyAndPackingSlipIdAndMovementTypeIgnoreCaseOrderByCreatedAtAsc(
-                    fixture.company(), afterReplay.getId(), "DISPATCH"))
-        .hasSize(movementCountBeforeReplay);
+    assertThat(retiredResponse.getStatusCode())
+        .isIn(HttpStatus.NOT_FOUND, HttpStatus.METHOD_NOT_ALLOWED);
   }
 
   private DispatchFixture bootstrapDispatchFixture(
@@ -408,6 +354,7 @@ class TS_O2CDispatchProvenanceViewsAndEquivalenceTest extends AbstractIntegratio
         packagingSlipRepository.findByCompanyAndSalesOrderId(company, order.getId()).orElseThrow();
 
     String adminEmail = "admin+" + shortId() + "@truthsuite.test";
+    String salesEmail = "sales+" + shortId() + "@truthsuite.test";
     String factoryEmail = "factory+" + shortId() + "@truthsuite.test";
     dataSeeder.ensureUser(
         adminEmail,
@@ -416,14 +363,20 @@ class TS_O2CDispatchProvenanceViewsAndEquivalenceTest extends AbstractIntegratio
         companyCode,
         List.of("ROLE_ADMIN", "dispatch.confirm"));
     dataSeeder.ensureUser(
+        salesEmail,
+        SALES_PASSWORD,
+        "Truthsuite Sales",
+        companyCode,
+        List.of("ROLE_SALES", "dispatch.confirm"));
+    dataSeeder.ensureUser(
         factoryEmail,
         FACTORY_PASSWORD,
         "Truthsuite Factory",
         companyCode,
-        List.of("ROLE_FACTORY", "dispatch.confirm"));
+        List.of("ROLE_FACTORY"));
 
     return new DispatchFixture(
-        company, dealer, finishedGood, order, slip, adminEmail, factoryEmail);
+        company, dealer, finishedGood, order, slip, adminEmail, salesEmail, factoryEmail);
   }
 
   private Company bootstrapCompany(String companyCode, String stateCode) {
@@ -654,6 +607,10 @@ class TS_O2CDispatchProvenanceViewsAndEquivalenceTest extends AbstractIntegratio
     return loginToken(fixture.adminEmail(), ADMIN_PASSWORD, fixture.company().getCode());
   }
 
+  private String loginSales(DispatchFixture fixture) {
+    return loginToken(fixture.salesEmail(), SALES_PASSWORD, fixture.company().getCode());
+  }
+
   private String loginFactory(DispatchFixture fixture) {
     return loginToken(fixture.factoryEmail(), FACTORY_PASSWORD, fixture.company().getCode());
   }
@@ -813,5 +770,6 @@ class TS_O2CDispatchProvenanceViewsAndEquivalenceTest extends AbstractIntegratio
       SalesOrder order,
       PackagingSlip slip,
       String adminEmail,
+      String salesEmail,
       String factoryEmail) {}
 }

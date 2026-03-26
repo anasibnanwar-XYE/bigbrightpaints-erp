@@ -29,7 +29,7 @@ Each module section should include:
 - 2026-03-06 `auth-token-secret-storage-hardening`: no auth/admin request or response shape changes were required. Login, refresh-token, logout, forgot-password, and reset-password payloads stay the same; only backend persistence changed so refresh-token and password-reset secrets are now stored as digests with compatibility backfill/fallback for legacy rows.
 - 2026-03-06 `auth-session-revocation-hardening`: no auth/admin request or response shape changes were required. Logout now invalidates all previously issued access and refresh sessions for the authenticated user, and password change, password reset, disablement, lockout, and support hard-reset now consistently reject old tokens instead of letting prior sessions remain usable.
 - 2026-03-06 `auth-reset-recovery-contract-hardening`: supported public forgot/reset, admin force-reset, and support admin-password-reset request/response shapes stay the same. The deprecated compatibility alias `POST /api/v1/auth/password/forgot/superadmin` is now explicitly retired with a `410 Gone` `ApiResponse` that carries `canonicalPath=/api/v1/auth/password/forgot` plus `supportResetPath=/api/v1/companies/{id}/support/admin-password-reset`; public forgot suppresses delivery failures without leaving a newly issued undispatched reset token behind, and admin force-reset now only succeeds when reset-email delivery is enabled and dispatch completes.
-- 2026-03-14 `remove-orchestrator-dispatch-journal`: `POST /api/v1/orchestrator/factory/dispatch/{batchId}` is now a fail-closed compatibility surface only. Valid requests receive `410 Gone` with `canonicalPath=/api/v1/dispatch/confirm`, and orchestrator fulfillment requests for `SHIPPED`/`DISPATCHED`/`FULFILLED`/`COMPLETED` now return `409 Conflict` (`BUS_001`) instead of acknowledging or posting dispatch accounting truth.
+- 2026-03-14 `remove-orchestrator-dispatch-journal`: `POST /api/v1/orchestrator/factory/dispatch/{batchId}` is now a fail-closed compatibility surface only. Valid requests receive `410 Gone` with `canonicalPath=/api/v1/sales/dispatch/confirm`, and orchestrator fulfillment requests for `SHIPPED`/`DISPATCHED`/`FULFILLED`/`COMPLETED` now return `409 Conflict` (`BUS_001`) instead of acknowledging or posting dispatch accounting truth.
 - 2026-03-06 `reset-token-issuance-race-hardening`: no auth/admin request or response shape changes were required. Public forgot-password and admin force-reset now serialize reset-token issuance per user so duplicate or overlapping requests deterministically leave only the latest reset link usable instead of cross-deleting every valid token.
 - 2026-03-06 `must-change-password-corridor-hardening`: login, refresh-token, `/auth/me`, `GET /auth/profile`, password-change, and logout success payloads stay the same. While `mustChangePassword=true`, the backend now confines the bearer session to that corridor, denies normal protected work with a `403` `ApiResponse` carrying `reason=PASSWORD_CHANGE_REQUIRED` and `mustChangePassword=true`, and still preserves company binding on the allowed corridor endpoints.
 - 2026-03-06 `controlled-auth-error-contracts`: supported auth/admin success payloads stay the same, but previously raw framework/servlet failure paths are now normalized into `ApiResponse` contracts. Lockout now returns `401` with `AUTH_005`, authenticated tenant-binding mismatches now return `403` `ApiResponse` envelopes with `AUTH_004` plus `reason` / `reasonDetail`, and tenant runtime hold/block/quota denials on login or authenticated auth requests now return controlled `ApiResponse` error bodies carrying their runtime denial codes (for example `TENANT_ON_HOLD`, `TENANT_BLOCKED`, `TENANT_REQUEST_RATE_EXCEEDED`).
@@ -646,7 +646,7 @@ All endpoints return `ApiResponse<T>` envelopes.
 
 Comprehensive frontend handoff for `VAL-DOC-003` (chart of accounts, journals, settlement, period controls, reconciliation, GST, audit, and temporal/reporting endpoints).
 
-Catalog note (2026-03-21): accounting-facing product entry now uses the canonical catalog endpoints documented in the **Product Catalog & Inventory** section (`GET/POST /api/v1/catalog/brands`, `GET/POST /api/v1/catalog/products`).
+Catalog note (2026-03-21): accounting-facing stock-bearing setup now uses the canonical catalog endpoints documented in the **Product Catalog & Inventory** section (`GET/POST /api/v1/catalog/brands`, `GET/POST /api/v1/catalog/items`, `GET/PUT/DELETE /api/v1/catalog/items/{itemId}`).
 
 > Response envelope convention: almost all endpoints return `ApiResponse<T>` where payload is in `data`; PDF endpoints return raw `byte[]`; CSV endpoint returns `text/csv` string.
 
@@ -878,7 +878,7 @@ _Total documented accounting endpoints: **83**._
   - `memo`: `String` — validation `—`
   - `idempotencyKey`: `String` — validation `—`
   - `adminOverride`: `Boolean` — validation `—`
-- Use `CatalogBrandRequest`, `CatalogProductEntryRequest`, and `CatalogProductRequest` from the **Product Catalog & Inventory** section for current product-entry and maintenance contracts.
+- Use `CatalogBrandRequest` and `CatalogItemRequest` from the **Product Catalog & Inventory** section for current item-entry and maintenance contracts.
 - **`CreditNoteRequest`**
   - `invoiceId`: `Long` — validation `@NotNull`
   - `amount`: `BigDecimal` — validation `@DecimalMin(value = "0.01")`
@@ -1264,7 +1264,7 @@ _Total documented accounting endpoints: **83**._
   - `postedBy`: `String`
   - `lastModifiedBy`: `String`
 - No public accounting-specific catalog response DTOs remain.
-- Use `CatalogBrandDto`, `CatalogProductDto`, and `CatalogProductEntryResponse` from the **Product Catalog & Inventory** section for the live catalog contract.
+- Use `CatalogBrandDto`, `CatalogItemDto`, `CatalogItemStockDto`, and `SkuReadinessDto` from the **Product Catalog & Inventory** section for the live catalog contract.
 - **`ConfigurationHealthService.ConfigurationHealthReport`**
   - `healthy`: `boolean` (true when no issues are present)
   - `issues`: `List<ConfigurationIssue>`
@@ -1600,7 +1600,7 @@ _Total documented accounting endpoints: **83**._
   - Account dropdowns: `GET /api/v1/accounting/accounts`
   - Dealer dropdowns/search: `GET /api/v1/dealers`, `GET /api/v1/dealers/search?query=`
   - Supplier dropdowns: `GET /api/v1/suppliers`
-  - Catalog product selection in accounting context: `GET /api/v1/catalog/products?brandId=...`
+  - Catalog item selection in accounting context: `GET /api/v1/catalog/items?itemClass=...&includeReadiness=true`
 - **Computed fields**
   - GST component split is computed server-side: `taxType=INTRA_STATE` => `cgst+sgst`; `INTER_STATE` => `igst`
   - Settlement totals (`totalApplied`, `totalDiscount`, `totalFxGain/loss`) are computed; render read-only summary cards
@@ -1644,7 +1644,7 @@ Comprehensive handoff for `VAL-DOC-004` covering catalog, inventory, dispatch, a
 - Frontend endpoint paths, request/response DTOs, and dispatch/reservation/backorder state transitions are unchanged.
 - Existing UI flows in this section remain valid; no client migration is required for this refactor.
 
-#### Endpoint Map — Catalog (brands/products/search)
+#### Endpoint Map — Catalog (brands/items/search)
 
 Auth default: `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING','ROLE_SALES','ROLE_FACTORY')`.
 
@@ -1655,18 +1655,18 @@ Auth default: `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING','ROLE_SALES','ROLE
 | GET | `/api/v1/catalog/brands/{brandId}` | — | `CatalogBrandDto` |
 | PUT | `/api/v1/catalog/brands/{brandId}` | `CatalogBrandRequest` | `CatalogBrandDto` |
 | DELETE | `/api/v1/catalog/brands/{brandId}` | — | `CatalogBrandDto` (deactivated) |
-| POST | `/api/v1/catalog/products?preview=true` | `CatalogProductEntryRequest` | `CatalogProductEntryResponse` |
-| POST | `/api/v1/catalog/products` | `CatalogProductEntryRequest` | `CatalogProductEntryResponse` |
-| GET | `/api/v1/catalog/products` | Query: `brandId?`, `color?`, `size?`, `active?`, `page`, `pageSize` | `PageResponse<CatalogProductDto>` |
-| GET | `/api/v1/catalog/products/{productId}` | — | `CatalogProductDto` |
-| PUT | `/api/v1/catalog/products/{productId}` | `CatalogProductRequest` | `CatalogProductDto` |
-| DELETE | `/api/v1/catalog/products/{productId}` | — | `CatalogProductDto` (deactivated) |
+| GET | `/api/v1/catalog/items` | Query: `q?`, `itemClass?`, `includeStock?`, `includeReadiness?`, `page`, `pageSize` | `PageResponse<CatalogItemDto>` |
+| POST | `/api/v1/catalog/items` | `CatalogItemRequest` | `CatalogItemDto` |
+| GET | `/api/v1/catalog/items/{itemId}` | Query: `includeStock?`, `includeReadiness?` | `CatalogItemDto` |
+| PUT | `/api/v1/catalog/items/{itemId}` | `CatalogItemRequest` | `CatalogItemDto` |
+| DELETE | `/api/v1/catalog/items/{itemId}` | — | `CatalogItemDto` (deactivated) |
 
 Catalog contract rules:
 
-- create a new brand on `POST /api/v1/catalog/brands`, then pass the returned active `brandId` into product preview/commit
-- product preview/commit use the canonical request fields listed below and always carry the resolved active `brandId` from that separate brand-create flow
-- frontend product entry and browse flows should call only the catalog endpoints listed in this section
+- create a new brand on `POST /api/v1/catalog/brands`, then pass the returned active `brandId` into single-item create/update on `/api/v1/catalog/items`
+- use `GET /api/v1/catalog/items` and `GET /api/v1/catalog/items/{itemId}` with `includeReadiness=true` when setup or factory-adjacent users need readiness visibility before execution
+- UI may label related sellable sizes as a `Product Family`, but the public setup contract does not ask operators for raw family/group identifiers
+- frontend item entry and browse flows should call only the catalog endpoints listed in this section
 
 #### Endpoint Map — Inventory (stock, batches, movement history, adjustments, dispatch)
 
@@ -1691,10 +1691,10 @@ Auth default for controller: `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING','RO
 
 | Method | Path | Request | Response `data` |
 |---|---|---|---|
-| GET | `/api/v1/catalog/products` | Query: `active`, `brandId`, `color`, `size`, `page`, `pageSize` | `PageResponse<CatalogProductDto>` |
-| POST | `/api/v1/catalog/products` | `CatalogProductEntryRequest` (`itemClass=RAW_MATERIAL` or `PACKAGING_RAW_MATERIAL`) | `CatalogProductEntryResponse` |
-| PUT | `/api/v1/catalog/products/{productId}` | `CatalogProductRequest` | `CatalogProductDto` |
-| DELETE | `/api/v1/catalog/products/{productId}` | — | `CatalogProductDto` |
+| GET | `/api/v1/catalog/items` | Query: `q`, `itemClass`, `includeStock`, `includeReadiness`, `page`, `pageSize` | `PageResponse<CatalogItemDto>` |
+| POST | `/api/v1/catalog/items` | `CatalogItemRequest` (`itemClass=RAW_MATERIAL` or `PACKAGING_RAW_MATERIAL`) | `CatalogItemDto` |
+| PUT | `/api/v1/catalog/items/{itemId}` | `CatalogItemRequest` | `CatalogItemDto` |
+| DELETE | `/api/v1/catalog/items/{itemId}` | — | `CatalogItemDto` |
 | GET | `/api/v1/raw-materials/stock` | — | `StockSummaryDto` |
 | GET | `/api/v1/raw-materials/stock/inventory` | — | `List<InventoryStockSnapshot>` |
 | GET | `/api/v1/raw-materials/stock/low-stock` | — | `List<InventoryStockSnapshot>` |
@@ -1721,9 +1721,7 @@ Auth default for controller: `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING','RO
 | GET | `/api/v1/dispatch/preview/{slipId}` | ADMIN/FACTORY | — | `DispatchPreviewDto` |
 | GET | `/api/v1/dispatch/slip/{slipId}` | ADMIN/FACTORY/SALES | — | `PackagingSlipDto` |
 | GET | `/api/v1/dispatch/order/{orderId}` | ADMIN/FACTORY/SALES | — | `PackagingSlipDto` |
-| POST | `/api/v1/dispatch/confirm` | ADMIN/FACTORY + authority `dispatch.confirm` | `DispatchConfirmationRequest` | `DispatchConfirmationResponse` |
-| PATCH | `/api/v1/dispatch/slip/{slipId}/status` | ADMIN/FACTORY | Query: `status` | `PackagingSlipDto` |
-| POST | `/api/v1/dispatch/backorder/{slipId}/cancel` | ADMIN/FACTORY | Query: `reason?` | `PackagingSlipDto` |
+| GET | `/api/v1/dispatch/slip/{slipId}/challan/pdf` | ADMIN/FACTORY | — | `application/pdf` |
 
 #### Endpoint Map — Manufacturing (plans, logs, packing, wastage)
 
@@ -1738,8 +1736,6 @@ Default auth: `hasAnyAuthority('ROLE_ADMIN','ROLE_FACTORY')` unless noted.
 | PUT | `/api/v1/factory/production-plans/{id}` | `ProductionPlanRequest` | `ProductionPlanDto` |
 | PATCH | `/api/v1/factory/production-plans/{id}/status` | Body `{ status }` | `ProductionPlanDto` |
 | DELETE | `/api/v1/factory/production-plans/{id}` | — | `204 No Content` |
-| GET | `/api/v1/factory/production-batches` | — | `List<ProductionBatchDto>` |
-| POST | `/api/v1/factory/production-batches` | Query `planId?` + `ProductionBatchRequest` | `ProductionBatchDto` |
 | GET | `/api/v1/factory/tasks` | — | `List<FactoryTaskDto>` |
 | POST | `/api/v1/factory/tasks` | `FactoryTaskRequest` | `FactoryTaskDto` |
 | PUT | `/api/v1/factory/tasks/{id}` | `FactoryTaskRequest` | `FactoryTaskDto` |
@@ -1762,20 +1758,18 @@ Auth default: `hasAnyAuthority('ROLE_FACTORY','ROLE_ACCOUNTING','ROLE_ADMIN')`.
 
 | Method | Path | Request | Response `data` |
 |---|---|---|---|
-| POST | `/api/v1/factory/packing-records` | Headers: idempotency (`Idempotency-Key`/`X-Idempotency-Key`/`X-Request-Id`), body `PackingRequest` | `ProductionLogDetailDto` |
-| POST | `/api/v1/factory/packing-records/{productionLogId}/complete` | — | `ProductionLogDetailDto` |
+| POST | `/api/v1/factory/packing-records` | Header: required `Idempotency-Key`, body `PackingRequest` | `ProductionLogDetailDto` |
 | GET | `/api/v1/factory/unpacked-batches` | — | `List<UnpackedBatchDto>` |
 | GET | `/api/v1/factory/production-logs/{productionLogId}/packing-history` | — | `List<PackingRecordDto>` |
-| POST | `/api/v1/factory/pack` | `BulkPackRequest` | `BulkPackResponse` |
 | GET | `/api/v1/factory/bulk-batches/{finishedGoodId}` | — | `List<BulkPackResponse.ChildBatchDto>` |
 | GET | `/api/v1/factory/bulk-batches/{parentBatchId}/children` | — | `List<BulkPackResponse.ChildBatchDto>` |
 
 Packing / traceability API notes:
-- `POST /api/v1/factory/packing-records` accepts idempotency keys via `Idempotency-Key`, legacy `X-Idempotency-Key`, or `X-Request-Id` fallback. Send a stable key from UI retries.
-- `POST /api/v1/factory/pack` uses deterministic reference derivation (payload + idempotency key) and replays prior effects on retry instead of re-posting inventory/accounting side effects.
+- `POST /api/v1/factory/packing-records` accepts only `Idempotency-Key`. Do not send body `idempotencyKey`, `X-Idempotency-Key`, or `X-Request-Id`; requests without the canonical header fail closed.
+- Re-submit the same `POST /api/v1/factory/packing-records` route to continue packing until the batch reaches `FULLY_PACKED`; there is no public `/complete` mutation.
 - Packing history/detail payloads now surface size-variant identifiers (`sizeVariantId`, `sizeVariantLabel`) to support size-level filtering and chips in UI.
 
-##### Packaging mapping configuration (`/api/v1/factory/packaging-mappings`)
+##### Packaging Setup / Rules (`/api/v1/factory/packaging-mappings`)
 
 | Method | Path | Auth | Request | Response `data` |
 |---|---|---|---|---|
@@ -1784,6 +1778,8 @@ Packing / traceability API notes:
 | POST | `/api/v1/factory/packaging-mappings` | ADMIN | `PackagingSizeMappingRequest` | `PackagingSizeMappingDto` |
 | PUT | `/api/v1/factory/packaging-mappings/{id}` | ADMIN | `PackagingSizeMappingRequest` | `PackagingSizeMappingDto` |
 | DELETE | `/api/v1/factory/packaging-mappings/{id}` | ADMIN | — | `ApiResponse<Void>` |
+
+Frontend note: treat this surface as Packaging Setup / Rules. Packing fails closed when a size is missing active, usable packaging setup, so direct users back to Packaging Setup instead of retrying pack blindly.
 
 ##### Wastage/cost analytics endpoints
 
@@ -1797,31 +1793,27 @@ Auth for report controller endpoints: `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUN
 
 #### Required User Flows
 
-1. **Product setup flow (`create brand -> create product -> set sizes/cartons`)**
+1. **Item setup flow (`create brand -> create item -> confirm readiness`)**
    1. `GET /api/v1/catalog/brands?active=true` to populate the brand picker.
    2. If needed, create a new brand with `POST /api/v1/catalog/brands` and capture the returned `brandId`.
-   3. `POST /api/v1/catalog/products?preview=true` with `brandId`, `colors[]`, `sizes[]`, and pricing/tax metadata.
-   4. Show the returned candidate members, conflicts, shared `variantGroupId`, and downstream-effect summary.
-   5. Commit the same payload with `POST /api/v1/catalog/products`.
-   6. Refresh browse/search via `GET /api/v1/catalog/products?brandId={brandId}&page=0&pageSize=20`.
-   7. Optional maintenance path: `PUT /api/v1/catalog/products/{productId}` for single-product metadata/carton updates after creation.
+   3. `POST /api/v1/catalog/items` with `brandId`, `itemClass`, `name`, optional `color`/`size`, and pricing/tax metadata.
+   4. Refresh browse/search via `GET /api/v1/catalog/items?itemClass={itemClass}&includeStock=true&includeReadiness=true&page=0&pageSize=20`.
+   5. Open detail via `GET /api/v1/catalog/items/{itemId}?includeStock=true&includeReadiness=true` before production or pack setup depends on the item.
+   6. Optional maintenance path: `PUT /api/v1/catalog/items/{itemId}` for single-item metadata updates after creation.
+   7. If the UI groups related sellable sizes, label them as `Product Family` only; do not expose raw family/group ids as editable inputs.
 
 2. **Production flow (`plan -> log -> pack -> stock`)**
    1. Create plan: `POST /api/v1/factory/production-plans`.
    2. Log production with consumed materials and costs: `POST /api/v1/factory/production/logs`.
-   3. Record packing sessions (repeat as needed): `POST /api/v1/factory/packing-records`.
-   4. Finalize log/wastage: `POST /api/v1/factory/packing-records/{productionLogId}/complete`.
-   5. Verify stock: `GET /api/v1/finished-goods/stock-summary` + `GET /api/v1/finished-goods/{id}/batches`.
-   6. Optional size conversion: `POST /api/v1/factory/pack`.
+   3. Record packing sessions (repeat as needed, always with `Idempotency-Key`): `POST /api/v1/factory/packing-records`.
+   4. Verify stock: `GET /api/v1/finished-goods/stock-summary` + `GET /api/v1/finished-goods/{id}/batches`.
 
-3. **Dispatch flow (`reserve -> operational confirm -> accounting posting`)**
+3. **Dispatch flow (`reserve -> operational preview -> canonical posting`)**
    1. Inventory reservation is created during sales order create/update flows (`POST/PUT /api/v1/sales/orders...`) via `SalesService.reserveForOrder`; there is no standalone reserve endpoint.
    2. Resolve slip: `GET /api/v1/dispatch/order/{orderId}` (or list via `/pending`).
    3. Show the operational preview modal with `GET /api/v1/dispatch/preview/{slipId}` and expect redacted pricing/accounting fields.
-   4. Factory/admin confirm shipment details with `POST /api/v1/dispatch/confirm`; this captures logistics metadata and challan output for the operational workspace.
-   5. Accounting/admin use `POST /api/v1/sales/dispatch/confirm` when the UI needs the finance posting/invoice result.
-   6. Refresh slip state via `GET /api/v1/dispatch/slip/{slipId}`.
-   7. If needed, cancel generated backorder slip: `POST /api/v1/dispatch/backorder/{slipId}/cancel`.
+   4. Use the read-only dispatch workspace for slip detail and challan access (`GET /api/v1/dispatch/slip/{slipId}` plus `/challan/pdf`).
+   5. Sales/admin use `POST /api/v1/sales/dispatch/confirm` for the canonical shipment posting when the UI needs logistics capture plus finance posting / invoice results.
 
 4. **Inventory adjustment flow (finished goods)**
    1. Build adjustment payload with explicit type: `DAMAGED`, `SHRINKAGE`, `OBSOLETE`, or `RECOUNT_UP`.
@@ -1846,9 +1838,9 @@ Auth for report controller endpoints: `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUN
 
 - `MIXED` (domain default/internal) -> `READY_TO_PACK` on `POST /api/v1/factory/production/logs`.
 - `READY_TO_PACK` -> `PARTIAL_PACKED` when `POST /api/v1/factory/packing-records` packs only part of quantity.
-- `READY_TO_PACK`/`PARTIAL_PACKED` -> `FULLY_PACKED` when packed quantity reaches mixed quantity or `POST /packing-records/{id}/complete` runs.
+- `READY_TO_PACK`/`PARTIAL_PACKED` -> `FULLY_PACKED` when `POST /api/v1/factory/packing-records` brings total packed quantity up to the mixed quantity.
 - No public API transition moves `PARTIAL_PACKED -> READY_TO_PACK`; frontend should treat packing progress as monotonic until completion.
-- Wastage is materialized at completion (`wastageQuantity`, `wastageReasonCode`).
+- `wastageQuantity` remains the mixed-minus-packed remainder on the production log; there is no second public completion mutation to finalize it.
 
 ##### Dispatch slip lifecycle (`PackagingSlip.status`)
 
@@ -1857,7 +1849,7 @@ Operational statuses: `PENDING`, `PENDING_STOCK`, `PENDING_PRODUCTION`, `RESERVE
 - Auto reservation path: shortages -> `PENDING_PRODUCTION`; no shortages -> `RESERVED`.
 - `PENDING_STOCK` is not an initial reservation state; it is used when dispatch confirmation results in zero shipped quantity while stock is still pending.
 - Manual status endpoint (`PATCH /dispatch/slip/{id}/status`) only allows transitions among: `PENDING`, `PENDING_STOCK`, `PENDING_PRODUCTION`, `RESERVED`.
-- `POST /dispatch/confirm`:
+- `POST /api/v1/sales/dispatch/confirm`:
   - if any quantity shipped -> current slip `DISPATCHED`.
   - if partial shipment -> backorder slip is created in `BACKORDER`.
   - if no shipment and shortage persists -> `PENDING_STOCK`.
@@ -1868,9 +1860,9 @@ Operational statuses: `PENDING`, `PENDING_STOCK`, `PENDING_PRODUCTION`, `RESERVE
 
 | ErrorCode enum | Wire code | Typical trigger in this module area | Frontend behavior |
 |---|---|---|---|
-| `BUSINESS_INVALID_STATE` | `BUS_001` | Inactive brand used for product mutation, invalid dispatch/backorder state transition | Show non-retryable state error; reload entity state |
-| `BUSINESS_DUPLICATE_ENTRY` | `BUS_002` | Duplicate brand name/product name | Inline field error + keep form open |
-| `BUSINESS_ENTITY_NOT_FOUND` | `BUS_003` | Brand/product/batch/mapping not found | Show not-found toast and navigate back to list |
+| `BUSINESS_INVALID_STATE` | `BUS_001` | Inactive brand used for item mutation, invalid dispatch/backorder state transition | Show non-retryable state error; reload entity state |
+| `BUSINESS_DUPLICATE_ENTRY` | `BUS_002` | Duplicate brand name/item code | Inline field error + keep form open |
+| `BUSINESS_ENTITY_NOT_FOUND` | `BUS_003` | Brand/item/batch/mapping not found | Show not-found toast and navigate back to list |
 | `BUSINESS_CONSTRAINT_VIOLATION` | `BUS_004` | Insufficient stock/business guardrails | Block submit and surface corrective action |
 | `VALIDATION_INVALID_INPUT` | `VAL_001` | Missing/invalid sizes-carton mapping, invalid quantities/status | Inline validation + do not retry automatically |
 | `VALIDATION_MISSING_REQUIRED_FIELD` | `VAL_002` | Missing idempotency key or required payload fields | Highlight required fields/headers |
@@ -1885,15 +1877,13 @@ Operational statuses: `PENDING`, `PENDING_STOCK`, `PENDING_PRODUCTION`, `RESERVE
 
 - `CatalogBrandRequest`: `name*`, `logoUrl`, `description`, `active`.
 - `CatalogBrandDto`: `id`, `publicId`, `name`, `code`, `logoUrl`, `description`, `active`.
-- `CatalogProductEntryRequest`: `brandId*`, `baseProductName*`, `category*`, `unitOfMeasure*`, `hsnCode*`, `gstRate* (0..100)`, `colors[]*`, `sizes[]*`, optional `basePrice`, optional `minDiscountPercent`, optional `minSellingPrice`, optional `metadata`.
-- `CatalogProductEntryResponse`: `preview`, `variantGroupId`, `productFamilyName`, `brandId`, `brandName`, `brandCode`, `category`, `unitOfMeasure`, `hsnCode`, pricing fields, `metadata`, `candidateCount`, `downstreamEffects`, `members[]`, `conflicts[]`.
-- `CatalogProductEntryResponse.Member`: `id?`, `publicId?`, `sku`, `productName`, `color`, `size`.
-- `CatalogProductEntryResponse.Conflict`: `sku`, `reason`, `productName`, `color`, `size`.
-- `CatalogProductRequest`: maintenance/update contract for `PUT /api/v1/catalog/products/{productId}` with `brandId*`, `name*`, `colors[]`, `sizes[]`, `cartonSizes[]`, `unitOfMeasure*`, `hsnCode*`, `gstRate* (0..100)`, `active`.
-- `CatalogProductCartonSizeRequest`: `size*`, `piecesPerCarton* (>0)`.
-- `CatalogProductDto`: browse/search and maintenance DTO with `id`, `publicId`, `brandId`, `brandName`, `brandCode`, `name`, `sku`, `colors[]`, `sizes[]`, `cartonSizes[]`, `unitOfMeasure`, `hsnCode`, `gstRate`, `active`.
-- `CatalogProductCartonSizeDto`: `size`, `piecesPerCarton`.
-- `PageResponse<CatalogProductDto>`: `content`, `totalElements`, `totalPages`, `page`, `size`.
+- `CatalogItemRequest`: `brandId*`, `name*`, `itemClass*`, optional `color`, optional `size`, `unitOfMeasure*`, `hsnCode*`, `gstRate* (0..100)`, optional `basePrice`, optional `minDiscountPercent`, optional `minSellingPrice`, optional `metadata`, optional `active`.
+- `CatalogItemDto`: browse/search and maintenance DTO with `id`, `publicId`, optional `rawMaterialId`, `brandId`, `brandName`, `brandCode`, `name`, `code`, `itemClass`, optional `color`, optional `size`, `unitOfMeasure`, `hsnCode`, `basePrice`, `gstRate`, `minDiscountPercent`, `minSellingPrice`, `metadata`, `active`, optional `stock`, optional `readiness`.
+- `CatalogItemStockDto`: `onHandQuantity`, `reservedQuantity`, `availableQuantity`, `unitOfMeasure`.
+- `SkuReadinessDto`: `sku`, `masterReady`, `inventoryReady`, `productionReady`, `packingReady`, `salesReady`, `accountingReady`.
+- `SkuReadinessDto.Stage`: `ready`, `blockers[]`.
+- `PageResponse<CatalogItemDto>`: `content`, `totalElements`, `totalPages`, `page`, `size`.
+- Product Family is explanatory vocabulary only; no public `familyId`, `groupId`, or `variantGroupId` field is required for setup screens.
 
 ##### Inventory + dispatch DTOs
 
@@ -1936,28 +1926,19 @@ Operational statuses: `PENDING`, `PENDING_STOCK`, `PENDING_PRODUCTION`, `RESERVE
 
 - `ProductionPlanRequest`: `planNumber*`, `productName*`, `quantity*`, `plannedDate*`, `notes`.
 - `ProductionPlanDto`: identity + plan/product/qty/date/status/notes.
-- `ProductionBatchRequest` (legacy path): `batchNumber*`, `quantityProduced*`, `loggedBy`, `notes`.
-- `ProductionBatchDto` (legacy path): identity + batch/qty/timestamp/user/notes.
-- `ProductionLogRequest`: `brandId*`, `productId*`, `batchColour`, `batchSize*`, `unitOfMeasure`, `mixedQuantity*`, `producedAt`, `notes`, `createdBy`, `addToFinishedGoods`, `salesOrderId`, `laborCost`, `overheadCost`, `materials*`.
+- `ProductionLogRequest`: `brandId*`, `productId*`, `batchColour`, `batchSize*`, `unitOfMeasure`, `mixedQuantity*`, `producedAt`, `notes`, `createdBy`, `salesOrderId`, `laborCost`, `overheadCost`, `materials*`.
 - `ProductionLogRequest.MaterialUsageRequest`: `rawMaterialId*`, `quantity* (>0)`, `unitOfMeasure`.
 - `ProductionLogDto`: lifecycle summary with output, packed quantity, wastage, status, cost totals.
-- `ProductionLogDetailDto`: `ProductionLogDto` fields + notes + `materials[]` + `packingRecords[]`.
+- `ProductionLogDetailDto`: `ProductionLogDto` fields + notes + `materials[]` + `packingRecords[]` + `productFamilyName` + `allowedSellableSizes[]`.
 - `ProductionLogMaterialDto`: raw material batch and movement linkage + quantity/cost fields.
-- `ProductionLogPackingRecordDto`: packing output linkage (`finishedGoodId/batchId`, packaging size, packed quantity, packed metadata) plus size-variant fields:
-  - `sizeVariantId`: FK of resolved/auto-created size variant.
+- `ProductionLogPackingRecordDto`: packing output linkage (`finishedGoodId/batchId`, packaging size, packed quantity, packed metadata) plus resolved size-variant fields:
+  - `sizeVariantId`: FK of the explicit sellable-size target chosen for the pack line.
   - `sizeVariantLabel`: normalized size label used for UI chips/filters.
+- `AllowedSellableSizeDto`: `childFinishedGoodId`, `childSkuCode`, `childFinishedGoodName`, `sizeVariantId`, `sizeLabel`, `piecesPerBox`, `litersPerUnit`, `productFamilyName`.
 - `PackingRequest`: `productionLogId*`, `packedDate`, `packedBy`, `idempotencyKey`, `lines*`.
-- `PackingLineRequest`: `packagingSize*`, `quantityLiters`, `piecesCount`, `boxesCount`, `piecesPerBox` (all positive when provided).
+- `PackingLineRequest`: `childFinishedGoodId*`, `childBatchCount`, `packagingSize*`, `quantityLiters`, `piecesCount`, `boxesCount`, `piecesPerBox` (all positive when provided).
 - `PackingRecordDto`: persisted packing record with line-level box/piece metadata + `sizeVariantId`/`sizeVariantLabel`.
-- `UnpackedBatchDto`: production log quantities (`mixed`, `packed`, `remaining`) and status.
-- `BulkPackRequest`: `bulkBatchId*`, `packs*`, `packagingMaterials`, `skipPackagingConsumption`, `packDate`, `packedBy`, `notes`, `idempotencyKey`.
-- `BulkPackRequest.PackLine`: `childSkuId*`, `quantity*`, `sizeLabel`, `unit`.
-- `BulkPackRequest.MaterialConsumption`: `materialId*`, `quantity*`, `unit`.
-- `BulkPackResponse`: consumed bulk qty/cost/journal + created `childBatches[]`; includes:
-  - `packagingCost`: total packaging cost posted for this bulk-to-size run.
-  - `journalEntryId`: accounting linkage for audit drilldowns.
-  - `packedAt`: server timestamp of operation completion.
-- `BulkPackResponse.ChildBatchDto`: child batch identity + SKU/size + qty/cost/value.
+- `UnpackedBatchDto`: production log quantities (`mixed`, `packed`, `remaining`) and status + `productFamilyName` + `allowedSellableSizes[]`.
 - `CostBreakdownDto` (`GET /api/v1/reports/production-logs/{id}/cost-breakdown`): production cost trace payload used by manufacturing analytics pages.
   - `costComponents: CostComponentTraceDto` => `productionMaterialCost`, `laborCost`, `overheadCost`, `packagingCost`, `totalCost`, `mixedQuantity`, `packedQuantity`, `blendedUnitCost`.
   - `packedBatches: PackedBatchTraceDto[]` => packing record + FG batch references (`packingRecordId`, `finishedGoodBatchId/publicId/batchCode`, `finishedGoodCode/name`, `sizeLabel`, `packedQuantity`, `unitCost`, `totalValue`, `accountingReference`, `journalEntryId`).
@@ -1975,14 +1956,14 @@ Operational statuses: `PENDING`, `PENDING_STOCK`, `PENDING_PRODUCTION`, `RESERVE
 #### UI Hints (frontend implementation)
 
 - **Brand dropdown**: source from `GET /api/v1/catalog/brands?active=true`; store/use `brandId` only. If the brand does not exist, create it first via `POST /api/v1/catalog/brands` and then reuse the returned `brandId`.
-- **Color input**: chip-style multi-select; preserve order entered by user when sending `colors[]`.
-- **Size input**: send canonical `sizes[]` for preview/commit. Use `cartonSizes[]` only on the maintenance `PUT /api/v1/catalog/products/{productId}` path if the UI exposes carton mappings.
-- **Product preview UX**: call `POST /api/v1/catalog/products?preview=true` before commit for matrix entry; render `members[]`, `conflicts[]`, `candidateCount`, and `downstreamEffects` directly from the response.
+- **Color input**: optional single value on `CatalogItemRequest.color`; if the UI groups related sellable sizes, derive the Product Family label in the client without asking for raw family/group ids.
+- **Size input**: optional single value on `CatalogItemRequest.size`; create one item per sellable size variant instead of sending matrix arrays.
+- **Item readiness UX**: call `GET /api/v1/catalog/items` or `GET /api/v1/catalog/items/{itemId}` with `includeReadiness=true` and render returned blocker codes directly before production, pack, or opening-stock steps depend on the item.
 - **HSN lookup**:
   - Backend currently validates/persists `hsnCode` but does not expose a dedicated HSN master endpoint.
   - Recommended UX: local searchable HSN dataset/autocomplete in UI + final backend validation on submit.
-- **Product search/filter**: always use server pagination (`page`, `pageSize`); backend caps `pageSize` at 100.
-- **Catalog route guard**: surface only the canonical catalog endpoints listed in this section for brand selection/create, product preview/commit, and catalog browse.
+- **Item search/filter**: always use server pagination (`page`, `pageSize`); backend caps `pageSize` at 100. Use `q`, `itemClass`, `includeStock`, and `includeReadiness` for setup surfaces.
+- **Catalog route guard**: surface only the canonical catalog endpoints listed in this section for brand selection/create, single-item setup, and catalog browse/detail.
 - **Dispatch confirm UI**: force explicit per-line shipped quantity entry (cannot exceed ordered quantity).
 - **Slip status controls**: only expose `PENDING`, `PENDING_STOCK`, `PENDING_PRODUCTION`, `RESERVED`; do not expose direct set to `DISPATCHED/BACKORDER/CANCELLED`.
 - **Idempotency-sensitive screens**: send stable idempotency keys for finished-good adjustments, raw-material adjustments, opening-stock import, raw-material intake, and packing records.
@@ -2024,17 +2005,17 @@ Operational statuses: `PENDING`, `PENDING_STOCK`, `PENDING_PRODUCTION`, `RESERVE
 | `POST` | `/api/v1/dealer-portal/credit-limit-requests` | `ROLE_DEALER` | `DealerPortalCreditLimitRequestCreateRequest` | `CreditLimitRequestDto` for a new pending permanent credit-limit request scoped to the authenticated dealer |
 | `GET` | `/api/v1/dealer-portal/invoices/{invoiceId}/pdf` | `ROLE_DEALER` | — | `application/pdf` |
 | `GET` | `/api/v1/dispatch/preview/{slipId}` | `ROLE_ADMIN`/`ROLE_FACTORY` | — | `DispatchPreviewDto` |
-| `POST` | `/api/v1/dispatch/confirm` | `ROLE_ADMIN`/`ROLE_FACTORY` + `dispatch.confirm` | `DispatchConfirmationRequest` | `DispatchConfirmationResponse` |
-| `POST` | `/api/v1/sales/dispatch/confirm` | `ROLE_ACCOUNTING`/`ROLE_ADMIN` + `dispatch.confirm` | `DispatchConfirmRequest` | `DispatchConfirmResponse` |
-| `POST` | `/api/v1/sales/dispatch/reconcile-order-markers` | `ROLE_ACCOUNTING`/`ROLE_ADMIN` + `dispatch.confirm` | Query: `limit?` (default `200`) | `DispatchMarkerReconciliationResponse` |
-| `POST` | `/api/v1/orchestrator/factory/dispatch/{batchId}` | `ROLE_ADMIN` or `ROLE_FACTORY` + `factory.dispatch` | `DispatchRequest` | Deprecated compatibility path only; runtime returns `410 Gone` with `{ message, canonicalPath=/api/v1/dispatch/confirm }` and does not post or release anything |
+| `GET` | `/api/v1/dispatch/slip/{slipId}/challan/pdf` | `ROLE_ADMIN`/`ROLE_FACTORY` | — | `application/pdf` |
+| `POST` | `/api/v1/sales/dispatch/confirm` | `ROLE_SALES`/`ROLE_ADMIN` + `dispatch.confirm` | `DispatchConfirmRequest` | `DispatchConfirmResponse` |
+| `POST` | `/api/v1/sales/dispatch/reconcile-order-markers` | `ROLE_SALES`/`ROLE_ADMIN` + `dispatch.confirm` | Query: `limit?` (default `200`) | `DispatchMarkerReconciliationResponse` |
+| `POST` | `/api/v1/orchestrator/factory/dispatch/{batchId}` | `ROLE_ADMIN` or `ROLE_FACTORY` + `factory.dispatch` | `DispatchRequest` | Deprecated compatibility path only; runtime returns `410 Gone` with `{ message, canonicalPath=/api/v1/sales/dispatch/confirm }` and does not post or release anything |
 
 #### Portal boundary notes (2026-03-08)
 
-- `/api/v1/dispatch/confirm` is the factory/admin operational dispatch workspace. When transporter-or-driver, vehicle number, or challan reference is missing, backend blockers now return business-language instructions instead of technical field names.
-- `/api/v1/sales/dispatch/confirm` is the accounting/admin final dispatch posting surface. Sales denials now say accounting must complete final dispatch posting; factory denials now direct users back to the factory dispatch workspace.
-- `/api/v1/orchestrator/factory/dispatch/{batchId}` must not be used for shipment posting or inventory progression. It is retained only to fail closed with `410 Gone` and `canonicalPath=/api/v1/dispatch/confirm` so stale factory clients can be redirected safely.
-- `/api/v1/orchestrator/orders/{orderId}/fulfillment` still handles non-dispatch workflow states like `PROCESSING`, but dispatch-like target states (`SHIPPED`, `DISPATCHED`, `FULFILLED`, `COMPLETED`) now fail closed with `BUS_001` and instruct callers to use `/api/v1/dispatch/confirm`.
+- `/api/v1/dispatch/**` is now a read-only prepared-slip workspace for factory/operator lookup, preview, slip detail, order lookup, and challan download.
+- `/api/v1/sales/dispatch/confirm` is the only surviving dispatch-confirm write surface. Accounting denials now point back to the sales dispatch owner, and factory denials direct users to the read-only dispatch workspace for lookup/challan details only.
+- `/api/v1/orchestrator/factory/dispatch/{batchId}` must not be used for shipment posting or inventory progression. It is retained only to fail closed with `410 Gone` and `canonicalPath=/api/v1/sales/dispatch/confirm` so stale clients can be redirected safely.
+- `/api/v1/orchestrator/orders/{orderId}/fulfillment` still handles non-dispatch workflow states like `PROCESSING`, but dispatch-like target states (`SHIPPED`, `DISPATCHED`, `FULFILLED`, `COMPLETED`) now fail closed with `BUS_001` and instruct callers to use `/api/v1/sales/dispatch/confirm`.
 - Credit override requests can still be created by sales/factory/admin on `/api/v1/credit/override-requests`, but approve/reject review is now limited to admin/accounting.
 - Dealer portal routes remain dealer-scoped for reads, but dealers can now submit permanent credit-limit requests on `/api/v1/dealer-portal/credit-limit-requests`. Do not surface dispatch-override actions in the dealer portal.
 - Dealer invoice PDF export stays dealer-scoped and audited; cross-dealer invoice-id guessing returns `404`, and token/header company mismatches return `403`.
@@ -2066,11 +2047,11 @@ Operational statuses: `PENDING`, `PENDING_STOCK`, `PENDING_PRODUCTION`, `RESERVE
    3. Load overdue details from `GET /api/v1/dealer-portal/aging`.
    4. Expose a dealer CTA only for permanent credit-limit requests. Keep dispatch overrides and other tenant-internal workflow actions out of the dealer portal. Dealers can still download invoice PDFs via `/invoices/{invoiceId}/pdf`.
 
-5. **Dispatch reserve -> operational preview -> confirm**
+5. **Dispatch reserve -> operational preview -> canonical confirm**
    1. Reserve inventory during order creation/confirmation.
    2. Open modal with `GET /api/v1/dispatch/preview/{slipId}` and render operational shipment context only; do not expect price totals or GST breakdown on this factory/admin preview.
-   3. Factory/admin use `POST /api/v1/dispatch/confirm` for shipment confirmation, transporter/driver capture, vehicle number capture, challan reference capture, and delivery challan access.
-   4. Accounting/admin use `POST /api/v1/sales/dispatch/confirm` when the UI needs final invoice and AR-journal linkage.
+   3. Factory/admin use the read-only dispatch workspace for slip lookup, preview, challan download, and operator context.
+   4. Sales/admin complete shipment posting with `POST /api/v1/sales/dispatch/confirm`, including transporter/driver, vehicle number, challan reference, and final invoice / AR-journal linkage.
    5. Keep sales and factory users away from the accounting-only posting surface and surface backend deny text verbatim if a stale route is hit.
 
 6. **Cancel order with reason code**
@@ -2169,9 +2150,9 @@ Frontend behavior: treat these as non-retryable user/action-state errors; surfac
   - Existing slip/order summary + `lines[]`
   - On the operational `/api/v1/dispatch/preview/{slipId}` surface, `unitPrice`, `lineSubtotal`, `lineTax`, and `lineTotal` are redacted and `gstBreakdown` is `null`
 
-- `DispatchConfirmationResponse` (`POST /api/v1/dispatch/confirm`)
-  - Operational response includes `packingSlipId`, shipment/challan metadata, `deliveryChallanNumber`, `deliveryChallanPdfPath`, and line shipment results
-  - `journalEntryId`, `cogsJournalEntryId`, `totalShippedAmount`, and per-line costing/price fields are intentionally redacted on this surface
+- `PackagingSlipDto` (`GET /api/v1/dispatch/slip/{slipId}`)
+  - Operational read response includes shipment/challan metadata, `deliveryChallanNumber`, and `deliveryChallanPdfPath`
+  - `journalEntryId`, `cogsJournalEntryId`, and pricing/accounting fields remain intentionally redacted on this surface
 
 - `DispatchConfirmResponse` (`POST /api/v1/sales/dispatch/confirm`)
   - Finance posting response includes `packingSlipId`, `salesOrderId`, `finalInvoiceId`, `arJournalEntryId`, and related accounting/posting linkage fields
@@ -3323,7 +3304,7 @@ These flows map complete API sequences across modules. Use them to drive wizard-
 1. Dealer onboarding: `POST /api/v1/dealers`.
 2. Create sales order: `POST /api/v1/sales/orders`.
 3. Confirm order: `POST /api/v1/sales/orders/{id}/confirm`.
-4. Dispatch + invoice creation: use `POST /api/v1/dispatch/confirm` from the factory/admin dispatch workspace for shipment metadata plus challan output, then use `POST /api/v1/sales/dispatch/confirm` only from accounting/admin posting flows when the UI needs `finalInvoiceId` and AR journal links.
+4. Dispatch + invoice creation: use the read-only factory/admin dispatch workspace for preview, slip lookup, and challan output, then use `POST /api/v1/sales/dispatch/confirm` for the canonical shipment posting when the UI needs `finalInvoiceId` and AR journal links.
 5. Receive/allocate payment: `POST /api/v1/accounting/settlements/dealers` (or auto-settle endpoint if used).
 6. Operational reconciliation checks:
    - `GET /api/v1/dealers/{dealerId}/aging`
@@ -3364,8 +3345,7 @@ Frontend orchestration notes:
 1. Create production plan: `POST /api/v1/factory/production-plans`.
 2. Log production (consumption + costs): `POST /api/v1/factory/production/logs`.
 3. Pack output:
-   - `POST /api/v1/factory/packing-records`
-   - Optional completion: `POST /api/v1/factory/packing-records/{productionLogId}/complete`
+   - `POST /api/v1/factory/packing-records` with `Idempotency-Key`
 4. Validate stock availability:
    - `GET /api/v1/finished-goods/stock-summary`
    - `GET /api/v1/finished-goods/{id}/batches`

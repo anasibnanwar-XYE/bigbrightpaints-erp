@@ -10,6 +10,7 @@ import java.util.Optional;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
@@ -83,21 +84,16 @@ public class PackagingMaterialService {
 
     if (mappingRepository.existsByCompanyAndPackagingSizeIgnoreCaseAndRawMaterial(
         company, normalizedSize, rawMaterial)) {
-      throw new ApplicationException(
-          ErrorCode.DUPLICATE_ENTITY,
-          "Packaging size mapping already exists for: "
-              + normalizedSize
-              + " and "
-              + rawMaterial.getSku());
+      throw duplicateMapping(normalizedSize, rawMaterial);
     }
 
     PackagingSizeMapping mapping = new PackagingSizeMapping();
     mapping.setCompany(company);
     mapping.setPackagingSize(normalizedSize);
     mapping.setRawMaterial(rawMaterial);
-    mapping.setUnitsPerPack(request.unitsPerPack() != null ? request.unitsPerPack() : 1);
+    mapping.setUnitsPerPack(request.unitsPerPack());
     mapping.setCartonSize(request.cartonSize());
-    mapping.setLitersPerUnit(request.litersPerUnit());
+    mapping.setLitersPerUnit(resolveLitersPerUnit(request.litersPerUnit(), normalizedSize));
     mapping.setActive(true);
 
     return toDto(mappingRepository.save(mapping));
@@ -114,31 +110,21 @@ public class PackagingMaterialService {
                     new ApplicationException(
                         ErrorCode.BUSINESS_ENTITY_NOT_FOUND, "Mapping not found"));
 
-    if (request.rawMaterialId() != null) {
-      RawMaterial rawMaterial =
-          requireActivePackagingRawMaterial(company, request.rawMaterialId(), false);
-      requirePackagingMaterial(rawMaterial);
-      if (mappingRepository.existsByCompanyAndPackagingSizeIgnoreCaseAndRawMaterialAndIdNot(
-          company, mapping.getPackagingSize(), rawMaterial, mapping.getId())) {
-        throw new ApplicationException(
-            ErrorCode.DUPLICATE_ENTITY,
-            "Packaging size mapping already exists for: "
-                + mapping.getPackagingSize()
-                + " and "
-                + rawMaterial.getSku());
-      }
-      mapping.setRawMaterial(rawMaterial);
+    String normalizedSize = normalizePackagingSize(request.packagingSize());
+    RawMaterial rawMaterial =
+        requireActivePackagingRawMaterial(company, request.rawMaterialId(), false);
+    requirePackagingMaterial(rawMaterial);
+
+    if (mappingRepository.existsByCompanyAndPackagingSizeIgnoreCaseAndRawMaterialAndIdNot(
+        company, normalizedSize, rawMaterial, mapping.getId())) {
+      throw duplicateMapping(normalizedSize, rawMaterial);
     }
 
-    if (request.unitsPerPack() != null) {
-      mapping.setUnitsPerPack(request.unitsPerPack());
-    }
-    if (request.cartonSize() != null) {
-      mapping.setCartonSize(request.cartonSize());
-    }
-    if (request.litersPerUnit() != null) {
-      mapping.setLitersPerUnit(request.litersPerUnit());
-    }
+    mapping.setPackagingSize(normalizedSize);
+    mapping.setRawMaterial(rawMaterial);
+    mapping.setUnitsPerPack(request.unitsPerPack());
+    mapping.setCartonSize(request.cartonSize());
+    mapping.setLitersPerUnit(resolveLitersPerUnit(request.litersPerUnit(), normalizedSize));
 
     return toDto(mappingRepository.save(mapping));
   }
@@ -186,9 +172,7 @@ public class PackagingMaterialService {
         mappingRepository.findActiveByCompanyAndPackagingSizeIgnoreCase(company, normalizedSize);
 
     if (mappings.isEmpty()) {
-      throw new ApplicationException(
-          ErrorCode.VALIDATION_INVALID_INPUT,
-          "Packaging BOM is required for size: " + normalizedSize);
+      throw missingPackagingSetup(normalizedSize);
     }
 
     BigDecimal totalCost = BigDecimal.ZERO;
@@ -197,14 +181,15 @@ public class PackagingMaterialService {
     List<RawMaterial> consumedMaterials = new ArrayList<>();
 
     for (PackagingSizeMapping mapping : mappings) {
-      RawMaterial material =
-          requireActivePackagingRawMaterial(company, mapping.getRawMaterial().getId(), true);
-      requirePackagingMaterial(material);
+      RawMaterial material = requirePackagingSetupRawMaterial(company, mapping, normalizedSize);
+      requirePackagingSetupMaterial(normalizedSize, material);
 
       if (material.getInventoryAccountId() == null) {
-        throw new ApplicationException(
-            ErrorCode.VALIDATION_INVALID_REFERENCE,
-            "Packaging material " + material.getSku() + " missing inventory account");
+        throw invalidPackagingSetupReference(
+            normalizedSize,
+            "points to packaging material "
+                + describeRawMaterial(material)
+                + " without an inventory account");
       }
 
       int unitsPerPack = mapping.getUnitsPerPack() != null ? mapping.getUnitsPerPack() : 1;
@@ -230,9 +215,7 @@ public class PackagingMaterialService {
     }
 
     if (totalCost.compareTo(BigDecimal.ZERO) <= 0) {
-      throw new ApplicationException(
-          ErrorCode.VALIDATION_INVALID_INPUT,
-          "Packaging consumption produced zero cost for size: " + normalizedSize);
+      throw invalidPackagingSetupInput(normalizedSize, "resolved to zero packaging cost");
     }
 
     if (packingRecord != null && !consumedMaterials.isEmpty()) {
@@ -319,6 +302,36 @@ public class PackagingMaterialService {
     }
   }
 
+  private RawMaterial requirePackagingSetupRawMaterial(
+      Company company, PackagingSizeMapping mapping, String normalizedSize) {
+    Long rawMaterialId = mapping.getRawMaterial() != null ? mapping.getRawMaterial().getId() : null;
+    if (rawMaterialId == null) {
+      throw invalidPackagingSetupReference(
+          normalizedSize, "does not reference a packaging material");
+    }
+    try {
+      return companyEntityLookup.lockActiveRawMaterial(company, rawMaterialId);
+    } catch (IllegalArgumentException ex) {
+      throw invalidPackagingSetupReference(
+          normalizedSize, "points to an inactive or missing packaging material");
+    }
+  }
+
+  private void requirePackagingSetupMaterial(String normalizedSize, RawMaterial material) {
+    if (material == null) {
+      throw invalidPackagingSetupReference(
+          normalizedSize,
+          "points to raw material " + describeRawMaterial(null) + " that is not marked as PACKAGING");
+    }
+    if (material.getMaterialType() != MaterialType.PACKAGING) {
+      throw invalidPackagingSetupReference(
+          normalizedSize,
+          "points to raw material "
+              + describeRawMaterial(material)
+              + " that is not marked as PACKAGING");
+    }
+  }
+
   private RawMaterial requireActivePackagingRawMaterial(
       Company company, Long rawMaterialId, boolean lock) {
     try {
@@ -329,6 +342,68 @@ public class PackagingMaterialService {
       throw new ApplicationException(
           ErrorCode.VALIDATION_INVALID_REFERENCE, "Raw material not found", ex);
     }
+  }
+
+  private ApplicationException missingPackagingSetup(String normalizedSize) {
+    return new ApplicationException(
+        ErrorCode.VALIDATION_INVALID_INPUT,
+        "Packaging Setup is required for size "
+            + normalizedSize
+            + ". Create or reactivate a Packaging Rule before packing.");
+  }
+
+  private ApplicationException invalidPackagingSetupReference(
+      String normalizedSize, String detail) {
+    return new ApplicationException(
+        ErrorCode.VALIDATION_INVALID_REFERENCE,
+        "Packaging Setup for size "
+            + normalizedSize
+            + ' '
+            + detail
+            + ". Update Packaging Rules before packing.");
+  }
+
+  private ApplicationException invalidPackagingSetupInput(String normalizedSize, String detail) {
+    return new ApplicationException(
+        ErrorCode.VALIDATION_INVALID_INPUT,
+        "Packaging Setup for size "
+            + normalizedSize
+            + ' '
+            + detail
+            + ". Update Packaging Rules before packing.");
+  }
+
+  private String describeRawMaterial(RawMaterial material) {
+    if (material == null) {
+      return "unknown";
+    }
+    if (StringUtils.hasText(material.getSku())) {
+      return material.getSku().trim();
+    }
+    return material.getId() != null ? "#" + material.getId() : "unknown";
+  }
+
+  private BigDecimal resolveLitersPerUnit(BigDecimal litersPerUnit, String normalizedSize) {
+    if (litersPerUnit != null) {
+      return litersPerUnit;
+    }
+    BigDecimal parsed = PackagingSizeParser.parseSizeInLitersAllowBareNumber(normalizedSize);
+    if (parsed == null) {
+      return BigDecimal.ONE;
+    }
+    if (parsed.compareTo(BigDecimal.ZERO) <= 0) {
+      return BigDecimal.ONE;
+    }
+    return parsed;
+  }
+
+  private ApplicationException duplicateMapping(String normalizedSize, RawMaterial rawMaterial) {
+    return new ApplicationException(
+        ErrorCode.DUPLICATE_ENTITY,
+        "Packaging size mapping already exists for: "
+            + normalizedSize
+            + " and "
+            + rawMaterial.getSku());
   }
 
   private PackagingSizeMappingDto toDto(PackagingSizeMapping mapping) {

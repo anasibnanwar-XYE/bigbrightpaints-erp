@@ -1,0 +1,40 @@
+{
+  "milestone": "dispatch-contract-hard-cut",
+  "round": 2,
+  "status": "pass",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "ROOT=\"/home/realnigga/Desktop/orchestrator_erp_worktrees/ERP-38-canonical-factory-flow\" && cd \"$ROOT\" && bash scripts/gate_fast.sh",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "ROOT=\"/home/realnigga/Desktop/orchestrator_erp_worktrees/ERP-38-canonical-factory-flow\" && cd \"$ROOT/erp-domain\" && MIGRATION_SET=v2 mvn -T8 compile -q",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "ROOT=\"/home/realnigga/Desktop/orchestrator_erp_worktrees/ERP-38-canonical-factory-flow\" && cd \"$ROOT\" && bash ci/lint-knowledgebase.sh && bash ci/check-architecture.sh && bash ci/check-enterprise-policy.sh && bash ci/check-orchestrator-layer.sh && python3 scripts/check_flaky_tags.py --tests-root erp-domain/src/test/java --gate gate-fast && bash scripts/guard_openapi_contract_drift.sh",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 2,
+    "passed": 2,
+    "failed": 0,
+    "failedFeatures": []
+  },
+  "blockingIssues": [],
+  "nonBlockingIssues": [
+    {
+      "featureId": "cleanup-stale-dispatch-confirm-proof",
+      "severity": "non_blocking",
+      "description": "`.factory/validation/freeze-dispatch-seams/user-testing/flows/listener-factory.json` still carries stale renamed-truthsuite and old-worktree references plus wording that mentions a factory confirm surface, even though the original blocking `/api/v1/dispatch/confirm` replay/equivalence proof was removed."
+    }
+  ],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [],
+  "rejectedObservations": [],
+  "previousRound": ".factory/validation/dispatch-contract-hard-cut/scrutiny/synthesis.round1.json"
+}

@@ -70,7 +70,8 @@ flowchart LR
 
 ## Duplicates and Bad Paths
 
-- `FactoryService.logBatch()` is deprecated and stale relative to `ProductionLogService`
+- `ProductionLogService` is the only surviving batch-create entrypoint; the legacy
+  `FactoryService.logBatch()` seam and `/api/v1/factory/production-batches` route are removed
 - journal assembly is duplicated across `PackingJournalBuilder`, `PackingBatchService`, `ProductionLogService`, and `CostAllocationService`
 - `PackingService` and `BulkPackingService` are separate but semantically close enough to drift
 - `ProductionCatalogService` stores accounting truth in product metadata and is a weak ownership seam

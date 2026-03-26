@@ -2,66 +2,61 @@
 
 Architectural decisions, patterns discovered, and conventions.
 
-**What belongs here:** Module structure, patterns, conventions, entity relationships, cross-module contracts.
+**What belongs here:** module structure, patterns, conventions, entity relationships, and cross-module contracts relevant to the current mission.
 
 ---
 
 ## Module Structure
+
 Base package: `com.bigbrightpaints.erp`
-- `core/` - Shared infrastructure (security, config, audit, exceptions, utilities)
-- `modules/` - Domain modules (accounting, admin, auth, company, factory, hr, inventory, invoice, portal, production, purchasing, rbac, reports, sales)
-- `orchestrator/` - Cross-module orchestration (command dispatch, event publishing, workflows, scheduling)
-- `shared/dto/` - Shared DTOs (ApiResponse, PageResponse, ErrorResponse)
-- `config/` - App-level config (CORS, RabbitMQ, Jackson)
 
-## Per-Module Convention
-Each module follows: `domain/` (entities + repos), `service/`, `controller/`, `dto/`, optionally `event/`, `config/`
+- `core/` - shared infrastructure (security, config, audit, exceptions, utilities)
+- `modules/` - domain modules (accounting, admin, auth, company, factory, hr, inventory, invoice, portal, production, purchasing, rbac, reports, sales)
+- `orchestrator/` - cross-module orchestration and command dispatch
+- `shared/dto/` - shared API envelopes and common DTOs
 
-## Key Patterns
-- Multi-tenant via `CompanyContextHolder` (thread-local company context)
-- Idempotency via signature hashing + DB unique constraints
-- Outbox pattern for reliable event publishing (EventPublisherService)
-- ShedLock for distributed scheduler coordination
-- Flyway v2 is the active migration path in prod profile (`prod` includes `flyway-v2`, locations `classpath:db/migration_v2`)
-- MapStruct for DTO mapping (CentralMapperConfig)
-- JaCoCo coverage gates (Tier A packages + bundle minimum)
+## General Conventions
 
-## Entity Base
-- `VersionedEntity` - base class with optimistic locking
-- Company-scoped entities have `company` field for tenant isolation
+- Per-module layout is `domain/`, `service/`, `controller/`, `dto/`, with optional `event/` and `config/`.
+- `ApplicationException` + `ErrorCode` are the business-error contract. Do not use raw `IllegalArgumentException` / `IllegalStateException` for domain failures.
+- `VersionedEntity` is the optimistic-locking base type.
+- Company/tenant scoped data relies on company context and scoped queries.
+- Flyway v2 is the only migration track valid for ERP-38.
+- `SystemRole` default-permission changes do not remove retired grants from existing database roles by themselves; `RoleService` synchronization is additive-only, so role-ownership moves need explicit cleanup/backfill proof for upgraded tenants.
 
-## Error Handling
-- `ApplicationException` with `ErrorCode` enum for domain errors
-- `GlobalExceptionHandler` maps exceptions to HTTP responses
-- **CONVENTION**: Always use ApplicationException for business errors, never raw IllegalArgumentException/IllegalStateException
+## ERP-38 Canonical Factory Flow Notes
 
-## Tenant & Admin Runtime Conventions
-- Tenant lifecycle states are `ACTIVE`, `SUSPENDED`, `DEACTIVATED`.
-- `DEACTIVATED` tenants are denied all API access.
-- `SUSPENDED` tenants are read-only (write operations are denied).
-- Module access gates treat `AUTH`, `ACCOUNTING`, `SALES`, and `INVENTORY` as always-on core modules.
-- Optional modules are controlled via company `enabled_modules` and enforced by `ModuleGatingInterceptor` + `ModuleGatingService`.
+- Setup truth remains outside factory execution:
+  - product/item setup lives on `/api/v1/catalog/items`
+  - packaging setup lives on `/api/v1/factory/packaging-mappings`
+- Execution truth is hard-cut to:
+  - `POST /api/v1/factory/production/logs`
+  - `POST /api/v1/factory/packing-records`
+  - `POST /api/v1/sales/dispatch/confirm`
+- Factory must not act like a second inventory-admin or accounting-admin workspace.
+- `ProductionLogService.createLog(...)` remains the manufacturing-truth entrypoint and `POST /api/v1/factory/production/logs` is the sole public batch-create route.
+- `PackingController` now exposes one pack mutation path only: `POST /api/v1/factory/packing-records`. The retired `POST /api/v1/factory/pack` and `POST /api/v1/factory/packing-records/{productionLogId}/complete` routes are removed.
+- The surviving pack contract must not auto-create default size variants or default finished-goods targets on behalf of the operator.
+- The surviving pack idempotency contract is `Idempotency-Key` only.
+- Dispatch posting ownership stays on the sales path through `SalesCoreEngine.confirmDispatch(...)`.
+- `/api/v1/dispatch/**` should end as prepared-slip reads only.
 
-## ERP Truth-Stabilization Mission Notes
-- Highest-risk O2C/P2P hotspots are `SalesCoreEngine`, `InvoiceService`, `GoodsReceiptService`, `PurchaseInvoiceEngine`, `InventoryAccountingEventListener`, `SupplierService`, and `DealerService`.
-- For this mission, workflow state and accounting state must stay separate in touched documents.
-- Posting truth must have one canonical trigger per touched workflow boundary; duplicate-truth listeners and dead fallback paths should be removed when a feature makes them obsolete.
-- O2C dispatch posting has one allowed accounting path: `SalesCoreEngine.confirmDispatch -> AccountingFacade.postCogsJournal/postSalesJournal`. Orchestrator batch-dispatch and fulfillment endpoints must fail closed or redirect callers to the canonical sales dispatch confirm endpoint; they must never mint `DISPATCH-*` journals.
-- The mission normalizes linked business references across order or proforma, production requirement, packaging slip, dispatch, invoice, journal, settlement, return, note, and reversal artifacts.
-- Flyway `migration_v2` is the only valid migration track for this mission.
+## Cross-Module Truth Boundaries
 
-## Lane 01 Tenant Runtime Canonicalization Notes
-- Canonical tenant/runtime policy writer: `PUT /api/v1/companies/{id}/tenant-runtime/policy`.
-- Canonical persistence/enforcement source for this slice: `modules.company.service.TenantRuntimeEnforcementService`.
-- The stale admin-side writer (`PUT /api/v1/admin/tenant-runtime/policy`) and any separate privileged-path recognition must be retired or collapsed in the same packet when touched.
-- Admin runtime metrics remain an in-scope tenant-scoped reader, but they must map canonical `auditChainId`/`updatedAt` to `policyReference`/`policyUpdatedAt` and align defaults with the canonical source.
-- `CompanyContextFilter`, `TenantRuntimeEnforcementService`, `AuthService`, and `TenantRuntimeEnforcementInterceptor` are the critical code surfaces for this packet.
-- See `.factory/library/tenant-runtime-control-plane.md` for the worker-facing packet contract and catching-lane notes.
+- Production logging must keep raw-material consumption, WIP, and semi-finished truth aligned.
+- Packing must keep packaging-material consumption and finished-goods truth aligned.
+- Dispatch must keep finished-goods reduction, invoice issuance, AR/COGS posting, and slip/order linkage aligned.
+- ERP-38 may touch sales/inventory/orchestrator code only where needed to preserve the single canonical dispatch-confirm owner. It must not redesign unrelated sales-order lifecycle behavior.
 
-## Catalog Surface Consolidation Notes
-- Historically, the catalog flow was split across three public hosts: `/api/v1/accounting/catalog/**`, `/api/v1/catalog/**`, and `/api/v1/production/**`. The surviving canonical public host is now `/api/v1/catalog/**`.
-- `ProductionCatalogService` remains the downstream-ready write path behind the canonical public host, and duplicate product mutation behavior on retired hosts must stay removed.
-- The packet contract is to keep only `/api/v1/catalog/**` as the public host, keep `POST /api/v1/catalog/brands` separate from product create, and keep `POST /api/v1/catalog/products` as the only public product-create surface.
-- Explicit persisted family/group linkage is required for multi-SKU creates; do not rely on naming conventions alone.
-- Preserve reserved SKU semantics such as `-BULK` and keep downstream finished-good/raw-material readiness in the same write path.
-- See `.factory/library/catalog-surface-consolidation.md` for mission-specific hotspots, cleanup targets, and packet guardrails.
+## Public Contract Surfaces That Must Stay In Sync
+
+- `openapi.json`
+- `docs/endpoint-inventory.md`
+- `erp-domain/docs/endpoint_inventory.tsv`
+- `docs/workflows/manufacturing-and-packaging.md`
+- `docs/workflows/inventory-management.md`
+- `docs/workflows/sales-order-to-cash.md`
+- `docs/code-review/flows/manufacturing-inventory.md`
+- `docs/code-review/flows/order-to-cash.md`
+- `.factory/library/frontend-handoff.md`
+- `.factory/library/frontend-v2.md`

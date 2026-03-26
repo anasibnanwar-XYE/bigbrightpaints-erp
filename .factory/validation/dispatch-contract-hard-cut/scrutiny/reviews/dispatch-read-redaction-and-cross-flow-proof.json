@@ -1,0 +1,28 @@
+{
+  "featureId": "dispatch-read-redaction-and-cross-flow-proof",
+  "reviewedAt": "2026-03-25T14:56:43Z",
+  "commitId": "61a77ce2b38755c23f264c0806608afefe91b577",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "I reviewed the feature metadata, handoff, transcript skeleton, `factory-flow-worker` procedure, commit `61a77ce2b38755c23f264c0806608afefe91b577`, and the directly related auth/runtime files. The redaction change itself is correct: `DispatchController` now nulls `totalAvailableAmount`, `DispatchControllerTest` locks that redaction, and `DispatchOperationalBoundaryIT` adds useful coverage for pending/preview/slip/order reads, challan persistence, replay stability, and the packed-only dispatch business path. However, the feature does not actually satisfy its stated requirement to prove the canonical **sales** dispatch confirm path. In the reviewed commit, `PortalRoleActionMatrix.FINANCIAL_DISPATCH` still authorizes only admin/accounting/factory users, `SystemRole` still grants `dispatch.confirm` to factory/accounting rather than sales, the new integration proof authenticates with the factory actor or bypasses HTTP auth entirely via direct `salesService.confirmDispatch(...)` calls, and the handoff's own runtime probe records `validation.sales@example.com` receiving `403` while a factory actor posts successfully. Because the committed behavior still contradicts the feature description/expected behavior, this feature should not pass as reviewed.",
+    "issues": [
+      {
+        "file": "erp-domain/src/main/java/com/bigbrightpaints/erp/core/security/PortalRoleActionMatrix.java",
+        "line": 30,
+        "severity": "blocking",
+        "description": "The reviewed commit still makes `POST /api/v1/sales/dispatch/confirm` an accounting/factory-owned action instead of a sales-owned canonical path: `FINANCIAL_DISPATCH` excludes `ROLE_SALES` and the denial copy at lines 50-57 explicitly tells sales that accounting owns final posting. That directly contradicts the feature contract in `features.json` (`.../features.json:569-584`) and is visible in the worker's own runtime evidence (`handoffs/2026-03-25T10-10-29-084Z__dispatch-read-redaction-and-cross-flow-proof__fcccfbb3-65b2-43b3-881b-a7bd07e0224e.json:33`), where `validation.sales@example.com` gets `403` while a factory actor succeeds. The added proof also fails to lock the intended contract because `DispatchOperationalBoundaryIT` authenticates via the factory login helper (`.../DispatchOperationalBoundaryIT.java:456-463`) and its packed-only test calls `salesService.confirmDispatch(...)` directly (`.../DispatchOperationalBoundaryIT.java:376-429`) instead of asserting a sales-authorized HTTP success case. As shipped, the feature proves business posting exists, but not that the canonical **sales** dispatch-confirm route is the working owner required by scope."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "knowledge",
+      "observation": "Mission/shared validation guidance was ahead of the reviewed code: it instructed workers to prove canonical dispatch posting with `validation.sales@example.com`, but the committed RBAC still denied sales and allowed factory/accounting. That mismatch made it easy for the worker to substitute a factory-owned success probe and still declare the feature complete.",
+      "evidence": "`/home/realnigga/.factory/missions/638844ab-aa59-453c-ae4d-3ee78989efb4/features.json:569-584` says the feature must prove the canonical sales dispatch confirm path; `/home/realnigga/Desktop/orchestrator_erp_worktrees/ERP-38-canonical-factory-flow/.factory/library/user-testing.md:62-64` says to use `validation.sales@example.com` for canonical dispatch-confirm probes; `handoffs/2026-03-25T10-10-29-084Z__dispatch-read-redaction-and-cross-flow-proof__fcccfbb3-65b2-43b3-881b-a7bd07e0224e.json:33` records that same sales actor receiving `403` while a factory actor posted successfully."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Fail: the redacted read work is sound, but commit `61a77ce2b38755c23f264c0806608afefe91b577` does not satisfy the feature's required sales-owned canonical dispatch proof because the committed RBAC still denies sales and the added proof exercises factory/direct-service posting instead."
+}

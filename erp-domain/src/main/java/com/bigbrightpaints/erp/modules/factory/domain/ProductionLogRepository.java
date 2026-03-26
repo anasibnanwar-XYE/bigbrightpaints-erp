@@ -17,6 +17,8 @@ import com.bigbrightpaints.erp.modules.company.domain.Company;
 import jakarta.persistence.LockModeType;
 
 public interface ProductionLogRepository extends JpaRepository<ProductionLog, Long> {
+  long countByCompany(Company company);
+
   List<ProductionLog> findTop25ByCompanyOrderByProducedAtDesc(Company company);
 
   Optional<ProductionLog> findByCompanyAndId(Company company, Long id);

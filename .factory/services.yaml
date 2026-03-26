@@ -1,48 +1,57 @@
 commands:
-  init: /home/realnigga/Desktop/Mission-control/.factory/init.sh
+  init: >-
+    ROOT=$(git rev-parse --show-toplevel) && bash "$ROOT/.factory/init.sh"
   install: >-
-    cd /home/realnigga/Desktop/Mission-control/erp-domain && mvn -q -DskipTests dependency:go-offline
+    ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT/erp-domain" && mvn -q -DskipTests dependency:go-offline
   compile: >-
-    cd /home/realnigga/Desktop/Mission-control/erp-domain && MIGRATION_SET=v2 mvn -T8 compile -q
+    ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT/erp-domain" && MIGRATION_SET=v2 mvn -T8 compile -q
   typecheck: >-
-    cd /home/realnigga/Desktop/Mission-control/erp-domain && MIGRATION_SET=v2 mvn -T8 compile -q
-  catalog-consolidation-targeted: >-
-    cd /home/realnigga/Desktop/Mission-control/erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='CatalogServiceBrandCrudTest,CatalogServiceProductCrudTest,CatalogServiceBulkUpsertTest,ProductionCatalogServiceBulkVariantRaceTest,ProductionCatalogServiceRetryPolicyTest,ProductionCatalogFinishedGoodInvariantIT,ProductionCatalogRawMaterialInvariantIT,SalesCoreEngineCoverageTest,SalesProformaBoundaryServiceTest,SalesServiceTest,OpenApiSnapshotIT' test
+    ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT/erp-domain" && MIGRATION_SET=v2 mvn -T8 compile -q
+  spotless-check: >-
+    ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT/erp-domain" && MIGRATION_SET=v2 mvn spotless:check
+  spotless-apply: >-
+    ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT/erp-domain" && MIGRATION_SET=v2 mvn spotless:apply
   test: >-
-    cd /home/realnigga/Desktop/Mission-control && bash scripts/gate_fast.sh
-  pr-auth-tenant: >-
-    cd /home/realnigga/Desktop/Mission-control && bash scripts/run_test_manifest.sh --profile pr-fast --label auth-tenant --manifest ci/pr_manifests/pr_auth_tenant.txt
+    ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT" && bash scripts/gate_fast.sh
   gate-fast: >-
-    cd /home/realnigga/Desktop/Mission-control && bash scripts/gate_fast.sh
+    ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT" && bash scripts/gate_fast.sh
   gate-core: >-
-    cd /home/realnigga/Desktop/Mission-control && bash scripts/gate_core.sh
-  lane01-targeted: >-
-    cd /home/realnigga/Desktop/Mission-control/erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest=CompanyControllerIT,CompanyContextFilterControlPlaneBindingTest,OpenApiSnapshotIT,AdminSettingsControllerTenantRuntimeContractTest,TenantRuntimeEnforcementServiceTest,TenantRuntimeEnforcementAuthIT,TenantRuntimePolicyServiceTest,PortalInsightsControllerIT,ReportControllerSecurityIT,TS_RuntimeTenantPolicyControlExecutableCoverageTest,TS_RuntimeTenantRuntimeEnforcementTest,TS_RuntimeTenantRuntimeEnforcementInterceptorExecutableCoverageTest test
-  lane01-router-check: >-
-    cd /home/realnigga/Desktop/Mission-control && python3 scripts/ci_risk_router.py --base 7118c9eaa754220e30ac9c41e47408ee9f52387c --head "$(git rev-parse HEAD)"
-  pr-ci-parity: >-
-    ROOT=$(git rev-parse --show-toplevel) && python3 "$ROOT/scripts/pr_ci_parity.py" --base "${PR_CI_BASE:?set PR_CI_BASE to the PR base sha/ref}"
-  smoke: >-
-    cd /home/realnigga/Desktop/Mission-control/erp-domain && MIGRATION_SET=v2 mvn -Dtest=ApplicationSmokeTest -Djacoco.skip=true test
-  invariants: >-
-    cd /home/realnigga/Desktop/Mission-control/erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest=ErpInvariantsSuiteIT test
+    ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT" && bash scripts/gate_core.sh
+  verify-local: >-
+    ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT" && MIGRATION_SET=v2 bash scripts/verify_local.sh
+  erp38-targeted-setup: >-
+    ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT/erp-domain" && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='CatalogControllerCanonicalProductIT,CatalogServiceCanonicalCoverageTest,ProductionCatalogServiceCanonicalEntryTest,SkuReadinessServiceTest,PackagingMaterialServiceTest' test
+  erp38-targeted-setup-packaging: >-
+    ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT/erp-domain" && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='PackagingMaterialServiceTest,PackagingMappingControllerSecurityContractTest,PackingControllerTest,BulkPackingManualPackagingRegressionIT' test
+  erp38-targeted-batch-pack: >-
+    ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT/erp-domain" && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='ProductionLogWipPostingRegressionIT,ProductionLaborOverheadWipIT,ProductionLogListDetailLazyLoadRegressionIT,ProductionLogPackingStatusRegressionIT,PackingControllerTest,PackingServiceTest,FactoryPackagingCostingIT,TS_PackingIdempotencyAndFacadeBoundaryTest' test
+  erp38-targeted-factory-fast-gate: >-
+    ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT/erp-domain" && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='PackagingMappingControllerSecurityContractTest,PackagingMappingControllerTest,PackingControllerTest,FactoryServiceTest,PackingReadServiceTest,PackingServiceTest,PackagingMaterialServiceTest,PackingAllowedSizeServiceTest,ProductionLogServiceCostingFallbackTest,ProductionLogPackingStatusRegressionIT,FactoryPackagingCostingIT' test
+  erp38-targeted-dispatch: >-
+    ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT/erp-domain" && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='DispatchControllerTest,DispatchOperationalBoundaryIT,DispatchConfirmationIT,TS_O2CDispatchCanonicalPostingTest,TS_O2COrchestratorDispatchRemovalRegressionTest,ErpInvariantsSuiteIT,OrderFulfillmentE2ETest' test
+  erp38-contract-guards: >-
+    ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT" && bash ci/check-codex-review-guidelines.sh && bash scripts/guard_openapi_contract_drift.sh && bash scripts/guard_workflow_canonical_paths.sh && bash scripts/guard_accounting_portal_scope_contract.sh
+  openapi-refresh: >-
+    ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT/erp-domain" && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest=OpenApiSnapshotIT -Derp.openapi.snapshot.verify=true -Derp.openapi.snapshot.refresh=true test
   final-validation-reset: >-
-    ROOT=$(git rev-parse --show-toplevel) && bash "$ROOT/scripts/reset_final_validation_runtime.sh"
+    ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT" && bash scripts/reset_final_validation_runtime.sh
   final-validation-targeted-tests: >-
-    ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT/erp-domain" && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='OrderFulfillmentE2ETest,FinishedGoodsServiceTest,SalesReturnCreditNoteE2EIT,CreditDebitNoteIT,SettlementE2ETest,PeriodCloseLockIT,CR_PurchasingToApAccountingTest,DealerPortalControllerSecurityIT,DealerControllerSecurityIT,FactoryPackagingCostingIT,ReportInventoryParityIT' test
+    ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT/erp-domain" && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='ProductionLogWipPostingRegressionIT,ProductionLogPackingStatusRegressionIT,FactoryPackagingCostingIT,DispatchOperationalBoundaryIT,DispatchConfirmationIT,TS_O2CDispatchCanonicalPostingTest,TS_O2COrchestratorDispatchRemovalRegressionTest,ErpInvariantsSuiteIT,OrderFulfillmentE2ETest' test
   build: >-
-    cd /home/realnigga/Desktop/Mission-control/erp-domain && MIGRATION_SET=v2 mvn -T8 package -DskipTests
+    ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT/erp-domain" && MIGRATION_SET=v2 mvn -T8 package -DskipTests
   lint: >-
-    bash /home/realnigga/Desktop/Mission-control/ci/lint-knowledgebase.sh && bash /home/realnigga/Desktop/Mission-control/ci/check-architecture.sh && bash /home/realnigga/Desktop/Mission-control/ci/check-enterprise-policy.sh && bash /home/realnigga/Desktop/Mission-control/ci/check-orchestrator-layer.sh && python3 /home/realnigga/Desktop/Mission-control/scripts/check_flaky_tags.py --tests-root /home/realnigga/Desktop/Mission-control/erp-domain/src/test/java --gate gate-fast && bash /home/realnigga/Desktop/Mission-control/scripts/guard_openapi_contract_drift.sh
+    ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT" && bash ci/lint-knowledgebase.sh && bash ci/check-architecture.sh && bash ci/check-enterprise-policy.sh && bash ci/check-orchestrator-layer.sh && python3 scripts/check_flaky_tags.py --tests-root erp-domain/src/test/java --gate gate-fast && bash scripts/guard_openapi_contract_drift.sh
+  milestone-shareout: >-
+    ROOT=$(git rev-parse --show-toplevel) && git -C "$ROOT" status --short --branch && echo '---' && git -C "$ROOT" log --oneline --decorate origin/main..HEAD && echo '---' && git -C "$ROOT" diff --stat origin/main...HEAD
   packet-review: >-
-    git -C /home/realnigga/Desktop/Mission-control status --short --branch && echo FACTORY-DROID && git -C /home/realnigga/Desktop/Mission-control log --oneline --decorate -5 origin/Factory-droid
+    ROOT=$(git rev-parse --show-toplevel) && git -C "$ROOT" status --short --branch && echo FACTORY-DROID && git -C "$ROOT" log --oneline --decorate -5 origin/main
 
 services:
   postgres-v2:
     start: >-
-      DB_PORT=5433 docker compose -f /home/realnigga/Desktop/Mission-control/docker-compose.yml up -d db
+      ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT" && JWT_SECRET='validation-jwt-secret-validation-jwt-secret' ERP_SECURITY_ENCRYPTION_KEY='validation-encryption-key-32-bytes!!' DB_PORT=5433 docker compose up -d db
     stop: >-
-      DB_PORT=5433 docker compose -f /home/realnigga/Desktop/Mission-control/docker-compose.yml stop db
+      ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT" && JWT_SECRET='validation-jwt-secret-validation-jwt-secret' ERP_SECURITY_ENCRYPTION_KEY='validation-encryption-key-32-bytes!!' DB_PORT=5433 docker compose stop db
     healthcheck: >-
       python3 -c "import socket; s=socket.create_connection(('127.0.0.1', 5433), 2); s.close()"
     port: 5433
@@ -50,9 +59,9 @@ services:
 
   rabbitmq:
     start: >-
-      DB_PORT=5433 docker compose -f /home/realnigga/Desktop/Mission-control/docker-compose.yml up -d rabbitmq
+      ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT" && JWT_SECRET='validation-jwt-secret-validation-jwt-secret' ERP_SECURITY_ENCRYPTION_KEY='validation-encryption-key-32-bytes!!' DB_PORT=5433 docker compose up -d rabbitmq
     stop: >-
-      DB_PORT=5433 docker compose -f /home/realnigga/Desktop/Mission-control/docker-compose.yml stop rabbitmq
+      ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT" && JWT_SECRET='validation-jwt-secret-validation-jwt-secret' ERP_SECURITY_ENCRYPTION_KEY='validation-encryption-key-32-bytes!!' DB_PORT=5433 docker compose stop rabbitmq
     healthcheck: >-
       python3 -c "import socket; s=socket.create_connection(('127.0.0.1', 5672), 2); s.close()"
     port: 5672
@@ -60,9 +69,9 @@ services:
 
   mailhog:
     start: >-
-      DB_PORT=5433 docker compose -f /home/realnigga/Desktop/Mission-control/docker-compose.yml up -d mailhog
+      ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT" && JWT_SECRET='validation-jwt-secret-validation-jwt-secret' ERP_SECURITY_ENCRYPTION_KEY='validation-encryption-key-32-bytes!!' DB_PORT=5433 docker compose up -d mailhog
     stop: >-
-      DB_PORT=5433 docker compose -f /home/realnigga/Desktop/Mission-control/docker-compose.yml stop mailhog
+      ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT" && JWT_SECRET='validation-jwt-secret-validation-jwt-secret' ERP_SECURITY_ENCRYPTION_KEY='validation-encryption-key-32-bytes!!' DB_PORT=5433 docker compose stop mailhog
     healthcheck: >-
       curl -sf http://localhost:8025
     port: 8025
@@ -70,9 +79,9 @@ services:
 
   backend-compose-v2:
     start: >-
-      cd /home/realnigga/Desktop/Mission-control && SPRING_PROFILES_ACTIVE='prod,flyway-v2' ERP_CORS_ALLOWED_ORIGINS='https://app.bigbrightpaints.com' ERP_CORS_ALLOW_TAILSCALE_HTTP_ORIGINS='true' DB_PORT=5433 SPRING_MAIL_HOST='mailhog' SPRING_MAIL_PORT='1025' SPRING_MAIL_USERNAME='' SPRING_MAIL_PASSWORD='' SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH='false' SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE='false' SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_REQUIRED='false' docker compose up -d --build app
+      ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT" && JWT_SECRET='validation-jwt-secret-validation-jwt-secret' ERP_SECURITY_ENCRYPTION_KEY='validation-encryption-key-32-bytes!!' SPRING_PROFILES_ACTIVE='prod,flyway-v2' ERP_CORS_ALLOWED_ORIGINS='https://app.bigbrightpaints.com' ERP_CORS_ALLOW_TAILSCALE_HTTP_ORIGINS='true' DB_PORT=5433 SPRING_MAIL_HOST='mailhog' SPRING_MAIL_PORT='1025' SPRING_MAIL_USERNAME='' SPRING_MAIL_PASSWORD='' SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH='false' SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE='false' SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_REQUIRED='false' docker compose up -d --build app
     stop: >-
-      DB_PORT=5433 docker compose -f /home/realnigga/Desktop/Mission-control/docker-compose.yml stop app
+      ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT" && JWT_SECRET='validation-jwt-secret-validation-jwt-secret' ERP_SECURITY_ENCRYPTION_KEY='validation-encryption-key-32-bytes!!' DB_PORT=5433 docker compose stop app
     healthcheck: >-
       curl -sf http://localhost:9090/actuator/health >/tmp/factory-backend-health.out || { status=$(curl -s -o /tmp/factory-backend-auth.out -w '%{http_code}' http://localhost:8081/api/v1/auth/me || true) && { [ "$status" = "200" ] || [ "$status" = "401" ] || [ "$status" = "403" ]; }; }
     port: 8081

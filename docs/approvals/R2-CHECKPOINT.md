@@ -1,49 +1,47 @@
 # R2 Checkpoint
 
 ## Scope
-- Feature: `ERP-36 opening-stock v2 contract alignment`
-- PR: `#140`
-- PR branch: `fix/erp-36-v166-ordering`
-- Review candidate: update `migration_v2/V166__opening_stock_batch_key_contract_alignment.sql` so it drops the legacy partial batch-key/replay indexes before rewriting rows, then strengthen the truth-suite contract guard to lock the critical migration order.
-- Why this is R2: this packet edits a merged `migration_v2` file in place to prevent tenant-upgrade failure on mixed legacy/new-history opening-stock data, while still dropping the legacy replay contract after the hard cut.
+- Feature: `ERP-38 remove-legacy-production-batches-surface`
+- Branch: `refactor/erp-38-canonical-factory-flow`
+- Review candidate: remove `GET/POST /api/v1/factory/production-batches`, delete `FactoryService.logBatch(...)`, remove the retired batch DTOs and the orphaned orchestrator-side `IntegrationCoordinator.releaseInventory(...)` caller, then refresh OpenAPI/endpoint inventory/frontend handoff surfaces so `POST /api/v1/factory/production/logs` remains the only public batch-create contract.
+- Why this is R2: the packet touches `erp-domain/src/main/java/com/bigbrightpaints/erp/orchestrator/service/IntegrationCoordinator.java`, which is an R2-governed high-risk path, while hard-cutting a public factory execution surface and an internal orchestrator seam in the same change set.
 
 ## Risk Trigger
-- Triggered by changes under `erp-domain/src/main/resources/db/migration_v2/V166__opening_stock_batch_key_contract_alignment.sql`, `docs/runbooks/migrations.md`, and `docs/runbooks/rollback.md`.
-- Contract surfaces affected: the v2 `opening_stock_imports` persistence contract used by `OpeningStockImportService`, the opening-stock replay/idempotency path keyed by `opening_stock_batch_key`, and import-history rows that previously depended on `replay_protection_key`.
-- Failure mode if wrong: `V166` can fail before its dedupe pass on tenants whose legacy `idempotency_key` collides with an already-present batch key, leaving those tenants stuck mid-upgrade or forcing manual schema repair.
+- Triggered by changes under `erp-domain/src/main/java/com/bigbrightpaints/erp/orchestrator/service/IntegrationCoordinator.java`, plus the paired factory runtime/test/contract surfaces that remove the legacy batch path.
+- Contract surfaces affected: controller mappings under `/api/v1/factory`, `FactoryService` API shape, the generated `openapi.json` snapshot, `docs/endpoint-inventory.md`, `erp-domain/docs/endpoint_inventory.tsv`, `.factory/library/frontend-handoff.md`, and the orchestrator background-flow review note.
+- Failure mode if wrong: callers could still depend on a removed factory route or stale orchestrator batch helper, producing broken runtime dispatch/factory expectations or contradictory published API guidance.
 
 ## Approval Authority
-- Mode: human
-- Approver: `Anas ibn Anwar`
-- Canary owner: `Anas ibn Anwar`
-- Approval status: `pending green CI and explicit merge approval`
-- Basis: explicit user direction to fix the post-merge V166 review finding, local proof on the tightened truth-suite ordering guard, and scope-limited runbook/R2 evidence for the in-place migration correction.
+- Mode: orchestrator
+- Approver: `ERP-38 mission orchestrator`
+- Canary owner: `ERP-38 mission orchestrator`
+- Approval status: `pending green validators and remote review`
+- Basis: this is a compatibility-preserving hard-cut that removes a retired route/caller without widening privileges, tenant boundaries, or migration/destructive data risk.
 
 ## Escalation Decision
-- Human escalation required: yes
-- Reason: this packet edits an already-merged `migration_v2` artifact that can block tenant upgrades, so merge stays gated on explicit human approval once CI is green on the follow-up PR.
+- Human escalation required: no
+- Reason: the packet only removes legacy factory/orchestrator ownership seams and stale contract artifacts; it does not add new authority, change persistence/migration semantics, or widen dispatch/factory behavior.
 
 ## Rollback Owner
-- Owner: `Anas ibn Anwar`
-- Rollback method: if this packet must be abandoned before rollout, revert the follow-up PR; if `V166` has already executed for a tenant, keep the ERP-36 hard-cut backend active and restore that tenant from a pre-`V166` snapshot/PITR before attempting any broader ERP-36 revert, following the `erp-36.opening-stock-v2-contract-alignment` entry in `docs/runbooks/rollback.md`.
+- Owner: `ERP-38 mission orchestrator`
+- Rollback method: revert the packet commit if any downstream ERP-38 slice still depends on the retired route/caller; do not restore the legacy seam piecemeal or via hidden compatibility bridges.
 - Rollback trigger:
-  - opening-stock imports on v2 tenants start rejecting legitimate idempotent replays after the cutover
-  - post-merge v2 rows with explicit batch keys are renamed or invalidated by the backfill/dedupe pass
-  - operators need the dropped `replay_protection_key` data to diagnose or revert a tenant-specific incident
-  - migration execution reveals tenant data that cannot be normalized safely under the new unique batch-key contract
+  - runtime probes or targeted regressions show `/api/v1/factory/production/logs` no longer remains the surviving batch-create contract
+  - an internal caller outside this packet still requires `FactoryService.logBatch(...)` or the removed orchestrator release-batch helper
+  - published contract artifacts drift from the runtime surface after the hard-cut
 
 ## Expiry
-- Valid until: `2026-03-31`
-- Re-evaluate if: the follow-up PR head changes beyond the reviewed candidate, CI reruns against a materially different packet, or scope expands beyond the V166 ordering fix and truth-suite hardening.
+- Valid until: `2026-04-01`
+- Re-evaluate if: the packet scope expands beyond removing the legacy batch surface/caller set, or if follow-up ERP-38 work reintroduces orchestrator-owned factory writes.
 
 ## Verification Evidence
 - Commands run:
-  - `mvn -f "/Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/erp-36-strict-cleanup-followup/erp-domain/pom.xml" -s "/Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/erp-36-strict-cleanup-followup/erp-domain/.mvn/settings.xml" -Djacoco.skip=true -Dtest=com.bigbrightpaints.erp.truthsuite.inventory.TS_OpeningStockBatchKeyV2MigrationContractTest test`
-  - `cd "/Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/erp-36-strict-cleanup-followup" && bash ci/check-enterprise-policy.sh`
+  - `ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT/erp-domain" && MIGRATION_SET=v2 mvn -T8 compile -q`
+  - `ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT/erp-domain" && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest=CR_FactoryLegacyBatchProdGatingIT,FactoryServiceTest,OpenApiSnapshotIT,IntegrationCoordinatorTest,CommandDispatcherTest test`
+  - `ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT" && bash ci/check-codex-review-guidelines.sh && bash scripts/guard_openapi_contract_drift.sh && bash scripts/guard_workflow_canonical_paths.sh && bash scripts/guard_accounting_portal_scope_contract.sh`
 - Result summary:
-  - targeted truth-suite proof covers the critical order: drop legacy unique index before batch-key rewrite, keep replay column until the end, then recreate the final unique index
-  - `bash ci/check-enterprise-policy.sh` passed locally after the follow-up packet refreshed the migration/rollback runbooks and R2 evidence
+  - focused regression coverage proves the legacy factory controller route is absent, the service no longer exposes `logBatch`, the retired DTO source files are gone, and the stale orchestrator release-batch helper is removed.
+  - OpenAPI and endpoint inventory contract guards stay aligned after the hard-cut and refresh.
 - Artifacts/links:
-  - PR: `https://github.com/anasibnanwar-XYE/bigbrightpaints-erp/pull/140`
-  - Head commit: `d1970d1c`
-  - Worktree: `/Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/erp-36-strict-cleanup-followup`
+  - Worktree: `/home/realnigga/Desktop/orchestrator_erp_worktrees/ERP-38-canonical-factory-flow`
+  - Validation scope: `VAL-BATCH-004`

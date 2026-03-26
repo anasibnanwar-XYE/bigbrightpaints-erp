@@ -11,6 +11,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -19,11 +20,15 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
+import com.bigbrightpaints.erp.modules.factory.dto.BulkPackResponse;
 import com.bigbrightpaints.erp.modules.factory.dto.PackingLineRequest;
+import com.bigbrightpaints.erp.modules.factory.dto.PackingRecordDto;
 import com.bigbrightpaints.erp.modules.factory.dto.PackingRequest;
+import com.bigbrightpaints.erp.modules.factory.dto.UnpackedBatchDto;
 import com.bigbrightpaints.erp.modules.factory.service.BulkPackingService;
 import com.bigbrightpaints.erp.modules.factory.service.PackingService;
 
+@Tag("critical")
 @ExtendWith(MockitoExtension.class)
 class PackingControllerTest {
 
@@ -32,40 +37,29 @@ class PackingControllerTest {
   @Mock private BulkPackingService bulkPackingService;
 
   @Test
-  void recordPacking_appliesAutoIdempotencyKeyWhenHeaderAndBodyMissing() {
+  void recordPacking_rejectsWhenRequestMissing() {
     PackingController controller = new PackingController(packingService, bulkPackingService);
-    when(packingService.recordPacking(any())).thenReturn(null);
 
-    PackingRequest request =
-        new PackingRequest(
-            1L,
-            LocalDate.of(2026, 2, 6),
-            "packer",
-            null,
-            List.of(new PackingLineRequest("10L", new BigDecimal("1"), 1, 1, 1)));
+    assertThatThrownBy(() -> controller.recordPacking("pack-001", null, null, null))
+        .isInstanceOf(ApplicationException.class)
+        .hasMessageContaining("Packing request is required");
 
-    controller.recordPacking(null, null, null, request);
-
-    ArgumentCaptor<PackingRequest> captor = ArgumentCaptor.forClass(PackingRequest.class);
-    verify(packingService).recordPacking(captor.capture());
-    assertThat(captor.getValue().idempotencyKey()).startsWith("AUTO|FACTORY.PACKING.RECORD|");
+    verifyNoInteractions(packingService);
   }
 
   @Test
-  void recordPacking_rejectsHeaderBodyMismatch() {
+  void recordPacking_rejectsWhenIdempotencyHeaderMissing() {
     PackingController controller = new PackingController(packingService, bulkPackingService);
 
-    PackingRequest request =
-        new PackingRequest(
-            1L,
-            LocalDate.of(2026, 2, 6),
-            "packer",
-            "body-key",
-            List.of(new PackingLineRequest("10L", new BigDecimal("1"), 1, 1, 1)));
+    assertThatThrownBy(() -> controller.recordPacking(null, null, null, request(null)))
+        .isInstanceOfSatisfying(
+            ApplicationException.class,
+            ex -> {
+              assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD);
+              assertThat(ex.getMessage()).isEqualTo("Idempotency-Key header is required");
+            });
 
-    assertThatThrownBy(() -> controller.recordPacking("header-key", null, null, request))
-        .isInstanceOf(ApplicationException.class)
-        .hasMessageContaining("Idempotency key mismatch");
+    verifyNoInteractions(packingService);
   }
 
   @Test
@@ -73,15 +67,7 @@ class PackingControllerTest {
     PackingController controller = new PackingController(packingService, bulkPackingService);
     when(packingService.recordPacking(any())).thenReturn(null);
 
-    PackingRequest request =
-        new PackingRequest(
-            1L,
-            LocalDate.of(2026, 2, 6),
-            "packer",
-            null,
-            List.of(new PackingLineRequest("10L", new BigDecimal("1"), 1, 1, 1)));
-
-    controller.recordPacking("header-key", null, null, request);
+    controller.recordPacking("header-key", null, null, request(null));
 
     ArgumentCaptor<PackingRequest> captor = ArgumentCaptor.forClass(PackingRequest.class);
     verify(packingService).recordPacking(captor.capture());
@@ -89,92 +75,201 @@ class PackingControllerTest {
   }
 
   @Test
-  void recordPacking_appliesRequestIdFallbackWhenIdempotencyMissing() {
+  void recordPacking_requiresCanonicalHeaderEvenWhenRequestBodyCarriesLegacyIdempotencyKey() {
     PackingController controller = new PackingController(packingService, bulkPackingService);
-    when(packingService.recordPacking(any())).thenReturn(null);
 
-    PackingRequest request =
-        new PackingRequest(
-            1L,
-            LocalDate.of(2026, 2, 6),
-            "packer",
-            null,
-            List.of(new PackingLineRequest("10L", new BigDecimal("1"), 1, 1, 1)));
+    assertThatThrownBy(
+            () -> controller.recordPacking(null, null, null, request("body-only-key")))
+        .isInstanceOf(ApplicationException.class)
+        .hasMessageContaining("Idempotency-Key header is required");
 
-    controller.recordPacking(null, null, "req-123", request);
-
-    ArgumentCaptor<PackingRequest> captor = ArgumentCaptor.forClass(PackingRequest.class);
-    verify(packingService).recordPacking(captor.capture());
-    assertThat(captor.getValue().idempotencyKey()).isEqualTo("REQ|FACTORY.PACKING.RECORD|req-123");
+    verifyNoInteractions(packingService);
   }
 
   @Test
-  void recordPacking_hashesOversizedRequestIdFallbackWithinPersistenceLimit() {
+  void recordPacking_ignoresRequestBodyIdempotencyWhenCanonicalHeaderPresent() {
     PackingController controller = new PackingController(packingService, bulkPackingService);
     when(packingService.recordPacking(any())).thenReturn(null);
 
-    PackingRequest request =
-        new PackingRequest(
-            1L,
-            LocalDate.of(2026, 2, 6),
-            "packer",
-            null,
-            List.of(new PackingLineRequest("10L", new BigDecimal("1"), 1, 1, 1)));
-
-    controller.recordPacking(null, null, "req-" + "x".repeat(300), request);
+    controller.recordPacking("header-key", null, null, request("body-key"));
 
     ArgumentCaptor<PackingRequest> captor = ArgumentCaptor.forClass(PackingRequest.class);
     verify(packingService).recordPacking(captor.capture());
-    assertThat(captor.getValue().idempotencyKey()).startsWith("REQH|FACTORY.PACKING.RECORD|");
-    assertThat(captor.getValue().idempotencyKey().length()).isLessThanOrEqualTo(128);
+    assertThat(captor.getValue().idempotencyKey()).isEqualTo("header-key");
   }
 
   @Test
-  void recordPacking_appliesLegacyHeaderWhenPrimaryMissing() {
+  void recordPacking_preservesCloseResidualWastageWhenApplyingHeaderIdempotencyKey() {
     PackingController controller = new PackingController(packingService, bulkPackingService);
     when(packingService.recordPacking(any())).thenReturn(null);
 
-    PackingRequest request =
-        new PackingRequest(
-            1L,
-            LocalDate.of(2026, 2, 6),
-            "packer",
-            null,
-            List.of(new PackingLineRequest("10L", new BigDecimal("1"), 1, 1, 1)));
-
-    controller.recordPacking(null, "legacy-key", null, request);
+    controller.recordPacking("header-key", null, null, request("body-key", Boolean.TRUE));
 
     ArgumentCaptor<PackingRequest> captor = ArgumentCaptor.forClass(PackingRequest.class);
     verify(packingService).recordPacking(captor.capture());
-    assertThat(captor.getValue().idempotencyKey()).isEqualTo("legacy-key");
+    assertThat(captor.getValue().idempotencyKey()).isEqualTo("header-key");
+    assertThat(captor.getValue().closeResidualWastageRequested()).isTrue();
   }
 
   @Test
-  void recordPacking_rejectsWhenPrimaryLegacyHeadersMismatch() {
+  void recordPacking_rejectsLegacyHeaderWhenPrimaryMissing() {
     PackingController controller = new PackingController(packingService, bulkPackingService);
 
-    PackingRequest request =
-        new PackingRequest(
-            1L,
-            LocalDate.of(2026, 2, 6),
-            "packer",
-            null,
-            List.of(new PackingLineRequest("10L", new BigDecimal("1"), 1, 1, 1)));
+    assertThatThrownBy(() -> controller.recordPacking(null, "legacy-key", null, request(null)))
+        .isInstanceOf(ApplicationException.class)
+        .hasMessageContaining("X-Idempotency-Key is not supported");
 
-    assertThatThrownBy(() -> controller.recordPacking("header-key", "legacy-key", null, request))
+    verifyNoInteractions(packingService);
+  }
+
+  @Test
+  void recordPacking_rejectsLegacyHeaderWhenPrimaryAlsoPresent() {
+    PackingController controller = new PackingController(packingService, bulkPackingService);
+
+    assertThatThrownBy(
+            () -> controller.recordPacking("header-key", "legacy-key", null, request(null)))
         .isInstanceOfSatisfying(
             ApplicationException.class,
             ex -> {
               assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_INVALID_INPUT);
               assertThat(ex.getMessage())
                   .isEqualTo(
-                      "Idempotency key mismatch between Idempotency-Key and X-Idempotency-Key"
-                          + " headers");
+                      "X-Idempotency-Key is not supported for packing records; use"
+                          + " Idempotency-Key");
               assertThat(ex.getDetails())
-                  .containsEntry("idempotencyKeyHeader", "header-key")
-                  .containsEntry("legacyIdempotencyKeyHeader", "legacy-key");
+                  .containsEntry("legacyHeader", "X-Idempotency-Key")
+                  .containsEntry("canonicalHeader", "Idempotency-Key")
+                  .containsEntry("canonicalPath", "/api/v1/factory/packing-records");
             });
 
     verifyNoInteractions(packingService);
+  }
+
+  @Test
+  void recordPacking_rejectsRequestIdHeaderWhenPrimaryMissing() {
+    PackingController controller = new PackingController(packingService, bulkPackingService);
+
+    assertThatThrownBy(() -> controller.recordPacking(null, null, "req-123", request(null)))
+        .isInstanceOf(ApplicationException.class)
+        .hasMessageContaining("X-Request-Id is not supported");
+
+    verifyNoInteractions(packingService);
+  }
+
+  @Test
+  void recordPacking_rejectsRequestIdHeaderWhenPrimaryAlsoPresent() {
+    PackingController controller = new PackingController(packingService, bulkPackingService);
+
+    assertThatThrownBy(
+            () -> controller.recordPacking("header-key", null, "req-123", request(null)))
+        .isInstanceOfSatisfying(
+            ApplicationException.class,
+            ex -> {
+              assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_INVALID_INPUT);
+              assertThat(ex.getMessage())
+                  .isEqualTo(
+                      "X-Request-Id is not supported for packing records; use Idempotency-Key");
+              assertThat(ex.getDetails())
+                  .containsEntry("legacyHeader", "X-Request-Id")
+                  .containsEntry("canonicalHeader", "Idempotency-Key")
+                  .containsEntry("canonicalPath", "/api/v1/factory/packing-records");
+            });
+
+    verifyNoInteractions(packingService);
+  }
+
+  @Test
+  void listUnpackedBatches_returnsPackingServiceResults() {
+    PackingController controller = new PackingController(packingService, bulkPackingService);
+    List<UnpackedBatchDto> batches =
+        List.of(
+            new UnpackedBatchDto(
+                7L,
+                "PROD-007",
+                "Primer",
+                "White",
+                new BigDecimal("10"),
+                new BigDecimal("4"),
+                new BigDecimal("6"),
+                "PARTIAL_PACKED",
+                null));
+    when(packingService.listUnpackedBatches()).thenReturn(batches);
+
+    var response = controller.listUnpackedBatches();
+
+    assertThat(response.getBody()).isNotNull();
+    assertThat(response.getBody().message()).isNull();
+    assertThat(response.getBody().data()).isEqualTo(batches);
+    verify(packingService).listUnpackedBatches();
+  }
+
+  @Test
+  void packingHistory_returnsPackingServiceResults() {
+    PackingController controller = new PackingController(packingService, bulkPackingService);
+    List<PackingRecordDto> history =
+        List.of(
+            new PackingRecordDto(
+                11L,
+                7L,
+                "PROD-007",
+                41L,
+                "1L",
+                88L,
+                "FG-088",
+                4,
+                "1L",
+                new BigDecimal("4"),
+                4,
+                4,
+                1,
+                LocalDate.of(2026, 3, 1),
+                "packer"));
+    when(packingService.packingHistory(7L)).thenReturn(history);
+
+    var response = controller.packingHistory(7L);
+
+    assertThat(response.getBody()).isNotNull();
+    assertThat(response.getBody().data()).isEqualTo(history);
+    verify(packingService).packingHistory(7L);
+  }
+
+  @Test
+  void listBulkBatches_returnsBulkPackingServiceResults() {
+    PackingController controller = new PackingController(packingService, bulkPackingService);
+    List<BulkPackResponse.ChildBatchDto> batches = List.of();
+    when(bulkPackingService.listBulkBatches(55L)).thenReturn(batches);
+
+    var response = controller.listBulkBatches(55L);
+
+    assertThat(response.getBody()).isNotNull();
+    assertThat(response.getBody().data()).isEqualTo(batches);
+    verify(bulkPackingService).listBulkBatches(55L);
+  }
+
+  @Test
+  void listChildBatches_returnsBulkPackingServiceResults() {
+    PackingController controller = new PackingController(packingService, bulkPackingService);
+    List<BulkPackResponse.ChildBatchDto> batches = List.of();
+    when(bulkPackingService.listChildBatches(91L)).thenReturn(batches);
+
+    var response = controller.listChildBatches(91L);
+
+    assertThat(response.getBody()).isNotNull();
+    assertThat(response.getBody().data()).isEqualTo(batches);
+    verify(bulkPackingService).listChildBatches(91L);
+  }
+
+  private PackingRequest request(String idempotencyKey) {
+    return request(idempotencyKey, Boolean.FALSE);
+  }
+
+  private PackingRequest request(String idempotencyKey, Boolean closeResidualWastage) {
+    return new PackingRequest(
+        1L,
+        LocalDate.of(2026, 2, 6),
+        "packer",
+        idempotencyKey,
+        List.of(new PackingLineRequest("10L", new BigDecimal("1"), 1, 1, 1)),
+        closeResidualWastage);
   }
 }

@@ -1,0 +1,77 @@
+{
+  "milestone": "setup-truth",
+  "round": 2,
+  "status": "pass",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "ROOT=\"/home/realnigga/Desktop/orchestrator_erp_worktrees/ERP-38-canonical-factory-flow\" && cd \"$ROOT\" && bash scripts/gate_fast.sh",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "ROOT=\"/home/realnigga/Desktop/orchestrator_erp_worktrees/ERP-38-canonical-factory-flow\" && cd \"$ROOT/erp-domain\" && MIGRATION_SET=v2 mvn -T8 compile -q",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "ROOT=\"/home/realnigga/Desktop/orchestrator_erp_worktrees/ERP-38-canonical-factory-flow\" && cd \"$ROOT\" && bash ci/lint-knowledgebase.sh && bash ci/check-architecture.sh && bash ci/check-enterprise-policy.sh && bash ci/check-orchestrator-layer.sh && python3 scripts/check_flaky_tags.py --tests-root erp-domain/src/test/java --gate gate-fast && bash scripts/guard_openapi_contract_drift.sh",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 1,
+    "passed": 1,
+    "failed": 0,
+    "failedFeatures": []
+  },
+  "blockingIssues": [],
+  "appliedUpdates": [
+    {
+      "target": "services.yaml",
+      "description": "Added `erp38-targeted-setup-packaging` so setup-truth workers can run the combined packaging regression/security proof (`PackagingMaterialServiceTest`, `PackagingMappingControllerSecurityContractTest`, `PackingControllerTest`, `BulkPackingManualPackagingRegressionIT`) from the shared service catalog.",
+      "sourceFeature": "setup-packaging-rules-contract"
+    },
+    {
+      "target": "services.yaml",
+      "description": "Added `openapi-refresh` with the exact `OpenApiSnapshotIT` refresh flags used by setup-truth workers so OpenAPI snapshot regeneration is no longer tribal knowledge.",
+      "sourceFeature": "setup-packaging-rule-validation-and-lifecycle"
+    },
+    {
+      "target": "library",
+      "description": "Removed the stale note in `.factory/library/catalog-surface-consolidation.md` that incorrectly claimed `.factory/library/frontend-handoff.md` still referenced retired catalog hosts.",
+      "sourceFeature": "setup-canonical-item-entrypoints-scrutiny-followup"
+    }
+  ],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "AGENTS.md",
+      "suggestion": "For hard-cut cleanup features, require an explicit absence search across broader shared-state surfaces (for example `docs/developer/**`, `docs/code-review/flows/**`, and `.factory/library/**`) so contradictory retired-route guidance is not left behind outside the narrow verification checklist.",
+      "evidence": "Round 1 review for `setup-canonical-item-entrypoints` found contradictory retired setup-host guidance in `docs/developer/onboarding-stock-readiness/README.md`, `.factory/library/catalog-surface-consolidation.md`, and `docs/code-review/flows/manufacturing-inventory.md`. Round 2 review still found broader `docs/developer/catalog-consolidation/README.md` references to retired `/api/v1/catalog/products*` setup hosts outside the targeted follow-up scope.",
+      "isSystemic": true
+    },
+    {
+      "target": "factory-flow-worker skill",
+      "suggestion": "Add an explicit docs-only/shared-guidance cleanup branch so constrained scrutiny follow-ups can skip irrelevant runtime-contract cleanup and heavy tests while still documenting the required scoped validation.",
+      "evidence": "The review for `setup-canonical-item-entrypoints-scrutiny-followup` noted that the fix was limited to three shared-state docs and no runtime/public-contract change, but `.factory/skills/factory-flow-worker/SKILL.md:32-59` still forces the normal tests-first and contract-surface cleanup path, leading the worker handoff to record justified deviations.",
+      "isSystemic": false
+    },
+    {
+      "target": "factory-flow-worker skill",
+      "suggestion": "Add a short recovered-diff procedure for features that inherit uncommitted work from crashed sessions, including how to validate inherited edits before re-entering the normal test-first loop.",
+      "evidence": "Feature `setup-packaging-rules-contract` reused recovered worktree changes from crashed sessions and explicitly recorded a justified deviation because the skill lacked guidance for that path.",
+      "isSystemic": false
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "A separate service-catalog observation said `.factory/services.yaml` was missing packaging security-contract proof coverage for setup-truth.",
+      "reason": "duplicate; it is fully addressed by the new `erp38-targeted-setup-packaging` command recorded in `appliedUpdates`."
+    },
+    {
+      "observation": "`docs/developer/catalog-consolidation/README.md` and related developer packet docs still advertise `/api/v1/catalog/products*` as canonical setup flow.",
+      "reason": "out-of-scope for direct apply-now triage during this re-run; it is broader shared-state drift outside `services.yaml` and `.factory/library`, so it should be handled by a dedicated cleanup packet or orchestrator-directed follow-up."
+    }
+  ],
+  "previousRound": ".factory/validation/setup-truth/scrutiny/synthesis.round1.json"
+}

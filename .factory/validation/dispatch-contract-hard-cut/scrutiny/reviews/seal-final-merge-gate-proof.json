@@ -1,0 +1,21 @@
+{
+  "featureId": "seal-final-merge-gate-proof",
+  "reviewedAt": "2026-03-25T14:45:00Z",
+  "commitId": "803fe1eef2486209ff5049a2f6518e2eca54dd47",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "I reviewed both `seal-final-merge-gate-proof` worker sessions, the latest handoff, and the branch state at HEAD `803fe1eef2486209ff5049a2f6518e2eca54dd47`. The first session correctly returned partial while `gate_fast` still had changed-files coverage debt; the later HEAD state closes that debt (`artifacts/gate-fast/changed-coverage.json` now reports `passes=true`, `line_ratio=0.9817351598173516`, `branch_ratio=0.9042553191489362`, and `files_with_unmapped_lines=[]`). The latest handoff shows codex-review guidance, contract guards, the targeted production/pack/dispatch suite, and diff hygiene all passing. `verify_local` still fails only on the mission-documented external schema-drift allowlist debt for `V46`, `V165`, and `V166`, and both the handoff evidence and current branch diff confirm this branch has no `db/migration_v2` diff versus the mission base, so the orchestrator override for treating the feature as complete is satisfied. I found no blocking or non-blocking defects in the reviewed scope.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "`factory-flow-worker`'s verification procedure is ambiguous for proof-only, non-docs validation slices: it requires a standalone `commands.compile` for all non-docs features, but the latest `seal-final-merge-gate-proof` run reasonably skipped that redundant step because `gate_fast` and the targeted Maven proof already compile the project.",
+      "evidence": "`.factory/skills/factory-flow-worker/SKILL.md:67-69` requires `commands.compile` plus targeted ERP-38 commands for non-docs features, while `handoffs/2026-03-25T14-36-14-810Z__seal-final-merge-gate-proof__22930acf-4fc7-4039-b8d0-185a6ec4b3f4.json:68-73` records `followedProcedure=false` solely because the worker omitted a separate compile pass after other required commands had already compiled the project."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Pass: the latest proof-only handoff and current HEAD `803fe1eef2486209ff5049a2f6518e2eca54dd47` satisfy this feature's merge-gate objective. Gate-fast coverage debt is closed, the targeted contract/test matrix is green, the worktree is clean, and the only remaining validator failure is the mission-approved external schema-drift allowlist debt outside the ERP-38 branch diff."
+}

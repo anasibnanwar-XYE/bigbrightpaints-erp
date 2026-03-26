@@ -1,0 +1,199 @@
+{
+  "groupId": "batch-contracts",
+  "surface": "api",
+  "testedAt": "2026-03-25T08:52:45Z",
+  "credentials": {
+    "account": "validation.admin@example.com + validation.factory@example.com",
+    "namespace": "batch-pack-hard-cut-batch"
+  },
+  "toolsUsed": [
+    "pre-recorded runtime evidence",
+    "mvn",
+    "openapi.json"
+  ],
+  "assertions": [
+    {
+      "id": "VAL-BATCH-001",
+      "title": "Production logs are the only public batch-creation contract",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Inspect the surviving factory paths in `openapi_factory_contract.json` and the runtime create evidence in `production_log_create.json`",
+          "expected": "`POST /api/v1/factory/production/logs` is present as the canonical batch-create contract and returns the production-log detail shape.",
+          "observed": "`openapi_factory_contract.json` records `/api/v1/factory/production/logs=true` and `/api/v1/factory/production-batches=false`; `production_log_create.json` shows `POST /api/v1/factory/production/logs -> 200` with `message=Production logged` and the full `ProductionLogDetailDto` payload."
+        },
+        {
+          "action": "Cross-check retired-route absence in `removed_routes.json` and `batch_public_surfaces.json`",
+          "expected": "No public `production-batches` create/list surface remains.",
+          "observed": "`removed_routes.json` shows both `GET` and `POST /api/v1/factory/production-batches -> 404`; `batch_public_surfaces.json` only finds snapshot/assert-absence coverage for the retired route."
+        }
+      ],
+      "evidence": {
+        "network": [
+          "POST /api/v1/factory/production/logs -> 200",
+          "GET /api/v1/factory/production-batches -> 404",
+          "POST /api/v1/factory/production-batches -> 404"
+        ],
+        "files": [
+          "/home/realnigga/.factory/missions/638844ab-aa59-453c-ae4d-3ee78989efb4/evidence/batch-pack-hard-cut/batch-contracts/openapi_factory_contract.json",
+          "/home/realnigga/.factory/missions/638844ab-aa59-453c-ae4d-3ee78989efb4/evidence/batch-pack-hard-cut/batch-contracts/production_log_create.json",
+          "/home/realnigga/.factory/missions/638844ab-aa59-453c-ae4d-3ee78989efb4/evidence/batch-pack-hard-cut/batch-contracts/removed_routes.json",
+          "/home/realnigga/.factory/missions/638844ab-aa59-453c-ae4d-3ee78989efb4/evidence/batch-pack-hard-cut/batch-contracts/batch_public_surfaces.json"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-BATCH-002",
+      "title": "Production logging creates manufacturing truth automatically",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Compare `raw_inventory_before.json` and `raw_inventory_after_create.json` around the canonical production-log create",
+          "expected": "The production log automatically consumes raw materials without any manual sibling-module repair.",
+          "observed": "The runtime snapshots show `RM-RESIN` dropping from `500.0` to `492.0` and `RM-PIG` dropping from `200.0` to `198.0` immediately after the successful production log."
+        },
+        {
+          "action": "Review `production_log_create.json` plus the targeted batch-pack Maven run summary",
+          "expected": "The create path also records WIP/semi-finished/accounting consequences.",
+          "observed": "`production_log_create.json` includes material, labor, and overhead totals (`50.5`, `5`, `3`) in the canonical create response, and `targeted_batch_pack_tests_summary.json` shows `ProductionLogWipPostingRegressionIT` plus `ProductionLaborOverheadWipIT` passing in the same validation bundle."
+        }
+      ],
+      "evidence": {
+        "files": [
+          "/home/realnigga/.factory/missions/638844ab-aa59-453c-ae4d-3ee78989efb4/evidence/batch-pack-hard-cut/batch-contracts/raw_inventory_before.json",
+          "/home/realnigga/.factory/missions/638844ab-aa59-453c-ae4d-3ee78989efb4/evidence/batch-pack-hard-cut/batch-contracts/raw_inventory_after_create.json",
+          "/home/realnigga/.factory/missions/638844ab-aa59-453c-ae4d-3ee78989efb4/evidence/batch-pack-hard-cut/batch-contracts/production_log_create.json",
+          "/home/realnigga/.factory/missions/638844ab-aa59-453c-ae4d-3ee78989efb4/evidence/batch-pack-hard-cut/targeted_batch_pack_tests_summary.json"
+        ],
+        "tests": [
+          "ProductionLogWipPostingRegressionIT",
+          "ProductionLaborOverheadWipIT"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-BATCH-003",
+      "title": "A newly created production batch is immediately pack-ready",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Inspect the successful create payload in `production_log_create.json`",
+          "expected": "The response returns the canonical identifiers and pack-ready state immediately.",
+          "observed": "The response contains `id=1`, `publicId=b0061054-c9cd-464d-8c97-7e29ec9c5431`, `productionCode=PROD-20260325-001`, `outputBatchCode=PROD-20260325-001`, `outputQuantity=10`, `totalPackedQuantity=0`, and `status=READY_TO_PACK`."
+        },
+        {
+          "action": "Cross-check list/detail read surfaces in `production_log_detail.json` and `unpacked_batches.json`",
+          "expected": "The newly created batch appears on the surviving reads as a pack-ready batch.",
+          "observed": "`production_log_detail.json` repeats the same `READY_TO_PACK` status and zero packed quantity, while `unpacked_batches.json` lists the batch with `remainingQuantity=10.0` and `status=READY_TO_PACK`."
+        }
+      ],
+      "evidence": {
+        "network": [
+          "POST /api/v1/factory/production/logs -> 200",
+          "GET /api/v1/factory/production/logs/1 -> 200",
+          "GET /api/v1/factory/unpacked-batches -> 200"
+        ],
+        "files": [
+          "/home/realnigga/.factory/missions/638844ab-aa59-453c-ae4d-3ee78989efb4/evidence/batch-pack-hard-cut/batch-contracts/production_log_create.json",
+          "/home/realnigga/.factory/missions/638844ab-aa59-453c-ae4d-3ee78989efb4/evidence/batch-pack-hard-cut/batch-contracts/production_log_detail.json",
+          "/home/realnigga/.factory/missions/638844ab-aa59-453c-ae4d-3ee78989efb4/evidence/batch-pack-hard-cut/pack-contracts/unpacked_batches.json"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-BATCH-004",
+      "title": "Legacy production-batches ownership is removed",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Review route/service cleanup signals in `batch_public_surfaces.json` and repo searches",
+          "expected": "The retired `production-batches` route and `FactoryService.logBatch(...)` seam are absent from runtime ownership.",
+          "observed": "`batch_public_surfaces.json` records only snapshot/test assertions for `/api/v1/factory/production-batches`, reports `FactoryService.logBatch` as an empty match set, and the scoped repo grep for `FactoryService.logBatch|/api/v1/factory/production-batches` across `src/main`, `openapi.json`, endpoint inventory, and frontend handoff returned no live matches."
+        },
+        {
+          "action": "Probe the retired route through `removed_routes.json`",
+          "expected": "The retired public surface is gone at runtime too.",
+          "observed": "Both `GET` and `POST /api/v1/factory/production-batches` return 404 `Not Found`."
+        }
+      ],
+      "evidence": {
+        "network": [
+          "GET /api/v1/factory/production-batches -> 404",
+          "POST /api/v1/factory/production-batches -> 404"
+        ],
+        "files": [
+          "/home/realnigga/.factory/missions/638844ab-aa59-453c-ae4d-3ee78989efb4/evidence/batch-pack-hard-cut/batch-contracts/batch_public_surfaces.json",
+          "/home/realnigga/.factory/missions/638844ab-aa59-453c-ae4d-3ee78989efb4/evidence/batch-pack-hard-cut/batch-contracts/removed_routes.json"
+        ],
+        "tests": [
+          "OpenApiSnapshotIT",
+          "CR_FactoryLegacyBatchProdGatingIT"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-BATCH-005",
+      "title": "Production-log request has no dead legacy toggles",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Inspect `productionLogRequestProperties` in `openapi_factory_contract.json`",
+          "expected": "The surviving request contract contains only live fields and omits dead toggles such as `addToFinishedGoods`.",
+          "observed": "The request properties are limited to `batchColour`, `batchSize`, `brandId`, `createdBy`, `laborCost`, `materials`, `mixedQuantity`, `notes`, `overheadCost`, `producedAt`, `productId`, `salesOrderId`, and `unitOfMeasure`; `addToFinishedGoods` is absent."
+        },
+        {
+          "action": "Cross-check guard coverage in `batch_public_surfaces.json`",
+          "expected": "Tests explicitly lock the dead toggle out of the published contract.",
+          "observed": "`batch_public_surfaces.json` captures the `OpenApiSnapshotIT` assertion that `ProductionLogRequest must not expose retired addToFinishedGoods toggle`."
+        }
+      ],
+      "evidence": {
+        "files": [
+          "/home/realnigga/.factory/missions/638844ab-aa59-453c-ae4d-3ee78989efb4/evidence/batch-pack-hard-cut/batch-contracts/openapi_factory_contract.json",
+          "/home/realnigga/.factory/missions/638844ab-aa59-453c-ae4d-3ee78989efb4/evidence/batch-pack-hard-cut/batch-contracts/batch_public_surfaces.json"
+        ],
+        "tests": [
+          "OpenApiSnapshotIT"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-BATCH-006",
+      "title": "Production logging is atomic on failure",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Review the explicit failing-create runtime proof in `rollback_failure_summary.json`",
+          "expected": "A failed production-log create leaves no committed partial stock or log rows behind.",
+          "observed": "The negative create returns `400 Raw material not found`, and the summary records both `inventoryUnchanged=true` and `logsUnchanged=true` after the failure."
+        },
+        {
+          "action": "Corroborate with the targeted regression bundle",
+          "expected": "Regression tests continue to enforce transactional production-log posting behavior.",
+          "observed": "`targeted_batch_pack_tests_summary.json` includes a passing `ProductionLogWipPostingRegressionIT` run alongside the runtime rollback proof."
+        }
+      ],
+      "evidence": {
+        "network": [
+          "POST /api/v1/factory/production/logs (invalid raw material) -> 400"
+        ],
+        "files": [
+          "/home/realnigga/.factory/missions/638844ab-aa59-453c-ae4d-3ee78989efb4/evidence/batch-pack-hard-cut/batch-contracts/rollback_failure_summary.json",
+          "/home/realnigga/.factory/missions/638844ab-aa59-453c-ae4d-3ee78989efb4/evidence/batch-pack-hard-cut/targeted_batch_pack_tests_summary.json"
+        ],
+        "tests": [
+          "ProductionLogWipPostingRegressionIT"
+        ]
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 6 assertions: 6 passed, 0 failed, 0 blocked."
+}

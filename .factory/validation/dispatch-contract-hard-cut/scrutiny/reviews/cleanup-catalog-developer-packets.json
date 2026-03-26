@@ -1,0 +1,21 @@
+{
+  "featureId": "cleanup-catalog-developer-packets",
+  "reviewedAt": "2026-03-25T15:05:55Z",
+  "commitId": "0d4811819a7bccf85b024d5e130944937f6e2a89",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "I reviewed the feature metadata, handoff, transcript skeleton, `factory-flow-worker` procedure, commit `0d4811819a7bccf85b024d5e130944937f6e2a89`, and the current state of the touched developer-packet docs plus `README.md`. The commit is docs-only and limits itself to the expected 14 `docs/developer/**` files. Across the targeted folders, the stale `/api/v1/catalog/products*` and `/api/v1/accounting/catalog/products*` setup hosts are gone, the surviving docs consistently point setup truth to `/api/v1/catalog/items`, and the downstream operator story is aligned around `POST /api/v1/factory/production/logs`, `POST /api/v1/factory/packing-records`, and `POST /api/v1/sales/dispatch/confirm` (for example the three packet README files). The few remaining mentions of retired execution routes are explicitly marked as retired/delete-first references rather than supported behavior (for example `docs/developer/onboarding-stock-readiness/04-delete-first-duplicates.md:66-77` and `docs/developer/accounting-flows/13-catalog-sku-and-product-flows.md:92-99`). I found no blocking or non-blocking defects within the feature scope.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "Docs-only verification guidance is still slightly ambiguous across the shared worker instructions: `factory-flow-worker` says docs-only features should skip `commands.gate-fast`, but this worker still treated a startup baseline `gate_fast` as required and had to record that as a procedure deviation.",
+      "evidence": "`.factory/skills/factory-flow-worker/SKILL.md:61-69` says docs-only features should use docs checks and not run `commands.gate-fast`, while `/home/realnigga/.factory/missions/638844ab-aa59-453c-ae4d-3ee78989efb4/handoffs/2026-03-25T12-57-41-480Z__cleanup-catalog-developer-packets__666d944c-1137-4ec6-9863-1528f255124c.json:64-74` records `followedProcedure=false`, explains that a baseline `gate_fast` was still run, and asks for skill clarification."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Pass: commit `0d4811819a7bccf85b024d5e130944937f6e2a89` cleans the targeted developer packets up to the canonical `/api/v1/catalog/items` setup contract and `batch -> pack -> dispatch` story, with no review defects found in scope."
+}

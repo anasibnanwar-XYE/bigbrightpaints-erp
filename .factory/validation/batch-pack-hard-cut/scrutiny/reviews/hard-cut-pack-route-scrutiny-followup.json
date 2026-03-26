@@ -1,0 +1,26 @@
+{
+  "featureId": "hard-cut-pack-route-scrutiny-followup",
+  "reviewedAt": "2026-03-25T08:20:03.511955Z",
+  "commitId": "b957b8b7e5e4c186e450238f77bd69d4305e9b27",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The rerun fix resolves the prior blocking review. The follow-up commit deletes `PackingCompletionService`, removes `PackingService.completePacking(...)`, and keeps the public pack contract unchanged: current controller/OpenAPI/tests still expose only `POST /api/v1/factory/packing-records` with required `Idempotency-Key`, while `PackingServiceTest` and `ProductionLogPackingStatusRegressionIT` prove the surviving `recordPacking(...)` flow alone reaches `PARTIAL_PACKED` and `FULLY_PACKED`. I found no remaining same-scope runtime/docs/tests that present pack completion as a live supported workflow.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "`factory-flow-worker` may be too rigid for delete-only seam removals. Its procedure requires tests before implementation, but this fix reasonably relied on compile/symbol-absence proof first because the removed completion seam had no live callers, then updated targeted regression coverage afterward.",
+      "evidence": "`.factory/skills/factory-flow-worker/SKILL.md:32-35` says to add or update tests before implementation; the fix handoff for `hard-cut-pack-route-scrutiny-followup` records `skillFeedback.followedProcedure: false` with a justified deviation, and the transcript skeleton shows edits before the first compile/test command."
+    },
+    {
+      "area": "knowledge",
+      "observation": "Mission shared-state library notes still present the already-retired pack routes as pending retirement targets, so `.factory/library/**` lags the current repo state after this fix.",
+      "evidence": "`.factory/library/architecture.md:37` and `.factory/library/factory-canonical-flow.md:19-24` still list `/api/v1/factory/pack` and `/api/v1/factory/packing-records/{productionLogId}/complete` as retirement targets even though current runtime/OpenAPI/tests show those routes are gone."
+    }
+  ],
+  "addressesFailureFrom": ".factory/validation/batch-pack-hard-cut/scrutiny/reviews/hard-cut-pack-route-and-idempotency.json",
+  "summary": "Pass: the follow-up fix fully resolves the prior scrutiny failure by removing the obsolete internal pack-completion seam, preserving the single public `POST /api/v1/factory/packing-records` + `Idempotency-Key` contract, and leaving no same-scope live completion semantics in runtime/docs/tests."
+}

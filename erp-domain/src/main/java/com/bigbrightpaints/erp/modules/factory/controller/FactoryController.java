@@ -63,20 +63,6 @@ public class FactoryController {
 
   public record StatusRequest(String status) {}
 
-  /* Batches */
-  @GetMapping("/production-batches")
-  public ResponseEntity<ApiResponse<List<ProductionBatchDto>>> batches() {
-    return ResponseEntity.ok(ApiResponse.success(factoryService.listBatches()));
-  }
-
-  @PostMapping("/production-batches")
-  public ResponseEntity<ApiResponse<ProductionBatchDto>> logBatch(
-      @RequestParam(required = false) Long planId,
-      @Valid @RequestBody ProductionBatchRequest request) {
-    return ResponseEntity.ok(
-        ApiResponse.success("Batch logged", factoryService.logBatch(planId, request)));
-  }
-
   /* Tasks */
   @GetMapping("/tasks")
   public ResponseEntity<ApiResponse<List<FactoryTaskDto>>> tasks() {

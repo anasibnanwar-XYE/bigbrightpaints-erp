@@ -34,13 +34,18 @@ for path in \
   [[ -f "$path" ]] || fail "missing required contract document: $path"
 done
 
-require_literal "$O2C_WORKFLOW_DOC" 'preferred `POST /api/v1/sales/dispatch/confirm` (factory view may use `POST /api/v1/dispatch/confirm`)' "O2C dispatch workflow doc guidance"
+require_literal "$O2C_WORKFLOW_DOC" '`POST /api/v1/sales/dispatch/confirm`' "O2C dispatch workflow doc guidance"
 
 require_literal "$P2P_WORKFLOW_DOC" '`POST /api/v1/purchasing/goods-receipts`' "P2P GRN canonical endpoint doc"
 require_literal "$P2P_WORKFLOW_DOC" '`POST /api/v1/purchasing/raw-material-purchases`' "P2P invoice canonical endpoint doc"
 
 require_literal "$MANUFACTURING_WORKFLOW_DOC" '`POST /api/v1/factory/packing-records`' "manufacturing packing canonical endpoint doc"
-require_literal "$MANUFACTURING_WORKFLOW_DOC" '`POST /api/v1/factory/pack`' "manufacturing bulk-pack canonical endpoint doc"
+if grep -Fq -- '`POST /api/v1/factory/pack`' "$MANUFACTURING_WORKFLOW_DOC"; then
+  fail "manufacturing workflow doc still references retired bulk-pack endpoint in $MANUFACTURING_WORKFLOW_DOC"
+fi
+if grep -Fq -- '`POST /api/v1/factory/packing-records/{productionLogId}/complete`' "$MANUFACTURING_WORKFLOW_DOC"; then
+  fail "manufacturing workflow doc still references retired packing complete endpoint in $MANUFACTURING_WORKFLOW_DOC"
+fi
 
 require_literal "$PAYROLL_WORKFLOW_DOC" '`POST /api/v1/payroll/runs/{id}/post`' "payroll canonical endpoint doc"
 
@@ -107,8 +112,8 @@ dispatch_batch_body = extract_method_body(
 )
 if "throw new OrchestratorFeatureDisabledException(" not in dispatch_batch_body:
     fail("CommandDispatcher.dispatchBatch must fail closed instead of dispatching through an alternate posting path")
-if "/api/v1/dispatch/confirm" not in dispatch_batch_body and "CANONICAL_DISPATCH_PATH" not in dispatch_batch_body:
-    fail("CommandDispatcher.dispatchBatch must point callers to /api/v1/dispatch/confirm")
+if "/api/v1/sales/dispatch/confirm" not in dispatch_batch_body and "CANONICAL_DISPATCH_PATH" not in dispatch_batch_body:
+    fail("CommandDispatcher.dispatchBatch must point callers to /api/v1/sales/dispatch/confirm")
 
 integration_coordinator = read(integration_coordinator_path)
 update_fulfillment_body = extract_method_body(

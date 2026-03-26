@@ -1,0 +1,41 @@
+{
+  "milestone": "dispatch-contract-hard-cut",
+  "round": 3,
+  "status": "pass",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "ROOT=\"/home/realnigga/Desktop/orchestrator_erp_worktrees/ERP-38-canonical-factory-flow\" && cd \"$ROOT\" && bash scripts/gate_fast.sh",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "ROOT=\"/home/realnigga/Desktop/orchestrator_erp_worktrees/ERP-38-canonical-factory-flow\" && cd \"$ROOT/erp-domain\" && MIGRATION_SET=v2 mvn -T8 compile -q",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "ROOT=\"/home/realnigga/Desktop/orchestrator_erp_worktrees/ERP-38-canonical-factory-flow\" && cd \"$ROOT\" && bash ci/lint-knowledgebase.sh && bash ci/check-architecture.sh && bash ci/check-enterprise-policy.sh && bash ci/check-orchestrator-layer.sh && python3 scripts/check_flaky_tags.py --tests-root erp-domain/src/test/java --gate gate-fast && bash scripts/guard_openapi_contract_drift.sh",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 1,
+    "passed": 1,
+    "failed": 0,
+    "failedFeatures": []
+  },
+  "blockingIssues": [],
+  "nonBlockingIssues": [],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "skill:factory-flow-worker",
+      "suggestion": "Clarify docs-only verification guidance and handoff expectations so docs-only runs either skip `gate_fast` or explicitly record a deviation when extra validators are run.",
+      "evidence": "`.factory/skills/factory-flow-worker/SKILL.md:64-71` says docs-only features must not run `commands.gate-fast`; the transcript skeleton for session `b2d4ac8c-e83e-4248-bf4c-092a08a47b26` includes `Execute ... bash scripts/gate_fast.sh`, and `/home/realnigga/.factory/missions/638844ab-aa59-453c-ae4d-3ee78989efb4/handoffs/2026-03-25T16-26-26-407Z__refresh-listener-factory-dispatch-proof__b2d4ac8c-e83e-4248-bf4c-092a08a47b26.json` marks `skillFeedback.followedProcedure` as true.",
+      "isSystemic": false
+    }
+  ],
+  "rejectedObservations": [],
+  "previousRound": ".factory/validation/dispatch-contract-hard-cut/scrutiny/synthesis.round2.json"
+}

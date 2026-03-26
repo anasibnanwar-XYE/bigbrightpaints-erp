@@ -101,7 +101,6 @@ class ProductionLogListDetailLazyLoadRegressionIT extends AbstractIntegrationTes
                 LocalDate.now().toString(),
                 null,
                 "LF-015 Test",
-                true,
                 null,
                 BigDecimal.ZERO,
                 BigDecimal.ZERO,
@@ -119,12 +118,17 @@ class ProductionLogListDetailLazyLoadRegressionIT extends AbstractIntegrationTes
     assertThat(listed.productName()).isEqualTo(product.getProductName());
 
     ProductionLogDetailDto detail = productionLogService.getLog(created.id());
+    assertThat(detail.id()).isNotNull();
+    assertThat(detail.publicId()).isNotNull();
+    assertThat(detail.productionCode()).isNotBlank();
     assertThat(detail.materials()).isNotEmpty();
     assertThat(detail.materials().get(0).rawMaterialId()).isEqualTo(material.getId());
     assertThat(detail.materials().get(0).rawMaterialBatchCode()).isNotBlank();
     assertThat(detail.materials().get(0).rawMaterialMovementId()).isNotNull();
     assertThat(detail.outputBatchCode()).isEqualTo(detail.productionCode());
     assertThat(detail.outputQuantity()).isEqualByComparingTo(detail.mixedQuantity());
+    assertThat(detail.totalPackedQuantity()).isEqualByComparingTo(BigDecimal.ZERO);
+    assertThat(detail.status()).isEqualTo("READY_TO_PACK");
     assertThat(detail.wastageReasonCode()).isEqualTo("PROCESS_LOSS");
     assertThat(detail.packingRecords()).isEmpty();
   }

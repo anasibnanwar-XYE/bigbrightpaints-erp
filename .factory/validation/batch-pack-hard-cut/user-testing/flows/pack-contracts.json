@@ -1,0 +1,251 @@
+{
+  "groupId": "pack-contracts",
+  "surface": "api",
+  "testedAt": "2026-03-25T08:52:45Z",
+  "credentials": {
+    "account": "validation.factory@example.com",
+    "namespace": "batch-pack-hard-cut-pack"
+  },
+  "toolsUsed": [
+    "pre-recorded runtime evidence",
+    "mvn",
+    "openapi.json"
+  ],
+  "assertions": [
+    {
+      "id": "VAL-PACK-001",
+      "title": "Allowed sellable sizes are visible before pack and enforced on write",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Inspect pre-pack read surfaces in `production_log_detail.json`, `unpacked_batches.json`, and `openapi_factory_contract.json`",
+          "expected": "The surviving reads expose `allowedSellableSizes` before packing.",
+          "observed": "`openapi_factory_contract.json` includes `allowedSellableSizes` on both `ProductionLogDetailDto` and unpacked-batch reads; the runtime snapshots show the field present on `GET /api/v1/factory/production/logs/1` and `GET /api/v1/factory/unpacked-batches`."
+        },
+        {
+          "action": "Review the negative pack writes in `pack_missing_target.json` and `pack_header_contract.json`",
+          "expected": "Missing or unknown sellable targets fail closed instead of auto-creating or defaulting a target.",
+          "observed": "`pack_missing_target.json` returns `400` with `lines[0].childFinishedGoodId: Sellable size target is required`, and `pack_header_contract.json` returns `400 Sellable size target is not allowed for production batch PROD-20260325-001: 999` when the canonical header is present but the target is unknown."
+        }
+      ],
+      "evidence": {
+        "network": [
+          "GET /api/v1/factory/production/logs/1 -> 200",
+          "GET /api/v1/factory/unpacked-batches -> 200",
+          "POST /api/v1/factory/packing-records (missing childFinishedGoodId) -> 400",
+          "POST /api/v1/factory/packing-records (unknown childFinishedGoodId, canonical header present) -> 400"
+        ],
+        "files": [
+          "/home/realnigga/.factory/missions/638844ab-aa59-453c-ae4d-3ee78989efb4/evidence/batch-pack-hard-cut/pack-contracts/openapi_factory_contract.json",
+          "/home/realnigga/.factory/missions/638844ab-aa59-453c-ae4d-3ee78989efb4/evidence/batch-pack-hard-cut/pack-contracts/production_log_detail.json",
+          "/home/realnigga/.factory/missions/638844ab-aa59-453c-ae4d-3ee78989efb4/evidence/batch-pack-hard-cut/pack-contracts/unpacked_batches.json",
+          "/home/realnigga/.factory/missions/638844ab-aa59-453c-ae4d-3ee78989efb4/evidence/batch-pack-hard-cut/pack-contracts/pack_missing_target.json",
+          "/home/realnigga/.factory/missions/638844ab-aa59-453c-ae4d-3ee78989efb4/evidence/batch-pack-hard-cut/pack-contracts/pack_header_contract.json"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-PACK-002",
+      "title": "Exactly one public pack write surface survives",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Inspect path presence in `openapi_factory_contract.json`",
+          "expected": "Only `POST /api/v1/factory/packing-records` survives as a public pack mutation.",
+          "observed": "The path summary records `/api/v1/factory/packing-records=true` while `/api/v1/factory/pack=false` and `/api/v1/factory/packing-records/{productionLogId}/complete=false`."
+        },
+        {
+          "action": "Cross-check runtime and contract-surface absence proofs",
+          "expected": "Retired pack routes are absent from runtime, endpoint inventories, and frontend handoff.",
+          "observed": "`removed_routes.json` shows both retired pack routes returning 404, and `pack_public_surfaces_precise.json` reports no precise live matches for either retired route while the surviving docs only mention them as retired behavior."
+        }
+      ],
+      "evidence": {
+        "network": [
+          "POST /api/v1/factory/pack -> 404",
+          "POST /api/v1/factory/packing-records/1/complete -> 404"
+        ],
+        "files": [
+          "/home/realnigga/.factory/missions/638844ab-aa59-453c-ae4d-3ee78989efb4/evidence/batch-pack-hard-cut/pack-contracts/openapi_factory_contract.json",
+          "/home/realnigga/.factory/missions/638844ab-aa59-453c-ae4d-3ee78989efb4/evidence/batch-pack-hard-cut/pack-contracts/removed_routes.json",
+          "/home/realnigga/.factory/missions/638844ab-aa59-453c-ae4d-3ee78989efb4/evidence/batch-pack-hard-cut/pack-contracts/pack_public_surfaces_precise.json"
+        ],
+        "tests": [
+          "OpenApiSnapshotIT",
+          "TS_PackingIdempotencyAndFacadeBoundaryTest"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-PACK-003",
+      "title": "Pack idempotency is explicit and has no legacy header fallback",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Inspect the surviving OpenAPI header contract",
+          "expected": "The pack write advertises exactly one supported replay header: `Idempotency-Key`.",
+          "observed": "`openapi_factory_contract.json` and `OpenApiSnapshotIT` lock the `POST /api/v1/factory/packing-records` parameters to `Idempotency-Key` only."
+        },
+        {
+          "action": "Review `pack_header_contract.json` negative probes",
+          "expected": "Missing canonical header fails closed, and legacy headers do not act as supported fallbacks.",
+          "observed": "Requests without `Idempotency-Key` return `400 Idempotency-Key header is required`; `X-Idempotency-Key` returns `400 ... not supported ... use Idempotency-Key`; `X-Request-Id` returns the same fail-closed contract; a request with the canonical header advances to business validation and rejects only the unknown sellable target."
+        }
+      ],
+      "evidence": {
+        "network": [
+          "POST /api/v1/factory/packing-records (no Idempotency-Key) -> 400",
+          "POST /api/v1/factory/packing-records (X-Idempotency-Key only) -> 400",
+          "POST /api/v1/factory/packing-records (X-Request-Id only) -> 400",
+          "POST /api/v1/factory/packing-records (Idempotency-Key only) -> 400 business validation"
+        ],
+        "files": [
+          "/home/realnigga/.factory/missions/638844ab-aa59-453c-ae4d-3ee78989efb4/evidence/batch-pack-hard-cut/pack-contracts/openapi_factory_contract.json",
+          "/home/realnigga/.factory/missions/638844ab-aa59-453c-ae4d-3ee78989efb4/evidence/batch-pack-hard-cut/pack-contracts/pack_header_contract.json"
+        ],
+        "tests": [
+          "PackingControllerTest",
+          "TS_PackingIdempotencyAndFacadeBoundaryTest"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-PACK-004",
+      "title": "Pack consumes packaging materials",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Review targeted packaging-material test coverage and the batch-pack Maven log",
+          "expected": "Successful pack execution consumes packaging materials, and missing/insufficient packaging materials fail closed.",
+          "observed": "`packaging-material-test.log` shows `PackagingMaterialServiceTest` passing 18 tests, and the batch-pack Maven log records `FactoryPackagingCostingIT` plus `ProductionLogPackingStatusRegressionIT` with `Posting packing journal: reference=...-PACKMAT`, proving packaging-material accounting/movement happens on pack."
+        },
+        {
+          "action": "Inspect the real-runtime seed limitation note",
+          "expected": "If the default validation seed cannot prove positive pack consumption at runtime, the validation should fall back to deterministic suite coverage rather than faking fixtures.",
+          "observed": "`packaging_mapping_seed_limit.json` shows the default seed rejects packaging mappings with `Raw material must be of type PACKAGING`, confirming why positive consumption proof uses the targeted Maven suites instead of the empty packaging seed."
+        }
+      ],
+      "evidence": {
+        "files": [
+          "/home/realnigga/.factory/missions/638844ab-aa59-453c-ae4d-3ee78989efb4/evidence/batch-pack-hard-cut/packaging-material-test.log",
+          "/home/realnigga/.factory/missions/638844ab-aa59-453c-ae4d-3ee78989efb4/evidence/batch-pack-hard-cut/targeted-batch-pack-tests.log",
+          "/home/realnigga/.factory/missions/638844ab-aa59-453c-ae4d-3ee78989efb4/evidence/batch-pack-hard-cut/pack-contracts/packaging_mapping_seed_limit.json"
+        ],
+        "tests": [
+          "PackagingMaterialServiceTest",
+          "FactoryPackagingCostingIT",
+          "ProductionLogPackingStatusRegressionIT"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-PACK-005",
+      "title": "Pack creates finished-goods inventory truth",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Review the targeted pack service/controller/e2e coverage bundle",
+          "expected": "Successful pack execution creates finished-goods inventory truth and linked postings.",
+          "observed": "`targeted_batch_pack_tests_summary.json` shows `PackingServiceTest`, `PackingControllerTest`, and `FactoryPackagingCostingIT` all passing in the same validation run."
+        },
+        {
+          "action": "Inspect positive pack/service test names and e2e log signals",
+          "expected": "The surviving route registers finished-good output as part of the pack action.",
+          "observed": "`PackingServiceTest` includes `recordPacking_postsViaAccountingFacade` and verifies finished-good batch registration, while `FactoryPackagingCostingIT` logs the paired `...-PACKMAT` and final pack journals in the successful pack flow."
+        }
+      ],
+      "evidence": {
+        "files": [
+          "/home/realnigga/.factory/missions/638844ab-aa59-453c-ae4d-3ee78989efb4/evidence/batch-pack-hard-cut/targeted_batch_pack_tests_summary.json",
+          "/home/realnigga/.factory/missions/638844ab-aa59-453c-ae4d-3ee78989efb4/evidence/batch-pack-hard-cut/targeted-batch-pack-tests.log"
+        ],
+        "tests": [
+          "PackingServiceTest",
+          "PackingControllerTest",
+          "FactoryPackagingCostingIT"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-PACK-006",
+      "title": "Pack updates batch packing status monotonically",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Inspect the runtime batch state before packing",
+          "expected": "The batch starts in `READY_TO_PACK` before any pack mutation.",
+          "observed": "`production_log_detail.json` and `unpacked_batches.json` both show `status=READY_TO_PACK` with zero packed quantity before pack completion."
+        },
+        {
+          "action": "Review `ProductionLogPackingStatusRegressionIT` coverage",
+          "expected": "The surviving route moves the batch from `READY_TO_PACK` to `PARTIAL_PACKED` and then to `FULLY_PACKED` without a second mutation.",
+          "observed": "The regression test asserts `PARTIAL_PACKED` after the first pack and `FULLY_PACKED` after the final pack; the targeted Maven run passed that suite and logged the corresponding successful pack journals."
+        }
+      ],
+      "evidence": {
+        "files": [
+          "/home/realnigga/.factory/missions/638844ab-aa59-453c-ae4d-3ee78989efb4/evidence/batch-pack-hard-cut/pack-contracts/production_log_detail.json",
+          "/home/realnigga/.factory/missions/638844ab-aa59-453c-ae4d-3ee78989efb4/evidence/batch-pack-hard-cut/pack-contracts/unpacked_batches.json",
+          "/home/realnigga/.factory/missions/638844ab-aa59-453c-ae4d-3ee78989efb4/evidence/batch-pack-hard-cut/targeted-batch-pack-tests.log"
+        ],
+        "tests": [
+          "ProductionLogPackingStatusRegressionIT"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-PACK-007",
+      "title": "The surviving pack action handles completion without a second public mutation",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Inspect controller/openapi absence proof for `/complete`",
+          "expected": "Operators do not need a second public completion route.",
+          "observed": "`openapi_factory_contract.json` marks `/api/v1/factory/packing-records/{productionLogId}/complete=false`, `removed_routes.json` returns 404 for that route, and `pack_public_surfaces_precise.json` shows docs describing it only as retired."
+        },
+        {
+          "action": "Review the surviving pack-flow regression and service coverage",
+          "expected": "The single `POST /api/v1/factory/packing-records` action can reach `FULLY_PACKED` on its own.",
+          "observed": "`ProductionLogPackingStatusRegressionIT` reaches `FULLY_PACKED` through repeated surviving pack calls, and `PackingServiceTest.recordPacking_marksLogFullyPackedWhenFinalQuantityIsRecorded` verifies the final state without any second public mutation."
+        }
+      ],
+      "evidence": {
+        "network": [
+          "POST /api/v1/factory/packing-records/1/complete -> 404"
+        ],
+        "files": [
+          "/home/realnigga/.factory/missions/638844ab-aa59-453c-ae4d-3ee78989efb4/evidence/batch-pack-hard-cut/pack-contracts/openapi_factory_contract.json",
+          "/home/realnigga/.factory/missions/638844ab-aa59-453c-ae4d-3ee78989efb4/evidence/batch-pack-hard-cut/pack-contracts/removed_routes.json",
+          "/home/realnigga/.factory/missions/638844ab-aa59-453c-ae4d-3ee78989efb4/evidence/batch-pack-hard-cut/pack-contracts/pack_public_surfaces_precise.json",
+          "/home/realnigga/.factory/missions/638844ab-aa59-453c-ae4d-3ee78989efb4/evidence/batch-pack-hard-cut/targeted-batch-pack-tests.log"
+        ],
+        "tests": [
+          "ProductionLogPackingStatusRegressionIT",
+          "PackingServiceTest"
+        ]
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "The shared `validation-seed` runtime does not start with PACKAGING-typed raw materials or seeded size variants, so a positive live `POST /api/v1/factory/packing-records` proof cannot be completed from the default seed alone.",
+      "resolved": true,
+      "resolution": "Used deterministic targeted Maven proof (`PackagingMaterialServiceTest`, `PackingServiceTest`, `FactoryPackagingCostingIT`, `ProductionLogPackingStatusRegressionIT`) for positive pack completion/consumption/status assertions while keeping negative contract probes on the real seeded API.",
+      "affectedAssertions": [
+        "VAL-PACK-004",
+        "VAL-PACK-005",
+        "VAL-PACK-006",
+        "VAL-PACK-007"
+      ]
+    }
+  ],
+  "blockers": [],
+  "summary": "Tested 7 assertions: 7 passed, 0 failed, 0 blocked."
+}

@@ -15,7 +15,7 @@ Primary evidence:
 - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/controller/AccountingController.java`
 - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/production/service/{CatalogService,ProductionCatalogService}.java`
 - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/inventory/service/{RawMaterialService,OpeningStockImportService,InventoryAdjustmentService,FinishedGoodsWorkflowEngineService,FinishedGoodsReservationEngine,FinishedGoodsDispatchEngine,InventoryBatchTraceabilityService,InventoryMovementRecorder,InventoryValuationService}.java`
-- `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/factory/service/{ProductionLogService,PackagingMaterialService,PackingService,PackingInventoryService,PackingBatchService,PackingCompletionService,BulkPackingService,CostAllocationService}.java`
+- `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/factory/service/{ProductionLogService,PackagingMaterialService,PackingService,PackingInventoryService,PackingBatchService,BulkPackingService,CostAllocationService}.java`
 - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/purchasing/service/{GoodsReceiptService,PurchaseInvoiceEngine}.java`
 - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/{event/InventoryAccountingEventListener.java,internal/AccountingFacadeCore.java}`
 - `erp-domain/src/main/resources/db/migration_v2/{V3__sales_invoice.sql,V4__inventory_production.sql,V33__payroll_payment_date_and_production_wastage_reason.sql,V35__performance_hotspot_indexes.sql,V38__size_variants_and_packing_traceability.sql}`
@@ -35,7 +35,7 @@ This review feeds:
 Planning notes:
 
 - Lane 03 opens with the prove-first boundary note in [`../executable-specs/03-lane-accounting-truth-boundary/00-lane03-boundary-decision-note.md`](../executable-specs/03-lane-accounting-truth-boundary/00-lane03-boundary-decision-note.md); Packet 0 may map manufacturing, packing, dispatch, valuation, and listener surfaces as downstream consumers of accounting truth, but it must not turn this lane-opening slice into catalog/manufacturing runtime cleanup.
-- The downstream consumers called out for Packet 0 are `ProductionLogService`, `PackingService`, `PackingCompletionService`, `BulkPackingService`, `FinishedGoodsDispatchEngine`, and `InventoryValuationService`, all of which must inherit the chosen sales/purchase truth boundary instead of inventing a competing one.
+- The downstream consumers called out for Packet 0 are `ProductionLogService`, `PackingService`, `BulkPackingService`, `FinishedGoodsDispatchEngine`, and `InventoryValuationService`, all of which must inherit the chosen sales/purchase truth boundary instead of inventing a competing one.
 - `MFG-09` is a real execution blocker for stock-bearing create flows and should be closed before broad catalog authority cleanup.
 - Do not collapse packaging-workbench convergence into the same slice that fixes product, raw-material, or default-account authority paths.
 
@@ -43,15 +43,15 @@ Planning notes:
 
 | Surface | Entrypoints | Controller | Notes |
 | --- | --- | --- | --- |
-| Generic catalog CRUD | `POST/GET/PUT/DELETE /api/v1/catalog/brands`, `POST/GET/PUT/DELETE /api/v1/catalog/products`, `POST /api/v1/catalog/products/bulk` | `CatalogController` | Commercial/product-admin surface that manages `ProductionBrand` and `ProductionProduct`, but does not enforce inventory/accounting linkage. |
-| Accounting-aware catalog | `POST /api/v1/accounting/catalog/import`, `GET/POST /api/v1/accounting/catalog/products`, `PUT /api/v1/accounting/catalog/products/{id}`, `POST /api/v1/accounting/catalog/products/bulk-variants` | `AccountingCatalogController` | Canonical manufacturing-aware product create/import path; auto-syncs stock-bearing rows and validates account metadata. |
-| Raw-material ops | `GET/POST/PUT/DELETE /api/v1/catalog/products`, `GET /api/v1/raw-materials/stock{,/inventory,/low-stock}`, `GET/retired raw-material batch endpoint`, `retired raw-material intake endpoint`, `POST /api/v1/inventory/raw-materials/adjustments` | `RawMaterialController` | Raw-material master data, escape-hatch intake, batch creation, stock views, and raw-material adjustments. |
+| Catalog brands and items | `POST/GET/PUT/DELETE /api/v1/catalog/brands`, `POST/GET /api/v1/catalog/items`, `GET /api/v1/catalog/items/{itemId}` | `CatalogController` | Canonical stock-bearing setup/readiness surface for brand selection, item creation, and readiness visibility without exposing raw family identifiers as operator setup inputs. |
+| Accounting-aware catalog internals | `POST /api/v1/accounting/catalog/import`, retired accounting product-create helpers | `AccountingCatalogController` | Historical downstream-ready provisioning path; ERP-38 setup truth should converge behind `/api/v1/catalog/items` instead of a separate accounting setup host. |
+| Raw-material ops | Canonical item setup/readiness plus `GET /api/v1/raw-materials/stock{,/inventory,/low-stock}`, `GET/retired raw-material batch endpoint`, `retired raw-material intake endpoint`, `POST /api/v1/inventory/raw-materials/adjustments` | `RawMaterialController` | Raw-material master data, escape-hatch intake, batch creation, stock views, and raw-material adjustments. |
 | Opening stock | `POST/GET /api/v1/inventory/opening-stock` | `OpeningStockImportController` | Multipart CSV import with replay protection and journal linkage. |
 | Finished-goods ops | `GET/POST/PUT /api/v1/finished-goods`, `GET/POST /api/v1/finished-goods/{id}/batches`, `GET /api/v1/finished-goods/stock-summary`, `GET/PUT /api/v1/finished-goods/{id}/low-stock-threshold`, `GET /api/v1/finished-goods/low-stock` | `FinishedGoodController` | Finished-good CRUD, optional manual batch registration, and stock threshold views. |
 | Finished-good adjustments and traceability | `GET/POST /api/v1/inventory/adjustments`, `GET /api/v1/inventory/batches/{id}/movements` | `InventoryAdjustmentController`, `InventoryBatchController` | Stock corrections plus batch-level movement/journal traceability. |
 | Production and factory costing | `POST/GET /api/v1/factory/production/logs`, `GET /api/v1/factory/production/logs/{id}`, `POST /api/v1/factory/cost-allocation` | `ProductionLogController`, `FactoryController` | Production-log creation is where raw material becomes WIP truth; month-end variance allocation lives on the same factory surface. |
-| Packaging mappings and packing | `GET/POST/PUT/DELETE /api/v1/factory/packaging-mappings`, `POST /api/v1/factory/packing-records`, `POST /api/v1/factory/packing-records/{productionLogId}/complete`, `POST /api/v1/factory/pack`, `GET /api/v1/factory/{unpacked-batches,production-logs/{productionLogId}/packing-history,bulk-batches/{finishedGoodId},bulk-batches/{parentBatchId}/children}` | `PackagingMappingController`, `PackingController` | Packaging BOM maintenance, standard packing, completion/wastage, and bulk-to-size packaging. |
-| Reservation and dispatch boundary | `GET /api/v1/dispatch/{pending,preview/{slipId},slip/{slipId},order/{orderId}}`, `POST /api/v1/dispatch/confirm`, `POST /api/v1/dispatch/backorder/{slipId}/cancel` | `DispatchController` | Shared inventory/sales surface that turns reserved stock into shipped stock and COGS. |
+| Packaging Setup / Rules and packing | `GET/POST/PUT/DELETE /api/v1/factory/packaging-mappings`, `POST /api/v1/factory/packing-records`, `GET /api/v1/factory/{unpacked-batches,production-logs/{productionLogId}/packing-history,bulk-batches/{finishedGoodId},bulk-batches/{parentBatchId}/children}` | `PackagingMappingController`, `PackingController` | Packaging Setup / Rules maintenance plus the single canonical pack mutation. `Idempotency-Key` is the only supported public replay input; legacy `/pack` and `/packing-records/{productionLogId}/complete` mutations are retired. |
+| Reservation and dispatch boundary | `GET /api/v1/dispatch/{pending,preview/{slipId},slip/{slipId},order/{orderId}}` | `DispatchController` | Factory/operator read-only prepared-slip lookup surface; shipment posting lives on `POST /api/v1/sales/dispatch/confirm`. |
 | Purchasing receipt / invoice boundary | `GET/POST /api/v1/purchasing/goods-receipts`, `GET/POST /api/v1/purchasing/raw-material-purchases`, `POST /api/v1/purchasing/raw-material-purchases/returns` | `PurchasingWorkflowController`, `RawMaterialPurchaseController` | Canonical supplier receipt and AP posting boundary for raw materials. |
 | Valuation, reconciliation, and manual finance overrides | `GET /api/v1/reports/{inventory-valuation,inventory-reconciliation,wastage,production-logs/{id}/cost-breakdown,monthly-production-costs}`, `POST /api/v1/accounting/inventory/{landed-cost,revaluation,wip-adjustment}` | `ReportController`, `AccountingController` | Reporting snapshots plus manual accounting-only valuation/revaluation hooks. |
 
@@ -66,7 +66,7 @@ The local `openapi.json` snapshot publishes the major catalog, raw-material, fin
 | `finished_goods`, `finished_good_batches`, `inventory_movements` | `ProductionCatalogService.ensureCatalogFinishedGood(...)`, `FinishedGoodsWorkflowEngineService`, `PackingBatchService`, `FinishedGoodsDispatchEngine`, `V4__inventory_production.sql` | Finished-good identity, semi-finished bulk batches, packing receipts, dispatch relief, and COGS linkage. |
 | `inventory_adjustments`, `inventory_adjustment_lines`, raw-material adjustment rows | `InventoryAdjustmentService`, `RawMaterialService.adjustStock(...)`, `V4__inventory_production.sql` | Replay-safe stock corrections and linked journal anchors. |
 | `opening_stock_imports` | `OpeningStockImportService`, `V4__inventory_production.sql` | CSV hash/idempotency-key replay anchor, import status, counts, and import-level journal linkage. |
-| `packaging_size_mappings`, `packing_records` | `PackagingMaterialService`, `PackingService`, `BulkPackingService`, `V4__inventory_production.sql`, `V38__size_variants_and_packing_traceability.sql` | Packaging BOM identity, packing execution, finished-good batch linkage, and size-specific traceability. |
+| `packaging_size_mappings`, `packing_records` | `PackagingMaterialService`, `PackingService`, `BulkPackingService`, `V4__inventory_production.sql`, `V38__size_variants_and_packing_traceability.sql` | Packaging Setup / Rules identity, packing execution, finished-good batch linkage, and size-specific traceability. |
 | `production_logs`, `production_log_materials` | `ProductionLogService`, `CostAllocationService`, `V4__inventory_production.sql`, `V33__payroll_payment_date_and_production_wastage_reason.sql` | Raw-material issue detail, WIP/labor/overhead accumulation, wastage reason, and month-end variance allocation. |
 | `inventory_reservations`, `packaging_slips`, `packaging_slip_lines` | `FinishedGoodsReservationEngine`, `FinishedGoodsDispatchEngine`, `SalesCoreEngine`, `V3__sales_invoice.sql`, `V4__inventory_production.sql` | Sales-order reservation, backorder control, dispatch replay anchors, and movement-to-COGS linkage. |
 | Inventory/accounting config | `application.yml`, `application-prod.yml`, `InventoryAccountingEventListener`, `FinishedGoodsWorkflowEngineService`, `RawMaterialService` | Guards risky automatic inventory->GL posting, manual raw-material intake, and manual finished-good batch creation. |
@@ -74,26 +74,26 @@ The local `openapi.json` snapshot publishes the major catalog, raw-material, fin
 
 ## Service chain
 
-### 1. Dual product surfaces: one is generic, one is manufacturing-canonical
+### 1. Setup truth is `/api/v1/catalog/items`, but the implementation still reflects a historical split
 
-The repo exposes two product-creation paths with materially different guarantees.
+The repo hard-cuts stock-bearing setup truth to `/api/v1/catalog/items`, yet the underlying services still reflect two older product-creation paths with materially different guarantees.
 
-#### Generic catalog CRUD (`CatalogService`)
+#### Public catalog service lineage (`CatalogService`)
 
 - `CatalogService.createProduct(...)` and `updateProduct(...)` create/update `ProductionProduct` plus `size_variants` only.
 - SKU generation is brand/name driven; default category is `FINISHED_GOOD`.
 - This path does **not** call `ensureCatalogFinishedGood(...)`, does **not** sync `RawMaterial`, and does **not** require finished-good accounting metadata.
 
-Operationally, that makes `/api/v1/catalog/products` a catalog-admin surface, not a safe manufacturing-stock surface.
+Operationally, that legacy behavior explains why ERP-38 now keeps stock-bearing setup truth on `/api/v1/catalog/items` instead of treating the older product-create surface as safe manufacturing-stock setup.
 
-#### Accounting-aware catalog CRUD/import (`ProductionCatalogService`)
+#### Accounting-aware catalog lineage (`ProductionCatalogService`)
 
 - `createProduct(...)` / `updateProduct(...)` normalize metadata, require valid company-scoped accounts, and for non-raw-material categories call `ensureFinishedGoodAccounts(...)`.
 - Required finished-good metadata is fail-closed: `fgValuationAccountId`, `fgCogsAccountId`, `fgRevenueAccountId`, and `fgTaxAccountId` must resolve either from payload metadata or company defaults.
 - After saving `ProductionProduct`, the service immediately calls `ensureCatalogFinishedGood(...)` and `syncRawMaterial(...)`.
-- Single-product create/update explicitly rejects color/size matrix input and directs callers to `/api/v1/accounting/catalog/products/bulk-variants`.
+- Single-product create/update explicitly rejects color/size matrix input and routes larger variant generation through a retired accounting helper rather than through the surviving setup surface.
 
-This is the canonical path for any SKU that will be mixed, packed, valued, reserved, or dispatched.
+This is the stronger provisioning logic ERP-38 expects to sit behind the canonical item surface for any SKU that will be mixed, packed, valued, reserved, or dispatched.
 
 ### 2. Catalog import and bulk-variant generation
 
@@ -197,16 +197,13 @@ This entire chain fails closed when account metadata is incomplete. Missing `wip
 
 ### 8. Packaging mappings, standard packing, and bulk packing
 
-#### Packaging mappings
+#### Packaging Setup / Rules
 
 - `PackagingMaterialService` maps a packaging size (for example `1L` or `20L`) to one or more packaging raw materials.
-- Each mapping requires a raw material that is itself classified as packaging.
+- Each rule requires a raw material that is itself classified as packaging.
 - The schema enforces uniqueness per `(company, packaging_size, raw_material)`.
-
-The important policy toggle is `erp.benchmark.require-packaging`:
-
-- when `true`, packing fails if no packaging BOM exists for the requested size;
-- when `false`, missing mappings are tolerated and the service returns zero packaging consumption/cost.
+- Packing now fails closed when Packaging Setup is missing, inactive, points to a non-packaging or otherwise unusable raw material, or resolves to zero packaging cost.
+- The service raises setup-directed validation errors so operators correct Packaging Setup / Rules instead of silently skipping packaging consumption.
 
 #### Standard packing (`PackingService`)
 
@@ -215,7 +212,7 @@ The important policy toggle is `erp.benchmark.require-packaging`:
 - `PackingInventoryService` consumes semi-finished stock from the bulk batch created by production.
 - `PackagingMaterialService.consumePackagingMaterial(...)` consumes packaging raw-material batches and totals packaging cost by inventory account.
 - `PackingBatchService.registerFinishedGoodBatch(...)` creates the finished-good batch receipt and journal that debits FG valuation and credits the semi-finished/WIP side.
-- `completePacking(...)` can post wastage through `PackingCompletionService`, which requires `wastageAccountId` metadata and credits WIP.
+- The single `recordPacking(...)` flow advances the batch from `READY_TO_PACK` to `PARTIAL_PACKED` to `FULLY_PACKED` as cumulative packed quantity reaches the mixed quantity; there is no separate completion seam.
 
 #### Bulk-to-size packing (`BulkPackingService`)
 
@@ -337,12 +334,12 @@ Recovery is strongest where explicit replay anchors exist: catalog import, openi
 | Severity | Category | Finding | Evidence | Why it matters |
 | --- | --- | --- | --- | --- |
 | critical | accounting boundary / configuration assumption | Production safety currently depends on `erp.inventory.accounting.events.enabled=false` in prod. Goods receipts publish inventory events with payable and inventory accounts populated, while purchase invoicing later posts the AP journal and links the same receipt movements. | `GoodsReceiptService`, `PurchaseInvoiceEngine`, `InventoryAccountingEventListener`, `application-prod.yml`, `CR_InventoryGlAutomationProdOffIT` | Re-enabling the listener in production without redesign would likely double-post inventory/AP at receipt time and again at invoice time. |
-| high | master-data integrity | `/api/v1/catalog/products` and `/api/v1/accounting/catalog/products` create `ProductionProduct` rows with very different guarantees. The generic catalog path does not provision `FinishedGood`, does not sync `RawMaterial`, and does not enforce finished-good account metadata. | `CatalogService`, `ProductionCatalogService`, `CatalogController`, `AccountingCatalogController` | A SKU created through the wrong endpoint can look valid in catalog/search UIs but fail later in manufacturing, valuation, reservation, or dispatch because the inventory side was never provisioned. |
-| high | manufacturing posting dependency | Production, packing, and wastage logic depend on product metadata keys such as `wipAccountId`, `semiFinishedAccountId`, `laborAppliedAccountId`, `overheadAppliedAccountId`, and `wastageAccountId`. | `ProductionCatalogService`, `ProductionLogService`, `PackingCompletionService`, `CR_ManufacturingWipCostingTest` | Manufacturing posting is intentionally fail-closed; any metadata drift or incomplete product setup becomes a hard operational blocker at the exact moment stock should move. |
+| high | master-data integrity | The retired generic product host and the retired accounting product host create `ProductionProduct` rows with very different guarantees. The generic catalog path does not provision `FinishedGood`, does not sync `RawMaterial`, and does not enforce finished-good account metadata. | `CatalogService`, `ProductionCatalogService`, `CatalogController`, `AccountingCatalogController` | A SKU created through the wrong legacy entrypoint can look valid in catalog/search UIs but fail later in manufacturing, valuation, reservation, or dispatch because the inventory side was never provisioned. |
+| high | manufacturing posting dependency | Production and packing posting depend on product and finished-good account metadata such as `wipAccountId`, `semiFinishedAccountId`, `laborAppliedAccountId`, `overheadAppliedAccountId`, and finished-good valuation/COGS configuration. | `ProductionCatalogService`, `ProductionLogService`, `PackingService`, `CR_ManufacturingWipCostingTest` | Manufacturing posting is intentionally fail-closed; any metadata drift or incomplete product setup becomes a hard operational blocker at the exact moment stock should move. |
 | high | replay gap | Production-log creation consumes raw-material stock and posts WIP journals but exposes no first-class public idempotency key comparable to imports, adjustments, or packing. | `ProductionLogController`, `ProductionLogService` | Client retries or operator resubmissions can duplicate raw-material consumption and WIP postings on the most expensive step in the flow. |
-| medium | bootstrap / configuration drift | The canonical stock-bearing create paths currently fail in the seeded `MOCK` tenant because company default accounts are not configured: `POST /api/v1/accounting/catalog/products/bulk-variants` and `POST /api/v1/finished-goods` both return `VAL_007`. | live backend probes on `POST /api/v1/accounting/catalog/products/bulk-variants` and `POST /api/v1/finished-goods`, `ProductionCatalogService`, `FinishedGoodsWorkflowEngineService`, company default-account requirements in finance setup | Demo/QA environments can appear catalog-ready but still reject the manufacturing-safe creation paths that inventory, valuation, reservation, and dispatch depend on. |
+| medium | bootstrap / configuration drift | The canonical stock-bearing item path currently fails in the seeded `MOCK` tenant because company default accounts are not configured; the retired accounting bulk-variant helper and `POST /api/v1/finished-goods` both return `VAL_007`. | live backend probes on the retired accounting bulk-variant helper and `POST /api/v1/finished-goods`, `ProductionCatalogService`, `FinishedGoodsWorkflowEngineService`, company default-account requirements in finance setup | Demo/QA environments can appear catalog-ready but still reject the manufacturing-safe creation paths that inventory, valuation, reservation, and dispatch depend on. |
 | medium | bootstrap drift | Opening-stock import can create missing finished goods directly through `FinishedGoodsService.createFinishedGood(...)`, which does not create a matching `ProductionProduct`. | `OpeningStockImportService.resolveFinishedGood(...)`, `FinishedGoodsWorkflowEngineService.createFinishedGood(...)` | Day-zero stock can become inventory-visible but catalog/production-invisible, which later breaks valuation enrichment, production-product reporting, and catalog-based maintenance. |
-| medium | costing completeness | Packaging BOM enforcement is optional. When `erp.benchmark.require-packaging=false`, packing with no packaging mapping returns zero packaging consumption/cost instead of failing. | `PackagingMaterialService.consumePackagingMaterial(...)` | Packing can succeed while silently under-costing finished goods and leaving packaging raw-material stock untouched. |
+| medium | packaging setup drift | Packing now fails closed when Packaging Setup is missing, inactive, or unusable, including zero-cost setup resolution. | `PackagingMaterialService.consumePackagingMaterial(...)` | Operators cannot finish packing until Packaging Setup / Rules are corrected, but the fail-closed contract avoids silent under-costing and skipped packaging consumption. |
 | medium | historical valuation model | Report-time `asOf` valuation is reconstructed by reversing later movements from current stock, not by reading a historical snapshot table. | `modules.reports.service.InventoryValuationService` | Any movement corruption, missing journal link, or manual data repair can distort historical valuation and reconciliation reports long after the operational event. |
 | medium | noncanonical manual paths | Manual raw-material intake and manual finished-good batch creation exist as admin escape hatches behind feature flags. | `RawMaterialService`, `FinishedGoodsWorkflowEngineService`, `application.yml`, `CR_FinishedGoodBatchProdGatingIT` | These paths widen the drift surface because they bypass the stronger purchasing/production workflow invariants that normally create stock. |
 

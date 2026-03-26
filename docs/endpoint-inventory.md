@@ -1,7 +1,7 @@
 # Endpoint Inventory (OpenAPI)
 
 Source: `openapi.json`
-Updated: 2026-03-23
+Updated: 2026-03-25
 
 Related behavior contract:
 - `docs/ACCOUNTING_PORTAL_SCOPE_GUARDRAIL.md`
@@ -15,9 +15,9 @@ Portal scope guardrail:
 ## Canonical API contract gate
 
 - Canonical machine contract source: repo-root `openapi.json`.
-- OpenAPI snapshot: `openapi.json` (sha256 `c210fc65f70da391961646e09c25c08ff662fef4e0bb3bedfb9f43e5c4b37cc9`)
-- OpenAPI total paths: `295`
-- OpenAPI total operations: `349`
+- OpenAPI snapshot: `openapi.json` (sha256 `88108b02ade2781ce7ebeb6800fb5a9b952b43da4e4eebff5ebc514fb6824f77`)
+- OpenAPI total paths: `289`
+- OpenAPI total operations: `342`
 - Guard remediation flow: if parity drifts, regenerate this inventory from canonical `openapi.json`, then rerun `bash scripts/guard_openapi_contract_drift.sh` and `bash scripts/guard_accounting_portal_scope_contract.sh`.
 
 ## Summary by module
@@ -35,9 +35,9 @@ Portal scope guardrail:
 | `dealer-portal` | 7 | /api/v1/dealer-portal/aging, /api/v1/dealer-portal/credit-limit-requests, /api/v1/dealer-portal/dashboard |
 | `dealers` | 8 | /api/v1/dealers, /api/v1/dealers/search, /api/v1/dealers/{dealerId} |
 | `demo` | 1 | /api/v1/demo/ping |
-| `dispatch` | 8 | /api/v1/dispatch/backorder/{slipId}/cancel, /api/v1/dispatch/confirm, /api/v1/dispatch/order/{orderId} |
+| `dispatch` | 5 | /api/v1/dispatch/order/{orderId}, /api/v1/dispatch/pending, /api/v1/dispatch/preview/{slipId} |
 | `exports` | 2 | /api/v1/exports/request, /api/v1/exports/{requestId}/download |
-| `factory` | 20 | /api/v1/factory/bulk-batches/{finishedGoodId}, /api/v1/factory/bulk-batches/{parentBatchId}/children, /api/v1/factory/cost-allocation |
+| `factory` | 19 | /api/v1/factory/bulk-batches/{finishedGoodId}, /api/v1/factory/bulk-batches/{parentBatchId}/children, /api/v1/factory/cost-allocation |
 | `finished-goods` | 6 | /api/v1/finished-goods, /api/v1/finished-goods/low-stock, /api/v1/finished-goods/stock-summary |
 | `hr` | 17 | /api/v1/hr/attendance/bulk-import, /api/v1/hr/attendance/bulk-mark, /api/v1/hr/attendance/date/{date} |
 | `integration` | 1 | /api/integration/health |
@@ -227,14 +227,11 @@ Portal scope guardrail:
 
 ## `dispatch`
 
-- `POST` `/api/v1/dispatch/backorder/{slipId}/cancel`
-- `POST` `/api/v1/dispatch/confirm`
 - `GET` `/api/v1/dispatch/order/{orderId}`
 - `GET` `/api/v1/dispatch/pending`
 - `GET` `/api/v1/dispatch/preview/{slipId}`
 - `GET` `/api/v1/dispatch/slip/{slipId}`
 - `GET` `/api/v1/dispatch/slip/{slipId}/challan/pdf`
-- `PATCH` `/api/v1/dispatch/slip/{slipId}/status`
 
 ## `exports`
 
@@ -247,13 +244,10 @@ Portal scope guardrail:
 - `GET` `/api/v1/factory/bulk-batches/{parentBatchId}/children`
 - `POST` `/api/v1/factory/cost-allocation`
 - `GET` `/api/v1/factory/dashboard`
-- `POST` `/api/v1/factory/pack`
 - `GET, POST` `/api/v1/factory/packaging-mappings`
 - `GET` `/api/v1/factory/packaging-mappings/active`
 - `PUT, DELETE` `/api/v1/factory/packaging-mappings/{id}`
 - `POST` `/api/v1/factory/packing-records`
-- `POST` `/api/v1/factory/packing-records/{productionLogId}/complete`
-- `GET, POST` `/api/v1/factory/production-batches`
 - `GET` `/api/v1/factory/production-logs/{productionLogId}/packing-history`
 - `GET, POST` `/api/v1/factory/production-plans`
 - `PUT, DELETE` `/api/v1/factory/production-plans/{id}`
@@ -263,6 +257,8 @@ Portal scope guardrail:
 - `GET, POST` `/api/v1/factory/tasks`
 - `PUT` `/api/v1/factory/tasks/{id}`
 - `GET` `/api/v1/factory/unpacked-batches`
+
+Factory operator note: treat `/api/v1/factory/packaging-mappings` as the Packaging Setup / Rules contract. Pack requests fail closed when a size is missing active, usable packaging setup, when `Idempotency-Key` is missing, or when legacy replay headers are sent.
 
 ## `finished-goods`
 
