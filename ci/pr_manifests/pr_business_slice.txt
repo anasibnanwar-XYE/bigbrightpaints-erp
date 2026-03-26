@@ -16,11 +16,13 @@ com.bigbrightpaints.erp.modules.factory.controller.PackagingMappingControllerTes
 com.bigbrightpaints.erp.modules.factory.controller.PackingControllerTest
 com.bigbrightpaints.erp.modules.factory.service.FactoryServiceTest
 com.bigbrightpaints.erp.modules.factory.service.PackingAllowedSizeServiceTest
+com.bigbrightpaints.erp.modules.factory.service.PackingIdempotencyServiceTest
 com.bigbrightpaints.erp.modules.factory.service.PackingReadServiceTest
 com.bigbrightpaints.erp.modules.factory.service.PackingServiceTest
 com.bigbrightpaints.erp.modules.factory.service.PackagingMaterialServiceTest
 com.bigbrightpaints.erp.modules.factory.service.BulkPackingServiceTest
 com.bigbrightpaints.erp.modules.factory.service.BulkPackingServiceIdempotencyTest
+com.bigbrightpaints.erp.regression.ProductionLogPackingStatusRegressionIT
 com.bigbrightpaints.erp.regression.ProductionCatalogFinishedGoodInvariantIT
 com.bigbrightpaints.erp.regression.ProductionCatalogRawMaterialInvariantIT
 BusinessDocumentTruthsTest

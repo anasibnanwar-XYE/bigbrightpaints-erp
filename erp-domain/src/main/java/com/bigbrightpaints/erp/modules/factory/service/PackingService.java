@@ -357,14 +357,14 @@ public class PackingService {
     Company company = companyContextService.requireCurrentCompany();
     ProductionLog refreshedLog = companyEntityLookup.requireProductionLog(company, logId);
     if (closeResidualWastage) {
-      closeResidualWastage(company, refreshedLog, packedDate);
+      closeResidualWastage(refreshedLog, packedDate);
       return;
     }
     updateStatus(refreshedLog, refreshedLog.getTotalPackedQuantity());
     productionLogRepository.save(refreshedLog);
   }
 
-  private void closeResidualWastage(Company company, ProductionLog log, LocalDate packedDate) {
+  private void closeResidualWastage(ProductionLog log, LocalDate packedDate) {
     BigDecimal mixedQuantity = safeQuantity(log.getMixedQuantity());
     BigDecimal packedQuantity = safeQuantity(log.getTotalPackedQuantity());
     BigDecimal residualWastage = mixedQuantity.subtract(packedQuantity);

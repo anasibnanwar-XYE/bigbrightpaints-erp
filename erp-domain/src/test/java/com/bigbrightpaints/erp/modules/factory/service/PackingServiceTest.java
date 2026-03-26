@@ -8,6 +8,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -23,6 +24,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -99,7 +101,7 @@ class PackingServiceTest {
 
     company = new Company();
     company.setTimezone("UTC");
-    when(companyContextService.requireCurrentCompany()).thenReturn(company);
+    lenient().when(companyContextService.requireCurrentCompany()).thenReturn(company);
   }
 
   @Test
@@ -449,6 +451,159 @@ class PackingServiceTest {
     verify(packingInventoryService).consumeSemiFinishedWastage(refreshedLog, new BigDecimal("4.0"));
     verify(accountingFacade).createStandardJournal(any(JournalCreationRequest.class));
     verify(productionLogRepository, never()).incrementPackedQuantityAtomic(anyLong(), any());
+  }
+
+  @Test
+  void closeResidualWastage_capsNegativeResidualAtZeroAndSkipsJournal() {
+    ProductionProduct product = new ProductionProduct();
+    product.setSkuCode("SKU-1");
+    product.setProductName("Primer");
+
+    ProductionLog log = new ProductionLog();
+    ReflectionTestUtils.setField(log, "id", 1L);
+    log.setCompany(company);
+    log.setProduct(product);
+    log.setProductionCode("PROD-NEG");
+    log.setMixedQuantity(new BigDecimal("5.0"));
+    log.setTotalPackedQuantity(new BigDecimal("7.0"));
+    log.setStatus(ProductionLogStatus.PARTIAL_PACKED);
+
+    when(productionLogRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+    ReflectionTestUtils.invokeMethod(
+        packingService, "closeResidualWastage", log, LocalDate.of(2024, 1, 3));
+
+    verify(packingInventoryService).consumeSemiFinishedWastage(log, BigDecimal.ZERO);
+    verify(accountingFacade, never()).createStandardJournal(any(JournalCreationRequest.class));
+    assertThat(log.getStatus()).isEqualTo(ProductionLogStatus.FULLY_PACKED);
+    assertThat(log.getWastageQuantity()).isEqualByComparingTo(BigDecimal.ZERO);
+    assertThat(log.getWastageReasonCode()).isEqualTo("NONE");
+  }
+
+  @Test
+  void closeResidualWastage_usesMaterialCostFallbackWhenUnitCostMissing() {
+    ProductionProduct product = new ProductionProduct();
+    product.setSkuCode("SKU-1");
+    product.setProductName("Primer");
+    product.setMetadata(Map.of("wastageAccountId", 902L));
+
+    ProductionLog log = new ProductionLog();
+    ReflectionTestUtils.setField(log, "id", 1L);
+    log.setCompany(company);
+    log.setProduct(product);
+    log.setProductionCode("PROD-FALLBACK");
+    log.setMixedQuantity(new BigDecimal("10.0"));
+    log.setTotalPackedQuantity(new BigDecimal("6.0"));
+    log.setMaterialCostTotal(new BigDecimal("25.0"));
+    log.setUnitCost(BigDecimal.ZERO);
+    log.setStatus(ProductionLogStatus.PARTIAL_PACKED);
+
+    when(productionLogRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+    when(packingProductSupport.requireWipAccountId(product)).thenReturn(811L);
+    when(packingProductSupport.metadataLong(product, "wastageAccountId")).thenReturn(902L);
+
+    ReflectionTestUtils.invokeMethod(
+        packingService, "closeResidualWastage", log, LocalDate.of(2024, 1, 4));
+
+    ArgumentCaptor<JournalCreationRequest> requestCaptor =
+        ArgumentCaptor.forClass(JournalCreationRequest.class);
+    verify(accountingFacade).createStandardJournal(requestCaptor.capture());
+    assertThat(requestCaptor.getValue().amount()).isEqualByComparingTo(new BigDecimal("10.00"));
+    assertThat(requestCaptor.getValue().debitAccount()).isEqualTo(902L);
+    assertThat(requestCaptor.getValue().creditAccount()).isEqualTo(811L);
+  }
+
+  @Test
+  void closeResidualWastage_rejectsMissingWastageAccountMetadata() {
+    ProductionProduct product = new ProductionProduct();
+    product.setSkuCode("SKU-1");
+    product.setProductName("Primer");
+
+    ProductionLog log = new ProductionLog();
+    ReflectionTestUtils.setField(log, "id", 1L);
+    log.setCompany(company);
+    log.setProduct(product);
+    log.setProductionCode("PROD-NO-WASTE-ACCOUNT");
+    log.setMixedQuantity(new BigDecimal("10.0"));
+    log.setTotalPackedQuantity(new BigDecimal("6.0"));
+    log.setUnitCost(new BigDecimal("5.0"));
+    log.setStatus(ProductionLogStatus.PARTIAL_PACKED);
+    when(packingProductSupport.metadataLong(product, "wastageAccountId")).thenReturn(null);
+
+    assertThatThrownBy(
+            () ->
+                ReflectionTestUtils.invokeMethod(
+                    packingService, "closeResidualWastage", log, LocalDate.of(2024, 1, 5)))
+        .isInstanceOf(ApplicationException.class)
+        .hasMessage("Product Primer missing wastageAccountId metadata");
+  }
+
+  @Test
+  void applyPackedQuantity_rejectsOverflow() {
+    ProductionLog log = new ProductionLog();
+    ReflectionTestUtils.setField(log, "id", 1L);
+    log.setProductionCode("PROD-OVERFLOW");
+
+    when(productionLogRepository.incrementPackedQuantityAtomic(1L, new BigDecimal("2.0")))
+        .thenReturn(0);
+
+    assertThatThrownBy(
+            () ->
+                ReflectionTestUtils.invokeMethod(
+                    packingService, "applyPackedQuantity", log, new BigDecimal("2.0")))
+        .isInstanceOf(ApplicationException.class)
+        .hasMessage("Packed quantity would exceed mixed quantity for PROD-OVERFLOW");
+  }
+
+  @Test
+  void updateStatus_setsReadyToPackWhenNothingPacked() {
+    ProductionLog log = new ProductionLog();
+    log.setMixedQuantity(new BigDecimal("10.0"));
+    log.setStatus(ProductionLogStatus.PARTIAL_PACKED);
+
+    ReflectionTestUtils.invokeMethod(packingService, "updateStatus", log, BigDecimal.ZERO);
+
+    assertThat(log.getStatus()).isEqualTo(ProductionLogStatus.READY_TO_PACK);
+  }
+
+  @Test
+  void postResidualWastageJournal_skipsWhenCalculatedValueIsZero() {
+    ProductionProduct product = new ProductionProduct();
+    product.setSkuCode("SKU-1");
+    product.setProductName("Primer");
+    product.setMetadata(Map.of("wastageAccountId", 902L));
+
+    ProductionLog log = new ProductionLog();
+    log.setProduct(product);
+    log.setProductionCode("PROD-ZERO-VALUE");
+    log.setMixedQuantity(BigDecimal.ZERO);
+    log.setMaterialCostTotal(new BigDecimal("25.0"));
+    log.setUnitCost(BigDecimal.ZERO);
+
+    ReflectionTestUtils.invokeMethod(
+        packingService, "postResidualWastageJournal", log, LocalDate.of(2024, 1, 6), new BigDecimal("4.0"));
+
+    verify(accountingFacade, never()).createStandardJournal(any(JournalCreationRequest.class));
+  }
+
+  @Test
+  void safeQuantity_returnsZeroForNull() {
+    BigDecimal safeQuantity = ReflectionTestUtils.invokeMethod(packingService, "safeQuantity", (Object) null);
+
+    assertThat(safeQuantity).isEqualByComparingTo(BigDecimal.ZERO);
+  }
+
+  @Test
+  void calculateUnitCost_returnsZeroWhenInputsAreMissing() {
+    BigDecimal missingTotal =
+        ReflectionTestUtils.invokeMethod(
+            packingService, "calculateUnitCost", null, new BigDecimal("10.0"));
+    BigDecimal missingQuantity =
+        ReflectionTestUtils.invokeMethod(
+            packingService, "calculateUnitCost", new BigDecimal("10.0"), null);
+
+    assertThat(missingTotal).isEqualByComparingTo(BigDecimal.ZERO);
+    assertThat(missingQuantity).isEqualByComparingTo(BigDecimal.ZERO);
   }
 
   @Test

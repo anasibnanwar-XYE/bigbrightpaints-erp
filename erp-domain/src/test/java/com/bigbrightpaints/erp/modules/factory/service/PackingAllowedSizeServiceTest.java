@@ -379,6 +379,40 @@ class PackingAllowedSizeServiceTest {
   }
 
   @Test
+  void requireAllowedSellableSize_rejectsChildTargetWhenVariantGroupIsMissing() {
+    PackingAllowedSizeService service =
+        new PackingAllowedSizeService(
+            productionProductRepository, finishedGoodRepository, sizeVariantRepository);
+
+    Company company = new Company();
+    ProductionProduct base = product("FG-BASE-20L", "Primer White 20L", "Primer", "20L", null);
+    ProductionLog log = new ProductionLog();
+    log.setCompany(company);
+    log.setProduct(base);
+    log.setProductionCode("PROD-NULL-GROUP");
+    ReflectionTestUtils.setField(log, "id", 88L);
+
+    when(finishedGoodRepository.findByCompanyAndProductCodeInIgnoreCase(
+            org.mockito.ArgumentMatchers.eq(company), anyCollection()))
+        .thenReturn(List.of(finishedGood(501L, "FG-BASE-20L", "Primer White 20L")));
+    when(sizeVariantRepository.findByCompanyAndProductOrderBySizeLabelAsc(company, base))
+        .thenReturn(List.of(sizeVariant(base, "20L", new BigDecimal("20"), 1)));
+
+    assertThatThrownBy(() -> service.requireAllowedSellableSize(company, log, 999L, "20L", 1))
+        .isInstanceOf(ApplicationException.class)
+        .satisfies(
+            error -> {
+              ApplicationException ex = (ApplicationException) error;
+              assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_INVALID_REFERENCE);
+              assertThat(ex.getDetails())
+                  .containsEntry("productionLogId", 88L)
+                  .containsEntry("childFinishedGoodId", 999L);
+            })
+        .hasMessageContaining(
+            "Sellable size target is not allowed for production batch PROD-NULL-GROUP");
+  }
+
+  @Test
   void resolveAllowedSellableSize_rejectsPackagingSizeMismatch() {
     PackingAllowedSizeService service =
         new PackingAllowedSizeService(
