@@ -31,7 +31,7 @@ import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.factory.domain.FactoryTask;
 import com.bigbrightpaints.erp.modules.factory.domain.FactoryTaskRepository;
-import com.bigbrightpaints.erp.modules.factory.domain.ProductionBatchRepository;
+import com.bigbrightpaints.erp.modules.factory.domain.ProductionLogRepository;
 import com.bigbrightpaints.erp.modules.factory.domain.ProductionPlan;
 import com.bigbrightpaints.erp.modules.factory.domain.ProductionPlanRepository;
 import com.bigbrightpaints.erp.modules.factory.dto.FactoryDashboardDto;
@@ -45,7 +45,7 @@ class FactoryServiceTest {
 
   @Mock private CompanyContextService companyContextService;
   @Mock private ProductionPlanRepository planRepository;
-  @Mock private ProductionBatchRepository batchRepository;
+  @Mock private ProductionLogRepository productionLogRepository;
   @Mock private FactoryTaskRepository taskRepository;
   @Mock private CompanyEntityLookup companyEntityLookup;
 
@@ -58,7 +58,7 @@ class FactoryServiceTest {
         new FactoryService(
             companyContextService,
             planRepository,
-            batchRepository,
+            productionLogRepository,
             taskRepository,
             companyEntityLookup);
     company = new Company();
@@ -270,7 +270,7 @@ class FactoryServiceTest {
 
     when(planRepository.findByCompanyOrderByPlannedDateDesc(company))
         .thenReturn(List.of(completedPlan, pendingPlan));
-    when(batchRepository.countByCompany(company)).thenReturn(4L);
+    when(productionLogRepository.countByCompany(company)).thenReturn(4L);
 
     FactoryDashboardDto result = factoryService.dashboard();
 
@@ -282,7 +282,7 @@ class FactoryServiceTest {
   @Test
   void dashboard_returnsZeroEfficiencyWhenNoPlansExist() {
     when(planRepository.findByCompanyOrderByPlannedDateDesc(company)).thenReturn(List.of());
-    when(batchRepository.countByCompany(company)).thenReturn(4L);
+    when(productionLogRepository.countByCompany(company)).thenReturn(4L);
 
     FactoryDashboardDto result = factoryService.dashboard();
 

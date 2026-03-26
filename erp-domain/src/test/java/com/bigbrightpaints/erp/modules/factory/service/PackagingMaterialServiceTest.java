@@ -166,6 +166,23 @@ class PackagingMaterialServiceTest {
   }
 
   @Test
+  void createMapping_preservesExplicitLitersPerUnit() {
+    RawMaterial material = rawMaterial(27L, 907L, new BigDecimal("10"), null);
+    when(companyEntityLookup.requireActiveRawMaterial(company, 27L)).thenReturn(material);
+    when(mappingRepository.existsByCompanyAndPackagingSizeIgnoreCaseAndRawMaterial(
+            company, "1L", material))
+        .thenReturn(false);
+    when(mappingRepository.save(any(PackagingSizeMapping.class)))
+        .thenAnswer(invocation -> invocation.getArgument(0));
+
+    var created =
+        packagingMaterialService.createMapping(
+            new PackagingSizeMappingRequest("1L", 27L, 1, 12, new BigDecimal("1.250000")));
+
+    assertThat(created.litersPerUnit()).isEqualByComparingTo("1.250000");
+  }
+
+  @Test
   void consumePackagingMaterial_throwsWhenPackagingSetupMissing() {
     when(mappingRepository.findActiveByCompanyAndPackagingSizeIgnoreCase(company, "1L"))
         .thenReturn(List.of());
@@ -556,6 +573,23 @@ class PackagingMaterialServiceTest {
   }
 
   @Test
+  void createMapping_defaultsLitersPerUnitToOneWhenParsedSizeIsNotPositive() {
+    RawMaterial material = rawMaterial(29L, 909L, new BigDecimal("10"), null);
+    when(companyEntityLookup.requireActiveRawMaterial(company, 29L)).thenReturn(material);
+    when(mappingRepository.existsByCompanyAndPackagingSizeIgnoreCaseAndRawMaterial(
+            company, "0L", material))
+        .thenReturn(false);
+    when(mappingRepository.save(any(PackagingSizeMapping.class)))
+        .thenAnswer(invocation -> invocation.getArgument(0));
+
+    var created =
+        packagingMaterialService.createMapping(
+            new PackagingSizeMappingRequest("0L", 29L, 1, null, null));
+
+    assertThat(created.litersPerUnit()).isEqualByComparingTo("1");
+  }
+
+  @Test
   void consumePackagingMaterial_assignsPackingRecordMaterialAndSizeVariant() {
     RawMaterial material = rawMaterial(23L, 903L, new BigDecimal("5"), null);
     PackagingSizeMapping mapping = packagingMapping(material, 1);
@@ -664,6 +698,40 @@ class PackagingMaterialServiceTest {
     assertThatThrownBy(() -> packagingMaterialService.consumePackagingMaterial("1L", 1, "PACK-REF"))
         .isInstanceOf(ApplicationException.class)
         .hasMessageContaining("#26")
+        .hasMessageContaining("not marked as PACKAGING");
+  }
+
+  @Test
+  void consumePackagingMaterial_rejectsNullPackagingMaterial() {
+    RawMaterial mappingMaterial = rawMaterial(30L, 910L, new BigDecimal("5"), null);
+    PackagingSizeMapping mapping = packagingMapping(mappingMaterial, 1);
+
+    when(mappingRepository.findActiveByCompanyAndPackagingSizeIgnoreCase(company, "1L"))
+        .thenReturn(List.of(mapping));
+    when(companyEntityLookup.lockActiveRawMaterial(company, 30L)).thenReturn(null);
+
+    assertThatThrownBy(() -> packagingMaterialService.consumePackagingMaterial("1L", 1, "PACK-REF"))
+        .isInstanceOf(ApplicationException.class)
+        .hasMessageContaining("unknown")
+        .hasMessageContaining("not marked as PACKAGING");
+  }
+
+  @Test
+  void consumePackagingMaterial_rejectsNullPackagingMaterialReferenceWithUnknownLabel() {
+    RawMaterial mappingMaterial = rawMaterial(28L, 908L, new BigDecimal("5"), null);
+    RawMaterial unresolvedMaterial = new RawMaterial();
+    unresolvedMaterial.setCompany(company);
+    unresolvedMaterial.setMaterialType(MaterialType.PRODUCTION);
+    unresolvedMaterial.setSku("   ");
+    PackagingSizeMapping mapping = packagingMapping(mappingMaterial, 1);
+
+    when(mappingRepository.findActiveByCompanyAndPackagingSizeIgnoreCase(company, "1L"))
+        .thenReturn(List.of(mapping));
+    when(companyEntityLookup.lockActiveRawMaterial(company, 28L)).thenReturn(unresolvedMaterial);
+
+    assertThatThrownBy(() -> packagingMaterialService.consumePackagingMaterial("1L", 1, "PACK-REF"))
+        .isInstanceOf(ApplicationException.class)
+        .hasMessageContaining("unknown")
         .hasMessageContaining("not marked as PACKAGING");
   }
 

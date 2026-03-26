@@ -23,7 +23,7 @@ public class FactoryService {
 
   private final CompanyContextService companyContextService;
   private final ProductionPlanRepository planRepository;
-  private final ProductionBatchRepository batchRepository;
+  private final ProductionLogRepository productionLogRepository;
   private final FactoryTaskRepository taskRepository;
   private final CompanyEntityLookup companyEntityLookup;
   private static final int QUANTITY_SCALE = 2;
@@ -31,12 +31,12 @@ public class FactoryService {
   public FactoryService(
       CompanyContextService companyContextService,
       ProductionPlanRepository planRepository,
-      ProductionBatchRepository batchRepository,
+      ProductionLogRepository productionLogRepository,
       FactoryTaskRepository taskRepository,
       CompanyEntityLookup companyEntityLookup) {
     this.companyContextService = companyContextService;
     this.planRepository = planRepository;
-    this.batchRepository = batchRepository;
+    this.productionLogRepository = productionLogRepository;
     this.taskRepository = taskRepository;
     this.companyEntityLookup = companyEntityLookup;
   }
@@ -181,7 +181,7 @@ public class FactoryService {
   public FactoryDashboardDto dashboard() {
     List<ProductionPlanDto> plans = listPlans();
     Company company = companyContextService.requireCurrentCompany();
-    long batchesLogged = batchRepository.countByCompany(company);
+    long batchesLogged = productionLogRepository.countByCompany(company);
     double efficiency = plans.isEmpty() ? 0 : (double) batchesLogged / plans.size();
     return new FactoryDashboardDto(
         efficiency,

@@ -17,6 +17,7 @@ import com.bigbrightpaints.erp.modules.factory.domain.ProductionLogRepository;
 import com.bigbrightpaints.erp.modules.factory.domain.ProductionLogStatus;
 import com.bigbrightpaints.erp.modules.factory.dto.PackingRecordDto;
 import com.bigbrightpaints.erp.modules.factory.dto.UnpackedBatchDto;
+import com.bigbrightpaints.erp.modules.production.domain.ProductionProduct;
 
 @Service
 public class PackingReadService {
@@ -48,24 +49,25 @@ public class PackingReadService {
         .findByCompanyAndStatusInOrderByProducedAtAsc(company, statuses)
         .stream()
         .map(
-            log ->
-                new UnpackedBatchDto(
-                    log.getId(),
-                    log.getProductionCode(),
-                    log.getProduct().getProductName(),
-                    log.getBatchColour(),
-                    Optional.ofNullable(log.getMixedQuantity()).orElse(BigDecimal.ZERO),
-                    Optional.ofNullable(log.getTotalPackedQuantity()).orElse(BigDecimal.ZERO),
-                    Optional.ofNullable(log.getMixedQuantity())
-                        .orElse(BigDecimal.ZERO)
-                        .subtract(
-                            Optional.ofNullable(log.getTotalPackedQuantity())
-                                .orElse(BigDecimal.ZERO))
-                        .max(BigDecimal.ZERO),
-                    log.getStatus().name(),
-                    log.getProducedAt(),
-                    log.getProduct() != null ? log.getProduct().getProductFamilyName() : null,
-                    packingAllowedSizeService.listAllowedSellableSizes(company, log)))
+            log -> {
+              ProductionProduct product = log.getProduct();
+              return new UnpackedBatchDto(
+                  log.getId(),
+                  log.getProductionCode(),
+                  product.getProductName(),
+                  log.getBatchColour(),
+                  Optional.ofNullable(log.getMixedQuantity()).orElse(BigDecimal.ZERO),
+                  Optional.ofNullable(log.getTotalPackedQuantity()).orElse(BigDecimal.ZERO),
+                  Optional.ofNullable(log.getMixedQuantity())
+                      .orElse(BigDecimal.ZERO)
+                      .subtract(
+                          Optional.ofNullable(log.getTotalPackedQuantity()).orElse(BigDecimal.ZERO))
+                      .max(BigDecimal.ZERO),
+                  log.getStatus().name(),
+                  log.getProducedAt(),
+                  product.getProductFamilyName(),
+                  packingAllowedSizeService.listAllowedSellableSizes(company, log));
+            })
         .toList();
   }
 

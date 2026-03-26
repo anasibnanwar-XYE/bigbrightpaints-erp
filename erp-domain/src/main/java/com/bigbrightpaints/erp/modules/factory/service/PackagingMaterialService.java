@@ -318,7 +318,12 @@ public class PackagingMaterialService {
   }
 
   private void requirePackagingSetupMaterial(String normalizedSize, RawMaterial material) {
-    if (material == null || material.getMaterialType() != MaterialType.PACKAGING) {
+    if (material == null) {
+      throw invalidPackagingSetupReference(
+          normalizedSize,
+          "points to raw material " + describeRawMaterial(null) + " that is not marked as PACKAGING");
+    }
+    if (material.getMaterialType() != MaterialType.PACKAGING) {
       throw invalidPackagingSetupReference(
           normalizedSize,
           "points to raw material "
@@ -383,10 +388,13 @@ public class PackagingMaterialService {
       return litersPerUnit;
     }
     BigDecimal parsed = PackagingSizeParser.parseSizeInLitersAllowBareNumber(normalizedSize);
-    if (parsed != null && parsed.compareTo(BigDecimal.ZERO) > 0) {
-      return parsed;
+    if (parsed == null) {
+      return BigDecimal.ONE;
     }
-    return BigDecimal.ONE;
+    if (parsed.compareTo(BigDecimal.ZERO) <= 0) {
+      return BigDecimal.ONE;
+    }
+    return parsed;
   }
 
   private ApplicationException duplicateMapping(String normalizedSize, RawMaterial rawMaterial) {

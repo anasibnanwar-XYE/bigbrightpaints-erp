@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.times;
 
 import java.util.List;
 import java.util.Map;
@@ -207,6 +208,39 @@ class RoleServiceTest {
     int synchronizedRoles = service.synchronizeSystemRoles();
 
     assertThat(synchronizedRoles).isZero();
+  }
+
+  @Test
+  void synchronizeSystemRoles_updatesWhenRetiredPermissionMustBePruned() {
+    Role factory =
+        role(
+            "ROLE_FACTORY",
+            permission("portal:factory"),
+            permission("factory.dispatch"),
+            permission("dispatch.confirm"),
+            permission("inventory.audit"));
+    when(roleRepository.lockByName("ROLE_SUPER_ADMIN"))
+        .thenReturn(Optional.of(role("ROLE_SUPER_ADMIN", permission("portal:super-admin"))));
+    when(roleRepository.lockByName("ROLE_ADMIN"))
+        .thenReturn(Optional.of(role("ROLE_ADMIN", permission("portal:admin"))));
+    when(roleRepository.lockByName("ROLE_ACCOUNTING"))
+        .thenReturn(Optional.of(role("ROLE_ACCOUNTING", permission("portal:accounting"))));
+    when(roleRepository.lockByName("ROLE_FACTORY")).thenReturn(Optional.of(factory));
+    when(roleRepository.lockByName("ROLE_SALES"))
+        .thenReturn(Optional.of(role("ROLE_SALES", permission("portal:sales"), permission("dispatch.confirm"))));
+    when(roleRepository.lockByName("ROLE_DEALER"))
+        .thenReturn(Optional.of(role("ROLE_DEALER", permission("portal:dealer"))));
+    when(roleRepository.save(any(Role.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+    RoleService service = new RoleService(roleRepository, permissionRepository, auditService);
+
+    int synchronizedRoles = service.synchronizeSystemRoles();
+
+    assertThat(synchronizedRoles).isPositive();
+    assertThat(factory.getPermissions())
+        .extracting(Permission::getCode)
+        .doesNotContain("dispatch.confirm");
+    verify(roleRepository, times(synchronizedRoles)).save(any(Role.class));
   }
 
   @Test
