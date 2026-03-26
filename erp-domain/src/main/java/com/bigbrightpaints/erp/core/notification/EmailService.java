@@ -154,6 +154,30 @@ public class EmailService {
     sendHtmlEmail(to, subject, "mail/password-reset-confirmed", context);
   }
 
+  public void sendAdminEmailChangeVerificationRequired(
+      String to,
+      String displayName,
+      String companyCode,
+      String verificationToken,
+      java.time.Instant expiresAt) {
+    if (!isCredentialEmailDeliveryEnabled()) {
+      throw new ApplicationException(
+          ErrorCode.SYSTEM_CONFIGURATION_ERROR,
+          "Credential email delivery is disabled; enable erp.mail.enabled=true and"
+              + " erp.mail.send-credentials=true");
+    }
+    String subject = "Verify your BigBright ERP admin email change";
+    Context context = new Context();
+    context.setVariable("displayName", displayName);
+    context.setVariable("email", to);
+    context.setVariable("companyCode", companyCode);
+    context.setVariable("verificationToken", verificationToken);
+    context.setVariable("expiresAt", expiresAt);
+    context.setVariable("loginUrl", properties.getBaseUrl());
+    context.setVariable("preheader", "Use this verification token to confirm your new admin email.");
+    sendHtmlEmailRequired(to, subject, "mail/admin-email-change-verification", context);
+  }
+
   public void sendTemplatedEmail(String to, String subject, String templateName, Context context) {
     sendHtmlEmail(to, subject, templateName, context);
   }

@@ -255,8 +255,11 @@ public class CompanyService {
     assertBoundControlPlaneCompanyMatchesTarget(company.getCode());
 
     if (tenantLifecycleService != null) {
-      return tenantLifecycleService.transition(
+      CompanyLifecycleStateDto response =
+          tenantLifecycleService.transition(
           company, requestedState, lifecycleReason, authentication);
+      synchronizeRuntimePolicyWithLifecycle(company, requestedState, lifecycleReason, authentication);
+      return response;
     }
 
     CompanyLifecycleState previousState = resolveLifecycleStateById(company.getId());
@@ -264,6 +267,7 @@ public class CompanyService {
     company.setLifecycleReason(lifecycleReason);
     persistLifecycleAuditEvidence(
         company, previousState, requestedState, lifecycleReason, authentication);
+    synchronizeRuntimePolicyWithLifecycle(company, requestedState, lifecycleReason, authentication);
     return new CompanyLifecycleStateDto(
         company.getId(),
         company.getCode(),
@@ -750,6 +754,43 @@ public class CompanyService {
     if (!boundCompanyCode.trim().equalsIgnoreCase(targetCompanyCode.trim())) {
       throw new AccessDeniedException("Bound company context does not match targeted tenant");
     }
+  }
+
+  private void synchronizeRuntimePolicyWithLifecycle(
+      Company company,
+      CompanyLifecycleState requestedState,
+      String lifecycleReason,
+      Authentication authentication) {
+    if (company == null
+        || tenantRuntimeEnforcementService == null
+        || requestedState == null
+        || !StringUtils.hasText(company.getCode())) {
+      return;
+    }
+    tenantRuntimeEnforcementService.updatePolicy(
+        company.getCode(),
+        mapLifecycleToRuntimeState(requestedState),
+        lifecycleReason,
+        safeRuntimeLimit(company.getQuotaMaxConcurrentRequests()),
+        safeRuntimeLimit(company.getQuotaMaxApiRequests()),
+        safeRuntimeLimit(company.getQuotaMaxActiveUsers()),
+        resolveActor(authentication));
+  }
+
+  private TenantRuntimeEnforcementService.TenantRuntimeState mapLifecycleToRuntimeState(
+      CompanyLifecycleState lifecycleState) {
+    return switch (lifecycleState == null ? CompanyLifecycleState.ACTIVE : lifecycleState) {
+      case ACTIVE -> TenantRuntimeEnforcementService.TenantRuntimeState.ACTIVE;
+      case SUSPENDED -> TenantRuntimeEnforcementService.TenantRuntimeState.HOLD;
+      case DEACTIVATED -> TenantRuntimeEnforcementService.TenantRuntimeState.BLOCKED;
+    };
+  }
+
+  private Integer safeRuntimeLimit(long value) {
+    if (value <= 0L) {
+      return 1;
+    }
+    return value > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) value;
   }
 
   private String normalizeCompanyCode(String code) {
