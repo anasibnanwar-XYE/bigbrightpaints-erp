@@ -303,7 +303,7 @@ public class MockDataInitializer {
               encoder.encode(adminPassword.trim()),
               "Mock Admin");
       user.setMustChangePassword(true);
-      user.addCompany(company);
+      user.setCompany(company);
       user.addRole(admin);
       user.addRole(accounting);
       user.addRole(sales);
@@ -311,7 +311,7 @@ public class MockDataInitializer {
       return;
     }
     existingAdmin.setAuthScopeCode(company.getCode());
-    existingAdmin.addCompany(company);
+    existingAdmin.setCompany(company);
     existingAdmin.addRole(admin);
     existingAdmin.addRole(accounting);
     existingAdmin.addRole(sales);

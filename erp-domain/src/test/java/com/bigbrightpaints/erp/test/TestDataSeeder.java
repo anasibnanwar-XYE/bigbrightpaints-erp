@@ -99,17 +99,14 @@ public class TestDataSeeder {
                       new UserAccount(
                           email, scopeCode, passwordEncoder.encode(rawPassword), displayName);
                   if (company != null) {
-                    account.addCompany(company);
+                    account.setCompany(company);
                   }
                   return account;
                 });
     user.setAuthScopeCode(scopeCode);
     user.setDisplayName(displayName);
     user.setPasswordHash(passwordEncoder.encode(rawPassword));
-    user.getCompanies().clear();
-    if (company != null) {
-      user.addCompany(company);
-    }
+    user.setCompany(company);
     roleNames.forEach(roleName -> user.addRole(ensureRole(roleName)));
     return userRepository.save(user);
   }

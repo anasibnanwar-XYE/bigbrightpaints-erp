@@ -69,7 +69,7 @@ public class AuthScopeService {
       }
       for (UserAccount platformUser : platformUsers) {
         platformUser.setAuthScopeCode(normalized);
-        platformUser.clearCompanyMemberships();
+        platformUser.clearCompany();
       }
       userAccountRepository.saveAll(platformUsers);
     }

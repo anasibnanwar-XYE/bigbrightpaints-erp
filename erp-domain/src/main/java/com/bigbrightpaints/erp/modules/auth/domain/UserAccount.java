@@ -3,10 +3,10 @@ package com.bigbrightpaints.erp.modules.auth.domain;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.Locale;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.UUID;
 
 import com.bigbrightpaints.erp.core.domain.VersionedEntity;
@@ -55,12 +55,9 @@ public class UserAccount extends VersionedEntity {
       inverseJoinColumns = @JoinColumn(name = "role_id"))
   private Set<Role> roles = new HashSet<>();
 
-  @ManyToMany(fetch = FetchType.EAGER)
-  @JoinTable(
-      name = "user_companies",
-      joinColumns = @JoinColumn(name = "user_id"),
-      inverseJoinColumns = @JoinColumn(name = "company_id"))
-  private Set<Company> companies = new HashSet<>();
+  @ManyToOne(fetch = FetchType.EAGER)
+  @JoinColumn(name = "company_id")
+  private Company company;
 
   @Column(name = "mfa_secret")
   private String mfaSecret;
@@ -237,29 +234,23 @@ public class UserAccount extends VersionedEntity {
     return roles;
   }
 
-  public Set<Company> getCompanies() {
-    return companies;
+  public Company getCompany() {
+    return company;
   }
 
-  public void addCompany(Company company) {
-    if (company == null) {
-      return;
-    }
-    companies.removeIf(existing -> existing == null || !sameCompany(existing, company));
-    companies.add(company);
+  public void setCompany(Company company) {
+    this.company = company;
   }
 
-  public void clearCompanyMemberships() {
-    companies.clear();
+  public void clearCompany() {
+    this.company = null;
   }
 
   public boolean belongsToCompanyCode(String companyCode) {
-    if (companyCode == null || companyCode.isBlank()) {
+    if (companyCode == null || companyCode.isBlank() || company == null || company.getCode() == null) {
       return false;
     }
-    return companies.stream()
-        .filter(company -> company != null && company.getCode() != null)
-        .anyMatch(company -> company.getCode().equalsIgnoreCase(companyCode));
+    return company.getCode().equalsIgnoreCase(companyCode);
   }
 
   public void addRole(Role role) {
@@ -314,15 +305,5 @@ public class UserAccount extends VersionedEntity {
       return null;
     }
     return authScopeCode.trim().toUpperCase(Locale.ROOT);
-  }
-
-  private boolean sameCompany(Company left, Company right) {
-    if (left.getId() != null && right.getId() != null) {
-      return left.getId().equals(right.getId());
-    }
-    if (left.getCode() == null || right.getCode() == null) {
-      return false;
-    }
-    return left.getCode().equalsIgnoreCase(right.getCode());
   }
 }

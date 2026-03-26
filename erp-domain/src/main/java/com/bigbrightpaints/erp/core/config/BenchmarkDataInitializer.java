@@ -327,7 +327,7 @@ public class BenchmarkDataInitializer {
               encoder.encode(adminPassword.trim()),
               "Benchmark Admin");
       user.setMustChangePassword(true);
-      user.addCompany(company);
+      user.setCompany(company);
       user.addRole(admin);
       user.addRole(accounting);
       user.addRole(sales);
@@ -336,7 +336,7 @@ public class BenchmarkDataInitializer {
       return;
     }
     existingAdmin.setAuthScopeCode(company.getCode());
-    existingAdmin.addCompany(company);
+    existingAdmin.setCompany(company);
     existingAdmin.addRole(admin);
     existingAdmin.addRole(accounting);
     existingAdmin.addRole(sales);

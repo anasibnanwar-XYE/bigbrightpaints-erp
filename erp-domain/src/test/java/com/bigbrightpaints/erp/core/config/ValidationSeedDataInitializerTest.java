@@ -203,7 +203,7 @@ class ValidationSeedDataInitializerTest {
             .findFirst()
             .orElseThrow();
     assertThat(platformUser.getAuthScopeCode()).isEqualTo("PLATFORM");
-    assertThat(platformUser.getCompanies()).isEmpty();
+    assertThat(platformUser.getCompany()).isNull();
 
     UserAccount mockAdmin =
         users.getAllValues().stream()
@@ -211,7 +211,7 @@ class ValidationSeedDataInitializerTest {
             .findFirst()
             .orElseThrow();
     assertThat(mockAdmin.getAuthScopeCode()).isEqualTo("MOCK");
-    assertThat(mockAdmin.getCompanies()).extracting(Company::getCode).containsExactly("MOCK");
+    assertThat(mockAdmin.getCompany()).extracting(Company::getCode).isEqualTo("MOCK");
     assertThat(mockAdmin.getRoles()).extracting(Role::getName).contains("ROLE_ADMIN", "ROLE_ACCOUNTING", "ROLE_SALES");
 
     assertThat(users.getAllValues())

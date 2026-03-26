@@ -141,7 +141,7 @@ public class DealerService {
               company, contactEmail, dealer.getName(), List.of(dealerRole));
     }
     portalUser.getRoles().add(roleService.ensureRoleExists("ROLE_DEALER"));
-    portalUser.getCompanies().add(company);
+    portalUser.setCompany(company);
     portalUser = userAccountRepository.save(portalUser);
 
     Account receivableAccount = dealer.getReceivableAccount();

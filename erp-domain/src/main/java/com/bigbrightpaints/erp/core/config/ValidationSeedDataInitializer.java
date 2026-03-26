@@ -279,9 +279,9 @@ public class ValidationSeedDataInitializer {
   }
 
   private void normalizeCompanyMemberships(UserAccount user, List<Company> companies) {
-    user.clearCompanyMemberships();
-    if (companies != null) {
-      companies.forEach(user::addCompany);
+    user.clearCompany();
+    if (companies != null && !companies.isEmpty()) {
+      user.setCompany(companies.getFirst());
     }
   }
 

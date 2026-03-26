@@ -46,7 +46,7 @@ public class ScopedAccountBootstrapService {
     String temporaryPassword = generateTemporaryPassword();
     UserAccount account =
         createScopedAccount(scopeCode, email, displayName, roles, temporaryPassword);
-    account.addCompany(company);
+    account.setCompany(company);
     UserAccount saved = userAccountRepository.save(account);
     emailService.sendUserCredentialsEmailRequired(
         saved.getEmail(), saved.getDisplayName(), temporaryPassword, scopeCode);

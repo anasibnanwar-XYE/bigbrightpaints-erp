@@ -170,7 +170,7 @@ class DealerServiceTest {
   @Test
   void createDealer_reusesExistingScopedPortalUserWithoutSendingNewCredentials() {
     UserAccount existingPortalUser = new UserAccount("dealer@example.com", "TEST", "hash", "Test Dealer");
-    existingPortalUser.addCompany(company);
+    existingPortalUser.setCompany(company);
     when(userAccountRepository.findByEmailIgnoreCaseAndAuthScopeCodeIgnoreCase("dealer@example.com", "TEST"))
         .thenReturn(Optional.of(existingPortalUser));
 

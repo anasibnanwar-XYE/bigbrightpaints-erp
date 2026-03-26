@@ -96,7 +96,7 @@ public class AdminUserService {
 
   public List<UserDto> listUsers() {
     Company company = companyContextService.requireCurrentCompany();
-    List<UserAccount> users = userRepository.findDistinctByCompanies_Id(company.getId());
+    List<UserAccount> users = userRepository.findByCompany_Id(company.getId());
     Map<String, Instant> lastLoginByEmail = resolveLastLoginByEmail(users);
     return users.stream()
         .map(user -> toDto(user, lastLoginByEmail.get(normalizeEmailKey(user.getEmail()))))
@@ -106,12 +106,9 @@ public class AdminUserService {
   @Transactional
   public UserDto createUser(CreateUserRequest request) {
     Company company = companyContextService.requireCurrentCompany();
-    List<Company> targetCompanies = resolveTargetCompaniesForCreate(company, request.companyIds());
+    Company targetCompany = resolveTargetCompanyForCreate(company, request.companyId());
     assertActorCanAssignRoles(request.roles(), company);
-    targetCompanies.forEach(
-        targetCompany ->
-            tenantRuntimePolicyService.assertCanAddEnabledUser(targetCompany, "ADMIN_USER_CREATE"));
-    Company targetCompany = targetCompanies.getFirst();
+    tenantRuntimePolicyService.assertCanAddEnabledUser(targetCompany, "ADMIN_USER_CREATE");
     UserAccount user = new UserAccount();
     attachRoles(user, request.roles());
     UserAccount saved =
@@ -146,10 +143,8 @@ public class AdminUserService {
     if (fallbackRoles.isEmpty()) {
       return dto;
     }
-    List<String> fallbackCompanies =
-        dto.companies().isEmpty()
-            ? targetCompanies.stream().map(Company::getCode).filter(StringUtils::hasText).toList()
-            : dto.companies();
+    String fallbackCompanyCode =
+        StringUtils.hasText(dto.companyCode()) ? dto.companyCode() : targetCompany.getCode();
     return new UserDto(
         dto.id(),
         dto.publicId(),
@@ -158,7 +153,7 @@ public class AdminUserService {
         dto.enabled(),
         dto.mfaEnabled(),
         fallbackRoles,
-        fallbackCompanies,
+        fallbackCompanyCode,
         dto.lastLoginAt());
   }
 
@@ -221,9 +216,8 @@ public class AdminUserService {
       updateUserStatusInternal(user, request.enabled(), company, "ADMIN_USER_UPDATE");
       requiresReauth = enabledChanged;
     }
-    if (request.companyIds() != null && !request.companyIds().isEmpty()) {
-      user.getCompanies().clear();
-      attachCompanies(user, company, request.companyIds());
+    if (request.companyId() != null) {
+      user.setCompany(resolveTargetCompanyForCreate(company, request.companyId()));
       requiresReauth = true; // Company access changed
     }
     if (request.roles() != null && !request.roles().isEmpty()) {
@@ -420,9 +414,10 @@ public class AdminUserService {
       assertNotProtectedMainAdmin(user, actorCompany, "disable");
     }
     if (enabled && !previousEnabled) {
-      resolveTargetCompanies(user, actorCompany)
-          .forEach(
-              company -> tenantRuntimePolicyService.assertCanAddEnabledUser(company, operation));
+      Company targetCompany = resolveTargetCompany(user, actorCompany);
+      if (targetCompany != null) {
+        tenantRuntimePolicyService.assertCanAddEnabledUser(targetCompany, operation);
+      }
     }
     user.setEnabled(enabled);
     userRepository.save(user);
@@ -445,55 +440,32 @@ public class AdminUserService {
     return toDto(user, resolveLastLoginAt(user.getEmail()));
   }
 
-  private void validateCompanyScope(Company company, List<Long> companyIds) {
-    if (companyIds == null || companyIds.isEmpty()) {
+  private void validateCompanyScope(Company company, Long companyId) {
+    if (companyId == null) {
       throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
           "User must belong to an active company");
     }
-    boolean allMatch = companyIds.stream().allMatch(id -> id.equals(company.getId()));
-    if (!allMatch) {
+    if (company == null || company.getId() == null || !company.getId().equals(companyId)) {
       throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
           "User must be assigned to the active company");
     }
   }
 
-  private void attachCompanies(UserAccount user, Company company, List<Long> companyIds) {
-    validateCompanyScope(company, companyIds);
-    user.addCompany(company);
-  }
-
-  private void attachCompanies(UserAccount user, List<Company> companies) {
-    companies.forEach(user::addCompany);
-  }
-
-  private List<Company> resolveTargetCompaniesForCreate(
-      Company activeCompany, List<Long> companyIds) {
-    if (companyIds == null || companyIds.isEmpty()) {
+  private Company resolveTargetCompanyForCreate(Company activeCompany, Long companyId) {
+    if (companyId == null) {
       throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
           "User must belong to an active company");
     }
-    Set<Long> requestedCompanyIds = new LinkedHashSet<>(companyIds);
-    if (requestedCompanyIds.size() != 1) {
-      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
-          "User must be assigned to exactly one company");
-    }
     if (!hasSuperAdminAuthority()) {
-      validateCompanyScope(activeCompany, companyIds);
-      return List.of(activeCompany);
+      validateCompanyScope(activeCompany, companyId);
+      return activeCompany;
     }
-    Map<Long, Company> companiesById =
-        companyRepository.findAllById(requestedCompanyIds).stream()
-            .collect(Collectors.toMap(Company::getId, company -> company));
-    if (companiesById.size() != requestedCompanyIds.size()) {
-      Long missingCompanyId =
-          requestedCompanyIds.stream()
-              .filter(id -> !companiesById.containsKey(id))
-              .findFirst()
-              .orElse(null);
-      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
-          "Company not found: " + missingCompanyId);
-    }
-    return List.of(companiesById.get(requestedCompanyIds.iterator().next()));
+    return companyRepository
+        .findById(companyId)
+        .orElseThrow(
+            () ->
+                com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+                    "Company not found: " + companyId));
   }
 
   private boolean hasSuperAdminAuthority() {
@@ -643,10 +615,11 @@ public class AdminUserService {
     if (user == null
         || activeCompany == null
         || activeCompany.getId() == null
-        || user.getCompanies() == null) {
+        || user.getCompany() == null
+        || user.getCompany().getId() == null) {
       return false;
     }
-    return user.getCompanies().stream().map(Company::getId).anyMatch(activeCompany.getId()::equals);
+    return activeCompany.getId().equals(user.getCompany().getId());
   }
 
   private void assertNotProtectedMainAdmin(UserAccount user, Company actorCompany, String action) {
@@ -697,11 +670,11 @@ public class AdminUserService {
     return SecurityActorResolver.resolveActorWithSystemProcessFallback();
   }
 
-  private List<Company> resolveTargetCompanies(UserAccount user, Company actorCompany) {
-    if (user != null && user.getCompanies() != null && !user.getCompanies().isEmpty()) {
-      return user.getCompanies().stream().distinct().toList();
+  private Company resolveTargetCompany(UserAccount user, Company actorCompany) {
+    if (user != null && user.getCompany() != null) {
+      return user.getCompany();
     }
-    return actorCompany == null ? List.of() : List.of(actorCompany);
+    return actorCompany;
   }
 
   private List<Company> resolveActorScopedTargetCompanies(UserAccount user, Company actorCompany) {
@@ -721,25 +694,13 @@ public class AdminUserService {
   }
 
   private String resolveTargetCompanyCodes(UserAccount user) {
-    if (user == null || user.getCompanies() == null || user.getCompanies().isEmpty()) {
+    if (user == null || user.getCompany() == null || !StringUtils.hasText(user.getCompany().getCode())) {
       return null;
     }
-    return user.getCompanies().stream()
-        .map(Company::getCode)
-        .filter(StringUtils::hasText)
-        .map(String::trim)
-        .distinct()
-        .sorted(String.CASE_INSENSITIVE_ORDER)
-        .collect(Collectors.joining(","));
+    return user.getCompany().getCode().trim();
   }
 
   private UserDto toDto(UserAccount user, Instant lastLoginAt) {
-    List<String> companies =
-        user.getCompanies().stream()
-            .filter(java.util.Objects::nonNull)
-            .map(Company::getCode)
-            .filter(StringUtils::hasText)
-            .toList();
     List<String> roles =
         user.getRoles().stream()
             .filter(java.util.Objects::nonNull)
@@ -754,7 +715,9 @@ public class AdminUserService {
         user.isEnabled(),
         user.isMfaEnabled(),
         roles,
-        companies,
+        user.getCompany() == null || !StringUtils.hasText(user.getCompany().getCode())
+            ? null
+            : user.getCompany().getCode(),
         lastLoginAt);
   }
 }

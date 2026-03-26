@@ -101,7 +101,7 @@ class DataInitializerTest {
             .findFirst()
             .orElseThrow();
     assertThat(superAdmin.getAuthScopeCode()).isEqualTo("PLATFORM");
-    assertThat(superAdmin.getCompanies()).isEmpty();
+    assertThat(superAdmin.getCompany()).isNull();
     assertThat(superAdmin.isMustChangePassword()).isTrue();
     assertThat(superAdmin.getRoles()).extracting(Role::getName).contains("ROLE_ADMIN", "ROLE_SUPER_ADMIN");
 
@@ -111,7 +111,7 @@ class DataInitializerTest {
             .findFirst()
             .orElseThrow();
     assertThat(devAdmin.getAuthScopeCode()).isEqualTo("BBP");
-    assertThat(devAdmin.getCompanies()).extracting(Company::getCode).containsExactly("BBP");
+    assertThat(devAdmin.getCompany()).extracting(Company::getCode).isEqualTo("BBP");
     assertThat(devAdmin.isMustChangePassword()).isTrue();
     assertThat(devAdmin.getRoles()).extracting(Role::getName).containsExactly("ROLE_ADMIN");
   }
@@ -221,19 +221,19 @@ class DataInitializerTest {
         initializer, "ensureCompanyMembership", new UserAccount("u@x.com", "hash", "User"), null);
 
     UserAccount userWithCodeMatch = new UserAccount("a@x.com", "hash", "User A");
-    userWithCodeMatch.addCompany(company("bbp"));
+    userWithCodeMatch.setCompany(company("bbp"));
     ReflectionTestUtils.invokeMethod(
         initializer, "ensureCompanyMembership", userWithCodeMatch, targetCompany);
-    assertThat(userWithCodeMatch.getCompanies()).hasSize(1);
+    assertThat(userWithCodeMatch.getCompany()).isNotNull();
 
     UserAccount userWithIdMatch = new UserAccount("b@x.com", "hash", "User B");
     Company existing = company("OTHER");
     ReflectionTestUtils.setField(existing, "id", 7L);
     Company sameId = company("DIFFERENT");
     ReflectionTestUtils.setField(sameId, "id", 7L);
-    userWithIdMatch.addCompany(existing);
+    userWithIdMatch.setCompany(existing);
     ReflectionTestUtils.invokeMethod(initializer, "ensureCompanyMembership", userWithIdMatch, sameId);
-    assertThat(userWithIdMatch.getCompanies()).hasSize(1);
+    assertThat(userWithIdMatch.getCompany()).isNotNull();
   }
 
   @Test

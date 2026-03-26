@@ -40,14 +40,14 @@ public interface UserAccountRepository extends JpaRepository<UserAccount, Long> 
   Optional<UserAccount> lockByEmailIgnoreCaseAndAuthScopeCodeIgnoreCase(
       @Param("email") String email, @Param("authScopeCode") String authScopeCode);
 
-  List<UserAccount> findDistinctByCompanies_Id(Long companyId);
+  List<UserAccount> findByCompany_Id(Long companyId);
 
-  long countDistinctByCompanies_IdAndEnabledTrue(Long companyId);
+  long countByCompany_IdAndEnabledTrue(Long companyId);
 
-  Optional<UserAccount> findByIdAndCompanies_Id(Long id, Long companyId);
+  Optional<UserAccount> findByIdAndCompany_Id(Long id, Long companyId);
 
   @Lock(LockModeType.PESSIMISTIC_WRITE)
-  @Query("select u from UserAccount u join u.companies c where u.id = :id and c.id = :companyId")
+  @Query("select u from UserAccount u where u.id = :id and u.company.id = :companyId")
   Optional<UserAccount> lockByIdAndCompanyId(
       @Param("id") Long id, @Param("companyId") Long companyId);
 }

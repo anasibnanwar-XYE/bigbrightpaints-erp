@@ -78,7 +78,7 @@ class TenantRuntimePolicyServiceTest {
                 2,
                 3,
                 2L));
-    when(userAccountRepository.findDistinctByCompanies_Id(42L))
+    when(userAccountRepository.findByCompany_Id(42L))
         .thenReturn(List.of(user(true), user(false), user(true)));
 
     TenantRuntimeMetricsDto metrics = service.metrics();

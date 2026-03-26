@@ -105,7 +105,7 @@ class AuthPlatformScopeCodeIT extends AbstractIntegrationTest {
             .findByEmailIgnoreCaseAndAuthScopeCodeIgnoreCase(
                 SUPER_ADMIN_EMAIL, UPDATED_PLATFORM_CODE)
             .orElseThrow();
-    assertThat(updatedAccount.getCompanies()).isEmpty();
+    assertThat(updatedAccount.getCompany()).isNull();
   }
 
   @Test

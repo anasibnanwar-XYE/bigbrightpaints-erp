@@ -188,7 +188,7 @@ public class DataInitializer {
     }
     superAdmin.setDisplayName(SUPER_ADMIN_DISPLAY_NAME);
     superAdmin.setAuthScopeCode(platformScopeCode);
-    superAdmin.clearCompanyMemberships();
+    superAdmin.clearCompany();
     ensureRoleMembership(superAdmin, adminRole);
     ensureRoleMembership(superAdmin, superAdminRole);
     userRepository.save(superAdmin);
@@ -198,19 +198,14 @@ public class DataInitializer {
     if (user == null || company == null) {
       return;
     }
-    boolean alreadyAssigned =
-        user.getCompanies().stream()
-            .anyMatch(
-                existing ->
-                    existing != null
-                        && ((existing.getId() != null
-                                && company.getId() != null
-                                && existing.getId().equals(company.getId()))
-                            || (StringUtils.hasText(existing.getCode())
-                                && StringUtils.hasText(company.getCode())
-                                && existing.getCode().equalsIgnoreCase(company.getCode()))));
-    if (!alreadyAssigned) {
-      user.addCompany(company);
+    if (user.getCompany() == null
+        || (user.getCompany().getId() != null
+                && company.getId() != null
+                && !user.getCompany().getId().equals(company.getId()))
+        || (StringUtils.hasText(user.getCompany().getCode())
+                && StringUtils.hasText(company.getCode())
+                && !user.getCompany().getCode().equalsIgnoreCase(company.getCode()))) {
+      user.setCompany(company);
     }
   }
 

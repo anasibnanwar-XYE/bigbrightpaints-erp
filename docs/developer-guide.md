@@ -281,7 +281,7 @@ Under `com.bigbrightpaints.erp.modules.<module>`:
 4. For compliance events, check accounting compliance audit records and metadata (period/journal actions).
 
 ## Debugging tenant context issues
-- Verify authenticated user belongs to target company (`UserPrincipal` company memberships).
+- Verify the authenticated scoped account is bound to the target company (`UserPrincipal` company context).
 - Ensure `X-Company-Code` and legacy headers are not conflicting.
 - For control-plane endpoints (`/api/v1/companies/*/tenant-runtime/policy`, lifecycle routes), confirm superadmin authority.
 - Watch `CompanyContextFilter` warnings:

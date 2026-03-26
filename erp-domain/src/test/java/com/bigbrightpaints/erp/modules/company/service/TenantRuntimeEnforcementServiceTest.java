@@ -93,7 +93,7 @@ class TenantRuntimeEnforcementServiceTest {
               return Optional.ofNullable(companiesByCode.get(code.trim().toUpperCase(Locale.ROOT)));
             });
     lenient()
-        .when(userAccountRepository.countDistinctByCompanies_IdAndEnabledTrue(anyLong()))
+        .when(userAccountRepository.countByCompany_IdAndEnabledTrue(anyLong()))
         .thenAnswer(
             invocation -> {
               Long companyId = invocation.getArgument(0, Long.class);

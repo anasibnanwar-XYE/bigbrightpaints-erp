@@ -423,7 +423,7 @@ These rows are required for the period-close maker-checker UX, but they live out
 |---|---|---|---|---|
 | `My Profile` | `/accounting/profile` | `profileGet`, `profileUpdate` | Form skeleton; inline validation + toast | `isAuthenticated()` |
 | `Change Password` | `/accounting/profile?tab=password` | `authChangePassword` | Submit spinner; inline validation | `isAuthenticated()` |
-| `Switch Company` | Company switch modal | `companiesList`, `companiesSwitch` | Modal loader; on success hard refresh accounting data caches | `isAuthenticated()` + company membership check. `companiesList` additionally needs one of `ROLE_ADMIN|ROLE_ACCOUNTING|ROLE_SALES` |
+| `Company Scope` | Read-only tenant badge / metadata | `companiesList` | Inline load with page bootstrap; no post-login switch action exists | `isAuthenticated()`; `companiesList` additionally needs one of `ROLE_ADMIN|ROLE_ACCOUNTING|ROLE_SALES` |
 | `Sign Out` | Redirect `/auth/login` | `authLogout` | Immediate spinner; fallback local sign-out on failure | `isAuthenticated()` |
 
 | Route | Purpose | Backend-enforced gate (exact) |

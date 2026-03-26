@@ -146,11 +146,11 @@ public class CompanyService {
     return repository.findAll().stream().map(this::toDto).toList();
   }
 
-  public List<CompanyDto> findAll(Set<Company> companies) {
-    if (companies == null || companies.isEmpty()) {
+  public List<CompanyDto> findAll(Company company) {
+    if (company == null) {
       return List.of();
     }
-    return companies.stream().map(this::toDto).toList();
+    return List.of(toDto(company));
   }
 
   @Transactional
@@ -1018,17 +1018,9 @@ public class CompanyService {
     if (authentication != null
         && authentication.getPrincipal() instanceof UserPrincipal principal
         && principal.getUser() != null
-        && principal.getUser().getCompanies() != null) {
-      String scope =
-          principal.getUser().getCompanies().stream()
-              .map(Company::getCode)
-              .filter(StringUtils::hasText)
-              .map(String::trim)
-              .sorted(String.CASE_INSENSITIVE_ORDER)
-              .collect(Collectors.joining(","));
-      if (StringUtils.hasText(scope)) {
-        return scope;
-      }
+        && principal.getUser().getCompany() != null
+        && StringUtils.hasText(principal.getUser().getCompany().getCode())) {
+      return principal.getUser().getCompany().getCode().trim();
     }
     return "none";
   }
@@ -1037,7 +1029,7 @@ public class CompanyService {
     if (userAccountRepository == null) {
       return 0L;
     }
-    return userAccountRepository.countDistinctByCompanies_IdAndEnabledTrue(companyId);
+    return userAccountRepository.countByCompany_IdAndEnabledTrue(companyId);
   }
 
   private long countApiActivity(Long companyId) {

@@ -358,7 +358,7 @@ class AuthServiceAuditAttributionTest {
   private UserAccount userWithCompany(String email, String companyCode) {
     UserAccount user = new UserAccount(email, companyCode, "hash", "User");
     user.setEnabled(true);
-    user.addCompany(company(companyCode));
+    user.setCompany(company(companyCode));
     return user;
   }
 

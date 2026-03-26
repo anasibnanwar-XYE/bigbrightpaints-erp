@@ -210,14 +210,8 @@ public class AuthService {
       }
       return null;
     }
-    Company company =
-        companyRepository
-            .findByCodeIgnoreCase(scopeCode)
-            .orElseThrow(
-                () ->
-                    com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
-                        "Company not found: " + scopeCode));
-    if (!user.belongsToCompanyCode(scopeCode)) {
+    Company company = user.getCompany();
+    if (company == null || !user.belongsToCompanyCode(scopeCode)) {
       throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
           "Invalid credentials");
     }

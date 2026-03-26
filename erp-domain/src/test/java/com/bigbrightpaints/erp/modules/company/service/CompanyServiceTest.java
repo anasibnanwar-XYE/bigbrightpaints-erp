@@ -580,7 +580,7 @@ class CompanyServiceTest {
     company.setLifecycleState(CompanyLifecycleState.SUSPENDED);
     company.setLifecycleReason("compliance-review");
     when(repository.findById(1L)).thenReturn(Optional.of(company));
-    when(userAccountRepository.countDistinctByCompanies_IdAndEnabledTrue(1L)).thenReturn(3L);
+    when(userAccountRepository.countByCompany_IdAndEnabledTrue(1L)).thenReturn(3L);
     when(auditLogRepository.countApiActivityByCompanyId(1L)).thenReturn(20L);
     when(auditLogRepository.countApiFailureActivityByCompanyId(1L)).thenReturn(5L);
     when(auditLogRepository.countDistinctSessionActivityByCompanyId(1L)).thenReturn(2L);
@@ -610,7 +610,7 @@ class CompanyServiceTest {
         .isInstanceOf(AccessDeniedException.class)
         .hasMessageContaining("SUPER_ADMIN authority required for tenant metrics");
 
-    verify(userAccountRepository, never()).countDistinctByCompanies_IdAndEnabledTrue(1L);
+    verify(userAccountRepository, never()).countByCompany_IdAndEnabledTrue(1L);
     verify(auditLogRepository, never()).countApiActivityByCompanyId(1L);
     verify(auditLogRepository, never()).countApiFailureActivityByCompanyId(1L);
     verify(auditLogRepository, never()).countDistinctSessionActivityByCompanyId(1L);
@@ -623,7 +623,7 @@ class CompanyServiceTest {
     configureHardLimitEnvelope(company);
     company.setQuotaMaxActiveUsers(1L);
     when(repository.findById(1L)).thenReturn(Optional.of(company));
-    when(userAccountRepository.countDistinctByCompanies_IdAndEnabledTrue(1L)).thenReturn(2L);
+    when(userAccountRepository.countByCompany_IdAndEnabledTrue(1L)).thenReturn(2L);
 
     assertThat(companyService.isRuntimeAccessAllowed(1L)).isFalse();
   }
@@ -692,7 +692,7 @@ class CompanyServiceTest {
     when(repository.findById(1L)).thenReturn(Optional.of(company));
 
     assertThat(companyService.isRuntimeAccessAllowed(1L)).isTrue();
-    verify(userAccountRepository, never()).countDistinctByCompanies_IdAndEnabledTrue(1L);
+    verify(userAccountRepository, never()).countByCompany_IdAndEnabledTrue(1L);
   }
 
   @Test
@@ -779,7 +779,7 @@ class CompanyServiceTest {
     Company company = company(1L, "ACME");
     configureHardLimitEnvelope(company);
     when(repository.findById(1L)).thenReturn(Optional.of(company));
-    when(userAccountRepository.countDistinctByCompanies_IdAndEnabledTrue(1L))
+    when(userAccountRepository.countByCompany_IdAndEnabledTrue(1L))
         .thenThrow(new RuntimeException("telemetry-store-down"));
 
     assertThat(companyService.isRuntimeAccessAllowed(1L)).isFalse();
@@ -790,7 +790,7 @@ class CompanyServiceTest {
     Company company = company(1L, "ACME");
     configureHardLimitEnvelope(company);
     when(repository.findById(1L)).thenReturn(Optional.of(company));
-    when(userAccountRepository.countDistinctByCompanies_IdAndEnabledTrue(1L)).thenReturn(50L);
+    when(userAccountRepository.countByCompany_IdAndEnabledTrue(1L)).thenReturn(50L);
     when(auditLogRepository.countApiActivityByCompanyId(1L)).thenReturn(20L);
     when(auditLogRepository.estimateAuditStorageBytesByCompanyId(1L)).thenReturn(10_000L);
     when(auditLogRepository.countDistinctSessionActivityByCompanyId(1L)).thenReturn(5L);
@@ -977,8 +977,8 @@ class CompanyServiceTest {
     beta.setQuotaMaxApiRequests(200L);
     beta.setLifecycleState(CompanyLifecycleState.SUSPENDED);
     when(repository.findAll()).thenReturn(List.of(alpha, beta));
-    when(userAccountRepository.countDistinctByCompanies_IdAndEnabledTrue(10L)).thenReturn(8L);
-    when(userAccountRepository.countDistinctByCompanies_IdAndEnabledTrue(11L)).thenReturn(12L);
+    when(userAccountRepository.countByCompany_IdAndEnabledTrue(10L)).thenReturn(8L);
+    when(userAccountRepository.countByCompany_IdAndEnabledTrue(11L)).thenReturn(12L);
     when(auditLogRepository.countApiActivityByCompanyId(10L)).thenReturn(90L);
     when(auditLogRepository.countApiActivityByCompanyId(11L)).thenReturn(110L);
     when(auditLogRepository.countApiFailureActivityByCompanyId(10L)).thenReturn(3L);
