@@ -15,10 +15,13 @@ com.bigbrightpaints.erp.modules.factory.controller.PackingControllerTest
 com.bigbrightpaints.erp.modules.factory.service.FactoryServiceTest
 com.bigbrightpaints.erp.modules.factory.service.PackingAllowedSizeServiceTest
 com.bigbrightpaints.erp.modules.factory.service.PackingIdempotencyServiceTest
+com.bigbrightpaints.erp.modules.factory.service.PackingInventoryServiceTest
 com.bigbrightpaints.erp.modules.factory.service.PackingReadServiceTest
 com.bigbrightpaints.erp.modules.factory.service.PackingServiceTest
 com.bigbrightpaints.erp.modules.factory.service.PackagingMaterialServiceTest
 com.bigbrightpaints.erp.modules.factory.service.BulkPackingServiceTest
+com.bigbrightpaints.erp.modules.factory.service.BulkPackingReadServiceTest
+com.bigbrightpaints.erp.modules.factory.service.BulkPackingInventoryServiceTest
 com.bigbrightpaints.erp.modules.factory.service.BulkPackingServiceIdempotencyTest
 com.bigbrightpaints.erp.regression.ProductionLogPackingStatusRegressionIT
 com.bigbrightpaints.erp.regression.ProductionCatalogFinishedGoodInvariantIT
@@ -46,6 +49,7 @@ DeliveryChallanPdfServiceTest
 FinishedGoodsDispatchEngineCoverageTest
 FinishedGoodsReservationEngineTest
 FinishedGoodsServiceTest
+com.bigbrightpaints.erp.modules.inventory.service.InventoryBatchTraceabilityServiceTest
 InventoryValuationServiceTest
 com.bigbrightpaints.erp.modules.inventory.RawMaterialAndProductUpdateIT
 com.bigbrightpaints.erp.modules.inventory.controller.FinishedGoodControllerTest

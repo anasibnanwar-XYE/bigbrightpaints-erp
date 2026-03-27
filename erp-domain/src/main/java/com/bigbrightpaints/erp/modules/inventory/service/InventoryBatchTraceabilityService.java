@@ -62,6 +62,13 @@ public class InventoryBatchTraceabilityService {
             ? rawMaterialBatchRepository.findByRawMaterial_CompanyAndId(company, batchId)
             : Optional.empty();
 
+    if (finished.isPresent() && isSemiFinishedBatch(finished.get())) {
+      if (raw.isPresent()) {
+        return toRawMaterialBatchDto(raw.get());
+      }
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          "Batch not found: " + batchId);
+    }
     if (requestedType == RequestedBatchType.AUTO && finished.isPresent() && raw.isPresent()) {
       throw new ApplicationException(
               ErrorCode.VALIDATION_INVALID_INPUT,
@@ -69,13 +76,6 @@ public class InventoryBatchTraceabilityService {
                   + " batchType")
           .withDetail("batchId", batchId)
           .withDetail("supportedBatchTypes", "RAW_MATERIAL,FINISHED_GOOD");
-    }
-    if (finished.isPresent() && isSemiFinishedBatch(finished.get())) {
-      if (raw.isPresent()) {
-        return toRawMaterialBatchDto(raw.get());
-      }
-      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
-          "Batch not found: " + batchId);
     }
 
     if (finished.isPresent()) {

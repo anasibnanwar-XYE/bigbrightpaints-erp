@@ -79,20 +79,18 @@ public class BulkPackingReadService {
         rawMovements.stream()
             .filter(movement -> "ISSUE".equalsIgnoreCase(movement.getMovementType()))
             .filter(
-                movement ->
-                    movement.getRawMaterialBatch() != null
-                        && movement.getRawMaterialBatch().getId() != null
-                        && movement.getRawMaterialBatch().getId().equals(bulkBatch.getId()))
+                movement -> movement.getRawMaterialBatch() != null
+                    && movement.getRawMaterialBatch().getId() != null
+                    && movement.getRawMaterialBatch().getId().equals(bulkBatch.getId()))
             .map(RawMaterialMovement::getQuantity)
             .filter(qty -> qty != null && qty.compareTo(BigDecimal.ZERO) > 0)
             .reduce(BigDecimal.ZERO, BigDecimal::add);
     BigDecimal packagingCost =
         rawMovements.stream()
             .filter(
-                movement ->
-                    movement.getRawMaterialBatch() == null
-                        || movement.getRawMaterialBatch().getId() == null
-                        || !movement.getRawMaterialBatch().getId().equals(bulkBatch.getId()))
+                movement -> movement.getRawMaterialBatch() == null
+                    || movement.getRawMaterialBatch().getId() == null
+                    || !movement.getRawMaterialBatch().getId().equals(bulkBatch.getId()))
             .map(movement -> safe(movement.getQuantity()).multiply(safe(movement.getUnitCost())))
             .reduce(BigDecimal.ZERO, BigDecimal::add)
             .setScale(2, COST_ROUNDING);
@@ -154,9 +152,8 @@ public class BulkPackingReadService {
         rawMaterialBatchRepository
             .findByRawMaterial_CompanyAndId(company, parentBatchId)
             .orElseThrow(
-                () ->
-                    new ApplicationException(
-                        ErrorCode.BUSINESS_ENTITY_NOT_FOUND, "Parent batch not found"));
+                () -> new ApplicationException(
+                    ErrorCode.BUSINESS_ENTITY_NOT_FOUND, "Parent batch not found"));
     List<RawMaterialMovement> parentIssues =
         rawMaterialMovementRepository.findByRawMaterialBatchOrderByCreatedAtAsc(parentBatch).stream()
             .filter(movement -> "ISSUE".equalsIgnoreCase(movement.getMovementType()))

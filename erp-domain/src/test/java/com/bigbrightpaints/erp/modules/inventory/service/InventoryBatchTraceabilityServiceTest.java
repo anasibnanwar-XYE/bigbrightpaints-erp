@@ -1,6 +1,7 @@
 package com.bigbrightpaints.erp.modules.inventory.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
@@ -16,6 +17,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
@@ -177,5 +179,76 @@ class InventoryBatchTraceabilityServiceTest {
     assertThat(trace.movements())
         .extracting(m -> m.source())
         .containsExactly("purchase", "production");
+  }
+
+  @Test
+  void autoLookup_prefersRawMaterialTraceForSemiFinishedBulkBatch() {
+    FinishedGood fg = new FinishedGood();
+    fg.setCompany(company);
+    fg.setProductCode("FG-BTRACE-BULK");
+    fg.setName("Semi Finished");
+
+    FinishedGoodBatch finishedBatch = new FinishedGoodBatch();
+    ReflectionTestUtils.setField(finishedBatch, "id", 31L);
+    finishedBatch.setFinishedGood(fg);
+    finishedBatch.setBatchCode("FG-BULK-31");
+    finishedBatch.setQuantityTotal(new BigDecimal("10"));
+    finishedBatch.setQuantityAvailable(new BigDecimal("10"));
+    finishedBatch.setUnitCost(new BigDecimal("6"));
+    finishedBatch.setSource(InventoryBatchSource.PRODUCTION);
+
+    RawMaterial raw = new RawMaterial();
+    raw.setCompany(company);
+    raw.setSku("FG-BTRACE-BULK");
+    raw.setName("Semi Finished RM");
+    raw.setUnitType("L");
+
+    RawMaterialBatch rawBatch = new RawMaterialBatch();
+    ReflectionTestUtils.setField(rawBatch, "id", 31L);
+    rawBatch.setRawMaterial(raw);
+    rawBatch.setBatchCode("RM-BULK-31");
+    rawBatch.setQuantity(new BigDecimal("10"));
+    rawBatch.setCostPerUnit(new BigDecimal("6"));
+    rawBatch.setSource(InventoryBatchSource.PRODUCTION);
+
+    when(finishedGoodBatchRepository.findByFinishedGood_CompanyAndId(company, 31L))
+        .thenReturn(Optional.of(finishedBatch));
+    when(rawMaterialBatchRepository.findByRawMaterial_CompanyAndId(company, 31L))
+        .thenReturn(Optional.of(rawBatch));
+    when(rawMaterialMovementRepository.findByRawMaterialBatchOrderByCreatedAtAsc(rawBatch))
+        .thenReturn(List.of());
+
+    InventoryBatchTraceabilityDto trace =
+        inventoryBatchTraceabilityService.getBatchMovementHistory(31L, null);
+
+    assertThat(trace.batchType()).isEqualTo("RAW_MATERIAL");
+    assertThat(trace.batchNumber()).isEqualTo("RM-BULK-31");
+    assertThat(trace.itemCode()).isEqualTo("FG-BTRACE-BULK");
+  }
+
+  @Test
+  void autoLookup_rejectsSemiFinishedBulkFinishedBatchWhenRawBatchMissing() {
+    FinishedGood fg = new FinishedGood();
+    fg.setCompany(company);
+    fg.setProductCode("FG-BTRACE-BULK");
+    fg.setName("Semi Finished");
+
+    FinishedGoodBatch finishedBatch = new FinishedGoodBatch();
+    ReflectionTestUtils.setField(finishedBatch, "id", 32L);
+    finishedBatch.setFinishedGood(fg);
+    finishedBatch.setBatchCode("FG-BULK-32");
+    finishedBatch.setQuantityTotal(new BigDecimal("10"));
+    finishedBatch.setQuantityAvailable(new BigDecimal("10"));
+    finishedBatch.setUnitCost(new BigDecimal("6"));
+    finishedBatch.setSource(InventoryBatchSource.PRODUCTION);
+
+    when(finishedGoodBatchRepository.findByFinishedGood_CompanyAndId(company, 32L))
+        .thenReturn(Optional.of(finishedBatch));
+    when(rawMaterialBatchRepository.findByRawMaterial_CompanyAndId(company, 32L))
+        .thenReturn(Optional.empty());
+
+    assertThatThrownBy(() -> inventoryBatchTraceabilityService.getBatchMovementHistory(32L, null))
+        .isInstanceOf(ApplicationException.class)
+        .hasMessageContaining("Batch not found: 32");
   }
 }

@@ -1,6 +1,7 @@
 package com.bigbrightpaints.erp.truthsuite.inventory;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
@@ -25,6 +26,7 @@ import org.mockito.quality.Strictness;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.modules.accounting.domain.CostingMethod;
 import com.bigbrightpaints.erp.modules.accounting.service.CostingMethodService;
@@ -230,6 +232,59 @@ class TS_InventoryDispatchStateRuntimeCoverageTest {
     verify(packagingSlipRepository).saveAndFlush(any(PackagingSlip.class));
   }
 
+  @Test
+  void listFinishedGoods_excludesSemiFinishedBulkSkus() {
+    FinishedGood sellable = finishedGood(901L, "FG-SELL-1L", "Sellable");
+    FinishedGood semiFinished = finishedGood(902L, "FG-SELL-BULK", "Semi Finished");
+
+    when(finishedGoodRepository.findByCompanyOrderByProductCodeAsc(company))
+        .thenReturn(List.of(semiFinished, sellable));
+
+    assertThat(service.listFinishedGoods()).hasSize(1);
+    assertThat(service.listFinishedGoods().getFirst().productCode()).isEqualTo("FG-SELL-1L");
+  }
+
+  @Test
+  void getFinishedGood_rejectsSemiFinishedBulkSku() {
+    FinishedGood semiFinished = finishedGood(903L, "FG-LOOKUP-BULK", "Semi Finished");
+    when(finishedGoodRepository.findByCompanyAndId(company, 903L))
+        .thenReturn(Optional.of(semiFinished));
+
+    assertThatThrownBy(() -> service.getFinishedGood(903L))
+        .isInstanceOf(ApplicationException.class)
+        .hasMessageContaining("Finished good not found");
+  }
+
+  @Test
+  void lockFinishedGoodByProductCode_rejectsSemiFinishedBulkSkuBeforeRepositoryLookup() {
+    assertThatThrownBy(() -> service.lockFinishedGoodByProductCode("FG-LOCK-BULK"))
+        .isInstanceOf(ApplicationException.class)
+        .hasMessageContaining("Finished good not found for product code FG-LOCK-BULK");
+    verify(finishedGoodRepository, never()).lockByCompanyAndProductCode(any(), any());
+  }
+
+  @Test
+  void getLowStockThreshold_rejectsSemiFinishedBulkSku() {
+    FinishedGood semiFinished = finishedGood(904L, "FG-LOW-BULK", "Semi Finished");
+    when(finishedGoodRepository.findByCompanyAndId(company, 904L))
+        .thenReturn(Optional.of(semiFinished));
+
+    assertThatThrownBy(() -> service.getLowStockThreshold(904L))
+        .isInstanceOf(ApplicationException.class)
+        .hasMessageContaining("Finished good not found");
+  }
+
+  @Test
+  void updateLowStockThreshold_rejectsSemiFinishedBulkSku() {
+    FinishedGood semiFinished = finishedGood(905L, "FG-LOW-UPDATE-BULK", "Semi Finished");
+    when(finishedGoodRepository.lockByCompanyAndId(company, 905L))
+        .thenReturn(Optional.of(semiFinished));
+
+    assertThatThrownBy(() -> service.updateLowStockThreshold(905L, BigDecimal.ONE))
+        .isInstanceOf(ApplicationException.class)
+        .hasMessageContaining("Finished good not found");
+  }
+
   private Fixture fixture(BigDecimal currentStock, BigDecimal reservedStock, BigDecimal quantity) {
     SalesOrder order = new SalesOrder();
     setId(order, 101L);
@@ -307,6 +362,21 @@ class TS_InventoryDispatchStateRuntimeCoverageTest {
 
   private static void setId(Object target, Long id) {
     ReflectionTestUtils.setField(target, "id", id);
+  }
+
+  private FinishedGood finishedGood(Long id, String productCode, String name) {
+    FinishedGood fg = new FinishedGood();
+    setId(fg, id);
+    fg.setCompany(company);
+    fg.setProductCode(productCode);
+    fg.setName(name);
+    fg.setUnit("L");
+    fg.setCostingMethod("FIFO");
+    fg.setCurrentStock(new BigDecimal("10"));
+    fg.setReservedStock(BigDecimal.ZERO);
+    fg.setValuationAccountId(111L);
+    fg.setCogsAccountId(222L);
+    return fg;
   }
 
   private static <T> List<T> toList(Iterable<T> values) {
