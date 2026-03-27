@@ -27,7 +27,7 @@ Portal scope guardrail:
 | `accounting` | 65 | /api/v1/accounting/accounts, /api/v1/accounting/accounts/tree, /api/v1/accounting/accounts/tree/{type} |
 | `admin` | 14 | /api/v1/admin/approvals, /api/v1/admin/exports/{requestId}/approve, /api/v1/admin/exports/{requestId}/reject |
 | `audit` | 2 | /api/v1/audit/business-events, /api/v1/audit/ml-events |
-| `auth` | 11 | /api/v1/auth/login, /api/v1/auth/logout, /api/v1/auth/me |
+| `auth` | 12 | /api/v1/auth/login, /api/v1/auth/logout, /api/v1/auth/me |
 | `catalog` | 5 | /api/v1/catalog/brands, /api/v1/catalog/items, /api/v1/catalog/import |
 | `changelog` | 2 | /api/v1/changelog, /api/v1/changelog/latest-highlighted |
 | `companies` | 2 | /api/v1/companies, /api/v1/companies/{id} |
@@ -44,6 +44,7 @@ Portal scope guardrail:
 | `inventory` | 5 | /api/v1/inventory/adjustments, /api/v1/inventory/batches/expiring-soon, /api/v1/inventory/batches/{id}/movements |
 | `invoices` | 4 | /api/v1/invoices, /api/v1/invoices/{id}, /api/v1/invoices/{id}/email |
 | `migration` | 1 | /api/v1/migration/tally-import |
+| `multi-company` | 1 | /api/v1/multi-company/companies/switch |
 | `orchestrator` | 9 | /api/v1/orchestrator/dashboard/admin, /api/v1/orchestrator/dashboard/factory, /api/v1/orchestrator/dashboard/finance |
 | `payroll` | 13 | /api/v1/payroll/runs, /api/v1/payroll/runs/monthly, /api/v1/payroll/runs/weekly |
 | `portal` | 6 | /api/v1/portal/dashboard, /api/v1/portal/finance/aging, /api/v1/portal/finance/ledger |
@@ -155,6 +156,7 @@ Portal scope guardrail:
 - `POST` `/api/v1/auth/mfa/setup`
 - `POST` `/api/v1/auth/password/change`
 - `POST` `/api/v1/auth/password/forgot`
+- `POST` `/api/v1/auth/password/forgot/superadmin`
 - `POST` `/api/v1/auth/password/reset`
 - `GET, PUT` `/api/v1/auth/profile`
 - `POST` `/api/v1/auth/refresh-token`
@@ -296,6 +298,10 @@ Factory operator note: treat `/api/v1/factory/packaging-mappings` as the Packagi
 ## `migration`
 
 - `POST` `/api/v1/migration/tally-import`
+
+## `multi-company`
+
+- `POST` `/api/v1/multi-company/companies/switch`
 
 ## `orchestrator`
 

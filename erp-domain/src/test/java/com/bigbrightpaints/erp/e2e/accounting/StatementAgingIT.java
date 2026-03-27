@@ -160,7 +160,8 @@ class StatementAgingIT extends AbstractIntegrationTest {
   }
 
   @Test
-  @DisplayName("Retired accounting dealer finance aliases are not found for admin-accounting probes")
+  @DisplayName(
+      "Retired accounting dealer finance aliases are not found for admin-accounting probes")
   void retiredAccountingDealerFinanceAliasesAreNotFound() {
     List<String> retiredPaths =
         List.of(

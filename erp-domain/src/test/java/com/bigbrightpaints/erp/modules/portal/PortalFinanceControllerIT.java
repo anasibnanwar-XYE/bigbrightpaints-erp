@@ -52,16 +52,19 @@ class PortalFinanceControllerIT extends AbstractIntegrationTest {
   void setup() {
     dataSeeder.ensureCompany(COMPANY_CODE, "Portal Finance Company");
     dataSeeder.ensureCompany(OTHER_COMPANY_CODE, "Portal Finance Other Company");
-    dataSeeder.ensureUser(ADMIN_EMAIL, PASSWORD, "Portal Finance Admin", COMPANY_CODE, List.of("ROLE_ADMIN"));
+    dataSeeder.ensureUser(
+        ADMIN_EMAIL, PASSWORD, "Portal Finance Admin", COMPANY_CODE, List.of("ROLE_ADMIN"));
     dataSeeder.ensureUser(
         ACCOUNTING_EMAIL,
         PASSWORD,
         "Portal Finance Accounting",
         COMPANY_CODE,
         List.of("ROLE_ACCOUNTING"));
-    dataSeeder.ensureUser(SALES_EMAIL, PASSWORD, "Portal Finance Sales", COMPANY_CODE, List.of("ROLE_SALES"));
+    dataSeeder.ensureUser(
+        SALES_EMAIL, PASSWORD, "Portal Finance Sales", COMPANY_CODE, List.of("ROLE_SALES"));
     UserAccount dealerUser =
-        dataSeeder.ensureUser(DEALER_EMAIL, PASSWORD, "Portal Finance Dealer", COMPANY_CODE, List.of("ROLE_DEALER"));
+        dataSeeder.ensureUser(
+            DEALER_EMAIL, PASSWORD, "Portal Finance Dealer", COMPANY_CODE, List.of("ROLE_DEALER"));
     dataSeeder.ensureUser(
         SUPER_ADMIN_EMAIL,
         PASSWORD,
@@ -110,7 +113,9 @@ class PortalFinanceControllerIT extends AbstractIntegrationTest {
       @SuppressWarnings("unchecked")
       List<Map<String, Object>> invoiceRows =
           (List<Map<String, Object>>) ((Map<?, ?>) invoices.getBody().get("data")).get("invoices");
-      assertThat(invoiceRows).extracting(row -> ((Number) row.get("id")).longValue()).contains(invoiceA.getId());
+      assertThat(invoiceRows)
+          .extracting(row -> ((Number) row.get("id")).longValue())
+          .contains(invoiceA.getId());
       assertThat(((Map<?, ?>) aging.getBody().get("data")).get("dealerId"))
           .isEqualTo(dealerA.getId().intValue());
     }

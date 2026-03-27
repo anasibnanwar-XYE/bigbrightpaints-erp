@@ -2,13 +2,13 @@ package com.bigbrightpaints.erp.modules.invoice.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.lang.reflect.Method;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 
 import org.junit.jupiter.api.BeforeEach;
-import java.lang.reflect.Method;
-
+import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.http.HttpEntity;
@@ -16,7 +16,6 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.junit.jupiter.api.Test;
 import org.springframework.security.access.prepost.PreAuthorize;
 
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
@@ -47,7 +46,8 @@ class InvoiceControllerSecurityContractTest extends AbstractIntegrationTest {
             "Invoice Dealer",
             COMPANY_CODE,
             List.of("ROLE_DEALER"));
-    dataSeeder.ensureUser(ADMIN_EMAIL, PASSWORD, "Invoice Admin", COMPANY_CODE, List.of("ROLE_ADMIN"));
+    dataSeeder.ensureUser(
+        ADMIN_EMAIL, PASSWORD, "Invoice Admin", COMPANY_CODE, List.of("ROLE_ADMIN"));
 
     Company company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
     dealer =

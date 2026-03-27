@@ -336,7 +336,9 @@ public class ValidationSeedDataInitializer {
   private Invoice ensureValidationInvoiceFixture(
       InvoiceRepository invoiceRepository, Dealer dealer, String invoiceNumber) {
     Invoice invoice =
-        invoiceRepository.findByCompanyAndDealerOrderByIssueDateDesc(dealer.getCompany(), dealer).stream()
+        invoiceRepository
+            .findByCompanyAndDealerOrderByIssueDateDesc(dealer.getCompany(), dealer)
+            .stream()
             .filter(existing -> invoiceNumber.equalsIgnoreCase(existing.getInvoiceNumber()))
             .findFirst()
             .orElseGet(Invoice::new);

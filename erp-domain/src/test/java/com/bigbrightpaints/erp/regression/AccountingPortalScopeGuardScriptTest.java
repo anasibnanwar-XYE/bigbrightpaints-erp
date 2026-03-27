@@ -118,14 +118,17 @@ class AccountingPortalScopeGuardScriptTest {
     FixturePaths fixturePaths = writeFixture(13);
     replaceInFile(
         fixturePaths.endpointMapDoc(),
-        "Portal finance drill-ins stay on `/api/v1/portal/finance/*` for admin/accounting users; dealer self-service remains on `/api/v1/dealer-portal/{ledger,invoices,aging}`, and retired shared/legacy aliases stay out of the portal.\n",
+        "Portal finance drill-ins stay on `/api/v1/portal/finance/*` for admin/accounting users;"
+            + " dealer self-service remains on `/api/v1/dealer-portal/{ledger,invoices,aging}`, and"
+            + " retired shared/legacy aliases stay out of the portal.\n",
         "");
 
     ProcessResult result = runGuard(fixturePaths);
 
     assertThat(result.exitCode()).isNotEqualTo(0);
     assertThat(result.stderr())
-        .contains("accounting endpoint map must document the canonical internal-vs-dealer finance split");
+        .contains(
+            "accounting endpoint map must document the canonical internal-vs-dealer finance split");
   }
 
   @Test
@@ -159,7 +162,9 @@ class AccountingPortalScopeGuardScriptTest {
     FixturePaths fixturePaths = writeFixture(13);
     replaceInFile(
         fixturePaths.handoffDoc(),
-        "- Accounting portal dealer invoice drill-ins use `portalFinanceInvoices` on `/api/v1/portal/finance/invoices`; dealer self-service invoice reads remain on `/api/v1/dealer-portal/invoices`.\n",
+        "- Accounting portal dealer invoice drill-ins use `portalFinanceInvoices` on"
+            + " `/api/v1/portal/finance/invoices`; dealer self-service invoice reads remain on"
+            + " `/api/v1/dealer-portal/invoices`.\n",
         "");
 
     ProcessResult result = runGuard(fixturePaths);
@@ -174,7 +179,9 @@ class AccountingPortalScopeGuardScriptTest {
     FixturePaths fixturePaths = writeFixture(13);
     replaceInFile(
         fixturePaths.handoffDoc(),
-        "- Internal dealer receivables drill-ins stay on `/api/v1/portal/finance/{ledger,invoices,aging}` while dealer self-service finance remains on `/api/v1/dealer-portal/{ledger,invoices,aging}`.\n",
+        "- Internal dealer receivables drill-ins stay on"
+            + " `/api/v1/portal/finance/{ledger,invoices,aging}` while dealer self-service finance"
+            + " remains on `/api/v1/dealer-portal/{ledger,invoices,aging}`.\n",
         "");
 
     ProcessResult result = runGuard(fixturePaths);

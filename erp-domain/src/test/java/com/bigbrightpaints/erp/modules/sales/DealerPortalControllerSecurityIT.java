@@ -157,8 +157,7 @@ class DealerPortalControllerSecurityIT extends AbstractIntegrationTest {
 
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
     assertThat(response.getHeaders().getContentType()).isNotNull();
-    assertThat(response.getHeaders().getContentType().toString())
-        .contains("application/pdf");
+    assertThat(response.getHeaders().getContentType().toString()).contains("application/pdf");
     assertThat(response.getBody()).isNotEmpty();
   }
 
