@@ -1,6 +1,6 @@
 {
   "milestone": "support-host-split",
-  "round": 1,
+  "round": 2,
   "status": "pass",
   "validatorsRun": {
     "test": {
@@ -26,29 +26,15 @@
     "failedFeatures": []
   },
   "blockingIssues": [],
-  "nonBlockingIssues": [
-    {
-      "featureId": "support-host-split-hard-cut",
-      "severity": "non_blocking",
-      "description": "`CompanyContextFilter.SUPER_ADMIN_TENANT_BUSINESS_PREFIXES` still contains `/api/v1/support`, leaving stale retired-host knowledge in the auth filter even though the shared support controller surface is gone.",
-      "evidence": "erp-domain/src/main/java/com/bigbrightpaints/erp/core/security/CompanyContextFilter.java:55"
-    }
-  ],
   "appliedUpdates": [],
   "suggestedGuidanceUpdates": [
     {
-      "target": "AGENTS.md",
-      "suggestion": "When retiring an endpoint family, explicitly audit shared auth/filter path registries and prefix lists (for example `CompanyContextFilter.SUPER_ADMIN_TENANT_BUSINESS_PREFIXES`) so retired hosts are removed from global routing assumptions, not only from controllers/OpenAPI.",
-      "evidence": "The `support-host-split-hard-cut` review passed but found stale `/api/v1/support` knowledge left in `CompanyContextFilter` after the shared support surface was retired.",
-      "isSystemic": false
-    },
-    {
-      "target": "portal-hardcut-worker skill",
-      "suggestion": "Clarify whether `gate-release` and `gate-reconciliation` are required for every feature handoff or only for final PR/packet readiness, and document the expected proof when they are intentionally deferred.",
-      "evidence": "The `support-host-split-hard-cut` handoff explicitly skipped `gate-release` and `gate-reconciliation` because a follow-up feature was still pending, while the skill text can be read as requiring them before a feature handoff.",
+      "target": "security-backend-worker skill",
+      "suggestion": "Document the touched-files Spotless fallback for missions that already classify repo-wide Spotless drift as unrelated baseline debt, so security/backend workers do not have to infer that validation pattern solely from mission-specific guidance.",
+      "evidence": "The rerun review for `support-host-filter-retired-prefix-cleanup` found the worker correctly used a touched-files `spotless:check`, but that required mission-specific AGENTS guidance because `.factory/skills/security-backend-worker/SKILL.md` does not mention the fallback while this mission's AGENTS explicitly requires it.",
       "isSystemic": false
     }
   ],
   "rejectedObservations": [],
-  "previousRound": null
+  "previousRound": ".factory/validation/support-host-split/scrutiny/synthesis.round1.json"
 }
