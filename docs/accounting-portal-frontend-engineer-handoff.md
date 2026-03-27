@@ -485,7 +485,8 @@ These rows are required for the period-close maker-checker UX, but they live out
 - Purpose: Invoice tracking, invoice PDF/email delivery, and dealer invoice drill-ins via portal finance.
 - Required API calls (shared accountant/sales/admin views): `salesListDealersForAccounting`, `salesSearchDealersForAccounting`, `invoiceListInvoices`, `invoiceGetInvoice`, `invoiceSendInvoiceEmail`, `portalFinanceInvoices`
 - Admin-only APIs (do not expose to accounting/sales roles): `invoiceDownloadInvoicePdf`
-- Backend expectation: invoice creation/issuance is not exposed in this controller; accounting portal handles invoice visibility/distribution while issuance is upstream in sales/dispatch workflows, and dealer-scoped invoice reads now live only on `/api/v1/portal/finance/invoices`.
+- Backend expectation: invoice creation/issuance is not exposed in this controller; accounting portal handles invoice visibility/distribution while issuance is upstream in sales/dispatch workflows.
+- Accounting portal dealer invoice drill-ins use `portalFinanceInvoices` on `/api/v1/portal/finance/invoices`; dealer self-service invoice reads remain on `/api/v1/dealer-portal/invoices`.
 - Loading state: list/detail loading; empty no-invoices state; PDF download progress; email send toast.
 - Empty state: no rows / no open items / no period data for selected filters.
 - Error state: inline widget errors + page-level retry + action-level toast; preserve user filters and unsaved inputs.
@@ -497,6 +498,7 @@ These rows are required for the period-close maker-checker UX, but they live out
 - Purpose: Receipts, settlements, sales returns, and canonical dealer finance ledger/aging reads.
 - Required API calls (shared accountant-owned path): `acctRecordDealerReceipt`, `acctRecordDealerHybridReceipt`, `acctSettleDealer`, `portalFinanceLedger`, `portalFinanceAging`, `acctListSalesReturns`, `acctRecordSalesReturn`, `acctPostCreditNote`, `acctWriteOffBadDebt`
 - Canonical dealer finance reads: `portalFinanceLedger`, `portalFinanceInvoices`, and `portalFinanceAging` all route through `/api/v1/portal/finance/*`; do not wire retired dealer/accounting/report aliases back into the portal.
+- Internal dealer receivables drill-ins stay on `/api/v1/portal/finance/{ledger,invoices,aging}` while dealer self-service finance remains on `/api/v1/dealer-portal/{ledger,invoices,aging}`.
 - Loading state: aging panel loaders; no-open-items empty states; settlement action queues; document generation progress.
 - Empty state: no rows / no open items / no period data for selected filters.
 - Error state: inline widget errors + page-level retry + action-level toast; preserve user filters and unsaved inputs.

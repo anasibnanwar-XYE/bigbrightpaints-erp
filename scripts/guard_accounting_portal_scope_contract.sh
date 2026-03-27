@@ -174,6 +174,9 @@ for controller in \
     "accounting endpoint map missing required controller section: $controller"
 done
 
+require_literal "Portal finance drill-ins stay on \`/api/v1/portal/finance/*\` for admin/accounting users; dealer self-service remains on \`/api/v1/dealer-portal/{ledger,invoices,aging}\`, and retired shared/legacy aliases stay out of the portal." "$ENDPOINT_MAP_DOC" \
+  "accounting endpoint map must document the canonical internal-vs-dealer finance split"
+
 require_literal "docs/ACCOUNTING_PORTAL_SCOPE_GUARDRAIL.md" "$ENDPOINT_MAP_DOC" \
   "accounting endpoint map must reference the scope guardrail doc"
 require_literal "docs/ACCOUNTING_PORTAL_SCOPE_GUARDRAIL.md" "$ENDPOINT_INVENTORY_DOC" \
@@ -193,6 +196,8 @@ forbid_section_line_literals "### \`/accounting/ar/invoices\`" "- Required API c
   "invoice route must not list admin-only PDF export as a shared required API"
 require_section_literal "### \`/accounting/ar/invoices\`" "Admin-only APIs (do not expose to accounting/sales roles): \`invoiceDownloadInvoicePdf\`" "$HANDOFF_DOC" \
   "invoice route must document invoice PDF as admin-only"
+require_section_literal "### \`/accounting/ar/invoices\`" "Accounting portal dealer invoice drill-ins use \`portalFinanceInvoices\` on \`/api/v1/portal/finance/invoices\`; dealer self-service invoice reads remain on \`/api/v1/dealer-portal/invoices\`." "$HANDOFF_DOC" \
+  "invoice route must document the canonical internal-vs-dealer invoice split"
 require_section_literal "### \`/accounting/ar/invoices\`" "Role/permission gate: Mixed by endpoint:" "$HANDOFF_DOC" \
   "invoice route must document mixed RBAC truth"
 
@@ -200,6 +205,8 @@ forbid_section_line_literals "### \`/accounting/ar/collections-settlements\`" "-
   "collections route must not list retired dealer statement PDF as a shared accountant-required API"
 require_section_literal "### \`/accounting/ar/collections-settlements\`" "Canonical dealer finance reads: \`portalFinanceLedger\`, \`portalFinanceInvoices\`, and \`portalFinanceAging\` all route through \`/api/v1/portal/finance/*\`; do not wire retired dealer/accounting/report aliases back into the portal." "$HANDOFF_DOC" \
   "collections route must document the canonical portal finance host split"
+require_section_literal "### \`/accounting/ar/collections-settlements\`" "Internal dealer receivables drill-ins stay on \`/api/v1/portal/finance/{ledger,invoices,aging}\` while dealer self-service finance remains on \`/api/v1/dealer-portal/{ledger,invoices,aging}\`." "$HANDOFF_DOC" \
+  "collections route must keep the internal-vs-dealer finance host split explicit"
 require_section_literal "### \`/accounting/ar/collections-settlements\`" "Role/permission gate: Mixed by endpoint: receipts/settlements/portal-finance reads use \`ROLE_ADMIN|ROLE_ACCOUNTING\`; \`GET /api/v1/accounting/sales/returns\` also permits \`ROLE_SALES\`." "$HANDOFF_DOC" \
   "collections route must document mixed RBAC truth for portal finance reads"
 

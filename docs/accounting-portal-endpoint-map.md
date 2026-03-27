@@ -91,6 +91,8 @@ Maker-checker period-close note:
 | `GET /api/v1/portal/finance/invoices` | detail-view; req: dealerId (query); opt: -; states: loading, error, success, empty | path=-; query=dealerId; body=none; ct=- | ok 200; err 403, 404 |
 | `GET /api/v1/portal/finance/aging` | detail-view; req: dealerId (query); opt: -; states: loading, error, success, empty | path=-; query=dealerId; body=none; ct=- | ok 200; err 403, 404 |
 
+Portal finance drill-ins stay on `/api/v1/portal/finance/*` for admin/accounting users; dealer self-service remains on `/api/v1/dealer-portal/{ledger,invoices,aging}`, and retired shared/legacy aliases stay out of the portal.
+
 ### catalog-controller (5)
 
 | Endpoint | Frontend should put | Backend expects | Returns |

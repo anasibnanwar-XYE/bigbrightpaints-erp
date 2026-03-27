@@ -434,6 +434,59 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
   }
 
   @Test
+  void support_ticket_contract_paths_expose_only_split_hosts() throws IOException {
+    JsonNode root = fetchCurrentSpecNode();
+
+    assertOperationContract(
+        root,
+        "/api/v1/portal/support/tickets",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseSupportTicketListResponse");
+    assertOperationContract(
+        root,
+        "/api/v1/portal/support/tickets",
+        "post",
+        "#/components/schemas/SupportTicketCreateRequest",
+        "200",
+        "#/components/schemas/ApiResponseSupportTicketResponse");
+    assertOperationContract(
+        root,
+        "/api/v1/portal/support/tickets/{ticketId}",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseSupportTicketResponse");
+
+    assertOperationContract(
+        root,
+        "/api/v1/dealer-portal/support/tickets",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseSupportTicketListResponse");
+    assertOperationContract(
+        root,
+        "/api/v1/dealer-portal/support/tickets",
+        "post",
+        "#/components/schemas/SupportTicketCreateRequest",
+        "200",
+        "#/components/schemas/ApiResponseSupportTicketResponse");
+    assertOperationContract(
+        root,
+        "/api/v1/dealer-portal/support/tickets/{ticketId}",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseSupportTicketResponse");
+
+    assertOperationMissing(root, "/api/v1/support/tickets", "get");
+    assertOperationMissing(root, "/api/v1/support/tickets", "post");
+    assertOperationMissing(root, "/api/v1/support/tickets/{ticketId}", "get");
+  }
+
+  @Test
   void inventory_contract_requires_explicit_opening_stock_batch_key_and_removes_packaging_bypass()
       throws IOException {
     JsonNode root = fetchCurrentSpecNode();

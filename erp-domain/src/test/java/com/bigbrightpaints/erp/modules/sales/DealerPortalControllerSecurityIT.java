@@ -163,6 +163,96 @@ class DealerPortalControllerSecurityIT extends AbstractIntegrationTest {
   }
 
   @Test
+  @DisplayName("Dealer and portal finance hosts stay on one ledger, invoice, and aging truth")
+  void dealerAndPortalFinanceHosts_shareCanonicalFinanceTruth() {
+    HttpHeaders dealerHeaders = authHeaders(DEALER_A_EMAIL, PASSWORD);
+    HttpHeaders adminHeaders = authHeaders(ADMIN_EMAIL, PASSWORD);
+
+    Map<?, ?> dealerLedger =
+        (Map<?, ?>)
+            rest.exchange(
+                    "/api/v1/dealer-portal/ledger",
+                    HttpMethod.GET,
+                    new HttpEntity<>(dealerHeaders),
+                    Map.class)
+                .getBody()
+                .get("data");
+    Map<?, ?> portalLedger =
+        (Map<?, ?>)
+            rest.exchange(
+                    "/api/v1/portal/finance/ledger?dealerId=" + dealerA.getId(),
+                    HttpMethod.GET,
+                    new HttpEntity<>(adminHeaders),
+                    Map.class)
+                .getBody()
+                .get("data");
+    assertThat(portalLedger.get("dealerId")).isEqualTo(dealerLedger.get("dealerId"));
+    assertThat(portalLedger.get("dealerName")).isEqualTo(dealerLedger.get("dealerName"));
+    assertThat(asBigDecimal(portalLedger.get("currentBalance")))
+        .isEqualByComparingTo(asBigDecimal(dealerLedger.get("currentBalance")));
+    assertThat(portalLedger.get("entries")).isEqualTo(dealerLedger.get("entries"));
+
+    Map<?, ?> dealerInvoices =
+        (Map<?, ?>)
+            rest.exchange(
+                    "/api/v1/dealer-portal/invoices",
+                    HttpMethod.GET,
+                    new HttpEntity<>(dealerHeaders),
+                    Map.class)
+                .getBody()
+                .get("data");
+    Map<?, ?> portalInvoices =
+        (Map<?, ?>)
+            rest.exchange(
+                    "/api/v1/portal/finance/invoices?dealerId=" + dealerA.getId(),
+                    HttpMethod.GET,
+                    new HttpEntity<>(adminHeaders),
+                    Map.class)
+                .getBody()
+                .get("data");
+    assertThat(portalInvoices.get("dealerId")).isEqualTo(dealerInvoices.get("dealerId"));
+    assertThat(portalInvoices.get("dealerName")).isEqualTo(dealerInvoices.get("dealerName"));
+    assertThat(asBigDecimal(portalInvoices.get("totalOutstanding")))
+        .isEqualByComparingTo(asBigDecimal(dealerInvoices.get("totalOutstanding")));
+    assertThat(asLong(portalInvoices.get("invoiceCount")))
+        .isEqualTo(asLong(dealerInvoices.get("invoiceCount")));
+    assertThat(portalInvoices.get("invoices")).isEqualTo(dealerInvoices.get("invoices"));
+
+    Map<?, ?> dealerAging =
+        (Map<?, ?>)
+            rest.exchange(
+                    "/api/v1/dealer-portal/aging",
+                    HttpMethod.GET,
+                    new HttpEntity<>(dealerHeaders),
+                    Map.class)
+                .getBody()
+                .get("data");
+    Map<?, ?> portalAging =
+        (Map<?, ?>)
+            rest.exchange(
+                    "/api/v1/portal/finance/aging?dealerId=" + dealerA.getId(),
+                    HttpMethod.GET,
+                    new HttpEntity<>(adminHeaders),
+                    Map.class)
+                .getBody()
+                .get("data");
+    assertThat(portalAging.get("dealerId")).isEqualTo(dealerAging.get("dealerId"));
+    assertThat(portalAging.get("dealerName")).isEqualTo(dealerAging.get("dealerName"));
+    assertThat(asBigDecimal(portalAging.get("totalOutstanding")))
+        .isEqualByComparingTo(asBigDecimal(dealerAging.get("totalOutstanding")));
+    assertThat(asLong(portalAging.get("pendingOrderCount")))
+        .isEqualTo(asLong(dealerAging.get("pendingOrderCount")));
+    assertThat(asBigDecimal(portalAging.get("pendingOrderExposure")))
+        .isEqualByComparingTo(asBigDecimal(dealerAging.get("pendingOrderExposure")));
+    assertThat(asBigDecimal(portalAging.get("creditUsed")))
+        .isEqualByComparingTo(asBigDecimal(dealerAging.get("creditUsed")));
+    assertThat(asBigDecimal(portalAging.get("availableCredit")))
+        .isEqualByComparingTo(asBigDecimal(dealerAging.get("availableCredit")));
+    assertThat(portalAging.get("agingBuckets")).isEqualTo(dealerAging.get("agingBuckets"));
+    assertThat(portalAging.get("overdueInvoices")).isEqualTo(dealerAging.get("overdueInvoices"));
+  }
+
+  @Test
   @DisplayName("Dealer portal rejects token/header company mismatch")
   void dealerPortalRejectsCompanyHeaderMismatch() {
     HttpHeaders headers = authHeaders(DEALER_A_EMAIL, PASSWORD);
@@ -748,6 +838,10 @@ class DealerPortalControllerSecurityIT extends AbstractIntegrationTest {
 
   private long asLong(Object value) {
     return ((Number) value).longValue();
+  }
+
+  private BigDecimal asBigDecimal(Object value) {
+    return new BigDecimal(String.valueOf(value));
   }
 
   private Dealer upsertDealer(Company company, String code, String name, UserAccount portalUser) {

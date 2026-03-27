@@ -2126,11 +2126,17 @@ Frontend behavior: treat these as non-retryable user/action-state errors; surfac
 
 - `Portal finance ledger payload` (`GET /api/v1/portal/finance/ledger?dealerId=` and `/api/v1/dealer-portal/ledger`)
   - `dealerId`, `dealerName`
-  - `creditLimit`, `outstandingAmount`, `pendingOrderExposure`, `creditUsed`, `availableCredit`
-  - `creditStatus`
+  - `currentBalance`
+  - `entries[]` (`date`, `reference`, `memo`, `debit`, `credit`, `runningBalance`)
+
+- `Portal finance invoices payload` (`GET /api/v1/portal/finance/invoices?dealerId=` and `/api/v1/dealer-portal/invoices`)
+  - `dealerId`, `dealerName`
+  - `totalOutstanding`, `invoiceCount`
+  - `invoices[]` (`id`, `invoiceNumber`, `issueDate`, `dueDate`, `totalAmount`, `outstandingAmount`, `status`, `currency`)
 
 - `Portal finance aging payload` (`GET /api/v1/portal/finance/aging?dealerId=` and `/api/v1/dealer-portal/aging`)
   - `dealerId`, `dealerName`
+  - `creditLimit`, `pendingOrderCount`, `pendingOrderExposure`, `creditUsed`, `availableCredit`
   - `totalOutstanding`
   - `agingBuckets` (`current`, `1-30 days`, `31-60 days`, `61-90 days`, `90+ days`)
   - `overdueInvoices[]`
