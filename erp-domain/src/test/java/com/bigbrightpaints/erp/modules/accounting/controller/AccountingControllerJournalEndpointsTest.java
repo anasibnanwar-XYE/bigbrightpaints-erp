@@ -448,7 +448,7 @@ class AccountingControllerJournalEndpointsTest {
     when(settlementService.settleSupplierInvoices(any(SupplierSettlementRequest.class)))
         .thenReturn(expected);
 
-    controller.settleSupplier(request, "IDEMP-SUP-HDR-1", null);
+    controller.settleSupplier(request, "IDEMP-SUP-HDR-1");
 
     ArgumentCaptor<SupplierSettlementRequest> requestCaptor =
         ArgumentCaptor.forClass(SupplierSettlementRequest.class);

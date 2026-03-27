@@ -229,19 +229,20 @@ public class ReconciliationServiceCore {
 
     for (Supplier supplier : suppliers) {
       BigDecimal ledgerBalance = supplierBalances.getOrDefault(supplier.getId(), BigDecimal.ZERO);
-      BigDecimal outstandingBalance =
-          supplier.getOutstandingBalance() != null
-              ? supplier.getOutstandingBalance()
+      Account payableAccount = supplier.getPayableAccount();
+      BigDecimal payableControlBalance =
+          payableAccount != null && payableAccount.getBalance() != null
+              ? payableAccount.getBalance().negate()
               : BigDecimal.ZERO;
 
-      BigDecimal supplierVariance = outstandingBalance.subtract(ledgerBalance);
+      BigDecimal supplierVariance = payableControlBalance.subtract(ledgerBalance);
       if (supplierVariance.abs().compareTo(TOLERANCE) > 0) {
         discrepancies.add(
             new SupplierDiscrepancy(
                 supplier.getId(),
                 supplier.getCode(),
                 supplier.getName(),
-                outstandingBalance,
+                payableControlBalance,
                 ledgerBalance,
                 supplierVariance));
       }
@@ -590,7 +591,12 @@ public class ReconciliationServiceCore {
         receivableDealer.map(Dealer::getOutstandingBalance).map(this::safe).orElse(BigDecimal.ZERO);
     BigDecimal payableAmount =
         payableSupplier
-            .map(Supplier::getOutstandingBalance)
+            .map(
+                supplier ->
+                    supplierLedgerRepository
+                        .aggregateBalance(payableCompany, supplier)
+                        .map(SupplierBalanceView::balance)
+                        .orElse(BigDecimal.ZERO))
             .map(this::safe)
             .orElse(BigDecimal.ZERO);
 

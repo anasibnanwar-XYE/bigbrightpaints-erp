@@ -98,9 +98,7 @@ public class SupplierLedgerService
 
   @Override
   protected void updateOutstandingBalance(Supplier partner, BigDecimal balance) {
-    BigDecimal normalized = balance != null ? balance : BigDecimal.ZERO;
-    partner.setOutstandingBalance(normalized);
-    supplierRepository.save(partner);
+    // Supplier balance is ledger-derived read-model data only; do not persist a supplier-row cache.
   }
 
   @Override

@@ -280,7 +280,6 @@ class ReconciliationServiceTest {
     ReflectionTestUtils.setField(supplier, "id", 2L);
     supplier.setCode("S-1");
     supplier.setName("Supplier");
-    supplier.setOutstandingBalance(new BigDecimal("250.00"));
     supplier.setPayableAccount(payable);
 
     AccountingPeriod openPeriod = openPeriod(99L, company, 2026, 3);
@@ -388,7 +387,7 @@ class ReconciliationServiceTest {
 
     Dealer dealer = dealer(31L, "D-1", "Dealer", "450.00");
     dealer.setReceivableAccount(receivable);
-    Supplier supplier = supplier(41L, "S-1", "Supplier", "250.00");
+    Supplier supplier = supplier(41L, "S-1", "Supplier");
     supplier.setPayableAccount(payable);
 
     AccountingPeriod openPeriod = openPeriod(77L, company, 2026, 3);
@@ -515,10 +514,10 @@ class ReconciliationServiceTest {
     Company companyB = company(22L, "COMP-B", "Company B");
 
     Dealer aReceivableFromB = dealer(101L, "COMP-B", "Company B Dealer", "150.00");
-    Supplier bPayableToA = supplier(201L, "COMP-A", "Company A Supplier", "150.00");
+    Supplier bPayableToA = supplier(201L, "COMP-A", "Company A Supplier");
 
     Dealer bReceivableFromA = dealer(102L, "COMP-A", "Company A Dealer", "80.00");
-    Supplier aPayableToB = supplier(202L, "COMP-B", "Company B Supplier", "80.00");
+    Supplier aPayableToB = supplier(202L, "COMP-B", "Company B Supplier");
 
     when(companyRepository.findById(11L)).thenReturn(Optional.of(companyA));
     when(companyRepository.findById(22L)).thenReturn(Optional.of(companyB));
@@ -531,6 +530,10 @@ class ReconciliationServiceTest {
         .thenReturn(Optional.of(bReceivableFromA));
     when(supplierRepository.findByCompanyAndCodeIgnoreCase(companyA, "COMP-B"))
         .thenReturn(Optional.of(aPayableToB));
+    when(supplierLedgerRepository.aggregateBalance(companyB, bPayableToA))
+        .thenReturn(Optional.of(new SupplierBalanceView(201L, new BigDecimal("150.00"))));
+    when(supplierLedgerRepository.aggregateBalance(companyA, aPayableToB))
+        .thenReturn(Optional.of(new SupplierBalanceView(202L, new BigDecimal("80.00"))));
 
     ReconciliationService.InterCompanyReconciliationReport report =
         reconciliationService.interCompanyReconcile(11L, 22L);
@@ -547,8 +550,8 @@ class ReconciliationServiceTest {
     Company companyB = company(22L, "COMP-B", "Company B");
 
     Dealer aReceivableFromB = dealer(101L, "COMP-B", "Company B Dealer", "150.00");
-    Supplier bPayableToA = supplier(201L, "COMP-A", "Company A Supplier", "120.00");
-    Supplier aPayableToB = supplier(202L, "COMP-B", "Company B Supplier", "75.00");
+    Supplier bPayableToA = supplier(201L, "COMP-A", "Company A Supplier");
+    Supplier aPayableToB = supplier(202L, "COMP-B", "Company B Supplier");
 
     when(companyRepository.findById(11L)).thenReturn(Optional.of(companyA));
     when(companyRepository.findById(22L)).thenReturn(Optional.of(companyB));
@@ -561,6 +564,10 @@ class ReconciliationServiceTest {
         .thenReturn(Optional.empty());
     when(supplierRepository.findByCompanyAndCodeIgnoreCase(companyA, "COMP-B"))
         .thenReturn(Optional.of(aPayableToB));
+    when(supplierLedgerRepository.aggregateBalance(companyB, bPayableToA))
+        .thenReturn(Optional.of(new SupplierBalanceView(201L, new BigDecimal("120.00"))));
+    when(supplierLedgerRepository.aggregateBalance(companyA, aPayableToB))
+        .thenReturn(Optional.of(new SupplierBalanceView(202L, new BigDecimal("75.00"))));
 
     ReconciliationService.InterCompanyReconciliationReport report =
         reconciliationService.interCompanyReconcile(11L, 22L);
@@ -976,12 +983,11 @@ class ReconciliationServiceTest {
     return value;
   }
 
-  private Supplier supplier(Long id, String code, String name, String outstandingBalance) {
+  private Supplier supplier(Long id, String code, String name) {
     Supplier value = new Supplier();
     ReflectionTestUtils.setField(value, "id", id);
     value.setCode(code);
     value.setName(name);
-    value.setOutstandingBalance(new BigDecimal(outstandingBalance));
     return value;
   }
 
