@@ -120,6 +120,16 @@ class TS_RuntimePasswordResetServiceExecutableCoverageTest {
                 ReflectionTestUtils.invokeMethod(
                     service, "sanitizeCorrelationId", "corr-with-lf\nsegment"))
         .isNull();
+    assertThat(
+            (String)
+                ReflectionTestUtils.invokeMethod(
+                    service, "sanitizeForPlainTextLog", " corr\r\nsegment\tvalue "))
+        .isEqualTo("corr__segment_value");
+    assertThat(
+            (String)
+                ReflectionTestUtils.invokeMethod(
+                    service, "sanitizeForPlainTextLog", (Object) null))
+        .isEqualTo("<empty>");
     assertThat((String) ReflectionTestUtils.invokeMethod(service, "obfuscateEmail", (Object) null))
         .isEqualTo("<empty>");
   }

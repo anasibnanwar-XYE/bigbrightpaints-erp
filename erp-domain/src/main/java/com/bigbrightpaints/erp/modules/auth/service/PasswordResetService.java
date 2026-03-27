@@ -51,6 +51,7 @@ public class PasswordResetService {
   private static final int MAX_TENANT_CONTEXT_LENGTH = 64;
   private static final Pattern SAFE_TENANT_CONTEXT_PATTERN =
       Pattern.compile("^[A-Za-z0-9._:-]{1,64}$");
+  private static final int MAX_LOG_VALUE_LENGTH = 160;
   private static final String RATE_LIMIT_PREFIX = "password-reset";
 
   private final UserAccountRepository userAccountRepository;
@@ -120,12 +121,14 @@ public class PasswordResetService {
                   auditResetRequested("forgot_password", user, scopeCode, correlationId);
                 }
               } catch (RuntimeException ex) {
+                String safeCorrelationId = sanitizeForPlainTextLog(correlationId);
+                String safeMaskedEmail = sanitizeForPlainTextLog(obfuscateEmail(user.getEmail()));
                 log.warn(
                     "event=password_reset.forgot_password.masked_failure policy={} correlationId={}"
                         + " email={} outcome=masked_response exceptionClass={}",
                     RESET_POLICY_SCOPE,
-                    correlationId,
-                    obfuscateEmail(user.getEmail()),
+                    safeCorrelationId,
+                    safeMaskedEmail,
                     ex.getClass().getSimpleName());
               }
             });
@@ -149,14 +152,16 @@ public class PasswordResetService {
     String normalizedEmail = normalizeEmail(targetUser.getEmail());
     enforceResetRateLimit("admin_force_reset", normalizedEmail, scopeCode, correlationId);
     if (dispatchResetEmail(targetUser, correlationId, "admin_force_reset")) {
+      String safeCorrelationId = sanitizeForPlainTextLog(correlationId);
+      String safeMaskedEmail = sanitizeForPlainTextLog(obfuscateEmail(targetUser.getEmail()));
       revokeActiveSessions(targetUser);
       auditResetRequested("admin_force_reset", targetUser, scopeCode, correlationId);
       log.info(
           "event=password_reset.admin_force_reset.dispatched policy={} correlationId={} email={}"
               + " outcome=email_dispatched",
           RESET_POLICY_SCOPE,
-          correlationId,
-          obfuscateEmail(targetUser.getEmail()));
+          safeCorrelationId,
+          safeMaskedEmail);
     }
   }
 
@@ -223,7 +228,7 @@ public class PasswordResetService {
     if (user == null) {
       return false;
     }
-    String maskedEmail = obfuscateEmail(user.getEmail());
+    String maskedEmail = sanitizeForPlainTextLog(obfuscateEmail(user.getEmail()));
     IssuedResetToken issuedResetToken = null;
     try {
       ensureRequiredResetEmailDelivery();
@@ -238,6 +243,7 @@ public class PasswordResetService {
           user.getAuthScopeCode());
     } catch (RuntimeException ex) {
       cleanupIssuedResetToken(issuedResetToken, correlationId, maskedEmail);
+      String safeCorrelationId = sanitizeForPlainTextLog(correlationId);
       auditResetFailure(
           operation, correlationId, user.getAuthScopeCode(), user.getEmail(), "delivery_failed");
       log.warn(
@@ -245,7 +251,7 @@ public class PasswordResetService {
               + " outcome=delivery_failed exceptionClass={}",
           operation,
           RESET_POLICY_SCOPE,
-          correlationId,
+          safeCorrelationId,
           maskedEmail,
           ex.getClass().getSimpleName());
       throw ex;
@@ -253,12 +259,13 @@ public class PasswordResetService {
     try {
       markIssuedResetTokenDelivered(issuedResetToken, correlationId, maskedEmail);
     } catch (RuntimeException ex) {
+      String safeCorrelationId = sanitizeForPlainTextLog(correlationId);
       log.warn(
           "event=password_reset.{}.delivery_tracking_failed policy={} correlationId={} email={}"
               + " outcome=delivery_bookkeeping_failed exceptionClass={}",
           operation,
           RESET_POLICY_SCOPE,
-          correlationId,
+          safeCorrelationId,
           maskedEmail,
           ex.getClass().getSimpleName());
     }
@@ -342,12 +349,14 @@ public class PasswordResetService {
     if (TransactionSynchronizationManager.isActualTransactionActive()) {
       return;
     }
+    String safeCorrelationId = sanitizeForPlainTextLog(correlationId);
+    String safeMaskedEmail = sanitizeForPlainTextLog(maskedEmail);
     log.error(
         "event=password_reset.token_lifecycle.transaction policy={} correlationId={} email={}"
             + " stage={} outcome=missing_transaction",
         RESET_POLICY_SCOPE,
-        correlationId,
-        maskedEmail,
+        safeCorrelationId,
+        safeMaskedEmail,
         stage);
     throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState(
         "Password reset token lifecycle operation requires an active transaction");
@@ -429,13 +438,16 @@ public class PasswordResetService {
     if (!StringUtils.hasText(tenantContext)) {
       return;
     }
+    String safeCorrelationId = sanitizeForPlainTextLog(correlationId);
+    String safeTenantContext =
+        sanitizeForPlainTextLog(sanitizeTenantContextForLog(tenantContext));
     log.info(
         "event=password_reset.scope policy={} operation={} correlationId={} tenantContext={}"
             + " outcome=tenant_context_ignored",
         RESET_POLICY_SCOPE,
         operation,
-        correlationId,
-        sanitizeTenantContextForLog(tenantContext));
+        safeCorrelationId,
+        safeTenantContext);
   }
 
   private String resolveTenantContextForObservability() {
@@ -537,5 +549,19 @@ public class PasswordResetService {
       return "<redacted>";
     }
     return candidate;
+  }
+
+  private String sanitizeForPlainTextLog(String value) {
+    if (!StringUtils.hasText(value)) {
+      return "<empty>";
+    }
+    String sanitized = value.trim().replace('\r', '_').replace('\n', '_').replace('\t', '_');
+    if (!StringUtils.hasText(sanitized)) {
+      return "<empty>";
+    }
+    if (sanitized.length() > MAX_LOG_VALUE_LENGTH) {
+      return sanitized.substring(0, MAX_LOG_VALUE_LENGTH);
+    }
+    return sanitized;
   }
 }

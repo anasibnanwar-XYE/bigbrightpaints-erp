@@ -66,6 +66,8 @@ public class AdminSettingsController {
       "/api/v1/accounting/periods/{id}/approve-close";
   private static final String PERIOD_CLOSE_REJECT_ENDPOINT =
       "/api/v1/accounting/periods/{id}/reject-close";
+  private static final String AUDIT_NOT_REQUESTED = "<not_requested>";
+  private static final String AUDIT_REDACTED = "<redacted>";
 
   private final SystemSettingsService systemSettingsService;
   private final EmailService emailService;
@@ -548,21 +550,18 @@ public class AdminSettingsController {
           "beforeExportApprovalRequired", Boolean.toString(before.exportApprovalRequired()));
       metadata.put("beforePlatformAuthCode", before.platformAuthCode());
     }
-    if (request != null) {
-      if (request.autoApprovalEnabled() != null) {
-        metadata.put("requestedAutoApprovalEnabled", request.autoApprovalEnabled().toString());
-      }
-      if (request.periodLockEnforced() != null) {
-        metadata.put("requestedPeriodLockEnforced", request.periodLockEnforced().toString());
-      }
-      if (request.exportApprovalRequired() != null) {
-        metadata.put(
-            "requestedExportApprovalRequired", request.exportApprovalRequired().toString());
-      }
-      if (request.platformAuthCode() != null) {
-        metadata.put("requestedPlatformAuthCode", request.platformAuthCode());
-      }
-    }
+    metadata.put(
+        "requestedAutoApprovalEnabled",
+        auditRequestedBoolean(request == null ? null : request.autoApprovalEnabled()));
+    metadata.put(
+        "requestedPeriodLockEnforced",
+        auditRequestedBoolean(request == null ? null : request.periodLockEnforced()));
+    metadata.put(
+        "requestedExportApprovalRequired",
+        auditRequestedBoolean(request == null ? null : request.exportApprovalRequired()));
+    metadata.put(
+        "requestedPlatformAuthCode",
+        auditRequestedPlatformAuthCode(request == null ? null : request.platformAuthCode()));
     if (after != null) {
       metadata.put("afterAutoApprovalEnabled", Boolean.toString(after.autoApprovalEnabled()));
       metadata.put("afterPeriodLockEnforced", Boolean.toString(after.periodLockEnforced()));
@@ -574,6 +573,24 @@ public class AdminSettingsController {
       metadata.put("actor", actor);
     }
     auditService.logAuthSuccess(AuditEvent.CONFIGURATION_CHANGED, actor, null, metadata);
+  }
+
+  private String auditRequestedBoolean(Boolean value) {
+    return value == null ? AUDIT_NOT_REQUESTED : value.toString();
+  }
+
+  private String auditRequestedPlatformAuthCode(String value) {
+    if (!StringUtils.hasText(value)) {
+      return AUDIT_NOT_REQUESTED;
+    }
+    String candidate = value.trim();
+    if (!StringUtils.hasText(candidate)) {
+      return AUDIT_NOT_REQUESTED;
+    }
+    if (candidate.indexOf('\r') >= 0 || candidate.indexOf('\n') >= 0) {
+      return AUDIT_REDACTED;
+    }
+    return candidate.toUpperCase(Locale.ROOT);
   }
 
   private boolean isSuperAdminActor() {
