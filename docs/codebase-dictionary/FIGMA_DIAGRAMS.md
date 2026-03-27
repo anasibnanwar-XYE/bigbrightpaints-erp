@@ -97,6 +97,33 @@ This file contains links to all canonical flow diagrams created in Figma for the
 3. **For Onboarding:** New team members can quickly understand system architecture and data flow
 4. **For AI Agents:** These diagrams provide visual context that complements the written documentation
 
+### 7. Complete E2E ERP Lifecycle
+**Description:** Full end-to-end flow from company onboarding to accounting period close
+[View Diagram](https://www.figma.com/online-whiteboard/create-diagram/164fc842-4d50-4f8c-8bf0-0ae78d154ebf?utm_source=other&utm_content=edit_in_figjam)
+
+**Key Phases:**
+- Company Onboarding & User Setup
+- Master Data (Brands, Products, Variants)
+- Sales Orders & Dispatch
+- Purchasing & Inventory
+- Manufacturing & Costing
+- Accounting & Period Close
+
+---
+
+### 8. Backend Architecture Diagram
+**Description:** System architecture showing layers and module relationships
+[View Diagram](https://www.figma.com/online-whiteboard/create-diagram/f6a17a8a-bd19-4e4c-ad54-cf317f09987d?utm_source=other&utm_content=edit_in_figjam)
+
+**Layers:**
+- Controllers (REST API)
+- Services (Business Logic)
+- Repositories (Data Access)
+- Database (PostgreSQL)
+- Cross-cutting: Security, Audit, Events
+
+---
+
 ## Related Documentation
 
 - [MASTER_INDEX.md](./MASTER_INDEX.md) - Complete class listing

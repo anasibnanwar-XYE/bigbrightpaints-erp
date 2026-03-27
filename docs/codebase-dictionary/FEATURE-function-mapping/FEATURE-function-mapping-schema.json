@@ -1,0 +1,1122 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "BigBright ERP Feature-Function Mapping Schema",
+  "description": "Comprehensive mapping of ALL ERP functions and features organized by module",
+  "version": "1.0.0",
+  "generated": "2026-03-27",
+  "modules": {
+    "auth": {
+      "name": "Authentication Module",
+      "package": "com.bigbrightpaints.erp.modules.auth",
+      "functions": {
+        "login": {
+          "service": "AuthService",
+          "controller": "AuthController",
+          "endpoint": "POST /api/v1/auth/login",
+          "description": "Authenticate user, verify MFA, generate tokens",
+          "features": ["account_lockout", "session_revocation", "audit_logging", "tenant_enforcement"]
+        },
+        "logout": {
+          "service": "AuthService",
+          "controller": "AuthController",
+          "endpoint": "POST /api/v1/auth/logout",
+          "description": "Revoke all user sessions"
+        },
+        "token_refresh": {
+          "service": "AuthService",
+          "controller": "AuthController",
+          "endpoint": "POST /api/v1/auth/refresh-token",
+          "description": "Exchange refresh token for new access token"
+        },
+        "password_change": {
+          "service": "PasswordService",
+          "controller": "AuthController",
+          "endpoint": "POST /api/v1/auth/password/change",
+          "description": "Self-service password change"
+        },
+        "password_reset_request": {
+          "service": "PasswordResetService",
+          "controller": "AuthController",
+          "endpoint": "POST /api/v1/auth/password/forgot",
+          "description": "Request password reset email"
+        },
+        "password_reset_complete": {
+          "service": "PasswordResetService",
+          "controller": "AuthController",
+          "endpoint": "POST /api/v1/auth/password/reset",
+          "description": "Reset password using token"
+        },
+        "mfa_setup": {
+          "service": "MfaService",
+          "controller": "MfaController",
+          "endpoint": "POST /api/v1/auth/mfa/setup",
+          "description": "Begin MFA enrollment (TOTP secret generation)"
+        },
+        "mfa_activate": {
+          "service": "MfaService",
+          "controller": "MfaController",
+          "endpoint": "POST /api/v1/auth/mfa/activate",
+          "description": "Activate MFA with verification code"
+        },
+        "mfa_disable": {
+          "service": "MfaService",
+          "controller": "MfaController",
+          "endpoint": "POST /api/v1/auth/mfa/disable",
+          "description": "Disable MFA with verification"
+        },
+        "profile_view": {
+          "service": "UserProfileService",
+          "controller": "UserProfileController",
+          "endpoint": "GET /api/v1/auth/profile",
+          "description": "View current user profile"
+        },
+        "profile_update": {
+          "service": "UserProfileService",
+          "controller": "UserProfileController",
+          "endpoint": "PUT /api/v1/auth/profile",
+          "description": "Update user profile"
+        },
+        "tenant_admin_provisioning": {
+          "service": "TenantAdminProvisioningService",
+          "description": "Provision initial tenant administrators during onboarding"
+        }
+      }
+    },
+    "company": {
+      "name": "Company Module",
+      "package": "com.bigbrightpaints.erp.modules.company",
+      "functions": {
+        "list_companies": {
+          "service": "CompanyService",
+          "controller": "CompanyController",
+          "endpoint": "GET /api/v1/companies",
+          "description": "List companies (all for super-admin, member companies for others)"
+        },
+        "switch_company": {
+          "service": "CompanyContextService",
+          "controller": "MultiCompanyController",
+          "endpoint": "POST /api/v1/multi-company/companies/switch",
+          "description": "Switch active company"
+        },
+        "tenant_onboard": {
+          "service": "TenantOnboardingService",
+          "controller": "SuperAdminTenantOnboardingController",
+          "endpoint": "POST /api/v1/superadmin/tenants/onboard",
+          "description": "Onboard new tenant with CoA seeding"
+        },
+        "tenant_lifecycle_update": {
+          "service": "TenantLifecycleService",
+          "controller": "SuperAdminController",
+          "endpoint": "PUT /api/v1/superadmin/tenants/{id}/lifecycle",
+          "description": "Update tenant lifecycle state (ACTIVE/SUSPENDED/DEACTIVATED)"
+        },
+        "tenant_limits_update": {
+          "service": "SuperAdminTenantControlPlaneService",
+          "controller": "SuperAdminController",
+          "endpoint": "PUT /api/v1/superadmin/tenants/{id}/limits",
+          "description": "Update tenant quota limits"
+        },
+        "module_gating": {
+          "service": "ModuleGatingService",
+          "description": "Feature module enablement"
+        },
+        "module_gating_interceptor": {
+          "service": "ModuleGatingInterceptor",
+          "description": "API path-based module gating"
+        },
+        "tenant_runtime_enforcement": {
+          "service": "TenantRuntimeEnforcementService",
+          "description": "Request admission and quota enforcement"
+        },
+        "tenant_usage_metrics": {
+          "service": "TenantUsageMetricsService",
+          "description": "API call tracking"
+        },
+        "coa_template_list": {
+          "service": "CoATemplateService",
+          "controller": "SuperAdminTenantOnboardingController",
+          "endpoint": "GET /api/v1/superadmin/tenants/coa-templates",
+          "description": "List available Chart of Accounts templates"
+        },
+        "support_warning_issue": {
+          "service": "SuperAdminTenantControlPlaneService",
+          "controller": "SuperAdminController",
+          "endpoint": "POST /api/v1/superadmin/tenants/{id}/support/warnings",
+          "description": "Issue support warning"
+        },
+        "force_logout_tenant": {
+          "service": "SuperAdminTenantControlPlaneService",
+          "controller": "SuperAdminController",
+          "endpoint": "POST /api/v1/superadmin/tenants/{id}/force-logout",
+          "description": "Force logout all tenant users"
+        },
+        "admin_password_reset": {
+          "service": "SuperAdminTenantControlPlaneService",
+          "controller": "SuperAdminController",
+          "endpoint": "POST /api/v1/superadmin/tenants/{id}/support/admin-password-reset",
+          "description": "Reset tenant admin password"
+        }
+      }
+    },
+    "hr": {
+      "name": "HR Module",
+      "package": "com.bigbrightpaints.erp.modules.hr",
+      "functions": {
+        "employee_list": {
+          "service": "EmployeeService",
+          "controller": "HrController",
+          "endpoint": "GET /api/v1/hr/employees",
+          "description": "List all employees"
+        },
+        "employee_create": {
+          "service": "EmployeeService",
+          "controller": "HrController",
+          "endpoint": "POST /api/v1/hr/employees",
+          "description": "Create employee"
+        },
+        "employee_update": {
+          "service": "EmployeeService",
+          "controller": "HrController",
+          "endpoint": "PUT /api/v1/hr/employees/{id}",
+          "description": "Update employee"
+        },
+        "employee_delete": {
+          "service": "EmployeeService",
+          "controller": "HrController",
+          "endpoint": "DELETE /api/v1/hr/employees/{id}",
+          "description": "Delete employee"
+        },
+        "attendance_mark": {
+          "service": "AttendanceService",
+          "controller": "HrController",
+          "endpoint": "POST /api/v1/hr/attendance/mark/{employeeId}",
+          "description": "Mark attendance for single employee"
+        },
+        "attendance_bulk_mark": {
+          "service": "AttendanceService",
+          "controller": "HrController",
+          "endpoint": "POST /api/v1/hr/attendance/bulk-mark",
+          "description": "Bulk mark attendance for multiple employees"
+        },
+        "attendance_summary": {
+          "service": "AttendanceService",
+          "controller": "HrController",
+          "endpoint": "GET /api/v1/hr/attendance/summary",
+          "description": "Get today's attendance summary"
+        },
+        "leave_request_create": {
+          "service": "LeaveService",
+          "controller": "HrController",
+          "endpoint": "POST /api/v1/hr/leave-requests",
+          "description": "Create leave request"
+        },
+        "leave_request_status_update": {
+          "service": "LeaveService",
+          "controller": "HrController",
+          "endpoint": "PATCH /api/v1/hr/leave-requests/{id}/status",
+          "description": "Approve/reject/cancel leave request"
+        },
+        "salary_structure_list": {
+          "service": "SalaryStructureTemplateService",
+          "controller": "HrController",
+          "endpoint": "GET /api/v1/hr/salary-structures",
+          "description": "List salary structure templates"
+        },
+        "salary_structure_create": {
+          "service": "SalaryStructureTemplateService",
+          "controller": "HrController",
+          "endpoint": "POST /api/v1/hr/salary-structures",
+          "description": "Create salary structure template"
+        },
+        "payroll_run_create": {
+          "service": "PayrollService",
+          "controller": "HrPayrollController",
+          "endpoint": "POST /api/v1/payroll/runs",
+          "description": "Create payroll run"
+        },
+        "payroll_calculate": {
+          "service": "PayrollCalculationService",
+          "controller": "HrPayrollController",
+          "endpoint": "POST /api/v1/payroll/runs/{id}/calculate",
+          "description": "Calculate payroll amounts"
+        },
+        "payroll_approve": {
+          "service": "PayrollService",
+          "controller": "HrPayrollController",
+          "endpoint": "POST /api/v1/payroll/runs/{id}/approve",
+          "description": "Approve payroll for posting"
+        },
+        "payroll_post": {
+          "service": "PayrollPostingService",
+          "controller": "HrPayrollController",
+          "endpoint": "POST /api/v1/payroll/runs/{id}/post",
+          "description": "Post to accounting (creates journal entries)"
+        },
+        "payroll_mark_paid": {
+          "service": "PayrollService",
+          "controller": "HrPayrollController",
+          "endpoint": "POST /api/v1/payroll/runs/{id}/mark-paid",
+          "description": "Mark as paid after payment"
+        },
+        "statutory_deduction_calc": {
+          "service": "StatutoryDeductionEngine",
+          "description": "PF/ESI/TDS/Professional Tax calculations"
+        }
+      }
+    },
+    "inventory": {
+      "name": "Inventory Module",
+      "package": "com.bigbrightpaints.erp.modules.inventory",
+      "functions": {
+        "finished_goods_list": {
+          "service": "FinishedGoodsService",
+          "controller": "FinishedGoodController",
+          "endpoint": "GET /api/v1/finished-goods",
+          "description": "List all finished goods"
+        },
+        "finished_goods_stock_summary": {
+          "service": "FinishedGoodsService",
+          "controller": "FinishedGoodController",
+          "endpoint": "GET /api/v1/finished-goods/stock-summary",
+          "description": "Get stock summary"
+        },
+        "batch_register": {
+          "service": "FinishedGoodsService",
+          "controller": "FinishedGoodController",
+          "endpoint": "POST /api/v1/finished-goods/{id}/batches",
+          "description": "Register new batch"
+        },
+        "batch_traceability": {
+          "service": "InventoryBatchTraceabilityService",
+          "controller": "InventoryBatchController",
+          "endpoint": "GET /api/v1/inventory/batches/{id}/movements",
+          "description": "Get batch movement history"
+        },
+        "raw_material_list": {
+          "service": "RawMaterialService",
+          "controller": "RawMaterialController",
+          "endpoint": "GET /api/v1/raw-materials/stock",
+          "description": "Raw material stock summary"
+        },
+        "raw_material_adjustment": {
+          "service": "RawMaterialService",
+          "controller": "RawMaterialController",
+          "endpoint": "POST /api/v1/inventory/raw-materials/adjustments",
+          "description": "Adjust raw material stock"
+        },
+        "inventory_valuation": {
+          "service": "InventoryValuationService",
+          "description": "Inventory valuation with costing methods (FIFO/LIFO/WAC)"
+        },
+        "inventory_adjustment": {
+          "service": "InventoryAdjustmentService",
+          "controller": "InventoryAdjustmentController",
+          "endpoint": "POST /api/v1/inventory/adjustments",
+          "description": "Finished goods adjustments (damage, recount, etc.)"
+        },
+        "opening_stock_import": {
+          "service": "OpeningStockImportService",
+          "controller": "OpeningStockImportController",
+          "endpoint": "POST /api/v1/inventory/opening-stock",
+          "description": "CSV-based opening stock import for migration"
+        },
+        "packaging_slip_list": {
+          "service": "PackagingSlipService",
+          "controller": "DispatchController",
+          "endpoint": "GET /api/v1/dispatch/pending",
+          "description": "List pending packaging slips"
+        },
+        "delivery_challan_pdf": {
+          "service": "DeliveryChallanPdfService",
+          "controller": "DispatchController",
+          "endpoint": "GET /api/v1/dispatch/slip/{slipId}/challan/pdf",
+          "description": "Download delivery challan PDF"
+        },
+        "inventory_reservation": {
+          "service": "FinishedGoodsReservationEngine",
+          "description": "Handle inventory reservations for sales orders"
+        },
+        "inventory_dispatch": {
+          "service": "FinishedGoodsDispatchEngine",
+          "description": "Handle dispatch workflow for sales orders"
+        },
+        "low_stock_items": {
+          "service": "FinishedGoodsService",
+          "controller": "FinishedGoodController",
+          "endpoint": "GET /api/v1/finished-goods/low-stock",
+          "description": "Get low stock items"
+        }
+      }
+    },
+    "invoice": {
+      "name": "Invoice Module",
+      "package": "com.bigbrightpaints.erp.modules.invoice",
+      "functions": {
+        "invoice_list": {
+          "service": "InvoiceService",
+          "controller": "InvoiceController",
+          "endpoint": "GET /api/v1/invoices",
+          "description": "List invoices"
+        },
+        "invoice_get": {
+          "service": "InvoiceService",
+          "controller": "InvoiceController",
+          "endpoint": "GET /api/v1/invoices/{id}",
+          "description": "Get invoice by ID"
+        },
+        "invoice_pdf": {
+          "service": "InvoicePdfService",
+          "controller": "InvoiceController",
+          "endpoint": "GET /api/v1/invoices/{id}/pdf",
+          "description": "Download invoice PDF"
+        },
+        "invoice_email": {
+          "service": "InvoiceService",
+          "controller": "InvoiceController",
+          "endpoint": "POST /api/v1/invoices/{id}/email",
+          "description": "Email invoice to dealer"
+        },
+        "invoice_numbering": {
+          "service": "InvoiceNumberService",
+          "description": "Sequential invoice numbers with company code and fiscal year"
+        },
+        "invoice_settlement": {
+          "service": "InvoiceSettlementPolicy",
+          "description": "Payment application and status transitions"
+        }
+      }
+    },
+    "portal": {
+      "name": "Portal Module",
+      "package": "com.bigbrightpaints.erp.modules.portal",
+      "functions": {
+        "dashboard_insights": {
+          "service": "PortalInsightsService",
+          "controller": "PortalInsightsController",
+          "endpoint": "GET /api/v1/portal/dashboard",
+          "description": "Dashboard metrics"
+        },
+        "operations_insights": {
+          "service": "PortalInsightsService",
+          "controller": "PortalInsightsController",
+          "endpoint": "GET /api/v1/portal/operations",
+          "description": "Operations metrics"
+        },
+        "workforce_insights": {
+          "service": "PortalInsightsService",
+          "controller": "PortalInsightsController",
+          "endpoint": "GET /api/v1/portal/workforce",
+          "description": "Workforce metrics (HR module required)"
+        },
+        "enterprise_dashboard": {
+          "service": "EnterpriseDashboardService",
+          "description": "Enterprise snapshot with trends"
+        },
+        "tenant_runtime_enforcement": {
+          "service": "TenantRuntimeEnforcementInterceptor",
+          "description": "Request rate limiting"
+        }
+      }
+    },
+    "reports": {
+      "name": "Reports Module",
+      "package": "com.bigbrightpaints.erp.modules.reports",
+      "functions": {
+        "trial_balance": {
+          "service": "TrialBalanceReportQueryService",
+          "description": "Trial balance queries"
+        },
+        "profit_loss": {
+          "service": "ProfitLossReportQueryService",
+          "description": "P&L queries"
+        },
+        "balance_sheet": {
+          "service": "BalanceSheetReportQueryService",
+          "description": "Balance sheet queries"
+        },
+        "report_generation": {
+          "service": "ReportService",
+          "description": "Financial report generation"
+        }
+      }
+    },
+    "factory": {
+      "name": "Factory Module",
+      "package": "com.bigbrightpaints.erp.modules.factory",
+      "functions": {
+        "production_plan_list": {
+          "service": "FactoryService",
+          "controller": "FactoryController",
+          "endpoint": "GET /api/v1/factory/production-plans",
+          "description": "List all production plans"
+        },
+        "production_plan_create": {
+          "service": "FactoryService",
+          "controller": "FactoryController",
+          "endpoint": "POST /api/v1/factory/production-plans",
+          "description": "Create a production plan"
+        },
+        "production_log_create": {
+          "service": "ProductionLogService",
+          "controller": "ProductionLogController",
+          "endpoint": "POST /api/v1/factory/production/logs",
+          "description": "Create production log (M2S flow)"
+        },
+        "packing_record": {
+          "service": "PackingService",
+          "controller": "PackingController",
+          "endpoint": "POST /api/v1/factory/packing-records",
+          "description": "Record a packing operation"
+        },
+        "bulk_packing": {
+          "service": "BulkPackingService",
+          "controller": "PackingController",
+          "endpoint": "GET /api/v1/factory/bulk-batches/{finishedGoodId}",
+          "description": "Bulk-to-size packing"
+        },
+        "cost_allocation": {
+          "service": "CostAllocationService",
+          "controller": "FactoryController",
+          "endpoint": "POST /api/v1/factory/cost-allocation",
+          "description": "Allocate period costs to batches"
+        },
+        "packaging_mapping_list": {
+          "service": "PackagingMaterialService",
+          "controller": "PackagingMappingController",
+          "endpoint": "GET /api/v1/factory/packaging-mappings",
+          "description": "List all packaging mappings"
+        },
+        "packaging_mapping_create": {
+          "service": "PackagingMaterialService",
+          "controller": "PackagingMappingController",
+          "endpoint": "POST /api/v1/factory/packaging-mappings",
+          "description": "Create packaging rule"
+        },
+        "factory_dashboard": {
+          "service": "FactoryService",
+          "controller": "FactoryController",
+          "endpoint": "GET /api/v1/factory/dashboard",
+          "description": "Factory dashboard metrics"
+        }
+      }
+    },
+    "purchasing": {
+      "name": "Purchasing Module",
+      "package": "com.bigbrightpaints.erp.modules.purchasing",
+      "functions": {
+        "purchase_order_list": {
+          "service": "PurchaseOrderService",
+          "controller": "PurchasingWorkflowController",
+          "endpoint": "GET /api/v1/purchasing/purchase-orders",
+          "description": "List purchase orders"
+        },
+        "purchase_order_create": {
+          "service": "PurchaseOrderService",
+          "controller": "PurchasingWorkflowController",
+          "endpoint": "POST /api/v1/purchasing/purchase-orders",
+          "description": "Create purchase order"
+        },
+        "purchase_order_approve": {
+          "service": "PurchaseOrderService",
+          "controller": "PurchasingWorkflowController",
+          "endpoint": "POST /api/v1/purchasing/purchase-orders/{id}/approve",
+          "description": "Approve purchase order"
+        },
+        "goods_receipt_create": {
+          "service": "GoodsReceiptService",
+          "controller": "PurchasingWorkflowController",
+          "endpoint": "POST /api/v1/purchasing/goods-receipts",
+          "description": "Create goods receipt"
+        },
+        "purchase_invoice_create": {
+          "service": "PurchaseInvoiceEngine",
+          "controller": "RawMaterialPurchaseController",
+          "endpoint": "POST /api/v1/purchasing/raw-material-purchases",
+          "description": "Create purchase invoice from goods receipt"
+        },
+        "purchase_return": {
+          "service": "PurchaseReturnService",
+          "controller": "RawMaterialPurchaseController",
+          "endpoint": "POST /api/v1/purchasing/raw-material-purchases/returns",
+          "description": "Record a purchase return"
+        },
+        "supplier_list": {
+          "service": "SupplierService",
+          "controller": "SupplierController",
+          "endpoint": "GET /api/v1/suppliers",
+          "description": "List all suppliers"
+        },
+        "supplier_create": {
+          "service": "SupplierService",
+          "controller": "SupplierController",
+          "endpoint": "POST /api/v1/suppliers",
+          "description": "Create supplier"
+        },
+        "supplier_approve": {
+          "service": "SupplierService",
+          "controller": "SupplierController",
+          "endpoint": "POST /api/v1/suppliers/{id}/approve",
+          "description": "Approve pending supplier"
+        }
+      }
+    },
+    "production": {
+      "name": "Production Module",
+      "package": "com.bigbrightpaints.erp.modules.production",
+      "functions": {
+        "brand_list": {
+          "service": "CatalogService",
+          "controller": "CatalogController",
+          "endpoint": "GET /api/v1/catalog/brands",
+          "description": "List brands"
+        },
+        "brand_create": {
+          "service": "CatalogService",
+          "controller": "CatalogController",
+          "endpoint": "POST /api/v1/catalog/brands",
+          "description": "Create brand"
+        },
+        "item_list": {
+          "service": "CatalogService",
+          "controller": "CatalogController",
+          "endpoint": "GET /api/v1/catalog/items",
+          "description": "Search items with pagination"
+        },
+        "item_create": {
+          "service": "CatalogService",
+          "controller": "CatalogController",
+          "endpoint": "POST /api/v1/catalog/items",
+          "description": "Create item"
+        },
+        "product_create": {
+          "service": "CatalogService",
+          "controller": "CatalogController",
+          "endpoint": "POST /api/v1/catalog/products",
+          "description": "Create product"
+        },
+        "catalog_import": {
+          "service": "ProductionCatalogService",
+          "controller": "CatalogController",
+          "endpoint": "POST /api/v1/catalog/import",
+          "description": "Import catalog from CSV file"
+        },
+        "sku_readiness_check": {
+          "service": "SkuReadinessService",
+          "description": "Evaluate SKU readiness across multiple stages"
+        }
+      }
+    },
+    "rbac": {
+      "name": "RBAC Module",
+      "package": "com.bigbrightpaints.erp.modules.rbac",
+      "functions": {
+        "role_list": {
+          "service": "RoleService",
+          "controller": "RoleController",
+          "endpoint": "GET /api/v1/admin/roles",
+          "description": "List all system roles"
+        },
+        "role_create": {
+          "service": "RoleService",
+          "controller": "RoleController",
+          "endpoint": "POST /api/v1/admin/roles",
+          "description": "Create/update role with permissions"
+        },
+        "role_get": {
+          "service": "RoleService",
+          "controller": "RoleController",
+          "endpoint": "GET /api/v1/admin/roles/{roleKey}",
+          "description": "Get role by key"
+        },
+        "permission_sync": {
+          "service": "RoleService",
+          "description": "Synchronize system role permissions"
+        }
+      }
+    },
+    "admin": {
+      "name": "Admin Module",
+      "package": "com.bigbrightpaints.erp.modules.admin",
+      "functions": {
+        "user_list": {
+          "service": "AdminUserService",
+          "controller": "AdminUserController",
+          "endpoint": "GET /api/v1/admin/users",
+          "description": "List all users"
+        },
+        "user_create": {
+          "service": "AdminUserService",
+          "controller": "AdminUserController",
+          "endpoint": "POST /api/v1/admin/users",
+          "description": "Create user"
+        },
+        "user_update": {
+          "service": "AdminUserService",
+          "controller": "AdminUserController",
+          "endpoint": "PUT /api/v1/admin/users/{id}",
+          "description": "Update user"
+        },
+        "user_suspend": {
+          "service": "AdminUserService",
+          "controller": "AdminUserController",
+          "endpoint": "PATCH /api/v1/admin/users/{id}/suspend",
+          "description": "Suspend user"
+        },
+        "user_force_reset_password": {
+          "service": "AdminUserService",
+          "controller": "AdminUserController",
+          "endpoint": "POST /api/v1/admin/users/{userId}/force-reset-password",
+          "description": "Force password reset by admin"
+        },
+        "user_mfa_disable": {
+          "service": "AdminUserService",
+          "controller": "AdminUserController",
+          "endpoint": "PATCH /api/v1/admin/users/{id}/mfa/disable",
+          "description": "Disable MFA for user"
+        },
+        "changelog_list": {
+          "service": "ChangelogService",
+          "controller": "ChangelogController",
+          "endpoint": "GET /api/v1/changelog",
+          "description": "List changelog entries"
+        },
+        "changelog_create": {
+          "service": "ChangelogService",
+          "controller": "SuperAdminChangelogController",
+          "endpoint": "POST /api/v1/superadmin/changelog",
+          "description": "Create changelog entry"
+        },
+        "export_approval_request": {
+          "service": "ExportApprovalService",
+          "controller": "AdminSettingsController",
+          "description": "Create export request"
+        },
+        "export_approval_approve": {
+          "service": "ExportApprovalService",
+          "controller": "AdminSettingsController",
+          "endpoint": "PUT /api/v1/admin/exports/{requestId}/approve",
+          "description": "Approve export request"
+        },
+        "export_approval_reject": {
+          "service": "ExportApprovalService",
+          "controller": "AdminSettingsController",
+          "endpoint": "PUT /api/v1/admin/exports/{requestId}/reject",
+          "description": "Reject export request"
+        },
+        "support_ticket_create": {
+          "service": "SupportTicketService",
+          "controller": "SupportTicketController",
+          "endpoint": "POST /api/v1/support/tickets",
+          "description": "Create support ticket"
+        },
+        "support_ticket_list": {
+          "service": "SupportTicketService",
+          "controller": "SupportTicketController",
+          "endpoint": "GET /api/v1/support/tickets",
+          "description": "List support tickets"
+        },
+        "system_settings_get": {
+          "service": "SystemSettingsService",
+          "controller": "AdminSettingsController",
+          "endpoint": "GET /api/v1/admin/settings",
+          "description": "Get system settings"
+        },
+        "system_settings_update": {
+          "service": "SystemSettingsService",
+          "controller": "AdminSettingsController",
+          "endpoint": "PUT /api/v1/admin/settings",
+          "description": "Update settings (SUPER_ADMIN only)"
+        },
+        "tenant_metrics": {
+          "service": "TenantRuntimePolicyService",
+          "description": "Tenant quota enforcement and metrics"
+        }
+      }
+    },
+    "sales": {
+      "name": "Sales Module",
+      "package": "com.bigbrightpaints.erp.modules.sales",
+      "functions": {
+        "dealer_list": {
+          "service": "DealerService",
+          "controller": "DealerController",
+          "endpoint": "GET /api/v1/dealers",
+          "description": "List all dealers"
+        },
+        "dealer_create": {
+          "service": "DealerService",
+          "controller": "DealerController",
+          "endpoint": "POST /api/v1/dealers",
+          "description": "Create dealer"
+        },
+        "dealer_ledger": {
+          "service": "DealerService",
+          "controller": "DealerController",
+          "endpoint": "GET /api/v1/dealers/{dealerId}/ledger",
+          "description": "Get dealer ledger"
+        },
+        "dealer_credit_utilization": {
+          "service": "DealerService",
+          "controller": "DealerController",
+          "endpoint": "GET /api/v1/dealers/{dealerId}/credit-utilization",
+          "description": "Get credit utilization"
+        },
+        "dealer_aging": {
+          "service": "DealerService",
+          "controller": "DealerController",
+          "endpoint": "GET /api/v1/dealers/{dealerId}/aging",
+          "description": "Get aging summary"
+        },
+        "sales_order_list": {
+          "service": "SalesOrderCrudService",
+          "controller": "SalesController",
+          "endpoint": "GET /api/v1/sales/orders",
+          "description": "List orders with pagination"
+        },
+        "sales_order_create": {
+          "service": "SalesOrderCrudService",
+          "controller": "SalesController",
+          "endpoint": "POST /api/v1/sales/orders",
+          "description": "Create sales order"
+        },
+        "sales_order_confirm": {
+          "service": "SalesOrderLifecycleService",
+          "controller": "SalesController",
+          "endpoint": "POST /api/v1/sales/orders/{id}/confirm",
+          "description": "Confirm order"
+        },
+        "sales_order_cancel": {
+          "service": "SalesOrderLifecycleService",
+          "controller": "SalesController",
+          "endpoint": "POST /api/v1/sales/orders/{id}/cancel",
+          "description": "Cancel order"
+        },
+        "dispatch_confirm": {
+          "service": "SalesDispatchReconciliationService",
+          "controller": "SalesController",
+          "endpoint": "POST /api/v1/sales/dispatch/confirm",
+          "description": "Confirm dispatch (invoice + AR)"
+        },
+        "credit_limit_request_create": {
+          "service": "CreditLimitRequestService",
+          "controller": "CreditLimitRequestController",
+          "endpoint": "POST /api/v1/credit/limit-requests",
+          "description": "Create credit limit request"
+        },
+        "credit_limit_request_approve": {
+          "service": "CreditLimitRequestService",
+          "controller": "CreditLimitRequestController",
+          "endpoint": "POST /api/v1/credit/limit-requests/{id}/approve",
+          "description": "Approve credit limit request"
+        },
+        "credit_override_create": {
+          "service": "CreditLimitOverrideService",
+          "controller": "CreditLimitOverrideController",
+          "endpoint": "POST /api/v1/credit/override-requests",
+          "description": "Create override request"
+        },
+        "credit_override_approve": {
+          "service": "CreditLimitOverrideService",
+          "controller": "CreditLimitOverrideController",
+          "endpoint": "POST /api/v1/credit/override-requests/{id}/approve",
+          "description": "Approve override"
+        },
+        "sales_dashboard": {
+          "service": "SalesDashboardService",
+          "controller": "SalesController",
+          "endpoint": "GET /api/v1/sales/dashboard",
+          "description": "Get sales dashboard metrics"
+        },
+        "dunning_hold": {
+          "service": "DunningService",
+          "controller": "DealerController",
+          "endpoint": "POST /api/v1/dealers/{dealerId}/dunning/hold",
+          "description": "Evaluate dunning hold"
+        },
+        "sales_return": {
+          "service": "SalesReturnService",
+          "description": "Sales return processing"
+        },
+        "dealer_portal_dashboard": {
+          "service": "DealerPortalService",
+          "controller": "DealerPortalController",
+          "endpoint": "GET /api/v1/dealer-portal/dashboard",
+          "description": "Get dealer dashboard"
+        },
+        "dealer_portal_orders": {
+          "service": "DealerPortalService",
+          "controller": "DealerPortalController",
+          "endpoint": "GET /api/v1/dealer-portal/orders",
+          "description": "Get my orders"
+        },
+        "dealer_portal_invoices": {
+          "service": "DealerPortalService",
+          "controller": "DealerPortalController",
+          "endpoint": "GET /api/v1/dealer-portal/invoices",
+          "description": "Get my invoices"
+        },
+        "promotion_list": {
+          "service": "SalesCoreEngine",
+          "controller": "SalesController",
+          "endpoint": "GET /api/v1/sales/promotions",
+          "description": "List promotions"
+        },
+        "sales_target_list": {
+          "service": "SalesCoreEngine",
+          "controller": "SalesController",
+          "endpoint": "GET /api/v1/sales/targets",
+          "description": "List sales targets"
+        }
+      }
+    },
+    "accounting": {
+      "name": "Accounting Module",
+      "package": "com.bigbrightpaints.erp.modules.accounting",
+      "functions": {
+        "journal_entry_list": {
+          "service": "JournalEntryService",
+          "controller": "AccountingController",
+          "description": "List journal entries"
+        },
+        "journal_entry_create": {
+          "service": "JournalEntryService",
+          "controller": "AccountingController",
+          "description": "Create journal entry"
+        },
+        "journal_entry_reverse": {
+          "service": "JournalEntryService",
+          "controller": "AccountingController",
+          "description": "Reverse journal entry"
+        },
+        "manual_journal_create": {
+          "service": "AccountingFacade",
+          "description": "Create manual journal"
+        },
+        "dealer_receipt_record": {
+          "service": "DealerReceiptService",
+          "description": "Record dealer receipt"
+        },
+        "supplier_payment_record": {
+          "service": "SettlementService",
+          "description": "Record supplier payment"
+        },
+        "dealer_settlement": {
+          "service": "SettlementService",
+          "description": "Settle dealer invoices"
+        },
+        "supplier_settlement": {
+          "service": "SettlementService",
+          "description": "Settle supplier invoices"
+        },
+        "auto_settle_dealer": {
+          "service": "SettlementService",
+          "description": "Auto-settle dealer"
+        },
+        "credit_note_post": {
+          "service": "CreditDebitNoteService",
+          "description": "Post credit note"
+        },
+        "debit_note_post": {
+          "service": "CreditDebitNoteService",
+          "description": "Post debit note"
+        },
+        "bad_debt_writeoff": {
+          "service": "CreditDebitNoteService",
+          "description": "Write off bad debt"
+        },
+        "period_list": {
+          "service": "AccountingPeriodService",
+          "description": "List accounting periods"
+        },
+        "period_close_request": {
+          "service": "AccountingPeriodService",
+          "description": "Request period close"
+        },
+        "period_close_approve": {
+          "service": "AccountingPeriodService",
+          "description": "Approve period close"
+        },
+        "period_reopen": {
+          "service": "AccountingPeriodService",
+          "description": "Reopen closed period (SUPER_ADMIN only)"
+        },
+        "bank_reconciliation": {
+          "service": "ReconciliationService",
+          "description": "Bank reconciliation"
+        },
+        "bank_reconciliation_session": {
+          "service": "BankReconciliationSessionService",
+          "description": "Interactive bank reconciliation sessions"
+        },
+        "subledger_reconciliation": {
+          "service": "ReconciliationService",
+          "description": "Sub-ledger reconciliation"
+        },
+        "discrepancy_resolve": {
+          "service": "ReconciliationService",
+          "description": "Resolve reconciliation discrepancy"
+        },
+        "dealer_statement": {
+          "service": "StatementService",
+          "description": "Dealer statement generation"
+        },
+        "supplier_statement": {
+          "service": "StatementService",
+          "description": "Supplier statement generation"
+        },
+        "dealer_aging_report": {
+          "service": "AgingReportService",
+          "description": "Aged receivables reports"
+        },
+        "dealer_dso": {
+          "service": "AgingReportService",
+          "description": "DSO calculations"
+        },
+        "gst_return_generate": {
+          "service": "TaxService",
+          "description": "GST return generation"
+        },
+        "gst_reconciliation": {
+          "service": "TaxService",
+          "description": "GST reconciliation reports"
+        },
+        "temporal_balance": {
+          "service": "TemporalBalanceService",
+          "description": "Point-in-time balance queries"
+        },
+        "trial_balance_snapshot": {
+          "service": "TemporalBalanceService",
+          "description": "Trial balance as of date"
+        },
+        "tally_import": {
+          "service": "TallyImportService",
+          "controller": "TallyImportController",
+          "description": "Import chart of accounts from Tally XML"
+        },
+        "opening_balance_import": {
+          "service": "OpeningBalanceImportService",
+          "controller": "OpeningBalanceImportController",
+          "description": "Import opening balances from CSV"
+        },
+        "audit_trail_query": {
+          "service": "AccountingAuditTrailService",
+          "description": "Transaction audit queries"
+        },
+        "dealer_ledger_service": {
+          "service": "DealerLedgerService",
+          "description": "AR sub-ledger management"
+        },
+        "supplier_ledger_service": {
+          "service": "SupplierLedgerService",
+          "description": "AP sub-ledger management"
+        },
+        "account_hierarchy": {
+          "service": "AccountHierarchyService",
+          "description": "Chart of accounts hierarchy operations"
+        },
+        "company_default_accounts": {
+          "service": "CompanyDefaultAccountsService",
+          "description": "Manage company default accounts"
+        },
+        "costing_method": {
+          "service": "CostingMethodService",
+          "description": "Inventory costing method operations"
+        },
+        "inventory_accounting": {
+          "service": "InventoryAccountingService",
+          "description": "Landed cost, revaluation, WIP adjustment"
+        }
+      }
+    }
+  },
+  "crossCuttingFunctions": {
+    "security": {
+      "name": "Security & Authentication",
+      "package": "com.bigbrightpaints.erp.core.security",
+      "functions": {
+        "jwt_token_generation": {
+          "service": "JwtTokenService",
+          "description": "Generate and parse JWT tokens"
+        },
+        "token_blacklist": {
+          "service": "TokenBlacklistService",
+          "description": "Manage JWT token blacklist"
+        },
+        "company_context_filter": {
+          "service": "CompanyContextFilter",
+          "description": "Validate company access and tenant lifecycle"
+        },
+        "must_change_password_filter": {
+          "service": "MustChangePasswordCorridorFilter",
+          "description": "Enforce password change requirement"
+        },
+        "crypto_service": {
+          "service": "CryptoService",
+          "description": "AES-256-GCM encryption for sensitive data"
+        },
+        "security_monitoring": {
+          "service": "SecurityMonitoringService",
+          "description": "Monitors security events, brute force detection"
+        },
+        "tenant_runtime_enforcement": {
+          "service": "TenantRuntimeEnforcementService",
+          "description": "Tenant concurrency/rate limits"
+        },
+        "password_policy": {
+          "service": "PasswordPolicy",
+          "description": "Password validation rules"
+        }
+      }
+    },
+    "audit": {
+      "name": "Audit & Compliance",
+      "package": "com.bigbrightpaints.erp.core.audit",
+      "functions": {
+        "audit_log": {
+          "service": "AuditService",
+          "description": "Comprehensive audit logging with async writes"
+        },
+        "enterprise_audit_trail": {
+          "service": "EnterpriseAuditTrailService",
+          "description": "Enterprise audit trail with ML interaction tracking"
+        },
+        "business_event_recording": {
+          "service": "EnterpriseAuditTrailService",
+          "description": "Record business events for ML training"
+        }
+      }
+    },
+    "configuration": {
+      "name": "System Configuration",
+      "package": "com.bigbrightpaints.erp.core.config",
+      "functions": {
+        "system_settings": {
+          "service": "SystemSettingsService",
+          "description": "Manage runtime-tunable settings"
+        },
+        "email_config": {
+          "service": "EmailProperties",
+          "description": "Email configuration binding"
+        },
+        "licensing": {
+          "service": "LicensingGuard",
+          "description": "CryptoLens license validation"
+        }
+      }
+    },
+    "idempotency": {
+      "name": "Idempotency Framework",
+      "package": "com.bigbrightpaints.erp.core.idempotency",
+      "functions": {
+        "idempotency_header_utils": {
+          "service": "IdempotencyHeaderUtils",
+          "description": "Resolves idempotency keys from HTTP headers"
+        },
+        "idempotency_reservation": {
+          "service": "IdempotencyReservationService",
+          "description": "Reserve and validate idempotency keys"
+        }
+      }
+    }
+  }
+}
