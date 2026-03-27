@@ -3,6 +3,7 @@ package com.bigbrightpaints.erp.modules.production.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
@@ -18,6 +19,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -48,6 +50,8 @@ import com.bigbrightpaints.erp.modules.production.domain.ProductionProduct;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionProductRepository;
 import com.bigbrightpaints.erp.modules.production.dto.BulkVariantRequest;
 import com.bigbrightpaints.erp.modules.production.dto.BulkVariantResponse;
+import com.bigbrightpaints.erp.modules.production.dto.CatalogItemCreateCommand;
+import com.bigbrightpaints.erp.modules.production.dto.ProductionProductDto;
 import com.bigbrightpaints.erp.modules.purchasing.domain.GoodsReceiptRepository;
 import com.bigbrightpaints.erp.modules.purchasing.domain.PurchaseOrderRepository;
 import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchaseRepository;
@@ -284,6 +288,79 @@ class ProductionCatalogServiceBulkVariantRaceTest {
 
     service.createVariants(request, true);
     assertThat(brand.getName()).isEqualTo("BigBright");
+  }
+
+  @Test
+  void createVariants_nonDryRun_persistsDeterministicSkuThroughCatalogItemCommand() {
+    when(productRepository.findByCompanyAndSkuCodeIn(any(), any())).thenReturn(List.of());
+    doReturn(
+            new ProductionProductDto(
+                55L,
+                null,
+                11L,
+                "BigBright",
+                "BBP",
+                "Primer Red 20L",
+                "FINISHED_GOOD",
+                "Red",
+                "20L",
+                "L",
+                null,
+                "FG-BBP-PRIMER-RED-20L",
+                null,
+                null,
+                true,
+                new BigDecimal("1200.00"),
+                new BigDecimal("18"),
+                BigDecimal.ZERO,
+                new BigDecimal("1100.00"),
+                Map.of()))
+        .when(service)
+        .createCatalogItem(any());
+
+    BulkVariantResponse response = service.createVariants(variantRequest(), false);
+
+    ArgumentCaptor<CatalogItemCreateCommand> commandCaptor =
+        ArgumentCaptor.forClass(CatalogItemCreateCommand.class);
+    verify(service).createCatalogItem(commandCaptor.capture());
+    CatalogItemCreateCommand command = commandCaptor.getValue();
+    assertThat(command.customSkuCode()).isEqualTo("FG-BBP-PRIMER-RED-20L");
+    assertThat(command.itemClass()).isEqualTo("FINISHED_GOOD");
+    assertThat(command.productName()).isEqualTo("Primer Red 20L");
+    assertThat(response.created()).singleElement().satisfies(i -> assertThat(i.sku()).isEqualTo("FG-BBP-PRIMER-RED-20L"));
+    assertThat(response.wouldCreate()).singleElement().satisfies(i -> assertThat(i.sku()).isEqualTo("FG-BBP-PRIMER-RED-20L"));
+  }
+
+  @Test
+  void createCatalogItem_publicEntryExecutesCanonicalCreatePath() {
+    CatalogItemCreateCommand request =
+        new CatalogItemCreateCommand(
+            11L,
+            null,
+            null,
+            "Titanium",
+            "RAW_MATERIAL",
+            "RAW_MATERIAL",
+            null,
+            null,
+            "KG",
+            null,
+            "RM-BBP-TIO2-KG",
+            new BigDecimal("500.00"),
+            new BigDecimal("18"),
+            BigDecimal.ZERO,
+            new BigDecimal("450.00"),
+            Map.of());
+    when(productRepository.findByCompanyAndSkuCode(company, "RM-BBP-TIO2-KG"))
+        .thenReturn(Optional.empty());
+    when(productRepository.save(any(ProductionProduct.class)))
+        .thenAnswer(invocation -> invocation.getArgument(0, ProductionProduct.class));
+
+    ProductionProductDto created = service.createCatalogItem(request);
+
+    assertThat(created.skuCode()).isEqualTo("RM-BBP-TIO2-KG");
+    assertThat(created.category()).isEqualTo("RAW_MATERIAL");
+    assertThat(created.brandId()).isEqualTo(11L);
   }
 
   private BulkVariantRequest variantRequest() {

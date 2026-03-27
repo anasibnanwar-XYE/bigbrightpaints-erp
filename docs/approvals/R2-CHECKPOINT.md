@@ -56,7 +56,7 @@
 ## Verification Evidence
 - Commands run:
   - `rg -n "CatalogProductRequest|CatalogProductDto|CatalogProductEntryRequest|ProductCreateRequest|ProductUpdateRequest" erp-domain/src/main erp-domain/src/test docs openapi.json`
-  - `rg -n "CatalogService\\.createProduct|CatalogService\\.getProduct|CatalogService\\.updateProduct|CatalogService\\.searchProducts|createProduct\\(|getProduct\\(|updateProduct\\(|searchProducts\\(" erp-domain/src/main/java/com/bigbrightpaints/erp/modules/production docs`
+  - `rg -n "CatalogService\\.createItem|CatalogService\\.getItem|CatalogService\\.updateItem|CatalogService\\.searchItems|createCatalogItem\\(|updateCatalogItem\\(" erp-domain/src/main/java/com/bigbrightpaints/erp/modules/production docs`
   - `mvn -Dtest=GlobalExceptionHandlerTest,TS_RuntimeGlobalExceptionHandlerExecutableCoverageTest,OpeningStockPostingRegressionIT,ProductionCatalogFinishedGoodInvariantIT,ProductionCatalogRawMaterialInvariantIT,ProductionCatalogDiscountDefaultRegressionIT,CR_CatalogImportDeterminismIT test`
   - `bash scripts/guard_openapi_contract_drift.sh`
   - `bash scripts/guard_legacy_migration_freeze.sh`
