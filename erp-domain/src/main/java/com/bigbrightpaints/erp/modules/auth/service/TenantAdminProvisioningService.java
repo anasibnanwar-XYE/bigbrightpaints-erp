@@ -40,7 +40,7 @@ public class TenantAdminProvisioningService {
   }
 
   @Transactional
-  public String provisionInitialAdmin(
+  public UserAccount provisionInitialAdmin(
       Company company, String firstAdminEmail, String firstAdminDisplayName) {
     if (company == null || company.getId() == null) {
       throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
@@ -59,7 +59,10 @@ public class TenantAdminProvisioningService {
             normalizedEmail,
             resolveFirstAdminDisplayName(firstAdminDisplayName, company),
             java.util.List.of(adminRole));
-    return firstAdmin.getEmail();
+    company.setMainAdminUserId(firstAdmin.getId());
+    company.setOnboardingAdminEmail(firstAdmin.getEmail());
+    company.setOnboardingAdminUserId(firstAdmin.getId());
+    return firstAdmin;
   }
 
   @Transactional

@@ -15,6 +15,7 @@ import java.util.concurrent.atomic.AtomicLong;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -25,6 +26,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriod;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingPeriodService;
+import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.auth.service.TenantAdminProvisioningService;
 import com.bigbrightpaints.erp.modules.company.domain.CoATemplate;
@@ -106,8 +108,11 @@ class TenantOnboardingServiceTest {
     ReflectionTestUtils.setField(period, "id", 77L);
     when(accountingPeriodService.ensurePeriod(any(Company.class), any())).thenReturn(period);
     when(systemSettingsRepository.existsById(anyString())).thenReturn(false);
+    UserAccount provisionedAdmin =
+        new UserAccount("admin@mock.com", "MOCK", "hash", "Mock Admin");
+    ReflectionTestUtils.setField(provisionedAdmin, "id", 501L);
     when(tenantAdminProvisioningService.provisionInitialAdmin(any(Company.class), anyString(), anyString()))
-        .thenReturn("admin@mock.com");
+        .thenReturn(provisionedAdmin);
 
     TenantOnboardingResponse response = service.onboardTenant(request);
 
@@ -117,6 +122,14 @@ class TenantOnboardingServiceTest {
     assertThat(response.adminEmail()).isEqualTo("admin@mock.com");
     assertThat(response.tenantAdminProvisioned()).isTrue();
     assertThat(response.systemSettingsInitialized()).isTrue();
+    ArgumentCaptor<Company> savedCompanies = ArgumentCaptor.forClass(Company.class);
+    verify(companyRepository, times(3)).save(savedCompanies.capture());
+    assertThat(savedCompanies.getAllValues())
+        .anyMatch(
+            company ->
+                company != null
+                    && "GENERIC".equals(company.getOnboardingCoaTemplateCode())
+                    && company.getOnboardingCompletedAt() != null);
     verify(tenantAdminProvisioningService)
         .provisionInitialAdmin(any(Company.class), org.mockito.ArgumentMatchers.eq("admin@mock.com"), org.mockito.ArgumentMatchers.eq("Mock Admin"));
   }
@@ -172,8 +185,11 @@ class TenantOnboardingServiceTest {
     ReflectionTestUtils.setField(period, "id", 77L);
     when(accountingPeriodService.ensurePeriod(any(Company.class), any())).thenReturn(period);
     when(systemSettingsRepository.existsById(anyString())).thenReturn(false);
+    UserAccount provisionedAdmin =
+        new UserAccount("admin@mock.com", "MOCK", "hash", "Mock Admin");
+    ReflectionTestUtils.setField(provisionedAdmin, "id", 502L);
     when(tenantAdminProvisioningService.provisionInitialAdmin(any(Company.class), anyString(), anyString()))
-        .thenReturn("admin@mock.com");
+        .thenReturn(provisionedAdmin);
 
     service.onboardTenant(request);
 

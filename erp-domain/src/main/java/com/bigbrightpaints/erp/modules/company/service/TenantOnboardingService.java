@@ -19,6 +19,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriod;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingPeriodService;
+import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.auth.service.TenantAdminProvisioningService;
 import com.bigbrightpaints.erp.modules.company.domain.CoATemplate;
@@ -83,13 +84,16 @@ public class TenantOnboardingService {
     applyCompanyDefaultAccounts(savedCompany, createdAccounts);
     companyRepository.save(savedCompany);
 
-    String provisionedAdminEmail =
+    UserAccount provisionedAdmin =
         tenantAdminProvisioningService.provisionInitialAdmin(
             savedCompany, normalizedAdminEmail, request.firstAdminDisplayName());
 
     AccountingPeriod defaultPeriod =
         accountingPeriodService.ensurePeriod(savedCompany, CompanyTime.today(savedCompany));
     boolean systemSettingsInitialized = initializeDefaultSystemSettings();
+    savedCompany.setOnboardingCoaTemplateCode(template.getCode());
+    savedCompany.setOnboardingCompletedAt(CompanyTime.now(savedCompany));
+    companyRepository.save(savedCompany);
 
     return new TenantOnboardingResponse(
         savedCompany.getId(),
@@ -100,7 +104,7 @@ public class TenantOnboardingService {
         createdAccounts.size(),
         defaultPeriod.getId(),
         true,
-        provisionedAdminEmail,
+        provisionedAdmin.getEmail(),
         true,
         systemSettingsInitialized);
   }

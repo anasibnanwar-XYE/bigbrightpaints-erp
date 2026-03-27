@@ -420,13 +420,19 @@ class TS_RuntimeTenantPolicyControlExecutableCoverageTest {
     when(userAccountRepository.existsByEmailIgnoreCaseAndAuthScopeCodeIgnoreCase("new-admin@ske.com", "SKE"))
         .thenReturn(false);
     when(roleRepository.findByName("ROLE_ADMIN")).thenReturn(Optional.of(adminRole));
+    UserAccount provisionedAdmin =
+        new UserAccount("new-admin@ske.com", "SKE", "hash", "Company SKE Admin");
+    ReflectionTestUtils.setField(provisionedAdmin, "id", 410L);
     when(scopedAccountBootstrapService.provisionTenantAccount(
             eq(company), eq("new-admin@ske.com"), eq("Company SKE Admin"), eq(java.util.List.of(adminRole))))
-        .thenReturn(new UserAccount("new-admin@ske.com", "SKE", "hash", "Company SKE Admin"));
+        .thenReturn(provisionedAdmin);
 
-    String normalizedEmail = service.provisionInitialAdmin(company, " NEW-ADMIN@SKE.COM ", null);
+    UserAccount normalizedAdmin = service.provisionInitialAdmin(company, " NEW-ADMIN@SKE.COM ", null);
 
-    assertThat(normalizedEmail).isEqualTo("new-admin@ske.com");
+    assertThat(normalizedAdmin.getEmail()).isEqualTo("new-admin@ske.com");
+    assertThat(company.getMainAdminUserId()).isEqualTo(410L);
+    assertThat(company.getOnboardingAdminEmail()).isEqualTo("new-admin@ske.com");
+    assertThat(company.getOnboardingAdminUserId()).isEqualTo(410L);
     verify(scopedAccountBootstrapService)
         .provisionTenantAccount(company, "new-admin@ske.com", "Company SKE Admin", java.util.List.of(adminRole));
 

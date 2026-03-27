@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -716,6 +717,8 @@ class AdminUserServiceTest {
 
     verify(tokenBlacklistService).revokeAllUserTokens(user.getPublicId().toString());
     verify(refreshTokenService).revokeAllForUser(user.getPublicId());
+    verify(tenantRuntimePolicyService)
+        .assertCanAddEnabledUser(foreignCompany, "ADMIN_USER_TRANSFER");
   }
 
   @Test
@@ -753,6 +756,50 @@ class AdminUserServiceTest {
 
     assertThat(user.getCompany()).isEqualTo(company);
     assertThat(user.getAuthScopeCode()).isEqualTo("TEST");
+    verify(tokenBlacklistService, never()).revokeAllUserTokens(anyString());
+    verify(refreshTokenService, never()).revokeAllForUser(any());
+  }
+
+  @Test
+  void updateUser_superAdminCompanyTransferEnforcesQuotaBeforeMutationOrTokenRevocation() {
+    Company foreignCompany = new Company();
+    ReflectionTestUtils.setField(foreignCompany, "id", 21L);
+    foreignCompany.setCode("FOREIGN");
+
+    UserAccount user =
+        new UserAccount("quota-transfer@example.com", "TEST", "hash", "Quota Transfer");
+    ReflectionTestUtils.setField(user, "id", 405L);
+    user.setCompany(company);
+
+    when(userRepository.findById(405L)).thenReturn(Optional.of(user));
+    when(companyRepository.findById(21L)).thenReturn(Optional.of(foreignCompany));
+    doThrow(
+            new ApplicationException(
+                com.bigbrightpaints.erp.core.exception.ErrorCode.BUSINESS_LIMIT_EXCEEDED,
+                "Quota exceeded"))
+        .when(tenantRuntimePolicyService)
+        .assertCanAddEnabledUser(foreignCompany, "ADMIN_USER_TRANSFER");
+
+    SecurityContextHolder.getContext()
+        .setAuthentication(
+            new UsernamePasswordAuthenticationToken(
+                "super-admin@bbp.com",
+                "n/a",
+                List.of(new SimpleGrantedAuthority("ROLE_SUPER_ADMIN"))));
+
+    try {
+      assertThatThrownBy(
+              () -> service.updateUser(405L, new UpdateUserRequest("Quota Transfer", 21L, null, null)))
+          .isInstanceOf(ApplicationException.class)
+          .hasMessageContaining("Quota exceeded");
+    } finally {
+      SecurityContextHolder.clearContext();
+    }
+
+    assertThat(user.getCompany()).isEqualTo(company);
+    assertThat(user.getAuthScopeCode()).isEqualTo("TEST");
+    verify(userRepository, never()).existsByEmailIgnoreCaseAndAuthScopeCodeIgnoreCaseAndIdNot(
+        anyString(), anyString(), any());
     verify(tokenBlacklistService, never()).revokeAllUserTokens(anyString());
     verify(refreshTokenService, never()).revokeAllForUser(any());
   }

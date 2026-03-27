@@ -218,10 +218,15 @@ public class AdminUserService {
     }
     if (request.companyId() != null) {
       Company targetCompany = resolveTargetCompanyForCreate(company, request.companyId());
-      assertScopedEmailAvailableForTransfer(user, targetCompany);
-      user.setCompany(targetCompany);
-      user.setAuthScopeCode(targetCompany.getCode());
-      requiresReauth = true; // Company access changed
+      if (isCompanyTransfer(user, targetCompany)) {
+        if (user.isEnabled()) {
+          tenantRuntimePolicyService.assertCanAddEnabledUser(targetCompany, "ADMIN_USER_TRANSFER");
+        }
+        assertScopedEmailAvailableForTransfer(user, targetCompany);
+        user.setCompany(targetCompany);
+        user.setAuthScopeCode(targetCompany.getCode());
+        requiresReauth = true; // Company access changed
+      }
     }
     if (request.roles() != null && !request.roles().isEmpty()) {
       user.getRoles().clear();
@@ -482,6 +487,16 @@ public class AdminUserService {
       throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
           "Email already exists in target company scope");
     }
+  }
+
+  private boolean isCompanyTransfer(UserAccount user, Company targetCompany) {
+    if (user == null || targetCompany == null || targetCompany.getId() == null) {
+      return false;
+    }
+    if (user.getCompany() == null || user.getCompany().getId() == null) {
+      return true;
+    }
+    return !targetCompany.getId().equals(user.getCompany().getId());
   }
 
   private boolean hasSuperAdminAuthority() {

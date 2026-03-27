@@ -45,6 +45,7 @@ class TenantAdminProvisioningServiceTest {
     Company company = company(10L, "SKE", "SKE");
     Role adminRole = role("ROLE_ADMIN");
     UserAccount provisioned = new UserAccount("new-admin@ske.com", "SKE", "hash", "New Admin");
+    ReflectionTestUtils.setField(provisioned, "id", 44L);
 
     when(userAccountRepository.existsByEmailIgnoreCaseAndAuthScopeCodeIgnoreCase("new-admin@ske.com", "SKE"))
         .thenReturn(false);
@@ -53,9 +54,13 @@ class TenantAdminProvisioningServiceTest {
             eq(company), eq("new-admin@ske.com"), eq("New Admin"), eq(java.util.List.of(adminRole))))
         .thenReturn(provisioned);
 
-    String email = service.provisionInitialAdmin(company, " NEW-ADMIN@SKE.COM ", "New Admin");
+    UserAccount provisionedAdmin =
+        service.provisionInitialAdmin(company, " NEW-ADMIN@SKE.COM ", "New Admin");
 
-    assertThat(email).isEqualTo("new-admin@ske.com");
+    assertThat(provisionedAdmin.getEmail()).isEqualTo("new-admin@ske.com");
+    assertThat(company.getMainAdminUserId()).isEqualTo(provisioned.getId());
+    assertThat(company.getOnboardingAdminEmail()).isEqualTo("new-admin@ske.com");
+    assertThat(company.getOnboardingAdminUserId()).isEqualTo(provisioned.getId());
     verify(roleService).ensureRoleExists("ROLE_ADMIN");
     verify(scopedAccountBootstrapService)
         .provisionTenantAccount(company, "new-admin@ske.com", "New Admin", java.util.List.of(adminRole));

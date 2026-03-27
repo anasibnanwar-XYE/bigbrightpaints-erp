@@ -247,6 +247,11 @@ class AuthTenantAuthorityIT extends AbstractIntegrationTest {
     assertThat(firstAdmin.getCompany()).extracting(Company::getCode).isEqualTo(newCode);
     assertThat(firstAdmin.getRoles())
         .anyMatch(role -> "ROLE_ADMIN".equalsIgnoreCase(role.getName()));
+    assertThat(savedCompany.getMainAdminUserId()).isEqualTo(firstAdmin.getId());
+    assertThat(savedCompany.getOnboardingAdminEmail()).isEqualTo(firstAdminEmail);
+    assertThat(savedCompany.getOnboardingAdminUserId()).isEqualTo(firstAdmin.getId());
+    assertThat(savedCompany.getOnboardingCoaTemplateCode()).isEqualTo("MANUFACTURING");
+    assertThat(savedCompany.getOnboardingCompletedAt()).isNotNull();
     @SuppressWarnings("unchecked")
     Map<String, Object> data = (Map<String, Object>) response.getBody().get("data");
     assertThat(data)

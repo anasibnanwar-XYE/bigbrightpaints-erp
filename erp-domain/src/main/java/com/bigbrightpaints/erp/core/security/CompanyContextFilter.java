@@ -448,6 +448,19 @@ public class CompanyContextFilter extends OncePerRequestFilter {
     return binding == null ? null : binding.companyId();
   }
 
+  private boolean isLifecycleControlRequest(String path, String method) {
+    return resolveCompanyBoundControlBinding(path, method) != null;
+  }
+
+  private boolean isLifecycleControlRequest(Object path, String method) {
+    return isLifecycleControlRequest(path == null ? null : path.toString(), method);
+  }
+
+  private boolean hasTenantRuntimePolicyControlAuthority(String path, String method) {
+    CompanyBoundControlBinding binding = resolveCompanyBoundControlBinding(path, method);
+    return binding != null && binding.tenantRuntimePolicyControl();
+  }
+
   private Long parseCompanyId(String rawCompanyId) {
     if (!StringUtils.hasText(rawCompanyId)) {
       return null;
