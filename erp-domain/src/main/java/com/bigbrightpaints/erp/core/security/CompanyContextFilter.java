@@ -211,10 +211,7 @@ public class CompanyContextFilter extends OncePerRequestFilter {
         if (StringUtils.hasText(requestedCompany)
             && !tokenCompanyCode.trim().equalsIgnoreCase(requestedCompany.trim())) {
           log.warn(
-              "Rejecting company header mismatch. tokenCompanyCode={}, headerCompanyCode={},"
-                  + " path={}",
-              sanitizeForLog(tokenCompanyCode),
-              sanitizeForLog(requestedCompany),
+              "Rejecting company header mismatch. path={}",
               sanitizeForLog(request.getRequestURI()));
           writeAccessDenied(
               response,
@@ -285,7 +282,8 @@ public class CompanyContextFilter extends OncePerRequestFilter {
         // even when they are not explicitly attached to the tenant membership list.
         if (!lifecycleControlBypass && !validateCompanyAccess(companyCode)) {
           log.warn(
-              "User attempted to access unauthorized company: {}", sanitizeForLog(companyCode));
+              "User attempted to access unauthorized company context. path={}",
+              sanitizeForLog(request.getRequestURI()));
           writeAccessDenied(
               response, "COMPANY_ACCESS_DENIED", "Access denied to company: " + companyCode);
           return;
@@ -309,8 +307,7 @@ public class CompanyContextFilter extends OncePerRequestFilter {
           if (runtimeAdmission == null) {
             log.warn(
                 "Rejecting request because tenant runtime admission was unavailable."
-                    + " companyCode={}, path={}, method={}",
-                sanitizeForLog(companyCode),
+                    + " path={}, method={}",
                 sanitizeForLog(runtimePath),
                 sanitizeForLog(request.getMethod()));
             admission = TenantRuntimeEnforcementService.TenantRequestAdmission.notTracked();
