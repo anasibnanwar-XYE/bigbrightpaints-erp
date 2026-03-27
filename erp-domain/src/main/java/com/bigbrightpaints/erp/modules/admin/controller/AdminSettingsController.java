@@ -559,9 +559,7 @@ public class AdminSettingsController {
     metadata.put(
         "requestedExportApprovalRequired",
         auditRequestedBoolean(request == null ? null : request.exportApprovalRequired()));
-    metadata.put(
-        "requestedPlatformAuthCode",
-        auditRequestedPlatformAuthCode(request == null ? null : request.platformAuthCode()));
+    metadata.put("requestedPlatformAuthCode", auditRequestedPlatformAuthCode(request));
     if (after != null) {
       metadata.put("afterAutoApprovalEnabled", Boolean.toString(after.autoApprovalEnabled()));
       metadata.put("afterPeriodLockEnforced", Boolean.toString(after.periodLockEnforced()));
@@ -579,18 +577,11 @@ public class AdminSettingsController {
     return value == null ? AUDIT_NOT_REQUESTED : value.toString();
   }
 
-  private String auditRequestedPlatformAuthCode(String value) {
-    if (!StringUtils.hasText(value)) {
+  private String auditRequestedPlatformAuthCode(SystemSettingsUpdateRequest request) {
+    if (request == null || request.platformAuthCode() == null) {
       return AUDIT_NOT_REQUESTED;
     }
-    String candidate = value.trim();
-    if (!StringUtils.hasText(candidate)) {
-      return AUDIT_NOT_REQUESTED;
-    }
-    if (candidate.indexOf('\r') >= 0 || candidate.indexOf('\n') >= 0) {
-      return AUDIT_REDACTED;
-    }
-    return candidate.toUpperCase(Locale.ROOT);
+    return AUDIT_REDACTED;
   }
 
   private boolean isSuperAdminActor() {

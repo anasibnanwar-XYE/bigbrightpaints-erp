@@ -219,6 +219,77 @@ class AdminSettingsControllerTenantRuntimeContractTest {
   }
 
   @Test
+  void updateSettings_audits_null_platform_auth_code_as_not_requested() {
+    SystemSettingsService systemSettingsService = mock(SystemSettingsService.class);
+    AuditService auditService = mock(AuditService.class);
+    SystemSettingsDto before =
+        new SystemSettingsDto(
+            java.util.List.of("https://portal.bigbrightpaints.com"),
+            true,
+            false,
+            true,
+            "PLATFORM",
+            true,
+            "ops@bigbrightpaints.com",
+            "https://mail.bigbrightpaints.com",
+            false,
+            true);
+    SystemSettingsUpdateRequest request =
+        new SystemSettingsUpdateRequest(
+            java.util.List.of("https://portal.bigbrightpaints.com"),
+            null,
+            null,
+            false,
+            null,
+            true,
+            "noreply@bigbrightpaints.com",
+            "https://mail.bigbrightpaints.com",
+            true,
+            false);
+    SystemSettingsDto after =
+        new SystemSettingsDto(
+            java.util.List.of("https://portal.bigbrightpaints.com"),
+            true,
+            false,
+            false,
+            "PLATFORM",
+            true,
+            "noreply@bigbrightpaints.com",
+            "https://mail.bigbrightpaints.com",
+            true,
+            false);
+    when(systemSettingsService.snapshot()).thenReturn(before);
+    when(systemSettingsService.update(request)).thenReturn(after);
+
+    AdminSettingsController controller =
+        new AdminSettingsController(
+            systemSettingsService,
+            mock(EmailService.class),
+            mock(CompanyContextService.class),
+            mock(TenantRuntimePolicyService.class),
+            mock(ExportApprovalService.class),
+            mock(CreditRequestRepository.class),
+            mock(CreditLimitOverrideRequestRepository.class),
+            mock(PeriodCloseRequestRepository.class),
+            mock(PayrollRunRepository.class),
+            auditService,
+            mock(ModuleGatingService.class));
+
+    controller.updateSettings(request);
+
+    @SuppressWarnings("unchecked")
+    ArgumentCaptor<Map<String, String>> metadataCaptor = ArgumentCaptor.forClass(Map.class);
+    verify(auditService)
+        .logAuthSuccess(
+            org.mockito.ArgumentMatchers.eq(AuditEvent.CONFIGURATION_CHANGED),
+            org.mockito.ArgumentMatchers.any(),
+            org.mockito.ArgumentMatchers.isNull(),
+            metadataCaptor.capture());
+    Map<String, String> metadata = metadataCaptor.getValue();
+    assertThat(metadata.get("requestedPlatformAuthCode")).isEqualTo("<not_requested>");
+  }
+
+  @Test
   void notifyUser_dispatchesEmailAndReturnsSuccessContract() {
     EmailService emailService = mock(EmailService.class);
     AdminSettingsController controller =
