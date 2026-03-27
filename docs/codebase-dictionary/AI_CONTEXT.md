@@ -350,9 +350,82 @@ moduleGatingService.requireEnabledForCurrentCompany(
 
 ---
 
+## NO FALLBACKS POLICY (CRITICAL)
+
+**FALLBACKS ARE PROHIBITED** in this codebase.
+
+### Why No Fallbacks?
+1. Fallbacks hide bugs silently
+2. Fallbacks create data corruption
+3. Fallbacks make debugging impossible
+4. Fallbacks violate invariants silently
+
+### Examples of PROHIBITED Fallbacks
+
+❌ **WRONG - Silent Failure:**
+```java
+public Account getAccount(Long id) {
+    Account account = repository.findById(id);
+    if (account == null) {
+        log.warn("Account not found, returning default");
+        return new Account(); // NEVER DO THIS
+    }
+    return account;
+}
+```
+
+✅ **RIGHT - Explicit Failure:**
+```java
+public Account getAccount(Long id) {
+    return repository.findById(id)
+        .orElseThrow(() -> new EntityNotFoundException(
+            "Account not found with id: " + id, 
+            ErrorCode.ACCOUNT_NOT_FOUND
+        ));
+}
+```
+
+### Only Allowed Fallbacks
+1. Optional display data (UI can show "N/A")
+2. Cache misses (fall back to DB, but log)
+3. Feature flags (default to safe behavior)
+
+---
+
+## MIGRATION TRACKING (CRITICAL)
+
+**Every migration MUST be logged in MIGRATION_LOG.md**
+
+Before creating a migration:
+1. Check MIGRATION_LOG.md for conflicts
+2. Get next available V2_XXX number
+3. Log your migration with: created by, date, purpose, used by, conflicts
+
+---
+
+## DOCUMENTATION UPDATE RULES
+
+**After code changes, you MUST update docs:**
+
+| What You Did | What to Update | Max Time |
+|--------------|----------------|----------|
+| New class/service | MASTER_INDEX.md, module docs | 2 min |
+| Changed method | Module SERVICES.md/CONTROLLERS.md | 1 min |
+| New endpoint | ENTRY_POINT_MAP.md, CONTROLLERS.md | 1 min |
+| New migration | MIGRATION_LOG.md | 30 sec |
+| New test | TEST_INVENTORY.json | 30 sec |
+| Deprecated class | CANONICALITY_MAP.md | 30 sec |
+
+**See [LIVING_DOCUMENTATION_PROTOCOL.md](LIVING_DOCUMENTATION_PROTOCOL.md) for full rules.**
+
+---
+
 ## Token Efficiency Tips
 - **Use this document first** before exploring codebase
 - **Check MASTER_INDEX.md** for specific class locations
 - **Reference extension points** for safe modification areas
 - **Follow preferred patterns** to avoid common mistakes
 - **Use CompanyEntityLookup** instead of direct repository access
+- **NO FALLBACKS** - always fail explicitly
+- **LOG MIGRATIONS** - check MIGRATION_LOG.md before creating
+- **UPDATE DOCS** - spend max 2 min after code changes
