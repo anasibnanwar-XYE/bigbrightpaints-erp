@@ -149,6 +149,52 @@ class CompanyContextFilterControlPlaneBindingTest {
   }
 
   @Test
+  void superAdminTenantLifecycleRequest_bindsRootScopedSuperAdminToPathTargetCompany()
+      throws ServletException, IOException {
+    authenticate("root-superadmin@bbp.com", Set.of("ROLE_SUPER_ADMIN"), Set.of("ROOT"));
+    when(companyService.resolveCompanyCodeById(42L)).thenReturn("TENANT-A");
+    when(companyService.resolveLifecycleStateByCode("TENANT-A"))
+        .thenReturn(CompanyLifecycleState.ACTIVE);
+
+    MockHttpServletRequest request = request("PUT", "/api/v1/superadmin/tenants/42/lifecycle");
+    request.setAttribute("jwtClaims", claimsFor("ROOT"));
+    MockHttpServletResponse response = new MockHttpServletResponse();
+
+    filter.doFilter(request, response, filterChain);
+
+    assertThat(response.getStatus()).isEqualTo(200);
+    verify(companyService).resolveCompanyCodeById(42L);
+    verify(companyService).resolveLifecycleStateByCode("TENANT-A");
+    verify(tenantRuntimeEnforcementService, never())
+        .beginRequest(anyString(), anyString(), anyString(), anyString(), anyBoolean());
+    verify(filterChain).doFilter(request, response);
+  }
+
+  @Test
+  void superAdminTenantSupportResetRequest_bindsPlatformScopedSuperAdminToPathTargetCompany()
+      throws ServletException, IOException {
+    authenticate("root-superadmin@bbp.com", Set.of("ROLE_SUPER_ADMIN"), Set.of());
+    when(authScopeService.isPlatformScope("PLATFORM")).thenReturn(true);
+    when(companyService.resolveCompanyCodeById(42L)).thenReturn("TENANT-A");
+    when(companyService.resolveLifecycleStateByCode("TENANT-A"))
+        .thenReturn(CompanyLifecycleState.ACTIVE);
+
+    MockHttpServletRequest request =
+        request("POST", "/api/v1/superadmin/tenants/42/support/admin-password-reset");
+    request.setAttribute("jwtClaims", claimsFor("PLATFORM"));
+    MockHttpServletResponse response = new MockHttpServletResponse();
+
+    filter.doFilter(request, response, filterChain);
+
+    assertThat(response.getStatus()).isEqualTo(200);
+    verify(companyService).resolveCompanyCodeById(42L);
+    verify(companyService).resolveLifecycleStateByCode("TENANT-A");
+    verify(tenantRuntimeEnforcementService, never())
+        .beginRequest(anyString(), anyString(), anyString(), anyString(), anyBoolean());
+    verify(filterChain).doFilter(request, response);
+  }
+
+  @Test
   void auditTenantWorkflowRequest_rejectsTenantAttachedSuperAdminAsPlatformOnly()
       throws ServletException, IOException {
     authenticate("root-superadmin@bbp.com", Set.of("ROLE_SUPER_ADMIN"), Set.of("TENANT-A"));
@@ -476,7 +522,7 @@ class CompanyContextFilterControlPlaneBindingTest {
   }
 
   @Test
-  void extractCompanyIdFromLifecycleControlPath_handlesMalformedAndOverflowValues() {
+  void extractCompanyIdFromControlPlanePath_handlesMalformedAndOverflowValues() {
     assertThat(extractCompanyId(null)).isNull();
     assertThat(extractCompanyId("   ")).isNull();
     assertThat(extractCompanyId("/api/v1/private")).isNull();
@@ -488,11 +534,12 @@ class CompanyContextFilterControlPlaneBindingTest {
     assertThat(extractCompanyId("/api/v1/companies/42/lifecycle-state")).isEqualTo(42L);
     assertThat(extractCompanyId("/api/v1/companies/42/support/admin-password-reset"))
         .isEqualTo(42L);
+    assertThat(extractCompanyId("/api/v1/superadmin/tenants/42")).isEqualTo(42L);
+    assertThat(extractCompanyId("/api/v1/superadmin/tenants/42/lifecycle")).isEqualTo(42L);
   }
 
   private Long extractCompanyId(String path) {
-    return ReflectionTestUtils.invokeMethod(
-        filter, "extractCompanyIdFromLifecycleControlPath", path);
+    return ReflectionTestUtils.invokeMethod(filter, "extractCompanyIdFromControlPlanePath", path);
   }
 
   private void authenticate(String email, Set<String> authorities, Set<String> companyCodes) {

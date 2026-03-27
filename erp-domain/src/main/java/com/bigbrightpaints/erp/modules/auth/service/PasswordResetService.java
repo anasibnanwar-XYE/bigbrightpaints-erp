@@ -123,13 +123,14 @@ public class PasswordResetService {
               } catch (RuntimeException ex) {
                 String safeCorrelationId = sanitizeForPlainTextLog(correlationId);
                 String safeMaskedEmail = sanitizeForPlainTextLog(obfuscateEmail(user.getEmail()));
+                String safeExceptionClass = sanitizeExceptionClass(ex);
                 log.warn(
                     "event=password_reset.forgot_password.masked_failure policy={} correlationId={}"
                         + " email={} outcome=masked_response exceptionClass={}",
                     RESET_POLICY_SCOPE,
                     safeCorrelationId,
                     safeMaskedEmail,
-                    ex.getClass().getSimpleName());
+                    safeExceptionClass);
               }
             });
   }
@@ -244,6 +245,7 @@ public class PasswordResetService {
     } catch (RuntimeException ex) {
       cleanupIssuedResetToken(issuedResetToken, correlationId, maskedEmail);
       String safeCorrelationId = sanitizeForPlainTextLog(correlationId);
+      String safeExceptionClass = sanitizeExceptionClass(ex);
       auditResetFailure(
           operation, correlationId, user.getAuthScopeCode(), user.getEmail(), "delivery_failed");
       log.warn(
@@ -253,13 +255,14 @@ public class PasswordResetService {
           RESET_POLICY_SCOPE,
           safeCorrelationId,
           maskedEmail,
-          ex.getClass().getSimpleName());
+          safeExceptionClass);
       throw ex;
     }
     try {
       markIssuedResetTokenDelivered(issuedResetToken, correlationId, maskedEmail);
     } catch (RuntimeException ex) {
       String safeCorrelationId = sanitizeForPlainTextLog(correlationId);
+      String safeExceptionClass = sanitizeExceptionClass(ex);
       log.warn(
           "event=password_reset.{}.delivery_tracking_failed policy={} correlationId={} email={}"
               + " outcome=delivery_bookkeeping_failed exceptionClass={}",
@@ -267,7 +270,7 @@ public class PasswordResetService {
           RESET_POLICY_SCOPE,
           safeCorrelationId,
           maskedEmail,
-          ex.getClass().getSimpleName());
+          safeExceptionClass);
     }
     return true;
   }
@@ -563,5 +566,16 @@ public class PasswordResetService {
       return sanitized.substring(0, MAX_LOG_VALUE_LENGTH);
     }
     return sanitized;
+  }
+
+  private String sanitizeExceptionClass(Throwable throwable) {
+    if (throwable == null) {
+      return "<unknown>";
+    }
+    String exceptionClass = throwable.getClass().getSimpleName();
+    if (!StringUtils.hasText(exceptionClass)) {
+      exceptionClass = throwable.getClass().getName();
+    }
+    return sanitizeForPlainTextLog(exceptionClass);
   }
 }

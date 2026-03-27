@@ -219,7 +219,7 @@ class AdminSettingsControllerTenantRuntimeContractTest {
   }
 
   @Test
-  void updateSettings_audits_null_platform_auth_code_as_not_requested() {
+  void updateSettings_redacts_platform_auth_code_when_settings_update_runs() {
     SystemSettingsService systemSettingsService = mock(SystemSettingsService.class);
     AuditService auditService = mock(AuditService.class);
     SystemSettingsDto before =
@@ -286,7 +286,7 @@ class AdminSettingsControllerTenantRuntimeContractTest {
             org.mockito.ArgumentMatchers.isNull(),
             metadataCaptor.capture());
     Map<String, String> metadata = metadataCaptor.getValue();
-    assertThat(metadata.get("requestedPlatformAuthCode")).isEqualTo("<not_requested>");
+    assertThat(metadata.get("requestedPlatformAuthCode")).isEqualTo("<redacted>");
   }
 
   @Test

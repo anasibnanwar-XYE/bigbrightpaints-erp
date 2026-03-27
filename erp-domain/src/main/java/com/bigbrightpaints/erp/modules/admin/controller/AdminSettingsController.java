@@ -559,7 +559,7 @@ public class AdminSettingsController {
     metadata.put(
         "requestedExportApprovalRequired",
         auditRequestedBoolean(request == null ? null : request.exportApprovalRequired()));
-    metadata.put("requestedPlatformAuthCode", auditRequestedPlatformAuthCode(request));
+    metadata.put("requestedPlatformAuthCode", auditRequestedPlatformAuthCode());
     if (after != null) {
       metadata.put("afterAutoApprovalEnabled", Boolean.toString(after.autoApprovalEnabled()));
       metadata.put("afterPeriodLockEnforced", Boolean.toString(after.periodLockEnforced()));
@@ -577,10 +577,7 @@ public class AdminSettingsController {
     return value == null ? AUDIT_NOT_REQUESTED : value.toString();
   }
 
-  private String auditRequestedPlatformAuthCode(SystemSettingsUpdateRequest request) {
-    if (request == null || request.platformAuthCode() == null) {
-      return AUDIT_NOT_REQUESTED;
-    }
+  private String auditRequestedPlatformAuthCode() {
     return AUDIT_REDACTED;
   }
 
