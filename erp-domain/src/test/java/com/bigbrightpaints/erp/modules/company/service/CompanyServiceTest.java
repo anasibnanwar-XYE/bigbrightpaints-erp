@@ -36,6 +36,7 @@ import com.bigbrightpaints.erp.core.audit.AuditLogRepository;
 import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
+import com.bigbrightpaints.erp.core.security.AuthScopeService;
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.core.util.CompanyTime;
@@ -74,6 +75,8 @@ class CompanyServiceTest {
 
   @Mock private CompanyClock companyClock;
 
+  @Mock private AuthScopeService authScopeService;
+
   private TenantLifecycleService tenantLifecycleService;
 
   private CompanyService companyService;
@@ -92,7 +95,8 @@ class CompanyServiceTest {
             tenantRuntimeEnforcementService,
             tenantAdminProvisioningService,
             tenantLifecycleService,
-            passwordResetService);
+            passwordResetService,
+            authScopeService);
   }
 
   @AfterEach
@@ -663,7 +667,7 @@ class CompanyServiceTest {
     Company company = company(1L, "ACME");
     configureHardLimitEnvelope(company);
     when(repository.findById(1L)).thenReturn(Optional.of(company));
-    when(userAccountRepository.countDistinctByCompanies_IdAndEnabledTrue(1L)).thenReturn(50L);
+    when(userAccountRepository.countByCompany_IdAndEnabledTrue(1L)).thenReturn(50L);
     when(auditLogRepository.countApiActivityByCompanyId(1L)).thenReturn(20L);
     when(auditLogRepository.estimateAuditStorageBytesByCompanyId(1L)).thenReturn(10_000L);
     when(auditLogRepository.countDistinctSessionActivityByCompanyId(1L))

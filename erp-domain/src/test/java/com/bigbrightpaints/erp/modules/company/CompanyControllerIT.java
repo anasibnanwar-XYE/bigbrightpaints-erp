@@ -136,17 +136,19 @@ public class CompanyControllerIT extends AbstractIntegrationTest {
   }
 
   @Test
-  void tenant_runtime_metrics_defaults_match_canonical_runtime_defaults() {
-    String token = loginToken();
+  void tenant_runtime_policy_control_returns_canonical_runtime_defaults() {
+    Long companyId = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow().getId();
+    String token = loginToken(SUPER_ADMIN_EMAIL, COMPANY_CODE);
     HttpHeaders headers = new HttpHeaders();
     headers.setBearerAuth(token);
+    headers.setContentType(MediaType.APPLICATION_JSON);
     headers.set("X-Company-Code", COMPANY_CODE);
 
     ResponseEntity<Map> response =
         rest.exchange(
-            "/api/v1/admin/tenant-runtime/metrics",
-            HttpMethod.GET,
-            new HttpEntity<>(headers),
+            "/api/v1/companies/" + companyId + "/tenant-runtime/policy",
+            HttpMethod.PUT,
+            new HttpEntity<>(Map.of("holdState", "ACTIVE", "reasonCode", "defaults-check"), headers),
             Map.class);
 
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -155,13 +157,13 @@ public class CompanyControllerIT extends AbstractIntegrationTest {
     Map<String, Object> data = (Map<String, Object>) response.getBody().get("data");
     assertThat(data).isNotNull();
     assertThat(data.get("companyCode")).isEqualTo(COMPANY_CODE);
-    assertThat(data.get("holdState")).isEqualTo("ACTIVE");
-    assertThat(data.get("holdReason")).isEqualTo("POLICY_ACTIVE");
+    assertThat(data.get("state")).isEqualTo("ACTIVE");
+    assertThat(data.get("reasonCode")).isEqualTo("DEFAULTS-CHECK");
     assertThat(data.get("maxActiveUsers")).isEqualTo(500);
     assertThat(data.get("maxRequestsPerMinute")).isEqualTo(5000);
     assertThat(data.get("maxConcurrentRequests")).isEqualTo(200);
-    assertThat(data.get("policyReference")).isEqualTo("bootstrap");
-    assertThat(data.get("policyUpdatedAt")).isNull();
+    assertThat(data.get("auditChainId")).isInstanceOf(String.class);
+    assertThat(data.get("updatedAt")).isNotNull();
   }
 
   @Test
@@ -627,8 +629,8 @@ public class CompanyControllerIT extends AbstractIntegrationTest {
             HttpMethod.PUT,
             new HttpEntity<>(
                 Map.of(
-                    "holdState", "HOLD",
-                    "reasonCode", "baseline-hold",
+                    "holdState", "ACTIVE",
+                    "reasonCode", "baseline-active",
                     "maxConcurrentRequests", 9,
                     "maxRequestsPerMinute", 90,
                     "maxActiveUsers", 19),
@@ -833,7 +835,7 @@ public class CompanyControllerIT extends AbstractIntegrationTest {
         rootOnlySuperAdminEmail,
         ADMIN_PASSWORD,
         "Root Recovery Super Admin",
-        ROOT_COMPANY_CODE,
+        AuthScopeService.DEFAULT_PLATFORM_AUTH_CODE,
         java.util.List.of("ROLE_SUPER_ADMIN", "ROLE_ADMIN"));
     dataSeeder.ensureUser(
         rootTenantAdminEmail,
@@ -847,11 +849,12 @@ public class CompanyControllerIT extends AbstractIntegrationTest {
     companyAdminHeaders.setBearerAuth(companyAdminToken);
     companyAdminHeaders.set("X-Company-Code", COMPANY_CODE);
 
-    String superAdminToken = loginToken(rootOnlySuperAdminEmail, ROOT_COMPANY_CODE);
+    String superAdminToken =
+        loginToken(rootOnlySuperAdminEmail, AuthScopeService.DEFAULT_PLATFORM_AUTH_CODE);
     HttpHeaders superAdminHeaders = new HttpHeaders();
     superAdminHeaders.setBearerAuth(superAdminToken);
     superAdminHeaders.setContentType(MediaType.APPLICATION_JSON);
-    superAdminHeaders.set("X-Company-Code", ROOT_COMPANY_CODE);
+    superAdminHeaders.set("X-Company-Code", AuthScopeService.DEFAULT_PLATFORM_AUTH_CODE);
 
     ResponseEntity<Map> blockResponse =
         rest.exchange(

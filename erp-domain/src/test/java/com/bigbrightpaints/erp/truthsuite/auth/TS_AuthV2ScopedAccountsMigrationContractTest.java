@@ -9,7 +9,7 @@ import com.bigbrightpaints.erp.truthsuite.support.TruthSuiteFileAssert;
 class TS_AuthV2ScopedAccountsMigrationContractTest {
 
   private static final String V2_MIGRATION =
-      "src/main/resources/db/migration_v2/V167__auth_v2_scoped_accounts.sql";
+      "src/main/resources/db/migration_v2/V168__auth_v2_scoped_accounts.sql";
 
   @Test
   void v2MigrationNormalizesEmailsBeforeScopedUniqueness() {

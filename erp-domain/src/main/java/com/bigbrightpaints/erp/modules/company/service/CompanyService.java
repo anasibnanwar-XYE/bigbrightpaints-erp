@@ -25,6 +25,7 @@ import org.springframework.util.StringUtils;
 import com.bigbrightpaints.erp.core.audit.AuditEvent;
 import com.bigbrightpaints.erp.core.audit.AuditLogRepository;
 import com.bigbrightpaints.erp.core.audit.AuditService;
+import com.bigbrightpaints.erp.core.security.AuthScopeService;
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
 import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
@@ -78,9 +79,10 @@ public class CompanyService {
   private final TenantAdminProvisioningService tenantAdminProvisioningService;
   private final TenantLifecycleService tenantLifecycleService;
   private final PasswordResetService passwordResetService;
+  private final AuthScopeService authScopeService;
 
   public CompanyService(CompanyRepository repository) {
-    this(repository, null, null, null, null, null, null, null);
+    this(repository, null, null, null, null, null, null, null, null);
   }
 
   public CompanyService(
@@ -88,15 +90,7 @@ public class CompanyService {
       AuditService auditService,
       UserAccountRepository userAccountRepository,
       AuditLogRepository auditLogRepository) {
-    this(
-        repository,
-        auditService,
-        userAccountRepository,
-        auditLogRepository,
-        null,
-        null,
-        null,
-        null);
+    this(repository, auditService, userAccountRepository, auditLogRepository, null, null, null, null, null);
   }
 
   public CompanyService(
@@ -113,6 +107,7 @@ public class CompanyService {
         tenantRuntimeEnforcementService,
         null,
         null,
+        null,
         null);
   }
 
@@ -125,7 +120,8 @@ public class CompanyService {
       TenantRuntimeEnforcementService tenantRuntimeEnforcementService,
       TenantAdminProvisioningService tenantAdminProvisioningService,
       TenantLifecycleService tenantLifecycleService,
-      PasswordResetService passwordResetService) {
+      PasswordResetService passwordResetService,
+      AuthScopeService authScopeService) {
     this.repository = repository;
     this.auditService = auditService;
     this.userAccountRepository = userAccountRepository;
@@ -134,6 +130,7 @@ public class CompanyService {
     this.tenantAdminProvisioningService = tenantAdminProvisioningService;
     this.tenantLifecycleService = tenantLifecycleService;
     this.passwordResetService = passwordResetService;
+    this.authScopeService = authScopeService;
   }
 
   public List<CompanyDto> findAll() {
@@ -771,6 +768,9 @@ public class CompanyService {
     }
     String boundCompanyCode = CompanyContextHolder.getCompanyCode();
     if (!StringUtils.hasText(boundCompanyCode)) {
+      return;
+    }
+    if (authScopeService != null && authScopeService.isPlatformScope(boundCompanyCode)) {
       return;
     }
     if (!boundCompanyCode.trim().equalsIgnoreCase(targetCompanyCode.trim())) {

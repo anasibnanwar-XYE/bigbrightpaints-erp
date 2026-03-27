@@ -534,6 +534,22 @@ class TenantRuntimeEnforcementServiceTest {
   }
 
   @Test
+  void beginRequest_companyRuntimePolicyControlBypassesBlockedState_forPrivilegedActor() {
+    service.blockTenant("ACME", "incident-lock", "ops@bbp.com");
+
+    TenantRuntimeEnforcementService.TenantRequestAdmission policyAdmission =
+        service.beginRequest(
+            "ACME",
+            "/api/v1/companies/1/tenant-runtime/policy",
+            "PUT",
+            "super-admin@bbp.com",
+            true);
+
+    assertThat(policyAdmission.isAdmitted()).isTrue();
+    assertThat(policyAdmission.statusCode()).isEqualTo(HttpStatus.OK.value());
+  }
+
+  @Test
   void beginRequest_policyControlRequiresPrivilegedFlag() {
     service.holdTenant("ACME", "manual-hold", "ops@bbp.com");
 
@@ -659,12 +675,20 @@ class TenantRuntimeEnforcementServiceTest {
     TenantRuntimeEnforcementService.TenantRequestAdmission controlTrailingSlashAllowed =
         service.beginRequest(
             "ACME", "/api/v1/superadmin/tenants/1/limits///", "PUT", "ops@bbp.com", true);
+    TenantRuntimeEnforcementService.TenantRequestAdmission companyPolicyControlAllowed =
+        service.beginRequest(
+            "ACME",
+            "/api/v1/companies/1/tenant-runtime/policy///",
+            "PUT",
+            "ops@bbp.com",
+            true);
     TenantRuntimeEnforcementService.TenantRequestAdmission missingPathRejected =
         service.beginRequest("ACME", null, "PUT", "ops@bbp.com", true);
 
     assertThat(blankMethodRejected.isAdmitted()).isFalse();
     assertThat(blankMethodRejected.statusCode()).isEqualTo(HttpStatus.LOCKED.value());
     assertThat(controlTrailingSlashAllowed.isAdmitted()).isTrue();
+    assertThat(companyPolicyControlAllowed.isAdmitted()).isTrue();
     assertThat(missingPathRejected.isAdmitted()).isFalse();
     assertThat(missingPathRejected.statusCode()).isEqualTo(HttpStatus.LOCKED.value());
   }
@@ -679,6 +703,10 @@ class TenantRuntimeEnforcementServiceTest {
     assertThat(
             invokeIsPolicyControlRequest("/api/v1/admin/tenant-runtime/policy///", " put ", true))
         .isFalse();
+    assertThat(
+            invokeIsPolicyControlRequest(
+                "/api/v1/companies/1/tenant-runtime/policy///", " put ", true))
+        .isTrue();
     assertThat(
             invokeIsPolicyControlRequest("/api/v1/superadmin/tenants/1/limits///", " put ", true))
         .isTrue();

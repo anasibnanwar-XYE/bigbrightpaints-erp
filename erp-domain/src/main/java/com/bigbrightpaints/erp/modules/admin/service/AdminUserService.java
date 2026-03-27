@@ -689,18 +689,18 @@ public class AdminUserService {
 
   private List<Company> resolveActorScopedTargetCompanies(UserAccount user, Company actorCompany) {
     if (hasSuperAdminAuthority()) {
-      return resolveTargetCompanies(user, actorCompany);
+      Company targetCompany = resolveTargetCompany(user, actorCompany);
+      return targetCompany == null ? List.of() : List.of(targetCompany);
     }
     if (actorCompany == null || actorCompany.getId() == null) {
       return List.of();
     }
-    if (user == null || user.getCompanies() == null || user.getCompanies().isEmpty()) {
+    if (user == null || user.getCompany() == null || user.getCompany().getId() == null) {
       return List.of(actorCompany);
     }
-    return user.getCompanies().stream()
-        .filter(company -> company != null && actorCompany.getId().equals(company.getId()))
-        .distinct()
-        .toList();
+    return actorCompany.getId().equals(user.getCompany().getId())
+        ? List.of(user.getCompany())
+        : List.of();
   }
 
   private String resolveTargetCompanyCodes(UserAccount user) {

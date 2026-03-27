@@ -114,7 +114,7 @@ public class TenantOnboardingService {
     company.setQuotaMaxActiveUsers(defaultLong(request.maxActiveUsers()));
     company.setQuotaMaxApiRequests(defaultLong(request.maxApiRequests()));
     company.setQuotaMaxStorageBytes(defaultLong(request.maxStorageBytes()));
-    company.setQuotaMaxConcurrentSessions(defaultLong(request.maxConcurrentUsers()));
+    company.setQuotaMaxConcurrentRequests(defaultLong(request.maxConcurrentRequests()));
     company.setQuotaSoftLimitEnabled(defaultBoolean(request.softLimitEnabled(), false));
     company.setQuotaHardLimitEnabled(defaultBoolean(request.hardLimitEnabled(), true));
     return company;

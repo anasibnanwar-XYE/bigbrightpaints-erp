@@ -278,50 +278,51 @@ class TS_RuntimeTenantPolicyControlExecutableCoverageTest {
     TenantRuntimeEnforcementService.TenantRequestAdmission retiredAdminPolicyControl =
         service.beginRequest("ACME", "/api/v1/admin/tenant-runtime/policy", "PUT", "super", true);
     assertThat(retiredAdminPolicyControl.isAdmitted()).isFalse();
-    // Privileged canonical policy control path bypasses hold/rate checks.
+    // Privileged canonical superadmin limits path bypasses hold/rate checks.
     TenantRuntimeEnforcementService.TenantRequestAdmission policyControl =
         service.beginRequest(
-            "ACME", "/api/v1/companies/21/tenant-runtime/policy", "PUT", "super", true);
+            "ACME", "/api/v1/superadmin/tenants/21/limits", "PUT", "super", true);
     assertThat(policyControl.isAdmitted()).isTrue();
     service.completeRequest(policyControl, 500);
     TenantRuntimeEnforcementService.TenantRequestAdmission nonPutPolicyControl =
         service.beginRequest(
-            "ACME", "/api/v1/companies/21/tenant-runtime/policy", "PATCH", "super", true);
+            "ACME", "/api/v1/superadmin/tenants/21/limits", "PATCH", "super", true);
     assertThat(nonPutPolicyControl.isAdmitted()).isFalse();
     TenantRuntimeEnforcementService.TenantRequestAdmission nullPathPolicyControl =
         service.beginRequest("ACME", null, "PUT", "super", true);
     assertThat(nullPathPolicyControl.isAdmitted()).isFalse();
     TenantRuntimeEnforcementService.TenantRequestAdmission blankMethodPolicyControl =
         service.beginRequest(
-            "ACME", "/api/v1/companies/21/tenant-runtime/policy", "   ", "super", true);
+            "ACME", "/api/v1/superadmin/tenants/21/limits", "   ", "super", true);
     assertThat(blankMethodPolicyControl.isAdmitted()).isFalse();
-    TenantRuntimeEnforcementService.TenantRequestAdmission wrongPrefixPolicyControl =
+    TenantRuntimeEnforcementService.TenantRequestAdmission companyRuntimePolicyControl =
         service.beginRequest(
-            "ACME", "/api/v1/company/21/tenant-runtime/policy", "PUT", "super", true);
-    assertThat(wrongPrefixPolicyControl.isAdmitted()).isFalse();
+            "ACME", "/api/v1/companies/21/tenant-runtime/policy", "PUT", "super", true);
+    assertThat(companyRuntimePolicyControl.isAdmitted()).isTrue();
+    service.completeRequest(companyRuntimePolicyControl, 500);
     TenantRuntimeEnforcementService.TenantRequestAdmission wrongSuffixPolicyControl =
         service.beginRequest(
-            "ACME", "/api/v1/companies/21/tenant-runtime/not-policy", "PUT", "super", true);
+            "ACME", "/api/v1/superadmin/tenants/21/not-limits", "PUT", "super", true);
     assertThat(wrongSuffixPolicyControl.isAdmitted()).isFalse();
     TenantRuntimeEnforcementService.TenantRequestAdmission emptyIdPolicyControl =
         service.beginRequest(
-            "ACME", "/api/v1/companies//tenant-runtime/policy", "PUT", "super", true);
+            "ACME", "/api/v1/superadmin/tenants//limits", "PUT", "super", true);
     assertThat(emptyIdPolicyControl.isAdmitted()).isFalse();
     TenantRuntimeEnforcementService.TenantRequestAdmission rootPathPolicyControl =
         service.beginRequest("ACME", "/", "PUT", "super", true);
     assertThat(rootPathPolicyControl.isAdmitted()).isFalse();
 
-    // Canonical company runtime path with trailing slash also passes.
+    // Canonical superadmin limits path with trailing slash also passes.
     TenantRuntimeEnforcementService.TenantRequestAdmission canonicalPolicyControl =
         service.beginRequest(
-            "ACME", "/api/v1/companies/21/tenant-runtime/policy/", "PUT", "super", true);
+            "ACME", "/api/v1/superadmin/tenants/21/limits/", "PUT", "super", true);
     assertThat(canonicalPolicyControl.isAdmitted()).isTrue();
     service.completeRequest(canonicalPolicyControl, 500);
 
     // Invalid canonical path falls back to normal hold rejection.
     TenantRuntimeEnforcementService.TenantRequestAdmission invalidCanonical =
         service.beginRequest(
-            "ACME", "/api/v1/companies/21/x/tenant-runtime/policy", "PUT", "super", true);
+            "ACME", "/api/v1/superadmin/tenants/21/x/limits", "PUT", "super", true);
     assertThat(invalidCanonical.isAdmitted()).isFalse();
 
     TenantRuntimeEnforcementService.TenantRuntimeSnapshot updated =
