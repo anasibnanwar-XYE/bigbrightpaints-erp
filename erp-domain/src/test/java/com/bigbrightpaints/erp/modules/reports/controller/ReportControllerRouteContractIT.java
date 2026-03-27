@@ -44,11 +44,7 @@ class ReportControllerRouteContractIT extends AbstractIntegrationTest {
         .containsEntry("balanceSheetHierarchy", Set.of("/api/v1/reports/balance-sheet/hierarchy"))
         .containsEntry(
             "incomeStatementHierarchy", Set.of("/api/v1/reports/income-statement/hierarchy"))
-        .containsEntry("agedReceivables", Set.of("/api/v1/reports/aging/receivables"))
-        .containsEntry("dealerAging", Set.of("/api/v1/reports/aging/dealer/{dealerId}"))
-        .containsEntry(
-            "dealerAgingDetailed", Set.of("/api/v1/reports/aging/dealer/{dealerId}/detailed"))
-        .containsEntry("dealerDso", Set.of("/api/v1/reports/dso/dealer/{dealerId}"));
+        .containsEntry("agedReceivables", Set.of("/api/v1/reports/aging/receivables"));
 
     Set<String> allPatterns =
         patternsByMethod.values().stream()
@@ -56,6 +52,8 @@ class ReportControllerRouteContractIT extends AbstractIntegrationTest {
             .collect(Collectors.toCollection(TreeSet::new));
 
     assertThat(allPatterns).noneMatch(path -> path.startsWith("/api/v1/accounting/reports/"));
+    assertThat(allPatterns).noneMatch(path -> path.contains("/aging/dealer/"));
+    assertThat(allPatterns).noneMatch(path -> path.contains("/dso/dealer/"));
   }
 
   private Set<String> extractPatterns(RequestMappingInfo mapping) {

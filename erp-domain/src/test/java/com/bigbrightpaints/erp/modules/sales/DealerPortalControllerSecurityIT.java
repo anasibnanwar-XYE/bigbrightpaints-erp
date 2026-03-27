@@ -105,7 +105,7 @@ class DealerPortalControllerSecurityIT extends AbstractIntegrationTest {
     Map<?, ?> data = (Map<?, ?>) response.getBody().get("data");
     assertThat(asLong(data.get("dealerId"))).isEqualTo(dealerA.getId());
     assertThat(new BigDecimal(String.valueOf(data.get("totalOutstanding"))))
-        .isEqualByComparingTo("0");
+        .isEqualByComparingTo("0.00");
     assertThat(((Number) data.get("pendingOrderCount")).longValue()).isEqualTo(1L);
     assertThat(new BigDecimal(String.valueOf(data.get("pendingOrderExposure"))))
         .isEqualByComparingTo("5000.00");
@@ -391,7 +391,7 @@ class DealerPortalControllerSecurityIT extends AbstractIntegrationTest {
       HttpHeaders adminHeaders = authHeaders(ADMIN_EMAIL, PASSWORD);
       ResponseEntity<Map> adminAgingResponse =
           rest.exchange(
-              "/api/v1/dealers/" + dealerA.getId() + "/aging",
+              "/api/v1/portal/finance/aging?dealerId=" + dealerA.getId(),
               HttpMethod.GET,
               new HttpEntity<>(adminHeaders),
               Map.class);
@@ -445,7 +445,7 @@ class DealerPortalControllerSecurityIT extends AbstractIntegrationTest {
     HttpHeaders adminHeaders = authHeaders(ADMIN_EMAIL, PASSWORD);
     ResponseEntity<Map> adminAgingResponse =
         rest.exchange(
-            "/api/v1/dealers/" + dealerA.getId() + "/aging",
+            "/api/v1/portal/finance/aging?dealerId=" + dealerA.getId(),
             HttpMethod.GET,
             new HttpEntity<>(adminHeaders),
             Map.class);
@@ -527,7 +527,7 @@ class DealerPortalControllerSecurityIT extends AbstractIntegrationTest {
       HttpHeaders adminHeaders = authHeaders(ADMIN_EMAIL, PASSWORD);
       ResponseEntity<Map> adminAgingResponse =
           rest.exchange(
-              "/api/v1/dealers/" + dealerA.getId() + "/aging",
+              "/api/v1/portal/finance/aging?dealerId=" + dealerA.getId(),
               HttpMethod.GET,
               new HttpEntity<>(adminHeaders),
               Map.class);
@@ -665,7 +665,7 @@ class DealerPortalControllerSecurityIT extends AbstractIntegrationTest {
       HttpHeaders adminHeaders = authHeaders(ADMIN_EMAIL, PASSWORD);
       ResponseEntity<Map> adminAgingResponse =
           rest.exchange(
-              "/api/v1/dealers/" + dealerA.getId() + "/aging",
+              "/api/v1/portal/finance/aging?dealerId=" + dealerA.getId(),
               HttpMethod.GET,
               new HttpEntity<>(adminHeaders),
               Map.class);

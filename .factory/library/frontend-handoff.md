@@ -653,8 +653,9 @@ Catalog note (2026-03-21): accounting-facing stock-bearing setup now uses the ca
 | `GET` | `/api/v1/accounting/accounts/{accountId}/balance/as-of` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `—` | `BigDecimal` |
 | `GET` | `/api/v1/accounting/accounts/{accountId}/balance/compare` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `—` | `TemporalBalanceService.BalanceComparison` |
 | `POST` | `/api/v1/accounting/accruals` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `AccrualRequest` | `JournalEntryDto` |
-| `GET` | `/api/v1/accounting/aging/dealers/{dealerId}` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `—` | `AgingSummaryResponse` |
-| `GET` | `/api/v1/accounting/aging/dealers/{dealerId}/pdf` | `hasAuthority('ROLE_ADMIN')` | `—` | `byte[]` |
+| `GET` | `/api/v1/portal/finance/ledger` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | Query: `dealerId` | `ApiResponse<Map<String,Object>>` |
+| `GET` | `/api/v1/portal/finance/invoices` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | Query: `dealerId` | `ApiResponse<Map<String,Object>>` |
+| `GET` | `/api/v1/portal/finance/aging` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | Query: `dealerId` | `ApiResponse<Map<String,Object>>` |
 | `GET` | `/api/v1/accounting/aging/suppliers/{supplierId}` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `—` | `AgingSummaryResponse` |
 | `GET` | `/api/v1/accounting/aging/suppliers/{supplierId}/pdf` | `hasAuthority('ROLE_ADMIN')` | `—` | `byte[]` |
 | `GET` | `/api/v1/accounting/audit-trail` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `—` | `PageResponse<AccountingAuditTrailEntryDto>` |
@@ -706,18 +707,13 @@ Catalog note (2026-03-21): accounting-facing stock-bearing setup now uses the ca
 | `GET` | `/api/v1/accounting/reconciliation/discrepancies` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | Query: `status?`, `type?` | `ReconciliationDiscrepancyListResponse` |
 | `POST` | `/api/v1/accounting/reconciliation/discrepancies/{discrepancyId}/resolve` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `ReconciliationDiscrepancyResolveRequest` | `ReconciliationDiscrepancyDto` |
 | `GET` | `/api/v1/accounting/reconciliation/inter-company` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | Query: `companyA`, `companyB` | `ReconciliationService.InterCompanyReconciliationReport` |
-| `GET` | `/api/v1/accounting/reports/aging/dealer/{dealerId}` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `—` | `AgingReportService.DealerAgingDetail` |
-| `GET` | `/api/v1/accounting/reports/aging/dealer/{dealerId}/detailed` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `—` | `AgingReportService.DealerAgingDetailedReport` |
 | `GET` | `/api/v1/accounting/reports/aging/receivables` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `—` | `AgingReportService.AgedReceivablesReport` |
 | `GET` | `/api/v1/accounting/reports/balance-sheet/hierarchy` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `—` | `AccountHierarchyService.BalanceSheetHierarchy` |
-| `GET` | `/api/v1/accounting/reports/dso/dealer/{dealerId}` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `—` | `AgingReportService.DSOReport` |
 | `GET` | `/api/v1/accounting/reports/income-statement/hierarchy` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `—` | `AccountHierarchyService.IncomeStatementHierarchy` |
 | `GET` | `/api/v1/accounting/sales/returns` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING','ROLE_SALES')` | `—` | `List<JournalEntryDto>` |
 | `POST` | `/api/v1/accounting/sales/returns` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `SalesReturnRequest` | `JournalEntryDto` |
 | `POST` | `/api/v1/accounting/settlements/dealers` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `DealerSettlementRequest` | `PartnerSettlementResponse` |
 | `POST` | `/api/v1/accounting/settlements/suppliers` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `SupplierSettlementRequest` | `PartnerSettlementResponse` |
-| `GET` | `/api/v1/accounting/statements/dealers/{dealerId}` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `—` | `PartnerStatementResponse` |
-| `GET` | `/api/v1/accounting/statements/dealers/{dealerId}/pdf` | `hasAuthority('ROLE_ADMIN')` | `—` | `byte[]` |
 | `GET` | `/api/v1/accounting/statements/suppliers/{supplierId}` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `—` | `PartnerStatementResponse` |
 | `GET` | `/api/v1/accounting/statements/suppliers/{supplierId}/pdf` | `hasAuthority('ROLE_ADMIN')` | `—` | `byte[]` |
 | `POST` | `/api/v1/accounting/suppliers/payments` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `SupplierPaymentRequest` | `JournalEntryDto` |
@@ -1985,8 +1981,9 @@ Operational statuses: `PENDING`, `PENDING_STOCK`, `PENDING_PRODUCTION`, `RESERVE
 | `PUT` | `/api/v1/dealers/{dealerId}` | `ROLE_ADMIN`/`ROLE_SALES`/`ROLE_ACCOUNTING` | `CreateDealerRequest` | `DealerResponse` |
 | `GET` | `/api/v1/dealers/search` | `ROLE_ADMIN`/`ROLE_SALES`/`ROLE_ACCOUNTING` | Query: `query?`, `status?`, `region?`, `creditStatus?` | `List<DealerLookupResponse>` |
 | `GET` | `/api/v1/sales/dealers/search` | `ROLE_ADMIN`/`ROLE_SALES`/`ROLE_ACCOUNTING` | Query: `query?`, `status?`, `region?`, `creditStatus?` | `List<DealerLookupResponse>` |
-| `GET` | `/api/v1/dealers/{dealerId}/credit-utilization` | `ROLE_ADMIN`/`ROLE_SALES`/`ROLE_ACCOUNTING` | — | `Map<String,Object>` |
-| `GET` | `/api/v1/dealers/{dealerId}/aging` | `ROLE_ADMIN`/`ROLE_SALES`/`ROLE_ACCOUNTING` | — | `Map<String,Object>` |
+| `GET` | `/api/v1/portal/finance/ledger` | `ROLE_ADMIN`/`ROLE_ACCOUNTING` | Query: `dealerId` | `ApiResponse<Map<String,Object>>` |
+| `GET` | `/api/v1/portal/finance/invoices` | `ROLE_ADMIN`/`ROLE_ACCOUNTING` | Query: `dealerId` | `ApiResponse<Map<String,Object>>` |
+| `GET` | `/api/v1/portal/finance/aging` | `ROLE_ADMIN`/`ROLE_ACCOUNTING` | Query: `dealerId` | `ApiResponse<Map<String,Object>>` |
 | `POST` | `/api/v1/dealers/{dealerId}/dunning/hold` | `ROLE_ADMIN`/`ROLE_SALES`/`ROLE_ACCOUNTING` | Query: `overdueDays` (default `45`), `minAmount` (default `0`) | `Map<String,Object>` |
 | `GET` | `/api/v1/dealer-portal/dashboard` | `ROLE_DEALER` | — | `Map<String,Object>` |
 | `GET` | `/api/v1/dealer-portal/ledger` | `ROLE_DEALER` | — | `Map<String,Object>` |
@@ -2029,7 +2026,7 @@ Operational statuses: `PENDING`, `PENDING_STOCK`, `PENDING_PRODUCTION`, `RESERVE
 3. **Dealer onboarding + credit visibility**
    1. Create/update dealer using `POST /api/v1/dealers` or `PUT /api/v1/dealers/{dealerId}` with GST + payment terms + region fields.
    2. Search from sales screen with `GET /api/v1/sales/dealers/search?query=&status=&region=&creditStatus=`.
-   3. For dealer risk cards load `GET /api/v1/dealers/{dealerId}/credit-utilization` and `GET /api/v1/dealers/{dealerId}/aging`.
+   3. For dealer risk cards load `GET /api/v1/portal/finance/ledger?dealerId=` and `GET /api/v1/portal/finance/aging?dealerId=`.
    4. Trigger manual hold guardrail using `POST /api/v1/dealers/{dealerId}/dunning/hold?overdueDays=45&minAmount=0`.
 
 4. **Dealer portal self-service (dealer-authenticated)**
@@ -2126,12 +2123,12 @@ Frontend behavior: treat these as non-retryable user/action-state errors; surfac
   - `region?: string`
   - `creditStatus: WITHIN_LIMIT | NEAR_LIMIT | OVER_LIMIT`
 
-- `Dealer credit utilization payload` (`GET /api/v1/dealers/{dealerId}/credit-utilization`)
+- `Portal finance ledger payload` (`GET /api/v1/portal/finance/ledger?dealerId=` and `/api/v1/dealer-portal/ledger`)
   - `dealerId`, `dealerName`
   - `creditLimit`, `outstandingAmount`, `pendingOrderExposure`, `creditUsed`, `availableCredit`
   - `creditStatus`
 
-- `Dealer aging payload` (`GET /api/v1/dealers/{dealerId}/aging` and `/api/v1/dealer-portal/aging`)
+- `Portal finance aging payload` (`GET /api/v1/portal/finance/aging?dealerId=` and `/api/v1/dealer-portal/aging`)
   - `dealerId`, `dealerName`
   - `totalOutstanding`
   - `agingBuckets` (`current`, `1-30 days`, `31-60 days`, `61-90 days`, `90+ days`)
@@ -3298,7 +3295,7 @@ These flows map complete API sequences across modules. Use them to drive wizard-
 4. Dispatch + invoice creation: use the read-only factory/admin dispatch workspace for preview, slip lookup, and challan output, then use `POST /api/v1/sales/dispatch/confirm` for the canonical shipment posting when the UI needs `finalInvoiceId` and AR journal links.
 5. Receive/allocate payment: `POST /api/v1/accounting/settlements/dealers` (or auto-settle endpoint if used).
 6. Operational reconciliation checks:
-   - `GET /api/v1/dealers/{dealerId}/aging`
+   - `GET /api/v1/portal/finance/aging?dealerId=`
    - `GET /api/v1/accounting/reconciliation/subledger`
 7. Reporting refresh sequence after settlement:
    - `GET /api/v1/reports/aged-debtors`
