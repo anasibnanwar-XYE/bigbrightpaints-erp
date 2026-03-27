@@ -288,6 +288,35 @@ class CompanyServiceTest {
   }
 
   @Test
+  void create_rejectsWhenCredentialProvisioningIsNotReady() {
+    authenticateAs("ROLE_SUPER_ADMIN");
+    when(repository.findByCodeIgnoreCase("SKE")).thenReturn(Optional.empty());
+    when(tenantAdminProvisioningService.isCredentialProvisioningReady()).thenReturn(false);
+
+    CompanyRequest request =
+        new CompanyRequest(
+            "SKE Corp",
+            "ske",
+            "UTC",
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            "tenant-admin@ske.com",
+            "SKE Tenant Admin");
+
+    assertThatThrownBy(() -> companyService.create(request))
+        .isInstanceOf(ApplicationException.class)
+        .hasMessageContaining("Credential email delivery is disabled");
+
+    verify(tenantAdminProvisioningService, never())
+        .provisionInitialAdmin(any(Company.class), any(), any());
+  }
+
+  @Test
   void create_andUpdate_roundTripStateCodeInDto() {
     authenticateAs("ROLE_SUPER_ADMIN");
     when(repository.findByCodeIgnoreCase("GST")).thenReturn(Optional.empty());
@@ -475,6 +504,31 @@ class CompanyServiceTest {
   }
 
   @Test
+  void update_allowsBoundMatchingContextWhenAuthScopeServiceIsUnavailable() {
+    authenticateAs("ROLE_SUPER_ADMIN");
+    CompanyContextHolder.setCompanyCode("ACME");
+    Company target = company(2L, "ACME");
+    CompanyRequest request = new CompanyRequest("New Name", "bbb", "UTC", BigDecimal.TEN);
+    CompanyService withoutAuthScopeService =
+        new CompanyService(
+            repository,
+            auditService,
+            userAccountRepository,
+            auditLogRepository,
+            tenantRuntimeEnforcementService,
+            tenantAdminProvisioningService,
+            tenantLifecycleService,
+            passwordResetService,
+            null);
+    when(repository.findById(2L)).thenReturn(Optional.of(target));
+    when(repository.findByCodeIgnoreCase("BBB")).thenReturn(Optional.empty());
+    when(userAccountRepository.findByCompany_Id(2L)).thenReturn(List.of());
+    CompanyDto dto = withoutAuthScopeService.update(2L, request, Set.of(target));
+
+    assertThat(dto.code()).isEqualTo("BBB");
+  }
+
+  @Test
   void create_rejects_company_code_that_conflicts_with_platform_auth_code() {
     authenticateAs("ROLE_SUPER_ADMIN");
     when(authScopeService.isPlatformScope("PLATFORM")).thenReturn(true);
@@ -571,6 +625,65 @@ class CompanyServiceTest {
             org.mockito.ArgumentMatchers.any(Company.class),
             org.mockito.ArgumentMatchers.anyString(),
             org.mockito.ArgumentMatchers.anyString());
+  }
+
+  @Test
+  void synchronizeScopedAccountsToCompanyCode_shortCircuitsAcrossGuardClauses() {
+    CompanyService withoutUserRepository =
+        new CompanyService(
+            repository,
+            auditService,
+            null,
+            auditLogRepository,
+            tenantRuntimeEnforcementService,
+            tenantAdminProvisioningService,
+            tenantLifecycleService,
+            passwordResetService,
+            authScopeService);
+    Company persisted = company(7L, "ACME");
+
+    assertThatCode(
+            () ->
+                ReflectionTestUtils.invokeMethod(
+                    companyService,
+                    "synchronizeScopedAccountsToCompanyCode",
+                    null,
+                    "BBB"))
+        .doesNotThrowAnyException();
+    assertThatCode(
+            () ->
+                ReflectionTestUtils.invokeMethod(
+                    companyService,
+                    "synchronizeScopedAccountsToCompanyCode",
+                    company(null, "ACME"),
+                    "BBB"))
+        .doesNotThrowAnyException();
+    assertThatCode(
+            () ->
+                ReflectionTestUtils.invokeMethod(
+                    companyService,
+                    "synchronizeScopedAccountsToCompanyCode",
+                    persisted,
+                    "   "))
+        .doesNotThrowAnyException();
+    assertThatCode(
+            () ->
+                ReflectionTestUtils.invokeMethod(
+                    withoutUserRepository,
+                    "synchronizeScopedAccountsToCompanyCode",
+                    persisted,
+                    "BBB"))
+        .doesNotThrowAnyException();
+    assertThatCode(
+            () ->
+                ReflectionTestUtils.invokeMethod(
+                    companyService,
+                    "synchronizeScopedAccountsToCompanyCode",
+                    persisted,
+                    "ACME"))
+        .doesNotThrowAnyException();
+
+    verifyNoInteractions(userAccountRepository);
   }
 
   @Test
