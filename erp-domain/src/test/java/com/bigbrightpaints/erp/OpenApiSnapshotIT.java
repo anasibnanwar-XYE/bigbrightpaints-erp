@@ -11,6 +11,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.stream.Collectors;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -637,6 +638,10 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
     String snapshotSpecHash = sha256Hex(snapshotSpec);
     List<String> currentOps = extractOperationSignatures(currentSpec);
     List<String> snapshotOps = extractOperationSignatures(snapshotSpec);
+    List<String> missingSnapshotOps = new ArrayList<>(snapshotOps);
+    missingSnapshotOps.removeAll(currentOps);
+    String missingSnapshotOpsPreview =
+        missingSnapshotOps.stream().limit(12).collect(Collectors.joining(", "));
 
     assertThat(snapshotOps)
         .withFailMessage(
@@ -653,7 +658,8 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
         .withFailMessage(
             "OpenAPI breaking operation drift detected at %s. currentOps=%d snapshotOps=%d"
                 + " (delta=%d) currentHash=%s snapshotHash=%s. Snapshot operations must remain"
-                + " present in the runtime contract. For full parity (including additive drift),"
+                + " present in the runtime contract. missingSnapshotOpsCount=%d"
+                + " missingSnapshotOpsPreview=[%s]. For full parity (including additive drift),"
                 + " rerun with -D%s=true (or %s=true) and refresh using -D%s=true (or %s=true).",
             openApiSnapshotPath,
             currentOps.size(),
@@ -661,6 +667,8 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
             currentOps.size() - snapshotOps.size(),
             currentSpecHash,
             snapshotSpecHash,
+            missingSnapshotOps.size(),
+            missingSnapshotOpsPreview,
             SNAPSHOT_VERIFY_PROPERTY,
             SNAPSHOT_VERIFY_ENV,
             SNAPSHOT_REFRESH_PROPERTY,
