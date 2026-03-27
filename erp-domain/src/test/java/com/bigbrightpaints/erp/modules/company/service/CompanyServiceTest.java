@@ -475,6 +475,56 @@ class CompanyServiceTest {
   }
 
   @Test
+  void create_rejects_company_code_that_conflicts_with_platform_auth_code() {
+    authenticateAs("ROLE_SUPER_ADMIN");
+    when(authScopeService.isPlatformScope("PLATFORM")).thenReturn(true);
+    CompanyRequest request = new CompanyRequest("Platform", "platform", "UTC", BigDecimal.TEN);
+
+    assertThatThrownBy(() -> companyService.create(request))
+        .isInstanceOf(ApplicationException.class)
+        .hasMessageContaining("Company code conflicts with platform auth code: PLATFORM");
+
+    verify(repository, never()).findByCodeIgnoreCase(any());
+  }
+
+  @Test
+  void update_allowsPlatformScopeBoundContextForSuperAdminControlPlane() {
+    authenticateAs("ROLE_SUPER_ADMIN");
+    CompanyContextHolder.setCompanyCode("PLATFORM");
+    Company target = company(2L, "ACME");
+    when(repository.findById(2L)).thenReturn(Optional.of(target));
+    when(repository.findByCodeIgnoreCase("ACME")).thenReturn(Optional.of(target));
+    when(authScopeService.isPlatformScope("PLATFORM")).thenReturn(true);
+    CompanyRequest request = new CompanyRequest("New Name", "ACME", "UTC", BigDecimal.TEN);
+
+    CompanyDto response = companyService.update(2L, request, Set.of(target));
+
+    assertThat(response.code()).isEqualTo("ACME");
+    assertThat(response.name()).isEqualTo("New Name");
+  }
+
+  @Test
+  void update_rejects_scoped_account_conflict_when_company_code_changes() {
+    authenticateAs("ROLE_SUPER_ADMIN");
+    Company target = company(2L, "ACME");
+    UserAccount tenantUser = new UserAccount("user@example.com", "ACME", "hash", "User");
+    ReflectionTestUtils.setField(tenantUser, "id", 7L);
+    tenantUser.setCompany(target);
+    when(repository.findById(2L)).thenReturn(Optional.of(target));
+    when(userAccountRepository.findByCompany_Id(2L)).thenReturn(List.of(tenantUser));
+    when(userAccountRepository.existsByEmailIgnoreCaseAndAuthScopeCodeIgnoreCaseAndIdNot(
+            "user@example.com", "NEW", 7L))
+        .thenReturn(true);
+    CompanyRequest request = new CompanyRequest("New Name", "NEW", "UTC", BigDecimal.TEN);
+
+    assertThatThrownBy(() -> companyService.update(2L, request, Set.of(target)))
+        .isInstanceOf(ApplicationException.class)
+        .hasMessageContaining("Scoped account already exists for email in company code");
+
+    verify(userAccountRepository, never()).saveAll(any());
+  }
+
+  @Test
   void create_usesRequestedDefaultGstRateWhenProvided() {
     authenticateAs("ROLE_SUPER_ADMIN");
     Company incoming = company(7L, "SKE");
@@ -1056,6 +1106,29 @@ class CompanyServiceTest {
     assertThatThrownBy(() -> companyService.resetTenantAdminPassword(5L, "tenant-admin@ske.com"))
         .isInstanceOf(ApplicationException.class)
         .hasMessageContaining("Account is disabled");
+  }
+
+  @Test
+  void resetTenantAdminPassword_requiresPasswordResetDependencies() {
+    authenticateAs("ROLE_SUPER_ADMIN");
+    CompanyService withoutPasswordReset =
+        new CompanyService(
+            repository,
+            auditService,
+            userAccountRepository,
+            auditLogRepository,
+            tenantRuntimeEnforcementService,
+            tenantAdminProvisioningService,
+            tenantLifecycleService,
+            null,
+            authScopeService);
+    Company company = company(5L, "SKE");
+    when(repository.findById(5L)).thenReturn(Optional.of(company));
+
+    assertThatThrownBy(
+            () -> withoutPasswordReset.resetTenantAdminPassword(5L, "tenant-admin@ske.com"))
+        .isInstanceOf(ApplicationException.class)
+        .hasMessageContaining("Password reset dependencies are not available");
   }
 
   @Test

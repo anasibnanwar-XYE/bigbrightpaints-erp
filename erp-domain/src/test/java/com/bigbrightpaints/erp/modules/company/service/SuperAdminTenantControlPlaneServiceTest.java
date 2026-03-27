@@ -358,6 +358,25 @@ class SuperAdminTenantControlPlaneServiceTest {
   }
 
   @Test
+  void forceLogoutAllUsers_skipsNullUsersAndUsersWithoutPublicId() {
+    Company company = company(7L, "ACME");
+    when(companyRepository.findById(7L)).thenReturn(Optional.of(company));
+    UserAccount revocable = adminUser(11L, "admin1@acme.com", "ROLE_ADMIN", company);
+    UserAccount missingPublicId = new UserAccount("admin2@acme.com", "ACME", "hash", "Admin Two");
+    missingPublicId.setCompany(company);
+    when(userAccountRepository.findByCompany_Id(7L))
+        .thenReturn(java.util.Arrays.asList(null, missingPublicId, revocable));
+
+    SuperAdminTenantForceLogoutDto response = service.forceLogoutAllUsers(7L, "incident");
+
+    assertThat(response.revokedUserCount()).isEqualTo(3);
+    verify(tokenBlacklistService).revokeAllUserTokens(revocable.getPublicId().toString());
+    verify(refreshTokenService).revokeAllForUser(revocable.getPublicId());
+    verify(tokenBlacklistService, never()).revokeAllUserTokens("null");
+    verify(refreshTokenService, never()).revokeAllForUser((java.util.UUID) null);
+  }
+
+  @Test
   void replaceMainAdmin_requiresAssignedAdminRoleAndPersistsSelection() {
     Company company = company(7L, "ACME");
     when(companyRepository.findById(7L)).thenReturn(Optional.of(company));

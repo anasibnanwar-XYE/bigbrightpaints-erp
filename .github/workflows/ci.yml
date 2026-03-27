@@ -215,6 +215,7 @@ jobs:
           bash scripts/run_test_manifest.sh \
             --profile pr-fast \
             --label accounting \
+            --batch-size 10 \
             --manifest ci/pr_manifests/pr_accounting.txt
 
       - name: Upload shard coverage
