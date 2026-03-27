@@ -187,6 +187,7 @@ public class CompanyService {
     assertBoundControlPlaneCompanyMatchesTarget(company.getCode());
     String normalizedCompanyCode = normalizeCompanyCode(request.code());
     ensureCompanyCodeAvailableForUpdate(id, normalizedCompanyCode);
+    synchronizeScopedAccountsToCompanyCode(company, normalizedCompanyCode);
     company.setName(request.name());
     company.setCode(normalizedCompanyCode);
     company.setTimezone(request.timezone());
@@ -824,6 +825,10 @@ public class CompanyService {
   }
 
   private void ensureCompanyCodeAvailableForCreate(String companyCode) {
+    if (authScopeService != null && authScopeService.isPlatformScope(companyCode)) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          "Company code conflicts with platform auth code: " + companyCode);
+    }
     repository
         .findByCodeIgnoreCase(companyCode)
         .ifPresent(
@@ -834,6 +839,10 @@ public class CompanyService {
   }
 
   private void ensureCompanyCodeAvailableForUpdate(Long companyId, String companyCode) {
+    if (authScopeService != null && authScopeService.isPlatformScope(companyCode)) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          "Company code conflicts with platform auth code: " + companyCode);
+    }
     repository
         .findByCodeIgnoreCase(companyCode)
         .ifPresent(
@@ -843,6 +852,26 @@ public class CompanyService {
                     "Company code already exists: " + companyCode);
               }
             });
+  }
+
+  private void synchronizeScopedAccountsToCompanyCode(Company company, String normalizedCompanyCode) {
+    if (company == null
+        || company.getId() == null
+        || !StringUtils.hasText(normalizedCompanyCode)
+        || userAccountRepository == null
+        || normalizedCompanyCode.equalsIgnoreCase(company.getCode())) {
+      return;
+    }
+    var companyUsers = userAccountRepository.findByCompany_Id(company.getId());
+    for (var companyUser : companyUsers) {
+      if (userAccountRepository.existsByEmailIgnoreCaseAndAuthScopeCodeIgnoreCaseAndIdNot(
+          companyUser.getEmail(), normalizedCompanyCode, companyUser.getId())) {
+        throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+            "Scoped account already exists for email in company code: " + companyUser.getEmail());
+      }
+    }
+    companyUsers.forEach(user -> user.setAuthScopeCode(normalizedCompanyCode));
+    userAccountRepository.saveAll(companyUsers);
   }
 
   private BigDecimal resolveDefaultGstRateForCreate(BigDecimal requestedDefaultGstRate) {

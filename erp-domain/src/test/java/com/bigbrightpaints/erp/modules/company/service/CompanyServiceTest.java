@@ -40,6 +40,7 @@ import com.bigbrightpaints.erp.core.security.AuthScopeService;
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.core.util.CompanyTime;
+import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.auth.service.PasswordResetService;
 import com.bigbrightpaints.erp.modules.auth.service.TenantAdminProvisioningService;
@@ -437,6 +438,40 @@ class CompanyServiceTest {
     CompanyDto dto = companyService.update(2L, request, Set.of(target));
 
     assertThat(dto.code()).isEqualTo("NEW");
+  }
+
+  @Test
+  void update_synchronizes_user_auth_scope_codes_when_company_code_changes() {
+    authenticateAs("ROLE_SUPER_ADMIN");
+    Company target = company(2L, "ACME");
+    UserAccount tenantUser = new UserAccount("user@example.com", "ACME", "hash", "User");
+    ReflectionTestUtils.setField(tenantUser, "id", 7L);
+    tenantUser.setCompany(target);
+    when(repository.findById(2L)).thenReturn(Optional.of(target));
+    when(userAccountRepository.findByCompany_Id(2L)).thenReturn(List.of(tenantUser));
+    CompanyRequest request = new CompanyRequest("New Name", "NEW", "UTC", BigDecimal.TEN);
+
+    CompanyDto dto = companyService.update(2L, request, Set.of(target));
+
+    assertThat(dto.code()).isEqualTo("NEW");
+    assertThat(tenantUser.getAuthScopeCode()).isEqualTo("NEW");
+    verify(userAccountRepository).saveAll(List.of(tenantUser));
+  }
+
+  @Test
+  void update_rejects_company_code_that_conflicts_with_platform_auth_code() {
+    authenticateAs("ROLE_SUPER_ADMIN");
+    Company target = company(2L, "ACME");
+    when(repository.findById(2L)).thenReturn(Optional.of(target));
+    when(authScopeService.isPlatformScope("PLATFORM")).thenReturn(true);
+    CompanyRequest request = new CompanyRequest("New Name", "platform", "UTC", BigDecimal.TEN);
+
+    assertThatThrownBy(() -> companyService.update(2L, request, Set.of(target)))
+        .isInstanceOf(ApplicationException.class)
+        .hasMessageContaining("Company code conflicts with platform auth code: PLATFORM");
+
+    verify(userAccountRepository, never()).findByCompany_Id(anyLong());
+    verify(userAccountRepository, never()).saveAll(any());
   }
 
   @Test
