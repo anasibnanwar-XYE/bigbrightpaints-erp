@@ -23,8 +23,8 @@ import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.factory.dto.BulkPackRequest;
 import com.bigbrightpaints.erp.modules.factory.dto.BulkPackResponse;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatch;
-import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatchRepository;
-import com.bigbrightpaints.erp.modules.inventory.service.BatchNumberService;
+import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatch;
+import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatchRepository;
 
 import jakarta.transaction.Transactional;
 
@@ -32,9 +32,8 @@ import jakarta.transaction.Transactional;
 public class BulkPackingService {
 
   private final CompanyContextService companyContextService;
-  private final FinishedGoodBatchRepository finishedGoodBatchRepository;
+  private final RawMaterialBatchRepository rawMaterialBatchRepository;
   private final AccountingFacade accountingFacade;
-  private final BatchNumberService batchNumberService;
   private final CompanyClock companyClock;
   private final BulkPackingOrchestrator bulkPackingOrchestrator;
   private final BulkPackingCostService bulkPackingCostService;
@@ -44,9 +43,8 @@ public class BulkPackingService {
 
   public BulkPackingService(
       CompanyContextService companyContextService,
-      FinishedGoodBatchRepository finishedGoodBatchRepository,
+      RawMaterialBatchRepository rawMaterialBatchRepository,
       AccountingFacade accountingFacade,
-      BatchNumberService batchNumberService,
       CompanyClock companyClock,
       BulkPackingOrchestrator bulkPackingOrchestrator,
       BulkPackingCostService bulkPackingCostService,
@@ -54,9 +52,8 @@ public class BulkPackingService {
       BulkPackingReadService bulkPackingReadService,
       PackingJournalLinkHelper packingJournalLinkHelper) {
     this.companyContextService = companyContextService;
-    this.finishedGoodBatchRepository = finishedGoodBatchRepository;
+    this.rawMaterialBatchRepository = rawMaterialBatchRepository;
     this.accountingFacade = accountingFacade;
-    this.batchNumberService = batchNumberService;
     this.companyClock = companyClock;
     this.bulkPackingOrchestrator = bulkPackingOrchestrator;
     this.bulkPackingCostService = bulkPackingCostService;
@@ -70,9 +67,9 @@ public class BulkPackingService {
     Company company = companyContextService.requireCurrentCompany();
     bulkPackingOrchestrator.validatePackLines(request);
 
-    FinishedGoodBatch bulkBatch =
-        finishedGoodBatchRepository
-            .lockByCompanyAndId(company, request.bulkBatchId())
+    RawMaterialBatch bulkBatch =
+        rawMaterialBatchRepository
+            .lockByRawMaterialCompanyAndId(company, request.bulkBatchId())
             .orElseThrow(
                 () ->
                     new ApplicationException(
@@ -94,7 +91,7 @@ public class BulkPackingService {
         bulkPackingCostService.consumePackagingIfRequired(company, request, packReference);
     BulkPackCostingContext costingContext =
         bulkPackingCostService.createCostingContext(
-            bulkBatch.getUnitCost(),
+            bulkBatch.getCostPerUnit() != null ? bulkBatch.getCostPerUnit() : BigDecimal.ZERO,
             packagingCostSummary,
             bulkPackingOrchestrator.resolveTotalPacks(request.packs()));
 
@@ -127,7 +124,7 @@ public class BulkPackingService {
         bulkBatch.getId(),
         bulkBatch.getBatchCode(),
         totalVolume,
-        bulkBatch.getQuantityAvailable(),
+        bulkBatch.getQuantity(),
         packagingCostSummary.totalCost(),
         childDtos,
         journalEntryId,
@@ -146,7 +143,7 @@ public class BulkPackingService {
     return bulkPackingReadService.listChildBatches(company, parentBatchId);
   }
 
-  private String buildPackReference(FinishedGoodBatch bulkBatch, BulkPackRequest request) {
+  private String buildPackReference(RawMaterialBatch bulkBatch, BulkPackRequest request) {
     String batchCode =
         StringUtils.hasText(bulkBatch.getBatchCode())
             ? bulkBatch.getBatchCode().trim().toUpperCase()
@@ -180,7 +177,7 @@ public class BulkPackingService {
   }
 
   private BulkPackResponse resolveIdempotentPack(
-      Company company, FinishedGoodBatch bulkBatch, String packReference) {
+      Company company, RawMaterialBatch bulkBatch, String packReference) {
     // Truthsuite evidence anchor retained in service after extraction:
     // findByFinishedGood_CompanyAndReferenceTypeAndReferenceIdOrderByCreatedAtAsc(
     // findByRawMaterialCompanyAndReferenceTypeAndReferenceId(
@@ -214,7 +211,7 @@ public class BulkPackingService {
   //     : (batch.getCostPerUnit() != null ? batch.getCostPerUnit() : BigDecimal.ZERO);
   private List<FinishedGoodBatch> createChildBatches(
       Company company,
-      FinishedGoodBatch bulkBatch,
+      RawMaterialBatch bulkBatch,
       List<BulkPackRequest.PackLine> packLines,
       BulkPackCostingContext costingContext,
       LocalDate packDate,
@@ -239,7 +236,7 @@ public class BulkPackingService {
   }
 
   private Long postPackagingJournal(
-      FinishedGoodBatch bulkBatch,
+      RawMaterialBatch bulkBatch,
       List<FinishedGoodBatch> childBatches,
       BigDecimal volumeDeducted,
       BulkPackCostSummary packagingCostSummary,
@@ -248,7 +245,12 @@ public class BulkPackingService {
       String packReference) {
     List<JournalEntryRequest.JournalLineRequest> lines =
         bulkPackingOrchestrator.buildBulkToSizeJournalLines(
-            bulkBatch, childBatches, volumeDeducted, packagingCostSummary);
+            bulkBatch.getRawMaterial().getInventoryAccountId(),
+            bulkBatch.getBatchCode(),
+            bulkBatch.getCostPerUnit() != null ? bulkBatch.getCostPerUnit() : BigDecimal.ZERO,
+            childBatches,
+            volumeDeducted,
+            packagingCostSummary);
 
     String memo = "Bulk-to-size packaging: " + bulkBatch.getBatchCode();
     if (notes != null) {
@@ -261,25 +263,26 @@ public class BulkPackingService {
     return journal != null ? journal.id() : null;
   }
 
-  private void validateBulkBatchOwnership(FinishedGoodBatch batch, Company company) {
-    if (!batch.getFinishedGood().getCompany().getId().equals(company.getId())) {
+  private void validateBulkBatchOwnership(RawMaterialBatch batch, Company company) {
+    if (!batch.getRawMaterial().getCompany().getId().equals(company.getId())) {
       throw new ApplicationException(
           ErrorCode.VALIDATION_INVALID_REFERENCE, "Batch does not belong to this company");
     }
-    if (!batch.isBulk()) {
+    String sku = batch.getRawMaterial().getSku();
+    if (sku == null || !sku.toUpperCase().endsWith("-BULK")) {
       throw new ApplicationException(
           ErrorCode.VALIDATION_INVALID_INPUT,
-          "Batch " + batch.getBatchCode() + " is not marked as bulk");
+          "Batch " + batch.getBatchCode() + " is not a semi-finished bulk batch");
     }
   }
 
-  private void ensureSufficientBulkStock(FinishedGoodBatch bulkBatch, BigDecimal totalVolume) {
-    if (totalVolume.compareTo(bulkBatch.getQuantityAvailable()) > 0) {
+  private void ensureSufficientBulkStock(RawMaterialBatch bulkBatch, BigDecimal totalVolume) {
+    if (totalVolume.compareTo(bulkBatch.getQuantity()) > 0) {
       throw new ApplicationException(
           ErrorCode.VALIDATION_INVALID_INPUT,
           String.format(
               "Insufficient bulk stock. Available: %s, Requested: %s",
-              bulkBatch.getQuantityAvailable(), totalVolume));
+              bulkBatch.getQuantity(), totalVolume));
     }
   }
 }

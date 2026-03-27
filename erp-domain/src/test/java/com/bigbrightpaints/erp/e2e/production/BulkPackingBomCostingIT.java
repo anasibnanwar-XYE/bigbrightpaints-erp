@@ -25,10 +25,9 @@ import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.modules.factory.domain.PackagingSizeMapping;
 import com.bigbrightpaints.erp.modules.factory.domain.PackagingSizeMappingRepository;
 import com.bigbrightpaints.erp.modules.factory.dto.BulkPackRequest;
+import com.bigbrightpaints.erp.modules.factory.dto.BulkPackResponse;
 import com.bigbrightpaints.erp.modules.factory.service.BulkPackingService;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
-import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatch;
-import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatchRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.MaterialType;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial;
@@ -45,7 +44,6 @@ public class BulkPackingBomCostingIT extends AbstractIntegrationTest {
   @Autowired private CompanyRepository companyRepository;
   @Autowired private AccountRepository accountRepository;
   @Autowired private FinishedGoodRepository finishedGoodRepository;
-  @Autowired private FinishedGoodBatchRepository finishedGoodBatchRepository;
   @Autowired private RawMaterialRepository rawMaterialRepository;
   @Autowired private RawMaterialBatchRepository rawMaterialBatchRepository;
   @Autowired private PackagingSizeMappingRepository packagingSizeMappingRepository;
@@ -74,12 +72,14 @@ public class BulkPackingBomCostingIT extends AbstractIntegrationTest {
   @Test
   @DisplayName("Bulk packing consumes multi-component BOM per size")
   void bulkPackingConsumesPackagingBom() {
-    FinishedGood bulkFg = createFinishedGood("FG-BULK", "Bulk Paint", "L", bulkInventory);
     FinishedGood child5 = createFinishedGood("FG-5L", "Paint 5L", "UNIT", fgInventory);
     FinishedGood child10 = createFinishedGood("FG-10L", "Paint 10L", "UNIT", fgInventory);
 
-    FinishedGoodBatch bulkBatch =
-        createBulkBatch(bulkFg, new BigDecimal("200"), new BigDecimal("10"));
+    RawMaterial bulkMaterial =
+        createSemiFinishedMaterial(
+            "FG-BULK-BULK", "Bulk Paint (Semi-Finished)", "L", bulkInventory.getId());
+    RawMaterialBatch bulkBatch =
+        createBulkBatch(bulkMaterial, new BigDecimal("200"), new BigDecimal("10"));
 
     RawMaterial can5 = createRawMaterial("CAN-5L", packagingInventory, new BigDecimal("50"));
     RawMaterial can10 = createRawMaterial("CAN-10L", packagingInventory, new BigDecimal("50"));
@@ -94,16 +94,18 @@ public class BulkPackingBomCostingIT extends AbstractIntegrationTest {
     mapPackagingSize("10L", can10);
     mapPackagingSize("10L", label);
 
-    bulkPackingService.pack(
-        new BulkPackRequest(
-            bulkBatch.getId(),
-            List.of(
-                new BulkPackRequest.PackLine(child5.getId(), new BigDecimal("10"), "5L", "L"),
-                new BulkPackRequest.PackLine(child10.getId(), new BigDecimal("4"), "10L", "L")),
-            LocalDate.now(),
-            "packer",
-            null,
-            null));
+    BulkPackResponse response =
+        bulkPackingService.pack(
+            new BulkPackRequest(
+                bulkBatch.getId(),
+                List.of(
+                    new BulkPackRequest.PackLine(child5.getId(), new BigDecimal("10"), "5L", "L"),
+                    new BulkPackRequest.PackLine(
+                        child10.getId(), new BigDecimal("4"), "10L", "L")),
+                LocalDate.now(),
+                "packer",
+                null,
+                null));
 
     assertThat(rawMaterialRepository.findById(can5.getId()).orElseThrow().getCurrentStock())
         .isEqualByComparingTo(new BigDecimal("40"));
@@ -112,22 +114,21 @@ public class BulkPackingBomCostingIT extends AbstractIntegrationTest {
     assertThat(rawMaterialRepository.findById(label.getId()).orElseThrow().getCurrentStock())
         .isEqualByComparingTo(new BigDecimal("36"));
 
-    List<FinishedGoodBatch> childBatches = finishedGoodBatchRepository.findByParentBatch(bulkBatch);
-    assertThat(childBatches).hasSize(2);
+    assertThat(response.childBatches()).hasSize(2);
 
-    FinishedGoodBatch batch5 =
-        childBatches.stream()
-            .filter(batch -> batch.getFinishedGood().getId().equals(child5.getId()))
+    BulkPackResponse.ChildBatchDto batch5 =
+        response.childBatches().stream()
+            .filter(batch -> batch.finishedGoodId().equals(child5.getId()))
             .findFirst()
             .orElseThrow();
-    FinishedGoodBatch batch10 =
-        childBatches.stream()
-            .filter(batch -> batch.getFinishedGood().getId().equals(child10.getId()))
+    BulkPackResponse.ChildBatchDto batch10 =
+        response.childBatches().stream()
+            .filter(batch -> batch.finishedGoodId().equals(child10.getId()))
             .findFirst()
             .orElseThrow();
 
-    assertThat(batch5.getUnitCost()).isEqualByComparingTo(new BigDecimal("75.0000"));
-    assertThat(batch10.getUnitCost()).isEqualByComparingTo(new BigDecimal("140.0000"));
+    assertThat(batch5.unitCost()).isEqualByComparingTo(new BigDecimal("75.0000"));
+    assertThat(batch10.unitCost()).isEqualByComparingTo(new BigDecimal("140.0000"));
 
     List<JournalEntry> journals =
         journalEntryRepository.findByCompanyAndReferenceNumberStartingWith(
@@ -172,20 +173,33 @@ public class BulkPackingBomCostingIT extends AbstractIntegrationTest {
             });
   }
 
-  private FinishedGoodBatch createBulkBatch(
-      FinishedGood fg, BigDecimal quantity, BigDecimal unitCost) {
-    FinishedGoodBatch batch = new FinishedGoodBatch();
-    batch.setFinishedGood(fg);
+  private RawMaterial createSemiFinishedMaterial(
+      String sku, String name, String unitType, Long inventoryAccountId) {
+    RawMaterial material = new RawMaterial();
+    material.setCompany(company);
+    material.setSku(sku);
+    material.setName(name);
+    material.setUnitType(unitType);
+    material.setMaterialType(MaterialType.PRODUCTION);
+    material.setInventoryAccountId(inventoryAccountId);
+    material.setCostingMethod("FIFO");
+    material.setCurrentStock(BigDecimal.ZERO);
+    return rawMaterialRepository.save(material);
+  }
+
+  private RawMaterialBatch createBulkBatch(
+      RawMaterial bulkMaterial, BigDecimal quantity, BigDecimal unitCost) {
+    RawMaterialBatch batch = new RawMaterialBatch();
+    batch.setRawMaterial(bulkMaterial);
     batch.setBatchCode("BULK-" + System.currentTimeMillis());
-    batch.setQuantityTotal(quantity);
-    batch.setQuantityAvailable(quantity);
-    batch.setUnitCost(unitCost);
+    batch.setQuantity(quantity);
+    batch.setUnit(Optional.ofNullable(bulkMaterial.getUnitType()).orElse("L"));
+    batch.setCostPerUnit(unitCost);
     batch.setManufacturedAt(Instant.now());
-    batch.setBulk(true);
-    FinishedGoodBatch saved = finishedGoodBatchRepository.save(batch);
-    BigDecimal current = Optional.ofNullable(fg.getCurrentStock()).orElse(BigDecimal.ZERO);
-    fg.setCurrentStock(current.add(quantity));
-    finishedGoodRepository.save(fg);
+    RawMaterialBatch saved = rawMaterialBatchRepository.save(batch);
+    BigDecimal current = Optional.ofNullable(bulkMaterial.getCurrentStock()).orElse(BigDecimal.ZERO);
+    bulkMaterial.setCurrentStock(current.add(quantity));
+    rawMaterialRepository.save(bulkMaterial);
     return saved;
   }
 

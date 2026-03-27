@@ -41,8 +41,6 @@ import com.bigbrightpaints.erp.modules.factory.dto.PackingRequest;
 import com.bigbrightpaints.erp.modules.factory.service.BulkPackingService;
 import com.bigbrightpaints.erp.modules.factory.service.PackingService;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
-import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatch;
-import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatchRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.InventoryReference;
 import com.bigbrightpaints.erp.modules.inventory.domain.MaterialType;
@@ -50,7 +48,6 @@ import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatch;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatchRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialRepository;
-import com.bigbrightpaints.erp.modules.inventory.dto.FinishedGoodBatchRequest;
 import com.bigbrightpaints.erp.modules.inventory.dto.FinishedGoodRequest;
 import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionBrand;
@@ -74,7 +71,6 @@ class CR_BulkPackagingCrossModuleTest extends AbstractIntegrationTest {
   @Autowired private BulkPackingService bulkPackingService;
   @Autowired private FinishedGoodsService finishedGoodsService;
   @Autowired private FinishedGoodRepository finishedGoodRepository;
-  @Autowired private FinishedGoodBatchRepository finishedGoodBatchRepository;
   @Autowired private RawMaterialRepository rawMaterialRepository;
   @Autowired private RawMaterialBatchRepository rawMaterialBatchRepository;
   @Autowired private PackagingSizeMappingRepository packagingSizeMappingRepository;
@@ -96,15 +92,10 @@ class CR_BulkPackagingCrossModuleTest extends AbstractIntegrationTest {
     ProductionProduct bulkProduct =
         ensureProductionProduct(company, accounts, "CR-BULK-" + shortId());
     ProductionLog log =
-        createProductionLog(company, bulkProduct, "PROD-" + shortId(), new BigDecimal("10"));
+        createProductionLog(company, bulkProduct, "PROD-" + shortId(), new BigDecimal("20"));
 
     seedSemiFinishedBatch(
-        company,
-        companyCode,
-        accounts,
-        bulkProduct.getSkuCode(),
-        log.getProductionCode(),
-        new BigDecimal("10"));
+        company, accounts, bulkProduct.getSkuCode(), log.getProductionCode(), new BigDecimal("20"));
     RawMaterial bucket =
         ensurePackagingMaterial(company, accounts.get("PACK_INV"), new BigDecimal("20"));
     ensureRawMaterialBatch(bucket, new BigDecimal("20"), new BigDecimal("2.00"));
@@ -124,13 +115,13 @@ class CR_BulkPackagingCrossModuleTest extends AbstractIntegrationTest {
                     packTarget.getId(), null, "1L", new BigDecimal("10"), 10, null, null))));
     CompanyContextHolder.clear();
 
-    FinishedGood bulkFg =
-        finishedGoodRepository
-            .findByCompanyAndProductCode(company, bulkProduct.getSkuCode())
+    RawMaterial bulkMaterial =
+        rawMaterialRepository
+            .findByCompanyAndSkuIgnoreCase(company, bulkProduct.getSkuCode() + "-BULK")
             .orElseThrow();
-    FinishedGoodBatch bulkBatch =
-        finishedGoodBatchRepository.findAvailableBulkBatches(bulkFg).stream()
-            .findFirst()
+    RawMaterialBatch bulkBatch =
+        rawMaterialBatchRepository
+            .findByRawMaterialAndBatchCode(bulkMaterial, log.getProductionCode())
             .orElseThrow();
 
     FinishedGood childOne =
@@ -157,19 +148,13 @@ class CR_BulkPackagingCrossModuleTest extends AbstractIntegrationTest {
     CoderedDbAssertions.assertBalancedJournal(journalEntryRepository, response.journalEntryId());
     CoderedDbAssertions.assertAuditLogRecordedForJournal(jdbcTemplate, response.journalEntryId());
 
-    FinishedGoodBatch refreshedBulk =
-        finishedGoodBatchRepository.findById(bulkBatch.getId()).orElseThrow();
-    assertThat(refreshedBulk.getQuantityAvailable()).as("bulk qty available").isZero();
-    assertThat(refreshedBulk.getQuantityTotal()).as("bulk qty total").isZero();
+    RawMaterialBatch refreshedBulk = rawMaterialBatchRepository.findById(bulkBatch.getId()).orElseThrow();
+    assertThat(refreshedBulk.getQuantity()).as("bulk qty available").isZero();
 
-    FinishedGood refreshedBulkFg = finishedGoodRepository.findById(bulkFg.getId()).orElseThrow();
-    assertThat(refreshedBulkFg.getCurrentStock()).as("bulk fg stock").isZero();
-
-    List<FinishedGoodBatch> children = finishedGoodBatchRepository.findByParentBatch(refreshedBulk);
-    assertThat(children)
-        .as("child batches created")
-        .hasSize(2)
-        .allSatisfy(child -> assertThat(child.isBulk()).isFalse());
+    RawMaterial refreshedBulkMaterial =
+        rawMaterialRepository.findById(bulkMaterial.getId()).orElseThrow();
+    assertThat(refreshedBulkMaterial.getCurrentStock()).as("bulk material stock").isZero();
+    assertThat(response.childBatches()).as("child batches created").hasSize(2);
 
     FinishedGood refreshedChildOne =
         finishedGoodRepository.findById(childOne.getId()).orElseThrow();
@@ -214,14 +199,16 @@ class CR_BulkPackagingCrossModuleTest extends AbstractIntegrationTest {
         jdbcTemplate.queryForObject(
             """
             select count(*)
-            from inventory_movements im
-            where im.reference_type = ?
-              and im.reference_id = ?
-              and im.movement_type = 'ISSUE'
+            from raw_material_movements rm
+            where rm.reference_type = ?
+              and rm.reference_id = ?
+              and rm.movement_type = 'ISSUE'
+              and rm.raw_material_batch_id = ?
             """,
             Integer.class,
             InventoryReference.PACKING_RECORD,
-            packReference);
+            packReference,
+            bulkBatch.getId());
     assertThat(bulkIssues).as("bulk issue movement").isEqualTo(1);
 
     Integer childReceipts =
@@ -250,15 +237,10 @@ class CR_BulkPackagingCrossModuleTest extends AbstractIntegrationTest {
     ProductionProduct bulkProduct =
         ensureProductionProduct(company, accounts, "CR-BULK-" + shortId());
     ProductionLog log =
-        createProductionLog(company, bulkProduct, "PROD-" + shortId(), new BigDecimal("5"));
+        createProductionLog(company, bulkProduct, "PROD-" + shortId(), new BigDecimal("10"));
 
     seedSemiFinishedBatch(
-        company,
-        companyCode,
-        accounts,
-        bulkProduct.getSkuCode(),
-        log.getProductionCode(),
-        new BigDecimal("5"));
+        company, accounts, bulkProduct.getSkuCode(), log.getProductionCode(), new BigDecimal("10"));
     RawMaterial bucket =
         ensurePackagingMaterial(company, accounts.get("PACK_INV"), new BigDecimal("20"));
     ensureRawMaterialBatch(bucket, new BigDecimal("20"), new BigDecimal("1.50"));
@@ -277,13 +259,13 @@ class CR_BulkPackagingCrossModuleTest extends AbstractIntegrationTest {
                     packTarget.getId(), null, "1L", new BigDecimal("5"), 5, null, null))));
     CompanyContextHolder.clear();
 
-    FinishedGood bulkFg =
-        finishedGoodRepository
-            .findByCompanyAndProductCode(company, bulkProduct.getSkuCode())
+    RawMaterial bulkMaterial =
+        rawMaterialRepository
+            .findByCompanyAndSkuIgnoreCase(company, bulkProduct.getSkuCode() + "-BULK")
             .orElseThrow();
-    FinishedGoodBatch bulkBatch =
-        finishedGoodBatchRepository.findAvailableBulkBatches(bulkFg).stream()
-            .findFirst()
+    RawMaterialBatch bulkBatch =
+        rawMaterialBatchRepository
+            .findByRawMaterialAndBatchCode(bulkMaterial, log.getProductionCode())
             .orElseThrow();
 
     FinishedGood childOne =
@@ -305,12 +287,8 @@ class CR_BulkPackagingCrossModuleTest extends AbstractIntegrationTest {
         .hasMessageContaining("whole number");
     CompanyContextHolder.clear();
 
-    FinishedGoodBatch refreshedBulk =
-        finishedGoodBatchRepository.findById(bulkBatch.getId()).orElseThrow();
-    assertThat(refreshedBulk.getQuantityAvailable())
-        .as("bulk unchanged")
-        .isEqualByComparingTo(new BigDecimal("5"));
-    assertThat(freshenedChildBatches(refreshedBulk)).as("no child batches").isEmpty();
+    RawMaterialBatch refreshedBulk = rawMaterialBatchRepository.findById(bulkBatch.getId()).orElseThrow();
+    assertThat(refreshedBulk.getQuantity()).as("bulk unchanged").isEqualByComparingTo(new BigDecimal("5"));
 
     Integer inventoryMovements =
         jdbcTemplate.queryForObject(
@@ -335,14 +313,9 @@ class CR_BulkPackagingCrossModuleTest extends AbstractIntegrationTest {
     ProductionProduct bulkProduct =
         ensureProductionProduct(company, accounts, "CR-BULK-" + shortId());
     ProductionLog log =
-        createProductionLog(company, bulkProduct, "PROD-" + shortId(), new BigDecimal("10"));
+        createProductionLog(company, bulkProduct, "PROD-" + shortId(), new BigDecimal("20"));
     seedSemiFinishedBatch(
-        company,
-        companyCode,
-        accounts,
-        bulkProduct.getSkuCode(),
-        log.getProductionCode(),
-        new BigDecimal("10"));
+        company, accounts, bulkProduct.getSkuCode(), log.getProductionCode(), new BigDecimal("20"));
     RawMaterial bucket =
         ensurePackagingMaterial(company, accounts.get("PACK_INV"), new BigDecimal("20"));
     ensureRawMaterialBatch(bucket, new BigDecimal("20"), new BigDecimal("2.00"));
@@ -362,13 +335,13 @@ class CR_BulkPackagingCrossModuleTest extends AbstractIntegrationTest {
                     packTarget.getId(), null, "1L", new BigDecimal("10"), 10, null, null))));
     CompanyContextHolder.clear();
 
-    FinishedGood bulkFg =
-        finishedGoodRepository
-            .findByCompanyAndProductCode(company, bulkProduct.getSkuCode())
+    RawMaterial bulkMaterial =
+        rawMaterialRepository
+            .findByCompanyAndSkuIgnoreCase(company, bulkProduct.getSkuCode() + "-BULK")
             .orElseThrow();
-    FinishedGoodBatch bulkBatch =
-        finishedGoodBatchRepository.findAvailableBulkBatches(bulkFg).stream()
-            .findFirst()
+    RawMaterialBatch bulkBatch =
+        rawMaterialBatchRepository
+            .findByRawMaterialAndBatchCode(bulkMaterial, log.getProductionCode())
             .orElseThrow();
 
     FinishedGood childOne =
@@ -394,10 +367,7 @@ class CR_BulkPackagingCrossModuleTest extends AbstractIntegrationTest {
     int inventoryMovements = countInventoryMovements(company, packReference);
     int rawMovements = countRawMaterialMovements(company, packReference);
     BigDecimal bulkRemaining =
-        finishedGoodBatchRepository
-            .findById(bulkBatch.getId())
-            .orElseThrow()
-            .getQuantityAvailable();
+        rawMaterialBatchRepository.findById(bulkBatch.getId()).orElseThrow().getQuantity();
     BigDecimal packagingRemaining =
         rawMaterialRepository.findById(bucket.getId()).orElseThrow().getCurrentStock();
 
@@ -414,10 +384,7 @@ class CR_BulkPackagingCrossModuleTest extends AbstractIntegrationTest {
         .as("no extra packaging movements")
         .isEqualTo(rawMovements);
     assertThat(
-            finishedGoodBatchRepository
-                .findById(bulkBatch.getId())
-                .orElseThrow()
-                .getQuantityAvailable())
+            rawMaterialBatchRepository.findById(bulkBatch.getId()).orElseThrow().getQuantity())
         .as("bulk quantity unchanged on retry")
         .isEqualByComparingTo(bulkRemaining);
     assertThat(rawMaterialRepository.findById(bucket.getId()).orElseThrow().getCurrentStock())
@@ -434,14 +401,9 @@ class CR_BulkPackagingCrossModuleTest extends AbstractIntegrationTest {
     ProductionProduct bulkProduct =
         ensureProductionProduct(company, accounts, "CR-BULK-" + shortId());
     ProductionLog log =
-        createProductionLog(company, bulkProduct, "PROD-" + shortId(), new BigDecimal("10"));
+        createProductionLog(company, bulkProduct, "PROD-" + shortId(), new BigDecimal("20"));
     seedSemiFinishedBatch(
-        company,
-        companyCode,
-        accounts,
-        bulkProduct.getSkuCode(),
-        log.getProductionCode(),
-        new BigDecimal("10"));
+        company, accounts, bulkProduct.getSkuCode(), log.getProductionCode(), new BigDecimal("20"));
     RawMaterial bucket =
         ensurePackagingMaterial(company, accounts.get("PACK_INV"), new BigDecimal("20"));
     ensureRawMaterialBatch(bucket, new BigDecimal("20"), new BigDecimal("2.00"));
@@ -461,13 +423,13 @@ class CR_BulkPackagingCrossModuleTest extends AbstractIntegrationTest {
                     packTarget.getId(), null, "1L", new BigDecimal("10"), 10, null, null))));
     CompanyContextHolder.clear();
 
-    FinishedGood bulkFg =
-        finishedGoodRepository
-            .findByCompanyAndProductCode(company, bulkProduct.getSkuCode())
+    RawMaterial bulkMaterial =
+        rawMaterialRepository
+            .findByCompanyAndSkuIgnoreCase(company, bulkProduct.getSkuCode() + "-BULK")
             .orElseThrow();
-    FinishedGoodBatch bulkBatch =
-        finishedGoodBatchRepository.findAvailableBulkBatches(bulkFg).stream()
-            .findFirst()
+    RawMaterialBatch bulkBatch =
+        rawMaterialBatchRepository
+            .findByRawMaterialAndBatchCode(bulkMaterial, log.getProductionCode())
             .orElseThrow();
 
     FinishedGood childOne =
@@ -517,15 +479,11 @@ class CR_BulkPackagingCrossModuleTest extends AbstractIntegrationTest {
 
     String packReference = resolvePackReference(company);
     assertThat(countInventoryMovements(company, packReference))
-        .as("single pack inventory movement set")
-        .isEqualTo(3);
+        .as("single pack child-receipt movement set")
+        .isEqualTo(2);
     assertThat(countRawMaterialMovements(company, packReference))
         .as("single packaging movement set")
-        .isEqualTo(2);
-  }
-
-  private List<FinishedGoodBatch> freshenedChildBatches(FinishedGoodBatch bulkBatch) {
-    return finishedGoodBatchRepository.findByParentBatch(bulkBatch);
+        .isEqualTo(3);
   }
 
   private String resolvePackReference(Company company) {
@@ -759,24 +717,46 @@ class CR_BulkPackagingCrossModuleTest extends AbstractIntegrationTest {
 
   private void seedSemiFinishedBatch(
       Company company,
-      String companyCode,
       Map<String, Account> accounts,
       String productSku,
       String productionCode,
       BigDecimal quantity) {
     String semiSku = productSku + "-BULK";
-    FinishedGood semiFinished =
-        ensureFinishedGood(company, semiSku, accounts.get("SF_INV"), accounts);
-    CompanyContextHolder.setCompanyCode(companyCode);
-    registerFinishedGoodBatchForTest(
-        new FinishedGoodBatchRequest(
-            semiFinished.getId(),
-            productionCode,
-            quantity,
-            new BigDecimal("12.5000"),
-            Instant.now(),
-            null));
-    CompanyContextHolder.clear();
+    RawMaterial semiFinished =
+        rawMaterialRepository
+            .findByCompanyAndSkuIgnoreCase(company, semiSku)
+            .orElseGet(
+                () -> {
+                  RawMaterial created = new RawMaterial();
+                  created.setCompany(company);
+                  created.setSku(semiSku);
+                  created.setName("Semi-finished " + semiSku);
+                  created.setUnitType("L");
+                  created.setMaterialType(MaterialType.PRODUCTION);
+                  created.setInventoryAccountId(accounts.get("SF_INV").getId());
+                  created.setCostingMethod("FIFO");
+                  created.setCurrentStock(BigDecimal.ZERO);
+                  return rawMaterialRepository.save(created);
+                });
+
+    RawMaterialBatch batch =
+        rawMaterialBatchRepository
+            .findByRawMaterialAndBatchCode(semiFinished, productionCode)
+            .orElseGet(
+                () -> {
+                  RawMaterialBatch created = new RawMaterialBatch();
+                  created.setRawMaterial(semiFinished);
+                  created.setBatchCode(productionCode);
+                  created.setUnit("L");
+                  created.setManufacturedAt(Instant.now());
+                  return created;
+                });
+    batch.setQuantity(quantity);
+    batch.setCostPerUnit(new BigDecimal("12.5000"));
+    rawMaterialBatchRepository.save(batch);
+
+    semiFinished.setCurrentStock(quantity);
+    rawMaterialRepository.save(semiFinished);
   }
 
   private RawMaterial ensurePackagingMaterial(

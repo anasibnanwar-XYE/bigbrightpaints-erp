@@ -29,9 +29,6 @@ import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.factory.domain.ProductionLog;
 import com.bigbrightpaints.erp.modules.factory.domain.ProductionLogRepository;
 import com.bigbrightpaints.erp.modules.factory.dto.ProductionLogDetailDto;
-import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatchRepository;
-import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodRepository;
-import com.bigbrightpaints.erp.modules.inventory.domain.InventoryMovementRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.InventoryReference;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatch;
@@ -53,9 +50,6 @@ class ProductionLogServiceCostingFallbackTest {
   @Mock private AccountingFacade accountingFacade;
   @Mock private CompanyEntityLookup companyEntityLookup;
   @Mock private CompanyClock companyClock;
-  @Mock private FinishedGoodRepository finishedGoodRepository;
-  @Mock private FinishedGoodBatchRepository finishedGoodBatchRepository;
-  @Mock private InventoryMovementRepository inventoryMovementRepository;
   @Mock private PackingAllowedSizeService packingAllowedSizeService;
 
   private ProductionLogService productionLogService;
@@ -73,9 +67,6 @@ class ProductionLogServiceCostingFallbackTest {
             accountingFacade,
             companyEntityLookup,
             companyClock,
-            finishedGoodRepository,
-            finishedGoodBatchRepository,
-            inventoryMovementRepository,
             packingAllowedSizeService);
   }
 

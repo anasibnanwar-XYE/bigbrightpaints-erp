@@ -25,9 +25,12 @@ import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.factory.dto.BulkPackRequest;
 import com.bigbrightpaints.erp.modules.factory.service.BulkPackingService;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
-import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatch;
-import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatchRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodRepository;
+import com.bigbrightpaints.erp.modules.inventory.domain.MaterialType;
+import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial;
+import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatch;
+import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatchRepository;
+import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialRepository;
 import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
 
 @DisplayName("Regression: Bulk pack rejects fractional quantities")
@@ -37,7 +40,8 @@ class BulkPackingFractionalQuantityRegressionIT extends AbstractIntegrationTest 
 
   @Autowired private AccountRepository accountRepository;
   @Autowired private FinishedGoodRepository finishedGoodRepository;
-  @Autowired private FinishedGoodBatchRepository finishedGoodBatchRepository;
+  @Autowired private RawMaterialRepository rawMaterialRepository;
+  @Autowired private RawMaterialBatchRepository rawMaterialBatchRepository;
   @Autowired private BulkPackingService bulkPackingService;
 
   private Company company;
@@ -59,10 +63,12 @@ class BulkPackingFractionalQuantityRegressionIT extends AbstractIntegrationTest 
 
   @Test
   void fractionalPackQuantitiesAreRejected() {
-    FinishedGood bulkFg = createFinishedGood("FG-BULK-LF018", "Bulk Paint", "L", bulkInventory);
     FinishedGood child = createFinishedGood("FG-1L-LF018", "Paint 1L", "UNIT", fgInventory);
-    FinishedGoodBatch bulkBatch =
-        createBulkBatch(bulkFg, new BigDecimal("10"), new BigDecimal("5"));
+    RawMaterial bulkMaterial =
+        createSemiFinishedMaterial(
+            "FG-BULK-LF018-BULK", "Bulk Paint (Semi-Finished)", "L", bulkInventory.getId());
+    RawMaterialBatch bulkBatch =
+        createBulkBatch(bulkMaterial, new BigDecimal("10"), new BigDecimal("5"));
 
     BulkPackRequest request =
         new BulkPackRequest(
@@ -111,20 +117,33 @@ class BulkPackingFractionalQuantityRegressionIT extends AbstractIntegrationTest 
     return finishedGoodRepository.save(fg);
   }
 
-  private FinishedGoodBatch createBulkBatch(
-      FinishedGood fg, BigDecimal quantity, BigDecimal unitCost) {
-    FinishedGoodBatch batch = new FinishedGoodBatch();
-    batch.setFinishedGood(fg);
+  private RawMaterial createSemiFinishedMaterial(
+      String sku, String name, String unitType, Long inventoryAccountId) {
+    RawMaterial material = new RawMaterial();
+    material.setCompany(company);
+    material.setSku(sku);
+    material.setName(name);
+    material.setUnitType(unitType);
+    material.setMaterialType(MaterialType.PRODUCTION);
+    material.setInventoryAccountId(inventoryAccountId);
+    material.setCostingMethod("FIFO");
+    material.setCurrentStock(BigDecimal.ZERO);
+    return rawMaterialRepository.save(material);
+  }
+
+  private RawMaterialBatch createBulkBatch(
+      RawMaterial bulkMaterial, BigDecimal quantity, BigDecimal unitCost) {
+    RawMaterialBatch batch = new RawMaterialBatch();
+    batch.setRawMaterial(bulkMaterial);
     batch.setBatchCode("BULK-" + System.currentTimeMillis());
-    batch.setQuantityTotal(quantity);
-    batch.setQuantityAvailable(quantity);
-    batch.setUnitCost(unitCost);
+    batch.setQuantity(quantity);
+    batch.setUnit(Optional.ofNullable(bulkMaterial.getUnitType()).orElse("L"));
+    batch.setCostPerUnit(unitCost);
     batch.setManufacturedAt(Instant.now());
-    batch.setBulk(true);
-    FinishedGoodBatch saved = finishedGoodBatchRepository.save(batch);
-    BigDecimal current = Optional.ofNullable(fg.getCurrentStock()).orElse(BigDecimal.ZERO);
-    fg.setCurrentStock(current.add(quantity));
-    finishedGoodRepository.save(fg);
+    RawMaterialBatch saved = rawMaterialBatchRepository.save(batch);
+    BigDecimal current = Optional.ofNullable(bulkMaterial.getCurrentStock()).orElse(BigDecimal.ZERO);
+    bulkMaterial.setCurrentStock(current.add(quantity));
+    rawMaterialRepository.save(bulkMaterial);
     return saved;
   }
 }

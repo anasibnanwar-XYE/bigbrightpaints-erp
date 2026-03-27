@@ -70,6 +70,13 @@ public class InventoryBatchTraceabilityService {
           .withDetail("batchId", batchId)
           .withDetail("supportedBatchTypes", "RAW_MATERIAL,FINISHED_GOOD");
     }
+    if (finished.isPresent() && isSemiFinishedBatch(finished.get())) {
+      if (raw.isPresent()) {
+        return toRawMaterialBatchDto(raw.get());
+      }
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          "Batch not found: " + batchId);
+    }
 
     if (finished.isPresent()) {
       return toFinishedBatchDto(finished.get());
@@ -223,6 +230,14 @@ public class InventoryBatchTraceabilityService {
 
   private BigDecimal safe(BigDecimal value) {
     return value == null ? BigDecimal.ZERO : value;
+  }
+
+  private boolean isSemiFinishedBatch(FinishedGoodBatch batch) {
+    if (batch == null || batch.getFinishedGood() == null) {
+      return false;
+    }
+    String productCode = batch.getFinishedGood().getProductCode();
+    return productCode != null && productCode.trim().toUpperCase(Locale.ROOT).endsWith("-BULK");
   }
 
   private enum RequestedBatchType {

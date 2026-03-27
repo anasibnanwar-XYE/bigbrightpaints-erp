@@ -20,6 +20,7 @@ import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatch;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.InventoryBatchSource;
 import com.bigbrightpaints.erp.modules.inventory.domain.InventoryReference;
+import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatch;
 
 @Service
 public class BulkPackingOrchestrator {
@@ -93,7 +94,7 @@ public class BulkPackingOrchestrator {
 
   public FinishedGoodBatch createChildBatch(
       Company company,
-      FinishedGoodBatch parentBatch,
+      RawMaterialBatch parentBatch,
       BulkPackRequest.PackLine line,
       BigDecimal bulkUnitCost,
       BigDecimal packagingCostPerUnit,
@@ -115,13 +116,11 @@ public class BulkPackingOrchestrator {
         finishedGoodBatchRegistrar.registerReceipt(
             new FinishedGoodBatchRegistrar.ReceiptRegistrationRequest(
                 childFg,
-                parentBatch,
                 null,
                 line.quantity(),
                 childUnitCost,
                 parentBatch.getManufacturedAt(),
                 packDate,
-                false,
                 InventoryBatchSource.PRODUCTION,
                 line.sizeLabel(),
                 InventoryReference.PACKING_RECORD,
@@ -131,25 +130,25 @@ public class BulkPackingOrchestrator {
   }
 
   public List<JournalEntryRequest.JournalLineRequest> buildBulkToSizeJournalLines(
-      FinishedGoodBatch bulkBatch,
+      Long bulkInventoryAccountId,
+      String bulkBatchCode,
+      BigDecimal bulkUnitCost,
       List<FinishedGoodBatch> childBatches,
       BigDecimal volumeDeducted,
       BulkPackCostSummary packagingCostSummary) {
-    FinishedGood bulkFg = bulkBatch.getFinishedGood();
-    Long bulkAccountId = bulkFg.getValuationAccountId();
-    if (bulkAccountId == null) {
+    if (bulkInventoryAccountId == null) {
       throw new ApplicationException(
           ErrorCode.VALIDATION_INVALID_REFERENCE,
-          "Bulk FG " + bulkFg.getProductCode() + " missing valuation account");
+          "Bulk material account is missing for batch " + bulkBatchCode);
     }
 
     BigDecimal bulkValue =
-        bulkBatch.getUnitCost().multiply(volumeDeducted).setScale(2, COST_ROUNDING);
+        bulkUnitCost.multiply(volumeDeducted).setScale(2, COST_ROUNDING);
     List<JournalEntryRequest.JournalLineRequest> childDebits =
         childBatches.stream().map(this::toChildDebitLine).toList();
 
     return packingJournalBuilder.buildBulkToSizePackingLines(
-        bulkAccountId, bulkValue, packagingCostSummary.accountTotals(), childDebits);
+        bulkInventoryAccountId, bulkValue, packagingCostSummary.accountTotals(), childDebits);
   }
 
   private JournalEntryRequest.JournalLineRequest toChildDebitLine(FinishedGoodBatch childBatch) {

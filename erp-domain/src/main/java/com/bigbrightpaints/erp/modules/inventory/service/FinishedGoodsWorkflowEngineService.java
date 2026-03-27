@@ -112,6 +112,7 @@ public class FinishedGoodsWorkflowEngineService {
   public List<FinishedGoodDto> listFinishedGoods() {
     Company company = companyContextService.requireCurrentCompany();
     return finishedGoodRepository.findByCompanyOrderByProductCodeAsc(company).stream()
+        .filter(fg -> !isSemiFinishedSku(fg.getProductCode()))
         .map(this::toDto)
         .toList();
   }
@@ -125,11 +126,19 @@ public class FinishedGoodsWorkflowEngineService {
                 () ->
                     com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
                         "Finished good not found"));
+    if (isSemiFinishedSku(fg.getProductCode())) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          "Finished good not found");
+    }
     return toDto(fg);
   }
 
   public FinishedGood lockFinishedGoodByProductCode(String productCode) {
     Company company = companyContextService.requireCurrentCompany();
+    if (isSemiFinishedSku(productCode)) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          "Finished good not found for product code " + productCode);
+    }
     return finishedGoodRepository
         .lockByCompanyAndProductCode(company, productCode)
         .orElseThrow(
@@ -151,6 +160,10 @@ public class FinishedGoodsWorkflowEngineService {
                 () ->
                     com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
                         "Finished good not found"));
+    if (isSemiFinishedSku(fg.getProductCode())) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          "Finished good not found");
+    }
     return finishedGoodBatchRepository.findByFinishedGoodOrderByManufacturedAtAsc(fg).stream()
         .map(this::toBatchDto)
         .toList();
@@ -159,6 +172,7 @@ public class FinishedGoodsWorkflowEngineService {
   public List<StockSummaryDto> getStockSummary() {
     Company company = companyContextService.requireCurrentCompany();
     return finishedGoodRepository.findByCompanyOrderByProductCodeAsc(company).stream()
+        .filter(fg -> !isSemiFinishedSku(fg.getProductCode()))
         .map(
             fg ->
                 new StockSummaryDto(
@@ -182,6 +196,7 @@ public class FinishedGoodsWorkflowEngineService {
   public List<FinishedGoodDto> getLowStockItems(Integer threshold) {
     Company company = companyContextService.requireCurrentCompany();
     return finishedGoodRepository.findByCompanyOrderByProductCodeAsc(company).stream()
+        .filter(fg -> !isSemiFinishedSku(fg.getProductCode()))
         .filter(
             fg ->
                 inventoryValuationService
@@ -203,6 +218,10 @@ public class FinishedGoodsWorkflowEngineService {
                 () ->
                     com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
                         "Finished good not found"));
+    if (isSemiFinishedSku(fg.getProductCode())) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          "Finished good not found");
+    }
     return new FinishedGoodLowStockThresholdDto(
         fg.getId(),
         fg.getProductCode(),
@@ -220,6 +239,10 @@ public class FinishedGoodsWorkflowEngineService {
                 () ->
                     com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
                         "Finished good not found"));
+    if (isSemiFinishedSku(fg.getProductCode())) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          "Finished good not found");
+    }
     BigDecimal resolvedThreshold = inventoryValuationService.safeQuantity(threshold);
     if (resolvedThreshold.compareTo(BigDecimal.ZERO) < 0) {
       throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
@@ -348,5 +371,9 @@ public class FinishedGoodsWorkflowEngineService {
         batch.getUnitCost(),
         batch.getManufacturedAt(),
         batch.getExpiryDate());
+  }
+
+  private boolean isSemiFinishedSku(String productCode) {
+    return productCode != null && productCode.trim().toUpperCase().endsWith("-BULK");
   }
 }

@@ -29,19 +29,17 @@ import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.factory.dto.BulkPackRequest;
-import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
-import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatch;
-import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatchRepository;
-import com.bigbrightpaints.erp.modules.inventory.service.BatchNumberService;
+import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial;
+import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatch;
+import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatchRepository;
 
 @ExtendWith(MockitoExtension.class)
 @Tag("critical")
 class BulkPackingServiceIdempotencyTest {
 
   @Mock private CompanyContextService companyContextService;
-  @Mock private FinishedGoodBatchRepository finishedGoodBatchRepository;
+  @Mock private RawMaterialBatchRepository rawMaterialBatchRepository;
   @Mock private AccountingFacade accountingFacade;
-  @Mock private BatchNumberService batchNumberService;
   @Mock private CompanyClock companyClock;
   @Mock private BulkPackingOrchestrator bulkPackingOrchestrator;
   @Mock private BulkPackingCostService bulkPackingCostService;
@@ -57,9 +55,8 @@ class BulkPackingServiceIdempotencyTest {
     bulkPackingService =
         new BulkPackingService(
             companyContextService,
-            finishedGoodBatchRepository,
+            rawMaterialBatchRepository,
             accountingFacade,
-            batchNumberService,
             companyClock,
             bulkPackingOrchestrator,
             bulkPackingCostService,
@@ -74,19 +71,19 @@ class BulkPackingServiceIdempotencyTest {
 
   @Test
   void pack_idempotentReplayWithoutJournalFailsClosed() {
-    FinishedGood bulkFg = new FinishedGood();
-    ReflectionTestUtils.setField(bulkFg, "id", 100L);
-    bulkFg.setCompany(company);
+    RawMaterial bulkMaterial = new RawMaterial();
+    ReflectionTestUtils.setField(bulkMaterial, "id", 100L);
+    bulkMaterial.setCompany(company);
+    bulkMaterial.setSku("SKU-BULK");
 
-    FinishedGoodBatch bulkBatch = new FinishedGoodBatch();
+    RawMaterialBatch bulkBatch = new RawMaterialBatch();
     ReflectionTestUtils.setField(bulkBatch, "id", 10L);
-    bulkBatch.setFinishedGood(bulkFg);
+    bulkBatch.setRawMaterial(bulkMaterial);
     bulkBatch.setBatchCode("BULK-10");
-    bulkBatch.setBulk(true);
-    bulkBatch.setQuantityAvailable(new BigDecimal("100"));
-    bulkBatch.setQuantityTotal(new BigDecimal("100"));
+    bulkBatch.setQuantity(new BigDecimal("100"));
+    bulkBatch.setCostPerUnit(new BigDecimal("10.00"));
 
-    when(finishedGoodBatchRepository.lockByCompanyAndId(company, 10L))
+    when(rawMaterialBatchRepository.lockByRawMaterialCompanyAndId(company, 10L))
         .thenReturn(Optional.of(bulkBatch));
     when(bulkPackingReadService.resolveIdempotentPack(eq(company), eq(bulkBatch), anyString()))
         .thenThrow(
@@ -135,7 +132,7 @@ class BulkPackingServiceIdempotencyTest {
         .isInstanceOf(ApplicationException.class)
         .hasMessageContaining("Duplicate child SKU line is not allowed");
 
-    verify(finishedGoodBatchRepository, never()).lockByCompanyAndId(any(), any());
+    verify(rawMaterialBatchRepository, never()).lockByRawMaterialCompanyAndId(any(), any());
   }
 
   @Test
@@ -160,6 +157,6 @@ class BulkPackingServiceIdempotencyTest {
         .isInstanceOf(ApplicationException.class)
         .hasMessageContaining("Pack quantity must be greater than zero");
 
-    verify(finishedGoodBatchRepository, never()).lockByCompanyAndId(any(), any());
+    verify(rawMaterialBatchRepository, never()).lockByRawMaterialCompanyAndId(any(), any());
   }
 }

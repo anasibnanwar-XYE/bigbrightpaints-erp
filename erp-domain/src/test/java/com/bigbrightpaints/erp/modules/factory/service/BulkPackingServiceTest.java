@@ -25,6 +25,7 @@ import com.bigbrightpaints.erp.modules.factory.dto.BulkPackRequest;
 import com.bigbrightpaints.erp.modules.factory.dto.PackingLineRequest;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatch;
+import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatch;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionProduct;
 
 @ExtendWith(MockitoExtension.class)
@@ -58,9 +59,9 @@ class BulkPackingServiceTest {
   @Test
   void buildPackReference_isStableForEquivalentRequests() {
     BulkPackingService service =
-        new BulkPackingService(null, null, null, null, null, null, null, null, null, null);
+        new BulkPackingService(null, null, null, null, null, null, null, null, null);
 
-    FinishedGoodBatch bulkBatch = new FinishedGoodBatch();
+    RawMaterialBatch bulkBatch = new RawMaterialBatch();
     ReflectionTestUtils.setField(bulkBatch, "id", 42L);
     bulkBatch.setBatchCode("bulk-42");
 
@@ -92,9 +93,9 @@ class BulkPackingServiceTest {
   @Test
   void buildPackReference_includesExplicitIdempotencyKeyFingerprint() {
     BulkPackingService service =
-        new BulkPackingService(null, null, null, null, null, null, null, null, null, null);
+        new BulkPackingService(null, null, null, null, null, null, null, null, null);
 
-    FinishedGoodBatch bulkBatch = new FinishedGoodBatch();
+    RawMaterialBatch bulkBatch = new RawMaterialBatch();
     ReflectionTestUtils.setField(bulkBatch, "id", 42L);
     bulkBatch.setBatchCode("bulk-42");
 
@@ -128,9 +129,9 @@ class BulkPackingServiceTest {
   @Test
   void buildPackReference_nullRequestStillExercisesDerivedFingerprintGuard() {
     BulkPackingService service =
-        new BulkPackingService(null, null, null, null, null, null, null, null, null, null);
+        new BulkPackingService(null, null, null, null, null, null, null, null, null);
 
-    FinishedGoodBatch bulkBatch = new FinishedGoodBatch();
+    RawMaterialBatch bulkBatch = new RawMaterialBatch();
     ReflectionTestUtils.setField(bulkBatch, "id", 42L);
     bulkBatch.setBatchCode("bulk-42");
 
@@ -156,8 +157,7 @@ class BulkPackingServiceTest {
     childFinishedGood.setProductCode("FG-CHILD-1L");
     childFinishedGood.setName("Primer 1L");
 
-    FinishedGoodBatch parentBatch = new FinishedGoodBatch();
-    parentBatch.setFinishedGood(childFinishedGood);
+    RawMaterialBatch parentBatch = new RawMaterialBatch();
     parentBatch.setManufacturedAt(Instant.parse("2026-03-20T10:15:30Z"));
 
     FinishedGoodBatch childBatch = new FinishedGoodBatch();
@@ -191,7 +191,7 @@ class BulkPackingServiceTest {
     Company company = new Company();
     ReflectionTestUtils.setField(company, "id", 9L);
 
-    FinishedGoodBatch parentBatch = new FinishedGoodBatch();
+    RawMaterialBatch parentBatch = new RawMaterialBatch();
 
     when(companyEntityLookup.lockActiveFinishedGood(company, 77L))
         .thenThrow(new IllegalArgumentException("inactive"));

@@ -38,8 +38,6 @@ import com.bigbrightpaints.erp.modules.factory.dto.BulkPackResponse;
 import com.bigbrightpaints.erp.modules.factory.service.BulkPackingService;
 import com.bigbrightpaints.erp.modules.factory.service.PackingJournalLinkHelper;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
-import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatch;
-import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatchRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.InventoryMovement;
 import com.bigbrightpaints.erp.modules.inventory.domain.InventoryMovementRepository;
@@ -65,7 +63,6 @@ class BulkPackingImportedCatalogPackagingIT extends AbstractIntegrationTest {
   @Autowired private RawMaterialRepository rawMaterialRepository;
   @Autowired private RawMaterialBatchRepository rawMaterialBatchRepository;
   @Autowired private FinishedGoodRepository finishedGoodRepository;
-  @Autowired private FinishedGoodBatchRepository finishedGoodBatchRepository;
   @Autowired private PackagingSizeMappingRepository packagingSizeMappingRepository;
   @Autowired private InventoryMovementRepository inventoryMovementRepository;
   @Autowired private RawMaterialMovementRepository rawMaterialMovementRepository;
@@ -122,12 +119,13 @@ class BulkPackingImportedCatalogPackagingIT extends AbstractIntegrationTest {
     addRawMaterialBatch(packagingMaterial, new BigDecimal("50"), new BigDecimal("1.25"));
     createPackagingMapping(packagingMaterial, "1L");
 
-    FinishedGood bulkFg =
-        createFinishedGood("FG-BULK-M13S2", "Bulk Paint", "L", bulkInventoryAccount.getId());
     FinishedGood childFg =
         createFinishedGood("FG-1L-M13S2", "Paint 1L", "UNIT", childInventoryAccount.getId());
-    FinishedGoodBatch bulkBatch =
-        createBulkBatch(bulkFg, new BigDecimal("20"), new BigDecimal("7.50"));
+    RawMaterial bulkMaterial =
+        createSemiFinishedMaterial(
+            "FG-BULK-M13S2-BULK", "Bulk Paint (Semi-Finished)", "L", bulkInventoryAccount.getId());
+    RawMaterialBatch bulkBatch =
+        createBulkBatch(bulkMaterial, new BigDecimal("20"), new BigDecimal("7.50"));
 
     BulkPackRequest request =
         new BulkPackRequest(
@@ -263,8 +261,14 @@ class BulkPackingImportedCatalogPackagingIT extends AbstractIntegrationTest {
 
     addRawMaterialBatch(packagingMaterial, new BigDecimal("40"), new BigDecimal("1.10"));
     createPackagingMapping(packagingMaterial, "1L");
-    FinishedGoodBatch bulkBatch =
-        createBulkBatch(bulkFg, new BigDecimal("12"), new BigDecimal("6.00"));
+    RawMaterial bulkMaterial =
+        createSemiFinishedMaterial(
+            bulkFg.getProductCode() + "-BULK",
+            bulkFg.getName() + " (Semi-Finished)",
+            "L",
+            bulkFg.getValuationAccountId());
+    RawMaterialBatch bulkBatch =
+        createBulkBatch(bulkMaterial, new BigDecimal("12"), new BigDecimal("6.00"));
 
     BulkPackRequest request =
         new BulkPackRequest(
@@ -345,14 +349,17 @@ class BulkPackingImportedCatalogPackagingIT extends AbstractIntegrationTest {
     addRawMaterialBatch(packagingMaterial, new BigDecimal("30"), new BigDecimal("1.00"));
     createPackagingMapping(packagingMaterial, "1L");
 
-    FinishedGood bulkFg =
-        createFinishedGood(
-            "FG-BULK-M13S7-DRIFT", "Bulk Paint Drift", "L", bulkInventoryAccount.getId());
     FinishedGood childFg =
         createFinishedGood(
             "FG-1L-M13S7-DRIFT", "Paint 1L Drift", "UNIT", childInventoryAccount.getId());
-    FinishedGoodBatch bulkBatch =
-        createBulkBatch(bulkFg, new BigDecimal("10"), new BigDecimal("5.00"));
+    RawMaterial bulkMaterial =
+        createSemiFinishedMaterial(
+            "FG-BULK-M13S7-DRIFT-BULK",
+            "Bulk Paint Drift (Semi-Finished)",
+            "L",
+            bulkInventoryAccount.getId());
+    RawMaterialBatch bulkBatch =
+        createBulkBatch(bulkMaterial, new BigDecimal("10"), new BigDecimal("5.00"));
     BulkPackRequest request =
         new BulkPackRequest(
             bulkBatch.getId(),
@@ -491,21 +498,38 @@ class BulkPackingImportedCatalogPackagingIT extends AbstractIntegrationTest {
     return finishedGoodRepository.save(fg);
   }
 
-  private FinishedGoodBatch createBulkBatch(
-      FinishedGood finishedGood, BigDecimal quantity, BigDecimal unitCost) {
-    FinishedGoodBatch batch = new FinishedGoodBatch();
-    batch.setFinishedGood(finishedGood);
+  private RawMaterial createSemiFinishedMaterial(
+      String sku, String name, String unitType, Long inventoryAccountId) {
+    return rawMaterialRepository
+        .findByCompanyAndSkuIgnoreCase(company, sku)
+        .orElseGet(
+            () -> {
+              RawMaterial material = new RawMaterial();
+              material.setCompany(company);
+              material.setSku(sku);
+              material.setName(name);
+              material.setUnitType(unitType);
+              material.setMaterialType(MaterialType.PRODUCTION);
+              material.setInventoryAccountId(inventoryAccountId);
+              material.setCostingMethod("FIFO");
+              material.setCurrentStock(BigDecimal.ZERO);
+              return rawMaterialRepository.save(material);
+            });
+  }
+
+  private RawMaterialBatch createBulkBatch(
+      RawMaterial bulkMaterial, BigDecimal quantity, BigDecimal unitCost) {
+    RawMaterialBatch batch = new RawMaterialBatch();
+    batch.setRawMaterial(bulkMaterial);
     batch.setBatchCode("BULK-" + System.currentTimeMillis());
-    batch.setQuantityTotal(quantity);
-    batch.setQuantityAvailable(quantity);
-    batch.setUnitCost(unitCost);
+    batch.setQuantity(quantity);
+    batch.setUnit(Optional.ofNullable(bulkMaterial.getUnitType()).orElse("L"));
+    batch.setCostPerUnit(unitCost);
     batch.setManufacturedAt(Instant.now());
-    batch.setBulk(true);
-    FinishedGoodBatch saved = finishedGoodBatchRepository.save(batch);
-    BigDecimal current =
-        Optional.ofNullable(finishedGood.getCurrentStock()).orElse(BigDecimal.ZERO);
-    finishedGood.setCurrentStock(current.add(quantity));
-    finishedGoodRepository.save(finishedGood);
+    RawMaterialBatch saved = rawMaterialBatchRepository.save(batch);
+    BigDecimal current = Optional.ofNullable(bulkMaterial.getCurrentStock()).orElse(BigDecimal.ZERO);
+    bulkMaterial.setCurrentStock(current.add(quantity));
+    rawMaterialRepository.save(bulkMaterial);
     return saved;
   }
 

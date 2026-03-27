@@ -63,7 +63,7 @@ The local `openapi.json` snapshot publishes the major catalog, raw-material, fin
 | --- | --- | --- |
 | `production_brands`, `production_products`, `size_variants` | `CatalogService`, `ProductionCatalogService`, `V4__inventory_production.sql`, `V38__size_variants_and_packing_traceability.sql` | Commercial catalog, manufacturing product identity, size/carton metadata, and catalog-import replay targets. |
 | `raw_materials`, `raw_material_batches`, `raw_material_movements` | `RawMaterialService`, `GoodsReceiptService`, `ProductionLogService`, `PackagingMaterialService`, `V4__inventory_production.sql`, `V35__performance_hotspot_indexes.sql` | Supplier receipts, manual intake, opening stock, production consumption, packaging consumption, and raw-material traceability. |
-| `finished_goods`, `finished_good_batches`, `inventory_movements` | `ProductionCatalogService.ensureCatalogFinishedGood(...)`, `FinishedGoodsWorkflowEngineService`, `PackingBatchService`, `FinishedGoodsDispatchEngine`, `V4__inventory_production.sql` | Finished-good identity, semi-finished bulk batches, packing receipts, dispatch relief, and COGS linkage. |
+| `finished_goods`, `finished_good_batches`, `inventory_movements` | `ProductionCatalogService.ensureCatalogFinishedGood(...)`, `FinishedGoodsWorkflowEngineService`, `PackingBatchService`, `FinishedGoodsDispatchEngine`, `V4__inventory_production.sql` | Sellable finished-good identity, packing receipts, dispatch relief, and COGS linkage. |
 | `inventory_adjustments`, `inventory_adjustment_lines`, raw-material adjustment rows | `InventoryAdjustmentService`, `RawMaterialService.adjustStock(...)`, `V4__inventory_production.sql` | Replay-safe stock corrections and linked journal anchors. |
 | `opening_stock_imports` | `OpeningStockImportService`, `V4__inventory_production.sql` | CSV hash/idempotency-key replay anchor, import status, counts, and import-level journal linkage. |
 | `packaging_size_mappings`, `packing_records` | `PackagingMaterialService`, `PackingService`, `BulkPackingService`, `V4__inventory_production.sql`, `V38__size_variants_and_packing_traceability.sql` | Packaging Setup / Rules identity, packing execution, finished-good batch linkage, and size-specific traceability. |
@@ -190,8 +190,8 @@ Important nuance: missing raw materials are created through `RawMaterialService.
 - `issueFromBatches(...)` consumes raw-material batches in FIFO order with pessimistic locking to prevent double-consumption.
 - Material issue journals debit `wipAccountId` and credit the consumed raw-material inventory accounts.
 - Labor and overhead are applied through explicit metadata keys `laborAppliedAccountId` and `overheadAppliedAccountId`, both credited against WIP.
-- The service ensures a semi-finished finished-good SKU `<product-sku>-BULK`, using `semiFinishedAccountId` if present and otherwise falling back to finished-good valuation.
-- The mixed quantity is received into that semi-finished batch and a journal moves value from WIP into semi-finished inventory.
+- The service ensures a semi-finished raw-material SKU `<product-sku>-BULK`.
+- The mixed quantity is received into a raw-material batch for that semi-finished SKU, and a journal moves value from WIP into semi-finished inventory.
 
 This entire chain fails closed when account metadata is incomplete. Missing `wipAccountId`, `semiFinishedAccountId`, `laborAppliedAccountId`, or `overheadAppliedAccountId` blocks production posting instead of guessing.
 
@@ -209,7 +209,7 @@ This entire chain fails closed when account metadata is incomplete. Missing `wip
 
 - Packing locks the production log.
 - Optional caller idempotency is enforced through reserve-first semantics in `PackingIdempotencyService`.
-- `PackingInventoryService` consumes semi-finished stock from the bulk batch created by production.
+- `PackingInventoryService` consumes semi-finished stock from the raw-material bulk batch created by production.
 - `PackagingMaterialService.consumePackagingMaterial(...)` consumes packaging raw-material batches and totals packaging cost by inventory account.
 - `PackingBatchService.registerFinishedGoodBatch(...)` creates the finished-good batch receipt and journal that debits FG valuation and credits the semi-finished/WIP side.
 - The single `recordPacking(...)` flow advances the batch from `READY_TO_PACK` to `PARTIAL_PACKED` to `FULLY_PACKED` as cumulative packed quantity reaches the mixed quantity; there is no separate completion seam.
@@ -320,7 +320,7 @@ The overall model is uneven: adjustments/imports/packing are strongly replay-saf
 
 - Accounting-aware product create/import can create or repair `FinishedGood` and `RawMaterial` rows as side effects of catalog maintenance.
 - Raw-material receipts, adjustments, and opening-stock imports create movement rows and attach journal ids after posting.
-- Production logs create raw-material issue movements, WIP journals, and semi-finished bulk batches.
+- Production logs create raw-material issue movements, WIP journals, and semi-finished raw-material bulk batches.
 - Packing consumes semi-finished and packaging stock, creates finished-good receipt movements/batches, and can post wastage journals.
 - Bulk packing creates child finished-good batches and packaging journals while preserving replay identity.
 - Dispatch confirmation links `inventory_movements` to packaging slips and COGS journals.
