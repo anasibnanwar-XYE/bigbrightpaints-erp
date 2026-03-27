@@ -31,6 +31,7 @@ class DealerControllerSecurityIT extends AbstractIntegrationTest {
   private static final String DEALER_A_EMAIL = "dealer-a@bbp.com";
   private static final String DEALER_B_EMAIL = "dealer-b@bbp.com";
   private static final String ADMIN_EMAIL = "dealer-admin@bbp.com";
+  private static final String SALES_EMAIL = "dealer-sales@bbp.com";
   private static final String PASSWORD = "changeme";
 
   @Autowired private TestRestTemplate rest;
@@ -52,6 +53,8 @@ class DealerControllerSecurityIT extends AbstractIntegrationTest {
             DEALER_B_EMAIL, PASSWORD, "Dealer B User", COMPANY_CODE, List.of("ROLE_DEALER"));
     dataSeeder.ensureUser(
         ADMIN_EMAIL, PASSWORD, "Dealer Admin User", COMPANY_CODE, List.of("ROLE_ADMIN"));
+    dataSeeder.ensureUser(
+        SALES_EMAIL, PASSWORD, "Dealer Sales User", COMPANY_CODE, List.of("ROLE_SALES"));
 
     Company company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
     dealerA = upsertDealer(company, "D-SEC-A", "Dealer A", dealerAUser);
@@ -157,10 +160,17 @@ class DealerControllerSecurityIT extends AbstractIntegrationTest {
             HttpMethod.GET,
             new HttpEntity<>(headers),
             Map.class);
+    ResponseEntity<Map> creditUtilization =
+        rest.exchange(
+            "/api/v1/dealers/" + dealerA.getId() + "/credit-utilization",
+            HttpMethod.GET,
+            new HttpEntity<>(headers),
+            Map.class);
 
     assertThat(ledger.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     assertThat(invoices.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     assertThat(aging.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    assertThat(creditUtilization.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
   }
 
   @Test
@@ -187,10 +197,35 @@ class DealerControllerSecurityIT extends AbstractIntegrationTest {
             HttpMethod.GET,
             new HttpEntity<>(headers),
             Map.class);
+    ResponseEntity<Map> creditUtilization =
+        rest.exchange(
+            "/api/v1/dealers/" + missingDealerId + "/credit-utilization",
+            HttpMethod.GET,
+            new HttpEntity<>(headers),
+            Map.class);
 
     assertThat(ledger.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     assertThat(invoices.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     assertThat(aging.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    assertThat(creditUtilization.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+  }
+
+  @Test
+  @DisplayName("Sales actor sees every retired dealer finance read as not found")
+  void salesSeesRetiredDealerFinanceReadsAsNotFound() {
+    HttpHeaders headers = authHeaders(SALES_EMAIL, PASSWORD);
+    List<String> retiredPaths =
+        List.of(
+            "/api/v1/dealers/" + dealerA.getId() + "/ledger",
+            "/api/v1/dealers/" + dealerA.getId() + "/invoices",
+            "/api/v1/dealers/" + dealerA.getId() + "/aging",
+            "/api/v1/dealers/" + dealerA.getId() + "/credit-utilization");
+
+    for (String path : retiredPaths) {
+      ResponseEntity<Map> response =
+          rest.exchange(path, HttpMethod.GET, new HttpEntity<>(headers), Map.class);
+      assertThat(response.getStatusCode()).as(path).isEqualTo(HttpStatus.NOT_FOUND);
+    }
   }
 
   private HttpHeaders authHeaders(String email, String password) {

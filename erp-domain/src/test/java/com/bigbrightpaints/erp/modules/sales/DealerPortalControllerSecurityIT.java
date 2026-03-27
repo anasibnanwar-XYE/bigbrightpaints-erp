@@ -93,6 +93,21 @@ class DealerPortalControllerSecurityIT extends AbstractIntegrationTest {
   }
 
   @Test
+  @DisplayName("Dealer portal ledger stays scoped to the authenticated dealer")
+  void dealerPortalLedger_isScopedToCurrentDealer() {
+    HttpHeaders headers = authHeaders(DEALER_A_EMAIL, PASSWORD);
+    ResponseEntity<Map> response =
+        rest.exchange(
+            "/api/v1/dealer-portal/ledger", HttpMethod.GET, new HttpEntity<>(headers), Map.class);
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+    Map<?, ?> data = (Map<?, ?>) response.getBody().get("data");
+    assertThat(asLong(data.get("dealerId"))).isEqualTo(dealerA.getId());
+    assertThat(data.get("dealerName")).isEqualTo(dealerA.getName());
+    assertThat(data.get("entries")).isInstanceOf(List.class);
+  }
+
+  @Test
   @DisplayName(
       "Dealer portal aging is scoped to the authenticated dealer without leaking other dealers")
   void dealerPortalAging_isScopedToCurrentDealer() {
@@ -127,6 +142,24 @@ class DealerPortalControllerSecurityIT extends AbstractIntegrationTest {
             byte[].class);
 
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+  }
+
+  @Test
+  @DisplayName("Dealer portal invoice PDF endpoint serves the authenticated dealer invoice")
+  void dealerPortalInvoicePdf_servesOwnInvoice() {
+    HttpHeaders headers = authHeaders(DEALER_A_EMAIL, PASSWORD);
+    ResponseEntity<byte[]> response =
+        rest.exchange(
+            "/api/v1/dealer-portal/invoices/" + invoiceA.getId() + "/pdf",
+            HttpMethod.GET,
+            new HttpEntity<>(headers),
+            byte[].class);
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(response.getHeaders().getContentType()).isNotNull();
+    assertThat(response.getHeaders().getContentType().toString())
+        .contains("application/pdf");
+    assertThat(response.getBody()).isNotEmpty();
   }
 
   @Test

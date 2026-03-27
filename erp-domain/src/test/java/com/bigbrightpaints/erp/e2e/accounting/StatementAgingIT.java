@@ -159,6 +159,23 @@ class StatementAgingIT extends AbstractIntegrationTest {
     assertThat(blocked.getStatusCode().is4xxClientError()).isTrue();
   }
 
+  @Test
+  @DisplayName("Retired accounting dealer finance aliases are not found for admin-accounting probes")
+  void retiredAccountingDealerFinanceAliasesAreNotFound() {
+    List<String> retiredPaths =
+        List.of(
+            "/api/v1/accounting/aging/dealers/" + dealer.getId(),
+            "/api/v1/accounting/aging/dealers/" + dealer.getId() + "/pdf",
+            "/api/v1/accounting/statements/dealers/" + dealer.getId(),
+            "/api/v1/accounting/statements/dealers/" + dealer.getId() + "/pdf");
+
+    for (String path : retiredPaths) {
+      ResponseEntity<byte[]> response =
+          rest.exchange(path, HttpMethod.GET, new HttpEntity<>(headers), byte[].class);
+      assertThat(response.getStatusCode()).as(path).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+  }
+
   private void postJournal(LocalDate date, String reference, List<Map<String, Object>> lines) {
     ResponseEntity<Map> resp =
         rest.exchange(

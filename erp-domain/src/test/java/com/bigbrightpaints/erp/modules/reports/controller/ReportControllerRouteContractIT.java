@@ -2,6 +2,8 @@ package com.bigbrightpaints.erp.modules.reports.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.math.BigDecimal;
+import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
@@ -10,19 +12,69 @@ import java.util.stream.Collectors;
 
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.web.servlet.mvc.method.RequestMappingInfo;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 
+import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
+import com.bigbrightpaints.erp.modules.company.domain.Company;
+import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
+import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
+import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
 import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
 
 @Tag("critical")
 class ReportControllerRouteContractIT extends AbstractIntegrationTest {
 
+  private static final String COMPANY_CODE = "REPORT-ROUTE-SEC";
+  private static final String ACCOUNTING_EMAIL = "report-accounting@bbp.com";
+  private static final String PASSWORD = "changeme";
+
+  @Autowired private TestRestTemplate rest;
+  @Autowired private CompanyRepository companyRepository;
+  @Autowired private DealerRepository dealerRepository;
+
   @Autowired
   @Qualifier("requestMappingHandlerMapping")
   private RequestMappingHandlerMapping handlerMapping;
+
+  private Dealer dealer;
+
+  @BeforeEach
+  void setup() {
+    UserAccount portalUser =
+        dataSeeder.ensureUser(
+            "report-dealer@bbp.com",
+            PASSWORD,
+            "Report Dealer",
+            COMPANY_CODE,
+            List.of("ROLE_DEALER"));
+    dataSeeder.ensureUser(
+        ACCOUNTING_EMAIL, PASSWORD, "Report Accounting", COMPANY_CODE, List.of("ROLE_ACCOUNTING"));
+
+    Company company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
+    dealer =
+        dealerRepository
+            .findByCompanyAndCodeIgnoreCase(company, "REPORT-DEALER")
+            .orElseGet(Dealer::new);
+    dealer.setCompany(company);
+    dealer.setCode("REPORT-DEALER");
+    dealer.setName("Report Dealer");
+    dealer.setCompanyName("Report Dealer Pvt Ltd");
+    dealer.setEmail(portalUser.getEmail());
+    dealer.setCreditLimit(new BigDecimal("100000.00"));
+    dealer.setPortalUser(portalUser);
+    dealerRepository.saveAndFlush(dealer);
+  }
 
   @Test
   void reportController_exposes_only_canonical_report_paths() {
@@ -56,6 +108,22 @@ class ReportControllerRouteContractIT extends AbstractIntegrationTest {
     assertThat(allPatterns).noneMatch(path -> path.contains("/dso/dealer/"));
   }
 
+  @Test
+  void retiredDealerReportAliases_areNotFoundForAccounting() {
+    HttpHeaders headers = authHeaders();
+    List<String> retiredPaths =
+        List.of(
+            "/api/v1/reports/aging/dealer/" + dealer.getId(),
+            "/api/v1/reports/aging/dealer/" + dealer.getId() + "/detailed",
+            "/api/v1/reports/dso/dealer/" + dealer.getId());
+
+    for (String path : retiredPaths) {
+      ResponseEntity<Map> response =
+          rest.exchange(path, HttpMethod.GET, new HttpEntity<>(headers), Map.class);
+      assertThat(response.getStatusCode()).as(path).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+  }
+
   private Set<String> extractPatterns(RequestMappingInfo mapping) {
     if (mapping.getPathPatternsCondition() != null) {
       return mapping.getPathPatternsCondition().getPatternValues();
@@ -64,5 +132,20 @@ class ReportControllerRouteContractIT extends AbstractIntegrationTest {
       return new TreeSet<>(mapping.getPatternsCondition().getPatterns());
     }
     return Set.of();
+  }
+
+  private HttpHeaders authHeaders() {
+    Map<String, Object> payload =
+        Map.of(
+            "email", ACCOUNTING_EMAIL,
+            "password", PASSWORD,
+            "companyCode", COMPANY_CODE);
+    ResponseEntity<Map> login = rest.postForEntity("/api/v1/auth/login", payload, Map.class);
+    assertThat(login.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+    HttpHeaders headers = new HttpHeaders();
+    headers.setBearerAuth((String) login.getBody().get("accessToken"));
+    headers.set("X-Company-Code", COMPANY_CODE);
+    return headers;
   }
 }
