@@ -1,0 +1,247 @@
+# Auth Canonical Flows
+
+## 1. Login Flow
+
+```
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│  Client     │────▶│ AuthController│────▶│ AuthService │────▶│   JWT      │
+└─────────────┘     └─────────────┘     └─────────────┘     └─────────────┘
+                            │                  │
+                            │                  ▼
+                            │         ┌─────────────┐
+                            │         │ MfaService  │
+                            │         └─────────────┘
+                            │                  │
+                            ▼                  ▼
+                     ┌─────────────────────────────────┐
+                     │ TenantRuntimeEnforcementService │
+                     └─────────────────────────────────┘
+```
+
+### Steps
+1. **Request**: Client sends `POST /api/v1/auth/login` with `LoginRequest`
+2. **User Lookup**: `AuthService` finds user by email
+3. **Account Validation**: Check if enabled, not locked
+4. **Authentication**: Spring Security validates credentials
+5. **Company Resolution**: Resolve company from request, validate membership
+6. **Tenant Enforcement**: `TenantRuntimeEnforcementService.enforceAuthOperationAllowed()`
+7. **MFA Verification**: If MFA enabled, verify TOTP or recovery code
+8. **Lock Reset**: Clear failed attempts and lockout
+9. **Token Generation**: Generate access token (JWT) and refresh token
+10. **Audit**: Log successful login event
+11. **Response**: Return `AuthResponse` with tokens
+
+### Failure Scenarios
+| Scenario | Behavior |
+|----------|----------|
+| Invalid credentials | Increment failed attempts, throw exception |
+| Account locked | Throw `LockedException` (15-min lockout) |
+| MFA required but not provided | Throw `MfaRequiredException` |
+| Invalid MFA code | Throw `InvalidMfaException`, increment attempts |
+| Tenant blocked | `TenantRuntimeEnforcementService` rejects |
+
+---
+
+## 2. Token Refresh Flow
+
+```
+┌─────────────┐     ┌─────────────┐     ┌──────────────────┐
+│  Client     │────▶│ AuthController│────▶│RefreshTokenService│
+└─────────────┘     └─────────────┘     └──────────────────┘
+                                                 │
+                                                 ▼
+                            ┌──────────────────────────────────────┐
+                            │         Token Validation              │
+                            │  1. Find by digest (SELECT FOR UPDATE)│
+                            │  2. Check expiration                   │
+                            │  3. Delete (single-use)               │
+                            └──────────────────────────────────────┘
+                                                 │
+                                                 ▼
+                            ┌──────────────────────────────────────┐
+                            │     TokenBlacklistService            │
+                            │  Check if user tokens revoked        │
+                            └──────────────────────────────────────┘
+```
+
+### Steps
+1. **Request**: Client sends `POST /api/v1/auth/refresh-token` with `RefreshTokenRequest`
+2. **Token Consumption**: `RefreshTokenService.consume()` - validates and deletes token
+3. **Revocation Check**: Check if user's tokens were revoked after token issuance
+4. **User Validation**: Ensure user still exists and is enabled
+5. **Tenant Enforcement**: Validate tenant allows auth operations
+6. **New Tokens**: Generate new access and refresh tokens
+7. **Response**: Return new `AuthResponse`
+
+---
+
+## 3. Logout Flow
+
+```
+┌─────────────┐     ┌─────────────┐     ┌──────────────────┐
+│  Client     │────▶│ AuthController│────▶│   AuthService   │
+└─────────────┘     └─────────────┘     └──────────────────┘
+                                                 │
+                           ┌─────────────────────┼─────────────────────┐
+                           ▼                     ▼                     ▼
+                    ┌──────────────┐    ┌──────────────────┐   ┌──────────────┐
+                    │TokenBlacklist │    │RefreshTokenService│   │  JWT Parse   │
+                    │   Service    │    │  revokeAllForUser │   │              │
+                    └──────────────┘    └──────────────────┘   └──────────────┘
+```
+
+### Steps
+1. **Request**: `POST /api/v1/auth/logout` with optional refresh token
+2. **Token Parsing**: Extract user identity from access token
+3. **Session Revocation**: 
+   - `TokenBlacklistService.revokeAllUserTokens()`
+   - `RefreshTokenService.revokeAllForUser()`
+4. **Access Token Blacklist**: Add token ID to blacklist with expiration
+5. **Response**: 204 No Content
+
+---
+
+## 4. MFA Enrollment Flow
+
+```
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│  Client     │────▶│ MfaController│────▶│  MfaService │
+└─────────────┘     └─────────────┘     └─────────────┘
+       │                  │                    │
+       │  POST /mfa/setup │                    │
+       │─────────────────▶│                    │
+       │                  │   beginEnrollment()│
+       │                  │───────────────────▶│
+       │                  │                    │  Generate secret
+       │                  │                    │  Generate 8 recovery codes
+       │                  │                    │  Encrypt secret
+       │                  │                    │  Store in user
+       │  MfaSetupResponse│                    │
+       │◀─────────────────│◀───────────────────│
+       │                  │                    │
+       │ POST /mfa/activate                    │
+       │─────────────────▶│                    │
+       │                  │   activate()       │
+       │                  │───────────────────▶│
+       │                  │                    │  Validate TOTP code
+       │                  │                    │  Set mfaEnabled=true
+       │  Success         │                    │
+       │◀─────────────────│◀───────────────────│
+```
+
+---
+
+## 5. Password Reset Flow
+
+```
+┌─────────────┐     ┌─────────────┐     ┌──────────────────┐
+│  Client     │────▶│ AuthController│────▶│PasswordResetService│
+└─────────────┘     └─────────────┘     └──────────────────┘
+       │                  │                    │
+       │ POST /password/forgot               │
+       │─────────────────▶│                    │
+       │                  │   requestReset()   │
+       │                  │───────────────────▶│
+       │                  │                    │  Find user by email
+       │                  │                    │  Delete old tokens
+       │                  │                    │  Generate new token
+       │                  │                    │  Store digest only
+       │                  │                    │  Send email
+       │  Success (always)│                    │
+       │◀─────────────────│◀───────────────────│
+       │                                      │
+       │  Click email link with token         │
+       │                                      │
+       │ POST /password/reset                 │
+       │─────────────────▶│                    │
+       │                  │   resetPassword()  │
+       │                  │───────────────────▶│
+       │                  │                    │  Validate token digest
+       │                  │                    │  Validate passwords match
+       │                  │                    │  Apply password policy
+       │                  │                    │  Check history
+       │                  │                    │  Update password
+       │                  │                    │  Revoke all sessions
+       │                  │                    │  Mark token used
+       │  Success         │                    │
+       │◀─────────────────│◀───────────────────│
+```
+
+---
+
+## 6. Password Change Flow (Authenticated)
+
+```
+┌─────────────┐     ┌─────────────┐     ┌──────────────────┐
+│  Client     │────▶│ AuthController│────▶│ PasswordService  │
+└─────────────┘     └─────────────┘     └──────────────────┘
+       │                  │                    │
+       │ POST /password/change                │
+       │ (with auth header)                   │
+       │─────────────────▶│                    │
+       │                  │   changePassword() │
+       │                  │───────────────────▶│
+       │                  │                    │  If !mustChangePassword:
+       │                  │                    │    Validate current password
+       │                  │                    │  Validate new passwords match
+       │                  │                    │  Validate not same as current
+       │                  │                    │  Apply password policy
+       │                  │                    │  Check history (last 5)
+       │                  │                    │  Store current in history
+       │                  │                    │  Update password hash
+       │                  │                    │  Set mustChangePassword=false
+       │                  │                    │  Revoke all sessions
+       │  Success         │                    │
+       │◀─────────────────│◀───────────────────│
+```
+
+---
+
+## 7. Account Lockout Flow
+
+```
+┌──────────────────────────────────────────────────────────┐
+│                    Failed Login                          │
+└──────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌──────────────────────────────────────────────────────────┐
+│  Increment failedLoginAttempts                          │
+│  attempts = user.getFailedLoginAttempts() + 1           │
+└──────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+                ┌─────────────────────┐
+                │  attempts >= 5?     │
+                └─────────────────────┘
+                    │           │
+                   Yes          No
+                    │           │
+                    ▼           ▼
+        ┌─────────────────┐  ┌─────────────────┐
+        │ Set lockedUntil │  │    Save user    │
+        │ = now + 15 min  │  └─────────────────┘
+        │ Revoke sessions │
+        └─────────────────┘
+```
+
+---
+
+## 8. Scheduled Token Cleanup
+
+```
+┌──────────────────────────────────────────────────────────┐
+│           @Scheduled(fixedDelay = 3600000)               │
+│           RefreshTokenService.cleanupExpiredTokens()     │
+└──────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌──────────────────────────────────────────────────────────┐
+│  DELETE FROM refresh_tokens WHERE expires_at < NOW      │
+└──────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌──────────────────────────────────────────────────────────┐
+│  Log: "Refresh token cleanup removed {count} expired"   │
+└──────────────────────────────────────────────────────────┘
+```
