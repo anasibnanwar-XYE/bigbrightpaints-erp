@@ -23,6 +23,7 @@ Environment variables, external dependencies, and setup notes.
 - The repo-owned compose runtime uses host PostgreSQL port `5433`; host `5432` belongs to another local database.
 - Direct `docker compose up` for dependency services still parses the app service, so `JWT_SECRET` and `ERP_SECURITY_ENCRYPTION_KEY` must be present even when only starting `db`, `rabbitmq`, or `mailhog`.
 - The plain `prod,flyway-v2` compose app can boot against an empty database; use the reset harness when authenticated runtime validation is required.
+- Stale stopped containers from another worktree can block the reset harness because the compose stack reuses fixed names (`erp_db`, `erp_rabbit`, `erp_mailhog`, `erp_domain_app`). Remove the stale stopped containers before rerunning if the reset fails on name conflicts.
 
 ## Profiles
 
