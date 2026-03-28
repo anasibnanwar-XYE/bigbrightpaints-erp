@@ -390,6 +390,33 @@ class AccountingFacadeTest {
   }
 
   @Test
+  void postPurchaseJournal_missingSupplierFailsWithCanonicalLookupError() {
+    Long supplierId = 92L;
+    when(supplierRepository.findByCompanyAndIdWithPayableAccount(eq(company), eq(supplierId)))
+        .thenReturn(Optional.empty());
+
+    assertThatThrownBy(
+            () ->
+                accountingFacade.postPurchaseJournal(
+                    supplierId,
+                    "INV-104",
+                    LocalDate.of(2026, 1, 17),
+                    "missing supplier",
+                    Map.of(204L, new BigDecimal("10.00")),
+                    null,
+                    new BigDecimal("10.00"),
+                    null))
+        .isInstanceOfSatisfying(
+            ApplicationException.class,
+            ex -> {
+              assertThat(ex.getMessage()).isEqualTo("Supplier not found");
+              assertThat(ex.getDetails()).containsEntry("supplierId", supplierId);
+            });
+
+    verify(accountingService, never()).createStandardJournal(any());
+  }
+
+  @Test
   void postPurchaseJournal_rejectsReferenceOnlySupplierWhenCreatingNewJournal() {
     Long supplierId = 90L;
     Supplier supplier = new Supplier();
