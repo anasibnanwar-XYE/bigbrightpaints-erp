@@ -217,7 +217,7 @@ class TS_RuntimeOrchestratorExecutableCoverageTest {
   }
 
   @Test
-  void orchestratorController_paths_execute_idempotency_payload_selection_call_sites() {
+  void orchestratorController_canonical_paths_execute_and_retired_shims_stay_deleted() {
     CommandDispatcher dispatcher = mock(CommandDispatcher.class);
     TraceService traceService = mock(TraceService.class);
     OrchestratorController controller = new OrchestratorController(dispatcher, traceService);
@@ -227,9 +227,6 @@ class TS_RuntimeOrchestratorExecutableCoverageTest {
       when(dispatcher.approveOrder(any(), any(), any(), any(), any())).thenReturn("trace-approve");
       when(dispatcher.updateOrderFulfillment(any(), any(), any(), any(), any(), any()))
           .thenReturn("trace-fulfill");
-      when(dispatcher.dispatchBatch(any(), any(), any(), any(), any()))
-          .thenReturn("trace-dispatch");
-      when(dispatcher.runPayroll(any(), any(), any(), any(), any())).thenReturn("trace-payroll");
 
       controller.approveOrder(
           "SO-1",
@@ -243,18 +240,25 @@ class TS_RuntimeOrchestratorExecutableCoverageTest {
           null,
           "req-fulfill",
           principal);
-      controller.dispatch(
-          "B-1",
-          new DispatchRequest("B-1", " ops@bbp.com ", new BigDecimal("55.00")),
-          null,
-          "req-dispatch",
-          principal);
-      controller.runPayroll(
-          new PayrollRunRequest(
-              LocalDate.of(2026, 2, 1), " ops@bbp.com ", 11L, 12L, new BigDecimal("500.00")),
-          null,
-          "req-payroll",
-          principal);
+      assertThatThrownBy(
+              () ->
+                  OrchestratorController.class.getDeclaredMethod(
+                      "dispatch",
+                      String.class,
+                      Class.forName("com.bigbrightpaints.erp.orchestrator.dto.DispatchRequest"),
+                      String.class,
+                      String.class,
+                      Principal.class))
+          .isInstanceOf(NoSuchMethodException.class);
+      assertThatThrownBy(
+              () ->
+                  OrchestratorController.class.getDeclaredMethod(
+                      "runPayroll",
+                      Class.forName("com.bigbrightpaints.erp.orchestrator.dto.PayrollRunRequest"),
+                      String.class,
+                      String.class,
+                      Principal.class))
+          .isInstanceOf(NoSuchMethodException.class);
     } finally {
       CompanyContextHolder.clear();
     }

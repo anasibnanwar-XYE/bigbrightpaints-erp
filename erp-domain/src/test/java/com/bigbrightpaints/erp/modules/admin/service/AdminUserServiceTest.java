@@ -319,7 +319,7 @@ class AdminUserServiceTest {
   }
 
   @Test
-  void createUser_returnsFallbackRolesAndCompaniesWhenSavedAssociationsAreMissing() {
+  void createUser_returnsCanonicalPersistedRolesAndCompanyWhenSavedAssociationsAreMissing() {
     when(userRepository.save(any(UserAccount.class)))
         .thenAnswer(
             invocation -> {
@@ -337,8 +337,8 @@ class AdminUserServiceTest {
             new CreateUserRequest(
                 "fallback-user@example.com", "Fallback User", 1L, List.of("ROLE_SALES")));
 
-    assertThat(response.roles()).containsExactly("ROLE_SALES");
-    assertThat(response.companyCode()).isEqualTo("TEST");
+    assertThat(response.roles()).isEmpty();
+    assertThat(response.companyCode()).isNull();
   }
 
   @Test

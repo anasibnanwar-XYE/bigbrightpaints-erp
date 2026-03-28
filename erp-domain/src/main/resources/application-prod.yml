@@ -1,5 +1,6 @@
 spring:
   datasource:
+    # Prod contract: datasource values must come from deployment env/secret management.
     url: ${SPRING_DATASOURCE_URL}
     username: ${SPRING_DATASOURCE_USERNAME}
     password: ${SPRING_DATASOURCE_PASSWORD}
@@ -10,10 +11,11 @@ spring:
       idle-timeout: 300000
       connection-timeout: 20000
   mail:
-    host: ${SMTP_HOST:${SPRING_MAIL_HOST:}}
-    port: ${SMTP_PORT:${SPRING_MAIL_PORT:587}}
-    username: ${SMTP_USERNAME:${SPRING_MAIL_USERNAME:}}
-    password: ${SMTP_PASSWORD:${SPRING_MAIL_PASSWORD:}}
+    # Prod contract: use canonical Spring mail env vars; no local/prod alias fallback path.
+    host: ${SPRING_MAIL_HOST}
+    port: ${SPRING_MAIL_PORT}
+    username: ${SPRING_MAIL_USERNAME}
+    password: ${SPRING_MAIL_PASSWORD}
     properties:
       mail:
         smtp:
@@ -49,7 +51,7 @@ logging:
     org.springframework.security: WARN
     org.hibernate.SQL: WARN
 jwt:
-  # Must be 32+ bytes; prefer env/secret manager override
+  # Prod contract: required 32+ byte secret from env/secret manager
   secret: ${JWT_SECRET}
   # Default 15 min access; tune for UX vs security
   access-token-ttl-seconds: ${JWT_ACCESS_TTL:900}
@@ -63,6 +65,12 @@ erp:
         enabled: true
   security:
     swagger-public: false
+    encryption:
+      # Prod contract: required 32+ byte encryption key from env/secret manager
+      key: ${ERP_SECURITY_ENCRYPTION_KEY}
+    audit:
+      # Prod contract: required audit signing key from env/secret manager
+      private-key: ${ERP_SECURITY_AUDIT_PRIVATE_KEY}
   licensing:
     product-id: ${ERP_LICENSE_PRODUCT_ID:31720}
     license-key: ${ERP_LICENSE_KEY}

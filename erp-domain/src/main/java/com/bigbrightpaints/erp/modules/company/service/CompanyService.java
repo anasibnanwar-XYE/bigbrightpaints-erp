@@ -192,7 +192,7 @@ public class CompanyService {
                 () ->
                     com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
                         "Company not found"));
-    assertBoundControlPlaneCompanyMatchesTarget(company.getCode());
+    assertBoundControlPlaneMutationContextMatchesTarget(company.getCode());
     String normalizedCompanyCode = normalizeCompanyCode(request.code());
     ensureCompanyCodeAvailableForUpdate(id, normalizedCompanyCode);
     synchronizeScopedAccountsToCompanyCode(company, normalizedCompanyCode);
@@ -240,6 +240,7 @@ public class CompanyService {
                 () ->
                     com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
                         "Company not found"));
+    assertBoundControlPlaneMutationContextMatchesTarget(company.getCode());
     company.setEnabledModules(validateAndNormalizeEnabledModules(enabledModules));
     auditAuthorityDecision(true, TENANT_MODULES_UPDATED_REASON, company.getCode(), authentication);
     return new CompanyEnabledModulesDto(
@@ -266,7 +267,7 @@ public class CompanyService {
                 () ->
                     com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
                         "Company not found"));
-    assertBoundControlPlaneCompanyMatchesTarget(company.getCode());
+    assertBoundControlPlaneMutationContextMatchesTarget(company.getCode());
 
     if (tenantLifecycleService != null) {
       CompanyLifecycleStateDto response =
@@ -484,6 +485,7 @@ public class CompanyService {
                 () ->
                     com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
                         "Company not found"));
+    assertBoundControlPlaneMutationContextMatchesTarget(company.getCode());
     if (request == null || !StringUtils.hasText(request.message())) {
       throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
           "Support warning message is required");
@@ -544,7 +546,7 @@ public class CompanyService {
                 () ->
                     com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
                         "Company not found"));
-    assertBoundControlPlaneCompanyMatchesTarget(company.getCode());
+    assertBoundControlPlaneMutationContextMatchesTarget(company.getCode());
     TenantRuntimeEnforcementService.TenantRuntimeSnapshot snapshot =
         tenantRuntimeEnforcementService.updatePolicy(
             company.getCode(),
@@ -575,7 +577,7 @@ public class CompanyService {
                 () ->
                     com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
                         "Company not found"));
-    assertBoundControlPlaneCompanyMatchesTarget(company.getCode());
+    assertBoundControlPlaneMutationContextMatchesTarget(company.getCode());
     requirePasswordResetReady();
     String resetEmail =
         tenantAdminProvisioningService.resetTenantAdminPassword(company, adminEmail);
@@ -783,6 +785,24 @@ public class CompanyService {
       return;
     }
     if (!boundCompanyCode.trim().equalsIgnoreCase(targetCompanyCode.trim())) {
+      throw new AccessDeniedException("Bound company context does not match targeted tenant");
+    }
+  }
+
+  private void assertBoundControlPlaneMutationContextMatchesTarget(String targetCompanyCode) {
+    if (!StringUtils.hasText(targetCompanyCode)) {
+      return;
+    }
+    String boundCompanyCode = CompanyContextHolder.getCompanyCode();
+    if (!StringUtils.hasText(boundCompanyCode)) {
+      throw new AccessDeniedException(
+          "Bound company context is required for targeted tenant mutation");
+    }
+    String normalizedBoundCompanyCode = boundCompanyCode.trim();
+    if (authScopeService != null && authScopeService.isPlatformScope(normalizedBoundCompanyCode)) {
+      return;
+    }
+    if (!normalizedBoundCompanyCode.equalsIgnoreCase(targetCompanyCode.trim())) {
       throw new AccessDeniedException("Bound company context does not match targeted tenant");
     }
   }

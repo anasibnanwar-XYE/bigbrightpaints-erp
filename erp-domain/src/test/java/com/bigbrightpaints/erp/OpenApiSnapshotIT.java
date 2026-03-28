@@ -395,6 +395,91 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
   }
 
   @Test
+  void orchestrator_contract_exposes_only_canonical_runtime_routes() throws IOException {
+    JsonNode root = fetchCurrentSpecNode();
+
+    JsonNode approveOperation =
+        root.path("paths").path("/api/v1/orchestrator/orders/{orderId}/approve").path("post");
+    assertThat(approveOperation.isMissingNode()).isFalse();
+    assertThat(
+            approveOperation
+                .path("requestBody")
+                .path("content")
+                .path("application/json")
+                .path("schema")
+                .path("$ref")
+                .asText())
+        .isEqualTo("#/components/schemas/ApproveOrderRequest");
+    assertThat(approveOperation.path("responses").has("200")).isTrue();
+    JsonNode approveResponseSchema =
+        approveOperation.path("responses").path("200").path("content").path("*/*").path("schema");
+    assertThat(approveResponseSchema.path("type").asText()).isEqualTo("object");
+    assertThat(approveResponseSchema.path("additionalProperties").path("type").asText())
+        .isEqualTo("object");
+
+    JsonNode fulfillmentOperation =
+        root.path("paths").path("/api/v1/orchestrator/orders/{orderId}/fulfillment").path("post");
+    assertThat(fulfillmentOperation.isMissingNode()).isFalse();
+    assertThat(
+            fulfillmentOperation
+                .path("requestBody")
+                .path("content")
+                .path("application/json")
+                .path("schema")
+                .path("$ref")
+                .asText())
+        .isEqualTo("#/components/schemas/OrderFulfillmentRequest");
+    assertThat(fulfillmentOperation.path("responses").has("200")).isTrue();
+    JsonNode fulfillmentResponseSchema =
+        fulfillmentOperation
+            .path("responses")
+            .path("200")
+            .path("content")
+            .path("*/*")
+            .path("schema");
+    assertThat(fulfillmentResponseSchema.path("type").asText()).isEqualTo("object");
+    assertThat(fulfillmentResponseSchema.path("additionalProperties").path("type").asText())
+        .isEqualTo("object");
+    assertThat(root.path("paths").path("/api/v1/orchestrator/traces/{traceId}").path("get").isMissingNode())
+        .isFalse();
+    assertThat(
+            root.path("paths")
+                .path("/api/v1/orchestrator/traces/{traceId}")
+                .path("get")
+                .path("responses")
+                .has("200"))
+        .isTrue();
+    assertThat(
+            root.path("paths")
+                .path("/api/v1/orchestrator/health/integrations")
+                .path("get")
+                .isMissingNode())
+        .isFalse();
+    assertThat(
+            root.path("paths")
+                .path("/api/v1/orchestrator/health/integrations")
+                .path("get")
+                .path("responses")
+                .has("200"))
+        .isTrue();
+    assertThat(
+            root.path("paths").path("/api/v1/orchestrator/health/events").path("get").isMissingNode())
+        .isFalse();
+    assertThat(
+            root.path("paths")
+                .path("/api/v1/orchestrator/health/events")
+                .path("get")
+                .path("responses")
+                .has("200"))
+        .isTrue();
+
+    assertOperationMissing(root, "/api/v1/orchestrator/dispatch", "post");
+    assertOperationMissing(root, "/api/v1/orchestrator/dispatch/{orderId}", "post");
+    assertOperationMissing(root, "/api/v1/orchestrator/factory/dispatch/{batchId}", "post");
+    assertOperationMissing(root, "/api/v1/orchestrator/payroll/run", "post");
+  }
+
+  @Test
   void portal_finance_contract_paths_expose_only_canonical_namespace() throws IOException {
     JsonNode root = fetchCurrentSpecNode();
 

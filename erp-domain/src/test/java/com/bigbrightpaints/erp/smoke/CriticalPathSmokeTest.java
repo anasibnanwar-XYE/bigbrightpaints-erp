@@ -343,7 +343,7 @@ public class CriticalPathSmokeTest extends AbstractIntegrationTest {
   }
 
   @Test
-  @DisplayName("11. Dispatch Order - Success (Check Endpoint)")
+  @DisplayName("11. Retired Orchestrator Dispatch Endpoint Is Unmapped")
   void dispatchOrderEndpointAvailable() {
     Map<String, Object> dispatchReq =
         Map.of(
@@ -358,9 +358,7 @@ public class CriticalPathSmokeTest extends AbstractIntegrationTest {
             Map.class,
             "TEST-BATCH-1");
 
-    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.GONE);
-    assertThat(response.getBody()).isNotNull();
-    assertThat(response.getBody()).containsEntry("canonicalPath", "/api/v1/dispatch/confirm");
+    assertThat(response.getStatusCode()).isIn(HttpStatus.NOT_FOUND, HttpStatus.METHOD_NOT_ALLOWED);
   }
 
   @Test

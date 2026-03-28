@@ -574,7 +574,7 @@ public class OrchestratorControllerIT extends AbstractIntegrationTest {
   }
 
   @Test
-  void dispatch_alias_without_body_is_gone_with_canonical_path() {
+  void dispatch_alias_without_body_is_unmapped() {
     String token = loginToken();
     HttpHeaders headers = authHeaders(token);
 
@@ -585,13 +585,11 @@ public class OrchestratorControllerIT extends AbstractIntegrationTest {
             new HttpEntity<>(null, headers),
             Map.class);
 
-    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.GONE);
-    assertThat(response.getBody()).containsKey("message");
-    assertThat(response.getBody()).containsEntry("canonicalPath", "/api/v1/dispatch/confirm");
+    assertThat(response.getStatusCode()).isIn(HttpStatus.NOT_FOUND, HttpStatus.METHOD_NOT_ALLOWED);
   }
 
   @Test
-  void dispatch_alias_path_variant_is_gone_with_canonical_path() {
+  void dispatch_alias_path_variant_is_unmapped() {
     String token = loginToken();
     HttpHeaders headers = authHeaders(token);
 
@@ -602,13 +600,11 @@ public class OrchestratorControllerIT extends AbstractIntegrationTest {
             new HttpEntity<>(headers),
             Map.class);
 
-    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.GONE);
-    assertThat(response.getBody()).containsKey("message");
-    assertThat(response.getBody()).containsEntry("canonicalPath", "/api/v1/dispatch/confirm");
+    assertThat(response.getStatusCode()).isIn(HttpStatus.NOT_FOUND, HttpStatus.METHOD_NOT_ALLOWED);
   }
 
   @Test
-  void factory_dispatch_endpoint_is_gone_with_canonical_path_and_no_outbox_side_effects() {
+  void factory_dispatch_endpoint_is_unmapped_and_has_no_outbox_side_effects() {
     String token = loginToken();
     HttpHeaders headers = authHeaders(token);
     long outboxBefore = outboxEventRepository.count();
@@ -629,14 +625,12 @@ public class OrchestratorControllerIT extends AbstractIntegrationTest {
             new HttpEntity<>(body, headers),
             Map.class);
 
-    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.GONE);
-    assertThat(response.getBody()).containsKey("message");
-    assertThat(response.getBody()).containsEntry("canonicalPath", "/api/v1/dispatch/confirm");
+    assertThat(response.getStatusCode()).isIn(HttpStatus.NOT_FOUND, HttpStatus.METHOD_NOT_ALLOWED);
     assertThat(outboxEventRepository.count()).isEqualTo(outboxBefore);
   }
 
   @Test
-  void payroll_run_is_disabled_by_default_in_code_red() {
+  void payroll_run_route_is_unmapped() {
     String token = loginToken();
     HttpHeaders headers = authHeaders(token);
     headers.add("Idempotency-Key", UUID.randomUUID().toString());
@@ -662,10 +656,7 @@ public class OrchestratorControllerIT extends AbstractIntegrationTest {
             new HttpEntity<>(body, headers),
             Map.class);
 
-    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.GONE);
-    assertThat(response.getBody()).containsKey("message");
-    assertThat(response.getBody()).containsKey("canonicalPath");
-    assertThat(response.getBody().get("canonicalPath")).isEqualTo("/api/v1/payroll/runs");
+    assertThat(response.getStatusCode()).isIn(HttpStatus.NOT_FOUND, HttpStatus.METHOD_NOT_ALLOWED);
     assertThat(payrollRunRepository.count()).isEqualTo(beforeRuns);
   }
 

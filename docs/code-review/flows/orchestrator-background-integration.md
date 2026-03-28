@@ -35,15 +35,13 @@ Supporting runtime evidence in this session:
 | --- | --- | --- | --- |
 | Order approval orchestration | `POST /api/v1/orchestrator/orders/{orderId}/approve` | `OrchestratorController.approveOrder(...)` | Accepts optional `Idempotency-Key` and `X-Request-Id`, normalizes payloads, then dispatches a lease-scoped orchestration command. |
 | Fulfillment updates | `POST /api/v1/orchestrator/orders/{orderId}/fulfillment` | `OrchestratorController.fulfillOrder(...)` | Allows `PROCESSING`, `CANCELLED`, and `READY_TO_SHIP`; fail-closes shipped/dispatch status unless the canonical dispatch truth already exists. |
-| Factory batch dispatch (legacy / CODE-RED gated) | `POST /api/v1/orchestrator/factory/dispatch/{batchId}` | `OrchestratorController.dispatch(...)` | Still advertised in OpenAPI, but actual execution is feature-flagged and defaults to disabled. |
-| Deprecated aliases | `POST /api/v1/orchestrator/dispatch`, `POST /api/v1/orchestrator/dispatch/{orderId}`, `POST /api/v1/orchestrator/payroll/run` | `OrchestratorController` | These now return HTTP `410 GONE` with `canonicalPath` hints. |
 | Trace and health reads | `GET /api/v1/orchestrator/traces/{traceId}`, `GET /api/v1/orchestrator/health/{integrations,events}` | `OrchestratorController.trace(...)`, `integrationsHealth()`, `eventHealth()` | Trace reads are company-scoped; event health is not. |
 | Dashboard aggregation | `GET /api/v1/orchestrator/dashboard/{admin,factory,finance}` | `DashboardController` | Thin wrappers over `IntegrationCoordinator.fetch*Dashboard(...)`. |
 | Transaction listener | `SalesOrderCreatedEvent` | `OrderAutoApprovalListener.onOrderCreated(...)` | Fires after sales-order commit and can trigger orchestrator auto-approval. |
 | Scheduler bootstrap | app startup + `@PostConstruct` | `OutboxPublisherJob.schedule()` | Registers the `outbox-publisher` job in `scheduled_jobs` and in the in-memory scheduler. |
 | Related background integrations | `@Scheduled` / `@Async` methods | `EnterpriseAuditTrailService`, `SupportTicketGitHubSyncService`, `AuditDigestScheduler`, `DunningService` | These are not in the orchestrator package, but they shape the actual background failure and recovery posture. |
 
-`openapi.json` still exposes the orchestrator dispatch aliases, factory dispatch path, dashboards, health paths, and `/api/v1/orchestrator/payroll/run`, so the contract surface still includes routes that now respond with `410` or remain CODE-RED gated.
+`openapi.json` should expose only the canonical orchestrator command, trace, health, and dashboard surfaces; legacy dispatch/payroll aliases and the factory-dispatch shim are retired from the published contract.
 
 ## Data path and schema touchpoints
 
@@ -118,21 +116,7 @@ Fulfillment updates are not allowed to invent final business truth.
 
 That is a deliberate fail-closed design: the canonical shipment truth is `/api/v1/dispatch/confirm`, not the orchestrator façade.
 
-The same pattern appears in the legacy dispatch and payroll branches:
-
-- `/api/v1/orchestrator/dispatch` and `/api/v1/orchestrator/dispatch/{orderId}` always return `410 GONE` with `canonicalPath=/api/v1/dispatch/confirm`.
-- `/api/v1/orchestrator/payroll/run` always returns `410 GONE` with `canonicalPath=/api/v1/payroll/runs`.
-- `/api/v1/orchestrator/factory/dispatch/{batchId}` still exists, but `CommandDispatcher.dispatchBatch(...)` wraps it in `executeFeatureGuardedCommand(...)` and fails closed with `OrchestratorFeatureDisabledException` unless `orchestrator.factory-dispatch.enabled=true`.
-- `CommandDispatcher.runPayroll(...)` still exists too, but even with the feature flag enabled the downstream `IntegrationCoordinator.generatePayroll(...)` immediately throws a canonical-path business exception, so the legacy orchestration path cannot complete end-to-end.
-
-If factory dispatch is ever re-enabled, its side effects are direct and synchronous:
-
-- `updateProductionStatus(...)` marks a production plan `COMPLETED` and can resume order auto-approval,
-- the retired release-batch bridge no longer exists, so the coordinator cannot recreate a second
-  factory batch-create seam alongside canonical `POST /api/v1/factory/production/logs` ownership
-  on dispatch callers.
-
-That keeps the fail-closed dispatch branch from reviving a second factory batch-create seam, but it also means any future dispatch re-enable would need its own canonical execution contract.
+Legacy dispatch, payroll, and factory-dispatch shims have been removed from the public controller surface. The canonical shipment truth remains `/api/v1/dispatch/confirm`, and the canonical payroll run surface remains `/api/v1/payroll/runs`.
 
 ### 4. Outbox publication is the durable boundary after synchronous side effects
 
@@ -292,7 +276,7 @@ That means recovery today is evidence-rich but tool-poor: the system records wha
 
 - Correlation identifiers are normalized, bounded, and log-sanitized to avoid control-character injection and runaway header values.
 - Order approval, dispatch, payroll, trace, and dashboard surfaces are role-gated.
-- Legacy dispatch and payroll façades prefer `410 GONE` + `canonicalPath` over silent behavior drift.
+- Legacy orchestrator dispatch/payroll aliases have been removed from the public contract instead of being preserved as redirect-style shims.
 - Order-fulfillment updates refuse to claim shipment completion without canonical dispatch confirmation.
 - Outbox publishing uses durable identifiers (`traceId`, `requestId`, `idempotencyKey`) across command rows, outbox rows, and trace rows.
 
@@ -306,7 +290,7 @@ That means recovery today is evidence-rich but tool-poor: the system records wha
 
 ## Evidence notes
 
-- `OrchestratorControllerIT` proves order-approval idempotency, request-id fallback, malformed identifier rejection, `410 GONE` canonical-path behavior for legacy dispatch/payroll endpoints, and fulfillment rejection when dispatch truth is missing.
+- `OrchestratorControllerIT` proves order-approval idempotency, request-id fallback, retired-route absence for legacy dispatch/payroll endpoints, and fulfillment rejection when dispatch truth is missing.
 - `CommandDispatcherTest` proves trace/idempotency propagation, denied-command audit emission, fail-closed dispatch/payroll gates, invalid posting-amount rejection, and auto-approval event publication.
 - `OrchestratorIdempotencyServiceTest` plus `TS_RuntimeOrchestratorIdempotencyExecutableCoverageTest` prove lease reuse, payload mismatch conflict, failed-command retry, and rollback-aware status persistence.
 - `EventPublisherServiceTest`, `TS_OrchestratorExactlyOnceOutboxTest`, and `TS_RuntimeEventPublisherExecutableCoverageTest` prove claim-before-publish, retry/backoff, ambiguous/finalize/stale-lease buckets, gauge registration, and dead-letter counting.
