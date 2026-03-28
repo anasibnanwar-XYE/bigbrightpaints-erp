@@ -394,6 +394,46 @@ class BulkPackingReadServiceTest {
   }
 
   @Test
+  void listChildBatches_returnsCurrentBatchStateInsteadOfReceiptSnapshot() {
+    RawMaterial parentMaterial = new RawMaterial();
+    parentMaterial.setSku("FG-202-BULK");
+    RawMaterialBatch parentBatch = rawBatch(302L, "RB-302", "19", new BigDecimal("5"), parentMaterial);
+
+    RawMaterialMovement issue = new RawMaterialMovement();
+    issue.setMovementType("ISSUE");
+    issue.setReferenceType(InventoryReference.PACKING_RECORD);
+    issue.setReferenceId("PACK-202-A");
+    issue.setRawMaterialBatch(parentBatch);
+
+    FinishedGoodBatch child = childBatch(501L, "FG-501", "FG-501-B1");
+    child.setQuantityAvailable(new BigDecimal("37.25"));
+    child.setUnitCost(new BigDecimal("8.40"));
+
+    InventoryMovement receipt = new InventoryMovement();
+    receipt.setMovementType("RECEIPT");
+    receipt.setFinishedGoodBatch(child);
+    receipt.setQuantity(new BigDecimal("5"));
+    receipt.setUnitCost(new BigDecimal("6.10"));
+
+    when(rawMaterialBatchRepository.findByRawMaterial_CompanyAndId(company, 302L))
+        .thenReturn(Optional.of(parentBatch));
+    when(rawMaterialMovementRepository.findByRawMaterialBatchOrderByCreatedAtAsc(parentBatch))
+        .thenReturn(List.of(issue));
+    when(inventoryMovementRepository
+            .findByFinishedGood_CompanyAndReferenceTypeAndReferenceIdOrderByCreatedAtAsc(
+                eq(company), eq(InventoryReference.PACKING_RECORD), eq("PACK-202-A")))
+        .thenReturn(List.of(receipt));
+
+    List<BulkPackResponse.ChildBatchDto> result = service.listChildBatches(company, 302L);
+
+    assertThat(result).hasSize(1);
+    assertThat(result.getFirst().id()).isEqualTo(501L);
+    assertThat(result.getFirst().quantity()).isEqualByComparingTo(new BigDecimal("37.25"));
+    assertThat(result.getFirst().unitCost()).isEqualByComparingTo(new BigDecimal("8.40"));
+    assertThat(result.getFirst().totalValue()).isEqualByComparingTo(new BigDecimal("312.90"));
+  }
+
+  @Test
   void toChildBatchDto_handlesNullMovementSafely() {
     BulkPackResponse.ChildBatchDto dto = service.toChildBatchDto((InventoryMovement) null);
 
