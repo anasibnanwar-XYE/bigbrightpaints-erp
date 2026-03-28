@@ -3,12 +3,12 @@ spring:
     activate:
       on-profile: flyway-v2
   datasource:
-    url: ${SPRING_DATASOURCE_V2_URL:jdbc:postgresql://localhost:5432/erp_domain}
-    username: ${SPRING_DATASOURCE_V2_USERNAME:${SPRING_DATASOURCE_USERNAME:erp}}
-    password: ${SPRING_DATASOURCE_V2_PASSWORD:${SPRING_DATASOURCE_PASSWORD:erp}}
+    # Prod contract: v2 migrations must use explicit release datasource env values.
+    url: ${SPRING_DATASOURCE_V2_URL:${SPRING_DATASOURCE_URL}}
+    username: ${SPRING_DATASOURCE_V2_USERNAME:${SPRING_DATASOURCE_USERNAME}}
+    password: ${SPRING_DATASOURCE_V2_PASSWORD:${SPRING_DATASOURCE_PASSWORD}}
     driver-class-name: org.postgresql.Driver
   flyway:
     enabled: true
     locations: classpath:db/migration_v2
     table: flyway_schema_history_v2
-

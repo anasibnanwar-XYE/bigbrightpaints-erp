@@ -42,8 +42,12 @@ Install these before running locally:
    cp .env.example .env
    ```
    Set at least:
+   - `SPRING_DATASOURCE_URL`
+   - `SPRING_DATASOURCE_USERNAME`
+   - `SPRING_DATASOURCE_PASSWORD`
    - `JWT_SECRET` (32+ byte secret)
    - `ERP_SECURITY_ENCRYPTION_KEY` (32+ byte key)
+   - `ERP_SECURITY_AUDIT_PRIVATE_KEY`
 
 3. **Run the repository bootstrap**
    ```bash
@@ -92,9 +96,13 @@ Install these before running locally:
 7. **(Optional) Run the compose-backed app with the same Flyway v2 profile used by the mission**
    ```bash
    SPRING_PROFILES_ACTIVE='prod,flyway-v2' \
+   SPRING_DATASOURCE_URL='jdbc:postgresql://db:5432/erp_domain' \
+   SPRING_DATASOURCE_USERNAME='erp' \
+   SPRING_DATASOURCE_PASSWORD='erp' \
    ERP_CORS_ALLOWED_ORIGINS='https://app.bigbrightpaints.com' \
    ERP_CORS_ALLOW_TAILSCALE_HTTP_ORIGINS='true' \
    DB_PORT=5433 \
+   ERP_SECURITY_AUDIT_PRIVATE_KEY='local-dev-audit-key-not-for-release' \
    SPRING_MAIL_HOST='mailhog' \
    SPRING_MAIL_PORT='1025' \
    SPRING_MAIL_USERNAME='' \
@@ -173,7 +181,12 @@ docker build -t erp-test -f erp-domain/Dockerfile .
    ```bash
    cp .env.prod.template .env
    ```
-2. Fill all required secrets and endpoints (`JWT_SECRET`, DB credentials, SMTP, encryption/audit keys, CORS origins, etc.)
+2. Fill all required runtime values before first boot:
+   - datasource: `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`
+   - JWT: `JWT_SECRET`
+   - crypto/audit: `ERP_SECURITY_ENCRYPTION_KEY`, `ERP_SECURITY_AUDIT_PRIVATE_KEY`
+   - mail: `SPRING_MAIL_HOST`, `SPRING_MAIL_PORT`, `SPRING_MAIL_USERNAME`, `SPRING_MAIL_PASSWORD`
+   - deployment boundary: `ERP_CORS_ALLOWED_ORIGINS`, `ERP_MAIL_BASE_URL`, any license/runtime vars required by your environment
 3. Start stack:
    ```bash
    docker compose up -d --build
@@ -182,6 +195,16 @@ docker build -t erp-test -f erp-domain/Dockerfile .
    ```bash
    curl -sf http://localhost:8081/actuator/health
    ```
+
+### Wave 1 release smoke checklist
+Do not implement this checklist in this packet. Reuse it in the downstream release packet after real release secrets are mounted.
+
+1. Boot `prod,flyway-v2` with explicit datasource, JWT, encryption, audit, and SMTP values from the release secret source.
+2. Verify login and refresh-token flows succeed with the mounted `JWT_SECRET`; boot must fail before runtime if the secret is blank, short, or placeholder-grade.
+3. Execute one tenant control-plane write that emits enterprise audit evidence and verify the signed audit path succeeds with the mounted `ERP_SECURITY_AUDIT_PRIVATE_KEY`.
+4. Exercise one encryption-backed read/write path and verify decrypt-after-restart still works with the mounted `ERP_SECURITY_ENCRYPTION_KEY`.
+5. Trigger forgot-password or equivalent outbound mail flow and verify SMTP delivery succeeds with the mounted `SPRING_MAIL_*` values.
+6. Confirm the mail-backed flow fails closed with a clear runtime error if SMTP credentials are missing or rejected.
 
 ---
 
