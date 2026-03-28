@@ -109,6 +109,7 @@ class CompanyServiceTest {
   @Test
   void update_allowsSuperAdminWithoutTenantMembership() {
     authenticateAs("ROLE_SUPER_ADMIN");
+    bindCompanyContext("BBP");
     Company target = company(2L, "BBP");
     Company allowed = company(1L, "ACME");
     CompanyRequest request = new CompanyRequest("New Name", "NEW", "UTC", BigDecimal.TEN);
@@ -124,6 +125,7 @@ class CompanyServiceTest {
   @Test
   void update_allowsMember() {
     authenticateAs("ROLE_SUPER_ADMIN");
+    bindCompanyContext("ACME");
     Company allowed = company(1L, "ACME");
     CompanyRequest request = new CompanyRequest("New Name", "NEW", "UTC", BigDecimal.TEN);
     when(repository.findById(1L)).thenReturn(Optional.of(allowed));
@@ -138,7 +140,7 @@ class CompanyServiceTest {
   @Test
   void update_deniesWhenBoundContextDoesNotMatchTargetTenant() {
     authenticateAs("ROLE_SUPER_ADMIN");
-    CompanyContextHolder.setCompanyCode("ROOT");
+    bindCompanyContext("ROOT");
     Company target = company(2L, "TENANT-A");
     CompanyRequest request = new CompanyRequest("New Name", "NEW", "UTC", BigDecimal.TEN);
     when(repository.findById(2L)).thenReturn(Optional.of(target));
@@ -151,6 +153,7 @@ class CompanyServiceTest {
   @Test
   void update_preservesExistingGstRateWhenPayloadOmitsDefaultGstRate() {
     authenticateAs("ROLE_SUPER_ADMIN");
+    bindCompanyContext("ACME");
     Company target = company(2L, "ACME");
     target.setDefaultGstRate(new BigDecimal("18.00"));
     CompanyRequest request = new CompanyRequest("New Name", "NEW", "UTC", null);
@@ -164,6 +167,7 @@ class CompanyServiceTest {
   @Test
   void update_appliesEnabledModulesWhenPayloadIncludesGatableModules() {
     authenticateAs("ROLE_SUPER_ADMIN");
+    bindCompanyContext("ACME");
     Company target = company(2L, "ACME");
     CompanyRequest request =
         new CompanyRequest(
@@ -191,6 +195,7 @@ class CompanyServiceTest {
   @Test
   void update_rejectsUnknownEnabledModules() {
     authenticateAs("ROLE_SUPER_ADMIN");
+    bindCompanyContext("ACME");
     Company target = company(2L, "ACME");
     CompanyRequest request =
         new CompanyRequest(
@@ -217,6 +222,7 @@ class CompanyServiceTest {
   @Test
   void update_rejectsCoreEnabledModules() {
     authenticateAs("ROLE_SUPER_ADMIN");
+    bindCompanyContext("ACME");
     Company target = company(2L, "ACME");
     CompanyRequest request =
         new CompanyRequest(
@@ -344,6 +350,7 @@ class CompanyServiceTest {
     assertThat(created.stateCode()).isEqualTo("MH");
 
     Company existing = company(55L, "GST");
+    bindCompanyContext("GST");
     when(repository.findById(55L)).thenReturn(Optional.of(existing));
     CompanyDto updated =
         companyService.update(
@@ -371,7 +378,7 @@ class CompanyServiceTest {
   @Test
   void getTenantMetrics_deniesWhenBoundContextDoesNotMatchTargetTenant() {
     authenticateAs("ROLE_SUPER_ADMIN");
-    CompanyContextHolder.setCompanyCode("ROOT");
+    bindCompanyContext("ROOT");
     Company target = company(1L, "TENANT-A");
     when(repository.findById(1L)).thenReturn(Optional.of(target));
 
@@ -393,7 +400,7 @@ class CompanyServiceTest {
 
   @Test
   void assertBoundControlPlaneCompanyMatchesTarget_allowsBlankTargetCode() {
-    CompanyContextHolder.setCompanyCode("ROOT");
+    bindCompanyContext("ROOT");
 
     assertThatCode(
             () ->
@@ -429,6 +436,7 @@ class CompanyServiceTest {
   @Test
   void update_rejectsDuplicateCompanyCodeOwnedByAnotherCompany() {
     authenticateAs("ROLE_SUPER_ADMIN");
+    bindCompanyContext("ACME");
     Company target = company(2L, "ACME");
     Company existing = company(9L, "NEW");
     when(repository.findById(2L)).thenReturn(Optional.of(target));
@@ -443,6 +451,7 @@ class CompanyServiceTest {
   @Test
   void update_allowsDuplicateLookupWhenCodeBelongsToSameCompany() {
     authenticateAs("ROLE_SUPER_ADMIN");
+    bindCompanyContext("ACME");
     Company target = company(2L, "ACME");
     Company same = company(2L, "NEW");
     when(repository.findById(2L)).thenReturn(Optional.of(target));
@@ -457,6 +466,7 @@ class CompanyServiceTest {
   @Test
   void update_allowsDuplicateLookupWhenExistingCompanyIdIsNull() {
     authenticateAs("ROLE_SUPER_ADMIN");
+    bindCompanyContext("ACME");
     Company target = company(2L, "ACME");
     Company existingWithoutId = new Company();
     existingWithoutId.setCode("NEW");
@@ -472,6 +482,7 @@ class CompanyServiceTest {
   @Test
   void update_synchronizes_user_auth_scope_codes_when_company_code_changes() {
     authenticateAs("ROLE_SUPER_ADMIN");
+    bindCompanyContext("ACME");
     Company target = company(2L, "ACME");
     UserAccount tenantUser = new UserAccount("user@example.com", "ACME", "hash", "User");
     ReflectionTestUtils.setField(tenantUser, "id", 7L);
@@ -490,8 +501,10 @@ class CompanyServiceTest {
   @Test
   void update_rejects_company_code_that_conflicts_with_platform_auth_code() {
     authenticateAs("ROLE_SUPER_ADMIN");
+    bindCompanyContext("ACME");
     Company target = company(2L, "ACME");
     when(repository.findById(2L)).thenReturn(Optional.of(target));
+    when(authScopeService.isPlatformScope("ACME")).thenReturn(false);
     when(authScopeService.isPlatformScope("PLATFORM")).thenReturn(true);
     CompanyRequest request = new CompanyRequest("New Name", "platform", "UTC", BigDecimal.TEN);
 
@@ -506,7 +519,7 @@ class CompanyServiceTest {
   @Test
   void update_allowsBoundMatchingContextWhenAuthScopeServiceIsUnavailable() {
     authenticateAs("ROLE_SUPER_ADMIN");
-    CompanyContextHolder.setCompanyCode("ACME");
+    bindCompanyContext("ACME");
     Company target = company(2L, "ACME");
     CompanyRequest request = new CompanyRequest("New Name", "bbb", "UTC", BigDecimal.TEN);
     CompanyService withoutAuthScopeService =
@@ -544,7 +557,7 @@ class CompanyServiceTest {
   @Test
   void update_allowsPlatformScopeBoundContextForSuperAdminControlPlane() {
     authenticateAs("ROLE_SUPER_ADMIN");
-    CompanyContextHolder.setCompanyCode("PLATFORM");
+    bindCompanyContext("PLATFORM");
     Company target = company(2L, "ACME");
     when(repository.findById(2L)).thenReturn(Optional.of(target));
     when(repository.findByCodeIgnoreCase("ACME")).thenReturn(Optional.of(target));
@@ -560,6 +573,7 @@ class CompanyServiceTest {
   @Test
   void update_rejects_scoped_account_conflict_when_company_code_changes() {
     authenticateAs("ROLE_SUPER_ADMIN");
+    bindCompanyContext("ACME");
     Company target = company(2L, "ACME");
     UserAccount tenantUser = new UserAccount("user@example.com", "ACME", "hash", "User");
     ReflectionTestUtils.setField(tenantUser, "id", 7L);
@@ -719,6 +733,7 @@ class CompanyServiceTest {
   @Test
   void updateEnabledModules_updatesTenantModulesForSuperAdmin() {
     authenticateAs("ROLE_SUPER_ADMIN");
+    bindCompanyContext("ACME");
     Company target = company(3L, "ACME");
     when(repository.findById(3L)).thenReturn(Optional.of(target));
 
@@ -888,6 +903,7 @@ class CompanyServiceTest {
   @Test
   void updateLifecycleState_transitionsState_andWritesAuditEvidence() {
     authenticateAs("ROLE_SUPER_ADMIN");
+    bindCompanyContext("ACME");
     Company company = company(1L, "ACME");
     company.setLifecycleState(CompanyLifecycleState.ACTIVE);
     when(repository.lockById(1L)).thenReturn(Optional.of(company));
@@ -1083,6 +1099,7 @@ class CompanyServiceTest {
   @Test
   void updateTenantRuntimePolicy_rejectsUnsupportedHoldState() {
     authenticateAs("ROLE_SUPER_ADMIN");
+    bindCompanyContext("ACME");
     Company company = company(1L, "ACME");
     when(repository.findById(1L)).thenReturn(Optional.of(company));
 
@@ -1099,6 +1116,7 @@ class CompanyServiceTest {
   @Test
   void updateTenantRuntimePolicy_appliesPolicyThroughRuntimeService() {
     authenticateAs("ROLE_SUPER_ADMIN");
+    bindCompanyContext("ACME");
     Company company = company(1L, "ACME");
     when(repository.findById(1L)).thenReturn(Optional.of(company));
     TenantRuntimeEnforcementService.TenantRuntimeSnapshot snapshot =
@@ -1151,6 +1169,7 @@ class CompanyServiceTest {
   @Test
   void resetTenantAdminPassword_emailsScopedResetLink() {
     authenticateAs("ROLE_SUPER_ADMIN");
+    bindCompanyContext("SKE");
     Company company = company(5L, "SKE");
     when(repository.findById(5L)).thenReturn(Optional.of(company));
     when(passwordResetService.isResetEmailDeliveryEnabled()).thenReturn(true);
@@ -1169,6 +1188,7 @@ class CompanyServiceTest {
   @Test
   void resetTenantAdminPassword_rejectsWhenPasswordResetEmailDeliveryIsDisabled() {
     authenticateAs("ROLE_SUPER_ADMIN");
+    bindCompanyContext("SKE");
     Company company = company(5L, "SKE");
     when(repository.findById(5L)).thenReturn(Optional.of(company));
     when(passwordResetService.isResetEmailDeliveryEnabled()).thenReturn(false);
@@ -1184,7 +1204,7 @@ class CompanyServiceTest {
   @Test
   void resetTenantAdminPassword_deniesWhenBoundContextDoesNotMatchTargetTenant() {
     authenticateAs("ROLE_SUPER_ADMIN");
-    CompanyContextHolder.setCompanyCode("ROOT");
+    bindCompanyContext("ROOT");
     Company company = company(5L, "SKE");
     when(repository.findById(5L)).thenReturn(Optional.of(company));
 
@@ -1199,6 +1219,7 @@ class CompanyServiceTest {
   @Test
   void resetTenantAdminPassword_surfacesDisabledAdminAsError() {
     authenticateAs("ROLE_SUPER_ADMIN");
+    bindCompanyContext("SKE");
     Company company = company(5L, "SKE");
     when(repository.findById(5L)).thenReturn(Optional.of(company));
     when(passwordResetService.isResetEmailDeliveryEnabled()).thenReturn(true);
@@ -1216,6 +1237,7 @@ class CompanyServiceTest {
   @Test
   void resetTenantAdminPassword_requiresPasswordResetDependencies() {
     authenticateAs("ROLE_SUPER_ADMIN");
+    bindCompanyContext("SKE");
     CompanyService withoutPasswordReset =
         new CompanyService(
             repository,
@@ -1277,6 +1299,7 @@ class CompanyServiceTest {
   @Test
   void issueTenantSupportWarning_requiresSuperAdminAndReturnsWarningPayload() {
     authenticateAs("ROLE_SUPER_ADMIN");
+    bindCompanyContext("SKE");
     Company company = company(5L, "SKE");
     when(repository.findById(5L)).thenReturn(Optional.of(company));
 
@@ -1291,6 +1314,103 @@ class CompanyServiceTest {
     assertThat(warning.requestedLifecycleState()).isEqualTo("SUSPENDED");
     assertThat(warning.gracePeriodHours()).isEqualTo(48);
     assertThat(warning.warningId()).isNotBlank();
+  }
+
+  @Test
+  void update_deniesWhenBoundContextIsMissingForTargetTenant() {
+    authenticateAs("ROLE_SUPER_ADMIN");
+    Company target = company(2L, "TENANT-A");
+    CompanyRequest request = new CompanyRequest("New Name", "NEW", "UTC", BigDecimal.TEN);
+    when(repository.findById(2L)).thenReturn(Optional.of(target));
+
+    assertThatThrownBy(() -> companyService.update(2L, request, Set.of(target)))
+        .isInstanceOf(AccessDeniedException.class)
+        .hasMessageContaining("Bound company context is required for targeted tenant mutation");
+  }
+
+  @Test
+  void updateEnabledModules_deniesWhenBoundContextIsMissingForTargetTenant() {
+    authenticateAs("ROLE_SUPER_ADMIN");
+    Company target = company(3L, "ACME");
+    when(repository.findById(3L)).thenReturn(Optional.of(target));
+
+    assertThatThrownBy(() -> companyService.updateEnabledModules(3L, Set.of("PORTAL")))
+        .isInstanceOf(AccessDeniedException.class)
+        .hasMessageContaining("Bound company context is required for targeted tenant mutation");
+  }
+
+  @Test
+  void updateLifecycleState_deniesWhenBoundContextIsMissingForTargetTenant() {
+    authenticateAs("ROLE_SUPER_ADMIN");
+    Company company = company(1L, "ACME");
+    when(repository.lockById(1L)).thenReturn(Optional.of(company));
+
+    assertThatThrownBy(
+            () ->
+                companyService.updateLifecycleState(
+                    1L, new CompanyLifecycleStateRequest("SUSPENDED", "compliance-review")))
+        .isInstanceOf(AccessDeniedException.class)
+        .hasMessageContaining("Bound company context is required for targeted tenant mutation");
+  }
+
+  @Test
+  void updateTenantRuntimePolicy_deniesWhenBoundContextIsMissingForTargetTenant() {
+    authenticateAs("ROLE_SUPER_ADMIN");
+    Company company = company(1L, "ACME");
+    when(repository.findById(1L)).thenReturn(Optional.of(company));
+
+    assertThatThrownBy(
+            () ->
+                companyService.updateTenantRuntimePolicy(
+                    1L,
+                    new CompanyService.TenantRuntimePolicyMutationRequest(
+                        "HOLD", "policy", null, null, null)))
+        .isInstanceOf(AccessDeniedException.class)
+        .hasMessageContaining("Bound company context is required for targeted tenant mutation");
+  }
+
+  @Test
+  void resetTenantAdminPassword_deniesWhenBoundContextIsMissingForTargetTenant() {
+    authenticateAs("ROLE_SUPER_ADMIN");
+    Company company = company(5L, "SKE");
+    when(repository.findById(5L)).thenReturn(Optional.of(company));
+
+    assertThatThrownBy(() -> companyService.resetTenantAdminPassword(5L, "tenant-admin@ske.com"))
+        .isInstanceOf(AccessDeniedException.class)
+        .hasMessageContaining("Bound company context is required for targeted tenant mutation");
+
+    verify(tenantAdminProvisioningService, never())
+        .resetTenantAdminPassword(company, "tenant-admin@ske.com");
+  }
+
+  @Test
+  void issueTenantSupportWarning_deniesWhenBoundContextIsMissingForTargetTenant() {
+    authenticateAs("ROLE_SUPER_ADMIN");
+    Company company = company(5L, "SKE");
+    when(repository.findById(5L)).thenReturn(Optional.of(company));
+
+    assertThatThrownBy(
+            () ->
+                companyService.issueTenantSupportWarning(
+                    5L,
+                    new CompanyService.TenantSupportWarningRequest(
+                        "quota", "Approaching storage limit", "SUSPENDED", 48)))
+        .isInstanceOf(AccessDeniedException.class)
+        .hasMessageContaining("Bound company context is required for targeted tenant mutation");
+  }
+
+  @Test
+  void mutationContextHelper_allowsPlatformScopeBypass() {
+    bindCompanyContext("PLATFORM");
+    when(authScopeService.isPlatformScope("PLATFORM")).thenReturn(true);
+
+    assertThatCode(
+            () ->
+                ReflectionTestUtils.invokeMethod(
+                    companyService,
+                    "assertBoundControlPlaneMutationContextMatchesTarget",
+                    "TENANT-A"))
+        .doesNotThrowAnyException();
   }
 
   private void configureHardLimitEnvelope(Company company) {
@@ -1318,5 +1438,9 @@ class CompanyServiceTest {
         .setAuthentication(
             new UsernamePasswordAuthenticationToken(
                 "tester@bbp.com", "n/a", java.util.List.of(() -> authority)));
+  }
+
+  private void bindCompanyContext(String companyCode) {
+    CompanyContextHolder.setCompanyCode(companyCode);
   }
 }
