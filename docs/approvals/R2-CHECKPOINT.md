@@ -1,73 +1,91 @@
 # R2 Checkpoint
 
 ## Scope
-- Feature: `ERP-45 Wave 1 fail-closed platform hardening`
-- Branch: `mdanas7869292/erp-45-wave-1-fail-closed-blockers-and-platformapi-surface-cleanup`
-- PR: `https://github.com/anasibnanwar-XYE/bigbrightpaints-erp/pull/166`
+- Feature: `ERP-46 Wave 2 integrated hard-cut`
+- Branch: `packet/erp-46-wave-2-integration`
+- PR: `not opened; local integration worktree proof only`
 - Review candidate:
-  - fail closed all targeted tenant control-plane mutations when the bound company context is blank or mismatched
-  - keep prod crypto and secret contracts explicit with no runtime fallback path
-  - keep admin/RBAC read surfaces canonical and fail closed for unknown platform roles
-  - preserve the runtime-enforcement naming split between request admission and policy ownership
-  - remove retired API surface and refresh OpenAPI and endpoint inventory to the current canonical routes only
-- Why this is R2: this PR changes high-risk `company`, `auth`, `rbac`, and `orchestrator` runtime paths plus the prod secret contract. A wrong merge could widen authority, bypass tenant isolation, or ship a prod profile that starts without required signing material.
+  - keep `POST /api/v1/superadmin/tenants/onboard` as the sole tenant onboarding path
+  - keep `/api/v1/catalog/brands`, `/api/v1/catalog/import`, and `/api/v1/catalog/items` as the canonical catalog write surfaces
+  - keep `POST /api/v1/accounting/journal-entries` as the sole manual journal write surface and remove legacy dual-header/manual-journal write seams
+  - make goods receipt replay fail closed, require eager supplier payable-account loading, and remove purchase-reference prefix fallback in accounting replay
+  - delete orphan verification helpers `Task00_async_verify.sh`, `scripts/task00_async_verify.sh`, and `scripts/task00_watch_verify.sh`
+  - refresh integrated `openapi.json` and `docs/endpoint-inventory.md` so published contract truth matches merged runtime behavior
+- Why this is R2: this branch hard-cuts live write surfaces across tenant onboarding, catalog, accounting, and purchasing/reconciliation. A wrong merge could leave duplicate or dead public routes, stale replay fallback behavior, or broken cross-module reconciliation/accounting flows behind a green packet-local surface.
 
 ## Risk Trigger
 - Triggered by:
-  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/company/**`
-  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/**`
-  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/rbac/**`
-  - `erp-domain/src/main/java/com/bigbrightpaints/erp/orchestrator/**`
-  - `erp-domain/src/main/resources/application-prod.yml`
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/company/controller/CompanyController.java`
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/company/service/CompanyService.java`
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/production/controller/CatalogController.java`
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/production/service/ProductionCatalogService.java`
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/controller/AccountingController.java`
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/internal/AccountingFacadeCore.java`
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/purchasing/service/GoodsReceiptService.java`
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/purchasing/domain/SupplierRepository.java`
+  - `openapi.json`
+  - `docs/endpoint-inventory.md`
 - Contract surfaces affected:
-  - superadmin tenant mutation flows under `/api/v1/superadmin/tenants/**`
-  - admin role lookup under `/api/v1/admin/roles/{roleKey}`
-  - prod actuator, health, and swagger exposure rules
-  - retired orchestrator and catalog endpoints removed from the canonical API surface
+  - tenant onboarding and first-admin company binding under `/api/v1/superadmin/tenants/onboard`, `/api/v1/auth/login`, and `/api/v1/auth/me`
+  - canonical catalog writes under `/api/v1/catalog/brands`, `/api/v1/catalog/import`, and `/api/v1/catalog/items`
+  - canonical accounting manual journal writes under `/api/v1/accounting/journal-entries`
+  - purchasing goods receipt replay plus accounting/reconciliation supplier payable-account loading
+  - published contract truth in `openapi.json` and `docs/endpoint-inventory.md`
 - Failure mode if wrong:
-  - blank or mismatched tenant context could still mutate another tenant
-  - prod startup or runtime audit signing could drift into implicit fallback behavior
-  - admin callers could receive fabricated RBAC data instead of a hard failure
-  - stale endpoint aliases could remain callable after the hard cut
+  - deleted or dead public endpoints could remain published beside the canonical write surface
+  - catalog/accounting callers could still discover legacy write routes or headers
+  - goods receipt replay could silently repair stale state instead of failing closed
+  - purchase journal, reconciliation, or period-close flows could regress on supplier payable-account loading
+  - OpenAPI and endpoint inventory could drift from the live merged runtime surface
 
 ## Approval Authority
 - Mode: human
-- Approver: `ERP-45 owner`
-- Canary owner: `ERP-45 owner`
-- Approval status: `pending green CI + reviewer confirmation`
-- Basis: this wave changes tenant isolation and prod security contracts, so merge still requires explicit human signoff after automated proof is green.
+- Approver: `ERP-46 owner`
+- Canary owner: `ERP-46 owner`
+- Approval status: `pending human review; integrated Wave 2 proof green`
+- Basis: this branch changes multiple finance and control-plane write surfaces together, so merge still requires explicit human signoff after integrated proof is green.
 
 ## Escalation Decision
 - Human escalation required: yes
-- Reason: the packet set changes authorization boundaries, tenant control-plane mutation guards, and prod secret requirements.
+- Reason: the branch changes business-critical public write contracts plus reconciliation/accounting replay semantics.
 
 ## Rollback Owner
-- Owner: `ERP-45 owner`
+- Owner: `ERP-46 owner`
 - Rollback method:
-  - revert PR `#166` and redeploy the last green `main` build as one unit
-  - if rollback is triggered after prod verification starts, restore the previous application build and previous env secret set together so prod secret and audit-signing contracts stay aligned
+  - before merge: drop the integrated branch/worktree
+  - after merge: revert the integrated Wave 2 diff as one unit so contract, replay, and helper cleanup changes roll back together
+  - never restore docs or OpenAPI without restoring the matching runtime code in the same revert
 - Rollback trigger:
-  - tenant mutation succeeds with blank or mismatched company context
-  - prod profile fails hard on required secret/crypto readiness after merge
-  - reviewer or CI evidence shows retired endpoints or fabricated RBAC responses still present
+  - `DELETE /api/v1/companies/{id}` or `POST /api/v1/accounting/journals/manual` reappears in runtime or published contract
+  - a goods receipt replay succeeds when the persisted idempotency hash is missing or mismatched
+  - purchase journal, reconciliation, or period-close flows fail because supplier payable-account loading falls back to lazy traversal
+  - catalog callers can still access a removed service-only write path
 
 ## Expiry
 - Valid until: `2026-04-04`
-- Re-evaluate if: Wave 1 scope expands, any new high-risk auth/company/orchestrator path is added, or reviewer feedback asks for further authorization or API-surface changes.
+- Re-evaluate if: Wave 2 scope expands, another packet touches these same write surfaces, or reviewer feedback requires broader replay/accounting changes.
 
 ## Verification Evidence
 - Commands run:
-  - `MIGRATION_SET=v2 mvn -B -ntp -DskipTests compile`
-  - `MIGRATION_SET=v2 mvn -B -ntp -Dtest=CompanyServiceTest,RoleControllerSecurityContractTest,TenantRuntimeRequestAdmissionServiceTest test`
-  - `MIGRATION_SET=v2 mvn -B -ntp -Dtest=CR_ActuatorProdHardeningIT,CR_HealthEndpointProdHardeningIT,CR_SwaggerProdHardeningIT,CR_PayrollLegacyEndpointGatedIT,CR_DispatchOrderLookupReadOnlyIT test`
-  - `bash ci/check-enterprise-policy.sh`
-  - `bash ci/check-codex-review-guidelines.sh`
-  - `bash scripts/gate_fast.sh`
+  - `cd /Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/erp-46-wave-2-integration/erp-domain && MIGRATION_SET=v2 mvn -B -ntp -Djacoco.skip=true -Derp.openapi.snapshot.verify=true -Derp.openapi.snapshot.refresh=true -Dtest=OpenApiSnapshotIT test`
+  - `cd /Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/erp-46-wave-2-integration/erp-domain && MIGRATION_SET=v2 mvn -B -ntp -DskipTests compile`
+  - `cd /Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/erp-46-wave-2-integration/erp-domain && MIGRATION_SET=v2 mvn -B -ntp -Djacoco.skip=true -Derp.openapi.snapshot.verify=true -Dtest=OpenApiSnapshotIT,CompanyControllerIT,TenantOnboardingControllerTest test`
+  - `cd /Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/erp-46-wave-2-integration/erp-domain && mvn -B -ntp -Dtest=CatalogControllerCanonicalProductIT,ProductionCatalogServiceRetryPolicyTest,CR_CatalogImportIdempotencyIT,CR_CatalogImportDeterminismIT,CR_CatalogImportConcurrencyIT,ProductionCatalogRawMaterialInvariantIT,ProductionCatalogFinishedGoodInvariantIT test`
+  - `cd /Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/erp-46-wave-2-integration/erp-domain && mvn -B -ntp -Dtest=AccountingControllerJournalEndpointsTest,AccountingControllerIdempotencyHeaderParityTest,CR_ManualJournalSafetyTest,TS_AccountingControllerIdempotencyHeaderParityRuntimeCoverageTest,TS_RuntimeAccountingReplayConflictExecutableCoverageTest,AccountingFacadeTest,PurchasingServiceGoodsReceiptTest,ReconciliationServiceTest,TS_RuntimeAccountingFacadeExecutableCoverageTest,TS_RuntimeAccountingFacadePeriodCloseBoundaryTest,CR_PurchasingToApAccountingTest,CR_PurchasingGrnPeriodCloseTest,ReconciliationControlsIT,InventoryGlReconciliationIT,PeriodCloseLockIT test`
+  - `cd /Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/erp-46-wave-2-integration && bash scripts/gate_fast.sh`
+  - `cd /Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/erp-46-wave-2-integration && bash scripts/gate_core.sh`
 - Result summary:
-  - Wave 1 remains fail closed on tenant mutation context, RBAC unknown-role lookup, prod secret readiness, and retired endpoint removal
-  - changed-file coverage follow-up is included in the same PR so the high-risk diff is fully mapped to packet-local tests
-  - final command outcomes are refreshed on the PR branch before merge
+  - `MIGRATION_SET=v2 mvn -B -ntp -DskipTests compile` passed with `BUILD SUCCESS`
+  - integrated OpenAPI refresh passed with `BUILD SUCCESS`; canonical snapshot is `openapi.json` sha256 `54d64bd865903ef5a42e3828c8ff244b8326bd010c9bffe14bd29b6930842970` with `277` paths and `329` operations
+  - retired routes `DELETE /api/v1/companies/{id}` and `POST /api/v1/accounting/journals/manual` are absent from the canonical OpenAPI surface
+  - targeted onboarding/OpenAPI proof passed with `Tests run: 18, Failures: 0, Errors: 0, Skipped: 0`
+  - targeted catalog proof passed with `Tests run: 46, Failures: 0, Errors: 0, Skipped: 0`
+  - targeted accounting/purchasing/reconciliation proof passed with `Tests run: 131, Failures: 0, Errors: 0, Skipped: 0`
+  - `bash scripts/gate_fast.sh` passed with `[gate-fast] OK`
+  - `bash scripts/gate_core.sh` passed with `[gate-core] OK`
+  - gate scripts emitted only non-blocking canonical-base warnings before resolving against `origin/harness-engineering-orchestrator`
 - Artifacts/links:
-  - Repo checkout: `/Users/anas/Documents/Factory/bigbrightpaints-erp`
-  - PR: `https://github.com/anasibnanwar-XYE/bigbrightpaints-erp/pull/166`
-  - Linear issue: `ERP-45`
+  - repo checkout: `/Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/erp-46-wave-2-integration`
+  - module path: `/Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/erp-46-wave-2-integration/erp-domain`
+  - `gate_fast` artifacts: `/Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/erp-46-wave-2-integration/artifacts/gate-fast`
+  - `gate_core` artifacts: `/Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/erp-46-wave-2-integration/artifacts/gate-core`

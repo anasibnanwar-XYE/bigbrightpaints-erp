@@ -153,7 +153,7 @@ public class CompanyService {
   }
 
   @Transactional
-  public CompanyDto create(CompanyRequest request) {
+  CompanyDto create(CompanyRequest request) {
     String normalizedCompanyCode = normalizeCompanyCode(request.code());
     Authentication authentication = requireSuperAdminForTenantBootstrap(normalizedCompanyCode);
     ensureCompanyCodeAvailableForCreate(normalizedCompanyCode);

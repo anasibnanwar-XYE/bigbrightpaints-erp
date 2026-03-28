@@ -3,6 +3,7 @@ package com.bigbrightpaints.erp.modules.production.controller;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -10,13 +11,17 @@ import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
 
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
@@ -252,6 +257,24 @@ class CatalogControllerCanonicalProductIT extends AbstractIntegrationTest {
         .isEqualTo(HttpStatus.FORBIDDEN);
   }
 
+  @Test
+  void importCatalog_rejectsLegacyXIdempotencyKeyHeader() {
+    HttpHeaders headers = new HttpHeaders();
+    headers.putAll(adminHeaders);
+    headers.set("X-Idempotency-Key", "legacy-catalog-import-key");
+
+    ResponseEntity<Map> response =
+        importCatalog(
+            "brand,product_name,sku,category,unit_of_measure,hsn_code,gst_rate,base_price,color,size\n"
+                + "Legacy Brand,Legacy Primer,LEGACY-PRIMER-001,FINISHED_GOOD,LITER,320910,18,1200,WHITE,1L\n",
+            "catalog-import-legacy-header.csv",
+            headers);
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(String.valueOf(errorData(response).get("reason")))
+        .contains("X-Idempotency-Key is not supported for catalog import");
+  }
+
   private Map<String, Object> finishedGoodPayload(Long brandId, String name) {
     Map<String, Object> payload = new LinkedHashMap<>();
     payload.put("brandId", brandId);
@@ -323,6 +346,33 @@ class CatalogControllerCanonicalProductIT extends AbstractIntegrationTest {
         HttpMethod.GET,
         new HttpEntity<>(requestHeaders),
         Map.class);
+  }
+
+  private ResponseEntity<Map> importCatalog(
+      String csvPayload, String fileName, HttpHeaders requestHeaders) {
+    MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
+    HttpHeaders fileHeaders = new HttpHeaders();
+    fileHeaders.setContentType(MediaType.parseMediaType("text/csv"));
+    body.add("file", new HttpEntity<>(csvResource(fileName, csvPayload), fileHeaders));
+
+    HttpHeaders multipartHeaders = new HttpHeaders();
+    multipartHeaders.putAll(requestHeaders);
+    multipartHeaders.setContentType(MediaType.MULTIPART_FORM_DATA);
+
+    return rest.exchange(
+        "/api/v1/catalog/import",
+        HttpMethod.POST,
+        new HttpEntity<>(body, multipartHeaders),
+        Map.class);
+  }
+
+  private ByteArrayResource csvResource(String fileName, String csvPayload) {
+    return new ByteArrayResource(csvPayload.getBytes(StandardCharsets.UTF_8)) {
+      @Override
+      public String getFilename() {
+        return fileName;
+      }
+    };
   }
 
   @SuppressWarnings("unchecked")

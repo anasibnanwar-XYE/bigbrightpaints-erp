@@ -15,45 +15,45 @@ Portal scope guardrail:
 ## Canonical API contract gate
 
 - Canonical machine contract source: repo-root `openapi.json`.
-- OpenAPI snapshot: `openapi.json` (sha256 `622d0826c4c902c8574438de5ada2f817a4588bcd22ca7f2b8dab373a85cac3e`)
-- OpenAPI total paths: `279`
-- OpenAPI total operations: `331`
+- OpenAPI snapshot: `openapi.json` (sha256 `54d64bd865903ef5a42e3828c8ff244b8326bd010c9bffe14bd29b6930842970`)
+- OpenAPI total paths: `277`
+- OpenAPI total operations: `329`
 - Guard remediation flow: if parity drifts, regenerate this inventory from canonical `openapi.json`, then rerun `bash scripts/guard_openapi_contract_drift.sh` and `bash scripts/guard_accounting_portal_scope_contract.sh`.
 
 ## Summary by module
 
 | Module | Path count | Examples |
 |---|---:|---|
-| `accounting` | 65 | /api/v1/accounting/accounts, /api/v1/accounting/accounts/tree, /api/v1/accounting/accounts/tree/{type} |
+| `accounting` | 63 | /api/v1/accounting/accounts, /api/v1/accounting/accounts/tree, /api/v1/accounting/accounts/tree/{type} |
 | `admin` | 14 | /api/v1/admin/approvals, /api/v1/admin/exports/{requestId}/approve, /api/v1/admin/exports/{requestId}/reject |
 | `audit` | 2 | /api/v1/audit/business-events, /api/v1/audit/ml-events |
 | `auth` | 11 | /api/v1/auth/login, /api/v1/auth/logout, /api/v1/auth/me |
-| `catalog` | 5 | /api/v1/catalog/brands, /api/v1/catalog/items, /api/v1/catalog/import |
+| `catalog` | 5 | /api/v1/catalog/brands, /api/v1/catalog/brands/{brandId}, /api/v1/catalog/import |
 | `changelog` | 2 | /api/v1/changelog, /api/v1/changelog/latest-highlighted |
-| `companies` | 2 | /api/v1/companies, /api/v1/companies/{id} |
-| `credit` | 6 | /api/v1/credit/limit-requests, /api/v1/credit/limit-requests/{id}/approve, /api/v1/credit/override-requests |
+| `companies` | 1 | /api/v1/companies |
+| `credit` | 6 | /api/v1/credit/limit-requests, /api/v1/credit/limit-requests/{id}/approve, /api/v1/credit/limit-requests/{id}/reject |
 | `dealer-portal` | 7 | /api/v1/dealer-portal/aging, /api/v1/dealer-portal/credit-limit-requests, /api/v1/dealer-portal/dashboard |
 | `dealers` | 4 | /api/v1/dealers, /api/v1/dealers/search, /api/v1/dealers/{dealerId} |
 | `demo` | 1 | /api/v1/demo/ping |
-| `dispatch` | 8 | /api/v1/dispatch/confirm, /api/v1/dispatch/order/{orderId}, /api/v1/dispatch/slip/{slipId}/status |
+| `dispatch` | 8 | /api/v1/dispatch/backorder/{slipId}/cancel, /api/v1/dispatch/confirm, /api/v1/dispatch/order/{orderId} |
 | `exports` | 2 | /api/v1/exports/request, /api/v1/exports/{requestId}/download |
-| `factory` | 19 | /api/v1/factory/bulk-batches/{finishedGoodId}, /api/v1/factory/bulk-batches/{parentBatchId}/children, /api/v1/factory/cost-allocation |
+| `factory` | 17 | /api/v1/factory/bulk-batches/{finishedGoodId}, /api/v1/factory/bulk-batches/{parentBatchId}/children, /api/v1/factory/cost-allocation |
 | `finished-goods` | 6 | /api/v1/finished-goods, /api/v1/finished-goods/low-stock, /api/v1/finished-goods/stock-summary |
 | `hr` | 17 | /api/v1/hr/attendance/bulk-import, /api/v1/hr/attendance/bulk-mark, /api/v1/hr/attendance/date/{date} |
 | `integration` | 1 | /api/integration/health |
 | `inventory` | 5 | /api/v1/inventory/adjustments, /api/v1/inventory/batches/expiring-soon, /api/v1/inventory/batches/{id}/movements |
 | `invoices` | 4 | /api/v1/invoices, /api/v1/invoices/{id}, /api/v1/invoices/{id}/email |
 | `migration` | 1 | /api/v1/migration/tally-import |
-| `orchestrator` | 9 | /api/v1/orchestrator/dashboard/admin, /api/v1/orchestrator/dashboard/factory, /api/v1/orchestrator/dashboard/finance |
+| `orchestrator` | 8 | /api/v1/orchestrator/dashboard/admin, /api/v1/orchestrator/dashboard/factory, /api/v1/orchestrator/dashboard/finance |
 | `payroll` | 13 | /api/v1/payroll/runs, /api/v1/payroll/runs/monthly, /api/v1/payroll/runs/weekly |
-| `portal` | 6 | /api/v1/portal/dashboard, /api/v1/portal/finance/aging, /api/v1/portal/finance/ledger |
+| `portal` | 6 | /api/v1/portal/dashboard, /api/v1/portal/finance/aging, /api/v1/portal/finance/invoices |
 | `purchasing` | 12 | /api/v1/purchasing/goods-receipts, /api/v1/purchasing/goods-receipts/{id}, /api/v1/purchasing/purchase-orders |
 | `raw-materials` | 3 | /api/v1/raw-materials/stock, /api/v1/raw-materials/stock/inventory, /api/v1/raw-materials/stock/low-stock |
 | `reports` | 17 | /api/v1/reports/account-statement, /api/v1/reports/aged-debtors, /api/v1/reports/aging/receivables |
-| `sales` | 16 | /api/v1/sales/dashboard, /api/v1/sales/dealers, /api/v1/sales/dealers/search |
+| `sales` | 15 | /api/v1/sales/dashboard, /api/v1/sales/dealers, /api/v1/sales/dealers/search |
 | `superadmin` | 17 | /api/v1/superadmin/changelog, /api/v1/superadmin/changelog/{id}, /api/v1/superadmin/dashboard |
 | `suppliers` | 5 | /api/v1/suppliers, /api/v1/suppliers/{id}, /api/v1/suppliers/{id}/activate |
-| `support` | 4 | /api/v1/portal/support/tickets, /api/v1/dealer-portal/support/tickets, /api/v1/portal/support/tickets/{ticketId} |
+| `support` | 4 | /api/v1/dealer-portal/support/tickets, /api/v1/dealer-portal/support/tickets/{ticketId}, /api/v1/portal/support/tickets |
 
 ## `accounting`
 
@@ -87,7 +87,6 @@ Portal scope guardrail:
 - `POST` `/api/v1/accounting/journal-entries/{entryId}/cascade-reverse`
 - `POST` `/api/v1/accounting/journal-entries/{entryId}/reverse`
 - `GET` `/api/v1/accounting/journals`
-- `POST` `/api/v1/accounting/journals/manual`
 - `POST` `/api/v1/accounting/journals/{entryId}/reverse`
 - `GET` `/api/v1/accounting/month-end/checklist`
 - `POST` `/api/v1/accounting/month-end/checklist/{periodId}`
@@ -174,7 +173,6 @@ Portal scope guardrail:
 ## `companies`
 
 - `GET` `/api/v1/companies`
-- `DELETE` `/api/v1/companies/{id}`
 
 ## `credit`
 
@@ -241,9 +239,6 @@ Portal scope guardrail:
 - `GET, POST` `/api/v1/factory/tasks`
 - `PUT` `/api/v1/factory/tasks/{id}`
 - `GET` `/api/v1/factory/unpacked-batches`
-
-Factory operator note: treat `/api/v1/factory/packaging-mappings` as the Packaging Setup / Rules contract. Pack requests fail closed when a size is missing active, usable packaging setup, when `Idempotency-Key` is missing, or when legacy replay headers are sent.
-Bulk operator note: `/api/v1/factory/bulk-batches/{finishedGoodId}` and `/api/v1/factory/bulk-batches/{parentBatchId}/children` are read-only helper surfaces for parent/child traceability. The only public packing mutation remains `POST /api/v1/factory/packing-records`. `-BULK` stays internal raw-material truth and is not a finished-good contract.
 
 ## `finished-goods`
 
@@ -395,7 +390,7 @@ Bulk operator note: `/api/v1/factory/bulk-batches/{finishedGoodId}` and `/api/v1
 ## `superadmin`
 
 - `POST` `/api/v1/superadmin/changelog`
-- `DELETE, PUT` `/api/v1/superadmin/changelog/{id}`
+- `PUT, DELETE` `/api/v1/superadmin/changelog/{id}`
 - `GET` `/api/v1/superadmin/dashboard`
 - `GET` `/api/v1/superadmin/tenants`
 - `GET` `/api/v1/superadmin/tenants/coa-templates`
@@ -422,7 +417,7 @@ Bulk operator note: `/api/v1/factory/bulk-batches/{finishedGoodId}` and `/api/v1
 
 ## `support`
 
-- `GET, POST` `/api/v1/portal/support/tickets`
-- `GET` `/api/v1/portal/support/tickets/{ticketId}`
 - `GET, POST` `/api/v1/dealer-portal/support/tickets`
 - `GET` `/api/v1/dealer-portal/support/tickets/{ticketId}`
+- `GET, POST` `/api/v1/portal/support/tickets`
+- `GET` `/api/v1/portal/support/tickets/{ticketId}`

@@ -237,6 +237,7 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
     assertOperationMissing(root, "/api/v1/admin/changelog/{id}", "put");
     assertOperationMissing(root, "/api/v1/admin/changelog/{id}", "delete");
     assertOperationMissing(root, "/api/v1/companies", "post");
+    assertOperationMissing(root, "/api/v1/companies/{id}", "delete");
     assertOperationMissing(root, "/api/v1/companies/{id}/lifecycle-state", "put");
     assertOperationMissing(root, "/api/v1/companies/{id}/tenant-metrics", "get");
     assertOperationMissing(root, "/api/v1/companies/{id}/tenant-runtime/policy", "put");
@@ -689,6 +690,33 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
   }
 
   @Test
+  void accounting_manual_journal_and_receipt_settlement_contracts_are_hard_cut()
+      throws IOException {
+    JsonNode root = fetchCurrentSpecNode();
+
+    assertOperationContract(
+        root,
+        "/api/v1/accounting/journal-entries",
+        "post",
+        "#/components/schemas/JournalEntryRequest",
+        "200",
+        "#/components/schemas/ApiResponseJournalEntryDto");
+    assertOperationMissing(root, "/api/v1/accounting/journals/manual", "post");
+
+    assertHeaderParameters(root, "/api/v1/accounting/receipts/dealer", "post", "Idempotency-Key");
+    assertHeaderParameters(
+        root, "/api/v1/accounting/receipts/dealer/hybrid", "post", "Idempotency-Key");
+    assertHeaderParameters(
+        root, "/api/v1/accounting/settlements/dealers", "post", "Idempotency-Key");
+    assertHeaderParameters(
+        root, "/api/v1/accounting/dealers/{dealerId}/auto-settle", "post", "Idempotency-Key");
+    assertHeaderParameters(
+        root, "/api/v1/accounting/settlements/suppliers", "post", "Idempotency-Key");
+    assertHeaderParameters(
+        root, "/api/v1/accounting/suppliers/{supplierId}/auto-settle", "post", "Idempotency-Key");
+  }
+
+  @Test
   void openapi_snapshot_matches_repository_contract() throws IOException {
     Path openApiSnapshotPath = resolveRepoRoot().resolve("openapi.json");
     String currentSpec = canonicalizeJson(fetchCurrentSpecNode().toString());
@@ -808,6 +836,19 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
   private static String canonicalizeJson(String spec) throws IOException {
     JsonNode parsedSpec = CANONICAL_JSON.readTree(spec);
     return CANONICAL_JSON.writeValueAsString(canonicalizeNode(parsedSpec));
+  }
+
+  private void assertHeaderParameters(
+      JsonNode root, String path, String method, String... expectedHeaderNames) {
+    JsonNode parameters = root.path("paths").path(path).path(method).path("parameters");
+    List<String> parameterNames = new ArrayList<>();
+    parameters.forEach(
+        parameter -> {
+          if ("header".equals(parameter.path("in").asText())) {
+            parameterNames.add(parameter.path("name").asText());
+          }
+        });
+    assertThat(parameterNames).containsExactly(expectedHeaderNames);
   }
 
   private static List<String> extractOperationSignatures(String spec) throws IOException {

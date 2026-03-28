@@ -71,6 +71,8 @@ flowchart LR
 - one real period engine exists
 - one real reconciliation engine exists
 - snapshot-backed temporal truth is explicit and fail-closed
+- supplier payable-account reads are expected to be eager in reconciliation and period-close paths
+- purchase-journal replay is keyed by the exact canonical/base reference mapping, not prefix scans
 
 ## Duplicates and Bad Paths
 
