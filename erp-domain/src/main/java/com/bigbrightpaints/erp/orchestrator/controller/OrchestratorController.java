@@ -5,11 +5,9 @@ import java.security.Principal;
 import java.util.Locale;
 import java.util.Map;
 
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.util.StringUtils;
-import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -20,23 +18,16 @@ import org.springframework.web.bind.annotation.RestController;
 import com.bigbrightpaints.erp.core.idempotency.IdempotencyUtils;
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
 import com.bigbrightpaints.erp.orchestrator.dto.ApproveOrderRequest;
-import com.bigbrightpaints.erp.orchestrator.dto.DispatchRequest;
 import com.bigbrightpaints.erp.orchestrator.dto.OrderFulfillmentRequest;
-import com.bigbrightpaints.erp.orchestrator.dto.PayrollRunRequest;
-import com.bigbrightpaints.erp.orchestrator.exception.OrchestratorFeatureDisabledException;
 import com.bigbrightpaints.erp.orchestrator.service.CommandDispatcher;
 import com.bigbrightpaints.erp.orchestrator.service.CorrelationIdentifierSanitizer;
 import com.bigbrightpaints.erp.orchestrator.service.TraceService;
 
-import io.swagger.v3.oas.annotations.Hidden;
 import jakarta.validation.Valid;
 
 @RestController
 @RequestMapping("/api/v1/orchestrator")
 public class OrchestratorController {
-  private static final String SALES_DISPATCH_CANONICAL_PATH = "/api/v1/dispatch/confirm";
-  private static final String PAYROLL_RUNS_CANONICAL_PATH = "/api/v1/payroll/runs";
-
   private final CommandDispatcher commandDispatcher;
   private final TraceService traceService;
 
@@ -130,92 +121,6 @@ public class OrchestratorController {
     return ResponseEntity.accepted().body(Map.of("traceId", traceId));
   }
 
-  @PostMapping("/factory/dispatch/{batchId}")
-  @PreAuthorize(
-      "hasAuthority('ROLE_ADMIN') or (hasAuthority('ROLE_FACTORY') and"
-          + " hasAuthority('factory.dispatch'))")
-  @Hidden
-  public ResponseEntity<Map<String, Object>> dispatch(
-      @PathVariable String batchId,
-      @Valid @RequestBody DispatchRequest request,
-      @org.springframework.web.bind.annotation.RequestHeader(
-              value = "Idempotency-Key",
-              required = false)
-          String idempotencyKey,
-      @org.springframework.web.bind.annotation.RequestHeader(
-              value = "X-Request-Id",
-              required = false)
-          String requestId,
-      Principal principal) {
-    String companyCode = requireCompanyCode();
-    String sanitizedRequestId = CorrelationIdentifierSanitizer.sanitizeOptionalRequestId(requestId);
-    String sanitizedHeaderIdempotencyKey =
-        CorrelationIdentifierSanitizer.sanitizeOptionalIdempotencyKey(idempotencyKey);
-    DispatchRequest raw =
-        new DispatchRequest(batchId, request.requestedBy(), request.postingAmount());
-    DispatchRequest normalized =
-        new DispatchRequest(
-            batchId,
-            canonicalText(request.requestedBy()),
-            stripTrailingZeros(request.postingAmount()));
-    String traceId =
-        commandDispatcher.dispatchBatch(
-            selectPayloadForIdempotency(sanitizedHeaderIdempotencyKey, raw, normalized),
-            resolveIdempotencyKey(
-                sanitizedHeaderIdempotencyKey,
-                sanitizedRequestId,
-                "ORCH.FACTORY.BATCH.DISPATCH",
-                companyCode,
-                normalized.batchId()
-                    + "|"
-                    + canonicalText(normalized.requestedBy())
-                    + "|"
-                    + canonicalAmount(normalized.postingAmount())),
-            sanitizedRequestId,
-            companyCode,
-            principal.getName());
-    return ResponseEntity.accepted().body(Map.of("traceId", traceId));
-  }
-
-  /**
-   * Lightweight dispatch endpoint used by smoke/E2E tests to trigger fulfillment without batch context.
-   */
-  @PostMapping("/dispatch")
-  @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_SALES')")
-  @Hidden
-  public ResponseEntity<Map<String, Object>> dispatchOrder() {
-    return goneToCanonical(
-        "Orchestrator dispatch is deprecated; use " + SALES_DISPATCH_CANONICAL_PATH,
-        SALES_DISPATCH_CANONICAL_PATH);
-  }
-
-  @PostMapping("/dispatch/{orderId}")
-  @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_SALES')")
-  @Hidden
-  public ResponseEntity<Map<String, Object>> dispatchOrderAlias(@PathVariable String orderId) {
-    return goneToCanonical(
-        "Orchestrator dispatch is deprecated; use " + SALES_DISPATCH_CANONICAL_PATH,
-        SALES_DISPATCH_CANONICAL_PATH);
-  }
-
-  @PostMapping("/payroll/run")
-  @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING') and hasAuthority('payroll.run')")
-  public ResponseEntity<Map<String, Object>> runPayroll(
-      @RequestBody(required = false) PayrollRunRequest request,
-      @org.springframework.web.bind.annotation.RequestHeader(
-              value = "Idempotency-Key",
-              required = false)
-          String idempotencyKey,
-      @org.springframework.web.bind.annotation.RequestHeader(
-              value = "X-Request-Id",
-              required = false)
-          String requestId,
-      Principal principal) {
-    return goneToCanonical(
-        "Orchestrator payroll run is deprecated; use " + PAYROLL_RUNS_CANONICAL_PATH,
-        PAYROLL_RUNS_CANONICAL_PATH);
-  }
-
   @GetMapping("/traces/{traceId}")
   @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING','ROLE_SALES','ROLE_FACTORY')")
   public ResponseEntity<Map<String, Object>> trace(@PathVariable String traceId) {
@@ -234,15 +139,6 @@ public class OrchestratorController {
   @PreAuthorize("hasAnyAuthority('ROLE_ADMIN')")
   public ResponseEntity<Map<String, Object>> eventHealth() {
     return ResponseEntity.ok(commandDispatcher.eventHealth());
-  }
-
-  private ResponseEntity<Map<String, Object>> goneToCanonical(
-      String message, String canonicalPath) {
-    return ResponseEntity.status(HttpStatus.GONE)
-        .body(
-            Map.of(
-                "message", message,
-                "canonicalPath", canonicalPath));
   }
 
   private String requireCompanyCode() {
@@ -295,15 +191,5 @@ public class OrchestratorController {
 
   private static String canonicalAmount(BigDecimal amount) {
     return amount == null ? "" : amount.stripTrailingZeros().toPlainString();
-  }
-
-  @ExceptionHandler(OrchestratorFeatureDisabledException.class)
-  public ResponseEntity<Map<String, Object>> handleFeatureDisabled(
-      OrchestratorFeatureDisabledException ex) {
-    return ResponseEntity.status(HttpStatus.GONE)
-        .body(
-            Map.of(
-                "message", ex.getMessage(),
-                "canonicalPath", ex.getCanonicalPath()));
   }
 }

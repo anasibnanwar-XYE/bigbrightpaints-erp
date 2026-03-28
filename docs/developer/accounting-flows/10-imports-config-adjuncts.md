@@ -39,7 +39,7 @@
 
 ### Catalog Maintenance
 
-- entry: `AccountingCatalogController`
+- entry: `CatalogController`
 - canonical service: `ProductionCatalogService`
 - key effect:
   - create/update products
@@ -60,7 +60,7 @@
 
 ## Duplicates and Bad Paths
 
-- `AccountingCatalogController` overlaps generic production catalog ownership
+- retired accounting catalog host was removed because it overlapped canonical catalog ownership
 - `PayrollController` overlaps HR payroll lifecycle and accounting single-payment path
 - `CompanyAccountingSettingsService.requirePayrollDefaults/updatePayrollDefaults` look latent compared with the live tax-account path
 - `RawMaterialService` exposes shortcut flows while warning that purchasing is canonical

@@ -306,7 +306,6 @@ Bulk operator note: `/api/v1/factory/bulk-batches/{finishedGoodId}` and `/api/v1
 - `GET` `/api/v1/orchestrator/health/integrations`
 - `POST` `/api/v1/orchestrator/orders/{orderId}/approve`
 - `POST` `/api/v1/orchestrator/orders/{orderId}/fulfillment`
-- `POST` `/api/v1/orchestrator/payroll/run`
 - `GET` `/api/v1/orchestrator/traces/{traceId}`
 
 ## `payroll`

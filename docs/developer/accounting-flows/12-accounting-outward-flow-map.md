@@ -22,10 +22,9 @@ flowchart LR
     ACC["AccountingController"] --> SET["SettlementService"]
     ACC --> STM["StatementService"]
     ACC --> TMP["TemporalBalanceService"]
-    ACC --> CAT["AccountingCatalogController"]
-    CAT --> PCS["ProductionCatalogService"]
     ACC --> PAY["PayrollController"]
     PAY --> AENG["AccountingCoreEngineCore.processPayrollBatchPayment"]
+    CAT["CatalogController"] --> PCS["ProductionCatalogService"]
 
     CLR["CreditLimitRequestController"] --> CLS["CreditLimitRequestService"]
     OVR["CreditLimitOverrideController"] --> OVS["CreditLimitOverrideService"]
@@ -50,20 +49,19 @@ flowchart LR
 
 ## Major Workflow Families
 
-### Accounting -> Catalog / SKU
+### Catalog -> Accounting-Aware SKU Provisioning
 
 - entrypoints:
-  - `AccountingCatalogController.importCatalog`
-  - `AccountingCatalogController.createProduct`
-  - `AccountingCatalogController.createVariants`
-  - `AccountingCatalogController.updateProduct`
+  - `CatalogController.importCatalog`
+  - `CatalogController.createItem`
+  - `CatalogController.updateItem`
 - canonical path:
-  - accounting route host
+  - canonical `/api/v1/catalog/**` host
   - `ProductionCatalogService`
   - production product + brand repositories
   - finished-good / raw-material sync
 - why it matters:
-  - accounting can create or mutate product truth without going through the general `/api/v1/catalog/**` surface
+  - catalog setup can still reach accounting-aware provisioning logic without keeping a second public controller host alive
 
 ### Accounting -> Customer / Supplier Statement Truth
 
@@ -148,7 +146,7 @@ flowchart LR
 
 ## Review Hotspots
 
-- `AccountingCatalogController`
+- `CatalogController`
 - `ProductionCatalogService`
 - `CreditLimitRequestService`
 - `CreditLimitOverrideService`
