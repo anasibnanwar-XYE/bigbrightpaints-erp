@@ -66,10 +66,12 @@ done < "$AGENTS_MD"
 # Check 4: Verify critical commands work (quick validation)
 echo "Validating critical commands from AGENTS.md..."
 
-# Test Spotless check command against a representative file so AGENTS validation
-# proves the documented command path without failing on unrelated repo-wide debt.
-echo "Testing: cd erp-domain && MIGRATION_SET=v2 mvn spotless:check -q -DspotlessFiles=pom.xml"
-if ! (cd "$REPO_ROOT/erp-domain" && MIGRATION_SET=v2 mvn spotless:check -q -DspotlessFiles=pom.xml 2>&1); then
+# Test Spotless check against a representative included Java source so AGENTS
+# validation exercises the configured formatter path without failing on
+# unrelated repo-wide formatting debt.
+SPOTLESS_SAMPLE_FILE="src/main/java/com/bigbrightpaints/erp/ErpDomainApplication.java"
+echo "Testing: cd erp-domain && MIGRATION_SET=v2 mvn spotless:check -q -DspotlessFiles=$SPOTLESS_SAMPLE_FILE"
+if ! (cd "$REPO_ROOT/erp-domain" && MIGRATION_SET=v2 mvn spotless:check -q -DspotlessFiles="$SPOTLESS_SAMPLE_FILE" 2>&1); then
     echo "ERROR: Spotless check command failed"
     ((errors++))
 fi
