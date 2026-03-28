@@ -61,61 +61,6 @@ import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 class AccountingControllerJournalEndpointsTest {
 
   @Test
-  void createManualJournal_delegatesToAccountingService() {
-    AccountingService accountingService = mock(AccountingService.class);
-    AccountingController controller =
-        newController(accountingService, mock(JournalEntryService.class), null);
-    ManualJournalRequest request =
-        new ManualJournalRequest(
-            LocalDate.of(2026, 2, 28),
-            "Manual adjustment",
-            "manual-100",
-            false,
-            List.of(
-                new ManualJournalRequest.LineRequest(
-                    11L, new BigDecimal("50.00"), "Debit", ManualJournalRequest.EntryType.DEBIT),
-                new ManualJournalRequest.LineRequest(
-                    22L,
-                    new BigDecimal("50.00"),
-                    "Credit",
-                    ManualJournalRequest.EntryType.CREDIT)));
-    JournalEntryDto expected =
-        new JournalEntryDto(
-            100L,
-            null,
-            "JRN-100",
-            LocalDate.of(2026, 2, 28),
-            "Manual adjustment",
-            "POSTED",
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            List.<JournalLineDto>of(),
-            null,
-            null,
-            null,
-            null,
-            null,
-            null);
-    when(accountingService.createManualJournal(request)).thenReturn(expected);
-
-    ApiResponse<JournalEntryDto> body = controller.createManualJournal(request).getBody();
-
-    assertThat(body).isNotNull();
-    assertThat(body.success()).isTrue();
-    assertThat(body.data()).isEqualTo(expected);
-  }
-
-  @Test
   void listJournals_appliesFilterArguments() {
     AccountingService accountingService = mock(AccountingService.class);
     AccountingController controller =
@@ -449,7 +394,7 @@ class AccountingControllerJournalEndpointsTest {
     when(settlementService.settleSupplierInvoices(any(SupplierSettlementRequest.class)))
         .thenReturn(expected);
 
-    controller.settleSupplier(request, "IDEMP-SUP-HDR-1");
+    controller.settleSupplier(request, "IDEMP-SUP-HDR-1", null);
 
     ArgumentCaptor<SupplierSettlementRequest> requestCaptor =
         ArgumentCaptor.forClass(SupplierSettlementRequest.class);
@@ -481,7 +426,7 @@ class AccountingControllerJournalEndpointsTest {
     when(settlementService.autoSettleSupplier(eq(8L), any(AutoSettlementRequest.class)))
         .thenReturn(expected);
 
-    controller.autoSettleSupplier(8L, request, "IDEMP-SUP-AUTO-1");
+    controller.autoSettleSupplier(8L, request, "IDEMP-SUP-AUTO-1", null);
 
     ArgumentCaptor<AutoSettlementRequest> requestCaptor =
         ArgumentCaptor.forClass(AutoSettlementRequest.class);

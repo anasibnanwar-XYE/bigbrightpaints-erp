@@ -45,7 +45,7 @@ Planning notes:
 | Surface | Entrypoints | Controller | Notes |
 | --- | --- | --- | --- |
 | Finance bootstrap and configuration | `GET/PUT /api/v1/accounting/default-accounts`, `GET /api/v1/accounting/configuration/health`, `POST /api/v1/accounting/opening-balances`, `POST /api/v1/migration/tally-import` | `AccountingController`, `AccountingConfigurationController`, `OpeningBalanceImportController`, `TallyImportController` | Default-account governance, configuration health scan, and migration/bootstrap flows share the finance setup boundary. |
-| Journal posting and finance operations | `GET/POST /api/v1/accounting/accounts`, `GET/POST /api/v1/accounting/journal-entries`, `GET /api/v1/accounting/journals`, `POST /api/v1/accounting/journals/manual`, `POST /api/v1/accounting/journal-entries/{id}/{reverse,cascade-reverse}`, `POST /api/v1/accounting/{receipts/dealer,receipts/dealer/hybrid,settlements/dealers,dealers/{dealerId}/auto-settle,payroll/payments,suppliers/payments,settlements/suppliers,suppliers/{supplierId}/auto-settle,credit-notes,debit-notes,accruals,bad-debts/write-off}`, `POST /api/v1/accounting/inventory/{landed-cost,revaluation,wip-adjustment}` | `AccountingController` | One controller fronts general GL posting, settlements, bad-debt/credit/debit adjustments, payroll payment, and finance-led inventory journals. |
+| Journal posting and finance operations | `GET/POST /api/v1/accounting/accounts`, `GET/POST /api/v1/accounting/journal-entries`, `GET /api/v1/accounting/journals`, `POST /api/v1/accounting/journal-entries/{id}/{reverse,cascade-reverse}`, `POST /api/v1/accounting/{receipts/dealer,receipts/dealer/hybrid,settlements/dealers,dealers/{dealerId}/auto-settle,payroll/payments,suppliers/payments,settlements/suppliers,suppliers/{supplierId}/auto-settle,credit-notes,debit-notes,accruals,bad-debts/write-off}`, `POST /api/v1/accounting/inventory/{landed-cost,revaluation,wip-adjustment}` | `AccountingController` | One controller fronts general GL posting, settlements, bad-debt/credit/debit adjustments, payroll payment, and finance-led inventory journals. |
 | Tax, period, and month-end controls | `GET /api/v1/accounting/gst/{return,reconciliation}`, `GET/POST/PUT /api/v1/accounting/periods`, `POST /api/v1/accounting/periods/{id}/{close,request-close,approve-close,reject-close,lock,reopen}`, `GET/POST /api/v1/accounting/month-end/checklist{/{periodId}}` | `AccountingController` | The public surface still exposes `/close`, but service code now forces the request/approve maker-checker path. |
 | Reconciliation and statements | `POST /api/v1/accounting/reconciliation/bank`, `POST/PUT/GET /api/v1/accounting/reconciliation/bank/sessions{/**}`, `GET /api/v1/accounting/reconciliation/{subledger,discrepancies,inter-company}`, `POST /api/v1/accounting/reconciliation/discrepancies/{id}/resolve`, `GET /api/v1/accounting/{statements,aging}/{dealers|suppliers}/{id}`, admin-only PDF variants | `AccountingController` | Covers AR/AP/bank/GST/inter-company reconciliation plus partner statement and aging exports. |
 | Payroll lifecycle and accounting | `GET/POST /api/v1/payroll/runs{,/weekly,/monthly}`, `POST /api/v1/payroll/runs/{id}/{calculate,approve,post,mark-paid}`, `GET /api/v1/payroll/summary/**`, `POST /api/v1/accounting/payroll/payments/batch`, `POST /api/v1/accounting/payroll/payments` | `HrPayrollController`, `PayrollController`, `AccountingController` | HR owns run creation/approval/post/mark-paid; accounting also exposes a one-call batch payroll path and explicit payroll-payment journal path. |
@@ -98,7 +98,7 @@ Important rules observed in code and tests:
 
 Manual and system journals reuse the same machinery:
 
-- `POST /api/v1/accounting/journals/manual` lets callers supply an explicit idempotency key/source reference.
+- `POST /api/v1/accounting/journal-entries` is the canonical manual-journal write surface and carries the caller-supplied reference/idempotency key.
 - Sales, purchase, payroll, settlement, and inventory override flows call back into `AccountingFacadeCore` so all roads still end at the same balancing/idempotency engine.
 - Reversal and cascade-reversal endpoints create linked correction journals instead of mutating the original entry.
 
@@ -345,7 +345,7 @@ So production correctness currently depends on keeping the inventory-accounting 
 
 - **Opening balances / Tally import:** keyed by file hash plus normalized idempotency key/reference.
 - **General journals:** keyed by canonical reference number plus alias mappings; duplicate payloads replay, mismatched payloads fail.
-- **Manual journals:** explicit `idempotencyKey` is copied into the posting request.
+- **Manual journals:** the canonical `referenceNumber` is the replay key; duplicate payloads replay and reserved system namespaces fail closed at the controller boundary.
 - **Inventory-accounting listener:** builds deterministic references from GRN reference plus `movementId`.
 - **Payroll payment:** reference number plus existing payment-journal parity checks prevent conflicting replay.
 - **Batch payroll:** caller reference or generated payroll payment reference becomes the replay handle.

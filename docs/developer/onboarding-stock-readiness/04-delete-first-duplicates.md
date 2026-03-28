@@ -9,6 +9,7 @@ This file records the seams that are already retired or must stay retired in the
 - `POST /api/v1/companies`
 - `POST /api/v1/companies/superadmin/tenants`
 - `PUT /api/v1/companies/superadmin/tenants/{id}`
+- `DELETE /api/v1/companies/{id}`
 
 ### Keep
 

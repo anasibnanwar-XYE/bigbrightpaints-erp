@@ -609,7 +609,7 @@ class TS_RuntimeAccountingReplayConflictExecutableCoverageTest {
     controller.recordDealerHybridReceipt(
         controllerDealerReceiptSplitRequest("   "), "HDR-DRS", null);
     controller.settleDealer(controllerDealerSettlementRequest("   "), "HDR-ADS", null);
-    controller.settleSupplier(controllerSupplierSettlementRequest("   "), "HDR-APS");
+    controller.settleSupplier(controllerSupplierSettlementRequest("   "), "HDR-APS", null);
 
     ArgumentCaptor<DealerReceiptRequest> dealerCaptor =
         ArgumentCaptor.forClass(DealerReceiptRequest.class);
@@ -649,7 +649,7 @@ class TS_RuntimeAccountingReplayConflictExecutableCoverageTest {
     controller.recordDealerHybridReceipt(
         controllerDealerReceiptSplitRequest("BODY-DRS"), "BODY-DRS", null);
     controller.settleDealer(controllerDealerSettlementRequest("BODY-ADS"), "BODY-ADS", null);
-    controller.settleSupplier(controllerSupplierSettlementRequest("BODY-APS"), "BODY-APS");
+    controller.settleSupplier(controllerSupplierSettlementRequest("BODY-APS"), "BODY-APS", null);
 
     ArgumentCaptor<DealerReceiptRequest> dealerCaptor =
         ArgumentCaptor.forClass(DealerReceiptRequest.class);
@@ -688,7 +688,7 @@ class TS_RuntimeAccountingReplayConflictExecutableCoverageTest {
     controller.recordDealerReceipt(controllerDealerReceiptRequest(null), null, null);
     controller.recordDealerHybridReceipt(controllerDealerReceiptSplitRequest(null), null, null);
     controller.settleDealer(controllerDealerSettlementRequest(null), null, null);
-    controller.settleSupplier(controllerSupplierSettlementRequest(null), null);
+    controller.settleSupplier(controllerSupplierSettlementRequest(null), null, null);
 
     ArgumentCaptor<DealerReceiptRequest> dealerCaptor =
         ArgumentCaptor.forClass(DealerReceiptRequest.class);
@@ -727,7 +727,7 @@ class TS_RuntimeAccountingReplayConflictExecutableCoverageTest {
     controller.recordDealerReceipt(null, "HDR-DR", "LEGACY-DR");
     controller.recordDealerHybridReceipt(null, "HDR-DRS", "LEGACY-DRS");
     controller.settleDealer(null, "HDR-ADS", "LEGACY-ADS");
-    controller.settleSupplier(null, "HDR-APS");
+    controller.settleSupplier(null, "HDR-APS", null);
 
     ArgumentCaptor<DealerReceiptRequest> dealerCaptor =
         ArgumentCaptor.forClass(DealerReceiptRequest.class);

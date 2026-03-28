@@ -34,8 +34,6 @@ A new tenant operator should be able to say:
 - required APIs:
   - `GET /api/v1/accounting/default-accounts`
   - `PUT /api/v1/accounting/default-accounts`
-- super-admin correction path when company metadata is wrong:
-  - `PUT /api/v1/companies/{id}`
 
 ### 3. Stock-bearing item setup
 
