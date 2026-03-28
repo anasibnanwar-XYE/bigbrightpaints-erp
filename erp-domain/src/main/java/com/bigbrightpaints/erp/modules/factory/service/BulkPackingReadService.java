@@ -201,7 +201,7 @@ public class BulkPackingReadService {
         if (batch == null || batch.getId() == null) {
           continue;
         }
-        childByBatchId.putIfAbsent(batch.getId(), toChildBatchDto(movement));
+        childByBatchId.putIfAbsent(batch.getId(), toChildBatchDto(batch));
       }
     }
     return List.copyOf(childByBatchId.values());
