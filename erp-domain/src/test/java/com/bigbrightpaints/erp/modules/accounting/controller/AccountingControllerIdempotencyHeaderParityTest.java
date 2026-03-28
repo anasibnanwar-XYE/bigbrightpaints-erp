@@ -191,6 +191,20 @@ class AccountingControllerIdempotencyHeaderParityTest {
   }
 
   @Test
+  void autoSettleDealer_appliesPrimaryHeaderWhenBodyMissing() {
+    AccountingController controller = controller();
+    when(settlementService.autoSettleDealer(any(), any())).thenReturn(null);
+
+    controller.autoSettleDealer(1001L, autoSettlementRequest(null), "hdr-auto-001", null);
+
+    ArgumentCaptor<com.bigbrightpaints.erp.modules.accounting.dto.AutoSettlementRequest> captor =
+        ArgumentCaptor.forClass(
+            com.bigbrightpaints.erp.modules.accounting.dto.AutoSettlementRequest.class);
+    verify(settlementService).autoSettleDealer(any(), captor.capture());
+    assertThat(captor.getValue().idempotencyKey()).isEqualTo("hdr-auto-001");
+  }
+
+  @Test
   void autoSettleSupplier_rejectsLegacyHeader() {
     AccountingController controller = controller();
     assertThatThrownBy(
