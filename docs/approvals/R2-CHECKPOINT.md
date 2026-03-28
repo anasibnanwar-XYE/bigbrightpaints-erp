@@ -8,12 +8,12 @@
   - delete the retired manual FG batch write seam and non-prod gating path
   - keep one canonical FG stock-truth flow into inventory
   - remove product-era catalog duplicate DTO/service vocabulary in favor of `CatalogItem*`
-  - apply `migration_v2/V48__drop_finished_good_batch_legacy_bulk_flag.sql`
+  - apply `migration_v2/V171__drop_finished_good_batch_legacy_bulk_flag.sql`
 - Why this is R2: this packet modifies stock-truth write surfaces and a live `migration_v2` table contract (`finished_good_batches`). A wrong cut can corrupt FG movement/accounting linkage or break runtime expectations during deployment.
 
 ## Risk Trigger
 - Triggered by:
-  - `erp-domain/src/main/resources/db/migration_v2/V48__drop_finished_good_batch_legacy_bulk_flag.sql`
+  - `erp-domain/src/main/resources/db/migration_v2/V171__drop_finished_good_batch_legacy_bulk_flag.sql`
   - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/inventory/**`
   - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/factory/**`
   - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/production/**`
@@ -42,7 +42,7 @@
 ## Rollback Owner
 - Owner: `ERP-23 packet owner`
 - Rollback method:
-  - preferred: restore tenant/database snapshot taken before `V48` and redeploy the pre-cut build as one coordinated rollback
+  - preferred: restore tenant/database snapshot taken before `V171` and redeploy the pre-cut build as one coordinated rollback
   - emergency-only SQL fallback (if snapshot unavailable and pre-cut app must run): re-add nullable `finished_good_batches.is_bulk` and recreate `idx_fg_batch_bulk` in the same maintenance window before switching runtime
 - Rollback trigger:
   - runtime query/ORM failures referencing `finished_good_batches.is_bulk`
@@ -51,7 +51,7 @@
 
 ## Expiry
 - Valid until: `2026-04-03`
-- Re-evaluate if: any new migration is added on top of `V48`, scope expands into accounting/auth/control-plane modules, or reviewer asks for additional stock-truth restructuring beyond ERP-23 boundaries.
+- Re-evaluate if: any new migration is added on top of `V171`, scope expands into accounting/auth/control-plane modules, or reviewer asks for additional stock-truth restructuring beyond ERP-23 boundaries.
 
 ## Verification Evidence
 - Commands run:
@@ -67,7 +67,7 @@
   - catalog duplicate product-era DTO/service symbols removed from runtime lane
   - canonical item vocabulary and route family retained (`CatalogItem*`, `/api/v1/catalog/items`)
   - targeted suites and `gate-fast` passed locally
-  - `verify_local.sh` currently reports schema-drift findings on historical `V168/V169` auth migrations (pre-existing to this packet), not on `V48`
+  - `verify_local.sh` currently reports schema-drift findings on historical `V168/V169` auth migrations (pre-existing to this packet), not on `V171`
 - Artifacts/links:
   - Worktree: `/Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/erp-23-fg-stock-truth`
   - PR: `https://github.com/anasibnanwar-XYE/bigbrightpaints-erp/pull/161`

@@ -2,9 +2,9 @@
 
 ## 2026-03-27 — `erp-23.finished-good-bulk-flag-hard-cut`
 
-- **Scope:** revert `migration_v2/V48__drop_finished_good_batch_legacy_bulk_flag.sql` and the ERP-23 hard-cut runtime packet that removes legacy BULK flag dependencies from FG stock-truth flows and catalog item setup internals.
+- **Scope:** revert `migration_v2/V171__drop_finished_good_batch_legacy_bulk_flag.sql` and the ERP-23 hard-cut runtime packet that removes legacy BULK flag dependencies from FG stock-truth flows and catalog item setup internals.
 - **Application rollback:** do not redeploy pre-ERP-23 runtime against a database where `finished_good_batches.is_bulk` is already dropped.
-- **Database rollback:** preferred path is snapshot/PITR restore to pre-`V48`. If restore is unavailable and immediate compatibility is required, run:
+- **Database rollback:** preferred path is snapshot/PITR restore to pre-`V171`. If restore is unavailable and immediate compatibility is required, run:
   - `ALTER TABLE public.finished_good_batches ADD COLUMN IF NOT EXISTS is_bulk BOOLEAN NOT NULL DEFAULT FALSE;`
   - `CREATE INDEX IF NOT EXISTS idx_fg_batch_bulk ON public.finished_good_batches (company_id, is_bulk);`
   and redeploy only after pre-cut runtime compatibility is confirmed.

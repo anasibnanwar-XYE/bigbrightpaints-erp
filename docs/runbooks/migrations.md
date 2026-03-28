@@ -1,17 +1,17 @@
 # Migration Runbook
 
-## 2026-03-27 — `migration_v2/V48__drop_finished_good_batch_legacy_bulk_flag.sql`
+## 2026-03-27 — `migration_v2/V171__drop_finished_good_batch_legacy_bulk_flag.sql`
 
 - **Purpose:** remove the retired `finished_good_batches.is_bulk` flag and its supporting index so FG batch storage no longer carries the legacy BULK/semi-finished marker in the canonical inventory model.
 - **Release-guard posture:** this is a hard-cut cleanup migration tied to ERP-23; runtime code in the same packet no longer depends on `is_bulk`, and the change is intentionally fail-fast (no compatibility bridge column retained).
-- **Forward plan:** apply `V48__drop_finished_good_batch_legacy_bulk_flag.sql`, deploy the ERP-23 hard-cut packet together with this migration, and keep the canonical catalog item + FG stock-truth paths as the only live model.
+- **Forward plan:** apply `V171__drop_finished_good_batch_legacy_bulk_flag.sql`, deploy the ERP-23 hard-cut packet together with this migration, and keep the canonical catalog item + FG stock-truth paths as the only live model.
 - **Dry-run commands:**
   - `cd erp-domain && mvn -Dtest=GlobalExceptionHandlerTest,TS_RuntimeGlobalExceptionHandlerExecutableCoverageTest,OpeningStockPostingRegressionIT,ProductionCatalogFinishedGoodInvariantIT,ProductionCatalogRawMaterialInvariantIT,ProductionCatalogDiscountDefaultRegressionIT,CR_CatalogImportDeterminismIT test`
   - `cd /Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/erp-23-fg-stock-truth && bash scripts/guard_openapi_contract_drift.sh`
   - `cd /Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/erp-23-fg-stock-truth && bash scripts/guard_legacy_migration_freeze.sh`
   - `cd erp-domain && mvn -Pgate-fast -Djacoco.skip=true test`
   - `cd /Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/erp-23-fg-stock-truth && git diff --check`
-- **Rollback strategy:** treat `V48` as a coordinated app-and-schema cut. Do not redeploy pre-ERP-23 code against a database where `is_bulk` is dropped. If rollback is required, prefer restoring a pre-`V48` snapshot/PITR; emergency SQL backfill to re-add `is_bulk` is only for short-term recovery when snapshot restore is unavailable.
+- **Rollback strategy:** treat `V171` as a coordinated app-and-schema cut. Do not redeploy pre-ERP-23 code against a database where `is_bulk` is dropped. If rollback is required, prefer restoring a pre-`V171` snapshot/PITR; emergency SQL backfill to re-add `is_bulk` is only for short-term recovery when snapshot restore is unavailable.
 
 ## 2026-03-27 — `migration_v2/V168__auth_v2_scoped_accounts.sql` + `migration_v2/V169__auth_v2_single_company_account.sql`
 

@@ -1,6 +1,15 @@
 -- ERP-23 hard cut: sellable finished-goods cannot use the internal semi-finished suffix.
 DO $$
 BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM finished_goods
+        WHERE RIGHT(UPPER(product_code), 5) = '-BULK'
+    ) THEN
+        RAISE EXCEPTION
+            'ERP-23 migration blocked: found finished_goods.product_code values ending with -BULK. Move or rename those internal semi-finished rows before applying V170.';
+    END IF;
+
     IF NOT EXISTS (
         SELECT 1
         FROM pg_constraint
