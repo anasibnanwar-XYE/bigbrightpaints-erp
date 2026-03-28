@@ -15,9 +15,9 @@ Portal scope guardrail:
 ## Canonical API contract gate
 
 - Canonical machine contract source: repo-root `openapi.json`.
-- OpenAPI snapshot: `openapi.json` (sha256 `39a18a93e1a3afe46ffd258c054340d622d9b76be7e48cb5595680be40d3e6ec`)
-- OpenAPI total paths: `281`
-- OpenAPI total operations: `334`
+- OpenAPI snapshot: `openapi.json` (sha256 `e5ad7a2cef11efae3f24744c5a0c89cf666c6d1a1275c0559c51eec5d044eae5`)
+- OpenAPI total paths: `282`
+- OpenAPI total operations: `336`
 - Guard remediation flow: if parity drifts, regenerate this inventory from canonical `openapi.json`, then rerun `bash scripts/guard_openapi_contract_drift.sh` and `bash scripts/guard_accounting_portal_scope_contract.sh`.
 
 ## Summary by module
@@ -53,7 +53,7 @@ Portal scope guardrail:
 | `sales` | 16 | /api/v1/sales/dashboard, /api/v1/sales/dealers, /api/v1/sales/dealers/search |
 | `superadmin` | 17 | /api/v1/superadmin/changelog, /api/v1/superadmin/changelog/{id}, /api/v1/superadmin/dashboard |
 | `suppliers` | 5 | /api/v1/suppliers, /api/v1/suppliers/{id}, /api/v1/suppliers/{id}/activate |
-| `support` | 4 | /api/v1/portal/support/tickets, /api/v1/dealer-portal/support/tickets, /api/v1/portal/support/tickets/{ticketId} |
+| `support` | 6 | /api/v1/support/tickets, /api/v1/portal/support/tickets, /api/v1/support/tickets/{ticketId} |
 
 ## `accounting`
 
@@ -119,7 +119,6 @@ Portal scope guardrail:
 - `POST` `/api/v1/accounting/settlements/suppliers`
 - `GET` `/api/v1/accounting/statements/suppliers/{supplierId}`
 - `GET` `/api/v1/accounting/statements/suppliers/{supplierId}/pdf`
-- `POST` `/api/v1/accounting/suppliers/payments`
 - `POST` `/api/v1/accounting/suppliers/{supplierId}/auto-settle`
 - `GET` `/api/v1/accounting/trial-balance/as-of`
 
@@ -427,3 +426,5 @@ Factory operator note: treat `/api/v1/factory/packaging-mappings` as the Packagi
 - `GET` `/api/v1/portal/support/tickets/{ticketId}`
 - `GET, POST` `/api/v1/dealer-portal/support/tickets`
 - `GET` `/api/v1/dealer-portal/support/tickets/{ticketId}`
+- `GET, POST` `/api/v1/support/tickets`
+- `GET` `/api/v1/support/tickets/{ticketId}`
