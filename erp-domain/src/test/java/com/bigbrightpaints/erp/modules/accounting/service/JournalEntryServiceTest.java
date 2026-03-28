@@ -4,7 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
@@ -18,6 +21,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
@@ -32,12 +36,17 @@ import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriod;
+import com.bigbrightpaints.erp.modules.accounting.domain.JournalCorrectionType;
+import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
+import com.bigbrightpaints.erp.modules.accounting.domain.JournalLine;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalReferenceMapping;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalReferenceMappingRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAllocationRepository;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalCreationRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
+import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryReversalRequest;
 import com.bigbrightpaints.erp.modules.accounting.event.AccountingEventStore;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
@@ -289,6 +298,72 @@ class JournalEntryServiceTest {
     assertThat(savedEntry.get().getEntryDate()).isEqualTo(explicitDate);
   }
 
+  @Test
+  void reverseJournalEntry_cascadeRequestDisablesReplayForPrimaryAndRelatedEntries() {
+    journalEntryService = org.mockito.Mockito.spy(journalEntryService);
+    LocalDate today = LocalDate.of(2026, 3, 6);
+    AccountingPeriod postingPeriod = new AccountingPeriod();
+    postingPeriod.setYear(today.getYear());
+    postingPeriod.setMonth(today.getMonthValue());
+    Account cashAccount = account(11L, "CASH", AccountType.ASSET);
+    Account revenueAccount = account(22L, "REV", AccountType.REVENUE);
+    Account expenseAccount = account(33L, "EXP", AccountType.EXPENSE);
+    JournalEntry primaryEntry =
+        reversalSourceEntry(700L, "INV-700", today, cashAccount, revenueAccount);
+    JournalEntry relatedEntry =
+        reversalSourceEntry(701L, "INV-700-COGS", today, expenseAccount, cashAccount);
+    JournalEntry primaryReversal = reversalResult(900L, "REV-INV-700");
+    JournalEntry relatedReversal = reversalResult(901L, "REV-INV-700-COGS");
+
+    when(companyClock.today(company)).thenReturn(today);
+    when(systemSettingsService.isPeriodLockEnforced()).thenReturn(true);
+    when(accountingPeriodService.requirePostablePeriod(
+            eq(company), eq(today), anyString(), anyString(), any(), eq(false)))
+        .thenReturn(postingPeriod);
+    when(referenceNumberService.reversalReference("INV-700")).thenReturn("REV-INV-700");
+    when(referenceNumberService.reversalReference("INV-700-COGS")).thenReturn("REV-INV-700-COGS");
+    when(companyEntityLookup.requireJournalEntry(company, 700L)).thenReturn(primaryEntry);
+    when(companyEntityLookup.requireJournalEntry(company, 900L)).thenReturn(primaryReversal);
+    when(companyEntityLookup.requireJournalEntry(company, 901L)).thenReturn(relatedReversal);
+    when(journalEntryRepository.findByCompanyAndReferenceNumberStartingWith(company, "INV-700-"))
+        .thenReturn(List.of(relatedEntry));
+    when(journalEntryRepository.save(any(JournalEntry.class)))
+        .thenAnswer(invocation -> invocation.getArgument(0));
+    doReturn(stubEntry(900L), stubEntry(901L))
+        .when(journalEntryService)
+        .createJournalEntry(any(JournalEntryRequest.class));
+
+    JournalEntryReversalRequest request =
+        new JournalEntryReversalRequest(
+            today,
+            false,
+            "Cascade test",
+            "Primary cascade memo",
+            Boolean.FALSE,
+            null,
+            true,
+            List.of(701L),
+            null,
+            null,
+            null);
+
+    JournalEntryDto result = journalEntryService.reverseJournalEntry(700L, request);
+
+    assertThat(result.id()).isEqualTo(900L);
+    assertThat(primaryEntry.getStatus()).isEqualTo("REVERSED");
+    assertThat(relatedEntry.getStatus()).isEqualTo("REVERSED");
+    assertThat(primaryReversal.getCorrectionType()).isEqualTo(JournalCorrectionType.REVERSAL);
+    assertThat(relatedReversal.getCorrectionType()).isEqualTo(JournalCorrectionType.REVERSAL);
+    ArgumentCaptor<JournalEntryRequest> requestCaptor =
+        ArgumentCaptor.forClass(JournalEntryRequest.class);
+    verify(journalEntryService, times(2)).createJournalEntry(requestCaptor.capture());
+    assertThat(requestCaptor.getAllValues())
+        .extracting(JournalEntryRequest::memo)
+        .containsExactly("Primary cascade memo", "Cascade from INV-700");
+    verify(journalEntryRepository, times(1))
+        .findByCompanyAndReferenceNumberStartingWith(company, "INV-700-");
+  }
+
   private Account account(Long id, String code, AccountType type) {
     Account account = new Account();
     ReflectionTestUtils.setField(account, "id", id);
@@ -298,5 +373,69 @@ class JournalEntryServiceTest {
     account.setActive(true);
     account.setBalance(BigDecimal.ZERO);
     return account;
+  }
+
+  private JournalEntryDto stubEntry(long id) {
+    return new JournalEntryDto(
+        id,
+        null,
+        "JRN-" + id,
+        LocalDate.of(2026, 3, 6),
+        "memo",
+        "POSTED",
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        List.of(),
+        null,
+        null,
+        null,
+        null,
+        null,
+        null);
+  }
+
+  private JournalEntry reversalSourceEntry(
+      Long id, String reference, LocalDate entryDate, Account debitAccount, Account creditAccount) {
+    JournalEntry entry = new JournalEntry();
+    ReflectionTestUtils.setField(entry, "id", id);
+    entry.setCompany(company);
+    entry.setReferenceNumber(reference);
+    entry.setEntryDate(entryDate);
+    entry.setMemo("Original " + reference);
+    entry.setStatus("POSTED");
+    entry.getLines().add(journalLine(entry, debitAccount, new BigDecimal("100.00"), BigDecimal.ZERO));
+    entry.getLines().add(journalLine(entry, creditAccount, BigDecimal.ZERO, new BigDecimal("100.00")));
+    return entry;
+  }
+
+  private JournalEntry reversalResult(Long id, String reference) {
+    JournalEntry entry = new JournalEntry();
+    ReflectionTestUtils.setField(entry, "id", id);
+    entry.setCompany(company);
+    entry.setReferenceNumber(reference);
+    entry.setEntryDate(LocalDate.of(2026, 3, 6));
+    entry.setStatus("POSTED");
+    return entry;
+  }
+
+  private JournalLine journalLine(
+      JournalEntry entry, Account account, BigDecimal debit, BigDecimal credit) {
+    JournalLine line = new JournalLine();
+    line.setJournalEntry(entry);
+    line.setAccount(account);
+    line.setDescription("line-" + account.getCode());
+    line.setDebit(debit);
+    line.setCredit(credit);
+    return line;
   }
 }

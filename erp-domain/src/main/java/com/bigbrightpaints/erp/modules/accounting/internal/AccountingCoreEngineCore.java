@@ -5571,8 +5571,7 @@ abstract class AccountingCoreEngineCore {
       if (!"REVERSED".equalsIgnoreCase(related.getStatus())
           && !"VOIDED".equalsIgnoreCase(related.getStatus())) {
         try {
-          JournalEntryReversalRequest relatedRequest =
-              new JournalEntryReversalRequest(
+          JournalEntryReversalRequest relatedRequest = new JournalEntryReversalRequest(
                   request.reversalDate(),
                   request.voidOnly(),
                   cascadeReason,
