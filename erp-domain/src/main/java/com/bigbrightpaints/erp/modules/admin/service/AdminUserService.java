@@ -130,31 +130,7 @@ public class AdminUserService {
         "admin_user_create",
         Map.of("provisioningMode", "CANONICAL_EMAIL_BOOTSTRAP"));
     Instant lastLoginAt = resolveLastLoginAt(saved);
-    UserDto dto = toDto(saved, lastLoginAt);
-    if (!dto.roles().isEmpty()) {
-      return dto;
-    }
-    List<String> fallbackRoles =
-        request.roles().stream()
-            .map(this::normalizeRequestedRoleName)
-            .filter(StringUtils::hasText)
-            .distinct()
-            .toList();
-    if (fallbackRoles.isEmpty()) {
-      return dto;
-    }
-    String fallbackCompanyCode =
-        StringUtils.hasText(dto.companyCode()) ? dto.companyCode() : targetCompany.getCode();
-    return new UserDto(
-        dto.id(),
-        dto.publicId(),
-        dto.email(),
-        dto.displayName(),
-        dto.enabled(),
-        dto.mfaEnabled(),
-        fallbackRoles,
-        fallbackCompanyCode,
-        dto.lastLoginAt());
+    return toDto(saved, lastLoginAt);
   }
 
   private void createDealerForUser(UserAccount user, Company company) {

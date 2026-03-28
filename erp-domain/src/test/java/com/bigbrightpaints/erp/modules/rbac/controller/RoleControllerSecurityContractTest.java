@@ -1,13 +1,20 @@
 package com.bigbrightpaints.erp.modules.rbac.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import java.lang.reflect.Method;
+import java.util.List;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.security.access.prepost.PreAuthorize;
 
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.modules.rbac.dto.CreateRoleRequest;
+import com.bigbrightpaints.erp.modules.rbac.dto.RoleDto;
+import com.bigbrightpaints.erp.modules.rbac.service.RoleService;
 
 class RoleControllerSecurityContractTest {
 
@@ -19,5 +26,18 @@ class RoleControllerSecurityContractTest {
 
     assertThat(annotation).isNotNull();
     assertThat(annotation.value()).isEqualTo("hasAnyAuthority('ROLE_ADMIN','ROLE_SUPER_ADMIN')");
+  }
+
+  @Test
+  void getRoleByKey_rejectsUnknownRolesInsteadOfFabricatingPlaceholderDto() {
+    RoleService roleService = mock(RoleService.class);
+    when(roleService.listRolesForCurrentActor())
+        .thenReturn(List.of(new RoleDto(1L, "ROLE_SALES", "Sales", List.of())));
+    RoleController controller = new RoleController(roleService);
+
+    assertThatThrownBy(() -> controller.getRoleByKey("warehouse"))
+        .isInstanceOfSatisfying(
+            ApplicationException.class,
+            ex -> assertThat(ex.getMessage()).isEqualTo("Unknown platform role: ROLE_WAREHOUSE"));
   }
 }

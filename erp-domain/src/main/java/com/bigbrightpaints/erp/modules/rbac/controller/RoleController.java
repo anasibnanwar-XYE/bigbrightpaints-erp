@@ -48,7 +48,10 @@ public class RoleController {
         roleService.listRolesForCurrentActor().stream()
             .filter(r -> r.name() != null && r.name().equalsIgnoreCase(target))
             .findFirst()
-            .orElseGet(() -> new RoleDto(null, target, target, List.of()));
+            .orElseThrow(
+                () ->
+                    com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+                        "Unknown platform role: " + target));
     return ResponseEntity.ok(ApiResponse.success("Role " + target, match));
   }
 
