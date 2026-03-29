@@ -347,7 +347,7 @@ Some endpoints accept an idempotency key in the request body alongside the heade
 
 ### 4.9 Catalog Import Idempotency Is Optional
 
-The catalog import endpoint (`POST /api/v1/catalog/import`) accepts `Idempotency-Key` and `X-Idempotency-Key` headers via `resolveHeaderKey()`, but the key is **not required**. If no key is provided, the import proceeds without idempotency protection, This is the same optional-key stance as sales order creation.
+The catalog import endpoint (`POST /api/v1/catalog/import`) accepts `Idempotency-Key` and `X-Idempotency-Key` headers via `resolveHeaderKey()`, but the key is **not required**. If no key is provided, the import proceeds without idempotency protection. This is the same optional-key stance as sales order creation.
 
 ---
 
