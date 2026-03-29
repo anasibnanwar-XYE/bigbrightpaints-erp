@@ -10,6 +10,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import java.time.Instant;
 import java.util.Locale;
 import java.util.Optional;
 
@@ -48,6 +49,7 @@ class ValidationSeedDataInitializerTest {
   @Mock private DealerRepository dealerRepository;
   @Mock private AccountRepository accountRepository;
   @Mock private InvoiceRepository invoiceRepository;
+  @Mock private SystemSettingsRepository systemSettingsRepository;
   @Mock private PasswordEncoder passwordEncoder;
   @Mock private AuthScopeService authScopeService;
 
@@ -89,6 +91,7 @@ class ValidationSeedDataInitializerTest {
             dealerRepository,
             accountRepository,
             invoiceRepository,
+            systemSettingsRepository,
             passwordEncoder,
             passwordPolicy,
             authScopeService,
@@ -119,6 +122,7 @@ class ValidationSeedDataInitializerTest {
             dealerRepository,
             accountRepository,
             invoiceRepository,
+            systemSettingsRepository,
             passwordEncoder,
             passwordPolicy,
             authScopeService,
@@ -149,6 +153,7 @@ class ValidationSeedDataInitializerTest {
             dealerRepository,
             accountRepository,
             invoiceRepository,
+            systemSettingsRepository,
             passwordEncoder,
             passwordPolicy,
             authScopeService,
@@ -181,6 +186,7 @@ class ValidationSeedDataInitializerTest {
             dealerRepository,
             accountRepository,
             invoiceRepository,
+            systemSettingsRepository,
             passwordEncoder,
             passwordPolicy,
             authScopeService,
@@ -191,18 +197,24 @@ class ValidationSeedDataInitializerTest {
     runner.run();
 
     ArgumentCaptor<UserAccount> users = ArgumentCaptor.forClass(UserAccount.class);
-    verify(userAccountRepository, times(8)).save(users.capture());
+    verify(userAccountRepository, times(14)).save(users.capture());
 
     assertThat(users.getAllValues())
         .extracting(UserAccount::getEmail)
         .containsExactlyInAnyOrder(
             "validation.admin@example.com",
+            "validation.mustchange.admin@example.com",
+            "validation.locked.admin@example.com",
             "validation.accounting@example.com",
             "validation.sales@example.com",
             "validation.factory@example.com",
             "validation.dealer@example.com",
             "validation.rival.dealer@example.com",
             "validation.rival.admin@example.com",
+            "validation.hold.admin@example.com",
+            "validation.blocked.admin@example.com",
+            "validation.quota.alpha@example.com",
+            "validation.quota.beta@example.com",
             "validation.superadmin@example.com");
 
     UserAccount platformUser =
@@ -223,6 +235,20 @@ class ValidationSeedDataInitializerTest {
     assertThat(mockAdmin.getRoles())
         .extracting(Role::getName)
         .contains("ROLE_ADMIN", "ROLE_ACCOUNTING", "ROLE_SALES");
+
+    UserAccount mustChangeAdmin =
+        users.getAllValues().stream()
+            .filter(user -> "validation.mustchange.admin@example.com".equals(user.getEmail()))
+            .findFirst()
+            .orElseThrow();
+    assertThat(mustChangeAdmin.isMustChangePassword()).isTrue();
+
+    UserAccount lockedAdmin =
+        users.getAllValues().stream()
+            .filter(user -> "validation.locked.admin@example.com".equals(user.getEmail()))
+            .findFirst()
+            .orElseThrow();
+    assertThat(lockedAdmin.getLockedUntil()).isEqualTo(Instant.parse("2099-01-01T00:00:00Z"));
 
     assertThat(users.getAllValues())
         .allMatch(

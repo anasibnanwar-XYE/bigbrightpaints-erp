@@ -1,6 +1,7 @@
 package com.bigbrightpaints.erp.core.config;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Arrays;
 import java.util.List;
@@ -48,6 +49,10 @@ public class ValidationSeedDataInitializer {
   private static final String VALIDATION_INVOICE_NOTES = "Validation seed invoice fixture";
   private static final String VALIDATION_INVOICE_PRODUCT_CODE = "VAL-SEED-ITEM";
   private static final String VALIDATION_INVOICE_LINE_DESCRIPTION = "Validation seed invoice line";
+  private static final String HOLD_COMPANY_CODE = "HOLD";
+  private static final String BLOCKED_COMPANY_CODE = "BLOCK";
+  private static final String QUOTA_COMPANY_CODE = "QUOTA";
+  private static final Instant LOCKED_UNTIL_PLACEHOLDER = Instant.parse("2099-01-01T00:00:00Z");
 
   @Bean
   CommandLineRunner seedValidationActors(
@@ -57,6 +62,7 @@ public class ValidationSeedDataInitializer {
       DealerRepository dealerRepository,
       AccountRepository accountRepository,
       InvoiceRepository invoiceRepository,
+      SystemSettingsRepository systemSettingsRepository,
       PasswordEncoder passwordEncoder,
       PasswordPolicy passwordPolicy,
       AuthScopeService authScopeService,
@@ -76,7 +82,38 @@ public class ValidationSeedDataInitializer {
 
       Company mockCompany = ensureCompany(companyRepository, "MOCK", "Mock Training Co");
       Company rivalCompany = ensureCompany(companyRepository, "RIVAL", "Rival Validation Co");
+      Company holdCompany = ensureCompany(companyRepository, HOLD_COMPANY_CODE, "Hold Validation Co");
+      Company blockedCompany =
+          ensureCompany(companyRepository, BLOCKED_COMPANY_CODE, "Blocked Validation Co");
+      Company quotaCompany =
+          ensureCompany(companyRepository, QUOTA_COMPANY_CODE, "Quota Validation Co");
       String platformScopeCode = authScopeService.getPlatformScopeCode();
+
+      ensureRuntimePolicy(systemSettingsRepository, mockCompany, null, null, null, null, null);
+      ensureRuntimePolicy(
+          systemSettingsRepository,
+          holdCompany,
+          "HOLD",
+          "COMPLIANCE_REVIEW",
+          null,
+          null,
+          null);
+      ensureRuntimePolicy(
+          systemSettingsRepository,
+          blockedCompany,
+          "BLOCKED",
+          "ABUSE_INCIDENT",
+          null,
+          null,
+          null);
+      ensureRuntimePolicy(
+          systemSettingsRepository,
+          quotaCompany,
+          "ACTIVE",
+          "ACTIVE_USER_LIMIT",
+          1,
+          null,
+          null);
 
       Role admin = ensureRole(roleRepository, "ROLE_ADMIN", "Administrator");
       Role accounting = ensureRole(roleRepository, "ROLE_ACCOUNTING", "Accounting");
@@ -93,15 +130,38 @@ public class ValidationSeedDataInitializer {
           ensureAccount(
               accountRepository, rivalCompany, "AR", "Accounts Receivable", AccountType.ASSET);
 
+      UserAccount mockAdmin =
+          ensureUser(
+              userAccountRepository,
+              passwordEncoder,
+              "validation.admin@example.com",
+              "Validation Admin",
+              validatedPassword,
+              mockCompany.getCode(),
+              List.of(mockCompany),
+              List.of(admin, accounting, sales));
       ensureUser(
           userAccountRepository,
           passwordEncoder,
-          "validation.admin@example.com",
-          "Validation Admin",
+          "validation.mustchange.admin@example.com",
+          "Validation Must Change Admin",
           validatedPassword,
           mockCompany.getCode(),
           List.of(mockCompany),
-          List.of(admin, accounting, sales));
+          List.of(admin),
+          true,
+          null);
+      ensureUser(
+          userAccountRepository,
+          passwordEncoder,
+          "validation.locked.admin@example.com",
+          "Validation Locked Admin",
+          validatedPassword,
+          mockCompany.getCode(),
+          List.of(mockCompany),
+          List.of(admin),
+          false,
+          LOCKED_UNTIL_PLACEHOLDER);
       ensureUser(
           userAccountRepository,
           passwordEncoder,
@@ -170,29 +230,96 @@ public class ValidationSeedDataInitializer {
       ensureValidationInvoiceFixture(invoiceRepository, mockDealer, "VAL-MOCK-INV-001");
       ensureValidationInvoiceFixture(invoiceRepository, rivalDealer, "VAL-RIVAL-INV-001");
 
+      UserAccount rivalAdmin =
+          ensureUser(
+              userAccountRepository,
+              passwordEncoder,
+              "validation.rival.admin@example.com",
+              "Rival Validation Admin",
+              validatedPassword,
+              rivalCompany.getCode(),
+              List.of(rivalCompany),
+              List.of(admin));
+      UserAccount holdAdmin =
+          ensureUser(
+              userAccountRepository,
+              passwordEncoder,
+              "validation.hold.admin@example.com",
+              "Validation Hold Admin",
+              validatedPassword,
+              holdCompany.getCode(),
+              List.of(holdCompany),
+              List.of(admin));
+      UserAccount blockedAdmin =
+          ensureUser(
+              userAccountRepository,
+              passwordEncoder,
+              "validation.blocked.admin@example.com",
+              "Validation Blocked Admin",
+              validatedPassword,
+              blockedCompany.getCode(),
+              List.of(blockedCompany),
+              List.of(admin));
+      UserAccount quotaAlpha =
+          ensureUser(
+              userAccountRepository,
+              passwordEncoder,
+              "validation.quota.alpha@example.com",
+              "Validation Quota Alpha",
+              validatedPassword,
+              quotaCompany.getCode(),
+              List.of(quotaCompany),
+              List.of(admin));
       ensureUser(
           userAccountRepository,
           passwordEncoder,
-          "validation.rival.admin@example.com",
-          "Rival Validation Admin",
+          "validation.quota.beta@example.com",
+          "Validation Quota Beta",
           validatedPassword,
-          rivalCompany.getCode(),
-          List.of(rivalCompany),
+          quotaCompany.getCode(),
+          List.of(quotaCompany),
           List.of(admin));
-      ensureUser(
-          userAccountRepository,
-          passwordEncoder,
-          "validation.superadmin@example.com",
-          "Validation Super Admin",
-          validatedPassword,
-          platformScopeCode,
-          List.of(),
-          List.of(admin, superAdmin));
+      UserAccount superAdminUser =
+          ensureUser(
+              userAccountRepository,
+              passwordEncoder,
+              "validation.superadmin@example.com",
+              "Validation Super Admin",
+              validatedPassword,
+              platformScopeCode,
+              List.of(),
+              List.of(admin, superAdmin));
+
+      attachMainAdmin(companyRepository, mockCompany, mockAdmin);
+      attachMainAdmin(companyRepository, rivalCompany, rivalAdmin);
+      attachMainAdmin(companyRepository, holdCompany, holdAdmin);
+      attachMainAdmin(companyRepository, blockedCompany, blockedAdmin);
+      attachMainAdmin(companyRepository, quotaCompany, quotaAlpha);
 
       log.info(
-          "Validation seed ready for companies [MOCK, RIVAL] plus platform scope {}. Actor"
-              + " password comes from"
-              + " erp.validation-seed.password / ERP_VALIDATION_SEED_PASSWORD.",
+          "Validation seed logins ready: admin={}, mustChange={}, locked={}, accounting={},"
+              + " sales={}, factory={}, dealer={}, superadmin={} (password from"
+              + " erp.validation-seed.password / ERP_VALIDATION_SEED_PASSWORD)",
+          mockAdmin.getEmail(),
+          "validation.mustchange.admin@example.com",
+          "validation.locked.admin@example.com",
+          "validation.accounting@example.com",
+          "validation.sales@example.com",
+          "validation.factory@example.com",
+          "validation.dealer@example.com",
+          superAdminUser.getEmail());
+      log.info(
+          "Validation state companies ready: hold={} blocked={} quota={} with admin actors"
+              + " [{}, {}, {}].",
+          holdCompany.getCode(),
+          blockedCompany.getCode(),
+          quotaCompany.getCode(),
+          holdAdmin.getEmail(),
+          blockedAdmin.getEmail(),
+          quotaAlpha.getEmail());
+      log.info(
+          "Validation seed ready for companies [MOCK, RIVAL, HOLD, BLOCK, QUOTA] plus platform"
+              + " scope {}.",
           platformScopeCode);
     };
   }
@@ -260,6 +387,19 @@ public class ValidationSeedDataInitializer {
             });
   }
 
+  private void attachMainAdmin(
+      CompanyRepository companyRepository, Company company, UserAccount adminUser) {
+    if (company == null || adminUser == null) {
+      return;
+    }
+    company.setOnboardingAdminEmail(adminUser.getEmail());
+    if (adminUser.getId() != null) {
+      company.setMainAdminUserId(adminUser.getId());
+      company.setOnboardingAdminUserId(adminUser.getId());
+    }
+    companyRepository.save(company);
+  }
+
   private UserAccount ensureUser(
       UserAccountRepository userAccountRepository,
       PasswordEncoder passwordEncoder,
@@ -269,6 +409,30 @@ public class ValidationSeedDataInitializer {
       String authScopeCode,
       List<Company> companies,
       List<Role> roles) {
+    return ensureUser(
+        userAccountRepository,
+        passwordEncoder,
+        email,
+        displayName,
+        password,
+        authScopeCode,
+        companies,
+        roles,
+        false,
+        null);
+  }
+
+  private UserAccount ensureUser(
+      UserAccountRepository userAccountRepository,
+      PasswordEncoder passwordEncoder,
+      String email,
+      String displayName,
+      String password,
+      String authScopeCode,
+      List<Company> companies,
+      List<Role> roles,
+      boolean mustChangePassword,
+      Instant lockedUntil) {
     String normalizedEmail = email.trim().toLowerCase(Locale.ROOT);
     String normalizedScopeCode = authScopeCode.trim().toUpperCase(Locale.ROOT);
     UserAccount user =
@@ -286,15 +450,59 @@ public class ValidationSeedDataInitializer {
     user.setDisplayName(displayName);
     user.setPasswordHash(passwordEncoder.encode(password));
     user.setEnabled(true);
-    user.setMustChangePassword(false);
-    user.setFailedLoginAttempts(0);
-    user.setLockedUntil(null);
+    user.setMustChangePassword(mustChangePassword);
+    user.setFailedLoginAttempts(lockedUntil == null ? 0 : 5);
+    user.setLockedUntil(lockedUntil);
     user.setMfaEnabled(false);
     user.setMfaSecret(null);
     user.setMfaRecoveryCodeHashes(List.of());
     normalizeCompanyMemberships(user, companies);
     normalizeRoleMemberships(user, roles);
     return userAccountRepository.save(user);
+  }
+
+  private void ensureRuntimePolicy(
+      SystemSettingsRepository systemSettingsRepository,
+      Company company,
+      String state,
+      String reason,
+      Integer maxActiveUsers,
+      Integer maxRequestsPerMinute,
+      Integer maxConcurrentRequests) {
+    if (company == null || company.getId() == null) {
+      return;
+    }
+    upsertRuntimeSetting(systemSettingsRepository, "tenant.runtime.hold-state." + company.getId(), state);
+    upsertRuntimeSetting(systemSettingsRepository, "tenant.runtime.hold-reason." + company.getId(), reason);
+    upsertRuntimeSetting(
+        systemSettingsRepository,
+        "tenant.runtime.max-active-users." + company.getId(),
+        maxActiveUsers == null ? null : String.valueOf(maxActiveUsers));
+    upsertRuntimeSetting(
+        systemSettingsRepository,
+        "tenant.runtime.max-requests-per-minute." + company.getId(),
+        maxRequestsPerMinute == null ? null : String.valueOf(maxRequestsPerMinute));
+    upsertRuntimeSetting(
+        systemSettingsRepository,
+        "tenant.runtime.max-concurrent-requests." + company.getId(),
+        maxConcurrentRequests == null ? null : String.valueOf(maxConcurrentRequests));
+    upsertRuntimeSetting(
+        systemSettingsRepository,
+        "tenant.runtime.policy-reference." + company.getId(),
+        "validation-seed-" + company.getCode().toLowerCase(Locale.ROOT));
+    upsertRuntimeSetting(
+        systemSettingsRepository,
+        "tenant.runtime.policy-updated-at." + company.getId(),
+        Instant.now().toString());
+  }
+
+  private void upsertRuntimeSetting(
+      SystemSettingsRepository systemSettingsRepository, String key, String value) {
+    if (value == null || value.isBlank()) {
+      systemSettingsRepository.deleteById(key);
+      return;
+    }
+    systemSettingsRepository.save(new SystemSetting(key, value));
   }
 
   private void normalizeCompanyMemberships(UserAccount user, List<Company> companies) {

@@ -48,6 +48,11 @@ import com.bigbrightpaints.erp.modules.rbac.domain.Role;
 import com.bigbrightpaints.erp.modules.rbac.domain.RoleRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
+import com.bigbrightpaints.erp.modules.sales.dto.SalesOrderDto;
+import com.bigbrightpaints.erp.modules.sales.dto.SalesOrderItemRequest;
+import com.bigbrightpaints.erp.modules.sales.dto.SalesOrderRequest;
+import com.bigbrightpaints.erp.modules.sales.service.SalesFulfillmentService;
+import com.bigbrightpaints.erp.modules.sales.service.SalesOrderCrudService;
 
 @Configuration
 @Profile("mock")
@@ -71,19 +76,23 @@ public class MockDataInitializer {
       RawMaterialRepository rawMaterialRepository,
       RawMaterialBatchRepository rawMaterialBatchRepository,
       AccountingService accountingService,
+      SalesOrderCrudService salesOrderCrudService,
+      SalesFulfillmentService salesFulfillmentService,
       JournalEntryRepository journalEntryRepository,
       @Value("${erp.seed.mock-admin.email:}") String mockAdminEmail,
       @Value("${erp.seed.mock-admin.password:}") String mockAdminPassword) {
     return args -> {
       Company company = createCompany(companyRepository);
       Map<String, Account> accounts = seedAccounts(company, accountRepository, companyRepository);
-      seedRolesAndUsers(
-          roleRepository,
-          userRepository,
-          passwordEncoder,
-          company,
-          mockAdminEmail,
-          mockAdminPassword);
+      UserAccount seededAdmin =
+          seedRolesAndUsers(
+              roleRepository,
+              userRepository,
+              passwordEncoder,
+              company,
+              mockAdminEmail,
+              mockAdminPassword);
+      attachMainAdmin(companyRepository, company, seededAdmin);
       Dealer dealer = seedDealer(company, dealerRepository, accounts.get("AR"));
       Supplier supplier = seedSupplier(company, supplierRepository, accounts.get("AP"));
       ProductionBrand brand = seedBrand(company, brandRepository);
@@ -124,19 +133,23 @@ public class MockDataInitializer {
 
       // Seed a handful of journals for UI exploration
       CompanyContextHolder.setCompanyCode(company.getCode());
-      seedSalesPurchaseAndCogs(accountingService, company, dealer, supplier, accounts);
-      // Add some traffic to show balances
-      for (int i = 0; i < 10; i++) {
-        postSimpleSale(
-            accountingService,
-            company,
-            dealer,
-            accounts.get("REV"),
-            accounts.get("GST_OUT"),
-            accounts.get("AR"),
-            new BigDecimal("500").add(new BigDecimal(i * 25)));
+      try {
+        seedReadyToConfirmOrder(salesOrderCrudService, salesFulfillmentService, dealer);
+        seedSalesPurchaseAndCogs(accountingService, company, dealer, supplier, accounts);
+        // Add some traffic to show balances
+        for (int i = 0; i < 10; i++) {
+          postSimpleSale(
+              accountingService,
+              company,
+              dealer,
+              accounts.get("REV"),
+              accounts.get("GST_OUT"),
+              accounts.get("AR"),
+              new BigDecimal("500").add(new BigDecimal(i * 25)));
+        }
+      } finally {
+        CompanyContextHolder.clear();
       }
-      CompanyContextHolder.clear();
     };
   }
 
@@ -243,7 +256,7 @@ public class MockDataInitializer {
             });
   }
 
-  private void seedRolesAndUsers(
+  private UserAccount seedRolesAndUsers(
       RoleRepository roleRepository,
       UserAccountRepository userRepository,
       PasswordEncoder encoder,
@@ -283,7 +296,7 @@ public class MockDataInitializer {
 
     if (!StringUtils.hasText(adminEmail)) {
       log.info("Mock admin seed skipped: set erp.seed.mock-admin.email to enable bootstrap");
-      return;
+      return null;
     }
     String normalizedEmail = adminEmail.trim().toLowerCase(Locale.ROOT);
     UserAccount existingAdmin =
@@ -307,15 +320,58 @@ public class MockDataInitializer {
       user.addRole(admin);
       user.addRole(accounting);
       user.addRole(sales);
-      userRepository.save(user);
-      return;
+      return userRepository.save(user);
     }
     existingAdmin.setAuthScopeCode(company.getCode());
     existingAdmin.setCompany(company);
     existingAdmin.addRole(admin);
     existingAdmin.addRole(accounting);
     existingAdmin.addRole(sales);
-    userRepository.save(existingAdmin);
+    return userRepository.save(existingAdmin);
+  }
+
+  private void attachMainAdmin(
+      CompanyRepository companyRepository, Company company, UserAccount adminUser) {
+    if (company == null || adminUser == null) {
+      return;
+    }
+    company.setOnboardingAdminEmail(adminUser.getEmail());
+    if (adminUser.getId() != null) {
+      company.setMainAdminUserId(adminUser.getId());
+      company.setOnboardingAdminUserId(adminUser.getId());
+    }
+    companyRepository.save(company);
+  }
+
+  private void seedReadyToConfirmOrder(
+      SalesOrderCrudService salesOrderCrudService,
+      SalesFulfillmentService salesFulfillmentService,
+      Dealer dealer) {
+    if (dealer == null || dealer.getId() == null) {
+      return;
+    }
+    SalesOrderDto order =
+        salesOrderCrudService.createOrder(
+            new SalesOrderRequest(
+                dealer.getId(),
+                new BigDecimal("236.00"),
+                "INR",
+                "Mock ready-to-confirm UAT order",
+                List.of(
+                    new SalesOrderItemRequest(
+                        "FG-GST", "Mock ready-to-confirm line", new BigDecimal("10"), new BigDecimal("20.00"), new BigDecimal("18.00"))),
+                "GST",
+                new BigDecimal("18.00"),
+                Boolean.FALSE,
+                "mock-ready-confirm-order",
+                "CREDIT"));
+    if (order != null && order.id() != null) {
+      salesFulfillmentService.reserveForOrder(order.id());
+      log.info(
+          "Mock ready-to-confirm sales order seeded for UAT: orderId={} orderNumber={}",
+          order.id(),
+          order.orderNumber());
+    }
   }
 
   private Dealer seedDealer(Company company, DealerRepository dealerRepository, Account ar) {
