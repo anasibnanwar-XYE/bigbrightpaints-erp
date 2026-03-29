@@ -9840,6 +9840,7 @@ class AccountingServiceTest {
     ReflectionTestUtils.setField(existingEntry, "id", 901L);
     existingEntry.setDealer(dealer);
     existingEntry.setReferenceNumber("DR-SETTLE-REPLAY-1");
+    existingEntry.setEntryDate(LocalDate.of(2024, 4, 9));
     existingEntry.setMemo("Dealer settlement replay");
     existingEntry
         .getLines()
@@ -9962,6 +9963,7 @@ class AccountingServiceTest {
     ReflectionTestUtils.setField(existingEntry, "id", 904L);
     existingEntry.setDealer(dealer);
     existingEntry.setReferenceNumber("DR-SETTLE-REPLAY-ADJ-1");
+    existingEntry.setEntryDate(LocalDate.of(2024, 4, 9));
     existingEntry.setMemo("Dealer settlement replay");
     existingEntry
         .getLines()
@@ -10055,6 +10057,123 @@ class AccountingServiceTest {
     verify(journalReferenceMappingRepository, never())
         .reserveReferenceMapping(any(), any(), any(), any(), any());
     verify(journalEntryRepository, never()).save(any());
+  }
+
+  @Test
+  void settleDealerInvoices_replayRejectsDifferentSettlementDate() {
+    Dealer dealer = new Dealer();
+    dealer.setName("Replay Dealer");
+    ReflectionTestUtils.setField(dealer, "id", 1L);
+
+    Account receivable = new Account();
+    receivable.setCompany(company);
+    receivable.setCode("AR-REPLAY");
+    receivable.setType(AccountType.ASSET);
+    ReflectionTestUtils.setField(receivable, "id", 10L);
+    dealer.setReceivableAccount(receivable);
+
+    Account cash = new Account();
+    cash.setCompany(company);
+    cash.setCode("CASH-REPLAY");
+    cash.setType(AccountType.ASSET);
+    ReflectionTestUtils.setField(cash, "id", 20L);
+
+    Invoice invoice = new Invoice();
+    invoice.setCompany(company);
+    invoice.setDealer(dealer);
+    ReflectionTestUtils.setField(invoice, "id", 701L);
+
+    LocalDate persistedSettlementDate = LocalDate.of(2024, 4, 9);
+    LocalDate replaySettlementDate = persistedSettlementDate.plusDays(1);
+
+    JournalEntry existingEntry = new JournalEntry();
+    ReflectionTestUtils.setField(existingEntry, "id", 911L);
+    existingEntry.setDealer(dealer);
+    existingEntry.setReferenceNumber("DR-SETTLE-DATE-REPLAY-1");
+    existingEntry.setEntryDate(persistedSettlementDate);
+    existingEntry.setMemo("Dealer settlement replay");
+    existingEntry
+        .getLines()
+        .add(
+            journalLine(
+                existingEntry,
+                cash,
+                "Dealer settlement replay",
+                new BigDecimal("100.00"),
+                BigDecimal.ZERO));
+    existingEntry
+        .getLines()
+        .add(
+            journalLine(
+                existingEntry,
+                receivable,
+                "Dealer settlement replay",
+                BigDecimal.ZERO,
+                new BigDecimal("100.00")));
+
+    PartnerSettlementAllocation existingRow = new PartnerSettlementAllocation();
+    existingRow.setCompany(company);
+    existingRow.setPartnerType(
+        com.bigbrightpaints.erp.modules.accounting.domain.PartnerType.DEALER);
+    existingRow.setDealer(dealer);
+    existingRow.setInvoice(invoice);
+    existingRow.setJournalEntry(existingEntry);
+    existingRow.setSettlementDate(persistedSettlementDate);
+    existingRow.setAllocationAmount(new BigDecimal("100.00"));
+    existingRow.setDiscountAmount(BigDecimal.ZERO);
+    existingRow.setWriteOffAmount(BigDecimal.ZERO);
+    existingRow.setFxDifferenceAmount(BigDecimal.ZERO);
+    existingRow.setIdempotencyKey("IDEMP-DR-SETTLE-DATE");
+    existingRow.setMemo(null);
+
+    JournalReferenceMapping mapping = new JournalReferenceMapping();
+    mapping.setCompany(company);
+    mapping.setLegacyReference("idemp-dr-settle-date");
+    mapping.setCanonicalReference("DR-SETTLE-DATE-REPLAY-1");
+    mapping.setEntityType("DEALER_SETTLEMENT");
+    mapping.setEntityId(null);
+
+    when(dealerRepository.lockByCompanyAndId(eq(company), eq(1L))).thenReturn(Optional.of(dealer));
+    when(companyEntityLookup.requireAccount(eq(company), eq(20L))).thenReturn(cash);
+    when(journalReferenceMappingRepository.findAllByCompanyAndLegacyReferenceIgnoreCase(
+            eq(company), eq("idemp-dr-settle-date")))
+        .thenReturn(List.of(mapping));
+    when(journalReferenceResolver.findExistingEntry(eq(company), eq("DR-SETTLE-DATE-REPLAY-1")))
+        .thenReturn(Optional.of(existingEntry));
+    when(settlementAllocationRepository
+            .findByCompanyAndIdempotencyKeyIgnoreCaseOrderByCreatedAtAscIdAsc(
+                eq(company), eq("IDEMP-DR-SETTLE-DATE")))
+        .thenReturn(List.of(existingRow));
+
+    DealerSettlementRequest request =
+        new DealerSettlementRequest(
+            1L,
+            20L,
+            null,
+            null,
+            null,
+            null,
+            replaySettlementDate,
+            null,
+            "Dealer settlement replay",
+            "IDEMP-DR-SETTLE-DATE",
+            Boolean.FALSE,
+            List.of(
+                new SettlementAllocationRequest(
+                    701L,
+                    null,
+                    new BigDecimal("100.00"),
+                    BigDecimal.ZERO,
+                    BigDecimal.ZERO,
+                    BigDecimal.ZERO,
+                    null)),
+            null);
+
+    assertThatThrownBy(() -> accountingService.settleDealerInvoices(request))
+        .isInstanceOfSatisfying(
+            ApplicationException.class,
+            ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.CONCURRENCY_CONFLICT))
+        .hasMessageContaining("settlement date");
   }
 
   @Test
@@ -11128,6 +11247,7 @@ class AccountingServiceTest {
     ReflectionTestUtils.setField(existingEntry, "id", 901L);
     existingEntry.setSupplier(supplier);
     existingEntry.setReferenceNumber("SUP-SETTLE-REPLAY-1");
+    existingEntry.setEntryDate(LocalDate.of(2024, 4, 9));
     existingEntry.setMemo("Supplier settlement replay");
     existingEntry
         .getLines()
@@ -11248,6 +11368,7 @@ class AccountingServiceTest {
     ReflectionTestUtils.setField(existingEntry, "id", 904L);
     existingEntry.setSupplier(supplier);
     existingEntry.setReferenceNumber("SUP-SETTLE-REPLAY-ADJ-1");
+    existingEntry.setEntryDate(LocalDate.of(2024, 4, 9));
     existingEntry.setMemo("Supplier settlement replay");
     existingEntry
         .getLines()
@@ -11343,6 +11464,118 @@ class AccountingServiceTest {
     verify(journalReferenceMappingRepository, never())
         .reserveReferenceMapping(any(), any(), any(), any(), any());
     verify(journalEntryRepository, never()).save(any());
+  }
+
+  @Test
+  void settleSupplierInvoices_replayRejectsDifferentSettlementDate() {
+    Supplier supplier = new Supplier();
+    supplier.setName("Replay Supplier");
+    supplier.setStatus(SupplierStatus.ACTIVE);
+    ReflectionTestUtils.setField(supplier, "id", 1L);
+
+    Account payable = new Account();
+    payable.setCompany(company);
+    payable.setCode("AP-REPLAY");
+    payable.setType(AccountType.LIABILITY);
+    ReflectionTestUtils.setField(payable, "id", 10L);
+    supplier.setPayableAccount(payable);
+
+    Account cash = new Account();
+    cash.setCompany(company);
+    cash.setCode("CASH-REPLAY");
+    cash.setType(AccountType.ASSET);
+    ReflectionTestUtils.setField(cash, "id", 20L);
+
+    LocalDate persistedSettlementDate = LocalDate.of(2024, 4, 9);
+    LocalDate replaySettlementDate = persistedSettlementDate.plusDays(1);
+
+    JournalEntry existingEntry = new JournalEntry();
+    ReflectionTestUtils.setField(existingEntry, "id", 912L);
+    existingEntry.setSupplier(supplier);
+    existingEntry.setReferenceNumber("SUP-SETTLE-DATE-REPLAY-1");
+    existingEntry.setEntryDate(persistedSettlementDate);
+    existingEntry.setMemo("Supplier settlement replay");
+    existingEntry
+        .getLines()
+        .add(
+            journalLine(
+                existingEntry,
+                payable,
+                "Supplier settlement replay",
+                new BigDecimal("100.00"),
+                BigDecimal.ZERO));
+    existingEntry
+        .getLines()
+        .add(
+            journalLine(
+                existingEntry,
+                cash,
+                "Supplier settlement replay",
+                BigDecimal.ZERO,
+                new BigDecimal("100.00")));
+
+    PartnerSettlementAllocation existingRow = new PartnerSettlementAllocation();
+    existingRow.setCompany(company);
+    existingRow.setPartnerType(
+        com.bigbrightpaints.erp.modules.accounting.domain.PartnerType.SUPPLIER);
+    existingRow.setSupplier(supplier);
+    existingRow.setJournalEntry(existingEntry);
+    existingRow.setSettlementDate(persistedSettlementDate);
+    existingRow.setAllocationAmount(new BigDecimal("100.00"));
+    existingRow.setDiscountAmount(BigDecimal.ZERO);
+    existingRow.setWriteOffAmount(BigDecimal.ZERO);
+    existingRow.setFxDifferenceAmount(BigDecimal.ZERO);
+    existingRow.setIdempotencyKey("IDEMP-AP-SETTLE-DATE");
+    existingRow.setMemo(null);
+
+    JournalReferenceMapping mapping = new JournalReferenceMapping();
+    mapping.setCompany(company);
+    mapping.setLegacyReference("idemp-ap-settle-date");
+    mapping.setCanonicalReference("SUP-SETTLE-DATE-REPLAY-1");
+    mapping.setEntityType("SUPPLIER_SETTLEMENT");
+    mapping.setEntityId(null);
+
+    when(supplierRepository.lockByCompanyAndId(eq(company), eq(1L)))
+        .thenReturn(Optional.of(supplier));
+    when(companyEntityLookup.requireAccount(eq(company), eq(20L))).thenReturn(cash);
+    when(journalReferenceMappingRepository.findAllByCompanyAndLegacyReferenceIgnoreCase(
+            eq(company), eq("idemp-ap-settle-date")))
+        .thenReturn(List.of(mapping));
+    when(journalReferenceResolver.findExistingEntry(eq(company), eq("SUP-SETTLE-DATE-REPLAY-1")))
+        .thenReturn(Optional.of(existingEntry));
+    when(settlementAllocationRepository
+            .findByCompanyAndIdempotencyKeyIgnoreCaseOrderByCreatedAtAscIdAsc(
+                eq(company), eq("IDEMP-AP-SETTLE-DATE")))
+        .thenReturn(List.of(existingRow));
+
+    SupplierSettlementRequest request =
+        new SupplierSettlementRequest(
+            1L,
+            20L,
+            null,
+            null,
+            null,
+            null,
+            replaySettlementDate,
+            null,
+            "Supplier settlement replay",
+            "IDEMP-AP-SETTLE-DATE",
+            Boolean.FALSE,
+            List.of(
+                new SettlementAllocationRequest(
+                    null,
+                    null,
+                    new BigDecimal("100.00"),
+                    BigDecimal.ZERO,
+                    BigDecimal.ZERO,
+                    BigDecimal.ZERO,
+                    null)));
+
+    assertThatThrownBy(() -> accountingService.settleSupplierInvoices(request))
+        .isInstanceOfSatisfying(
+            ApplicationException.class,
+            ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.CONCURRENCY_CONFLICT))
+        .hasMessageContaining("settlement date");
   }
 
   @Test

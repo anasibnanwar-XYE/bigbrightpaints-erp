@@ -2533,6 +2533,8 @@ abstract class AccountingCoreEngineCore {
         StringUtils.hasText(request.memo())
             ? request.memo().trim()
             : "Settlement for dealer " + dealer.getName();
+    LocalDate requestedEffectiveSettlementDate =
+        request.settlementDate() != null ? request.settlementDate() : currentDate(company);
     boolean settlementOverrideRequested = settlementOverrideRequested(totals);
     if (settlementOverrideRequested) {
       requireAdminExceptionReason("Settlement override", request.adminOverride(), request.memo());
@@ -2568,6 +2570,7 @@ abstract class AccountingCoreEngineCore {
             trimmedIdempotencyKey,
             PartnerType.DEALER,
             dealer.getId(),
+            requestedEffectiveSettlementDate,
             memo,
             entry,
             lineDraft.lines());
@@ -2594,6 +2597,7 @@ abstract class AccountingCoreEngineCore {
           trimmedIdempotencyKey,
           PartnerType.DEALER,
           dealer.getId(),
+          requestedEffectiveSettlementDate,
           memo,
           entry,
           lineDraft.lines());
@@ -2601,8 +2605,7 @@ abstract class AccountingCoreEngineCore {
     }
 
     lineDraft = buildDealerSettlementLines(company, request, receivableAccount, totals, memo, true);
-    LocalDate entryDate =
-        request.settlementDate() != null ? request.settlementDate() : currentDate(company);
+    LocalDate entryDate = requestedEffectiveSettlementDate;
 
     BigDecimal totalApplied = totals.totalApplied();
     BigDecimal totalDiscount = totals.totalDiscount();
@@ -2811,6 +2814,8 @@ abstract class AccountingCoreEngineCore {
         StringUtils.hasText(request.memo())
             ? request.memo().trim()
             : "Settlement to supplier " + supplier.getName();
+    LocalDate requestedEffectiveSettlementDate =
+        request.settlementDate() != null ? request.settlementDate() : currentDate(company);
     boolean settlementOverrideRequested = settlementOverrideRequested(totals);
     if (settlementOverrideRequested) {
       requireAdminExceptionReason("Settlement override", request.adminOverride(), request.memo());
@@ -2842,6 +2847,7 @@ abstract class AccountingCoreEngineCore {
             trimmedIdempotencyKey,
             PartnerType.SUPPLIER,
             supplier.getId(),
+            requestedEffectiveSettlementDate,
             memo,
             entry,
             replayLineDraft.lines());
@@ -2870,6 +2876,7 @@ abstract class AccountingCoreEngineCore {
           trimmedIdempotencyKey,
           PartnerType.SUPPLIER,
           supplier.getId(),
+          requestedEffectiveSettlementDate,
           memo,
           entry,
           replayLineDraft.lines());
@@ -2880,8 +2887,7 @@ abstract class AccountingCoreEngineCore {
     SettlementLineDraft lineDraft =
         buildSupplierSettlementLines(company, request, payableAccount, totals, memo, true);
 
-    LocalDate entryDate =
-        request.settlementDate() != null ? request.settlementDate() : currentDate(company);
+    LocalDate entryDate = requestedEffectiveSettlementDate;
 
     BigDecimal totalApplied = totals.totalApplied();
     BigDecimal totalDiscount = totals.totalDiscount();
@@ -4513,9 +4519,12 @@ abstract class AccountingCoreEngineCore {
       String idempotencyKey,
       PartnerType partnerType,
       Long partnerId,
+      LocalDate requestedEffectiveSettlementDate,
       String memo,
       JournalEntry entry,
       List<JournalEntryRequest.JournalLineRequest> expectedLines) {
+    validatePartnerSettlementReplayDate(
+        idempotencyKey, partnerType, partnerId, requestedEffectiveSettlementDate, entry);
     validatePartnerJournalReplay(
         idempotencyKey,
         partnerType,
@@ -4524,6 +4533,28 @@ abstract class AccountingCoreEngineCore {
         entry,
         expectedLines,
         "Idempotency key already used for a different settlement payload");
+  }
+
+  private void validatePartnerSettlementReplayDate(
+      String idempotencyKey,
+      PartnerType partnerType,
+      Long partnerId,
+      LocalDate requestedEffectiveSettlementDate,
+      JournalEntry entry) {
+    if (entry == null || requestedEffectiveSettlementDate == null) {
+      return;
+    }
+    LocalDate persistedSettlementDate = entry.getEntryDate();
+    if (Objects.equals(persistedSettlementDate, requestedEffectiveSettlementDate)) {
+      return;
+    }
+    throw replayConflictWithPartnerContext(
+            "Idempotency key already used with a different settlement date",
+            idempotencyKey,
+            partnerType,
+            partnerId)
+        .withDetail("existingSettlementDate", persistedSettlementDate)
+        .withDetail("requestedSettlementDate", requestedEffectiveSettlementDate);
   }
 
   private ApplicationException missingReservedPartnerAllocation(
