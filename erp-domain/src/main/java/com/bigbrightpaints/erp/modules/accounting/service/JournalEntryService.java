@@ -40,6 +40,7 @@ import com.bigbrightpaints.erp.modules.invoice.service.InvoiceSettlementPolicy;
 import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchaseRepository;
 import com.bigbrightpaints.erp.modules.purchasing.domain.SupplierRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
+import com.bigbrightpaints.erp.shared.dto.PageResponse;
 
 import jakarta.persistence.EntityManager;
 
@@ -227,15 +228,20 @@ public class JournalEntryService extends AccountingCoreEngine {
     return companyClock.today(companyContextService.requireCurrentCompany());
   }
 
-  public List<JournalListItemDto> listJournals(
-      LocalDate fromDate, LocalDate toDate, String journalType, String sourceModule) {
+  public PageResponse<JournalListItemDto> listJournals(
+      LocalDate fromDate,
+      LocalDate toDate,
+      String journalType,
+      String sourceModule,
+      int page,
+      int size) {
     if (fromDate != null && toDate != null && fromDate.isAfter(toDate)) {
       throw new ApplicationException(
               ErrorCode.VALIDATION_INVALID_DATE, "fromDate cannot be after toDate")
           .withDetail("fromDate", fromDate)
           .withDetail("toDate", toDate);
     }
-    return super.listJournals(fromDate, toDate, journalType, sourceModule);
+    return super.listJournals(fromDate, toDate, journalType, sourceModule, page, size);
   }
 
   public JournalEntryDto createManualJournalEntry(

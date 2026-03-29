@@ -26,7 +26,10 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.core.env.Environment;
 import org.springframework.core.env.Profiles;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.retry.annotation.Backoff;
 import org.springframework.retry.annotation.Retryable;
 import org.springframework.security.core.Authentication;
@@ -76,6 +79,7 @@ import com.bigbrightpaints.erp.modules.purchasing.domain.Supplier;
 import com.bigbrightpaints.erp.modules.purchasing.domain.SupplierRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
+import com.bigbrightpaints.erp.shared.dto.PageResponse;
 
 import jakarta.persistence.EntityManager;
 
@@ -479,8 +483,8 @@ abstract class AccountingCoreEngineCore {
   }
 
   @Transactional(readOnly = true)
-  public List<JournalListItemDto> listJournals(
-      LocalDate fromDate, LocalDate toDate, String journalType, String sourceModule) {
+  public PageResponse<JournalListItemDto> listJournals(
+      LocalDate fromDate, LocalDate toDate, String journalType, String sourceModule, int page, int size) {
     if (fromDate != null && toDate != null && fromDate.isAfter(toDate)) {
       throw new ApplicationException(
               ErrorCode.VALIDATION_INVALID_DATE, "fromDate cannot be after toDate")
@@ -490,23 +494,49 @@ abstract class AccountingCoreEngineCore {
     JournalEntryType typeFilter = parseJournalTypeFilter(journalType);
     String normalizedSourceModule = normalizeSourceModule(sourceModule);
     Company company = companyContextService.requireCurrentCompany();
-    return journalEntryRepository.findByCompanyOrderByEntryDateDesc(company).stream()
-        .filter(
-            entry ->
-                fromDate == null
-                    || (entry.getEntryDate() != null && !entry.getEntryDate().isBefore(fromDate)))
-        .filter(
-            entry ->
-                toDate == null
-                    || (entry.getEntryDate() != null && !entry.getEntryDate().isAfter(toDate)))
-        .filter(entry -> typeFilter == null || typeFilter.equals(entry.getJournalType()))
-        .filter(
-            entry ->
-                normalizedSourceModule == null
-                    || (entry.getSourceModule() != null
-                        && normalizedSourceModule.equalsIgnoreCase(entry.getSourceModule())))
-        .map(this::toJournalListItemDto)
-        .toList();
+    int safePage = Math.max(page, 0);
+    int safeSize = Math.max(1, Math.min(size, 200));
+    Specification<JournalEntry> spec =
+        Specification.where(byJournalCompany(company))
+            .and(byJournalEntryDateRange(fromDate, toDate))
+            .and(byJournalType(typeFilter))
+            .and(byJournalSourceModule(normalizedSourceModule));
+    Page<JournalEntry> journalPage =
+        journalEntryRepository.findAll(
+            spec, PageRequest.of(safePage, safeSize, Sort.by(Sort.Direction.DESC, "entryDate", "id")));
+    List<JournalListItemDto> content = journalPage.getContent().stream().map(this::toJournalListItemDto).toList();
+    return PageResponse.of(content, journalPage.getTotalElements(), safePage, safeSize);
+  }
+
+  private Specification<JournalEntry> byJournalCompany(Company company) {
+    return (root, query, cb) -> cb.equal(root.get("company"), company);
+  }
+
+  private Specification<JournalEntry> byJournalEntryDateRange(LocalDate fromDate, LocalDate toDate) {
+    return (root, query, cb) -> {
+      if (fromDate == null && toDate == null) {
+        return cb.conjunction();
+      }
+      if (fromDate != null && toDate != null) {
+        return cb.between(root.get("entryDate"), fromDate, toDate);
+      }
+      if (fromDate != null) {
+        return cb.greaterThanOrEqualTo(root.get("entryDate"), fromDate);
+      }
+      return cb.lessThanOrEqualTo(root.get("entryDate"), toDate);
+    };
+  }
+
+  private Specification<JournalEntry> byJournalType(JournalEntryType typeFilter) {
+    return (root, query, cb) ->
+        typeFilter != null ? cb.equal(root.get("journalType"), typeFilter) : cb.conjunction();
+  }
+
+  private Specification<JournalEntry> byJournalSourceModule(String normalizedSourceModule) {
+    return (root, query, cb) ->
+        normalizedSourceModule != null
+            ? cb.equal(cb.lower(root.get("sourceModule")), normalizedSourceModule.toLowerCase(Locale.ROOT))
+            : cb.conjunction();
   }
 
   @Retryable(

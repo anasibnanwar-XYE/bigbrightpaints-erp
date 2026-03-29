@@ -59,6 +59,7 @@ import com.bigbrightpaints.erp.modules.purchasing.domain.SupplierRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
 import com.bigbrightpaints.erp.modules.sales.service.SalesReturnService;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
+import com.bigbrightpaints.erp.shared.dto.PageResponse;
 
 @Tag("critical")
 class AccountingControllerJournalEndpointsTest {
@@ -174,17 +175,19 @@ class AccountingControllerJournalEndpointsTest {
                 "INV-10",
                 new BigDecimal("100.00"),
                 new BigDecimal("100.00")));
+    PageResponse<JournalListItemDto> expectedPage = PageResponse.of(expected, 1, 2, 40);
     when(accountingService.listJournals(
-            LocalDate.of(2026, 2, 1), LocalDate.of(2026, 2, 28), "AUTOMATED", "SALES"))
-        .thenReturn(expected);
+            LocalDate.of(2026, 2, 1), LocalDate.of(2026, 2, 28), "AUTOMATED", "SALES", 2, 40))
+        .thenReturn(expectedPage);
 
-    ApiResponse<List<JournalListItemDto>> body =
+    ApiResponse<PageResponse<JournalListItemDto>> body =
         controller
-            .listJournals(LocalDate.of(2026, 2, 1), LocalDate.of(2026, 2, 28), "AUTOMATED", "SALES")
+            .listJournals(
+                LocalDate.of(2026, 2, 1), LocalDate.of(2026, 2, 28), "AUTOMATED", "SALES", 2, 40)
             .getBody();
 
     assertThat(body).isNotNull();
-    assertThat(body.data()).containsExactlyElementsOf(expected);
+    assertThat(body.data()).isEqualTo(expectedPage);
   }
 
   @Test

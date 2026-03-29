@@ -40,6 +40,7 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.mock.env.MockEnvironment;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -111,6 +112,7 @@ import com.bigbrightpaints.erp.modules.purchasing.domain.SupplierRepository;
 import com.bigbrightpaints.erp.modules.purchasing.domain.SupplierStatus;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
+import com.bigbrightpaints.erp.shared.dto.PageResponse;
 
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
@@ -620,7 +622,7 @@ class AccountingServiceTest {
     LocalDate fromDate = LocalDate.of(2026, 3, 5);
     LocalDate toDate = LocalDate.of(2026, 3, 4);
 
-    assertThatThrownBy(() -> accountingService.listJournals(fromDate, toDate, null, null))
+    assertThatThrownBy(() -> accountingService.listJournals(fromDate, toDate, null, null, 0, 50))
         .isInstanceOfSatisfying(
             ApplicationException.class,
             ex -> {
@@ -687,14 +689,20 @@ class AccountingServiceTest {
     wrongDate.setJournalType(JournalEntryType.MANUAL);
     wrongDate.setSourceModule("MANUAL");
 
-    when(journalEntryRepository.findByCompanyOrderByEntryDateDesc(company))
-        .thenReturn(List.of(matching, wrongType, wrongModule, wrongDate));
+    when(journalEntryRepository.findAll(any(Specification.class), any(PageRequest.class)))
+        .thenReturn(new PageImpl<>(List.of(matching), PageRequest.of(0, 200), 1));
 
-    List<JournalListItemDto> listed =
+    PageResponse<JournalListItemDto> listed =
         accountingService.listJournals(
-            LocalDate.of(2026, 3, 1), LocalDate.of(2026, 3, 31), " manual ", " manual ");
+            LocalDate.of(2026, 3, 1), LocalDate.of(2026, 3, 31), " manual ", " manual ", 0, 250);
 
-    assertThat(listed)
+    ArgumentCaptor<PageRequest> pageableCaptor = ArgumentCaptor.forClass(PageRequest.class);
+    verify(journalEntryRepository).findAll(any(Specification.class), pageableCaptor.capture());
+    verify(journalEntryRepository, never()).findByCompanyOrderByEntryDateDesc(company);
+    assertThat(pageableCaptor.getValue().getPageNumber()).isEqualTo(0);
+    assertThat(pageableCaptor.getValue().getPageSize()).isEqualTo(200);
+
+    assertThat(listed.content())
         .singleElement()
         .satisfies(
             item -> {
@@ -705,6 +713,9 @@ class AccountingServiceTest {
               assertThat(item.totalDebit()).isEqualByComparingTo("125.00");
               assertThat(item.totalCredit()).isEqualByComparingTo("125.00");
             });
+    assertThat(listed.page()).isEqualTo(0);
+    assertThat(listed.size()).isEqualTo(200);
+    assertThat(listed.totalElements()).isEqualTo(1);
   }
 
   @Test

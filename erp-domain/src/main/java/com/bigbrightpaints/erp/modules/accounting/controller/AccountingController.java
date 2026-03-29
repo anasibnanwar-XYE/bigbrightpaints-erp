@@ -236,13 +236,16 @@ public class AccountingController {
   @GetMapping("/journals")
   @Timed(value = "erp.accounting.journals.list", description = "List journals with filters")
   @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
-  public ResponseEntity<ApiResponse<List<JournalListItemDto>>> listJournals(
+  public ResponseEntity<ApiResponse<PageResponse<JournalListItemDto>>> listJournals(
       @RequestParam(required = false) LocalDate fromDate,
       @RequestParam(required = false) LocalDate toDate,
       @RequestParam(required = false) String type,
-      @RequestParam(required = false) String sourceModule) {
+      @RequestParam(required = false) String sourceModule,
+      @RequestParam(defaultValue = "0") int page,
+      @RequestParam(defaultValue = "50") int size) {
     return ResponseEntity.ok(
-        ApiResponse.success(accountingService.listJournals(fromDate, toDate, type, sourceModule)));
+        ApiResponse.success(
+            accountingService.listJournals(fromDate, toDate, type, sourceModule, page, size)));
   }
 
   @PostMapping("/journal-entries")
