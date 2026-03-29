@@ -50,6 +50,7 @@ import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerPaymentTerms;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderRepository;
+import com.bigbrightpaints.erp.modules.sales.dto.DealerCreditExposureView;
 import com.bigbrightpaints.erp.modules.sales.dto.CreateDealerRequest;
 
 @ExtendWith(MockitoExtension.class)
@@ -251,12 +252,12 @@ class DealerServiceTest {
             java.util.Map.of(
                 1L, new BigDecimal("200"),
                 2L, new BigDecimal("850")));
-    when(salesOrderRepository.sumPendingCreditExposureByCompanyAndDealer(
-            eq(company), eq(within), any(), eq(null)))
-        .thenReturn(new BigDecimal("100"));
-    when(salesOrderRepository.sumPendingCreditExposureByCompanyAndDealer(
-            eq(company), eq(near), any(), eq(null)))
-        .thenReturn(new BigDecimal("0"));
+    when(salesOrderRepository.sumPendingCreditExposureByCompanyAndDealerIds(
+            eq(company), eq(List.of(1L, 2L)), any()))
+        .thenReturn(
+            List.of(
+                new DealerCreditExposureView(1L, new BigDecimal("100")),
+                new DealerCreditExposureView(2L, BigDecimal.ZERO)));
 
     var results = dealerService.search("", null, "north", "NEAR_LIMIT");
 

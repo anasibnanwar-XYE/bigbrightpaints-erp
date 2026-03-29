@@ -38,6 +38,7 @@ import com.bigbrightpaints.erp.modules.sales.domain.DealerPaymentTerms;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderRepository;
 import com.bigbrightpaints.erp.modules.sales.dto.CreateDealerRequest;
+import com.bigbrightpaints.erp.modules.sales.dto.DealerCreditExposureView;
 import com.bigbrightpaints.erp.modules.sales.dto.DealerLookupResponse;
 import com.bigbrightpaints.erp.modules.sales.dto.DealerResponse;
 import com.bigbrightpaints.erp.modules.sales.util.DealerProvisioningSupport;
@@ -167,13 +168,15 @@ public class DealerService {
             company, DealerProvisioningSupport.ACTIVE_STATUS);
     List<Long> dealerIds = dealers.stream().map(Dealer::getId).toList();
     var balances = dealerLedgerService.currentBalances(dealerIds);
+    var pendingExposures = resolvePendingOrderExposureMap(company, dealerIds);
     return dealers.stream()
         .map(
             dealer ->
                 toResponse(
                     dealer,
                     dealer.getPortalUser() != null ? dealer.getPortalUser().getEmail() : null,
-                    balances.getOrDefault(dealer.getId(), BigDecimal.ZERO)))
+                    balances.getOrDefault(dealer.getId(), BigDecimal.ZERO),
+                    pendingExposures.getOrDefault(dealer.getId(), BigDecimal.ZERO)))
         .toList();
   }
 
@@ -196,11 +199,13 @@ public class DealerService {
 
     List<Long> dealerIds = matches.stream().map(Dealer::getId).toList();
     var balances = dealerLedgerService.currentBalances(dealerIds);
+    var pendingExposures = resolvePendingOrderExposureMap(company, dealerIds);
 
     List<DealerLookupResponse> resolved = new ArrayList<>();
     for (Dealer dealer : matches) {
       BigDecimal outstandingBalance = balances.getOrDefault(dealer.getId(), BigDecimal.ZERO);
-      BigDecimal pendingOrderExposure = resolvePendingOrderExposure(dealer);
+      BigDecimal pendingOrderExposure =
+          pendingExposures.getOrDefault(dealer.getId(), BigDecimal.ZERO);
       String dealerCreditStatus =
           resolveCreditStatus(dealer, outstandingBalance, pendingOrderExposure);
       if (normalizedCreditStatus != null && !normalizedCreditStatus.equals(dealerCreditStatus)) {
@@ -263,7 +268,10 @@ public class DealerService {
     dealer = dealerRepository.save(dealer);
     BigDecimal balance = dealerLedgerService.currentBalance(dealer.getId());
     return toResponse(
-        dealer, dealer.getPortalUser() != null ? dealer.getPortalUser().getEmail() : null, balance);
+        dealer,
+        dealer.getPortalUser() != null ? dealer.getPortalUser().getEmail() : null,
+        balance,
+        resolvePendingOrderExposure(dealer));
   }
 
   @Transactional
@@ -334,13 +342,15 @@ public class DealerService {
         dealer.getId() == null
             ? BigDecimal.ZERO
             : dealerLedgerService.currentBalance(dealer.getId());
-    return toResponse(dealer, portalEmail, balance);
+    return toResponse(dealer, portalEmail, balance, resolvePendingOrderExposure(dealer));
   }
 
   private DealerResponse toResponse(
-      Dealer dealer, String portalEmail, BigDecimal outstandingBalance) {
+      Dealer dealer,
+      String portalEmail,
+      BigDecimal outstandingBalance,
+      BigDecimal pendingOrderExposure) {
     Account receivableAccount = dealer.getReceivableAccount();
-    BigDecimal pendingOrderExposure = resolvePendingOrderExposure(dealer);
     return new DealerResponse(
         dealer.getId(),
         dealer.getPublicId(),
@@ -460,6 +470,23 @@ public class DealerService {
             SalesOrderCreditExposurePolicy.pendingCreditExposureStatuses(),
             null);
     return exposure != null ? exposure : BigDecimal.ZERO;
+  }
+
+  private Map<Long, BigDecimal> resolvePendingOrderExposureMap(
+      Company company, List<Long> dealerIds) {
+    if (company == null || dealerIds == null || dealerIds.isEmpty()) {
+      return Map.of();
+    }
+    Map<Long, BigDecimal> exposures = new LinkedHashMap<>();
+    for (DealerCreditExposureView row :
+        salesOrderRepository.sumPendingCreditExposureByCompanyAndDealerIds(
+            company, dealerIds, SalesOrderCreditExposurePolicy.pendingCreditExposureStatuses())) {
+      if (row == null || row.dealerId() == null) {
+        continue;
+      }
+      exposures.put(row.dealerId(), row.exposure() != null ? row.exposure() : BigDecimal.ZERO);
+    }
+    return exposures;
   }
 
   private BigDecimal safe(BigDecimal value) {
