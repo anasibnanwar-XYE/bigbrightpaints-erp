@@ -26,6 +26,7 @@ import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
+import com.bigbrightpaints.erp.core.util.IdempotencyHeaderUtils;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
 import com.bigbrightpaints.erp.modules.accounting.domain.ReconciliationDiscrepancyStatus;
 import com.bigbrightpaints.erp.modules.accounting.domain.ReconciliationDiscrepancyType;
@@ -65,6 +66,16 @@ import jakarta.validation.Valid;
 @RestController
 @RequestMapping("/api/v1/accounting")
 public class AccountingController {
+  private static final String DEALER_RECEIPT_PATH = "/api/v1/accounting/receipts/dealer";
+  private static final String DEALER_HYBRID_RECEIPT_PATH =
+      "/api/v1/accounting/receipts/dealer/hybrid";
+  private static final String DEALER_SETTLEMENT_PATH = "/api/v1/accounting/settlements/dealers";
+  private static final String DEALER_AUTO_SETTLEMENT_PATH =
+      "/api/v1/accounting/dealers/{dealerId}/auto-settle";
+  private static final String SUPPLIER_SETTLEMENT_PATH =
+      "/api/v1/accounting/settlements/suppliers";
+  private static final String SUPPLIER_AUTO_SETTLEMENT_PATH =
+      "/api/v1/accounting/suppliers/{supplierId}/auto-settle";
 
   private final AccountingService accountingService;
   private final JournalEntryService journalEntryService;
@@ -330,7 +341,8 @@ public class AccountingController {
       @Parameter(hidden = true) @RequestHeader(value = "X-Idempotency-Key", required = false)
           String legacyIdempotencyKey) {
     AutoSettlementRequest resolved =
-        applyIdempotencyKey(request, idempotencyKey, legacyIdempotencyKey);
+        applyIdempotencyKey(
+            request, idempotencyKey, legacyIdempotencyKey, DEALER_AUTO_SETTLEMENT_PATH);
     return ResponseEntity.ok(
         ApiResponse.success(
             "Auto-settlement recorded", settlementService.autoSettleDealer(dealerId, resolved)));
@@ -368,7 +380,8 @@ public class AccountingController {
       @Parameter(hidden = true) @RequestHeader(value = "X-Idempotency-Key", required = false)
           String legacyIdempotencyKey) {
     AutoSettlementRequest resolved =
-        applyIdempotencyKey(request, idempotencyKey, legacyIdempotencyKey);
+        applyIdempotencyKey(
+            request, idempotencyKey, legacyIdempotencyKey, SUPPLIER_AUTO_SETTLEMENT_PATH);
     return ResponseEntity.ok(
         ApiResponse.success(
             "Auto-settlement recorded",
@@ -407,6 +420,7 @@ public class AccountingController {
         request,
         idempotencyKeyHeader,
         legacyIdempotencyKeyHeader,
+        DEALER_RECEIPT_PATH,
         DealerReceiptRequest::idempotencyKey,
         (resolvedRequest, resolvedKey) ->
             new DealerReceiptRequest(
@@ -427,6 +441,7 @@ public class AccountingController {
         request,
         idempotencyKeyHeader,
         legacyIdempotencyKeyHeader,
+        DEALER_HYBRID_RECEIPT_PATH,
         DealerReceiptSplitRequest::idempotencyKey,
         (resolvedRequest, resolvedKey) ->
             new DealerReceiptSplitRequest(
@@ -445,6 +460,7 @@ public class AccountingController {
         request,
         idempotencyKeyHeader,
         legacyIdempotencyKeyHeader,
+        DEALER_SETTLEMENT_PATH,
         DealerSettlementRequest::idempotencyKey,
         (resolvedRequest, resolvedKey) ->
             new DealerSettlementRequest(
@@ -468,11 +484,13 @@ public class AccountingController {
   private AutoSettlementRequest applyIdempotencyKey(
       AutoSettlementRequest request,
       String idempotencyKeyHeader,
-      String legacyIdempotencyKeyHeader) {
+      String legacyIdempotencyKeyHeader,
+      String canonicalPath) {
     return applyHeaderOnlyIdempotencyKey(
         request,
         idempotencyKeyHeader,
         legacyIdempotencyKeyHeader,
+        canonicalPath,
         AutoSettlementRequest::idempotencyKey,
         (resolvedRequest, resolvedKey) ->
             new AutoSettlementRequest(
@@ -491,6 +509,7 @@ public class AccountingController {
         request,
         idempotencyKeyHeader,
         legacyIdempotencyKeyHeader,
+        SUPPLIER_SETTLEMENT_PATH,
         SupplierSettlementRequest::idempotencyKey,
         (resolvedRequest, resolvedKey) ->
             new SupplierSettlementRequest(
@@ -514,6 +533,7 @@ public class AccountingController {
       T request,
       String idempotencyKeyHeader,
       String legacyIdempotencyKeyHeader,
+      String canonicalPath,
       Function<T, String> requestIdempotencyKeyExtractor,
       BiFunction<T, String, T> requestWithIdempotencyKey) {
     if (request == null) {
@@ -523,7 +543,8 @@ public class AccountingController {
         resolveHeaderOnlyIdempotencyKey(
             requestIdempotencyKeyExtractor.apply(request),
             idempotencyKeyHeader,
-            legacyIdempotencyKeyHeader);
+            legacyIdempotencyKeyHeader,
+            canonicalPath);
     if (!StringUtils.hasText(resolvedKey)) {
       return request;
     }
@@ -531,27 +552,19 @@ public class AccountingController {
   }
 
   private String resolveHeaderOnlyIdempotencyKey(
-      String bodyIdempotencyKey, String idempotencyKeyHeader, String legacyIdempotencyKeyHeader) {
-    String normalizedLegacyHeader = trimToNull(legacyIdempotencyKeyHeader);
-    if (normalizedLegacyHeader != null) {
-      throw new ApplicationException(
-              ErrorCode.VALIDATION_INVALID_INPUT, "X-Idempotency-Key is not supported")
-          .withDetail("legacyHeaderKey", normalizedLegacyHeader);
-    }
+      String bodyIdempotencyKey,
+      String idempotencyKeyHeader,
+      String legacyIdempotencyKeyHeader,
+      String canonicalPath) {
+    IdempotencyHeaderUtils.rejectLegacyHeader(
+        legacyIdempotencyKeyHeader, "accounting write requests", canonicalPath);
     String resolvedKey =
-        com.bigbrightpaints.erp.core.util.IdempotencyHeaderUtils.resolveBodyOrHeaderKey(
-            bodyIdempotencyKey, idempotencyKeyHeader, legacyIdempotencyKeyHeader);
+        IdempotencyHeaderUtils.resolveBodyOrHeaderKey(
+            bodyIdempotencyKey, idempotencyKeyHeader, null);
     if (!StringUtils.hasText(resolvedKey) || StringUtils.hasText(bodyIdempotencyKey)) {
       return null;
     }
     return resolvedKey;
-  }
-
-  private String trimToNull(String value) {
-    if (!StringUtils.hasText(value)) {
-      return null;
-    }
-    return value.trim();
   }
 
   private ReconciliationDiscrepancyStatus parseDiscrepancyStatus(String rawStatus) {

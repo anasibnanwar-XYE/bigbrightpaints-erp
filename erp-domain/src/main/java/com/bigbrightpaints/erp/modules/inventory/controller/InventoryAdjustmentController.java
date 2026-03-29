@@ -65,15 +65,10 @@ public class InventoryAdjustmentController {
       throw new ApplicationException(
           ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD, "Inventory adjustment request is required");
     }
-    if (StringUtils.hasText(legacyIdempotencyKeyHeader)) {
-      throw new ApplicationException(
-              ErrorCode.VALIDATION_INVALID_INPUT,
-              "X-Idempotency-Key is not supported for inventory adjustments; use"
-                  + " Idempotency-Key")
-          .withDetail("legacyHeader", "X-Idempotency-Key")
-          .withDetail("canonicalHeader", "Idempotency-Key")
-          .withDetail("canonicalPath", CANONICAL_INVENTORY_ADJUSTMENT_PATH);
-    }
+    IdempotencyHeaderUtils.rejectLegacyHeader(
+        legacyIdempotencyKeyHeader,
+        "inventory adjustments",
+        CANONICAL_INVENTORY_ADJUSTMENT_PATH);
     String resolvedKey =
         IdempotencyHeaderUtils.resolveBodyOrHeaderKey(
             request.idempotencyKey(), idempotencyKeyHeader, null);

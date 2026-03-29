@@ -185,14 +185,8 @@ public class SalesController {
     if (request == null) {
       return null;
     }
-    String legacyHeader = normalizeIdempotencyHeader(legacyIdempotencyKeyHeader);
-    if (legacyHeader != null) {
-      throw new ApplicationException(
-              ErrorCode.VALIDATION_INVALID_INPUT,
-              "X-Idempotency-Key is not supported for sales orders; use Idempotency-Key")
-          .withDetail("legacyHeader", "X-Idempotency-Key")
-          .withDetail("legacyIdempotencyKey", legacyHeader);
-    }
+    IdempotencyHeaderUtils.rejectLegacyHeader(
+        legacyIdempotencyKeyHeader, "sales orders", "/api/v1/sales/orders");
     String resolvedKey =
         IdempotencyHeaderUtils.resolveBodyOrHeaderKey(
             request.idempotencyKey(), idempotencyKeyHeader, null);
@@ -210,13 +204,6 @@ public class SalesController {
         request.gstInclusive(),
         resolvedKey,
         request.paymentMode());
-  }
-
-  private String normalizeIdempotencyHeader(String headerValue) {
-    if (!StringUtils.hasText(headerValue)) {
-      return null;
-    }
-    return headerValue.trim();
   }
 
   private String combineCancellationReason(String reasonCode, String reason) {

@@ -76,6 +76,11 @@ class InventoryAdjustmentControllerTest {
               assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_INVALID_INPUT);
               assertThat(ex.getMessage())
                   .contains("X-Idempotency-Key is not supported for inventory adjustments");
+              assertThat(ex.getDetails())
+                  .containsEntry("legacyHeader", "X-Idempotency-Key")
+                  .containsEntry("legacyHeaderValue", "legacy-key")
+                  .containsEntry("canonicalHeader", "Idempotency-Key")
+                  .containsEntry("canonicalPath", "/api/v1/inventory/adjustments");
             });
 
     verifyNoInteractions(inventoryAdjustmentService);
@@ -93,6 +98,11 @@ class InventoryAdjustmentControllerTest {
               assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_INVALID_INPUT);
               assertThat(ex.getMessage())
                   .contains("X-Idempotency-Key is not supported for inventory adjustments");
+              assertThat(ex.getDetails())
+                  .containsEntry("legacyHeader", "X-Idempotency-Key")
+                  .containsEntry("legacyHeaderValue", "legacy-key")
+                  .containsEntry("canonicalHeader", "Idempotency-Key")
+                  .containsEntry("canonicalPath", "/api/v1/inventory/adjustments");
             });
 
     verifyNoInteractions(inventoryAdjustmentService);

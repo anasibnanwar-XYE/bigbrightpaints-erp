@@ -57,8 +57,17 @@ class SalesControllerIdempotencyHeaderTest {
     SalesController controller = createController();
     assertThatThrownBy(
             () -> controller.createOrder(null, "legacy-001", requestWithoutIdempotencyKey()))
-        .isInstanceOf(ApplicationException.class)
-        .hasMessageContaining("X-Idempotency-Key is not supported for sales orders");
+        .isInstanceOfSatisfying(
+            ApplicationException.class,
+            ex -> {
+              assertThat(ex.getMessage())
+                  .contains("X-Idempotency-Key is not supported for sales orders");
+              assertThat(ex.getDetails())
+                  .containsEntry("legacyHeader", "X-Idempotency-Key")
+                  .containsEntry("legacyHeaderValue", "legacy-001")
+                  .containsEntry("canonicalHeader", "Idempotency-Key")
+                  .containsEntry("canonicalPath", "/api/v1/sales/orders");
+            });
     verifyNoInteractions(salesOrderCrudService);
   }
 
@@ -78,8 +87,17 @@ class SalesControllerIdempotencyHeaderTest {
 
     assertThatThrownBy(
             () -> controller.createOrder("hdr-001", "legacy-001", requestWithoutIdempotencyKey()))
-        .isInstanceOf(ApplicationException.class)
-        .hasMessageContaining("X-Idempotency-Key is not supported for sales orders");
+        .isInstanceOfSatisfying(
+            ApplicationException.class,
+            ex -> {
+              assertThat(ex.getMessage())
+                  .contains("X-Idempotency-Key is not supported for sales orders");
+              assertThat(ex.getDetails())
+                  .containsEntry("legacyHeader", "X-Idempotency-Key")
+                  .containsEntry("legacyHeaderValue", "legacy-001")
+                  .containsEntry("canonicalHeader", "Idempotency-Key")
+                  .containsEntry("canonicalPath", "/api/v1/sales/orders");
+            });
     verifyNoInteractions(salesOrderCrudService);
   }
 

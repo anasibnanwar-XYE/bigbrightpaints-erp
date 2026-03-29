@@ -343,9 +343,9 @@ class JournalEntryServiceTest {
             null,
             true,
             List.of(701L),
-            null,
-            null,
-            null);
+            JournalEntryReversalRequest.ReversalReasonCode.WRONG_ACCOUNT,
+            "checker.user",
+            "DOC-900");
 
     JournalEntryDto result = journalEntryService.reverseJournalEntry(700L, request);
 
@@ -354,6 +354,14 @@ class JournalEntryServiceTest {
     assertThat(relatedEntry.getStatus()).isEqualTo("REVERSED");
     assertThat(primaryReversal.getCorrectionType()).isEqualTo(JournalCorrectionType.REVERSAL);
     assertThat(relatedReversal.getCorrectionType()).isEqualTo(JournalCorrectionType.REVERSAL);
+    assertThat(primaryReversal.getCorrectionReason())
+        .contains("[WRONG_ACCOUNT] Cascade test")
+        .contains("Approved by: checker.user")
+        .contains("Doc: DOC-900");
+    assertThat(relatedReversal.getCorrectionReason())
+        .contains("[WRONG_ACCOUNT] Cascade reversal: Cascade test")
+        .contains("Approved by: checker.user")
+        .contains("Doc: DOC-900");
     ArgumentCaptor<JournalEntryRequest> requestCaptor =
         ArgumentCaptor.forClass(JournalEntryRequest.class);
     verify(journalEntryService, times(2)).createJournalEntry(requestCaptor.capture());

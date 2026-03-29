@@ -54,10 +54,9 @@ Request body:
 |---|---|---|---|
 | `email` | string | yes | valid email |
 | `displayName` | string | yes | required |
-| `companyId` | long | no | omit for tenant-admin UI |
 | `roles` | string[] | yes | non-empty; never include `ROLE_SUPER_ADMIN` |
 
-Response is `UserDto`.
+Response is `UserDto`. Company scope is implicit from the authenticated tenant context; there is no request-side tenant reassignment field.
 
 ### `PUT /api/v1/admin/users/{id}`
 
@@ -66,11 +65,10 @@ Request body:
 | Field | Type | Required | Frontend rule |
 |---|---|---|---|
 | `displayName` | string | yes | required |
-| `companyId` | long | no | omit for tenant-admin UI |
 | `roles` | string[] | no | send the full desired role set |
 | `enabled` | boolean | no | use only when editing from the detail form |
 
-Use one edit form for display name and roles. Keep status toggles as separate actions when possible for clearer audit UX.
+Use one edit form for display name and roles. Keep status toggles as separate actions when possible for clearer audit UX. Company scope is not editable from this surface.
 
 ### `PUT /api/v1/admin/users/{userId}/status`
 

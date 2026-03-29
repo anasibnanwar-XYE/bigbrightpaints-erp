@@ -5537,7 +5537,7 @@ abstract class AccountingCoreEngineCore {
     JournalEntry primaryEntry = companyEntityLookup.requireJournalEntry(company, primaryEntryId);
     List<JournalEntryDto> reversedEntries = new java.util.ArrayList<>();
     java.util.Set<Long> processedIds = new java.util.HashSet<>();
-    JournalEntryReversalRequest primaryRequest = disableCascadeReplay(request);
+    JournalEntryReversalRequest primaryRequest = request.withoutCascadeReplay();
 
     // First reverse the primary entry
     JournalEntryDto primaryReversal =
@@ -5571,18 +5571,8 @@ abstract class AccountingCoreEngineCore {
       if (!"REVERSED".equalsIgnoreCase(related.getStatus())
           && !"VOIDED".equalsIgnoreCase(related.getStatus())) {
         try {
-          JournalEntryReversalRequest relatedRequest = new JournalEntryReversalRequest(
-                  request.reversalDate(),
-                  request.voidOnly(),
-                  cascadeReason,
-                  "Cascade from " + baseRef,
-                  request.adminOverride(),
-                  request.reversalPercentage(),
-                  false,
-                  null,
-                  request.reasonCode(),
-                  request.approvedBy(),
-                  request.supportingDocumentRef());
+          JournalEntryReversalRequest relatedRequest =
+              request.forCascadeChild(cascadeReason, "Cascade from " + baseRef);
           JournalEntryDto relatedReversal =
               reverseJournalEntryInternal(company, related, relatedRequest, false);
           reversedEntries.add(relatedReversal);
@@ -5613,7 +5603,7 @@ abstract class AccountingCoreEngineCore {
           }
           JournalEntryDto relatedReversal =
               reverseJournalEntryInternal(
-                  company, relatedEntry, disableCascadeReplay(request), false);
+                  company, relatedEntry, request.withoutCascadeReplay(), false);
           reversedEntries.add(relatedReversal);
           processedIds.add(relatedId);
         } catch (ApplicationException e) {
@@ -5629,21 +5619,6 @@ abstract class AccountingCoreEngineCore {
         reversedEntries.size(),
         baseRef);
     return reversedEntries;
-  }
-
-  private JournalEntryReversalRequest disableCascadeReplay(JournalEntryReversalRequest request) {
-    return new JournalEntryReversalRequest(
-        request.reversalDate(),
-        request.voidOnly(),
-        request.reason(),
-        request.memo(),
-        request.adminOverride(),
-        request.reversalPercentage(),
-        false,
-        null,
-        request.reasonCode(),
-        request.approvedBy(),
-        request.supportingDocumentRef());
   }
 
   private String resolveCurrentUsername() {

@@ -40,8 +40,9 @@ class AccountingControllerIdempotencyHeaderParityTest {
     AccountingController controller = controller();
     assertThatThrownBy(
             () -> controller.recordDealerReceipt(dealerReceiptRequest(null), null, "legacy-001"))
-        .isInstanceOf(ApplicationException.class)
-        .hasMessageContaining("X-Idempotency-Key is not supported");
+        .isInstanceOfSatisfying(
+            ApplicationException.class,
+            ex -> assertLegacyHeaderContract(ex, "legacy-001", "/api/v1/accounting/receipts/dealer"));
   }
 
   @Test
@@ -74,8 +75,11 @@ class AccountingControllerIdempotencyHeaderParityTest {
             () ->
                 controller.recordDealerHybridReceipt(
                     dealerReceiptSplitRequest(null), null, "legacy-001"))
-        .isInstanceOf(ApplicationException.class)
-        .hasMessageContaining("X-Idempotency-Key is not supported");
+        .isInstanceOfSatisfying(
+            ApplicationException.class,
+            ex ->
+                assertLegacyHeaderContract(
+                    ex, "legacy-001", "/api/v1/accounting/receipts/dealer/hybrid"));
   }
 
   @Test
@@ -144,8 +148,11 @@ class AccountingControllerIdempotencyHeaderParityTest {
     AccountingController controller = controller();
     assertThatThrownBy(
             () -> controller.settleSupplier(supplierSettlementRequest(null), null, "legacy-001"))
-        .isInstanceOf(ApplicationException.class)
-        .hasMessageContaining("X-Idempotency-Key is not supported");
+        .isInstanceOfSatisfying(
+            ApplicationException.class,
+            ex ->
+                assertLegacyHeaderContract(
+                    ex, "legacy-001", "/api/v1/accounting/settlements/suppliers"));
   }
 
   @Test
@@ -153,8 +160,11 @@ class AccountingControllerIdempotencyHeaderParityTest {
     AccountingController controller = controller();
     assertThatThrownBy(
             () -> controller.settleDealer(dealerSettlementRequest(null), null, "legacy-001"))
-        .isInstanceOf(ApplicationException.class)
-        .hasMessageContaining("X-Idempotency-Key is not supported");
+        .isInstanceOfSatisfying(
+            ApplicationException.class,
+            ex ->
+                assertLegacyHeaderContract(
+                    ex, "legacy-001", "/api/v1/accounting/settlements/dealers"));
   }
 
   @Test
@@ -186,8 +196,11 @@ class AccountingControllerIdempotencyHeaderParityTest {
     assertThatThrownBy(
             () ->
                 controller.autoSettleDealer(1001L, autoSettlementRequest(null), null, "legacy-001"))
-        .isInstanceOf(ApplicationException.class)
-        .hasMessageContaining("X-Idempotency-Key is not supported");
+        .isInstanceOfSatisfying(
+            ApplicationException.class,
+            ex ->
+                assertLegacyHeaderContract(
+                    ex, "legacy-001", "/api/v1/accounting/dealers/{dealerId}/auto-settle"));
   }
 
   @Test
@@ -211,8 +224,11 @@ class AccountingControllerIdempotencyHeaderParityTest {
             () ->
                 controller.autoSettleSupplier(
                     3001L, autoSettlementRequest(null), null, "legacy-001"))
-        .isInstanceOf(ApplicationException.class)
-        .hasMessageContaining("X-Idempotency-Key is not supported");
+        .isInstanceOfSatisfying(
+            ApplicationException.class,
+            ex ->
+                assertLegacyHeaderContract(
+                    ex, "legacy-001", "/api/v1/accounting/suppliers/{supplierId}/auto-settle"));
   }
 
   private AccountingController controller() {
@@ -304,5 +320,15 @@ class AccountingControllerIdempotencyHeaderParityTest {
             BigDecimal.ZERO,
             BigDecimal.ZERO,
             "allocation"));
+  }
+
+  private void assertLegacyHeaderContract(
+      ApplicationException exception, String legacyHeaderValue, String canonicalPath) {
+    assertThat(exception.getMessage()).contains("X-Idempotency-Key is not supported");
+    assertThat(exception.getDetails())
+        .containsEntry("legacyHeader", "X-Idempotency-Key")
+        .containsEntry("legacyHeaderValue", legacyHeaderValue)
+        .containsEntry("canonicalHeader", "Idempotency-Key")
+        .containsEntry("canonicalPath", canonicalPath);
   }
 }
