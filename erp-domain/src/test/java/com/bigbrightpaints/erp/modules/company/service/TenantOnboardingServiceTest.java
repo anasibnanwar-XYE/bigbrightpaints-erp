@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -25,6 +26,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import com.bigbrightpaints.erp.core.config.SystemSettingsRepository;
+import com.bigbrightpaints.erp.core.security.AuthScopeService;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
@@ -49,6 +51,8 @@ class TenantOnboardingServiceTest {
   @Mock private CoATemplateService coATemplateService;
   @Mock private SystemSettingsRepository systemSettingsRepository;
   @Mock private TenantAdminProvisioningService tenantAdminProvisioningService;
+  @Mock private AuthScopeService authScopeService;
+  @Mock private TenantRuntimeEnforcementService tenantRuntimeEnforcementService;
 
   @Test
   void initializeDefaultSystemSettings_doesNotPersistCorsOrigin() {
@@ -63,6 +67,35 @@ class TenantOnboardingServiceTest {
         .save(
             org.mockito.ArgumentMatchers.argThat(
                 setting -> setting != null && "cors.allowed-origins".equals(setting.getKey())));
+  }
+
+  @Test
+  void onboardTenant_rejects_companyCode_that_conflicts_with_platform_auth_code() {
+    TenantOnboardingService service = newService();
+    TenantOnboardingRequest request =
+        new TenantOnboardingRequest(
+            "Platform Scope Collision",
+            "platform",
+            "UTC",
+            null,
+            10L,
+            1000L,
+            1024L,
+            5L,
+            true,
+            true,
+            "admin@platform.com",
+            "Platform Admin",
+            "GENERIC");
+
+    when(authScopeService.isPlatformScope("PLATFORM")).thenReturn(true);
+
+    assertThatThrownBy(() -> service.onboardTenant(request))
+        .hasMessageContaining("Company code conflicts with platform auth code: PLATFORM");
+
+    verify(companyRepository, never()).save(any(Company.class));
+    verify(tenantRuntimeEnforcementService, never())
+        .updatePolicy(anyString(), any(), anyString(), any(), any(), any(), anyString());
   }
 
   @Test
@@ -133,6 +166,15 @@ class TenantOnboardingServiceTest {
     assertThat(response.adminEmail()).isEqualTo("admin@mock.com");
     assertThat(response.tenantAdminProvisioned()).isTrue();
     assertThat(response.systemSettingsInitialized()).isTrue();
+    verify(tenantRuntimeEnforcementService)
+        .updatePolicy(
+            eq("MOCK"),
+            eq(TenantRuntimeEnforcementService.TenantRuntimeState.ACTIVE),
+            eq("TENANT_ONBOARDING_BOOTSTRAP"),
+            eq(5),
+            eq(1000),
+            eq(10),
+            eq("UNKNOWN_AUTH_ACTOR"));
     ArgumentCaptor<Company> savedCompanies = ArgumentCaptor.forClass(Company.class);
     verify(companyRepository, times(3)).save(savedCompanies.capture());
     assertThat(savedCompanies.getAllValues())
@@ -146,6 +188,82 @@ class TenantOnboardingServiceTest {
             any(Company.class),
             org.mockito.ArgumentMatchers.eq("admin@mock.com"),
             org.mockito.ArgumentMatchers.eq("Mock Admin"));
+  }
+
+  @Test
+  void onboardTenant_defaultsGstRateAndSeedsFailClosedRuntimeLimitsWhenQuotasOmitted() {
+    TenantOnboardingService service = newService();
+    TenantOnboardingRequest request =
+        new TenantOnboardingRequest(
+            "Defaulted Company",
+            "defaulted",
+            "UTC",
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            "admin@defaulted.com",
+            "Defaulted Admin",
+            "GENERIC");
+
+    CoATemplate template = new CoATemplate();
+    template.setCode("GENERIC");
+    template.setActive(true);
+    when(coATemplateService.requireActiveTemplate("GENERIC")).thenReturn(template);
+    when(companyRepository.findByCodeIgnoreCase("DEFAULTED")).thenReturn(java.util.Optional.empty());
+    when(authScopeService.isPlatformScope("DEFAULTED")).thenReturn(false);
+    when(userAccountRepository.existsByEmailIgnoreCaseAndAuthScopeCodeIgnoreCase(
+            "admin@defaulted.com", "DEFAULTED"))
+        .thenReturn(false);
+    when(companyRepository.save(any(Company.class)))
+        .thenAnswer(
+            invocation -> {
+              Company company = invocation.getArgument(0);
+              if (company.getId() == null) {
+                ReflectionTestUtils.setField(company, "id", 110L);
+              }
+              return company;
+            });
+    AtomicLong accountIds = new AtomicLong(1L);
+    when(accountRepository.save(any(Account.class)))
+        .thenAnswer(
+            invocation -> {
+              Account account = invocation.getArgument(0);
+              if (account.getId() == null) {
+                ReflectionTestUtils.setField(account, "id", accountIds.getAndIncrement());
+              }
+              return account;
+            });
+    AccountingPeriod period = new AccountingPeriod();
+    ReflectionTestUtils.setField(period, "id", 88L);
+    when(accountingPeriodService.ensurePeriod(any(Company.class), any())).thenReturn(period);
+    when(systemSettingsRepository.existsById(anyString())).thenReturn(false);
+    UserAccount provisionedAdmin =
+        new UserAccount("admin@defaulted.com", "DEFAULTED", "hash", "Defaulted Admin");
+    when(tenantAdminProvisioningService.provisionInitialAdmin(
+            any(Company.class), anyString(), anyString()))
+        .thenReturn(provisionedAdmin);
+
+    service.onboardTenant(request);
+
+    ArgumentCaptor<Company> savedCompanyCaptor = ArgumentCaptor.forClass(Company.class);
+    verify(companyRepository, times(3)).save(savedCompanyCaptor.capture());
+    assertThat(savedCompanyCaptor.getAllValues())
+        .anyMatch(
+            company ->
+                company != null && company.getDefaultGstRate().compareTo(BigDecimal.valueOf(18)) == 0);
+    verify(tenantRuntimeEnforcementService)
+        .updatePolicy(
+            eq("DEFAULTED"),
+            eq(TenantRuntimeEnforcementService.TenantRuntimeState.ACTIVE),
+            eq("TENANT_ONBOARDING_BOOTSTRAP"),
+            eq(1),
+            eq(1),
+            eq(1),
+            eq("UNKNOWN_AUTH_ACTOR"));
   }
 
   @Test
@@ -421,6 +539,8 @@ class TenantOnboardingServiceTest {
         accountingPeriodService,
         coATemplateService,
         systemSettingsRepository,
-        tenantAdminProvisioningService);
+        tenantAdminProvisioningService,
+        authScopeService,
+        tenantRuntimeEnforcementService);
   }
 }

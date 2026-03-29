@@ -90,27 +90,7 @@ class SystemSettingsServiceCorsTest {
   }
 
   @Test
-  void allowsPrivateNetworkHttpOriginsWhenValidationDisabled() {
-    SystemSettingsService service =
-        new SystemSettingsService(
-            new EmailProperties(),
-            settingsRepository,
-            authScopeService,
-            nonProdEnvironment,
-            "http://192.168.29.187:3002/",
-            false,
-            false,
-            true,
-            true,
-            false);
-
-    CorsConfiguration configuration = service.buildCorsConfiguration();
-
-    assertThat(configuration.getAllowedOrigins()).containsExactly("http://192.168.29.187:3002");
-  }
-
-  @Test
-  void rejectsPrivateNetworkHttpOriginsWhenValidationEnabled() {
+  void rejectsPrivateNetworkHttpOriginsEvenWhenValidationDisabled() {
     assertThatThrownBy(
             () ->
                 new SystemSettingsService(
@@ -119,7 +99,7 @@ class SystemSettingsServiceCorsTest {
                     authScopeService,
                     nonProdEnvironment,
                     "http://192.168.29.187:3002",
-                    true,
+                    false,
                     false,
                     true,
                     true,

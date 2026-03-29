@@ -67,6 +67,8 @@ public class CompanyService {
   private static final String SUPERADMIN_DASHBOARD_READ_REASON = "superadmin-dashboard-read";
   private static final String TENANT_SUPPORT_WARNING_ISSUED_REASON =
       "tenant-support-warning-issued";
+  private static final String TENANT_RUNTIME_POLICY_SYNC_REASON = "tenant-runtime-policy-sync";
+  private static final int FAIL_CLOSED_RUNTIME_LIMIT = 1;
   private static final long ERROR_RATE_BASIS_POINTS_SCALE = 10_000L;
   private static final BigDecimal DEFAULT_BOOTSTRAP_GST_RATE = BigDecimal.valueOf(18);
 
@@ -178,6 +180,7 @@ public class CompanyService {
     Company saved = repository.save(company);
     provisionInitialAdminIfRequested(
         saved, request.firstAdminEmail(), request.firstAdminDisplayName());
+    synchronizeRuntimePolicyEnvelope(saved, authentication, TENANT_RUNTIME_POLICY_SYNC_REASON);
     auditAuthorityDecision(true, "tenant-bootstrap-created", normalizedCompanyCode, authentication);
     return toDto(saved);
   }
@@ -226,6 +229,8 @@ public class CompanyService {
     if (request.enabledModules() != null) {
       company.setEnabledModules(validateAndNormalizeEnabledModules(request.enabledModules()));
     }
+    synchronizeRuntimePolicyEnvelope(
+        company, SecurityContextHolder.getContext().getAuthentication(), TENANT_RUNTIME_POLICY_SYNC_REASON);
     return toDto(company);
   }
 
@@ -837,6 +842,30 @@ public class CompanyService {
         resolveActor(authentication));
   }
 
+  private void synchronizeRuntimePolicyEnvelope(
+      Company company, Authentication authentication, String reasonCode) {
+    if (company == null
+        || tenantRuntimeEnforcementService == null
+        || !StringUtils.hasText(company.getCode())) {
+      return;
+    }
+    TenantRuntimeEnforcementService.TenantRuntimeState runtimeState =
+        mapLifecycleToRuntimeState(
+            company.getLifecycleState() == null ? CompanyLifecycleState.ACTIVE : company.getLifecycleState());
+    String effectiveReason =
+        StringUtils.hasText(company.getLifecycleReason())
+            ? company.getLifecycleReason()
+            : reasonCode;
+    tenantRuntimeEnforcementService.updatePolicy(
+        company.getCode(),
+        runtimeState,
+        effectiveReason,
+        failClosedRuntimeLimit(company.getQuotaMaxConcurrentRequests()),
+        failClosedRuntimeLimit(company.getQuotaMaxApiRequests()),
+        failClosedRuntimeLimit(company.getQuotaMaxActiveUsers()),
+        resolveActor(authentication));
+  }
+
   private TenantRuntimeEnforcementService.TenantRuntimeState mapLifecycleToRuntimeState(
       CompanyLifecycleState lifecycleState) {
     return switch (lifecycleState == null ? CompanyLifecycleState.ACTIVE : lifecycleState) {
@@ -849,6 +878,13 @@ public class CompanyService {
   private Integer safeRuntimeLimit(long value) {
     if (value <= 0L) {
       return null;
+    }
+    return value > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) value;
+  }
+
+  private Integer failClosedRuntimeLimit(long value) {
+    if (value <= 0L) {
+      return FAIL_CLOSED_RUNTIME_LIMIT;
     }
     return value > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) value;
   }

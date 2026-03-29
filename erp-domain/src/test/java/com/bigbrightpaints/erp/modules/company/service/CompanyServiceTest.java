@@ -600,6 +600,34 @@ class CompanyServiceTest {
   }
 
   @Test
+  void create_initializesRuntimePolicyWithFailClosedMinimumsWhenQuotasAreUnset() {
+    authenticateAs("ROLE_SUPER_ADMIN");
+    CompanyRequest request = new CompanyRequest("Acme", "ACME", "UTC", null);
+    when(authScopeService.isPlatformScope("ACME")).thenReturn(false);
+    when(repository.findByCodeIgnoreCase("ACME")).thenReturn(Optional.empty());
+    when(repository.save(any(Company.class)))
+        .thenAnswer(
+            invocation -> {
+              Company company = invocation.getArgument(0);
+              ReflectionTestUtils.setField(company, "id", 7L);
+              return company;
+            });
+
+    CompanyDto response = companyService.create(request);
+
+    assertThat(response.code()).isEqualTo("ACME");
+    verify(tenantRuntimeEnforcementService)
+        .updatePolicy(
+            "ACME",
+            TenantRuntimeEnforcementService.TenantRuntimeState.ACTIVE,
+            "tenant-runtime-policy-sync",
+            1,
+            1,
+            1,
+            "tester@bbp.com");
+  }
+
+  @Test
   void update_allowsPlatformScopeBoundContextForSuperAdminControlPlane() {
     authenticateAs("ROLE_SUPER_ADMIN");
     bindCompanyContext("PLATFORM");
@@ -635,6 +663,43 @@ class CompanyServiceTest {
         .hasMessageContaining("Scoped account already exists for email in company code");
 
     verify(userAccountRepository, never()).saveAll(any());
+  }
+
+  @Test
+  void update_synchronizesRuntimePolicyToCurrentQuotaEnvelope() {
+    authenticateAs("ROLE_SUPER_ADMIN");
+    bindCompanyContext("ACME");
+    Company target = company(2L, "ACME");
+    target.setLifecycleState(CompanyLifecycleState.SUSPENDED);
+    target.setLifecycleReason("manual_hold");
+    CompanyRequest request =
+        new CompanyRequest(
+            "Acme Updated",
+            "ACME",
+            "UTC",
+            BigDecimal.TEN,
+            120L,
+            3000L,
+            4096L,
+            7L,
+            false,
+            true);
+    when(repository.findById(2L)).thenReturn(Optional.of(target));
+    when(repository.findByCodeIgnoreCase("ACME")).thenReturn(Optional.of(target));
+    when(authScopeService.isPlatformScope("ACME")).thenReturn(false);
+
+    CompanyDto response = companyService.update(2L, request, Set.of(target));
+
+    assertThat(response.code()).isEqualTo("ACME");
+    verify(tenantRuntimeEnforcementService)
+        .updatePolicy(
+            "ACME",
+            TenantRuntimeEnforcementService.TenantRuntimeState.HOLD,
+            "manual_hold",
+            7,
+            3000,
+            120,
+            "tester@bbp.com");
   }
 
   @Test

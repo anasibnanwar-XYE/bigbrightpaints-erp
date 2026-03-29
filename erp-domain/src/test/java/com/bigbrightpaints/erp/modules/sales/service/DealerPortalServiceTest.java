@@ -94,6 +94,7 @@ class DealerPortalServiceTest {
   void getCurrentDealer_bindsByAuthenticatedUserId() {
     UserAccount user = userWithId(100L, "dealer@tenant.com");
     Dealer dealer = dealerWithId(21L);
+    dealer.setStatus("ACTIVE");
     authenticate(user, "ROLE_DEALER");
     when(dealerRepository.findAllByCompanyAndPortalUserId(company, 100L))
         .thenReturn(List.of(dealer));
@@ -130,9 +131,24 @@ class DealerPortalServiceTest {
   }
 
   @Test
+  void getCurrentDealer_deniesInactiveDealerMapping() {
+    UserAccount user = userWithId(100L, "dealer@tenant.com");
+    Dealer dealer = dealerWithId(21L);
+    dealer.setStatus("INACTIVE");
+    authenticate(user, "ROLE_DEALER");
+    when(dealerRepository.findAllByCompanyAndPortalUserId(company, 100L))
+        .thenReturn(List.of(dealer));
+
+    assertThatThrownBy(() -> dealerPortalService.getCurrentDealer())
+        .isInstanceOf(AccessDeniedException.class)
+        .hasMessageContaining("inactive dealer mapping");
+  }
+
+  @Test
   void getCurrentDealer_fallsBackToEmailWhenPrincipalUserIdMissing() {
     UserAccount user = new UserAccount("dealer@tenant.com", "hash", "Dealer");
     Dealer dealer = dealerWithId(33L);
+    dealer.setStatus("ACTIVE");
     authenticate(user, "ROLE_DEALER");
     when(dealerRepository.findAllByCompanyAndPortalUserEmailIgnoreCase(
             company, "dealer@tenant.com"))
@@ -142,6 +158,22 @@ class DealerPortalServiceTest {
 
     assertThat(resolved).isSameAs(dealer);
     verify(dealerRepository, never()).findAllByCompanyAndPortalUserId(any(), any());
+  }
+
+  @Test
+  void getCurrentDealer_fallsBackToEmailWhenPrincipalUserIdMappingIsMissing() {
+    UserAccount user = userWithId(100L, "dealer@tenant.com");
+    Dealer dealer = dealerWithId(33L);
+    dealer.setStatus("ACTIVE");
+    authenticate(user, "ROLE_DEALER");
+    when(dealerRepository.findAllByCompanyAndPortalUserId(company, 100L)).thenReturn(List.of());
+    when(dealerRepository.findAllByCompanyAndPortalUserEmailIgnoreCase(
+            company, "dealer@tenant.com"))
+        .thenReturn(List.of(dealer));
+
+    Dealer resolved = dealerPortalService.getCurrentDealer();
+
+    assertThat(resolved).isSameAs(dealer);
   }
 
   @Test
@@ -171,17 +203,18 @@ class DealerPortalServiceTest {
   }
 
   @Test
-  void getCurrentDealer_failsClosedWhenUserIdMissingDealerMappingEvenIfEmailMatches() {
+  void getCurrentDealer_failsClosedWhenUserIdAndEmailMappingsAreBothMissing() {
     UserAccount user = userWithId(100L, "dealer@tenant.com");
     authenticate(user, "ROLE_DEALER");
     when(dealerRepository.findAllByCompanyAndPortalUserId(company, 100L)).thenReturn(List.of());
+    when(dealerRepository.findAllByCompanyAndPortalUserEmailIgnoreCase(
+            company, "dealer@tenant.com"))
+        .thenReturn(List.of());
 
     assertThatThrownBy(() -> dealerPortalService.getCurrentDealer())
         .isInstanceOf(AccessDeniedException.class)
-        .hasMessageContaining("mapping missing")
-        .hasMessageContaining("userId:100");
-    verify(dealerRepository, never())
-        .findAllByCompanyAndPortalUserEmailIgnoreCase(any(), anyString());
+        .hasMessageContaining("mapping missing for authenticated principal");
+    verify(dealerRepository).findAllByCompanyAndPortalUserEmailIgnoreCase(company, "dealer@tenant.com");
   }
 
   @Test
@@ -547,6 +580,7 @@ class DealerPortalServiceTest {
   private Dealer dealerWithId(Long id) {
     Dealer dealer = new Dealer();
     dealer.setCompany(company);
+    dealer.setStatus("ACTIVE");
     ReflectionTestUtils.setField(dealer, "id", id);
     return dealer;
   }
