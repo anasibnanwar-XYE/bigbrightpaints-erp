@@ -228,6 +228,7 @@ public class JournalEntryService extends AccountingCoreEngine {
     return companyClock.today(companyContextService.requireCurrentCompany());
   }
 
+  @Override
   public PageResponse<JournalListItemDto> listJournals(
       LocalDate fromDate,
       LocalDate toDate,

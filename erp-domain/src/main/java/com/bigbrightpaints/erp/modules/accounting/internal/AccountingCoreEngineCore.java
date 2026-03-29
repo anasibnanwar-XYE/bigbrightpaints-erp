@@ -6925,7 +6925,9 @@ abstract class AccountingCoreEngineCore {
             > 0) {
       BigDecimal ratio =
           expectedAmount.divide(
-              MoneyUtils.zeroIfNull(purchase.getTotalAmount()), 6, RoundingMode.HALF_UP);
+              MoneyUtils.zeroIfNull(Objects.requireNonNull(purchase).getTotalAmount()),
+              6,
+              RoundingMode.HALF_UP);
       List<JournalEntryRequest.JournalLineRequest> expectedLines =
           buildScaledReversalLines(source, ratio, "Debit note reversal - ");
       if (!lineSignatureCounts(entry.getLines()).equals(lineSignatureCountsFromRequests(expectedLines))) {
