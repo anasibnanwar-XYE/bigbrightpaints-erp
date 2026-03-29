@@ -297,7 +297,7 @@ public class TenantOnboardingService {
         TenantBootstrapDefaults.failClosedRuntimeLimit(company.getQuotaMaxConcurrentRequests()),
         TenantBootstrapDefaults.failClosedRuntimeLimit(company.getQuotaMaxApiRequests()),
         TenantBootstrapDefaults.failClosedRuntimeLimit(company.getQuotaMaxActiveUsers()),
-        SecurityActorResolver.resolveActorWithSystemProcessFallback());
+        SecurityActorResolver.resolveActorOrUnknown());
   }
 
   private AuthScopeService requireAuthScopeService() {

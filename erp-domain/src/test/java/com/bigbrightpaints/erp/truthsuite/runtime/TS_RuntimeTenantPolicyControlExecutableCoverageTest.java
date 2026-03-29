@@ -41,6 +41,7 @@ import com.bigbrightpaints.erp.core.config.SystemSettingsRepository;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.notification.EmailService;
+import com.bigbrightpaints.erp.core.security.AuthScopeService;
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
@@ -88,12 +89,22 @@ class TS_RuntimeTenantPolicyControlExecutableCoverageTest {
     com.bigbrightpaints.erp.core.audit.AuditLogRepository auditLogRepository =
         mock(com.bigbrightpaints.erp.core.audit.AuditLogRepository.class);
     TenantRuntimeEnforcementService runtimeService = mock(TenantRuntimeEnforcementService.class);
+    AuthScopeService authScopeService = mock(AuthScopeService.class);
     CompanyService companyService =
         new CompanyService(
-            repository, auditService, userAccountRepository, auditLogRepository, runtimeService);
+            repository,
+            auditService,
+            userAccountRepository,
+            auditLogRepository,
+            runtimeService,
+            null,
+            null,
+            null,
+            authScopeService);
 
     Company company = company(12L, "ACME");
     when(repository.findById(12L)).thenReturn(Optional.of(company));
+    when(authScopeService.isPlatformScope("ACME")).thenReturn(false);
     when(runtimeService.updatePolicy(
             eq("ACME"),
             eq(TenantRuntimeEnforcementService.TenantRuntimeState.BLOCKED),
