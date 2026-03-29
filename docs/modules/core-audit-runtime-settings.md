@@ -4,7 +4,7 @@ Last reviewed: 2026-03-30
 
 This packet documents the **audit-surface ownership model**, the **runtime-gating split** between company filters and admission services, and the **global-versus-tenant settings risk** that platform maintainers must understand. It is the second slice of the core platform contracts packet, extending the security filter chain and error contract documented in [core-security-error.md](core-security-error.md).
 
-> **Scope note:** This slice covers audit ownership, runtime-gating architecture, and settings scoping. Shared-versus-module-local idempotency behavior is deferred to a later integrating slice.
+> **Scope note:** This slice covers audit ownership, runtime-gating architecture, and settings scoping. Shared-versus-module-local idempotency behavior is documented in [core-idempotency.md](core-idempotency.md). Together the three slices form one coherent canonical reference for core platform contracts (see the reconciled contract table in [core-idempotency.md §5](core-idempotency.md#5-reconciled-core-platform-contract)).
 
 ---
 
@@ -425,7 +425,7 @@ Listens for `AccountingEventStore.JournalEntryPostedEvent` (Spring application e
 
 6. **In-memory counters reset on restart:** Concurrent-request and rate-limit counters are not persisted. A restart resets all quotas to zero. See section 3.4.
 
-7. **Accounting-event ownership for idempotency is deferred:** This slice focuses on audit ownership and settings risk. The shared-versus-module-local idempotency story, including how `AccountingEventStore` participates in idempotency checks, will be covered in the integrating slice.
+7. **Accounting-event ownership for idempotency is documented in the idempotency slice:** How `AccountingEventStore` participates in idempotency checks and the accounting idempotency delegation pattern are covered in [core-idempotency.md](core-idempotency.md) §2.7.
 
 ---
 
@@ -433,7 +433,8 @@ Listens for `AccountingEventStore.JournalEntryPostedEvent` (Spring application e
 
 | Document | Relationship |
 | --- | --- |
-| [core-security-error.md](core-security-error.md) | First slice of core platform contracts: security filters and exception/error contract |
+| [core-security-error.md](core-security-error.md) | First slice: security filters and exception/error contract |
+| [core-idempotency.md](core-idempotency.md) | Third/integrating slice: shared vs module-local idempotency, reconciled contract table |
 | [company.md](company.md) | Company module: tenant lifecycle, runtime admission, module gating |
 | [auth.md](auth.md) | Auth module: login/refresh/logout/MFA/password corridor |
 | [admin-portal-rbac.md](admin-portal-rbac.md) | Admin/portal/RBAC: role-action boundaries, admin settings |

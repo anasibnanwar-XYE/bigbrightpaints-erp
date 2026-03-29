@@ -4,7 +4,7 @@ Last reviewed: 2026-03-30
 
 This packet documents the **core security filter chain** and the **exception/error contract** that together govern request admission and failure behavior across the BigBright ERP backend. It covers what the platform enforces before any module code runs, how errors are surfaced to callers, and where the platform fails closed versus fails open.
 
-> **Scope note:** This is the first slice of the core platform contracts packet. It covers security filters and exception/error boundaries only. Audit-surface ownership, runtime-gating details, and settings risk are documented in [core-audit-runtime-settings.md](core-audit-runtime-settings.md). Shared-versus-module-local idempotency behavior is deferred to a later integrating slice.
+> **Scope note:** This is the first slice of the core platform contracts packet. It covers security filters and exception/error boundaries only. Audit-surface ownership, runtime-gating details, and settings risk are documented in [core-audit-runtime-settings.md](core-audit-runtime-settings.md). Shared-versus-module-local idempotency behavior is documented in [core-idempotency.md](core-idempotency.md). Together the three slices form one coherent canonical reference for core platform contracts (see the reconciled contract table in [core-idempotency.md §5](core-idempotency.md#5-reconciled-core-platform-contract)).
 
 ---
 
@@ -376,7 +376,7 @@ Both are database-backed and survive server restarts. Cleanup runs hourly.
 
 Called by `CompanyContextFilter` to run tenant runtime admission checks (rate limiting, usage constraints, etc.) before allowing the request to proceed. The admission service tracks request begin/complete lifecycle and returns structured denial reasons when admission fails.
 
-> **Note:** The full runtime-gating model and admission details are documented in a later packet slice covering audit and runtime contracts.
+> **Note:** The full runtime-gating model and admission details are documented in [core-audit-runtime-settings.md §2](core-audit-runtime-settings.md#2-runtime-gating-split).
 
 ---
 
@@ -407,6 +407,8 @@ ApplicationException thrown in controller/service
 
 | Document | Relationship |
 | --- | --- |
+| [core-audit-runtime-settings.md](core-audit-runtime-settings.md) | Second slice: audit-surface ownership, runtime gating, settings risk |
+| [core-idempotency.md](core-idempotency.md) | Third/integrating slice: shared and module-local idempotency behavior |
 | [docs/modules/auth.md](auth.md) | Auth module: login/refresh/logout/MFA/password lifecycle, token issuance |
 | [docs/modules/company.md](company.md) | Company module: tenant lifecycle, runtime admission, module gating |
 | [docs/modules/admin-portal-rbac.md](admin-portal-rbac.md) | Admin/portal/RBAC: role-action boundaries, access-control enforcement |
@@ -421,6 +423,6 @@ ApplicationException thrown in controller/service
 
 1. **Audit routing is narrow:** Only settlement failures and malformed requests are routed to the platform audit system from the global exception handler. Other `ApplicationException` instances that indicate important business failures (e.g., concurrency conflicts, credit-limit breaches) are not automatically routed.
 2. **Settlement audit detail is specialized:** The `SettlementExceptionHandler` maintains its own allowlist for settlement failure metadata keys, which is separate from the general error detail sanitization logic.
-3. **No audit coverage yet in this slice:** Audit-surface ownership (platform audit vs. enterprise audit trail vs. accounting event store) is deferred to the next packet slice.
-4. **Runtime-gating details deferred:** Tenant runtime admission is mentioned here as a fail-closed gate, but the full runtime-gating model, admission parameters, and rate-limiting details are documented separately.
+3. **Audit coverage is documented separately:** Audit-surface ownership (platform audit vs. enterprise audit trail vs. accounting event store) is documented in [core-audit-runtime-settings.md](core-audit-runtime-settings.md) §1. This slice covers only the exception-to-audit routing that occurs in the global exception handler.
+4. **Runtime-gating details are documented separately:** The full runtime-gating model, admission parameters, and rate-limiting details are documented in [core-audit-runtime-settings.md](core-audit-runtime-settings.md) §2.
 5. **Module-local exception subclasses:** Some modules define their own exception types (e.g., `MfaRequiredException`, `InvalidMfaException`). These are handled by `CoreFallbackExceptionHandler` rather than through the `ApplicationException` + `ErrorCode` pattern, creating a slight inconsistency in the error contract.
