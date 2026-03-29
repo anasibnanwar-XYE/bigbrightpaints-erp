@@ -151,7 +151,6 @@ public class OpeningStockImportService {
     }
     String normalizedKey = normalizeIdempotencyKey(idempotencyKey);
     String normalizedBatchKey = normalizeOpeningStockBatchKey(openingStockBatchKey);
-    String contentFingerprint = fingerprintFile(file);
     String importReference = resolveImportReference(company, normalizedBatchKey);
 
     OpeningStockImport existing =
@@ -161,16 +160,6 @@ public class OpeningStockImportService {
     if (existing != null) {
       assertReplayMatch(existing, normalizedKey, normalizedBatchKey);
       return toResponse(existing);
-    }
-
-    OpeningStockImport contentReplay =
-        openingStockImportRepository
-            .findFirstByCompanyAndContentFingerprintOrderByCreatedAtAscIdAsc(
-                company, contentFingerprint)
-            .orElse(null);
-    if (contentReplay != null
-        && !normalizedBatchKey.equals(contentReplay.getOpeningStockBatchKey())) {
-      throw openingStockContentReplayConflict(contentReplay, normalizedKey, normalizedBatchKey);
     }
 
     OpeningStockImport batchKeyConflict =
@@ -196,6 +185,17 @@ public class OpeningStockImportService {
               "Reverse the prior opening stock using the provided referenceNumber, then import a"
                   + " new opening stock batch using a distinct openingStockBatchKey and"
                   + " Idempotency-Key.");
+    }
+
+    String contentFingerprint = fingerprintFile(file);
+    OpeningStockImport contentReplay =
+        openingStockImportRepository
+            .findFirstByCompanyAndContentFingerprintOrderByCreatedAtAscIdAsc(
+                company, contentFingerprint)
+            .orElse(null);
+    if (contentReplay != null
+        && !normalizedBatchKey.equals(contentReplay.getOpeningStockBatchKey())) {
+      throw openingStockContentReplayConflict(contentReplay, normalizedKey, normalizedBatchKey);
     }
 
     try {

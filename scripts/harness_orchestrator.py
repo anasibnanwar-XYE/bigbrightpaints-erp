@@ -93,16 +93,6 @@ def parse_required_check_command(command: str) -> list[str]:
     return argv
 
 
-def run_checked_command(argv: list[str], cwd: Path, check: bool = True) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        argv,
-        cwd=str(cwd),
-        text=True,
-        capture_output=True,
-        check=check,
-    )
-
-
 def load_yaml(path: Path) -> dict[str, Any]:
     with path.open("r", encoding="utf-8") as fh:
         data = yaml.safe_load(fh)
@@ -2270,7 +2260,7 @@ def verify_ticket(args: argparse.Namespace) -> int:
             cmd_log = harness_dir / f"check-{idx:02d}.log"
             try:
                 argv = parse_required_check_command(cmd)
-                proc = run_checked_command(argv, cwd=wt, check=False)
+                proc = run(argv, cwd=wt, check=False)
                 command_line = " ".join(shlex.quote(part) for part in argv)
                 stdout = proc.stdout
                 stderr = proc.stderr
