@@ -271,17 +271,8 @@ class TenantOnboardingServiceTest {
 
   @Test
   void resolveDefaultGstRate_defaultsToBootstrapRate() {
-    TenantOnboardingService service = newService();
-
-    assertThat(
-            (BigDecimal)
-                ReflectionTestUtils.invokeMethod(
-                    service, "resolveDefaultGstRate", new Object[] {null}))
-        .isEqualByComparingTo("18");
-    assertThat(
-            (BigDecimal)
-                ReflectionTestUtils.invokeMethod(
-                    service, "resolveDefaultGstRate", BigDecimal.TEN))
+    assertThat(TenantBootstrapDefaults.resolveDefaultGstRate(null)).isEqualByComparingTo("18");
+    assertThat(TenantBootstrapDefaults.resolveDefaultGstRate(BigDecimal.TEN))
         .isEqualByComparingTo("10");
   }
 

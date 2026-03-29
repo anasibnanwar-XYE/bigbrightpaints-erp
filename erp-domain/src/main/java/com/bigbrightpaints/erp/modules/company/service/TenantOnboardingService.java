@@ -37,8 +37,6 @@ public class TenantOnboardingService {
   private static final String TEMPLATE_GENERIC = "GENERIC";
   private static final String TEMPLATE_INDIAN_STANDARD = "INDIAN_STANDARD";
   private static final String TEMPLATE_MANUFACTURING = "MANUFACTURING";
-  private static final BigDecimal DEFAULT_BOOTSTRAP_GST_RATE = BigDecimal.valueOf(18);
-  private static final int FAIL_CLOSED_RUNTIME_LIMIT = 1;
 
   private final CompanyRepository companyRepository;
   private final UserAccountRepository userAccountRepository;
@@ -132,7 +130,7 @@ public class TenantOnboardingService {
     company.setName(request.name());
     company.setCode(normalizedCompanyCode);
     company.setTimezone(request.timezone());
-    company.setDefaultGstRate(resolveDefaultGstRate(request.defaultGstRate()));
+    company.setDefaultGstRate(TenantBootstrapDefaults.resolveDefaultGstRate(request.defaultGstRate()));
     company.setQuotaMaxActiveUsers(defaultLong(request.maxActiveUsers()));
     company.setQuotaMaxApiRequests(defaultLong(request.maxApiRequests()));
     company.setQuotaMaxStorageBytes(defaultLong(request.maxStorageBytes()));
@@ -284,10 +282,6 @@ public class TenantOnboardingService {
     return value == null ? 0L : value;
   }
 
-  private BigDecimal resolveDefaultGstRate(BigDecimal defaultGstRate) {
-    return defaultGstRate == null ? DEFAULT_BOOTSTRAP_GST_RATE : defaultGstRate;
-  }
-
   private boolean defaultBoolean(Boolean value, boolean defaultValue) {
     return value == null ? defaultValue : value;
   }
@@ -300,17 +294,10 @@ public class TenantOnboardingService {
         company.getCode(),
         TenantRuntimeEnforcementService.TenantRuntimeState.ACTIVE,
         "TENANT_ONBOARDING_BOOTSTRAP",
-        failClosedRuntimeLimit(company.getQuotaMaxConcurrentRequests()),
-        failClosedRuntimeLimit(company.getQuotaMaxApiRequests()),
-        failClosedRuntimeLimit(company.getQuotaMaxActiveUsers()),
+        TenantBootstrapDefaults.failClosedRuntimeLimit(company.getQuotaMaxConcurrentRequests()),
+        TenantBootstrapDefaults.failClosedRuntimeLimit(company.getQuotaMaxApiRequests()),
+        TenantBootstrapDefaults.failClosedRuntimeLimit(company.getQuotaMaxActiveUsers()),
         SecurityActorResolver.resolveActorWithSystemProcessFallback());
-  }
-
-  private int failClosedRuntimeLimit(long configuredLimit) {
-    if (configuredLimit <= 0L) {
-      return FAIL_CLOSED_RUNTIME_LIMIT;
-    }
-    return configuredLimit > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) configuredLimit;
   }
 
   private boolean isNonGstMode(Company company) {

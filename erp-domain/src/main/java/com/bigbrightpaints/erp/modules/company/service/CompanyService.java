@@ -68,9 +68,7 @@ public class CompanyService {
   private static final String TENANT_SUPPORT_WARNING_ISSUED_REASON =
       "tenant-support-warning-issued";
   private static final String TENANT_RUNTIME_POLICY_SYNC_REASON = "tenant-runtime-policy-sync";
-  private static final int FAIL_CLOSED_RUNTIME_LIMIT = 1;
   private static final long ERROR_RATE_BASIS_POINTS_SCALE = 10_000L;
-  private static final BigDecimal DEFAULT_BOOTSTRAP_GST_RATE = BigDecimal.valueOf(18);
 
   private final CompanyRepository repository;
   private final AuditService auditService;
@@ -858,9 +856,9 @@ public class CompanyService {
         company.getCode(),
         runtimeState,
         effectiveReason,
-        failClosedRuntimeLimit(company.getQuotaMaxConcurrentRequests()),
-        failClosedRuntimeLimit(company.getQuotaMaxApiRequests()),
-        failClosedRuntimeLimit(company.getQuotaMaxActiveUsers()),
+        TenantBootstrapDefaults.failClosedRuntimeLimit(company.getQuotaMaxConcurrentRequests()),
+        TenantBootstrapDefaults.failClosedRuntimeLimit(company.getQuotaMaxApiRequests()),
+        TenantBootstrapDefaults.failClosedRuntimeLimit(company.getQuotaMaxActiveUsers()),
         resolveActor(authentication));
   }
 
@@ -876,13 +874,6 @@ public class CompanyService {
   private Integer safeRuntimeLimit(long value) {
     if (value <= 0L) {
       return null;
-    }
-    return value > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) value;
-  }
-
-  private Integer failClosedRuntimeLimit(long value) {
-    if (value <= 0L) {
-      return FAIL_CLOSED_RUNTIME_LIMIT;
     }
     return value > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) value;
   }
@@ -947,7 +938,7 @@ public class CompanyService {
   }
 
   private BigDecimal resolveDefaultGstRateForCreate(BigDecimal requestedDefaultGstRate) {
-    return requestedDefaultGstRate == null ? DEFAULT_BOOTSTRAP_GST_RATE : requestedDefaultGstRate;
+    return TenantBootstrapDefaults.resolveDefaultGstRate(requestedDefaultGstRate);
   }
 
   private void provisionInitialAdminIfRequested(

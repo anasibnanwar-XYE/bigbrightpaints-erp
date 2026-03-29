@@ -200,18 +200,9 @@ class CompanyServiceTest {
 
   @Test
   void failClosedRuntimeLimit_defaultsZeroAndCapsOverflow() {
-    assertThat(
-            (Integer)
-                ReflectionTestUtils.invokeMethod(companyService, "failClosedRuntimeLimit", 0L))
-        .isEqualTo(1);
-    assertThat(
-            (Integer)
-                ReflectionTestUtils.invokeMethod(companyService, "failClosedRuntimeLimit", 7L))
-        .isEqualTo(7);
-    assertThat(
-            (Integer)
-                ReflectionTestUtils.invokeMethod(
-                    companyService, "failClosedRuntimeLimit", (long) Integer.MAX_VALUE + 10L))
+    assertThat(TenantBootstrapDefaults.failClosedRuntimeLimit(0L)).isEqualTo(1);
+    assertThat(TenantBootstrapDefaults.failClosedRuntimeLimit(7L)).isEqualTo(7);
+    assertThat(TenantBootstrapDefaults.failClosedRuntimeLimit((long) Integer.MAX_VALUE + 10L))
         .isEqualTo(Integer.MAX_VALUE);
   }
 
