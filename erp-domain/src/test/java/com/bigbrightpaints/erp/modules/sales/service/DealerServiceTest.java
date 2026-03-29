@@ -276,8 +276,15 @@ class DealerServiceTest {
 
     var payload = dealerService.creditUtilization(1L);
 
-    assertThat(payload.get("creditUsed")).isEqualTo(new BigDecimal("900"));
-    assertThat(payload.get("availableCredit")).isEqualTo(new BigDecimal("100"));
+    assertThat(payload)
+        .containsEntry("dealerId", 1L)
+        .containsEntry("dealerName", "D-CREDIT Name")
+        .doesNotContainKeys(
+            "creditLimit",
+            "outstandingAmount",
+            "pendingOrderExposure",
+            "creditUsed",
+            "availableCredit");
     assertThat(payload.get("creditStatus")).isEqualTo("NEAR_LIMIT");
   }
 
@@ -292,15 +299,22 @@ class DealerServiceTest {
 
     var payload = dealerService.creditUtilization(99L);
 
-    assertThat(payload.get("creditLimit")).isEqualTo(BigDecimal.ZERO);
-    assertThat(payload.get("creditUsed")).isEqualTo(new BigDecimal("100"));
-    assertThat(payload.get("availableCredit")).isEqualTo(BigDecimal.ZERO);
+    assertThat(payload)
+        .containsEntry("dealerId", 99L)
+        .containsEntry("dealerName", "D-NO-LIMIT Name")
+        .doesNotContainKeys(
+            "creditLimit",
+            "outstandingAmount",
+            "pendingOrderExposure",
+            "creditUsed",
+            "availableCredit");
     assertThat(payload.get("creditStatus")).isEqualTo("OVER_LIMIT");
   }
 
   @Test
   void creditUtilizationClampsNegativeLedgerBalanceWhenDealerHasCredit() {
     Dealer dealer = dealer("D-CREDIT", new BigDecimal("1000"), "WEST");
+    ReflectionTestUtils.setField(dealer, "id", 109L);
     when(dealerRepository.findByCompanyAndId(company, 109L)).thenReturn(Optional.of(dealer));
     when(dealerLedgerService.currentBalance(109L)).thenReturn(new BigDecimal("-125"));
     when(salesOrderRepository.sumPendingCreditExposureByCompanyAndDealer(
@@ -309,9 +323,16 @@ class DealerServiceTest {
 
     var payload = dealerService.creditUtilization(109L);
 
-    assertThat(payload.get("outstandingAmount")).isEqualTo(new BigDecimal("-125"));
-    assertThat(payload.get("creditUsed")).isEqualTo(new BigDecimal("50"));
-    assertThat(payload.get("availableCredit")).isEqualTo(new BigDecimal("950"));
+    assertThat(payload)
+        .containsEntry("dealerId", 109L)
+        .containsEntry("dealerName", "D-CREDIT Name")
+        .doesNotContainKeys(
+            "creditLimit",
+            "outstandingAmount",
+            "pendingOrderExposure",
+            "creditUsed",
+            "availableCredit");
+    assertThat(payload.get("creditStatus")).isEqualTo("WITHIN_LIMIT");
   }
 
   @Test

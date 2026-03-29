@@ -214,8 +214,6 @@ public class DealerService {
               dealer.getPublicId(),
               dealer.getName(),
               dealer.getCode(),
-              outstandingBalance,
-              dealer.getCreditLimit(),
               receivableAccount != null ? receivableAccount.getId() : null,
               receivableAccount != null ? receivableAccount.getCode() : null,
               dealer.getStateCode(),
@@ -274,24 +272,11 @@ public class DealerService {
     Dealer dealer = requireDealerForRead(company, dealerId);
 
     BigDecimal outstanding = dealerLedgerService.currentBalance(dealerId);
-    BigDecimal creditOutstanding = outstanding.max(BigDecimal.ZERO);
     BigDecimal pendingOrderExposure = resolvePendingOrderExposure(dealer);
-    BigDecimal creditLimit =
-        dealer.getCreditLimit() != null ? dealer.getCreditLimit() : BigDecimal.ZERO;
-    BigDecimal creditUsed = creditOutstanding.add(pendingOrderExposure);
-    BigDecimal availableCredit = creditLimit.subtract(creditUsed);
-    if (availableCredit.compareTo(BigDecimal.ZERO) < 0) {
-      availableCredit = BigDecimal.ZERO;
-    }
 
     Map<String, Object> payload = new LinkedHashMap<>();
     payload.put("dealerId", dealer.getId());
     payload.put("dealerName", dealer.getName());
-    payload.put("creditLimit", creditLimit);
-    payload.put("outstandingAmount", outstanding);
-    payload.put("pendingOrderExposure", pendingOrderExposure);
-    payload.put("creditUsed", creditUsed);
-    payload.put("availableCredit", availableCredit);
     payload.put("creditStatus", resolveCreditStatus(dealer, outstanding, pendingOrderExposure));
     return payload;
   }
@@ -355,6 +340,7 @@ public class DealerService {
   private DealerResponse toResponse(
       Dealer dealer, String portalEmail, BigDecimal outstandingBalance) {
     Account receivableAccount = dealer.getReceivableAccount();
+    BigDecimal pendingOrderExposure = resolvePendingOrderExposure(dealer);
     return new DealerResponse(
         dealer.getId(),
         dealer.getPublicId(),
@@ -364,8 +350,6 @@ public class DealerService {
         dealer.getEmail(),
         dealer.getPhone(),
         dealer.getAddress(),
-        dealer.getCreditLimit(),
-        outstandingBalance,
         receivableAccount != null ? receivableAccount.getId() : null,
         receivableAccount != null ? receivableAccount.getCode() : null,
         portalEmail,
@@ -373,7 +357,8 @@ public class DealerService {
         dealer.getStateCode(),
         dealer.getGstRegistrationType(),
         dealer.getPaymentTerms(),
-        dealer.getRegion());
+        dealer.getRegion(),
+        resolveCreditStatus(dealer, outstandingBalance, pendingOrderExposure));
   }
 
   private String normalizeGstNumber(String gstNumber) {
