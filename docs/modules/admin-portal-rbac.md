@@ -22,7 +22,7 @@ The `PortalRoleActionMatrix` in `core/security/` defines the shared role predica
 | Role | Description | Default Permissions |
 | --- | --- | --- |
 | `ROLE_SUPER_ADMIN` | Platform owner with global cross-tenant management and support authority | `portal:accounting`, `portal:factory`, `portal:sales`, `portal:dealer`, `dispatch.confirm`, `factory.dispatch`, `payroll.run` |
-| `ROLE_ADMIN` | Platform administrator (tenant-scoped) | Same default permissions as SUPER_ADMIN |
+| `ROLE_ADMIN` | Platform administrator | Same default permissions as SUPER_ADMIN |
 | `ROLE_ACCOUNTING` | Accounting, finance, HR, and inventory operator | `portal:accounting`, `dispatch.confirm`, `payroll.run` |
 | `ROLE_FACTORY` | Factory, production, and dispatch operator | `portal:factory`, `dispatch.confirm`, `factory.dispatch` |
 | `ROLE_SALES` | Sales operations and dealer management | `portal:sales` (retired: `dispatch.confirm`) |
@@ -70,6 +70,7 @@ The `PortalRoleActionMatrix` class in `core/security/` defines the canonical rol
 | `SUPER_ADMIN_ONLY` | `hasAuthority('ROLE_SUPER_ADMIN')` | `AdminSettingsController` (settings update), `SuperAdminChangelogController` |
 | `ADMIN_OR_ACCOUNTING` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `PortalFinanceController`, `PortalSupportTicketController`, credit-limit request approve/reject, credit-override approve/reject |
 | `ADMIN_SALES_ACCOUNTING` | `hasAnyAuthority('ROLE_ADMIN','ROLE_SALES','ROLE_ACCOUNTING')` | `DealerController`, credit-limit request create |
+| `ADMIN_SALES_FACTORY_ACCOUNTING` | `hasAnyAuthority('ROLE_ADMIN','ROLE_SALES','ROLE_FACTORY','ROLE_ACCOUNTING')` | `SalesController` (orders list, search, dashboard, timeline) |
 | `ADMIN_FACTORY_SALES` | `hasAnyAuthority('ROLE_ADMIN','ROLE_FACTORY','ROLE_SALES')` | Credit-limit override request create |
 | `ADMIN_FACTORY` | `hasAnyAuthority('ROLE_ADMIN','ROLE_FACTORY')` | Dispatch and factory surfaces |
 | `ADMIN_ACCOUNTING_SUPER_ADMIN` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING','ROLE_SUPER_ADMIN')` | `AdminSettingsController` (approvals endpoint) |
