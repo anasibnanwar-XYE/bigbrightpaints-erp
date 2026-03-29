@@ -73,6 +73,8 @@ services:
       ERP_LICENSE_KEY: ${ERP_LICENSE_KEY:-}
       ERP_VALIDATION_SEED_ENABLED: ${ERP_VALIDATION_SEED_ENABLED:-false}
       ERP_VALIDATION_SEED_PASSWORD: ${ERP_VALIDATION_SEED_PASSWORD:-}
+      ERP_SEED_MOCK_ADMIN_EMAIL: ${ERP_SEED_MOCK_ADMIN_EMAIL:-}
+      ERP_SEED_MOCK_ADMIN_PASSWORD: ${ERP_SEED_MOCK_ADMIN_PASSWORD:-}
       ERP_MAIL_FROM: ${ERP_MAIL_FROM:-noreply@bigbrightpaints.com}
       ERP_MAIL_BASE_URL: ${ERP_MAIL_BASE_URL:-http://localhost:3000}
       # Local compose may point SMTP at MailHog. Release env must override every Spring mail value.
