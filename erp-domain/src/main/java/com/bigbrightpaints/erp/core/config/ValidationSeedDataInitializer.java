@@ -16,11 +16,20 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 import org.springframework.core.env.Environment;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.util.StringUtils;
 
 import com.bigbrightpaints.erp.core.security.AuthScopeService;
+import com.bigbrightpaints.erp.core.security.CryptoService;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
+import com.bigbrightpaints.erp.modules.admin.domain.ExportRequest;
+import com.bigbrightpaints.erp.modules.admin.domain.ExportRequestRepository;
+import com.bigbrightpaints.erp.modules.admin.domain.SupportTicket;
+import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketCategory;
+import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketRepository;
+import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketStatus;
+import com.bigbrightpaints.erp.modules.admin.dto.ExportApprovalStatus;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.auth.service.PasswordPolicy;
@@ -31,6 +40,8 @@ import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceLine;
 import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceRepository;
 import com.bigbrightpaints.erp.modules.rbac.domain.Role;
 import com.bigbrightpaints.erp.modules.rbac.domain.RoleRepository;
+import com.bigbrightpaints.erp.modules.sales.domain.CreditRequest;
+import com.bigbrightpaints.erp.modules.sales.domain.CreditRequestRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
 
@@ -52,6 +63,14 @@ public class ValidationSeedDataInitializer {
   private static final String HOLD_COMPANY_CODE = "HOLD";
   private static final String BLOCKED_COMPANY_CODE = "BLOCK";
   private static final String QUOTA_COMPANY_CODE = "QUOTA";
+  private static final String VALIDATION_MFA_SECRET = "JBSWY3DPEHPK3PXP";
+  private static final List<String> VALIDATION_MFA_RECOVERY_CODES =
+      List.of("VALMFA0001", "VALMFA0002", "VALMFA0003");
+  private static final String SEED_EXPORT_REPORT_TYPE = "SALES_LEDGER";
+  private static final String SEED_EXPORT_PARAMETERS =
+      "{\"range\":\"LAST_30_DAYS\",\"company\":\"MOCK\",\"seed\":\"validation-export-pending\"}";
+  private static final String SEED_SUPPORT_SUBJECT = "Validation dealer support escalation";
+  private static final String SEED_CREDIT_REASON = "Validation pending credit request";
   private static final Instant LOCKED_UNTIL_PLACEHOLDER = Instant.parse("2099-01-01T00:00:00Z");
 
   @Bean
@@ -62,8 +81,12 @@ public class ValidationSeedDataInitializer {
       DealerRepository dealerRepository,
       AccountRepository accountRepository,
       InvoiceRepository invoiceRepository,
+      ExportRequestRepository exportRequestRepository,
+      SupportTicketRepository supportTicketRepository,
+      CreditRequestRepository creditRequestRepository,
       SystemSettingsRepository systemSettingsRepository,
       PasswordEncoder passwordEncoder,
+      CryptoService cryptoService,
       PasswordPolicy passwordPolicy,
       AuthScopeService authScopeService,
       Environment environment,
@@ -134,6 +157,7 @@ public class ValidationSeedDataInitializer {
           ensureUser(
               userAccountRepository,
               passwordEncoder,
+              cryptoService,
               "validation.admin@example.com",
               "Validation Admin",
               validatedPassword,
@@ -143,6 +167,7 @@ public class ValidationSeedDataInitializer {
       ensureUser(
           userAccountRepository,
           passwordEncoder,
+          cryptoService,
           "validation.mustchange.admin@example.com",
           "Validation Must Change Admin",
           validatedPassword,
@@ -150,10 +175,14 @@ public class ValidationSeedDataInitializer {
           List.of(mockCompany),
           List.of(admin),
           true,
-          null);
+          null,
+          false,
+          null,
+          List.of());
       ensureUser(
           userAccountRepository,
           passwordEncoder,
+          cryptoService,
           "validation.locked.admin@example.com",
           "Validation Locked Admin",
           validatedPassword,
@@ -161,10 +190,14 @@ public class ValidationSeedDataInitializer {
           List.of(mockCompany),
           List.of(admin),
           false,
-          LOCKED_UNTIL_PLACEHOLDER);
+          LOCKED_UNTIL_PLACEHOLDER,
+          false,
+          null,
+          List.of());
       ensureUser(
           userAccountRepository,
           passwordEncoder,
+          cryptoService,
           "validation.accounting@example.com",
           "Validation Accounting",
           validatedPassword,
@@ -174,6 +207,7 @@ public class ValidationSeedDataInitializer {
       ensureUser(
           userAccountRepository,
           passwordEncoder,
+          cryptoService,
           "validation.sales@example.com",
           "Validation Sales",
           validatedPassword,
@@ -183,17 +217,34 @@ public class ValidationSeedDataInitializer {
       ensureUser(
           userAccountRepository,
           passwordEncoder,
+          cryptoService,
           "validation.factory@example.com",
           "Validation Factory",
           validatedPassword,
           mockCompany.getCode(),
           List.of(mockCompany),
           List.of(factory));
+      ensureUser(
+          userAccountRepository,
+          passwordEncoder,
+          cryptoService,
+          "validation.mfa.admin@example.com",
+          "Validation MFA Admin",
+          validatedPassword,
+          mockCompany.getCode(),
+          List.of(mockCompany),
+          List.of(admin),
+          false,
+          null,
+          true,
+          VALIDATION_MFA_SECRET,
+          VALIDATION_MFA_RECOVERY_CODES);
 
       UserAccount dealerUser =
           ensureUser(
               userAccountRepository,
               passwordEncoder,
+              cryptoService,
               "validation.dealer@example.com",
               "Validation Dealer",
               validatedPassword,
@@ -213,6 +264,7 @@ public class ValidationSeedDataInitializer {
           ensureUser(
               userAccountRepository,
               passwordEncoder,
+              cryptoService,
               "validation.rival.dealer@example.com",
               "Rival Validation Dealer",
               validatedPassword,
@@ -229,11 +281,15 @@ public class ValidationSeedDataInitializer {
               "Rival Validation Dealer");
       ensureValidationInvoiceFixture(invoiceRepository, mockDealer, "VAL-MOCK-INV-001");
       ensureValidationInvoiceFixture(invoiceRepository, rivalDealer, "VAL-RIVAL-INV-001");
+      ensurePendingExportRequest(exportRequestRepository, mockCompany, mockAdmin);
+      ensurePendingSupportTicket(supportTicketRepository, mockCompany, dealerUser);
+      ensurePendingCreditRequest(creditRequestRepository, mockCompany, mockDealer, dealerUser);
 
       UserAccount rivalAdmin =
           ensureUser(
               userAccountRepository,
               passwordEncoder,
+              cryptoService,
               "validation.rival.admin@example.com",
               "Rival Validation Admin",
               validatedPassword,
@@ -244,6 +300,7 @@ public class ValidationSeedDataInitializer {
           ensureUser(
               userAccountRepository,
               passwordEncoder,
+              cryptoService,
               "validation.hold.admin@example.com",
               "Validation Hold Admin",
               validatedPassword,
@@ -254,6 +311,7 @@ public class ValidationSeedDataInitializer {
           ensureUser(
               userAccountRepository,
               passwordEncoder,
+              cryptoService,
               "validation.blocked.admin@example.com",
               "Validation Blocked Admin",
               validatedPassword,
@@ -264,6 +322,7 @@ public class ValidationSeedDataInitializer {
           ensureUser(
               userAccountRepository,
               passwordEncoder,
+              cryptoService,
               "validation.quota.alpha@example.com",
               "Validation Quota Alpha",
               validatedPassword,
@@ -273,6 +332,7 @@ public class ValidationSeedDataInitializer {
       ensureUser(
           userAccountRepository,
           passwordEncoder,
+          cryptoService,
           "validation.quota.beta@example.com",
           "Validation Quota Beta",
           validatedPassword,
@@ -283,6 +343,7 @@ public class ValidationSeedDataInitializer {
           ensureUser(
               userAccountRepository,
               passwordEncoder,
+              cryptoService,
               "validation.superadmin@example.com",
               "Validation Super Admin",
               validatedPassword,
@@ -298,7 +359,7 @@ public class ValidationSeedDataInitializer {
 
       log.info(
           "Validation seed logins ready: admin={}, mustChange={}, locked={}, accounting={},"
-              + " sales={}, factory={}, dealer={}, superadmin={} (password from"
+              + " sales={}, factory={}, mfaAdmin={}, dealer={}, superadmin={} (password from"
               + " erp.validation-seed.password / ERP_VALIDATION_SEED_PASSWORD)",
           mockAdmin.getEmail(),
           "validation.mustchange.admin@example.com",
@@ -306,6 +367,7 @@ public class ValidationSeedDataInitializer {
           "validation.accounting@example.com",
           "validation.sales@example.com",
           "validation.factory@example.com",
+          "validation.mfa.admin@example.com",
           "validation.dealer@example.com",
           superAdminUser.getEmail());
       log.info(
@@ -317,6 +379,11 @@ public class ValidationSeedDataInitializer {
           holdAdmin.getEmail(),
           blockedAdmin.getEmail(),
           quotaAlpha.getEmail());
+      log.info(
+          "Validation admin inbox fixtures ready: exportReportType={} supportSubject={} creditReason={}.",
+          SEED_EXPORT_REPORT_TYPE,
+          SEED_SUPPORT_SUBJECT,
+          SEED_CREDIT_REASON);
       log.info(
           "Validation seed ready for companies [MOCK, RIVAL, HOLD, BLOCK, QUOTA] plus platform"
               + " scope {}.",
@@ -403,6 +470,7 @@ public class ValidationSeedDataInitializer {
   private UserAccount ensureUser(
       UserAccountRepository userAccountRepository,
       PasswordEncoder passwordEncoder,
+      CryptoService cryptoService,
       String email,
       String displayName,
       String password,
@@ -412,6 +480,7 @@ public class ValidationSeedDataInitializer {
     return ensureUser(
         userAccountRepository,
         passwordEncoder,
+        cryptoService,
         email,
         displayName,
         password,
@@ -419,12 +488,16 @@ public class ValidationSeedDataInitializer {
         companies,
         roles,
         false,
-        null);
+        null,
+        false,
+        null,
+        List.of());
   }
 
   private UserAccount ensureUser(
       UserAccountRepository userAccountRepository,
       PasswordEncoder passwordEncoder,
+      CryptoService cryptoService,
       String email,
       String displayName,
       String password,
@@ -432,7 +505,10 @@ public class ValidationSeedDataInitializer {
       List<Company> companies,
       List<Role> roles,
       boolean mustChangePassword,
-      Instant lockedUntil) {
+      Instant lockedUntil,
+      boolean mfaEnabled,
+      String mfaSecret,
+      List<String> recoveryCodes) {
     String normalizedEmail = email.trim().toLowerCase(Locale.ROOT);
     String normalizedScopeCode = authScopeCode.trim().toUpperCase(Locale.ROOT);
     UserAccount user =
@@ -453,9 +529,17 @@ public class ValidationSeedDataInitializer {
     user.setMustChangePassword(mustChangePassword);
     user.setFailedLoginAttempts(lockedUntil == null ? 0 : 5);
     user.setLockedUntil(lockedUntil);
-    user.setMfaEnabled(false);
-    user.setMfaSecret(null);
-    user.setMfaRecoveryCodeHashes(List.of());
+    user.setMfaEnabled(mfaEnabled);
+    if (mfaEnabled) {
+      user.setMfaSecret(cryptoService.encrypt(mfaSecret));
+      user.setMfaRecoveryCodeHashes(
+          recoveryCodes == null
+              ? List.of()
+              : recoveryCodes.stream().map(passwordEncoder::encode).toList());
+    } else {
+      user.setMfaSecret(null);
+      user.setMfaRecoveryCodeHashes(List.of());
+    }
     normalizeCompanyMemberships(user, companies);
     normalizeRoleMemberships(user, roles);
     return userAccountRepository.save(user);
@@ -583,5 +667,92 @@ public class ValidationSeedDataInitializer {
     line.setDiscountAmount(BigDecimal.ZERO.setScale(2));
     line.setLineTotal(VALIDATION_INVOICE_SUBTOTAL);
     return line;
+  }
+
+  private void ensurePendingExportRequest(
+      ExportRequestRepository exportRequestRepository, Company company, UserAccount requester) {
+    if (company == null || requester == null) {
+      return;
+    }
+    Long requesterId = requesterId(requester);
+    boolean exists =
+        exportRequestRepository.findByCompanyAndStatusOrderByCreatedAtAsc(
+                company, ExportApprovalStatus.PENDING)
+            .stream()
+            .anyMatch(
+                request ->
+                    requesterId.equals(request.getUserId())
+                        && SEED_EXPORT_REPORT_TYPE.equalsIgnoreCase(request.getReportType())
+                        && SEED_EXPORT_PARAMETERS.equals(request.getParameters()));
+    if (exists) {
+      return;
+    }
+    ExportRequest request = new ExportRequest();
+    request.setCompany(company);
+    request.setUserId(requesterId);
+    request.setReportType(SEED_EXPORT_REPORT_TYPE);
+    request.setParameters(SEED_EXPORT_PARAMETERS);
+    request.setStatus(ExportApprovalStatus.PENDING);
+    exportRequestRepository.save(request);
+  }
+
+  private void ensurePendingSupportTicket(
+      SupportTicketRepository supportTicketRepository, Company company, UserAccount requester) {
+    if (company == null || requester == null) {
+      return;
+    }
+    Long requesterId = requesterId(requester);
+    boolean exists =
+        supportTicketRepository.findByCompanyAndUserIdOrderByCreatedAtDesc(company, requesterId).stream()
+            .anyMatch(
+                ticket ->
+                    ticket.getCategory() == SupportTicketCategory.SUPPORT
+                        && SEED_SUPPORT_SUBJECT.equalsIgnoreCase(ticket.getSubject()));
+    if (exists) {
+      return;
+    }
+    SupportTicket ticket = new SupportTicket();
+    ticket.setCompany(company);
+    ticket.setUserId(requesterId);
+    ticket.setCategory(SupportTicketCategory.SUPPORT);
+    ticket.setSubject(SEED_SUPPORT_SUBJECT);
+    ticket.setDescription(
+        "Seeded validation support ticket for dealer and tenant admin replay on current main.");
+    ticket.setStatus(SupportTicketStatus.OPEN);
+    supportTicketRepository.save(ticket);
+  }
+
+  private void ensurePendingCreditRequest(
+      CreditRequestRepository creditRequestRepository,
+      Company company,
+      Dealer dealer,
+      UserAccount requester) {
+    if (company == null || dealer == null || requester == null) {
+      return;
+    }
+    boolean exists =
+        creditRequestRepository.findPendingByCompanyOrderByCreatedAtDesc(company).stream()
+            .anyMatch(
+                request ->
+                    request.getDealer() != null
+                        && dealer.getId() != null
+                        && dealer.getId().equals(request.getDealer().getId())
+                        && SEED_CREDIT_REASON.equalsIgnoreCase(request.getReason()));
+    if (exists) {
+      return;
+    }
+    CreditRequest request = new CreditRequest();
+    request.setCompany(company);
+    request.setDealer(dealer);
+    request.setAmountRequested(new BigDecimal("75000.00"));
+    request.setStatus("PENDING");
+    request.setReason(SEED_CREDIT_REASON);
+    request.setRequesterUserId(requesterId(requester));
+    request.setRequesterEmail(requester.getEmail());
+    creditRequestRepository.save(request);
+  }
+
+  private Long requesterId(UserAccount requester) {
+    return requester.getId() != null ? requester.getId() : 0L;
   }
 }

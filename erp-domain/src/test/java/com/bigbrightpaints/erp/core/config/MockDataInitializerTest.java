@@ -3,6 +3,7 @@ package com.bigbrightpaints.erp.core.config;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -20,6 +21,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
+import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.modules.rbac.domain.Role;
 import com.bigbrightpaints.erp.modules.rbac.domain.RoleRepository;
 
@@ -29,15 +31,18 @@ class MockDataInitializerTest {
   @Mock private RoleRepository roleRepository;
   @Mock private UserAccountRepository userRepository;
   @Mock private PasswordEncoder passwordEncoder;
+  @Mock private CompanyRepository companyRepository;
 
   private MockDataInitializer initializer;
 
   @BeforeEach
   void setUp() {
     initializer = new MockDataInitializer();
-    when(roleRepository.findByName(anyString()))
+    lenient()
+        .when(roleRepository.findByName(anyString()))
         .thenAnswer(invocation -> Optional.of(role(invocation.getArgument(0, String.class))));
-    when(userRepository.save(any(UserAccount.class)))
+    lenient()
+        .when(userRepository.save(any(UserAccount.class)))
         .thenAnswer(invocation -> invocation.getArgument(0, UserAccount.class));
   }
 
@@ -97,6 +102,26 @@ class MockDataInitializerTest {
     assertThat(existingAdmin.getRoles())
         .extracting(Role::getName)
         .containsExactlyInAnyOrder("ROLE_ADMIN", "ROLE_ACCOUNTING", "ROLE_SALES");
+  }
+
+  @Test
+  void attachMainAdmin_refreshesPersistedCompanyBeforeSaving() {
+    Company staleCompany = company("MOCK");
+    ReflectionTestUtils.setField(staleCompany, "id", 1L);
+    Company refreshedCompany = company("MOCK");
+    ReflectionTestUtils.setField(refreshedCompany, "id", 1L);
+    UserAccount adminUser = new UserAccount("mock-admin@example.com", "MOCK", "hash", "Mock Admin");
+    ReflectionTestUtils.setField(adminUser, "id", 42L);
+    when(companyRepository.findById(1L)).thenReturn(Optional.of(refreshedCompany));
+
+    ReflectionTestUtils.invokeMethod(
+        initializer, "attachMainAdmin", companyRepository, staleCompany, adminUser);
+
+    verify(companyRepository).save(refreshedCompany);
+    assertThat(refreshedCompany.getOnboardingAdminEmail()).isEqualTo("mock-admin@example.com");
+    assertThat(refreshedCompany.getMainAdminUserId()).isEqualTo(42L);
+    assertThat(refreshedCompany.getOnboardingAdminUserId()).isEqualTo(42L);
+    assertThat(staleCompany.getOnboardingAdminEmail()).isNull();
   }
 
   private Company company(String code) {

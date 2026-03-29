@@ -11,6 +11,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 
@@ -26,8 +27,14 @@ import org.springframework.mock.env.MockEnvironment;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import com.bigbrightpaints.erp.core.security.AuthScopeService;
+import com.bigbrightpaints.erp.core.security.CryptoService;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
+import com.bigbrightpaints.erp.modules.admin.domain.ExportRequest;
+import com.bigbrightpaints.erp.modules.admin.domain.ExportRequestRepository;
+import com.bigbrightpaints.erp.modules.admin.domain.SupportTicket;
+import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketRepository;
+import com.bigbrightpaints.erp.modules.admin.dto.ExportApprovalStatus;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.auth.service.PasswordPolicy;
@@ -36,6 +43,8 @@ import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceRepository;
 import com.bigbrightpaints.erp.modules.rbac.domain.Role;
 import com.bigbrightpaints.erp.modules.rbac.domain.RoleRepository;
+import com.bigbrightpaints.erp.modules.sales.domain.CreditRequest;
+import com.bigbrightpaints.erp.modules.sales.domain.CreditRequestRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
 
@@ -49,8 +58,12 @@ class ValidationSeedDataInitializerTest {
   @Mock private DealerRepository dealerRepository;
   @Mock private AccountRepository accountRepository;
   @Mock private InvoiceRepository invoiceRepository;
+  @Mock private ExportRequestRepository exportRequestRepository;
+  @Mock private SupportTicketRepository supportTicketRepository;
+  @Mock private CreditRequestRepository creditRequestRepository;
   @Mock private SystemSettingsRepository systemSettingsRepository;
   @Mock private PasswordEncoder passwordEncoder;
+  @Mock private CryptoService cryptoService;
   @Mock private AuthScopeService authScopeService;
 
   private ValidationSeedDataInitializer initializer;
@@ -77,8 +90,31 @@ class ValidationSeedDataInitializerTest {
         .when(userAccountRepository.save(any(UserAccount.class)))
         .thenAnswer(invocation -> invocation.getArgument(0));
     lenient()
+        .when(exportRequestRepository.save(any(ExportRequest.class)))
+        .thenAnswer(invocation -> invocation.getArgument(0));
+    lenient()
+        .when(supportTicketRepository.save(any(SupportTicket.class)))
+        .thenAnswer(invocation -> invocation.getArgument(0));
+    lenient()
+        .when(creditRequestRepository.save(any(CreditRequest.class)))
+        .thenAnswer(invocation -> invocation.getArgument(0));
+    lenient()
+        .when(exportRequestRepository.findByCompanyAndStatusOrderByCreatedAtAsc(
+            any(Company.class), any(ExportApprovalStatus.class)))
+        .thenReturn(List.of());
+    lenient()
+        .when(supportTicketRepository.findByCompanyAndUserIdOrderByCreatedAtDesc(
+            any(Company.class), any()))
+        .thenReturn(List.of());
+    lenient()
+        .when(creditRequestRepository.findPendingByCompanyOrderByCreatedAtDesc(any(Company.class)))
+        .thenReturn(List.of());
+    lenient()
         .when(passwordEncoder.encode(anyString()))
         .thenAnswer(invocation -> "encoded:" + invocation.getArgument(0, String.class));
+    lenient()
+        .when(cryptoService.encrypt(anyString()))
+        .thenAnswer(invocation -> "encrypted:" + invocation.getArgument(0, String.class));
   }
 
   @Test
@@ -91,8 +127,12 @@ class ValidationSeedDataInitializerTest {
             dealerRepository,
             accountRepository,
             invoiceRepository,
+            exportRequestRepository,
+            supportTicketRepository,
+            creditRequestRepository,
             systemSettingsRepository,
             passwordEncoder,
+            cryptoService,
             passwordPolicy,
             authScopeService,
             activeProfiles("mock", "validation-seed"),
@@ -122,8 +162,12 @@ class ValidationSeedDataInitializerTest {
             dealerRepository,
             accountRepository,
             invoiceRepository,
+            exportRequestRepository,
+            supportTicketRepository,
+            creditRequestRepository,
             systemSettingsRepository,
             passwordEncoder,
+            cryptoService,
             passwordPolicy,
             authScopeService,
             activeProfiles("validation-seed"),
@@ -153,8 +197,12 @@ class ValidationSeedDataInitializerTest {
             dealerRepository,
             accountRepository,
             invoiceRepository,
+            exportRequestRepository,
+            supportTicketRepository,
+            creditRequestRepository,
             systemSettingsRepository,
             passwordEncoder,
+            cryptoService,
             passwordPolicy,
             authScopeService,
             activeProfiles("mock", "validation-seed"),
@@ -186,8 +234,12 @@ class ValidationSeedDataInitializerTest {
             dealerRepository,
             accountRepository,
             invoiceRepository,
+            exportRequestRepository,
+            supportTicketRepository,
+            creditRequestRepository,
             systemSettingsRepository,
             passwordEncoder,
+            cryptoService,
             passwordPolicy,
             authScopeService,
             activeProfiles("mock", "validation-seed"),
@@ -197,7 +249,7 @@ class ValidationSeedDataInitializerTest {
     runner.run();
 
     ArgumentCaptor<UserAccount> users = ArgumentCaptor.forClass(UserAccount.class);
-    verify(userAccountRepository, times(14)).save(users.capture());
+    verify(userAccountRepository, times(15)).save(users.capture());
 
     assertThat(users.getAllValues())
         .extracting(UserAccount::getEmail)
@@ -208,6 +260,7 @@ class ValidationSeedDataInitializerTest {
             "validation.accounting@example.com",
             "validation.sales@example.com",
             "validation.factory@example.com",
+            "validation.mfa.admin@example.com",
             "validation.dealer@example.com",
             "validation.rival.dealer@example.com",
             "validation.rival.admin@example.com",
@@ -250,11 +303,24 @@ class ValidationSeedDataInitializerTest {
             .orElseThrow();
     assertThat(lockedAdmin.getLockedUntil()).isEqualTo(Instant.parse("2099-01-01T00:00:00Z"));
 
+    UserAccount mfaAdmin =
+        users.getAllValues().stream()
+            .filter(user -> "validation.mfa.admin@example.com".equals(user.getEmail()))
+            .findFirst()
+            .orElseThrow();
+    assertThat(mfaAdmin.isMfaEnabled()).isTrue();
+    assertThat(mfaAdmin.getMfaSecret()).isEqualTo("encrypted:JBSWY3DPEHPK3PXP");
+    assertThat(mfaAdmin.getMfaRecoveryCodeHashes())
+        .containsExactly("encoded:VALMFA0001", "encoded:VALMFA0002", "encoded:VALMFA0003");
+
     assertThat(users.getAllValues())
         .allMatch(
             user ->
                 user.getAuthScopeCode().equals(user.getAuthScopeCode().toUpperCase(Locale.ROOT)));
     verify(dealerRepository, times(2)).save(any(Dealer.class));
+    verify(exportRequestRepository).save(any(ExportRequest.class));
+    verify(supportTicketRepository).save(any(SupportTicket.class));
+    verify(creditRequestRepository).save(any(CreditRequest.class));
     verify(authScopeService).getPlatformScopeCode();
   }
 

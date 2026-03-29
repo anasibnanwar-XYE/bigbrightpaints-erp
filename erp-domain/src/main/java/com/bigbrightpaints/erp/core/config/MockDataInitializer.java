@@ -2,6 +2,7 @@ package com.bigbrightpaints.erp.core.config;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -23,7 +24,14 @@ import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
+import com.bigbrightpaints.erp.modules.accounting.domain.GstRegistrationType;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
+import com.bigbrightpaints.erp.modules.admin.domain.ExportRequest;
+import com.bigbrightpaints.erp.modules.admin.domain.ExportRequestRepository;
+import com.bigbrightpaints.erp.modules.admin.domain.SupportTicket;
+import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketCategory;
+import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketRepository;
+import com.bigbrightpaints.erp.modules.admin.dto.ExportApprovalStatus;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingService;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
@@ -42,10 +50,26 @@ import com.bigbrightpaints.erp.modules.production.domain.ProductionBrand;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionBrandRepository;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionProduct;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionProductRepository;
+import com.bigbrightpaints.erp.modules.purchasing.domain.GoodsReceipt;
+import com.bigbrightpaints.erp.modules.purchasing.domain.GoodsReceiptRepository;
+import com.bigbrightpaints.erp.modules.purchasing.domain.PurchaseOrder;
+import com.bigbrightpaints.erp.modules.purchasing.domain.PurchaseOrderRepository;
+import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchaseRepository;
 import com.bigbrightpaints.erp.modules.purchasing.domain.Supplier;
 import com.bigbrightpaints.erp.modules.purchasing.domain.SupplierRepository;
+import com.bigbrightpaints.erp.modules.purchasing.dto.GoodsReceiptLineRequest;
+import com.bigbrightpaints.erp.modules.purchasing.dto.GoodsReceiptRequest;
+import com.bigbrightpaints.erp.modules.purchasing.dto.GoodsReceiptResponse;
+import com.bigbrightpaints.erp.modules.purchasing.dto.PurchaseOrderLineRequest;
+import com.bigbrightpaints.erp.modules.purchasing.dto.PurchaseOrderRequest;
+import com.bigbrightpaints.erp.modules.purchasing.dto.PurchaseOrderResponse;
+import com.bigbrightpaints.erp.modules.purchasing.dto.RawMaterialPurchaseLineRequest;
+import com.bigbrightpaints.erp.modules.purchasing.dto.RawMaterialPurchaseRequest;
+import com.bigbrightpaints.erp.modules.purchasing.service.PurchasingService;
 import com.bigbrightpaints.erp.modules.rbac.domain.Role;
 import com.bigbrightpaints.erp.modules.rbac.domain.RoleRepository;
+import com.bigbrightpaints.erp.modules.sales.domain.CreditRequest;
+import com.bigbrightpaints.erp.modules.sales.domain.CreditRequestRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
 import com.bigbrightpaints.erp.modules.sales.dto.SalesOrderDto;
@@ -59,6 +83,21 @@ import com.bigbrightpaints.erp.modules.sales.service.SalesOrderCrudService;
 public class MockDataInitializer {
 
   private static final Logger log = LoggerFactory.getLogger(MockDataInitializer.class);
+  private static final String READY_CONFIRM_ORDER_IDEMPOTENCY_KEY = "mock-ready-confirm-order";
+  private static final String APPROVAL_EXPORT_REPORT_TYPE = "SALES_REGISTER";
+  private static final String APPROVAL_EXPORT_PARAMETERS = "{\"seed\":\"mock-validation-export\"}";
+  private static final String APPROVAL_SUPPORT_SUBJECT = "Validation seeded support ticket";
+  private static final String APPROVAL_SUPPORT_DESCRIPTION =
+      "Seeded support ticket for admin cross-surface UAT.";
+  private static final String APPROVAL_CREDIT_REASON = "Validation seeded dealer credit request";
+  private static final String P2P_ORDER_NUMBER = "MOCK-P2P-PO-001";
+  private static final String P2P_RECEIPT_NUMBER = "MOCK-P2P-GRN-001";
+  private static final String P2P_RECEIPT_IDEMPOTENCY_KEY = "mock-p2p-grn-001";
+  private static final String P2P_INVOICE_NUMBER = "MOCK-P2P-INV-001";
+  private static final String P2P_BATCH_CODE = "RM-RESIN-MOCK-P2P-001";
+  private static final LocalDate P2P_ORDER_DATE = LocalDate.of(2026, 2, 10);
+  private static final LocalDate P2P_RECEIPT_DATE = LocalDate.of(2026, 2, 12);
+  private static final LocalDate P2P_INVOICE_DATE = LocalDate.of(2026, 2, 14);
 
   @Bean
   CommandLineRunner seedMockData(
@@ -78,6 +117,13 @@ public class MockDataInitializer {
       AccountingService accountingService,
       SalesOrderCrudService salesOrderCrudService,
       SalesFulfillmentService salesFulfillmentService,
+      PurchasingService purchasingService,
+      PurchaseOrderRepository purchaseOrderRepository,
+      GoodsReceiptRepository goodsReceiptRepository,
+      RawMaterialPurchaseRepository rawMaterialPurchaseRepository,
+      ExportRequestRepository exportRequestRepository,
+      SupportTicketRepository supportTicketRepository,
+      CreditRequestRepository creditRequestRepository,
       JournalEntryRepository journalEntryRepository,
       @Value("${erp.seed.mock-admin.email:}") String mockAdminEmail,
       @Value("${erp.seed.mock-admin.password:}") String mockAdminPassword) {
@@ -93,7 +139,7 @@ public class MockDataInitializer {
               mockAdminEmail,
               mockAdminPassword);
       attachMainAdmin(companyRepository, company, seededAdmin);
-      Dealer dealer = seedDealer(company, dealerRepository, accounts.get("AR"));
+      Dealer dealer = seedDealer(company, dealerRepository, userRepository, accounts.get("AR"));
       Supplier supplier = seedSupplier(company, supplierRepository, accounts.get("AP"));
       ProductionBrand brand = seedBrand(company, brandRepository);
       // Use WIP_PACK (1180) for finished goods that go through packing stage
@@ -135,6 +181,21 @@ public class MockDataInitializer {
       CompanyContextHolder.setCompanyCode(company.getCode());
       try {
         seedReadyToConfirmOrder(salesOrderCrudService, salesFulfillmentService, dealer);
+        seedPendingApprovalFixtures(
+            company,
+            seededAdmin,
+            dealer,
+            exportRequestRepository,
+            supportTicketRepository,
+            creditRequestRepository);
+        seedProcureToPayFixture(
+            company,
+            supplier,
+            rawMaterialRepository,
+            purchasingService,
+            purchaseOrderRepository,
+            goodsReceiptRepository,
+            rawMaterialPurchaseRepository);
         seedSalesPurchaseAndCogs(accountingService, company, dealer, supplier, accounts);
         // Add some traffic to show balances
         for (int i = 0; i < 10; i++) {
@@ -335,12 +396,16 @@ public class MockDataInitializer {
     if (company == null || adminUser == null) {
       return;
     }
-    company.setOnboardingAdminEmail(adminUser.getEmail());
+    Company targetCompany =
+        company.getId() == null
+            ? company
+            : companyRepository.findById(company.getId()).orElse(company);
+    targetCompany.setOnboardingAdminEmail(adminUser.getEmail());
     if (adminUser.getId() != null) {
-      company.setMainAdminUserId(adminUser.getId());
-      company.setOnboardingAdminUserId(adminUser.getId());
+      targetCompany.setMainAdminUserId(adminUser.getId());
+      targetCompany.setOnboardingAdminUserId(adminUser.getId());
     }
-    companyRepository.save(company);
+    companyRepository.save(targetCompany);
   }
 
   private void seedReadyToConfirmOrder(
@@ -359,11 +424,15 @@ public class MockDataInitializer {
                 "Mock ready-to-confirm UAT order",
                 List.of(
                     new SalesOrderItemRequest(
-                        "FG-GST", "Mock ready-to-confirm line", new BigDecimal("10"), new BigDecimal("20.00"), new BigDecimal("18.00"))),
+                        "FG-GST",
+                        "Mock ready-to-confirm line",
+                        new BigDecimal("10"),
+                        new BigDecimal("20.00"),
+                        new BigDecimal("18.00"))),
                 "GST",
                 new BigDecimal("18.00"),
                 Boolean.FALSE,
-                "mock-ready-confirm-order",
+                READY_CONFIRM_ORDER_IDEMPOTENCY_KEY,
                 "CREDIT"));
     if (order != null && order.id() != null) {
       salesFulfillmentService.reserveForOrder(order.id());
@@ -374,7 +443,214 @@ public class MockDataInitializer {
     }
   }
 
-  private Dealer seedDealer(Company company, DealerRepository dealerRepository, Account ar) {
+  private void seedPendingApprovalFixtures(
+      Company company,
+      UserAccount seededAdmin,
+      Dealer dealer,
+      ExportRequestRepository exportRequestRepository,
+      SupportTicketRepository supportTicketRepository,
+      CreditRequestRepository creditRequestRepository) {
+    if (company == null || company.getId() == null) {
+      return;
+    }
+    seedPendingExportRequest(company, seededAdmin, exportRequestRepository);
+    seedPendingSupportTicket(company, dealer, supportTicketRepository);
+    seedPendingCreditRequest(company, dealer, creditRequestRepository);
+  }
+
+  private void seedPendingExportRequest(
+      Company company,
+      UserAccount seededAdmin,
+      ExportRequestRepository exportRequestRepository) {
+    if (seededAdmin == null || seededAdmin.getId() == null) {
+      return;
+    }
+    boolean exists =
+        exportRequestRepository.findByCompanyAndStatusOrderByCreatedAtAsc(company, ExportApprovalStatus.PENDING)
+            .stream()
+            .anyMatch(
+                request ->
+                    seededAdmin.getId().equals(request.getUserId())
+                        && APPROVAL_EXPORT_REPORT_TYPE.equalsIgnoreCase(request.getReportType())
+                        && APPROVAL_EXPORT_PARAMETERS.equals(request.getParameters()));
+    if (exists) {
+      return;
+    }
+
+    ExportRequest request = new ExportRequest();
+    request.setCompany(company);
+    request.setUserId(seededAdmin.getId());
+    request.setReportType(APPROVAL_EXPORT_REPORT_TYPE);
+    request.setParameters(APPROVAL_EXPORT_PARAMETERS);
+    request.setStatus(ExportApprovalStatus.PENDING);
+    exportRequestRepository.save(request);
+  }
+
+  private void seedPendingSupportTicket(
+      Company company, Dealer dealer, SupportTicketRepository supportTicketRepository) {
+    if (dealer == null
+        || dealer.getPortalUser() == null
+        || dealer.getPortalUser().getId() == null
+        || company == null) {
+      return;
+    }
+    boolean exists =
+        supportTicketRepository.findByCompanyAndUserIdOrderByCreatedAtDesc(
+                company, dealer.getPortalUser().getId())
+            .stream()
+            .anyMatch(ticket -> APPROVAL_SUPPORT_SUBJECT.equalsIgnoreCase(ticket.getSubject()));
+    if (exists) {
+      return;
+    }
+
+    SupportTicket ticket = new SupportTicket();
+    ticket.setCompany(company);
+    ticket.setUserId(dealer.getPortalUser().getId());
+    ticket.setCategory(SupportTicketCategory.SUPPORT);
+    ticket.setSubject(APPROVAL_SUPPORT_SUBJECT);
+    ticket.setDescription(APPROVAL_SUPPORT_DESCRIPTION);
+    supportTicketRepository.save(ticket);
+  }
+
+  private void seedPendingCreditRequest(
+      Company company, Dealer dealer, CreditRequestRepository creditRequestRepository) {
+    if (company == null || dealer == null || dealer.getId() == null) {
+      return;
+    }
+    boolean exists =
+        creditRequestRepository.findPendingByCompanyOrderByCreatedAtDesc(company).stream()
+            .anyMatch(
+                request ->
+                    request.getDealer() != null
+                        && dealer.getId().equals(request.getDealer().getId())
+                        && APPROVAL_CREDIT_REASON.equals(request.getReason()));
+    if (exists) {
+      return;
+    }
+
+    CreditRequest request = new CreditRequest();
+    request.setCompany(company);
+    request.setDealer(dealer);
+    request.setAmountRequested(new BigDecimal("75000.00"));
+    request.setStatus("PENDING");
+    request.setReason(APPROVAL_CREDIT_REASON);
+    if (dealer.getPortalUser() != null) {
+      request.setRequesterUserId(dealer.getPortalUser().getId());
+      request.setRequesterEmail(dealer.getPortalUser().getEmail());
+    }
+    creditRequestRepository.save(request);
+  }
+
+  private void seedProcureToPayFixture(
+      Company company,
+      Supplier supplier,
+      RawMaterialRepository rawMaterialRepository,
+      PurchasingService purchasingService,
+      PurchaseOrderRepository purchaseOrderRepository,
+      GoodsReceiptRepository goodsReceiptRepository,
+      RawMaterialPurchaseRepository rawMaterialPurchaseRepository) {
+    if (company == null || supplier == null || supplier.getId() == null) {
+      return;
+    }
+
+    RawMaterial rawMaterial =
+        rawMaterialRepository
+            .findByCompanyAndSku(company, "RM-RESIN")
+            .orElse(null);
+    if (rawMaterial == null || rawMaterial.getId() == null) {
+      return;
+    }
+
+    if (rawMaterialPurchaseRepository
+        .findByCompanyAndInvoiceNumberIgnoreCase(company, P2P_INVOICE_NUMBER)
+        .isPresent()) {
+      return;
+    }
+
+    PurchaseOrder purchaseOrder =
+        purchaseOrderRepository.findByCompanyAndOrderNumberIgnoreCase(company, P2P_ORDER_NUMBER).orElse(null);
+    if (purchaseOrder == null) {
+      PurchaseOrderResponse created =
+          purchasingService.createPurchaseOrder(
+              new PurchaseOrderRequest(
+                  supplier.getId(),
+                  P2P_ORDER_NUMBER,
+                  P2P_ORDER_DATE,
+                  "Seeded PO for MOCK P2P validation chain",
+                  List.of(
+                      new PurchaseOrderLineRequest(
+                          rawMaterial.getId(),
+                          new BigDecimal("40.0000"),
+                          "UNIT",
+                          new BigDecimal("5.50"),
+                          "Validation seeded PO line"))));
+      purchaseOrder =
+          purchaseOrderRepository
+              .findByCompanyAndId(company, created.id())
+              .orElseThrow();
+    }
+
+    if ("DRAFT".equalsIgnoreCase(purchaseOrder.getStatus())) {
+      purchasingService.approvePurchaseOrder(purchaseOrder.getId());
+      purchaseOrder =
+          purchaseOrderRepository.findByCompanyAndId(company, purchaseOrder.getId()).orElseThrow();
+    }
+
+    GoodsReceipt goodsReceipt =
+        goodsReceiptRepository.findByCompanyAndReceiptNumberIgnoreCase(company, P2P_RECEIPT_NUMBER).orElse(null);
+    if (goodsReceipt == null) {
+      GoodsReceiptResponse created =
+          purchasingService.createGoodsReceipt(
+              new GoodsReceiptRequest(
+                  purchaseOrder.getId(),
+                  P2P_RECEIPT_NUMBER,
+                  P2P_RECEIPT_DATE,
+                  "Seeded GRN for MOCK P2P validation chain",
+                  P2P_RECEIPT_IDEMPOTENCY_KEY,
+                  List.of(
+                      new GoodsReceiptLineRequest(
+                          rawMaterial.getId(),
+                          P2P_BATCH_CODE,
+                          new BigDecimal("40.0000"),
+                          "UNIT",
+                          new BigDecimal("5.50"),
+                          "Validation seeded GRN line"))));
+      goodsReceipt =
+          goodsReceiptRepository.findByCompanyAndId(company, created.id()).orElseThrow();
+    }
+
+    if (rawMaterialPurchaseRepository
+        .findByCompanyAndInvoiceNumberIgnoreCase(company, P2P_INVOICE_NUMBER)
+        .isPresent()) {
+      return;
+    }
+
+    purchasingService.createPurchase(
+        new RawMaterialPurchaseRequest(
+            supplier.getId(),
+            P2P_INVOICE_NUMBER,
+            P2P_INVOICE_DATE,
+            "Seeded purchase invoice for MOCK P2P validation chain",
+            purchaseOrder.getId(),
+            goodsReceipt.getId(),
+            BigDecimal.ZERO,
+            List.of(
+                new RawMaterialPurchaseLineRequest(
+                    rawMaterial.getId(),
+                    null,
+                    new BigDecimal("40.0000"),
+                    "UNIT",
+                    new BigDecimal("5.50"),
+                    null,
+                    null,
+                    "Validation seeded purchase invoice line"))));
+  }
+
+  private Dealer seedDealer(
+      Company company,
+      DealerRepository dealerRepository,
+      UserAccountRepository userRepository,
+      Account ar) {
     Dealer dealer =
         dealerRepository
             .findByCompanyAndCodeIgnoreCase(company, "GST-DEALER")
@@ -390,6 +666,13 @@ public class MockDataInitializer {
     dealer.setCreditLimit(new BigDecimal("500000"));
     dealer.setOutstandingBalance(BigDecimal.ZERO);
     dealer.setEmail("dealer@mock.com");
+    dealer.setStatus("ACTIVE");
+    dealer.setStateCode(company.getStateCode());
+    dealer.setGstRegistrationType(GstRegistrationType.REGULAR);
+    userRepository
+        .findByEmailIgnoreCaseAndAuthScopeCodeIgnoreCase(
+            "validation.dealer@example.com", company.getCode())
+        .ifPresent(dealer::setPortalUser);
     return dealerRepository.save(dealer);
   }
 
@@ -409,6 +692,9 @@ public class MockDataInitializer {
     supplier.setPayableAccount(ap);
     supplier.setCreditLimit(new BigDecimal("500000"));
     supplier.setEmail("supplier@mock.com");
+    supplier.setStatus("ACTIVE");
+    supplier.setStateCode(company.getStateCode());
+    supplier.setGstRegistrationType(GstRegistrationType.REGULAR);
     return supplierRepository.save(supplier);
   }
 
