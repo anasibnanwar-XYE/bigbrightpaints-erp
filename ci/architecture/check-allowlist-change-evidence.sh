@@ -41,7 +41,9 @@ if ! printf '%s\n' "$changed_files" | grep -Fxq "$ALLOWLIST"; then
 fi
 
 # Require docs/ARCHITECTURE.md change alongside allowlist update.
-if ! printf '%s\n' "$changed_files" | grep -Fxq "docs/ARCHITECTURE.md"; then
+# Match case-insensitively because git may track the file as architecture.md or ARCHITECTURE.md
+# depending on platform history.
+if ! printf '%s\n' "$changed_files" | grep -Fixq "docs/ARCHITECTURE.md"; then
   echo "[allowlist-evidence] FAIL: allowlist changed without docs/ARCHITECTURE.md update." >&2
   echo "[allowlist-evidence] remediation: update docs/ARCHITECTURE.md with the new boundary decision." >&2
   exit 1

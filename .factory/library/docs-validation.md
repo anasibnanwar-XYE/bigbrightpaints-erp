@@ -26,6 +26,31 @@ Docs-only validation guidance for the backend truth-library mission.
 
 `ci/lint-knowledgebase.sh` should pass in full-contract mode by the end of the mission. The docs tree must therefore include the lint-required canonical docs/governance files, not just compatibility-mode files.
 
+### Two-Mode Contract Design
+
+The lint script has a clear two-mode design:
+
+- **Full-contract mode** activates when all 3 legacy-contract marker files exist:
+  - `AGENTS.md` (repo root)
+  - `docs/INDEX.md`
+  - `agents/catalog.yaml`
+  In full-contract mode, the script checks 22 required canonical files, freshness markers, canonical links, and broken path references.
+
+- **Compatibility mode** activates if any marker file is missing. It performs a reduced set of checks and emits WARN output.
+
+To troubleshoot lint failures:
+1. Check which mode the script runs in (look for `WARN` vs `OK` output prefix).
+2. If in compatibility mode, verify the 3 marker files exist.
+3. If in full-contract mode, the script output names each missing file or broken link.
+
+### Architecture Allowlist Evidence Contract
+
+`ci/check-architecture.sh` includes an allowlist evidence contract that requires:
+1. `docs/ARCHITECTURE.md` (or `docs/architecture.md`) to be updated whenever `ci/architecture/module-import-allowlist.txt` changes.
+2. An ADR file (`docs/adr/ADR-*-allowlist-*.md`) with required sections: `## Why Needed`, `## Alternatives Rejected`, `## Boundary Preserved`.
+
+The filename check is case-insensitive to handle platforms where git tracks the architecture doc with different casing.
+
 ## Expected Evidence
 
 - exact file paths edited
