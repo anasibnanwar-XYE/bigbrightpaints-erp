@@ -49,10 +49,10 @@ if ! printf '%s\n' "$changed_files" | grep -Fixq "docs/ARCHITECTURE.md"; then
   exit 1
 fi
 
-adr_candidates="$(printf '%s\n' "$changed_files" | grep -E '^docs/adr/ADR-.*allowlist.*\.md$' || true)"
+adr_candidates="$(printf '%s\n' "$changed_files" | grep -E '^docs/adr[s]?/ADR-.*allowlist.*\.md$' || true)"
 if [[ -z "$adr_candidates" ]]; then
   echo "[allowlist-evidence] FAIL: allowlist changed without ADR evidence file." >&2
-  echo "[allowlist-evidence] remediation: add docs/adr/ADR-*-allowlist-*.md including Why Needed / Alternatives Rejected / Boundary Preserved." >&2
+  echo "[allowlist-evidence] remediation: add docs/adr/ADR-*-allowlist-*.md (or docs/adrs/ADR-*-allowlist-*.md) including Why Needed / Alternatives Rejected / Boundary Preserved." >&2
   exit 1
 fi
 

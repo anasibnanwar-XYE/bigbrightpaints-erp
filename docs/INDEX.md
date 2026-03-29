@@ -44,7 +44,11 @@ The flow inventory covers auth/identity, tenant/admin management, catalog/setup 
 
 ADRs explain accepted current decisions already embodied by the backend — why the architecture looks the way it does today.
 
-> **Status:** ADR index and seeded ADRs covering multi-tenant auth scoping, outbox/idempotency strategy, audit layering, migration posture, and portal/host boundaries will be added in the `docs-foundation-module-inventory-and-adr-seed` feature.
+| Document | Purpose |
+| --- | --- |
+| [docs/adrs/INDEX.md](adrs/INDEX.md) | ADR index: lists all accepted architecture and product decisions with links to individual ADR files |
+
+The seeded ADR set covers multi-tenant auth scoping (ADR-002), outbox/idempotency strategy (ADR-003), audit layering (ADR-004), migration posture (ADR-005), and portal/host boundaries (ADR-006).
 
 ## Frontend Handoff
 
