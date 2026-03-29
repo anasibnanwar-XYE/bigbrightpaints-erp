@@ -25,8 +25,11 @@
 ## 4. Dispatch Outcome To Invoice Visibility
 
 1. After factory confirms dispatch, refresh order timeline and invoice state.
-2. Show invoice identifiers, amounts, and current receivable status.
-3. If invoice is missing, show dispatch-read state first rather than assuming an
+2. Show invoice identifiers, amounts, and current receivable status inside the
+   current order detail or order timeline only.
+3. If a read-only invoice drill-down is needed, launch it from the current order
+   context rather than a standalone sales invoice browser.
+4. If invoice is missing, show dispatch-read state first rather than assuming an
    accounting fault.
 
 ## 5. Credit Escalation

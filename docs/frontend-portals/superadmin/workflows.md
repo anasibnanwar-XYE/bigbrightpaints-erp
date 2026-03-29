@@ -12,8 +12,11 @@
 5. If `defaultGstRate=0`, do not expect retained GST input/output/payable
    account bindings on the created tenant; non-GST onboarding clears those
    company-level GST links.
-6. Redirect to `/platform/tenants/:tenantId` using `companyId`.
-7. Surface a warning banner if `systemSettingsInitialized=false` or any bootstrap truth flag is false.
+6. Redirect to `/platform/tenants/:tenantId` using the numeric tenant id from the
+   superadmin tenant list or tenant-detail response.
+7. Do not reuse that numeric tenant id as tenant-shell identity. Every
+   tenant-scoped shell still boots from `GET /api/v1/auth/me` and `companyCode`.
+8. Surface a warning banner if `systemSettingsInitialized=false` or any bootstrap truth flag is false.
 
 ## Lifecycle change
 

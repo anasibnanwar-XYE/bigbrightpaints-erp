@@ -27,8 +27,9 @@ Rules:
 ## Dispatch
 
 - `GET /api/v1/dispatch/pending`
+- `GET /api/v1/dispatch/preview/{slipId}`
+- `GET /api/v1/dispatch/slip/{slipId}`
 - `GET /api/v1/dispatch/order/{orderId}`
-- dispatch detail reads
 - `POST /api/v1/dispatch/confirm`
 
 Rules:
@@ -37,6 +38,18 @@ Rules:
   should call for posting the shipment.
 - It is the only canonical O2C posting boundary.
 - No alternate dispatch-posting action should exist in sales or accounting UI.
+- After confirm succeeds, factory should refresh the slip detail and render the
+  returned dispatch confirmation fields:
+  - `status`
+  - `confirmedAt`
+  - `confirmedBy`
+  - `deliveryChallanNumber`
+  - `deliveryChallanPdfPath`
+  - `journalEntryId`
+  - `cogsJournalEntryId`
+- Invoice visibility after dispatch belongs outside this portal. Sales owns
+  order-linked invoice readiness, and dealer-client owns invoice list, detail,
+  and download.
 
 ## Forbidden From Factory
 

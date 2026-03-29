@@ -18,9 +18,14 @@
 
 1. Open the pending dispatch queue.
 2. Select the dispatch slip tied to the packed stock.
-3. Review quantities, order references, and shipment readiness.
+3. Load dispatch preview and slip detail so the operator can review quantities,
+   order references, transporter metadata, and shipment readiness.
 4. Submit `POST /api/v1/dispatch/confirm`.
 5. Show success state only after the backend confirm succeeds.
+6. Refresh slip detail and render challan number, challan PDF link, journal
+   references, and the final dispatch status.
+7. Do not replace this with an invoice browser. If the operator needs invoice
+   follow-up, route them to sales or dealer-client read surfaces.
 
 ## 4. Partial And Failed Dispatch Handling
 
@@ -29,6 +34,17 @@
 2. If dispatch fails, keep the operator on the slip detail screen.
 3. Show the exact mismatch, batch, or idempotency error returned by backend.
 4. Do not route the operator into accounting or sales as a recovery shortcut.
+
+## 5. Production Correction And Batch-Lineage Recovery
+
+1. If a production log is corrected, reopen the production detail and batch
+   lineage views.
+2. Invalidate any stale packing or dispatch-read state that was built from the
+   corrected production output.
+3. Require the operator to re-enter packing or dispatch only from the corrected
+   state returned by backend.
+4. If dispatch already posted, do not offer factory-side accounting correction.
+   Route the user to the linked operational read context only.
 
 ## Failure Handling
 

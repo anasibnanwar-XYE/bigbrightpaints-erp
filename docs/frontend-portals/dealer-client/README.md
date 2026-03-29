@@ -9,7 +9,8 @@ support requests, and credit requests.
 
 - dealer dashboard and dealer-scoped summary cards
 - dealer order list and order detail
-- invoice list, invoice detail, and invoice download visibility
+- invoice list, invoice detail, and invoice download visibility after internal
+  dispatch posting completes
 - ledger read and aging read
 - support request creation and support history
 - self-service credit request and request-status tracking
@@ -29,3 +30,5 @@ support requests, and credit requests.
   reverse, or correct internal records.
 - Dispatch and invoice progression are visible as status, not as editable
   operational actions.
+- This portal owns the external invoice inbox and invoice detail experience.
+  Internal sales only owns order-linked invoice status and summary reads.

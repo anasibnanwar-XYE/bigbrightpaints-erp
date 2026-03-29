@@ -105,6 +105,19 @@ Public route:
 
 - `POST /api/v1/accounting/journal-entries/{entryId}/reverse`
 
+## Export request create
+
+```json
+{
+  "reportType": "TRIAL_BALANCE",
+  "parameters": "periodId=3&startDate=2026-03-01&endDate=2026-03-31&exportFormat=CSV"
+}
+```
+
+Public route:
+
+- `POST /api/v1/exports/request`
+
 ## Approval inbox row
 
 ```json

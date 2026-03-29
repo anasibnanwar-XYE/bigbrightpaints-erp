@@ -30,7 +30,8 @@ Rules:
 
 - `GET /api/v1/dispatch/order/{orderId}`
 - `GET /api/v1/dispatch/pending` only when sales needs queue visibility
-- invoice reads under `/api/v1/invoices/**`
+- `GET /api/v1/invoices/{id}` only when the invoice id is already linked to the
+  current order or order timeline
 
 Rules:
 
@@ -39,6 +40,11 @@ Rules:
 - Dispatch confirm is the only canonical posting boundary for O2C.
 - Sales may read dispatch outcomes and invoice availability after factory posts
   the dispatch.
+- Sales must treat `/api/v1/invoices/**` as an order-follow-up surface only. It
+  does not own a global invoice inbox, invoice download center, or invoice list
+  route.
+- Dealer self-service invoice list, detail, and PDF access belong in the
+  dealer-client portal.
 
 ## Credit And Commercial Approval
 

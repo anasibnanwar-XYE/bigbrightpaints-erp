@@ -22,3 +22,5 @@ Route rules:
 - No accounting settlement or approval screens in this folder.
 - If a route primarily serves internal staff, it belongs in sales or accounting,
   not here.
+- Dealer invoice list, detail, and PDF/download actions stay here even though
+  internal sales can observe invoice readiness from order detail.

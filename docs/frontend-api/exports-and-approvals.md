@@ -26,6 +26,24 @@
 - `PUT /api/v1/admin/exports/{requestId}/reject`
 - `GET /api/v1/exports/{requestId}/download`
 
+## Canonical request body
+
+`POST /api/v1/exports/request` accepts:
+
+```json
+{
+  "reportType": "TRIAL_BALANCE",
+  "parameters": "periodId=3&startDate=2026-03-01&endDate=2026-03-31&exportFormat=CSV"
+}
+```
+
+Notes:
+
+- `reportType` is required.
+- `parameters` is a serialized filter string. Frontend should generate it from
+  the exact active report filters, not from hidden client-only state.
+- There is no separate export-history list endpoint in the current backend.
+
 ## Contract rules
 
 - Do not expose direct file-download actions while the download contract is
@@ -41,6 +59,13 @@
 - When export approval is disabled at system-settings level, the download
   contract may return a non-approved status with an allow message. Treat that
   as an explicit backend bypass, not as a frontend-created exception path.
+
+## Statuses frontend must render
+
+- `PENDING`: request submitted, waiting for tenant-admin decision
+- `APPROVED`: request can proceed through the download contract
+- `REJECTED`: show reviewer reason and a path back to the originating report
+- `EXPIRED`: stale request; user must submit a fresh export request
 
 Example approval row:
 

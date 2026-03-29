@@ -1,16 +1,18 @@
 # Sales Portal
 
 The sales portal is the internal commercial workspace for dealer master,
-quotation-to-order execution, reservation visibility, invoice follow-up, and
-credit escalation. It owns commercial intent and customer-facing commercial
-state. It does not own factory execution or accounting correction.
+quotation-to-order execution, reservation visibility, order-linked invoice
+follow-up, and credit escalation. It owns commercial intent and customer-facing
+commercial state. It does not own factory execution, a standalone invoice
+browser, or accounting correction.
 
 ## Portal Ownership
 
 - dealer create, edit, and commercial-profile maintenance
 - sales-order draft, review, and confirm flows
 - reservation visibility and order timeline tracking
-- invoice visibility after factory dispatch confirmation
+- order-linked invoice status and read-only invoice follow-up after factory
+  dispatch confirmation
 - commercial credit-limit visibility and credit escalation
 - sales dashboards and dealer performance views
 
@@ -25,8 +27,10 @@ state. It does not own factory execution or accounting correction.
 
 - Sales order confirmation is not the accounting-posting boundary.
 - Factory dispatch confirmation is the only canonical O2C posting trigger.
-- Sales may show dispatch state and invoice readiness, but it must never offer
-  a dispatch-confirm button or any accounting workaround when dispatch stalls.
+- Sales may show dispatch state, invoice readiness, and a read-only invoice
+  summary launched from an order timeline, but it must never offer a
+  dispatch-confirm button, a standalone invoice list, or any accounting
+  workaround when dispatch stalls.
 - If credit, stock, or pricing rules block order confirmation, the sales UI
   must stop at the commercial boundary and surface the exact blocker.
 

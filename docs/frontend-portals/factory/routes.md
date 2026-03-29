@@ -14,11 +14,13 @@ accounting, tenant-admin, and dealer-client.
 | `/factory/packing-records/:recordId` | Packing detail, package composition, and readiness blockers. | `/api/v1/factory/packing-records/**` |
 | `/factory/packaging-mappings` | Packaging references used by factory execution. | `/api/v1/factory/packaging-mappings` |
 | `/factory/dispatch/pending` | Pending dispatch queue and slip selection. | `GET /api/v1/dispatch/pending` |
-| `/factory/dispatch/:slipId` | Dispatch detail and canonical confirm action. | dispatch read APIs and `POST /api/v1/dispatch/confirm` |
+| `/factory/dispatch/:slipId` | Dispatch detail, preview, challan metadata, and canonical confirm action. | `GET /api/v1/dispatch/preview/{slipId}`, `GET /api/v1/dispatch/slip/{slipId}`, `POST /api/v1/dispatch/confirm` |
 
 Route rules:
 
 - Factory routes may show accounting-readiness blockers but must not embed
   accounting setup editors.
 - Dispatch confirm lives only here.
+- Factory owns dispatch detail, preview, challan, and post-confirm success
+  receipt. It does not own invoice browsing after dispatch.
 - Dealer-facing shipment tracking belongs in the dealer-client portal, not here.

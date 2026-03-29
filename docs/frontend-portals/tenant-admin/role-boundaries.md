@@ -16,8 +16,13 @@
 ## Shared-data caveats
 
 - `GET /api/v1/admin/approvals` can include non-export approval types. Tenant-admin screens in this folder only own export-approval decisions.
-- Accounting users may have backend visibility into the inbox, but the export-approval action UI belongs here.
-- `PortalSupportTicketController` allows admin or accounting callers at the backend. In this portal, support ticket authoring and detail UX is admin-owned.
+- Accounting callers can appear in backend approval or support payloads, but they
+  must not land in the tenant-admin shell or see tenant-admin navigation chrome.
+- Export-approval action UI belongs to tenant-admin only, even when the backend
+  payload includes accounting-origin data.
+- `PortalSupportTicketController` allows admin or accounting callers at the
+  backend. In this portal, support ticket authoring, detail, and follow-up UX is
+  admin-owned only.
 
 ## UI implications
 

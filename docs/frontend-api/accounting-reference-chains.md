@@ -18,6 +18,8 @@ UI implication:
   flags.
 - Do not build a local fallback that assumes a tenant can enter accounting first
   and seed COA later.
+- Portal owner: `superadmin` for onboarding, then `accounting` for post-bootstrap
+  setup.
 
 ## Inventory bootstrap
 
@@ -31,6 +33,9 @@ UI implication:
 
 - Product setup and opening stock are two separate steps. Do not collapse them
   into one wizard.
+- Portal owner:
+  - `accounting` for readiness and opening-stock import
+  - `factory` and `sales` only consume the ready result
 
 ## Product readiness and default-account mapping
 
@@ -57,6 +62,7 @@ UI implication:
 - `PUT /api/v1/accounting/default-accounts` is the only company-default edit
   path; in GST mode it keeps output-tax posting aligned, and non-GST tenants
   must not retain stale GST account bindings after a GST-off change.
+- Portal owner: `accounting`
 
 ## Tax and GST readiness
 
@@ -76,6 +82,7 @@ UI implication:
   prerequisites.
 - If GST mode is off, the UI must clear GST-only assumptions instead of
   preserving stale tax-account state in drafts or cached forms.
+- Portal owner: `accounting`
 
 ## O2C
 
@@ -91,6 +98,14 @@ UI implication:
 
 - Sales can create orders and monitor readiness, but factory owns the dispatch
   confirm action.
+- Factory reads dispatch queue and slip detail from:
+  - `GET /api/v1/dispatch/pending`
+  - `GET /api/v1/dispatch/preview/{slipId}`
+  - `GET /api/v1/dispatch/slip/{slipId}`
+  - `GET /api/v1/dispatch/order/{orderId}`
+- Sales owns order-linked invoice readiness and optional read-only invoice
+  summary from the current order only.
+- Dealer-client owns the external invoice list, detail, and PDF/download flow.
 
 ## P2P
 
@@ -104,6 +119,10 @@ UI implication:
 
 - Stock becomes true at GRN; AP becomes true at purchase invoice. Frontend must
   not present them as the same posting step.
+- Portal owner:
+  - purchasing flow owns PO and GRN
+  - accounting owns supplier settlement, supplier statement, supplier aging, and
+    reconciliation after purchase invoice exists
 
 ## Manual journals and reversals
 
@@ -145,3 +164,58 @@ UI implication:
 - Direct close is not a supported frontend action. Render period close as a
   maker-checker flow with approval state, approver identity, and rejection
   reason tracking.
+
+## AR settlement and dealer finance reads
+
+- dealer receipt or hybrid receipt
+- dealer settlement or auto-settle
+- dealer ledger read
+- dealer invoice read
+- dealer aging read
+- aged receivables report
+- bank or subledger reconciliation refresh
+
+UI implication:
+
+- Portal owner: `accounting`
+- Use `POST /api/v1/accounting/receipts/dealer`,
+  `POST /api/v1/accounting/receipts/dealer/hybrid`,
+  `POST /api/v1/accounting/settlements/dealers`,
+  `POST /api/v1/accounting/dealers/{dealerId}/auto-settle`,
+  `GET /api/v1/portal/finance/ledger?dealerId={dealerId}`,
+  `GET /api/v1/portal/finance/invoices?dealerId={dealerId}`,
+  and `GET /api/v1/portal/finance/aging?dealerId={dealerId}` as one connected
+  clearing chain.
+
+## AP settlement and supplier finance reads
+
+- supplier settlement or auto-settle
+- supplier statement
+- supplier aging
+- reconciliation refresh
+
+UI implication:
+
+- Portal owner: `accounting`
+- Use `POST /api/v1/accounting/settlements/suppliers`,
+  `POST /api/v1/accounting/suppliers/{supplierId}/auto-settle`,
+  `GET /api/v1/accounting/statements/suppliers/{supplierId}`,
+  and `GET /api/v1/accounting/aging/suppliers/{supplierId}` as one connected
+  AP-clearing chain.
+
+## Export request and approval
+
+- accounting report filters
+- `POST /api/v1/exports/request`
+- approval inbox item in `GET /api/v1/admin/approvals`
+- approve or reject in tenant-admin
+- `GET /api/v1/exports/{requestId}/download`
+
+UI implication:
+
+- Portal owner:
+  - `accounting` for request creation and download recheck
+  - `tenant-admin` for approve or reject
+- Do not invent a separate export-history backend list. Keep request status on
+  the originating accounting report screen unless the backend grows a dedicated
+  request history surface.

@@ -1,5 +1,15 @@
 # Accounting Portal Frontend Engineer Handoff (Deep)
 
+Status: historical deep-reference only.
+
+Canonical frontend handoff now lives in:
+
+- `docs/frontend-portals/accounting/`
+- `docs/frontend-api/`
+
+If this file disagrees with the six-portal frontend contract or the frontend API
+pack, the newer portal docs win.
+
 Source: `openapi.json` parsed via `map_openapi_frontend.py`.
 
 This handoff mirrors the Admin deliverable pattern with 3 tasks:

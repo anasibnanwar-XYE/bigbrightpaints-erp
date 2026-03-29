@@ -7,7 +7,9 @@ This portal owns tenant-scoped administration for the current company. It is the
 ## Users
 
 - Primary role: `ROLE_ADMIN`
-- Shared read patterns may exist for `ROLE_ACCOUNTING`, but the tenant-admin shell itself should be treated as admin-only
+- Treat the tenant-admin shell, navigation, and route tree as `ROLE_ADMIN` only.
+- Backend reads may also allow `ROLE_ACCOUNTING` for some shared data, but that
+  does not create accounting access to the tenant-admin shell.
 
 ## What belongs here
 

@@ -11,10 +11,32 @@
 
 ## Canonical filter examples
 
-- Journals: date range, source module, journal type, dealer, supplier
+- Journal entries list `GET /api/v1/accounting/journal-entries`: `dealerId`,
+  `supplierId`, `page`, `size`
+- Journal filter list `GET /api/v1/accounting/journals`: `fromDate`, `toDate`,
+  `type`, `sourceModule`
 - Approvals: status, request type, created-by, requested date
 - Catalog and stock: `itemClass`, readiness, stock visibility, search text
-- Reports: date range, company scope, report variant, export format
+- Bank reconciliation sessions:
+  `GET /api/v1/accounting/reconciliation/bank/sessions?page={page}&size={size}`
+- Reconciliation discrepancies:
+  `GET /api/v1/accounting/reconciliation/discrepancies?status={status}&type={type}`
+- Accounting audit transactions:
+  `GET /api/v1/accounting/audit/transactions?from={from}&to={to}&module={module}&status={status}&reference={reference}&page={page}&size={size}`
+- Reports:
+  - balance sheet, profit-loss, trial balance:
+    `periodId`, `startDate`, `endDate`, `comparativeStartDate`,
+    `comparativeEndDate`, `comparativePeriodId`, `exportFormat`
+  - GST return and GST reconciliation: `period`
+  - aged receivables: `asOfDate`
+  - dealer ledger, dealer invoices, dealer aging:
+    `dealerId`
+  - supplier statement: `from`, `to`
+  - supplier aging: `asOf`, `buckets`
+- Export requests:
+  - no standalone list endpoint exists today
+  - keep request state from the create response, approval inbox, and download
+    contract instead of inventing client-side history filters
 
 Example paginated response:
 

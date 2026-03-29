@@ -22,3 +22,6 @@
 - Keep quantity errors attached to the dispatch slip detail screen.
 - Never mark an order as dispatched in factory UI before canonical dispatch
   confirm succeeds.
+- When production status changes to `CORRECTED`, invalidate stale packing and
+  dispatch views derived from the old batch state and tell the user to reopen
+  lineage from the corrected production record.

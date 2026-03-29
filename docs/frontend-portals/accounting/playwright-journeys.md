@@ -48,11 +48,19 @@ happens to expose the same APIs.
 
 ## 5. Settlement And Reconciliation
 
-1. Visit `/accounting/ar/settlements` and post a dealer clearing transaction.
+1. Seed upstream purchasing data so a supplier, PO, GRN, and purchase invoice
+   already exist.
 2. Visit `/accounting/ap/settlements` and post a supplier settlement.
-3. Visit `/accounting/reconciliation`.
-4. Assert AR/AP balances, aging totals, and discrepancy widgets refresh after
-   settlement.
+3. Assert supplier statement and supplier aging refresh with the new cleared
+   amount.
+4. Visit `/accounting/ar/receipts` and post a dealer receipt or hybrid receipt.
+5. Visit `/accounting/ar/settlements` and post a dealer settlement.
+6. Assert dealer ledger, dealer invoices, dealer aging, and aged receivables
+   refresh after settlement.
+7. Visit `/accounting/reconciliation/bank` and create a bank session.
+8. Visit `/accounting/reconciliation/subledger` and resolve one discrepancy.
+9. Assert reconciliation summaries refresh after settlement and discrepancy
+   resolution.
 
 ## 6. Period Close Maker-Checker
 
@@ -65,6 +73,37 @@ happens to expose the same APIs.
 
 1. Visit `/accounting/reports`.
 2. Load a report with accounting period and tenant filters.
-3. Attempt export where approval is required.
-4. Assert the UI surfaces approval status instead of bypassing governance with
-   a direct file link.
+3. Submit `POST /api/v1/exports/request`.
+4. Assert accounting shows the request as `PENDING`.
+5. Approve the request from the tenant-admin inbox.
+6. Return to `/accounting/reports`.
+7. Assert `GET /api/v1/exports/{requestId}/download` enables the real download
+   action only after approval.
+
+## 8. Negative: Incomplete Product Mapping Blocks Opening Stock
+
+1. Create a stock-bearing item without the required finished-good or
+   raw-material account mappings.
+2. Visit `/accounting/catalog/account-readiness`.
+3. Assert the item is marked blocked with the exact missing account ids.
+4. Assert `/accounting/inventory/opening-stock` remains disabled or redirected
+   back to readiness.
+
+## 9. Negative: Invalid GST Setup Blocks Save
+
+1. Visit `/accounting/tax`.
+2. Switch to GST mode while leaving input, output, or payable accounts blank.
+3. Assert save is blocked with field-level validation for the missing GST
+   accounts.
+
+## 10. Negative: Closed-Period Write Attempt
+
+1. Open a closed period fixture.
+2. Attempt to create a manual journal or settlement inside that closed period.
+3. Assert the UI stays on the same page and renders a blocked-period error.
+
+## 11. Negative: Export Pending Approval
+
+1. Request an export from `/accounting/reports`.
+2. Before approval, call the download contract.
+3. Assert the UI shows `PENDING` and does not render a direct file link.

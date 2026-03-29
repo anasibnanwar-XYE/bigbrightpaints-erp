@@ -22,6 +22,9 @@ Rules:
 
 - Invoice status is visible here after internal dispatch and posting complete.
 - Dealer portal must not offer finance correction or manual settlement actions.
+- Dealer portal owns the external invoice list, detail, and PDF/download flow.
+- Internal sales may read invoice state for a current order, but that does not
+  create shared ownership of the dealer invoice inbox.
 
 ## Ledger And Aging
 
