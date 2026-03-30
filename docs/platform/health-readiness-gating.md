@@ -135,7 +135,7 @@ Module gating controls which API path families a tenant can access. It is enforc
 
 1. `ModuleGatingInterceptor.preHandle()` resolves the request path.
 2. If the path starts with `/api/v1/`, the interceptor maps it to a `CompanyModule` using `resolveTargetModule()`.
-3. If the module is `null` or `isCore()` returns `false` (i.e., the module is a core module like `AUTH`, `ACCOUNTING`, `SALES`, or `INVENTORY`), the request is allowed unconditionally.
+3. If the module is `null` or `isCore()` returns `true` (i.e., the module is a core module like `AUTH`, `ACCOUNTING`, `SALES`, or `INVENTORY`), the request is allowed unconditionally.
 4. If the module is gatable, the interceptor calls `ModuleGatingService.requireEnabledForCurrentCompany()`.
 5. If the module is not in the tenant's enabled set, the request is rejected with `MODULE_DISABLED` (`ApplicationException` + `ErrorCode.MODULE_DISABLED`).
 
