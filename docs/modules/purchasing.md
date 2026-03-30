@@ -20,7 +20,7 @@ These boundaries must remain explicit. GRN stock intake does not automatically c
 | Controllers | `SupplierController`, `PurchasingWorkflowController`, `RawMaterialPurchaseController` |
 | Primary services | `SupplierService`, `PurchasingService`, `GoodsReceiptService`, `PurchaseInvoiceEngine`, `PurchaseReturnService`, `SupplierApprovalPolicy` |
 | Domain entities | `Supplier`, `PurchaseOrder`, `PurchaseOrderLine`, `GoodsReceipt`, `GoodsReceiptLine`, `RawMaterialPurchase`, `RawMaterialPurchaseLine`, `PurchaseOrderStatusHistory` |
-| Domain enums | `SupplierStatus` (PENDING_APPROVAL, APPROVED, ACTIVE, SUSPENDED), `PurchaseOrderStatus` (DRAFT, APPROVED, PARTIALLY_RECEIVED, FULLY_RECEIVED, VOIDED, CLOSED), `GoodsReceiptStatus` (PENDING, POSTED) |
+| Domain enums | `SupplierStatus` (PENDING, APPROVED, ACTIVE, SUSPENDED), `PurchaseOrderStatus` (DRAFT, APPROVED, PARTIALLY_RECEIVED, FULLY_RECEIVED, INVOICED, CLOSED, VOID), `GoodsReceiptStatus` (PARTIAL, RECEIVED, INVOICED) |
 | DTO families | SupplierRequest/Response, PurchaseOrderRequest/Response, GoodsReceiptRequest/Response, RawMaterialPurchaseRequest/Response, PurchaseReturnRequest |
 | Events | None currently published (cross-module coordination via direct service calls) |
 | Repositories | `SupplierRepository`, `PurchaseOrderRepository`, `GoodsReceiptRepository`, `RawMaterialPurchaseRepository`, `PurchaseOrderStatusHistoryRepository` |
@@ -94,29 +94,32 @@ These boundaries must remain explicit. GRN stock intake does not automatically c
 ### Supplier Status Flow
 
 ```
-PENDING_APPROVAL → APPROVED → ACTIVE
-                     ↓
-                  SUSPENDED (from ACTIVE)
+PENDING → APPROVED → ACTIVE
+    │                    │
+    │                    ↓
+    │                 SUSPENDED (from ACTIVE)
+    │                    │
+    └────────────────────┘ (reactivation path)
 ```
 
 | Status | Meaning | How Reached |
 | --- | --- | --- |
-| `PENDING_APPROVAL` | Newly created, awaiting approval | Initial state on supplier creation |
+| `PENDING` | Newly created, awaiting approval | Initial state on supplier creation |
 | `APPROVED` | Approved but not yet active | POST /suppliers/{id}/approve |
 | `ACTIVE` | Fully operational for purchasing | POST /suppliers/{id}/activate |
 | `SUSPENDED` | Temporarily blocked from purchasing | POST /suppliers/{id}/suspend |
 
 ### Supplier Creation
 
-`POST /api/v1/suppliers` creates a supplier in `PENDING_APPROVAL` status:
+`POST /api/v1/suppliers` creates a supplier in `PENDING` status:
 
 - Requires: supplier name, code (unique per company), payment terms, GST details, bank details
 - Creates supplier-linked payable account (`AP-{SUPPLIER_CODE}`) in the chart of accounts
-- **Prerequisite**: The payable account must not already exist (enforces unique supplier codes)
+- **Code collision handling**: If `AP-{SUPPLIER_CODE}` already exists, the system auto-resolves by appending a numeric suffix (`AP-{CODE}-1`, `AP-{CODE}-2`, etc.) until a free code is found
 
 ### Supplier Approval
 
-`POST /api/v1/suppliers/{id}/approve` transitions from `PENDING_APPROVAL` → `APPROVED`:
+`POST /api/v1/suppliers/{id}/approve` transitions from `PENDING` → `APPROVED`:
 
 - Requires ADMIN or ACCOUNTING role
 - Validates supplier has all required fields (payment terms, GST, bank details)
@@ -124,7 +127,7 @@ PENDING_APPROVAL → APPROVED → ACTIVE
 
 ### Supplier Activation
 
-`POST /api/v1/suppliers/{id}/activate` transitions from `APPROVED` → `ACTIVE`:
+`POST /api/v1/suppliers/{id}/activate` transitions from `APPROVED` → `ACTIVE` (also allows `SUSPENDED` → `ACTIVE` for reactivation):
 
 - Requires ADMIN or ACCOUNTING role
 - After activation, the supplier can be used in purchase orders
@@ -145,9 +148,14 @@ PENDING_APPROVAL → APPROVED → ACTIVE
 ### PO Status Flow
 
 ```
-DRAFT → APPROVED → PARTIALLY_RECEIVED → FULLY_RECEIVED → CLOSED
-                  ↓                              ↓
-               VOIDED                        VOIDED (from PARTIALLY_RECEIVED)
+DRAFT ──approve──▸ APPROVED ──receive(partial)──▸ PARTIALLY_RECEIVED
+  │void                            │void                    │receive(all)
+  ▼                                ▼                        ▼
+ VOID                            VOID                  FULLY_RECEIVED
+                                                    ──invoice──▸ INVOICED
+                                                                          │close
+                                                                          ▼
+                                                                    CLOSED (terminal)
 ```
 
 | Status | Meaning | How Reached |
@@ -156,8 +164,9 @@ DRAFT → APPROVED → PARTIALLY_RECEIVED → FULLY_RECEIVED → CLOSED
 | `APPROVED` | Approved and awaiting goods receipt | POST /purchase-orders/{id}/approve |
 | `PARTIALLY_RECEIVED` | Some line items received via GRN | GRN created against PO lines |
 | `FULLY_RECEIVED` | All line items received via GRN | Final GRN against PO |
+| `INVOICED` | Purchase invoice captured against GRN | Purchase invoice posted |
 | `CLOSED` | Physically complete, no further action | POST /purchase-orders/{id}/close |
-| `VOIDED` | Cancelled before completion | POST /purchase-orders/{id}/void |
+| `VOID` | Cancelled before completion | POST /purchase-orders/{id}/void |
 
 ### PO Creation
 
@@ -177,7 +186,7 @@ DRAFT → APPROVED → PARTIALLY_RECEIVED → FULLY_RECEIVED → CLOSED
 
 ### PO Void
 
-`POST /api/v1/purchasing/purchase-orders/{id}/void` transitions to `VOIDED`:
+`POST /api/v1/purchasing/purchase-orders/{id}/void` transitions to `VOID`:
 
 - Requires ADMIN or ACCOUNTING role
 - Requires void reason (code + text)
@@ -189,7 +198,7 @@ DRAFT → APPROVED → PARTIALLY_RECEIVED → FULLY_RECEIVED → CLOSED
 `POST /api/v1/purchasing/purchase-orders/{id}/close` transitions to `CLOSED`:
 
 - Requires ADMIN or ACCOUNTING role
-- **Constraint**: Can only close POs in `PARTIALLY_RECEIVED` or `FULLY_RECEIVED` status
+- **Constraint**: Can only close POs in `INVOICED` status
 - Marks the PO as physically complete
 
 ### PO Timeline
@@ -205,13 +214,14 @@ DRAFT → APPROVED → PARTIALLY_RECEIVED → FULLY_RECEIVED → CLOSED
 ### GRN Status Flow
 
 ```
-PENDING → POSTED
+PARTIAL → RECEIVED → INVOICED
 ```
 
 | Status | Meaning | How Reached |
 | --- | --- | --- |
-| `PENDING` | Created, not yet processed | Initial state on GRN creation |
-| `POSTED` | Processed, stock created, accounting period validated | After successful creation |
+| `PARTIAL` | Created with partial line items received | Initial state on GRN creation |
+| `RECEIVED` | Fully processed, stock created, accounting period validated | After successful GRN creation |
+| `INVOICED` | Purchase invoice has been captured against this GRN | Purchase invoice posted against GRN lines |
 
 ### GRN Creation
 
