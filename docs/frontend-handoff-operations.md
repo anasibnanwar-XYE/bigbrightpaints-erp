@@ -135,8 +135,8 @@ All operational endpoints use the same host prefix:
 - Batch traceability: `InventoryBatchMovementDto` per movement
 
 **Adjustment payloads:**
-- `InventoryAdjustmentRequest` — `type` (DAMAGED/SHRINKAGE/OBSOLETE/RECOUNT_UP), `lines[]` (finishedGoodId, quantity, unitCost), `adjustmentDate`, `reason`, `Idempotency-Key`
-- `RawMaterialAdjustmentRequest` — `direction` (increase/decrease), `lines[]` (rawMaterialId, quantity, unitCost), `adjustmentAccountId`, `reason`, `Idempotency-Key`
+- `InventoryAdjustmentRequest` — `type` (DAMAGED/SHRINKAGE/OBSOLETE/RECOUNT_UP), `adjustmentAccountId` (required), `adjustmentDate`, `reason`, `adminOverride`, `idempotencyKey` (required), `lines[]` (finishedGoodId, quantity, unitCost)
+- `RawMaterialAdjustmentRequest` — `direction` (increase/decrease), `adjustmentAccountId`, `lines[]` (rawMaterialId, quantity, unitCost), `reason`, `Idempotency-Key`
 
 **Opening stock:**
 - `POST /api/v1/inventory/opening-stock` — Multipart CSV + `Idempotency-Key` header + `openingStockBatchKey` query param
@@ -166,7 +166,7 @@ All operational endpoints use the same host prefix:
 | --- | :---: | --- |
 | List/search brands | ADMIN, ACCOUNTING, SALES, FACTORY | — |
 | Create brand | ADMIN, ACCOUNTING | — |
-| Update brand | ADMIN, ACCOUNTING, SALES, FACTORY | SALES/FACTORY can update but limited fields |
+| Update brand | ADMIN, ACCOUNTING, SALES, FACTORY | All roles can update all brand fields (name, logoUrl, description, active) — no field-level restrictions |
 | Deactivate brand | ADMIN, ACCOUNTING, SALES, FACTORY | Soft delete |
 | List/search items | ADMIN, ACCOUNTING, SALES, FACTORY | Supports filters: `q`, `itemClass`, `includeStock`, `includeReadiness` |
 | Create item | ADMIN, ACCOUNTING | — |

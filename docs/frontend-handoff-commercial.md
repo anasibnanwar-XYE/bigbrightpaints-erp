@@ -175,7 +175,7 @@ This packet defers to the canonical module and flow docs for implementation trut
 ### 4.1 Sales Payloads
 
 **Order creation:**
-- `SalesOrderRequest` — `dealerId`, `items[]` (productCode, quantity, unitPrice, gstRate), `paymentMode` (CREDIT/SPLIT), `gstTreatment`, `idempotencyKey`, optional `notes`, `referenceNumber`
+- `SalesOrderRequest` — `dealerId`, `totalAmount` (required), `items[]` (productCode, quantity, unitPrice, gstRate), `paymentMode` (CREDIT/SPLIT/HYBRID), `gstTreatment`, `gstRate`, `gstInclusive`, `currency`, `idempotencyKey`, optional `notes`
 - Response: `SalesOrderDto` with status, amounts, GST, journal entry ID, invoice ID
 
 **Dealer creation:**
