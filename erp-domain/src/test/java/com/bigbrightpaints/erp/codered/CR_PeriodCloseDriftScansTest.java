@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -393,6 +394,7 @@ class CR_PeriodCloseDriftScansTest extends AbstractIntegrationTest {
 
   private Long postJournal(
       LocalDate entryDate, List<JournalEntryRequest.JournalLineRequest> lines) {
+    Authentication previous = SecurityContextHolder.getContext().getAuthentication();
     JournalEntryRequest request =
         new JournalEntryRequest(
             "SCAN-" + System.nanoTime(),
@@ -400,9 +402,14 @@ class CR_PeriodCloseDriftScansTest extends AbstractIntegrationTest {
             "CODE-RED scan",
             null,
             null,
-            Boolean.FALSE,
+            Boolean.TRUE,
             lines);
-    return accountingService.createJournalEntry(request).id();
+    try {
+      authenticate("admin.user", "ROLE_ADMIN");
+      return accountingService.createJournalEntry(request).id();
+    } finally {
+      SecurityContextHolder.getContext().setAuthentication(previous);
+    }
   }
 
   private JournalEntryRequest.JournalLineRequest line(
