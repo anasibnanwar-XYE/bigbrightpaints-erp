@@ -67,7 +67,13 @@ The seeded ADR set covers multi-tenant auth scoping (ADR-002), outbox/idempotenc
 
 Frontend handoff packets explain canonical hosts, payload families, RBAC assumptions, and read/write boundaries for each major surface. They link back to canonical module and flow docs instead of duplicating truth.
 
-> **Status:** Frontend handoff packets for operational, commercial, and finance surfaces will be added in the `docs-frontend-handoff-library` feature.
+| Document | Purpose |
+| --- | --- |
+| [docs/frontend-handoff-operations.md](frontend-handoff-operations.md) | Operational surfaces: catalog/setup, inventory, factory — hosts, payloads, RBAC, read/write boundaries |
+| [docs/frontend-handoff-commercial.md](frontend-handoff-commercial.md) | Commercial surfaces: sales/O2C, purchasing/P2P, invoices, dealer finance — hosts, payloads, RBAC, internal vs self-service parity |
+| [docs/accounting-portal-frontend-engineer-handoff.md](accounting-portal-frontend-engineer-handoff.md) | Accounting portal deep handoff: endpoint maps, API inventory, route map with permissions (curated accounting-portal scope) |
+
+> **Status:** Finance/reporting frontend handoff will be added in a future feature.
 
 ## Deprecated and Incomplete Surfaces
 
