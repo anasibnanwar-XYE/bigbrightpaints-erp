@@ -1,6 +1,7 @@
 package com.bigbrightpaints.erp.core.auditaccess;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -14,6 +15,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import com.bigbrightpaints.erp.core.auditaccess.dto.AuditFeedItemDto;
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountingTransactionAuditDetailDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountingTransactionAuditListItemDto;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
@@ -168,5 +171,30 @@ class DefaultAuditAccessServiceTest {
         .listTransactions(
             LocalDate.of(2026, 3, 1), LocalDate.of(2026, 3, 31), "ACCOUNTING", "POSTED", "JE-17", 0, 50);
     verify(transactionReadAdapter).transactionDetail(17L);
+  }
+
+  @Test
+  void queryTenantAdminFeed_rejectsWindowsLargerThanTheSupportedMergeLimit() {
+    CompanyContextService companyContextService = mock(CompanyContextService.class);
+    AuditLogReadAdapter auditLogReadAdapter = mock(AuditLogReadAdapter.class);
+    BusinessAuditReadAdapter businessAuditReadAdapter = mock(BusinessAuditReadAdapter.class);
+    AccountingTransactionAuditReadAdapter transactionReadAdapter =
+        mock(AccountingTransactionAuditReadAdapter.class);
+    DefaultAuditAccessService service =
+        new DefaultAuditAccessService(
+            companyContextService, auditLogReadAdapter, businessAuditReadAdapter, transactionReadAdapter);
+    AuditFeedFilter filter =
+        new AuditFeedFilter(null, null, null, null, null, null, null, null, 30, 200);
+
+    assertThatThrownBy(() -> service.queryTenantAdminFeed(filter))
+        .isInstanceOfSatisfying(
+            ApplicationException.class,
+            ex -> {
+              assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_OUT_OF_RANGE);
+              assertThat(ex.getDetails())
+                  .containsEntry("page", 30)
+                  .containsEntry("size", 200)
+                  .containsEntry("maxWindow", 5000);
+            });
   }
 }

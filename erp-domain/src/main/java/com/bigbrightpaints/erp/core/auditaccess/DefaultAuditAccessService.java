@@ -8,6 +8,8 @@ import java.util.stream.Stream;
 import org.springframework.stereotype.Service;
 
 import com.bigbrightpaints.erp.core.auditaccess.dto.AuditFeedItemDto;
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountingTransactionAuditDetailDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountingTransactionAuditListItemDto;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
@@ -41,6 +43,7 @@ public class DefaultAuditAccessService implements AuditAccessService {
 
   @Override
   public PageResponse<AuditFeedItemDto> queryTenantAdminFeed(AuditFeedFilter filter) {
+    validateTenantAdminMergeWindow(filter);
     Company company = companyContextService.requireCurrentCompany();
     AuditFeedSlice tenantAuditLogs = auditLogReadAdapter.queryTenantCompanyFeed(company, filter);
     AuditFeedSlice tenantBusinessEvents = businessAuditReadAdapter.queryTenantCompanyFeed(company, filter);
@@ -70,6 +73,18 @@ public class DefaultAuditAccessService implements AuditAccessService {
   @Override
   public AccountingTransactionAuditDetailDto getAccountingTransactionDetail(Long journalEntryId) {
     return accountingTransactionAuditReadAdapter.transactionDetail(journalEntryId);
+  }
+
+  private void validateTenantAdminMergeWindow(AuditFeedFilter filter) {
+    if (!filter.exceedsMergeWindow()) {
+      return;
+    }
+    throw new ApplicationException(
+            ErrorCode.VALIDATION_OUT_OF_RANGE,
+            "Requested audit page exceeds the supported result window; refine filters or reduce page size")
+        .withDetail("page", filter.safePage())
+        .withDetail("size", filter.safeSize())
+        .withDetail("maxWindow", filter.maxMergeWindow());
   }
 
   private PageResponse<AuditFeedItemDto> merge(

@@ -17,6 +17,7 @@ public record AuditFeedFilter(
     int size) {
 
   private static final int MAX_PAGE_SIZE = 200;
+  private static final int MAX_MERGE_WINDOW = 5000;
 
   public int safePage() {
     return Math.max(page, 0);
@@ -27,8 +28,15 @@ public record AuditFeedFilter(
   }
 
   public int fetchLimit() {
-    long requested = (long) (safePage() + 1) * safeSize();
-    return (int) Math.max(safeSize(), Math.min(requested, Integer.MAX_VALUE));
+    return Math.max(safeSize(), Math.min(requestedWindow(), MAX_MERGE_WINDOW));
+  }
+
+  public boolean exceedsMergeWindow() {
+    return requestedWindow() > MAX_MERGE_WINDOW;
+  }
+
+  public int maxMergeWindow() {
+    return MAX_MERGE_WINDOW;
   }
 
   public String normalizedModule() {
@@ -57,5 +65,10 @@ public record AuditFeedFilter(
 
   private static String normalize(String value) {
     return StringUtils.hasText(value) ? value.trim() : null;
+  }
+
+  private int requestedWindow() {
+    long requested = (long) (safePage() + 1) * safeSize();
+    return (int) Math.min(requested, Integer.MAX_VALUE);
   }
 }

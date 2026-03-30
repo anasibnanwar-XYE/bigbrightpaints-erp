@@ -1,6 +1,8 @@
 package com.bigbrightpaints.erp.modules.accounting.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import java.util.Map;
 
@@ -13,6 +15,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import com.bigbrightpaints.erp.core.audit.IntegrationFailureMetadataSchema;
+import com.bigbrightpaints.erp.core.auditaccess.AuditAccessService;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.exception.GlobalExceptionHandler;
@@ -239,6 +242,22 @@ class AccountingControllerExceptionHandlerTest {
   }
 
   @Test
+  void transactionAuditDetail_missingJournalEntryReturnsNotFoundEnvelope() throws Exception {
+    AuditAccessService auditAccessService = mock(AuditAccessService.class);
+    when(auditAccessService.getAccountingTransactionDetail(999L))
+        .thenThrow(
+            new ApplicationException(
+                ErrorCode.BUSINESS_ENTITY_NOT_FOUND, "Journal entry not found"));
+
+    accountingControllerMvc(auditAccessService)
+        .perform(get("/api/v1/accounting/audit/transactions/999"))
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.success").value(false))
+        .andExpect(jsonPath("$.message").value("Journal entry not found"))
+        .andExpect(jsonPath("$.data.code").value(ErrorCode.BUSINESS_ENTITY_NOT_FOUND.getCode()));
+  }
+
+  @Test
   void balanceAsOf_invalidDateReturnsValidationEnvelope() throws Exception {
     accountingControllerMvc()
         .perform(get("/api/v1/accounting/accounts/42/balance/as-of").param("date", "bad-date"))
@@ -346,11 +365,19 @@ class AccountingControllerExceptionHandlerTest {
   }
 
   private AccountingAuditController auditController() {
-    return new AccountingAuditController(null);
+    return auditController(null);
+  }
+
+  private AccountingAuditController auditController(AuditAccessService auditAccessService) {
+    return new AccountingAuditController(auditAccessService);
   }
 
   private MockMvc accountingControllerMvc() {
-    return MockMvcBuilders.standaloneSetup(controller(), auditController())
+    return accountingControllerMvc(null);
+  }
+
+  private MockMvc accountingControllerMvc(AuditAccessService auditAccessService) {
+    return MockMvcBuilders.standaloneSetup(controller(), auditController(auditAccessService))
         .setControllerAdvice(new GlobalExceptionHandler())
         .build();
   }
