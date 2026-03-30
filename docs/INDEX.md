@@ -18,6 +18,12 @@ This is the canonical entrypoint for backend documentation. Every major docs sec
 | [docs/platform/config-feature-toggles.md](platform/config-feature-toggles.md) | High-impact platform settings and feature toggles: security, licensing, mail/notification, export-approval, module/runtime gating, integration, accounting-event, inventory, orchestrator, seed, and benchmark switches with scope and default caveats |
 | [docs/platform/health-readiness-gating.md](platform/health-readiness-gating.md) | Operator-facing health and readiness endpoints, integration-health surfaces, module-gating mechanics, runtime-admission gates, and caveats around which checks to trust |
 
+## Quick Reference: Backend Feature Catalog
+
+| Document | Purpose |
+| --- | --- |
+| [docs/BACKEND-FEATURE-CATALOG.md](BACKEND-FEATURE-CATALOG.md) | Reader-friendly summary of the complete backend feature landscape — exhaustive coverage of platform, operations, commercial, and finance/reporting features with links to deeper module/flow/ADR packets and explicit deprecated/non-canonical surface flags |
+
 ## Modules
 
 | Document | Purpose |
