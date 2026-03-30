@@ -53,6 +53,12 @@ All platform endpoints use the same host prefix:
 | `/api/v1/superadmin/tenants/{id}/lifecycle` | PUT | SUPER_ADMIN | Write |
 | `/api/v1/superadmin/tenants/{id}/limits` | PUT | SUPER_ADMIN | Write |
 | `/api/v1/superadmin/tenants/{id}/modules` | PUT | SUPER_ADMIN | Write |
+| `/api/v1/superadmin/tenants/{id}/support/warnings` | POST | SUPER_ADMIN | Write |
+| `/api/v1/superadmin/tenants/{id}/support/admin-password-reset` | POST | SUPER_ADMIN | Write |
+| `/api/v1/superadmin/tenants/{id}/support/context` | PUT | SUPER_ADMIN | Write |
+| `/api/v1/superadmin/tenants/{id}/admins/main` | PUT | SUPER_ADMIN | Write |
+| `/api/v1/superadmin/tenants/{id}/admins/{adminId}/email-change/request` | POST | SUPER_ADMIN | Write |
+| `/api/v1/superadmin/tenants/{id}/admins/{adminId}/email-change/confirm` | POST | SUPER_ADMIN | Write |
 | `/api/v1/superadmin/tenants/{id}/force-logout` | POST | SUPER_ADMIN | Write |
 | `/api/v1/superadmin/tenants/onboard` | POST | SUPER_ADMIN | Write |
 | `/api/v1/superadmin/tenants/coa-templates` | GET | SUPER_ADMIN | Read |
@@ -71,7 +77,7 @@ All platform endpoints use the same host prefix:
 | `/api/v1/admin/users/{id}/mfa/disable` | PATCH | ADMIN, SUPER_ADMIN | Write |
 | `/api/v1/admin/users/{id}` | DELETE | ADMIN, SUPER_ADMIN | Write |
 | `/api/v1/admin/settings` | GET | ADMIN | Read |
-| `/api/v1/admin/settings` | PUT | SUPER_ADMIN | Write |
+| `/api/v1/admin/settings` | PUT | SUPER_ADMIN | Write (SUPER_ADMIN required for `periodLockEnforced` changes) |
 | `/api/v1/admin/exports/{id}/approve` | PUT | ADMIN, SUPER_ADMIN | Write |
 | `/api/v1/admin/exports/{id}/reject` | PUT | ADMIN, SUPER_ADMIN | Write |
 | `/api/v1/admin/notify` | POST | ADMIN | Write |
@@ -138,7 +144,9 @@ All platform endpoints use the same host prefix:
 
 1. **Super-admin is control-plane only** — Super-admin users authenticate with platform scope (`PLATFORM`) and are restricted to `/api/v1/superadmin/**`, `/api/v1/auth/**`, `/api/v1/companies`, and `/api/v1/admin/settings`. They cannot access tenant business endpoints.
 
-2. **Portal insights are admin-only** — Dashboard, operations, and workforce insights require `ROLE_ADMIN` exclusively. Accounting and other roles cannot access these endpoints.
+2. **Super-admin does NOT inherit tenant-level ADMIN permissions** — `ROLE_SUPER_ADMIN` is platform-scoped and operates at the control-plane level. It does NOT inherit or include the permissions of `ROLE_ADMIN` within a tenant. Super-admin users cannot access tenant-scoped admin endpoints like `/api/v1/admin/users`, `/api/v1/admin/roles`, `/api/v1/admin/approvals`, or portal insights (`/api/v1/portal/dashboard/**`). This is a strict separation: platform scope (`PLATFORM`) vs tenant scope (`TENANT`).
+
+3. **Portal insights are admin-only** — Dashboard, operations, and workforce insights require `ROLE_ADMIN` exclusively. Accounting and other roles cannot access these endpoints.
 
 3. **Portal finance is admin/accounting only** — Ledger, invoices, and aging require `ADMIN_OR_ACCOUNTING` and need an explicit `dealerId` query parameter.
 
@@ -233,13 +241,17 @@ The `/api/v1/portal/*` host family has **non-uniform RBAC** with different predi
 **Write (super-admin):**
 - `SystemSettingsUpdateRequest` — `settings` (key-value map), optional `lockPeriod` date
 
+> ⚠️ **Super-admin guard on period lock**: When updating `/api/v1/admin/settings`, changing the `periodLockEnforced` setting requires `ROLE_SUPER_ADMIN`. A non-super-admin actor (including `ROLE_ADMIN`) attempting to change this specific setting will receive `AUTH_INSUFFICIENT_PERMISSIONS`.
+
 ### 5.5 Support Ticket Payloads (Shared DTO Contract)
 
 > ⚠️ **Key Contract**: Support ticket DTOs are **shared** between admin and dealer surfaces. Both use the same `SupportTicketCreateRequest`, `SupportTicketResponse`, and `SupportTicketListResponse` from the `admin` module.
 
 **Create (admin side):**
-- `SupportTicketCreateRequest` — `category`, `subject`, `description`, `priority`, optional `dealerId`
+- `SupportTicketCreateRequest` — `category`, `subject`, `description`, `priority`
 - Response: `SupportTicketResponse` with `ticketId`, `status`, `createdAt`
+
+> ⚠️ **Note**: The admin-side `SupportTicketCreateRequest` does NOT include a `dealerId` field. Support tickets are created within the tenant's company context and scoped to the authenticated user's company.
 
 **Create (dealer side):**
 - `SupportTicketCreateRequest` — `category`, `subject`, `description`, `priority`
