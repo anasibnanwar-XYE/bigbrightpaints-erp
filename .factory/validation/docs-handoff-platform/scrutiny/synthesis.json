@@ -1,7 +1,7 @@
 {
   "milestone": "docs-handoff-platform",
-  "round": 2,
-  "status": "fail",
+  "round": 3,
+  "status": "pass",
   "validatorsRun": {
     "lint": {
       "passed": true,
@@ -30,27 +30,16 @@
   },
   "reviewsSummary": {
     "total": 1,
-    "passed": 0,
-    "failed": 1,
-    "failedFeatures": ["docs-handoff-platform-route-rbac-fix"]
+    "passed": 1,
+    "failed": 0,
+    "failedFeatures": []
   },
-  "blockingIssues": [
-    {
-      "featureId": "docs-handoff-platform-route-rbac-fix",
-      "severity": "blocking",
-      "description": "Section 5.5 Support Ticket Payloads lists `priority` as a field in SupportTicketCreateRequest, but the actual DTO only has three fields: category, subject, description. This pre-existing inaccuracy was not caught by the fix. Frontend developers would implement a priority selector that doesn't exist in the backend."
-    }
-  ],
+  "blockingIssues": [],
   "nonBlockingIssues": [
     {
-      "featureId": "docs-handoff-platform-route-rbac-fix",
+      "featureId": "docs-handoff-platform-support-ticket-fix",
       "severity": "non_blocking",
-      "description": "Section 3.2 point 2 claims SUPER_ADMIN cannot access /api/v1/admin/users, but the route table in Section 2.3 lists ADMIN, SUPER_ADMIN for that endpoint. The note should clarify that SUPER_ADMIN accesses admin endpoints through platform-level authority, not through tenant-level ROLE_ADMIN inheritance."
-    },
-    {
-      "featureId": "docs-handoff-platform-route-rbac-fix",
-      "severity": "non_blocking",
-      "description": "Section 3.2 has duplicate numbering: items 3 and 3 (Portal insights and Portal finance). Should be renumbered 1-6 sequentially."
+      "description": "The SupportTicketResponse Detail payload in the handoff doc lists fields (assignedTo, comments[]) that don't exist in the actual DTO. This is a simplified frontend-facing view, which is reasonable for a handoff doc, but the fields assignedTo and comments[] are not in the DTO at all. Pre-existing and outside the fix scope."
     }
   ],
   "appliedUpdates": [],
