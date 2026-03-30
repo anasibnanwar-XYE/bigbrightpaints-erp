@@ -17,7 +17,6 @@ public record AuditFeedFilter(
     int size) {
 
   private static final int MAX_PAGE_SIZE = 200;
-  private static final int MAX_MERGE_WINDOW = 5000;
 
   public int safePage() {
     return Math.max(page, 0);
@@ -29,7 +28,7 @@ public record AuditFeedFilter(
 
   public int fetchLimit() {
     long requested = (long) (safePage() + 1) * safeSize();
-    return (int) Math.max(safeSize(), Math.min(requested, MAX_MERGE_WINDOW));
+    return (int) Math.max(safeSize(), Math.min(requested, Integer.MAX_VALUE));
   }
 
   public String normalizedModule() {
