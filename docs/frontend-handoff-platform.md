@@ -264,7 +264,7 @@ The `/api/v1/portal/*` host family has **non-uniform RBAC** with different predi
 - `SupportTicketListResponse` — same structure, filtered to dealer's own tickets
 
 **Detail:**
-- `SupportTicketResponse` — `ticketId`, `category`, `subject`, `description`, `status`, `createdAt`, `updatedAt`, `resolvedAt`, `createdBy`, `assignedTo`, `comments[]`
+- `SupportTicketResponse` — `ticketId`, `category`, `subject`, `description`, `status`, `createdAt`, `updatedAt`, `resolvedAt`, `createdBy`
 
 ### 5.6 Approval Payloads
 
