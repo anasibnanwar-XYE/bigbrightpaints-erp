@@ -18,7 +18,7 @@ A reader can discover module ownership from this inventory without grepping the 
 | **company** | Tenant/company lifecycle: company CRUD, runtime admission, module gating, licensing checks, company-scoping assumptions | [company.md](company.md) |
 | **demo** | Demo/sample data seeding: demo data controller for setting up sample data in non-production environments | [source](../../erp-domain/src/main/java/com/bigbrightpaints/erp/modules/demo/) *(per-module packet pending)* |
 | **factory** | Manufacturing execution: production logs, packing, packaging mappings, batch registration, cost allocation (WIP/consumption), and dispatch handoff boundary | [factory.md](factory.md) |
-| **hr** | HR and payroll truth: employee management, leave, attendance, payroll run lifecycle, payroll calculation, payroll posting, and payroll payment on the accounting host | [AGENTS.md](../../erp-domain/src/main/java/com/bigbrightpaints/erp/modules/hr/AGENTS.md) |
+| **hr** | HR and payroll truth: employee management, leave, attendance, payroll run lifecycle, payroll calculation, payroll posting, and payroll payment on the accounting host | [hr.md](hr.md) |
 | **inventory** | Stock truth boundary: stock summaries, batch traceability, reservations, adjustments, opening stock import, valuation, dispatch execution, and inventory–accounting event bridge | [inventory.md](inventory.md) |
 | **invoice** | Invoice lifecycle: invoice issuance, settlement behavior, ledger/aging/statement surfaces, and invoice-related DTO families | [invoice.md](invoice.md) |
 | **portal** | Dealer self-service portal: dealer-facing endpoints, portal finance views, portal-specific DTOs and isolation boundaries | [admin-portal-rbac.md](admin-portal-rbac.md) |
