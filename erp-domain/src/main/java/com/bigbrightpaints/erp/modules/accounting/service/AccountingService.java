@@ -52,6 +52,7 @@ import com.bigbrightpaints.erp.modules.invoice.service.InvoiceSettlementPolicy;
 import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchaseRepository;
 import com.bigbrightpaints.erp.modules.purchasing.domain.SupplierRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
+import com.bigbrightpaints.erp.shared.dto.PageResponse;
 
 import jakarta.persistence.EntityManager;
 
@@ -189,9 +190,14 @@ public class AccountingService extends AccountingCoreService {
   }
 
   @Override
-  public List<JournalListItemDto> listJournals(
-      LocalDate fromDate, LocalDate toDate, String journalType, String sourceModule) {
-    return journalEntryService.listJournals(fromDate, toDate, journalType, sourceModule);
+  public PageResponse<JournalListItemDto> listJournals(
+      LocalDate fromDate,
+      LocalDate toDate,
+      String journalType,
+      String sourceModule,
+      int page,
+      int size) {
+    return journalEntryService.listJournals(fromDate, toDate, journalType, sourceModule, page, size);
   }
 
   @Override

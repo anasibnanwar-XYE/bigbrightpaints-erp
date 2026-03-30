@@ -13,6 +13,8 @@ import org.springframework.util.StringUtils;
 
 import com.bigbrightpaints.erp.core.config.SystemSetting;
 import com.bigbrightpaints.erp.core.config.SystemSettingsRepository;
+import com.bigbrightpaints.erp.core.security.AuthScopeService;
+import com.bigbrightpaints.erp.core.security.SecurityActorResolver;
 import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
@@ -43,6 +45,8 @@ public class TenantOnboardingService {
   private final CoATemplateService coATemplateService;
   private final SystemSettingsRepository systemSettingsRepository;
   private final TenantAdminProvisioningService tenantAdminProvisioningService;
+  private final AuthScopeService authScopeService;
+  private final TenantRuntimeEnforcementService tenantRuntimeEnforcementService;
 
   public TenantOnboardingService(
       CompanyRepository companyRepository,
@@ -51,7 +55,9 @@ public class TenantOnboardingService {
       AccountingPeriodService accountingPeriodService,
       CoATemplateService coATemplateService,
       SystemSettingsRepository systemSettingsRepository,
-      TenantAdminProvisioningService tenantAdminProvisioningService) {
+      TenantAdminProvisioningService tenantAdminProvisioningService,
+      AuthScopeService authScopeService,
+      TenantRuntimeEnforcementService tenantRuntimeEnforcementService) {
     this.companyRepository = companyRepository;
     this.userAccountRepository = userAccountRepository;
     this.accountRepository = accountRepository;
@@ -59,6 +65,8 @@ public class TenantOnboardingService {
     this.coATemplateService = coATemplateService;
     this.systemSettingsRepository = systemSettingsRepository;
     this.tenantAdminProvisioningService = tenantAdminProvisioningService;
+    this.authScopeService = authScopeService;
+    this.tenantRuntimeEnforcementService = tenantRuntimeEnforcementService;
   }
 
   @Transactional
@@ -94,6 +102,7 @@ public class TenantOnboardingService {
     savedCompany.setOnboardingCoaTemplateCode(template.getCode());
     savedCompany.setOnboardingCompletedAt(CompanyTime.now(savedCompany));
     companyRepository.save(savedCompany);
+    initializeTenantRuntimePolicy(savedCompany);
 
     boolean seededChartOfAccounts = seededChartOfAccounts(createdAccounts, templateAccounts.size());
     Long accountingPeriodId = defaultPeriod != null ? defaultPeriod.getId() : null;
@@ -121,7 +130,7 @@ public class TenantOnboardingService {
     company.setName(request.name());
     company.setCode(normalizedCompanyCode);
     company.setTimezone(request.timezone());
-    company.setDefaultGstRate(request.defaultGstRate());
+    company.setDefaultGstRate(TenantBootstrapDefaults.resolveDefaultGstRate(request.defaultGstRate()));
     company.setQuotaMaxActiveUsers(defaultLong(request.maxActiveUsers()));
     company.setQuotaMaxApiRequests(defaultLong(request.maxApiRequests()));
     company.setQuotaMaxStorageBytes(defaultLong(request.maxStorageBytes()));
@@ -251,6 +260,10 @@ public class TenantOnboardingService {
   }
 
   private void ensureCompanyCodeAvailable(String companyCode) {
+    if (requireAuthScopeService().isPlatformScope(companyCode)) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          "Company code conflicts with platform auth code: " + companyCode);
+    }
     if (companyRepository.findByCodeIgnoreCase(companyCode).isPresent()) {
       throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
           "Company code already exists: " + companyCode);
@@ -271,6 +284,36 @@ public class TenantOnboardingService {
 
   private boolean defaultBoolean(Boolean value, boolean defaultValue) {
     return value == null ? defaultValue : value;
+  }
+
+  private void initializeTenantRuntimePolicy(Company company) {
+    if (company == null || !StringUtils.hasText(company.getCode())) {
+      return;
+    }
+    requireTenantRuntimeEnforcementService().updatePolicy(
+        company.getCode(),
+        TenantRuntimeEnforcementService.TenantRuntimeState.ACTIVE,
+        "TENANT_ONBOARDING_BOOTSTRAP",
+        TenantBootstrapDefaults.failClosedRuntimeLimit(company.getQuotaMaxConcurrentRequests()),
+        TenantBootstrapDefaults.failClosedRuntimeLimit(company.getQuotaMaxApiRequests()),
+        TenantBootstrapDefaults.failClosedRuntimeLimit(company.getQuotaMaxActiveUsers()),
+        SecurityActorResolver.resolveActorOrUnknown());
+  }
+
+  private AuthScopeService requireAuthScopeService() {
+    if (authScopeService == null) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState(
+          "Auth scope service unavailable");
+    }
+    return authScopeService;
+  }
+
+  private TenantRuntimeEnforcementService requireTenantRuntimeEnforcementService() {
+    if (tenantRuntimeEnforcementService == null) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState(
+          "Tenant runtime enforcement service unavailable");
+    }
+    return tenantRuntimeEnforcementService;
   }
 
   private boolean isNonGstMode(Company company) {

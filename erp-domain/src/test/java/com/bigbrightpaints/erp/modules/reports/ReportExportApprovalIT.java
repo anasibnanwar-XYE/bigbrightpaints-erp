@@ -32,6 +32,7 @@ class ReportExportApprovalIT extends AbstractIntegrationTest {
   private static final String ADMIN_EMAIL = "export-admin@bbp.com";
   private static final String SUPER_ADMIN_EMAIL = "export-super-admin@bbp.com";
   private static final String ACCOUNTING_EMAIL = "export-accounting@bbp.com";
+  private static final String ACCOUNTING_PEER_EMAIL = "export-accounting-peer@bbp.com";
   private static final String PASSWORD = "Export123!";
 
   @Autowired private TestRestTemplate rest;
@@ -60,6 +61,12 @@ class ReportExportApprovalIT extends AbstractIntegrationTest {
             "Export Accounting",
             COMPANY_CODE,
             List.of("ROLE_ACCOUNTING"));
+    dataSeeder.ensureUser(
+        ACCOUNTING_PEER_EMAIL,
+        PASSWORD,
+        "Export Accounting Peer",
+        COMPANY_CODE,
+        List.of("ROLE_ACCOUNTING"));
     company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
   }
 
@@ -157,6 +164,14 @@ class ReportExportApprovalIT extends AbstractIntegrationTest {
             new HttpEntity<>(adminHeaders),
             Map.class);
     assertThat(approveResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+    ResponseEntity<Map> adminDownloadAfterApproval =
+        rest.exchange(
+            "/api/v1/exports/" + requestId.longValue() + "/download",
+            HttpMethod.GET,
+            new HttpEntity<>(adminHeaders),
+            Map.class);
+    assertThat(adminDownloadAfterApproval.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
 
     ResponseEntity<Map> downloadAfterApproval =
         rest.exchange(
@@ -274,6 +289,52 @@ class ReportExportApprovalIT extends AbstractIntegrationTest {
         .containsEntry("parameters", "periodId=2");
     assertThat(String.valueOf(data.get("message"))).contains("disabled");
     assertThat(data).doesNotContainKeys("downloadUrl", "fileName");
+  }
+
+  @Test
+  void exportDownload_requiresRequestOwnershipAfterApproval() {
+    HttpHeaders superAdminHeaders = authHeaders(SUPER_ADMIN_EMAIL);
+    ResponseEntity<Map> enableGate =
+        rest.exchange(
+            "/api/v1/admin/settings",
+            HttpMethod.PUT,
+            new HttpEntity<>(
+                Map.of("exportApprovalRequired", true), jsonHeaders(superAdminHeaders)),
+            Map.class);
+    assertThat(enableGate.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+    HttpHeaders accountingHeaders = authHeaders(ACCOUNTING_EMAIL);
+    ResponseEntity<Map> createResponse =
+        rest.exchange(
+            "/api/v1/exports/request",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of(
+                    "reportType", "trial-balance",
+                    "parameters", "periodId=11"),
+                jsonHeaders(accountingHeaders)),
+            Map.class);
+    assertThat(createResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    Number requestId = (Number) ((Map<?, ?>) createResponse.getBody().get("data")).get("id");
+    assertThat(requestId).isNotNull();
+
+    HttpHeaders adminHeaders = authHeaders(ADMIN_EMAIL);
+    ResponseEntity<Map> approveResponse =
+        rest.exchange(
+            "/api/v1/admin/exports/" + requestId.longValue() + "/approve",
+            HttpMethod.PUT,
+            new HttpEntity<>(adminHeaders),
+            Map.class);
+    assertThat(approveResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+    HttpHeaders peerHeaders = authHeaders(ACCOUNTING_PEER_EMAIL);
+    ResponseEntity<Map> peerDownload =
+        rest.exchange(
+            "/api/v1/exports/" + requestId.longValue() + "/download",
+            HttpMethod.GET,
+            new HttpEntity<>(peerHeaders),
+            Map.class);
+    assertThat(peerDownload.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
   }
 
   @Test

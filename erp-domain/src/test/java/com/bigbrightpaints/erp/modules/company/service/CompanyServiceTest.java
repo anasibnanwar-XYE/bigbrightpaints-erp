@@ -22,6 +22,7 @@ import java.util.UUID;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -58,6 +59,7 @@ import com.bigbrightpaints.erp.modules.company.dto.CompanySupportWarningDto;
 import com.bigbrightpaints.erp.modules.company.dto.CompanyTenantMetricsDto;
 
 @ExtendWith(MockitoExtension.class)
+@Tag("critical")
 class CompanyServiceTest {
 
   @Mock private CompanyRepository repository;
@@ -183,6 +185,80 @@ class CompanyServiceTest {
     assertThat(target.getGstInputTaxAccountId()).isNull();
     assertThat(target.getGstOutputTaxAccountId()).isNull();
     assertThat(target.getGstPayableAccountId()).isNull();
+  }
+
+  @Test
+  void synchronizeRuntimePolicyEnvelope_noopsForBlankCompanyCode() {
+    Company target = company(4L, "ACME");
+    target.setCode("   ");
+
+    ReflectionTestUtils.invokeMethod(
+        companyService, "synchronizeRuntimePolicyEnvelope", target, null, "test-sync");
+
+    verifyNoInteractions(tenantRuntimeEnforcementService);
+  }
+
+  @Test
+  void failClosedRuntimeLimit_defaultsZeroAndCapsOverflow() {
+    assertThat(TenantBootstrapDefaults.failClosedRuntimeLimit(0L)).isEqualTo(1);
+    assertThat(TenantBootstrapDefaults.failClosedRuntimeLimit(7L)).isEqualTo(7);
+    assertThat(TenantBootstrapDefaults.failClosedRuntimeLimit((long) Integer.MAX_VALUE + 10L))
+        .isEqualTo(Integer.MAX_VALUE);
+  }
+
+  @Test
+  void synchronizeRuntimePolicyEnvelope_usesFallbackReasonAndActiveStateWhenLifecycleFieldsAreBlank() {
+    authenticateAs("ROLE_SUPER_ADMIN");
+    Company target = company(4L, "ACME");
+    target.setLifecycleState(null);
+    target.setLifecycleReason("   ");
+    target.setQuotaMaxConcurrentRequests(0L);
+    target.setQuotaMaxApiRequests(77L);
+    target.setQuotaMaxActiveUsers((long) Integer.MAX_VALUE + 1L);
+
+    ReflectionTestUtils.invokeMethod(
+        companyService,
+        "synchronizeRuntimePolicyEnvelope",
+        target,
+        SecurityContextHolder.getContext().getAuthentication(),
+        "fallback-sync");
+
+    verify(tenantRuntimeEnforcementService)
+        .updatePolicy(
+            "ACME",
+            TenantRuntimeEnforcementService.TenantRuntimeState.ACTIVE,
+            "fallback-sync",
+            1,
+            77,
+            Integer.MAX_VALUE,
+            "tester@bbp.com");
+  }
+
+  @Test
+  void synchronizeRuntimePolicyEnvelope_requiresRuntimeEnforcementService() {
+    CompanyService withoutRuntimeEnforcementService =
+        new CompanyService(
+            repository,
+            auditService,
+            userAccountRepository,
+            auditLogRepository,
+            null,
+            tenantAdminProvisioningService,
+            tenantLifecycleService,
+            passwordResetService,
+            authScopeService);
+    Company target = company(4L, "ACME");
+
+    assertThatThrownBy(
+            () ->
+                ReflectionTestUtils.invokeMethod(
+                    withoutRuntimeEnforcementService,
+                    "synchronizeRuntimePolicyEnvelope",
+                    target,
+                    null,
+                    "test-sync"))
+        .isInstanceOf(ApplicationException.class)
+        .hasMessageContaining("Tenant runtime enforcement service unavailable");
   }
 
   @Test
@@ -562,7 +638,7 @@ class CompanyServiceTest {
   }
 
   @Test
-  void update_allowsBoundMatchingContextWhenAuthScopeServiceIsUnavailable() {
+  void update_requiresAuthScopeServiceWhenValidatingBoundContext() {
     authenticateAs("ROLE_SUPER_ADMIN");
     bindCompanyContext("ACME");
     Company target = company(2L, "ACME");
@@ -579,11 +655,10 @@ class CompanyServiceTest {
             passwordResetService,
             null);
     when(repository.findById(2L)).thenReturn(Optional.of(target));
-    when(repository.findByCodeIgnoreCase("BBB")).thenReturn(Optional.empty());
-    when(userAccountRepository.findByCompany_Id(2L)).thenReturn(List.of());
-    CompanyDto dto = withoutAuthScopeService.update(2L, request, Set.of(target));
 
-    assertThat(dto.code()).isEqualTo("BBB");
+    assertThatThrownBy(() -> withoutAuthScopeService.update(2L, request, Set.of(target)))
+        .isInstanceOf(ApplicationException.class)
+        .hasMessageContaining("Auth scope service unavailable");
   }
 
   @Test
@@ -597,6 +672,34 @@ class CompanyServiceTest {
         .hasMessageContaining("Company code conflicts with platform auth code: PLATFORM");
 
     verify(repository, never()).findByCodeIgnoreCase(any());
+  }
+
+  @Test
+  void create_initializesRuntimePolicyWithFailClosedMinimumsWhenQuotasAreUnset() {
+    authenticateAs("ROLE_SUPER_ADMIN");
+    CompanyRequest request = new CompanyRequest("Acme", "ACME", "UTC", null);
+    when(authScopeService.isPlatformScope("ACME")).thenReturn(false);
+    when(repository.findByCodeIgnoreCase("ACME")).thenReturn(Optional.empty());
+    when(repository.save(any(Company.class)))
+        .thenAnswer(
+            invocation -> {
+              Company company = invocation.getArgument(0);
+              ReflectionTestUtils.setField(company, "id", 7L);
+              return company;
+            });
+
+    CompanyDto response = companyService.create(request);
+
+    assertThat(response.code()).isEqualTo("ACME");
+    verify(tenantRuntimeEnforcementService)
+        .updatePolicy(
+            "ACME",
+            TenantRuntimeEnforcementService.TenantRuntimeState.ACTIVE,
+            "tenant-runtime-policy-sync",
+            1,
+            1,
+            1,
+            "tester@bbp.com");
   }
 
   @Test
@@ -635,6 +738,43 @@ class CompanyServiceTest {
         .hasMessageContaining("Scoped account already exists for email in company code");
 
     verify(userAccountRepository, never()).saveAll(any());
+  }
+
+  @Test
+  void update_synchronizesRuntimePolicyToCurrentQuotaEnvelope() {
+    authenticateAs("ROLE_SUPER_ADMIN");
+    bindCompanyContext("ACME");
+    Company target = company(2L, "ACME");
+    target.setLifecycleState(CompanyLifecycleState.SUSPENDED);
+    target.setLifecycleReason("manual_hold");
+    CompanyRequest request =
+        new CompanyRequest(
+            "Acme Updated",
+            "ACME",
+            "UTC",
+            BigDecimal.TEN,
+            120L,
+            3000L,
+            4096L,
+            7L,
+            false,
+            true);
+    when(repository.findById(2L)).thenReturn(Optional.of(target));
+    when(repository.findByCodeIgnoreCase("ACME")).thenReturn(Optional.of(target));
+    when(authScopeService.isPlatformScope("ACME")).thenReturn(false);
+
+    CompanyDto response = companyService.update(2L, request, Set.of(target));
+
+    assertThat(response.code()).isEqualTo("ACME");
+    verify(tenantRuntimeEnforcementService)
+        .updatePolicy(
+            "ACME",
+            TenantRuntimeEnforcementService.TenantRuntimeState.HOLD,
+            "manual_hold",
+            7,
+            3000,
+            120,
+            "tester@bbp.com");
   }
 
   @Test
@@ -740,8 +880,18 @@ class CompanyServiceTest {
   void create_requiresCredentialProvisioningDependenciesWhenFirstAdminIsRequested() {
     authenticateAs("ROLE_SUPER_ADMIN");
     CompanyService serviceWithoutProvisioning =
-        new CompanyService(repository, auditService, userAccountRepository, auditLogRepository);
+        new CompanyService(
+            repository,
+            auditService,
+            userAccountRepository,
+            auditLogRepository,
+            tenantRuntimeEnforcementService,
+            null,
+            tenantLifecycleService,
+            passwordResetService,
+            authScopeService);
     Company incoming = company(7L, "SKE");
+    when(authScopeService.isPlatformScope("SKE")).thenReturn(false);
     when(repository.findByCodeIgnoreCase("SKE")).thenReturn(Optional.empty());
     when(repository.save(org.mockito.ArgumentMatchers.any(Company.class))).thenReturn(incoming);
 

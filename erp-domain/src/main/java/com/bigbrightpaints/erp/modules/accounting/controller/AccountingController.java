@@ -236,13 +236,16 @@ public class AccountingController {
   @GetMapping("/journals")
   @Timed(value = "erp.accounting.journals.list", description = "List journals with filters")
   @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
-  public ResponseEntity<ApiResponse<List<JournalListItemDto>>> listJournals(
+  public ResponseEntity<ApiResponse<PageResponse<JournalListItemDto>>> listJournals(
       @RequestParam(required = false) LocalDate fromDate,
       @RequestParam(required = false) LocalDate toDate,
       @RequestParam(required = false) String type,
-      @RequestParam(required = false) String sourceModule) {
+      @RequestParam(required = false) String sourceModule,
+      @RequestParam(defaultValue = "0") int page,
+      @RequestParam(defaultValue = "50") int size) {
     return ResponseEntity.ok(
-        ApiResponse.success(accountingService.listJournals(fromDate, toDate, type, sourceModule)));
+        ApiResponse.success(
+            accountingService.listJournals(fromDate, toDate, type, sourceModule, page, size)));
   }
 
   @PostMapping("/journal-entries")
@@ -852,9 +855,7 @@ public class AccountingController {
     return ResponseEntity.ok(
         ApiResponse.success(
             statementService.supplierStatement(
-                supplierId,
-                from != null ? java.time.LocalDate.parse(from) : null,
-                to != null ? java.time.LocalDate.parse(to) : null)));
+                supplierId, parseOptionalDate(from, "from"), parseOptionalDate(to, "to"))));
   }
 
   @GetMapping("/aging/suppliers/{supplierId}")
@@ -865,8 +866,7 @@ public class AccountingController {
       @RequestParam(required = false) String buckets) {
     return ResponseEntity.ok(
         ApiResponse.success(
-            statementService.supplierAging(
-                supplierId, asOf != null ? java.time.LocalDate.parse(asOf) : null, buckets)));
+            statementService.supplierAging(supplierId, parseOptionalDate(asOf, "asOf"), buckets)));
   }
 
   @GetMapping(value = "/statements/suppliers/{supplierId}/pdf", produces = "application/pdf")
@@ -885,9 +885,7 @@ public class AccountingController {
       @RequestParam(required = false) String to) {
     byte[] pdf =
         statementService.supplierStatementPdf(
-            supplierId,
-            from != null ? java.time.LocalDate.parse(from) : null,
-            to != null ? java.time.LocalDate.parse(to) : null);
+            supplierId, parseOptionalDate(from, "from"), parseOptionalDate(to, "to"));
     logAccountingExport("ACCOUNTING_SUPPLIER_STATEMENT", supplierId, "pdf");
     return ResponseEntity.ok()
         .header("Content-Disposition", "attachment; filename=supplier-statement.pdf")
@@ -909,8 +907,7 @@ public class AccountingController {
       @RequestParam(required = false) String asOf,
       @RequestParam(required = false) String buckets) {
     byte[] pdf =
-        statementService.supplierAgingPdf(
-            supplierId, asOf != null ? java.time.LocalDate.parse(asOf) : null, buckets);
+        statementService.supplierAgingPdf(supplierId, parseOptionalDate(asOf, "asOf"), buckets);
     logAccountingExport("ACCOUNTING_SUPPLIER_AGING", supplierId, "pdf");
     return ResponseEntity.ok()
         .header("Content-Disposition", "attachment; filename=supplier-aging.pdf")
@@ -954,8 +951,7 @@ public class AccountingController {
     return ResponseEntity.ok(
         ApiResponse.success(
             accountingAuditService.auditDigest(
-                from != null ? java.time.LocalDate.parse(from) : null,
-                to != null ? java.time.LocalDate.parse(to) : null)));
+                parseOptionalDate(from, "from"), parseOptionalDate(to, "to"))));
   }
 
   @GetMapping(value = "/audit/digest.csv", produces = "text/csv")
@@ -965,8 +961,7 @@ public class AccountingController {
       @RequestParam(required = false) String from, @RequestParam(required = false) String to) {
     String csv =
         accountingAuditService.auditDigestCsv(
-            from != null ? java.time.LocalDate.parse(from) : null,
-            to != null ? java.time.LocalDate.parse(to) : null);
+            parseOptionalDate(from, "from"), parseOptionalDate(to, "to"));
     logAccountingExport("ACCOUNTING_AUDIT_DIGEST", null, "csv");
     return ResponseEntity.ok()
         .contentType(MediaType.parseMediaType("text/csv"))
@@ -988,8 +983,8 @@ public class AccountingController {
           @RequestParam(required = false) String reference,
           @RequestParam(defaultValue = "0") int page,
           @RequestParam(defaultValue = "50") int size) {
-    LocalDate fromDate = from != null ? LocalDate.parse(from) : null;
-    LocalDate toDate = to != null ? LocalDate.parse(to) : null;
+    LocalDate fromDate = parseOptionalDate(from, "from");
+    LocalDate toDate = parseOptionalDate(to, "to");
     return ResponseEntity.ok(
         ApiResponse.success(
             accountingAuditTrailService.listTransactions(
@@ -1010,7 +1005,7 @@ public class AccountingController {
   @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
   public ResponseEntity<ApiResponse<java.math.BigDecimal>> getBalanceAsOf(
       @PathVariable Long accountId, @RequestParam String date) {
-    java.time.LocalDate asOfDate = java.time.LocalDate.parse(date);
+    java.time.LocalDate asOfDate = parseRequiredDate(date, "date");
     return ResponseEntity.ok(
         ApiResponse.success(
             "Balance as of " + date,
@@ -1021,7 +1016,7 @@ public class AccountingController {
   @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
   public ResponseEntity<ApiResponse<TemporalBalanceService.TrialBalanceSnapshot>>
       getTrialBalanceAsOf(@RequestParam String date) {
-    java.time.LocalDate asOfDate = java.time.LocalDate.parse(date);
+    java.time.LocalDate asOfDate = parseRequiredDate(date, "date");
     return ResponseEntity.ok(
         ApiResponse.success(
             "Trial balance as of " + date, temporalBalanceService.getTrialBalanceAsOf(asOfDate)));
@@ -1046,9 +1041,9 @@ public class AccountingController {
     LocalDate start;
     LocalDate end;
     try {
-      start = LocalDate.parse(resolvedStart);
-      end = LocalDate.parse(resolvedEnd);
-    } catch (DateTimeParseException ex) {
+      start = parseRequiredDate(resolvedStart, "startDate");
+      end = parseRequiredDate(resolvedEnd, "endDate");
+    } catch (ApplicationException ex) {
       throw new ApplicationException(
               ErrorCode.VALIDATION_INVALID_DATE,
               "Invalid account activity date format; expected ISO date yyyy-MM-dd")
@@ -1084,7 +1079,25 @@ public class AccountingController {
         ApiResponse.success(
             "Balance comparison",
             temporalBalanceService.compareBalances(
-                accountId, java.time.LocalDate.parse(date1), java.time.LocalDate.parse(date2))));
+                accountId, parseRequiredDate(date1, "date1"), parseRequiredDate(date2, "date2"))));
+  }
+
+  private LocalDate parseOptionalDate(String rawDate, String fieldName) {
+    if (!StringUtils.hasText(rawDate)) {
+      return null;
+    }
+    return parseRequiredDate(rawDate, fieldName);
+  }
+
+  private LocalDate parseRequiredDate(String rawDate, String fieldName) {
+    try {
+      return LocalDate.parse(rawDate.trim());
+    } catch (DateTimeParseException ex) {
+      throw new ApplicationException(
+              ErrorCode.VALIDATION_INVALID_DATE,
+              "Invalid " + fieldName + " date format; expected ISO date yyyy-MM-dd")
+          .withDetail(fieldName, rawDate);
+    }
   }
 
   // ==================== ACCOUNT HIERARCHY ====================

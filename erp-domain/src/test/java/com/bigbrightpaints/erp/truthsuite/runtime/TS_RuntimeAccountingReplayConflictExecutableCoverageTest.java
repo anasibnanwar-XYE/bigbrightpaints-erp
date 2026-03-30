@@ -824,8 +824,7 @@ class TS_RuntimeAccountingReplayConflictExecutableCoverageTest {
   }
 
   @Test
-  void
-      settleSupplierInvoices_existingAllocations_replay_branch_revalidates_supplier_journal_lines() {
+  void settleSupplierInvoices_existingAllocations_rejectsDifferentEffectiveSettlementDate() {
     AccountingService service = accountingService();
     CompanyContextService companyContextService =
         (CompanyContextService) ReflectionTestUtils.getField(service, "companyContextService");
@@ -867,6 +866,7 @@ class TS_RuntimeAccountingReplayConflictExecutableCoverageTest {
     replayEntry.setReferenceNumber("SUP-SET-REF-1");
     replayEntry.setSupplier(supplier);
     replayEntry.setMemo("supplier settle memo");
+    replayEntry.setEntryDate(LocalDate.of(2026, 2, 15));
     replayEntry.getLines().add(journalLine(701L, "100.00", "0.00"));
     replayEntry.getLines().add(journalLine(702L, "0.00", "100.00"));
 
@@ -918,12 +918,17 @@ class TS_RuntimeAccountingReplayConflictExecutableCoverageTest {
                     BigDecimal.ZERO,
                     "alloc-1")));
 
-    PartnerSettlementResponse response = service.settleSupplierInvoices(request);
-
-    assertThat(response).isNotNull();
-    assertThat(response.journalEntry()).isNotNull();
-    assertThat(response.journalEntry().id()).isEqualTo(8801L);
-    assertThat(response.totalApplied()).isEqualByComparingTo("100.00");
+    assertThatThrownBy(() -> service.settleSupplierInvoices(request))
+        .isInstanceOf(ApplicationException.class)
+        .satisfies(
+            throwable -> {
+              ApplicationException ex = (ApplicationException) throwable;
+              assertReplayConflict(ex, "idem-supplier-settle", "SUPPLIER", 301L);
+              assertThat(ex.getMessage()).contains("settlement date");
+              assertThat(ex.getDetails())
+                  .containsEntry("existingSettlementDate", LocalDate.of(2026, 2, 15))
+                  .containsEntry("requestedSettlementDate", LocalDate.of(2026, 2, 16));
+            });
   }
 
   @Test
