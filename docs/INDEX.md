@@ -36,7 +36,7 @@ Module packets explain what each module owns: controllers, services, DTOs, entit
 | [core audit/runtime/settings](modules/core-audit-runtime-settings.md) | Audit-surface ownership (platform audit, enterprise audit trail, accounting event store), runtime-gating split (three enforcement layers), global-versus-tenant settings risk — second slice of the three-part core platform contract |
 | [core idempotency](modules/core-idempotency.md) | Shared idempotency infrastructure (key normalization, reservation, signature building), module-local idempotency implementations, contract inconsistencies, and the reconciled core platform contract reference — third/integrating slice |
 | [orchestrator](modules/orchestrator.md) | Background coordination: outbox publishing, command dispatch, Spring event bridges, schedulers, retry/dead-letter behavior, feature flags, and deprecated/dead orchestration seams |
-| [hr](../erp-domain/src/main/java/com/bigbrightpaints/erp/modules/hr/AGENTS.md) | Employees, leave, attendance, payroll runs, and payroll posting/payment |
+| [hr](modules/hr.md) | Employees, leave, attendance, payroll runs, and payroll posting/payment |
 | [inventory](modules/inventory.md) | Stock truth boundary: stock summaries, batches, adjustments, opening stock import, valuation, traceability, dispatch execution, and inventory–accounting event bridge |
 | [factory/manufacturing](modules/factory.md) | Manufacturing execution: production logs, packing, packaging mappings, batch registration, cost allocation, dispatch handoff boundary, deprecated seams, and replay/config caveats |
 | [sales](modules/sales.md) | Dealer/customer management, order lifecycle, credit controls, dispatch coordination, dealer self-service, and canonical O2C path |
@@ -51,7 +51,7 @@ Flow packets explain cross-module behavior: actors, entrypoints, preconditions, 
 | --- | --- |
 | [docs/flows/FLOW-INVENTORY.md](flows/FLOW-INVENTORY.md) | Canonical inventory of the eleven major backend flow families with ownership summary, cross-module participants, and links to flow packets |
 
-The flow inventory covers auth/identity, tenant/admin management, catalog/setup readiness, manufacturing/packing, inventory management, order-to-cash, procure-to-pay, invoice/dealer-finance, accounting/period close, HR/payroll, and reporting/export. Individual flow packets for each family will be added in later milestones.
+The flow inventory covers auth/identity, tenant/admin management, catalog/setup readiness, manufacturing/packing, inventory management, order-to-cash, procure-to-pay, invoice/dealer-finance, accounting/period close, HR/payroll, and reporting/export. Five flow packets (flows 1–5: auth/identity, tenant/admin management, catalog/setup readiness, manufacturing/packing, and inventory management) are now available; the remaining six will be added in later milestones.
 
 ## Architecture Decision Records (ADRs)
 

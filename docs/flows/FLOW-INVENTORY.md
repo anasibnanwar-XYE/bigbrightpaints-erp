@@ -1,6 +1,6 @@
 # Backend Flow Inventory
 
-Last reviewed: 2026-03-29
+Last reviewed: 2026-03-30
 
 This document is the canonical inventory of major backend flows in BigBright ERP. Each entry names the flow family, summarises its lifecycle, identifies the owning module and key cross-module participants, and links to the canonical flow packet where the full behaviour is documented.
 
