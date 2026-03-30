@@ -79,7 +79,9 @@ Frontend handoff packets explain canonical hosts, payload families, RBAC assumpt
 
 The deprecated/incomplete registry lists retired, partial, duplicated, or dead-end surfaces. Every entry points to a canonical replacement or explicitly states that no replacement exists.
 
-> **Status:** The deprecated/incomplete registry will be added in the `docs-consolidation-deprecated-registry` feature.
+| Document | Purpose |
+| --- | --- |
+| [docs/deprecated/INDEX.md](deprecated/INDEX.md) | Canonical registry of all deprecated, unmaintained, incomplete, or dead-end surfaces with replacement links or explicit no-replacement notes |
 
 ## Governance and Agents
 
