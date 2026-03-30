@@ -244,6 +244,7 @@ The module does **not** currently support:
 - [docs/INDEX.md](../INDEX.md) — canonical documentation index
 - [docs/modules/MODULE-INVENTORY.md](MODULE-INVENTORY.md) — module inventory
 - [docs/flows/FLOW-INVENTORY.md](../flows/FLOW-INVENTORY.md) — flow inventory
+- [docs/flows/hr-payroll.md](../flows/hr-payroll.md) — canonical HR/payroll flow (behavioral entrypoint)
 - [docs/workflows/payroll.md](../workflows/payroll.md) — operational workflow guide (historical reference)
 - [docs/developer/accounting-flows/00-accounting-module-map.md](../developer/accounting-flows/00-accounting-module-map.md) — accounting module (payroll posting seam)
 - [erp-domain/src/main/java/com/bigbrightpaints/erp/modules/hr/AGENTS.md](../../erp-domain/src/main/java/com/bigbrightpaints/erp/modules/hr/AGENTS.md) — source module definition

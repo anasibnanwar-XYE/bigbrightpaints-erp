@@ -441,3 +441,4 @@ Both `FinishedGood.setCurrentStock()` and `RawMaterial.setCurrentStock()` reject
 - [docs/modules/catalog-setup.md](catalog-setup.md) — catalog and setup readiness (production module)
 - [docs/platform/config-feature-toggles.md](../platform/config-feature-toggles.md) — inventory-related configuration switches
 - [docs/modules/core-idempotency.md](core-idempotency.md) — shared idempotency infrastructure used by adjustments and opening stock
+- [docs/flows/inventory-management.md](../flows/inventory-management.md) — canonical inventory management flow (behavioral entrypoint)

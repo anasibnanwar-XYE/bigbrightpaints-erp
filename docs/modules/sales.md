@@ -516,3 +516,4 @@ The statuses `BOOKED`, `SHIPPED`, `FULFILLED`, and `COMPLETED` are accepted by s
 - [docs/modules/core-idempotency.md](core-idempotency.md) — shared idempotency infrastructure
 - [docs/modules/core-security-error.md](core-security-error.md) — security filter chain and error contract
 - [docs/ARCHITECTURE.md](../ARCHITECTURE.md) — architecture reference
+- [docs/flows/order-to-cash.md](../flows/order-to-cash.md) — canonical order-to-cash flow (behavioral entrypoint)

@@ -453,5 +453,6 @@ The GRN → purchase invoice relationship is one-to-many: a single GRN can be in
 - [docs/modules/inventory.md](inventory.md) — stock truth boundary (RawMaterialBatch creation from GRN)
 - [docs/modules/core-idempotency.md](core-idempotency.md) — shared idempotency infrastructure
 - [docs/ARCHITECTURE.md](../ARCHITECTURE.md) — architecture reference
+- [docs/flows/procure-to-pay.md](../flows/procure-to-pay.md) — canonical procure-to-pay flow (behavioral entrypoint)
 - [docs/workflows/purchase-to-pay.md](../workflows/purchase-to-pay.md) — historical operational workflow guide (superseded by this packet)
 - [docs/developer/accounting-flows/03-purchasing-boundary.md](../developer/accounting-flows/03-purchasing-boundary.md) — internal truth-path documentation

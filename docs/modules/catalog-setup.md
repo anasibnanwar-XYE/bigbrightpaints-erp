@@ -470,6 +470,7 @@ The `ProductionCatalogService` includes internal listing methods (`listBrands()`
 - [docs/INDEX.md](../INDEX.md) — canonical documentation index
 - [docs/modules/MODULE-INVENTORY.md](MODULE-INVENTORY.md) — module inventory (production entry)
 - [docs/flows/FLOW-INVENTORY.md](../flows/FLOW-INVENTORY.md) — flow inventory (Catalog/Setup Readiness flow)
+- [docs/flows/catalog-setup-readiness.md](../flows/catalog-setup-readiness.md) — canonical catalog/setup readiness flow (behavioral entrypoint)
 - [docs/modules/core-idempotency.md](core-idempotency.md) — shared idempotency infrastructure used by catalog import
 - [docs/platform/db-migration.md](../platform/db-migration.md) — persistence and migration posture
 - [docs/platform/config-feature-toggles.md](../platform/config-feature-toggles.md) — inventory accounting event toggle

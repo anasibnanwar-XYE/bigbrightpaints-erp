@@ -304,7 +304,9 @@ Aging reports split across **two different ownership paths**:
 ## Related Documentation
 
 - [docs/developer/accounting-flows/07-reports-truth-sources.md](../developer/accounting-flows/07-reports-truth-sources.md) — detailed truth-source mapping
-- [docs/workflows/FLOW-INVENTORY.md](../workflows/FLOW-INVENTORY.md) — flow inventory (period close workflow reference)
+- [docs/flows/FLOW-INVENTORY.md](../flows/FLOW-INVENTORY.md) — flow inventory (period close workflow reference)
+- [docs/flows/reporting-export.md](../flows/reporting-export.md) — canonical reporting/export flow (behavioral entrypoint)
+- [docs/flows/accounting-period-close.md](../flows/accounting-period-close.md) — accounting period close flow
 - [erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/AGENTS.md](../../erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/AGENTS.md) — accounting module (source of journal truth)
 - [docs/modules/inventory.md](./inventory.md) — inventory module (stock data source)
 - [docs/modules/factory.md](./factory.md) — factory module (production data source)

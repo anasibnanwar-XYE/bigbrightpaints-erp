@@ -312,3 +312,4 @@ Login and refresh both require a `companyCode` parameter. The user must exist wi
 - [docs/ARCHITECTURE.md](../ARCHITECTURE.md) — overall architecture reference
 - [docs/SECURITY.md](../SECURITY.md) — security review policy and R2 escalation
 - [docs/RELIABILITY.md](../RELIABILITY.md) — reliability posture
+- [docs/flows/auth-identity.md](../flows/auth-identity.md) — canonical auth/identity flow (behavioral entrypoint)

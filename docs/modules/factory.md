@@ -426,6 +426,7 @@ Each packing request can create multiple FG batches and post multiple journals. 
 - [docs/modules/catalog-setup.md](catalog-setup.md) — catalog and setup readiness (production module)
 - [docs/modules/inventory.md](inventory.md) — stock truth, batches, dispatch execution
 - [docs/flows/FLOW-INVENTORY.md](../flows/FLOW-INVENTORY.md) — flow inventory (Manufacturing/Packing flow)
+- [docs/flows/manufacturing-packing.md](../flows/manufacturing-packing.md) — canonical manufacturing/packing flow (behavioral entrypoint)
 - [docs/modules/core-idempotency.md](core-idempotency.md) — shared idempotency infrastructure
 - [docs/ARCHITECTURE.md](../ARCHITECTURE.md) — architecture reference
 - [docs/CONVENTIONS.md](../CONVENTIONS.md) — documentation conventions

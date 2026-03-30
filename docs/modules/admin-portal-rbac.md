@@ -414,3 +414,4 @@ The `SecurityConfig` enforces: `ROLE_SUPER_ADMIN > ROLE_ADMIN`. This means super
 - [docs/ARCHITECTURE.md](../ARCHITECTURE.md) — overall architecture reference
 - [docs/SECURITY.md](../SECURITY.md) — security review policy
 - [docs/flows/FLOW-INVENTORY.md](../flows/FLOW-INVENTORY.md) — flow inventory
+- [docs/flows/tenant-admin-management.md](../flows/tenant-admin-management.md) — canonical tenant/admin management flow (behavioral entrypoint)

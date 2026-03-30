@@ -228,3 +228,5 @@ Onboarding is accessible only to `ROLE_SUPER_ADMIN` via `POST /api/v1/superadmin
 - [docs/RELIABILITY.md](../RELIABILITY.md) — reliability posture
 - [docs/adrs/ADR-006-portal-and-host-boundary-separation.md](../adrs/ADR-006-portal-and-host-boundary-separation.md) — portal/host boundary ADR
 - [docs/flows/FLOW-INVENTORY.md](../flows/FLOW-INVENTORY.md) — flow inventory including auth/identity and tenant/admin management flows
+- [docs/flows/auth-identity.md](../flows/auth-identity.md) — canonical auth/identity flow (behavioral entrypoint)
+- [docs/flows/tenant-admin-management.md](../flows/tenant-admin-management.md) — canonical tenant/admin management flow (behavioral entrypoint)

@@ -258,3 +258,4 @@ All legacy dealer finance aliases have been removed from `openapi.json` and the 
 - [core-security-error.md](core-security-error.md) — Security filter chain, access denial messages
 - [core-idempotency.md](core-idempotency.md) — Idempotency helpers
 - [docs/INDEX.md](../INDEX.md) — canonical documentation index
+- [docs/flows/invoice-dealer-finance.md](../flows/invoice-dealer-finance.md) — canonical invoice/dealer finance flow (behavioral entrypoint)
