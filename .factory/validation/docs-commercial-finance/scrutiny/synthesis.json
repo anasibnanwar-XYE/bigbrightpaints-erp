@@ -1,0 +1,71 @@
+{
+  "milestone": "docs-commercial-finance",
+  "round": 1,
+  "status": "fail",
+  "validatorsRun": {
+    "lint": {
+      "passed": true,
+      "command": "bash ci/lint-knowledgebase.sh && bash ci/check-enterprise-policy.sh && bash ci/check-architecture.sh && bash ci/check-orchestrator-layer.sh && bash scripts/guard_openapi_contract_drift.sh",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "N/A (docs-only milestone)",
+      "exitCode": 0
+    },
+    "test": {
+      "passed": true,
+      "command": "N/A (docs-only milestone)",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 2,
+    "passed": 1,
+    "failed": 1,
+    "failedFeatures": ["docs-commercial-invoice-lifecycle-finance-hosts"]
+  },
+  "blockingIssues": [
+    {
+      "featureId": "docs-commercial-invoice-lifecycle-finance-hosts",
+      "severity": "blocking",
+      "description": "Invoice Lifecycle States table in docs/modules/invoice.md lists fictitious statuses (SETTLED, CLOSED) and omits real statuses (PARTIAL, VOID, REVERSED). The actual InvoiceSettlementPolicy.InvoiceStatus enum contains: DRAFT, ISSUED, PARTIAL, PAID, VOID, REVERSED. Per CONVENTIONS.md §1.2: 'Do not invent behavior.'"
+    },
+    {
+      "featureId": "docs-commercial-invoice-lifecycle-finance-hosts",
+      "severity": "blocking",
+      "description": "Settlement Behavior section references non-existent InvoiceService.settleInvoice() method. Actual settlement flow uses InvoiceSettlementPolicy.applyPayment() and InvoiceSettlementPolicy.applySettlement()."
+    },
+    {
+      "featureId": "docs-commercial-invoice-lifecycle-finance-hosts",
+      "severity": "blocking",
+      "description": "Settlement Behavior section references non-existent AccountingFacade.postPaymentJournal() method. No such method exists anywhere in the codebase. InvoiceService does not import AccountingFacade at all."
+    },
+    {
+      "featureId": "docs-commercial-invoice-lifecycle-finance-hosts",
+      "severity": "blocking",
+      "description": "Key Services table lists SettlementApprovalDecision and SettlementApprovalReasonCode as independent services. These are records/enums within InvoiceSettlementPolicy, not standalone services."
+    },
+    {
+      "featureId": "docs-commercial-invoice-lifecycle-finance-hosts",
+      "severity": "blocking",
+      "description": "Cross-Module Seams table attributes AccountingFacade.postSalesJournal() to InvoiceService, but it is actually called by SalesFulfillmentService (which explicitly disables it when issueInvoice=true). InvoiceService does not call AccountingFacade."
+    }
+  ],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Add guidance: docs-worker must read the full service class (not just policy/helper classes) before documenting lifecycle methods and cross-module seams. The invoice.md packet's inaccuracies stem from reading InvoiceSettlementPolicy but not InvoiceService in full.",
+      "evidence": "Feature docs-commercial-invoice-lifecycle-finance-hosts fabricated InvoiceService.settleInvoice() and AccountingFacade.postPaymentJournal() because InvoiceService.java was not read in full during the documentation session.",
+      "isSystemic": false
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "Add invoice-specific enum values to .factory/library/ to help workers avoid confusing sales vs invoice statuses",
+      "reason": "This would create a maintenance burden — the canonical packet (docs/modules/invoice.md) should itself be the truth source once fixed. Adding library entries for every enum is not scalable."
+    }
+  ],
+  "previousRound": null
+}
