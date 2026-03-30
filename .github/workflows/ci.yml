@@ -560,7 +560,7 @@ jobs:
 
       - name: Download shard coverage
         if: needs.pr-risk-router.outputs.run_changed_coverage == 'true'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: pr-jacoco-*
           path: artifacts/pr-jacoco
