@@ -227,16 +227,38 @@ The flow is complete when:
 
 ---
 
-## 8. Security Considerations
+## 8. Event/Listener Boundaries
+
+The reporting/export flow consumes data from upstream modules and enforces an approval gate on sensitive exports:
+
+| Event | Listener | Phase | Effect on Reporting |
+| --- | --- | --- | --- |
+| `JournalEntryPostedEvent` | Report queries | Read-time | Financial reports (trial balance, P&L, balance sheet) read journal entries. For open periods, they read live data; for closed periods, they may read snapshots. This means report accuracy depends on journal posting completion. |
+| Export request status change | Export audit | Sync | Export download activity is audit-logged for compliance. Approve/reject actions are tracked. |
+
+**Access-control boundaries:**
+
+| Boundary | Description |
+| --- | --- |
+| **Export approval gate** | If system setting `exportApprovalRequired` is enabled, exports must be APPROVED before download. ADMIN approves/rejects. If disabled, exports are downloadable even in REJECTED status (with informational message). |
+| **RBAC** | Reports require ADMIN or ACCOUNTING roles. |
+| **Statement PDFs bypass approval** | Dealer and supplier statement PDFs, aging PDFs bypass the approval workflow entirely—they are directly downloadable by ADMIN. |
+| **Split aging ownership** | `GET /api/v1/reports/aged-debtors` (DealerLedgerRepository) vs `GET /api/v1/reports/aging/receivables` (JournalLineRepository) may return inconsistent data—this is a known architectural split. |
+
+**Key boundary note:** Reports are consumers of data created by other flows. For closed periods, reports read snapshot data which is stable. For open periods, reports read live journals which can change. This is a fundamental source-of-truth distinction that affects report interpretation—users should understand whether they're viewing stable closed-period data or dynamic open-period data.
+
+---
+
+## 9. Security Considerations
 
 - **RBAC** — ADMIN and ACCOUNTING roles required
 - **Company scoping** — All reports scoped to tenant
 - **Export audit logging** — Download activity logged
-- **Export approval gate** — Configurable approval requirement
+- **Export approval gate** — Configurable approval requirement (see Event/Listener section)
 
 ---
 
-## 9. Related Documentation
+## 10. Related Documentation
 
 - [docs/modules/reports.md](../modules/reports.md) — Reports module canonical packet
 - [docs/modules/inventory.md](../modules/inventory.md) — Inventory module

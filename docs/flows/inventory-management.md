@@ -250,15 +250,37 @@ The flow is complete when:
 
 ---
 
-## 8. Security Considerations
+## 8. Event/Listener Boundaries
+
+The inventory management flow is the primary source of inventory events that trigger accounting side effects:
+
+| Event | Listener | Phase | Effect on Inventory |
+| --- | --- | --- | --- |
+| `InventoryMovementEvent` | `InventoryAccountingEventListener` | `AFTER_COMMIT` | Inventory movements (adjustments, dispatch, consumption, opening stock) trigger automatic inventory valuation journal entries in accounting if `erp.inventory.accounting.events.enabled=true` (default: true). This is the primary event bridge that connects inventory truth to accounting truth. If disabled, movements silently skip accounting side effects, causing incomplete period-end balances. |
+| `InventoryValuationChangedEvent` | `InventoryAccountingEventListener` | `AFTER_COMMIT` | Triggers accounting entries for valuation changes when inventory is adjusted or consumed. |
+| `InventoryMovementEvent` | `InventoryAuditListener` | `AFTER_COMMIT` | Creates audit trail markers for inventory movements, enabling traceability during reconciliation. |
+
+**Key boundary note:** The inventory module is the source of truth for stock movements. The `InventoryAccountingEventListener` is the primary bridge to accounting—if the feature flag is disabled, the accounting side effects are silently skipped, which can cause period-end inventory balances to be incomplete without any error at the inventory layer. This is a "fail-open" behavior that operators should be aware of.
+
+Access-control boundaries:
+- **OPERATIONAL_DISPATCH** — Dispatch confirmation requires this specific role predicate, not generic ADMIN
+- **RBAC by operation** — Adjustments require ADMIN or ACCOUNTING roles; dispatch requires OPERATIONAL_DISPATCH
+- **Idempotency required** — Adjustments and packing require idempotency key to prevent duplicates
+
+See [orchestrator.md](../modules/orchestrator.md) for the full event bridge map and configuration-guarded risks.
+
+---
+
+## 9. Security Considerations
 
 - **RBAC by operation** — Adjustments require ADMIN or ACCOUNTING; dispatch requires OPERATIONAL_DISPATCH
 - **Accounting metadata visibility** — Some stock data filtered for non-accounting roles
 - **Idempotency required** — Adjustments require idempotency key to prevent duplicates
+- **Company scoping** — All inventory operations scoped to tenant via JWT
 
 ---
 
-## 9. Related Documentation
+## 10. Related Documentation
 
 - [docs/modules/inventory.md](../modules/inventory.md) — Inventory module canonical packet
 - [docs/modules/factory.md](../modules/factory.md) — Factory module for production batches
@@ -268,7 +290,7 @@ The flow is complete when:
 
 ---
 
-## 10. Open Decisions
+## 11. Open Decisions
 
 | Decision | Status | Notes |
 | --- | --- | --- |

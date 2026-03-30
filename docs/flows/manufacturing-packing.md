@@ -213,7 +213,20 @@ The flow is complete when:
 
 ---
 
-## 8. Security Considerations
+## 8. Event/Listener Boundaries
+
+The manufacturing/packing flow intersects with inventory events that trigger accounting side effects:
+
+| Event | Listener | Phase | Effect on Manufacturing |
+| --- | --- | --- | --- |
+| `InventoryMovementEvent` | `InventoryAccountingEventListener` | `AFTER_COMMIT` | When packing consumes raw materials and creates finished-good batches, this event triggers automatic inventory valuation journal entries in accounting if `erp.inventory.accounting.events.enabled=true` (default: true). This is a material coupling: raw material consumption posts DR WIP / CR raw material inventory, and FG receipt posts DR FG valuation / CR WIP. If the toggle is disabled, packing silently skips accounting side effects. |
+| `InventoryValuationChangedEvent` | `InventoryAccountingEventListener` | `AFTER_COMMIT` | Triggers accounting entries for raw material and finished goods valuation changes during packing. |
+
+**Key boundary note:** The packing operation is the transition point from factory to inventory. The `InventoryAccountingEventListener` bridges packing operations to accounting journals. This bridge is conditional on the feature flag `erp.inventory.accounting.events.enabled`. See [orchestrator.md](../modules/orchestrator.md) for the full event bridge map and configuration-guarded risks.
+
+---
+
+## 9. Security Considerations
 
 - **RBAC for packing** — ADMIN, FACTORY, and ACCOUNTING can record packing
 - **Admin-only for packaging mappings** — Only ADMIN can create/update/delete mappings
@@ -221,7 +234,7 @@ The flow is complete when:
 
 ---
 
-## 9. Related Documentation
+## 10. Related Documentation
 
 - [docs/modules/factory.md](../modules/factory.md) — Factory module canonical packet
 - [docs/modules/inventory.md](../modules/inventory.md) — Inventory module for stock truth
@@ -230,7 +243,7 @@ The flow is complete when:
 
 ---
 
-## 10. Open Decisions
+## 11. Open Decisions
 
 | Decision | Status | Notes |
 | --- | --- | --- |

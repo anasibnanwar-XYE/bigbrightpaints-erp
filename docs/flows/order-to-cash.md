@@ -263,16 +263,30 @@ The flow is complete when:
 
 ---
 
-## 8. Security Considerations
+## 8. Event/Listener Boundaries
 
-- **RBAC enforcement** — Sales vs Dealer vs Admin vs Accounting roles enforced per endpoint
-- **Dealer isolation** — `/api/v1/dealer-portal/**` auto-scoped to authenticated dealer
-- **Credit checks** — Credit limit enforcement at order creation and confirmation
-- **Company scoping** — All operations scoped to tenant via `companyCode` from JWT
+The O2C flow publishes domain events that can trigger downstream processing:
+
+| Event | Listener | Phase | Effect on O2C |
+| --- | --- | --- | --- |
+| `SalesOrderCreatedEvent` | `OrderAutoApprovalListener` | `AFTER_COMMIT` | When auto-approval is enabled (`SystemSettingsService.isAutoApprovalEnabled()`), orders are automatically approved after creation. This bypasses manual approval and immediately triggers inventory reservation. If disabled, orders stay in DRAFT until manually confirmed. |
+| `SalesOrderCreatedEvent` | `SalesOrderCreatedAuditListener` | `AFTER_COMMIT` | Creates audit trail marker for order creation, enabling audit verification during period close. |
+
+**Key boundary note:** Only `SalesOrderCreatedEvent` is published. Order confirmation, dispatch, and cancellation do NOT emit domain events—they operate via direct service calls. This means downstream modules (inventory, accounting, invoice) are triggered synchronously during the HTTP request, not asynchronously via events. The `OrderAutoApprovalListener` is the only material event listener that affects O2C behavior, and it is conditional on a system setting.
 
 ---
 
-## 9. Related Documentation
+## 9. Security Considerations
+
+- **RBAC enforcement** — Sales vs Dealer vs Admin vs Accounting roles enforced per endpoint
+- **Dealer isolation** — `/api/v1/dealer-portal/**` auto-scoped to authenticated dealer via JWT claim, no cross-dealer access
+- **Credit checks** — Credit limit enforcement at order creation and confirmation
+- **Company scoping** — All operations scoped to tenant via `companyCode` from JWT
+- **OPERATIONAL_DISPATCH role** — Dispatch confirmation requires `OPERATIONAL_DISPATCH` predicate, not generic role
+
+---
+
+## 10. Related Documentation
 
 - [docs/modules/sales.md](../modules/sales.md) — Sales module canonical packet
 - [docs/modules/invoice.md](../modules/invoice.md) — Invoice module for invoice lifecycle
@@ -282,7 +296,7 @@ The flow is complete when:
 
 ---
 
-## 10. Open Decisions
+## 11. Open Decisions
 
 | Decision | Status | Notes |
 | --- | --- | --- |
