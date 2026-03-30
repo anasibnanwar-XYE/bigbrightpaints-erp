@@ -75,3 +75,23 @@ Accounting enforces strict immutability for posted journal entries:
 - Period close uses a maker-checker workflow, but reopen is super-admin-only.
 - Some import paths (Tally XML) have limited error recovery.
 - Partner ledgers (`DealerLedgerEntry`, `SupplierLedgerEntry`) track per-partner financial position but are derived from journal entries rather than independently posted.
+
+## Deprecated and Non-Canonical Surfaces
+
+### Tally XML Import - Limited Support
+
+The `TallyImportController` at `/api/v1/migration/tally/import` provides Tally XML compatibility for data migration. However:
+
+- **Limited error recovery**: Failed imports may leave partial data without clear rollback paths
+- **No idempotency**: Re-submitting the same XML file may create duplicate entries
+- **Canonical replacement**: For new data imports, use the CSV opening balance import (`OpeningBalanceImportController` at `/api/v1/migration/opening-balance/import`) which has better validation and error handling
+
+**Recommendation**: Use CSV opening balance import for new migrations. Tally XML import is retained for legacy compatibility only.
+
+### Legacy Period Reopen Behavior
+
+Period reopen is currently super-admin-only with no maker-checker workflow. This differs from period close which uses maker-checker. There is no plans to add maker-checker to period reopen - this is by design rather than incomplete implementation.
+
+### Partner Ledger Derivation
+
+`DealerLedgerEntry` and `SupplierLedgerEntry` are derived from journal entries rather than being independently posted. There is no separate AR/AP posting surface - all receivables/payables truth flows through journal entries. This is the canonical design - there is no separate non-canonical path being maintained.

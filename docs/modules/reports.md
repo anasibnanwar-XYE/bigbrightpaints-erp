@@ -239,6 +239,50 @@ The following areas have known correctness or consistency concerns:
 
 ---
 
+## Deprecated and Non-Canonical Surfaces
+
+### Deprecated: Audit Digest CSV Export
+
+The audit digest CSV export functionality is **deprecated**. While still available:
+
+- **Endpoint**: May still be accessible via legacy export paths
+- **Replacement**: Use the standard export workflow (`POST /api/v1/exports/request` → `GET /api/v1/exports/{requestId}/download`) with appropriate report types
+- **No replacement**: The audit digest CSV specifically is not being actively maintained; use alternative audit trails for compliance needs
+
+### Non-Canonical: Cash Flow Report
+
+The cash flow report (`GET /api/v1/reports/cash-flow`) is the **most non-canonical path** in the reporting module because:
+
+- **No date filtering**: Does not support the same date/period parameters as other financial reports
+- **No snapshot branch**: Always reads live data, never from closed-period snapshots
+- **Heuristic classification**: Relies on pattern matching to categorize transactions rather than explicit cash flow tagging in journal lines
+
+**Recommendation**: Be aware that cash flow data may include transactions outside the intended period and may miscategorize transactions. For accurate cash flow reporting, explicit cash flow tagging in journal lines would be needed.
+
+### Non-Canonical: Account Statement
+
+The account statement endpoint (`GET /api/v1/reports/account-statement`) has **naming drift**:
+
+- **Current behavior**: Only returns dealer-only balance rollup
+- **Name suggests**: Fuller statement capability (like the full `StatementService` engine)
+- **Replacement**: For dealer statements, use `/api/v1/portal/finance/statements`. For supplier statements, use `/api/v1/portal/finance/supplier-statements`
+- **No internal replacement**: The account-statement endpoint itself is not being enhanced to full statement capability
+
+### Non-Canonical: Aging Report Split
+
+Aging reports split across **two different ownership paths**:
+
+| Endpoint | Service | Owner |
+| --- | --- | --- |
+| `GET /api/v1/reports/aged-debtors` | `AgedDebtorsReportQueryService` | Dealer-centric |
+| `GET /api/v1/reports/aging/receivables` | `AgingReportService` | Account-centric |
+
+**Issue**: These may return inconsistent data due to different underlying queries
+- **Canonical replacement**: Choose one path and migrate; currently both are maintained
+- **No immediate replacement**: Either endpoint may be used, but be aware of potential inconsistencies
+
+---
+
 ## Related Documentation
 
 - [docs/developer/accounting-flows/07-reports-truth-sources.md](../developer/accounting-flows/07-reports-truth-sources.md) — detailed truth-source mapping
