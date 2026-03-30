@@ -11,6 +11,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -23,6 +24,7 @@ import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.shared.dto.PageResponse;
 
+@Tag("critical")
 class DefaultAuditAccessServiceTest {
 
   @Test
@@ -256,6 +258,30 @@ class DefaultAuditAccessServiceTest {
         .listTransactions(
             LocalDate.of(2026, 3, 1), LocalDate.of(2026, 3, 31), "ACCOUNTING", "POSTED", "JE-17", 0, 50);
     verify(transactionReadAdapter).transactionDetail(17L);
+  }
+
+  @Test
+  void queryPlatformFeed_delegatesToAuditLogReadAdapter() {
+    CompanyContextService companyContextService = mock(CompanyContextService.class);
+    AuditLogReadAdapter auditLogReadAdapter = mock(AuditLogReadAdapter.class);
+    BusinessAuditReadAdapter businessAuditReadAdapter = mock(BusinessAuditReadAdapter.class);
+    AccountingTransactionAuditReadAdapter transactionReadAdapter =
+        mock(AccountingTransactionAuditReadAdapter.class);
+    DefaultAuditAccessService service =
+        new DefaultAuditAccessService(
+            companyContextService, auditLogReadAdapter, businessAuditReadAdapter, transactionReadAdapter);
+    AuditFeedFilter filter =
+        new AuditFeedFilter(null, null, null, null, null, null, null, null, 2, 25);
+    AuditFeedSlice feed = new AuditFeedSlice(List.of(), 0);
+    when(auditLogReadAdapter.queryPlatformFeed(filter)).thenReturn(feed);
+
+    PageResponse<AuditFeedItemDto> page = service.queryPlatformFeed(filter);
+
+    assertThat(page.content()).isEmpty();
+    assertThat(page.page()).isEqualTo(2);
+    assertThat(page.size()).isEqualTo(25);
+    assertThat(page.totalElements()).isZero();
+    verify(auditLogReadAdapter).queryPlatformFeed(filter);
   }
 
   @Test

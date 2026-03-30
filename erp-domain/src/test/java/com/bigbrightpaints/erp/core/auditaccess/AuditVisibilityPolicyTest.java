@@ -11,11 +11,13 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import com.bigbrightpaints.erp.core.security.AuthScopeService;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 
+@Tag("critical")
 class AuditVisibilityPolicyTest {
 
   @Test
@@ -48,6 +50,26 @@ class AuditVisibilityPolicyTest {
 
     assertThat(companyCodes).containsExactly(Map.entry(7L, "TENANT-A"));
     verify(companyRepository).findCompanyCodesByIdIn(Set.of(7L, 8L));
+  }
+
+  @Test
+  void resolveCompanyCodes_returnsEmptyMapWhenNoIdsAreRequested() {
+    CompanyRepository companyRepository = mock(CompanyRepository.class);
+    AuthScopeService authScopeService = mock(AuthScopeService.class);
+    AuditVisibilityPolicy policy = new AuditVisibilityPolicy(companyRepository, authScopeService);
+
+    assertThat(policy.resolveCompanyCodes(null)).isEmpty();
+    assertThat(policy.resolveCompanyCodes(Set.of())).isEmpty();
+    verify(companyRepository, never()).findCompanyCodesByIdIn(Set.of());
+  }
+
+  @Test
+  void isAccountingModule_matchesIgnoringCase() {
+    AuditVisibilityPolicy policy = new AuditVisibilityPolicy(mock(CompanyRepository.class), mock(AuthScopeService.class));
+
+    assertThat(policy.isAccountingModule("ACCOUNTING")).isTrue();
+    assertThat(policy.isAccountingModule("accounting")).isTrue();
+    assertThat(policy.isAccountingModule("sales")).isFalse();
   }
 
   private CompanyRepository.CompanyCodeProjection projection(Long id, String code) {

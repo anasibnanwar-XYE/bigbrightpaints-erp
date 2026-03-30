@@ -52,8 +52,7 @@ public class AuditVisibilityPolicy {
       return Map.of();
     }
     Map<Long, String> companyCodes = new LinkedHashMap<>();
-    for (CompanyRepository.CompanyCodeProjection projection :
-        companyRepository.findCompanyCodesByIdIn(companyIds)) {
+    for (CompanyRepository.CompanyCodeProjection projection : companyRepository.findCompanyCodesByIdIn(companyIds)) {
       if (projection.getId() == null || !StringUtils.hasText(projection.getCode())) {
         continue;
       }
@@ -72,4 +71,5 @@ public class AuditVisibilityPolicy {
       String prefix) {
     return cb.or(cb.equal(path, prefix), cb.like(path, prefix + "/%"));
   }
+
 }

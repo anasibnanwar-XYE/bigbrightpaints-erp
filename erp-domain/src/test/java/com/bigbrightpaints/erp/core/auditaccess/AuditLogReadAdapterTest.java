@@ -9,6 +9,7 @@ import static org.mockito.Mockito.when;
 import java.util.HashMap;
 import java.util.Map;
 
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
@@ -17,6 +18,7 @@ import org.springframework.data.jpa.domain.Specification;
 import com.bigbrightpaints.erp.core.audit.AuditLog;
 import com.bigbrightpaints.erp.core.audit.AuditLogRepository;
 
+@Tag("critical")
 class AuditLogReadAdapterTest {
 
   @Test
@@ -66,6 +68,21 @@ class AuditLogReadAdapterTest {
     assertThat(adapter.referenceNumberFor(orderAuditLog)).isEqualTo("SO-2026-0001");
     assertThat(adapter.entityIdFor(referenceAuditLog)).isEqualTo("REF-2026-0001");
     assertThat(adapter.referenceNumberFor(referenceAuditLog)).isEqualTo("REF-2026-0001");
+  }
+
+  @Test
+  void entityResolvers_handleNullMetadataWithoutThrowing() {
+    AuditLogReadAdapter adapter =
+        new AuditLogReadAdapter(
+            mock(AuditLogRepository.class), new AuditEventClassifier(), mock(AuditVisibilityPolicy.class));
+    AuditLog auditLog = new AuditLog();
+    auditLog.setMetadata(null);
+    auditLog.setResourceType(" JOURNAL_ENTRY ");
+    auditLog.setResourceId(" 17 ");
+
+    assertThat(adapter.entityTypeFor(auditLog)).isEqualTo("JOURNAL_ENTRY");
+    assertThat(adapter.entityIdFor(auditLog)).isEqualTo("17");
+    assertThat(adapter.referenceNumberFor(auditLog)).isEqualTo("17");
   }
 
   @Test

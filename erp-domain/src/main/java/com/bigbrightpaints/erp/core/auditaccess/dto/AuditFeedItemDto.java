@@ -23,4 +23,5 @@ public record AuditFeedItemDto(
     String requestMethod,
     String requestPath,
     String traceId,
-    Map<String, String> metadata) {}
+    Map<String, String> metadata) {
+}

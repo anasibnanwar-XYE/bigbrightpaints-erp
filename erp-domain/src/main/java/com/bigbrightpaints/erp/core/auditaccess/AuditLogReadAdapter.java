@@ -350,8 +350,7 @@ public class AuditLogReadAdapter {
 
   private Set<AuditEvent> categoryEvents(String normalizedModule) {
     return switch (normalizedModule) {
-      case "AUTH" ->
-          EnumSet.of(
+      case "AUTH" -> EnumSet.of(
               AuditEvent.LOGIN_SUCCESS,
               AuditEvent.LOGIN_FAILURE,
               AuditEvent.LOGOUT,
@@ -366,11 +365,11 @@ public class AuditLogReadAdapter {
               AuditEvent.MFA_SUCCESS,
               AuditEvent.MFA_FAILURE,
               AuditEvent.MFA_RECOVERY_CODE_USED);
-      case "SECURITY" ->
-          EnumSet.of(
+
+      case "SECURITY" -> EnumSet.of(
               AuditEvent.ACCESS_GRANTED, AuditEvent.ACCESS_DENIED, AuditEvent.SECURITY_ALERT);
-      case "ADMIN" ->
-          EnumSet.of(
+
+      case "ADMIN" -> EnumSet.of(
               AuditEvent.USER_CREATED,
               AuditEvent.USER_UPDATED,
               AuditEvent.USER_DELETED,
@@ -382,29 +381,30 @@ public class AuditLogReadAdapter {
               AuditEvent.ROLE_ASSIGNED,
               AuditEvent.ROLE_REMOVED,
               AuditEvent.CONFIGURATION_CHANGED);
+
       case "ACCOUNTING" -> auditEventClassifier.accountingEventTypes();
-      case "DATA" ->
-          EnumSet.of(
+
+      case "DATA" -> EnumSet.of(
               AuditEvent.DATA_CREATE,
               AuditEvent.DATA_READ,
               AuditEvent.DATA_UPDATE,
               AuditEvent.DATA_DELETE,
               AuditEvent.DATA_EXPORT,
               AuditEvent.SENSITIVE_DATA_ACCESSED);
-      case "COMPLIANCE" ->
-          EnumSet.of(
+
+      case "COMPLIANCE" -> EnumSet.of(
               AuditEvent.AUDIT_LOG_ACCESSED,
               AuditEvent.AUDIT_LOG_EXPORTED,
               AuditEvent.COMPLIANCE_CHECK,
               AuditEvent.DATA_RETENTION_ACTION);
-      case "SYSTEM" ->
-          EnumSet.of(
+
+      case "SYSTEM" -> EnumSet.of(
               AuditEvent.SYSTEM_STARTUP,
               AuditEvent.SYSTEM_SHUTDOWN,
               AuditEvent.INTEGRATION_SUCCESS,
               AuditEvent.INTEGRATION_FAILURE);
-      case "BUSINESS" ->
-          EnumSet.of(
+
+      case "BUSINESS" -> EnumSet.of(
               AuditEvent.REFERENCE_GENERATED,
               AuditEvent.ORDER_NUMBER_GENERATED,
               AuditEvent.DISPATCH_CONFIRMED);

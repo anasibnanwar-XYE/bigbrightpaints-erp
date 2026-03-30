@@ -15,7 +15,8 @@ import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 
 final class AccountingApplicationExceptionResponses {
 
-  private AccountingApplicationExceptionResponses() {}
+  private AccountingApplicationExceptionResponses() {
+  }
 
   static ResponseEntity<ApiResponse<Map<String, Object>>> badRequest(
       ApplicationException ex, HttpServletRequest request) {
