@@ -93,10 +93,10 @@ All catalog/setup endpoints live under a single host prefix:
 | `itemClass` | String (required) | `FINISHED_GOOD`, `RAW_MATERIAL`, or `PACKAGING_RAW_MATERIAL` |
 | `color` | String (optional) | Default colour/variant |
 | `size` | String (optional) | Size label |
-| `unitOfMeasure` | String (optional) | Unit (e.g. `KG`, `LTR`, `UNIT`) |
-| `hsnCode` | String (optional) | HSN tax code |
+| `unitOfMeasure` | String (required) | Unit (e.g. `KG`, `LTR`, `UNIT`). `@NotBlank` enforced. |
+| `hsnCode` | String (required) | HSN tax code. `@NotBlank` enforced. |
 | `basePrice` | BigDecimal (optional) | Base selling price |
-| `gstRate` | BigDecimal (optional) | GST percentage |
+| `gstRate` | BigDecimal (required) | GST percentage. `@NotNull`, `@DecimalMin(0.00)`, `@DecimalMax(100.00)` enforced. |
 | `minDiscountPercent` | BigDecimal (optional) | Minimum discount percentage |
 | `minSellingPrice` | BigDecimal (optional) | Floor selling price |
 | `metadata` | Map\<String, Object\> (optional) | JSONB metadata including account assignments |
@@ -112,11 +112,11 @@ All catalog/setup endpoints live under a single host prefix:
 | `brandId` | Long | Owning brand |
 | `brandName` | String | Brand name |
 | `brandCode` | String | Brand code |
-| `productName` | String | Display name |
-| `skuCode` | String | Canonical SKU code |
+| `name` | String | Product display name |
+| `code` | String | Auto-generated SKU code |
 | `itemClass` | String | `FINISHED_GOOD`, `RAW_MATERIAL`, or `PACKAGING_RAW_MATERIAL` |
-| `defaultColour` | String (nullable) | Default colour |
-| `sizeLabel` | String (nullable) | Size label |
+| `color` | String (nullable) | Default colour |
+| `size` | String (nullable) | Size label |
 | `unitOfMeasure` | String (nullable) | Unit |
 | `hsnCode` | String (nullable) | HSN code |
 | `basePrice` | BigDecimal | Base price |
@@ -260,7 +260,7 @@ SKU readiness is the cross-cutting mechanism that tells downstream flows whether
 | Stage | Purpose | Key Blockers |
 | --- | --- | --- |
 | **Catalog** | Product master exists and is active | `PRODUCT_MASTER_MISSING`, `PRODUCT_INACTIVE` |
-| **Inventory** | Stock mirror (FG or RM) exists with required accounts | `FINISHED_GOOD_MIRROR_MISSING`, `RAW_MATERIAL_MIRROR_MISSING`, `*_ACCOUNT_MISSING` |
+| **Inventory** | Stock mirror (FG or RM) exists with required accounts | `FINISHED_GOOD_MIRROR_MISSING`, `RAW_MATERIAL_MIRROR_MISSING`, `FINISHED_GOOD_VALUATION_ACCOUNT_MISSING`, `FINISHED_GOOD_COGS_ACCOUNT_MISSING`, `FINISHED_GOOD_REVENUE_ACCOUNT_MISSING`, `FINISHED_GOOD_TAX_ACCOUNT_MISSING`, `RAW_MATERIAL_INVENTORY_ACCOUNT_MISSING`, `RAW_MATERIAL_CATEGORY_REQUIRED`, `FINISHED_GOOD_CATEGORY_REQUIRED` |
 | **Production** | Ready for manufacturing (FG only) | Catalog blockers + inventory blockers + `WIP_ACCOUNT_MISSING`, `LABOR_APPLIED_ACCOUNT_MISSING`, `OVERHEAD_APPLIED_ACCOUNT_MISSING` |
 | **Packing** | Ready for packing operations | For FG: production blockers + `PACKAGING_SIZE_MISSING` or `PACKAGING_MAPPING_MISSING`. For PKG: inventory blockers. |
 | **Sales** | Ready for sales order placement | For FG: catalog + inventory blockers + `NO_FINISHED_GOOD_BATCH_STOCK`, `DISCOUNT_ACCOUNT_MISSING`, `GST_OUTPUT_ACCOUNT_MISSING` or account mismatch. RM/PKG items: `RAW_MATERIAL_SKU_NOT_SALES_ORDERABLE`. |
@@ -421,16 +421,17 @@ For RM/PKG items, the system seeds a raw-material mirror with the inventory acco
 
 ## 10. Immutability and Constraint Rules
 
-The following fields are **immutable after creation** — attempting to change them raises `BUSINESS_INVALID_STATE`:
+The following fields are **immutable after creation** — attempting to change them via `CatalogItemUpdateCommand` raises `BUSINESS_INVALID_STATE`:
 
 | Field | Rationale |
 | --- | --- |
 | `brandId` | Brand determines SKU code structure; changing it would break SKU identity |
 | `itemClass` | Item class determines which inventory mirror type is needed (FG vs RM vs PKG) |
-| `defaultColour` (color/spec) | Part of SKU identity |
-| `sizeLabel` (size) | Part of SKU identity and packaging mapping |
+| `color` | Part of SKU identity |
+| `size` | Part of SKU identity and packaging mapping |
 | `unitOfMeasure` | Part of SKU identity |
-| `skuCode` | Canonical identifier used across all modules |
+
+Additionally, `skuCode` is structurally immutable: it is auto-generated on creation and is **not present** in `CatalogItemUpdateCommand`, so it cannot be changed through the update endpoint. No runtime guard is needed because the field is simply absent from the mutation DTO.
 
 To change any of these, create a new product and deactivate the old one.
 
