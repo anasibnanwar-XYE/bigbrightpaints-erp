@@ -12,10 +12,10 @@ This packet documents the **invoice module** and the **finance host ownership** 
 | --- | --- | --- |
 | Invoice lifecycle (create, issue, PDF, status) | `invoice` | `InvoiceService`, `InvoiceController`, `InvoicePdfService` |
 | Invoice number sequencing | `invoice` | `InvoiceNumberService` |
-| Invoice settlement | `invoice` | `InvoiceSettlementPolicy`, `SettlementApprovalDecision` |
+| Invoice settlement | `invoice` | `InvoiceSettlementPolicy` (includes `SettlementApprovalDecision`, `SettlementApprovalReasonCode` value types) |
 | Dealer self-service finance views | `sales` | `DealerPortalController`, `DealerPortalService` |
 | Internal admin/accounting finance views | `portal` | `PortalFinanceController` |
-| Accounting AR/journal posting for invoices | `accounting` | `AccountingFacade.postSalesJournal()` |
+| Accounting AR/journal posting for invoices | `accounting` | Invoice creation triggers accounting via `InvoiceService` → `AccountingService` (not directly via AccountingFacade) |
 
 ---
 
@@ -95,24 +95,24 @@ Sales Order → Confirm → Dispatch → Fulfillment (issueInvoice=true) → Inv
 | --- | --- | --- |
 | `DRAFT` | Initial creation (rare, usually skipped) | Invoice is being prepared |
 | `ISSUED` | Created during `SalesFulfillmentService.fulfill()` with `issueInvoice=true` | Invoice is active and payable |
-| `PAID` | Manual settlement via `InvoiceService.settleInvoice()` | Invoice amount received |
-| `SETTLED` | Automatic via `InvoiceSettlementPolicy` when paid amount >= due | Full settlement recorded |
-| `CLOSED` | Manual or automatic after settlement | Invoice lifecycle complete |
+| `PARTIAL` | When payment is applied but outstanding amount remains | Partial payment recorded |
+| `PAID` | When outstanding amount reaches zero via `InvoiceSettlementPolicy.applyPayment()` / `applySettlement()` | Invoice fully paid |
+| `VOID` | Manual void via `InvoiceSettlementPolicy.voidInvoice()` | Invoice cancelled/invalid |
+| `REVERSED` | Manual reversal (via reversePayment) | Payment reversed |
 
 **Notes**:
 - The invoice module does **not** currently support automatic payment reconciliation. Settlements are recorded manually via admin operations.
 - Invoice status transitions are not enforced by a state machine — status is a mutable field.
-- The accounting module receives AR/revenue journals at invoice issuance time via `AccountingFacade.postSalesJournal()`.
+- The accounting module receives AR/revenue journals at invoice issuance time via internal `AccountingService` (not directly via AccountingFacade).
 
 ### Key Services
 
 | Service | Responsibility |
 | --- | --- |
-| `InvoiceService` | Core CRUD, status management, settlement |
+| `InvoiceService` | Core CRUD, invoice issuance |
 | `InvoiceNumberService` | Generates sequential invoice numbers |
 | `InvoicePdfService` | Generates PDF for invoice download |
-| `InvoiceSettlementPolicy` | Determines settlement behavior and approval requirements |
-| `SettlementApprovalDecision`, `SettlementApprovalReasonCode` | Settlement approval logic |
+| `InvoiceSettlementPolicy` | Settlement logic including `applyPayment()`, `applySettlement()`, `applySettlementWithOverride()`; contains value types `SettlementApprovalDecision` and `SettlementApprovalReasonCode` |
 
 ---
 
@@ -120,13 +120,13 @@ Sales Order → Confirm → Dispatch → Fulfillment (issueInvoice=true) → Inv
 
 Settlement in the invoice module operates on the following model:
 
-1. **Payment recording** — An admin or accounting user records a payment against an invoice via `InvoiceService.settleInvoice()`.
+1. **Payment recording** — An admin or accounting user records a payment against an invoice via `InvoiceSettlementPolicy.applyPayment()` or `applySettlement()`.
 
 2. **Settlement evaluation** — The `InvoiceSettlementPolicy` evaluates whether the paid amount satisfies the invoice:
-   - If paid amount >= due amount → status transitions to `SETTLED`
-   - If paid amount < due amount → status remains `ISSUED` with partial payment tracked
+   - If paid amount >= due amount → status transitions to `PAID`
+   - If paid amount < due amount → status transitions to `PARTIAL` with partial payment tracked
 
-3. **Accounting impact** — Settlement triggers accounting entries via `AccountingFacade.postPaymentJournal()` (AR reduction, bank/cash increase).
+3. **Accounting impact** — Settlement is handled by the accounting module via internal services (`SettlementService`, `AccountingService`). The invoice module does not directly invoke `AccountingFacade` for settlement.
 
 4. **No automatic reconciliation** — The system does not currently match payments to invoices automatically. Manual settlement is required.
 
@@ -170,7 +170,7 @@ Aging buckets are typically:
 
 Invoice list fields include:
 - Invoice number, date, due date
-- Status (ISSUED, PAID, SETTLED, CLOSED)
+- Status (DRAFT, ISSUED, PARTIAL, PAID, VOID, REVERSED)
 - Total amount, outstanding amount
 - PDF download link (for own invoices only)
 
@@ -230,9 +230,10 @@ All legacy dealer finance aliases have been removed from `openapi.json` and the 
 
 | Seam | Modules Involved | Boundary Behavior |
 | --- | --- | --- |
-| Invoice creation | Sales → Invoice | `SalesFulfillmentService.fulfill(issueInvoice=true)` calls `InvoiceService.createInvoice()` |
-| AR posting | Invoice → Accounting | `InvoiceService` calls `AccountingFacade.postSalesJournal()` for revenue/AR |
-| Settlement posting | Invoice → Accounting | `InvoiceService.settleInvoice()` calls `AccountingFacade.postPaymentJournal()` |
+| Invoice creation | Sales → Invoice | `SalesFulfillmentService.fulfill(issueInvoice=true)` triggers invoice creation via `InvoiceService.issueInvoiceForOrder()` |
+| AR posting | Invoice → Accounting | Invoice issuance triggers accounting via internal `AccountingService` (not directly via AccountingFacade) |
+| Sales journal posting | Sales → Accounting | `SalesFulfillmentService` has `postSalesJournal` option; when `issueInvoice=true`, postSalesJournal is automatically disabled because Invoice owns AR/Revenue/Tax posting |
+| Settlement posting | Invoice → Accounting | Settlement via `InvoiceSettlementPolicy` triggers accounting via internal settlement services |
 | Credit limit request | Dealer Portal → Sales | `DealerPortalController` delegates to `CreditLimitRequestService` |
 | Dunning evaluation | Invoice → Sales | `DunningService` reads invoice outstanding balances |
 
