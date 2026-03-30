@@ -154,19 +154,7 @@ public class AccountingController {
   @ExceptionHandler(ApplicationException.class)
   public ResponseEntity<ApiResponse<Map<String, Object>>> handleApplicationException(
       ApplicationException ex, HttpServletRequest request) {
-    String traceId = UUID.randomUUID().toString();
-    Map<String, Object> errorData = new HashMap<>();
-    errorData.put("code", ex.getErrorCode().getCode());
-    errorData.put("message", ex.getUserMessage());
-    errorData.put("reason", ex.getUserMessage());
-    errorData.put("path", request != null ? request.getRequestURI() : null);
-    errorData.put("traceId", traceId);
-    Map<String, Object> details = ex.getDetails();
-    if (!details.isEmpty()) {
-      errorData.put("details", details);
-    }
-    return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-        .body(ApiResponse.failure(ex.getUserMessage(), errorData));
+    return AccountingApplicationExceptionResponses.badRequest(ex, request);
   }
 
   @GetMapping("/accounts")

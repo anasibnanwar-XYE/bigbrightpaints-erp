@@ -4,9 +4,12 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -59,7 +62,7 @@ public class AuditLogReadAdapter {
             .and(byReference(filter.normalizedReference()));
     Page<AuditLog> page = auditLogRepository.findAll(spec, firstPage(fetchLimit));
     return new AuditFeedSlice(
-        page.getContent().stream().map(log -> toDto(log, company.getCode())).toList(),
+        page.getContent().stream().map(log -> toDto(log, company.getCode(), Map.of())).toList(),
         page.getTotalElements());
   }
 
@@ -77,19 +80,21 @@ public class AuditLogReadAdapter {
             .and(byEntityType(filter.normalizedEntityType()))
             .and(byReference(filter.normalizedReference()));
     Page<AuditLog> page = auditLogRepository.findAll(spec, PageRequest.of(safePage, safeSize, sort()));
-    return new AuditFeedSlice(page.getContent().stream().map(log -> toDto(log, null)).toList(), page.getTotalElements());
+    List<AuditLog> logs = page.getContent();
+    Map<Long, String> companyCodes = resolveFallbackCompanyCodes(logs);
+    return new AuditFeedSlice(
+        logs.stream().map(log -> toDto(log, null, companyCodes)).toList(), page.getTotalElements());
   }
 
-  private AuditFeedItemDto toDto(AuditLog log, String currentCompanyCode) {
+  private AuditFeedItemDto toDto(
+      AuditLog log, String currentCompanyCode, Map<Long, String> fallbackCompanyCodes) {
     Map<String, String> metadata = metadata(log);
     String companyCode =
         currentCompanyCode != null
             ? currentCompanyCode
-            : firstNonBlank(
-                metadata.get("targetCompanyCode"),
-                auditVisibilityPolicy.resolveCompanyCode(log.getCompanyId()));
-    String entityType = entityTypeFor(log);
-    String entityId = entityIdFor(log);
+            : firstNonBlank(metadata.get("targetCompanyCode"), fallbackCompanyCodes.get(log.getCompanyId()));
+    String entityType = entityTypeFor(log, metadata);
+    String entityId = entityIdFor(log, metadata);
     return new AuditFeedItemDto(
         log.getId(),
         "AUDIT_LOG",
@@ -106,7 +111,7 @@ public class AuditLogReadAdapter {
         auditEventClassifier.subjectIdentifier(metadata),
         entityType,
         entityId,
-        referenceNumberFor(log),
+        referenceNumberFor(entityId, metadata),
         log.getRequestMethod(),
         log.getRequestPath(),
         log.getTraceId(),
@@ -114,17 +119,41 @@ public class AuditLogReadAdapter {
   }
 
   String entityTypeFor(AuditLog log) {
-    Map<String, String> metadata = metadata(log);
-    return firstNonBlank(log.getResourceType(), metadata.get("resourceType"), metadata.get("entityType"));
+    return entityTypeFor(log, metadata(log));
   }
 
   String entityIdFor(AuditLog log) {
-    Map<String, String> metadata = metadata(log);
-    return firstNonBlank(log.getResourceId(), metadata.get("resourceId"), metadata.get("entityId"));
+    return entityIdFor(log, metadata(log));
   }
 
   String referenceNumberFor(AuditLog log) {
-    return firstNonBlank(metadata(log).get("referenceNumber"), entityIdFor(log));
+    Map<String, String> metadata = metadata(log);
+    return referenceNumberFor(entityIdFor(log, metadata), metadata);
+  }
+
+  private String entityTypeFor(AuditLog log, Map<String, String> metadata) {
+    return firstNonBlank(log.getResourceType(), metadata.get("resourceType"), metadata.get("entityType"));
+  }
+
+  private String entityIdFor(AuditLog log, Map<String, String> metadata) {
+    return firstNonBlank(log.getResourceId(), metadata.get("resourceId"), metadata.get("entityId"));
+  }
+
+  private String referenceNumberFor(String entityId, Map<String, String> metadata) {
+    return firstNonBlank(metadata.get("referenceNumber"), entityId);
+  }
+
+  private Map<Long, String> resolveFallbackCompanyCodes(List<AuditLog> logs) {
+    Set<Long> companyIds =
+        logs.stream()
+            .filter(log -> !StringUtils.hasText(metadata(log).get("targetCompanyCode")))
+            .map(AuditLog::getCompanyId)
+            .filter(Objects::nonNull)
+            .collect(Collectors.toSet());
+    if (companyIds.isEmpty()) {
+      return Map.of();
+    }
+    return auditVisibilityPolicy.resolveCompanyCodes(companyIds);
   }
 
   private PageRequest firstPage(int fetchLimit) {

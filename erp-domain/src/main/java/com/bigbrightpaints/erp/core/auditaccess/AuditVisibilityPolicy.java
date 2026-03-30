@@ -1,10 +1,10 @@
 package com.bigbrightpaints.erp.core.auditaccess;
 
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Optional;
-import java.util.Set;
-import java.util.stream.Collectors;
+import java.util.Map;
 
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Component;
@@ -31,13 +31,8 @@ public class AuditVisibilityPolicy {
   }
 
   public Specification<AuditLog> platformVisibility() {
-    Set<Long> platformCompanyIds =
-        companyRepository.findAll().stream()
-            .filter(company -> StringUtils.hasText(company.getCode()))
-            .filter(company -> authScopeService.isPlatformScope(company.getCode()))
-            .map(company -> company.getId())
-            .filter(java.util.Objects::nonNull)
-            .collect(Collectors.toSet());
+    Long platformCompanyId =
+        companyRepository.findIdByCodeIgnoreCase(authScopeService.getPlatformScopeCode()).orElse(null);
 
     return (root, query, cb) -> {
       List<jakarta.persistence.criteria.Predicate> predicates = new ArrayList<>();
@@ -45,18 +40,26 @@ public class AuditVisibilityPolicy {
       predicates.add(pathEqualsOrStartsWith(root.get("requestPath"), cb, "/api/v1/superadmin"));
       predicates.add(pathEqualsOrStartsWith(root.get("requestPath"), cb, "/api/v1/admin/settings"));
       predicates.add(pathEqualsOrStartsWith(root.get("requestPath"), cb, "/api/v1/companies"));
-      if (!platformCompanyIds.isEmpty()) {
-        predicates.add(root.get("companyId").in(platformCompanyIds));
+      if (platformCompanyId != null) {
+        predicates.add(cb.equal(root.get("companyId"), platformCompanyId));
       }
       return cb.or(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
     };
   }
 
-  public String resolveCompanyCode(Long companyId) {
-    if (companyId == null) {
-      return null;
+  public Map<Long, String> resolveCompanyCodes(Collection<Long> companyIds) {
+    if (companyIds == null || companyIds.isEmpty()) {
+      return Map.of();
     }
-    return companyRepository.findById(companyId).map(company -> company.getCode()).orElse(null);
+    Map<Long, String> companyCodes = new LinkedHashMap<>();
+    for (CompanyRepository.CompanyCodeProjection projection :
+        companyRepository.findCompanyCodesByIdIn(companyIds)) {
+      if (projection.getId() == null || !StringUtils.hasText(projection.getCode())) {
+        continue;
+      }
+      companyCodes.put(projection.getId(), projection.getCode().trim());
+    }
+    return companyCodes;
   }
 
   public boolean isAccountingModule(String module) {
