@@ -40,6 +40,7 @@ The payroll run follows a strict workflow with status progression:
 | APPROVED | Ready for accounting posting | POSTED |
 | POSTED | Journal entries posted to accounting | PAID |
 | PAID | Payment reference recorded, run complete | — (terminal) |
+| CANCELLED | Run cancelled before completion | — (terminal) |
 
 - **Create**: `POST /api/v1/payroll/runs`, `/api/v1/payroll/runs/weekly`, `/api/v1/payroll/runs/monthly`
 - **Calculate**: `POST /api/v1/payroll/runs/{id}/calculate`
@@ -244,5 +245,5 @@ The module does **not** currently support:
 - [docs/modules/MODULE-INVENTORY.md](MODULE-INVENTORY.md) — module inventory
 - [docs/flows/FLOW-INVENTORY.md](../flows/FLOW-INVENTORY.md) — flow inventory
 - [docs/workflows/payroll.md](../workflows/payroll.md) — operational workflow guide (historical reference)
-- [docs/modules/accounting.md](../modules/accounting.md) — accounting module (payroll posting seam)
+- [docs/developer/accounting-flows/00-accounting-module-map.md](../developer/accounting-flows/00-accounting-module-map.md) — accounting module (payroll posting seam)
 - [erp-domain/src/main/java/com/bigbrightpaints/erp/modules/hr/AGENTS.md](../../erp-domain/src/main/java/com/bigbrightpaints/erp/modules/hr/AGENTS.md) — source module definition

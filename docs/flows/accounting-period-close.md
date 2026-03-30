@@ -279,9 +279,24 @@ The flow is complete when:
 | `factory` | WIP/cost journals from production | Trigger (via factory) |
 | `hr` | Payroll journals from payroll posting | Trigger (via HR) |
 
+## 8. Event/Listener Boundaries
+
+The accounting/period-close flow is materially affected by internal event bridges that create accounting entries from other modules:
+
+| Event | Listener | Phase | Effect on Accounting |
+| --- | --- | --- | --- |
+| `InventoryMovementEvent` | `InventoryAccountingEventListener` | `AFTER_COMMIT` | Inventory movements (including raw material receipts from P2P GRN and finished goods from manufacturing) automatically create valuation journal entries. This affects period-end inventory asset values. |
+| `InventoryValuationChangedEvent` | `InventoryAccountingEventListener` | `AFTER_COMMIT` | Raw material and finished goods valuation changes trigger accounting entries, affecting cost of goods sold and inventory asset values. |
+| `JournalEntryPostedEvent` | `JournalEntryPostedAuditListener` | `AFTER_COMMIT` (`fallbackExecution = true`) | Core audit trail marker is created when journals are posted, enabling audit trail lookups during period close verification. |
+
+**Key boundary notes:**
+- The `InventoryAccountingEventListener` is conditional on `erp.inventory.accounting.events.enabled` (default: `true`). If disabled, inventory movements silently skip accounting side effects, causing period-end inventory balances to be incomplete.
+- These event bridges run in `REQUIRES_NEW` transactions, meaning accounting entries are committed independently of the source transaction. This provides resilience but also means event failures do not roll back the source operation.
+- See [orchestrator.md](../modules/orchestrator.md) for the full event bridge map and configuration-guarded risks.
+
 ---
 
-## 8. Security Considerations
+## 9. Security Considerations
 
 - **RBAC** — Admin for period management, Accounting for daily operations
 - **Company scoping** — All operations scoped to tenant
@@ -290,16 +305,20 @@ The flow is complete when:
 
 ---
 
-## 9. Related Documentation
+## 10. Related Documentation
 
 - [docs/modules/MODULE-INVENTORY.md](../modules/MODULE-INVENTORY.md) — Accounting module reference
 - [docs/modules/reports.md](../modules/reports.md) — Reporting module for period reports
 - [docs/flows/FLOW-INVENTORY.md](FLOW-INVENTORY.md) — Flow inventory
 - [docs/developer/accounting-flows/](../developer/accounting-flows/) — Internal accounting documentation
 
+### Relevant ADRs
+- [ADR-004-layered-audit-surfaces.md](../adrs/ADR-004-layered-audit-surfaces.md) — Audit trail layers (period close relies on JournalEntryPostedAuditListener for audit verification)
+- [ADR-005-flyway-v2-hard-cut-migration-posture.md](../adrs/ADR-005-flyway-v2-hard-cut-migration-posture.md) — Migration posture (period-end data integrity depends on v2 migration completion)
+
 ---
 
-## 10. Open Decisions
+## 11. Open Decisions
 
 | Decision | Status | Notes |
 | --- | --- | --- |

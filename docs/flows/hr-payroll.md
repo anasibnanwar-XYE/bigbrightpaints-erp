@@ -263,9 +263,21 @@ The flow is complete when:
 | `accounting` | Payroll posting via AccountingFacade, payment recording via accounting journal | Write (post), Write (payment reference) |
 | `company` | Module gating — HR module can be enabled/disabled per tenant | Read (gating), Read (context) |
 
+## 8. Event/Listener Boundaries
+
+The HR/payroll flow intersects with the order auto-approval event bridge which can indirectly affect workforce planning and payroll:
+
+| Event | Listener | Phase | Effect on HR/Payroll |
+| --- | --- | --- | --- |
+| `SalesOrderCreatedEvent` | `OrderAutoApprovalListener` | `AFTER_COMMIT` | When auto-approval is enabled, sales orders are automatically approved after commit. This can trigger inventory reservation and production scheduling, which indirectly affects workforce demand in factory/operations. However, this listener does not directly affect payroll calculation—payroll is independent of sales order processing. |
+
+**Key boundary note:** The `OrderAutoApprovalListener` is conditional on `SystemSettingsService.isAutoApprovalEnabled()`. When disabled, orders stay in their initial status until manually approved. This event bridge does not directly impact the HR/payroll flow but represents a cross-module coordination point where sales order processing can cascade into production scheduling, which may affect workforce planning in factory operations.
+
+The payroll flow itself does not publish events that trigger downstream listeners—it is primarily a consumer of accounting services for posting and payment recording.
+
 ---
 
-## 8. Security Considerations
+## 9. Security Considerations
 
 - **RBAC** — Admin for employee/leave, Accounting for payroll operations
 - **Company scoping** — All HR data scoped to tenant
@@ -274,12 +286,16 @@ The flow is complete when:
 
 ---
 
-## 9. Related Documentation
+## 10. Related Documentation
 
 - [docs/modules/hr.md](../modules/hr.md) — HR module canonical packet
 - [docs/modules/MODULE-INVENTORY.md](../modules/MODULE-INVENTORY.md) — Module inventory
 - [docs/flows/FLOW-INVENTORY.md](FLOW-INVENTORY.md) — Flow inventory
 - [docs/workflows/payroll.md](../workflows/payroll.md) — Historical operational guide
+
+### Relevant ADRs
+- [ADR-002-multi-tenant-auth-scoping.md](../adrs/ADR-002-multi-tenant-auth-scoping.md) — Multi-tenant auth scoping (payroll data must be scoped by tenant/company)
+- [ADR-004-layered-audit-surfaces.md](../adrs/ADR-004-layered-audit-surfaces.md) — Audit trail layers (payroll posting creates audit markers in accounting)
 
 ---
 

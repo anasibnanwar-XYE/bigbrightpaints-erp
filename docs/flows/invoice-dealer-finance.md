@@ -181,7 +181,7 @@ The flow is complete when:
 
 | Path | Owner | Notes |
 | --- | --- | --- |
-| Auto-issue during dispatch | `SalesFulfillmentService` → `InvoiceService` | Primary invoice creation |
+| Auto-issue during dispatch | `SalesDispatchReconciliationService` → `InvoiceService` | Invoice created during dispatch confirmation (dispatch triggers `confirmDispatch()` which creates the invoice via the invoice module); `SalesFulfillmentService` is the higher-level orchestrator that includes this flow |
 | `GET /api/v1/portal/finance/ledger?dealerId={id}` | `PortalFinanceController` | Internal finance ledger |
 | `GET /api/v1/dealer-portal/ledger` | `DealerPortalController` | Dealer self-service |
 | `POST /api/v1/invoices/{id}/payments` | `InvoiceController` | Payment recording |
@@ -226,6 +226,10 @@ The flow is complete when:
 - [docs/modules/admin-portal-rbac.md](../modules/admin-portal-rbac.md) — Host ownership and predicates
 - [docs/modules/core-security-error.md](../modules/core-security-error.md) — Security filter chain
 - [docs/flows/FLOW-INVENTORY.md](FLOW-INVENTORY.md) — Flow inventory
+
+### Relevant ADRs
+- [ADR-002-multi-tenant-auth-scoping.md](../adrs/ADR-002-multi-tenant-auth-scoping.md) — Multi-tenant auth scoping (dealer self-service must be tenant-scoped via JWT)
+- [ADR-006-portal-and-host-boundary-separation.md](../adrs/ADR-006-portal-and-host-boundary-separation.md) — Portal/host boundary separation (enforces `/api/v1/dealer-portal/**` vs `/api/v1/portal/finance/**` isolation)
 
 ---
 

@@ -264,9 +264,20 @@ The flow is complete when:
 | `inventory` | RawMaterialBatch creation, batch quantity reduction on return | Write (batch create), Write (reduce) |
 | `accounting` | AP journal posting, supplier ledger updates, settlement journals | Write |
 
+## 8. Event/Listener Boundaries
+
+The P2P flow intersects with the inventory→accounting event bridge at the GRN (stock truth) boundary:
+
+| Event | Listener | Phase | Effect on P2P |
+| --- | --- | --- | --- |
+| `InventoryMovementEvent` | `InventoryAccountingEventListener` | `AFTER_COMMIT` | When GRN creates a `RawMaterialBatch`, this event triggers automatic inventory valuation journal entries in accounting if `erp.inventory.accounting.events.enabled=true` (default: true). This is a material hidden coupling: if the toggle is disabled, inventory movements silently skip accounting side effects. |
+| `InventoryValuationChangedEvent` | `InventoryAccountingEventListener` | `AFTER_COMMIT` | Triggers accounting entries for raw material valuation changes. |
+
+**Key boundary note:** The GRN is the stock truth boundary—`RawMaterialBatch` is created in the inventory module. The `InventoryAccountingEventListener` (when enabled) automatically creates corresponding accounting entries for raw material valuation. This bridge is conditional on the feature flag `erp.inventory.accounting.events.enabled`. See [orchestrator.md](../modules/orchestrator.md) for the full event bridge map and configuration-guarded risks.
+
 ---
 
-## 8. Security Considerations
+## 9. Security Considerations
 
 - **RBAC enforcement** — Admin and Accounting roles for purchasing operations
 - **Company scoping** — All operations scoped to tenant
@@ -274,16 +285,20 @@ The flow is complete when:
 
 ---
 
-## 9. Related Documentation
+## 10. Related Documentation
 
 - [docs/modules/purchasing.md](../modules/purchasing.md) — Purchasing module canonical packet
 - [docs/modules/inventory.md](../modules/inventory.md) — Inventory for stock truth (RawMaterialBatch)
 - [docs/modules/core-idempotency.md](../modules/core-idempotency.md) — Idempotency helpers
 - [docs/flows/FLOW-INVENTORY.md](FLOW-INVENTORY.md) — Flow inventory
 
+### Relevant ADRs
+- [ADR-003-outbox-pattern-for-cross-module-events.md](../adrs/ADR-003-outbox-pattern-for-cross-module-events.md) — Cross-module event bridges (P2P uses inventory→accounting event bridges for GRN→journal entry)
+- [ADR-004-layered-audit-surfaces.md](../adrs/ADR-004-layered-audit-surfaces.md) — Audit trail layers (AP journal posting and settlement create audit markers)
+
 ---
 
-## 10. Open Decisions
+## 11. Open Decisions
 
 | Decision | Status | Notes |
 | --- | --- | --- |
