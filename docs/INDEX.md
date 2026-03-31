@@ -24,6 +24,12 @@ This is the canonical entrypoint for backend documentation. Every major docs sec
 | --- | --- |
 | [docs/BACKEND-FEATURE-CATALOG.md](BACKEND-FEATURE-CATALOG.md) | Reader-friendly summary of the complete backend feature landscape — exhaustive coverage of platform, operations, commercial, and finance/reporting features with links to deeper module/flow/ADR packets and explicit deprecated/non-canonical surface flags |
 
+## Authoritative Recommendations
+
+| Document | Purpose |
+| --- | --- |
+| [docs/RECOMMENDATIONS.md](RECOMMENDATIONS.md) | **Canonical recommendations register** — single authoritative surface for user-approved verdicts on formerly open items from flow docs and module packets. Classifies each item as Bug to Fix Now, Future Work (high/medium/low priority), or Accepted Product Decision. All open-decision sections in flow/module packets should defer to this register. |
+
 ## Modules
 
 | Document | Purpose |
