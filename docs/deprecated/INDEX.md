@@ -73,7 +73,7 @@ Each entry follows this pattern:
 | `GET /api/v1/sales/dealers` | Deprecated (frontend alias) | Use `/api/v1/dealers` |
 | Legacy idempotency key resolution | Deprecated | Use canonical `Idempotency-Key` header |
 | Legacy order statuses (BOOKED, SHIPPED, etc.) | Legacy compatibility only | Use canonical order statuses defined in `SalesOrderStatus` enum |
-| `POST /api/v1/sales/promotions` | Not integrated | Sales targets only; not a functional promotions system |
+| `POST /api/v1/sales/promotions` | Planned foundation | Sales targets only; promotions endpoint infrastructure exists for future activation |
 
 **Module Reference**: [sales.md](../modules/sales.md), [order-to-cash flow](../flows/order-to-cash.md)
 

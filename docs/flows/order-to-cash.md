@@ -247,7 +247,7 @@ The flow is complete when:
 | `GET /api/v1/sales/dealers` | Deprecated (frontend alias) | Use `/api/v1/dealers` |
 | Legacy idempotency key resolution | Deprecated | Use canonical `Idempotency-Key` header |
 | Legacy order statuses (BOOKED, SHIPPED, etc.) | Legacy compatibility | Use canonical statuses only |
-| `POST /api/v1/sales/promotions` | Not integrated | Sales targets only |
+| `POST /api/v1/sales/promotions` | Planned foundation | Sales targets only; promotions infrastructure exists for future activation |
 
 ---
 

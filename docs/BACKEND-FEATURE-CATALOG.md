@@ -87,7 +87,7 @@ These features handle sales, purchasing, and commercial finance.
 | `GET /api/v1/sales/dealers` | Deprecated (frontend alias) | Use `/api/v1/dealers` |
 | Legacy idempotency key resolution | Deprecated | Use canonical `Idempotency-Key` header |
 | Legacy order statuses (BOOKED, SHIPPED, etc.) | Legacy compatibility only | Use canonical order statuses in `SalesOrderStatus` enum |
-| `POST /api/v1/sales/promotions` | Not integrated | Sales targets only; not a functional promotions system |
+| `POST /api/v1/sales/promotions` | Planned foundation | Sales targets only; promotions endpoint infrastructure exists for future activation |
 | `X-Idempotency-Key` header on GRN | Rejected (400 error) | Use `Idempotency-Key` |
 | PO creation idempotency | Not supported | Rely on order number uniqueness |
 | `GET /api/v1/dealers/{id}/ledger` | Retired (410 Gone) | Use `/api/v1/portal/finance/ledger?dealerId={id}` |
