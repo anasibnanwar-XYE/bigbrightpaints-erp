@@ -1,0 +1,56 @@
+{
+  "milestone": "docs-authoritative-followup",
+  "round": 1,
+  "status": "pass",
+  "validatorsRun": {
+    "lint": { "passed": true, "command": "bash ci/lint-knowledgebase.sh", "exitCode": 0, "observation": "[knowledgebase-lint] OK" },
+    "docs-governance": { "passed": true, "command": "bash ci/check-enterprise-policy.sh", "exitCode": 0, "observation": "[enterprise-policy] OK — canonical workflow decision contract guard passed, R2 enterprise controls enforced" },
+    "architecture": { "passed": true, "command": "bash ci/check-architecture.sh", "exitCode": 0, "observation": "[architecture-check] OK — allowlist evidence contract verified" },
+    "orchestrator-layer": { "passed": true, "command": "bash ci/check-orchestrator-layer.sh", "exitCode": 0, "observation": "[orchestrator-layer] OK" }
+  },
+  "reviewsSummary": {
+    "total": 3,
+    "passed": 3,
+    "failed": 0,
+    "failedFeatures": []
+  },
+  "blockingIssues": [],
+  "nonBlockingIssues": [
+    {
+      "featureId": "docs-authoritative-recommendations-register",
+      "severity": "non_blocking",
+      "description": "Module-level Known Limitations sections in purchasing.md and inventory.md lack deferral notes to RECOMMENDATIONS.md, while their corresponding flow packets already have them. Minor consistency gap."
+    },
+    {
+      "featureId": "docs-open-decision-authority-cleanup",
+      "severity": "non_blocking",
+      "description": "ERP-DOD-BIBLE.md still contains 'Open Decisions' headings internally (lines 695, 1296, 1676), but the file-level NON-CANONICAL banner makes this acceptable."
+    },
+    {
+      "featureId": "docs-audit-trail-authority-refresh",
+      "severity": "non_blocking",
+      "description": "docs/frontend-api/endpoint-inventory.md still lists /api/v1/accounting/audit/digest without a deprecated marker. accounting-portal-endpoint-map.md notes deprecation but endpoint-inventory.md lacks the callout."
+    },
+    {
+      "featureId": "docs-audit-trail-authority-refresh",
+      "severity": "non_blocking",
+      "description": "Role annotations are asymmetric between accounting audit endpoints (no explicit role doc) and enterprise audit endpoints (ROLE_ADMIN or ROLE_ACCOUNTING documented)."
+    },
+    {
+      "featureId": "docs-audit-trail-authority-refresh",
+      "severity": "non_blocking",
+      "description": "Profile-audit gap documented in three places (core-audit-runtime-settings.md, RECOMMENDATIONS.md, auth-identity.md). Acceptable for different audiences but could drift if only one is updated."
+    }
+  ],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Consider adding a convention that module-level Known Limitations sections should carry the same deferral pattern as flow-packet sections when their content overlaps with RECOMMENDATIONS.md entries.",
+      "evidence": "Features docs-authoritative-recommendations-register found that purchasing.md and inventory.md Known Limitations sections overlap with RECOMMENDATIONS.md items but lack deferral notes, while their corresponding flow packets (procure-to-pay.md, inventory-management.md) already carry them.",
+      "isSystemic": false
+    }
+  ],
+  "rejectedObservations": [],
+  "previousRound": null
+}
