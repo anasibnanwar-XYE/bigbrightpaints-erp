@@ -1,0 +1,87 @@
+{
+  "milestone": "docs-mainline-catchup-structure",
+  "round": 1,
+  "status": "fail",
+  "validatorsRun": {
+    "lint": {
+      "passed": true,
+      "command": "bash ci/lint-knowledgebase.sh && bash ci/check-enterprise-policy.sh && bash ci/check-architecture.sh && bash ci/check-orchestrator-layer.sh",
+      "exitCode": 0,
+      "observation": "All four docs/governance validators passed: knowledgebase-lint OK, enterprise-policy OK, architecture-check OK, orchestrator-layer OK"
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "cd erp-domain && MIGRATION_SET=v2 mvn -T8 compile -q",
+      "exitCode": 0,
+      "observation": "Maven compile succeeded with exit code 0"
+    },
+    "test": {
+      "passed": true,
+      "command": "N/A - docs-only milestone, no runtime tests needed",
+      "exitCode": 0,
+      "observation": "Docs-only milestone, test suite not required for validation"
+    }
+  },
+  "reviewsSummary": {
+    "total": 3,
+    "passed": 2,
+    "failed": 1,
+    "failedFeatures": ["docs-mainline-shared-api-and-auth-scope"]
+  },
+  "blockingIssues": [
+    {
+      "featureId": "docs-mainline-shared-api-and-auth-scope",
+      "severity": "blocking",
+      "description": "exports-and-approvals.md: GET /api/v1/exports/status/{requestId} does not exist in OpenAPI spec. Approval paths POST /api/v1/admin/approvals/{approvalId}/approve do not exist (actual paths are type-specific like PUT /api/v1/admin/exports/{requestId}/approve). ExportRequestCreateRequest schema documented with exportType/format/idempotencyKey fields but actual schema only has reportType and parameters."
+    },
+    {
+      "featureId": "docs-mainline-shared-api-and-auth-scope",
+      "severity": "blocking",
+      "description": "idempotency-and-errors.md: POST /api/v1/accounting/journal is actually POST /api/v1/accounting/journals/manual. POST /api/v1/invoices does not exist in OpenAPI spec."
+    },
+    {
+      "featureId": "docs-mainline-shared-api-and-auth-scope",
+      "severity": "blocking",
+      "description": "accounting-reference-chains.md: GET /api/v1/admin/audit/events and GET /api/v1/superadmin/audit/platform-events do not exist in OpenAPI spec. Actual audit paths are /api/v1/accounting/audit-trail, /api/v1/accounting/audit/digest, /api/v1/accounting/audit/transactions."
+    },
+    {
+      "featureId": "docs-mainline-shared-api-and-auth-scope",
+      "severity": "blocking",
+      "description": "dto-examples.md: POST /api/v1/invoices endpoint documented in DTO examples does not exist in OpenAPI spec. Invoice endpoints are GET-only."
+    }
+  ],
+  "nonBlockingIssues": [
+    {
+      "featureId": "docs-mainline-frontend-portals-foundation",
+      "severity": "non_blocking",
+      "description": "docs/INDEX.md still lists old frontend-handoff-*.md files as canonical with no mention of new docs/frontend-portals/ tree, creating silent duplication between two frontend handoff models."
+    },
+    {
+      "featureId": "docs-mainline-shared-api-and-auth-scope",
+      "severity": "non_blocking",
+      "description": "auth-and-company-scope.md says /api/v1/auth/profile is retired but the endpoint still exists in OpenAPI spec. The retirement intent is correct but explanation should acknowledge the endpoint still exists."
+    },
+    {
+      "featureId": "docs-mainline-shared-api-and-auth-scope",
+      "severity": "non_blocking",
+      "description": "pagination-and-filters.md documents filter syntax (filter.field.in=value1,value2) that has no evidence in OpenAPI spec. Should be qualified as proposed convention."
+    }
+  ],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Add guidance that docs-worker must verify all documented API endpoint paths and request/response schemas against openapi.json before writing them as canonical mainline behavior.",
+      "evidence": "Feature docs-mainline-shared-api-and-auth-scope documented 6+ endpoint paths that do not exist in the OpenAPI spec across exports-and-approvals.md, idempotency-and-errors.md, accounting-reference-chains.md, and dto-examples.md.",
+      "isSystemic": false
+    },
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Add guidance that when creating new canonical docs that supersede earlier models, the worker should also update docs/INDEX.md and cross-links to prevent silent duplication between old and new models.",
+      "evidence": "Features docs-mainline-frontend-portals-foundation and docs-mainline-shared-api-and-auth-scope both created new canonical docs structures without updating docs/INDEX.md. The old frontend-handoff-*.md files still appear as the canonical handoff model.",
+      "isSystemic": true
+    }
+  ],
+  "rejectedObservations": [],
+  "previousRound": null
+}
