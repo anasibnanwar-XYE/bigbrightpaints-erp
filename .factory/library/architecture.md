@@ -29,6 +29,15 @@ The mission should produce a docs tree that explains the backend from five compl
 
 No packet should silently become a second source of truth. Module docs own structure, flow docs own behavior, handoff docs own consumer framing, ADRs own decisions, and deprecated docs own retirement notes.
 
+## Mainline Catch-Up Override
+
+Read-only comparison against `origin/main` shows that the branch-era canonical docs model above is no longer the only active target. Mainline frontend-facing docs now center on:
+
+- `docs/frontend-portals/` — portal ownership, routes, workflows, states, and role boundaries
+- `docs/frontend-api/` — shared API contract rules across portals
+
+Workers doing catch-up must preserve backend truth from the earlier packet tree where useful, but they should align final canonical frontend-facing documentation to that mainline portal/API model and explicitly retire or mark older single-file handoff surfaces when they would otherwise compete.
+
 ## Core Architectural Invariants
 
 - **Tenant scoping is mandatory.** Company-scoped data depends on company context and scoped queries. Auth, company runtime, and request-admission behavior are foundational.

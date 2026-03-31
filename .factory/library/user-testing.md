@@ -24,6 +24,7 @@ Rationale: docs validation is lightweight and service-free, but whole-tree lint/
 - Validate navigation, cross-links, inventories, ADR presence, frontend-handoff discoverability, and deprecated-registry behavior from the repository files themselves.
 - Use `openapi.json` plus controller/DTO code as the contract truth when checking host/path/payload claims.
 - Prefer canonical docs over historical review artifacts; if a historical doc remains, validate that it is redirected or explicitly marked non-canonical.
+- For mainline catch-up work, validate the newer `docs/frontend-portals/` and `docs/frontend-api/` trees directly, not just the older branch-era `docs/INDEX.md` / module / flow / frontend-handoff packet families.
 
 ## Validation Surface
 

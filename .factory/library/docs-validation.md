@@ -21,6 +21,8 @@ Docs-only validation guidance for the backend truth-library mission.
 - Use `openapi.json` as the public API snapshot when checking routes/payload families
 - Verify that canonical docs carry `Last reviewed:` markers when required by lint
 - When a packet references a deprecated surface, verify it also points to a replacement or explicitly says none exists
+- For mainline catch-up work, validate `docs/frontend-portals/` and `docs/frontend-api/` as the new canonical frontend-facing docs tree
+- If older docs families remain in-tree during catch-up, verify they are explicitly marked non-canonical or reference-only rather than silently coexisting as truth
 
 ## Full-Contract Lint Expectations
 
@@ -42,6 +44,15 @@ To troubleshoot lint failures:
 1. Check which mode the script runs in (look for `WARN` vs `OK` output prefix).
 2. If in compatibility mode, verify the 3 marker files exist.
 3. If in full-contract mode, the script output names each missing file or broken link.
+
+### Mainline Catch-Up Note
+
+The original branch mission achieved full-contract success using `docs/INDEX.md` and the broader backend packet tree. Catch-up work against `origin/main` may temporarily preserve that lint contract while introducing the newer mainline canonical portal/API docs. Validators should therefore distinguish:
+
+- **legacy branch contract compliance** — the older full-contract markers still present on this branch
+- **mainline catch-up correctness** — the newer `docs/frontend-portals/` and `docs/frontend-api/` structure plus retired-route and boundary updates
+
+Do not assume that passing the old lint contract alone proves mainline catch-up is complete.
 
 ### Architecture Allowlist Evidence Contract
 

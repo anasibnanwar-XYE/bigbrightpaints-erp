@@ -13,6 +13,7 @@ Use for documentation-only mission features that create or update:
 - canonical docs tree packets under `docs/`
 - ADR index and ADR files
 - module packets, flow packets, frontend handoff packets, and deprecated/incomplete registries
+- mainline catch-up docs under `docs/frontend-portals/` and `docs/frontend-api/`
 - lint-required governance docs such as `docs/INDEX.md`, `docs/agents/*`, `docs/approvals/*`, root `ARCHITECTURE.md`, and module `AGENTS.md`
 - `.factory/library/*` guidance files that support the docs mission
 - repository `README.md` files only when a feature explicitly asks for them
@@ -35,15 +36,17 @@ None.
 2. For module packets, identify the owning controllers, services/facades/engines, DTO families, entities, helpers, events, and cross-module seams.
 3. For flow packets, identify actors, entrypoints, preconditions, canonical lifecycle, completion boundary/current definition of done, non-canonical paths, access-control gates, event/listener seams, relevant ADRs, and known limitations.
 4. For frontend handoff packets, map hosts, payload families, RBAC assumptions, read/write boundaries, and canonical links back to module/flow packets.
-5. If a behavior is still planned rather than implemented, label it clearly as pending, incomplete, deprecated, or future work instead of documenting it as done.
+5. For mainline catch-up portal/API packets, treat `docs/frontend-portals/` and `docs/frontend-api/` as the target canonical frontend-facing docs structure, and explicitly retire or mark older branch-era handoff docs when they would otherwise compete.
+6. If a behavior is still planned rather than implemented, label it clearly as pending, incomplete, deprecated, or future work instead of documenting it as done.
 
 ### Step 3: Write the assigned packet type correctly
 1. **Module packets** must explain what the module owns, the primary entrypoints, major DTO families, important helpers/events, and the module's boundaries with adjacent modules.
 2. **Flow packets** must be behavior-first: who triggers the flow, what enters it, what must already be true, what canonical lifecycle occurs, how the flow completes today, what is incomplete, where canonical/non-canonical seams diverge, which event/listener boundaries materially affect the flow, and which ADRs explain key decisions behind that flow.
 3. **Frontend handoff packets** must be consumer-first: canonical hosts, payload groups, RBAC assumptions, read/write boundaries, and explicit links back to module and flow truth.
-4. **ADR packets** must explain an actual backend decision already embodied by the codebase; they are not speculative design notes.
-5. **Deprecated/incomplete registry entries** must point to a canonical replacement or explicitly say there is no replacement.
-6. Update root/governance docs only as much as needed to keep the docs tree navigable and truthful.
+4. **Mainline portal/API packets** must preserve the current frontend shell split: per-portal ownership docs under `docs/frontend-portals/` and shared cross-portal rules under `docs/frontend-api/`.
+5. **ADR packets** must explain an actual backend decision already embodied by the codebase; they are not speculative design notes.
+6. **Deprecated/incomplete registry entries** must point to a canonical replacement or explicitly say there is no replacement.
+7. Update root/governance docs only as much as needed to keep the docs tree navigable and truthful.
 
 ### Step 4: Verify accuracy
 1. Re-read every edited doc against the feature description and code evidence.

@@ -6,6 +6,15 @@ How the backend truth library should be organized and what each packet type owns
 
 ---
 
+## Mainline Catch-Up Override
+
+The original docs-refresh mission on this branch built a canonical tree around `docs/INDEX.md`, module packets, flow packets, ADRs, and single-file frontend handoff packets. Read-only comparison against `origin/main` now shows that mainline has moved to a different frontend-facing canonical model:
+
+- `docs/frontend-portals/` — per-portal ownership docs
+- `docs/frontend-api/` — shared cross-portal API rules
+
+During catch-up work, workers should treat that mainline model as the target canonical structure. Earlier module/flow/handoff packets on this branch may still be mined for truth, but they must not silently remain co-equal canonical docs if the new portal/API model supersedes them.
+
 ## Canonical Packet Types
 
 - **Root index** — top-level navigation and section map
@@ -17,6 +26,8 @@ How the backend truth library should be organized and what each packet type owns
 
 ## Recommended Docs Tree
 
+### Original branch docs model
+
 - `docs/INDEX.md`
 - `docs/ARCHITECTURE.md`
 - `docs/RELIABILITY.md`
@@ -27,6 +38,21 @@ How the backend truth library should be organized and what each packet type owns
 - `docs/deprecated/`
 - `docs/agents/`
 - `docs/approvals/`
+
+### Mainline catch-up target
+
+- `docs/frontend-portals/README.md`
+- `docs/frontend-portals/portal-matrix.md`
+- `docs/frontend-portals/{superadmin,tenant-admin,accounting,sales,factory,dealer-client}/`
+- `docs/frontend-api/README.md`
+- `docs/frontend-api/auth-and-company-scope.md`
+- `docs/frontend-api/idempotency-and-errors.md`
+- `docs/frontend-api/pagination-and-filters.md`
+- `docs/frontend-api/exports-and-approvals.md`
+- `docs/frontend-api/accounting-reference-chains.md`
+- `docs/frontend-api/dto-examples.md`
+
+If older packet families remain after catch-up, they must be explicitly marked non-canonical/reference-only or aligned so they do not compete with the mainline portal/API structure.
 
 ## Ownership Rules
 
@@ -71,6 +97,25 @@ If a packet needs to reference another packet's truth, it should link to it rath
 - read/write boundary
 - frontend-avoid / deprecated paths
 - links to canonical module/flow docs
+
+### Frontend portal packet (mainline target)
+
+- portal-specific README
+- routes
+- api contracts
+- workflows
+- role boundaries
+- states and errors
+- playwright journeys
+
+### Shared frontend API packet (mainline target)
+
+- auth and company scoping rules
+- shared idempotency/error rules
+- pagination/filter rules
+- export/approval rules
+- accounting reference chains
+- DTO examples
 
 ## Stale-Doc Policy
 
