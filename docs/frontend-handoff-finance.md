@@ -1,5 +1,13 @@
 # Frontend Handoff — Finance, Reporting, and HR Surfaces
 
+> ⚠️ **NON-CANONICAL / REFERENCE ONLY**
+> 
+> This document is **superseded** by the canonical frontend documentation at:
+> - [docs/frontend-portals/](frontend-portals/README.md) — portal ownership, routes, API contracts, workflows, role boundaries
+> - [docs/frontend-api/](frontend-api/README.md) — shared API contracts, bootstrap rules, tenant scoping
+>
+> This legacy handoff file is retained for reference only. Do not use it as the source of truth.
+
 Last reviewed: 2026-03-30
 
 This packet documents the frontend contract for **finance, reporting, and HR surfaces** — accounting journals, period management, payroll operations, and financial/operational reporting. It explains canonical hosts, payload families, RBAC assumptions, read/write boundaries, and the approval workflow for report exports.
