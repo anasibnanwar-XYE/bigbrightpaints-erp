@@ -1,6 +1,6 @@
 {
   "milestone": "docs-authoritative-followup",
-  "round": 2,
+  "round": 3,
   "status": "pass",
   "validatorsRun": {
     "lint": { "passed": true, "command": "bash ci/lint-knowledgebase.sh", "exitCode": 0, "observation": "[knowledgebase-lint] OK" },
@@ -9,17 +9,22 @@
     "orchestrator-layer": { "passed": true, "command": "bash ci/check-orchestrator-layer.sh", "exitCode": 0, "observation": "[orchestrator-layer] OK" }
   },
   "reviewsSummary": {
-    "total": 4,
-    "passed": 4,
+    "total": 5,
+    "passed": 5,
     "failed": 0,
     "failedFeatures": []
   },
   "blockingIssues": [],
   "nonBlockingIssues": [
     {
-      "featureId": "docs-authoritative-followup-consistency-polish",
+      "featureId": "docs-audit-trail-authority-refresh",
       "severity": "non_blocking",
-      "description": "Accounting audit endpoints (audit-trail, audit/transactions, audit/transactions/{journalEntryId}) in accounting-reference-chains.md still lack explicit role annotations, while enterprise audit endpoints document ROLE_ADMIN/ROLE_ACCOUNTING. The ACCOUNTING tag in openapi.json implies access control, but explicit documentation would improve consistency."
+      "description": "The deprecated /audit/digest endpoint is correctly marked deprecated in docs but still exists in the OpenAPI contract. A future task should track actual endpoint removal or @Deprecated annotation in the controller."
+    },
+    {
+      "featureId": "docs-authoritative-recommendations-register",
+      "severity": "non_blocking",
+      "description": "purchasing.md and inventory.md module-level Known Limitations sections lack deferral notes to RECOMMENDATIONS.md, while their corresponding flow packets already have them. Minor consistency gap."
     },
     {
       "featureId": "docs-open-decision-authority-cleanup",
@@ -29,6 +34,24 @@
   ],
   "appliedUpdates": [],
   "suggestedGuidanceUpdates": [],
-  "rejectedObservations": [],
-  "previousRound": ".factory/validation/docs-authoritative-followup/scrutiny/synthesis.json (round 1)"
+  "rejectedObservations": [
+    {
+      "observation": "endpoint-inventory.md should mark /audit/digest as deprecated",
+      "reason": "Already fixed in round 2 — docs-authoritative-followup-consistency-polish confirmed endpoint-inventory.md already has ⚠️ deprecated markers on audit/digest endpoints at lines 72-73"
+    },
+    {
+      "observation": "Profile audit gap documented in three places risks drift",
+      "reason": "Redundancy is acceptable — each document serves a different audience and the bidirectional references provide cross-checking. Not a systemic concern."
+    },
+    {
+      "observation": "Inconsistent deferral notes between flow packets and module packets",
+      "reason": "Already partially addressed — docs-authoritative-followup-consistency-polish added deferral notes to inventory.md and purchasing.md. The remaining gap is minor and non-blocking."
+    }
+  ],
+  "roundHistory": [
+    { "round": 1, "status": "pass", "reviews": 4, "failedFeatures": [] },
+    { "round": 2, "status": "pass", "reviews": 4, "failedFeatures": [], "nonBlockingFixFeatures": ["docs-authoritative-followup-consistency-polish"] },
+    { "round": 3, "status": "pass", "reviews": 5, "failedFeatures": [], "newFixFeatures": ["docs-audit-role-annotation-consistency"] }
+  ],
+  "previousRound": ".factory/validation/docs-authoritative-followup/scrutiny/synthesis.json (round 2)"
 }
