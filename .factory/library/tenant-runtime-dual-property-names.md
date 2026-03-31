@@ -7,7 +7,7 @@
 The tenant runtime subsystem has two services that read similar-sounding but **different** property names with **different** defaults:
 
 | Service | Property | Default |
-|---------|----------|---------|
+| --- | --- | --- |
 | `TenantRuntimeEnforcementService` | `erp.tenant.runtime.default-max-concurrent-requests` | 200 |
 | `TenantRuntimeEnforcementService` | `erp.tenant.runtime.default-max-requests-per-minute` | 5000 |
 | `TenantRuntimeAccessService` | `erp.tenant.runtime.default.max-concurrent-requests` | 0 |

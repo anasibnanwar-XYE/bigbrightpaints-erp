@@ -60,7 +60,7 @@ Do not assume that passing the old lint contract alone proves mainline catch-up 
 
 `ci/check-architecture.sh` includes an allowlist evidence contract that requires:
 1. `docs/ARCHITECTURE.md` (or `docs/architecture.md`) to be updated whenever `ci/architecture/module-import-allowlist.txt` changes.
-2. An ADR file (`docs/adr/ADR-*-allowlist-*.md`) with required sections: `## Why Needed`, `## Alternatives Rejected`, `## Boundary Preserved`.
+2. An ADR file in either allowed directory (`docs/adr/ADR-*-allowlist-*.md` or `docs/adrs/ADR-*-allowlist-*.md`) with required sections: `## Why Needed`, `## Alternatives Rejected`, `## Boundary Preserved`.
 
 The filename check is case-insensitive to handle platforms where git tracks the architecture doc with different casing.
 
