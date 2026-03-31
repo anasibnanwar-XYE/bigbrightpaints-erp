@@ -444,7 +444,7 @@ The GRN → purchase invoice relationship is one-to-many: a single GRN can be in
 7. **No supplier-specific payment terms validation** — Payment terms are stored but not enforced in the PO lifecycle
 8. **No automated dunning for suppliers** — Unlike dealer dunning (45+ day evaluation), supplier aging does not trigger automated hold actions
 
-> **Note**: For product and engineering classification of these and other open items, see the [Authoritative Recommendations Register](../RECOMMENDATIONS.md). This module's limitations align with recommendations classified as "Future Work — High" (PO and invoice idempotency) and "Future Work" in that register. Specific purchasing limitations classified as "Future Work — High" include PO idempotency and invoice idempotency gaps.
+> **Note**: The authoritative classification for these items is recorded in the [Authoritative Recommendations Register](../RECOMMENDATIONS.md). This section documents factual implementation status only.
 
 ---
 
