@@ -432,6 +432,8 @@ Both `FinishedGood.setCurrentStock()` and `RawMaterial.setCurrentStock()` reject
 - **No stock transfer workflow** — `InventoryMovementEvent` includes a `TRANSFER` type, but no transfer endpoint or service is implemented.
 - **Accounting event listener failures** are fire-and-forget: no retry, no dead-letter, no automated reconciliation.
 
+> **Note**: For product and engineering classification of these and other open items, see the [Authoritative Recommendations Register](../RECOMMENDATIONS.md). This module's limitations align with recommendations classified as "Future Work", "Future Work — Medium", and "Accepted Decision" in that register. Specific inventory limitations classified as "Future Work — Medium" include stock transfer capability and batch merge capability.
+
 ---
 
 ## Cross-References
