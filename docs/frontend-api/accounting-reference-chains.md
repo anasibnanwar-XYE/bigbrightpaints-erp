@@ -161,11 +161,15 @@ The current canonical audit read surfaces are:
 |---|---|---|
 | Accounting audit trail | `/api/v1/accounting/audit-trail` | Full accounting audit trail with all transaction events |
 | Accounting audit transactions | `/api/v1/accounting/audit/transactions` | Paginated list of accounting transactions with filters |
-| Accounting audit digest | `/api/v1/accounting/audit/digest` | Summary/digest view of accounting audit data |
-| Business events audit | `/api/v1/audit/business-events` | Business-level audit events across modules |
-| ML events audit | `/api/v1/audit/ml-events` | Machine learning/analytics audit events |
+| Accounting audit transactions (detail) | `/api/v1/accounting/audit/transactions/{journalEntryId}` | Single transaction audit detail by journal entry ID |
+| Business events audit | `/api/v1/audit/business-events` | Business-level audit events across modules (requires ROLE_ADMIN or ROLE_ACCOUNTING) |
+| ML events audit | `/api/v1/audit/ml-events` | Machine learning/analytics audit events (requires ROLE_ADMIN) |
+
+> **Deprecated**: `/api/v1/accounting/audit/digest` is deprecated and should not be used for new integrations. Use `/api/v1/accounting/audit/transactions` with filters instead.
 
 > **Note**: The paths `/api/v1/admin/audit/events` and `/api/v1/superadmin/audit/platform-events` do not exist in the current API contract. Use the accounting audit endpoints listed above for audit queries.
+
+For more details on audit-surface ownership, see [core-audit-runtime-settings.md](../modules/core-audit-runtime-settings.md) and [AUDIT_TRAIL_OWNERSHIP.md](../AUDIT_TRAIL_OWNERSHIP.md).
 
 ## Cross-Module Reference Types
 

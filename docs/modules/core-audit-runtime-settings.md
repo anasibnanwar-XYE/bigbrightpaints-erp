@@ -419,13 +419,15 @@ Listens for `AccountingEventStore.JournalEntryPostedEvent` (Spring application e
 
 3. **Platform audit has no persistent retry:** If `AuditService` fails to write (e.g., database contention under load), the audit event is lost. The enterprise audit trail has persistent retry, but the platform audit does not.
 
-4. **Settings table has no schema-level scope isolation:** Global and tenant-scoped settings share the `system_settings` table with only key naming conventions to distinguish them. See section 3.2 for the risk analysis.
+4. **Profile audit gap:** User profile changes (via `/api/v1/auth/profile` endpoints) do not emit audit events. This is a compliance risk and is classified as a **Bug to Fix Now** in the [Authoritative Recommendations Register](../RECOMMENDATIONS.md). See [`RECOMMENDATIONS.md`](../RECOMMENDATIONS.md) — Auth and Identity section for the full classification and rationale.
 
-5. **Legacy per-code settings keys still read:** `TenantRuntimeAccessService` reads legacy per-company-code settings keys as fallbacks. These keys coexist with the newer company-ID-scoped keys and could cause policy confusion if both are present with different values.
+5. **Settings table has no schema-level scope isolation:** Global and tenant-scoped settings share the `system_settings` table with only key naming conventions to distinguish them. See section 3.2 for the risk analysis.
 
-6. **In-memory counters reset on restart:** Concurrent-request and rate-limit counters are not persisted. A restart resets all quotas to zero. See section 3.4.
+6. **Legacy per-code settings keys still read:** `TenantRuntimeAccessService` reads legacy per-company-code settings keys as fallbacks. These keys coexist with the newer company-ID-scoped keys and could cause policy confusion if both are present with different values.
 
-7. **Accounting-event ownership for idempotency is documented in the idempotency slice:** How `AccountingEventStore` participates in idempotency checks and the accounting idempotency delegation pattern are covered in [core-idempotency.md](core-idempotency.md) §2.7.
+7. **In-memory counters reset on restart:** Concurrent-request and rate-limit counters are not persisted. A restart resets all quotas to zero. See section 3.4.
+
+8. **Accounting-event ownership for idempotency is documented in the idempotency slice:** How `AccountingEventStore` participates in idempotency checks and the accounting idempotency delegation pattern are covered in [core-idempotency.md](core-idempotency.md) §2.7.
 
 ---
 
