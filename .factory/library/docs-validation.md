@@ -23,6 +23,8 @@ Docs-only validation guidance for the backend truth-library mission.
 - When a packet references a deprecated surface, verify it also points to a replacement or explicitly says none exists
 - For mainline catch-up work, validate `docs/frontend-portals/` and `docs/frontend-api/` as the new canonical frontend-facing docs tree
 - If older docs families remain in-tree during catch-up, verify they are explicitly marked non-canonical or reference-only rather than silently coexisting as truth
+- For authoritative-recommendations follow-up work, validate that one canonical recommendations surface captures the user-approved verdicts and that older flow/module recommendation sections defer to it rather than competing with it
+- When audit docs are touched, validate both the surviving audit read surfaces and the consistency of audit-gap classifications across the canonical audit docs and the recommendations register
 
 ## Full-Contract Lint Expectations
 
@@ -69,3 +71,4 @@ The filename check is case-insensitive to handle platforms where git tracks the 
 - sampled internal links checked
 - sampled route/host/role claims cross-checked against `openapi.json` and source
 - any contradictions or open decisions discovered during documentation work
+- if recommendation authority moved, proof that the older packets now defer to the canonical recommendations surface

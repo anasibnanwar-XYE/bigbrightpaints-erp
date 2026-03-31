@@ -24,10 +24,11 @@ The mission should produce a docs tree that explains the backend from five compl
 1. **Module packets** — what a module owns: controllers, services, DTOs, entities, helpers, events, boundaries
 2. **Flow packets** — how cross-module business flows actually work today, including the current definition of done and known gaps
 3. **Frontend handoff packets** — host ownership, payload families, RBAC, and frontend-relevant contract notes
-4. **ADR index** — why the backend looks the way it does
-5. **Deprecated/incomplete registry** — what is retired, partial, duplicated, or intentionally not end-to-end
+4. **Authoritative recommendations register** — the canonical answer set for formerly open product, bug, and plan decisions
+5. **ADR index** — why the backend looks the way it does
+6. **Deprecated/incomplete registry** — what is retired, partial, duplicated, or intentionally not end-to-end
 
-No packet should silently become a second source of truth. Module docs own structure, flow docs own behavior, handoff docs own consumer framing, ADRs own decisions, and deprecated docs own retirement notes.
+No packet should silently become a second source of truth. Module docs own structure, flow docs own behavior, handoff docs own consumer framing, the authoritative recommendations register owns recommendation truth for resolved formerly-open items, ADRs own decisions, and deprecated docs own retirement notes.
 
 ## Mainline Catch-Up Override
 

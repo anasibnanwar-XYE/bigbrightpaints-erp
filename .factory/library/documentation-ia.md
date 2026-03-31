@@ -21,6 +21,7 @@ During catch-up work, workers should treat that mainline model as the target can
 - **Module packets** — controllers, services, DTO families, entities, helpers, events, boundaries
 - **Flow packets** — actors, entrypoints, preconditions, lifecycle, current definition of done, non-canonical paths, limitations
 - **Frontend handoff packets** — host/path families, payload families, RBAC assumptions, read/write boundaries
+- **Authoritative recommendations register** — the single canonical answer set for formerly open product/bug/plan decisions
 - **ADRs** — accepted reasons for current architecture and product choices
 - **Deprecated/incomplete registry** — retired, partial, duplicated, or dead-end surfaces and their replacements
 
@@ -59,10 +60,20 @@ If older packet families remain after catch-up, they must be explicitly marked n
 - Module packets own **structural truth**
 - Flow packets own **behavioral truth**
 - Frontend handoff packets own **consumer framing**, not implementation ownership
+- The authoritative recommendations register owns **recommendation truth** for formerly open items
 - ADRs own **decision truth**
 - Deprecated registry owns **retirement truth**
 
 If a packet needs to reference another packet's truth, it should link to it rather than duplicate it.
+
+## Authoritative Recommendations Follow-Up
+
+During the post-catch-up follow-up, the user supplied explicit verdicts for the previously open items. Workers should treat those verdicts as the canonical recommendation layer and place them in one authoritative canonical surface rather than leaving the answer spread across many flow-level Open Decisions tables.
+
+That means:
+- the authoritative recommendations register should be discoverable from the current docs navigation
+- older flow/module open-decision sections may keep brief factual context, but should summarize or defer to the register instead of restating competing recommendations
+- audit-related recommendations must stay aligned with the canonical audit docs and current surviving audit read surfaces
 
 ## Minimum Contents Per Packet
 
