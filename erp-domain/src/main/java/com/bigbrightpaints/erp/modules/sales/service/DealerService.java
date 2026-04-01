@@ -12,6 +12,7 @@ import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -49,6 +50,9 @@ import jakarta.transaction.Transactional;
 public class DealerService {
 
   private static final Logger log = LoggerFactory.getLogger(DealerService.class);
+  private static final int DEALER_DIRECTORY_DEFAULT_PAGE = 0;
+  private static final int DEALER_DIRECTORY_DEFAULT_SIZE = 50;
+  private static final int DEALER_DIRECTORY_MAX_SIZE = 200;
   private static final int DEALER_SEARCH_LIMIT = 10;
   private static final Pattern GSTIN_PATTERN = Pattern.compile("^[0-9]{2}[A-Z0-9]{13}$");
   private static final String PORTAL_AGING_BUCKETS = "0-0,1-30,31-60,61-90,91";
@@ -162,22 +166,18 @@ public class DealerService {
 
   @Transactional
   public List<DealerResponse> listDealers() {
+    return listDealers(null, null, null);
+  }
+
+  @Transactional
+  public List<DealerResponse> listDealers(String status, Integer page, Integer size) {
     Company company = companyContextService.requireCurrentCompany();
+    String normalizedStatus = normalizeDirectoryStatus(status);
     List<Dealer> dealers =
-        dealerRepository.findByCompanyAndStatusIgnoreCaseOrderByNameAsc(
-            company, DealerProvisioningSupport.ACTIVE_STATUS);
-    List<Long> dealerIds = dealers.stream().map(Dealer::getId).toList();
-    var balances = dealerLedgerService.currentBalances(dealerIds);
-    var pendingExposures = resolvePendingOrderExposureMap(company, dealerIds);
-    return dealers.stream()
-        .map(
-            dealer ->
-                toResponse(
-                    dealer,
-                    dealer.getPortalUser() != null ? dealer.getPortalUser().getEmail() : null,
-                    balances.getOrDefault(dealer.getId(), BigDecimal.ZERO),
-                    pendingExposures.getOrDefault(dealer.getId(), BigDecimal.ZERO)))
-        .toList();
+        isPaginationRequested(page, size)
+            ? listDealersPage(company, normalizedStatus, page, size)
+            : listAllDealers(company, normalizedStatus);
+    return toDealerResponses(company, dealers);
   }
 
   @Transactional
@@ -196,38 +196,7 @@ public class DealerService {
             normalizedStatus,
             normalizedRegion,
             PageRequest.of(0, DEALER_SEARCH_LIMIT));
-
-    List<Long> dealerIds = matches.stream().map(Dealer::getId).toList();
-    var balances = dealerLedgerService.currentBalances(dealerIds);
-    var pendingExposures = resolvePendingOrderExposureMap(company, dealerIds);
-
-    List<DealerLookupResponse> resolved = new ArrayList<>();
-    for (Dealer dealer : matches) {
-      BigDecimal outstandingBalance = balances.getOrDefault(dealer.getId(), BigDecimal.ZERO);
-      BigDecimal pendingOrderExposure =
-          pendingExposures.getOrDefault(dealer.getId(), BigDecimal.ZERO);
-      String dealerCreditStatus =
-          resolveCreditStatus(dealer, outstandingBalance, pendingOrderExposure);
-      if (normalizedCreditStatus != null && !normalizedCreditStatus.equals(dealerCreditStatus)) {
-        continue;
-      }
-
-      Account receivableAccount = dealer.getReceivableAccount();
-      resolved.add(
-          new DealerLookupResponse(
-              dealer.getId(),
-              dealer.getPublicId(),
-              dealer.getName(),
-              dealer.getCode(),
-              receivableAccount != null ? receivableAccount.getId() : null,
-              receivableAccount != null ? receivableAccount.getCode() : null,
-              dealer.getStateCode(),
-              dealer.getGstRegistrationType(),
-              dealer.getPaymentTerms(),
-              dealer.getRegion(),
-              dealerCreditStatus));
-    }
-    return resolved;
+    return toDealerLookupResponses(company, matches, normalizedCreditStatus);
   }
 
   @Transactional
@@ -367,6 +336,62 @@ public class DealerService {
         resolveCreditStatus(dealer, outstandingBalance, pendingOrderExposure));
   }
 
+  private List<DealerResponse> toDealerResponses(Company company, List<Dealer> dealers) {
+    if (dealers == null || dealers.isEmpty()) {
+      return List.of();
+    }
+    List<Long> dealerIds = dealers.stream().map(Dealer::getId).toList();
+    Map<Long, BigDecimal> balances = dealerLedgerService.currentBalances(dealerIds);
+    Map<Long, BigDecimal> pendingExposures = resolvePendingOrderExposureMap(company, dealerIds);
+    return dealers.stream()
+        .map(
+            dealer ->
+                toResponse(
+                    dealer,
+                    dealer.getPortalUser() != null ? dealer.getPortalUser().getEmail() : null,
+                    balances.getOrDefault(dealer.getId(), BigDecimal.ZERO),
+                    pendingExposures.getOrDefault(dealer.getId(), BigDecimal.ZERO)))
+        .toList();
+  }
+
+  private List<DealerLookupResponse> toDealerLookupResponses(
+      Company company, List<Dealer> dealers, String normalizedCreditStatus) {
+    if (dealers == null || dealers.isEmpty()) {
+      return List.of();
+    }
+    List<Long> dealerIds = dealers.stream().map(Dealer::getId).toList();
+    Map<Long, BigDecimal> balances = dealerLedgerService.currentBalances(dealerIds);
+    Map<Long, BigDecimal> pendingExposures = resolvePendingOrderExposureMap(company, dealerIds);
+
+    List<DealerLookupResponse> resolved = new ArrayList<>();
+    for (Dealer dealer : dealers) {
+      BigDecimal outstandingBalance = balances.getOrDefault(dealer.getId(), BigDecimal.ZERO);
+      BigDecimal pendingOrderExposure =
+          pendingExposures.getOrDefault(dealer.getId(), BigDecimal.ZERO);
+      String dealerCreditStatus =
+          resolveCreditStatus(dealer, outstandingBalance, pendingOrderExposure);
+      if (normalizedCreditStatus != null && !normalizedCreditStatus.equals(dealerCreditStatus)) {
+        continue;
+      }
+
+      Account receivableAccount = dealer.getReceivableAccount();
+      resolved.add(
+          new DealerLookupResponse(
+              dealer.getId(),
+              dealer.getPublicId(),
+              dealer.getName(),
+              dealer.getCode(),
+              receivableAccount != null ? receivableAccount.getId() : null,
+              receivableAccount != null ? receivableAccount.getCode() : null,
+              dealer.getStateCode(),
+              dealer.getGstRegistrationType(),
+              dealer.getPaymentTerms(),
+              dealer.getRegion(),
+              dealerCreditStatus));
+    }
+    return resolved;
+  }
+
   private String normalizeGstNumber(String gstNumber) {
     if (!StringUtils.hasText(gstNumber)) {
       return null;
@@ -420,6 +445,48 @@ public class DealerService {
       return null;
     }
     return value.trim().toUpperCase(Locale.ROOT);
+  }
+
+  private String normalizeDirectoryStatus(String status) {
+    if (!StringUtils.hasText(status)) {
+      return DealerProvisioningSupport.ACTIVE_STATUS;
+    }
+    String normalized = normalizeOptionalToken(status);
+    return "ALL".equals(normalized) ? null : normalized;
+  }
+
+  private int normalizePage(int page) {
+    return Math.max(page, 0);
+  }
+
+  private int normalizeSize(int size, int defaultSize) {
+    if (size <= 0) {
+      return defaultSize;
+    }
+    return Math.min(size, DEALER_DIRECTORY_MAX_SIZE);
+  }
+
+  private boolean isPaginationRequested(Integer page, Integer size) {
+    return page != null || size != null;
+  }
+
+  private List<Dealer> listAllDealers(Company company, String normalizedStatus) {
+    return normalizedStatus == null
+        ? dealerRepository.findByCompanyOrderByNameAsc(company)
+        : dealerRepository.findByCompanyAndStatusIgnoreCaseOrderByNameAsc(company, normalizedStatus);
+  }
+
+  private List<Dealer> listDealersPage(
+      Company company, String normalizedStatus, Integer page, Integer size) {
+    PageRequest directoryPage =
+        PageRequest.of(
+            normalizePage(page != null ? page : DEALER_DIRECTORY_DEFAULT_PAGE),
+            normalizeSize(size != null ? size : DEALER_DIRECTORY_DEFAULT_SIZE,
+                DEALER_DIRECTORY_DEFAULT_SIZE),
+            Sort.by(Sort.Order.asc("name"), Sort.Order.asc("id")));
+    return normalizedStatus == null
+        ? dealerRepository.findByCompany(company, directoryPage)
+        : dealerRepository.findByCompanyAndStatusIgnoreCase(company, normalizedStatus, directoryPage);
   }
 
   private String normalizeCreditStatus(String creditStatus) {

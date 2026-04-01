@@ -19,6 +19,7 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.util.StringUtils;
 
+import com.bigbrightpaints.erp.core.fixture.E2eFixtureCatalog;
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
 import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
@@ -99,6 +100,8 @@ public class MockDataInitializer {
   private static final LocalDate P2P_ORDER_DATE = LocalDate.of(2026, 2, 10);
   private static final LocalDate P2P_RECEIPT_DATE = LocalDate.of(2026, 2, 12);
   private static final LocalDate P2P_INVOICE_DATE = LocalDate.of(2026, 2, 14);
+  private static final BigDecimal DEFAULT_FINISHED_GOOD_BASE_PRICE = new BigDecimal("20.00");
+  private static final BigDecimal DEFAULT_FINISHED_GOOD_GST_RATE = new BigDecimal("18.00");
 
   @Bean
   CommandLineRunner seedMockData(
@@ -153,6 +156,9 @@ public class MockDataInitializer {
               accounts,
               brand,
               "FG-GST",
+              "Product FG-GST",
+              DEFAULT_FINISHED_GOOD_BASE_PRICE,
+              DEFAULT_FINISHED_GOOD_GST_RATE,
               "FIFO",
               wipPackAccount);
       FinishedGood fgLifo =
@@ -163,6 +169,9 @@ public class MockDataInitializer {
               accounts,
               brand,
               "FG-LIFO",
+              "Product FG-LIFO",
+              DEFAULT_FINISHED_GOOD_BASE_PRICE,
+              DEFAULT_FINISHED_GOOD_GST_RATE,
               "LIFO",
               wipPackAccount);
       FinishedGood fgKit =
@@ -173,10 +182,26 @@ public class MockDataInitializer {
               accounts,
               brand,
               "FG-KIT",
+              "Product FG-KIT",
+              DEFAULT_FINISHED_GOOD_BASE_PRICE,
+              DEFAULT_FINISHED_GOOD_GST_RATE,
+              "FIFO",
+              wipPackAccount);
+      FinishedGood fgE2ePrimary =
+          seedFinishedGood(
+              company,
+              finishedGoodRepository,
+              productRepository,
+              accounts,
+              brand,
+              E2eFixtureCatalog.ORDER_PRIMARY_SKU,
+              E2eFixtureCatalog.ORDER_PRIMARY_NAME,
+              E2eFixtureCatalog.ORDER_PRIMARY_BASE_PRICE,
+              E2eFixtureCatalog.ORDER_PRIMARY_GST_RATE,
               "FIFO",
               wipPackAccount);
       seedRawMaterials(company, rawMaterialRepository, rawMaterialBatchRepository, accounts);
-      seedBatches(company, batchRepository, finishedGoodRepository, fg, fgLifo, fgKit);
+      seedBatches(company, batchRepository, finishedGoodRepository, fg, fgLifo, fgKit, fgE2ePrimary);
 
       // Seed a handful of journals for UI exploration
       CompanyContextHolder.setCompanyCode(company.getCode());
@@ -732,6 +757,9 @@ public class MockDataInitializer {
       Map<String, Account> accounts,
       ProductionBrand brand,
       String sku,
+      String productName,
+      BigDecimal basePrice,
+      BigDecimal gstRate,
       String costingMethod,
       Account wipAccount) {
     FinishedGood fg =
@@ -742,7 +770,7 @@ public class MockDataInitializer {
                   FinishedGood f = new FinishedGood();
                   f.setCompany(company);
                   f.setProductCode(sku);
-                  f.setName("Mock " + sku);
+                  f.setName(productName);
                   f.setUnit("UNIT");
                   f.setCostingMethod(costingMethod);
                   f.setValuationAccountId(accounts.get("INV").getId());
@@ -760,12 +788,12 @@ public class MockDataInitializer {
               ProductionProduct product = new ProductionProduct();
               product.setCompany(company);
               product.setBrand(brand);
-              product.setProductName("Product " + sku);
+              product.setProductName(productName);
               product.setCategory("FINISHED_GOOD");
               product.setUnitOfMeasure("UNIT");
               product.setSkuCode(sku);
-              product.setBasePrice(new BigDecimal("20.00"));
-              product.setGstRate(new BigDecimal("18.00"));
+              product.setBasePrice(basePrice);
+              product.setGstRate(gstRate);
               product.setMinDiscountPercent(BigDecimal.ZERO);
               product.setMinSellingPrice(BigDecimal.ZERO);
               // Set metadata for production log journal entries
@@ -794,7 +822,8 @@ public class MockDataInitializer {
       FinishedGoodRepository finishedGoodRepository,
       FinishedGood fgFifo,
       FinishedGood fgLifo,
-      FinishedGood fgKit) {
+      FinishedGood fgKit,
+      FinishedGood fgE2ePrimary) {
     createBatch(
         batchRepository,
         finishedGoodRepository,
@@ -835,6 +864,14 @@ public class MockDataInitializer {
         new BigDecimal("200"),
         new BigDecimal("8.75"),
         CompanyTime.now(company).minusSeconds(5400));
+    createBatch(
+        batchRepository,
+        finishedGoodRepository,
+        fgE2ePrimary,
+        E2eFixtureCatalog.ORDER_PRIMARY_BATCH_CODE,
+        E2eFixtureCatalog.ORDER_PRIMARY_STOCK_QUANTITY,
+        E2eFixtureCatalog.ORDER_PRIMARY_UNIT_COST,
+        CompanyTime.now(company).minusSeconds(1800));
   }
 
   private void createBatch(
@@ -847,13 +884,7 @@ public class MockDataInitializer {
       Instant manufacturedAt) {
     // Skip if batch already exists for this FG
     if (fg.getId() != null) {
-      boolean exists =
-          batchRepository.findByFinishedGood_ValuationAccountId(fg.getValuationAccountId()).stream()
-              .anyMatch(
-                  b ->
-                      b.getFinishedGood().getId().equals(fg.getId())
-                          && batchCode.equalsIgnoreCase(b.getBatchCode()));
-      if (exists) {
+      if (batchRepository.existsByFinishedGoodAndBatchCodeIgnoreCase(fg, batchCode)) {
         return;
       }
     }

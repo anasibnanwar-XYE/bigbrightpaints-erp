@@ -47,8 +47,12 @@ public class DealerController {
 
   @GetMapping
   @PreAuthorize(PortalRoleActionMatrix.ADMIN_SALES_ACCOUNTING)
-  public ResponseEntity<ApiResponse<List<DealerResponse>>> listDealers() {
-    return ResponseEntity.ok(ApiResponse.success("Dealer directory", dealerService.listDealers()));
+  public ResponseEntity<ApiResponse<List<DealerResponse>>> listDealers(
+      @RequestParam(required = false) String status,
+      @RequestParam(required = false) Integer page,
+      @RequestParam(required = false) Integer size) {
+    return ResponseEntity.ok(
+        ApiResponse.success("Dealer directory", dealerService.listDealers(status, page, size)));
   }
 
   @GetMapping("/search")

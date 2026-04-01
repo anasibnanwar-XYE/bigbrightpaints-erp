@@ -9,6 +9,7 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.bigbrightpaints.erp.core.fixture.E2eFixtureCatalog;
 import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
@@ -84,9 +85,28 @@ public class CriticalFixtureService {
     Supplier supplier = ensureSupplier(company, accounts.get("AP"));
 
     ProductionBrand brand = ensureBrand(company);
-    ProductionProduct product = ensureProductionProduct(company, brand, accounts);
-    FinishedGood finishedGood = ensureFinishedGood(company, product, accounts);
-    seedBatch(finishedGood, new BigDecimal("150"), new BigDecimal("12.50"));
+    seedFinishedGoodFixture(
+        company,
+        brand,
+        accounts,
+        "FG-FIXTURE",
+        "Fixture Finished Good",
+        new BigDecimal("100.00"),
+        new BigDecimal("18"),
+        "FIX-BATCH-1",
+        new BigDecimal("150"),
+        new BigDecimal("12.50"));
+    seedFinishedGoodFixture(
+        company,
+        brand,
+        accounts,
+        E2eFixtureCatalog.ORDER_PRIMARY_SKU,
+        E2eFixtureCatalog.ORDER_PRIMARY_NAME,
+        E2eFixtureCatalog.ORDER_PRIMARY_BASE_PRICE,
+        E2eFixtureCatalog.ORDER_PRIMARY_GST_RATE,
+        E2eFixtureCatalog.ORDER_PRIMARY_BATCH_CODE,
+        E2eFixtureCatalog.ORDER_PRIMARY_STOCK_QUANTITY,
+        E2eFixtureCatalog.ORDER_PRIMARY_UNIT_COST);
 
     if (dealer.getReceivableAccount() == null) {
       dealer.setReceivableAccount(accounts.get("AR"));
@@ -164,10 +184,14 @@ public class CriticalFixtureService {
                   d.setCompany(company);
                   d.setName("Fixture Dealer");
                   d.setCode("FIX-DEALER");
+                  d.setStatus("ACTIVE");
                   d.setOutstandingBalance(BigDecimal.ZERO);
                   return dealerRepository.save(d);
                 });
     dealer.setReceivableAccount(receivable);
+    if (dealer.getStatus() == null || dealer.getStatus().isBlank()) {
+      dealer.setStatus("ACTIVE");
+    }
     return dealerRepository.save(dealer);
   }
 
@@ -201,24 +225,41 @@ public class CriticalFixtureService {
             });
   }
 
-  private ProductionProduct ensureProductionProduct(
-      Company company, ProductionBrand brand, Map<String, Account> accounts) {
+  private void seedFinishedGoodFixture(
+      Company company,
+      ProductionBrand brand,
+      Map<String, Account> accounts,
+      String sku,
+      String productName,
+      BigDecimal basePrice,
+      BigDecimal gstRate,
+      String batchCode,
+      BigDecimal quantity,
+      BigDecimal unitCost) {
     ProductionProduct product =
-        productRepository
-            .findByCompanyAndSkuCode(company, "FG-FIXTURE")
-            .orElseGet(
-                () -> {
-                  ProductionProduct created = new ProductionProduct();
-                  created.setCompany(company);
-                  created.setBrand(brand);
-                  created.setSkuCode("FG-FIXTURE");
-                  created.setProductName("Fixture Finished Good");
-                  created.setCategory("FINISHED_GOOD");
-                  created.setUnitOfMeasure("UNIT");
-                  created.setBasePrice(new BigDecimal("100.00"));
-                  created.setGstRate(new BigDecimal("18"));
-                  return productRepository.save(created);
-                });
+        ensureProductionProduct(company, brand, accounts, sku, productName, basePrice, gstRate);
+    FinishedGood finishedGood = ensureFinishedGood(company, product, accounts);
+    seedBatch(finishedGood, batchCode, quantity, unitCost);
+  }
+
+  private ProductionProduct ensureProductionProduct(
+      Company company,
+      ProductionBrand brand,
+      Map<String, Account> accounts,
+      String sku,
+      String productName,
+      BigDecimal basePrice,
+      BigDecimal gstRate) {
+    ProductionProduct product =
+        productRepository.findByCompanyAndSkuCode(company, sku).orElseGet(ProductionProduct::new);
+    product.setCompany(company);
+    product.setBrand(brand);
+    product.setSkuCode(sku);
+    product.setProductName(productName);
+    product.setCategory("FINISHED_GOOD");
+    product.setUnitOfMeasure("UNIT");
+    product.setBasePrice(basePrice);
+    product.setGstRate(gstRate);
 
     Map<String, Object> metadata =
         Optional.ofNullable(product.getMetadata()).orElse(new HashMap<>());
@@ -259,21 +300,18 @@ public class CriticalFixtureService {
     return fg;
   }
 
-  private void seedBatch(FinishedGood finishedGood, BigDecimal quantity, BigDecimal unitCost) {
+  private void seedBatch(
+      FinishedGood finishedGood, String batchCode, BigDecimal quantity, BigDecimal unitCost) {
     if (finishedGood.getId() == null) {
       return;
     }
-    boolean exists =
-        finishedGoodBatchRepository
-            .findByFinishedGood_ValuationAccountId(finishedGood.getValuationAccountId())
-            .stream()
-            .anyMatch(b -> finishedGood.getId().equals(b.getFinishedGood().getId()));
-    if (exists) {
+    if (finishedGoodBatchRepository.existsByFinishedGoodAndBatchCodeIgnoreCase(
+        finishedGood, batchCode)) {
       return;
     }
     FinishedGoodBatch batch = new FinishedGoodBatch();
     batch.setFinishedGood(finishedGood);
-    batch.setBatchCode("FIX-BATCH-1");
+    batch.setBatchCode(batchCode);
     batch.setQuantityTotal(quantity);
     batch.setQuantityAvailable(quantity);
     batch.setUnitCost(unitCost);

@@ -18,7 +18,11 @@ import jakarta.persistence.LockModeType;
 public interface DealerRepository extends JpaRepository<Dealer, Long> {
   List<Dealer> findByCompanyOrderByNameAsc(Company company);
 
+  List<Dealer> findByCompany(Company company, Pageable pageable);
+
   List<Dealer> findByCompanyAndStatusIgnoreCaseOrderByNameAsc(Company company, String status);
+
+  List<Dealer> findByCompanyAndStatusIgnoreCase(Company company, String status, Pageable pageable);
 
   long countByCompanyAndStatusIgnoreCase(Company company, String status);
 
