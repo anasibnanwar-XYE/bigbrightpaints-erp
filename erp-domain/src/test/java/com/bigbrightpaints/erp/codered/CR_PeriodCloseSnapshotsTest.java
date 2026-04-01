@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.test.context.TestPropertySource;
 
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
 import com.bigbrightpaints.erp.core.util.CompanyTime;
@@ -36,10 +37,10 @@ import com.bigbrightpaints.erp.modules.reports.dto.ReportSource;
 import com.bigbrightpaints.erp.modules.reports.service.ReportQueryRequestBuilder;
 import com.bigbrightpaints.erp.modules.reports.service.ReportService;
 import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
-import com.bigbrightpaints.erp.test.support.TestDateUtils;
 
 @Tag("critical")
 @Tag("reconciliation")
+@TestPropertySource(properties = "erp.benchmark.override-date=2025-03-29")
 class CR_PeriodCloseSnapshotsTest extends AbstractIntegrationTest {
 
   @Autowired private AccountingPeriodService accountingPeriodService;
@@ -62,7 +63,7 @@ class CR_PeriodCloseSnapshotsTest extends AbstractIntegrationTest {
     Company company = dataSeeder.ensureCompany(companyCode, companyCode + " Ltd");
     CompanyContextHolder.setCompanyCode(companyCode);
     try {
-      LocalDate today = TestDateUtils.safeDate(company);
+      LocalDate today = CompanyTime.today(company);
       LocalDate periodDate = today.minusMonths(1);
       AccountingPeriod period = accountingPeriodService.ensurePeriod(company, periodDate);
       Account cash = ensureAccount(company, "CASH-SNAP", "Cash", AccountType.ASSET);
@@ -101,7 +102,7 @@ class CR_PeriodCloseSnapshotsTest extends AbstractIntegrationTest {
     Company company = dataSeeder.ensureCompany(companyCode, companyCode + " Ltd");
     CompanyContextHolder.setCompanyCode(companyCode);
     try {
-      LocalDate today = TestDateUtils.safeDate(company);
+      LocalDate today = CompanyTime.today(company);
       LocalDate periodDate = today.minusMonths(1);
       AccountingPeriod period = accountingPeriodService.ensurePeriod(company, periodDate);
       Account cash = ensureAccount(company, "CASH-SNAP-BAL", "Cash", AccountType.ASSET);
@@ -133,7 +134,7 @@ class CR_PeriodCloseSnapshotsTest extends AbstractIntegrationTest {
     Company company = dataSeeder.ensureCompany(companyCode, companyCode + " Ltd");
     CompanyContextHolder.setCompanyCode(companyCode);
     try {
-      LocalDate today = TestDateUtils.safeDate(company);
+      LocalDate today = CompanyTime.today(company);
       LocalDate periodDate = today.minusMonths(1);
       AccountingPeriod period = accountingPeriodService.ensurePeriod(company, periodDate);
       Account cash = ensureAccount(company, "CASH-SNAP-BND", "Cash", AccountType.ASSET);
@@ -169,7 +170,7 @@ class CR_PeriodCloseSnapshotsTest extends AbstractIntegrationTest {
     Company company = dataSeeder.ensureCompany(companyCode, companyCode + " Ltd");
     CompanyContextHolder.setCompanyCode(companyCode);
     try {
-      LocalDate today = TestDateUtils.safeDate(company);
+      LocalDate today = CompanyTime.today(company);
       LocalDate periodDate = today.minusMonths(1);
       AccountingPeriod period = accountingPeriodService.ensurePeriod(company, periodDate);
       Account cash = ensureAccount(company, "CASH-SNAP-BS", "Cash", AccountType.ASSET);
@@ -210,7 +211,7 @@ class CR_PeriodCloseSnapshotsTest extends AbstractIntegrationTest {
     Company company = dataSeeder.ensureCompany(companyCode, companyCode + " Ltd");
     CompanyContextHolder.setCompanyCode(companyCode);
     try {
-      LocalDate today = TestDateUtils.safeDate(company);
+      LocalDate today = CompanyTime.today(company);
       LocalDate periodDate = today.minusMonths(1);
       AccountingPeriod period = accountingPeriodService.ensurePeriod(company, periodDate);
       Account cash = ensureAccount(company, "CASH-SNAP-TB", "Cash", AccountType.ASSET);
@@ -241,7 +242,7 @@ class CR_PeriodCloseSnapshotsTest extends AbstractIntegrationTest {
     Company company = dataSeeder.ensureCompany(companyCode, companyCode + " Ltd");
     CompanyContextHolder.setCompanyCode(companyCode);
     try {
-      LocalDate today = TestDateUtils.safeDate(company);
+      LocalDate today = CompanyTime.today(company);
       LocalDate periodDate = today.minusMonths(1);
       AccountingPeriod period = accountingPeriodService.ensurePeriod(company, periodDate);
 

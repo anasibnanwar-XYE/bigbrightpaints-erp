@@ -19,6 +19,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.context.TestPropertySource;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
@@ -127,7 +128,10 @@ class ProductionLogAtomicityRegressionIT extends AbstractIntegrationTest {
                             new ProductionLogRequest.MaterialUsageRequest(
                                 material.getId(), new BigDecimal("5"), "KG")))))
         .isInstanceOf(ApplicationException.class)
-        .hasMessageContaining("missing finished good account metadata");
+        .satisfies(
+            ex ->
+                assertThat(((ApplicationException) ex).getErrorCode())
+                    .isEqualTo(ErrorCode.VALIDATION_INVALID_REFERENCE));
 
     assertThat(rawMaterialRepository.findById(material.getId()).orElseThrow().getCurrentStock())
         .isEqualByComparingTo(new BigDecimal("20"));

@@ -1157,7 +1157,12 @@ public class ErpInvariantsSuiteIT extends AbstractIntegrationTest {
             HttpMethod.POST,
             new HttpEntity<>(packingRequest, packingHeaders),
             Map.class);
-    requireData(packingResp, "pack production");
+    Map<?, ?> packingData = requireData(packingResp, "pack production");
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> packingRecords =
+        (List<Map<String, Object>>) packingData.get("packingRecords");
+    assertThat(packingRecords).isNotNull().isNotEmpty();
+    Long packingRecordId = ((Number) packingRecords.getFirst().get("packingRecordId")).longValue();
 
     FinishedGood finishedGood =
         finishedGoodRepository
@@ -1166,8 +1171,11 @@ public class ErpInvariantsSuiteIT extends AbstractIntegrationTest {
     assertThat(finishedGood.getCurrentStock()).isGreaterThan(BigDecimal.ZERO);
 
     List<InventoryMovement> movements =
-        inventoryMovementRepository.findByReferenceTypeAndReferenceIdOrderByCreatedAtAsc(
-            InventoryReference.PRODUCTION_LOG, productionCode);
+        inventoryMovementRepository
+            .findByFinishedGood_CompanyAndReferenceTypeAndReferenceIdOrderByCreatedAtAsc(
+                company,
+                InventoryReference.PACKING_RECORD,
+                productionCode + "-PACK-" + packingRecordId);
     assertThat(movements).as("production movements created").isNotEmpty();
     invariants.assertNoNegativeStock(company.getId(), finishedGood.getProductCode());
     assertThat(productionLogRepository.findById(logId)).isPresent();
@@ -1577,6 +1585,10 @@ public class ErpInvariantsSuiteIT extends AbstractIntegrationTest {
     onboardReq.put("firstAdminEmail", tenantAdminEmail);
     onboardReq.put("firstAdminDisplayName", "Cross Admin");
     onboardReq.put("coaTemplateCode", "MANUFACTURING");
+    onboardReq.put("maxActiveUsers", 10L);
+    onboardReq.put("maxApiRequests", 1000L);
+    onboardReq.put("maxStorageBytes", 1_000_000_000L);
+    onboardReq.put("maxConcurrentRequests", 10L);
 
     ResponseEntity<Map> onboardResp =
         rest.exchange(

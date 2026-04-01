@@ -41,14 +41,13 @@ import com.bigbrightpaints.erp.modules.factory.service.CostAllocationService;
 import com.bigbrightpaints.erp.modules.factory.service.PackingService;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodRepository;
+import com.bigbrightpaints.erp.modules.inventory.domain.InventoryBatchSource;
 import com.bigbrightpaints.erp.modules.inventory.domain.MaterialType;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatch;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatchRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialRepository;
-import com.bigbrightpaints.erp.modules.inventory.dto.FinishedGoodBatchRequest;
 import com.bigbrightpaints.erp.modules.inventory.dto.FinishedGoodRequest;
-import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionBrand;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionBrandRepository;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionProduct;
@@ -71,7 +70,6 @@ class CR_ManufacturingWipCostingTest extends AbstractIntegrationTest {
   @Autowired private SizeVariantRepository sizeVariantRepository;
   @Autowired private RawMaterialRepository rawMaterialRepository;
   @Autowired private RawMaterialBatchRepository rawMaterialBatchRepository;
-  @Autowired private FinishedGoodsService finishedGoodsService;
   @Autowired private FinishedGoodRepository finishedGoodRepository;
   @Autowired private JournalEntryRepository journalEntryRepository;
   @Autowired private CostAllocationService costAllocationService;
@@ -95,19 +93,14 @@ class CR_ManufacturingWipCostingTest extends AbstractIntegrationTest {
         createProductionLog(company, product, productionCode, new BigDecimal("10"), producedAt);
 
     // Seed semi-finished (bulk) inventory required by packing service
-    String bulkSku = product.getSkuCode() + "-BULK";
-    FinishedGood semiFinished =
-        ensureFinishedGood(company, bulkSku, accounts.get("SF_INV"), accounts);
-    CompanyContextHolder.setCompanyCode(companyCode);
-    registerFinishedGoodBatchForTest(
-        new FinishedGoodBatchRequest(
-            semiFinished.getId(),
-            productionCode,
-            new BigDecimal("10"),
-            new BigDecimal("12.5000"),
-            log.getProducedAt(),
-            null));
-    CompanyContextHolder.clear();
+    ensureSemiFinishedInventory(
+        company,
+        product,
+        productionCode,
+        new BigDecimal("10"),
+        new BigDecimal("12.5000"),
+        log.getProducedAt(),
+        accounts.get("SF_INV"));
 
     // Seed packaging material + mapping (1 bucket per 1L)
     RawMaterial bucket =
@@ -425,6 +418,41 @@ class CR_ManufacturingWipCostingTest extends AbstractIntegrationTest {
     variant.setActive(true);
     sizeVariantRepository.save(variant);
     return ensureFinishedGood(company, product.getSkuCode(), accounts.get("FG_INV"), accounts);
+  }
+
+  private RawMaterial ensureSemiFinishedInventory(
+      Company company,
+      ProductionProduct product,
+      String batchCode,
+      BigDecimal quantity,
+      BigDecimal costPerUnit,
+      Instant producedAt,
+      Account inventoryAccount) {
+    String bulkSku = product.getSkuCode() + "-BULK";
+    RawMaterial semiFinished =
+        rawMaterialRepository.findByCompanyAndSku(company, bulkSku).orElseGet(RawMaterial::new);
+    if (semiFinished.getId() == null) {
+      semiFinished.setCompany(company);
+      semiFinished.setSku(bulkSku);
+      semiFinished.setName(product.getProductName() + " (Bulk)");
+      semiFinished.setUnitType(product.getUnitOfMeasure());
+      semiFinished.setMaterialType(MaterialType.PRODUCTION);
+      semiFinished.setInventoryAccountId(inventoryAccount.getId());
+    }
+    semiFinished.setCurrentStock(quantity);
+    RawMaterial savedMaterial = rawMaterialRepository.save(semiFinished);
+
+    RawMaterialBatch batch = new RawMaterialBatch();
+    batch.setRawMaterial(savedMaterial);
+    batch.setBatchCode(batchCode);
+    batch.setQuantity(quantity);
+    batch.setUnit(product.getUnitOfMeasure());
+    batch.setCostPerUnit(costPerUnit);
+    batch.setReceivedAt(producedAt);
+    batch.setManufacturedAt(producedAt);
+    batch.setSource(InventoryBatchSource.PRODUCTION);
+    rawMaterialBatchRepository.save(batch);
+    return savedMaterial;
   }
 
   private RawMaterial ensurePackagingMaterial(

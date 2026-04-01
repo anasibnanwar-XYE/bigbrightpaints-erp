@@ -23,6 +23,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
@@ -584,8 +585,8 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
   }
 
   @Test
-  @DisplayName("Debit note is idempotent by reference for the same purchase")
-  void purchaseDebitNoteIdempotentByReference() {
+  @DisplayName("Debit note replay is rejected once the purchase outstanding reaches zero")
+  void purchaseDebitNoteReplayIsRejectedAfterPurchaseIsVoided() {
     LocalDate entryDate = TestDateUtils.safeDate(company);
     Long supplierId = createSupplier("P2P Idempotent Supplier", "DN-IDEMP-" + shortSuffix());
     Long rawMaterialId =
@@ -622,7 +623,7 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
     Map<String, Object> purchaseData = (Map<String, Object>) purchaseResp.getBody().get("data");
     Long purchaseId = ((Number) purchaseData.get("id")).longValue();
 
-    String reference = "DN-IDEMP-" + shortSuffix();
+    String reference = "DN-" + shortSuffix();
     Map<String, Object> debitNoteReq = new HashMap<>();
     debitNoteReq.put("purchaseId", purchaseId);
     debitNoteReq.put("referenceNumber", reference);
@@ -642,22 +643,25 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
             HttpMethod.POST,
             new HttpEntity<>(debitNoteReq, headers),
             Map.class);
-    assertThat(second.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(second.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    @SuppressWarnings("unchecked")
+    Map<String, Object> errorData = (Map<String, Object>) second.getBody().get("data");
+    assertThat(errorData.get("code")).isEqualTo(ErrorCode.VALIDATION_INVALID_INPUT.getCode());
+    @SuppressWarnings("unchecked")
+    Map<String, Object> errorDetails = (Map<String, Object>) errorData.get("details");
+    assertThat(((Number) errorDetails.get("purchaseId")).longValue()).isEqualTo(purchaseId);
+    assertThat(((Number) errorDetails.get("outstandingAmount")).doubleValue()).isZero();
 
-    List<JournalEntry> entries =
-        journalEntryRepository.findAll().stream()
-            .filter(entry -> reference.equals(entry.getReferenceNumber()))
-            .toList();
-    assertThat(entries).hasSize(1);
+    assertThat(journalEntryRepository.findByCompanyAndReferenceNumber(company, reference)).isPresent();
 
     RawMaterialPurchase purchase = purchaseRepository.findById(purchaseId).orElseThrow();
-    assertThat(purchase.getOutstandingAmount()).isEqualByComparingTo(totalAmount.negate());
+    assertThat(purchase.getOutstandingAmount()).isEqualByComparingTo(BigDecimal.ZERO);
     assertThat(purchase.getStatus()).isEqualTo("VOID");
   }
 
   @Test
-  @DisplayName("Debit note allowed after purchase is fully settled")
-  void purchaseDebitNoteAllowedAfterSettlement() {
+  @DisplayName("Debit note is rejected after purchase is fully settled")
+  void purchaseDebitNoteRejectedAfterSettlement() {
     LocalDate entryDate = TestDateUtils.safeDate(company);
     Long supplierId = createSupplier("P2P Paid Supplier", "DN-PAID-" + shortSuffix());
     Long rawMaterialId =
@@ -729,11 +733,11 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
             HttpMethod.POST,
             new HttpEntity<>(debitNoteReq, headers),
             Map.class);
-    assertThat(debitResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(debitResp.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
 
     RawMaterialPurchase refreshed = purchaseRepository.findById(purchaseId).orElseThrow();
-    assertThat(refreshed.getOutstandingAmount()).isEqualByComparingTo(totalAmount.negate());
-    assertThat(refreshed.getStatus()).isEqualTo("VOID");
+    assertThat(refreshed.getOutstandingAmount()).isEqualByComparingTo(BigDecimal.ZERO);
+    assertThat(refreshed.getStatus()).isEqualTo("PAID");
   }
 
   @Test

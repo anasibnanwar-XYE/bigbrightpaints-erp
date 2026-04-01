@@ -936,7 +936,7 @@ class HighImpactRegressionIT extends AbstractIntegrationTest {
   @Order(10)
   @DisplayName("Period lock blocks backdated JE, reopen requires reason")
   void periodLockReopenSemantics() {
-    LocalDate lockedDate = LocalDate.now().minusMonths(2).withDayOfMonth(15);
+    LocalDate lockedDate = LocalDate.now().withDayOfMonth(1).minusDays(3);
 
     // Create and close a period
     AccountingPeriod period = new AccountingPeriod();

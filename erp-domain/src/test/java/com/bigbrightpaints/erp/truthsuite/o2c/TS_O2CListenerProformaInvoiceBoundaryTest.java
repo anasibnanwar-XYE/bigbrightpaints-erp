@@ -19,6 +19,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.context.TestPropertySource;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
@@ -171,7 +172,10 @@ class TS_O2CListenerProformaInvoiceBoundaryTest extends AbstractIntegrationTest 
     activateCompany(fixture.company());
     assertThatThrownBy(() -> invoiceService.issueInvoiceForOrder(createdOrder.getId()))
         .isInstanceOf(ApplicationException.class)
-        .hasMessageContaining("Dispatch confirmation is required before issuing an invoice");
+        .satisfies(
+            ex ->
+                assertThat(((ApplicationException) ex).getErrorCode())
+                    .isEqualTo(ErrorCode.VALIDATION_INVALID_INPUT));
 
     SalesOrder reloadedOrder = salesOrderRepository.findById(createdOrder.getId()).orElseThrow();
     assertThat(reloadedOrder.getFulfillmentInvoiceId()).isNull();

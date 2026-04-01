@@ -21,18 +21,22 @@ import org.springframework.test.util.ReflectionTestUtils;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import com.bigbrightpaints.erp.core.audit.AuditLogRepository;
+import com.bigbrightpaints.erp.core.security.AuthScopeService;
+import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.modules.company.dto.CompanyRequest;
 import com.bigbrightpaints.erp.modules.company.dto.CompanyTenantMetricsDto;
 import com.bigbrightpaints.erp.modules.company.service.CompanyService;
+import com.bigbrightpaints.erp.modules.company.service.TenantRuntimeEnforcementService;
 
 class CompanyQuotaContractTest {
 
   @AfterEach
   void clearSecurityContext() {
     SecurityContextHolder.clearContext();
+    CompanyContextHolder.clear();
   }
 
   @Test
@@ -118,11 +122,26 @@ class CompanyQuotaContractTest {
   @Test
   void super_admin_update_applies_canonical_quota_fields_and_fail_closed_policy() {
     CompanyRepository repository = mock(CompanyRepository.class);
+    AuthScopeService authScopeService = mock(AuthScopeService.class);
+    TenantRuntimeEnforcementService tenantRuntimeEnforcementService =
+        mock(TenantRuntimeEnforcementService.class);
     Company company = company(1L, "TENANT_A");
     when(repository.findById(1L)).thenReturn(Optional.of(company));
-    CompanyService service = new CompanyService(repository);
+    when(authScopeService.isPlatformScope("PLATFORM")).thenReturn(true);
+    CompanyService service =
+        new CompanyService(
+            repository,
+            null,
+            null,
+            null,
+            tenantRuntimeEnforcementService,
+            null,
+            null,
+            null,
+            authScopeService);
 
     authenticateAs("ROLE_SUPER_ADMIN");
+    CompanyContextHolder.setCompanyCode("PLATFORM");
 
     CompanyRequest request =
         new CompanyRequest(
