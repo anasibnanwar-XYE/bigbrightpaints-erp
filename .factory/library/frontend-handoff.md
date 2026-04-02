@@ -1813,7 +1813,7 @@ Auth for report controller endpoints: `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUN
    2. Resolve slip: `GET /api/v1/dispatch/order/{orderId}` (or list via `/pending`).
    3. Show the operational preview modal with `GET /api/v1/dispatch/preview/{slipId}` and expect redacted pricing/accounting fields.
    4. Use the read-only dispatch workspace for slip detail and challan access (`GET /api/v1/dispatch/slip/{slipId}` plus `/challan/pdf`).
-   5. Factory/admin use `POST /api/v1/dispatch/confirm` for the canonical shipment posting. Pure factory callers should expect the redacted operational response; admin/elevated callers may receive the permitted invoice and journal linkage fields.
+   5. Factory/admin use `POST /api/v1/dispatch/confirm` for the canonical shipment posting. Pure factory callers should expect the redacted operational response; admin/elevated callers may retain the response's amount and journal fields, but this contract does not return invoice ids.
 
 4. **Inventory adjustment flow (finished goods)**
    1. Build adjustment payload with explicit type: `DAMAGED`, `SHRINKAGE`, `OBSOLETE`, or `RECOUNT_UP`.
@@ -1919,8 +1919,8 @@ Operational statuses: `PENDING`, `PENDING_STOCK`, `PENDING_PRODUCTION`, `RESERVE
 - `DispatchPreviewDto`: slip/order/dealer summary + `lines[]` with availability/suggested ship quantities; on the operational factory/admin surface, pricing/tax fields are redacted and `gstBreakdown` is `null`.
 - `DispatchConfirmationRequest`: `packagingSlipId*`, `lines*`, `notes`, `confirmedBy`, `overrideRequestId`.
 - `DispatchConfirmationRequest.LineConfirmation`: `lineId*`, `shippedQuantity*`, `notes`.
-- `DispatchConfirmationResponse`: operational dispatch result with slip identity, logistics metadata, challan details/path, `lines[]`, and optional `backorderSlipId`; finance-only fields such as posted journal ids and commercial totals are redacted on this surface.
-- `DispatchConfirmationResponse.LineResult`: ordered/shipped/backorder quantities plus notes; costing/price fields are intentionally redacted for factory-role consumers.
+- `DispatchConfirmationResponse`: `packagingSlipId`, `slipNumber`, `status`, `confirmedAt`, `confirmedBy`, `totalOrderedAmount`, `totalShippedAmount`, `totalBackorderAmount`, `journalEntryId`, `cogsJournalEntryId`, `lines[]`, optional `backorderSlipId`, `transporterName`, `driverName`, `vehicleNumber`, `challanReference`, `deliveryChallanNumber`, and `deliveryChallanPdfPath`. Pure factory operational views redact the amount and journal fields by returning `null`.
+- `DispatchConfirmationResponse.LineResult`: `lineId`, `productCode`, `productName`, `orderedQuantity`, `shippedQuantity`, `backorderQuantity`, `unitCost`, `lineTotal`, and `notes`. Pure factory operational views redact `unitCost` and `lineTotal`.
 
 ##### Manufacturing DTOs
 
@@ -2013,7 +2013,7 @@ Operational statuses: `PENDING`, `PENDING_STOCK`, `PENDING_PRODUCTION`, `RESERVE
 #### Portal boundary notes (2026-03-08)
 
 - `/api/v1/dispatch/**` is now the canonical dispatch workspace for factory/operator lookup, preview, slip detail, order lookup, challan download, and the single public dispatch-confirm write.
-- `/api/v1/dispatch/confirm` is the only surviving dispatch-confirm write surface. Factory/admin own the action; pure factory callers receive the redacted operational view, while admin/elevated callers keep only the permitted finance-linked fields.
+- `/api/v1/dispatch/confirm` is the only surviving dispatch-confirm write surface. Factory/admin own the action; pure factory callers receive the redacted operational view, while admin/elevated callers retain only the DTO's permitted amount and journal fields.
 - Historical orchestrator dispatch shortcuts are retired from the active contract. Frontend shipment posting must use `/api/v1/dispatch/confirm` only.
 - `/api/v1/orchestrator/orders/{orderId}/fulfillment` still handles non-dispatch workflow states like `PROCESSING`, but dispatch-like target states (`SHIPPED`, `DISPATCHED`, `FULFILLED`, `COMPLETED`) now fail closed with `BUS_001` and instruct callers to use `/api/v1/dispatch/confirm`.
 - Credit override requests can still be created by sales/factory/admin on `/api/v1/credit/override-requests`, but approve/reject review is now limited to admin/accounting.
@@ -2161,7 +2161,9 @@ Frontend behavior: treat these as non-retryable user/action-state errors; surfac
   - `journalEntryId`, `cogsJournalEntryId`, and pricing/accounting fields remain intentionally redacted on this surface
 
 - `DispatchConfirmationResponse` (`POST /api/v1/dispatch/confirm`)
-  - Finance posting response includes `packingSlipId`, `salesOrderId`, `finalInvoiceId`, `arJournalEntryId`, and related accounting/posting linkage fields
+  - Fields present in the checked-in DTO/OpenAPI schema are: `packagingSlipId`, `slipNumber`, `status`, `confirmedAt`, `confirmedBy`, `totalOrderedAmount`, `totalShippedAmount`, `totalBackorderAmount`, `journalEntryId`, `cogsJournalEntryId`, `lines[]`, optional `backorderSlipId`, `transporterName`, `driverName`, `vehicleNumber`, `challanReference`, `deliveryChallanNumber`, and `deliveryChallanPdfPath`
+  - `lines[]` entries carry `lineId`, `productCode`, `productName`, `orderedQuantity`, `shippedQuantity`, `backorderQuantity`, `unitCost`, `lineTotal`, and `notes`
+  - Do not expect `salesOrderId`, `finalInvoiceId`, `arJournalEntryId`, or other shadow invoice-link fields on this response
 
 - `SalesOrderSearchFilters` (query-model used by backend)
   - `status?: string` (canonicalized on backend)
@@ -3310,7 +3312,7 @@ These flows map complete API sequences across modules. Use them to drive wizard-
 1. Dealer onboarding: `POST /api/v1/dealers`.
 2. Create sales order: `POST /api/v1/sales/orders`.
 3. Confirm order: `POST /api/v1/sales/orders/{id}/confirm`.
-4. Dispatch + invoice creation: use the factory/admin dispatch workspace for preview, slip lookup, and challan output, then use `POST /api/v1/dispatch/confirm` for the canonical shipment posting. Pure factory sessions stay redacted; admin/elevated sessions may use the returned `finalInvoiceId` and journal links when permitted.
+4. Dispatch + invoice creation: use the factory/admin dispatch workspace for preview, slip lookup, and challan output, then use `POST /api/v1/dispatch/confirm` for the canonical shipment posting. Pure factory sessions stay redacted; admin/elevated sessions may use the returned amount and journal fields when permitted, but invoice follow-up should come from invoice/slip reads rather than a `finalInvoiceId` on the dispatch response.
 5. Receive/allocate payment: `POST /api/v1/accounting/settlements/dealers` (or auto-settle endpoint if used).
 6. Operational reconciliation checks:
    - `GET /api/v1/portal/finance/aging?dealerId=`
