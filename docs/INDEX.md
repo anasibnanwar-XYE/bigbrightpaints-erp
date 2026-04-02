@@ -1,10 +1,19 @@
-# BigBright ERP — Backend Documentation Index
+# orchestrator-erp — Backend Documentation Index
 
-Last reviewed: 2026-03-30
+Last reviewed: 2026-04-02
 
 This is the canonical entrypoint for backend documentation. Every major docs section is linked from here. If a packet is not reachable through this index, it is not part of the canonical docs tree.
 
+`README.md` and repo-root [`ARCHITECTURE.md`](../ARCHITECTURE.md) are signposts into this spine. Public runtime and deployment truth lives under `docs/`; `.factory/library/*` remains internal worker guidance rather than canonical reader-facing documentation.
+
 ---
+
+## Repo-Root Entry Points
+
+| Document | Purpose |
+| --- | --- |
+| [README.md](../README.md) | Repository overview and setup entrypoint that routes readers into the canonical docs spine |
+| [ARCHITECTURE.md](../ARCHITECTURE.md) | Repo-root architecture signpost; use [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) for the full runtime architecture reference |
 
 ## Architecture and Platform
 
@@ -139,12 +148,11 @@ The deprecated/incomplete registry lists retired, partial, duplicated, or dead-e
 | [docs/runbooks/rollback.md](runbooks/rollback.md) | Rollback procedures for applied migrations and coordinated app/schema cuts |
 | [docs/runbooks/migrations.md](runbooks/migrations.md) | Migration forward plans, dry-run commands, and rollback strategies |
 
-## Historical Docs
+## Retained Reference Docs
 
-The following historical docs remain in the repo for reference but are **not** the canonical source of truth. They may be stale, partial, or contradictory with the current implementation.
+The following docs remain in the repo for reference but are **not** part of the canonical docs spine. They may be stale, partial, or narrower than the current implementation.
 
 | Document | Status |
 | --- | --- |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | Canonical architecture doc (uppercase path required for Linux CI) |
-| [developer-guide.md](developer-guide.md) | Superseded by the module packets and flow packets in the new docs tree |
+| [developer-guide.md](developer-guide.md) | Non-canonical — superseded by the module packets and flow packets in the docs tree |
 | [endpoint-inventory.md](endpoint-inventory.md) | Reference only; use `openapi.json` and module packets as primary truth |

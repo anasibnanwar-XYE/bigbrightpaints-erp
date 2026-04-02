@@ -1,8 +1,10 @@
-# Deprecated, Unmaintained, and Incomplete Surfaces Registry
+# orchestrator-erp Deprecated, Unmaintained, and Incomplete Surfaces Registry
 
-Last reviewed: 2026-03-30
+Last reviewed: 2026-04-02
 
-This registry documents retired, partial, duplicated, or dead-end surfaces in the BigBright ERP backend. Every entry points to a canonical replacement or explicitly states that no replacement exists.
+This registry documents retired, partial, duplicated, or dead-end surfaces in the `orchestrator-erp` backend. Every entry points to a canonical replacement or explicitly states that no replacement exists.
+
+Repo-root `README.md` and `ARCHITECTURE.md` are current entrypoints into the canonical docs spine and are therefore not retired surfaces.
 
 For surfaces still under active development or fully maintained, see the [Module Inventory](../modules/MODULE-INVENTORY.md) and [Flow Inventory](../flows/FLOW-INVENTORY.md).
 
@@ -152,8 +154,7 @@ The following historical docs remain in the repo for reference but are **not** t
 
 | Document | Status | Replacement |
 | --- | --- | --- |
-| [docs/ARCHITECTURE.md](../ARCHITECTURE.md) | Superseded | Canonical path is now uppercase `docs/ARCHITECTURE.md` |
-| [docs/developer-guide.md](../developer-guide.md) | Superseded | Use module packets and flow packets in the new docs tree |
+| [docs/developer-guide.md](../developer-guide.md) | Non-canonical (superseded) | Use [docs/INDEX.md](../INDEX.md), [docs/modules/MODULE-INVENTORY.md](../modules/MODULE-INVENTORY.md), and [docs/flows/FLOW-INVENTORY.md](../flows/FLOW-INVENTORY.md) |
 | [docs/endpoint-inventory.md](../endpoint-inventory.md) | Reference only | Use `openapi.json` and module packets as primary truth |
 
 ---

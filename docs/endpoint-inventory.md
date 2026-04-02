@@ -1,5 +1,9 @@
 # Endpoint Inventory (OpenAPI)
 
+> ⚠️ **REFERENCE ONLY**: This inventory is retained for review and governance cross-reference, but it is not the canonical API truth. Use repo-root `openapi.json`, [docs/frontend-api/README.md](frontend-api/README.md), and the module/flow packets linked from [docs/INDEX.md](INDEX.md) as the primary contract surfaces.
+
+Last reviewed: 2026-04-02
+
 Source: `openapi.json`
 Updated: 2026-03-30
 
