@@ -3,65 +3,67 @@
 Last reviewed: 2026-04-01
 
 ## Scope
-- Feature: `ERP-45 backend truth-doc refresh — PR merge blocker remediation`
-- Branch: mdanas7869292/erp-45-wave-1-fail-closed-blockers-and-platformapi-surface-cleanup
-- PR: `#178`
+- Feature: `ERP failing-suite remediation — debit-note replay hardening`
+- Branch: `erp-failing-suite-remediation-20260401` under the `anas` namespace
+- PR: not created yet (branch pushed to origin)
 - Review candidate:
-  - docs-only backend truth library covering modules, flows, ADRs, frontend handoff packets, deprecated registries, and governance files
-  - module `AGENTS.md` governance docs added under `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/` and `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/hr/`
-  - canonical path reference fixes in `docs/ARCHITECTURE.md` for lint compliance
-  - no runtime, schema, migration, or behavioral code changes
-- Why this is R2: the branch diff includes files under `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/` and `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/hr/`, which match the enterprise policy high-risk path patterns. However, the only files changed under those paths are `AGENTS.md` governance docs — no Java source, no runtime behavior, no schema, and no API contract changes.
+  - harden `postDebitNote(...)` in `AccountingCoreEngineCore` so leader-path replays validate journal provenance before mutating correction metadata
+  - persist debit-note provenance early via `sourceModule=DEBIT_NOTE` and `sourceReference=<purchaseInvoiceNumber>` on journal creation
+  - expand accounting regression coverage in `AccountingServiceTest`, plus carried AP regression coverage in `ProcureToPayE2ETest` and `HighImpactRegressionIT`
+  - update canonical docs for accounting idempotency, accounting reference chains, frontend idempotency/error handling, accounting portal states/errors, and this R2 checkpoint
+- Why this is R2: the packet changes executable code under `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/internal/`, which is a high-risk accounting path guarded by enterprise policy.
 
 ## Risk Trigger
 - Triggered by:
-  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/AGENTS.md`
-  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/hr/AGENTS.md`
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/internal/AccountingCoreEngineCore.java`
 - Contract surfaces affected:
-  - none — the changed files are markdown governance docs, not runtime code, API controllers, services, or schema files
+  - debit-note idempotent replay semantics in `postDebitNote(...)`
+  - correction-journal provenance fields used for replay truth: `sourceModule`, `sourceReference`, and `reversalOf`
+  - frontend-facing conflict contract for cross-purchase reference reuse, as captured in the canonical accounting docs packet
 - Failure mode if wrong:
-  - minimal — the `AGENTS.md` files are read by agents and developers for module ownership context; incorrect content could mislead contributors but cannot affect runtime behavior, API contracts, or data integrity
+  - a concurrent retry could bind an existing debit-note journal to the wrong purchase, corrupting AP correction provenance and making audit/reference-chain reads point to the wrong source document
 
 ## Approval Authority
 - Mode: orchestrator
-- Approver: mission orchestrator
-- Canary owner: mission orchestrator
-- Approval status: approved (docs-only change with no runtime impact)
-- Basis: this is a compatibility-preserving docs-only remediation. The only high-risk-path matches are `AGENTS.md` markdown files that carry no executable code, no schema changes, and no API contract modifications. Orchestrator approval is sufficient per AGENTS.md governance rules.
+- Approver: Droid mission orchestrator
+- Canary owner: Droid mission orchestrator
+- Approval status: approved for branch-local remediation
+- Basis: the change narrows replay behavior without widening permissions, schema, migrations, or public route surface. Targeted unit/E2E coverage and docs/policy validators provide sufficient pre-merge evidence.
 
 ## Escalation Decision
 - Human escalation required: no
-- Reason: the high-risk path trigger is a false positive — only non-executable `AGENTS.md` documentation files are changed under the high-risk directories. No privileges are widened, no tenant boundaries are changed, and no destructive migration risk exists.
+- Reason: this is a compatibility-preserving correctness fix to accounting replay behavior. It does not alter auth boundaries, tenant scoping, schema, or irreversible data migration behavior, and the risk is bounded by deterministic tests around the corrected race.
 
 ## Rollback Owner
-- Owner: mission orchestrator
+- Owner: Droid mission orchestrator
 - Rollback method:
-  - before merge: close PR #178 without merging
-  - after merge: revert the docs-only commits; no runtime rollback needed since no executable code changed
+  - before merge: reset or revert the branch-local remediation
+  - after merge: revert the hardening commit(s) and rerun the accounting regression slice
 - Rollback trigger:
-  - governance docs contain materially incorrect module ownership claims that mislead contributors
-  - lint or policy checks regress after merge
+  - debit-note replay for the same purchase stops returning the previously posted journal
+  - AP correction journals lose correct `sourceReference` / `reversalOf` provenance
+  - accounting regression slice or enterprise policy/docs validation regresses after merge
 
 ## Expiry
 - Valid until: 2026-04-15
-- Re-evaluate if: scope expands beyond docs-only changes, or if runtime/schema/migration files are added to the PR diff.
+- Re-evaluate if: scope expands beyond accounting replay hardening, or if auth/company/RBAC/schema/migration files are added to the packet.
 
-## Test Waiver (Only if no tests changed)
-- Waiver scope: `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/AGENTS.md` and `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/hr/AGENTS.md`
-- Justification: the only files changed under high-risk Java source paths are `AGENTS.md` markdown governance documents. These files are not compiled, not executed at runtime, not loaded by any Spring component, and not referenced by any test or application code. They exist solely as developer/agent documentation for module ownership context. Adding or modifying test code for non-executable markdown files would be meaningless.
-- Runtime impact: none — zero Java source files, zero schema files, zero API contract files changed under the high-risk paths
-- Evidence: running `git diff --name-only $(git merge-base origin/main HEAD)...HEAD` and filtering for erp-domain Java source paths confirms only markdown (AGENTS.md) files are changed under the Java source tree
+## Test Waiver
+- Not applicable — executable code and tests changed, and targeted validators were run.
 
 ## Verification Evidence
 - Commands run:
+  - `cd /Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/erp-failing-suite-remediation-20260401/erp-domain && mvn --settings ".mvn/settings.xml" -B -ntp -Djacoco.skip=true -Dtest=AccountingServiceTest,ProcureToPayE2ETest,HighImpactRegressionIT test`
+  - `cd /Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/erp-failing-suite-remediation-20260401/erp-domain && mvn --settings ".mvn/settings.xml" -B -ntp -DspotlessFiles=src/main/java/com/bigbrightpaints/erp/modules/accounting/internal/AccountingCoreEngineCore.java,src/test/java/com/bigbrightpaints/erp/modules/accounting/service/AccountingServiceTest.java spotless:check`
   - `bash ci/lint-knowledgebase.sh`
+  - `bash scripts/enforce_codex_review_policy.sh`
   - `bash ci/check-enterprise-policy.sh`
-  - `bash ci/check-architecture.sh`
-  - `bash ci/check-orchestrator-layer.sh`
 - Result summary:
-  - knowledgebase lint passes after canonical path reference fixes in `docs/ARCHITECTURE.md`
-  - enterprise policy check passes with the test waiver section for docs-only high-risk path matches
-  - architecture and orchestrator layer checks pass without regressions
+  - targeted accounting unit + E2E slice passes after the provenance hardening
+  - Spotless check passes for the edited Java files
+  - docs knowledgebase lint passes
+  - strict codex review policy passes with the carried non-doc packet
+  - enterprise policy requires this R2 checkpoint for the accounting runtime scope and passes once the scope-specific evidence is present
 - Artifacts/links:
   - repo checkout: local workspace
-  - PR: `#178`
+  - remote branch: `erp-failing-suite-remediation-20260401` under the `origin` remote and `anas` namespace

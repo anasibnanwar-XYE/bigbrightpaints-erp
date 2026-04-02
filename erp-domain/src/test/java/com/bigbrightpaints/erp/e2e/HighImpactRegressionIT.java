@@ -936,13 +936,19 @@ class HighImpactRegressionIT extends AbstractIntegrationTest {
   @Order(10)
   @DisplayName("Period lock blocks backdated JE, reopen requires reason")
   void periodLockReopenSemantics() {
-    LocalDate lockedDate = LocalDate.now().withDayOfMonth(1).minusDays(3);
+    LocalDate lockedDate = LocalDate.now().minusDays(3);
+    int lockedYear = lockedDate.getYear();
+    int lockedMonth = lockedDate.getMonthValue();
+    boolean periodExisted =
+        accountingPeriodRepository
+            .findByCompanyAndYearAndMonth(companyA, lockedYear, lockedMonth)
+            .isPresent();
 
     // Create and close a period
-    AccountingPeriod period = new AccountingPeriod();
-    period.setCompany(companyA);
-    period.setStartDate(lockedDate.withDayOfMonth(1));
-    period.setEndDate(lockedDate.withDayOfMonth(lockedDate.lengthOfMonth()));
+    AccountingPeriod period = accountingPeriodService.ensurePeriod(companyA, lockedDate);
+    AccountingPeriodStatus originalStatus = period.getStatus();
+    Instant originalClosedAt = period.getClosedAt();
+    String originalClosedBy = period.getClosedBy();
     period.setStatus(AccountingPeriodStatus.CLOSED);
     period.setClosedAt(Instant.now());
     period.setClosedBy("test");
@@ -982,7 +988,14 @@ class HighImpactRegressionIT extends AbstractIntegrationTest {
         .isInstanceOf(ApplicationException.class);
 
     // Cleanup
-    accountingPeriodRepository.delete(savedPeriod);
+    if (periodExisted) {
+      savedPeriod.setStatus(originalStatus);
+      savedPeriod.setClosedAt(originalClosedAt);
+      savedPeriod.setClosedBy(originalClosedBy);
+      accountingPeriodRepository.save(savedPeriod);
+    } else {
+      accountingPeriodRepository.delete(savedPeriod);
+    }
   }
 
   // =========================================================================

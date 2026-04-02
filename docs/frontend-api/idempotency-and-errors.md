@@ -1,6 +1,6 @@
 # Idempotency and Errors
 
-Last reviewed: 2026-03-31
+Last reviewed: 2026-04-01
 
 ## Idempotency rules
 
@@ -14,6 +14,9 @@ Last reviewed: 2026-03-31
   from the originating form state.
 - Journal creation should use a stable client reference number that the backend
   treats as the canonical idempotency key.
+- Debit-note and credit-note retries must reuse the same source document,
+  `referenceNumber`, and `idempotencyKey`. Reusing a correction reference for a
+  different purchase or invoice is a new action, not a safe retry.
 - Frontend should send `Idempotency-Key`, not `X-Idempotency-Key`. Legacy
   headers are not part of the frontend contract even when reject coverage still
   exists server-side.
@@ -75,4 +78,6 @@ UI handling rules by class:
   tenant-scope mismatch, lifecycle suspension, or module pause: show a blocked
   state, not a retry toast.
 - `409` or duplicate/idempotency conflict: resolve to previously applied work
-  when possible and show the operator the canonical reference.
+  only when the returned canonical reference chain matches the requested source
+  document. If the backend reports another `sourceReference` / provenance
+  chain, keep the operator on the draft and require a new reference/key.

@@ -23,7 +23,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 
-import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
@@ -585,8 +584,8 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
   }
 
   @Test
-  @DisplayName("Debit note replay is rejected once the purchase outstanding reaches zero")
-  void purchaseDebitNoteReplayIsRejectedAfterPurchaseIsVoided() {
+  @DisplayName("Debit note is idempotent by reference for the same purchase")
+  void purchaseDebitNoteIdempotentByReference() {
     LocalDate entryDate = TestDateUtils.safeDate(company);
     Long supplierId = createSupplier("P2P Idempotent Supplier", "DN-IDEMP-" + shortSuffix());
     Long rawMaterialId =
@@ -636,6 +635,8 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
             new HttpEntity<>(debitNoteReq, headers),
             Map.class);
     assertThat(first.getStatusCode()).isEqualTo(HttpStatus.OK);
+    Map<String, Object> firstDebitNote = (Map<String, Object>) first.getBody().get("data");
+    Long firstDebitNoteId = ((Number) firstDebitNote.get("id")).longValue();
 
     ResponseEntity<Map> second =
         rest.exchange(
@@ -643,14 +644,10 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
             HttpMethod.POST,
             new HttpEntity<>(debitNoteReq, headers),
             Map.class);
-    assertThat(second.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-    @SuppressWarnings("unchecked")
-    Map<String, Object> errorData = (Map<String, Object>) second.getBody().get("data");
-    assertThat(errorData.get("code")).isEqualTo(ErrorCode.VALIDATION_INVALID_INPUT.getCode());
-    @SuppressWarnings("unchecked")
-    Map<String, Object> errorDetails = (Map<String, Object>) errorData.get("details");
-    assertThat(((Number) errorDetails.get("purchaseId")).longValue()).isEqualTo(purchaseId);
-    assertThat(((Number) errorDetails.get("outstandingAmount")).doubleValue()).isZero();
+    assertThat(second.getStatusCode()).isEqualTo(HttpStatus.OK);
+    Map<String, Object> secondDebitNote = (Map<String, Object>) second.getBody().get("data");
+    assertThat(((Number) secondDebitNote.get("id")).longValue()).isEqualTo(firstDebitNoteId);
+    assertThat(secondDebitNote.get("referenceNumber")).isEqualTo(reference);
 
     assertThat(journalEntryRepository.findByCompanyAndReferenceNumber(company, reference)).isPresent();
 
