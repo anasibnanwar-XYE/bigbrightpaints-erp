@@ -116,6 +116,8 @@ public interface FinishedGoodBatchRepository extends JpaRepository<FinishedGoodB
   java.util.Optional<FinishedGoodBatch> findByFinishedGood_CompanyAndId(Company company, Long id);
 
   // For Tally sync idempotency
+  boolean existsByFinishedGoodAndBatchCodeIgnoreCase(FinishedGood finishedGood, String batchCode);
+
   java.util.Optional<FinishedGoodBatch> findByFinishedGoodAndBatchCode(
       FinishedGood finishedGood, String batchCode);
 

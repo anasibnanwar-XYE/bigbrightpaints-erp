@@ -22,7 +22,8 @@ import com.bigbrightpaints.erp.modules.sales.dto.DealerCreditExposureView;
 import jakarta.persistence.LockModeType;
 import jakarta.persistence.QueryHint;
 
-public interface SalesOrderRepository extends JpaRepository<SalesOrder, Long> {
+public interface SalesOrderRepository
+    extends JpaRepository<SalesOrder, Long>, SalesOrderSearchRepository {
   @EntityGraph(attributePaths = {"items", "dealer"})
   List<SalesOrder> findByCompanyOrderByCreatedAtDesc(Company company);
 
@@ -85,33 +86,6 @@ public interface SalesOrderRepository extends JpaRepository<SalesOrder, Long> {
       @Param("company") Company company,
       @Param("dealer") Dealer dealer,
       @Param("status") String status,
-      Pageable pageable);
-
-  @Query(
-      """
-select o.id
-from SalesOrder o
-where o.company = :company
-  and (
-        :status is null
-        or upper(trim(o.status)) = :status
-        or (:status = 'DRAFT' and upper(trim(o.status)) = 'BOOKED')
-        or (:status = 'DISPATCHED' and upper(trim(o.status)) in ('SHIPPED', 'FULFILLED'))
-        or (:status = 'SETTLED' and upper(trim(o.status)) = 'COMPLETED')
-  )
-  and (:dealer is null or o.dealer = :dealer)
-  and (:orderNumber is null or lower(o.orderNumber) like lower(concat('%', :orderNumber, '%')))
-  and (:fromDate is null or o.createdAt >= :fromDate)
-  and (:toDate is null or o.createdAt <= :toDate)
-order by o.createdAt desc, o.id desc
-""")
-  Page<Long> searchIdsByCompany(
-      @Param("company") Company company,
-      @Param("status") String status,
-      @Param("dealer") Dealer dealer,
-      @Param("orderNumber") String orderNumber,
-      @Param("fromDate") Instant fromDate,
-      @Param("toDate") Instant toDate,
       Pageable pageable);
 
   @EntityGraph(attributePaths = {"items", "dealer"})

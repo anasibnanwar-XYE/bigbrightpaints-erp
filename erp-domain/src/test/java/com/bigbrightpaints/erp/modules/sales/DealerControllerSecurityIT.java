@@ -23,6 +23,7 @@ import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
 import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
+import com.bigbrightpaints.erp.test.support.ErpApiRoutes;
 
 @DisplayName("Dealer Controller Security")
 class DealerControllerSecurityIT extends AbstractIntegrationTest {
@@ -234,10 +235,14 @@ class DealerControllerSecurityIT extends AbstractIntegrationTest {
     HttpHeaders headers = authHeaders(SALES_EMAIL, PASSWORD);
 
     ResponseEntity<Map> dealersResponse =
-        rest.exchange("/api/v1/dealers", HttpMethod.GET, new HttpEntity<>(headers), Map.class);
+        rest.exchange(
+            ErpApiRoutes.DEALER_DIRECTORY, HttpMethod.GET, new HttpEntity<>(headers), Map.class);
     ResponseEntity<Map> salesAliasResponse =
         rest.exchange(
-            "/api/v1/sales/dealers", HttpMethod.GET, new HttpEntity<>(headers), Map.class);
+            ErpApiRoutes.SALES_DEALER_DIRECTORY,
+            HttpMethod.GET,
+            new HttpEntity<>(headers),
+            Map.class);
 
     assertThat(dealersResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
     assertThat(salesAliasResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -253,7 +258,7 @@ class DealerControllerSecurityIT extends AbstractIntegrationTest {
 
     ResponseEntity<Map> response =
         rest.exchange(
-            "/api/v1/dealers/search?query=Dealer",
+            ErpApiRoutes.DEALER_DIRECTORY_SEARCH + "?query=Dealer",
             HttpMethod.GET,
             new HttpEntity<>(headers),
             Map.class);
@@ -268,6 +273,63 @@ class DealerControllerSecurityIT extends AbstractIntegrationTest {
               assertThat(row).containsKey("creditStatus");
               assertThat(row).doesNotContainKeys("creditLimit", "outstandingBalance");
             });
+  }
+
+  @Test
+  @DisplayName("Sales dealer directory honors pagination and explicit ALL status filter")
+  void salesDealerDirectoryHonorsPaginationAndExplicitAllStatus() {
+    HttpHeaders headers = authHeaders(SALES_EMAIL, PASSWORD);
+    dealerB.setStatus("ON_HOLD");
+    dealerRepository.save(dealerB);
+
+    ResponseEntity<Map> defaultResponse =
+        rest.exchange(
+            ErpApiRoutes.DEALER_DIRECTORY, HttpMethod.GET, new HttpEntity<>(headers), Map.class);
+    assertThat(defaultResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> defaultRows =
+        (List<Map<String, Object>>) defaultResponse.getBody().get("data");
+    assertThat(defaultRows).noneMatch(row -> "D-SEC-B".equals(row.get("code")));
+
+    ResponseEntity<Map> allStatusResponse =
+        rest.exchange(
+            ErpApiRoutes.DEALER_DIRECTORY + "?status=ALL&page=0&size=10",
+            HttpMethod.GET,
+            new HttpEntity<>(headers),
+            Map.class);
+    assertThat(allStatusResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> allStatusRows =
+        (List<Map<String, Object>>) allStatusResponse.getBody().get("data");
+    assertThat(allStatusRows).anyMatch(row -> "D-SEC-B".equals(row.get("code")));
+
+    ResponseEntity<Map> pagedDirectResponse =
+        rest.exchange(
+            ErpApiRoutes.DEALER_DIRECTORY + "?status=ALL&page=0&size=1",
+            HttpMethod.GET,
+            new HttpEntity<>(headers),
+            Map.class);
+    assertThat(pagedDirectResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> pagedDirectRows =
+        (List<Map<String, Object>>) pagedDirectResponse.getBody().get("data");
+    assertThat(pagedDirectRows).hasSize(1);
+
+    ResponseEntity<Map> pagedAliasResponse =
+        rest.exchange(
+            ErpApiRoutes.SALES_DEALER_DIRECTORY + "?status=ALL&page=0&size=1",
+            HttpMethod.GET,
+            new HttpEntity<>(headers),
+            Map.class);
+    assertThat(pagedAliasResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> pagedAliasRows =
+        (List<Map<String, Object>>) pagedAliasResponse.getBody().get("data");
+    assertThat(pagedAliasRows)
+        .hasSize(1)
+        .extracting(row -> row.get("code"))
+        .containsExactlyElementsOf(
+            pagedDirectRows.stream().map(row -> row.get("code")).toList());
   }
 
   private HttpHeaders authHeaders(String email, String password) {
@@ -293,6 +355,7 @@ class DealerControllerSecurityIT extends AbstractIntegrationTest {
     dealer.setCompanyName(name + " Pvt Ltd");
     dealer.setEmail(portalUser.getEmail());
     dealer.setCreditLimit(new BigDecimal("100000"));
+    dealer.setStatus("ACTIVE");
     dealer.setPortalUser(portalUser);
     return dealerRepository.save(dealer);
   }

@@ -3,6 +3,7 @@ package com.bigbrightpaints.erp.modules.sales;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -11,20 +12,23 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.context.ApplicationContext;
 import org.springframework.http.*;
+import org.springframework.test.util.ReflectionTestUtils;
 
+import com.bigbrightpaints.erp.core.fixture.E2eFixtureCatalog;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
-import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
-import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodRepository;
-import com.bigbrightpaints.erp.modules.production.domain.ProductionBrand;
-import com.bigbrightpaints.erp.modules.production.domain.ProductionBrandRepository;
-import com.bigbrightpaints.erp.modules.production.domain.ProductionProduct;
-import com.bigbrightpaints.erp.modules.production.domain.ProductionProductRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
+import com.bigbrightpaints.erp.modules.sales.domain.SalesOrder;
+import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderRepository;
 import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
+import com.bigbrightpaints.erp.test.support.ErpApiRoutes;
 
 @Tag("critical")
 public class SalesControllerIT extends AbstractIntegrationTest {
@@ -40,14 +44,12 @@ public class SalesControllerIT extends AbstractIntegrationTest {
   private static final String SALES_DISPATCH_PASSWORD = "salesdispatch123";
   private static final String FACTORY_DISPATCH_EMAIL = "factory-dispatch@bbp.com";
   private static final String FACTORY_DISPATCH_PASSWORD = "factorydispatch123";
-  private static final String TEST_SKU = "SKU-TEST-001";
 
   @Autowired private TestRestTemplate rest;
+  @Autowired private ApplicationContext applicationContext;
   @Autowired private CompanyRepository companyRepository;
-  @Autowired private ProductionBrandRepository productionBrandRepository;
-  @Autowired private ProductionProductRepository productionProductRepository;
-  @Autowired private FinishedGoodRepository finishedGoodRepository;
   @Autowired private DealerRepository dealerRepository;
+  @Autowired private SalesOrderRepository salesOrderRepository;
 
   @BeforeEach
   void seed() {
@@ -73,60 +75,6 @@ public class SalesControllerIT extends AbstractIntegrationTest {
         "Factory Dispatch User",
         COMPANY_CODE,
         List.of("ROLE_FACTORY", "dispatch.confirm"));
-    ensureProductAndFinishedGood();
-  }
-
-  private void ensureProductAndFinishedGood() {
-    Company company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
-
-    ProductionBrand brand =
-        productionBrandRepository
-            .findByCompanyAndCodeIgnoreCase(company, "TEST")
-            .orElseGet(
-                () -> {
-                  ProductionBrand b = new ProductionBrand();
-                  b.setCompany(company);
-                  b.setCode("TEST");
-                  b.setName("Test Brand");
-                  return productionBrandRepository.save(b);
-                });
-
-    ProductionProduct product =
-        productionProductRepository
-            .findByCompanyAndSkuCode(company, TEST_SKU)
-            .orElseGet(
-                () -> {
-                  ProductionProduct p = new ProductionProduct();
-                  p.setCompany(company);
-                  p.setBrand(brand);
-                  p.setProductName("Test Product");
-                  p.setCategory("FINISHED_GOOD");
-                  p.setUnitOfMeasure("UNIT");
-                  p.setSkuCode(TEST_SKU);
-                  p.setBasePrice(new BigDecimal("100.00"));
-                  p.setGstRate(BigDecimal.ZERO);
-                  return p;
-                });
-    productionProductRepository.save(product);
-
-    FinishedGood finishedGood =
-        finishedGoodRepository
-            .findByCompanyAndProductCode(company, TEST_SKU)
-            .orElseGet(
-                () -> {
-                  FinishedGood fg = new FinishedGood();
-                  fg.setCompany(company);
-                  fg.setProductCode(TEST_SKU);
-                  fg.setName("Test Finished Good");
-                  fg.setCurrentStock(new BigDecimal("100"));
-                  fg.setReservedStock(BigDecimal.ZERO);
-                  return fg;
-                });
-    if (finishedGood.getRevenueAccountId() == null) {
-      // Any non-null value is enough for SalesService validation
-      finishedGood.setRevenueAccountId(1L);
-    }
-    finishedGoodRepository.save(finishedGood);
   }
 
   private String loginToken() {
@@ -163,7 +111,10 @@ public class SalesControllerIT extends AbstractIntegrationTest {
 
     ResponseEntity<Map> dResp =
         rest.exchange(
-            "/api/v1/dealers", HttpMethod.POST, new HttpEntity<>(dealerReq, headers), Map.class);
+            ErpApiRoutes.DEALER_DIRECTORY,
+            HttpMethod.POST,
+            new HttpEntity<>(dealerReq, headers),
+            Map.class);
     assertThat(dResp.getStatusCode()).isEqualTo(HttpStatus.OK);
     Map<?, ?> dealerData = (Map<?, ?>) dResp.getBody().get("data");
     return ((Number) dealerData.get("id")).longValue();
@@ -178,7 +129,7 @@ public class SalesControllerIT extends AbstractIntegrationTest {
 
     ResponseEntity<Map> createResponse =
         rest.exchange(
-            "/api/v1/credit/limit-requests",
+            ErpApiRoutes.CREDIT_LIMIT_REQUESTS,
             HttpMethod.POST,
             new HttpEntity<>(request, headers),
             Map.class);
@@ -190,7 +141,10 @@ public class SalesControllerIT extends AbstractIntegrationTest {
   private Map<?, ?> salesDashboardData(HttpHeaders headers) {
     ResponseEntity<Map> dashboardResponse =
         rest.exchange(
-            "/api/v1/sales/dashboard", HttpMethod.GET, new HttpEntity<>(headers), Map.class);
+            ErpApiRoutes.SALES_DASHBOARD,
+            HttpMethod.GET,
+            new HttpEntity<>(headers),
+            Map.class);
     assertThat(dashboardResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
     return (Map<?, ?>) dashboardResponse.getBody().get("data");
   }
@@ -206,13 +160,13 @@ public class SalesControllerIT extends AbstractIntegrationTest {
     return dealerRepository.save(dealer).getId();
   }
 
-  private void createSalesOrder(HttpHeaders headers, Long dealerId) {
+  private Map<?, ?> createSalesOrder(HttpHeaders headers, Long dealerId) {
     BigDecimal unitPrice = new BigDecimal("100.00");
     BigDecimal quantity = new BigDecimal("2");
     BigDecimal expectedTotal = unitPrice.multiply(quantity);
 
     Map<String, Object> lineItem = new HashMap<>();
-    lineItem.put("productCode", TEST_SKU);
+    lineItem.put("productCode", E2eFixtureCatalog.ORDER_PRIMARY_SKU);
     lineItem.put("description", "Dashboard test line item");
     lineItem.put("quantity", quantity);
     lineItem.put("unitPrice", unitPrice);
@@ -229,11 +183,34 @@ public class SalesControllerIT extends AbstractIntegrationTest {
 
     ResponseEntity<Map> orderResponse =
         rest.exchange(
-            "/api/v1/sales/orders",
+            ErpApiRoutes.SALES_ORDERS,
             HttpMethod.POST,
             new HttpEntity<>(orderReq, headers),
             Map.class);
     assertThat(orderResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    return (Map<?, ?>) orderResponse.getBody().get("data");
+  }
+
+  private SalesOrder updateOrder(Map<?, ?> orderData, String orderNumber, String status) {
+    Long orderId = ((Number) orderData.get("id")).longValue();
+    SalesOrder order = salesOrderRepository.findById(orderId).orElseThrow();
+    order.setOrderNumber(orderNumber);
+    order.setStatus(status);
+    return salesOrderRepository.saveAndFlush(order);
+  }
+
+  private SalesOrder createPersistedOrder(
+      Company company, Dealer dealer, String orderNumber, String status, Instant createdAt) {
+    SalesOrder order = new SalesOrder();
+    order.setCompany(company);
+    order.setDealer(dealer);
+    order.setOrderNumber(orderNumber);
+    order.setStatus(status);
+    order.setTotalAmount(BigDecimal.ZERO);
+    order.setCurrency("INR");
+    ReflectionTestUtils.setField(order, "createdAt", createdAt);
+    ReflectionTestUtils.setField(order, "updatedAt", createdAt);
+    return salesOrderRepository.saveAndFlush(order);
   }
 
   private long bucketCount(Map<?, ?> dashboardData, String bucket) {
@@ -256,61 +233,179 @@ public class SalesControllerIT extends AbstractIntegrationTest {
 
   @Test
   void create_dealer_and_sales_order() {
-    String token = loginToken();
-
-    HttpHeaders headers = new HttpHeaders();
-    headers.setBearerAuth(token);
-    headers.setContentType(MediaType.APPLICATION_JSON);
-    headers.set("X-Company-Code", COMPANY_CODE);
-
-    Map<String, Object> dealerReq = new HashMap<>();
-    dealerReq.put("name", "Prime Dealer");
-    dealerReq.put("companyName", "Prime Dealer Paints");
-    dealerReq.put("contactEmail", "dealer@example.com");
-    dealerReq.put("contactPhone", "9999999999");
-    dealerReq.put("address", "Main Street");
-    dealerReq.put("creditLimit", new BigDecimal("100000"));
-
-    ResponseEntity<Map> dResp =
-        rest.exchange(
-            "/api/v1/dealers", HttpMethod.POST, new HttpEntity<>(dealerReq, headers), Map.class);
-    assertThat(dResp.getStatusCode()).isEqualTo(HttpStatus.OK);
-    Map<?, ?> dealerData = (Map<?, ?>) dResp.getBody().get("data");
-    Long dealerId = ((Number) dealerData.get("id")).longValue();
-
-    BigDecimal unitPrice = new BigDecimal("100.00");
-    BigDecimal quantity = new BigDecimal("2");
-    BigDecimal expectedTotal = unitPrice.multiply(quantity);
-
-    Map<String, Object> lineItem = new HashMap<>();
-    lineItem.put("productCode", TEST_SKU);
-    lineItem.put("description", "Test line item");
-    lineItem.put("quantity", quantity);
-    lineItem.put("unitPrice", unitPrice);
-    lineItem.put("gstRate", BigDecimal.ZERO);
-
-    Map<String, Object> orderReq = new HashMap<>();
-    orderReq.put("dealerId", dealerId);
-    orderReq.put("totalAmount", expectedTotal);
-    orderReq.put("currency", "INR");
-    orderReq.put("notes", "Test order");
-    orderReq.put("items", List.of(lineItem));
-    orderReq.put("gstTreatment", "NONE");
-    orderReq.put("gstRate", null);
-
-    ResponseEntity<Map> oResp =
-        rest.exchange(
-            "/api/v1/sales/orders",
-            HttpMethod.POST,
-            new HttpEntity<>(orderReq, headers),
-            Map.class);
-    assertThat(oResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+    HttpHeaders headers = authenticatedHeaders(loginToken());
+    Long dealerId = createDealer(headers, "Prime Dealer");
+    createSalesOrder(headers, dealerId);
 
     ResponseEntity<Map> listResp =
-        rest.exchange("/api/v1/sales/orders", HttpMethod.GET, new HttpEntity<>(headers), Map.class);
+        rest.exchange(
+            ErpApiRoutes.SALES_ORDERS, HttpMethod.GET, new HttpEntity<>(headers), Map.class);
     assertThat(listResp.getStatusCode()).isEqualTo(HttpStatus.OK);
     List<?> list = (List<?>) listResp.getBody().get("data");
     assertThat(list).isNotEmpty();
+  }
+
+  @Test
+  void sales_order_search_returns_created_order_by_order_number() {
+    HttpHeaders headers = authenticatedHeaders(loginToken());
+    Long dealerId = createDealer(headers, "Search Dealer");
+    Map<?, ?> orderData = createSalesOrder(headers, dealerId);
+    String orderNumber = String.valueOf(orderData.get("orderNumber"));
+
+    ResponseEntity<Map> emptySearchResponse =
+        rest.exchange(
+            ErpApiRoutes.SALES_ORDER_SEARCH + "?orderNumber=NO-SUCH-ORDER",
+            HttpMethod.GET,
+            new HttpEntity<>(headers),
+            Map.class);
+    assertThat(emptySearchResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    Map<?, ?> emptySearchBody = emptySearchResponse.getBody();
+    assertThat(emptySearchBody).isNotNull();
+    Map<?, ?> emptySearchData = (Map<?, ?>) emptySearchBody.get("data");
+    assertThat(emptySearchData).isNotNull();
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> emptyContent = (List<Map<String, Object>>) emptySearchData.get("content");
+    assertThat(emptyContent).isEmpty();
+
+    ResponseEntity<Map> searchResponse =
+        rest.exchange(
+            ErpApiRoutes.SALES_ORDER_SEARCH + "?orderNumber=" + orderNumber,
+            HttpMethod.GET,
+            new HttpEntity<>(headers),
+            Map.class);
+
+    assertThat(searchResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    Map<?, ?> body = searchResponse.getBody();
+    assertThat(body).isNotNull();
+    Map<?, ?> data = (Map<?, ?>) body.get("data");
+    assertThat(data).isNotNull();
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> content = (List<Map<String, Object>>) data.get("content");
+    assertThat(content).isNotEmpty();
+    assertThat(content)
+        .extracting(row -> String.valueOf(row.get("orderNumber")))
+        .contains(orderNumber);
+  }
+
+  @Test
+  void sales_order_search_repository_supports_alias_filters_escaping_and_unpaged_queries()
+      throws Exception {
+    Long primaryDealerId = createPersistedDealer("ALIAS-A" + System.nanoTime(), new BigDecimal("50000"));
+    Long secondaryDealerId =
+        createPersistedDealer("ALIAS-B" + System.nanoTime(), new BigDecimal("50000"));
+
+    Company company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
+    Dealer primaryDealer = dealerRepository.findById(primaryDealerId).orElseThrow();
+    Dealer secondaryDealer = dealerRepository.findById(secondaryDealerId).orElseThrow();
+
+    SalesOrder draftAliasOrder =
+        createPersistedOrder(
+            company,
+            primaryDealer,
+            "SO-DRAFT-ALIAS",
+            "BOOKED",
+            Instant.parse("2026-02-01T00:00:00Z"));
+    SalesOrder dispatchedAliasOrder =
+        createPersistedOrder(
+            company,
+            primaryDealer,
+            "SO-DISPATCHED-ALIAS",
+            "SHIPPED",
+            Instant.parse("2026-02-02T00:00:00Z"));
+    SalesOrder settledAliasOrder =
+        createPersistedOrder(
+            company,
+            secondaryDealer,
+            "SO-SETTLED-ALIAS",
+            "COMPLETED",
+            Instant.parse("2026-02-03T00:00:00Z"));
+    SalesOrder pendingOrder =
+        createPersistedOrder(
+            company,
+            secondaryDealer,
+            "SO-PENDING",
+            "PENDING",
+            Instant.parse("2026-02-04T00:00:00Z"));
+
+    Page<Long> draftResults =
+        salesOrderRepository.searchIdsByCompany(
+            company,
+            "DRAFT",
+            primaryDealer,
+            "SO-DRAFT-ALIAS",
+            draftAliasOrder.getCreatedAt().minusSeconds(5),
+            draftAliasOrder.getCreatedAt().plusSeconds(5),
+            PageRequest.of(0, 10));
+    assertThat(draftResults.getContent()).containsExactly(draftAliasOrder.getId());
+
+    Page<Long> dispatchedResults =
+        salesOrderRepository.searchIdsByCompany(
+            company,
+            "DISPATCHED",
+            primaryDealer,
+            "SO-DISPATCHED-ALIAS",
+            null,
+            dispatchedAliasOrder.getCreatedAt().plusSeconds(5),
+            PageRequest.of(0, 10));
+    assertThat(dispatchedResults.getContent()).containsExactly(dispatchedAliasOrder.getId());
+
+    Page<Long> settledResults =
+        salesOrderRepository.searchIdsByCompany(
+            company,
+            "SETTLED",
+            secondaryDealer,
+            "SO-SETTLED-ALIAS",
+            settledAliasOrder.getCreatedAt().minusSeconds(5),
+            null,
+            PageRequest.of(0, 10));
+    assertThat(settledResults.getContent()).containsExactly(settledAliasOrder.getId());
+
+    Page<Long> pendingResults =
+        salesOrderRepository.searchIdsByCompany(
+            company,
+            "PENDING",
+            secondaryDealer,
+            "SO-PENDING",
+            null,
+            null,
+            Pageable.unpaged());
+    assertThat(pendingResults.getContent()).containsExactly(pendingOrder.getId());
+    assertThat(pendingResults.getTotalElements()).isEqualTo(1);
+
+    Page<Long> allResults =
+        salesOrderRepository.searchIdsByCompany(
+            company,
+            null,
+            null,
+            null,
+            draftAliasOrder.getCreatedAt().minusSeconds(5),
+            pendingOrder.getCreatedAt().plusSeconds(5),
+            PageRequest.of(0, 10));
+    assertThat(allResults.getContent())
+        .contains(
+            pendingOrder.getId(),
+            settledAliasOrder.getId(),
+            dispatchedAliasOrder.getId(),
+            draftAliasOrder.getId());
+
+    Object searchRepositoryImpl = applicationContext.getBean("salesOrderSearchRepositoryImpl");
+    Class<?> repositoryType = searchRepositoryImpl.getClass();
+    java.lang.reflect.Method containsPattern = null;
+    while (repositoryType != null && containsPattern == null) {
+      try {
+        containsPattern = repositoryType.getDeclaredMethod("containsPattern", String.class);
+      } catch (NoSuchMethodException ignored) {
+        repositoryType = repositoryType.getSuperclass();
+      }
+    }
+    assertThat(containsPattern).isNotNull();
+    containsPattern.setAccessible(true);
+    assertThat(containsPattern.invoke(searchRepositoryImpl, "SO%ALIAS"))
+        .isEqualTo("%SO\\%ALIAS%");
+    assertThat(containsPattern.invoke(searchRepositoryImpl, "SO_ALIAS"))
+        .isEqualTo("%SO\\_ALIAS%");
+    assertThat(containsPattern.invoke(searchRepositoryImpl, "SO\\ALIAS"))
+        .isEqualTo("%SO\\\\ALIAS%");
   }
 
   @Test
@@ -376,7 +471,7 @@ public class SalesControllerIT extends AbstractIntegrationTest {
 
     ResponseEntity<Map> missingReasonResponse =
         rest.exchange(
-            "/api/v1/credit/limit-requests/" + creditRequestId + "/approve",
+            ErpApiRoutes.CREDIT_LIMIT_REQUESTS + "/" + creditRequestId + "/approve",
             HttpMethod.POST,
             new HttpEntity<>(Map.of(), headers),
             Map.class);
@@ -384,7 +479,7 @@ public class SalesControllerIT extends AbstractIntegrationTest {
 
     ResponseEntity<Map> approveResponse =
         rest.exchange(
-            "/api/v1/credit/limit-requests/" + creditRequestId + "/approve",
+            ErpApiRoutes.CREDIT_LIMIT_REQUESTS + "/" + creditRequestId + "/approve",
             HttpMethod.POST,
             new HttpEntity<>(Map.of("reason", "Approved after reviewing ledger exposure"), headers),
             Map.class);
@@ -407,7 +502,7 @@ public class SalesControllerIT extends AbstractIntegrationTest {
     Company company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
     ResponseEntity<Map> approveResponse =
         rest.exchange(
-            "/api/v1/credit/limit-requests/" + creditRequestId + "/approve",
+            ErpApiRoutes.CREDIT_LIMIT_REQUESTS + "/" + creditRequestId + "/approve",
             HttpMethod.POST,
             new HttpEntity<>(Map.of("reason", "Approved after payment behavior review"), headers),
             Map.class);
@@ -428,7 +523,7 @@ public class SalesControllerIT extends AbstractIntegrationTest {
 
     ResponseEntity<Map> missingReasonResponse =
         rest.exchange(
-            "/api/v1/credit/limit-requests/" + creditRequestId + "/reject",
+            ErpApiRoutes.CREDIT_LIMIT_REQUESTS + "/" + creditRequestId + "/reject",
             HttpMethod.POST,
             new HttpEntity<>(Map.of(), headers),
             Map.class);
@@ -436,7 +531,7 @@ public class SalesControllerIT extends AbstractIntegrationTest {
 
     ResponseEntity<Map> rejectResponse =
         rest.exchange(
-            "/api/v1/credit/limit-requests/" + creditRequestId + "/reject",
+            ErpApiRoutes.CREDIT_LIMIT_REQUESTS + "/" + creditRequestId + "/reject",
             HttpMethod.POST,
             new HttpEntity<>(
                 Map.of("reason", "Rejected due to overdue invoices and no guarantee"), headers),
@@ -460,7 +555,10 @@ public class SalesControllerIT extends AbstractIntegrationTest {
 
     ResponseEntity<Map> listResponse =
         rest.exchange(
-            "/api/v1/credit/limit-requests", HttpMethod.GET, new HttpEntity<>(headers), Map.class);
+            ErpApiRoutes.CREDIT_LIMIT_REQUESTS,
+            HttpMethod.GET,
+            new HttpEntity<>(headers),
+            Map.class);
 
     assertThat(listResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
     @SuppressWarnings("unchecked")

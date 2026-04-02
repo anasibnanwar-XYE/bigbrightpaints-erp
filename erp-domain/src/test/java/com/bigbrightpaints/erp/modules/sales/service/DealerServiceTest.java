@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
@@ -25,6 +26,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -273,7 +275,7 @@ class DealerServiceTest {
   void listDealers_usesBatchPendingExposureMapForCreditStatus() {
     Dealer within = dealer("D-WITHIN", new BigDecimal("1000"), "NORTH");
     Dealer near = dealer("D-NEAR", new BigDecimal("1000"), "NORTH");
-    when(dealerRepository.findByCompanyAndStatusIgnoreCaseOrderByNameAsc(eq(company), eq("ACTIVE")))
+    when(dealerRepository.findByCompanyAndStatusIgnoreCaseOrderByNameAsc(company, "ACTIVE"))
         .thenReturn(List.of(within, near));
     when(dealerLedgerService.currentBalances(List.of(1L, 2L)))
         .thenReturn(
@@ -298,7 +300,7 @@ class DealerServiceTest {
   @Test
   void listDealers_defaultsMissingBalanceAndExposureToZero() {
     Dealer dealer = dealer("D-ZERO", new BigDecimal("1000"), "NORTH");
-    when(dealerRepository.findByCompanyAndStatusIgnoreCaseOrderByNameAsc(eq(company), eq("ACTIVE")))
+    when(dealerRepository.findByCompanyAndStatusIgnoreCaseOrderByNameAsc(company, "ACTIVE"))
         .thenReturn(List.of(dealer));
     when(dealerLedgerService.currentBalances(List.of(99L))).thenReturn(Map.of());
     when(salesOrderRepository.sumPendingCreditExposureByCompanyAndDealerIds(
@@ -308,6 +310,62 @@ class DealerServiceTest {
     var results = dealerService.listDealers();
 
     assertThat(results).singleElement().satisfies(result -> assertThat(result.creditStatus()).isEqualTo("WITHIN_LIMIT"));
+  }
+
+  @Test
+  void listDealers_allStatusUsesDirectoryQueryAndPagination() {
+    Dealer active = dealer("D-ACTIVE", new BigDecimal("1000"), "NORTH");
+    Dealer onHold = dealer("D-HOLD", new BigDecimal("1000"), "SOUTH");
+    PageRequest pageRequest = PageRequest.of(1, 1, org.springframework.data.domain.Sort.by(
+        org.springframework.data.domain.Sort.Order.asc("name"),
+        org.springframework.data.domain.Sort.Order.asc("id")));
+    when(dealerRepository.findByCompany(eq(company), eq(pageRequest)))
+        .thenReturn(List.of(active, onHold));
+    when(dealerLedgerService.currentBalances(List.of(3L, 4L)))
+        .thenReturn(Map.of(3L, BigDecimal.ZERO, 4L, BigDecimal.ZERO));
+    when(salesOrderRepository.sumPendingCreditExposureByCompanyAndDealerIds(
+            eq(company), eq(List.of(3L, 4L)), any()))
+        .thenReturn(List.of());
+
+    var results = dealerService.listDealers("all", 1, 1);
+
+    assertThat(results).hasSize(2);
+    verify(dealerRepository).findByCompany(eq(company), eq(pageRequest));
+  }
+
+  @Test
+  void listDealers_blankStatusFallsBackToActiveDirectoryQuery() {
+    Dealer active = dealer("D-ACTIVE", new BigDecimal("1000"), "NORTH");
+    when(dealerRepository.findByCompanyAndStatusIgnoreCaseOrderByNameAsc(company, "ACTIVE"))
+        .thenReturn(List.of(active));
+    when(dealerLedgerService.currentBalances(List.of(3L))).thenReturn(Map.of(3L, BigDecimal.ZERO));
+    when(salesOrderRepository.sumPendingCreditExposureByCompanyAndDealerIds(
+            eq(company), eq(List.of(3L)), any()))
+        .thenReturn(List.of());
+
+    var results = dealerService.listDealers("   ", null, null);
+
+    assertThat(results).singleElement().extracting(result -> result.code()).isEqualTo("D-ACTIVE");
+    verify(dealerRepository).findByCompanyAndStatusIgnoreCaseOrderByNameAsc(company, "ACTIVE");
+  }
+
+  @Test
+  void listDealers_statusPaginationNormalizesStatusAndCapsPageSize() {
+    Dealer onHold = dealer("D-HOLD", new BigDecimal("1000"), "SOUTH");
+    PageRequest pageRequest = PageRequest.of(0, 200, org.springframework.data.domain.Sort.by(
+        org.springframework.data.domain.Sort.Order.asc("name"),
+        org.springframework.data.domain.Sort.Order.asc("id")));
+    when(dealerRepository.findByCompanyAndStatusIgnoreCase(eq(company), eq("ON_HOLD"), eq(pageRequest)))
+        .thenReturn(List.of(onHold));
+    when(dealerLedgerService.currentBalances(List.of(4L))).thenReturn(Map.of(4L, BigDecimal.ZERO));
+    when(salesOrderRepository.sumPendingCreditExposureByCompanyAndDealerIds(
+            eq(company), eq(List.of(4L)), any()))
+        .thenReturn(List.of());
+
+    var results = dealerService.listDealers(" on_hold ", 0, 999);
+
+    assertThat(results).singleElement().extracting(result -> result.code()).isEqualTo("D-HOLD");
+    verify(dealerRepository).findByCompanyAndStatusIgnoreCase(eq(company), eq("ON_HOLD"), eq(pageRequest));
   }
 
   @Test
@@ -767,6 +825,8 @@ class DealerServiceTest {
         switch (code) {
           case "D-WITHIN", "D-CREDIT" -> 1L;
           case "D-NEAR" -> 2L;
+          case "D-ACTIVE" -> 3L;
+          case "D-HOLD" -> 4L;
           default -> 99L;
         };
     ReflectionTestUtils.setField(dealer, "id", id);
