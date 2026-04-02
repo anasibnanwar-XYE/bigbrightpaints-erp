@@ -1,5 +1,12 @@
 # Accounting Portal Scope Guardrail
 
+> ⚠️ **NON-CANONICAL / REFERENCE ONLY**
+>
+> This retained accounting-portal scope lock is outside the canonical docs spine.
+> Use [docs/frontend-portals/accounting/README.md](frontend-portals/accounting/README.md) and [docs/frontend-api/README.md](frontend-api/README.md) for current portal ownership and shared API boundary truth.
+>
+> Status: reference only — retained accounting-portal scope lock. If this file conflicts with the canonical portal/API docs, the canonical docs win.
+
 Status: mandatory, do not remove.
 
 ## Invariant
