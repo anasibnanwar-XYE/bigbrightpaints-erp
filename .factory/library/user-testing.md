@@ -33,16 +33,26 @@ This surface proves the risky business seams the strict runtime smoke does not c
 
 Docs-only packets are not user-testing targets unless a feature explicitly overrides this.
 
+### 4. Repo-static docs/governance validation
+
+- **Type:** read-only repository inspection
+- **Tools:** `Read`, `Grep`, `LS`, and narrowly scoped shell reads when needed
+- **Use when:** a milestone validates canonical docs, retirement registry, repo hygiene, or docs-only governance rules without exercising the running app
+
+This surface validates what a reader or release operator sees in the repo right now. It does not start services unless an assertion explicitly requires runtime proof.
+
 ## Validation Concurrency
 
 - **strict-runtime:** max concurrent validators **1**
 - **jvm-tests:** max concurrent validators **1**
 - **docs-only:** max concurrent validators **0** (skip)
+- **repo-static:** max concurrent validators **2**
 
 Rationale:
 
 - the compose runtime uses fixed shared ports
 - Maven/Surefire writes to the same checkout and `target/` tree
+- repo-static validation is read-only, so two validators can inspect separate assertion groups concurrently without state collisions
 - using 70% of the observed resource headroom still leaves concurrency capped by shared-state contention rather than CPU/RAM
 
 ## Setup Steps
@@ -55,6 +65,7 @@ Rationale:
    - `GET http://localhost:8081/api/v1/auth/me`
 5. Treat `GET /api/v1/auth/me` returning `200`, `401`, or `403` as the acceptable strict-smoke application-boundary proof.
 6. Use targeted Maven suites for the touched risk area; do not rely on broad exploratory reruns unless a feature explicitly requires them.
+7. For repo-static docs/governance validation, skip service startup and inspect the canonical files, retirement registry, and governance scripts directly from the checkout.
 
 ## Runtime Probe Guidance
 
@@ -149,3 +160,12 @@ Rationale:
 - Direct `docker compose up` still parses the app service, so missing env values can break even dependency-only starts.
 - Old library/docs guidance may still reference retired routes until the mission cleans them; prefer `validation-contract.md`, `openapi.json`, and current controller annotations if guidance disagrees.
 - Running Maven outside `erp-domain/` can break `.mvn` resolution.
+
+## Flow Validator Guidance: repo-static
+
+- Stay read-only inside the assigned checkout; do not edit product files while validating assertions.
+- Use direct evidence from the current repo state: canonical docs, retirement registry entries, repo-root surfaces, and governance scripts.
+- Treat canonical spine assertions as link-and-classification checks: follow the reader path from `README.md`, root `ARCHITECTURE.md`, and `docs/INDEX.md` into the current docs spine and record where those paths land.
+- Treat repo-hygiene assertions as retention checks: confirm that any repo-root or docs-root worklog/artifact surface that still exists has an explicit live governance or script reason.
+- Treat docs-only governance assertions as executable-policy checks: compare the policy text in mission/root guidance against `scripts/enforce_codex_review_policy.sh` and record any mismatch.
+- Safe concurrency boundary: multiple repo-static validators may read the same checkout concurrently, but each validator must write only its own flow report and evidence files.
