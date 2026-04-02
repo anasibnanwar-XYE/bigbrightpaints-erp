@@ -1,29 +1,25 @@
 {
   "milestone": "canonical-truth",
-  "round": 2,
+  "round": 3,
   "status": "fail",
   "assertionsSummary": {
-    "total": 5,
-    "passed": 3,
+    "total": 2,
+    "passed": 0,
     "failed": 2,
     "blocked": 0
   },
-  "passedAssertions": [
-    "VAL-DOCS-003",
-    "VAL-DOCS-004",
-    "VAL-DOCS-006"
-  ],
+  "passedAssertions": [],
   "failedAssertions": [
     {
       "id": "VAL-DOCS-002",
-      "reason": "The docs spine still leaves some top-level docs outside docs/INDEX without any non-canonical/reference-only labeling, so a reader cannot reliably tell that those surfaces are outside the canonical tree."
+      "reason": "docs/INDEX.md and docs/deprecated/INDEX.md now classify the retained top-level docs correctly, but docs/ACCOUNTING_PORTAL_SCOPE_GUARDRAIL.md, docs/AUDIT_TRAIL_OWNERSHIP.md, and docs/accounting-portal-endpoint-map.md still lack top-of-file non-canonical/reference-only banners when opened directly."
     },
     {
       "id": "VAL-DOCS-007",
-      "reason": "The entrypoints use `orchestrator-erp`, but many active canonical docs still describe the current product as `BigBright ERP`, so the naming remediation is incomplete."
+      "reason": "Active canonical platform docs still use the old product identity in docs/platform/db-migration.md:5 and docs/platform/config-feature-toggles.md:247, so canonical naming is not fully aligned to orchestrator-erp."
     }
   ],
   "blockedAssertions": [],
   "appliedUpdates": [],
-  "previousRound": ".factory/validation/canonical-truth/user-testing/synthesis.round-1.json"
+  "previousRound": ".factory/validation/canonical-truth/user-testing/synthesis.round-2.json"
 }
