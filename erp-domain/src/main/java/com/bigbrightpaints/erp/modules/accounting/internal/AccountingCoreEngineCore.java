@@ -4330,16 +4330,20 @@ abstract class AccountingCoreEngineCore {
     if (company == null) {
       return null;
     }
+    String normalizedReference = StringUtils.hasText(reference) ? reference.trim() : null;
+    String normalizedIdempotencyKey = StringUtils.hasText(idempotencyKey) ? idempotencyKey.trim() : null;
     if (StringUtils.hasText(reference)) {
       Optional<JournalEntry> byReference =
-          journalReferenceResolver.findExistingEntry(company, reference);
+          journalReferenceResolver.findExistingEntry(company, normalizedReference);
       if (byReference.isPresent()) {
         return byReference.get();
       }
     }
-    if (StringUtils.hasText(idempotencyKey)) {
+    if (StringUtils.hasText(normalizedIdempotencyKey)
+        && (normalizedReference == null
+            || !normalizedReference.equalsIgnoreCase(normalizedIdempotencyKey))) {
       Optional<JournalEntry> byKey =
-          journalReferenceResolver.findExistingEntry(company, idempotencyKey);
+          journalReferenceResolver.findExistingEntry(company, normalizedIdempotencyKey);
       return byKey.orElse(null);
     }
     return null;

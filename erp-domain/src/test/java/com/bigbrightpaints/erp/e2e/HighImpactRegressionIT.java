@@ -22,6 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
+import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.modules.accounting.domain.*;
 import com.bigbrightpaints.erp.modules.accounting.dto.*;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
@@ -936,7 +937,7 @@ class HighImpactRegressionIT extends AbstractIntegrationTest {
   @Order(10)
   @DisplayName("Period lock blocks backdated JE, reopen requires reason")
   void periodLockReopenSemantics() {
-    LocalDate lockedDate = LocalDate.now().minusDays(3);
+    LocalDate lockedDate = CompanyTime.today(companyA).minusDays(3);
     int lockedYear = lockedDate.getYear();
     int lockedMonth = lockedDate.getMonthValue();
     boolean periodExisted =
@@ -950,7 +951,7 @@ class HighImpactRegressionIT extends AbstractIntegrationTest {
     Instant originalClosedAt = period.getClosedAt();
     String originalClosedBy = period.getClosedBy();
     period.setStatus(AccountingPeriodStatus.CLOSED);
-    period.setClosedAt(Instant.now());
+    period.setClosedAt(CompanyTime.now(companyA));
     period.setClosedBy("test");
     final AccountingPeriod savedPeriod = accountingPeriodRepository.save(period);
 

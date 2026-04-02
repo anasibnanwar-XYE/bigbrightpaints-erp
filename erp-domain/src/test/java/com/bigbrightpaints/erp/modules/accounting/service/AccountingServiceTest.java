@@ -13559,7 +13559,7 @@ class AccountingServiceTest {
     voidPurchase.setJournalEntry(journalEntry(95020L, "PUR-9502-JE"));
     when(rawMaterialPurchaseRepository.lockByCompanyAndId(company, 9502L))
         .thenReturn(Optional.of(voidPurchase));
-    when(journalEntryRepository.findByCompanyAndReferenceNumber(company, "DN-VOID"))
+    when(journalReferenceResolver.findExistingEntry(company, "DN-VOID"))
         .thenReturn(Optional.empty());
     assertThatThrownBy(
             () ->
@@ -13580,7 +13580,7 @@ class AccountingServiceTest {
     zeroTotal.setJournalEntry(journalEntry(95030L, "PUR-9503-JE"));
     when(rawMaterialPurchaseRepository.lockByCompanyAndId(company, 9503L))
         .thenReturn(Optional.of(zeroTotal));
-    when(journalEntryRepository.findByCompanyAndReferenceNumber(company, "DN-ZERO"))
+    when(journalReferenceResolver.findExistingEntry(company, "DN-ZERO"))
         .thenReturn(Optional.empty());
     assertThatThrownBy(
             () ->
@@ -13611,7 +13611,7 @@ class AccountingServiceTest {
         fullDebit, payable, "Debit note reversal - AP", BigDecimal.ZERO, new BigDecimal("100.00"));
     when(rawMaterialPurchaseRepository.lockByCompanyAndId(company, 9504L))
         .thenReturn(Optional.of(fullyDebited));
-    when(journalEntryRepository.findByCompanyAndReferenceNumber(company, "DN-FULL"))
+    when(journalReferenceResolver.findExistingEntry(company, "DN-FULL"))
         .thenReturn(Optional.empty());
     when(journalEntryRepository.findByCompanyAndReversalOfAndCorrectionReasonIgnoreCase(
             company, fullSource, "DEBIT_NOTE"))
@@ -13639,7 +13639,7 @@ class AccountingServiceTest {
         priorDebit, payable, "Debit note reversal - AP", BigDecimal.ZERO, new BigDecimal("70.00"));
     when(rawMaterialPurchaseRepository.lockByCompanyAndId(company, 9505L))
         .thenReturn(Optional.of(exceeded));
-    when(journalEntryRepository.findByCompanyAndReferenceNumber(company, "DN-EXCEED"))
+    when(journalReferenceResolver.findExistingEntry(company, "DN-EXCEED"))
         .thenReturn(Optional.empty());
     when(journalEntryRepository.findByCompanyAndReversalOfAndCorrectionReasonIgnoreCase(
             company, exceededSource, "DEBIT_NOTE"))
@@ -13682,7 +13682,7 @@ class AccountingServiceTest {
     invoice.setJournalEntry(source);
 
     when(invoiceRepository.lockByCompanyAndId(company, 8450L)).thenReturn(Optional.of(invoice));
-    when(journalEntryRepository.findByCompanyAndReferenceNumber(company, "CN-8450"))
+    when(journalReferenceResolver.findExistingEntry(company, "CN-8450"))
         .thenReturn(Optional.empty());
     when(journalEntryRepository.findByCompanyAndReversalOfAndCorrectionReasonIgnoreCase(
             company, source, "CREDIT_NOTE"))
@@ -13798,7 +13798,7 @@ class AccountingServiceTest {
 
     when(rawMaterialPurchaseRepository.lockByCompanyAndId(company, 8460L))
         .thenReturn(Optional.of(purchase));
-    when(journalEntryRepository.findByCompanyAndReferenceNumber(company, "DN-8460"))
+    when(journalReferenceResolver.findExistingEntry(company, "DN-8460"))
         .thenReturn(Optional.empty());
     when(journalEntryRepository.findByCompanyAndReversalOfAndCorrectionReasonIgnoreCase(
             company, source, "DEBIT_NOTE"))
@@ -13862,7 +13862,7 @@ class AccountingServiceTest {
 
     when(rawMaterialPurchaseRepository.lockByCompanyAndId(company, 9601L))
         .thenReturn(Optional.of(purchase));
-    when(journalEntryRepository.findByCompanyAndReferenceNumber(company, "DN-NEW"))
+    when(journalReferenceResolver.findExistingEntry(company, "DN-NEW"))
         .thenReturn(Optional.empty());
     when(journalEntryRepository.findByCompanyAndReversalOfAndCorrectionReasonIgnoreCase(
             company, source, "DEBIT_NOTE"))
