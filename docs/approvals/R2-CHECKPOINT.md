@@ -1,11 +1,11 @@
 # R2 Checkpoint
 
-Last reviewed: 2026-04-01
+Last reviewed: 2026-04-02
 
 ## Scope
 - Feature: `ERP failing-suite remediation — debit-note replay hardening`
 - Branch: `erp-failing-suite-remediation-20260401` under the `anas` namespace
-- PR: not created yet (branch pushed to origin)
+- PR: `#180` — https://github.com/anasibnanwar-XYE/bigbrightpaints-erp/pull/180
 - Review candidate:
   - harden `postDebitNote(...)` in `AccountingCoreEngineCore` so leader-path replays validate journal provenance before mutating correction metadata
   - persist debit-note provenance early via `sourceModule=DEBIT_NOTE` and `sourceReference=<purchaseInvoiceNumber>` on journal creation

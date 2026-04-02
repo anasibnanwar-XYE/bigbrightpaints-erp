@@ -1,6 +1,6 @@
 # Core Platform Contracts: Shared-Versus-Module-Local Idempotency Behavior
 
-Last reviewed: 2026-04-01
+Last reviewed: 2026-04-02
 
 This packet documents the **shared idempotency infrastructure** and the **module-local idempotency implementations** that together govern safe write-path replay behavior across the BigBright ERP backend. It is the integrating slice of the core platform contracts packet: it explains shared-vs-module-local ownership, reconciles the full platform contract, and surfaces known pre-existing contract inconsistencies as explicit caveats rather than silently normalizing them away.
 
@@ -228,10 +228,10 @@ Most accounting operations resolve replay directly at the `JournalEntry` layer. 
 For correction notes, replay validation is provenance-aware:
 
 1. Non-leader callers wait for the leader journal and then validate supplier, source document, amount, and line-signature parity before treating the result as an idempotent replay.
-2. Leader callers still validate any journal returned from `createJournalEntry(...)`; if the returned journal is already bound to another `sourceReference` / `reversalOf` chain, the engine throws `CONCURRENCY_CONFLICT` instead of rewriting provenance onto the new purchase or invoice.
+2. For `DEBIT_NOTE`, leader callers still validate any journal returned from `createJournalEntry(...)`; if the returned journal is already bound to another `sourceReference` / `reversalOf` chain, the engine throws `CONCURRENCY_CONFLICT` instead of rewriting provenance onto the new purchase. `CREDIT_NOTE` still uses the older leader-path behavior and mutates provenance on the returned journal without this extra guard.
 3. The persisted replay truth for correction notes is the journal provenance itself: `sourceModule`, `sourceReference`, and `reversalOf`.
 
-**Key difference:** Accounting does not use a separate reservation entity for every write path, but correction-note replay safety is not purely `JournalEntry`-local anymore. `JournalReferenceMapping` acts as the lightweight reservation layer that prevents concurrent debit-note or credit-note retries from stealing another document's canonical reference.
+**Key difference:** Accounting does not use a separate reservation entity for every write path, but correction-note replay safety is not purely `JournalEntry`-local anymore. `JournalReferenceMapping` acts as the lightweight reservation layer that prevents concurrent debit-note or credit-note retries from stealing another document's canonical reference. As of this packet revision, the stronger provenance-safe leader validation is implemented for `DEBIT_NOTE` only.
 
 **Test evidence:** `AccountingServiceTest`, `ProcureToPayE2ETest`, `HighImpactRegressionIT`.
 
