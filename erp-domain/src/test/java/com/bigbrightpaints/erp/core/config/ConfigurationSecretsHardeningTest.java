@@ -26,9 +26,9 @@ class ConfigurationSecretsHardeningTest {
   void prodProfileRequiresMailCredentialsFromEnvironment() throws IOException {
     String applicationProd = read("src/main/resources/application-prod.yml");
 
-    assertThat(applicationProd).contains("host: ${SMTP_HOST:${SPRING_MAIL_HOST:}}");
-    assertThat(applicationProd).contains("username: ${SMTP_USERNAME:${SPRING_MAIL_USERNAME:}}");
-    assertThat(applicationProd).contains("password: ${SMTP_PASSWORD:${SPRING_MAIL_PASSWORD:}}");
+    assertThat(applicationProd).contains("host: ${SPRING_MAIL_HOST}");
+    assertThat(applicationProd).contains("username: ${SPRING_MAIL_USERNAME}");
+    assertThat(applicationProd).contains("password: ${SPRING_MAIL_PASSWORD}");
   }
 
   private String read(String path) throws IOException {

@@ -22,6 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
+import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.modules.accounting.domain.*;
 import com.bigbrightpaints.erp.modules.accounting.dto.*;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
@@ -936,15 +937,21 @@ class HighImpactRegressionIT extends AbstractIntegrationTest {
   @Order(10)
   @DisplayName("Period lock blocks backdated JE, reopen requires reason")
   void periodLockReopenSemantics() {
-    LocalDate lockedDate = LocalDate.now().minusMonths(2).withDayOfMonth(15);
+    LocalDate lockedDate = CompanyTime.today(companyA).minusDays(3);
+    int lockedYear = lockedDate.getYear();
+    int lockedMonth = lockedDate.getMonthValue();
+    boolean periodExisted =
+        accountingPeriodRepository
+            .findByCompanyAndYearAndMonth(companyA, lockedYear, lockedMonth)
+            .isPresent();
 
     // Create and close a period
-    AccountingPeriod period = new AccountingPeriod();
-    period.setCompany(companyA);
-    period.setStartDate(lockedDate.withDayOfMonth(1));
-    period.setEndDate(lockedDate.withDayOfMonth(lockedDate.lengthOfMonth()));
+    AccountingPeriod period = accountingPeriodService.ensurePeriod(companyA, lockedDate);
+    AccountingPeriodStatus originalStatus = period.getStatus();
+    Instant originalClosedAt = period.getClosedAt();
+    String originalClosedBy = period.getClosedBy();
     period.setStatus(AccountingPeriodStatus.CLOSED);
-    period.setClosedAt(Instant.now());
+    period.setClosedAt(CompanyTime.now(companyA));
     period.setClosedBy("test");
     final AccountingPeriod savedPeriod = accountingPeriodRepository.save(period);
 
@@ -982,7 +989,14 @@ class HighImpactRegressionIT extends AbstractIntegrationTest {
         .isInstanceOf(ApplicationException.class);
 
     // Cleanup
-    accountingPeriodRepository.delete(savedPeriod);
+    if (periodExisted) {
+      savedPeriod.setStatus(originalStatus);
+      savedPeriod.setClosedAt(originalClosedAt);
+      savedPeriod.setClosedBy(originalClosedBy);
+      accountingPeriodRepository.save(savedPeriod);
+    } else {
+      accountingPeriodRepository.delete(savedPeriod);
+    }
   }
 
   // =========================================================================

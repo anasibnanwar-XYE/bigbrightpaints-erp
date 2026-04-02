@@ -1,5 +1,7 @@
 # Accounting States And Errors
 
+Last reviewed: 2026-04-01
+
 Important states:
 
 - COA seeded / COA missing
@@ -36,6 +38,8 @@ Important user-visible failures:
 - opening stock rejected because readiness blockers remain
 - journal reverse rejected because the period is closed or the reference chain
   is invalid
+- debit-note replay rejected because the requested reference already belongs to
+  another purchase reference chain
 - close request rejected because checklist or reconciliation is incomplete
 - direct close rejected because it is not a supported frontend action
 - settlement rejected because allocation totals do not match payment totals
@@ -50,5 +54,8 @@ UI rules:
 - A stale link or stale client action targeting `/close`, legacy manual-journal
   create, or legacy reverse endpoints should fail loudly in development and be
   removed from the production UI.
+- Correction-note conflicts must stay inline with the existing draft and show
+  the canonical reference/source document that already owns the replay chain.
+  Do not auto-retry them with a fresh key behind the operator's back.
 - Loading and empty states must distinguish between missing data, missing
   permissions, and blocked onboarding prerequisites.

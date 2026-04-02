@@ -622,7 +622,7 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
     Map<String, Object> purchaseData = (Map<String, Object>) purchaseResp.getBody().get("data");
     Long purchaseId = ((Number) purchaseData.get("id")).longValue();
 
-    String reference = "DN-IDEMP-" + shortSuffix();
+    String reference = "DN-" + shortSuffix();
     Map<String, Object> debitNoteReq = new HashMap<>();
     debitNoteReq.put("purchaseId", purchaseId);
     debitNoteReq.put("referenceNumber", reference);
@@ -635,6 +635,8 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
             new HttpEntity<>(debitNoteReq, headers),
             Map.class);
     assertThat(first.getStatusCode()).isEqualTo(HttpStatus.OK);
+    Map<String, Object> firstDebitNote = (Map<String, Object>) first.getBody().get("data");
+    Long firstDebitNoteId = ((Number) firstDebitNote.get("id")).longValue();
 
     ResponseEntity<Map> second =
         rest.exchange(
@@ -643,21 +645,20 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
             new HttpEntity<>(debitNoteReq, headers),
             Map.class);
     assertThat(second.getStatusCode()).isEqualTo(HttpStatus.OK);
+    Map<String, Object> secondDebitNote = (Map<String, Object>) second.getBody().get("data");
+    assertThat(((Number) secondDebitNote.get("id")).longValue()).isEqualTo(firstDebitNoteId);
+    assertThat(secondDebitNote.get("referenceNumber")).isEqualTo(reference);
 
-    List<JournalEntry> entries =
-        journalEntryRepository.findAll().stream()
-            .filter(entry -> reference.equals(entry.getReferenceNumber()))
-            .toList();
-    assertThat(entries).hasSize(1);
+    assertThat(journalEntryRepository.findByCompanyAndReferenceNumber(company, reference)).isPresent();
 
     RawMaterialPurchase purchase = purchaseRepository.findById(purchaseId).orElseThrow();
-    assertThat(purchase.getOutstandingAmount()).isEqualByComparingTo(totalAmount.negate());
+    assertThat(purchase.getOutstandingAmount()).isEqualByComparingTo(BigDecimal.ZERO);
     assertThat(purchase.getStatus()).isEqualTo("VOID");
   }
 
   @Test
-  @DisplayName("Debit note allowed after purchase is fully settled")
-  void purchaseDebitNoteAllowedAfterSettlement() {
+  @DisplayName("Debit note is rejected after purchase is fully settled")
+  void purchaseDebitNoteRejectedAfterSettlement() {
     LocalDate entryDate = TestDateUtils.safeDate(company);
     Long supplierId = createSupplier("P2P Paid Supplier", "DN-PAID-" + shortSuffix());
     Long rawMaterialId =
@@ -729,11 +730,11 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
             HttpMethod.POST,
             new HttpEntity<>(debitNoteReq, headers),
             Map.class);
-    assertThat(debitResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(debitResp.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
 
     RawMaterialPurchase refreshed = purchaseRepository.findById(purchaseId).orElseThrow();
-    assertThat(refreshed.getOutstandingAmount()).isEqualByComparingTo(totalAmount.negate());
-    assertThat(refreshed.getStatus()).isEqualTo("VOID");
+    assertThat(refreshed.getOutstandingAmount()).isEqualByComparingTo(BigDecimal.ZERO);
+    assertThat(refreshed.getStatus()).isEqualTo("PAID");
   }
 
   @Test

@@ -1,5 +1,7 @@
 # Accounting Reference Chains
 
+Last reviewed: 2026-04-01
+
 This file captures the canonical document and reference chains frontend uses across onboarding, stock bootstrap, accounting workflows, and audit/provenance reads.
 
 Reference chains define which upstream business event the frontend should use
@@ -204,6 +206,27 @@ UI implication:
   `GET /api/v1/accounting/statements/suppliers/{supplierId}`,
   and `GET /api/v1/accounting/aging/suppliers/{supplierId}` as one connected
   AP-clearing chain.
+
+## Purchase debit-note replay lineage
+
+- purchase invoice
+- purchase journal
+- debit note request with stable `referenceNumber`
+- optional `idempotencyKey`
+- debit note journal with `sourceModule=DEBIT_NOTE`
+- `sourceReference=<purchaseInvoiceNumber>`
+- `reversalOf=<purchase journal>`
+- supplier statement and audit detail refresh
+
+UI implication:
+
+- Treat `referenceNumber` + `idempotencyKey` as replay identifiers only for
+  the same purchase document.
+- If replay returns a conflict whose provenance points to another purchase
+  reference chain, keep the operator on the draft and require a new correction
+  reference instead of presenting the result as an already-applied success.
+- When rendering the posted debit note, link back to the originating purchase
+  invoice and source journal from the provenance fields.
 
 ## Export request and approval
 

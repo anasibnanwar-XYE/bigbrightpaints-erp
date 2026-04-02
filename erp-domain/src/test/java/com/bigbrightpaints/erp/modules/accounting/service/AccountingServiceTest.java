@@ -13053,6 +13053,7 @@ class AccountingServiceTest {
                     accountingService,
                     "validateCreditNoteIdempotency",
                     "CN-KEY",
+                    "CN-KEY",
                     invoice,
                     source,
                     null,
@@ -13068,6 +13069,7 @@ class AccountingServiceTest {
                 ReflectionTestUtils.invokeMethod(
                     accountingService,
                     "validateCreditNoteIdempotency",
+                    "CN-OK",
                     "CN-KEY",
                     invoice,
                     source,
@@ -13091,6 +13093,7 @@ class AccountingServiceTest {
                 ReflectionTestUtils.invokeMethod(
                     accountingService,
                     "validateCreditNoteIdempotency",
+                    "CN-OK",
                     "CN-KEY",
                     invoice,
                     source,
@@ -13107,6 +13110,7 @@ class AccountingServiceTest {
                 ReflectionTestUtils.invokeMethod(
                     accountingService,
                     "validateCreditNoteIdempotency",
+                    "CN-WRONG",
                     "CN-KEY",
                     invoice,
                     source,
@@ -13123,6 +13127,7 @@ class AccountingServiceTest {
                 ReflectionTestUtils.invokeMethod(
                     accountingService,
                     "validateCreditNoteIdempotency",
+                    "CN-OK",
                     "CN-KEY",
                     invoice,
                     source,
@@ -13146,6 +13151,7 @@ class AccountingServiceTest {
                 ReflectionTestUtils.invokeMethod(
                     accountingService,
                     "validateCreditNoteIdempotency",
+                    "CN-OK",
                     "CN-KEY",
                     invoice,
                     source,
@@ -13160,7 +13166,71 @@ class AccountingServiceTest {
     ReflectionTestUtils.invokeMethod(
         accountingService,
         "validateCreditNoteIdempotency",
+        "CN-OK",
         "CN-KEY",
+        invoice,
+        source,
+        matchingEntry,
+        new BigDecimal("100.00"),
+        new BigDecimal("100.00"));
+  }
+
+  @Test
+  void findExistingEntry_normalizesInputsAndSkipsDuplicateKeyLookup() {
+    JournalEntry byKey = journalEntry(9107L, "IDEMP-FIND");
+    JournalEntry byReference = journalEntry(9108L, "REF-FIND");
+    JournalEntry byDuplicateReference = journalEntry(9109L, "REF-DUP");
+
+    when(journalReferenceResolver.findExistingEntry(company, "IDEMP-FIND"))
+        .thenReturn(Optional.of(byKey));
+    when(journalReferenceResolver.findExistingEntry(company, "REF-FIND"))
+        .thenReturn(Optional.of(byReference));
+    when(journalReferenceResolver.findExistingEntry(company, "REF-DUP"))
+        .thenReturn(Optional.of(byDuplicateReference));
+
+    JournalEntry keyResult =
+        ReflectionTestUtils.invokeMethod(
+            accountingService, "findExistingEntry", company, "   ", " IDEMP-FIND ");
+    JournalEntry referenceResult =
+        ReflectionTestUtils.invokeMethod(
+            accountingService, "findExistingEntry", company, " REF-FIND ", "   ");
+    JournalEntry duplicateResult =
+        ReflectionTestUtils.invokeMethod(
+            accountingService, "findExistingEntry", company, " REF-DUP ", " ref-dup ");
+
+    assertThat(keyResult).isSameAs(byKey);
+    assertThat(referenceResult).isSameAs(byReference);
+    assertThat(duplicateResult).isSameAs(byDuplicateReference);
+    verify(journalReferenceResolver, times(1)).findExistingEntry(company, "REF-DUP");
+  }
+
+  @Test
+  void validateCreditNoteIdempotency_allowsBlankReferenceWhenEntryMatches() {
+    Account receivable = account(9110L, "AR-9110", AccountType.ASSET);
+    Account revenue = account(9111L, "REV-9111", AccountType.REVENUE);
+    Dealer dealer = dealer(9112L, "Dealer Blank Ref", receivable);
+
+    Invoice invoice = new Invoice();
+    ReflectionTestUtils.setField(invoice, "id", 9113L);
+    invoice.setCompany(company);
+    invoice.setDealer(dealer);
+    invoice.setInvoiceNumber("INV-9113");
+    invoice.setTotalAmount(new BigDecimal("100.00"));
+
+    JournalEntry source = journalEntry(9114L, "INV-9113-JE");
+    source.setDealer(dealer);
+    addJournalLine(
+        source, receivable, "Invoice receivable", new BigDecimal("100.00"), BigDecimal.ZERO);
+    addJournalLine(source, revenue, "Invoice revenue", BigDecimal.ZERO, new BigDecimal("100.00"));
+
+    JournalEntry matchingEntry =
+        creditNoteEntry(9115L, "CN-9115", dealer, source, receivable, revenue, "100.00");
+
+    ReflectionTestUtils.invokeMethod(
+        accountingService,
+        "validateCreditNoteIdempotency",
+        "   ",
+        "CN-BLANK-REF",
         invoice,
         source,
         matchingEntry,
@@ -13495,7 +13565,7 @@ class AccountingServiceTest {
 
     when(rawMaterialPurchaseRepository.lockByCompanyAndId(company, 9401L))
         .thenReturn(Optional.of(purchase));
-    when(journalEntryRepository.findByCompanyAndReferenceNumber(company, "DN-EXIST"))
+    when(journalReferenceResolver.findExistingEntry(company, "DN-EXIST"))
         .thenReturn(Optional.of(existing));
 
     assertThatThrownBy(
@@ -13552,7 +13622,7 @@ class AccountingServiceTest {
     voidPurchase.setJournalEntry(journalEntry(95020L, "PUR-9502-JE"));
     when(rawMaterialPurchaseRepository.lockByCompanyAndId(company, 9502L))
         .thenReturn(Optional.of(voidPurchase));
-    when(journalEntryRepository.findByCompanyAndReferenceNumber(company, "DN-VOID"))
+    when(journalReferenceResolver.findExistingEntry(company, "DN-VOID"))
         .thenReturn(Optional.empty());
     assertThatThrownBy(
             () ->
@@ -13573,7 +13643,7 @@ class AccountingServiceTest {
     zeroTotal.setJournalEntry(journalEntry(95030L, "PUR-9503-JE"));
     when(rawMaterialPurchaseRepository.lockByCompanyAndId(company, 9503L))
         .thenReturn(Optional.of(zeroTotal));
-    when(journalEntryRepository.findByCompanyAndReferenceNumber(company, "DN-ZERO"))
+    when(journalReferenceResolver.findExistingEntry(company, "DN-ZERO"))
         .thenReturn(Optional.empty());
     assertThatThrownBy(
             () ->
@@ -13604,7 +13674,7 @@ class AccountingServiceTest {
         fullDebit, payable, "Debit note reversal - AP", BigDecimal.ZERO, new BigDecimal("100.00"));
     when(rawMaterialPurchaseRepository.lockByCompanyAndId(company, 9504L))
         .thenReturn(Optional.of(fullyDebited));
-    when(journalEntryRepository.findByCompanyAndReferenceNumber(company, "DN-FULL"))
+    when(journalReferenceResolver.findExistingEntry(company, "DN-FULL"))
         .thenReturn(Optional.empty());
     when(journalEntryRepository.findByCompanyAndReversalOfAndCorrectionReasonIgnoreCase(
             company, fullSource, "DEBIT_NOTE"))
@@ -13632,7 +13702,7 @@ class AccountingServiceTest {
         priorDebit, payable, "Debit note reversal - AP", BigDecimal.ZERO, new BigDecimal("70.00"));
     when(rawMaterialPurchaseRepository.lockByCompanyAndId(company, 9505L))
         .thenReturn(Optional.of(exceeded));
-    when(journalEntryRepository.findByCompanyAndReferenceNumber(company, "DN-EXCEED"))
+    when(journalReferenceResolver.findExistingEntry(company, "DN-EXCEED"))
         .thenReturn(Optional.empty());
     when(journalEntryRepository.findByCompanyAndReversalOfAndCorrectionReasonIgnoreCase(
             company, exceededSource, "DEBIT_NOTE"))
@@ -13675,7 +13745,7 @@ class AccountingServiceTest {
     invoice.setJournalEntry(source);
 
     when(invoiceRepository.lockByCompanyAndId(company, 8450L)).thenReturn(Optional.of(invoice));
-    when(journalEntryRepository.findByCompanyAndReferenceNumber(company, "CN-8450"))
+    when(journalReferenceResolver.findExistingEntry(company, "CN-8450"))
         .thenReturn(Optional.empty());
     when(journalEntryRepository.findByCompanyAndReversalOfAndCorrectionReasonIgnoreCase(
             company, source, "CREDIT_NOTE"))
@@ -13700,6 +13770,141 @@ class AccountingServiceTest {
 
   @Test
   @Tag("critical")
+  void postCreditNote_replayRejectsDifferentReferenceNumberForSameIdempotencyKey() {
+    Account receivable = account(8455L, "AR-8455", AccountType.ASSET);
+    Account revenue = account(8456L, "REV-8456", AccountType.REVENUE);
+    Dealer dealer = dealer(8457L, "Dealer Replay Ref Drift", receivable);
+
+    Invoice invoice = new Invoice();
+    ReflectionTestUtils.setField(invoice, "id", 8458L);
+    invoice.setCompany(company);
+    invoice.setDealer(dealer);
+    invoice.setInvoiceNumber("INV-8458");
+    invoice.setTotalAmount(new BigDecimal("100.00"));
+    invoice.setOutstandingAmount(BigDecimal.ZERO);
+    invoice.setStatus("CREDITED");
+
+    JournalEntry source = journalEntry(8459L, "INV-8458-JE");
+    addJournalLine(
+        source, receivable, "Invoice receivable", new BigDecimal("100.00"), BigDecimal.ZERO);
+    addJournalLine(source, revenue, "Invoice revenue", BigDecimal.ZERO, new BigDecimal("100.00"));
+    invoice.setJournalEntry(source);
+
+    JournalEntry existing = journalEntry(8460L, "CN-REPLAY-ORIGINAL");
+    existing.setDealer(dealer);
+    existing.setReversalOf(source);
+    existing.setCorrectionType(JournalCorrectionType.REVERSAL);
+    existing.setCorrectionReason("CREDIT_NOTE");
+    existing.setSourceModule("CREDIT_NOTE");
+    existing.setSourceReference("INV-8458");
+    addJournalLine(
+        existing,
+        revenue,
+        "Credit note reversal - Invoice revenue",
+        new BigDecimal("100.00"),
+        BigDecimal.ZERO);
+    addJournalLine(
+        existing,
+        receivable,
+        "Credit note reversal - Invoice receivable",
+        BigDecimal.ZERO,
+        new BigDecimal("100.00"));
+
+    when(invoiceRepository.lockByCompanyAndId(company, 8458L)).thenReturn(Optional.of(invoice));
+    when(journalReferenceResolver.findExistingEntry(company, "CN-REPLAY-NEW"))
+        .thenReturn(Optional.empty());
+    when(journalReferenceResolver.findExistingEntry(company, "IDEMP-CN-REPLAY-REF"))
+        .thenReturn(Optional.of(existing));
+    when(journalEntryRepository.findByCompanyAndReversalOfAndCorrectionReasonIgnoreCase(
+            company, source, "CREDIT_NOTE"))
+        .thenReturn(List.of(existing));
+
+    assertThatThrownBy(
+            () ->
+                accountingService.postCreditNote(
+                    new CreditNoteRequest(
+                        8458L,
+                        null,
+                        null,
+                        "CN-REPLAY-NEW",
+                        "replay",
+                        "IDEMP-CN-REPLAY-REF",
+                        Boolean.TRUE)))
+        .isInstanceOf(ApplicationException.class)
+        .satisfies(
+            ex ->
+                assertThat(((ApplicationException) ex).getErrorCode())
+                    .isEqualTo(ErrorCode.CONCURRENCY_CONFLICT));
+
+    verify(creditDebitNoteService, never()).createJournalEntry(any(JournalEntryRequest.class));
+    verify(journalEntryRepository, never()).save(existing);
+  }
+
+  @Test
+  void postCreditNote_nonLeaderReplayReturnsAwaitedJournalAndAppliesInvoice() {
+    Account receivable = account(84561L, "AR-84561", AccountType.ASSET);
+    Account revenue = account(84562L, "REV-84562", AccountType.REVENUE);
+    Dealer dealer = dealer(84563L, "Dealer Awaited Replay", receivable);
+
+    Invoice invoice = new Invoice();
+    ReflectionTestUtils.setField(invoice, "id", 84564L);
+    invoice.setCompany(company);
+    invoice.setDealer(dealer);
+    invoice.setInvoiceNumber("INV-84564");
+    invoice.setTotalAmount(new BigDecimal("100.00"));
+    invoice.setOutstandingAmount(new BigDecimal("100.00"));
+    invoice.setStatus("OPEN");
+
+    JournalEntry source = journalEntry(84565L, "INV-84564-JE");
+    addJournalLine(
+        source, receivable, "Invoice receivable", new BigDecimal("100.00"), BigDecimal.ZERO);
+    addJournalLine(source, revenue, "Invoice revenue", BigDecimal.ZERO, new BigDecimal("100.00"));
+    invoice.setJournalEntry(source);
+
+    JournalEntry awaited =
+        creditNoteEntry(84566L, "CN-AWAIT", dealer, source, receivable, revenue, "100.00");
+
+    JournalReferenceMapping mapping = new JournalReferenceMapping();
+    mapping.setCompany(company);
+    mapping.setLegacyReference("idemp-cn-await");
+    mapping.setCanonicalReference("CN-AWAIT");
+    mapping.setEntityType("CREDIT_NOTE");
+
+    when(invoiceRepository.lockByCompanyAndId(company, 84564L)).thenReturn(Optional.of(invoice));
+    when(journalReferenceResolver.findExistingEntry(company, "CN-AWAIT")).thenReturn(Optional.empty());
+
+    AtomicInteger replayLookups = new AtomicInteger(0);
+    when(journalReferenceResolver.findExistingEntry(company, "IDEMP-CN-AWAIT"))
+        .thenAnswer(
+            invocation ->
+                replayLookups.getAndIncrement() == 0 ? Optional.empty() : Optional.of(awaited));
+    when(journalReferenceMappingRepository.findAllByCompanyAndLegacyReferenceIgnoreCase(
+            company, "idemp-cn-await"))
+        .thenReturn(List.of(), List.of(mapping));
+    when(journalReferenceMappingRepository.reserveReferenceMapping(
+            eq(company.getId()),
+            eq("idemp-cn-await"),
+            eq("CN-AWAIT"),
+            eq("CREDIT_NOTE"),
+            any()))
+        .thenReturn(0);
+    when(journalEntryRepository.findByCompanyAndReversalOfAndCorrectionReasonIgnoreCase(
+            company, source, "CREDIT_NOTE"))
+        .thenReturn(List.of());
+
+    JournalEntryDto result =
+        accountingService.postCreditNote(
+            new CreditNoteRequest(
+                84564L, null, null, "CN-AWAIT", "awaited replay", "IDEMP-CN-AWAIT", Boolean.TRUE));
+
+    assertThat(result.id()).isEqualTo(84566L);
+    assertThat(invoice.getOutstandingAmount()).isEqualByComparingTo("0.00");
+    assertThat(invoice.getPaymentReferences()).contains("CN-AWAIT");
+    verify(creditDebitNoteService, never()).createJournalEntry(any(JournalEntryRequest.class));
+  }
+
+  @Test
+  @Tag("critical")
   void postDebitNote_rejectsAmountBeyondCurrentOutstanding() {
     Account payable = account(8461L, "AP-8461", AccountType.LIABILITY);
     Account inventory = account(8462L, "RM-8462", AccountType.ASSET);
@@ -13719,7 +13924,7 @@ class AccountingServiceTest {
 
     when(rawMaterialPurchaseRepository.lockByCompanyAndId(company, 8460L))
         .thenReturn(Optional.of(purchase));
-    when(journalEntryRepository.findByCompanyAndReferenceNumber(company, "DN-8460"))
+    when(journalReferenceResolver.findExistingEntry(company, "DN-8460"))
         .thenReturn(Optional.empty());
     when(journalEntryRepository.findByCompanyAndReversalOfAndCorrectionReasonIgnoreCase(
             company, source, "DEBIT_NOTE"))
@@ -13766,22 +13971,24 @@ class AccountingServiceTest {
     purchase.setJournalEntry(source);
 
     JournalEntry saved = journalEntry(9603L, "DN-NEW");
+    saved.setSourceModule("DEBIT_NOTE");
+    saved.setSourceReference("PUR-9601");
     addJournalLine(
         saved,
         payable,
         "Debit note reversal - Supplier payable",
-        BigDecimal.ZERO,
-        new BigDecimal("100.00"));
+        new BigDecimal("100.00"),
+        BigDecimal.ZERO);
     addJournalLine(
         saved,
         inventory,
         "Debit note reversal - Inventory received",
-        new BigDecimal("100.00"),
-        BigDecimal.ZERO);
+        BigDecimal.ZERO,
+        new BigDecimal("100.00"));
 
     when(rawMaterialPurchaseRepository.lockByCompanyAndId(company, 9601L))
         .thenReturn(Optional.of(purchase));
-    when(journalEntryRepository.findByCompanyAndReferenceNumber(company, "DN-NEW"))
+    when(journalReferenceResolver.findExistingEntry(company, "DN-NEW"))
         .thenReturn(Optional.empty());
     when(journalEntryRepository.findByCompanyAndReversalOfAndCorrectionReasonIgnoreCase(
             company, source, "DEBIT_NOTE"))
@@ -13803,6 +14010,8 @@ class AccountingServiceTest {
     assertThat(requestCaptor.getValue().entryDate()).isEqualTo(today);
     assertThat(requestCaptor.getValue().memo()).isEqualTo("Debit note for purchase PUR-9601");
     assertThat(requestCaptor.getValue().supplierId()).isEqualTo(860L);
+    assertThat(requestCaptor.getValue().sourceModule()).isEqualTo("DEBIT_NOTE");
+    assertThat(requestCaptor.getValue().sourceReference()).isEqualTo("PUR-9601");
     assertThat(requestCaptor.getValue().lines()).hasSize(2);
     assertThat(requestCaptor.getValue().lines().get(0).description())
         .startsWith("Debit note reversal - ");
@@ -13814,6 +14023,530 @@ class AccountingServiceTest {
     assertThat(purchase.getOutstandingAmount()).isEqualByComparingTo("0.00");
     assertThat(purchase.getStatus()).isEqualTo("VOID");
     verify(journalEntryRepository).save(saved);
+  }
+
+  @Test
+  void postDebitNote_replaysExistingReferenceWithoutReapplyingPurchase() {
+    Account payable = account(8604L, "AP-8604", AccountType.LIABILITY);
+    Account inventory = account(8605L, "RM-8605", AccountType.ASSET);
+    Supplier supplier = supplier(861L, "Supplier Replay", payable);
+    RawMaterialPurchase purchase =
+        purchase(9604L, "PUR-9604", supplier, new BigDecimal("100.00"), BigDecimal.ZERO, "VOID");
+
+    JournalEntry source = journalEntry(9605L, "PUR-9604-JE");
+    addJournalLine(
+        source, inventory, "Inventory received", new BigDecimal("100.00"), BigDecimal.ZERO);
+    addJournalLine(source, payable, "Supplier payable", BigDecimal.ZERO, new BigDecimal("100.00"));
+    purchase.setJournalEntry(source);
+
+    JournalEntry existing = journalEntry(9606L, "DN-REPLAY");
+    existing.setSupplier(supplier);
+    existing.setReversalOf(source);
+    existing.setCorrectionType(JournalCorrectionType.REVERSAL);
+    existing.setCorrectionReason("DEBIT_NOTE");
+    existing.setSourceModule("DEBIT_NOTE");
+    existing.setSourceReference("PUR-9604");
+    addJournalLine(
+        existing,
+        payable,
+        "Debit note reversal - Supplier payable",
+        new BigDecimal("100.00"),
+        BigDecimal.ZERO);
+    addJournalLine(
+        existing,
+        inventory,
+        "Debit note reversal - Inventory received",
+        BigDecimal.ZERO,
+        new BigDecimal("100.00"));
+
+    when(rawMaterialPurchaseRepository.lockByCompanyAndId(company, 9604L))
+        .thenReturn(Optional.of(purchase));
+    when(journalReferenceResolver.findExistingEntry(company, "DN-REPLAY"))
+        .thenReturn(Optional.of(existing));
+    when(journalEntryRepository.findByCompanyAndReversalOfAndCorrectionReasonIgnoreCase(
+            company, source, "DEBIT_NOTE"))
+        .thenReturn(List.of(existing));
+
+    JournalEntryDto result =
+        accountingService.postDebitNote(
+            new DebitNoteRequest(9604L, null, null, "DN-REPLAY", "replay", null, Boolean.TRUE));
+
+    assertThat(result.id()).isEqualTo(9606L);
+    assertThat(purchase.getOutstandingAmount()).isEqualByComparingTo(BigDecimal.ZERO);
+    assertThat(purchase.getStatus()).isEqualTo("VOID");
+    verify(creditDebitNoteService, never()).createJournalEntry(any(JournalEntryRequest.class));
+    verify(journalEntryRepository, never()).save(existing);
+  }
+
+  @Test
+  void postDebitNote_replayRejectsDifferentReferenceNumberForSameIdempotencyKey() {
+    Account payable = account(86055L, "AP-86055", AccountType.LIABILITY);
+    Account inventory = account(86056L, "RM-86056", AccountType.ASSET);
+    Supplier supplier = supplier(8615L, "Supplier Replay Ref Drift", payable);
+    RawMaterialPurchase purchase =
+        purchase(
+            96045L, "PUR-96045", supplier, new BigDecimal("100.00"), BigDecimal.ZERO, "VOID");
+
+    JournalEntry source = journalEntry(96046L, "PUR-96045-JE");
+    addJournalLine(
+        source, inventory, "Inventory received", new BigDecimal("100.00"), BigDecimal.ZERO);
+    addJournalLine(source, payable, "Supplier payable", BigDecimal.ZERO, new BigDecimal("100.00"));
+    purchase.setJournalEntry(source);
+
+    JournalEntry existing = journalEntry(96047L, "DN-REPLAY-ORIGINAL");
+    existing.setSupplier(supplier);
+    existing.setReversalOf(source);
+    existing.setCorrectionType(JournalCorrectionType.REVERSAL);
+    existing.setCorrectionReason("DEBIT_NOTE");
+    existing.setSourceModule("DEBIT_NOTE");
+    existing.setSourceReference("PUR-96045");
+    addJournalLine(
+        existing,
+        payable,
+        "Debit note reversal - Supplier payable",
+        new BigDecimal("100.00"),
+        BigDecimal.ZERO);
+    addJournalLine(
+        existing,
+        inventory,
+        "Debit note reversal - Inventory received",
+        BigDecimal.ZERO,
+        new BigDecimal("100.00"));
+
+    when(rawMaterialPurchaseRepository.lockByCompanyAndId(company, 96045L))
+        .thenReturn(Optional.of(purchase));
+    when(journalReferenceResolver.findExistingEntry(company, "DN-REPLAY-NEW"))
+        .thenReturn(Optional.empty());
+    when(journalReferenceResolver.findExistingEntry(company, "IDEMP-DN-REPLAY-REF"))
+        .thenReturn(Optional.of(existing));
+
+    assertThatThrownBy(
+            () ->
+                accountingService.postDebitNote(
+                    new DebitNoteRequest(
+                        96045L,
+                        null,
+                        null,
+                        "DN-REPLAY-NEW",
+                        "replay",
+                        "IDEMP-DN-REPLAY-REF",
+                        Boolean.TRUE)))
+        .isInstanceOf(ApplicationException.class)
+        .satisfies(
+            ex ->
+                assertThat(((ApplicationException) ex).getErrorCode())
+                    .isEqualTo(ErrorCode.CONCURRENCY_CONFLICT));
+
+    verify(creditDebitNoteService, never()).createJournalEntry(any(JournalEntryRequest.class));
+    verify(journalEntryRepository, never()).save(existing);
+  }
+
+  @Test
+  void postDebitNote_replayRejectsProvenanceLessExistingJournal() {
+    Account payable = account(8606L, "AP-8606", AccountType.LIABILITY);
+    Account inventory = account(8607L, "RM-8607", AccountType.ASSET);
+    Supplier supplier = supplier(862L, "Supplier Replay Conflict", payable);
+    RawMaterialPurchase purchase =
+        purchase(9607L, "PUR-9607", supplier, new BigDecimal("100.00"), BigDecimal.ZERO, "VOID");
+
+    JournalEntry source = journalEntry(9608L, "PUR-9607-JE");
+    addJournalLine(
+        source, inventory, "Inventory received", new BigDecimal("100.00"), BigDecimal.ZERO);
+    addJournalLine(source, payable, "Supplier payable", BigDecimal.ZERO, new BigDecimal("100.00"));
+    purchase.setJournalEntry(source);
+
+    JournalEntry existing = journalEntry(9609L, "DN-REPLAY-CONFLICT");
+    existing.setSupplier(supplier);
+    addJournalLine(
+        existing,
+        payable,
+        "Debit note reversal - Supplier payable",
+        new BigDecimal("100.00"),
+        BigDecimal.ZERO);
+    addJournalLine(
+        existing,
+        inventory,
+        "Debit note reversal - Inventory received",
+        BigDecimal.ZERO,
+        new BigDecimal("100.00"));
+
+    when(rawMaterialPurchaseRepository.lockByCompanyAndId(company, 9607L))
+        .thenReturn(Optional.of(purchase));
+    when(journalReferenceResolver.findExistingEntry(company, "DN-REPLAY-CONFLICT"))
+        .thenReturn(Optional.of(existing));
+
+    assertThatThrownBy(
+            () ->
+                accountingService.postDebitNote(
+                    new DebitNoteRequest(
+                        9607L, null, null, "DN-REPLAY-CONFLICT", "replay", null, Boolean.TRUE)))
+        .isInstanceOf(ApplicationException.class)
+        .satisfies(
+            ex ->
+                assertThat(((ApplicationException) ex).getErrorCode())
+                    .isEqualTo(ErrorCode.CONCURRENCY_CONFLICT));
+
+    verify(creditDebitNoteService, never()).createJournalEntry(any(JournalEntryRequest.class));
+    verify(journalEntryRepository, never()).save(existing);
+  }
+
+  @Test
+  void postDebitNote_nonLeaderReplayRejectsOtherPurchase() {
+    Account payable = account(8610L, "AP-8610", AccountType.LIABILITY);
+    Account inventory = account(8611L, "RM-8611", AccountType.ASSET);
+    Supplier supplier = supplier(863L, "Supplier Replay Race", payable);
+
+    RawMaterialPurchase existingPurchase =
+        purchase(
+            9610L,
+            "PUR-9610",
+            supplier,
+            new BigDecimal("100.00"),
+            BigDecimal.ZERO,
+            "VOID");
+    JournalEntry existingSource = journalEntry(9611L, "PUR-9610-JE");
+    addJournalLine(
+        existingSource, inventory, "Inventory received", new BigDecimal("100.00"), BigDecimal.ZERO);
+    addJournalLine(
+        existingSource, payable, "Supplier payable", BigDecimal.ZERO, new BigDecimal("100.00"));
+    existingPurchase.setJournalEntry(existingSource);
+
+    RawMaterialPurchase replayedPurchase =
+        purchase(
+            9612L,
+            "PUR-9612",
+            supplier,
+            new BigDecimal("100.00"),
+            new BigDecimal("100.00"),
+            "POSTED");
+    JournalEntry replayedSource = journalEntry(9613L, "PUR-9612-JE");
+    addJournalLine(
+        replayedSource, inventory, "Inventory received", new BigDecimal("100.00"), BigDecimal.ZERO);
+    addJournalLine(
+        replayedSource, payable, "Supplier payable", BigDecimal.ZERO, new BigDecimal("100.00"));
+    replayedPurchase.setJournalEntry(replayedSource);
+
+    JournalEntry existing = journalEntry(9614L, "DN-RACE");
+    existing.setSupplier(supplier);
+    existing.setReversalOf(existingSource);
+    existing.setCorrectionType(JournalCorrectionType.REVERSAL);
+    existing.setCorrectionReason("DEBIT_NOTE");
+    existing.setSourceModule("DEBIT_NOTE");
+    existing.setSourceReference("PUR-9610");
+    addJournalLine(
+        existing,
+        payable,
+        "Debit note reversal - Supplier payable",
+        new BigDecimal("100.00"),
+        BigDecimal.ZERO);
+    addJournalLine(
+        existing,
+        inventory,
+        "Debit note reversal - Inventory received",
+        BigDecimal.ZERO,
+        new BigDecimal("100.00"));
+
+    JournalReferenceMapping mapping = new JournalReferenceMapping();
+    mapping.setCompany(company);
+    mapping.setLegacyReference("idemp-dn-race");
+    mapping.setCanonicalReference("DN-RACE");
+    mapping.setEntityType("DEBIT_NOTE");
+
+    when(rawMaterialPurchaseRepository.lockByCompanyAndId(company, 9612L))
+        .thenReturn(Optional.of(replayedPurchase));
+    when(journalReferenceResolver.findExistingEntry(company, "DN-RACE")).thenReturn(Optional.empty());
+
+    AtomicInteger replayLookups = new AtomicInteger(0);
+    when(journalReferenceResolver.findExistingEntry(company, "IDEMP-DN-RACE"))
+        .thenAnswer(
+            invocation ->
+                replayLookups.getAndIncrement() == 0 ? Optional.empty() : Optional.of(existing));
+    when(journalReferenceMappingRepository.findAllByCompanyAndLegacyReferenceIgnoreCase(
+            company, "idemp-dn-race"))
+        .thenReturn(List.of(), List.of(mapping));
+    when(journalReferenceMappingRepository.reserveReferenceMapping(
+            eq(company.getId()),
+            eq("idemp-dn-race"),
+            eq("DN-RACE"),
+            eq("DEBIT_NOTE"),
+            any()))
+        .thenReturn(0);
+
+    assertThatThrownBy(
+            () ->
+                accountingService.postDebitNote(
+                    new DebitNoteRequest(
+                        9612L,
+                        null,
+                        null,
+                        "DN-RACE",
+                        "race",
+                        "IDEMP-DN-RACE",
+                        Boolean.TRUE)))
+        .isInstanceOf(ApplicationException.class)
+        .satisfies(
+            ex ->
+                assertThat(((ApplicationException) ex).getErrorCode())
+                    .isEqualTo(ErrorCode.CONCURRENCY_CONFLICT));
+
+    assertThat(replayedPurchase.getOutstandingAmount()).isEqualByComparingTo("100.00");
+    assertThat(replayedPurchase.getStatus()).isEqualTo("POSTED");
+    verify(creditDebitNoteService, never()).createJournalEntry(any(JournalEntryRequest.class));
+    verify(journalEntryRepository, never()).save(existing);
+  }
+
+  @Test
+  void postDebitNote_leaderReplayRejectsOtherPurchaseDuplicateReturn() {
+    Account payable = account(8612L, "AP-8612", AccountType.LIABILITY);
+    Account inventory = account(8613L, "RM-8613", AccountType.ASSET);
+    Supplier supplier = supplier(864L, "Supplier Leader Replay Race", payable);
+
+    RawMaterialPurchase existingPurchase =
+        purchase(
+            9614L,
+            "PUR-9614",
+            supplier,
+            new BigDecimal("100.00"),
+            BigDecimal.ZERO,
+            "VOID");
+    JournalEntry existingSource = journalEntry(9615L, "PUR-9614-JE");
+    addJournalLine(
+        existingSource, inventory, "Inventory received", new BigDecimal("100.00"), BigDecimal.ZERO);
+    addJournalLine(
+        existingSource, payable, "Supplier payable", BigDecimal.ZERO, new BigDecimal("100.00"));
+    existingPurchase.setJournalEntry(existingSource);
+
+    RawMaterialPurchase replayedPurchase =
+        purchase(
+            9616L,
+            "PUR-9616",
+            supplier,
+            new BigDecimal("100.00"),
+            new BigDecimal("100.00"),
+            "POSTED");
+    JournalEntry replayedSource = journalEntry(9617L, "PUR-9616-JE");
+    addJournalLine(
+        replayedSource, inventory, "Inventory received", new BigDecimal("100.00"), BigDecimal.ZERO);
+    addJournalLine(
+        replayedSource, payable, "Supplier payable", BigDecimal.ZERO, new BigDecimal("100.00"));
+    replayedPurchase.setJournalEntry(replayedSource);
+
+    JournalEntry existing = journalEntry(9618L, "DN-RACE-LEADER");
+    existing.setSupplier(supplier);
+    existing.setReversalOf(existingSource);
+    existing.setCorrectionType(JournalCorrectionType.REVERSAL);
+    existing.setCorrectionReason("DEBIT_NOTE");
+    existing.setSourceModule("DEBIT_NOTE");
+    existing.setSourceReference("PUR-9614");
+    addJournalLine(
+        existing,
+        payable,
+        "Debit note reversal - Supplier payable",
+        new BigDecimal("100.00"),
+        BigDecimal.ZERO);
+    addJournalLine(
+        existing,
+        inventory,
+        "Debit note reversal - Inventory received",
+        BigDecimal.ZERO,
+        new BigDecimal("100.00"));
+
+    when(rawMaterialPurchaseRepository.lockByCompanyAndId(company, 9616L))
+        .thenReturn(Optional.of(replayedPurchase));
+    when(journalReferenceResolver.findExistingEntry(company, "DN-RACE-LEADER"))
+        .thenReturn(Optional.empty());
+    when(journalReferenceResolver.findExistingEntry(company, "IDEMP-DN-RACE-LEADER"))
+        .thenReturn(Optional.empty());
+    when(journalReferenceMappingRepository.findAllByCompanyAndLegacyReferenceIgnoreCase(
+            company, "idemp-dn-race-leader"))
+        .thenReturn(List.of());
+    when(journalReferenceMappingRepository.reserveReferenceMapping(
+            eq(company.getId()),
+            eq("idemp-dn-race-leader"),
+            eq("DN-RACE-LEADER"),
+            eq("DEBIT_NOTE"),
+            any()))
+        .thenReturn(1);
+    when(companyEntityLookup.requireJournalEntry(company, 9618L)).thenReturn(existing);
+    doReturn(stubEntry(9618L))
+        .when(creditDebitNoteService)
+        .createJournalEntry(any(JournalEntryRequest.class));
+
+    assertThatThrownBy(
+            () ->
+                accountingService.postDebitNote(
+                    new DebitNoteRequest(
+                        9616L,
+                        null,
+                        null,
+                        "DN-RACE-LEADER",
+                        "race",
+                        "IDEMP-DN-RACE-LEADER",
+                        Boolean.TRUE)))
+        .isInstanceOf(ApplicationException.class)
+        .satisfies(
+            ex ->
+                assertThat(((ApplicationException) ex).getErrorCode())
+                    .isEqualTo(ErrorCode.CONCURRENCY_CONFLICT));
+
+    assertThat(replayedPurchase.getOutstandingAmount()).isEqualByComparingTo("100.00");
+    assertThat(replayedPurchase.getStatus()).isEqualTo("POSTED");
+    verify(journalEntryRepository, never()).save(existing);
+  }
+
+  @Test
+  void postDebitNote_nonLeaderReplayReturnsAwaitedJournalAndBackfillsProvenance() {
+    Account payable = account(8614L, "AP-8614", AccountType.LIABILITY);
+    Account inventory = account(8615L, "RM-8615", AccountType.ASSET);
+    Supplier supplier = supplier(865L, "Supplier Awaited Replay", payable);
+
+    RawMaterialPurchase purchase =
+        purchase(
+            9619L,
+            "PUR-9619",
+            supplier,
+            new BigDecimal("100.00"),
+            new BigDecimal("100.00"),
+            "POSTED");
+    JournalEntry source = journalEntry(9620L, "PUR-9619-JE");
+    addJournalLine(
+        source, inventory, "Inventory received", new BigDecimal("100.00"), BigDecimal.ZERO);
+    addJournalLine(source, payable, "Supplier payable", BigDecimal.ZERO, new BigDecimal("100.00"));
+    purchase.setJournalEntry(source);
+
+    JournalEntry awaited = journalEntry(9621L, "IDEMP-DN-AWAIT");
+    awaited.setSupplier(supplier);
+    awaited.setSourceReference("PUR-9619");
+    addJournalLine(
+        awaited,
+        payable,
+        "Debit note reversal - Supplier payable",
+        new BigDecimal("100.00"),
+        BigDecimal.ZERO);
+    addJournalLine(
+        awaited,
+        inventory,
+        "Debit note reversal - Inventory received",
+        BigDecimal.ZERO,
+        new BigDecimal("100.00"));
+
+    JournalReferenceMapping mapping = new JournalReferenceMapping();
+    mapping.setCompany(company);
+    mapping.setLegacyReference("idemp-dn-await");
+    mapping.setCanonicalReference("IDEMP-DN-AWAIT");
+    mapping.setEntityType("DEBIT_NOTE");
+
+    when(rawMaterialPurchaseRepository.lockByCompanyAndId(company, 9619L))
+        .thenReturn(Optional.of(purchase));
+
+    AtomicInteger replayLookups = new AtomicInteger(0);
+    when(journalReferenceResolver.findExistingEntry(company, "IDEMP-DN-AWAIT"))
+        .thenAnswer(
+            invocation ->
+                replayLookups.getAndIncrement() == 0 ? Optional.empty() : Optional.of(awaited));
+    when(journalReferenceMappingRepository.findAllByCompanyAndLegacyReferenceIgnoreCase(
+            company, "idemp-dn-await"))
+        .thenReturn(List.of(), List.of(mapping));
+    when(journalReferenceMappingRepository.reserveReferenceMapping(
+            eq(company.getId()),
+            eq("idemp-dn-await"),
+            eq("IDEMP-DN-AWAIT"),
+            eq("DEBIT_NOTE"),
+            any()))
+        .thenReturn(0);
+
+    JournalEntryDto result =
+        accountingService.postDebitNote(
+            new DebitNoteRequest(
+                9619L, null, null, "   ", "awaited replay", " IDEMP-DN-AWAIT ", Boolean.TRUE));
+
+    assertThat(result.id()).isEqualTo(9621L);
+    assertThat(awaited.getReversalOf()).isSameAs(source);
+    assertThat(awaited.getCorrectionType()).isEqualTo(JournalCorrectionType.REVERSAL);
+    assertThat(awaited.getCorrectionReason()).isEqualTo("DEBIT_NOTE");
+    assertThat(awaited.getSourceModule()).isEqualTo("DEBIT_NOTE");
+    assertThat(awaited.getSourceReference()).isEqualTo("PUR-9619");
+    assertThat(purchase.getOutstandingAmount()).isEqualByComparingTo("100.00");
+    assertThat(purchase.getStatus()).isEqualTo("POSTED");
+    verify(journalEntryRepository).save(awaited);
+    verify(creditDebitNoteService, never()).createJournalEntry(any(JournalEntryRequest.class));
+  }
+
+  @Test
+  void postDebitNote_generatesReferenceWhenReferenceAndIdempotencyAreMissing() {
+    Account payable = account(8616L, "AP-8616", AccountType.LIABILITY);
+    Account inventory = account(8617L, "RM-8617", AccountType.ASSET);
+    Supplier supplier = supplier(866L, "Supplier Generated Reference", payable);
+    RawMaterialPurchase purchase =
+        purchase(
+            9622L,
+            "PUR-9622",
+            supplier,
+            new BigDecimal("100.00"),
+            new BigDecimal("100.00"),
+            "POSTED");
+
+    JournalEntry source = journalEntry(9623L, "PUR-9622-JE");
+    addJournalLine(
+        source, inventory, "Inventory received", new BigDecimal("100.00"), BigDecimal.ZERO);
+    addJournalLine(source, payable, "Supplier payable", BigDecimal.ZERO, new BigDecimal("100.00"));
+    purchase.setJournalEntry(source);
+
+    JournalEntry saved = journalEntry(9624L, "DN-GEN-1");
+    saved.setCorrectionReason("DEBIT_NOTE");
+    saved.setSourceModule("DEBIT_NOTE");
+    saved.setSourceReference("PUR-9622");
+    addJournalLine(
+        saved,
+        payable,
+        "Debit note reversal - Supplier payable",
+        new BigDecimal("40.00"),
+        BigDecimal.ZERO);
+    addJournalLine(
+        saved,
+        inventory,
+        "Debit note reversal - Inventory received",
+        BigDecimal.ZERO,
+        new BigDecimal("40.00"));
+
+    when(rawMaterialPurchaseRepository.lockByCompanyAndId(company, 9622L))
+        .thenReturn(Optional.of(purchase));
+    when(referenceNumberService.nextJournalReference(company)).thenReturn("DN-GEN-1");
+    when(journalReferenceResolver.findExistingEntry(company, "DN-GEN-1"))
+        .thenReturn(Optional.empty());
+    when(journalReferenceMappingRepository.findAllByCompanyAndLegacyReferenceIgnoreCase(
+            company, "dn-gen-1"))
+        .thenReturn(List.of());
+    when(journalReferenceMappingRepository.reserveReferenceMapping(
+            eq(company.getId()), eq("dn-gen-1"), eq("DN-GEN-1"), eq("DEBIT_NOTE"), any()))
+        .thenReturn(1);
+    when(journalEntryRepository.findByCompanyAndReversalOfAndCorrectionReasonIgnoreCase(
+            company, source, "DEBIT_NOTE"))
+        .thenReturn(List.of());
+    when(companyEntityLookup.requireJournalEntry(company, 9624L)).thenReturn(saved);
+
+    ArgumentCaptor<JournalEntryRequest> requestCaptor =
+        ArgumentCaptor.forClass(JournalEntryRequest.class);
+    doReturn(stubEntry(9624L))
+        .when(creditDebitNoteService)
+        .createJournalEntry(requestCaptor.capture());
+
+    LocalDate requestedDate = LocalDate.of(2026, 4, 2);
+    JournalEntryDto result =
+        accountingService.postDebitNote(
+            new DebitNoteRequest(
+                9622L,
+                new BigDecimal("40.00"),
+                requestedDate,
+                "   ",
+                null,
+                null,
+                Boolean.FALSE));
+
+    assertThat(result.id()).isEqualTo(9624L);
+    assertThat(requestCaptor.getValue().referenceNumber()).isEqualTo("DN-GEN-1");
+    assertThat(requestCaptor.getValue().entryDate()).isEqualTo(requestedDate);
+    verify(referenceNumberService).nextJournalReference(company);
   }
 
   @Test
@@ -15250,6 +15983,7 @@ class AccountingServiceTest {
     JournalEntry wrongCorrectionFlow = journalEntry(99455L, "DN-99455");
     wrongCorrectionFlow.setSupplier(supplier);
     wrongCorrectionFlow.setCorrectionReason("REVERSAL");
+    wrongCorrectionFlow.setSourceReference("PUR-9943");
     assertThatThrownBy(
             () ->
                 ReflectionTestUtils.invokeMethod(
@@ -15267,6 +16001,7 @@ class AccountingServiceTest {
     wrongSourceModule.setSupplier(supplier);
     wrongSourceModule.setCorrectionReason("DEBIT_NOTE");
     wrongSourceModule.setSourceModule("CREDIT_NOTE");
+    wrongSourceModule.setSourceReference("PUR-9943");
     assertThatThrownBy(
             () ->
                 ReflectionTestUtils.invokeMethod(
@@ -15372,6 +16107,65 @@ class AccountingServiceTest {
         source,
         matching,
         new BigDecimal("40.00"));
+  }
+
+  @Test
+  void validateDebitNoteReplay_rejectsReferenceMismatchAndSkipsPayloadCheckWithoutPurchase() {
+    Account payable = account(9952L, "AP-9952", AccountType.LIABILITY);
+    Account inventory = account(9953L, "RM-9953", AccountType.ASSET);
+    Supplier supplier = supplier(996L, "Supplier Ref Mismatch", payable);
+    RawMaterialPurchase purchase =
+        purchase(
+            9954L,
+            "PUR-9954",
+            supplier,
+            new BigDecimal("100.00"),
+            new BigDecimal("100.00"),
+            "POSTED");
+    JournalEntry source = journalEntry(9955L, "PUR-9954-JE");
+    addJournalLine(
+        source, inventory, "Inventory received", new BigDecimal("100.00"), BigDecimal.ZERO);
+    addJournalLine(source, payable, "Supplier payable", BigDecimal.ZERO, new BigDecimal("100.00"));
+
+    JournalEntry mismatchedReference = journalEntry(9956L, "DN-OTHER");
+    mismatchedReference.setSupplier(supplier);
+    mismatchedReference.setReversalOf(source);
+    mismatchedReference.setSourceReference("PUR-9954");
+    addJournalLine(
+        mismatchedReference,
+        payable,
+        "Debit note reversal - Supplier payable",
+        new BigDecimal("40.00"),
+        BigDecimal.ZERO);
+    addJournalLine(
+        mismatchedReference,
+        inventory,
+        "Debit note reversal - Inventory received",
+        BigDecimal.ZERO,
+        new BigDecimal("40.00"));
+
+    assertThatThrownBy(
+            () ->
+                ReflectionTestUtils.invokeMethod(
+                    accountingService,
+                    "validateDebitNoteReplay",
+                    "DN-EXPECTED",
+                    purchase,
+                    source,
+                    mismatchedReference,
+                    new BigDecimal("40.00")))
+        .isInstanceOf(ApplicationException.class)
+        .hasMessageContaining("different reference");
+
+    JournalEntry noPurchaseEntry = journalEntry(9957L, "DN-NO-PURCHASE");
+    ReflectionTestUtils.invokeMethod(
+        accountingService,
+        "validateDebitNoteReplay",
+        null,
+        null,
+        source,
+        noPurchaseEntry,
+        null);
   }
 
   @Test

@@ -1,6 +1,6 @@
 # Core Platform Contracts: Shared-Versus-Module-Local Idempotency Behavior
 
-Last reviewed: 2026-03-30
+Last reviewed: 2026-04-02
 
 This packet documents the **shared idempotency infrastructure** and the **module-local idempotency implementations** that together govern safe write-path replay behavior across the BigBright ERP backend. It is the integrating slice of the core platform contracts packet: it explains shared-vs-module-local ownership, reconciles the full platform contract, and surfaces known pre-existing contract inconsistencies as explicit caveats rather than silently normalizing them away.
 
@@ -20,7 +20,7 @@ This packet documents the **shared idempotency infrastructure** and the **module
 | Payroll run idempotency | `modules/hr/service/PayrollRunService` | Period+type keyed, signature checks, metadata repair |
 | Inventory adjustment idempotency | `modules/inventory/service/InventoryAdjustmentService` + `RawMaterialService` | Adjustment-key normalization, payload hash, reservation + race reconciliation |
 | Opening stock import idempotency | `modules/inventory/service/OpeningStockImportService` | Batch-key + idempotency-key dual-key replay protection |
-| Accounting idempotency | `modules/accounting/service/AccountingIdempotencyService` | Extends `AccountingCoreEngine`; facade-aware journal/receipt/settlement delegation |
+| Accounting idempotency | `modules/accounting/service/AccountingIdempotencyService` | Extends `AccountingCoreEngine`; facade-aware journal/receipt/settlement delegation plus correction-note reference reservation |
 | Orchestrator command idempotency | `orchestrator/service/OrchestratorIdempotencyService` | Lease-based exactly-once command scope with rollback-aware status tracking |
 
 ---
@@ -223,7 +223,17 @@ Every module that protects write paths with idempotency layers its own domain-sp
 
 `AccountingIdempotencyService` is a thin layer that extends `AccountingCoreEngine` and adds facade-aware delegation for manual journal entries. The actual idempotency enforcement for accounting operations lives in `AccountingCoreEngine` and `AccountingFacade`, which use the shared `IdempotencyReservationService` for key normalization and signature checks on journal entries, settlements, receipts, and payments.
 
-Accounting operations do not use a separate idempotency reservation entity. Instead, idempotency keys and signatures are stored directly on the `JournalEntry` entity, and replay resolution occurs at the engine level.
+Most accounting operations resolve replay directly at the `JournalEntry` layer. Correction-note flows (`CREDIT_NOTE` / `DEBIT_NOTE`) add one more guard: they reserve a `JournalReferenceMapping` for the normalized caller idempotency key plus canonical reference before the journal is posted, then use that mapping for leader election and replay lookup.
+
+For correction notes, replay validation is provenance-aware:
+
+1. Non-leader callers wait for the leader journal and then validate supplier, source document, amount, and line-signature parity before treating the result as an idempotent replay.
+2. For `DEBIT_NOTE`, leader callers still validate any journal returned from `createJournalEntry(...)`; if the returned journal is already bound to another `sourceReference` / `reversalOf` chain, the engine throws `CONCURRENCY_CONFLICT` instead of rewriting provenance onto the new purchase. `CREDIT_NOTE` still uses the older leader-path behavior and mutates provenance on the returned journal without this extra guard.
+3. The persisted replay truth for correction notes is the journal provenance itself: `sourceModule`, `sourceReference`, and `reversalOf`.
+
+**Key difference:** Accounting does not use a separate reservation entity for every write path, but correction-note replay safety is not purely `JournalEntry`-local anymore. `JournalReferenceMapping` acts as the lightweight reservation layer that prevents concurrent debit-note or credit-note retries from stealing another document's canonical reference. As of this packet revision, the stronger provenance-safe leader validation is implemented for `DEBIT_NOTE` only.
+
+**Test evidence:** `AccountingServiceTest`, `ProcureToPayE2ETest`, `HighImpactRegressionIT`.
 
 ### 2.8 Orchestrator Command Idempotency
 

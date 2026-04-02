@@ -107,6 +107,7 @@ abstract class AccountingCoreEngineCore {
   private static final String ENTITY_TYPE_SUPPLIER_PAYMENT = "SUPPLIER_PAYMENT";
   private static final String ENTITY_TYPE_SUPPLIER_SETTLEMENT = "SUPPLIER_SETTLEMENT";
   private static final String ENTITY_TYPE_CREDIT_NOTE = "CREDIT_NOTE";
+  private static final String ENTITY_TYPE_DEBIT_NOTE = "DEBIT_NOTE";
   private static final String SETTLEMENT_DISCOUNT_LINE_DESCRIPTION = "settlement discount";
   private static final String SETTLEMENT_WRITE_OFF_LINE_DESCRIPTION = "settlement write-off";
   private static final String SETTLEMENT_FX_LOSS_LINE_DESCRIPTION = "fx loss on settlement";
@@ -4329,16 +4330,20 @@ abstract class AccountingCoreEngineCore {
     if (company == null) {
       return null;
     }
+    String normalizedReference = StringUtils.hasText(reference) ? reference.trim() : null;
+    String normalizedIdempotencyKey = StringUtils.hasText(idempotencyKey) ? idempotencyKey.trim() : null;
     if (StringUtils.hasText(reference)) {
       Optional<JournalEntry> byReference =
-          journalReferenceResolver.findExistingEntry(company, reference);
+          journalReferenceResolver.findExistingEntry(company, normalizedReference);
       if (byReference.isPresent()) {
         return byReference.get();
       }
     }
-    if (StringUtils.hasText(idempotencyKey)) {
+    if (StringUtils.hasText(normalizedIdempotencyKey)
+        && (normalizedReference == null
+            || !normalizedReference.equalsIgnoreCase(normalizedIdempotencyKey))) {
       Optional<JournalEntry> byKey =
-          journalReferenceResolver.findExistingEntry(company, idempotencyKey);
+          journalReferenceResolver.findExistingEntry(company, normalizedIdempotencyKey);
       return byKey.orElse(null);
     }
     return null;
@@ -4649,6 +4654,7 @@ abstract class AccountingCoreEngineCore {
   }
 
   private void validateCreditNoteIdempotency(
+      String reference,
       String idempotencyKey,
       Invoice invoice,
       JournalEntry source,
@@ -4660,6 +4666,14 @@ abstract class AccountingCoreEngineCore {
               ErrorCode.CONCURRENCY_CONFLICT,
               "Idempotency key already used but credit note journal is missing")
           .withDetail(IntegrationFailureMetadataSchema.KEY_IDEMPOTENCY_KEY, idempotencyKey);
+    }
+    if (StringUtils.hasText(reference) && !Objects.equals(entry.getReferenceNumber(), reference)) {
+      throw new ApplicationException(
+              ErrorCode.CONCURRENCY_CONFLICT,
+              "Idempotency key already used with a different credit note reference")
+          .withDetail(IntegrationFailureMetadataSchema.KEY_IDEMPOTENCY_KEY, idempotencyKey)
+          .withDetail("existingReferenceNumber", entry.getReferenceNumber())
+          .withDetail("requestedReferenceNumber", reference);
     }
     if (invoice != null
         && invoice.getDealer() != null
@@ -6677,6 +6691,7 @@ abstract class AccountingCoreEngineCore {
       BigDecimal existingAmount = calculateCreditNoteAmount(existingEntry, invoice, source);
       BigDecimal totalCredited = totalCreditNoteAmount(company, source, invoice);
       validateCreditNoteIdempotency(
+          reference,
           idempotencyKey,
           invoice,
           source,
@@ -6721,7 +6736,13 @@ abstract class AccountingCoreEngineCore {
         BigDecimal existingAmount = calculateCreditNoteAmount(awaited, invoice, source);
         BigDecimal totalCredited = totalCreditNoteAmount(company, source, invoice);
         validateCreditNoteIdempotency(
-            idempotencyKey, invoice, source, awaited, request.amount(), invoice.getTotalAmount());
+            reference,
+            idempotencyKey,
+            invoice,
+            source,
+            awaited,
+            request.amount(),
+            invoice.getTotalAmount());
         applyCreditNoteToInvoice(
             invoice, existingAmount, totalCredited, awaited.getReferenceNumber(), entryDate);
         return toDto(awaited);
@@ -6780,20 +6801,39 @@ abstract class AccountingCoreEngineCore {
           ErrorCode.VALIDATION_INVALID_REFERENCE,
           "Purchase " + purchase.getInvoiceNumber() + " has no posted journal to reverse");
     }
-    String reference =
-        resolveJournalReference(
-            company,
-            StringUtils.hasText(request.idempotencyKey())
-                ? request.idempotencyKey()
-                : request.referenceNumber());
-    Optional<JournalEntry> existing =
-        journalEntryRepository.findByCompanyAndReferenceNumber(company, reference);
-    if (existing.isPresent()) {
-      BigDecimal existingAmount = calculateEntryTotal(existing.get());
-      BigDecimal totalDebited = totalNoteAmount(company, source, "DEBIT_NOTE");
-      validateDebitNoteReplay(reference, purchase, source, existing.get(), request.amount());
-      applyDebitNoteToPurchase(purchase, existingAmount, totalDebited);
-      return toDto(existing.get());
+    String referenceNumber =
+        StringUtils.hasText(request.referenceNumber()) ? request.referenceNumber().trim() : null;
+    String resolvedReference =
+        StringUtils.hasText(referenceNumber)
+            ? referenceNumber
+            : (StringUtils.hasText(request.idempotencyKey())
+                ? request.idempotencyKey().trim()
+                : resolveJournalReference(company, null));
+    String idempotencyKey =
+        resolveReceiptIdempotencyKey(request.idempotencyKey(), resolvedReference, "debit note");
+    String reference = StringUtils.hasText(referenceNumber) ? referenceNumber : resolvedReference;
+    LocalDate entryDate = request.entryDate() != null ? request.entryDate() : currentDate(company);
+    JournalEntry existingEntry = findExistingEntry(company, reference, idempotencyKey);
+    if (existingEntry != null) {
+      validateDebitNoteReplay(reference, purchase, source, existingEntry, request.amount());
+      ensureCorrectionJournalProvenance(
+          existingEntry, source, "DEBIT_NOTE", "DEBIT_NOTE", purchase.getInvoiceNumber());
+      return toDto(existingEntry);
+    }
+    IdempotencyReservation reservation =
+        reserveReferenceMapping(company, idempotencyKey, reference, ENTITY_TYPE_DEBIT_NOTE);
+    if (!reservation.leader()) {
+      JournalEntry awaited = awaitJournalEntry(company, reference, idempotencyKey);
+      if (awaited != null) {
+        validateDebitNoteReplay(reference, purchase, source, awaited, request.amount());
+        ensureCorrectionJournalProvenance(
+            awaited, source, "DEBIT_NOTE", "DEBIT_NOTE", purchase.getInvoiceNumber());
+        return toDto(awaited);
+      }
+      throw new ApplicationException(
+              ErrorCode.INTERNAL_CONCURRENCY_FAILURE,
+              "Debit note idempotency key is reserved but journal entry not found")
+          .withDetail(IntegrationFailureMetadataSchema.KEY_IDEMPOTENCY_KEY, idempotencyKey);
     }
     if ("VOID".equalsIgnoreCase(purchase.getStatus())
         || "REVERSED".equalsIgnoreCase(purchase.getStatus())) {
@@ -6801,7 +6841,6 @@ abstract class AccountingCoreEngineCore {
           ErrorCode.BUSINESS_INVALID_STATE,
           "Purchase " + purchase.getInvoiceNumber() + " is void; cannot apply debit note");
     }
-    LocalDate entryDate = request.entryDate() != null ? request.entryDate() : currentDate(company);
     BigDecimal totalAmount = MoneyUtils.zeroIfNull(purchase.getTotalAmount());
     if (totalAmount.compareTo(BigDecimal.ZERO) <= 0) {
       throw new ApplicationException(
@@ -6843,14 +6882,21 @@ abstract class AccountingCoreEngineCore {
                 null,
                 purchase.getSupplier() != null ? purchase.getSupplier().getId() : null,
                 request.adminOverride(),
-                lines));
+                lines,
+                null,
+                null,
+                ENTITY_TYPE_DEBIT_NOTE,
+                purchase.getInvoiceNumber(),
+                null));
     JournalEntry saved = companyEntityLookup.requireJournalEntry(company, dto.id());
+    validateDebitNoteReplay(reference, purchase, source, saved, request.amount());
     saved.setReversalOf(source);
     saved.setCorrectionType(JournalCorrectionType.REVERSAL);
     saved.setCorrectionReason("DEBIT_NOTE");
-    saved.setSourceModule("DEBIT_NOTE");
+    saved.setSourceModule(ENTITY_TYPE_DEBIT_NOTE);
     saved.setSourceReference(purchase.getInvoiceNumber());
     journalEntryRepository.save(saved);
+    linkReferenceMapping(company, idempotencyKey, saved, ENTITY_TYPE_DEBIT_NOTE);
     BigDecimal postedAmount = calculateEntryTotal(saved);
     BigDecimal totalDebited = debitedSoFar.add(postedAmount);
     applyDebitNoteToPurchase(purchase, postedAmount, totalDebited);
@@ -6869,6 +6915,15 @@ abstract class AccountingCoreEngineCore {
               "Debit note reference already used but journal entry is missing")
           .withDetail("reference", reference);
     }
+    if (StringUtils.hasText(reference)
+        && !Objects.equals(entry.getReferenceNumber(), reference)) {
+      throw new ApplicationException(
+              ErrorCode.CONCURRENCY_CONFLICT,
+              "Debit note idempotency key already bound to a different reference")
+          .withDetail("reference", reference)
+          .withDetail("existingReferenceNumber", entry.getReferenceNumber())
+          .withDetail("requestedReferenceNumber", reference);
+    }
     if (purchase != null
         && purchase.getSupplier() != null
         && entry.getSupplier() != null
@@ -6885,6 +6940,17 @@ abstract class AccountingCoreEngineCore {
               ErrorCode.CONCURRENCY_CONFLICT,
               "Debit note reference already used for another purchase reversal")
           .withDetail("reference", reference);
+    }
+    if (source != null
+        && entry.getReversalOf() == null
+        && purchase != null
+        && !Objects.equals(entry.getSourceReference(), purchase.getInvoiceNumber())) {
+      throw new ApplicationException(
+              ErrorCode.CONCURRENCY_CONFLICT,
+              "Debit note reference already used for another purchase")
+          .withDetail("reference", reference)
+          .withDetail("existingSourceReference", entry.getSourceReference())
+          .withDetail("requestedSourceReference", purchase.getInvoiceNumber());
     }
     if (StringUtils.hasText(entry.getCorrectionReason())
         && !"DEBIT_NOTE".equalsIgnoreCase(entry.getCorrectionReason())) {
@@ -6920,8 +6986,9 @@ abstract class AccountingCoreEngineCore {
           .withDetail("existingAmount", existingAmount)
           .withDetail("requestedAmount", expectedAmount);
     }
-    if (source != null && requestedAmount != null
-        && MoneyUtils.zeroIfNull(purchase != null ? purchase.getTotalAmount() : null).compareTo(BigDecimal.ZERO)
+    if (source != null
+        && MoneyUtils.zeroIfNull(purchase != null ? purchase.getTotalAmount() : null)
+                .compareTo(BigDecimal.ZERO)
             > 0) {
       BigDecimal ratio =
           expectedAmount.divide(
