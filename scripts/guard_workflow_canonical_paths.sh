@@ -6,6 +6,13 @@ O2C_WORKFLOW_DOC="${WORKFLOW_O2C_DOC:-$ROOT_DIR/docs/workflows/sales-order-to-ca
 P2P_WORKFLOW_DOC="${WORKFLOW_P2P_DOC:-$ROOT_DIR/docs/workflows/purchase-to-pay.md}"
 MANUFACTURING_WORKFLOW_DOC="${WORKFLOW_MANUFACTURING_DOC:-$ROOT_DIR/docs/workflows/manufacturing-and-packaging.md}"
 PAYROLL_WORKFLOW_DOC="${WORKFLOW_PAYROLL_DOC:-$ROOT_DIR/docs/workflows/payroll.md}"
+FRONTEND_V2_DOC="$ROOT_DIR/.factory/library/frontend-v2.md"
+FRONTEND_HANDOFF_DOC="$ROOT_DIR/.factory/library/frontend-handoff.md"
+FACTORY_FLOW_LIBRARY_DOC="$ROOT_DIR/.factory/library/factory-canonical-flow.md"
+FACTORY_FLOW_SKILL_DOC="$ROOT_DIR/.factory/skills/factory-flow-worker/SKILL.md"
+ORCHESTRATOR_MODULE_DOC="$ROOT_DIR/docs/modules/orchestrator.md"
+O2C_REVIEW_DOC="$ROOT_DIR/docs/code-review/flows/order-to-cash.md"
+ONBOARDING_ROUTE_MAP_DOC="$ROOT_DIR/docs/developer/onboarding-stock-readiness/02-route-service-map.md"
 REMEDIATION_COMMAND="bash scripts/guard_workflow_canonical_paths.sh"
 ERP_MAIN_DIR="$ROOT_DIR/erp-domain/src/main/java/com/bigbrightpaints/erp"
 SALES_CORE_ENGINE="$ERP_MAIN_DIR/modules/sales/service/SalesCoreEngine.java"
@@ -26,15 +33,57 @@ require_literal() {
   grep -Fq -- "$needle" "$file" || fail "missing $label in $file"
 }
 
+forbid_literal() {
+  local file="$1"
+  local needle="$2"
+  local label="$3"
+  if grep -Fq -- "$needle" "$file"; then
+    fail "found retired $label in $file"
+  fi
+}
+
 for path in \
   "$O2C_WORKFLOW_DOC" \
   "$P2P_WORKFLOW_DOC" \
   "$MANUFACTURING_WORKFLOW_DOC" \
-  "$PAYROLL_WORKFLOW_DOC"; do
+  "$PAYROLL_WORKFLOW_DOC" \
+  "$FRONTEND_V2_DOC" \
+  "$FRONTEND_HANDOFF_DOC" \
+  "$FACTORY_FLOW_LIBRARY_DOC" \
+  "$FACTORY_FLOW_SKILL_DOC" \
+  "$ORCHESTRATOR_MODULE_DOC" \
+  "$O2C_REVIEW_DOC" \
+  "$ONBOARDING_ROUTE_MAP_DOC"; do
   [[ -f "$path" ]] || fail "missing required contract document: $path"
 done
 
 require_literal "$O2C_WORKFLOW_DOC" '`POST /api/v1/dispatch/confirm`' "O2C dispatch workflow doc guidance"
+require_literal "$FRONTEND_V2_DOC" '`POST /api/v1/dispatch/confirm`' "frontend-v2 canonical dispatch guidance"
+require_literal "$FRONTEND_HANDOFF_DOC" '`POST /api/v1/dispatch/confirm`' "frontend handoff canonical dispatch guidance"
+require_literal "$FACTORY_FLOW_LIBRARY_DOC" '`POST /api/v1/dispatch/confirm`' "factory canonical flow library dispatch guidance"
+require_literal "$FACTORY_FLOW_SKILL_DOC" '`POST /api/v1/dispatch/confirm`' "factory flow worker dispatch guidance"
+require_literal "$ORCHESTRATOR_MODULE_DOC" '`POST /api/v1/dispatch/confirm`' "orchestrator module dispatch guidance"
+require_literal "$O2C_REVIEW_DOC" '`POST /api/v1/dispatch/confirm`' "order-to-cash review dispatch guidance"
+require_literal "$ONBOARDING_ROUTE_MAP_DOC" '`POST /api/v1/dispatch/confirm`' "onboarding route map dispatch guidance"
+
+require_literal "$ORCHESTRATOR_MODULE_DOC" "inventory owns transport/controller" "orchestrator dispatch seam split"
+require_literal "$O2C_REVIEW_DOC" "Factory/admin dispatch-confirm owner plus finance-repair reconciliation" "order-to-cash dispatch owner split"
+require_literal "$ONBOARDING_ROUTE_MAP_DOC" "preserve downstream inventory and accounting posting consequences on the canonical dispatch path" "onboarding route map canonical dispatch note"
+
+for path in \
+  "$FRONTEND_V2_DOC" \
+  "$FRONTEND_HANDOFF_DOC" \
+  "$FACTORY_FLOW_LIBRARY_DOC" \
+  "$FACTORY_FLOW_SKILL_DOC" \
+  "$ORCHESTRATOR_MODULE_DOC" \
+  "$O2C_REVIEW_DOC" \
+  "$ONBOARDING_ROUTE_MAP_DOC"; do
+  forbid_literal "$path" "/api/v1/sales/dispatch/confirm" "dispatch sales confirm alias"
+done
+
+forbid_literal "$ORCHESTRATOR_MODULE_DOC" "owned by the sales module" "dispatch full-sales-ownership wording"
+forbid_literal "$O2C_REVIEW_DOC" "Sales-owned dispatch posting plus factory/operator read-only prepared-slip surfaces." "dispatch sales-owned review wording"
+forbid_literal "$ONBOARDING_ROUTE_MAP_DOC" "sales-owned path" "dispatch sales-owned route map wording"
 
 require_literal "$P2P_WORKFLOW_DOC" '`POST /api/v1/purchasing/goods-receipts`' "P2P GRN canonical endpoint doc"
 require_literal "$P2P_WORKFLOW_DOC" '`POST /api/v1/purchasing/raw-material-purchases`' "P2P invoice canonical endpoint doc"

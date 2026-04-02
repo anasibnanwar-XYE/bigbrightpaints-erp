@@ -217,9 +217,9 @@ The `SchedulerConfig` configures a `ThreadPoolTaskScheduler` with a 5-thread poo
 - **Transport/controller ownership**: `inventory.DispatchController` at `/api/v1/dispatch/**`
 - **Commercial/accounting ownership**: `sales.SalesDispatchReconciliationService` handles the authoritative commercial and accounting side effects
 
-The canonical dispatch path is `POST /api/v1/dispatch/confirm`, owned by the sales module. Routing dispatch confirmation through the orchestrator is deprecated and blocked.
+The canonical public write remains `POST /api/v1/dispatch/confirm`: inventory owns transport/controller execution there, while sales owns the downstream commercial/accounting side effects.
 
-**Action:** Do not call `dispatchBatch`. Route dispatch confirmation through `/api/v1/dispatch/confirm` (the canonical sales module path).
+**Action:** Do not call `dispatchBatch`. Route dispatch confirmation through `/api/v1/dispatch/confirm` (the canonical dispatch path).
 
 ### Deprecated: Orchestrator Payroll Run (HARD BLOCK)
 
@@ -249,7 +249,7 @@ The canonical dispatch path is `POST /api/v1/dispatch/confirm`, owned by the sal
 | --- | --- | --- |
 | `erp.inventory.accounting.events.enabled = false` | Inventory movements and valuation changes will **not** trigger accounting journal entries. | If this toggle is off, inventory operations silently skip financial side effects rather than failing closed. This is a significant hidden coupling risk. |
 | `orchestrator.payroll.enabled = false` | Orchestrator payroll run commands will be rejected. | This is the correct fail-closed behavior but means the orchestrator payroll path is a dead end. |
-| `orchestrator.factory-dispatch.enabled = false` | Orchestrator factory-dispatch commands will be rejected. | Dispatch is a two-layer seam: inventory owns transport/controller (`/api/v1/dispatch/**`), sales owns commercial/accounting side effects. The canonical dispatch path is `POST /api/v1/dispatch/confirm`, owned by the sales module, not the orchestrator. |
+| `orchestrator.factory-dispatch.enabled = false` | Orchestrator factory-dispatch commands will be rejected. | Dispatch is a two-layer seam: inventory owns transport/controller (`/api/v1/dispatch/**`), sales owns commercial/accounting side effects. The canonical dispatch path is `POST /api/v1/dispatch/confirm`, not the orchestrator. |
 | `auto-approval disabled` | `SalesOrderCreatedEvent` will be consumed but the listener will log and skip. | No inventory reservation or orchestrator event is published. Orders stay in their initial status until manually approved. |
 
 ---
