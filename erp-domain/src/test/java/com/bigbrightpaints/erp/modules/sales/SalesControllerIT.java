@@ -396,7 +396,13 @@ public class SalesControllerIT extends AbstractIntegrationTest {
             Instant.parse("2026-02-05T00:00:01Z"));
     Page<Long> literalPercentResults =
         salesOrderRepository.searchIdsByCompany(
-            company, null, primaryDealer, literalPercentOrderNumber, null, null, PageRequest.of(0, 10));
+            company,
+            null,
+            primaryDealer,
+            "%" + percentSuffix,
+            null,
+            null,
+            PageRequest.of(0, 10));
     assertThat(literalPercentResults.getContent())
         .contains(literalPercentOrder.getId())
         .doesNotContain(percentDistractorOrder.getId());
@@ -423,7 +429,7 @@ public class SalesControllerIT extends AbstractIntegrationTest {
             company,
             null,
             secondaryDealer,
-            literalUnderscoreOrderNumber,
+            "_" + underscoreSuffix,
             null,
             null,
             PageRequest.of(0, 10));
@@ -440,10 +446,19 @@ public class SalesControllerIT extends AbstractIntegrationTest {
             backslashOrderNumber,
             "BOOKED",
             Instant.parse("2026-02-05T00:00:04Z"));
+    SalesOrder backslashDistractorOrder =
+        createPersistedOrder(
+            company,
+            primaryDealer,
+            "SOX" + backslashSuffix,
+            "BOOKED",
+            Instant.parse("2026-02-05T00:00:05Z"));
     Page<Long> backslashResults =
         salesOrderRepository.searchIdsByCompany(
-            company, null, primaryDealer, backslashOrderNumber, null, null, PageRequest.of(0, 10));
-    assertThat(backslashResults.getContent()).contains(backslashOrder.getId());
+            company, null, primaryDealer, "\\" + backslashSuffix, null, null, PageRequest.of(0, 10));
+    assertThat(backslashResults.getContent())
+        .contains(backslashOrder.getId())
+        .doesNotContain(backslashDistractorOrder.getId());
   }
 
   @Test
