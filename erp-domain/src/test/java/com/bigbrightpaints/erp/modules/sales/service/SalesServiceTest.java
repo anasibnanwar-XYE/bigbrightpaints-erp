@@ -154,7 +154,6 @@ class SalesServiceTest {
             companyEntityLookup,
             packagingSlipRepository,
             finishedGoodsService,
-            accountingService,
             accountingFacade,
             journalEntryRepository,
             invoiceNumberService,

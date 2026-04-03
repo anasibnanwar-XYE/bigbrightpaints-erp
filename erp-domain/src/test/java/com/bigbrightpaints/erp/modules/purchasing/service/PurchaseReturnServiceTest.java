@@ -36,6 +36,7 @@ import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.accounting.service.GstService;
 import com.bigbrightpaints.erp.modules.accounting.service.ReferenceNumberService;
+import com.bigbrightpaints.erp.modules.accounting.service.JournalCorrectionMetadataService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.inventory.domain.InventoryReference;
@@ -63,6 +64,7 @@ class PurchaseReturnServiceTest {
   @Mock private RawMaterialMovementRepository movementRepository;
   @Mock private AccountingFacade accountingFacade;
   @Mock private JournalEntryRepository journalEntryRepository;
+  @Mock private JournalCorrectionMetadataService journalCorrectionMetadataService;
   @Mock private CompanyEntityLookup companyEntityLookup;
   @Mock private ReferenceNumberService referenceNumberService;
   @Mock private CompanyClock companyClock;
@@ -86,6 +88,7 @@ class PurchaseReturnServiceTest {
             movementRepository,
             accountingFacade,
             journalEntryRepository,
+            journalCorrectionMetadataService,
             companyEntityLookup,
             referenceNumberService,
             companyClock,
@@ -501,7 +504,7 @@ class PurchaseReturnServiceTest {
         .thenReturn(
             journalEntryDto(
                 901L, "PR-30", LocalDate.of(2026, 3, 9), "Damaged - Resin to Supplier 10"));
-    when(journalEntryRepository.findByCompanyAndId(company, 901L))
+    when(journalCorrectionMetadataService.findByCompanyAndId(company, 901L))
         .thenReturn(Optional.of(postedReturnEntry));
 
     JournalEntryDto result =
@@ -517,12 +520,9 @@ class PurchaseReturnServiceTest {
                 "Damaged"));
 
     assertThat(result.id()).isEqualTo(901L);
-    assertThat(postedReturnEntry.getCorrectionType()).isEqualTo(JournalCorrectionType.REVERSAL);
-    assertThat(postedReturnEntry.getCorrectionReason()).isEqualTo("PURCHASE_RETURN");
-    assertThat(postedReturnEntry.getSourceModule()).isEqualTo("PURCHASING_RETURN");
-    assertThat(postedReturnEntry.getSourceReference()).isEqualTo("PI-30");
     assertThat(existingMovement.getJournalEntryId()).isEqualTo(901L);
-    verify(journalEntryRepository).save(postedReturnEntry);
+    verify(journalCorrectionMetadataService)
+        .syncReversalMetadata(postedReturnEntry, "PURCHASE_RETURN", "PURCHASING_RETURN", "PI-30");
     verify(movementRepository).saveAll(List.of(existingMovement));
     verify(rawMaterialRepository, never()).deductStockIfSufficient(any(), any());
     verify(allocationService, never()).applyPurchaseReturnQuantity(any(), any(), any());
@@ -623,7 +623,7 @@ class PurchaseReturnServiceTest {
         .thenReturn(
             journalEntryDto(
                 901L, "PR-30", LocalDate.of(2026, 3, 9), "Damaged - Resin to Supplier 10"));
-    when(journalEntryRepository.findByCompanyAndId(company, 901L))
+    when(journalCorrectionMetadataService.findByCompanyAndId(company, 901L))
         .thenReturn(Optional.of(postedReturnEntry));
 
     JournalEntryDto result =
@@ -639,7 +639,8 @@ class PurchaseReturnServiceTest {
                 "Damaged"));
 
     assertThat(result.id()).isEqualTo(901L);
-    verify(journalEntryRepository, never()).save(postedReturnEntry);
+    verify(journalCorrectionMetadataService)
+        .syncReversalMetadata(postedReturnEntry, "PURCHASE_RETURN", "PURCHASING_RETURN", "PI-30");
     verify(movementRepository, never()).saveAll(any());
     verify(rawMaterialRepository, never()).deductStockIfSufficient(any(), any());
     verify(allocationService, never()).applyPurchaseReturnQuantity(any(), any(), any());
@@ -719,7 +720,7 @@ class PurchaseReturnServiceTest {
                 "PR-EXPLICIT-30",
                 LocalDate.of(2026, 3, 9),
                 "Damaged - Resin to Supplier 10"));
-    when(journalEntryRepository.findByCompanyAndId(company, 902L))
+    when(journalCorrectionMetadataService.findByCompanyAndId(company, 902L))
         .thenReturn(Optional.of(new JournalEntry()));
 
     JournalEntryDto result =
@@ -820,7 +821,7 @@ class PurchaseReturnServiceTest {
             journalEntryDto(
                 904L, "PR-30", LocalDate.of(2026, 3, 9), "Damaged - Resin to Supplier 10"));
     when(journalEntryRepository.findByCompanyAndId(company, 777L)).thenReturn(Optional.empty());
-    when(journalEntryRepository.findByCompanyAndId(company, 904L))
+    when(journalCorrectionMetadataService.findByCompanyAndId(company, 904L))
         .thenReturn(Optional.of(postedReturnEntry));
 
     JournalEntryDto result =
@@ -873,7 +874,7 @@ class PurchaseReturnServiceTest {
         .thenReturn(
             journalEntryDto(
                 907L, "PR-30", LocalDate.of(2026, 3, 9), "Damaged - Resin to Supplier 10"));
-    when(journalEntryRepository.findByCompanyAndId(company, 907L))
+    when(journalCorrectionMetadataService.findByCompanyAndId(company, 907L))
         .thenReturn(Optional.of(bootstrapEntry));
 
     JournalEntryDto result =
@@ -890,11 +891,8 @@ class PurchaseReturnServiceTest {
 
     assertThat(result.id()).isEqualTo(907L);
     assertThat(existingMovement.getJournalEntryId()).isEqualTo(907L);
-    assertThat(bootstrapEntry.getCorrectionType()).isEqualTo(JournalCorrectionType.REVERSAL);
-    assertThat(bootstrapEntry.getCorrectionReason()).isEqualTo("PURCHASE_RETURN");
-    assertThat(bootstrapEntry.getSourceModule()).isEqualTo("PURCHASING_RETURN");
-    assertThat(bootstrapEntry.getSourceReference()).isEqualTo("PI-30");
-    verify(journalEntryRepository).save(bootstrapEntry);
+    verify(journalCorrectionMetadataService)
+        .syncReversalMetadata(bootstrapEntry, "PURCHASE_RETURN", "PURCHASING_RETURN", "PI-30");
     verify(movementRepository).saveAll(List.of(existingMovement));
   }
 
@@ -1054,8 +1052,7 @@ class PurchaseReturnServiceTest {
         sourceWithoutId,
         "PI-NOOP");
 
-    verify(journalEntryRepository, never()).findByCompanyAndId(any(), any());
-    verify(journalEntryRepository, never()).save(any());
+    verifyNoInteractions(journalCorrectionMetadataService);
   }
 
   @Test
@@ -1128,12 +1125,11 @@ class PurchaseReturnServiceTest {
         null,
         "PI-NOOP");
 
-    verify(journalEntryRepository, never()).findByCompanyAndId(any(), any());
-    verify(journalEntryRepository, never()).save(any());
+    verifyNoInteractions(journalCorrectionMetadataService);
   }
 
   @Test
-  void purchaseReturnHelpers_skipSaveWhenCorrectionJournalAlreadyAligned() {
+  void purchaseReturnHelpers_delegateMetadataSyncWhenCorrectionJournalAlreadyAligned() {
     JournalEntry source = new JournalEntry();
     ReflectionTestUtils.setField(source, "id", 991L);
 
@@ -1143,7 +1139,8 @@ class PurchaseReturnServiceTest {
     aligned.setSourceModule("PURCHASING_RETURN");
     aligned.setSourceReference("PI-ALIGNED");
 
-    when(journalEntryRepository.findByCompanyAndId(company, 992L)).thenReturn(Optional.of(aligned));
+    when(journalCorrectionMetadataService.findByCompanyAndId(company, 992L))
+        .thenReturn(Optional.of(aligned));
 
     ReflectionTestUtils.invokeMethod(
         purchaseReturnService,
@@ -1153,7 +1150,8 @@ class PurchaseReturnServiceTest {
         source,
         "PI-ALIGNED");
 
-    verify(journalEntryRepository, never()).save(aligned);
+    verify(journalCorrectionMetadataService)
+        .syncReversalMetadata(aligned, "PURCHASE_RETURN", "PURCHASING_RETURN", "PI-ALIGNED");
   }
 
   @Test
@@ -1164,7 +1162,7 @@ class PurchaseReturnServiceTest {
     JournalEntry bootstrap = new JournalEntry();
     bootstrap.setSourceReference("PR-30");
 
-    when(journalEntryRepository.findByCompanyAndId(company, 992L))
+    when(journalCorrectionMetadataService.findByCompanyAndId(company, 992L))
         .thenReturn(Optional.of(bootstrap));
 
     ReflectionTestUtils.invokeMethod(
@@ -1175,11 +1173,8 @@ class PurchaseReturnServiceTest {
         source,
         "PI-30");
 
-    assertThat(bootstrap.getCorrectionType()).isEqualTo(JournalCorrectionType.REVERSAL);
-    assertThat(bootstrap.getCorrectionReason()).isEqualTo("PURCHASE_RETURN");
-    assertThat(bootstrap.getSourceModule()).isEqualTo("PURCHASING_RETURN");
-    assertThat(bootstrap.getSourceReference()).isEqualTo("PI-30");
-    verify(journalEntryRepository).save(bootstrap);
+    verify(journalCorrectionMetadataService)
+        .syncReversalMetadata(bootstrap, "PURCHASE_RETURN", "PURCHASING_RETURN", "PI-30");
   }
 
   @Test
@@ -1468,7 +1463,7 @@ class PurchaseReturnServiceTest {
         .thenReturn(
             journalEntryDto(
                 906L, "PR-30", LocalDate.of(2026, 3, 9), "Damaged - Resin to Supplier 10"));
-    when(journalEntryRepository.findByCompanyAndId(company, 906L))
+    when(journalCorrectionMetadataService.findByCompanyAndId(company, 906L))
         .thenReturn(Optional.of(conflictingEntry));
 
     assertThatThrownBy(

@@ -14,6 +14,7 @@ import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingPeriodService;
 import com.bigbrightpaints.erp.modules.accounting.service.GstService;
+import com.bigbrightpaints.erp.modules.accounting.service.JournalCorrectionMetadataService;
 import com.bigbrightpaints.erp.modules.accounting.service.ReferenceNumberService;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatchRepository;
@@ -175,6 +176,7 @@ public class PurchasingService {
             movementRepository,
             accountingFacade,
             journalEntryRepository,
+            new JournalCorrectionMetadataService(journalEntryRepository),
             companyEntityLookup,
             referenceNumberService,
             companyClock,

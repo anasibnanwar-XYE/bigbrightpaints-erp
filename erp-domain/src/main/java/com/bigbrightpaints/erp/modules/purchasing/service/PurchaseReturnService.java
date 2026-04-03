@@ -24,6 +24,7 @@ import com.bigbrightpaints.erp.modules.accounting.dto.JournalCreationRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.accounting.service.GstService;
+import com.bigbrightpaints.erp.modules.accounting.service.JournalCorrectionMetadataService;
 import com.bigbrightpaints.erp.modules.accounting.service.ReferenceNumberService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
@@ -53,6 +54,7 @@ public class PurchaseReturnService {
   private final RawMaterialMovementRepository movementRepository;
   private final AccountingFacade accountingFacade;
   private final JournalEntryRepository journalEntryRepository;
+  private final JournalCorrectionMetadataService journalCorrectionMetadataService;
   private final CompanyEntityLookup companyEntityLookup;
   private final ReferenceNumberService referenceNumberService;
   private final CompanyClock companyClock;
@@ -67,6 +69,7 @@ public class PurchaseReturnService {
       RawMaterialMovementRepository movementRepository,
       AccountingFacade accountingFacade,
       JournalEntryRepository journalEntryRepository,
+      JournalCorrectionMetadataService journalCorrectionMetadataService,
       CompanyEntityLookup companyEntityLookup,
       ReferenceNumberService referenceNumberService,
       CompanyClock companyClock,
@@ -79,6 +82,7 @@ public class PurchaseReturnService {
     this.movementRepository = movementRepository;
     this.accountingFacade = accountingFacade;
     this.journalEntryRepository = journalEntryRepository;
+    this.journalCorrectionMetadataService = journalCorrectionMetadataService;
     this.companyEntityLookup = companyEntityLookup;
     this.referenceNumberService = referenceNumberService;
     this.companyClock = companyClock;
@@ -368,7 +372,7 @@ public class PurchaseReturnService {
         || sourceEntry.getId() == null) {
       return;
     }
-    journalEntryRepository
+    journalCorrectionMetadataService
         .findByCompanyAndId(company, entryDto.id())
         .ifPresent(
             entry -> {
@@ -378,26 +382,8 @@ public class PurchaseReturnService {
               if (!bootstrapCandidate) {
                 validateReplayCorrectionJournal(entry, sourceEntry, purchaseInvoiceNumber);
               }
-              boolean changed = false;
-              if (entry.getCorrectionType() != JournalCorrectionType.REVERSAL) {
-                entry.setCorrectionType(JournalCorrectionType.REVERSAL);
-                changed = true;
-              }
-              if (!"PURCHASE_RETURN".equalsIgnoreCase(entry.getCorrectionReason())) {
-                entry.setCorrectionReason("PURCHASE_RETURN");
-                changed = true;
-              }
-              if (!"PURCHASING_RETURN".equalsIgnoreCase(entry.getSourceModule())) {
-                entry.setSourceModule("PURCHASING_RETURN");
-                changed = true;
-              }
-              if (!Objects.equals(purchaseInvoiceNumber, entry.getSourceReference())) {
-                entry.setSourceReference(purchaseInvoiceNumber);
-                changed = true;
-              }
-              if (changed) {
-                journalEntryRepository.save(entry);
-              }
+              journalCorrectionMetadataService.syncReversalMetadata(
+                  entry, "PURCHASE_RETURN", "PURCHASING_RETURN", purchaseInvoiceNumber);
             });
   }
 
