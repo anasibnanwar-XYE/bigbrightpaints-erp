@@ -1,6 +1,6 @@
 {
   "milestone": "accounting-core",
-  "round": 5,
+  "round": 6,
   "status": "fail",
   "validatorsRun": {
     "test": {
@@ -20,43 +20,27 @@
     }
   },
   "reviewsSummary": {
-    "total": 2,
-    "passed": 1,
+    "total": 1,
+    "passed": 0,
     "failed": 1,
     "failedFeatures": [
-      "accounting-direct-journal-payroll-settlement-extraction"
+      "accounting-final-owner-cut-and-shadow-wrapper-retirement"
     ]
   },
   "blockingIssues": [
     {
-      "featureId": "accounting-direct-journal-payroll-settlement-extraction",
+      "featureId": "accounting-final-owner-cut-and-shadow-wrapper-retirement",
       "severity": "blocking",
-      "description": "The ownership hard-cut is still incomplete because `AccountingCoreEngineCore` keeps full business-logic implementations for the same touched behaviors the fix was supposed to extract, including `createStandardJournal`, `createJournalEntry`, `postPayrollRun`, `recordPayrollPayment`, `recordSupplierPayment`, `autoSettleSupplier`, `settleDealerInvoices`, and `settleSupplierInvoices`, leaving duplicate live owners instead of one canonical owner per behavior."
-    },
-    {
-      "featureId": "accounting-direct-journal-payroll-settlement-extraction",
-      "severity": "blocking",
-      "description": "`AccountingIdempotencyService` still exposes public `recordSupplierPayment`, `settleDealerInvoices`, `autoSettleDealer`, `settleSupplierInvoices`, and `autoSettleSupplier` methods that delegate via `super.*` back into `AccountingCoreEngineCore`, so the indirect monolith delegation chain was not fully hard-cut."
+      "description": "The rerun removes AccountingIdempotencyService and the public super-wrapper chain, but AccountingCoreEngineCore still retains duplicate public journal owners (`createStandardJournal`, `createManualJournal`, and `createJournalEntry`) alongside JournalEntryService, so the monolith remains a live runtime owner instead of leaving JournalEntryService as the sole canonical journal owner."
     }
   ],
   "appliedUpdates": [],
-  "suggestedGuidanceUpdates": [
-    {
-      "target": "backend-worker skill",
-      "suggestion": "When repo-wide Spotless drift is a known pre-existing condition, document scoped formatter verification with `mvn spotless:check -DspotlessFiles=...` as the expected touched-files-only fallback instead of leaving workers to record it as an ad hoc deviation.",
-      "evidence": "The `accounting-split-receipt-replay-contention-proof` review cited a justified deviation to rerun Spotless only for the touched test file, and the earlier `accounting-direct-journal-payroll-settlement-extraction` handoff reported the same scoped-Spotless workaround because the mission guidance already treats full-repo Spotless drift as pre-existing.",
-      "isSystemic": true
-    }
-  ],
+  "suggestedGuidanceUpdates": [],
   "rejectedObservations": [
     {
-      "observation": "The accounting module AGENTS guidance should be updated immediately to describe `JournalEntryService` and `PayrollAccountingService` as the new canonical owners instead of `AccountingCoreEngineCore`.",
-      "reason": "ambiguous: this rerun still fails because `AccountingCoreEngineCore` and `AccountingIdempotencyService` retain duplicate live owners and shadow delegation paths, so updating the module guidance now would misstate the current runtime ownership instead of clarifying it."
-    },
-    {
-      "observation": "Shared worker guidance should explicitly bless detached-worktree clean-status verification when the root checkout contains unrelated dirty files that cannot be touched.",
-      "reason": "duplicate: the same mission-worker-base guidance update was already recommended in round 4, and this review did not add a new distinct remediation beyond reaffirming that existing recommendation."
+      "observation": "Update the accounting/hr module AGENTS guidance now to describe payroll/accounting ownership after the fix packet.",
+      "reason": "ambiguous: this rerun still fails because journal ownership remains split between AccountingCoreEngineCore and JournalEntryService, so refreshing the module guidance now would risk documenting a transient partial state instead of the final canonical ownership."
     }
   ],
-  "previousRound": ".factory/validation/accounting-core/scrutiny/synthesis.round4.json"
+  "previousRound": ".factory/validation/accounting-core/scrutiny/synthesis.round5.json"
 }
