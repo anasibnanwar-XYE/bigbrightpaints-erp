@@ -94,7 +94,6 @@ class JournalEntryServiceTest {
   @Mock private SystemSettingsService systemSettingsService;
   @Mock private AuditService auditService;
   @Mock private AccountingEventStore accountingEventStore;
-  @Mock private AccountingIdempotencyService accountingIdempotencyService;
 
   private JournalEntryService journalEntryService;
   private Company company;
@@ -129,8 +128,7 @@ class JournalEntryServiceTest {
             entityManager,
             systemSettingsService,
             auditService,
-            accountingEventStore,
-            accountingIdempotencyService);
+            accountingEventStore);
     company = new Company();
     ReflectionTestUtils.setField(company, "id", 44L);
     company.setBaseCurrency("INR");

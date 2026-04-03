@@ -39,8 +39,6 @@ import jakarta.persistence.EntityManager;
 @Service
 public class DealerReceiptService extends AccountingCoreEngineCore {
 
-  private final AccountingIdempotencyService accountingIdempotencyService;
-
   @Autowired
   public DealerReceiptService(
       CompanyContextService companyContextService,
@@ -69,8 +67,7 @@ public class DealerReceiptService extends AccountingCoreEngineCore {
       EntityManager entityManager,
       SystemSettingsService systemSettingsService,
       AuditService auditService,
-      AccountingEventStore accountingEventStore,
-      AccountingIdempotencyService accountingIdempotencyService) {
+      AccountingEventStore accountingEventStore) {
     super(
         companyContextService,
         accountRepository,
@@ -99,22 +96,21 @@ public class DealerReceiptService extends AccountingCoreEngineCore {
         systemSettingsService,
         auditService,
         accountingEventStore);
-    this.accountingIdempotencyService = accountingIdempotencyService;
   }
 
   public JournalEntryDto recordDealerReceipt(DealerReceiptRequest request) {
     DealerReceiptRequest normalized = normalizeDealerReceiptRequest(request);
-    return accountingIdempotencyService.recordDealerReceipt(normalized);
+    return super.recordDealerReceipt(normalized);
   }
 
   JournalEntryDto recordDealerReceiptNormalized(DealerReceiptRequest request) {
     ValidationUtils.requireNotNull(request, "request");
-    return accountingIdempotencyService.recordDealerReceipt(request);
+    return super.recordDealerReceipt(request);
   }
 
   public JournalEntryDto recordDealerReceiptSplit(DealerReceiptSplitRequest request) {
     DealerReceiptSplitRequest normalized = normalizeDealerReceiptSplitRequest(request);
-    return accountingIdempotencyService.recordDealerReceiptSplit(normalized);
+    return super.recordDealerReceiptSplit(normalized);
   }
 
   public List<JournalEntryDto> listDealerReceipts(Long dealerId, int page, int size) {

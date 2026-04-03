@@ -1,7 +1,9 @@
 package com.bigbrightpaints.erp.modules.accounting.service;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -27,11 +29,14 @@ import com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAlloca
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalCreationRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.PayrollBatchPaymentRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.PayrollBatchPaymentResponse;
 import com.bigbrightpaints.erp.modules.accounting.dto.PayrollPaymentRequest;
 import com.bigbrightpaints.erp.modules.accounting.event.AccountingEventStore;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.hr.domain.PayrollRun;
+import com.bigbrightpaints.erp.modules.hr.domain.PayrollRunLine;
 import com.bigbrightpaints.erp.modules.hr.domain.PayrollRunLineRepository;
 import com.bigbrightpaints.erp.modules.hr.domain.PayrollRunRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatchRepository;
@@ -151,6 +156,280 @@ public class PayrollAccountingService extends AccountingCoreEngineCore {
             null,
             false);
     return createStandardJournal(standardizedRequest);
+  }
+
+  @Transactional
+  public PayrollBatchPaymentResponse processPayrollBatchPayment(
+      PayrollBatchPaymentRequest request) {
+    Company company = companyContextService.requireCurrentCompany();
+    if (request.lines() == null || request.lines().isEmpty()) {
+      throw new ApplicationException(
+          ErrorCode.VALIDATION_INVALID_INPUT, "At least one payroll line is required");
+    }
+
+    Account cash =
+        requireCashAccountForSettlement(company, request.cashAccountId(), "payroll batch payment");
+    Account expense = requireAccount(company, request.expenseAccountId());
+
+    Account taxPayable =
+        request.taxPayableAccountId() != null
+            ? requireAccount(company, request.taxPayableAccountId())
+            : null;
+    Account pfPayable =
+        request.pfPayableAccountId() != null
+            ? requireAccount(company, request.pfPayableAccountId())
+            : null;
+
+    Account employerTaxExpense =
+        request.employerTaxExpenseAccountId() != null
+            ? requireAccount(company, request.employerTaxExpenseAccountId())
+            : null;
+    Account employerPfExpense =
+        request.employerPfExpenseAccountId() != null
+            ? requireAccount(company, request.employerPfExpenseAccountId())
+            : null;
+
+    BigDecimal defaultTaxRate =
+        request.defaultTaxRate() != null ? request.defaultTaxRate() : BigDecimal.ZERO;
+    BigDecimal defaultPfRate =
+        request.defaultPfRate() != null ? request.defaultPfRate() : BigDecimal.ZERO;
+    BigDecimal employerTaxRate =
+        request.employerTaxRate() != null ? request.employerTaxRate() : BigDecimal.ZERO;
+    BigDecimal employerPfRate =
+        request.employerPfRate() != null ? request.employerPfRate() : BigDecimal.ZERO;
+
+    List<PayrollBatchPaymentRequest.PayrollLine> lines = request.lines();
+    List<PayrollBatchPaymentResponse.LineTotal> lineTotals = new ArrayList<>();
+
+    BigDecimal totalGross = BigDecimal.ZERO;
+    BigDecimal totalTaxWithholding = BigDecimal.ZERO;
+    BigDecimal totalPfWithholding = BigDecimal.ZERO;
+    BigDecimal totalAdvances = BigDecimal.ZERO;
+    BigDecimal totalNetPay = BigDecimal.ZERO;
+
+    for (PayrollBatchPaymentRequest.PayrollLine line : lines) {
+      if (!StringUtils.hasText(line.name())) {
+        throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "Line name is required");
+      }
+      int days = line.days() == null ? 0 : line.days();
+      if (days <= 0) {
+        throw new ApplicationException(
+            ErrorCode.VALIDATION_INVALID_INPUT,
+            "Days must be greater than zero for " + line.name());
+      }
+      BigDecimal wage = line.dailyWage() == null ? BigDecimal.ZERO : line.dailyWage();
+      if (wage.compareTo(BigDecimal.ZERO) <= 0) {
+        throw new ApplicationException(
+            ErrorCode.VALIDATION_INVALID_INPUT,
+            "Daily wage must be greater than zero for " + line.name());
+      }
+      BigDecimal advances = line.advances() == null ? BigDecimal.ZERO : line.advances();
+      if (advances.compareTo(BigDecimal.ZERO) < 0) {
+        throw new ApplicationException(
+            ErrorCode.VALIDATION_INVALID_INPUT, "Advances cannot be negative for " + line.name());
+      }
+
+      BigDecimal grossPay =
+          wage.multiply(BigDecimal.valueOf(days)).setScale(2, RoundingMode.HALF_UP);
+      BigDecimal taxWithholding =
+          line.taxWithholding() != null
+              ? line.taxWithholding()
+              : grossPay.multiply(defaultTaxRate).setScale(2, RoundingMode.HALF_UP);
+      BigDecimal pfWithholding =
+          line.pfWithholding() != null
+              ? line.pfWithholding()
+              : grossPay.multiply(defaultPfRate).setScale(2, RoundingMode.HALF_UP);
+      BigDecimal netPay =
+          grossPay
+              .subtract(taxWithholding)
+              .subtract(pfWithholding)
+              .subtract(advances)
+              .setScale(2, RoundingMode.HALF_UP);
+
+      if (netPay.compareTo(BigDecimal.ZERO) < 0) {
+        throw new ApplicationException(
+            ErrorCode.VALIDATION_INVALID_INPUT,
+            "Net pay cannot be negative for " + line.name() + ". Deductions exceed gross pay.");
+      }
+
+      totalGross = totalGross.add(grossPay);
+      totalTaxWithholding = totalTaxWithholding.add(taxWithholding);
+      totalPfWithholding = totalPfWithholding.add(pfWithholding);
+      totalAdvances = totalAdvances.add(advances);
+      totalNetPay = totalNetPay.add(netPay);
+
+      lineTotals.add(
+          new PayrollBatchPaymentResponse.LineTotal(
+              line.name(),
+              days,
+              wage.setScale(2, RoundingMode.HALF_UP),
+              grossPay,
+              taxWithholding,
+              pfWithholding,
+              advances,
+              netPay,
+              line.notes()));
+    }
+
+    if (totalGross.compareTo(BigDecimal.ZERO) <= 0) {
+      throw new ApplicationException(
+          ErrorCode.VALIDATION_INVALID_INPUT,
+          "Total gross payroll amount must be greater than zero");
+    }
+
+    BigDecimal employerTaxAmount =
+        totalGross.multiply(employerTaxRate).setScale(2, RoundingMode.HALF_UP);
+    BigDecimal employerPfAmount =
+        totalGross.multiply(employerPfRate).setScale(2, RoundingMode.HALF_UP);
+    BigDecimal totalEmployerCost = totalGross.add(employerTaxAmount).add(employerPfAmount);
+
+    String memo =
+        StringUtils.hasText(request.memo())
+            ? request.memo().trim()
+            : "Payroll batch for " + request.runDate();
+    String reference =
+        StringUtils.hasText(request.referenceNumber())
+            ? request.referenceNumber().trim()
+            : referenceNumberService.payrollPaymentReference(company);
+
+    PayrollRun run = new PayrollRun();
+    run.setCompany(company);
+    run.setRunType(PayrollRun.RunType.MONTHLY);
+    run.setPeriodStart(request.runDate());
+    run.setPeriodEnd(request.runDate());
+    run.setRunDate(request.runDate());
+    run.setRunNumber(reference);
+    run.setNotes(memo);
+    run.setTotalAmount(totalGross);
+    run.setStatus("DRAFT");
+    run.setProcessedBy(resolveCurrentUsername());
+    PayrollRun savedRun = payrollRunRepository.save(run);
+
+    List<PayrollRunLine> persistedLines = new ArrayList<>();
+    for (PayrollBatchPaymentResponse.LineTotal line : lineTotals) {
+      PayrollRunLine entity = new PayrollRunLine();
+      entity.setPayrollRun(savedRun);
+      entity.setName(line.name());
+      entity.setDaysWorked(line.days());
+      entity.setDailyWage(line.dailyWage());
+      entity.setAdvances(line.advances());
+      entity.setLineTotal(line.netPay());
+      entity.setNotes(line.notes());
+      persistedLines.add(entity);
+    }
+    payrollRunLineRepository.saveAll(persistedLines);
+
+    List<JournalEntryRequest.JournalLineRequest> payrollLines = new ArrayList<>();
+    BigDecimal totalCredits = BigDecimal.ZERO;
+
+    if (totalNetPay.compareTo(BigDecimal.ZERO) > 0) {
+      payrollLines.add(
+          new JournalEntryRequest.JournalLineRequest(
+              cash.getId(), "Net payroll disbursement", BigDecimal.ZERO, totalNetPay));
+      totalCredits = totalCredits.add(totalNetPay);
+    }
+
+    if (taxPayable != null && totalTaxWithholding.compareTo(BigDecimal.ZERO) > 0) {
+      payrollLines.add(
+          new JournalEntryRequest.JournalLineRequest(
+              taxPayable.getId(),
+              "Employee tax withholding (TDS)",
+              BigDecimal.ZERO,
+              totalTaxWithholding));
+      totalCredits = totalCredits.add(totalTaxWithholding);
+    }
+
+    if (pfPayable != null && totalPfWithholding.compareTo(BigDecimal.ZERO) > 0) {
+      payrollLines.add(
+          new JournalEntryRequest.JournalLineRequest(
+              pfPayable.getId(), "Employee PF contribution", BigDecimal.ZERO, totalPfWithholding));
+      totalCredits = totalCredits.add(totalPfWithholding);
+    }
+
+    payrollLines.add(
+        0,
+        new JournalEntryRequest.JournalLineRequest(
+            expense.getId(), "Payroll expense", totalCredits, BigDecimal.ZERO));
+
+    JournalEntryDto payrollJe =
+        createJournalEntry(
+            new JournalEntryRequest(
+                reference, request.runDate(), memo, null, null, Boolean.FALSE, payrollLines));
+    JournalEntry payrollEntry = companyEntityLookup.requireJournalEntry(company, payrollJe.id());
+
+    Long employerContribJournalId = null;
+    if ((employerTaxAmount.compareTo(BigDecimal.ZERO) > 0
+            && employerTaxExpense != null
+            && taxPayable != null)
+        || (employerPfAmount.compareTo(BigDecimal.ZERO) > 0
+            && employerPfExpense != null
+            && pfPayable != null)) {
+
+      List<JournalEntryRequest.JournalLineRequest> employerLines = new ArrayList<>();
+
+      if (employerTaxAmount.compareTo(BigDecimal.ZERO) > 0
+          && employerTaxExpense != null
+          && taxPayable != null) {
+        employerLines.add(
+            new JournalEntryRequest.JournalLineRequest(
+                employerTaxExpense.getId(),
+                "Employer tax contribution",
+                employerTaxAmount,
+                BigDecimal.ZERO));
+        employerLines.add(
+            new JournalEntryRequest.JournalLineRequest(
+                taxPayable.getId(), "Employer tax payable", BigDecimal.ZERO, employerTaxAmount));
+      }
+
+      if (employerPfAmount.compareTo(BigDecimal.ZERO) > 0
+          && employerPfExpense != null
+          && pfPayable != null) {
+        employerLines.add(
+            new JournalEntryRequest.JournalLineRequest(
+                employerPfExpense.getId(),
+                "Employer PF contribution",
+                employerPfAmount,
+                BigDecimal.ZERO));
+        employerLines.add(
+            new JournalEntryRequest.JournalLineRequest(
+                pfPayable.getId(), "Employer PF payable", BigDecimal.ZERO, employerPfAmount));
+      }
+
+      if (!employerLines.isEmpty()) {
+        String employerRef = reference + "-EMP";
+        JournalEntryDto employerJe =
+            createJournalEntry(
+                new JournalEntryRequest(
+                    employerRef,
+                    request.runDate(),
+                    "Employer contributions for " + memo,
+                    null,
+                    null,
+                    Boolean.FALSE,
+                    employerLines));
+        employerContribJournalId = employerJe.id();
+      }
+    }
+
+    savedRun.setStatus("PAID");
+    savedRun.setJournalEntryId(payrollEntry.getId());
+    savedRun.setJournalEntry(payrollEntry);
+    payrollRunRepository.save(savedRun);
+
+    return new PayrollBatchPaymentResponse(
+        savedRun.getId(),
+        savedRun.getRunDate(),
+        totalGross.setScale(2, RoundingMode.HALF_UP),
+        totalTaxWithholding.setScale(2, RoundingMode.HALF_UP),
+        totalPfWithholding.setScale(2, RoundingMode.HALF_UP),
+        totalAdvances.setScale(2, RoundingMode.HALF_UP),
+        totalNetPay.setScale(2, RoundingMode.HALF_UP),
+        employerTaxAmount.setScale(2, RoundingMode.HALF_UP),
+        employerPfAmount.setScale(2, RoundingMode.HALF_UP),
+        totalEmployerCost.setScale(2, RoundingMode.HALF_UP),
+        payrollEntry.getId(),
+        employerContribJournalId,
+        lineTotals);
   }
 
   @Transactional

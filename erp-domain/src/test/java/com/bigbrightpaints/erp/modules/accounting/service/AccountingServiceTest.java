@@ -161,7 +161,6 @@ class AccountingServiceTest {
 
   private AccountingService accountingService;
   private JournalEntryService journalEntryService;
-  private AccountingIdempotencyService settlementIdempotencyService;
   private DealerReceiptService dealerReceiptService;
   private SettlementService settlementService;
   private CreditDebitNoteService creditDebitNoteService;
@@ -208,39 +207,7 @@ class AccountingServiceTest {
                 entityManager,
                 systemSettingsService,
                 auditService,
-                accountingEventStore,
-                mock(AccountingIdempotencyService.class)));
-    settlementIdempotencyService =
-        spy(
-            new AccountingIdempotencyService(
-                companyContextService,
-                accountRepository,
-                journalEntryRepository,
-                dealerLedgerService,
-                supplierLedgerService,
-                payrollRunRepository,
-                payrollRunLineRepository,
-                accountingPeriodService,
-                referenceNumberService,
-                eventPublisher,
-                companyClock,
-                companyEntityLookup,
-                settlementAllocationRepository,
-                rawMaterialPurchaseRepository,
-                invoiceRepository,
-                rawMaterialMovementRepository,
-                rawMaterialBatchRepository,
-                finishedGoodBatchRepository,
-                dealerRepository,
-                supplierRepository,
-                invoiceSettlementPolicy,
-                journalReferenceResolver,
-                journalReferenceMappingRepository,
-                entityManager,
-                systemSettingsService,
-                auditService,
-                accountingEventStore,
-                mock(org.springframework.beans.factory.ObjectProvider.class)));
+                accountingEventStore));
     creditDebitNoteService =
         spy(
             new CreditDebitNoteService(
@@ -330,8 +297,7 @@ class AccountingServiceTest {
                 entityManager,
                 systemSettingsService,
                 auditService,
-                accountingEventStore,
-                settlementIdempotencyService));
+                accountingEventStore));
     settlementService =
         spy(
             new SettlementService(
@@ -450,7 +416,6 @@ class AccountingServiceTest {
     environment = new MockEnvironment();
     ReflectionTestUtils.setField(accountingService, "environment", environment);
     ReflectionTestUtils.setField(journalEntryService, "environment", environment);
-    ReflectionTestUtils.setField(settlementIdempotencyService, "environment", environment);
     ReflectionTestUtils.setField(dealerReceiptService, "environment", environment);
     ReflectionTestUtils.setField(settlementService, "environment", environment);
     ReflectionTestUtils.setField(creditDebitNoteService, "environment", environment);
@@ -5926,7 +5891,7 @@ class AccountingServiceTest {
             eq(company), eq(createdEntry)))
         .thenReturn(List.of());
     doReturn(stubEntry(910L))
-        .when(settlementIdempotencyService)
+        .when(dealerReceiptService)
         .createJournalEntry(any(JournalEntryRequest.class));
     when(companyEntityLookup.requireJournalEntry(eq(company), eq(910L))).thenReturn(createdEntry);
     when(settlementAllocationRepository.saveAll(any()))
@@ -6066,7 +6031,7 @@ class AccountingServiceTest {
             eq(company), eq(createdEntry)))
         .thenReturn(List.of());
     doReturn(stubEntry(1910L))
-        .when(settlementIdempotencyService)
+        .when(dealerReceiptService)
         .createJournalEntry(any(JournalEntryRequest.class));
     when(companyEntityLookup.requireJournalEntry(eq(company), eq(1910L))).thenReturn(createdEntry);
     when(settlementAllocationRepository.saveAll(any()))
@@ -6216,7 +6181,7 @@ class AccountingServiceTest {
             eq(company), eq(createdEntry)))
         .thenReturn(List.of());
     doReturn(stubEntry(920L))
-        .when(settlementIdempotencyService)
+        .when(dealerReceiptService)
         .createJournalEntry(any(JournalEntryRequest.class));
     when(companyEntityLookup.requireJournalEntry(eq(company), eq(920L))).thenReturn(createdEntry);
     when(settlementAllocationRepository.saveAll(any()))
@@ -12336,7 +12301,7 @@ class AccountingServiceTest {
               persistedEntries.put(entryId, entry);
               return journalEntryDto(entryId, payload.referenceNumber());
             })
-        .when(settlementIdempotencyService)
+        .when(dealerReceiptService)
         .createJournalEntry(any(JournalEntryRequest.class));
     when(companyEntityLookup.requireJournalEntry(eq(company), any(Long.class)))
         .thenAnswer(invocation -> persistedEntries.get(invocation.getArgument(1)));
@@ -16462,11 +16427,6 @@ class AccountingServiceTest {
   private void setCreateJournalEntryEventTrailStrictness(boolean strict) {
     ReflectionTestUtils.setField(accountingService, "strictAccountingEventTrail", strict);
     ReflectionTestUtils.setField(journalEntryService, "strictAccountingEventTrail", strict);
-  }
-
-  private AccountingIdempotencyService settlementIdempotencyService() {
-    ReflectionTestUtils.setField(accountingService, "settlementService", settlementService);
-    return settlementIdempotencyService;
   }
 
   private AccountingPeriod openPeriod(LocalDate date) {

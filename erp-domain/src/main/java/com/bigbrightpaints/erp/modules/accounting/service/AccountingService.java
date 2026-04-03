@@ -35,6 +35,8 @@ import com.bigbrightpaints.erp.modules.accounting.dto.JournalListItemDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.LandedCostRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.ManualJournalRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.PartnerSettlementResponse;
+import com.bigbrightpaints.erp.modules.accounting.dto.PayrollBatchPaymentRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.PayrollBatchPaymentResponse;
 import com.bigbrightpaints.erp.modules.accounting.dto.PayrollPaymentRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.SupplierPaymentRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.SupplierSettlementRequest;
@@ -199,7 +201,6 @@ public class AccountingService extends AccountingCoreEngineCore {
     return journalEntryService.listJournals(fromDate, toDate, journalType, sourceModule, page, size);
   }
 
-  @Override
   public JournalEntryDto postPayrollRun(
       String runNumber,
       Long runId,
@@ -207,6 +208,11 @@ public class AccountingService extends AccountingCoreEngineCore {
       String memo,
       List<JournalEntryRequest.JournalLineRequest> lines) {
     return payrollAccountingService.postPayrollRun(runNumber, runId, postingDate, memo, lines);
+  }
+
+  public PayrollBatchPaymentResponse processPayrollBatchPayment(
+      PayrollBatchPaymentRequest request) {
+    return payrollAccountingService.processPayrollBatchPayment(request);
   }
 
   @Override
@@ -220,7 +226,6 @@ public class AccountingService extends AccountingCoreEngineCore {
     return journalEntryService.reverseClosingEntryForPeriodReopen(entry, period, reason);
   }
 
-  @Override
   public JournalEntryDto createManualJournalEntry(
       JournalEntryRequest request, String idempotencyKey) {
     return resolveAccountingFacade().createManualJournalEntry(request, idempotencyKey);
@@ -242,32 +247,26 @@ public class AccountingService extends AccountingCoreEngineCore {
     return dealerReceiptService.recordDealerReceiptSplit(request);
   }
 
-  @Override
   public JournalEntryDto recordSupplierPayment(SupplierPaymentRequest request) {
     return settlementService.recordSupplierPayment(request);
   }
 
-  @Override
   public JournalEntryDto recordPayrollPayment(PayrollPaymentRequest request) {
     return payrollAccountingService.recordPayrollPayment(request);
   }
 
-  @Override
   public PartnerSettlementResponse settleDealerInvoices(DealerSettlementRequest request) {
     return settlementService.settleDealerInvoices(request);
   }
 
-  @Override
   public PartnerSettlementResponse autoSettleDealer(Long dealerId, AutoSettlementRequest request) {
     return settlementService.autoSettleDealer(dealerId, request);
   }
 
-  @Override
   public PartnerSettlementResponse settleSupplierInvoices(SupplierSettlementRequest request) {
     return settlementService.settleSupplierInvoices(request);
   }
 
-  @Override
   public PartnerSettlementResponse autoSettleSupplier(
       Long supplierId, AutoSettlementRequest request) {
     return settlementService.autoSettleSupplier(supplierId, request);

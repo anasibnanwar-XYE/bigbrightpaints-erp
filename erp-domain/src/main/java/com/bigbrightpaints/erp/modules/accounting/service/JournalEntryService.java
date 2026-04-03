@@ -100,8 +100,7 @@ public class JournalEntryService extends AccountingCoreEngineCore {
       EntityManager entityManager,
       SystemSettingsService systemSettingsService,
       AuditService auditService,
-      AccountingEventStore accountingEventStore,
-      AccountingIdempotencyService unusedAccountingIdempotencyService) {
+      AccountingEventStore accountingEventStore) {
     super(
         companyContextService,
         accountRepository,
@@ -743,7 +742,6 @@ public class JournalEntryService extends AccountingCoreEngineCore {
   }
 
   @Transactional
-  @Override
   public JournalEntryDto createManualJournalEntry(
       JournalEntryRequest request, String idempotencyKey) {
     if (request == null) {

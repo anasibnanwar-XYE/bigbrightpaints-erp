@@ -1210,39 +1210,6 @@ class TS_RuntimeAccountingReplayConflictExecutableCoverageTest {
             com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade>
         accountingFacadeProvider =
             org.mockito.Mockito.mock(org.springframework.beans.factory.ObjectProvider.class);
-    com.bigbrightpaints.erp.modules.accounting.service.AccountingIdempotencyService
-        settlementIdempotencyService =
-            org.mockito.Mockito.spy(
-                new com.bigbrightpaints.erp.modules.accounting.service.AccountingIdempotencyService(
-                    companyContextService,
-                    accountRepository,
-                    journalEntryRepository,
-                    dealerLedgerService,
-                    supplierLedgerService,
-                    payrollRunRepository,
-                    payrollRunLineRepository,
-                    accountingPeriodService,
-                    referenceNumberService,
-                    eventPublisher,
-                    companyClock,
-                    companyEntityLookup,
-                    settlementAllocationRepository,
-                    rawMaterialPurchaseRepository,
-                    invoiceRepository,
-                    rawMaterialMovementRepository,
-                    rawMaterialBatchRepository,
-                    finishedGoodBatchRepository,
-                    dealerRepository,
-                    supplierRepository,
-                    invoiceSettlementPolicy,
-                    journalReferenceResolver,
-                    journalReferenceMappingRepository,
-                    entityManager,
-                    systemSettingsService,
-                    auditService,
-                    accountingEventStore,
-                    org.mockito.Mockito.mock(
-                        org.springframework.beans.factory.ObjectProvider.class)));
     SettlementService settlementService =
         org.mockito.Mockito.spy(
             new SettlementService(
