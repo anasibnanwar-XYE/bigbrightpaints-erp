@@ -20,6 +20,7 @@ import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatchRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovementRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialRepository;
+import com.bigbrightpaints.erp.modules.inventory.service.CompanyScopedInventoryLookupService;
 import com.bigbrightpaints.erp.modules.inventory.service.RawMaterialService;
 import com.bigbrightpaints.erp.modules.purchasing.domain.GoodsReceiptRepository;
 import com.bigbrightpaints.erp.modules.purchasing.domain.PurchaseOrderRepository;
@@ -116,6 +117,8 @@ public class PurchasingService {
       RawMaterialMovementRepository movementRepository,
       GoodsReceiptRepository goodsReceiptRepository,
       AccountingFacade accountingFacade,
+      CompanyScopedPurchasingLookupService purchasingLookupService,
+      CompanyScopedInventoryLookupService inventoryLookupService,
       JournalEntryRepository journalEntryRepository,
       CompanyEntityLookup companyEntityLookup,
       ReferenceNumberService referenceNumberService,
@@ -132,8 +135,8 @@ public class PurchasingService {
         new PurchaseOrderService(
             companyContextService,
             purchaseOrderRepository,
-            rawMaterialRepository,
-            companyEntityLookup,
+            purchasingLookupService,
+            inventoryLookupService,
             responseMapper,
             purchaseOrderStatusHistoryRepository);
     this.goodsReceiptService =
@@ -141,9 +144,9 @@ public class PurchasingService {
             companyContextService,
             purchaseOrderRepository,
             goodsReceiptRepository,
-            rawMaterialRepository,
             rawMaterialService,
-            companyEntityLookup,
+            purchasingLookupService,
+            inventoryLookupService,
             accountingPeriodService,
             responseMapper,
             this.purchaseOrderService,
@@ -160,6 +163,8 @@ public class PurchasingService {
                 rawMaterialService,
                 movementRepository,
                 accountingFacade,
+                purchasingLookupService,
+                inventoryLookupService,
                 companyEntityLookup,
                 referenceNumberService,
                 companyClock,
@@ -177,7 +182,8 @@ public class PurchasingService {
             accountingFacade,
             journalEntryRepository,
             new JournalCorrectionMetadataService(journalEntryRepository),
-            companyEntityLookup,
+            purchasingLookupService,
+            inventoryLookupService,
             referenceNumberService,
             companyClock,
             gstService,

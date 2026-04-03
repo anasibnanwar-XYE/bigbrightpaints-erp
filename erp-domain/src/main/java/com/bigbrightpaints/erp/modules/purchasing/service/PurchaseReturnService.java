@@ -15,7 +15,6 @@ import org.springframework.util.StringUtils;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.core.util.MoneyUtils;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalCorrectionType;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
@@ -35,6 +34,7 @@ import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatchReposito
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovement;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovementRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialRepository;
+import com.bigbrightpaints.erp.modules.inventory.service.CompanyScopedInventoryLookupService;
 import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchase;
 import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchaseLine;
 import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchaseRepository;
@@ -55,7 +55,8 @@ public class PurchaseReturnService {
   private final AccountingFacade accountingFacade;
   private final JournalEntryRepository journalEntryRepository;
   private final JournalCorrectionMetadataService journalCorrectionMetadataService;
-  private final CompanyEntityLookup companyEntityLookup;
+  private final CompanyScopedPurchasingLookupService purchasingLookupService;
+  private final CompanyScopedInventoryLookupService inventoryLookupService;
   private final ReferenceNumberService referenceNumberService;
   private final CompanyClock companyClock;
   private final GstService gstService;
@@ -70,7 +71,8 @@ public class PurchaseReturnService {
       AccountingFacade accountingFacade,
       JournalEntryRepository journalEntryRepository,
       JournalCorrectionMetadataService journalCorrectionMetadataService,
-      CompanyEntityLookup companyEntityLookup,
+      CompanyScopedPurchasingLookupService purchasingLookupService,
+      CompanyScopedInventoryLookupService inventoryLookupService,
       ReferenceNumberService referenceNumberService,
       CompanyClock companyClock,
       GstService gstService,
@@ -83,7 +85,8 @@ public class PurchaseReturnService {
     this.accountingFacade = accountingFacade;
     this.journalEntryRepository = journalEntryRepository;
     this.journalCorrectionMetadataService = journalCorrectionMetadataService;
-    this.companyEntityLookup = companyEntityLookup;
+    this.purchasingLookupService = purchasingLookupService;
+    this.inventoryLookupService = inventoryLookupService;
     this.referenceNumberService = referenceNumberService;
     this.companyClock = companyClock;
     this.gstService = gstService;
@@ -93,7 +96,7 @@ public class PurchaseReturnService {
   @Transactional
   public PurchaseReturnPreviewDto previewPurchaseReturn(PurchaseReturnRequest request) {
     Company company = companyContextService.requireCurrentCompany();
-    Supplier supplier = companyEntityLookup.requireSupplier(company, request.supplierId());
+    Supplier supplier = purchasingLookupService.requireSupplier(company, request.supplierId());
     supplier.requireTransactionalUsage("preview purchase returns");
     RawMaterialPurchase purchase =
         purchaseRepository
@@ -157,7 +160,7 @@ public class PurchaseReturnService {
   @Transactional
   public JournalEntryDto recordPurchaseReturn(PurchaseReturnRequest request) {
     Company company = companyContextService.requireCurrentCompany();
-    Supplier supplier = companyEntityLookup.requireSupplier(company, request.supplierId());
+    Supplier supplier = purchasingLookupService.requireSupplier(company, request.supplierId());
     RawMaterialPurchase purchase =
         purchaseRepository
             .lockByCompanyAndId(company, request.purchaseId())
@@ -661,7 +664,7 @@ public class PurchaseReturnService {
 
   private RawMaterial requireActiveMaterial(Company company, Long rawMaterialId) {
     try {
-      return companyEntityLookup.lockActiveRawMaterial(company, rawMaterialId);
+      return inventoryLookupService.lockActiveRawMaterial(company, rawMaterialId);
     } catch (IllegalArgumentException ex) {
       throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
           "Raw material not found");

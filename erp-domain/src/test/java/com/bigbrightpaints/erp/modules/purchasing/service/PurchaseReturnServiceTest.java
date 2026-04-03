@@ -27,7 +27,6 @@ import org.springframework.test.util.ReflectionTestUtils;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalCorrectionType;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
@@ -45,6 +44,7 @@ import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatchReposito
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovement;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovementRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialRepository;
+import com.bigbrightpaints.erp.modules.inventory.service.CompanyScopedInventoryLookupService;
 import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchase;
 import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchaseLine;
 import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchaseRepository;
@@ -65,7 +65,8 @@ class PurchaseReturnServiceTest {
   @Mock private AccountingFacade accountingFacade;
   @Mock private JournalEntryRepository journalEntryRepository;
   @Mock private JournalCorrectionMetadataService journalCorrectionMetadataService;
-  @Mock private CompanyEntityLookup companyEntityLookup;
+  @Mock private CompanyScopedPurchasingLookupService purchasingLookupService;
+  @Mock private CompanyScopedInventoryLookupService inventoryLookupService;
   @Mock private ReferenceNumberService referenceNumberService;
   @Mock private CompanyClock companyClock;
   @Mock private GstService gstService;
@@ -89,7 +90,8 @@ class PurchaseReturnServiceTest {
             accountingFacade,
             journalEntryRepository,
             journalCorrectionMetadataService,
-            companyEntityLookup,
+            purchasingLookupService,
+            inventoryLookupService,
             referenceNumberService,
             companyClock,
             gstService,
@@ -130,11 +132,11 @@ class PurchaseReturnServiceTest {
     purchase.getLines().add(line);
 
     lenient().when(companyContextService.requireCurrentCompany()).thenReturn(company);
-    lenient().when(companyEntityLookup.requireSupplier(company, 10L)).thenReturn(supplier);
+    lenient().when(purchasingLookupService.requireSupplier(company, 10L)).thenReturn(supplier);
     lenient()
         .when(purchaseRepository.lockByCompanyAndId(company, 30L))
         .thenReturn(Optional.of(purchase));
-    lenient().when(companyEntityLookup.lockActiveRawMaterial(company, 20L)).thenReturn(material);
+    lenient().when(inventoryLookupService.lockActiveRawMaterial(company, 20L)).thenReturn(material);
     lenient()
         .when(
             movementRepository.findByRawMaterialCompanyAndReferenceTypeAndReferenceId(
@@ -239,7 +241,7 @@ class PurchaseReturnServiceTest {
     Account payable = new Account();
     ReflectionTestUtils.setField(payable, "id", 40L);
     supplier.setPayableAccount(payable);
-    when(companyEntityLookup.lockActiveRawMaterial(company, 20L))
+    when(inventoryLookupService.lockActiveRawMaterial(company, 20L))
         .thenThrow(new IllegalArgumentException("Raw material not found: id=20"));
 
     PurchaseReturnRequest request =
@@ -403,7 +405,7 @@ class PurchaseReturnServiceTest {
     ReflectionTestUtils.setField(otherMaterial, "id", 21L);
     otherMaterial.setCompany(company);
     otherMaterial.setName("Solvent");
-    when(companyEntityLookup.lockActiveRawMaterial(company, 21L)).thenReturn(otherMaterial);
+    when(inventoryLookupService.lockActiveRawMaterial(company, 21L)).thenReturn(otherMaterial);
 
     assertThatThrownBy(
             () ->
