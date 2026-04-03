@@ -1200,15 +1200,15 @@ class TS_RuntimeAccountingReplayConflictExecutableCoverageTest {
         creditDebitNoteService =
             org.mockito.Mockito.mock(
                 com.bigbrightpaints.erp.modules.accounting.service.CreditDebitNoteService.class);
-    com.bigbrightpaints.erp.modules.accounting.service.AccountingAuditService
-        accountingAuditService =
-            org.mockito.Mockito.mock(
-                com.bigbrightpaints.erp.modules.accounting.service.AccountingAuditService.class);
     com.bigbrightpaints.erp.modules.accounting.service.InventoryAccountingService
         inventoryAccountingService =
             org.mockito.Mockito.mock(
                 com.bigbrightpaints.erp.modules.accounting.service.InventoryAccountingService
                     .class);
+    com.bigbrightpaints.erp.modules.accounting.service.PayrollAccountingService
+        payrollAccountingService =
+            org.mockito.Mockito.mock(
+                com.bigbrightpaints.erp.modules.accounting.service.PayrollAccountingService.class);
     org.springframework.beans.factory.ObjectProvider<
             com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade>
         accountingFacadeProvider =
@@ -1309,8 +1309,8 @@ class TS_RuntimeAccountingReplayConflictExecutableCoverageTest {
         dealerReceiptService,
         settlementService,
         creditDebitNoteService,
-        accountingAuditService,
         inventoryAccountingService,
+        payrollAccountingService,
         accountingFacadeProvider);
   }
 

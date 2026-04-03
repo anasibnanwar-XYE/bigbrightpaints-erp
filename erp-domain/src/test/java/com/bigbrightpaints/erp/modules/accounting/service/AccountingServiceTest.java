@@ -20,6 +20,7 @@ import static org.mockito.Mockito.when;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -165,6 +166,7 @@ class AccountingServiceTest {
   private SettlementService settlementService;
   private CreditDebitNoteService creditDebitNoteService;
   private InventoryAccountingService inventoryAccountingService;
+  private PayrollAccountingService payrollAccountingService;
   private org.springframework.beans.factory.ObjectProvider<AccountingFacade>
       accountingFacadeProvider;
   private AccountingFacade accountingFacade;
@@ -361,6 +363,37 @@ class AccountingServiceTest {
                 auditService,
                 accountingEventStore,
                 settlementIdempotencyService));
+    payrollAccountingService =
+        spy(
+            new PayrollAccountingService(
+                companyContextService,
+                accountRepository,
+                journalEntryRepository,
+                dealerLedgerService,
+                supplierLedgerService,
+                payrollRunRepository,
+                payrollRunLineRepository,
+                accountingPeriodService,
+                referenceNumberService,
+                eventPublisher,
+                companyClock,
+                companyEntityLookup,
+                settlementAllocationRepository,
+                rawMaterialPurchaseRepository,
+                invoiceRepository,
+                rawMaterialMovementRepository,
+                rawMaterialBatchRepository,
+                finishedGoodBatchRepository,
+                dealerRepository,
+                supplierRepository,
+                invoiceSettlementPolicy,
+                journalReferenceResolver,
+                journalReferenceMappingRepository,
+                entityManager,
+                systemSettingsService,
+                auditService,
+                accountingEventStore,
+                journalEntryService));
     accountingFacadeProvider = mock(org.springframework.beans.factory.ObjectProvider.class);
     accountingService =
         new AccountingService(
@@ -395,8 +428,8 @@ class AccountingServiceTest {
             dealerReceiptService,
             settlementService,
             creditDebitNoteService,
-            mock(AccountingAuditService.class),
             inventoryAccountingService,
+            payrollAccountingService,
             accountingFacadeProvider);
     accountingFacade =
         spy(
@@ -421,6 +454,7 @@ class AccountingServiceTest {
     ReflectionTestUtils.setField(settlementService, "environment", environment);
     ReflectionTestUtils.setField(creditDebitNoteService, "environment", environment);
     ReflectionTestUtils.setField(inventoryAccountingService, "environment", environment);
+    ReflectionTestUtils.setField(payrollAccountingService, "environment", environment);
     company = new Company();
     company.setBaseCurrency("INR");
     lenient().when(companyContextService.requireCurrentCompany()).thenReturn(company);
@@ -1144,8 +1178,6 @@ class AccountingServiceTest {
 
   @Test
   void recordPayrollPayment_createsPaymentJournalForPostedRun() {
-    AccountingService service = spy(accountingService);
-
     PayrollRun run = new PayrollRun();
     ReflectionTestUtils.setField(run, "id", 44L);
     run.setStatus(PayrollRun.PayrollStatus.POSTED);
@@ -1177,12 +1209,12 @@ class AccountingServiceTest {
         .thenReturn(Optional.of(salaryPayableAccount));
     when(companyEntityLookup.requireJournalEntry(company, 501L)).thenReturn(postingJournal);
     when(companyEntityLookup.requireJournalEntry(company, 701L)).thenReturn(paymentJournal);
-    doReturn(stubEntry(701L)).when(service).createJournalEntry(any());
+    doReturn(stubEntry(701L)).when(payrollAccountingService).createJournalEntry(any());
 
     PayrollPaymentRequest request =
         new PayrollPaymentRequest(44L, 10L, 20L, new BigDecimal("100.00"), null, "payment");
 
-    JournalEntryDto result = service.recordPayrollPayment(request);
+    JournalEntryDto result = accountingService.recordPayrollPayment(request);
 
     assertThat(result.id()).isEqualTo(701L);
     assertThat(run.getPaymentJournalEntryId()).isEqualTo(701L);
@@ -1194,7 +1226,7 @@ class AccountingServiceTest {
   void resolvePayrollRunToken_appendsRunIdWhenRunNumberDoesNotContainSuffix() {
     String token =
         ReflectionTestUtils.invokeMethod(
-            accountingService, "resolvePayrollRunToken", "FEB-2026", 44L);
+            payrollAccountingService, "resolvePayrollRunToken", "FEB-2026", 44L);
 
     assertThat(token).isEqualTo("FEB-2026-44");
   }
@@ -1204,10 +1236,10 @@ class AccountingServiceTest {
   void resolvePayrollRunToken_preservesLegacyAndSuffixRunNumbers() {
     String legacyToken =
         ReflectionTestUtils.invokeMethod(
-            accountingService, "resolvePayrollRunToken", "LEGACY-44", 44L);
+            payrollAccountingService, "resolvePayrollRunToken", "LEGACY-44", 44L);
     String suffixedToken =
         ReflectionTestUtils.invokeMethod(
-            accountingService, "resolvePayrollRunToken", "FEB-2026-44", 44L);
+            payrollAccountingService, "resolvePayrollRunToken", "FEB-2026-44", 44L);
 
     assertThat(legacyToken).isEqualTo("LEGACY-44");
     assertThat(suffixedToken).isEqualTo("FEB-2026-44");
@@ -1222,7 +1254,7 @@ class AccountingServiceTest {
 
     String reference =
         ReflectionTestUtils.invokeMethod(
-            accountingService, "resolvePayrollPaymentReference", run, request, company);
+            payrollAccountingService, "resolvePayrollPaymentReference", run, request, company);
 
     assertThat(reference).isEqualTo("PAYROLL-PAY-LEGACY-77");
   }
@@ -1236,7 +1268,7 @@ class AccountingServiceTest {
 
     String reference =
         ReflectionTestUtils.invokeMethod(
-            accountingService, "resolvePayrollPaymentReference", run, request, company);
+            payrollAccountingService, "resolvePayrollPaymentReference", run, request, company);
 
     assertThat(reference).isEqualTo("PAYROLL-PAY-AUTO-1");
   }
@@ -12542,45 +12574,14 @@ class AccountingServiceTest {
   }
 
   @Test
-  void decrementSignatureCount_handlesNullZeroSingleAndMultipleCounts() throws Exception {
-    Class<?> signatureType =
-        Class.forName(
-            "com.bigbrightpaints.erp.modules.accounting.service.AccountingService$DealerPaymentSignature");
-    java.lang.reflect.Constructor<?> constructor =
-        signatureType.getDeclaredConstructor(Long.class, BigDecimal.class);
-    constructor.setAccessible(true);
-    Object signature = constructor.newInstance(20L, new BigDecimal("100.00"));
-
-    Map<Object, Integer> counts = new java.util.HashMap<>();
-
+  void accountingService_removesDeadDealerPaymentSignatureHelperScaffold() {
     assertThat(
-            (Boolean)
-                ReflectionTestUtils.invokeMethod(
-                    accountingService, "decrementSignatureCount", counts, signature))
-        .isFalse();
-
-    counts.put(signature, 0);
-    assertThat(
-            (Boolean)
-                ReflectionTestUtils.invokeMethod(
-                    accountingService, "decrementSignatureCount", counts, signature))
-        .isFalse();
-
-    counts.put(signature, 1);
-    assertThat(
-            (Boolean)
-                ReflectionTestUtils.invokeMethod(
-                    accountingService, "decrementSignatureCount", counts, signature))
-        .isTrue();
-    assertThat(counts).doesNotContainKey(signature);
-
-    counts.put(signature, 3);
-    assertThat(
-            (Boolean)
-                ReflectionTestUtils.invokeMethod(
-                    accountingService, "decrementSignatureCount", counts, signature))
-        .isTrue();
-    assertThat(counts).containsEntry(signature, 2);
+            Arrays.stream(AccountingService.class.getDeclaredMethods())
+                .map(java.lang.reflect.Method::getName)
+                .toList())
+        .doesNotContain("decrementSignatureCount");
+    assertThat(Arrays.stream(AccountingService.class.getDeclaredClasses()).map(Class::getSimpleName))
+        .doesNotContain("DealerPaymentSignature");
   }
 
   private void assertPartnerReplayDetails(

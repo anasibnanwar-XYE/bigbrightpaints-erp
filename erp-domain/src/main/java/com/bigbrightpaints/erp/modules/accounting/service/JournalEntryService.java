@@ -45,7 +45,7 @@ import com.bigbrightpaints.erp.shared.dto.PageResponse;
 import jakarta.persistence.EntityManager;
 
 @Service
-public class JournalEntryService extends AccountingCoreEngine {
+public class JournalEntryService extends AccountingCoreEngineCore {
 
   private static final BigDecimal JOURNAL_BALANCE_TOLERANCE = BigDecimal.ZERO;
 

@@ -34,7 +34,7 @@ import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
 import jakarta.persistence.EntityManager;
 
 @Service
-public class InventoryAccountingService extends AccountingCoreEngine {
+public class InventoryAccountingService extends AccountingCoreEngineCore {
 
   @Autowired
   public InventoryAccountingService(

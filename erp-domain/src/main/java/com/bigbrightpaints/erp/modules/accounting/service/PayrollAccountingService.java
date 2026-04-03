@@ -1,6 +1,11 @@
 package com.bigbrightpaints.erp.modules.accounting.service;
 
+import java.time.LocalDate;
+import java.util.List;
+
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.stereotype.Service;
 
 import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.config.SystemSettingsService;
@@ -10,6 +15,9 @@ import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalReferenceMappingRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAllocationRepository;
+import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
+import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.PayrollPaymentRequest;
 import com.bigbrightpaints.erp.modules.accounting.event.AccountingEventStore;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.hr.domain.PayrollRunLineRepository;
@@ -25,9 +33,13 @@ import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
 
 import jakarta.persistence.EntityManager;
 
-abstract class AccountingCoreEngine extends AccountingCoreEngineCore {
+@Service
+public class PayrollAccountingService extends AccountingCoreEngineCore {
 
-  public AccountingCoreEngine(
+  private final JournalEntryService journalEntryService;
+
+  @Autowired
+  public PayrollAccountingService(
       CompanyContextService companyContextService,
       AccountRepository accountRepository,
       JournalEntryRepository journalEntryRepository,
@@ -54,7 +66,8 @@ abstract class AccountingCoreEngine extends AccountingCoreEngineCore {
       EntityManager entityManager,
       SystemSettingsService systemSettingsService,
       AuditService auditService,
-      AccountingEventStore accountingEventStore) {
+      AccountingEventStore accountingEventStore,
+      JournalEntryService journalEntryService) {
     super(
         companyContextService,
         accountRepository,
@@ -83,5 +96,30 @@ abstract class AccountingCoreEngine extends AccountingCoreEngineCore {
         systemSettingsService,
         auditService,
         accountingEventStore);
+    this.journalEntryService = journalEntryService;
+  }
+
+  public JournalEntryDto postPayrollRun(
+      String runNumber,
+      Long runId,
+      LocalDate postingDate,
+      String memo,
+      List<JournalEntryRequest.JournalLineRequest> lines) {
+    return super.postPayrollRun(runNumber, runId, postingDate, memo, lines);
+  }
+
+  public JournalEntryDto recordPayrollPayment(PayrollPaymentRequest request) {
+    return super.recordPayrollPayment(request);
+  }
+
+  @Override
+  public JournalEntryDto createJournalEntry(JournalEntryRequest request) {
+    return journalEntryService.createJournalEntry(request);
+  }
+
+  @Override
+  public JournalEntryDto createStandardJournal(
+      com.bigbrightpaints.erp.modules.accounting.dto.JournalCreationRequest request) {
+    return journalEntryService.createStandardJournal(request);
   }
 }

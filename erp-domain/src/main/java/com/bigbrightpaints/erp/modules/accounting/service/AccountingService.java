@@ -56,14 +56,14 @@ import com.bigbrightpaints.erp.shared.dto.PageResponse;
 import jakarta.persistence.EntityManager;
 
 @Service
-public class AccountingService extends AccountingCoreService {
+public class AccountingService extends AccountingCoreEngineCore {
 
   private final JournalEntryService journalEntryService;
   private final DealerReceiptService dealerReceiptService;
   private final SettlementService settlementService;
   private final CreditDebitNoteService creditDebitNoteService;
-  private final AccountingAuditService accountingAuditService;
   private final InventoryAccountingService inventoryAccountingService;
+  private final PayrollAccountingService payrollAccountingService;
   private final ObjectProvider<AccountingFacade> accountingFacadeProvider;
 
   /**
@@ -117,8 +117,8 @@ public class AccountingService extends AccountingCoreService {
       DealerReceiptService dealerReceiptService,
       SettlementService settlementService,
       CreditDebitNoteService creditDebitNoteService,
-      AccountingAuditService accountingAuditService,
       InventoryAccountingService inventoryAccountingService,
+      PayrollAccountingService payrollAccountingService,
       ObjectProvider<AccountingFacade> accountingFacadeProvider) {
     super(
         companyContextService,
@@ -152,8 +152,8 @@ public class AccountingService extends AccountingCoreService {
     this.dealerReceiptService = dealerReceiptService;
     this.settlementService = settlementService;
     this.creditDebitNoteService = creditDebitNoteService;
-    this.accountingAuditService = accountingAuditService;
     this.inventoryAccountingService = inventoryAccountingService;
+    this.payrollAccountingService = payrollAccountingService;
     this.accountingFacadeProvider = accountingFacadeProvider;
   }
 
@@ -206,7 +206,7 @@ public class AccountingService extends AccountingCoreService {
       LocalDate postingDate,
       String memo,
       List<JournalEntryRequest.JournalLineRequest> lines) {
-    return super.postPayrollRun(runNumber, runId, postingDate, memo, lines);
+    return payrollAccountingService.postPayrollRun(runNumber, runId, postingDate, memo, lines);
   }
 
   @Override
@@ -249,7 +249,7 @@ public class AccountingService extends AccountingCoreService {
 
   @Override
   public JournalEntryDto recordPayrollPayment(PayrollPaymentRequest request) {
-    return super.recordPayrollPayment(request);
+    return payrollAccountingService.recordPayrollPayment(request);
   }
 
   @Override
@@ -316,23 +316,4 @@ public class AccountingService extends AccountingCoreService {
     }
     return facade;
   }
-
-  private boolean decrementSignatureCount(
-      java.util.Map<DealerPaymentSignature, Integer> counts, DealerPaymentSignature signature) {
-    if (counts == null || signature == null) {
-      return false;
-    }
-    Integer current = counts.get(signature);
-    if (current == null || current <= 0) {
-      return false;
-    }
-    if (current == 1) {
-      counts.remove(signature);
-      return true;
-    }
-    counts.put(signature, current - 1);
-    return true;
-  }
-
-  private record DealerPaymentSignature(Long accountId, java.math.BigDecimal amount) {}
 }

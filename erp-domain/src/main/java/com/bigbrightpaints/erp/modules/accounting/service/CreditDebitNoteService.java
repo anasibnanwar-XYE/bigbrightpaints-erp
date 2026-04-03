@@ -35,7 +35,7 @@ import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
 import jakarta.persistence.EntityManager;
 
 @Service
-public class CreditDebitNoteService extends AccountingCoreEngine {
+public class CreditDebitNoteService extends AccountingCoreEngineCore {
 
   @Autowired
   public CreditDebitNoteService(

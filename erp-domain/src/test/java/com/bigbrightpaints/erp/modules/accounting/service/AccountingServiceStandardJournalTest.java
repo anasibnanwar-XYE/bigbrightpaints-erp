@@ -113,8 +113,8 @@ class AccountingServiceStandardJournalTest {
             mock(DealerReceiptService.class),
             mock(SettlementService.class),
             mock(CreditDebitNoteService.class),
-            mock(AccountingAuditService.class),
             mock(InventoryAccountingService.class),
+            mock(PayrollAccountingService.class),
             accountingFacadeProvider);
   }
 

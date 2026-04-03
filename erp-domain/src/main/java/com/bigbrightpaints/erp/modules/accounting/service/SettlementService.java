@@ -38,7 +38,7 @@ import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
 import jakarta.persistence.EntityManager;
 
 @Service
-public class SettlementService extends AccountingCoreEngine {
+public class SettlementService extends AccountingCoreEngineCore {
 
   private final AccountingIdempotencyService accountingIdempotencyService;
 
