@@ -95,12 +95,16 @@ Rationale:
 - `TS_RuntimeAccountingReplayConflictExecutableCoverageTest`
 - `TS_RuntimeAccountingPayrollPostingExecutableCoverageTest`
 - `CR_ManualJournalSafetyTest`
+- `CR_DealerReceiptSettlementAuditTrailTest`
 - `CR_PayrollIdempotencyConcurrencyTest`
+- `CR_PurchasingToApAccountingTest`
 - `NumberSequenceServiceIntegrationTest`
 - `ReferenceNumberServiceTest`
+- `CR_SalesReturnCreditNoteIdempotencyTest`
 - `TS_RuntimeReferenceNumberServiceExecutableCoverageTest`
 - `OrderNumberServiceTest`
-- `InvoiceNumberServiceTest`
+- `InvoiceServiceTest`
+- Negative no-sleep scan for the current accounting-core hard-cut: `erp-domain/src/main/java/com/bigbrightpaints/erp/core/service/NumberSequenceService.java`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/sales/service/OrderNumberService.java`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/invoice/service/InvoiceNumberService.java`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/internal/AccountingCoreEngineCore.java`, and `erp-domain/src/test/java/com/bigbrightpaints/erp/e2e/accounting/CriticalAccountingAxesIT.java` must not retain `Thread.sleep` in the canonical accounting proof path.
 
 ### Security and tenant runtime
 
