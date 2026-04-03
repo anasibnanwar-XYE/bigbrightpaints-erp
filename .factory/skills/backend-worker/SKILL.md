@@ -55,7 +55,8 @@ None.
 5. For service decomposition:
    - Create new focused service classes
    - Move methods from the god service to appropriate new services
-   - Update the god service to delegate to new services (keep it as a facade initially if needed)
+   - Make the extracted service the canonical owner of the migrated behavior; deleting wrapper shells is not enough if real logic still lives behind `super` calls or dependency hops back into the god class
+   - Update the god service to delegate to the new services only as a thin facade/shim if needed; do not leave business logic ownership in the god service
    - Update all controllers and other services that call the moved methods
    - Update all test imports and references
 6. For new Flyway migrations: continue from the highest existing version number in `migration_v2` only.
@@ -67,7 +68,7 @@ None.
 4. For broader validation when useful (optional, takes ~2.5min): `cd erp-domain && mvn test -Djacoco.skip=true '-Dtest=!*IT,!*ITCase,!*codered*' -pl .`
 5. Manually verify key behaviors using the approach appropriate for the feature:
    - For new endpoints: document curl commands that demonstrate the endpoint works
-   - For refactoring: confirm all callers are updated and tests pass
+   - For refactoring: confirm all callers are updated, tests pass, and extracted services own the migrated behavior instead of delegating back through `super` or monolithic helpers
    - For bug fixes: confirm the specific bug is fixed via the test you wrote
    - For script/governance features: document the exact guard/policy probes that now enforce the intended lane
 6. Check for any regressions in related modules.
@@ -93,7 +94,7 @@ If `mission.md`, `AGENTS.md`, or the feature description explicitly requires rem
 ### Step 6: Update Shared Knowledge
 1. If you discovered important patterns, quirks, or conventions, update `.factory/library/architecture.md`.
 2. If you changed environment setup, update `.factory/library/environment.md`.
-3. If you removed duplicate-truth or dead code paths, append a concise dated note to `.factory/library/remediation-log.md`.
+3. If you removed duplicate-truth or dead code paths and the packet explicitly allows docs/library updates, append a concise dated note to `.factory/library/remediation-log.md`; otherwise state in the handoff that the packet intentionally skipped remediation-log updates because docs/library edits were out of scope.
 4. If you found issues outside your feature scope, report them in `discoveredIssues`.
 
 ## Example Handoff
