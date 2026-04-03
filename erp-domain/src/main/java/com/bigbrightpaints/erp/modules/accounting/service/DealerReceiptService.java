@@ -20,7 +20,9 @@ import com.bigbrightpaints.erp.modules.accounting.domain.JournalReferenceMapping
 import com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAllocationRepository;
 import com.bigbrightpaints.erp.modules.accounting.dto.DealerReceiptRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.DealerReceiptSplitRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.JournalCreationRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
+import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest;
 import com.bigbrightpaints.erp.modules.accounting.event.AccountingEventStore;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.hr.domain.PayrollRunLineRepository;
@@ -38,6 +40,8 @@ import jakarta.persistence.EntityManager;
 
 @Service
 public class DealerReceiptService extends AccountingCoreEngineCore {
+
+  private final JournalEntryService journalEntryService;
 
   @Autowired
   public DealerReceiptService(
@@ -67,7 +71,8 @@ public class DealerReceiptService extends AccountingCoreEngineCore {
       EntityManager entityManager,
       SystemSettingsService systemSettingsService,
       AuditService auditService,
-      AccountingEventStore accountingEventStore) {
+      AccountingEventStore accountingEventStore,
+      JournalEntryService journalEntryService) {
     super(
         companyContextService,
         accountRepository,
@@ -96,6 +101,7 @@ public class DealerReceiptService extends AccountingCoreEngineCore {
         systemSettingsService,
         auditService,
         accountingEventStore);
+    this.journalEntryService = journalEntryService;
   }
 
   public JournalEntryDto recordDealerReceipt(DealerReceiptRequest request) {
@@ -118,6 +124,16 @@ public class DealerReceiptService extends AccountingCoreEngineCore {
     int safePage = Math.max(page, 0);
     int safeSize = Math.max(1, Math.min(size, 200));
     return super.listJournalEntries(dealerId, null, safePage, safeSize);
+  }
+
+  @Override
+  public JournalEntryDto createJournalEntry(JournalEntryRequest request) {
+    return journalEntryService.createJournalEntry(request);
+  }
+
+  @Override
+  public JournalEntryDto createStandardJournal(JournalCreationRequest request) {
+    return journalEntryService.createStandardJournal(request);
   }
 
   private DealerReceiptRequest normalizeDealerReceiptRequest(DealerReceiptRequest request) {

@@ -237,7 +237,8 @@ class AccountingServiceTest {
                 entityManager,
                 systemSettingsService,
                 auditService,
-                accountingEventStore));
+                accountingEventStore,
+                journalEntryService));
     inventoryAccountingService =
         spy(
             new InventoryAccountingService(
@@ -267,7 +268,8 @@ class AccountingServiceTest {
                 entityManager,
                 systemSettingsService,
                 auditService,
-                accountingEventStore));
+                accountingEventStore,
+                journalEntryService));
     dealerReceiptService =
         spy(
             new DealerReceiptService(
@@ -297,7 +299,8 @@ class AccountingServiceTest {
                 entityManager,
                 systemSettingsService,
                 auditService,
-                accountingEventStore));
+                accountingEventStore,
+                journalEntryService));
     settlementService =
         spy(
             new SettlementService(
@@ -16319,6 +16322,174 @@ class AccountingServiceTest {
                     "TYPE"))
         .isInstanceOf(ApplicationException.class)
         .hasMessageContaining("already used for another reference");
+  }
+
+  @Test
+  void dealerReceiptService_routesLiveReceiptFlowThroughJournalEntryService() {
+    Account cash = account(20L, "CASH-20", AccountType.ASSET);
+    cash.setActive(true);
+    when(companyEntityLookup.requireAccount(eq(company), eq(20L))).thenReturn(cash);
+    when(accountRepository.updateBalanceAtomic(any(), any(), any())).thenReturn(1);
+    when(journalEntryRepository.save(any(JournalEntry.class)))
+        .thenAnswer(
+            invocation -> {
+              JournalEntry entry = invocation.getArgument(0);
+              if (entry.getId() == null) {
+                ReflectionTestUtils.setField(entry, "id", 9701L);
+              }
+              if (entry.getEntryDate() == null) {
+                entry.setEntryDate(LocalDate.of(2024, 4, 15));
+              }
+              return entry;
+            });
+    doReturn(stubEntry(9701L))
+        .when(journalEntryService)
+        .createJournalEntry(any(JournalEntryRequest.class));
+    JournalEntry posted = journalEntry(9701L, "DR-ROUTE-1");
+    posted.setEntryDate(LocalDate.of(2024, 4, 15));
+    when(companyEntityLookup.requireJournalEntry(company, 9701L)).thenReturn(posted);
+    when(settlementAllocationRepository.findByCompanyAndJournalEntryOrderByCreatedAtAsc(
+            company, posted))
+        .thenReturn(List.of());
+    Dealer routedDealer = dealer(1L, "Dealer 1", account(10001L, "AR-1", AccountType.ASSET));
+    Invoice invoice = invoice(9702L, routedDealer, "INV-9702", new BigDecimal("100.00"));
+    when(invoiceRepository.lockByCompanyAndId(company, 9702L)).thenReturn(Optional.of(invoice));
+
+    dealerReceiptService.recordDealerReceipt(
+        new DealerReceiptRequest(
+            1L,
+            20L,
+            new BigDecimal("100.00"),
+            "DR-ROUTE-1",
+            "Dealer receipt routing",
+            "IDEMP-DR-ROUTE-1",
+            List.of(
+                new SettlementAllocationRequest(
+                    9702L,
+                    null,
+                    new BigDecimal("100.00"),
+                    BigDecimal.ZERO,
+                    BigDecimal.ZERO,
+                    BigDecimal.ZERO,
+                    null))));
+
+    ArgumentCaptor<JournalEntryRequest> payloadCaptor =
+        ArgumentCaptor.forClass(JournalEntryRequest.class);
+    verify(journalEntryService).createJournalEntry(payloadCaptor.capture());
+    assertThat(payloadCaptor.getValue().referenceNumber()).isEqualTo("DR-ROUTE-1");
+    assertThat(payloadCaptor.getValue().dealerId()).isEqualTo(1L);
+    assertThat(payloadCaptor.getValue().lines()).hasSize(2);
+  }
+
+  @Test
+  void creditDebitNoteService_routesLiveCreditNoteFlowThroughJournalEntryService() {
+    when(accountRepository.updateBalanceAtomic(any(), any(), any())).thenReturn(1);
+    when(journalEntryRepository.save(any(JournalEntry.class)))
+        .thenAnswer(
+            invocation -> {
+              JournalEntry entry = invocation.getArgument(0);
+              if (entry.getId() == null) {
+                ReflectionTestUtils.setField(entry, "id", 9801L);
+              }
+              if (entry.getEntryDate() == null) {
+                entry.setEntryDate(LocalDate.of(2024, 6, 1));
+              }
+              return entry;
+            });
+
+    Account receivable = account(98011L, "AR-98011", AccountType.ASSET);
+    Account revenue = account(98012L, "REV-98012", AccountType.REVENUE);
+    Dealer dealer = dealer(98013L, "Dealer Route", receivable);
+    Invoice invoice = invoice(98014L, dealer, "INV-98014", new BigDecimal("100.00"));
+    JournalEntry source = journalEntry(98015L, "INV-98014-JE");
+    addJournalLine(
+        source, receivable, "Invoice receivable", new BigDecimal("100.00"), BigDecimal.ZERO);
+    addJournalLine(source, revenue, "Invoice revenue", BigDecimal.ZERO, new BigDecimal("100.00"));
+    invoice.setJournalEntry(source);
+
+    when(invoiceRepository.lockByCompanyAndId(company, 98014L)).thenReturn(Optional.of(invoice));
+    when(journalEntryRepository.findByCompanyAndReversalOfAndCorrectionReasonIgnoreCase(
+            company, source, "CREDIT_NOTE"))
+        .thenReturn(List.of());
+    doReturn(stubEntry(9801L))
+        .when(journalEntryService)
+        .createJournalEntry(any(JournalEntryRequest.class));
+    JournalEntry posted =
+        creditNoteEntry(9801L, "CN-ROUTE-1", dealer, source, receivable, revenue, "100.00");
+    posted.setEntryDate(LocalDate.of(2024, 6, 1));
+    when(companyEntityLookup.requireJournalEntry(company, 9801L)).thenReturn(posted);
+
+    creditDebitNoteService.postCreditNote(
+        new CreditNoteRequest(
+            98014L,
+            new BigDecimal("100.00"),
+            LocalDate.of(2024, 6, 1),
+            "CN-ROUTE-1",
+            "Credit note routing",
+            "IDEMP-CN-ROUTE-1",
+            Boolean.TRUE));
+
+    ArgumentCaptor<JournalEntryRequest> payloadCaptor =
+        ArgumentCaptor.forClass(JournalEntryRequest.class);
+    verify(journalEntryService).createJournalEntry(payloadCaptor.capture());
+    assertThat(payloadCaptor.getValue().referenceNumber()).isEqualTo("CN-ROUTE-1");
+    assertThat(payloadCaptor.getValue().dealerId()).isEqualTo(98013L);
+    assertThat(payloadCaptor.getValue().lines()).hasSize(2);
+  }
+
+  @Test
+  void inventoryAccountingService_routesLiveLandedCostFlowThroughJournalEntryService() {
+    when(accountRepository.updateBalanceAtomic(any(), any(), any())).thenReturn(1);
+    when(journalEntryRepository.save(any(JournalEntry.class)))
+        .thenAnswer(
+            invocation -> {
+              JournalEntry entry = invocation.getArgument(0);
+              if (entry.getId() == null) {
+                ReflectionTestUtils.setField(entry, "id", 9901L);
+              }
+              if (entry.getEntryDate() == null) {
+                entry.setEntryDate(LocalDate.of(2024, 7, 1));
+              }
+              return entry;
+            });
+
+    Account payable = account(99011L, "AP-99011", AccountType.LIABILITY);
+    Supplier supplier = supplier(99012L, "Supplier Route", payable);
+    RawMaterialPurchase purchase =
+        purchase(
+            99013L,
+            "PUR-99013",
+            supplier,
+            new BigDecimal("250.00"),
+            new BigDecimal("250.00"),
+            "POSTED");
+    Account inventory = account(99014L, "INV-99014", AccountType.ASSET);
+    Account offset = account(99015L, "OFFSET-99015", AccountType.EXPENSE);
+
+    when(companyEntityLookup.requireRawMaterialPurchase(company, 99013L)).thenReturn(purchase);
+    when(companyEntityLookup.requireAccount(company, 99014L)).thenReturn(inventory);
+    when(companyEntityLookup.requireAccount(company, 99015L)).thenReturn(offset);
+    doReturn(stubEntry(9901L))
+        .when(journalEntryService)
+        .createJournalEntry(any(JournalEntryRequest.class));
+
+    inventoryAccountingService.recordLandedCost(
+        new LandedCostRequest(
+            99013L,
+            new BigDecimal("25.00"),
+            99014L,
+            99015L,
+            LocalDate.of(2024, 7, 1),
+            "Landed cost routing",
+            "LC-ROUTE-1",
+            "IDEMP-LC-ROUTE-1",
+            Boolean.TRUE));
+
+    ArgumentCaptor<JournalEntryRequest> payloadCaptor =
+        ArgumentCaptor.forClass(JournalEntryRequest.class);
+    verify(journalEntryService).createJournalEntry(payloadCaptor.capture());
+    assertThat(payloadCaptor.getValue().referenceNumber()).isEqualTo("IDEMP-LC-ROUTE-1");
+    assertThat(payloadCaptor.getValue().lines()).hasSize(2);
   }
 
   private Account account(Long id, String code, AccountType type) {
