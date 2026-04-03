@@ -45,8 +45,8 @@ public class CompanyContextFilter extends OncePerRequestFilter {
   private static final List<CompanyBoundControlRoute> COMPANY_BOUND_CONTROL_ROUTES =
       List.of(
           controlRoute("GET", "^/api/v1/superadmin/tenants/([^/]+)$", false),
-          controlRoute("PUT", "^/api/v1/superadmin/tenants/([^/]+)/lifecycle$", false),
-          controlRoute("PUT", "^/api/v1/superadmin/tenants/([^/]+)/limits$", false),
+          controlRoute("PUT", "^/api/v1/superadmin/tenants/([^/]+)/lifecycle$", true),
+          controlRoute("PUT", "^/api/v1/superadmin/tenants/([^/]+)/limits$", true),
           controlRoute("PUT", "^/api/v1/superadmin/tenants/([^/]+)/modules$", false),
           controlRoute("POST", "^/api/v1/superadmin/tenants/([^/]+)/support/warnings$", false),
           controlRoute(
@@ -135,13 +135,16 @@ public class CompanyContextFilter extends OncePerRequestFilter {
       CompanyBoundControlBinding controlBinding =
           resolveCompanyBoundControlBinding(runtimePath, request.getMethod());
       boolean lifecycleControlRequest = controlBinding != null;
+      boolean hasSuperAdminAuthority = hasSuperAdminAuthority();
       boolean tenantRuntimePolicyControlRequest =
-          controlBinding != null && controlBinding.tenantRuntimePolicyControl();
+          controlBinding != null
+              && controlBinding.tenantRuntimePolicyControl()
+              && hasSuperAdminAuthority;
       if (lifecycleControlRequest && !hasAuthenticatedPrincipal()) {
         denyControlPlaneRequest(response);
         return;
       }
-      if (hasSuperAdminAuthority() && isTenantBusinessRequestBlockedForSuperAdmin(runtimePath)) {
+      if (hasSuperAdminAuthority && isTenantBusinessRequestBlockedForSuperAdmin(runtimePath)) {
         writeAccessDenied(response, "SUPER_ADMIN_PLATFORM_ONLY", SUPER_ADMIN_PLATFORM_ONLY_MESSAGE);
         return;
       }
@@ -188,7 +191,7 @@ public class CompanyContextFilter extends OncePerRequestFilter {
         requestedCompany = null;
       }
       String companyCode = normalizeCompanyCode(requestedCompany);
-      if (hasSuperAdminAuthority() && authScopeService.isPlatformScope(companyCode)) {
+      if (hasSuperAdminAuthority && authScopeService.isPlatformScope(companyCode)) {
         if (!lifecycleControlRequest && !isPlatformScopedRequestAllowed(runtimePath)) {
           writeAccessDenied(
               response, "SUPER_ADMIN_PLATFORM_ONLY", SUPER_ADMIN_PLATFORM_ONLY_MESSAGE);
@@ -206,13 +209,23 @@ public class CompanyContextFilter extends OncePerRequestFilter {
           denyControlPlaneRequest(response);
           return;
         }
-        String pathTargetCompanyCode =
-            normalizeCompanyCode(companyService.resolveCompanyCodeById(lifecycleControlCompanyId));
+        String pathTargetCompanyCode;
+        try {
+          pathTargetCompanyCode =
+              normalizeCompanyCode(companyService.resolveCompanyCodeById(lifecycleControlCompanyId));
+        } catch (RuntimeException ex) {
+          log.warn(
+              "Rejecting control-plane request because target tenant lookup failed. path={}",
+              sanitizeForLog(request.getRequestURI()),
+              ex);
+          denyControlPlaneRequest(response);
+          return;
+        }
         if (pathTargetCompanyCode == null) {
           denyControlPlaneRequest(response);
           return;
         }
-        if (hasSuperAdminAuthority()) {
+        if (hasSuperAdminAuthority) {
           companyCode = pathTargetCompanyCode;
           lifecycleControlBypass = true;
         } else {
@@ -228,15 +241,27 @@ public class CompanyContextFilter extends OncePerRequestFilter {
         }
       }
       if (companyCode != null) {
-        if (isTenantAuditWorkflowRequest(runtimePath) && hasSuperAdminAuthority()) {
+        if (isTenantAuditWorkflowRequest(runtimePath) && hasSuperAdminAuthority) {
           writeAccessDenied(
               response,
               "SUPER_ADMIN_TENANT_WORKFLOW_DENIED",
               "Access denied to tenant audit workflow for platform-only super admin");
           return;
         }
-        CompanyLifecycleState lifecycleState =
-            companyService.resolveLifecycleStateByCode(companyCode);
+        CompanyLifecycleState lifecycleState;
+        try {
+          lifecycleState = companyService.resolveLifecycleStateByCode(companyCode);
+        } catch (RuntimeException ex) {
+          log.warn(
+              "Rejecting request because lifecycle lookup failed. path={}",
+              sanitizeForLog(request.getRequestURI()),
+              ex);
+          writeAccessDenied(
+              response,
+              "TENANT_LIFECYCLE_LOOKUP_UNAVAILABLE",
+              "Tenant lifecycle admission is unavailable");
+          return;
+        }
         // Recovery endpoints for non-active tenants are intended for super-admin operators
         // even when they are not explicitly attached to the tenant membership list.
         if (!lifecycleControlBypass && !validateCompanyAccess(companyCode)) {
