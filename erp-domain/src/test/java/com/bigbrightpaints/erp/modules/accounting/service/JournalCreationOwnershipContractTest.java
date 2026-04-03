@@ -14,8 +14,9 @@ class JournalCreationOwnershipContractTest {
 
   @Test
   void accountingCoreEngineCoreHidesLegacyPublicJournalCreationEntryPoints() throws Exception {
-    Class<?> accountingCoreEngineCore =
-        Class.forName("com.bigbrightpaints.erp.modules.accounting.service.AccountingCoreEngineCore");
+    Class<?> accountingCoreEngineCore = JournalEntryService.class.getSuperclass();
+
+    assertThat(accountingCoreEngineCore.getSimpleName()).isEqualTo("AccountingCoreEngineCore");
 
     assertThat(
             Modifier.isProtected(
@@ -39,8 +40,7 @@ class JournalCreationOwnershipContractTest {
 
   @Test
   void journalEntryServiceRemainsThePublicJournalCreationOwner() throws Exception {
-    Class<?> journalEntryService =
-        Class.forName("com.bigbrightpaints.erp.modules.accounting.service.JournalEntryService");
+    Class<?> journalEntryService = JournalEntryService.class;
 
     assertThat(
             Modifier.isPublic(
