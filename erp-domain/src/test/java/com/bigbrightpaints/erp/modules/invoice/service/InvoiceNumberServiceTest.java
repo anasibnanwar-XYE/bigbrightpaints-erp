@@ -1,12 +1,14 @@
 package com.bigbrightpaints.erp.modules.invoice.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.lenient;
 
 import java.time.LocalDate;
 import java.util.Optional;
@@ -41,7 +43,7 @@ class InvoiceNumberServiceTest {
     when(companyClock.today(any())).thenReturn(LocalDate.of(2024, 1, 1));
     invoiceNumberService =
         new InvoiceNumberService(invoiceSequenceRepository, txManager, companyClock);
-    when(invoiceSequenceRepository.saveAndFlush(any()))
+    lenient().when(invoiceSequenceRepository.saveAndFlush(any()))
         .thenAnswer(invocation -> invocation.getArgument(0));
   }
 
@@ -78,5 +80,42 @@ class InvoiceNumberServiceTest {
     assertThat(invoiceNumber).isEqualTo("INV-INV-2024-00001");
     verify(invoiceSequenceRepository, times(3)).findByCompanyAndFiscalYear(eq(company), eq(2024));
     verify(invoiceSequenceRepository).saveAndFlush(sequence);
+  }
+
+  @Test
+  void throwsLastErrorAfterMaxRetries() {
+    Company company = new Company();
+    company.setCode("INV");
+    company.setTimezone("UTC");
+
+    when(invoiceSequenceRepository.findByCompanyAndFiscalYear(eq(company), anyInt()))
+        .thenThrow(new DataIntegrityViolationException("duplicate key"));
+
+    assertThatThrownBy(() -> invoiceNumberService.nextInvoiceNumber(company))
+        .isInstanceOf(DataIntegrityViolationException.class)
+        .hasMessageContaining("duplicate key");
+
+    verify(invoiceSequenceRepository, times(5)).findByCompanyAndFiscalYear(eq(company), eq(2024));
+  }
+
+  @Test
+  void stopsRetryingWhenBackoffIsInterrupted() {
+    Company company = new Company();
+    company.setCode("INV");
+    company.setTimezone("UTC");
+
+    when(invoiceSequenceRepository.findByCompanyAndFiscalYear(eq(company), anyInt()))
+        .thenThrow(new OptimisticLockingFailureException("stale row"));
+
+    Thread.currentThread().interrupt();
+    try {
+      assertThatThrownBy(() -> invoiceNumberService.nextInvoiceNumber(company))
+          .isInstanceOf(OptimisticLockingFailureException.class)
+          .hasMessageContaining("stale row");
+    } finally {
+      Thread.interrupted();
+    }
+
+    verify(invoiceSequenceRepository).findByCompanyAndFiscalYear(eq(company), eq(2024));
   }
 }

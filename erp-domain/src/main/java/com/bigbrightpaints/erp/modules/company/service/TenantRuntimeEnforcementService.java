@@ -816,29 +816,27 @@ public class TenantRuntimeEnforcementService {
     if (current != null && current.policyRefreshAfterEpochMillis > nowMillis) {
       return current;
     }
-    return withPolicyMutationLock(
-        companyCode,
-        () -> {
-          TenantRuntimePolicy cached = policies.get(companyCode);
-          long refreshCheckAt = System.currentTimeMillis();
-          if (cached != null && cached.policyRefreshAfterEpochMillis > refreshCheckAt) {
-            return cached;
-          }
-          TenantRuntimePolicy persisted = loadPersistedPolicy(companyCode);
-          TenantRuntimePolicy resolved;
-          if (persisted != null && shouldUsePersistedPolicy(cached, persisted)) {
-            resolved = persisted;
-          } else if (cached != null) {
-            resolved = cached;
-          } else if (persisted != null) {
-            resolved = persisted;
-          } else {
-            resolved = defaultPolicy();
-          }
-          resolved.policyRefreshAfterEpochMillis = refreshCheckAt + persistedPolicyCacheTtlMillis;
-          policies.put(companyCode, resolved);
-          return resolved;
-        });
+    return withPolicyMutationLock(companyCode, () -> {
+      TenantRuntimePolicy cached = policies.get(companyCode);
+      long refreshCheckAt = System.currentTimeMillis();
+      if (cached != null && cached.policyRefreshAfterEpochMillis > refreshCheckAt) {
+        return cached;
+      }
+      TenantRuntimePolicy persisted = loadPersistedPolicy(companyCode);
+      TenantRuntimePolicy resolved;
+      if (persisted != null && shouldUsePersistedPolicy(cached, persisted)) {
+        resolved = persisted;
+      } else if (cached != null) {
+        resolved = cached;
+      } else if (persisted != null) {
+        resolved = persisted;
+      } else {
+        resolved = defaultPolicy();
+      }
+      resolved.policyRefreshAfterEpochMillis = refreshCheckAt + persistedPolicyCacheTtlMillis;
+      policies.put(companyCode, resolved);
+      return resolved;
+    });
   }
 
   private boolean shouldUsePersistedPolicy(
