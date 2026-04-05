@@ -50,6 +50,7 @@ None.
    - Single responsibility per service
    - Company-scoped queries
    - Event-driven cross-module communication
+   - If you retire a legacy header/parameter/alias, enforce fail-closed runtime behavior; never just stop binding it in one controller while downstream code still accepts a null canonical value
    - No fallbacks or duplicate helper paths unless the feature explicitly says otherwise
 3. While touching O2C/P2P hotspots, remove dead code, unused branches, stale helpers, and retired duplicate-truth paths that are made obsolete by your feature. Do not leave known dead logic behind in the touched area.
 4. If the feature touches accounting, preserve dependent-module behavior across sales, inventory, purchasing, invoice, and reporting. Do not relocate duplicate accounting logic into new classes.
