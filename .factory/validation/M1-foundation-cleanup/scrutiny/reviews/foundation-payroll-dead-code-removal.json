@@ -1,0 +1,31 @@
+{
+  "featureId": "foundation-payroll-dead-code-removal",
+  "reviewedAt": "2026-04-05T19:56:00Z",
+  "commitId": "d3b43ea48cbec2605ddf069e47ba75ede5f66273",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "I reviewed the feature metadata, mission and module guidance, worker handoff, transcript skeleton, backend-worker skill, and commit `d3b43ea48cbec2605ddf069e47ba75ede5f66273`. The implemented cleanup matches the requested behavior: `PayrollController`, `PayrollAccountingService`, `PayrollBatchPaymentRequest`, and `PayrollBatchPaymentResponse` are gone; `PayrollPaymentRequest` has been removed from the accounting DTO package and relocated to `modules/hr/dto`; `AccountingFacadeCore` no longer exposes payroll wrappers; and `openapi.json` no longer advertises `/api/v1/accounting/payroll/payments/batch`. The surviving canonical payment route at `AccountingController#recordPayrollPayment` still delegates through `AccountingFacade.recordPayrollPayment(...)`, so the accounting-host payroll payment path remains live. I did not find a high-confidence correctness regression or in-scope cleanup gap in the reviewed commit.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "Shared payroll-boundary guidance is now internally inconsistent. Mission guidance still says all journal creation must go through `AccountingFacade`, the accounting module AGENTS file says the HR payroll seam is `PayrollPostingService -> AccountingFacade`, and the HR module AGENTS file still points to `AccountingCoreEngineCore.postPayrollRun()`, while the actual code now posts payroll via `AccountingService.postPayrollRun(...)`.",
+      "evidence": "/home/realnigga/.factory/missions/cf35a73d-f4bd-4cf3-9488-fee34cf89e18/AGENTS.md:43; /home/realnigga/Desktop/Mission-control/erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/AGENTS.md:48; /home/realnigga/Desktop/Mission-control/erp-domain/src/main/java/com/bigbrightpaints/erp/modules/hr/AGENTS.md:35,81; current implementation at /home/realnigga/Desktop/Mission-control/erp-domain/src/main/java/com/bigbrightpaints/erp/modules/hr/service/PayrollPostingService.java:282."
+    },
+    {
+      "area": "knowledge",
+      "observation": "The internal frontend handoff library still documents the retired batch payroll endpoint and the deleted batch DTOs, so shared contract guidance no longer matches the committed API surface.",
+      "evidence": "/home/realnigga/Desktop/Mission-control/.factory/library/frontend-handoff.md:685,2667,2696,2827,3355 still references `/api/v1/accounting/payroll/payments/batch`, `PayrollBatchPaymentRequest`, and `PayrollBatchPaymentResponse`."
+    },
+    {
+      "area": "skills",
+      "observation": "The backend-worker skill still lacks the scoped Spotless fallback already documented in mission guidance, so resumed packets with unrelated repo-wide formatting drift appear to violate the skill even when they follow the local mission instructions.",
+      "evidence": "Searching /home/realnigga/Desktop/Mission-control/.factory/skills/backend-worker/SKILL.md for `spotlessFiles` returns no matches, while /home/realnigga/.factory/missions/cf35a73d-f4bd-4cf3-9488-fee34cf89e18/AGENTS.md:76 documents `-DspotlessFiles=...`; the feature handoff at /home/realnigga/.factory/missions/cf35a73d-f4bd-4cf3-9488-fee34cf89e18/handoffs/2026-04-05T17-46-57-058Z__foundation-payroll-dead-code-removal__84c0e8df-e2c6-4821-904e-4b4c0a40c441.json:86-101 records `followedProcedure: false` for that exact reason."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "PASS. The batch payroll cleanup is implemented cleanly: the dead controller/service/batch DTOs and route are removed, the canonical payroll payment endpoint remains live, and I did not find a high-confidence functional regression. I did note shared-state drift around payroll-boundary guidance, stale frontend handoff docs, and scoped Spotless fallback guidance."
+}
