@@ -2,10 +2,10 @@
 
 > ⚠️ **REFERENCE ONLY**: This inventory is retained for review and governance cross-reference, but it is not the canonical API truth. Use repo-root `openapi.json`, [docs/frontend-api/README.md](frontend-api/README.md), and the module/flow packets linked from [docs/INDEX.md](INDEX.md) as the primary contract surfaces.
 
-Last reviewed: 2026-04-03
+Last reviewed: 2026-04-05
 
 Source: `openapi.json`
-Updated: 2026-04-03
+Updated: 2026-04-05
 
 Related behavior contract:
 - `docs/ACCOUNTING_PORTAL_SCOPE_GUARDRAIL.md`
@@ -19,9 +19,9 @@ Portal scope guardrail:
 ## Canonical API contract gate
 
 - Canonical machine contract source: repo-root `openapi.json`.
-- OpenAPI snapshot: `openapi.json` (sha256 `2c2bceecea0630cbcafbf436cc71e142414f6bc3cc64b2fe28a5d086e53b95ea`)
-- OpenAPI total paths: `271`
-- OpenAPI total operations: `322`
+- OpenAPI snapshot: `openapi.json` (sha256 `a4dc2fbd69a2c26ef8857ddeba68d99a9af1fb95de00208551f6bc35637e6962`)
+- OpenAPI total paths: `270`
+- OpenAPI total operations: `321`
 - Guard remediation flow: if parity drifts, regenerate this inventory from canonical `openapi.json`, then rerun `bash scripts/guard_openapi_contract_drift.sh` and `bash scripts/guard_accounting_portal_scope_contract.sh`.
 - Hard-cut contract reminder: retired surfaces such as `/api/v1/auth/profile`, `/api/v1/accounting/journals/manual`, `/api/v1/accounting/journals/{entryId}/reverse`, and direct `/api/v1/accounting/periods/{periodId}/close` are intentionally absent from this inventory and must not be reintroduced in frontend or review docs.
 
@@ -29,7 +29,7 @@ Portal scope guardrail:
 
 | Module | Path count | Examples |
 |---|---:|---|
-| `accounting` | 57 | /api/v1/accounting/accounts, /api/v1/accounting/accounts/tree, /api/v1/accounting/audit/events |
+| `accounting` | 56 | /api/v1/accounting/accounts, /api/v1/accounting/accounts/tree, /api/v1/accounting/audit/events |
 | `admin` | 15 | /api/v1/admin/approvals, /api/v1/admin/audit/events, /api/v1/admin/exports/{requestId}/approve |
 | `audit` | 1 | /api/v1/audit/ml-events |
 | `auth` | 11 | /api/v1/auth/login, /api/v1/auth/logout, /api/v1/auth/me |
@@ -93,7 +93,6 @@ Portal scope guardrail:
 - `POST` `/api/v1/accounting/month-end/checklist/{periodId}`
 - `POST` `/api/v1/accounting/opening-balances`
 - `POST` `/api/v1/accounting/payroll/payments`
-- `POST` `/api/v1/accounting/payroll/payments/batch`
 - `GET, POST` `/api/v1/accounting/periods`
 - `PUT` `/api/v1/accounting/periods/{periodId}`
 - `POST` `/api/v1/accounting/periods/{periodId}/approve-close`

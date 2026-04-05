@@ -43,9 +43,9 @@ import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalLineDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.ManualJournalRequest;
-import com.bigbrightpaints.erp.modules.accounting.dto.PayrollPaymentRequest;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
+import com.bigbrightpaints.erp.modules.hr.dto.PayrollPaymentRequest;
 import com.bigbrightpaints.erp.modules.purchasing.domain.Supplier;
 import com.bigbrightpaints.erp.modules.purchasing.domain.SupplierRepository;
 import com.bigbrightpaints.erp.modules.purchasing.domain.SupplierStatus;
@@ -159,56 +159,6 @@ class AccountingFacadeTest {
     accountingFacade.postSalesReturn(dealerId, invoiceNumber, returnLines, total, reason);
 
     assertThat(requestCaptor.getValue().referenceNumber()).isEqualTo(hashReference);
-  }
-
-  @Test
-  void postPayrollRun_delegatesToAccountingServiceCanonicalMethod() {
-    JournalEntryDto expected =
-        new JournalEntryDto(
-            61L,
-            null,
-            "PAYROLL-PR-W-202602",
-            LocalDate.of(2026, 2, 1),
-            null,
-            "POSTED",
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            List.<JournalLineDto>of(),
-            null,
-            null,
-            null,
-            null,
-            null,
-            null);
-    List<JournalEntryRequest.JournalLineRequest> lines =
-        List.of(
-            new JournalEntryRequest.JournalLineRequest(
-                10L, "Payroll expense", new BigDecimal("1000.00"), BigDecimal.ZERO),
-            new JournalEntryRequest.JournalLineRequest(
-                11L, "Payroll payable", BigDecimal.ZERO, new BigDecimal("1000.00")));
-    when(accountingService.postPayrollRun(
-            "PR-W-202602", 77L, LocalDate.of(2026, 2, 1), "Payroll - PR-W-202602", lines))
-        .thenReturn(expected);
-
-    JournalEntryDto actual =
-        accountingFacade.postPayrollRun(
-            "PR-W-202602", 77L, LocalDate.of(2026, 2, 1), "Payroll - PR-W-202602", lines);
-
-    assertThat(actual).isSameAs(expected);
-    verify(accountingService)
-        .postPayrollRun(
-            "PR-W-202602", 77L, LocalDate.of(2026, 2, 1), "Payroll - PR-W-202602", lines);
-    verify(accountingService, never()).createJournalEntry(any());
   }
 
   @Test
@@ -972,7 +922,12 @@ class AccountingFacadeTest {
         .thenReturn(Optional.of(mapping));
 
     ReflectionTestUtils.invokeMethod(
-        accountingFacade, "upsertJournalReferenceMapping", company, "LEGACY-100", "SALES-100", entry);
+        accountingFacade,
+        "upsertJournalReferenceMapping",
+        company,
+        "LEGACY-100",
+        "SALES-100",
+        entry);
 
     assertThat(mapping.getCanonicalReference()).isEqualTo("SALES-100");
     assertThat(mapping.getEntityType()).isEqualTo("JOURNAL_ENTRY");
@@ -989,7 +944,12 @@ class AccountingFacadeTest {
         .thenReturn(Optional.of(mapping));
 
     ReflectionTestUtils.invokeMethod(
-        accountingFacade, "upsertJournalReferenceMapping", company, "LEGACY-101", "SALES-101", entry);
+        accountingFacade,
+        "upsertJournalReferenceMapping",
+        company,
+        "LEGACY-101",
+        "SALES-101",
+        entry);
 
     assertThat(mapping.getCanonicalReference()).isEqualTo("OTHER-REF");
     assertThat(mapping.getEntityId()).isEqualTo(44L);
@@ -1006,7 +966,12 @@ class AccountingFacadeTest {
         .thenThrow(new DataIntegrityViolationException("duplicate"));
 
     ReflectionTestUtils.invokeMethod(
-        accountingFacade, "upsertJournalReferenceMapping", company, "LEGACY-102", "SALES-102", entry);
+        accountingFacade,
+        "upsertJournalReferenceMapping",
+        company,
+        "LEGACY-102",
+        "SALES-102",
+        entry);
 
     verify(journalReferenceMappingRepository).save(any(JournalReferenceMapping.class));
   }

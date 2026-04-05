@@ -27,7 +27,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalCreationRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest.JournalLineRequest;
-import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
+import com.bigbrightpaints.erp.modules.accounting.service.AccountingService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.hr.domain.Attendance;
@@ -72,7 +72,7 @@ public class PayrollPostingService {
   private final PayrollRunLineRepository payrollRunLineRepository;
   private final EmployeeRepository employeeRepository;
   private final AttendanceRepository attendanceRepository;
-  private final AccountingFacade accountingFacade;
+  private final AccountingService accountingService;
   private final AccountRepository accountRepository;
   private final CompanyContextService companyContextService;
   private final CompanyEntityLookup companyEntityLookup;
@@ -84,7 +84,7 @@ public class PayrollPostingService {
       PayrollRunLineRepository payrollRunLineRepository,
       EmployeeRepository employeeRepository,
       AttendanceRepository attendanceRepository,
-      AccountingFacade accountingFacade,
+      AccountingService accountingService,
       AccountRepository accountRepository,
       CompanyContextService companyContextService,
       CompanyEntityLookup companyEntityLookup,
@@ -94,7 +94,7 @@ public class PayrollPostingService {
     this.payrollRunLineRepository = payrollRunLineRepository;
     this.employeeRepository = employeeRepository;
     this.attendanceRepository = attendanceRepository;
-    this.accountingFacade = accountingFacade;
+    this.accountingService = accountingService;
     this.accountRepository = accountRepository;
     this.companyContextService = companyContextService;
     this.companyEntityLookup = companyEntityLookup;
@@ -279,7 +279,7 @@ public class PayrollPostingService {
     lines = standardizedPayrollRequest.resolvedLines();
 
     JournalEntryDto journal =
-        accountingFacade.postPayrollRun(runNumber, run.getId(), postingDate, memo, lines);
+        accountingService.postPayrollRun(runNumber, run.getId(), postingDate, memo, lines);
 
     if (hasPostingJournalLink
         && run.getJournalEntryId() != null

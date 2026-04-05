@@ -19,8 +19,8 @@ import com.bigbrightpaints.erp.modules.accounting.dto.JournalCreationRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.ManualJournalRequest;
-import com.bigbrightpaints.erp.modules.accounting.dto.PayrollPaymentRequest;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
+import com.bigbrightpaints.erp.modules.hr.dto.PayrollPaymentRequest;
 import com.bigbrightpaints.erp.modules.purchasing.domain.SupplierRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
 
@@ -178,7 +178,6 @@ public class AccountingFacade extends AccountingFacadeCore {
     return createStandardJournal(journalRequest);
   }
 
-  @Override
   public JournalEntryDto recordPayrollPayment(PayrollPaymentRequest request) {
     return accountingService.recordPayrollPayment(request);
   }

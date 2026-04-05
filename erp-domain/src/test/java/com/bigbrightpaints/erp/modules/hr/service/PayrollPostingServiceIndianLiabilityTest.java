@@ -29,7 +29,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalLineDto;
-import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
+import com.bigbrightpaints.erp.modules.accounting.service.AccountingService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.hr.domain.AttendanceRepository;
@@ -58,7 +58,7 @@ class PayrollPostingServiceIndianLiabilityTest {
     PayrollRunLineRepository payrollRunLineRepository = mock(PayrollRunLineRepository.class);
     EmployeeRepository employeeRepository = mock(EmployeeRepository.class);
     AttendanceRepository attendanceRepository = mock(AttendanceRepository.class);
-    AccountingFacade accountingFacade = mock(AccountingFacade.class);
+    AccountingService accountingService = mock(AccountingService.class);
     AccountRepository accountRepository = mock(AccountRepository.class);
     CompanyContextService companyContextService = mock(CompanyContextService.class);
     CompanyEntityLookup companyEntityLookup = mock(CompanyEntityLookup.class);
@@ -71,7 +71,7 @@ class PayrollPostingServiceIndianLiabilityTest {
             payrollRunLineRepository,
             employeeRepository,
             attendanceRepository,
-            accountingFacade,
+            accountingService,
             accountRepository,
             companyContextService,
             companyEntityLookup,
@@ -148,7 +148,7 @@ class PayrollPostingServiceIndianLiabilityTest {
             "system",
             "system",
             "system");
-    when(accountingFacade.postPayrollRun(
+    when(accountingService.postPayrollRun(
             eq("PR-2026-02"), eq(70L), eq(LocalDate.of(2026, 2, 28)), any(), any()))
         .thenReturn(postedJournal);
     when(companyEntityLookup.requireJournalEntry(company, 1001L))
@@ -163,7 +163,7 @@ class PayrollPostingServiceIndianLiabilityTest {
                 com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest
                     .JournalLineRequest>>
         linesCaptor = ArgumentCaptor.forClass(List.class);
-    verify(accountingFacade)
+    verify(accountingService)
         .postPayrollRun(
             eq("PR-2026-02"), eq(70L), eq(LocalDate.of(2026, 2, 28)), any(), linesCaptor.capture());
 

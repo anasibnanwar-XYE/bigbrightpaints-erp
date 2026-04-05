@@ -7,14 +7,10 @@ import java.time.format.DateTimeParseException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.util.StringUtils;
@@ -51,6 +47,7 @@ import com.bigbrightpaints.erp.modules.accounting.service.TaxService;
 import com.bigbrightpaints.erp.modules.accounting.service.TemporalBalanceService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
+import com.bigbrightpaints.erp.modules.hr.dto.PayrollPaymentRequest;
 import com.bigbrightpaints.erp.modules.sales.service.SalesReturnService;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 import com.bigbrightpaints.erp.shared.dto.PageResponse;
@@ -72,8 +69,7 @@ public class AccountingController {
   private static final String DEALER_SETTLEMENT_PATH = "/api/v1/accounting/settlements/dealers";
   private static final String DEALER_AUTO_SETTLEMENT_PATH =
       "/api/v1/accounting/dealers/{dealerId}/auto-settle";
-  private static final String SUPPLIER_SETTLEMENT_PATH =
-      "/api/v1/accounting/settlements/suppliers";
+  private static final String SUPPLIER_SETTLEMENT_PATH = "/api/v1/accounting/settlements/suppliers";
   private static final String SUPPLIER_AUTO_SETTLEMENT_PATH =
       "/api/v1/accounting/suppliers/{supplierId}/auto-settle";
 

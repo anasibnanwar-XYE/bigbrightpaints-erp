@@ -40,7 +40,6 @@ import com.bigbrightpaints.erp.modules.accounting.domain.JournalReferenceMapping
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalCreationRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest;
-import com.bigbrightpaints.erp.modules.accounting.dto.PayrollPaymentRequest;
 import com.bigbrightpaints.erp.modules.accounting.event.AccountCacheInvalidatedEvent;
 import com.bigbrightpaints.erp.modules.accounting.service.CompanyAccountingSettingsService.TaxAccountConfiguration;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
@@ -179,7 +178,10 @@ class AccountingFacadeCore {
    * @return the created journal entry DTO
    */
   @Transactional(isolation = Isolation.READ_COMMITTED)
-  @Retryable(value = {OptimisticLockingFailureException.class, CannotAcquireLockException.class}, maxAttempts = 5, backoff = @Backoff(delay = 50, maxDelay = 400, multiplier = 2.0))
+  @Retryable(
+      value = {OptimisticLockingFailureException.class, CannotAcquireLockException.class},
+      maxAttempts = 5,
+      backoff = @Backoff(delay = 50, maxDelay = 400, multiplier = 2.0))
   public JournalEntryDto postSalesJournal(
       Long dealerId,
       String orderNumber,
@@ -217,7 +219,10 @@ class AccountingFacadeCore {
    * @return the created journal entry DTO
    */
   @Transactional(isolation = Isolation.READ_COMMITTED)
-  @Retryable(value = {OptimisticLockingFailureException.class, CannotAcquireLockException.class}, maxAttempts = 5, backoff = @Backoff(delay = 50, maxDelay = 400, multiplier = 2.0))
+  @Retryable(
+      value = {OptimisticLockingFailureException.class, CannotAcquireLockException.class},
+      maxAttempts = 5,
+      backoff = @Backoff(delay = 50, maxDelay = 400, multiplier = 2.0))
   public JournalEntryDto postSalesJournal(
       Long dealerId,
       String orderNumber,
@@ -257,9 +262,15 @@ class AccountingFacadeCore {
     }
     if (existing.isEmpty()) {
       boolean reservationLeader = reserveSalesJournalReference(company, canonicalReference);
-      if (!reservationLeader) { existing = resolveReservedSalesJournalEntry(company, canonicalReference); if (existing.isEmpty()) { throw new ApplicationException(
-              ErrorCode.INTERNAL_CONCURRENCY_FAILURE,
-              "Sales journal reference is reserved but journal entry not found").withDetail("referenceNumber", canonicalReference); } }
+      if (!reservationLeader) {
+        existing = resolveReservedSalesJournalEntry(company, canonicalReference);
+        if (existing.isEmpty()) {
+          throw new ApplicationException(
+                  ErrorCode.INTERNAL_CONCURRENCY_FAILURE,
+                  "Sales journal reference is reserved but journal entry not found")
+              .withDetail("referenceNumber", canonicalReference);
+        }
+      }
     }
 
     // Build journal lines
@@ -360,7 +371,10 @@ class AccountingFacadeCore {
   }
 
   @Transactional(isolation = Isolation.READ_COMMITTED)
-  @Retryable(value = {OptimisticLockingFailureException.class, CannotAcquireLockException.class}, maxAttempts = 5, backoff = @Backoff(delay = 50, maxDelay = 400, multiplier = 2.0))
+  @Retryable(
+      value = {OptimisticLockingFailureException.class, CannotAcquireLockException.class},
+      maxAttempts = 5,
+      backoff = @Backoff(delay = 50, maxDelay = 400, multiplier = 2.0))
   public JournalEntryDto postSalesJournal(
       Long dealerId,
       String orderNumber,
@@ -1700,25 +1714,6 @@ class AccountingFacadeCore {
   }
 
   /**
-   * Post payroll run journal via AccountingService wrapper.
-   */
-  public JournalEntryDto postPayrollRun(
-      String runNumber,
-      Long runId,
-      LocalDate postingDate,
-      String memo,
-      List<JournalEntryRequest.JournalLineRequest> lines) {
-    return accountingService.postPayrollRun(runNumber, runId, postingDate, memo, lines);
-  }
-
-  /**
-   * Record payroll payment via AccountingService wrapper.
-   */
-  public JournalEntryDto recordPayrollPayment(PayrollPaymentRequest request) {
-    return accountingService.recordPayrollPayment(request);
-  }
-
-  /**
    * Reverse period-close journal via canonical accounting boundary.
    */
   public JournalEntryDto reverseClosingEntryForPeriodReopen(
@@ -2076,12 +2071,20 @@ class AccountingFacadeCore {
     Optional<JournalReferenceMapping> existing =
         journalReferenceMappingRepository.findByCompanyAndLegacyReferenceIgnoreCase(
             company, canonical);
-    if (existing.isPresent()) { return false; }
+    if (existing.isPresent()) {
+      return false;
+    }
     int reserved =
         journalReferenceMappingRepository.reserveReferenceMapping(
             company.getId(), canonical, canonical, "SALES_JOURNAL", CompanyTime.now(company));
-    if (reserved == 1) { return true; }
-    if (journalReferenceMappingRepository.findByCompanyAndLegacyReferenceIgnoreCase(company, canonical).isPresent()) { return false; }
+    if (reserved == 1) {
+      return true;
+    }
+    if (journalReferenceMappingRepository
+        .findByCompanyAndLegacyReferenceIgnoreCase(company, canonical)
+        .isPresent()) {
+      return false;
+    }
     throw new ApplicationException(
             ErrorCode.INTERNAL_CONCURRENCY_FAILURE,
             "Sales journal reference already reserved but mapping not found")
@@ -2090,18 +2093,27 @@ class AccountingFacadeCore {
 
   private Optional<JournalEntry> resolveReservedSalesJournalEntry(
       Company company, String canonicalReference) {
-    if (company == null || !StringUtils.hasText(canonicalReference)) { return Optional.empty(); }
+    if (company == null || !StringUtils.hasText(canonicalReference)) {
+      return Optional.empty();
+    }
     String canonical = canonicalReference.trim();
-    Optional<JournalEntry> existing = journalReferenceResolver.findExistingEntry(company, canonical);
-    if (existing.isPresent()) { return existing; }
+    Optional<JournalEntry> existing =
+        journalReferenceResolver.findExistingEntry(company, canonical);
+    if (existing.isPresent()) {
+      return existing;
+    }
     Optional<JournalReferenceMapping> mapping =
         journalReferenceMappingRepository.findByCompanyAndLegacyReferenceIgnoreCase(
             company, canonical);
-    if (mapping.isEmpty()) { return Optional.empty(); }
+    if (mapping.isEmpty()) {
+      return Optional.empty();
+    }
     if (mapping.get().getEntityId() != null) {
       Optional<JournalEntry> byId =
           journalEntryRepository.findByCompanyAndId(company, mapping.get().getEntityId());
-      if (byId.isPresent()) { return byId; }
+      if (byId.isPresent()) {
+        return byId;
+      }
     }
     return StringUtils.hasText(mapping.get().getCanonicalReference())
         ? journalReferenceResolver.findExistingEntry(company, mapping.get().getCanonicalReference())
@@ -2135,8 +2147,9 @@ class AccountingFacadeCore {
     return supplierRepository
         .findByCompanyAndIdWithPayableAccount(company, supplierId)
         .orElseThrow(
-            () -> new ApplicationException(ErrorCode.BUSINESS_ENTITY_NOT_FOUND, "Supplier not found")
-                .withDetail("supplierId", supplierId));
+            () ->
+                new ApplicationException(ErrorCode.BUSINESS_ENTITY_NOT_FOUND, "Supplier not found")
+                    .withDetail("supplierId", supplierId));
   }
 
   private Account requireAccountById(Company company, Long accountId, String accountType) {

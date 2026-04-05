@@ -77,12 +77,12 @@ class ModuleGatingInterceptorTest {
     doThrow(new ApplicationException(ErrorCode.MODULE_DISABLED, "disabled"))
         .when(moduleGatingService)
         .requireEnabledForCurrentCompany(
-            CompanyModule.HR_PAYROLL, "/api/v1/accounting/payroll/payments/batch");
+            CompanyModule.HR_PAYROLL, "/api/v1/accounting/payroll/payments");
 
     assertThatThrownBy(
             () ->
                 interceptor.preHandle(
-                    new MockHttpServletRequest("POST", "/api/v1/accounting/payroll/payments/batch"),
+                    new MockHttpServletRequest("POST", "/api/v1/accounting/payroll/payments"),
                     new MockHttpServletResponse(),
                     new Object()))
         .isInstanceOf(ApplicationException.class)

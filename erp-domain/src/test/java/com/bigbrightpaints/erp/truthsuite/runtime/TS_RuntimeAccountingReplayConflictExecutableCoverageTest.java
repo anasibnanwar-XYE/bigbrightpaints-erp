@@ -634,8 +634,7 @@ class TS_RuntimeAccountingReplayConflictExecutableCoverageTest {
     controller.recordDealerHybridReceipt(
         controllerDealerReceiptSplitRequest("BODY-DRS"), "BODY-DRS", null);
     controller.settleDealer(controllerDealerSettlementRequest("BODY-ADS"), "BODY-ADS", null);
-    controller.settleSupplier(
-        controllerSupplierSettlementRequest("BODY-APS"), "BODY-APS", null);
+    controller.settleSupplier(controllerSupplierSettlementRequest("BODY-APS"), "BODY-APS", null);
 
     assertCapturedControllerIdempotencyKeys(
         dealerReceiptService, settlementService, "BODY-DR", "BODY-DRS", "BODY-ADS", "BODY-APS");
@@ -1155,10 +1154,6 @@ class TS_RuntimeAccountingReplayConflictExecutableCoverageTest {
             org.mockito.Mockito.mock(
                 com.bigbrightpaints.erp.modules.accounting.service.InventoryAccountingService
                     .class);
-    com.bigbrightpaints.erp.modules.accounting.service.PayrollAccountingService
-        payrollAccountingService =
-            org.mockito.Mockito.mock(
-                com.bigbrightpaints.erp.modules.accounting.service.PayrollAccountingService.class);
     org.springframework.beans.factory.ObjectProvider<
             com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade>
         accountingFacadeProvider =
@@ -1228,7 +1223,6 @@ class TS_RuntimeAccountingReplayConflictExecutableCoverageTest {
         settlementService,
         creditDebitNoteService,
         inventoryAccountingService,
-        payrollAccountingService,
         accountingFacadeProvider);
   }
 
@@ -1325,7 +1319,8 @@ class TS_RuntimeAccountingReplayConflictExecutableCoverageTest {
     return accountingController(accountingService, accountingAuditTrailService, null, null);
   }
 
-  private AccountingAuditController accountingAuditController(AuditAccessService auditAccessService) {
+  private AccountingAuditController accountingAuditController(
+      AuditAccessService auditAccessService) {
     return new AccountingAuditController(auditAccessService);
   }
 

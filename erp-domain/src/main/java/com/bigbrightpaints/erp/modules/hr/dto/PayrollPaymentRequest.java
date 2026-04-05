@@ -1,4 +1,4 @@
-package com.bigbrightpaints.erp.modules.accounting.dto;
+package com.bigbrightpaints.erp.modules.hr.dto;
 
 import java.math.BigDecimal;
 

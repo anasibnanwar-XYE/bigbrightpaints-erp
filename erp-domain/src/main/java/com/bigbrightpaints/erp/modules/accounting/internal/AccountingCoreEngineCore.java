@@ -64,9 +64,9 @@ import com.bigbrightpaints.erp.modules.accounting.event.AccountingEventStore;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.hr.domain.PayrollRun;
-import com.bigbrightpaints.erp.modules.hr.domain.PayrollRunLine;
 import com.bigbrightpaints.erp.modules.hr.domain.PayrollRunLineRepository;
 import com.bigbrightpaints.erp.modules.hr.domain.PayrollRunRepository;
+import com.bigbrightpaints.erp.modules.hr.dto.PayrollPaymentRequest;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatch;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatchRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatch;
@@ -487,7 +487,12 @@ abstract class AccountingCoreEngineCore {
 
   @Transactional(readOnly = true)
   public PageResponse<JournalListItemDto> listJournals(
-      LocalDate fromDate, LocalDate toDate, String journalType, String sourceModule, int page, int size) {
+      LocalDate fromDate,
+      LocalDate toDate,
+      String journalType,
+      String sourceModule,
+      int page,
+      int size) {
     if (fromDate != null && toDate != null && fromDate.isAfter(toDate)) {
       throw new ApplicationException(
               ErrorCode.VALIDATION_INVALID_DATE, "fromDate cannot be after toDate")
@@ -506,8 +511,10 @@ abstract class AccountingCoreEngineCore {
             .and(byJournalSourceModule(normalizedSourceModule));
     Page<JournalEntry> journalPage =
         journalEntryRepository.findAll(
-            spec, PageRequest.of(safePage, safeSize, Sort.by(Sort.Direction.DESC, "entryDate", "id")));
-    List<JournalListItemDto> content = journalPage.getContent().stream().map(this::toJournalListItemDto).toList();
+            spec,
+            PageRequest.of(safePage, safeSize, Sort.by(Sort.Direction.DESC, "entryDate", "id")));
+    List<JournalListItemDto> content =
+        journalPage.getContent().stream().map(this::toJournalListItemDto).toList();
     return PageResponse.of(content, journalPage.getTotalElements(), safePage, safeSize);
   }
 
@@ -515,7 +522,8 @@ abstract class AccountingCoreEngineCore {
     return (root, query, cb) -> cb.equal(root.get("company"), company);
   }
 
-  private Specification<JournalEntry> byJournalEntryDateRange(LocalDate fromDate, LocalDate toDate) {
+  private Specification<JournalEntry> byJournalEntryDateRange(
+      LocalDate fromDate, LocalDate toDate) {
     return (root, query, cb) -> {
       if (fromDate == null && toDate == null) {
         return cb.conjunction();
@@ -538,7 +546,8 @@ abstract class AccountingCoreEngineCore {
   private Specification<JournalEntry> byJournalSourceModule(String normalizedSourceModule) {
     return (root, query, cb) ->
         normalizedSourceModule != null
-            ? cb.equal(cb.lower(root.get("sourceModule")), normalizedSourceModule.toLowerCase(Locale.ROOT))
+            ? cb.equal(
+                cb.lower(root.get("sourceModule")), normalizedSourceModule.toLowerCase(Locale.ROOT))
             : cb.conjunction();
   }
 
@@ -808,7 +817,8 @@ abstract class AccountingCoreEngineCore {
         BigDecimal baseDebit = toBaseCurrency(debitInput, fxRate);
         BigDecimal baseCredit = toBaseCurrency(creditInput, fxRate);
         line.setDebit(baseDebit);
-        line.setCredit(baseCredit); entry.addLine(line);
+        line.setCredit(baseCredit);
+        entry.addLine(line);
         postedLines.add(line);
         accountDeltas.merge(account, baseDebit.subtract(baseCredit), BigDecimal::add);
         totalBaseDebit = totalBaseDebit.add(baseDebit);
@@ -1068,9 +1078,7 @@ abstract class AccountingCoreEngineCore {
   }
 
   private JournalEntryDto reverseJournalEntryInternal(
-      Company company,
-      JournalEntry entry,
-      JournalEntryReversalRequest request) {
+      Company company, JournalEntry entry, JournalEntryReversalRequest request) {
     // Validate entry state
     if ("VOIDED".equalsIgnoreCase(entry.getStatus())) {
       throw new ApplicationException(ErrorCode.BUSINESS_INVALID_STATE, "Entry is already voided");
@@ -1088,7 +1096,8 @@ abstract class AccountingCoreEngineCore {
     boolean overrideRequested = request != null && Boolean.TRUE.equals(request.adminOverride());
     boolean systemEntryDateOverrideActive = Boolean.TRUE.equals(SYSTEM_ENTRY_DATE_OVERRIDE.get());
     boolean userHasEntryDateOverrideAuthority = hasEntryDateOverrideAuthority();
-    boolean overrideAuthorized = systemEntryDateOverrideActive || (overrideRequested && userHasEntryDateOverrideAuthority);
+    boolean overrideAuthorized =
+        systemEntryDateOverrideActive || (overrideRequested && userHasEntryDateOverrideAuthority);
     AccountingPeriod postingPeriod;
     if (systemSettingsService.isPeriodLockEnforced()) {
       validateEntryDate(company, reversalDate, overrideRequested, overrideAuthorized);
@@ -1601,9 +1610,13 @@ abstract class AccountingCoreEngineCore {
       if (currentOutstanding.compareTo(BigDecimal.ZERO) <= 0) {
         continue;
       }
-      if (remaining.compareTo(BigDecimal.ZERO) <= 0) { break; }
+      if (remaining.compareTo(BigDecimal.ZERO) <= 0) {
+        break;
+      }
       BigDecimal applied = remaining.min(currentOutstanding);
-      if (applied.compareTo(BigDecimal.ZERO) <= 0) { continue; }
+      if (applied.compareTo(BigDecimal.ZERO) <= 0) {
+        continue;
+      }
       enforceSettlementCurrency(company, invoice);
 
       PartnerSettlementAllocation row = new PartnerSettlementAllocation();
@@ -1696,7 +1709,9 @@ abstract class AccountingCoreEngineCore {
     BigDecimal cashCredit = BigDecimal.ZERO;
     if (existing.getLines() != null) {
       for (JournalLine line : existing.getLines()) {
-        if (line.getAccount() == null || line.getAccount().getId() == null) { continue; }
+        if (line.getAccount() == null || line.getAccount().getId() == null) {
+          continue;
+        }
         if (salaryPayableAccount.getId().equals(line.getAccount().getId())) {
           payableDebit = payableDebit.add(MoneyUtils.zeroIfNull(line.getDebit()));
         }
@@ -2386,7 +2401,7 @@ abstract class AccountingCoreEngineCore {
     }
   }
 
-    protected String reservedManualReference(String idempotencyKey) {
+  protected String reservedManualReference(String idempotencyKey) {
     if (!StringUtils.hasText(idempotencyKey)) {
       return "RESERVED";
     }
@@ -2889,7 +2904,8 @@ abstract class AccountingCoreEngineCore {
     journalReferenceMappingRepository.save(mapping);
   }
 
-  protected JournalEntry awaitJournalEntry(Company company, String reference, String idempotencyKey) {
+  protected JournalEntry awaitJournalEntry(
+      Company company, String reference, String idempotencyKey) {
     JournalEntry existing = findAwaitedJournalEntry(company, reference, idempotencyKey);
     if (existing != null || company == null || !StringUtils.hasText(idempotencyKey)) {
       return existing;
@@ -2929,7 +2945,8 @@ abstract class AccountingCoreEngineCore {
     if (StringUtils.hasText(mapping.getCanonicalReference())
         && !isReservedReference(mapping.getCanonicalReference())) {
       Optional<JournalEntry> byCanonical =
-          journalReferenceResolver.findExistingEntry(company, mapping.getCanonicalReference().trim());
+          journalReferenceResolver.findExistingEntry(
+              company, mapping.getCanonicalReference().trim());
       if (byCanonical.isPresent()) {
         return byCanonical.get();
       }
@@ -2947,7 +2964,8 @@ abstract class AccountingCoreEngineCore {
       return null;
     }
     String normalizedReference = StringUtils.hasText(reference) ? reference.trim() : null;
-    String normalizedIdempotencyKey = StringUtils.hasText(idempotencyKey) ? idempotencyKey.trim() : null;
+    String normalizedIdempotencyKey =
+        StringUtils.hasText(idempotencyKey) ? idempotencyKey.trim() : null;
     if (StringUtils.hasText(reference)) {
       Optional<JournalEntry> byReference =
           journalReferenceResolver.findExistingEntry(company, normalizedReference);
@@ -3118,7 +3136,8 @@ abstract class AccountingCoreEngineCore {
         allocations);
     List<JournalEntryRequest.JournalLineRequest> expectedLines =
         List.of(
-            new JournalEntryRequest.JournalLineRequest(payableAccount.getId(), memo, amount, BigDecimal.ZERO),
+            new JournalEntryRequest.JournalLineRequest(
+                payableAccount.getId(), memo, amount, BigDecimal.ZERO),
             new JournalEntryRequest.JournalLineRequest(
                 cashAccount.getId(), memo, BigDecimal.ZERO, amount));
     validatePartnerJournalReplay(
@@ -3336,7 +3355,8 @@ abstract class AccountingCoreEngineCore {
     }
   }
 
-  protected void validateDealerSettlementAllocations(List<SettlementAllocationRequest> allocations) {
+  protected void validateDealerSettlementAllocations(
+      List<SettlementAllocationRequest> allocations) {
     if (allocations == null) {
       return;
     }
@@ -3458,7 +3478,8 @@ abstract class AccountingCoreEngineCore {
     }
   }
 
-  protected SettlementTotals computeSettlementTotals(List<SettlementAllocationRequest> allocations) {
+  protected SettlementTotals computeSettlementTotals(
+      List<SettlementAllocationRequest> allocations) {
     BigDecimal totalApplied = BigDecimal.ZERO;
     BigDecimal totalDiscount = BigDecimal.ZERO;
     BigDecimal totalWriteOff = BigDecimal.ZERO;
@@ -3679,31 +3700,35 @@ abstract class AccountingCoreEngineCore {
     if (totals.totalWriteOff().compareTo(BigDecimal.ZERO) > 0) {
       Account resolvedWriteOffAccount =
           ValidationUtils.requireNotNull(writeOffAccount, "writeOffAccount");
-      lines.add(new JournalEntryRequest.JournalLineRequest(
-          resolvedWriteOffAccount.getId(),
-          "Settlement write-off",
-          totals.totalWriteOff(),
-          BigDecimal.ZERO));
+      lines.add(
+          new JournalEntryRequest.JournalLineRequest(
+              resolvedWriteOffAccount.getId(),
+              "Settlement write-off",
+              totals.totalWriteOff(),
+              BigDecimal.ZERO));
     }
     if (totals.totalFxLoss().compareTo(BigDecimal.ZERO) > 0) {
       Account resolvedFxLossAccount =
           ValidationUtils.requireNotNull(fxLossAccount, "fxLossAccount");
-      lines.add(new JournalEntryRequest.JournalLineRequest(
-          resolvedFxLossAccount.getId(),
-          "FX loss on settlement",
-          totals.totalFxLoss(),
-          BigDecimal.ZERO));
+      lines.add(
+          new JournalEntryRequest.JournalLineRequest(
+              resolvedFxLossAccount.getId(),
+              "FX loss on settlement",
+              totals.totalFxLoss(),
+              BigDecimal.ZERO));
     }
-    lines.add(new JournalEntryRequest.JournalLineRequest(
-        receivableAccount.getId(), memo, BigDecimal.ZERO, totals.totalApplied()));
+    lines.add(
+        new JournalEntryRequest.JournalLineRequest(
+            receivableAccount.getId(), memo, BigDecimal.ZERO, totals.totalApplied()));
     if (totals.totalFxGain().compareTo(BigDecimal.ZERO) > 0) {
       Account resolvedFxGainAccount =
           ValidationUtils.requireNotNull(fxGainAccount, "fxGainAccount");
-      lines.add(new JournalEntryRequest.JournalLineRequest(
-          resolvedFxGainAccount.getId(),
-          "FX gain on settlement",
-          BigDecimal.ZERO,
-          totals.totalFxGain()));
+      lines.add(
+          new JournalEntryRequest.JournalLineRequest(
+              resolvedFxGainAccount.getId(),
+              "FX gain on settlement",
+              BigDecimal.ZERO,
+              totals.totalFxGain()));
     }
     return new SettlementLineDraft(lines, cashAmount);
   }
@@ -3809,20 +3834,22 @@ abstract class AccountingCoreEngineCore {
     if (totals.totalWriteOff().compareTo(BigDecimal.ZERO) > 0) {
       Account resolvedWriteOffAccount =
           ValidationUtils.requireNotNull(writeOffAccount, "writeOffAccount");
-      lines.add(new JournalEntryRequest.JournalLineRequest(
-          resolvedWriteOffAccount.getId(),
-          "Settlement write-off",
-          BigDecimal.ZERO,
-          totals.totalWriteOff()));
+      lines.add(
+          new JournalEntryRequest.JournalLineRequest(
+              resolvedWriteOffAccount.getId(),
+              "Settlement write-off",
+              BigDecimal.ZERO,
+              totals.totalWriteOff()));
     }
     if (totals.totalFxGain().compareTo(BigDecimal.ZERO) > 0) {
       Account resolvedFxGainAccount =
           ValidationUtils.requireNotNull(fxGainAccount, "fxGainAccount");
-      lines.add(new JournalEntryRequest.JournalLineRequest(
-          resolvedFxGainAccount.getId(),
-          "FX gain on settlement",
-          BigDecimal.ZERO,
-          totals.totalFxGain()));
+      lines.add(
+          new JournalEntryRequest.JournalLineRequest(
+              resolvedFxGainAccount.getId(),
+              "FX gain on settlement",
+              BigDecimal.ZERO,
+              totals.totalFxGain()));
     }
 
     return new SettlementLineDraft(lines, cashAmount);
@@ -4064,7 +4091,8 @@ abstract class AccountingCoreEngineCore {
   protected record SettlementLineDraft(
       List<JournalEntryRequest.JournalLineRequest> lines, BigDecimal cashAmount) {}
 
-  private record SettlementMemoParts(SettlementAllocationApplication applicationType, String memo) {}
+  private record SettlementMemoParts(
+      SettlementAllocationApplication applicationType, String memo) {}
 
   protected void enforceSettlementCurrency(Company company, Invoice invoice) {
     if (company == null || invoice == null) {
@@ -5533,8 +5561,7 @@ abstract class AccountingCoreEngineCore {
               "Debit note reference already used but journal entry is missing")
           .withDetail("reference", reference);
     }
-    if (StringUtils.hasText(reference)
-        && !Objects.equals(entry.getReferenceNumber(), reference)) {
+    if (StringUtils.hasText(reference) && !Objects.equals(entry.getReferenceNumber(), reference)) {
       throw new ApplicationException(
               ErrorCode.CONCURRENCY_CONFLICT,
               "Debit note idempotency key already bound to a different reference")
@@ -5584,7 +5611,8 @@ abstract class AccountingCoreEngineCore {
               "Debit note reference already used for a different source module")
           .withDetail("reference", reference);
     }
-    if (StringUtils.hasText(entry.getSourceReference()) && purchase != null
+    if (StringUtils.hasText(entry.getSourceReference())
+        && purchase != null
         && !Objects.equals(entry.getSourceReference(), purchase.getInvoiceNumber())) {
       throw new ApplicationException(
               ErrorCode.CONCURRENCY_CONFLICT,
@@ -5615,7 +5643,8 @@ abstract class AccountingCoreEngineCore {
               RoundingMode.HALF_UP);
       List<JournalEntryRequest.JournalLineRequest> expectedLines =
           buildScaledReversalLines(source, ratio, "Debit note reversal - ");
-      if (!lineSignatureCounts(entry.getLines()).equals(lineSignatureCountsFromRequests(expectedLines))) {
+      if (!lineSignatureCounts(entry.getLines())
+          .equals(lineSignatureCountsFromRequests(expectedLines))) {
         throw new ApplicationException(
                 ErrorCode.CONCURRENCY_CONFLICT,
                 "Debit note reference already used with a different payload")
@@ -5960,7 +5989,8 @@ abstract class AccountingCoreEngineCore {
           partnerMismatchMessage(partnerType), idempotencyKey, partnerType, partnerId);
     }
 
-    Map<String, Integer> existingSignatures = allocationSignatureCountsFromRows(existingAllocations);
+    Map<String, Integer> existingSignatures =
+        allocationSignatureCountsFromRows(existingAllocations);
     Map<String, Integer> requestSignatures =
         allocationSignatureCountsFromRequests(requestedAllocations);
     if (!existingSignatures.equals(requestSignatures)) {
