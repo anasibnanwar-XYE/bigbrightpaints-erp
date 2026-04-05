@@ -9,6 +9,7 @@ import java.time.temporal.ChronoUnit;
 import org.junit.jupiter.api.Test;
 
 class DashboardWindowTest {
+  private static final long MAX_DASHBOARD_WINDOW_DAYS = 366L;
 
   @Test
   void resolve_defaultWindow_30Days() {
@@ -65,23 +66,31 @@ class DashboardWindowTest {
   }
 
   @Test
-  void resolve_comparePrevOversizedWindowDisablesComparison() {
-    DashboardWindow window =
-        DashboardWindow.resolve(minLocalDateWindowSpec("UTC"), "prev", "UTC", null);
+  void resolve_hugeParseableWindow_clampsToMaximumDays() {
+    DashboardWindow window = DashboardWindow.resolve(minLocalDateWindowSpec("UTC"), null, "UTC", null);
 
-    assertThat(window.start()).isEqualTo(LocalDate.MIN);
-    assertThat(window.compareStart()).isNull();
-    assertThat(window.compareEnd()).isNull();
+    assertThat(windowLength(window)).isEqualTo(MAX_DASHBOARD_WINDOW_DAYS);
+    assertThat(window.start()).isAfter(LocalDate.MIN);
   }
 
   @Test
-  void resolve_compareYoyOversizedWindowDisablesComparison() {
+  void resolve_comparePrevOversizedWindowClampsRangeBeforeComparison() {
+    DashboardWindow window =
+        DashboardWindow.resolve(minLocalDateWindowSpec("UTC"), "prev", "UTC", null);
+
+    assertThat(windowLength(window)).isEqualTo(MAX_DASHBOARD_WINDOW_DAYS);
+    assertThat(window.compareEnd()).isEqualTo(window.start().minusDays(1));
+    assertThat(compareLength(window)).isEqualTo(MAX_DASHBOARD_WINDOW_DAYS);
+  }
+
+  @Test
+  void resolve_compareYoyOversizedWindowClampsRangeBeforeComparison() {
     DashboardWindow window =
         DashboardWindow.resolve(minLocalDateWindowSpec("UTC"), "yoy", "UTC", null);
 
-    assertThat(window.start()).isEqualTo(LocalDate.MIN);
-    assertThat(window.compareStart()).isNull();
-    assertThat(window.compareEnd()).isNull();
+    assertThat(windowLength(window)).isEqualTo(MAX_DASHBOARD_WINDOW_DAYS);
+    assertThat(window.compareStart()).isEqualTo(window.start().minusYears(1));
+    assertThat(window.compareEnd()).isEqualTo(window.end().minusYears(1));
   }
 
   @Test
@@ -128,6 +137,10 @@ class DashboardWindowTest {
 
   private static long windowLength(DashboardWindow window) {
     return ChronoUnit.DAYS.between(window.start(), window.end()) + 1;
+  }
+
+  private static long compareLength(DashboardWindow window) {
+    return ChronoUnit.DAYS.between(window.compareStart(), window.compareEnd()) + 1;
   }
 
   private static String minLocalDateWindowSpec(String timezone) {

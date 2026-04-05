@@ -19,6 +19,7 @@ public record DashboardWindow(
     String bucket,
     int bucketDays) {
   private static final int DEFAULT_WINDOW_DAYS = 30;
+  private static final long MAX_WINDOW_DAYS = 366L;
   private static final Pattern DAY_WINDOW_PATTERN = Pattern.compile("^\\d+d$");
 
   public static DashboardWindow resolve(
@@ -107,7 +108,7 @@ public record DashboardWindow(
   }
 
   private static WindowRange rangeForDays(LocalDate today, long days) {
-    long safeDays = Math.max(days, 1L);
+    long safeDays = Math.min(Math.max(days, 1L), MAX_WINDOW_DAYS);
     LocalDate start = today.minusDays(safeDays - 1L);
     return new WindowRange(start, today);
   }
