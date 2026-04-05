@@ -30,6 +30,7 @@ import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.controller.AccountingAuditController;
 import com.bigbrightpaints.erp.modules.accounting.controller.AccountingController;
+import com.bigbrightpaints.erp.modules.accounting.controller.SettlementController;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
@@ -600,8 +601,7 @@ class TS_RuntimeAccountingReplayConflictExecutableCoverageTest {
     DealerReceiptService dealerReceiptService =
         org.mockito.Mockito.mock(DealerReceiptService.class);
     SettlementService settlementService = org.mockito.Mockito.mock(SettlementService.class);
-    AccountingController controller =
-        accountingController(service, null, dealerReceiptService, settlementService);
+    SettlementController controller = settlementController(dealerReceiptService, settlementService);
     when(dealerReceiptService.recordDealerReceipt(any())).thenReturn(null);
     when(dealerReceiptService.recordDealerReceiptSplit(any())).thenReturn(null);
     when(settlementService.settleDealerInvoices(any())).thenReturn(null);
@@ -622,8 +622,7 @@ class TS_RuntimeAccountingReplayConflictExecutableCoverageTest {
     DealerReceiptService dealerReceiptService =
         org.mockito.Mockito.mock(DealerReceiptService.class);
     SettlementService settlementService = org.mockito.Mockito.mock(SettlementService.class);
-    AccountingController controller =
-        accountingController(service, null, dealerReceiptService, settlementService);
+    SettlementController controller = settlementController(dealerReceiptService, settlementService);
     when(dealerReceiptService.recordDealerReceipt(any())).thenReturn(null);
     when(dealerReceiptService.recordDealerReceiptSplit(any())).thenReturn(null);
     when(settlementService.settleDealerInvoices(any())).thenReturn(null);
@@ -645,8 +644,7 @@ class TS_RuntimeAccountingReplayConflictExecutableCoverageTest {
     DealerReceiptService dealerReceiptService =
         org.mockito.Mockito.mock(DealerReceiptService.class);
     SettlementService settlementService = org.mockito.Mockito.mock(SettlementService.class);
-    AccountingController controller =
-        accountingController(service, null, dealerReceiptService, settlementService);
+    SettlementController controller = settlementController(dealerReceiptService, settlementService);
     when(dealerReceiptService.recordDealerReceipt(any())).thenReturn(null);
     when(dealerReceiptService.recordDealerReceiptSplit(any())).thenReturn(null);
     when(settlementService.settleDealerInvoices(any())).thenReturn(null);
@@ -667,8 +665,7 @@ class TS_RuntimeAccountingReplayConflictExecutableCoverageTest {
     DealerReceiptService dealerReceiptService =
         org.mockito.Mockito.mock(DealerReceiptService.class);
     SettlementService settlementService = org.mockito.Mockito.mock(SettlementService.class);
-    AccountingController controller =
-        accountingController(service, null, dealerReceiptService, settlementService);
+    SettlementController controller = settlementController(dealerReceiptService, settlementService);
     when(dealerReceiptService.recordDealerReceipt(any())).thenReturn(null);
     when(dealerReceiptService.recordDealerReceiptSplit(any())).thenReturn(null);
     when(settlementService.settleDealerInvoices(any())).thenReturn(null);
@@ -1351,6 +1348,11 @@ class TS_RuntimeAccountingReplayConflictExecutableCoverageTest {
         null,
         null,
         null);
+  }
+
+  private SettlementController settlementController(
+      DealerReceiptService dealerReceiptService, SettlementService settlementService) {
+    return new SettlementController(dealerReceiptService, settlementService);
   }
 
   private DealerReceiptRequest controllerDealerReceiptRequest(String idempotencyKey) {

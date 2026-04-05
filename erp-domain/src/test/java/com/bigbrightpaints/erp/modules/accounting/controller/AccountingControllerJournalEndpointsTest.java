@@ -53,6 +53,7 @@ import com.bigbrightpaints.erp.modules.accounting.service.AgingReportService;
 import com.bigbrightpaints.erp.modules.accounting.service.CompanyAccountingSettingsService;
 import com.bigbrightpaints.erp.modules.accounting.service.CompanyDefaultAccountsService;
 import com.bigbrightpaints.erp.modules.accounting.service.CreditDebitNoteService;
+import com.bigbrightpaints.erp.modules.accounting.service.DealerReceiptService;
 import com.bigbrightpaints.erp.modules.accounting.service.JournalEntryService;
 import com.bigbrightpaints.erp.modules.accounting.service.JournalReferenceResolver;
 import com.bigbrightpaints.erp.modules.accounting.service.ReconciliationService;
@@ -795,7 +796,7 @@ class AccountingControllerJournalEndpointsTest {
   @Test
   void settleDealer_preservesAmountAndUnappliedApplicationWhenApplyingHeaderIdempotency() {
     SettlementService settlementService = mock(SettlementService.class);
-    AccountingController controller = controllerWithSettlementService(settlementService);
+    SettlementController controller = controllerWithSettlementService(settlementService);
     DealerSettlementRequest request =
         new DealerSettlementRequest(
             9L,
@@ -841,7 +842,7 @@ class AccountingControllerJournalEndpointsTest {
   @Test
   void settleSupplier_preservesAmountAndUnappliedApplicationWhenApplyingHeaderIdempotency() {
     SettlementService settlementService = mock(SettlementService.class);
-    AccountingController controller = controllerWithSettlementService(settlementService);
+    SettlementController controller = controllerWithSettlementService(settlementService);
     SupplierSettlementRequest request =
         new SupplierSettlementRequest(
             8L,
@@ -886,7 +887,7 @@ class AccountingControllerJournalEndpointsTest {
   @Test
   void autoSettleSupplier_appliesHeaderOnlyIdempotencyKey() {
     SettlementService settlementService = mock(SettlementService.class);
-    AccountingController controller = controllerWithSettlementService(settlementService);
+    SettlementController controller = controllerWithSettlementService(settlementService);
     AutoSettlementRequest request =
         new AutoSettlementRequest(
             42L, new BigDecimal("75.00"), "AUTO-SUP-1", "auto supplier settlement", null);
@@ -1137,31 +1138,9 @@ class AccountingControllerJournalEndpointsTest {
         accountingFacade != null ? accountingFacade : mock(AccountingFacade.class));
   }
 
-  private AccountingController controllerWithSettlementService(
+  private SettlementController controllerWithSettlementService(
       SettlementService settlementService) {
-    return new AccountingController(
-        mock(AccountingService.class),
-        mock(JournalEntryService.class),
-        null,
-        settlementService,
-        null,
-        null,
-        null,
-        mock(AccountingFacade.class),
-        mock(SalesReturnService.class),
-        mock(AccountingPeriodService.class),
-        mock(ReconciliationService.class),
-        mock(StatementService.class),
-        mock(TaxService.class),
-        mock(TemporalBalanceService.class),
-        mock(AccountHierarchyService.class),
-        mock(AgingReportService.class),
-        mock(CompanyDefaultAccountsService.class),
-        null,
-        null,
-        null,
-        null,
-        null);
+    return new SettlementController(mock(DealerReceiptService.class), settlementService);
   }
 
   private AccountingController controllerWithStatementService(StatementService statementService) {

@@ -11,7 +11,13 @@ import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 
 import jakarta.servlet.http.HttpServletRequest;
 
-@RestControllerAdvice(assignableTypes = {AccountController.class, JournalController.class})
+@RestControllerAdvice(
+    assignableTypes = {
+      AccountController.class,
+      JournalController.class,
+      SettlementController.class,
+      PeriodController.class
+    })
 public class AccountingApplicationExceptionAdvice {
 
   @ExceptionHandler(ApplicationException.class)

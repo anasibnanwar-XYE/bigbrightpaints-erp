@@ -22,7 +22,7 @@ class AccountingControllerPeriodCloseWorkflowEndpointsTest {
   @Test
   void requestPeriodClose_delegatesToService() {
     AccountingPeriodService periodService = mock(AccountingPeriodService.class);
-    AccountingController controller = controller(periodService);
+    PeriodController controller = controller(periodService);
     PeriodCloseRequestActionRequest request =
         new PeriodCloseRequestActionRequest("  prepare close  ", true);
     PeriodCloseRequestDto expected = periodCloseRequestDto(101L, "PENDING");
@@ -39,7 +39,7 @@ class AccountingControllerPeriodCloseWorkflowEndpointsTest {
   @Test
   void approvePeriodClose_delegatesToService() {
     AccountingPeriodService periodService = mock(AccountingPeriodService.class);
-    AccountingController controller = controller(periodService);
+    PeriodController controller = controller(periodService);
     PeriodCloseRequestActionRequest request = new PeriodCloseRequestActionRequest("approved", true);
     AccountingPeriodDto expected = periodDto(77L, "CLOSED");
     when(periodService.approvePeriodClose(77L, request)).thenReturn(expected);
@@ -55,7 +55,7 @@ class AccountingControllerPeriodCloseWorkflowEndpointsTest {
   @Test
   void rejectPeriodClose_delegatesToService() {
     AccountingPeriodService periodService = mock(AccountingPeriodService.class);
-    AccountingController controller = controller(periodService);
+    PeriodController controller = controller(periodService);
     PeriodCloseRequestActionRequest request =
         new PeriodCloseRequestActionRequest("needs correction", null);
     PeriodCloseRequestDto expected = periodCloseRequestDto(102L, "REJECTED");
@@ -72,7 +72,7 @@ class AccountingControllerPeriodCloseWorkflowEndpointsTest {
   @Test
   void reopenPeriod_delegatesToService() {
     AccountingPeriodService periodService = mock(AccountingPeriodService.class);
-    AccountingController controller = controller(periodService);
+    PeriodController controller = controller(periodService);
     AccountingPeriodReopenRequest request =
         new AccountingPeriodReopenRequest("historical correction");
     AccountingPeriodDto expected = periodDto(77L, "OPEN");
@@ -86,30 +86,8 @@ class AccountingControllerPeriodCloseWorkflowEndpointsTest {
     assertThat(body.data()).isEqualTo(expected);
   }
 
-  private AccountingController controller(AccountingPeriodService periodService) {
-    return new AccountingController(
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        periodService,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null);
+  private PeriodController controller(AccountingPeriodService periodService) {
+    return new PeriodController(periodService);
   }
 
   private AccountingPeriodDto periodDto(Long id, String status) {

@@ -1,11 +1,9 @@
 package com.bigbrightpaints.erp.truthsuite.accounting;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
@@ -15,12 +13,11 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
-import com.bigbrightpaints.erp.core.exception.ApplicationException;
-import com.bigbrightpaints.erp.modules.accounting.controller.AccountingController;
+import com.bigbrightpaints.erp.modules.accounting.controller.SettlementController;
 import com.bigbrightpaints.erp.modules.accounting.dto.DealerReceiptRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.SettlementAllocationRequest;
-import com.bigbrightpaints.erp.modules.accounting.service.AccountingService;
 import com.bigbrightpaints.erp.modules.accounting.service.DealerReceiptService;
+import com.bigbrightpaints.erp.modules.accounting.service.SettlementService;
 
 @Tag("critical")
 @Tag("reconciliation")
@@ -30,7 +27,7 @@ class TS_AccountingControllerIdempotencyHeaderParityRuntimeCoverageTest {
   @Test
   void recordDealerReceipt_noBodyAndNoHeaders_keepsOriginalRequest() {
     DealerReceiptService dealerReceiptService = mock(DealerReceiptService.class);
-    AccountingController controller = newController(dealerReceiptService);
+    SettlementController controller = newController(dealerReceiptService);
     DealerReceiptRequest request = dealerReceiptRequest(null);
     when(dealerReceiptService.recordDealerReceipt(any())).thenReturn(null);
 
@@ -46,7 +43,7 @@ class TS_AccountingControllerIdempotencyHeaderParityRuntimeCoverageTest {
   @Test
   void recordDealerReceipt_appliesHeaderKeyWhenBodyMissing() {
     DealerReceiptService dealerReceiptService = mock(DealerReceiptService.class);
-    AccountingController controller = newController(dealerReceiptService);
+    SettlementController controller = newController(dealerReceiptService);
     DealerReceiptRequest request = dealerReceiptRequest(null);
     when(dealerReceiptService.recordDealerReceipt(any())).thenReturn(null);
 
@@ -62,7 +59,7 @@ class TS_AccountingControllerIdempotencyHeaderParityRuntimeCoverageTest {
   @Test
   void recordDealerReceipt_bodyPresent_acceptsMatchingBodyIdempotencyKey() {
     DealerReceiptService dealerReceiptService = mock(DealerReceiptService.class);
-    AccountingController controller = newController(dealerReceiptService);
+    SettlementController controller = newController(dealerReceiptService);
     DealerReceiptRequest request = dealerReceiptRequest("body-001");
     when(dealerReceiptService.recordDealerReceipt(any())).thenReturn(null);
 
@@ -77,7 +74,7 @@ class TS_AccountingControllerIdempotencyHeaderParityRuntimeCoverageTest {
   @Test
   void recordDealerReceipt_trimsNonBlankHeaders_andTreatsBlankHeadersAsMissing() {
     DealerReceiptService dealerReceiptService = mock(DealerReceiptService.class);
-    AccountingController controller = newController(dealerReceiptService);
+    SettlementController controller = newController(dealerReceiptService);
     DealerReceiptRequest nonBlankHeaderRequest = dealerReceiptRequest(null);
     DealerReceiptRequest blankHeaderRequest = dealerReceiptRequest(null);
     when(dealerReceiptService.recordDealerReceipt(any())).thenReturn(null);
@@ -97,30 +94,8 @@ class TS_AccountingControllerIdempotencyHeaderParityRuntimeCoverageTest {
     assertThat(captured.get(1).idempotencyKey()).isNull();
   }
 
-  private AccountingController newController(DealerReceiptService dealerReceiptService) {
-    return new AccountingController(
-        mock(AccountingService.class),
-        null,
-        dealerReceiptService,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null);
+  private SettlementController newController(DealerReceiptService dealerReceiptService) {
+    return new SettlementController(dealerReceiptService, mock(SettlementService.class));
   }
 
   private DealerReceiptRequest dealerReceiptRequest(String idempotencyKey) {

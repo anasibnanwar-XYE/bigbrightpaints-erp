@@ -12,7 +12,7 @@ class AccountingControllerPeriodCloseWorkflowSecurityContractTest {
   @Test
   void approveClose_requiresAdminAuthorityAnnotation() throws NoSuchMethodException {
     Method method =
-        AccountingController.class.getMethod(
+        PeriodController.class.getMethod(
             "approvePeriodClose",
             Long.class,
             com.bigbrightpaints.erp.modules.accounting.dto.PeriodCloseRequestActionRequest.class);
@@ -25,7 +25,7 @@ class AccountingControllerPeriodCloseWorkflowSecurityContractTest {
   @Test
   void rejectClose_requiresAdminAuthorityAnnotation() throws NoSuchMethodException {
     Method method =
-        AccountingController.class.getMethod(
+        PeriodController.class.getMethod(
             "rejectPeriodClose",
             Long.class,
             com.bigbrightpaints.erp.modules.accounting.dto.PeriodCloseRequestActionRequest.class);
@@ -38,7 +38,7 @@ class AccountingControllerPeriodCloseWorkflowSecurityContractTest {
   @Test
   void reopenPeriod_requiresSuperAdminAuthorityAnnotation() throws NoSuchMethodException {
     Method method =
-        AccountingController.class.getMethod(
+        PeriodController.class.getMethod(
             "reopenPeriod",
             Long.class,
             com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodReopenRequest.class);

@@ -1,7 +1,6 @@
 package com.bigbrightpaints.erp.modules.accounting.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -18,20 +17,16 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.modules.accounting.dto.DealerReceiptRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.DealerReceiptSplitRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.DealerSettlementRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.SettlementAllocationRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.SupplierSettlementRequest;
-import com.bigbrightpaints.erp.modules.accounting.service.AccountingService;
 import com.bigbrightpaints.erp.modules.accounting.service.DealerReceiptService;
 import com.bigbrightpaints.erp.modules.accounting.service.SettlementService;
 
 @ExtendWith(MockitoExtension.class)
 class AccountingControllerIdempotencyHeaderParityTest {
-
-  @Mock private AccountingService accountingService;
 
   @Mock private DealerReceiptService dealerReceiptService;
 
@@ -39,7 +34,7 @@ class AccountingControllerIdempotencyHeaderParityTest {
 
   @Test
   void recordDealerReceipt_acceptsMatchingBodyIdempotencyKeyWhenHeaderMatches() {
-    AccountingController controller = controller();
+    SettlementController controller = controller();
     when(dealerReceiptService.recordDealerReceipt(any())).thenReturn(null);
 
     assertForwardedIdempotencyKey(
@@ -52,7 +47,7 @@ class AccountingControllerIdempotencyHeaderParityTest {
 
   @Test
   void recordDealerReceipt_blankBodyKeyFallsBackToHeader() {
-    AccountingController controller = controller();
+    SettlementController controller = controller();
     when(dealerReceiptService.recordDealerReceipt(any())).thenReturn(null);
 
     assertForwardedIdempotencyKey(
@@ -65,7 +60,7 @@ class AccountingControllerIdempotencyHeaderParityTest {
 
   @Test
   void recordDealerHybridReceipt_acceptsMatchingBodyIdempotencyKeyWhenHeaderMatches() {
-    AccountingController controller = controller();
+    SettlementController controller = controller();
     when(dealerReceiptService.recordDealerReceiptSplit(any())).thenReturn(null);
 
     assertForwardedIdempotencyKey(
@@ -78,7 +73,7 @@ class AccountingControllerIdempotencyHeaderParityTest {
 
   @Test
   void recordDealerHybridReceipt_blankBodyKeyFallsBackToHeader() {
-    AccountingController controller = controller();
+    SettlementController controller = controller();
     when(dealerReceiptService.recordDealerReceiptSplit(any())).thenReturn(null);
 
     assertForwardedIdempotencyKey(
@@ -91,7 +86,7 @@ class AccountingControllerIdempotencyHeaderParityTest {
 
   @Test
   void settleSupplier_appliesPrimaryHeaderWhenBodyMissing() {
-    AccountingController controller = controller();
+    SettlementController controller = controller();
     when(settlementService.settleSupplierInvoices(any())).thenReturn(null);
 
     assertForwardedIdempotencyKey(
@@ -104,7 +99,7 @@ class AccountingControllerIdempotencyHeaderParityTest {
 
   @Test
   void settleSupplier_acceptsMatchingBodyIdempotencyKeyWhenHeaderMatches() {
-    AccountingController controller = controller();
+    SettlementController controller = controller();
     when(settlementService.settleSupplierInvoices(any())).thenReturn(null);
 
     assertForwardedIdempotencyKey(
@@ -117,7 +112,7 @@ class AccountingControllerIdempotencyHeaderParityTest {
 
   @Test
   void settleSupplier_blankBodyKeyFallsBackToHeader() {
-    AccountingController controller = controller();
+    SettlementController controller = controller();
     when(settlementService.settleSupplierInvoices(any())).thenReturn(null);
 
     assertForwardedIdempotencyKey(
@@ -130,7 +125,7 @@ class AccountingControllerIdempotencyHeaderParityTest {
 
   @Test
   void settleDealer_acceptsMatchingBodyIdempotencyKeyWhenHeaderMatches() {
-    AccountingController controller = controller();
+    SettlementController controller = controller();
     when(settlementService.settleDealerInvoices(any())).thenReturn(null);
 
     assertForwardedIdempotencyKey(
@@ -143,7 +138,7 @@ class AccountingControllerIdempotencyHeaderParityTest {
 
   @Test
   void settleDealer_blankBodyKeyFallsBackToHeader() {
-    AccountingController controller = controller();
+    SettlementController controller = controller();
     when(settlementService.settleDealerInvoices(any())).thenReturn(null);
 
     assertForwardedIdempotencyKey(
@@ -156,7 +151,7 @@ class AccountingControllerIdempotencyHeaderParityTest {
 
   @Test
   void autoSettleDealer_appliesPrimaryHeaderWhenBodyMissing() {
-    AccountingController controller = controller();
+    SettlementController controller = controller();
     when(settlementService.autoSettleDealer(any(), any())).thenReturn(null);
 
     assertForwardedIdempotencyKey(
@@ -169,7 +164,7 @@ class AccountingControllerIdempotencyHeaderParityTest {
 
   @Test
   void autoSettleDealer_acceptsMatchingBodyIdempotencyKeyWhenHeaderMatches() {
-    AccountingController controller = controller();
+    SettlementController controller = controller();
     when(settlementService.autoSettleDealer(any(), any())).thenReturn(null);
 
     assertForwardedIdempotencyKey(
@@ -182,7 +177,7 @@ class AccountingControllerIdempotencyHeaderParityTest {
 
   @Test
   void autoSettleSupplier_acceptsMatchingBodyIdempotencyKeyWhenHeaderMatches() {
-    AccountingController controller = controller();
+    SettlementController controller = controller();
     when(settlementService.autoSettleSupplier(any(), any())).thenReturn(null);
 
     assertForwardedIdempotencyKey(
@@ -193,30 +188,8 @@ class AccountingControllerIdempotencyHeaderParityTest {
         "body-001");
   }
 
-  private AccountingController controller() {
-    return new AccountingController(
-        accountingService,
-        null,
-        dealerReceiptService,
-        settlementService,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null);
+  private SettlementController controller() {
+    return new SettlementController(dealerReceiptService, settlementService);
   }
 
   private DealerReceiptRequest dealerReceiptRequest(String idempotencyKey) {

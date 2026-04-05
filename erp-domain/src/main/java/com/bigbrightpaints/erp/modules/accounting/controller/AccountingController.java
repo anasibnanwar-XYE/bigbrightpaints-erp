@@ -7,8 +7,6 @@ import java.time.format.DateTimeParseException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.function.BiFunction;
-import java.util.function.Function;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -20,7 +18,6 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -30,15 +27,9 @@ import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
-import com.bigbrightpaints.erp.core.util.IdempotencyHeaderUtils;
 import com.bigbrightpaints.erp.modules.accounting.domain.ReconciliationDiscrepancyStatus;
 import com.bigbrightpaints.erp.modules.accounting.domain.ReconciliationDiscrepancyType;
-import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodDto;
-import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodReopenRequest;
-import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodUpdateRequest;
-import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodUpsertRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.AgingSummaryResponse;
-import com.bigbrightpaints.erp.modules.accounting.dto.AutoSettlementRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.BankReconciliationRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.BankReconciliationSessionCompletionRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.BankReconciliationSessionCreateRequest;
@@ -46,26 +37,17 @@ import com.bigbrightpaints.erp.modules.accounting.dto.BankReconciliationSessionD
 import com.bigbrightpaints.erp.modules.accounting.dto.BankReconciliationSessionItemsUpdateRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.BankReconciliationSessionSummaryDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.BankReconciliationSummaryDto;
-import com.bigbrightpaints.erp.modules.accounting.dto.DealerReceiptRequest;
-import com.bigbrightpaints.erp.modules.accounting.dto.DealerReceiptSplitRequest;
-import com.bigbrightpaints.erp.modules.accounting.dto.DealerSettlementRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.GstReconciliationDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.GstReturnDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.InventoryRevaluationRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.LandedCostRequest;
-import com.bigbrightpaints.erp.modules.accounting.dto.MonthEndChecklistDto;
-import com.bigbrightpaints.erp.modules.accounting.dto.MonthEndChecklistUpdateRequest;
-import com.bigbrightpaints.erp.modules.accounting.dto.PartnerSettlementResponse;
 import com.bigbrightpaints.erp.modules.accounting.dto.PartnerStatementResponse;
-import com.bigbrightpaints.erp.modules.accounting.dto.PeriodCloseRequestActionRequest;
-import com.bigbrightpaints.erp.modules.accounting.dto.PeriodCloseRequestDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.ReconciliationDiscrepancyDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.ReconciliationDiscrepancyListResponse;
 import com.bigbrightpaints.erp.modules.accounting.dto.ReconciliationDiscrepancyResolveRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.SalesReturnPreviewDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.SalesReturnRequest;
-import com.bigbrightpaints.erp.modules.accounting.dto.SupplierSettlementRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.WipAdjustmentRequest;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountHierarchyService;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingAuditService;
@@ -101,16 +83,6 @@ import jakarta.validation.Valid;
 @RestController
 @RequestMapping("/api/v1/accounting")
 public class AccountingController {
-  private static final String DEALER_RECEIPT_PATH = "/api/v1/accounting/receipts/dealer";
-  private static final String DEALER_HYBRID_RECEIPT_PATH =
-      "/api/v1/accounting/receipts/dealer/hybrid";
-  private static final String DEALER_SETTLEMENT_PATH = "/api/v1/accounting/settlements/dealers";
-  private static final String DEALER_AUTO_SETTLEMENT_PATH =
-      "/api/v1/accounting/dealers/{dealerId}/auto-settle";
-  private static final String SUPPLIER_SETTLEMENT_PATH = "/api/v1/accounting/settlements/suppliers";
-  private static final String SUPPLIER_AUTO_SETTLEMENT_PATH =
-      "/api/v1/accounting/suppliers/{supplierId}/auto-settle";
-
   private final AccountingService accountingService;
   private final JournalEntryService journalEntryService;
   private final DealerReceiptService dealerReceiptService;
@@ -200,202 +172,6 @@ public class AccountingController {
         && ex.getErrorCode().getCode().startsWith("CONC_");
   }
 
-  @PostMapping("/receipts/dealer")
-  @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
-  public ResponseEntity<ApiResponse<JournalEntryDto>> recordDealerReceipt(
-      @Valid @RequestBody DealerReceiptRequest request,
-      @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey) {
-    DealerReceiptRequest resolved = applyIdempotencyKey(request, idempotencyKey);
-    return ResponseEntity.ok(
-        ApiResponse.success(
-            "Receipt recorded", dealerReceiptService.recordDealerReceipt(resolved)));
-  }
-
-  @PostMapping("/receipts/dealer/hybrid")
-  @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
-  public ResponseEntity<ApiResponse<JournalEntryDto>> recordDealerHybridReceipt(
-      @Valid @RequestBody DealerReceiptSplitRequest request,
-      @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey) {
-    DealerReceiptSplitRequest resolved = applyIdempotencyKey(request, idempotencyKey);
-    return ResponseEntity.ok(
-        ApiResponse.success(
-            "Receipt recorded", dealerReceiptService.recordDealerReceiptSplit(resolved)));
-  }
-
-  @PostMapping("/settlements/dealers")
-  @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
-  public ResponseEntity<ApiResponse<PartnerSettlementResponse>> settleDealer(
-      @Valid @RequestBody DealerSettlementRequest request,
-      @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey) {
-    DealerSettlementRequest resolved = applyIdempotencyKey(request, idempotencyKey);
-    return ResponseEntity.ok(
-        ApiResponse.success(
-            "Settlement recorded", settlementService.settleDealerInvoices(resolved)));
-  }
-
-  @PostMapping("/dealers/{dealerId}/auto-settle")
-  @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
-  public ResponseEntity<ApiResponse<PartnerSettlementResponse>> autoSettleDealer(
-      @PathVariable Long dealerId,
-      @Valid @RequestBody AutoSettlementRequest request,
-      @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey) {
-    AutoSettlementRequest resolved =
-        applyIdempotencyKey(request, idempotencyKey, DEALER_AUTO_SETTLEMENT_PATH);
-    return ResponseEntity.ok(
-        ApiResponse.success(
-            "Auto-settlement recorded", settlementService.autoSettleDealer(dealerId, resolved)));
-  }
-
-  @PostMapping("/settlements/suppliers")
-  @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
-  public ResponseEntity<ApiResponse<PartnerSettlementResponse>> settleSupplier(
-      @Valid @RequestBody SupplierSettlementRequest request,
-      @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey) {
-    SupplierSettlementRequest resolved = applyIdempotencyKey(request, idempotencyKey);
-    return ResponseEntity.ok(
-        ApiResponse.success(
-            "Settlement recorded", settlementService.settleSupplierInvoices(resolved)));
-  }
-
-  @PostMapping("/suppliers/{supplierId}/auto-settle")
-  @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
-  public ResponseEntity<ApiResponse<PartnerSettlementResponse>> autoSettleSupplier(
-      @PathVariable Long supplierId,
-      @Valid @RequestBody AutoSettlementRequest request,
-      @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey) {
-    AutoSettlementRequest resolved =
-        applyIdempotencyKey(request, idempotencyKey, SUPPLIER_AUTO_SETTLEMENT_PATH);
-    return ResponseEntity.ok(
-        ApiResponse.success(
-            "Auto-settlement recorded",
-            settlementService.autoSettleSupplier(supplierId, resolved)));
-  }
-
-  private DealerReceiptRequest applyIdempotencyKey(
-      DealerReceiptRequest request, String idempotencyKeyHeader) {
-    return applyHeaderOnlyIdempotencyKey(
-        request,
-        idempotencyKeyHeader,
-        DEALER_RECEIPT_PATH,
-        DealerReceiptRequest::idempotencyKey,
-        (resolvedRequest, resolvedKey) ->
-            new DealerReceiptRequest(
-                resolvedRequest.dealerId(),
-                resolvedRequest.cashAccountId(),
-                resolvedRequest.amount(),
-                resolvedRequest.referenceNumber(),
-                resolvedRequest.memo(),
-                resolvedKey,
-                resolvedRequest.allocations()));
-  }
-
-  private DealerReceiptSplitRequest applyIdempotencyKey(
-      DealerReceiptSplitRequest request, String idempotencyKeyHeader) {
-    return applyHeaderOnlyIdempotencyKey(
-        request,
-        idempotencyKeyHeader,
-        DEALER_HYBRID_RECEIPT_PATH,
-        DealerReceiptSplitRequest::idempotencyKey,
-        (resolvedRequest, resolvedKey) ->
-            new DealerReceiptSplitRequest(
-                resolvedRequest.dealerId(),
-                resolvedRequest.incomingLines(),
-                resolvedRequest.referenceNumber(),
-                resolvedRequest.memo(),
-                resolvedKey));
-  }
-
-  private DealerSettlementRequest applyIdempotencyKey(
-      DealerSettlementRequest request, String idempotencyKeyHeader) {
-    return applyHeaderOnlyIdempotencyKey(
-        request,
-        idempotencyKeyHeader,
-        DEALER_SETTLEMENT_PATH,
-        DealerSettlementRequest::idempotencyKey,
-        (resolvedRequest, resolvedKey) ->
-            new DealerSettlementRequest(
-                resolvedRequest.dealerId(),
-                resolvedRequest.cashAccountId(),
-                resolvedRequest.discountAccountId(),
-                resolvedRequest.writeOffAccountId(),
-                resolvedRequest.fxGainAccountId(),
-                resolvedRequest.fxLossAccountId(),
-                resolvedRequest.amount(),
-                resolvedRequest.unappliedAmountApplication(),
-                resolvedRequest.settlementDate(),
-                resolvedRequest.referenceNumber(),
-                resolvedRequest.memo(),
-                resolvedKey,
-                resolvedRequest.adminOverride(),
-                resolvedRequest.allocations(),
-                resolvedRequest.payments()));
-  }
-
-  private AutoSettlementRequest applyIdempotencyKey(
-      AutoSettlementRequest request, String idempotencyKeyHeader, String canonicalPath) {
-    return applyHeaderOnlyIdempotencyKey(
-        request,
-        idempotencyKeyHeader,
-        canonicalPath,
-        AutoSettlementRequest::idempotencyKey,
-        (resolvedRequest, resolvedKey) ->
-            new AutoSettlementRequest(
-                resolvedRequest.cashAccountId(),
-                resolvedRequest.amount(),
-                resolvedRequest.referenceNumber(),
-                resolvedRequest.memo(),
-                resolvedKey));
-  }
-
-  private SupplierSettlementRequest applyIdempotencyKey(
-      SupplierSettlementRequest request, String idempotencyKeyHeader) {
-    return applyHeaderOnlyIdempotencyKey(
-        request,
-        idempotencyKeyHeader,
-        SUPPLIER_SETTLEMENT_PATH,
-        SupplierSettlementRequest::idempotencyKey,
-        (resolvedRequest, resolvedKey) ->
-            new SupplierSettlementRequest(
-                resolvedRequest.supplierId(),
-                resolvedRequest.cashAccountId(),
-                resolvedRequest.discountAccountId(),
-                resolvedRequest.writeOffAccountId(),
-                resolvedRequest.fxGainAccountId(),
-                resolvedRequest.fxLossAccountId(),
-                resolvedRequest.amount(),
-                resolvedRequest.unappliedAmountApplication(),
-                resolvedRequest.settlementDate(),
-                resolvedRequest.referenceNumber(),
-                resolvedRequest.memo(),
-                resolvedKey,
-                resolvedRequest.adminOverride(),
-                resolvedRequest.allocations()));
-  }
-
-  private <T> T applyHeaderOnlyIdempotencyKey(
-      T request,
-      String idempotencyKeyHeader,
-      String canonicalPath,
-      Function<T, String> requestIdempotencyKeyExtractor,
-      BiFunction<T, String, T> requestWithIdempotencyKey) {
-    if (request == null) {
-      return null;
-    }
-    String currentRequestIdempotencyKey = requestIdempotencyKeyExtractor.apply(request);
-    String resolvedKey =
-        resolveHeaderOnlyIdempotencyKey(
-            currentRequestIdempotencyKey, idempotencyKeyHeader, canonicalPath);
-    if (!StringUtils.hasText(resolvedKey) || StringUtils.hasText(currentRequestIdempotencyKey)) {
-      return request;
-    }
-    return requestWithIdempotencyKey.apply(request, resolvedKey);
-  }
-
-  private String resolveHeaderOnlyIdempotencyKey(
-      String bodyIdempotencyKey, String idempotencyKeyHeader, String canonicalPath) {
-    return IdempotencyHeaderUtils.resolveBodyOrHeaderKey(bodyIdempotencyKey, idempotencyKeyHeader);
-  }
-
   private ReconciliationDiscrepancyStatus parseDiscrepancyStatus(String rawStatus) {
     if (!StringUtils.hasText(rawStatus)) {
       return null;
@@ -466,30 +242,6 @@ public class AccountingController {
         ApiResponse.success("Credit note posted", salesReturnService.processReturn(request)));
   }
 
-  @GetMapping("/periods")
-  @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
-  public ResponseEntity<ApiResponse<List<AccountingPeriodDto>>> listPeriods() {
-    return ResponseEntity.ok(ApiResponse.success(accountingPeriodService.listPeriods()));
-  }
-
-  @PostMapping("/periods")
-  @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
-  public ResponseEntity<ApiResponse<AccountingPeriodDto>> createOrUpdatePeriod(
-      @Valid @RequestBody AccountingPeriodUpsertRequest request) {
-    return ResponseEntity.ok(
-        ApiResponse.success(
-            "Accounting period saved", accountingPeriodService.createOrUpdatePeriod(request)));
-  }
-
-  @PutMapping("/periods/{periodId}")
-  @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
-  public ResponseEntity<ApiResponse<AccountingPeriodDto>> updatePeriod(
-      @PathVariable Long periodId, @Valid @RequestBody AccountingPeriodUpdateRequest request) {
-    return ResponseEntity.ok(
-        ApiResponse.success(
-            "Accounting period updated", accountingPeriodService.updatePeriod(periodId, request)));
-  }
-
   private boolean isSalesReturnCreditNote(JournalEntryDto entry) {
     if (entry == null || !StringUtils.hasText(entry.referenceNumber())) {
       return false;
@@ -499,67 +251,6 @@ public class AccountingController {
       return false;
     }
     return entry.dealerId() != null || "SALES_RETURN".equalsIgnoreCase(entry.correctionReason());
-  }
-
-  @PostMapping("/periods/{periodId}/request-close")
-  @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
-  public ResponseEntity<ApiResponse<PeriodCloseRequestDto>> requestPeriodClose(
-      @PathVariable Long periodId,
-      @RequestBody(required = false) PeriodCloseRequestActionRequest request) {
-    return ResponseEntity.ok(
-        ApiResponse.success(
-            "Period close request submitted",
-            accountingPeriodService.requestPeriodClose(periodId, request)));
-  }
-
-  @PostMapping("/periods/{periodId}/approve-close")
-  @PreAuthorize("hasAuthority('ROLE_ADMIN')")
-  public ResponseEntity<ApiResponse<AccountingPeriodDto>> approvePeriodClose(
-      @PathVariable Long periodId,
-      @RequestBody(required = false) PeriodCloseRequestActionRequest request) {
-    return ResponseEntity.ok(
-        ApiResponse.success(
-            "Accounting period close approved",
-            accountingPeriodService.approvePeriodClose(periodId, request)));
-  }
-
-  @PostMapping("/periods/{periodId}/reject-close")
-  @PreAuthorize("hasAuthority('ROLE_ADMIN')")
-  public ResponseEntity<ApiResponse<PeriodCloseRequestDto>> rejectPeriodClose(
-      @PathVariable Long periodId,
-      @RequestBody(required = false) PeriodCloseRequestActionRequest request) {
-    return ResponseEntity.ok(
-        ApiResponse.success(
-            "Accounting period close rejected",
-            accountingPeriodService.rejectPeriodClose(periodId, request)));
-  }
-
-  @PostMapping("/periods/{periodId}/reopen")
-  @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN')")
-  public ResponseEntity<ApiResponse<AccountingPeriodDto>> reopenPeriod(
-      @PathVariable Long periodId,
-      @RequestBody(required = false) AccountingPeriodReopenRequest request) {
-    return ResponseEntity.ok(
-        ApiResponse.success(
-            "Accounting period reopened", accountingPeriodService.reopenPeriod(periodId, request)));
-  }
-
-  @GetMapping("/month-end/checklist")
-  @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
-  public ResponseEntity<ApiResponse<MonthEndChecklistDto>> checklist(
-      @RequestParam(required = false) Long periodId) {
-    return ResponseEntity.ok(
-        ApiResponse.success(accountingPeriodService.getMonthEndChecklist(periodId)));
-  }
-
-  @PostMapping("/month-end/checklist/{periodId}")
-  @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
-  public ResponseEntity<ApiResponse<MonthEndChecklistDto>> updateChecklist(
-      @PathVariable Long periodId, @RequestBody MonthEndChecklistUpdateRequest request) {
-    return ResponseEntity.ok(
-        ApiResponse.success(
-            "Checklist updated",
-            accountingPeriodService.updateMonthEndChecklist(periodId, request)));
   }
 
   @PostMapping("/reconciliation/bank")
