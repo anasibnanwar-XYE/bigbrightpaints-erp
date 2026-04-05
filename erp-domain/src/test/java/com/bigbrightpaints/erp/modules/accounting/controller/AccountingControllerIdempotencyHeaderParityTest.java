@@ -9,6 +9,8 @@ import static org.mockito.Mockito.when;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.function.Consumer;
+import java.util.function.Function;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -46,14 +48,16 @@ class AccountingControllerIdempotencyHeaderParityTest {
   }
 
   @Test
-  void recordDealerReceipt_rejectsBodyIdempotencyKeyWhenHeaderMatches() {
+  void recordDealerReceipt_acceptsMatchingBodyIdempotencyKeyWhenHeaderMatches() {
     AccountingController controller = controller();
+    when(dealerReceiptService.recordDealerReceipt(any())).thenReturn(null);
 
-    assertThatThrownBy(
-            () ->
-                controller.recordDealerReceipt(dealerReceiptRequest("body-001"), "body-001", null))
-        .isInstanceOf(ApplicationException.class)
-        .hasMessageContaining("Idempotency-Key header");
+    assertForwardedIdempotencyKey(
+        DealerReceiptRequest.class,
+        () -> controller.recordDealerReceipt(dealerReceiptRequest("body-001"), "body-001", null),
+        captor -> verify(dealerReceiptService).recordDealerReceipt(captor.capture()),
+        DealerReceiptRequest::idempotencyKey,
+        "body-001");
   }
 
   @Test
@@ -61,12 +65,13 @@ class AccountingControllerIdempotencyHeaderParityTest {
     AccountingController controller = controller();
     when(dealerReceiptService.recordDealerReceipt(any())).thenReturn(null);
 
-    controller.recordDealerReceipt(dealerReceiptRequest("   "), "hdr-blank-001", null);
-
-    ArgumentCaptor<DealerReceiptRequest> captor =
-        ArgumentCaptor.forClass(DealerReceiptRequest.class);
-    verify(dealerReceiptService).recordDealerReceipt(captor.capture());
-    assertThat(captor.getValue().idempotencyKey()).isEqualTo("hdr-blank-001");
+    assertForwardedIdempotencyKey(
+        DealerReceiptRequest.class,
+        () ->
+            controller.recordDealerReceipt(dealerReceiptRequest("   "), "hdr-blank-001", null),
+        captor -> verify(dealerReceiptService).recordDealerReceipt(captor.capture()),
+        DealerReceiptRequest::idempotencyKey,
+        "hdr-blank-001");
   }
 
   @Test
@@ -84,15 +89,18 @@ class AccountingControllerIdempotencyHeaderParityTest {
   }
 
   @Test
-  void recordDealerHybridReceipt_rejectsBodyIdempotencyKeyWhenHeaderMatches() {
+  void recordDealerHybridReceipt_acceptsMatchingBodyIdempotencyKeyWhenHeaderMatches() {
     AccountingController controller = controller();
+    when(dealerReceiptService.recordDealerReceiptSplit(any())).thenReturn(null);
 
-    assertThatThrownBy(
-            () ->
-                controller.recordDealerHybridReceipt(
-                    dealerReceiptSplitRequest("body-001"), "body-001", null))
-        .isInstanceOf(ApplicationException.class)
-        .hasMessageContaining("Idempotency-Key header");
+    assertForwardedIdempotencyKey(
+        DealerReceiptSplitRequest.class,
+        () ->
+            controller.recordDealerHybridReceipt(
+                dealerReceiptSplitRequest("body-001"), "body-001", null),
+        captor -> verify(dealerReceiptService).recordDealerReceiptSplit(captor.capture()),
+        DealerReceiptSplitRequest::idempotencyKey,
+        "body-001");
   }
 
   @Test
@@ -100,12 +108,14 @@ class AccountingControllerIdempotencyHeaderParityTest {
     AccountingController controller = controller();
     when(dealerReceiptService.recordDealerReceiptSplit(any())).thenReturn(null);
 
-    controller.recordDealerHybridReceipt(dealerReceiptSplitRequest("   "), "hdr-blank-002", null);
-
-    ArgumentCaptor<DealerReceiptSplitRequest> captor =
-        ArgumentCaptor.forClass(DealerReceiptSplitRequest.class);
-    verify(dealerReceiptService).recordDealerReceiptSplit(captor.capture());
-    assertThat(captor.getValue().idempotencyKey()).isEqualTo("hdr-blank-002");
+    assertForwardedIdempotencyKey(
+        DealerReceiptSplitRequest.class,
+        () ->
+            controller.recordDealerHybridReceipt(
+                dealerReceiptSplitRequest("   "), "hdr-blank-002", null),
+        captor -> verify(dealerReceiptService).recordDealerReceiptSplit(captor.capture()),
+        DealerReceiptSplitRequest::idempotencyKey,
+        "hdr-blank-002");
   }
 
   @Test
@@ -113,24 +123,25 @@ class AccountingControllerIdempotencyHeaderParityTest {
     AccountingController controller = controller();
     when(settlementService.settleSupplierInvoices(any())).thenReturn(null);
 
-    controller.settleSupplier(supplierSettlementRequest(null), "hdr-001", null);
-
-    ArgumentCaptor<SupplierSettlementRequest> captor =
-        ArgumentCaptor.forClass(SupplierSettlementRequest.class);
-    verify(settlementService).settleSupplierInvoices(captor.capture());
-    assertThat(captor.getValue().idempotencyKey()).isEqualTo("hdr-001");
+    assertForwardedIdempotencyKey(
+        SupplierSettlementRequest.class,
+        () -> controller.settleSupplier(supplierSettlementRequest(null), "hdr-001", null),
+        captor -> verify(settlementService).settleSupplierInvoices(captor.capture()),
+        SupplierSettlementRequest::idempotencyKey,
+        "hdr-001");
   }
 
   @Test
-  void settleSupplier_rejectsBodyIdempotencyKeyWhenHeaderMatches() {
+  void settleSupplier_acceptsMatchingBodyIdempotencyKeyWhenHeaderMatches() {
     AccountingController controller = controller();
+    when(settlementService.settleSupplierInvoices(any())).thenReturn(null);
 
-    assertThatThrownBy(
-            () ->
-                controller.settleSupplier(
-                    supplierSettlementRequest("body-001"), "body-001", null))
-        .isInstanceOf(ApplicationException.class)
-        .hasMessageContaining("Idempotency-Key header");
+    assertForwardedIdempotencyKey(
+        SupplierSettlementRequest.class,
+        () -> controller.settleSupplier(supplierSettlementRequest("body-001"), "body-001", null),
+        captor -> verify(settlementService).settleSupplierInvoices(captor.capture()),
+        SupplierSettlementRequest::idempotencyKey,
+        "body-001");
   }
 
   @Test
@@ -138,12 +149,12 @@ class AccountingControllerIdempotencyHeaderParityTest {
     AccountingController controller = controller();
     when(settlementService.settleSupplierInvoices(any())).thenReturn(null);
 
-    controller.settleSupplier(supplierSettlementRequest("   "), "hdr-blank-004", null);
-
-    ArgumentCaptor<SupplierSettlementRequest> captor =
-        ArgumentCaptor.forClass(SupplierSettlementRequest.class);
-    verify(settlementService).settleSupplierInvoices(captor.capture());
-    assertThat(captor.getValue().idempotencyKey()).isEqualTo("hdr-blank-004");
+    assertForwardedIdempotencyKey(
+        SupplierSettlementRequest.class,
+        () -> controller.settleSupplier(supplierSettlementRequest("   "), "hdr-blank-004", null),
+        captor -> verify(settlementService).settleSupplierInvoices(captor.capture()),
+        SupplierSettlementRequest::idempotencyKey,
+        "hdr-blank-004");
   }
 
   @Test
@@ -171,13 +182,16 @@ class AccountingControllerIdempotencyHeaderParityTest {
   }
 
   @Test
-  void settleDealer_rejectsBodyIdempotencyKeyWhenHeaderMatches() {
+  void settleDealer_acceptsMatchingBodyIdempotencyKeyWhenHeaderMatches() {
     AccountingController controller = controller();
+    when(settlementService.settleDealerInvoices(any())).thenReturn(null);
 
-    assertThatThrownBy(
-            () -> controller.settleDealer(dealerSettlementRequest("body-001"), "body-001", null))
-        .isInstanceOf(ApplicationException.class)
-        .hasMessageContaining("Idempotency-Key header");
+    assertForwardedIdempotencyKey(
+        DealerSettlementRequest.class,
+        () -> controller.settleDealer(dealerSettlementRequest("body-001"), "body-001", null),
+        captor -> verify(settlementService).settleDealerInvoices(captor.capture()),
+        DealerSettlementRequest::idempotencyKey,
+        "body-001");
   }
 
   @Test
@@ -185,12 +199,12 @@ class AccountingControllerIdempotencyHeaderParityTest {
     AccountingController controller = controller();
     when(settlementService.settleDealerInvoices(any())).thenReturn(null);
 
-    controller.settleDealer(dealerSettlementRequest("   "), "hdr-blank-005", null);
-
-    ArgumentCaptor<DealerSettlementRequest> captor =
-        ArgumentCaptor.forClass(DealerSettlementRequest.class);
-    verify(settlementService).settleDealerInvoices(captor.capture());
-    assertThat(captor.getValue().idempotencyKey()).isEqualTo("hdr-blank-005");
+    assertForwardedIdempotencyKey(
+        DealerSettlementRequest.class,
+        () -> controller.settleDealer(dealerSettlementRequest("   "), "hdr-blank-005", null),
+        captor -> verify(settlementService).settleDealerInvoices(captor.capture()),
+        DealerSettlementRequest::idempotencyKey,
+        "hdr-blank-005");
   }
 
   @Test
@@ -211,25 +225,25 @@ class AccountingControllerIdempotencyHeaderParityTest {
     AccountingController controller = controller();
     when(settlementService.autoSettleDealer(any(), any())).thenReturn(null);
 
-    controller.autoSettleDealer(1001L, autoSettlementRequest(null), "hdr-auto-001", null);
-
-    ArgumentCaptor<com.bigbrightpaints.erp.modules.accounting.dto.AutoSettlementRequest> captor =
-        ArgumentCaptor.forClass(
-            com.bigbrightpaints.erp.modules.accounting.dto.AutoSettlementRequest.class);
-    verify(settlementService).autoSettleDealer(any(), captor.capture());
-    assertThat(captor.getValue().idempotencyKey()).isEqualTo("hdr-auto-001");
+    assertForwardedIdempotencyKey(
+        com.bigbrightpaints.erp.modules.accounting.dto.AutoSettlementRequest.class,
+        () -> controller.autoSettleDealer(1001L, autoSettlementRequest(null), "hdr-auto-001", null),
+        captor -> verify(settlementService).autoSettleDealer(any(), captor.capture()),
+        com.bigbrightpaints.erp.modules.accounting.dto.AutoSettlementRequest::idempotencyKey,
+        "hdr-auto-001");
   }
 
   @Test
-  void autoSettleDealer_rejectsBodyIdempotencyKeyWhenHeaderMatches() {
+  void autoSettleDealer_acceptsMatchingBodyIdempotencyKeyWhenHeaderMatches() {
     AccountingController controller = controller();
+    when(settlementService.autoSettleDealer(any(), any())).thenReturn(null);
 
-    assertThatThrownBy(
-            () ->
-                controller.autoSettleDealer(
-                    1001L, autoSettlementRequest("body-001"), "body-001", null))
-        .isInstanceOf(ApplicationException.class)
-        .hasMessageContaining("Idempotency-Key header");
+    assertForwardedIdempotencyKey(
+        com.bigbrightpaints.erp.modules.accounting.dto.AutoSettlementRequest.class,
+        () -> controller.autoSettleDealer(1001L, autoSettlementRequest("body-001"), "body-001", null),
+        captor -> verify(settlementService).autoSettleDealer(any(), captor.capture()),
+        com.bigbrightpaints.erp.modules.accounting.dto.AutoSettlementRequest::idempotencyKey,
+        "body-001");
   }
 
   @Test
@@ -247,15 +261,18 @@ class AccountingControllerIdempotencyHeaderParityTest {
   }
 
   @Test
-  void autoSettleSupplier_rejectsBodyIdempotencyKeyWhenHeaderMatches() {
+  void autoSettleSupplier_acceptsMatchingBodyIdempotencyKeyWhenHeaderMatches() {
     AccountingController controller = controller();
+    when(settlementService.autoSettleSupplier(any(), any())).thenReturn(null);
 
-    assertThatThrownBy(
-            () ->
-                controller.autoSettleSupplier(
-                    3001L, autoSettlementRequest("body-001"), "body-001", null))
-        .isInstanceOf(ApplicationException.class)
-        .hasMessageContaining("Idempotency-Key header");
+    assertForwardedIdempotencyKey(
+        com.bigbrightpaints.erp.modules.accounting.dto.AutoSettlementRequest.class,
+        () ->
+            controller.autoSettleSupplier(
+                3001L, autoSettlementRequest("body-001"), "body-001", null),
+        captor -> verify(settlementService).autoSettleSupplier(any(), captor.capture()),
+        com.bigbrightpaints.erp.modules.accounting.dto.AutoSettlementRequest::idempotencyKey,
+        "body-001");
   }
 
   private AccountingController controller() {
@@ -357,5 +374,17 @@ class AccountingControllerIdempotencyHeaderParityTest {
         .containsEntry("legacyHeaderValue", legacyHeaderValue)
         .containsEntry("canonicalHeader", "Idempotency-Key")
         .containsEntry("canonicalPath", canonicalPath);
+  }
+
+  private <T> void assertForwardedIdempotencyKey(
+      Class<T> requestType,
+      Runnable invocation,
+      Consumer<ArgumentCaptor<T>> verification,
+      Function<T, String> idempotencyKeyExtractor,
+      String expectedIdempotencyKey) {
+    invocation.run();
+    ArgumentCaptor<T> captor = ArgumentCaptor.forClass(requestType);
+    verification.accept(captor);
+    assertThat(idempotencyKeyExtractor.apply(captor.getValue())).isEqualTo(expectedIdempotencyKey);
   }
 }

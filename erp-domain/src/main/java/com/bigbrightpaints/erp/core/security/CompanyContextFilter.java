@@ -218,7 +218,10 @@ public class CompanyContextFilter extends OncePerRequestFilter {
               "Rejecting control-plane request because target tenant lookup failed. path={}",
               sanitizeForLog(request.getRequestURI()),
               ex);
-          denyControlPlaneRequest(response);
+          writeServiceUnavailable(
+              response,
+              "TENANT_CONTROL_TARGET_LOOKUP_UNAVAILABLE",
+              "Tenant control-plane target lookup is unavailable");
           return;
         }
         if (pathTargetCompanyCode == null) {
@@ -256,7 +259,7 @@ public class CompanyContextFilter extends OncePerRequestFilter {
               "Rejecting request because lifecycle lookup failed. path={}",
               sanitizeForLog(request.getRequestURI()),
               ex);
-          writeAccessDenied(
+          writeServiceUnavailable(
               response,
               "TENANT_LIFECYCLE_LOOKUP_UNAVAILABLE",
               "Tenant lifecycle admission is unavailable");
@@ -482,6 +485,18 @@ public class CompanyContextFilter extends OncePerRequestFilter {
     data.put("reasonDetail", reasonDetail);
     data.put("traceId", UUID.randomUUID().toString());
     writeControlledError(response, HttpServletResponse.SC_FORBIDDEN, userMessage, data);
+  }
+
+  private void writeServiceUnavailable(
+      HttpServletResponse response, String reason, String reasonDetail) throws IOException {
+    String userMessage = ErrorCode.SYSTEM_SERVICE_UNAVAILABLE.getDefaultMessage();
+    Map<String, Object> data = new LinkedHashMap<>();
+    data.put("code", ErrorCode.SYSTEM_SERVICE_UNAVAILABLE.getCode());
+    data.put("message", userMessage);
+    data.put("reason", reason);
+    data.put("reasonDetail", reasonDetail);
+    data.put("traceId", UUID.randomUUID().toString());
+    writeControlledError(response, HttpServletResponse.SC_SERVICE_UNAVAILABLE, userMessage, data);
   }
 
   private void writeRuntimeAdmissionDenied(

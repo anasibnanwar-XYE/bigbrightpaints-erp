@@ -185,6 +185,27 @@ class AccountingControllerExceptionHandlerTest {
   }
 
   @Test
+  void handleApplicationException_internalConcurrencyFailureMapsToConflictEnvelope() {
+    AccountingController controller = controller();
+    ApplicationException ex =
+        new ApplicationException(
+            ErrorCode.INTERNAL_CONCURRENCY_FAILURE,
+            "Sales journal reference already reserved but mapping not found");
+    MockHttpServletRequest request = new MockHttpServletRequest();
+    request.setRequestURI("/api/v1/accounting/sales/returns");
+
+    ResponseEntity<ApiResponse<Map<String, Object>>> response =
+        controller.handleApplicationException(ex, request);
+
+    assertReplayErrorEnvelope(
+        response,
+        HttpStatus.CONFLICT,
+        ErrorCode.INTERNAL_CONCURRENCY_FAILURE,
+        "Sales journal reference already reserved but mapping not found",
+        "/api/v1/accounting/sales/returns");
+  }
+
+  @Test
   void handleApplicationException_invalidDiscrepancyTypeMapsToBadRequestEnvelope() {
     AccountingController controller = controller();
     ApplicationException ex =

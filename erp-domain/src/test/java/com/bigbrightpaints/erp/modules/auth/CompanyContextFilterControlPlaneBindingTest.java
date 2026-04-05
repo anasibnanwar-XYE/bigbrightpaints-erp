@@ -239,6 +239,55 @@ class CompanyContextFilterControlPlaneBindingTest {
   }
 
   @Test
+  void canonicalTenantControlRequest_returnsServiceUnavailableWhenTargetLookupFails()
+      throws ServletException, IOException {
+    authenticate("root-superadmin@bbp.com", Set.of("ROLE_SUPER_ADMIN"), Set.of("ROOT"));
+    when(companyService.resolveCompanyCodeById(42L))
+        .thenThrow(new RuntimeException("tenant-lookup-unavailable"));
+
+    MockHttpServletRequest request = request("GET", "/api/v1/superadmin/tenants/42");
+    request.setAttribute("jwtClaims", claimsFor("ROOT"));
+    MockHttpServletResponse response = new MockHttpServletResponse();
+
+    filter.doFilter(request, response, filterChain);
+
+    assertThat(response.getStatus()).isEqualTo(503);
+    assertThat(response.getContentAsString())
+        .contains("SYS_002")
+        .contains("TENANT_CONTROL_TARGET_LOOKUP_UNAVAILABLE");
+    verify(companyService).resolveCompanyCodeById(42L);
+    verify(companyService, never()).resolveLifecycleStateByCode(anyString());
+    verify(tenantRuntimeRequestAdmissionService, never())
+        .beginRequest(anyString(), anyString(), anyString(), anyString(), anyBoolean());
+    verify(filterChain, never()).doFilter(request, response);
+  }
+
+  @Test
+  void canonicalTenantControlRequest_returnsServiceUnavailableWhenLifecycleLookupFails()
+      throws ServletException, IOException {
+    authenticate("root-superadmin@bbp.com", Set.of("ROLE_SUPER_ADMIN"), Set.of("ROOT"));
+    when(companyService.resolveCompanyCodeById(42L)).thenReturn("TENANT-A");
+    when(companyService.resolveLifecycleStateByCode("TENANT-A"))
+        .thenThrow(new RuntimeException("lifecycle-unavailable"));
+
+    MockHttpServletRequest request = request("GET", "/api/v1/superadmin/tenants/42");
+    request.setAttribute("jwtClaims", claimsFor("ROOT"));
+    MockHttpServletResponse response = new MockHttpServletResponse();
+
+    filter.doFilter(request, response, filterChain);
+
+    assertThat(response.getStatus()).isEqualTo(503);
+    assertThat(response.getContentAsString())
+        .contains("SYS_002")
+        .contains("TENANT_LIFECYCLE_LOOKUP_UNAVAILABLE");
+    verify(companyService).resolveCompanyCodeById(42L);
+    verify(companyService).resolveLifecycleStateByCode("TENANT-A");
+    verify(tenantRuntimeRequestAdmissionService, never())
+        .beginRequest(anyString(), anyString(), anyString(), anyString(), anyBoolean());
+    verify(filterChain, never()).doFilter(request, response);
+  }
+
+  @Test
   void auditTenantWorkflowRequest_rejectsSuperAdminAsPlatformOnly()
       throws ServletException, IOException {
     authenticate("root-superadmin@bbp.com", Set.of("ROLE_SUPER_ADMIN"), Set.of("TENANT-A"));

@@ -21,7 +21,9 @@ import com.bigbrightpaints.erp.core.audit.AuditEvent;
 import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.config.SystemSetting;
 import com.bigbrightpaints.erp.core.config.SystemSettingsRepository;
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.AuthSecurityContractException;
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.idempotency.IdempotencyUtils;
 import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
@@ -201,21 +203,22 @@ public class TenantRuntimeEnforcementService {
       throw stateRejection.asAuthSecurityContractException();
     }
 
-    Company company;
+    Optional<Company> companyLookup;
     try {
-      company =
-          companyRepository
-              .findByCodeIgnoreCase(normalizedCompany)
-              .orElseThrow(
-                  () ->
-                      com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
-                          "Company not found: " + normalizedCompany));
+      companyLookup = companyRepository.findByCodeIgnoreCase(normalizedCompany);
     } catch (RuntimeException ex) {
       TenantRuntimeRejection rejection =
           unavailableRejection(
               normalizedCompany,
               "TENANT_COMPANY_LOOKUP_UNAVAILABLE",
               "Tenant company lookup is unavailable");
+      incrementRejectedCount(usageCounters);
+      auditRejection(rejection, actor, scope, "POST");
+      throw rejection.asAuthSecurityContractException();
+    }
+    Company company = companyLookup.orElse(null);
+    if (company == null || company.getId() == null) {
+      TenantRuntimeRejection rejection = tenantNotFoundRejection(normalizedCompany);
       incrementRejectedCount(usageCounters);
       auditRejection(rejection, actor, scope, "POST");
       throw rejection.asAuthSecurityContractException();
@@ -274,16 +277,8 @@ public class TenantRuntimeEnforcementService {
       String reasonCode,
       String actor) {
     String normalizedCompany = requireCompanyCode(companyCode);
-    // Force fail-closed for unknown company code updates.
-    Company company =
-        companyRepository
-        .findByCodeIgnoreCase(normalizedCompany)
-        .orElseThrow(
-            () ->
-                com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
-                    "Company not found: " + normalizedCompany));
-
-    TenantRuntimePolicy current = policyFor(normalizedCompany);
+    Company company = requireTrackedCompany(normalizedCompany);
+    TenantRuntimePolicy current = policyForManagedOperation(normalizedCompany);
     String normalizedReason = normalizeReason(reasonCode);
     String previousChainId = current.auditChainId;
     String newChainId = UUID.randomUUID().toString();
@@ -325,13 +320,7 @@ public class TenantRuntimeEnforcementService {
       Integer maxActiveUsers,
       String actor) {
     String normalizedCompany = requireCompanyCode(companyCode);
-    Company company =
-        companyRepository
-            .findByCodeIgnoreCase(normalizedCompany)
-            .orElseThrow(
-                () ->
-                    com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
-                        "Company not found: " + normalizedCompany));
+    Company company = requireTrackedCompany(normalizedCompany);
     if (targetState == null
         && maxConcurrentRequests == null
         && maxRequestsPerMinute == null
@@ -339,7 +328,7 @@ public class TenantRuntimeEnforcementService {
       throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
           "Runtime policy mutation payload is required");
     }
-    TenantRuntimePolicy current = policyFor(normalizedCompany);
+    TenantRuntimePolicy current = policyForManagedOperation(normalizedCompany);
     String normalizedReason = normalizeReason(reasonCode);
     String previousChainId = current.auditChainId;
     String newChainId = UUID.randomUUID().toString();
@@ -377,7 +366,7 @@ public class TenantRuntimeEnforcementService {
 
   public TenantRuntimeSnapshot snapshot(String companyCode) {
     String normalizedCompany = requireCompanyCode(companyCode);
-    TenantRuntimePolicy policy = policyFor(normalizedCompany);
+    TenantRuntimePolicy policy = policyForManagedOperation(normalizedCompany);
     TenantRuntimeCounters usageCounters = countersFor(normalizedCompany);
     Long activeUsers = resolveActiveUsers(normalizedCompany);
     return new TenantRuntimeSnapshot(
@@ -432,15 +421,8 @@ public class TenantRuntimeEnforcementService {
       String actor,
       String action) {
     String normalizedCompany = requireCompanyCode(companyCode);
-    // Force fail-closed for unknown company code updates.
-    companyRepository
-        .findByCodeIgnoreCase(normalizedCompany)
-        .orElseThrow(
-            () ->
-                com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
-                    "Company not found: " + normalizedCompany));
-
-    TenantRuntimePolicy current = policyFor(normalizedCompany);
+    requireTrackedCompany(normalizedCompany);
+    TenantRuntimePolicy current = policyForManagedOperation(normalizedCompany);
     String normalizedReason = normalizeReason(reasonCode);
     String previousChainId = current.auditChainId;
     String newChainId = UUID.randomUUID().toString();
@@ -596,11 +578,23 @@ public class TenantRuntimeEnforcementService {
   }
 
   private Long resolveActiveUsers(String companyCode) {
-    return companyRepository
-        .findByCodeIgnoreCase(companyCode)
-        .map(Company::getId)
-        .map(userAccountRepository::countByCompany_IdAndEnabledTrue)
-        .orElse(0L);
+    Company company;
+    try {
+      company = companyRepository.findByCodeIgnoreCase(companyCode).orElse(null);
+    } catch (RuntimeException ex) {
+      throw toManagedOperationException(
+          companyCode,
+          new TenantRuntimeAdmissionFailure(
+              unavailableRejection(
+                  companyCode,
+                  "TENANT_COMPANY_LOOKUP_UNAVAILABLE",
+                  "Tenant company lookup is unavailable"),
+              ex));
+    }
+    if (company == null || company.getId() == null) {
+      return 0L;
+    }
+    return userAccountRepository.countByCompany_IdAndEnabledTrue(company.getId());
   }
 
   private int incrementMinuteCount(TenantRuntimeCounters usageCounters, long minuteBucket) {
@@ -704,18 +698,7 @@ public class TenantRuntimeEnforcementService {
           ex);
     }
     if (company == null || company.getId() == null) {
-      throw new TenantRuntimeAdmissionFailure(
-          new TenantRuntimeRejection(
-              companyCode,
-              TenantRuntimeState.BLOCKED,
-              DEFAULT_REASON,
-              DEFAULT_POLICY_REFERENCE,
-              HttpStatus.FORBIDDEN,
-              "TENANT_NOT_FOUND",
-              "Tenant not found",
-              null,
-              null,
-              null));
+      throw new TenantRuntimeAdmissionFailure(tenantNotFoundRejection(companyCode));
     }
     Long companyId = company.getId();
     String persistedState = readSetting(companyCode, keyHoldState(companyId), null);
@@ -841,6 +824,20 @@ public class TenantRuntimeEnforcementService {
         null);
   }
 
+  private TenantRuntimeRejection tenantNotFoundRejection(String companyCode) {
+    return new TenantRuntimeRejection(
+        companyCode,
+        TenantRuntimeState.BLOCKED,
+        DEFAULT_REASON,
+        DEFAULT_POLICY_REFERENCE,
+        HttpStatus.FORBIDDEN,
+        "TENANT_NOT_FOUND",
+        "Tenant not found",
+        null,
+        null,
+        null);
+  }
+
   private void persistSetting(String key, String value) {
     if (!StringUtils.hasText(key)) {
       return;
@@ -924,6 +921,78 @@ public class TenantRuntimeEnforcementService {
           "Company code is required");
     }
     return normalized;
+  }
+
+  private Company requireTrackedCompany(String normalizedCompany) {
+    Optional<Company> company;
+    try {
+      company = companyRepository.findByCodeIgnoreCase(normalizedCompany);
+    } catch (RuntimeException ex) {
+      throw toManagedOperationException(
+          normalizedCompany,
+          new TenantRuntimeAdmissionFailure(
+              unavailableRejection(
+                  normalizedCompany,
+                  "TENANT_COMPANY_LOOKUP_UNAVAILABLE",
+                  "Tenant company lookup is unavailable"),
+              ex));
+    }
+    return company.orElseThrow(
+        () ->
+            com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+                "Company not found: " + normalizedCompany));
+  }
+
+  private TenantRuntimePolicy policyForManagedOperation(String normalizedCompany) {
+    try {
+      return policyFor(normalizedCompany);
+    } catch (TenantRuntimeAdmissionFailure failure) {
+      throw toManagedOperationException(normalizedCompany, failure);
+    }
+  }
+
+  private ApplicationException toManagedOperationException(
+      String normalizedCompany, TenantRuntimeAdmissionFailure failure) {
+    TenantRuntimeRejection rejection = failure == null ? null : failure.rejection();
+    if (rejection != null && rejection.httpStatus() == HttpStatus.SERVICE_UNAVAILABLE) {
+      ApplicationException ex =
+          new ApplicationException(
+              ErrorCode.SYSTEM_SERVICE_UNAVAILABLE, rejection.reasonDetail(), failure);
+      return withRejectionDetails(ex, rejection);
+    }
+    ApplicationException ex =
+        com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+            "Company not found: " + normalizedCompany);
+    return withRejectionDetails(ex, rejection);
+  }
+
+  private ApplicationException withRejectionDetails(
+      ApplicationException ex, TenantRuntimeRejection rejection) {
+    if (ex == null || rejection == null) {
+      return ex;
+    }
+    if (StringUtils.hasText(rejection.companyCode())) {
+      ex.withDetail("companyCode", rejection.companyCode());
+    }
+    if (StringUtils.hasText(rejection.reasonCode())) {
+      ex.withDetail("reason", rejection.reasonCode());
+    }
+    if (StringUtils.hasText(rejection.auditChainId())) {
+      ex.withDetail("auditChainId", rejection.auditChainId());
+    }
+    if (StringUtils.hasText(rejection.tenantReasonCode())) {
+      ex.withDetail("tenantReasonCode", rejection.tenantReasonCode());
+    }
+    if (StringUtils.hasText(rejection.limitType())) {
+      ex.withDetail("limitType", rejection.limitType());
+    }
+    if (StringUtils.hasText(rejection.observedValue())) {
+      ex.withDetail("observedValue", rejection.observedValue());
+    }
+    if (StringUtils.hasText(rejection.limitValue())) {
+      ex.withDetail("limitValue", rejection.limitValue());
+    }
+    return ex;
   }
 
   private String normalizeCompanyCode(String companyCode) {

@@ -60,15 +60,18 @@ class TS_AccountingControllerIdempotencyHeaderParityRuntimeCoverageTest {
   }
 
   @Test
-  void recordDealerReceipt_bodyPresent_rejectsBodyIdempotencyKey() {
+  void recordDealerReceipt_bodyPresent_acceptsMatchingBodyIdempotencyKey() {
     DealerReceiptService dealerReceiptService = mock(DealerReceiptService.class);
     AccountingController controller = newController(dealerReceiptService);
     DealerReceiptRequest request = dealerReceiptRequest("body-001");
+    when(dealerReceiptService.recordDealerReceipt(any())).thenReturn(null);
 
-    assertThatThrownBy(() -> controller.recordDealerReceipt(request, "body-001", null))
-        .isInstanceOf(ApplicationException.class)
-        .hasMessageContaining("Idempotency-Key header");
-    verifyNoInteractions(dealerReceiptService);
+    controller.recordDealerReceipt(request, "body-001", null);
+
+    ArgumentCaptor<DealerReceiptRequest> captor =
+        ArgumentCaptor.forClass(DealerReceiptRequest.class);
+    verify(dealerReceiptService).recordDealerReceipt(captor.capture());
+    assertThat(captor.getValue().idempotencyKey()).isEqualTo("body-001");
   }
 
   @Test

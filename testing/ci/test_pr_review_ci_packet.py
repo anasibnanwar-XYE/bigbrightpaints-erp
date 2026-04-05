@@ -463,7 +463,8 @@ class RuntimeProbeContractTest(unittest.TestCase):
 
         self.assertIn("for fallback_ref in main origin/main; do", gate_release)
         self.assertIn("for fallback_ref in main origin/main; do", gate_core)
-        self.assertIn("VERIFY_LOCAL_SKIP_MVN_VERIFY=true", gate_release)
+        self.assertNotIn("VERIFY_LOCAL_SKIP_MVN_VERIFY=true", gate_release)
+        self.assertIn("VERIFY_LOCAL_SKIP_TESTS=true", gate_release)
         self.assertIn("--diff-base <ref>", schema_drift_scan)
         self.assertIn("no changed migration files; skipping branch-scoped drift scan", schema_drift_scan)
         self.assertIn("no changed Java sources; skipping branch-scoped scan", time_api_scan)

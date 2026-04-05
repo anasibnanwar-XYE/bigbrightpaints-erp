@@ -38,6 +38,7 @@ import com.bigbrightpaints.erp.core.config.SystemSetting;
 import com.bigbrightpaints.erp.core.config.SystemSettingsRepository;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.AuthSecurityContractException;
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
@@ -296,7 +297,13 @@ class TenantRuntimeEnforcementServiceTest {
     assertThatThrownBy(
             () -> admissionService.enforceAuthOperationAllowed("UNKNOWN", "actor@bbp.com", "login"))
         .isInstanceOf(AuthSecurityContractException.class)
-        .hasMessageContaining("Tenant not found");
+        .satisfies(
+            error -> {
+              AuthSecurityContractException ex = (AuthSecurityContractException) error;
+              assertThat(ex.getHttpStatus()).isEqualTo(HttpStatus.FORBIDDEN);
+              assertThat(ex.getCode()).isEqualTo("TENANT_NOT_FOUND");
+              assertThat(ex.getUserMessage()).isEqualTo("Tenant not found");
+            });
   }
 
   @Test
@@ -322,6 +329,26 @@ class TenantRuntimeEnforcementServiceTest {
             });
 
     verifyNoInteractions(userAccountRepository);
+  }
+
+  @Test
+  void enforceAuthOperationAllowed_cachedPolicyStillTreatsMissingTenantAsNotFound() {
+    TenantRuntimeEnforcementService.TenantRuntimeSnapshot warmed = service.snapshot("ACME");
+    assertThat(warmed.state())
+        .isEqualTo(TenantRuntimeEnforcementService.TenantRuntimeState.ACTIVE);
+    companiesByCode.remove("ACME");
+
+    assertThatThrownBy(
+            () -> admissionService.enforceAuthOperationAllowed("ACME", "actor@bbp.com", "login"))
+        .isInstanceOf(AuthSecurityContractException.class)
+        .satisfies(
+            error -> {
+              AuthSecurityContractException ex = (AuthSecurityContractException) error;
+              assertThat(ex.getHttpStatus()).isEqualTo(HttpStatus.FORBIDDEN);
+              assertThat(ex.getCode()).isEqualTo("TENANT_NOT_FOUND");
+              assertThat(ex.getUserMessage()).isEqualTo("Tenant not found");
+              assertThat(ex.getDetails()).containsEntry("reason", "TENANT_NOT_FOUND");
+            });
   }
 
   @Test
@@ -378,6 +405,100 @@ class TenantRuntimeEnforcementServiceTest {
     assertThat(deniedAdmission.statusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE.value());
     assertThat(deniedAdmission.reasonCode()).isEqualTo("TENANT_RUNTIME_POLICY_UNAVAILABLE");
     assertThat(deniedAdmission.message()).isEqualTo("Tenant runtime policy is unavailable");
+  }
+
+  @Test
+  void updatePolicy_translatesSettingsReadFailureToControlledServiceUnavailable() {
+    when(systemSettingsRepository.findById(any()))
+        .thenThrow(new RuntimeException("settings-unavailable"));
+
+    assertThatThrownBy(
+            () ->
+                service.updatePolicy(
+                    "ACME",
+                    TenantRuntimeEnforcementService.TenantRuntimeState.BLOCKED,
+                    "incident_lockdown",
+                    5,
+                    7,
+                    9,
+                    "ops@bbp.com"))
+        .isInstanceOf(ApplicationException.class)
+        .satisfies(
+            error -> {
+              ApplicationException ex = (ApplicationException) error;
+              assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.SYSTEM_SERVICE_UNAVAILABLE);
+              assertThat(ex.getUserMessage()).isEqualTo("Tenant runtime policy is unavailable");
+              assertThat(ex.getDetails())
+                  .containsEntry("companyCode", "ACME")
+                  .containsEntry("reason", "TENANT_RUNTIME_POLICY_UNAVAILABLE");
+            });
+  }
+
+  @Test
+  void updatePolicy_translatesCompanyLookupFailureToControlledServiceUnavailable() {
+    when(companyRepository.findByCodeIgnoreCase(eq("ACME")))
+        .thenThrow(new RuntimeException("company-lookup-unavailable"));
+
+    assertThatThrownBy(
+            () ->
+                service.updatePolicy(
+                    "ACME",
+                    TenantRuntimeEnforcementService.TenantRuntimeState.BLOCKED,
+                    "incident_lockdown",
+                    5,
+                    7,
+                    9,
+                    "ops@bbp.com"))
+        .isInstanceOf(ApplicationException.class)
+        .satisfies(
+            error -> {
+              ApplicationException ex = (ApplicationException) error;
+              assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.SYSTEM_SERVICE_UNAVAILABLE);
+              assertThat(ex.getUserMessage()).isEqualTo("Tenant company lookup is unavailable");
+              assertThat(ex.getDetails())
+                  .containsEntry("companyCode", "ACME")
+                  .containsEntry("reason", "TENANT_COMPANY_LOOKUP_UNAVAILABLE");
+            });
+  }
+
+  @Test
+  void snapshot_translatesCompanyLookupFailureOnCachedPolicyToControlledServiceUnavailable() {
+    TenantRuntimeEnforcementService.TenantRuntimeSnapshot warmed = service.snapshot("ACME");
+    assertThat(warmed.state())
+        .isEqualTo(TenantRuntimeEnforcementService.TenantRuntimeState.ACTIVE);
+
+    when(companyRepository.findByCodeIgnoreCase(eq("ACME")))
+        .thenThrow(new RuntimeException("company-lookup-unavailable"));
+
+    assertThatThrownBy(() -> service.snapshot("ACME"))
+        .isInstanceOf(ApplicationException.class)
+        .satisfies(
+            error -> {
+              ApplicationException ex = (ApplicationException) error;
+              assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.SYSTEM_SERVICE_UNAVAILABLE);
+              assertThat(ex.getUserMessage()).isEqualTo("Tenant company lookup is unavailable");
+              assertThat(ex.getDetails())
+                  .containsEntry("companyCode", "ACME")
+                  .containsEntry("reason", "TENANT_COMPANY_LOOKUP_UNAVAILABLE");
+            });
+  }
+
+  @Test
+  void snapshot_translatesSettingsReadFailureToControlledServiceUnavailable() {
+    when(systemSettingsRepository.findById(any()))
+        .thenThrow(new RuntimeException("settings-unavailable"));
+
+    assertThatThrownBy(() -> service.snapshot("ACME"))
+        .isInstanceOf(ApplicationException.class)
+        .satisfies(
+            error -> {
+              ApplicationException ex = (ApplicationException) error;
+              assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.SYSTEM_SERVICE_UNAVAILABLE);
+              assertThat(ex.getUserMessage()).isEqualTo("Tenant runtime policy is unavailable");
+              assertThat(ex.getDetails())
+                  .containsEntry("companyCode", "ACME")
+                  .containsEntry("reason", "TENANT_RUNTIME_POLICY_UNAVAILABLE");
+            });
   }
 
   @Test
