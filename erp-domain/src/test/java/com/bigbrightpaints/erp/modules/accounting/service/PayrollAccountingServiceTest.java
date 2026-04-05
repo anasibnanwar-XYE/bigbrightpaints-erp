@@ -221,6 +221,27 @@ class PayrollAccountingServiceTest {
     assertThat(response.employerContribJournalId()).isEqualTo(2002L);
     assertThat(response.lines()).hasSize(2);
 
+    ArgumentCaptor<PayrollRun> runCaptor = ArgumentCaptor.forClass(PayrollRun.class);
+    verify(payrollRunRepository).save(runCaptor.capture());
+    PayrollRun finalRun = runCaptor.getValue();
+    assertThat(finalRun.getStatus()).isEqualTo(PayrollRun.PayrollStatus.PAID);
+    assertThat(finalRun.getJournalEntryId()).isEqualTo(2001L);
+    assertThat(finalRun.getPaymentJournalEntryId()).isEqualTo(2001L);
+    assertThat(finalRun.getPaymentReference()).isEqualTo("PAY-9001");
+    assertThat(finalRun.getPaymentDate()).isEqualTo(LocalDate.of(2024, 4, 30));
+
+    @SuppressWarnings("unchecked")
+    ArgumentCaptor<Iterable<PayrollRunLine>> lineCaptor = ArgumentCaptor.forClass(Iterable.class);
+    verify(payrollRunLineRepository).saveAll(lineCaptor.capture());
+    List<PayrollRunLine> finalLines = (List<PayrollRunLine>) lineCaptor.getValue();
+    assertThat(finalLines).hasSize(2);
+    assertThat(finalLines)
+        .extracting(PayrollRunLine::getPaymentStatus)
+        .containsOnly(PayrollRunLine.PaymentStatus.PAID);
+    assertThat(finalLines)
+        .extracting(PayrollRunLine::getPaymentReference)
+        .containsOnly("PAY-9001");
+
     ArgumentCaptor<JournalEntryRequest> requestCaptor =
         ArgumentCaptor.forClass(JournalEntryRequest.class);
     verify(journalEntryService, org.mockito.Mockito.times(2)).createJournalEntry(requestCaptor.capture());

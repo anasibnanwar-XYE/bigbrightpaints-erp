@@ -726,7 +726,7 @@ public class TenantRuntimeAccessService {
     }
   }
 
-  private final class TenantRuntimePolicyResolutionFailure extends RuntimeException
+  private static final class TenantRuntimePolicyResolutionFailure extends RuntimeException
   {
     private final int httpStatus;
     private final String reasonCode;

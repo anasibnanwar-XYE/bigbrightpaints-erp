@@ -20,8 +20,14 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ConcurrentMap;
-import java.util.function.BiFunction;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -636,6 +642,70 @@ class TenantRuntimeEnforcementServiceTest {
   }
 
   @Test
+  void snapshot_waitsForPolicyMutationToFinishBeforeRefreshingExpiredPolicy() throws Exception {
+    TenantRuntimeEnforcementService.TenantRuntimeSnapshot warmed = service.snapshot("ACME");
+    assertThat(warmed.state())
+        .isEqualTo(TenantRuntimeEnforcementService.TenantRuntimeState.ACTIVE);
+    expireCachedPolicyRefreshDeadline("ACME");
+
+    CountDownLatch firstPersistedWrite = new CountDownLatch(1);
+    CountDownLatch allowPersistToContinue = new CountDownLatch(1);
+    AtomicBoolean blockedFirstWrite = new AtomicBoolean();
+    when(systemSettingsRepository.save(any(SystemSetting.class)))
+        .thenAnswer(
+            invocation -> {
+              SystemSetting setting = invocation.getArgument(0, SystemSetting.class);
+              persistedSettingsByKey.put(setting.getKey(), setting.getValue());
+              if (blockedFirstWrite.compareAndSet(false, true)) {
+                firstPersistedWrite.countDown();
+                if (!allowPersistToContinue.await(5, TimeUnit.SECONDS)) {
+                  throw new AssertionError("Timed out waiting to resume policy persistence");
+                }
+              }
+              return setting;
+            });
+
+    ExecutorService executor = Executors.newFixedThreadPool(2);
+    try {
+      Future<TenantRuntimeEnforcementService.TenantRuntimeSnapshot> updateFuture =
+          executor.submit(
+              () ->
+                  service.updatePolicy(
+                      "ACME",
+                      TenantRuntimeEnforcementService.TenantRuntimeState.BLOCKED,
+                      "incident_lock",
+                      9,
+                      11,
+                      13,
+                      "ops@bbp.com"));
+      assertThat(firstPersistedWrite.await(5, TimeUnit.SECONDS)).isTrue();
+
+      Future<TenantRuntimeEnforcementService.TenantRuntimeSnapshot> snapshotFuture =
+          executor.submit(() -> service.snapshot("ACME"));
+
+      assertThatThrownBy(() -> snapshotFuture.get(200, TimeUnit.MILLISECONDS))
+          .isInstanceOf(TimeoutException.class);
+
+      allowPersistToContinue.countDown();
+      TenantRuntimeEnforcementService.TenantRuntimeSnapshot updated =
+          updateFuture.get(5, TimeUnit.SECONDS);
+      TenantRuntimeEnforcementService.TenantRuntimeSnapshot refreshed =
+          snapshotFuture.get(5, TimeUnit.SECONDS);
+
+      assertThat(refreshed.state()).isEqualTo(updated.state());
+      assertThat(refreshed.reasonCode()).isEqualTo(updated.reasonCode());
+      assertThat(refreshed.maxConcurrentRequests()).isEqualTo(updated.maxConcurrentRequests());
+      assertThat(refreshed.maxRequestsPerMinute()).isEqualTo(updated.maxRequestsPerMinute());
+      assertThat(refreshed.maxActiveUsers()).isEqualTo(updated.maxActiveUsers());
+      assertThat(refreshed.auditChainId()).isEqualTo(updated.auditChainId());
+    } finally {
+      allowPersistToContinue.countDown();
+      executor.shutdownNow();
+      assertThat(executor.awaitTermination(5, TimeUnit.SECONDS)).isTrue();
+    }
+  }
+
+  @Test
   void canonicalUpdatePolicy_persistsSettings_and_survivesPolicyControlInvalidation() {
     TenantRuntimeEnforcementService.TenantRequestAdmission warmed =
         admissionService.beginRequest("ACME", "/api/v1/private", "GET", "actor@bbp.com");
@@ -1169,7 +1239,7 @@ class TenantRuntimeEnforcementServiceTest {
   }
 
   @Test
-  void policyFor_prefersFreshCachedEntryInsideComputeWithoutReloadingPersistedSettings()
+  void policyFor_prefersFreshCachedEntryInsideMutationLockWithoutReloadingPersistedSettings()
       throws Exception {
     Object stalePolicy =
         tenantRuntimePolicy(
@@ -1194,15 +1264,7 @@ class TenantRuntimeEnforcementServiceTest {
 
     @SuppressWarnings({"unchecked", "rawtypes"})
     ConcurrentMap<String, Object> mockedPolicies = org.mockito.Mockito.mock(ConcurrentMap.class);
-    when(mockedPolicies.get("ACME")).thenReturn(stalePolicy);
-    when(mockedPolicies.compute(eq("ACME"), any()))
-        .thenAnswer(
-            invocation -> {
-              @SuppressWarnings("unchecked")
-              BiFunction<String, Object, Object> remappingFunction =
-                  invocation.getArgument(1, BiFunction.class);
-              return remappingFunction.apply("ACME", freshPolicy);
-            });
+    when(mockedPolicies.get("ACME")).thenReturn(stalePolicy, freshPolicy);
     ReflectionTestUtils.setField(service, "policies", mockedPolicies);
 
     Object resolved = ReflectionTestUtils.invokeMethod(service, "policyFor", "ACME");

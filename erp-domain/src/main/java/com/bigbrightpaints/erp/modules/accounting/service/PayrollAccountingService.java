@@ -355,10 +355,21 @@ public class PayrollAccountingService extends AccountingCoreEngineCore {
       }
     }
 
-    savedRun.setStatus("PAID");
+    savedRun.setStatus(PayrollRun.PayrollStatus.PAID);
     savedRun.setJournalEntryId(payrollEntry.getId());
     savedRun.setJournalEntry(payrollEntry);
-    payrollRunRepository.save(savedRun);
+    savedRun.setPaymentJournalEntryId(payrollEntry.getId());
+    String paymentReference =
+        StringUtils.hasText(payrollEntry.getReferenceNumber())
+            ? payrollEntry.getReferenceNumber().trim()
+            : reference;
+    savedRun.setPaymentReference(paymentReference);
+    savedRun.setPaymentDate(
+        payrollEntry.getEntryDate() != null ? payrollEntry.getEntryDate() : request.runDate());
+    for (PayrollRunLine line : persistedLines) {
+      line.setPaymentStatus(PayrollRunLine.PaymentStatus.PAID);
+      line.setPaymentReference(paymentReference);
+    }
 
     return new PayrollBatchPaymentResponse(
         savedRun.getId(),

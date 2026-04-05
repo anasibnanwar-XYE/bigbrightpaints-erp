@@ -816,14 +816,15 @@ public class TenantRuntimeEnforcementService {
     if (current != null && current.policyRefreshAfterEpochMillis > nowMillis) {
       return current;
     }
-    return policies.compute(
+    return withPolicyMutationLock(
         companyCode,
-        (key, cached) -> {
+        () -> {
+          TenantRuntimePolicy cached = policies.get(companyCode);
           long refreshCheckAt = System.currentTimeMillis();
           if (cached != null && cached.policyRefreshAfterEpochMillis > refreshCheckAt) {
             return cached;
           }
-          TenantRuntimePolicy persisted = loadPersistedPolicy(key);
+          TenantRuntimePolicy persisted = loadPersistedPolicy(companyCode);
           TenantRuntimePolicy resolved;
           if (persisted != null && shouldUsePersistedPolicy(cached, persisted)) {
             resolved = persisted;
@@ -835,6 +836,7 @@ public class TenantRuntimeEnforcementService {
             resolved = defaultPolicy();
           }
           resolved.policyRefreshAfterEpochMillis = refreshCheckAt + persistedPolicyCacheTtlMillis;
+          policies.put(companyCode, resolved);
           return resolved;
         });
   }
@@ -1509,7 +1511,7 @@ public class TenantRuntimeEnforcementService {
     }
   }
 
-  private final class TenantRuntimeAdmissionFailure extends RuntimeException
+  private static final class TenantRuntimeAdmissionFailure extends RuntimeException
   {
     private final TenantRuntimeRejection rejection;
 
