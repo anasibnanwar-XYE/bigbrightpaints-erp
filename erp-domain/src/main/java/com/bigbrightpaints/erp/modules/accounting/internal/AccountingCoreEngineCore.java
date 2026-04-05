@@ -2,6 +2,7 @@ package com.bigbrightpaints.erp.modules.accounting.service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -16,6 +17,8 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.LockSupport;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -93,6 +96,8 @@ abstract class AccountingCoreEngineCore {
   private static final BigDecimal FX_RATE_MAX = new BigDecimal("100000");
   private static final BigDecimal FX_ROUNDING_TOLERANCE = new BigDecimal("0.05");
   protected static final BigDecimal ALLOCATION_TOLERANCE = new BigDecimal("0.01");
+  private static final Duration IDEMPOTENCY_WAIT_TIMEOUT = Duration.ofSeconds(8);
+  private static final long IDEMPOTENCY_WAIT_SLEEP_MILLIS = 50L;
   private static final ThreadLocal<Boolean> SYSTEM_ENTRY_DATE_OVERRIDE =
       ThreadLocal.withInitial(() -> Boolean.FALSE);
   private static final int ACCOUNTING_EVENT_JOURNAL_REFERENCE_MAX_LENGTH = 100;
@@ -2885,21 +2890,41 @@ abstract class AccountingCoreEngineCore {
   }
 
   protected JournalEntry awaitJournalEntry(Company company, String reference, String idempotencyKey) {
-    JournalEntry existing = findExistingEntry(company, reference, idempotencyKey);
-    if (existing != null) {
+    JournalEntry existing = findAwaitedJournalEntry(company, reference, idempotencyKey);
+    if (existing != null || company == null || !StringUtils.hasText(idempotencyKey)) {
       return existing;
     }
-    if (company == null || !StringUtils.hasText(idempotencyKey)) {
-      return null;
+    long deadline = System.nanoTime() + IDEMPOTENCY_WAIT_TIMEOUT.toNanos();
+    while (System.nanoTime() < deadline) {
+      if (!pauseForIdempotencyReplay()) {
+        break;
+      }
+      existing = findAwaitedJournalEntry(company, reference, idempotencyKey);
+      if (existing != null) {
+        return existing;
+      }
+    }
+    return null;
+  }
+
+  private JournalEntry findAwaitedJournalEntry(
+      Company company, String reference, String idempotencyKey) {
+    JournalEntry existing = findExistingEntry(company, reference, idempotencyKey);
+    if (existing != null || company == null || !StringUtils.hasText(idempotencyKey)) {
+      return existing;
     }
     Optional<JournalReferenceMapping> mappingCandidate =
         findLatestLegacyReferenceMapping(company, normalizeIdempotencyMappingKey(idempotencyKey));
-    if (mappingCandidate.isEmpty()) { return null; }
+    if (mappingCandidate.isEmpty()) {
+      return null;
+    }
     JournalReferenceMapping mapping = mappingCandidate.get();
     if (mapping.getEntityId() != null) {
       Optional<JournalEntry> byId =
           journalEntryRepository.findByCompanyAndId(company, mapping.getEntityId());
-      if (byId.isPresent()) { return byId.get(); }
+      if (byId.isPresent()) {
+        return byId.get();
+      }
     }
     if (StringUtils.hasText(mapping.getCanonicalReference())
         && !isReservedReference(mapping.getCanonicalReference())) {
@@ -2910,6 +2935,11 @@ abstract class AccountingCoreEngineCore {
       }
     }
     return null;
+  }
+
+  private boolean pauseForIdempotencyReplay() {
+    LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(IDEMPOTENCY_WAIT_SLEEP_MILLIS));
+    return !Thread.currentThread().isInterrupted();
   }
 
   private JournalEntry findExistingEntry(Company company, String reference, String idempotencyKey) {

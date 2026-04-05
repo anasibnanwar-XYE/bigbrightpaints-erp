@@ -932,7 +932,7 @@ class AccountingServiceTest {
     when(journalEntryRepository.findByCompanyAndReferenceNumber(company, "MAN-RACE-1"))
         .thenReturn(Optional.empty());
     when(journalReferenceResolver.findExistingEntry(company, "MAN-RACE-1"))
-        .thenReturn(Optional.empty(), Optional.of(existing));
+        .thenReturn(Optional.empty(), Optional.empty(), Optional.of(existing));
     when(journalReferenceMappingRepository.reserveManualReference(
             eq(88L), any(), any(), eq("JOURNAL_ENTRY"), any()))
         .thenReturn(0);
@@ -974,7 +974,7 @@ class AccountingServiceTest {
     when(journalEntryRepository.findByCompanyAndReferenceNumber(company, "MAN-RETRY-1"))
         .thenReturn(Optional.empty());
     when(journalReferenceResolver.findExistingEntry(company, "MAN-RETRY-1"))
-        .thenReturn(Optional.empty(), Optional.of(existing));
+        .thenReturn(Optional.empty(), Optional.empty(), Optional.of(existing));
     when(journalReferenceMappingRepository.reserveManualReference(
             eq(89L), any(), any(), eq("JOURNAL_ENTRY"), any()))
         .thenReturn(1);
