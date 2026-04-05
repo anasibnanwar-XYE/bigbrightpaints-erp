@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.core.util;
 
+import java.time.DateTimeException;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -17,6 +18,7 @@ public record DashboardWindow(
     ZoneId zone,
     String bucket,
     int bucketDays) {
+  private static final int DEFAULT_WINDOW_DAYS = 30;
   private static final Pattern DAY_WINDOW_PATTERN = Pattern.compile("^\\d+d$");
 
   public static DashboardWindow resolve(
@@ -24,7 +26,7 @@ public record DashboardWindow(
     ZoneId zone = parseZone(timezone, fallbackTimezone);
     LocalDate today = LocalDate.ofInstant(CompanyTime.now(), zone);
     WindowRange range = resolveRange(window, today);
-    int days = (int) ChronoUnit.DAYS.between(range.start(), range.end()) + 1;
+    long days = ChronoUnit.DAYS.between(range.start(), range.end()) + 1;
     LocalDate compareStart = null;
     LocalDate compareEnd = null;
     if (compare != null && !compare.isBlank()) {
@@ -72,19 +74,21 @@ public record DashboardWindow(
 
   private static WindowRange resolveRange(String window, LocalDate today) {
     if (window == null || window.isBlank()) {
-      return rangeForDays(today, 30);
+      return rangeForDays(today, DEFAULT_WINDOW_DAYS);
     }
     String normalized = window.trim().toLowerCase(Locale.ROOT);
     if (DAY_WINDOW_PATTERN.matcher(normalized).matches()) {
       String daysPart = normalized.substring(0, normalized.length() - 1);
-      int days = Integer.parseInt(daysPart);
-      return rangeForDays(today, Math.max(days, 1));
+      WindowRange dayRange = resolveDayWindow(daysPart, today);
+      if (dayRange != null) {
+        return dayRange;
+      }
     }
     return switch (normalized) {
       case "mtd" -> new WindowRange(today.withDayOfMonth(1), today);
       case "qtd" -> new WindowRange(startOfQuarter(today), today);
       case "ytd" -> new WindowRange(LocalDate.of(today.getYear(), 1, 1), today);
-      default -> rangeForDays(today, 30);
+      default -> rangeForDays(today, DEFAULT_WINDOW_DAYS);
     };
   }
 
@@ -92,15 +96,23 @@ public record DashboardWindow(
     if (candidate == null || candidate.isBlank()) {
       return null;
     }
-    String normalized = candidate.trim();
-    if (!ZoneId.getAvailableZoneIds().contains(normalized) && !"UTC".equals(normalized)) {
+    try {
+      return ZoneId.of(candidate.trim());
+    } catch (DateTimeException ex) {
       return null;
     }
-    return ZoneId.of(normalized);
   }
 
-  private static WindowRange rangeForDays(LocalDate today, int days) {
-    int safeDays = Math.max(days, 1);
+  private static WindowRange resolveDayWindow(String daysPart, LocalDate today) {
+    try {
+      return rangeForDays(today, Long.parseLong(daysPart));
+    } catch (DateTimeException | NumberFormatException ex) {
+      return null;
+    }
+  }
+
+  private static WindowRange rangeForDays(LocalDate today, long days) {
+    long safeDays = Math.max(days, 1L);
     LocalDate start = today.minusDays(safeDays - 1L);
     return new WindowRange(start, today);
   }

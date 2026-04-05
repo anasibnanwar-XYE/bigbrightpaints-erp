@@ -72,8 +72,41 @@ class DashboardWindowTest {
   }
 
   @Test
+  void resolve_oversizedWindowDefaultsToThirtyDays() {
+    DashboardWindow window =
+        DashboardWindow.resolve("999999999999999999999999999d", null, "UTC", null);
+
+    assertThat(windowLength(window)).isEqualTo(30);
+  }
+
+  @Test
+  void resolve_malformedWindowDefaultsToThirtyDays() {
+    DashboardWindow window = DashboardWindow.resolve("this-is-not-a-window", null, "UTC", null);
+
+    assertThat(windowLength(window)).isEqualTo(30);
+  }
+
+  @Test
+  void resolve_timezoneOffsetUsesRequestedZone() {
+    DashboardWindow window = DashboardWindow.resolve("7d", null, "+05:30", "UTC");
+
+    assertThat(window.zone()).isEqualTo(ZoneId.of("+05:30"));
+  }
+
+  @Test
+  void resolve_gmtTimezoneOffsetUsesRequestedZone() {
+    DashboardWindow window = DashboardWindow.resolve("7d", null, "GMT+05:30", "UTC");
+
+    assertThat(window.zone()).isEqualTo(ZoneId.of("GMT+05:30"));
+  }
+
+  @Test
   void resolve_timezoneFallbackUsesFallback() {
     DashboardWindow window = DashboardWindow.resolve("7d", null, "Not/AZone", "UTC");
     assertThat(window.zone()).isEqualTo(ZoneId.of("UTC"));
+  }
+
+  private static long windowLength(DashboardWindow window) {
+    return ChronoUnit.DAYS.between(window.start(), window.end()) + 1;
   }
 }
