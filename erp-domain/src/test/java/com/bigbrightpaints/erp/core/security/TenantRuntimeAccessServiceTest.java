@@ -14,6 +14,8 @@ import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -518,6 +520,20 @@ class TenantRuntimeAccessServiceTest {
     assertThat(activeGauge.value()).isZero();
     assertThat(totalGauge.value()).isEqualTo(1.0d);
     assertThat(deniedGauge.value()).isZero();
+  }
+
+  @Test
+  void tenantRuntimePolicyResolutionFailure_isStaticAndDeclaresSerialVersionUid()
+      throws Exception {
+    Class<?> failureClass =
+        Class.forName(
+            TenantRuntimeAccessService.class.getName() + "$TenantRuntimePolicyResolutionFailure");
+    Field serialVersionUid = failureClass.getDeclaredField("serialVersionUID");
+    serialVersionUid.setAccessible(true);
+
+    assertThat(Modifier.isStatic(failureClass.getModifiers())).isTrue();
+    assertThat(serialVersionUid.getType()).isEqualTo(long.class);
+    assertThat(serialVersionUid.getLong(null)).isEqualTo(1L);
   }
 
   private String keyHoldState(long companyId) {

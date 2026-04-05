@@ -13,6 +13,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.HashMap;
@@ -1629,6 +1630,93 @@ class TenantRuntimeEnforcementServiceTest {
         .containsEntry("limitType", "MAX_ACTIVE_USERS")
         .containsEntry("observedValue", "12")
         .containsEntry("limitValue", "10");
+  }
+
+  @Test
+  void auditPolicyChange_defaultsMissingTenantStateWithoutNullDereference() throws Exception {
+    Object policy =
+        tenantRuntimePolicy(
+            null,
+            "POLICY_ACTIVE",
+            3,
+            5,
+            7,
+            "CHAIN-700",
+            Instant.parse("2026-01-07T00:00:00Z"),
+            0L);
+
+    @SuppressWarnings("unchecked")
+    var metadataCaptor =
+        org.mockito.ArgumentCaptor.forClass((Class<Map<String, String>>) (Class<?>) Map.class);
+
+    ReflectionTestUtils.invokeMethod(
+        service,
+        "auditPolicyChange",
+        "UPDATE_TENANT_RUNTIME_POLICY",
+        "ACME",
+        "OPS@BBP.COM",
+        "POLICY_ACTIVE",
+        "CHAIN-699",
+        "CHAIN-700",
+        policy);
+
+    verify(auditService)
+        .logAuthSuccess(
+            eq(AuditEvent.CONFIGURATION_CHANGED),
+            eq("OPS@BBP.COM"),
+            eq("ACME"),
+            metadataCaptor.capture());
+    assertThat(metadataCaptor.getValue())
+        .containsEntry("tenantState", "ACTIVE")
+        .containsEntry("auditChainId", "CHAIN-700")
+        .containsEntry("previousAuditChainId", "CHAIN-699");
+  }
+
+  @Test
+  void auditRejection_defaultsMissingTenantStateWithoutNullDereference() throws Exception {
+    Object rejection =
+        tenantRuntimeRejection(
+            "ACME",
+            null,
+            "POLICY_ACTIVE",
+            "CHAIN-701",
+            HttpStatus.SERVICE_UNAVAILABLE,
+            "TENANT_RUNTIME_POLICY_UNAVAILABLE",
+            "Tenant runtime policy is unavailable",
+            null,
+            null,
+            null);
+
+    @SuppressWarnings("unchecked")
+    var metadataCaptor =
+        org.mockito.ArgumentCaptor.forClass((Class<Map<String, String>>) (Class<?>) Map.class);
+
+    ReflectionTestUtils.invokeMethod(
+        service, "auditRejection", rejection, "ops@bbp.com", "/api/v1/private", "GET");
+
+    verify(auditService)
+        .logAuthFailure(
+            eq(AuditEvent.ACCESS_DENIED),
+            eq("OPS@BBP.COM"),
+            eq("ACME"),
+            metadataCaptor.capture());
+    assertThat(metadataCaptor.getValue())
+        .containsEntry("tenantState", "BLOCKED")
+        .containsEntry("reasonCode", "TENANT_RUNTIME_POLICY_UNAVAILABLE")
+        .containsEntry("requestMethod", "GET");
+  }
+
+  @Test
+  void tenantRuntimeAdmissionFailure_declaresSerialVersionUid() throws Exception {
+    Class<?> failureClass =
+        Class.forName(
+            TenantRuntimeEnforcementService.class.getName() + "$TenantRuntimeAdmissionFailure");
+
+    Field serialVersionUid = failureClass.getDeclaredField("serialVersionUID");
+    serialVersionUid.setAccessible(true);
+
+    assertThat(serialVersionUid.getType()).isEqualTo(long.class);
+    assertThat(serialVersionUid.getLong(null)).isEqualTo(1L);
   }
 
   @Test

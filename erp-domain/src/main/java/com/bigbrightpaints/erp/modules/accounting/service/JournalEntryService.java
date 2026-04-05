@@ -437,7 +437,7 @@ public class JournalEntryService extends AccountingCoreEngineCore {
           auditMetadata.put("journalEntryId", existingEntry.getId().toString());
         }
         ensureDuplicateMatchesExisting(existingEntry, entry, postedLines);
-        log.info("Idempotent return: journal entry already exists, returning existing entry");
+        log.info("Idempotent journal request resolved to an existing entry");
         auditMetadata.put("idempotent", "true");
         logAuditSuccessAfterCommit(AuditEvent.JOURNAL_ENTRY_POSTED, auditMetadata);
         return toDto(existingEntry);
@@ -473,14 +473,12 @@ public class JournalEntryService extends AccountingCoreEngineCore {
             auditMetadata.put("journalEntryId", existingEntry.getId().toString());
           }
           ensureDuplicateMatchesExisting(existingEntry, entry, postedLines);
-          log.info(
-              "Idempotent return after concurrent save race: journal entry already exists,"
-                  + " returning existing entry");
+          log.info("Concurrent journal create race resolved to an existing entry");
           auditMetadata.put("idempotent", "true");
           logAuditSuccessAfterCommit(AuditEvent.JOURNAL_ENTRY_POSTED, auditMetadata);
           return toDto(existingEntry);
         }
-        log.info("Concurrent journal save conflict detected; retrying in fresh transaction");
+        log.info("Concurrent journal save conflict detected; retrying journal creation");
         throw ex;
       }
       boolean postedEventTrailRecorded = true;

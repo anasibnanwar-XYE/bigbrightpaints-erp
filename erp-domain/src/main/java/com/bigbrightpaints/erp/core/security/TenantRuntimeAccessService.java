@@ -728,6 +728,8 @@ public class TenantRuntimeAccessService {
 
   private static final class TenantRuntimePolicyResolutionFailure extends RuntimeException
   {
+    private static final long serialVersionUID = 1L;
+
     private final int httpStatus;
     private final String reasonCode;
 

@@ -404,18 +404,7 @@ public class TenantRuntimeEnforcementService {
     if (company == null || company.getId() == null || policy == null) {
       return;
     }
-    Long companyId = company.getId();
-    persistSetting(keyHoldState(companyId), policy.state.name());
-    persistSetting(keyHoldReason(companyId), policy.reasonCode);
-    persistSetting(
-        keyMaxConcurrentRequests(companyId), Integer.toString(policy.maxConcurrentRequests));
-    persistSetting(
-        keyMaxRequestsPerMinute(companyId), Integer.toString(policy.maxRequestsPerMinute));
-    persistSetting(keyMaxActiveUsers(companyId), Integer.toString(policy.maxActiveUsers));
-    persistSetting(keyPolicyReference(companyId), policy.auditChainId);
-    persistSetting(
-        keyPolicyUpdatedAt(companyId),
-        policy.updatedAt == null ? null : policy.updatedAt.toString());
+    policyToPersistedState(company.getId(), policy).forEach(this::persistSetting);
   }
 
   private void persistPolicyAndAuditChange(
@@ -656,14 +645,14 @@ public class TenantRuntimeEnforcementService {
     if (companyId == null || policy == null) {
       return persistedState;
     }
-    persistedState.put(keyHoldState(companyId), policy.state == null ? null : policy.state.name());
-    persistedState.put(keyHoldReason(companyId), policy.reasonCode);
+    persistedState.put(keyHoldState(companyId), safePolicyStateName(policy));
+    persistedState.put(keyHoldReason(companyId), safePolicyReasonCode(policy));
     persistedState.put(
         keyMaxConcurrentRequests(companyId), Integer.toString(policy.maxConcurrentRequests));
     persistedState.put(
         keyMaxRequestsPerMinute(companyId), Integer.toString(policy.maxRequestsPerMinute));
     persistedState.put(keyMaxActiveUsers(companyId), Integer.toString(policy.maxActiveUsers));
-    persistedState.put(keyPolicyReference(companyId), policy.auditChainId);
+    persistedState.put(keyPolicyReference(companyId), safePolicyAuditChainId(policy));
     persistedState.put(
         keyPolicyUpdatedAt(companyId),
         policy.updatedAt == null ? null : policy.updatedAt.toString());
@@ -684,7 +673,7 @@ public class TenantRuntimeEnforcementService {
     metadata.put("reasonCode", reasonCode);
     metadata.put("auditChainId", chainId);
     metadata.put("previousAuditChainId", previousChainId);
-    metadata.put("tenantState", policy.state.name());
+    metadata.put("tenantState", safePolicyStateName(policy));
     metadata.put(
         "maxConcurrentRequests",
         Integer.toString(policy.effectiveMaxConcurrentRequests(defaultMaxConcurrentRequests)));
@@ -704,30 +693,33 @@ public class TenantRuntimeEnforcementService {
     if (policyControlRequest) {
       return null;
     }
-    if (policy.state == TenantRuntimeState.HOLD && isMutatingRequest(requestMethod)) {
+    TenantRuntimeState policyState = safePolicyState(policy);
+    String policyReasonCode = safePolicyReasonCode(policy);
+    String auditChainId = safePolicyAuditChainId(policy);
+    if (policyState == TenantRuntimeState.HOLD && isMutatingRequest(requestMethod)) {
       return new TenantRuntimeRejection(
           companyCode,
-          policy.state,
-          policy.reasonCode,
-          policy.auditChainId,
+          policyState,
+          policyReasonCode,
+          auditChainId,
           HttpStatus.LOCKED,
           "TENANT_ON_HOLD",
           "Tenant is currently on hold",
           "TENANT_STATE",
-          policy.state.name(),
+          policyState.name(),
           TenantRuntimeState.ACTIVE.name());
     }
-    if (policy.state == TenantRuntimeState.BLOCKED) {
+    if (policyState == TenantRuntimeState.BLOCKED) {
       return new TenantRuntimeRejection(
           companyCode,
-          policy.state,
-          policy.reasonCode,
-          policy.auditChainId,
+          policyState,
+          policyReasonCode,
+          auditChainId,
           HttpStatus.FORBIDDEN,
           "TENANT_BLOCKED",
           "Tenant is currently blocked",
           "TENANT_STATE",
-          policy.state.name(),
+          policyState.name(),
           TenantRuntimeState.ACTIVE.name());
     }
     return null;
@@ -786,7 +778,7 @@ public class TenantRuntimeEnforcementService {
     metadata.put("reasonCode", rejection.reasonCode);
     metadata.put("reasonDetail", rejection.reasonDetail);
     metadata.put("auditChainId", rejection.auditChainId);
-    metadata.put("tenantState", rejection.tenantState.name());
+    metadata.put("tenantState", safeRejectionTenantStateName(rejection));
     metadata.put("tenantReasonCode", rejection.tenantReasonCode);
     metadata.put("limitType", rejection.limitType);
     metadata.put("observedValue", rejection.observedValue);
@@ -1241,6 +1233,38 @@ public class TenantRuntimeEnforcementService {
     return IdempotencyUtils.normalizeUpperToken(value);
   }
 
+  private TenantRuntimeState safePolicyState(TenantRuntimePolicy policy) {
+    if (policy == null || policy.state == null) {
+      return TenantRuntimeState.ACTIVE;
+    }
+    return policy.state;
+  }
+
+  private String safePolicyStateName(TenantRuntimePolicy policy) {
+    return safePolicyState(policy).name();
+  }
+
+  private String safePolicyReasonCode(TenantRuntimePolicy policy) {
+    if (policy == null || !StringUtils.hasText(policy.reasonCode)) {
+      return DEFAULT_REASON;
+    }
+    return policy.reasonCode;
+  }
+
+  private String safePolicyAuditChainId(TenantRuntimePolicy policy) {
+    if (policy == null || !StringUtils.hasText(policy.auditChainId)) {
+      return DEFAULT_POLICY_REFERENCE;
+    }
+    return policy.auditChainId;
+  }
+
+  private String safeRejectionTenantStateName(TenantRuntimeRejection rejection) {
+    if (rejection == null || rejection.tenantState == null) {
+      return TenantRuntimeState.BLOCKED.name();
+    }
+    return rejection.tenantState.name();
+  }
+
   private int sanitizeLimit(int limit) {
     return Math.max(MIN_LIMIT, limit);
   }
@@ -1542,6 +1566,8 @@ public class TenantRuntimeEnforcementService {
 
   private static final class TenantRuntimeAdmissionFailure extends RuntimeException
   {
+    private static final long serialVersionUID = 1L;
+
     private final TenantRuntimeRejection rejection;
 
     private TenantRuntimeAdmissionFailure(TenantRuntimeRejection rejection) {
