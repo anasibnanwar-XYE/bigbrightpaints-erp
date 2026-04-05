@@ -30,19 +30,20 @@ None.
 4. Read `.factory/library/architecture.md` for codebase patterns.
 5. Identify all files that need to change. For refactoring features, trace all callers/importers of the classes being modified.
 
-### Step 2: Write Tests or Guards First
-1. If the feature changes Java production code:
-   - For bug fixes: write a test that reproduces the bug (should fail).
-   - For new features: write tests covering happy path, error cases, and edge cases (should fail).
-   - For refactoring: ensure existing tests pass first, then write any missing tests for the code being refactored.
-2. If the feature is limited to scripts, manifests, policy classifiers, or governance enforcement, update or add the narrowest failing guard/probe first using the authoritative script or contract surface for that feature.
-3. If the feature changes behavior in an already-covered area, update or replace the stale policy/contract/regression tests in that area as part of the same packet; do not leave drift behind.
-4. Run the focused proof that should fail first:
-   - Java code: `cd erp-domain && mvn test -Djacoco.skip=true -pl . -Dtest=YourTestClass`
+### Step 2: Freeze Behavior First, Then Add the Right Tests
+1. Choose the safety pattern that fits the feature instead of forcing one workflow on every packet:
+   - **Messy legacy refactor / decomposition / behavior-preserving cleanup**: start with characterization coverage. Identify the narrowest existing regression proof for the touched surface, run it before structural edits, and add/extend characterization tests anywhere behavior is unclear or insufficiently locked down.
+   - **New behavior / API redesign / clear bug fix / newly extracted seam**: write failing tests first (red), then implement to make them pass (green).
+   - **Script / manifest / governance enforcement**: update or add the narrowest failing guard/probe first using the authoritative script or contract surface for that feature.
+2. If the feature changes behavior in an already-covered area, update or replace the stale policy/contract/regression tests in that area as part of the same packet; do not leave drift behind.
+3. Run the focused proof that establishes the baseline or expected failure before major edits:
+   - Java characterization/TDD: `cd erp-domain && mvn test -Djacoco.skip=true -pl . -Dtest=YourTestClass`
+   - Existing hotspot proof: the smallest targeted suite already covering the touched behavior
    - Script/governance features: the guard/probe command named in the feature verification steps or `.factory/services.yaml`
+4. Record in the handoff which mode you used (characterization-first, TDD red/green, or guard-first) and why it matched the feature.
 
 ### Step 3: Implement
-1. Make the minimal changes needed to satisfy the feature requirements.
+1. Make the minimal changes needed to satisfy the feature requirements. Prefer incremental, understandable slices over big-bang rewrites.
 2. Follow coding conventions from AGENTS.md strictly:
    - ApplicationException for all business errors (never IllegalArgumentException/IllegalStateException)
    - Service classes under 500 lines
