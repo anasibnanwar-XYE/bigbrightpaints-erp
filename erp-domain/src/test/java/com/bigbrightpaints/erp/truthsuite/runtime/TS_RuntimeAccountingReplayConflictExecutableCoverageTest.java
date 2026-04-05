@@ -635,43 +635,40 @@ class TS_RuntimeAccountingReplayConflictExecutableCoverageTest {
   }
 
   @Test
-  void controllerIdempotencyResolution_bodyKeyWinsAcrossEndpoints() {
+  void controllerIdempotencyResolution_rejectsBodyKeysAcrossEndpoints() {
     AccountingService service = org.mockito.Mockito.mock(AccountingService.class);
     DealerReceiptService dealerReceiptService =
         org.mockito.Mockito.mock(DealerReceiptService.class);
     SettlementService settlementService = org.mockito.Mockito.mock(SettlementService.class);
     AccountingController controller =
         accountingController(service, null, dealerReceiptService, settlementService);
-    when(dealerReceiptService.recordDealerReceipt(any())).thenReturn(null);
-    when(dealerReceiptService.recordDealerReceiptSplit(any())).thenReturn(null);
-    when(settlementService.settleDealerInvoices(any())).thenReturn(null);
-    when(settlementService.settleSupplierInvoices(any())).thenReturn(null);
 
-    controller.recordDealerReceipt(controllerDealerReceiptRequest("BODY-DR"), "BODY-DR", null);
-    controller.recordDealerHybridReceipt(
-        controllerDealerReceiptSplitRequest("BODY-DRS"), "BODY-DRS", null);
-    controller.settleDealer(controllerDealerSettlementRequest("BODY-ADS"), "BODY-ADS", null);
-    controller.settleSupplier(controllerSupplierSettlementRequest("BODY-APS"), "BODY-APS", null);
+    assertThatThrownBy(
+            () ->
+                controller.recordDealerReceipt(
+                    controllerDealerReceiptRequest("BODY-DR"), "BODY-DR", null))
+        .isInstanceOf(ApplicationException.class)
+        .hasMessageContaining("Idempotency-Key header");
+    assertThatThrownBy(
+            () ->
+                controller.recordDealerHybridReceipt(
+                    controllerDealerReceiptSplitRequest("BODY-DRS"), "BODY-DRS", null))
+        .isInstanceOf(ApplicationException.class)
+        .hasMessageContaining("Idempotency-Key header");
+    assertThatThrownBy(
+            () ->
+                controller.settleDealer(
+                    controllerDealerSettlementRequest("BODY-ADS"), "BODY-ADS", null))
+        .isInstanceOf(ApplicationException.class)
+        .hasMessageContaining("Idempotency-Key header");
+    assertThatThrownBy(
+            () ->
+                controller.settleSupplier(
+                    controllerSupplierSettlementRequest("BODY-APS"), "BODY-APS", null))
+        .isInstanceOf(ApplicationException.class)
+        .hasMessageContaining("Idempotency-Key header");
 
-    ArgumentCaptor<DealerReceiptRequest> dealerCaptor =
-        ArgumentCaptor.forClass(DealerReceiptRequest.class);
-    verify(dealerReceiptService).recordDealerReceipt(dealerCaptor.capture());
-    assertThat(dealerCaptor.getValue().idempotencyKey()).isEqualTo("BODY-DR");
-
-    ArgumentCaptor<DealerReceiptSplitRequest> dealerSplitCaptor =
-        ArgumentCaptor.forClass(DealerReceiptSplitRequest.class);
-    verify(dealerReceiptService).recordDealerReceiptSplit(dealerSplitCaptor.capture());
-    assertThat(dealerSplitCaptor.getValue().idempotencyKey()).isEqualTo("BODY-DRS");
-
-    ArgumentCaptor<DealerSettlementRequest> dealerSettlementCaptor =
-        ArgumentCaptor.forClass(DealerSettlementRequest.class);
-    verify(settlementService).settleDealerInvoices(dealerSettlementCaptor.capture());
-    assertThat(dealerSettlementCaptor.getValue().idempotencyKey()).isEqualTo("BODY-ADS");
-
-    ArgumentCaptor<SupplierSettlementRequest> supplierSettlementCaptor =
-        ArgumentCaptor.forClass(SupplierSettlementRequest.class);
-    verify(settlementService).settleSupplierInvoices(supplierSettlementCaptor.capture());
-    assertThat(supplierSettlementCaptor.getValue().idempotencyKey()).isEqualTo("BODY-APS");
+    org.mockito.Mockito.verifyNoInteractions(dealerReceiptService, settlementService);
   }
 
   @Test
@@ -1200,52 +1197,19 @@ class TS_RuntimeAccountingReplayConflictExecutableCoverageTest {
         creditDebitNoteService =
             org.mockito.Mockito.mock(
                 com.bigbrightpaints.erp.modules.accounting.service.CreditDebitNoteService.class);
-    com.bigbrightpaints.erp.modules.accounting.service.AccountingAuditService
-        accountingAuditService =
-            org.mockito.Mockito.mock(
-                com.bigbrightpaints.erp.modules.accounting.service.AccountingAuditService.class);
     com.bigbrightpaints.erp.modules.accounting.service.InventoryAccountingService
         inventoryAccountingService =
             org.mockito.Mockito.mock(
                 com.bigbrightpaints.erp.modules.accounting.service.InventoryAccountingService
                     .class);
+    com.bigbrightpaints.erp.modules.accounting.service.PayrollAccountingService
+        payrollAccountingService =
+            org.mockito.Mockito.mock(
+                com.bigbrightpaints.erp.modules.accounting.service.PayrollAccountingService.class);
     org.springframework.beans.factory.ObjectProvider<
             com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade>
         accountingFacadeProvider =
             org.mockito.Mockito.mock(org.springframework.beans.factory.ObjectProvider.class);
-    com.bigbrightpaints.erp.modules.accounting.service.AccountingIdempotencyService
-        settlementIdempotencyService =
-            org.mockito.Mockito.spy(
-                new com.bigbrightpaints.erp.modules.accounting.service.AccountingIdempotencyService(
-                    companyContextService,
-                    accountRepository,
-                    journalEntryRepository,
-                    dealerLedgerService,
-                    supplierLedgerService,
-                    payrollRunRepository,
-                    payrollRunLineRepository,
-                    accountingPeriodService,
-                    referenceNumberService,
-                    eventPublisher,
-                    companyClock,
-                    companyEntityLookup,
-                    settlementAllocationRepository,
-                    rawMaterialPurchaseRepository,
-                    invoiceRepository,
-                    rawMaterialMovementRepository,
-                    rawMaterialBatchRepository,
-                    finishedGoodBatchRepository,
-                    dealerRepository,
-                    supplierRepository,
-                    invoiceSettlementPolicy,
-                    journalReferenceResolver,
-                    journalReferenceMappingRepository,
-                    entityManager,
-                    systemSettingsService,
-                    auditService,
-                    accountingEventStore,
-                    org.mockito.Mockito.mock(
-                        org.springframework.beans.factory.ObjectProvider.class)));
     SettlementService settlementService =
         org.mockito.Mockito.spy(
             new SettlementService(
@@ -1276,7 +1240,8 @@ class TS_RuntimeAccountingReplayConflictExecutableCoverageTest {
                 systemSettingsService,
                 auditService,
                 accountingEventStore,
-                settlementIdempotencyService));
+                journalEntryService,
+                dealerReceiptService));
     return new AccountingService(
         companyContextService,
         accountRepository,
@@ -1309,8 +1274,8 @@ class TS_RuntimeAccountingReplayConflictExecutableCoverageTest {
         dealerReceiptService,
         settlementService,
         creditDebitNoteService,
-        accountingAuditService,
         inventoryAccountingService,
+        payrollAccountingService,
         accountingFacadeProvider);
   }
 

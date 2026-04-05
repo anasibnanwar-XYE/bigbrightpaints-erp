@@ -268,6 +268,10 @@ class TenantRuntimeEnforcementServiceTest {
     assertThat(quotaRejected.isAdmitted()).isFalse();
     assertThat(quotaRejected.statusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS.value());
     assertThat(controlAdmission.isAdmitted()).isTrue();
+    TenantRuntimeEnforcementService.TenantRequestAdmission lifecycleAdmission =
+        admissionService.beginRequest(
+            "ACME", "/api/v1/superadmin/tenants/1/lifecycle", "PUT", "ops@bbp.com", true);
+    assertThat(lifecycleAdmission.isAdmitted()).isTrue();
   }
 
   @Test
@@ -291,8 +295,8 @@ class TenantRuntimeEnforcementServiceTest {
   void enforceAuthOperationAllowed_failClosedWhenCompanyNotFound() {
     assertThatThrownBy(
             () -> admissionService.enforceAuthOperationAllowed("UNKNOWN", "actor@bbp.com", "login"))
-        .isInstanceOf(ApplicationException.class)
-        .hasMessageContaining("Company not found: UNKNOWN");
+        .isInstanceOf(AuthSecurityContractException.class)
+        .hasMessageContaining("Tenant not found");
   }
 
   @Test
@@ -357,7 +361,7 @@ class TenantRuntimeEnforcementServiceTest {
   }
 
   @Test
-  void beginRequest_fallsBackToCachedPolicyWhenSettingsReadFailsDuringRefresh() {
+  void beginRequest_failsClosedWhenSettingsReadFailsDuringRefresh() {
     TenantRuntimeEnforcementService.TenantRequestAdmission warmed =
         admissionService.beginRequest("ACME", "/api/v1/private", "GET", "actor@bbp.com");
     assertThat(warmed.isAdmitted()).isTrue();
@@ -367,23 +371,27 @@ class TenantRuntimeEnforcementServiceTest {
     when(systemSettingsRepository.findById(any()))
         .thenThrow(new RuntimeException("settings-unavailable"));
 
-    TenantRuntimeEnforcementService.TenantRequestAdmission fallbackAdmission =
+    TenantRuntimeEnforcementService.TenantRequestAdmission deniedAdmission =
         admissionService.beginRequest("ACME", "/api/v1/private", "GET", "actor@bbp.com");
 
-    assertThat(fallbackAdmission.isAdmitted()).isTrue();
-    assertThat(fallbackAdmission.auditChainId()).isEqualTo(warmed.auditChainId());
+    assertThat(deniedAdmission.isAdmitted()).isFalse();
+    assertThat(deniedAdmission.statusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE.value());
+    assertThat(deniedAdmission.reasonCode()).isEqualTo("TENANT_RUNTIME_POLICY_UNAVAILABLE");
+    assertThat(deniedAdmission.message()).isEqualTo("Tenant runtime policy is unavailable");
   }
 
   @Test
-  void beginRequest_fallsBackToDefaultPolicyWhenCompanyLookupFails() {
+  void beginRequest_failsClosedWhenCompanyLookupFails() {
     when(companyRepository.findByCodeIgnoreCase(eq("ACME")))
         .thenThrow(new RuntimeException("company-lookup-unavailable"));
 
     TenantRuntimeEnforcementService.TenantRequestAdmission admission =
         admissionService.beginRequest("ACME", "/api/v1/private", "GET", "actor@bbp.com");
 
-    assertThat(admission.isAdmitted()).isTrue();
-    assertThat(admission.auditChainId()).isNotBlank();
+    assertThat(admission.isAdmitted()).isFalse();
+    assertThat(admission.statusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE.value());
+    assertThat(admission.reasonCode()).isEqualTo("TENANT_COMPANY_LOOKUP_UNAVAILABLE");
+    assertThat(admission.message()).isEqualTo("Tenant company lookup is unavailable");
   }
 
   @Test
@@ -504,6 +512,64 @@ class TenantRuntimeEnforcementServiceTest {
   }
 
   @Test
+  void updatePolicy_persistFailureLeavesPriorLivePolicyIntact() {
+    TenantRuntimeEnforcementService.TenantRequestAdmission warmed =
+        admissionService.beginRequest("ACME", "/api/v1/private", "GET", "actor@bbp.com");
+    assertThat(warmed.isAdmitted()).isTrue();
+    admissionService.completeRequest(warmed, 200);
+
+    when(systemSettingsRepository.save(any(SystemSetting.class)))
+        .thenThrow(new RuntimeException("settings-write-failed"));
+
+    assertThatThrownBy(
+            () ->
+                service.updatePolicy(
+                    "ACME",
+                    TenantRuntimeEnforcementService.TenantRuntimeState.BLOCKED,
+                    "incident_lockdown",
+                    5,
+                    7,
+                    9,
+                    "ops@bbp.com"))
+        .isInstanceOf(RuntimeException.class)
+        .hasMessageContaining("settings-write-failed");
+
+    TenantRuntimeEnforcementService.TenantRequestAdmission stillAllowed =
+        admissionService.beginRequest("ACME", "/api/v1/private", "GET", "actor@bbp.com");
+    assertThat(stillAllowed.isAdmitted()).isTrue();
+    assertThat(persistedSettingsByKey).isEmpty();
+  }
+
+  @Test
+  void updatePolicy_auditFailureLeavesPriorLivePolicyIntact() {
+    TenantRuntimeEnforcementService.TenantRequestAdmission warmed =
+        admissionService.beginRequest("ACME", "/api/v1/private", "GET", "actor@bbp.com");
+    assertThat(warmed.isAdmitted()).isTrue();
+    admissionService.completeRequest(warmed, 200);
+
+    org.mockito.Mockito.doThrow(new RuntimeException("audit-write-failed"))
+        .when(auditService)
+        .logAuthSuccess(eq(AuditEvent.CONFIGURATION_CHANGED), any(), eq("ACME"), anyMap());
+
+    assertThatThrownBy(
+            () ->
+                service.updatePolicy(
+                    "ACME",
+                    TenantRuntimeEnforcementService.TenantRuntimeState.BLOCKED,
+                    "incident_lockdown",
+                    5,
+                    7,
+                    9,
+                    "ops@bbp.com"))
+        .isInstanceOf(RuntimeException.class)
+        .hasMessageContaining("audit-write-failed");
+
+    TenantRuntimeEnforcementService.TenantRequestAdmission stillAllowed =
+        admissionService.beginRequest("ACME", "/api/v1/private", "GET", "actor@bbp.com");
+    assertThat(stillAllowed.isAdmitted()).isTrue();
+  }
+
+  @Test
   void invalidatePolicyCache_ignoresBlankCompanyCode() {
     TenantRuntimeEnforcementService.TenantRequestAdmission warmed =
         admissionService.beginRequest("ACME", "/api/v1/private", "GET", "actor@bbp.com");
@@ -534,6 +600,10 @@ class TenantRuntimeEnforcementServiceTest {
 
     assertThat(policyAdmission.isAdmitted()).isTrue();
     assertThat(policyAdmission.statusCode()).isEqualTo(HttpStatus.OK.value());
+    TenantRuntimeEnforcementService.TenantRequestAdmission lifecycleAdmission =
+        admissionService.beginRequest(
+            "ACME", "/api/v1/superadmin/tenants/1/lifecycle", "PUT", "super-admin@bbp.com", true);
+    assertThat(lifecycleAdmission.isAdmitted()).isTrue();
   }
 
   @Test
@@ -674,6 +744,9 @@ class TenantRuntimeEnforcementServiceTest {
     TenantRuntimeEnforcementService.TenantRequestAdmission controlTrailingSlashAllowed =
         admissionService.beginRequest(
             "ACME", "/api/v1/superadmin/tenants/1/limits///", "PUT", "ops@bbp.com", true);
+    TenantRuntimeEnforcementService.TenantRequestAdmission lifecycleTrailingSlashAllowed =
+        admissionService.beginRequest(
+            "ACME", "/api/v1/superadmin/tenants/1/lifecycle///", "PUT", "ops@bbp.com", true);
     TenantRuntimeEnforcementService.TenantRequestAdmission retiredCompanyPolicyControl =
         admissionService.beginRequest(
             "ACME", "/api/v1/companies/1/tenant-runtime/policy///", "PUT", "ops@bbp.com", true);
@@ -683,6 +756,7 @@ class TenantRuntimeEnforcementServiceTest {
     assertThat(blankMethodRejected.isAdmitted()).isFalse();
     assertThat(blankMethodRejected.statusCode()).isEqualTo(HttpStatus.LOCKED.value());
     assertThat(controlTrailingSlashAllowed.isAdmitted()).isTrue();
+    assertThat(lifecycleTrailingSlashAllowed.isAdmitted()).isTrue();
     assertThat(retiredCompanyPolicyControl.isAdmitted()).isFalse();
     assertThat(retiredCompanyPolicyControl.statusCode()).isEqualTo(HttpStatus.LOCKED.value());
     assertThat(missingPathRejected.isAdmitted()).isFalse();
@@ -705,6 +779,10 @@ class TenantRuntimeEnforcementServiceTest {
         .isFalse();
     assertThat(
             invokeIsPolicyControlRequest("/api/v1/superadmin/tenants/1/limits///", " put ", true))
+        .isTrue();
+    assertThat(
+            invokeIsPolicyControlRequest(
+                "/api/v1/superadmin/tenants/1/lifecycle///", " put ", true))
         .isTrue();
   }
 
@@ -1022,13 +1100,12 @@ class TenantRuntimeEnforcementServiceTest {
   }
 
   @Test
-  void loadPersistedPolicy_returnsNullWhenCompanyMissingOrIdMissing() {
-    Object unknownCompanyPolicy = invokeLoadPersistedPolicy("UNKNOWN");
+  void loadPersistedPolicy_throwsWhenCompanyMissingOrIdMissing() {
+    assertThatThrownBy(() -> invokeLoadPersistedPolicy("UNKNOWN"))
+        .isInstanceOf(RuntimeException.class);
     companiesByCode.put("NOID", company(null, "NOID"));
-    Object missingIdPolicy = invokeLoadPersistedPolicy("NOID");
-
-    assertThat(unknownCompanyPolicy).isNull();
-    assertThat(missingIdPolicy).isNull();
+    assertThatThrownBy(() -> invokeLoadPersistedPolicy("NOID"))
+        .isInstanceOf(RuntimeException.class);
   }
 
   @Test

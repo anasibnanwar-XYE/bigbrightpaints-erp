@@ -39,6 +39,7 @@ import com.bigbrightpaints.erp.modules.auth.domain.UserPrincipal;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyLifecycleState;
 import com.bigbrightpaints.erp.modules.company.service.CompanyService;
+import com.bigbrightpaints.erp.modules.company.service.TenantRuntimeEnforcementService;
 import com.bigbrightpaints.erp.modules.company.service.TenantRuntimeRequestAdmissionService;
 
 import io.jsonwebtoken.Claims;
@@ -124,6 +125,44 @@ class CompanyContextFilterControlPlaneBindingTest {
     verify(tenantRuntimeRequestAdmissionService, never())
         .beginRequest(anyString(), anyString(), anyString(), anyString(), anyBoolean());
     verify(filterChain).doFilter(request, response);
+  }
+
+  @Test
+  void canonicalLimitsRequest_tracksPrivilegedRuntimeAdmissionForSuperAdmin()
+      throws ServletException, IOException {
+    authenticate("root-superadmin@bbp.com", Set.of("ROLE_SUPER_ADMIN"), Set.of("ROOT"));
+    when(companyService.resolveCompanyCodeById(42L)).thenReturn("TENANT-A");
+    when(companyService.resolveLifecycleStateByCode("TENANT-A"))
+        .thenReturn(CompanyLifecycleState.DEACTIVATED);
+    TenantRuntimeEnforcementService.TenantRequestAdmission admission =
+        TenantRuntimeEnforcementService.TenantRequestAdmission.admittedPolicyControl(
+            "TENANT-A", "chain-1");
+    when(tenantRuntimeRequestAdmissionService.beginRequest(
+            "TENANT-A",
+            "/api/v1/superadmin/tenants/42/limits",
+            "PUT",
+            "root-superadmin@bbp.com",
+            true))
+        .thenReturn(admission);
+
+    MockHttpServletRequest request = request("PUT", "/api/v1/superadmin/tenants/42/limits");
+    request.setAttribute("jwtClaims", claimsFor("ROOT"));
+    MockHttpServletResponse response = new MockHttpServletResponse();
+
+    filter.doFilter(
+        request,
+        response,
+        (req, res) -> assertThat(CompanyContextHolder.getCompanyCode()).isEqualTo("TENANT-A"));
+
+    assertThat(response.getStatus()).isEqualTo(200);
+    verify(tenantRuntimeRequestAdmissionService)
+        .beginRequest(
+            "TENANT-A",
+            "/api/v1/superadmin/tenants/42/limits",
+            "PUT",
+            "root-superadmin@bbp.com",
+            true);
+    verify(tenantRuntimeRequestAdmissionService).completeRequest(admission, 200);
   }
 
   @Test
@@ -239,7 +278,7 @@ class CompanyContextFilterControlPlaneBindingTest {
                     "hasTenantRuntimePolicyControlAuthority",
                     "/api/v1/superadmin/tenants/42/limits",
                     "PUT"))
-        .isFalse();
+        .isTrue();
   }
 
   @Test
