@@ -5,6 +5,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -57,12 +58,17 @@ public class SecurityMonitoringService {
   @Value("${security.monitoring.notification-email:}")
   private String securityNotificationEmail;
 
+  @Value("${security.monitoring.suspicious-activity-alert-window-minutes:60}")
+  private int suspiciousActivityAlertWindowMinutes;
+
   // Tracking maps
   private final Map<String, AtomicInteger> failedLoginAttempts = new ConcurrentHashMap<>();
   private final Map<String, AtomicInteger> requestCounts = new ConcurrentHashMap<>();
   private final Map<String, LocalDateTime> blockedIPs = new ConcurrentHashMap<>();
   private final Map<String, LocalDateTime> blockedUsers = new ConcurrentHashMap<>();
   private final Map<String, AtomicInteger> suspiciousActivityScores = new ConcurrentHashMap<>();
+  private final Map<String, LocalDateTime> suspiciousActivityNotificationTimes =
+      new ConcurrentHashMap<>();
 
   /**
    * Records a failed login attempt and checks for brute force attacks.
@@ -232,17 +238,18 @@ public class SecurityMonitoringService {
   private void increaseSuspiciousScore(String identifier, int points) {
     AtomicInteger score =
         suspiciousActivityScores.computeIfAbsent(identifier, k -> new AtomicInteger(0));
-    int newScore = score.addAndGet(points);
+    int previousScore = score.getAndAdd(points);
+    int newScore = previousScore + points;
 
     if (newScore >= suspiciousActivityThreshold) {
-      handleSuspiciousActivity(identifier, newScore);
+      handleSuspiciousActivity(identifier, newScore, previousScore < suspiciousActivityThreshold);
     }
   }
 
   /**
    * Handles detected suspicious activity.
    */
-  private void handleSuspiciousActivity(String identifier, int score) {
+  private void handleSuspiciousActivity(String identifier, int score, boolean thresholdCrossed) {
     Map<String, String> metadata = new HashMap<>();
     metadata.put("identifier", identifier == null ? "" : identifier);
     metadata.put("score", String.valueOf(score));
@@ -255,7 +262,48 @@ public class SecurityMonitoringService {
         identifier,
         score);
 
+    notifySuspiciousActivityIfNeeded(identifier, thresholdCrossed);
+  }
+
+  private void notifySuspiciousActivityIfNeeded(String identifier, boolean thresholdCrossed) {
+    if (!StringUtils.hasText(securityNotificationEmail)) {
+      sendSecurityNotification("Suspicious activity detected", identifier, null);
+      return;
+    }
+
+    if (thresholdCrossed) {
+      suspiciousActivityNotificationTimes.put(identifier, LocalDateTime.now());
+      sendSecurityNotification("Suspicious activity detected", identifier, null);
+      return;
+    }
+
+    if (!isSuspiciousActivityNotificationDue(identifier)) {
+      return;
+    }
+
     sendSecurityNotification("Suspicious activity detected", identifier, null);
+  }
+
+  private boolean isSuspiciousActivityNotificationDue(String identifier) {
+    if (suspiciousActivityAlertWindowMinutes <= 0) {
+      return false;
+    }
+
+    LocalDateTime now = LocalDateTime.now();
+    AtomicBoolean due = new AtomicBoolean(false);
+    suspiciousActivityNotificationTimes.compute(
+        identifier,
+        (key, lastNotificationAt) -> {
+          if (lastNotificationAt == null
+              || !lastNotificationAt
+                  .plusMinutes(suspiciousActivityAlertWindowMinutes)
+                  .isAfter(now)) {
+            due.set(true);
+            return now;
+          }
+          return lastNotificationAt;
+        });
+    return due.get();
   }
 
   /**
@@ -301,6 +349,10 @@ public class SecurityMonitoringService {
     // Clean up expired blocks
     blockedUsers.entrySet().removeIf(entry -> entry.getValue().isBefore(now));
     blockedIPs.entrySet().removeIf(entry -> entry.getValue().isBefore(now));
+    suspiciousActivityNotificationTimes.entrySet().removeIf(
+        entry ->
+            suspiciousActivityAlertWindowMinutes <= 0
+                || !entry.getValue().plusMinutes(suspiciousActivityAlertWindowMinutes).isAfter(now));
 
     // Clean up old failed login attempts
     // In a production implementation, you would track timestamps for each attempt

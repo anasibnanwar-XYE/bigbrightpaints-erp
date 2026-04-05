@@ -1,10 +1,15 @@
 package com.bigbrightpaints.erp.core.security;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+
+import java.time.LocalDateTime;
+import java.util.Map;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -62,5 +67,73 @@ class SecurityMonitoringServiceTest {
     securityMonitoringService.recordFailedLogin("user@example.com", "127.0.0.1");
 
     verify(emailService, never()).sendSimpleEmail(anyString(), anyString(), anyString());
+  }
+
+  @Test
+  void checkRateLimit_thresholdCrossingSendsConfiguredSuspiciousActivityAlertEmail() {
+    String identifier = "password-reset:forgot_password:ACME:user@example.com";
+    ReflectionTestUtils.setField(
+        securityMonitoringService, "securityNotificationEmail", "security@example.com");
+    ReflectionTestUtils.setField(securityMonitoringService, "maxRequestsPerMinute", 0);
+    ReflectionTestUtils.setField(securityMonitoringService, "suspiciousActivityThreshold", 3);
+    ReflectionTestUtils.setField(
+        securityMonitoringService, "suspiciousActivityAlertWindowMinutes", 60);
+
+    assertFalse(securityMonitoringService.checkRateLimit(identifier));
+
+    verify(emailService)
+        .sendSimpleEmail(
+            eq("security@example.com"),
+            eq("Security alert: Suspicious activity detected"),
+            contains(identifier));
+  }
+
+  @Test
+  void checkRateLimit_repeatedOverThresholdEventsWithinAlertWindowSendOnlyOneNotification() {
+    String identifier = "password-reset:forgot_password:ACME:user@example.com";
+    ReflectionTestUtils.setField(
+        securityMonitoringService, "securityNotificationEmail", "security@example.com");
+    ReflectionTestUtils.setField(securityMonitoringService, "maxRequestsPerMinute", 0);
+    ReflectionTestUtils.setField(securityMonitoringService, "suspiciousActivityThreshold", 3);
+    ReflectionTestUtils.setField(
+        securityMonitoringService, "suspiciousActivityAlertWindowMinutes", 60);
+
+    securityMonitoringService.checkRateLimit(identifier);
+    securityMonitoringService.checkRateLimit(identifier);
+    securityMonitoringService.checkRateLimit(identifier);
+
+    verify(emailService, times(1))
+        .sendSimpleEmail(
+            eq("security@example.com"),
+            eq("Security alert: Suspicious activity detected"),
+            contains(identifier));
+  }
+
+  @Test
+  void checkRateLimit_overThresholdEventAfterAlertWindowSendsReminderNotification() {
+    String identifier = "password-reset:forgot_password:ACME:user@example.com";
+    ReflectionTestUtils.setField(
+        securityMonitoringService, "securityNotificationEmail", "security@example.com");
+    ReflectionTestUtils.setField(securityMonitoringService, "maxRequestsPerMinute", 0);
+    ReflectionTestUtils.setField(securityMonitoringService, "suspiciousActivityThreshold", 3);
+    ReflectionTestUtils.setField(
+        securityMonitoringService, "suspiciousActivityAlertWindowMinutes", 60);
+
+    securityMonitoringService.checkRateLimit(identifier);
+
+    @SuppressWarnings("unchecked")
+    Map<String, LocalDateTime> notificationTimes =
+        (Map<String, LocalDateTime>)
+            ReflectionTestUtils.getField(
+                securityMonitoringService, "suspiciousActivityNotificationTimes");
+    notificationTimes.put(identifier, LocalDateTime.now().minusMinutes(61));
+
+    securityMonitoringService.checkRateLimit(identifier);
+
+    verify(emailService, times(2))
+        .sendSimpleEmail(
+            eq("security@example.com"),
+            eq("Security alert: Suspicious activity detected"),
+            contains(identifier));
   }
 }
