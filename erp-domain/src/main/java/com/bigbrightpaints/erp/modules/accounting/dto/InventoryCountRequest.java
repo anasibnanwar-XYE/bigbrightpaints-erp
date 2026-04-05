@@ -3,6 +3,8 @@ package com.bigbrightpaints.erp.modules.accounting.dto;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
+
 import jakarta.validation.constraints.NotNull;
 
 public record InventoryCountRequest(
@@ -11,7 +13,7 @@ public record InventoryCountRequest(
     @NotNull BigDecimal physicalQuantity,
     @NotNull BigDecimal unitCost,
     @NotNull Long adjustmentAccountId,
-    LocalDate countDate,
+    @JsonFormat(pattern = "yyyy-MM-dd") LocalDate countDate,
     Long accountingPeriodId,
     Boolean markAsComplete,
     String note) {}

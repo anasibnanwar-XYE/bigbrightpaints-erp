@@ -4,10 +4,18 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.YearMonth;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
+
 public class GstReturnDto {
+  @JsonFormat(pattern = "yyyy-MM")
   private YearMonth period;
+
+  @JsonFormat(pattern = "yyyy-MM-dd")
   private LocalDate periodStart;
+
+  @JsonFormat(pattern = "yyyy-MM-dd")
   private LocalDate periodEnd;
+
   private BigDecimal outputTax = BigDecimal.ZERO;
   private BigDecimal inputTax = BigDecimal.ZERO;
   private BigDecimal netPayable = BigDecimal.ZERO;

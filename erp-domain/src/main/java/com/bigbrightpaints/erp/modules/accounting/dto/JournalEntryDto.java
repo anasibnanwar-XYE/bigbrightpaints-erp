@@ -5,11 +5,13 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
+
 public record JournalEntryDto(
     Long id,
     UUID publicId,
     String referenceNumber,
-    LocalDate entryDate,
+    @JsonFormat(pattern = "yyyy-MM-dd") LocalDate entryDate,
     String memo,
     String status,
     Long dealerId,
@@ -25,9 +27,9 @@ public record JournalEntryDto(
     String correctionReason,
     String voidReason,
     List<JournalLineDto> lines,
-    Instant createdAt,
-    Instant updatedAt,
-    Instant postedAt,
+    @JsonFormat(shape = JsonFormat.Shape.STRING) Instant createdAt,
+    @JsonFormat(shape = JsonFormat.Shape.STRING) Instant updatedAt,
+    @JsonFormat(shape = JsonFormat.Shape.STRING) Instant postedAt,
     String createdBy,
     String postedBy,
     String lastModifiedBy) {}

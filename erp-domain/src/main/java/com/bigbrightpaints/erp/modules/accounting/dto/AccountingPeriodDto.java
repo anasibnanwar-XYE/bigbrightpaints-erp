@@ -3,27 +3,29 @@ package com.bigbrightpaints.erp.modules.accounting.dto;
 import java.time.Instant;
 import java.time.LocalDate;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
+
 public record AccountingPeriodDto(
     Long id,
     int year,
     int month,
-    LocalDate startDate,
-    LocalDate endDate,
+    @JsonFormat(pattern = "yyyy-MM-dd") LocalDate startDate,
+    @JsonFormat(pattern = "yyyy-MM-dd") LocalDate endDate,
     String label,
     String status,
     boolean bankReconciled,
-    Instant bankReconciledAt,
+    @JsonFormat(shape = JsonFormat.Shape.STRING) Instant bankReconciledAt,
     String bankReconciledBy,
     boolean inventoryCounted,
-    Instant inventoryCountedAt,
+    @JsonFormat(shape = JsonFormat.Shape.STRING) Instant inventoryCountedAt,
     String inventoryCountedBy,
-    Instant closedAt,
+    @JsonFormat(shape = JsonFormat.Shape.STRING) Instant closedAt,
     String closedBy,
     String closedReason,
-    Instant lockedAt,
+    @JsonFormat(shape = JsonFormat.Shape.STRING) Instant lockedAt,
     String lockedBy,
     String lockReason,
-    Instant reopenedAt,
+    @JsonFormat(shape = JsonFormat.Shape.STRING) Instant reopenedAt,
     String reopenedBy,
     String reopenReason,
     Long closingJournalEntryId,

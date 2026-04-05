@@ -4,13 +4,15 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
+
 /**
  * Response from payroll batch payment processing.
  * Contains breakdown of gross, deductions, net pay, and liabilities.
  */
 public record PayrollBatchPaymentResponse(
     Long payrollRunId,
-    LocalDate runDate,
+    @JsonFormat(pattern = "yyyy-MM-dd") LocalDate runDate,
     // Amount totals
     BigDecimal grossAmount, // Total gross wages
     BigDecimal totalTaxWithholding, // Employee tax withholding

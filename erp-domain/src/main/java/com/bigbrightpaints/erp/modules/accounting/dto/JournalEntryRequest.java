@@ -4,13 +4,15 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
+
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 
 public record JournalEntryRequest(
     String referenceNumber,
-    @NotNull LocalDate entryDate,
+    @NotNull @JsonFormat(pattern = "yyyy-MM-dd") LocalDate entryDate,
     String memo,
     Long dealerId,
     Long supplierId,

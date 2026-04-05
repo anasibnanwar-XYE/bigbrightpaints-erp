@@ -4,6 +4,8 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
+
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotEmpty;
@@ -26,7 +28,7 @@ import jakarta.validation.constraints.NotNull;
  *    Cr. PF Payable (employer portion)
  */
 public record PayrollBatchPaymentRequest(
-    @NotNull LocalDate runDate,
+    @NotNull @JsonFormat(pattern = "yyyy-MM-dd") LocalDate runDate,
     @NotNull Long cashAccountId,
     @NotNull Long expenseAccountId,
     // Liability accounts for withholdings

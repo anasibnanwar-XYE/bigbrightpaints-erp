@@ -5,21 +5,23 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
+
 public record BankReconciliationSessionDetailDto(
     Long sessionId,
     String referenceNumber,
     Long bankAccountId,
     String bankAccountCode,
     String bankAccountName,
-    LocalDate statementDate,
+    @JsonFormat(pattern = "yyyy-MM-dd") LocalDate statementDate,
     BigDecimal statementEndingBalance,
     String status,
     Long accountingPeriodId,
     String note,
     String createdBy,
-    Instant createdAt,
+    @JsonFormat(shape = JsonFormat.Shape.STRING) Instant createdAt,
     String completedBy,
-    Instant completedAt,
+    @JsonFormat(shape = JsonFormat.Shape.STRING) Instant completedAt,
     List<ClearedItemDto> clearedItems,
     List<BankReconciliationSummaryDto.BankReconciliationItemDto> unclearedDeposits,
     List<BankReconciliationSummaryDto.BankReconciliationItemDto> unclearedChecks,
@@ -30,11 +32,11 @@ public record BankReconciliationSessionDetailDto(
       Long journalLineId,
       Long journalEntryId,
       String referenceNumber,
-      LocalDate entryDate,
+      @JsonFormat(pattern = "yyyy-MM-dd") LocalDate entryDate,
       String memo,
       BigDecimal debit,
       BigDecimal credit,
       BigDecimal netAmount,
-      Instant clearedAt,
+      @JsonFormat(shape = JsonFormat.Shape.STRING) Instant clearedAt,
       String clearedBy) {}
 }

@@ -4,6 +4,8 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
+
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
@@ -23,7 +25,7 @@ public record SupplierSettlementRequest(
                 "Header-level unapplied amount handling. DOCUMENT is only valid on explicit"
                     + " allocation rows.")
         SettlementAllocationApplication unappliedAmountApplication,
-    LocalDate settlementDate,
+    @JsonFormat(pattern = "yyyy-MM-dd") LocalDate settlementDate,
     String referenceNumber,
     String memo,
     String idempotencyKey,
