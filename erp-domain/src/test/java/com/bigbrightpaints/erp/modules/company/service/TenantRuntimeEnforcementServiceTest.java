@@ -1747,10 +1747,19 @@ class TenantRuntimeEnforcementServiceTest {
     Class<?> failureClass =
         Class.forName(
             TenantRuntimeEnforcementService.class.getName() + "$TenantRuntimeAdmissionFailure");
-    Constructor<?> constructor =
-        failureClass.getDeclaredConstructor(rejectionClass, Throwable.class);
+    Constructor<?> constructor;
+    Object[] args;
+    try {
+      constructor = failureClass.getDeclaredConstructor(rejectionClass, Throwable.class);
+      args = new Object[] {rejection, cause};
+    } catch (NoSuchMethodException ex) {
+      constructor =
+          failureClass.getDeclaredConstructor(
+              TenantRuntimeEnforcementService.class, rejectionClass, Throwable.class);
+      args = new Object[] {service, rejection, cause};
+    }
     constructor.setAccessible(true);
-    return constructor.newInstance(rejection, cause);
+    return constructor.newInstance(args);
   }
 
   private boolean invokeShouldUsePersistedPolicy(Object current, Object persisted) {

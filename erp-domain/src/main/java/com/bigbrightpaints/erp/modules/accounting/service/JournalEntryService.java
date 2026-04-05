@@ -190,19 +190,13 @@ public class JournalEntryService extends AccountingCoreEngineCore {
           journalEntryRepository.findByCompanyAndReferenceNumber(company, entry.getReferenceNumber());
 
       LocalDate entryDate = request.entryDate();
-      if (entryDate == null) {
-        throw new ApplicationException(
-            ErrorCode.VALIDATION_INVALID_INPUT, "Entry date is required");
-      }
+      if (entryDate == null) { throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "Entry date is required"); }
       boolean overrideRequested = Boolean.TRUE.equals(request.adminOverride());
       boolean overrideAuthorized = overrideRequested && hasEntryDateOverrideAuthority();
       boolean manualJournal =
           entry.getJournalType() == JournalEntryType.MANUAL
               || "MANUAL".equalsIgnoreCase(entry.getSourceModule());
-      if (manualJournal && !StringUtils.hasText(request.memo())) {
-        throw new ApplicationException(
-            ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD, "Manual journal reason is required");
-      }
+      if (manualJournal && !StringUtils.hasText(request.memo())) { throw new ApplicationException(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD, "Manual journal reason is required"); }
       entry.setAttachmentReferences(joinAttachmentReferences(request.attachmentReferences()));
       if (duplicate.isEmpty()) {
         AccountingPeriod postingPeriod;
@@ -263,8 +257,7 @@ public class JournalEntryService extends AccountingCoreEngineCore {
         Account account =
             accountRepository
                 .lockByCompanyAndId(company, accountId)
-                .orElseThrow(
-                    () -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Account not found"));
+                .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Account not found"));
         lockedAccounts.put(accountId, account);
       }
       Dealer dealerContext = dealer;
@@ -281,11 +274,7 @@ public class JournalEntryService extends AccountingCoreEngineCore {
         List<Dealer> dealerOwners =
             dealerRepository.findByCompanyAndReceivableAccountIn(company, receivableAccounts);
         for (Dealer owner : dealerOwners) {
-          if (owner.getReceivableAccount() == null
-              || owner.getReceivableAccount().getId() == null
-              || owner.getId() == null) {
-            continue;
-          }
+          if (owner.getReceivableAccount() == null || owner.getReceivableAccount().getId() == null || owner.getId() == null) { continue; }
           dealerOwnerByReceivableAccountId
               .computeIfAbsent(owner.getReceivableAccount().getId(), ignored -> new HashSet<>())
               .add(owner.getId());
@@ -297,11 +286,7 @@ public class JournalEntryService extends AccountingCoreEngineCore {
         List<Supplier> supplierOwners =
             supplierRepository.findByCompanyAndPayableAccountIn(company, payableAccounts);
         for (Supplier owner : supplierOwners) {
-          if (owner.getPayableAccount() == null
-              || owner.getPayableAccount().getId() == null
-              || owner.getId() == null) {
-            continue;
-          }
+          if (owner.getPayableAccount() == null || owner.getPayableAccount().getId() == null || owner.getId() == null) { continue; }
           supplierOwnerByPayableAccountId
               .computeIfAbsent(owner.getPayableAccount().getId(), ignored -> new HashSet<>())
               .add(owner.getId());
@@ -309,9 +294,7 @@ public class JournalEntryService extends AccountingCoreEngineCore {
       }
       for (Account account : distinctAccounts) {
         Long accountId = account.getId();
-        if (accountId == null) {
-          continue;
-        }
+        if (accountId == null) { continue; }
         Set<Long> dealerOwnerIds = dealerOwnerByReceivableAccountId.get(accountId);
         if (dealerOwnerIds != null && !dealerOwnerIds.isEmpty()) {
           if (dealerContext == null) {
@@ -358,27 +341,17 @@ public class JournalEntryService extends AccountingCoreEngineCore {
         throw new ApplicationException(
             ErrorCode.VALIDATION_INVALID_INPUT, "Posting to AP requires a supplier context");
       }
-      if (dealerContext != null && hasReceivableAccount && dealerReceivableAccount == null) {
-        dealerReceivableAccount = requireDealerReceivable(dealerContext);
-      }
-      if (supplierContext != null && hasPayableAccount && supplierPayableAccount == null) {
-        supplierPayableAccount = requireSupplierPayable(supplierContext);
-      }
+      if (dealerContext != null && hasReceivableAccount && dealerReceivableAccount == null) { dealerReceivableAccount = requireDealerReceivable(dealerContext); }
+      if (supplierContext != null && hasPayableAccount && supplierPayableAccount == null) { supplierPayableAccount = requireSupplierPayable(supplierContext); }
       BigDecimal totalBaseDebit = BigDecimal.ZERO;
       BigDecimal totalBaseCredit = BigDecimal.ZERO;
       BigDecimal totalForeignDebit = BigDecimal.ZERO;
       BigDecimal totalForeignCredit = BigDecimal.ZERO;
       List<JournalLine> postedLines = new ArrayList<>();
       for (JournalEntryRequest.JournalLineRequest lineRequest : lines) {
-        if (lineRequest.accountId() == null) {
-          throw new ApplicationException(
-              ErrorCode.VALIDATION_INVALID_INPUT, "Account is required for every journal line");
-        }
+        if (lineRequest.accountId() == null) { throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "Account is required for every journal line"); }
         Account account = lockedAccounts.get(lineRequest.accountId());
-        if (account == null) {
-          throw new ApplicationException(
-              ErrorCode.VALIDATION_INVALID_REFERENCE, "Account not found");
-        }
+        if (account == null) { throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Account not found"); }
 
         JournalLine line = new JournalLine();
         line.setJournalEntry(entry);
@@ -388,17 +361,8 @@ public class JournalEntryService extends AccountingCoreEngineCore {
         BigDecimal debitInput = lineRequest.debit() == null ? BigDecimal.ZERO : lineRequest.debit();
         BigDecimal creditInput =
             lineRequest.credit() == null ? BigDecimal.ZERO : lineRequest.credit();
-        if (debitInput.compareTo(BigDecimal.ZERO) < 0
-            || creditInput.compareTo(BigDecimal.ZERO) < 0) {
-          throw new ApplicationException(
-              ErrorCode.VALIDATION_INVALID_INPUT, "Debit/Credit cannot be negative");
-        }
-        if (debitInput.compareTo(BigDecimal.ZERO) > 0
-            && creditInput.compareTo(BigDecimal.ZERO) > 0) {
-          throw new ApplicationException(
-              ErrorCode.VALIDATION_INVALID_INPUT,
-              "Debit and credit cannot both be non-zero on the same line");
-        }
+        if (debitInput.compareTo(BigDecimal.ZERO) < 0 || creditInput.compareTo(BigDecimal.ZERO) < 0) { throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "Debit/Credit cannot be negative"); }
+        if (debitInput.compareTo(BigDecimal.ZERO) > 0 && creditInput.compareTo(BigDecimal.ZERO) > 0) { throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "Debit and credit cannot both be non-zero on the same line"); }
 
         if (foreignCurrency) {
           totalForeignDebit = totalForeignDebit.add(debitInput);
@@ -747,35 +711,27 @@ public class JournalEntryService extends AccountingCoreEngineCore {
               reservedManualReference(key),
               "JOURNAL_ENTRY",
               CompanyTime.now(company));
-      if (reserved == 0) {
-        JournalEntry already = awaitJournalEntry(company, rawKey, key);
-        if (already != null) {
-          return toDto(already);
-        }
-        throw new ApplicationException(
-                ErrorCode.INTERNAL_CONCURRENCY_FAILURE,
-                "Manual journal idempotency key already reserved but entry not found")
-            .withDetail("referenceNumber", rawKey);
-      }
+      if (reserved == 0) { JournalEntry already = awaitJournalEntry(company, rawKey, key); if (already != null) { return toDto(already); } throw new ApplicationException(
+              ErrorCode.INTERNAL_CONCURRENCY_FAILURE,
+              "Manual journal idempotency key already reserved but entry not found").withDetail("referenceNumber", rawKey); }
     }
     JournalEntryDto created;
     try {
       created =
-          createJournalEntry(
-              new JournalEntryRequest(
-                  null,
-                  request.entryDate(),
-                  request.memo(),
-                  request.dealerId(),
-                  request.supplierId(),
-                  request.adminOverride(),
-                  request.lines(),
-                  request.currency(),
-                  request.fxRate(),
-                  request.sourceModule(),
-                  request.sourceReference(),
-                  StringUtils.hasText(request.journalType()) ? request.journalType() : JournalEntryType.MANUAL.name(),
-                  request.attachmentReferences()));
+          createJournalEntry(new JournalEntryRequest(
+              null,
+              request.entryDate(),
+              request.memo(),
+              request.dealerId(),
+              request.supplierId(),
+              request.adminOverride(),
+              request.lines(),
+              request.currency(),
+              request.fxRate(),
+              request.sourceModule(),
+              request.sourceReference(),
+              StringUtils.hasText(request.journalType()) ? request.journalType() : JournalEntryType.MANUAL.name(),
+              request.attachmentReferences()));
     } catch (RuntimeException ex) {
       if (!StringUtils.hasText(rawKey) || !isRetryableManualConcurrencyFailure(ex)) {
         throw ex;
@@ -789,10 +745,9 @@ public class JournalEntryService extends AccountingCoreEngineCore {
     if (StringUtils.hasText(key) && created != null && StringUtils.hasText(created.referenceNumber())) {
       JournalReferenceMapping mapping =
           findLatestLegacyReferenceMapping(company, key)
-              .orElseThrow(
-                  () -> new ApplicationException(
-                          ErrorCode.INTERNAL_CONCURRENCY_FAILURE, "Manual journal idempotency reservation missing")
-                      .withDetail("referenceNumber", rawKey));
+              .orElseThrow(() -> new ApplicationException(
+                      ErrorCode.INTERNAL_CONCURRENCY_FAILURE, "Manual journal idempotency reservation missing")
+                  .withDetail("referenceNumber", rawKey));
       mapping.setCanonicalReference(created.referenceNumber());
       mapping.setEntityId(created.id());
       journalReferenceMappingRepository.save(mapping);

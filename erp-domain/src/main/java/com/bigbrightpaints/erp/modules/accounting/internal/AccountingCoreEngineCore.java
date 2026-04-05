@@ -803,8 +803,7 @@ abstract class AccountingCoreEngineCore {
         BigDecimal baseDebit = toBaseCurrency(debitInput, fxRate);
         BigDecimal baseCredit = toBaseCurrency(creditInput, fxRate);
         line.setDebit(baseDebit);
-        line.setCredit(baseCredit);
-        entry.addLine(line);
+        line.setCredit(baseCredit); entry.addLine(line);
         postedLines.add(line);
         accountDeltas.merge(account, baseDebit.subtract(baseCredit), BigDecimal::add);
         totalBaseDebit = totalBaseDebit.add(baseDebit);
@@ -1597,13 +1596,9 @@ abstract class AccountingCoreEngineCore {
       if (currentOutstanding.compareTo(BigDecimal.ZERO) <= 0) {
         continue;
       }
-      if (remaining.compareTo(BigDecimal.ZERO) <= 0) {
-        break;
-      }
+      if (remaining.compareTo(BigDecimal.ZERO) <= 0) { break; }
       BigDecimal applied = remaining.min(currentOutstanding);
-      if (applied.compareTo(BigDecimal.ZERO) <= 0) {
-        continue;
-      }
+      if (applied.compareTo(BigDecimal.ZERO) <= 0) { continue; }
       enforceSettlementCurrency(company, invoice);
 
       PartnerSettlementAllocation row = new PartnerSettlementAllocation();
@@ -1696,9 +1691,7 @@ abstract class AccountingCoreEngineCore {
     BigDecimal cashCredit = BigDecimal.ZERO;
     if (existing.getLines() != null) {
       for (JournalLine line : existing.getLines()) {
-        if (line.getAccount() == null || line.getAccount().getId() == null) {
-          continue;
-        }
+        if (line.getAccount() == null || line.getAccount().getId() == null) { continue; }
         if (salaryPayableAccount.getId().equals(line.getAccount().getId())) {
           payableDebit = payableDebit.add(MoneyUtils.zeroIfNull(line.getDebit()));
         }
@@ -2901,16 +2894,12 @@ abstract class AccountingCoreEngineCore {
     }
     Optional<JournalReferenceMapping> mappingCandidate =
         findLatestLegacyReferenceMapping(company, normalizeIdempotencyMappingKey(idempotencyKey));
-    if (mappingCandidate.isEmpty()) {
-      return null;
-    }
+    if (mappingCandidate.isEmpty()) { return null; }
     JournalReferenceMapping mapping = mappingCandidate.get();
     if (mapping.getEntityId() != null) {
       Optional<JournalEntry> byId =
           journalEntryRepository.findByCompanyAndId(company, mapping.getEntityId());
-      if (byId.isPresent()) {
-        return byId.get();
-      }
+      if (byId.isPresent()) { return byId.get(); }
     }
     if (StringUtils.hasText(mapping.getCanonicalReference())
         && !isReservedReference(mapping.getCanonicalReference())) {
@@ -3099,8 +3088,7 @@ abstract class AccountingCoreEngineCore {
         allocations);
     List<JournalEntryRequest.JournalLineRequest> expectedLines =
         List.of(
-            new JournalEntryRequest.JournalLineRequest(
-                payableAccount.getId(), memo, amount, BigDecimal.ZERO),
+            new JournalEntryRequest.JournalLineRequest(payableAccount.getId(), memo, amount, BigDecimal.ZERO),
             new JournalEntryRequest.JournalLineRequest(
                 cashAccount.getId(), memo, BigDecimal.ZERO, amount));
     validatePartnerJournalReplay(
@@ -3661,35 +3649,31 @@ abstract class AccountingCoreEngineCore {
     if (totals.totalWriteOff().compareTo(BigDecimal.ZERO) > 0) {
       Account resolvedWriteOffAccount =
           ValidationUtils.requireNotNull(writeOffAccount, "writeOffAccount");
-      lines.add(
-          new JournalEntryRequest.JournalLineRequest(
-              resolvedWriteOffAccount.getId(),
-              "Settlement write-off",
-              totals.totalWriteOff(),
-              BigDecimal.ZERO));
+      lines.add(new JournalEntryRequest.JournalLineRequest(
+          resolvedWriteOffAccount.getId(),
+          "Settlement write-off",
+          totals.totalWriteOff(),
+          BigDecimal.ZERO));
     }
     if (totals.totalFxLoss().compareTo(BigDecimal.ZERO) > 0) {
       Account resolvedFxLossAccount =
           ValidationUtils.requireNotNull(fxLossAccount, "fxLossAccount");
-      lines.add(
-          new JournalEntryRequest.JournalLineRequest(
-              resolvedFxLossAccount.getId(),
-              "FX loss on settlement",
-              totals.totalFxLoss(),
-              BigDecimal.ZERO));
+      lines.add(new JournalEntryRequest.JournalLineRequest(
+          resolvedFxLossAccount.getId(),
+          "FX loss on settlement",
+          totals.totalFxLoss(),
+          BigDecimal.ZERO));
     }
-    lines.add(
-        new JournalEntryRequest.JournalLineRequest(
-            receivableAccount.getId(), memo, BigDecimal.ZERO, totals.totalApplied()));
+    lines.add(new JournalEntryRequest.JournalLineRequest(
+        receivableAccount.getId(), memo, BigDecimal.ZERO, totals.totalApplied()));
     if (totals.totalFxGain().compareTo(BigDecimal.ZERO) > 0) {
       Account resolvedFxGainAccount =
           ValidationUtils.requireNotNull(fxGainAccount, "fxGainAccount");
-      lines.add(
-          new JournalEntryRequest.JournalLineRequest(
-              resolvedFxGainAccount.getId(),
-              "FX gain on settlement",
-              BigDecimal.ZERO,
-              totals.totalFxGain()));
+      lines.add(new JournalEntryRequest.JournalLineRequest(
+          resolvedFxGainAccount.getId(),
+          "FX gain on settlement",
+          BigDecimal.ZERO,
+          totals.totalFxGain()));
     }
     return new SettlementLineDraft(lines, cashAmount);
   }
@@ -3795,22 +3779,20 @@ abstract class AccountingCoreEngineCore {
     if (totals.totalWriteOff().compareTo(BigDecimal.ZERO) > 0) {
       Account resolvedWriteOffAccount =
           ValidationUtils.requireNotNull(writeOffAccount, "writeOffAccount");
-      lines.add(
-          new JournalEntryRequest.JournalLineRequest(
-              resolvedWriteOffAccount.getId(),
-              "Settlement write-off",
-              BigDecimal.ZERO,
-              totals.totalWriteOff()));
+      lines.add(new JournalEntryRequest.JournalLineRequest(
+          resolvedWriteOffAccount.getId(),
+          "Settlement write-off",
+          BigDecimal.ZERO,
+          totals.totalWriteOff()));
     }
     if (totals.totalFxGain().compareTo(BigDecimal.ZERO) > 0) {
       Account resolvedFxGainAccount =
           ValidationUtils.requireNotNull(fxGainAccount, "fxGainAccount");
-      lines.add(
-          new JournalEntryRequest.JournalLineRequest(
-              resolvedFxGainAccount.getId(),
-              "FX gain on settlement",
-              BigDecimal.ZERO,
-              totals.totalFxGain()));
+      lines.add(new JournalEntryRequest.JournalLineRequest(
+          resolvedFxGainAccount.getId(),
+          "FX gain on settlement",
+          BigDecimal.ZERO,
+          totals.totalFxGain()));
     }
 
     return new SettlementLineDraft(lines, cashAmount);
@@ -4052,8 +4034,7 @@ abstract class AccountingCoreEngineCore {
   protected record SettlementLineDraft(
       List<JournalEntryRequest.JournalLineRequest> lines, BigDecimal cashAmount) {}
 
-  private record SettlementMemoParts(
-      SettlementAllocationApplication applicationType, String memo) {}
+  private record SettlementMemoParts(SettlementAllocationApplication applicationType, String memo) {}
 
   protected void enforceSettlementCurrency(Company company, Invoice invoice) {
     if (company == null || invoice == null) {

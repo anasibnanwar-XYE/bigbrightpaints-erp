@@ -257,15 +257,9 @@ class AccountingFacadeCore {
     }
     if (existing.isEmpty()) {
       boolean reservationLeader = reserveSalesJournalReference(company, canonicalReference);
-      if (!reservationLeader) {
-        existing = resolveReservedSalesJournalEntry(company, canonicalReference);
-        if (existing.isEmpty()) {
-          throw new ApplicationException(
-                  ErrorCode.INTERNAL_CONCURRENCY_FAILURE,
-                  "Sales journal reference is reserved but journal entry not found")
-              .withDetail("referenceNumber", canonicalReference);
-        }
-      }
+      if (!reservationLeader) { existing = resolveReservedSalesJournalEntry(company, canonicalReference); if (existing.isEmpty()) { throw new ApplicationException(
+              ErrorCode.INTERNAL_CONCURRENCY_FAILURE,
+              "Sales journal reference is reserved but journal entry not found").withDetail("referenceNumber", canonicalReference); } }
     }
 
     // Build journal lines
@@ -2082,20 +2076,12 @@ class AccountingFacadeCore {
     Optional<JournalReferenceMapping> existing =
         journalReferenceMappingRepository.findByCompanyAndLegacyReferenceIgnoreCase(
             company, canonical);
-    if (existing.isPresent()) {
-      return false;
-    }
+    if (existing.isPresent()) { return false; }
     int reserved =
         journalReferenceMappingRepository.reserveReferenceMapping(
             company.getId(), canonical, canonical, "SALES_JOURNAL", CompanyTime.now(company));
-    if (reserved == 1) {
-      return true;
-    }
-    if (journalReferenceMappingRepository
-        .findByCompanyAndLegacyReferenceIgnoreCase(company, canonical)
-        .isPresent()) {
-      return false;
-    }
+    if (reserved == 1) { return true; }
+    if (journalReferenceMappingRepository.findByCompanyAndLegacyReferenceIgnoreCase(company, canonical).isPresent()) { return false; }
     throw new ApplicationException(
             ErrorCode.INTERNAL_CONCURRENCY_FAILURE,
             "Sales journal reference already reserved but mapping not found")
@@ -2104,31 +2090,22 @@ class AccountingFacadeCore {
 
   private Optional<JournalEntry> resolveReservedSalesJournalEntry(
       Company company, String canonicalReference) {
-    if (company == null || !StringUtils.hasText(canonicalReference)) {
-      return Optional.empty();
-    }
+    if (company == null || !StringUtils.hasText(canonicalReference)) { return Optional.empty(); }
     String canonical = canonicalReference.trim();
     Optional<JournalEntry> existing = journalReferenceResolver.findExistingEntry(company, canonical);
-    if (existing.isPresent()) {
-      return existing;
-    }
+    if (existing.isPresent()) { return existing; }
     Optional<JournalReferenceMapping> mapping =
         journalReferenceMappingRepository.findByCompanyAndLegacyReferenceIgnoreCase(
             company, canonical);
-    if (mapping.isEmpty()) {
-      return Optional.empty();
-    }
+    if (mapping.isEmpty()) { return Optional.empty(); }
     if (mapping.get().getEntityId() != null) {
       Optional<JournalEntry> byId =
           journalEntryRepository.findByCompanyAndId(company, mapping.get().getEntityId());
-      if (byId.isPresent()) {
-        return byId;
-      }
+      if (byId.isPresent()) { return byId; }
     }
-    if (StringUtils.hasText(mapping.get().getCanonicalReference())) {
-      return journalReferenceResolver.findExistingEntry(company, mapping.get().getCanonicalReference());
-    }
-    return Optional.empty();
+    return StringUtils.hasText(mapping.get().getCanonicalReference())
+        ? journalReferenceResolver.findExistingEntry(company, mapping.get().getCanonicalReference())
+        : Optional.empty();
   }
 
   private void ensurePurchaseReferenceMapping(

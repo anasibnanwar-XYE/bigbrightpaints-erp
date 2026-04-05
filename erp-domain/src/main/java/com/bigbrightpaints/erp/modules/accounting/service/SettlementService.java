@@ -220,23 +220,9 @@ public class SettlementService extends AccountingCoreEngineCore {
 
     List<PartnerSettlementAllocation> existingAllocations =
         findAllocationsByIdempotencyKey(company, idempotencyKey);
-    if (!existingAllocations.isEmpty()) {
-      JournalEntry entry =
-          resolveReplayJournalEntryFromExistingAllocations(
-              company, reference, idempotencyKey, existingAllocations);
-      linkReferenceMapping(company, idempotencyKey, entry, ENTITY_TYPE_SUPPLIER_PAYMENT);
-      validateSupplierPaymentIdempotency(
-          idempotencyKey,
-          supplier,
-          cashAccount,
-          payableAccount,
-          amount,
-          memo,
-          entry,
-          existingAllocations,
-          allocations);
-      return toDto(entry);
-    }
+    if (!existingAllocations.isEmpty()) { JournalEntry entry = resolveReplayJournalEntryFromExistingAllocations(
+            company, reference, idempotencyKey, existingAllocations); linkReferenceMapping(company, idempotencyKey, entry, ENTITY_TYPE_SUPPLIER_PAYMENT); validateSupplierPaymentIdempotency(
+            idempotencyKey, supplier, cashAccount, payableAccount, amount, memo, entry, existingAllocations, allocations); return toDto(entry); }
 
     supplier.requireTransactionalUsage("record supplier payments");
     cashAccount =
@@ -276,10 +262,7 @@ public class SettlementService extends AccountingCoreEngineCore {
     Map<Long, RawMaterialPurchase> purchaseById = new HashMap<>();
 
     for (SettlementAllocationRequest allocation : allocations) {
-      if (allocation.invoiceId() != null) {
-        throw new ApplicationException(
-            ErrorCode.VALIDATION_INVALID_INPUT, "Supplier payments cannot allocate to invoices");
-      }
+      if (allocation.invoiceId() != null) { throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "Supplier payments cannot allocate to invoices"); }
       BigDecimal applied =
           ValidationUtils.requirePositive(allocation.appliedAmount(), "appliedAmount");
       RawMaterialPurchase purchase = null;
@@ -288,22 +271,14 @@ public class SettlementService extends AccountingCoreEngineCore {
             rawMaterialPurchaseRepository
                 .lockByCompanyAndId(company, allocation.purchaseId())
                 .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Raw material purchase not found"));
-        if (purchase.getSupplier() == null
-            || !purchase.getSupplier().getId().equals(supplier.getId())) {
-          throw new ApplicationException(
-              ErrorCode.VALIDATION_INVALID_REFERENCE, "Purchase does not belong to the supplier");
-        }
+        if (purchase.getSupplier() == null || !purchase.getSupplier().getId().equals(supplier.getId())) { throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Purchase does not belong to the supplier"); }
         BigDecimal currentOutstanding =
             remainingByPurchase.getOrDefault(
                 purchase.getId(), MoneyUtils.zeroIfNull(purchase.getOutstandingAmount()));
-        if (applied.compareTo(currentOutstanding) > 0) {
-          throw new ApplicationException(
-                  ErrorCode.VALIDATION_INVALID_INPUT,
-                  "Allocation exceeds purchase outstanding amount")
-              .withDetail("purchaseId", purchase.getId())
-              .withDetail("outstanding", currentOutstanding)
-              .withDetail("applied", applied);
-        }
+        if (applied.compareTo(currentOutstanding) > 0) { throw new ApplicationException(
+                ErrorCode.VALIDATION_INVALID_INPUT,
+                "Allocation exceeds purchase outstanding amount").withDetail("purchaseId", purchase.getId())
+            .withDetail("outstanding", currentOutstanding).withDetail("applied", applied); }
         remainingByPurchase.put(
             purchase.getId(), currentOutstanding.subtract(applied).max(BigDecimal.ZERO));
         purchaseById.put(purchase.getId(), purchase);
@@ -335,9 +310,7 @@ public class SettlementService extends AccountingCoreEngineCore {
     }
     for (Map.Entry<Long, BigDecimal> entryState : remainingByPurchase.entrySet()) {
       RawMaterialPurchase purchase = purchaseById.get(entryState.getKey());
-      if (purchase == null) {
-        continue;
-      }
+      if (purchase == null) { continue; }
       purchase.setOutstandingAmount(entryState.getValue().max(BigDecimal.ZERO));
       updatePurchaseStatus(purchase);
       touchedPurchases.add(purchase);
@@ -349,10 +322,7 @@ public class SettlementService extends AccountingCoreEngineCore {
   }
 
   PartnerSettlementResponse autoSettleDealerInternal(Long dealerId, AutoSettlementRequest request) {
-    if (request == null) {
-      throw new ApplicationException(
-          ErrorCode.VALIDATION_INVALID_INPUT, "Auto-settlement request is required");
-    }
+    if (request == null) { throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "Auto-settlement request is required"); }
     Company company = companyContextService.requireCurrentCompany();
     Dealer dealer =
         dealerRepository
@@ -377,10 +347,7 @@ public class SettlementService extends AccountingCoreEngineCore {
 
   PartnerSettlementResponse autoSettleSupplierInternal(
       Long supplierId, AutoSettlementRequest request) {
-    if (request == null) {
-      throw new ApplicationException(
-          ErrorCode.VALIDATION_INVALID_INPUT, "Auto-settlement request is required");
-    }
+    if (request == null) { throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "Auto-settlement request is required"); }
     Company company = companyContextService.requireCurrentCompany();
     Supplier supplier =
         supplierRepository
@@ -414,10 +381,7 @@ public class SettlementService extends AccountingCoreEngineCore {
     Dealer dealer =
         dealerRepository
             .lockByCompanyAndId(company, request.dealerId())
-            .orElseThrow(
-                () ->
-                    new ApplicationException(
-                        ErrorCode.VALIDATION_INVALID_REFERENCE, "Dealer not found"));
+            .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Dealer not found"));
     Account receivableAccount = requireDealerReceivable(dealer);
     String trimmedIdempotencyKey = resolveDealerSettlementIdempotencyKey(company, request);
     List<SettlementAllocationRequest> allocations =
@@ -442,11 +406,7 @@ public class SettlementService extends AccountingCoreEngineCore {
                 allocations,
                 request.payments());
     trimmedIdempotencyKey = resolveDealerSettlementIdempotencyKey(company, requestForReplay);
-    if (!StringUtils.hasText(trimmedIdempotencyKey)) {
-      throw new ApplicationException(
-          ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,
-          "Idempotency key is required for dealer settlements");
-    }
+    if (!StringUtils.hasText(trimmedIdempotencyKey)) { throw new ApplicationException(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD, "Idempotency key is required for dealer settlements"); }
     boolean replayCandidate = hasExistingSettlementAllocations(company, trimmedIdempotencyKey);
     if (!replayCandidate) {
       validateDealerSettlementAllocations(allocations);
@@ -568,24 +528,17 @@ public class SettlementService extends AccountingCoreEngineCore {
                 .lockByCompanyAndId(company, allocation.invoiceId())
                 .orElseThrow(
                     () -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Invoice not found"));
-        if (invoice.getDealer() == null || !invoice.getDealer().getId().equals(dealer.getId())) {
-          throw new ApplicationException(
-              ErrorCode.VALIDATION_INVALID_REFERENCE, "Invoice does not belong to the dealer");
-        }
+        if (invoice.getDealer() == null || !invoice.getDealer().getId().equals(dealer.getId())) { throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Invoice does not belong to the dealer"); }
         enforceSettlementCurrency(company, invoice);
 
         BigDecimal cleared = applied;
         BigDecimal currentOutstanding =
             remainingByInvoice.getOrDefault(
                 invoice.getId(), MoneyUtils.zeroIfNull(invoice.getOutstandingAmount()));
-        if (cleared.subtract(currentOutstanding).compareTo(ALLOCATION_TOLERANCE) > 0) {
-          throw new ApplicationException(
-                  ErrorCode.VALIDATION_INVALID_INPUT,
-                  "Settlement allocation exceeds invoice outstanding amount")
-              .withDetail("invoiceId", invoice.getId())
-              .withDetail("outstandingAmount", currentOutstanding)
-              .withDetail("appliedAmount", cleared);
-        }
+        if (cleared.subtract(currentOutstanding).compareTo(ALLOCATION_TOLERANCE) > 0) { throw new ApplicationException(
+                ErrorCode.VALIDATION_INVALID_INPUT,
+                "Settlement allocation exceeds invoice outstanding amount").withDetail("invoiceId", invoice.getId())
+            .withDetail("outstandingAmount", currentOutstanding).withDetail("appliedAmount", cleared); }
         remainingByInvoice.put(
             invoice.getId(), currentOutstanding.subtract(cleared).max(BigDecimal.ZERO));
       }
@@ -628,9 +581,7 @@ public class SettlementService extends AccountingCoreEngineCore {
     }
     for (PartnerSettlementAllocation row : settlementRows) {
       Invoice invoice = row.getInvoice();
-      if (invoice == null) {
-        continue;
-      }
+      if (invoice == null) { continue; }
       String settlementRef = reference + "-INV-" + invoice.getId();
       invoiceSettlementPolicy.applySettlement(invoice, row.getAllocationAmount(), settlementRef);
       dealerLedgerService.syncInvoiceLedger(invoice, entryDate);
@@ -794,10 +745,7 @@ public class SettlementService extends AccountingCoreEngineCore {
     Map<Long, RawMaterialPurchase> purchaseById = new HashMap<>();
 
     for (SettlementAllocationRequest allocation : allocations) {
-      if (allocation.invoiceId() != null) {
-        throw new ApplicationException(
-            ErrorCode.VALIDATION_INVALID_INPUT, "Supplier settlements cannot allocate to invoices");
-      }
+      if (allocation.invoiceId() != null) { throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "Supplier settlements cannot allocate to invoices"); }
       BigDecimal applied =
           ValidationUtils.requirePositive(allocation.appliedAmount(), "appliedAmount");
       BigDecimal discount = normalizeNonNegative(allocation.discountAmount(), "discountAmount");
@@ -821,24 +769,17 @@ public class SettlementService extends AccountingCoreEngineCore {
             rawMaterialPurchaseRepository
                 .lockByCompanyAndId(company, allocation.purchaseId())
                 .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Raw material purchase not found"));
-        if (purchase.getSupplier() == null || !purchase.getSupplier().getId().equals(supplier.getId())) {
-          throw new ApplicationException(
-              ErrorCode.VALIDATION_INVALID_REFERENCE, "Purchase does not belong to the supplier");
-        }
+        if (purchase.getSupplier() == null || !purchase.getSupplier().getId().equals(supplier.getId())) { throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Purchase does not belong to the supplier"); }
         enforceSupplierSettlementPostingParity(
             company, supplier.getId(), purchase, trimmedIdempotencyKey);
         BigDecimal cleared = applied;
         BigDecimal currentOutstanding =
             remainingByPurchase.getOrDefault(
                 purchase.getId(), MoneyUtils.zeroIfNull(purchase.getOutstandingAmount()));
-        if (cleared.subtract(currentOutstanding).compareTo(ALLOCATION_TOLERANCE) > 0) {
-          throw new ApplicationException(
-                  ErrorCode.VALIDATION_INVALID_INPUT,
-                  "Settlement allocation exceeds purchase outstanding amount")
-              .withDetail("purchaseId", purchase.getId())
-              .withDetail("outstandingAmount", currentOutstanding)
-              .withDetail("appliedAmount", cleared);
-        }
+        if (cleared.subtract(currentOutstanding).compareTo(ALLOCATION_TOLERANCE) > 0) { throw new ApplicationException(
+                ErrorCode.VALIDATION_INVALID_INPUT,
+                "Settlement allocation exceeds purchase outstanding amount").withDetail("purchaseId", purchase.getId())
+            .withDetail("outstandingAmount", currentOutstanding).withDetail("appliedAmount", cleared); }
         remainingByPurchase.put(
             purchase.getId(), currentOutstanding.subtract(cleared).max(BigDecimal.ZERO));
         purchaseById.put(purchase.getId(), purchase);
@@ -879,9 +820,7 @@ public class SettlementService extends AccountingCoreEngineCore {
     }
     for (Map.Entry<Long, BigDecimal> entryState : remainingByPurchase.entrySet()) {
       RawMaterialPurchase purchase = purchaseById.get(entryState.getKey());
-      if (purchase == null) {
-        continue;
-      }
+      if (purchase == null) { continue; }
       purchase.setOutstandingAmount(entryState.getValue().max(BigDecimal.ZERO));
       updatePurchaseStatus(purchase);
       touchedPurchases.add(purchase);
