@@ -15,7 +15,7 @@ import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodUpsertRequ
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingPeriodService;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 
-class AccountingControllerPeriodCostingMethodEndpointsTest {
+class PeriodControllerCostingMethodEndpointsTest {
 
   @Test
   void createOrUpdatePeriod_delegatesWithCostingMethod() {

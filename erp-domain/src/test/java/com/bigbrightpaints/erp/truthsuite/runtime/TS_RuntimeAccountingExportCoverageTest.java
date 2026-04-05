@@ -27,7 +27,7 @@ import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.sales.service.SalesReturnService;
 
 @Tag("critical")
-class TS_RuntimeAccountingControllerExportCoverageTest {
+class TS_RuntimeAccountingExportCoverageTest {
 
   @Test
   void supplierPdfExportEndpoints_emitAuditMetadataAndPdfHeaders() {

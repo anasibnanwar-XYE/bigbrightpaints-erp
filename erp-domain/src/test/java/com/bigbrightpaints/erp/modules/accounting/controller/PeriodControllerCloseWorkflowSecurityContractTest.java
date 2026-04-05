@@ -7,7 +7,7 @@ import java.lang.reflect.Method;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.access.prepost.PreAuthorize;
 
-class AccountingControllerPeriodCloseWorkflowSecurityContractTest {
+class PeriodControllerCloseWorkflowSecurityContractTest {
 
   @Test
   void approveClose_requiresAdminAuthorityAnnotation() throws NoSuchMethodException {

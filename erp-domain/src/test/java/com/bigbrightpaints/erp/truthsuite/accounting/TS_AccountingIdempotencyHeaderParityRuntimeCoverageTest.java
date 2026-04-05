@@ -22,7 +22,7 @@ import com.bigbrightpaints.erp.modules.accounting.service.SettlementService;
 @Tag("critical")
 @Tag("reconciliation")
 @Tag("concurrency")
-class TS_AccountingControllerIdempotencyHeaderParityRuntimeCoverageTest {
+class TS_AccountingIdempotencyHeaderParityRuntimeCoverageTest {
 
   @Test
   void recordDealerReceipt_noBodyAndNoHeaders_keepsOriginalRequest() {

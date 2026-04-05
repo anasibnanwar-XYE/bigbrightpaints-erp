@@ -26,7 +26,7 @@ import com.bigbrightpaints.erp.modules.accounting.service.DealerReceiptService;
 import com.bigbrightpaints.erp.modules.accounting.service.SettlementService;
 
 @ExtendWith(MockitoExtension.class)
-class AccountingControllerIdempotencyHeaderParityTest {
+class SettlementControllerIdempotencyHeaderParityTest {
 
   @Mock private DealerReceiptService dealerReceiptService;
 

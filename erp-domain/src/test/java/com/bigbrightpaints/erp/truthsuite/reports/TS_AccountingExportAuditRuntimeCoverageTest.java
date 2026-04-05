@@ -29,7 +29,7 @@ import com.bigbrightpaints.erp.modules.sales.service.SalesReturnService;
 
 @Tag("critical")
 @Tag("security")
-class TS_AccountingControllerExportAuditRuntimeCoverageTest {
+class TS_AccountingExportAuditRuntimeCoverageTest {
 
   @SuppressWarnings("unchecked")
   @Test

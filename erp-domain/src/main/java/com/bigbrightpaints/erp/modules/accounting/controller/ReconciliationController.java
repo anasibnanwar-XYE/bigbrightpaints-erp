@@ -1,6 +1,5 @@
 package com.bigbrightpaints.erp.modules.accounting.controller;
 
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.util.StringUtils;
@@ -17,7 +16,6 @@ import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.modules.accounting.domain.ReconciliationDiscrepancyStatus;
 import com.bigbrightpaints.erp.modules.accounting.domain.ReconciliationDiscrepancyType;
-import com.bigbrightpaints.erp.modules.accounting.dto.BankReconciliationRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.BankReconciliationSessionCompletionRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.BankReconciliationSessionCreateRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.BankReconciliationSessionDetailDto;
@@ -45,16 +43,6 @@ public class ReconciliationController {
       BankReconciliationSessionService bankReconciliationSessionService) {
     this.reconciliationService = reconciliationService;
     this.bankReconciliationSessionService = bankReconciliationSessionService;
-  }
-
-  @PostMapping("/reconciliation/bank")
-  @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
-  public ResponseEntity<ApiResponse<Void>> reconcileBank(
-      @Valid @RequestBody BankReconciliationRequest request) {
-    return ResponseEntity.status(HttpStatus.NOT_FOUND)
-        .body(
-            ApiResponse.failure(
-                "Legacy bank reconciliation endpoint has been retired; use session-based reconciliation"));
   }
 
   @PostMapping("/reconciliation/bank/sessions")

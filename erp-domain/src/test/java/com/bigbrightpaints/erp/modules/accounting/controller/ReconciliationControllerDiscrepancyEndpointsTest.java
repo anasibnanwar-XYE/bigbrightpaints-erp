@@ -25,7 +25,7 @@ import com.bigbrightpaints.erp.modules.accounting.service.BankReconciliationSess
 import com.bigbrightpaints.erp.modules.accounting.service.ReconciliationService;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 
-class AccountingControllerReconciliationDiscrepancyEndpointsTest {
+class ReconciliationControllerDiscrepancyEndpointsTest {
 
   @Test
   void listDiscrepancies_parsesFiltersAndDelegates() {

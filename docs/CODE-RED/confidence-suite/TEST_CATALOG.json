@@ -83,7 +83,7 @@
     },
     {
       "id": "test-catalog::accounting-ts-accountingcontrolleridempotencyheaderparityruntimecoveragetest-java",
-      "test_path": "erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite/accounting/TS_AccountingControllerIdempotencyHeaderParityRuntimeCoverageTest.java",
+      "test_path": "erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite/accounting/TS_AccountingIdempotencyHeaderParityRuntimeCoverageTest.java",
       "module": "accounting",
       "owner": "lane03-accounting-truth",
       "class": "critical",
@@ -831,7 +831,7 @@
     },
     {
       "id": "test-catalog::reports-ts-accountingcontrollerexportauditruntimecoveragetest-java",
-      "test_path": "erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite/reports/TS_AccountingControllerExportAuditRuntimeCoverageTest.java",
+      "test_path": "erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite/reports/TS_AccountingExportAuditRuntimeCoverageTest.java",
       "module": "reports",
       "owner": "lane06-governance-finance",
       "class": "critical",
@@ -907,7 +907,7 @@
     },
     {
       "id": "test-catalog::runtime-ts-runtimeaccountingcontrollerexportcoveragetest-java",
-      "test_path": "erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite/runtime/TS_RuntimeAccountingControllerExportCoverageTest.java",
+      "test_path": "erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite/runtime/TS_RuntimeAccountingExportCoverageTest.java",
       "module": "runtime",
       "owner": "lane08-quality-governance",
       "class": "critical",

@@ -28,7 +28,7 @@ import com.bigbrightpaints.erp.modules.accounting.service.TaxService;
 import com.bigbrightpaints.erp.modules.sales.service.SalesReturnService;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 
-class AccountingControllerActivityContractTest {
+class StatementReportControllerActivityContractTest {
 
   @Test
   void getAccountActivity_acceptsFromToAliases() {

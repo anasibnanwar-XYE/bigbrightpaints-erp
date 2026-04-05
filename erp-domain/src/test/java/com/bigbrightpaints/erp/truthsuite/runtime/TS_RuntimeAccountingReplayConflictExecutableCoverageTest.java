@@ -29,7 +29,6 @@ import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.controller.AccountingAuditController;
-import com.bigbrightpaints.erp.modules.accounting.controller.AccountingController;
 import com.bigbrightpaints.erp.modules.accounting.controller.SettlementController;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
@@ -47,7 +46,6 @@ import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.PartnerSettlementResponse;
 import com.bigbrightpaints.erp.modules.accounting.dto.SettlementAllocationRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.SupplierSettlementRequest;
-import com.bigbrightpaints.erp.modules.accounting.service.AccountingAuditTrailService;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingService;
 import com.bigbrightpaints.erp.modules.accounting.service.DealerReceiptService;
 import com.bigbrightpaints.erp.modules.accounting.service.ReferenceNumberService;
@@ -1305,27 +1303,9 @@ class TS_RuntimeAccountingReplayConflictExecutableCoverageTest {
     return supplier;
   }
 
-  private AccountingController accountingController(AccountingService accountingService) {
-    return new AccountingController();
-  }
-
-  private AccountingController accountingController(
-      AccountingService accountingService,
-      AccountingAuditTrailService accountingAuditTrailService) {
-    return new AccountingController();
-  }
-
   private AccountingAuditController accountingAuditController(
       AuditAccessService auditAccessService) {
     return new AccountingAuditController(auditAccessService);
-  }
-
-  private AccountingController accountingController(
-      AccountingService accountingService,
-      AccountingAuditTrailService accountingAuditTrailService,
-      DealerReceiptService dealerReceiptService,
-      SettlementService settlementService) {
-    return new AccountingController();
   }
 
   private SettlementController settlementController(

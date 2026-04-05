@@ -32,7 +32,7 @@ import com.bigbrightpaints.erp.modules.sales.service.SalesReturnService;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 
 @Tag("critical")
-class AccountingControllerExceptionHandlerTest {
+class AccountingApplicationExceptionAdviceTest {
 
   private static final String REPLAY_REASON_SUPPLIER =
       "Idempotency key already used for another supplier";
@@ -43,7 +43,7 @@ class AccountingControllerExceptionHandlerTest {
 
   @Test
   void handleApplicationException_returnsStructuredReasonPayload() {
-    AccountingController controller = controller();
+    AccountingApplicationExceptionAdvice advice = advice();
     ApplicationException ex =
         new ApplicationException(
                 ErrorCode.VALIDATION_INVALID_REFERENCE,
@@ -53,7 +53,7 @@ class AccountingControllerExceptionHandlerTest {
     request.setRequestURI("/api/v1/accounting/journal-entries");
 
     ResponseEntity<ApiResponse<Map<String, Object>>> response =
-        controller.handleApplicationException(ex, request);
+        advice.handleApplicationException(ex, request);
 
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
     ApiResponse<Map<String, Object>> body = response.getBody();
@@ -76,7 +76,7 @@ class AccountingControllerExceptionHandlerTest {
 
   @Test
   void handleApplicationException_keepsBadRequestContractWithStructuredPayload() {
-    AccountingController controller = controller();
+    AccountingApplicationExceptionAdvice advice = advice();
     ApplicationException ex =
         new ApplicationException(
             ErrorCode.BUSINESS_INVALID_STATE, "Payroll must be posted before payment");
@@ -84,7 +84,7 @@ class AccountingControllerExceptionHandlerTest {
     request.setRequestURI("/api/v1/accounting/payroll/payments");
 
     ResponseEntity<ApiResponse<Map<String, Object>>> response =
-        controller.handleApplicationException(ex, request);
+        advice.handleApplicationException(ex, request);
 
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
     ApiResponse<Map<String, Object>> body = response.getBody();
@@ -98,7 +98,7 @@ class AccountingControllerExceptionHandlerTest {
 
   @Test
   void handleApplicationException_preservesPartnerReplayDetailsForSupplierPath() {
-    AccountingController controller = controller();
+    AccountingApplicationExceptionAdvice advice = advice();
     ApplicationException ex =
         new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT, REPLAY_REASON_SUPPLIER)
             .withDetail(
@@ -109,7 +109,7 @@ class AccountingControllerExceptionHandlerTest {
     request.setRequestURI("/api/v1/accounting/settlements/suppliers");
 
     ResponseEntity<ApiResponse<Map<String, Object>>> response =
-        controller.handleApplicationException(ex, request);
+        advice.handleApplicationException(ex, request);
 
     ApiResponse<Map<String, Object>> body =
         assertReplayErrorEnvelope(
@@ -124,7 +124,7 @@ class AccountingControllerExceptionHandlerTest {
 
   @Test
   void handleApplicationException_preservesPartnerReplayDetailsForDealerPath() {
-    AccountingController controller = controller();
+    AccountingApplicationExceptionAdvice advice = advice();
     ApplicationException ex =
         new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT, REPLAY_REASON_DEALER)
             .withDetail(
@@ -135,7 +135,7 @@ class AccountingControllerExceptionHandlerTest {
     request.setRequestURI("/api/v1/accounting/settlements/dealers");
 
     ResponseEntity<ApiResponse<Map<String, Object>>> response =
-        controller.handleApplicationException(ex, request);
+        advice.handleApplicationException(ex, request);
 
     ApiResponse<Map<String, Object>> body =
         assertReplayErrorEnvelope(
@@ -150,14 +150,14 @@ class AccountingControllerExceptionHandlerTest {
 
   @Test
   void handleApplicationException_preservesFallbackPartnerReplayReason() {
-    AccountingController controller = controller();
+    AccountingApplicationExceptionAdvice advice = advice();
     ApplicationException ex =
         new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT, REPLAY_REASON_PARTNER_TYPE);
     MockHttpServletRequest request = new MockHttpServletRequest();
     request.setRequestURI("/api/v1/accounting/settlements/partners");
 
     ResponseEntity<ApiResponse<Map<String, Object>>> response =
-        controller.handleApplicationException(ex, request);
+        advice.handleApplicationException(ex, request);
 
     ApiResponse<Map<String, Object>> body =
         assertReplayErrorEnvelope(
@@ -171,14 +171,14 @@ class AccountingControllerExceptionHandlerTest {
 
   @Test
   void handleApplicationException_partnerReplayConflictWithoutDetailsOmitsDetailsKey() {
-    AccountingController controller = controller();
+    AccountingApplicationExceptionAdvice advice = advice();
     ApplicationException ex =
         new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT, REPLAY_REASON_SUPPLIER);
     MockHttpServletRequest request = new MockHttpServletRequest();
     request.setRequestURI("/api/v1/accounting/settlements/suppliers");
 
     ResponseEntity<ApiResponse<Map<String, Object>>> response =
-        controller.handleApplicationException(ex, request);
+        advice.handleApplicationException(ex, request);
 
     ApiResponse<Map<String, Object>> body =
         assertReplayErrorEnvelope(
@@ -192,7 +192,7 @@ class AccountingControllerExceptionHandlerTest {
 
   @Test
   void handleApplicationException_internalConcurrencyFailureMapsToConflictEnvelope() {
-    AccountingController controller = controller();
+    AccountingApplicationExceptionAdvice advice = advice();
     ApplicationException ex =
         new ApplicationException(
             ErrorCode.INTERNAL_CONCURRENCY_FAILURE,
@@ -201,7 +201,7 @@ class AccountingControllerExceptionHandlerTest {
     request.setRequestURI("/api/v1/accounting/sales/returns");
 
     ResponseEntity<ApiResponse<Map<String, Object>>> response =
-        controller.handleApplicationException(ex, request);
+        advice.handleApplicationException(ex, request);
 
     assertReplayErrorEnvelope(
         response,
@@ -213,7 +213,7 @@ class AccountingControllerExceptionHandlerTest {
 
   @Test
   void handleApplicationException_invalidDiscrepancyTypeMapsToBadRequestEnvelope() {
-    AccountingController controller = controller();
+    AccountingApplicationExceptionAdvice advice = advice();
     ApplicationException ex =
         new ApplicationException(
             ErrorCode.VALIDATION_INVALID_INPUT, "Invalid reconciliation discrepancy type: BANK");
@@ -221,7 +221,7 @@ class AccountingControllerExceptionHandlerTest {
     request.setRequestURI("/api/v1/accounting/reconciliation/discrepancies");
 
     ResponseEntity<ApiResponse<Map<String, Object>>> response =
-        controller.handleApplicationException(ex, request);
+        advice.handleApplicationException(ex, request);
 
     ApiResponse<Map<String, Object>> body =
         assertReplayErrorEnvelope(
@@ -236,7 +236,7 @@ class AccountingControllerExceptionHandlerTest {
 
   @Test
   void supplierStatement_invalidDateReturnsValidationEnvelope() throws Exception {
-    accountingControllerMvc()
+    accountingMvc()
         .perform(get("/api/v1/accounting/statements/suppliers/42").param("from", "2026-02-30"))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.success").value(false))
@@ -248,7 +248,7 @@ class AccountingControllerExceptionHandlerTest {
 
   @Test
   void supplierAging_invalidDateReturnsValidationEnvelope() throws Exception {
-    accountingControllerMvc()
+    accountingMvc()
         .perform(get("/api/v1/accounting/aging/suppliers/42").param("asOf", "not-a-date"))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.success").value(false))
@@ -260,7 +260,7 @@ class AccountingControllerExceptionHandlerTest {
 
   @Test
   void transactionAudit_invalidDateReturnsValidationEnvelope() throws Exception {
-    accountingControllerMvc()
+    accountingMvc()
         .perform(get("/api/v1/accounting/audit/transactions").param("from", "2026-02-30"))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.success").value(false))
@@ -278,7 +278,7 @@ class AccountingControllerExceptionHandlerTest {
             new ApplicationException(
                 ErrorCode.BUSINESS_ENTITY_NOT_FOUND, "Journal entry not found"));
 
-    accountingControllerMvc(auditAccessService)
+    accountingMvc(auditAccessService)
         .perform(get("/api/v1/accounting/audit/transactions/999"))
         .andExpect(status().isNotFound())
         .andExpect(jsonPath("$.success").value(false))
@@ -288,7 +288,7 @@ class AccountingControllerExceptionHandlerTest {
 
   @Test
   void balanceAsOf_invalidDateReturnsValidationEnvelope() throws Exception {
-    accountingControllerMvc()
+    accountingMvc()
         .perform(get("/api/v1/accounting/accounts/42/balance/as-of").param("date", "bad-date"))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.success").value(false))
@@ -300,7 +300,7 @@ class AccountingControllerExceptionHandlerTest {
 
   @Test
   void trialBalanceAsOf_invalidDateReturnsValidationEnvelope() throws Exception {
-    accountingControllerMvc()
+    accountingMvc()
         .perform(get("/api/v1/accounting/trial-balance/as-of").param("date", "2026-99-01"))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.success").value(false))
@@ -312,7 +312,7 @@ class AccountingControllerExceptionHandlerTest {
 
   @Test
   void accountActivity_invalidDateReturnsCanonicalEnvelope() throws Exception {
-    accountingControllerMvc()
+    accountingMvc()
         .perform(
             get("/api/v1/accounting/accounts/42/activity")
                 .param("startDate", "2026-03-40")
@@ -329,7 +329,7 @@ class AccountingControllerExceptionHandlerTest {
 
   @Test
   void accountActivity_missingDateRangeReturnsValidationEnvelope() throws Exception {
-    accountingControllerMvc()
+    accountingMvc()
         .perform(get("/api/v1/accounting/accounts/42/activity"))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.success").value(false))
@@ -342,7 +342,7 @@ class AccountingControllerExceptionHandlerTest {
 
   @Test
   void compareBalances_invalidDateReturnsValidationEnvelope() throws Exception {
-    accountingControllerMvc()
+    accountingMvc()
         .perform(
             get("/api/v1/accounting/accounts/42/balance/compare")
                 .param("date1", "2026-03-01")
@@ -387,8 +387,8 @@ class AccountingControllerExceptionHandlerTest {
         .containsEntry(IntegrationFailureMetadataSchema.KEY_PARTNER_ID, partnerId);
   }
 
-  private AccountingController controller() {
-    return new AccountingController();
+  private AccountingApplicationExceptionAdvice advice() {
+    return new AccountingApplicationExceptionAdvice();
   }
 
   private StatementReportController statementReportController() {
@@ -412,13 +412,13 @@ class AccountingControllerExceptionHandlerTest {
     return new AccountingAuditController(auditAccessService);
   }
 
-  private MockMvc accountingControllerMvc() {
-    return accountingControllerMvc(null);
+  private MockMvc accountingMvc() {
+    return accountingMvc(null);
   }
 
-  private MockMvc accountingControllerMvc(AuditAccessService auditAccessService) {
+  private MockMvc accountingMvc(AuditAccessService auditAccessService) {
     return MockMvcBuilders.standaloneSetup(
-            controller(), statementReportController(), auditController(auditAccessService))
+            statementReportController(), auditController(auditAccessService))
         .setControllerAdvice(new AccountingApplicationExceptionAdvice())
         .build();
   }

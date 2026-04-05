@@ -71,7 +71,7 @@ import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 import com.bigbrightpaints.erp.shared.dto.PageResponse;
 
 @Tag("critical")
-class AccountingControllerJournalEndpointsTest {
+class AccountingEndpointContractTest {
 
   @Test
   void createJournalEntry_delegatesToAccountingServiceWithReferenceAsIdempotencyKey() {

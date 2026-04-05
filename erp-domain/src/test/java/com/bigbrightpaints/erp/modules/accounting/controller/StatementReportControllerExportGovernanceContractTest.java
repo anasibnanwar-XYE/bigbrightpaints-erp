@@ -26,7 +26,7 @@ import com.bigbrightpaints.erp.modules.accounting.service.TemporalBalanceService
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.sales.service.SalesReturnService;
 
-class AccountingControllerExportGovernanceContractTest {
+class StatementReportControllerExportGovernanceContractTest {
 
   @Test
   void supplierPdfExports_requireAdminAuthorityAnnotation() throws NoSuchMethodException {

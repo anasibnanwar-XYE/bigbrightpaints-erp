@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -11,6 +13,8 @@ import java.time.LocalDate;
 import java.util.List;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import com.bigbrightpaints.erp.modules.accounting.dto.BankReconciliationSessionCompletionRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.BankReconciliationSessionCreateRequest;
@@ -25,27 +29,14 @@ import com.bigbrightpaints.erp.shared.dto.PageResponse;
 class ReconciliationControllerSessionEndpointsTest {
 
   @Test
-  void legacyBankEndpoint_returnsNotFound() {
-    ReconciliationController controller =
-        controller(mock(ReconciliationService.class), mock(BankReconciliationSessionService.class));
-    var response =
-        controller.reconcileBank(
-            new com.bigbrightpaints.erp.modules.accounting.dto.BankReconciliationRequest(
-                7L,
-                LocalDate.of(2026, 3, 31),
-                new BigDecimal("1200.50"),
-                null,
-                null,
-                null,
-                null,
-                null,
-                null));
+  void legacyBankEndpoint_isUnmapped() throws Exception {
+    MockMvc mvc =
+        MockMvcBuilders.standaloneSetup(
+                controller(
+                    mock(ReconciliationService.class), mock(BankReconciliationSessionService.class)))
+            .build();
 
-    assertThat(response.getStatusCode().value()).isEqualTo(404);
-    assertThat(response.getBody()).isNotNull();
-    assertThat(response.getBody().message())
-        .isEqualTo(
-            "Legacy bank reconciliation endpoint has been retired; use session-based reconciliation");
+    mvc.perform(post("/api/v1/accounting/reconciliation/bank")).andExpect(status().isNotFound());
   }
 
   @Test

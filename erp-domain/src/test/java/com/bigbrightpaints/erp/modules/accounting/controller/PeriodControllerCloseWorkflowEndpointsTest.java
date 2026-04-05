@@ -17,7 +17,7 @@ import com.bigbrightpaints.erp.modules.accounting.dto.PeriodCloseRequestDto;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingPeriodService;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 
-class AccountingControllerPeriodCloseWorkflowEndpointsTest {
+class PeriodControllerCloseWorkflowEndpointsTest {
 
   @Test
   void requestPeriodClose_delegatesToService() {
