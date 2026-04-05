@@ -619,15 +619,23 @@ public class TenantRuntimeEnforcementService {
       return null;
     }
 
+    String normalizedReason = persistedReason == null ? null : persistedReason.trim();
+    if (!StringUtils.hasText(normalizedReason)) {
+      normalizedReason = DEFAULT_REASON;
+    }
+    String normalizedPolicyReference =
+        persistedPolicyReference == null ? null : persistedPolicyReference.trim();
+    if (!StringUtils.hasText(normalizedPolicyReference)) {
+      normalizedPolicyReference = DEFAULT_POLICY_REFERENCE;
+    }
+
     return new TenantRuntimePolicy(
         normalizeState(persistedState),
-        StringUtils.hasText(persistedReason) ? persistedReason.trim() : DEFAULT_REASON,
+        normalizedReason,
         parsePositiveInt(persistedMaxConcurrent, defaultMaxConcurrentRequests),
         parsePositiveInt(persistedMaxPerMinute, defaultMaxRequestsPerMinute),
         parsePositiveInt(persistedMaxActiveUsers, defaultMaxActiveUsers),
-        StringUtils.hasText(persistedPolicyReference)
-            ? persistedPolicyReference.trim()
-            : DEFAULT_POLICY_REFERENCE,
+        normalizedPolicyReference,
         parseInstantOrNull(persistedUpdatedAt),
         0L);
   }

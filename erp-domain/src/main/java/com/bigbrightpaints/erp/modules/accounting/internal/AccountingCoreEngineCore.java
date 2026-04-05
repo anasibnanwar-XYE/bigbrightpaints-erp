@@ -608,7 +608,7 @@ abstract class AccountingCoreEngineCore {
                   resolvePostingDocumentType(entry),
                   resolvePostingDocumentReference(entry),
                   request.memo(),
-                  overrideRequested);
+                  overrideAuthorized);
         } else {
           validateEntryDate(company, entryDate, overrideRequested, overrideAuthorized);
           postingPeriod = accountingPeriodService.ensurePeriod(company, entryDate);
@@ -804,7 +804,7 @@ abstract class AccountingCoreEngineCore {
         BigDecimal baseCredit = toBaseCurrency(creditInput, fxRate);
         line.setDebit(baseDebit);
         line.setCredit(baseCredit);
-        entry.getLines().add(line);
+        entry.addLine(line);
         postedLines.add(line);
         accountDeltas.merge(account, baseDebit.subtract(baseCredit), BigDecimal::add);
         totalBaseDebit = totalBaseDebit.add(baseDebit);
@@ -869,9 +869,7 @@ abstract class AccountingCoreEngineCore {
           auditMetadata.put("journalEntryId", existingEntry.getId().toString());
         }
         ensureDuplicateMatchesExisting(existingEntry, entry, postedLines);
-        log.info(
-            "Idempotent return: journal entry '{}' already exists, returning existing entry",
-            entry.getReferenceNumber());
+        log.info("Idempotent return: journal entry already exists, returning existing entry");
         auditMetadata.put("idempotent", "true");
         logAuditSuccessAfterCommit(AuditEvent.JOURNAL_ENTRY_POSTED, auditMetadata);
         return toDto(existingEntry);
@@ -917,17 +915,13 @@ abstract class AccountingCoreEngineCore {
           }
           ensureDuplicateMatchesExisting(existingEntry, entry, postedLines);
           log.info(
-              "Idempotent return after concurrent save race: journal entry '{}' already exists,"
-                  + " returning existing entry",
-              entry.getReferenceNumber());
+              "Idempotent return after concurrent save race: journal entry already exists,"
+                  + " returning existing entry");
           auditMetadata.put("idempotent", "true");
           logAuditSuccessAfterCommit(AuditEvent.JOURNAL_ENTRY_POSTED, auditMetadata);
           return toDto(existingEntry);
         }
-        log.info(
-            "Concurrent journal save conflict for reference '{}' detected; retrying in fresh"
-                + " transaction",
-            entry.getReferenceNumber());
+        log.info("Concurrent journal save conflict detected; retrying in fresh transaction");
         throw ex;
       }
       boolean postedEventTrailRecorded = true;
@@ -1102,7 +1096,7 @@ abstract class AccountingCoreEngineCore {
               "JOURNAL_REVERSAL",
               entry.getReferenceNumber(),
               request != null ? request.reason() : null,
-              overrideRequested || allowClosedPeriodOverride);
+              overrideAuthorized || allowClosedPeriodOverride);
     } else {
       validateEntryDate(company, reversalDate, overrideRequested, overrideAuthorized);
       postingPeriod = accountingPeriodService.ensurePeriod(company, reversalDate);
@@ -1413,7 +1407,8 @@ abstract class AccountingCoreEngineCore {
                   () ->
                       new ApplicationException(
                           ErrorCode.VALIDATION_INVALID_REFERENCE, "Invoice not found"));
-      if (invoice.getDealer() == null || !invoice.getDealer().getId().equals(dealer.getId())) {
+      Dealer invoiceDealer = invoice.getDealer();
+      if (invoiceDealer == null || !Objects.equals(invoiceDealer.getId(), dealer.getId())) {
         throw new ApplicationException(
             ErrorCode.VALIDATION_INVALID_REFERENCE, "Invoice does not belong to the dealer");
       }
@@ -1595,6 +1590,9 @@ abstract class AccountingCoreEngineCore {
     List<PartnerSettlementAllocation> settlementRows = new ArrayList<>();
     List<Invoice> touchedInvoices = new ArrayList<>();
     for (Invoice invoice : openInvoices) {
+      if (invoice == null) {
+        continue;
+      }
       BigDecimal currentOutstanding = MoneyUtils.zeroIfNull(invoice.getOutstandingAmount());
       if (currentOutstanding.compareTo(BigDecimal.ZERO) <= 0) {
         continue;
@@ -1743,10 +1741,8 @@ abstract class AccountingCoreEngineCore {
    * → Returns LedgerPosting(debit=0, credit=1000) for AR account
    * </pre>
    *
-   * @param entry the journal entry to analyze
-   * @param ledgerAccount the account to match (e.g., dealer's AR account or supplier's AP account)
-   * @param debitIncreasesBalance true for asset accounts (AR), false for liability accounts (AP)
-   * @return the net debit/credit effect on the ledger, or zero amounts if no matches found
+   * @param lines the journal lines to total
+   * @return the absolute non-zero side of the journal lines, or zero when all lines are empty
    */
   private BigDecimal totalLinesAmount(List<JournalEntryRequest.JournalLineRequest> lines) {
     if (lines == null || lines.isEmpty()) {
@@ -2015,8 +2011,7 @@ abstract class AccountingCoreEngineCore {
       String replayIdempotencyKey) {
     List<SettlementAllocationRequest> provided = request != null ? request.allocations() : null;
     if (provided != null && !provided.isEmpty()) {
-      validateOptionalHeaderSettlementAmount(
-          "dealer", request != null ? request.amount() : null, provided);
+      validateOptionalHeaderSettlementAmount("dealer", request.amount(), provided);
       return provided;
     }
     List<SettlementAllocationRequest> replayAllocations =
@@ -2165,8 +2160,7 @@ abstract class AccountingCoreEngineCore {
       String replayIdempotencyKey) {
     List<SettlementAllocationRequest> provided = request != null ? request.allocations() : null;
     if (provided != null && !provided.isEmpty()) {
-      validateOptionalHeaderSettlementAmount(
-          "supplier", request != null ? request.amount() : null, provided);
+      validateOptionalHeaderSettlementAmount("supplier", request.amount(), provided);
       return provided;
     }
     List<SettlementAllocationRequest> replayAllocations =
@@ -3096,8 +3090,13 @@ abstract class AccountingCoreEngineCore {
       JournalEntry entry,
       List<PartnerSettlementAllocation> existingAllocations,
       List<SettlementAllocationRequest> allocations) {
+    Supplier resolvedSupplier = ValidationUtils.requireNotNull(supplier, "supplier");
     validateSettlementIdempotencyKey(
-        idempotencyKey, PartnerType.SUPPLIER, supplier.getId(), existingAllocations, allocations);
+        idempotencyKey,
+        PartnerType.SUPPLIER,
+        resolvedSupplier.getId(),
+        existingAllocations,
+        allocations);
     List<JournalEntryRequest.JournalLineRequest> expectedLines =
         List.of(
             new JournalEntryRequest.JournalLineRequest(
@@ -3650,25 +3649,31 @@ abstract class AccountingCoreEngineCore {
     List<JournalEntryRequest.JournalLineRequest> lines = new ArrayList<>();
     lines.addAll(paymentLines);
     if (totals.totalDiscount().compareTo(BigDecimal.ZERO) > 0) {
+      Account resolvedDiscountAccount =
+          ValidationUtils.requireNotNull(discountAccount, "discountAccount");
       lines.add(
           new JournalEntryRequest.JournalLineRequest(
-              discountAccount.getId(),
+              resolvedDiscountAccount.getId(),
               "Settlement discount",
               totals.totalDiscount(),
               BigDecimal.ZERO));
     }
     if (totals.totalWriteOff().compareTo(BigDecimal.ZERO) > 0) {
+      Account resolvedWriteOffAccount =
+          ValidationUtils.requireNotNull(writeOffAccount, "writeOffAccount");
       lines.add(
           new JournalEntryRequest.JournalLineRequest(
-              writeOffAccount.getId(),
+              resolvedWriteOffAccount.getId(),
               "Settlement write-off",
               totals.totalWriteOff(),
               BigDecimal.ZERO));
     }
     if (totals.totalFxLoss().compareTo(BigDecimal.ZERO) > 0) {
+      Account resolvedFxLossAccount =
+          ValidationUtils.requireNotNull(fxLossAccount, "fxLossAccount");
       lines.add(
           new JournalEntryRequest.JournalLineRequest(
-              fxLossAccount.getId(),
+              resolvedFxLossAccount.getId(),
               "FX loss on settlement",
               totals.totalFxLoss(),
               BigDecimal.ZERO));
@@ -3677,9 +3682,11 @@ abstract class AccountingCoreEngineCore {
         new JournalEntryRequest.JournalLineRequest(
             receivableAccount.getId(), memo, BigDecimal.ZERO, totals.totalApplied()));
     if (totals.totalFxGain().compareTo(BigDecimal.ZERO) > 0) {
+      Account resolvedFxGainAccount =
+          ValidationUtils.requireNotNull(fxGainAccount, "fxGainAccount");
       lines.add(
           new JournalEntryRequest.JournalLineRequest(
-              fxGainAccount.getId(),
+              resolvedFxGainAccount.getId(),
               "FX gain on settlement",
               BigDecimal.ZERO,
               totals.totalFxGain()));
@@ -3758,9 +3765,11 @@ abstract class AccountingCoreEngineCore {
         new JournalEntryRequest.JournalLineRequest(
             payableAccount.getId(), memo, totals.totalApplied(), BigDecimal.ZERO));
     if (totals.totalFxLoss().compareTo(BigDecimal.ZERO) > 0) {
+      Account resolvedFxLossAccount =
+          ValidationUtils.requireNotNull(fxLossAccount, "fxLossAccount");
       lines.add(
           new JournalEntryRequest.JournalLineRequest(
-              fxLossAccount.getId(),
+              resolvedFxLossAccount.getId(),
               "FX loss on settlement",
               totals.totalFxLoss(),
               BigDecimal.ZERO));
@@ -3774,25 +3783,31 @@ abstract class AccountingCoreEngineCore {
               cashAccount.getId(), memo, BigDecimal.ZERO, cashAmount));
     }
     if (totals.totalDiscount().compareTo(BigDecimal.ZERO) > 0) {
+      Account resolvedDiscountAccount =
+          ValidationUtils.requireNotNull(discountAccount, "discountAccount");
       lines.add(
           new JournalEntryRequest.JournalLineRequest(
-              discountAccount.getId(),
+              resolvedDiscountAccount.getId(),
               "Settlement discount received",
               BigDecimal.ZERO,
               totals.totalDiscount()));
     }
     if (totals.totalWriteOff().compareTo(BigDecimal.ZERO) > 0) {
+      Account resolvedWriteOffAccount =
+          ValidationUtils.requireNotNull(writeOffAccount, "writeOffAccount");
       lines.add(
           new JournalEntryRequest.JournalLineRequest(
-              writeOffAccount.getId(),
+              resolvedWriteOffAccount.getId(),
               "Settlement write-off",
               BigDecimal.ZERO,
               totals.totalWriteOff()));
     }
     if (totals.totalFxGain().compareTo(BigDecimal.ZERO) > 0) {
+      Account resolvedFxGainAccount =
+          ValidationUtils.requireNotNull(fxGainAccount, "fxGainAccount");
       lines.add(
           new JournalEntryRequest.JournalLineRequest(
-              fxGainAccount.getId(),
+              resolvedFxGainAccount.getId(),
               "FX gain on settlement",
               BigDecimal.ZERO,
               totals.totalFxGain()));
@@ -4392,11 +4407,7 @@ abstract class AccountingCoreEngineCore {
     try {
       auditService.logFailure(AuditEvent.INTEGRATION_FAILURE, metadata);
     } catch (Exception auditEx) {
-      log.warn(
-          "Failed to write integration-failure audit marker for operation {} and journal {}",
-          operation,
-          journalReference,
-          auditEx);
+      log.warn("Failed to write integration-failure audit marker", auditEx);
     }
 
     if (strictAccountingEventTrail) {
@@ -4406,12 +4417,7 @@ abstract class AccountingCoreEngineCore {
           .withDetail("journalReference", journalReference);
     }
 
-    log.warn(
-        "Accounting event trail persistence failed for operation {} and journal {} (best-effort"
-            + " policy)",
-        operation,
-        journalReference,
-        ex);
+    log.warn("Accounting event trail persistence failed (best-effort policy)", ex);
   }
 
   private void validatePostedEventPayloadCompatibility(JournalEntry journalEntry) {
@@ -4740,7 +4746,7 @@ abstract class AccountingCoreEngineCore {
     }
     BigDecimal newOutstanding = currentOutstanding.subtract(amount);
     invoice.setOutstandingAmount(newOutstanding);
-    invoice.getPaymentReferences().add(reference);
+    invoice.addPaymentReference(reference);
     invoiceSettlementPolicy.updateStatusFromOutstanding(invoice, newOutstanding);
     BigDecimal totalAmount = MoneyUtils.zeroIfNull(invoice.getTotalAmount());
     BigDecimal credited = totalCredited != null ? totalCredited : BigDecimal.ZERO;
@@ -4849,6 +4855,7 @@ abstract class AccountingCoreEngineCore {
       Long cashAccountId,
       BigDecimal amount,
       List<SettlementAllocationRequest> allocations) {
+    ValidationUtils.requireNotNull(company, "company");
     String supplierToken = sanitizeToken(supplier != null ? supplier.getCode() : null);
     StringBuilder fingerprint = new StringBuilder();
     appendPartnerFingerprint(
@@ -5085,8 +5092,11 @@ abstract class AccountingCoreEngineCore {
   }
 
   protected String resolveJournalReference(Company company, String provided) {
-    if (StringUtils.hasText(provided)) {
-      return provided.trim();
+    if (provided != null) {
+      String normalizedProvided = provided.trim();
+      if (!normalizedProvided.isEmpty()) {
+        return normalizedProvided;
+      }
     }
     return referenceNumberService.nextJournalReference(company);
   }
@@ -5925,16 +5935,20 @@ abstract class AccountingCoreEngineCore {
       Long partnerId,
       List<PartnerSettlementAllocation> existing,
       List<SettlementAllocationRequest> allocations) {
+    List<PartnerSettlementAllocation> existingAllocations = existing == null ? List.of() : existing;
+    List<SettlementAllocationRequest> requestedAllocations =
+        allocations == null ? List.of() : allocations;
     boolean partnerMismatch =
-        existing.stream()
+        existingAllocations.stream()
             .anyMatch(row -> isSettlementAllocationPartnerMismatch(row, partnerType, partnerId));
     if (partnerMismatch) {
       throw replayConflictWithPartnerContext(
           partnerMismatchMessage(partnerType), idempotencyKey, partnerType, partnerId);
     }
 
-    Map<String, Integer> existingSignatures = allocationSignatureCountsFromRows(existing);
-    Map<String, Integer> requestSignatures = allocationSignatureCountsFromRequests(allocations);
+    Map<String, Integer> existingSignatures = allocationSignatureCountsFromRows(existingAllocations);
+    Map<String, Integer> requestSignatures =
+        allocationSignatureCountsFromRequests(requestedAllocations);
     if (!existingSignatures.equals(requestSignatures)) {
       ApplicationException exception =
           replayConflictWithPartnerContext(

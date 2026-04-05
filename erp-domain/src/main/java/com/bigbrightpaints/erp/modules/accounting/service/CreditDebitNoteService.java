@@ -102,21 +102,25 @@ public class CreditDebitNoteService extends AccountingCoreEngineCore {
     this.journalEntryService = journalEntryService;
   }
 
+  @Override
   public JournalEntryDto postCreditNote(CreditNoteRequest request) {
     CreditNoteRequest normalized = normalizeCreditNoteRequest(request);
     return super.postCreditNote(normalized);
   }
 
+  @Override
   public JournalEntryDto postDebitNote(DebitNoteRequest request) {
     DebitNoteRequest normalized = normalizeDebitNoteRequest(request);
     return super.postDebitNote(normalized);
   }
 
+  @Override
   public JournalEntryDto postAccrual(AccrualRequest request) {
     AccrualRequest normalized = normalizeAccrualRequest(request);
     return super.postAccrual(normalized);
   }
 
+  @Override
   public JournalEntryDto writeOffBadDebt(BadDebtWriteOffRequest request) {
     BadDebtWriteOffRequest normalized = normalizeBadDebtRequest(request);
     return super.writeOffBadDebt(normalized);

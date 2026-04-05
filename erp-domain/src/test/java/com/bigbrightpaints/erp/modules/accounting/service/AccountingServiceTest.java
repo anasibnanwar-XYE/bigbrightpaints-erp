@@ -661,18 +661,14 @@ class AccountingServiceTest {
     matching.setJournalType(JournalEntryType.MANUAL);
     matching.setSourceModule("MANUAL");
     matching.setSourceReference("MAN-SRC-1");
-    matching
-        .getLines()
-        .add(
+    matching.addLine(
             journalLine(
                 matching,
                 account(501L, "CASH", AccountType.ASSET),
                 "Debit",
                 new BigDecimal("125.00"),
                 BigDecimal.ZERO));
-    matching
-        .getLines()
-        .add(
+    matching.addLine(
             journalLine(
                 matching,
                 account(502L, "REV", AccountType.REVENUE),
@@ -1518,18 +1514,14 @@ class AccountingServiceTest {
     ReflectionTestUtils.setField(purchaseJournal, "id", 9703L);
     purchaseJournal.setSupplier(supplier);
     purchaseJournal.setReferenceNumber("RMP-OVERRIDE-1");
-    purchaseJournal
-        .getLines()
-        .add(
+    purchaseJournal.addLine(
             journalLine(
                 purchaseJournal,
                 cash,
                 "Purchase invoice",
                 new BigDecimal("100.00"),
                 BigDecimal.ZERO));
-    purchaseJournal
-        .getLines()
-        .add(
+    purchaseJournal.addLine(
             journalLine(
                 purchaseJournal,
                 payable,
@@ -2960,14 +2952,14 @@ class AccountingServiceTest {
     debitLine.setAccount(debitAccount);
     debitLine.setDebit(new BigDecimal("10.00"));
     debitLine.setCredit(BigDecimal.ZERO);
-    existingEntry.getLines().add(debitLine);
+    existingEntry.addLine(debitLine);
 
     var creditLine = new com.bigbrightpaints.erp.modules.accounting.domain.JournalLine();
     creditLine.setJournalEntry(existingEntry);
     creditLine.setAccount(creditAccount);
     creditLine.setDebit(BigDecimal.ZERO);
     creditLine.setCredit(new BigDecimal("10.00"));
-    existingEntry.getLines().add(creditLine);
+    existingEntry.addLine(creditLine);
 
     when(journalEntryRepository.findByCompanyAndReferenceNumber(eq(company), eq("DUP-REF")))
         .thenReturn(Optional.of(existingEntry));
@@ -3032,14 +3024,14 @@ class AccountingServiceTest {
     debitLine.setAccount(debitAccount);
     debitLine.setDebit(new BigDecimal("30.00"));
     debitLine.setCredit(BigDecimal.ZERO);
-    existingEntry.getLines().add(debitLine);
+    existingEntry.addLine(debitLine);
 
     JournalLine creditLine = new JournalLine();
     creditLine.setJournalEntry(existingEntry);
     creditLine.setAccount(creditAccount);
     creditLine.setDebit(BigDecimal.ZERO);
     creditLine.setCredit(new BigDecimal("30.00"));
-    existingEntry.getLines().add(creditLine);
+    existingEntry.addLine(creditLine);
 
     when(journalEntryRepository.findByCompanyAndReferenceNumber(
             eq(company), eq("JE-RACE-EXISTING")))
@@ -4187,18 +4179,14 @@ class AccountingServiceTest {
     JournalEntry purchaseJournal = new JournalEntry();
     ReflectionTestUtils.setField(purchaseJournal, "id", 2002L);
     purchaseJournal.setSupplier(supplier);
-    purchaseJournal
-        .getLines()
-        .add(
+    purchaseJournal.addLine(
             journalLine(
                 purchaseJournal,
                 inventory,
                 "Purchase invoice",
                 new BigDecimal("200.00"),
                 BigDecimal.ZERO));
-    purchaseJournal
-        .getLines()
-        .add(
+    purchaseJournal.addLine(
             journalLine(
                 purchaseJournal,
                 payable,
@@ -4316,18 +4304,14 @@ class AccountingServiceTest {
     ReflectionTestUtils.setField(purchaseJournal, "id", 9701L);
     purchaseJournal.setSupplier(supplier);
     purchaseJournal.setReferenceNumber("RMP-GST-MISS-1");
-    purchaseJournal
-        .getLines()
-        .add(
+    purchaseJournal.addLine(
             journalLine(
                 purchaseJournal,
                 inventory,
                 "Purchase invoice GST missing",
                 new BigDecimal("118.00"),
                 BigDecimal.ZERO));
-    purchaseJournal
-        .getLines()
-        .add(
+    purchaseJournal.addLine(
             journalLine(
                 purchaseJournal,
                 payable,
@@ -4417,27 +4401,21 @@ class AccountingServiceTest {
     ReflectionTestUtils.setField(purchaseJournal, "id", 9702L);
     purchaseJournal.setSupplier(supplier);
     purchaseJournal.setReferenceNumber("RMP-NONGST-MISS-1");
-    purchaseJournal
-        .getLines()
-        .add(
+    purchaseJournal.addLine(
             journalLine(
                 purchaseJournal,
                 inventory,
                 "Purchase invoice non-GST",
                 new BigDecimal("82.00"),
                 BigDecimal.ZERO));
-    purchaseJournal
-        .getLines()
-        .add(
+    purchaseJournal.addLine(
             journalLine(
                 purchaseJournal,
                 inputTax,
                 "Input tax for purchase invoice non-GST",
                 new BigDecimal("18.00"),
                 BigDecimal.ZERO));
-    purchaseJournal
-        .getLines()
-        .add(
+    purchaseJournal.addLine(
             journalLine(
                 purchaseJournal,
                 payable,
@@ -4595,18 +4573,14 @@ class AccountingServiceTest {
     JournalEntry purchaseJournal = new JournalEntry();
     ReflectionTestUtils.setField(purchaseJournal, "id", 1740L);
     purchaseJournal.setSupplier(supplier);
-    purchaseJournal
-        .getLines()
-        .add(
+    purchaseJournal.addLine(
             journalLine(
                 purchaseJournal,
                 inventory,
                 "Purchase invoice old",
                 new BigDecimal("100.00"),
                 BigDecimal.ZERO));
-    purchaseJournal
-        .getLines()
-        .add(
+    purchaseJournal.addLine(
             journalLine(
                 purchaseJournal,
                 payable,
@@ -4719,18 +4693,14 @@ class AccountingServiceTest {
     existingEntry.setDealer(dealer);
     existingEntry.setReferenceNumber("DR-REPLAY-1");
     existingEntry.setMemo("Dealer receipt replay");
-    existingEntry
-        .getLines()
-        .add(
+    existingEntry.addLine(
             journalLine(
                 existingEntry,
                 cash,
                 "Dealer receipt replay",
                 new BigDecimal("100.00"),
                 BigDecimal.ZERO));
-    existingEntry
-        .getLines()
-        .add(
+    existingEntry.addLine(
             journalLine(
                 existingEntry,
                 receivable,
@@ -4831,27 +4801,21 @@ class AccountingServiceTest {
     existingEntry.setDealer(dealer);
     existingEntry.setReferenceNumber("DR-SPLIT-REPLAY-1");
     existingEntry.setMemo("Dealer split replay");
-    existingEntry
-        .getLines()
-        .add(
+    existingEntry.addLine(
             journalLine(
                 existingEntry,
                 cash,
                 "Dealer split replay",
                 new BigDecimal("70.00"),
                 BigDecimal.ZERO));
-    existingEntry
-        .getLines()
-        .add(
+    existingEntry.addLine(
             journalLine(
                 existingEntry,
                 bank,
                 "Dealer split replay",
                 new BigDecimal("30.00"),
                 BigDecimal.ZERO));
-    existingEntry
-        .getLines()
-        .add(
+    existingEntry.addLine(
             journalLine(
                 existingEntry,
                 receivable,
@@ -5101,18 +5065,14 @@ class AccountingServiceTest {
     existingEntry.setSupplier(supplier);
     existingEntry.setReferenceNumber("SUP-PAY-REPLAY-1");
     existingEntry.setMemo("Supplier payment replay");
-    existingEntry
-        .getLines()
-        .add(
+    existingEntry.addLine(
             journalLine(
                 existingEntry,
                 payable,
                 "Supplier payment replay",
                 new BigDecimal("100.00"),
                 BigDecimal.ZERO));
-    existingEntry
-        .getLines()
-        .add(
+    existingEntry.addLine(
             journalLine(
                 existingEntry,
                 cash,
@@ -5807,18 +5767,14 @@ class AccountingServiceTest {
     createdEntry.setDealer(dealer);
     createdEntry.setReferenceNumber("DR-RACE-NEW-1");
     createdEntry.setMemo("Dealer receipt race");
-    createdEntry
-        .getLines()
-        .add(
+    createdEntry.addLine(
             journalLine(
                 createdEntry,
                 cash,
                 "Dealer receipt race",
                 new BigDecimal("100.00"),
                 BigDecimal.ZERO));
-    createdEntry
-        .getLines()
-        .add(
+    createdEntry.addLine(
             journalLine(
                 createdEntry,
                 receivable,
@@ -5831,18 +5787,14 @@ class AccountingServiceTest {
     concurrentEntry.setDealer(dealer);
     concurrentEntry.setReferenceNumber("DR-RACE-EXIST-1");
     concurrentEntry.setMemo("Dealer receipt race");
-    concurrentEntry
-        .getLines()
-        .add(
+    concurrentEntry.addLine(
             journalLine(
                 concurrentEntry,
                 cash,
                 "Dealer receipt race",
                 new BigDecimal("100.00"),
                 BigDecimal.ZERO));
-    concurrentEntry
-        .getLines()
-        .add(
+    concurrentEntry.addLine(
             journalLine(
                 concurrentEntry,
                 receivable,
@@ -5960,18 +5912,14 @@ class AccountingServiceTest {
     createdEntry.setDealer(dealer);
     createdEntry.setReferenceNumber("DR-RACE-MISMATCH-NEW-1");
     createdEntry.setMemo("Dealer receipt race");
-    createdEntry
-        .getLines()
-        .add(
+    createdEntry.addLine(
             journalLine(
                 createdEntry,
                 cash,
                 "Dealer receipt race",
                 new BigDecimal("100.00"),
                 BigDecimal.ZERO));
-    createdEntry
-        .getLines()
-        .add(
+    createdEntry.addLine(
             journalLine(
                 createdEntry,
                 receivable,
@@ -5984,18 +5932,14 @@ class AccountingServiceTest {
     concurrentEntry.setDealer(dealer);
     concurrentEntry.setReferenceNumber("DR-RACE-MISMATCH-ALLOC-1");
     concurrentEntry.setMemo("Dealer receipt race");
-    concurrentEntry
-        .getLines()
-        .add(
+    concurrentEntry.addLine(
             journalLine(
                 concurrentEntry,
                 cash,
                 "Dealer receipt race",
                 new BigDecimal("100.00"),
                 BigDecimal.ZERO));
-    concurrentEntry
-        .getLines()
-        .add(
+    concurrentEntry.addLine(
             journalLine(
                 concurrentEntry,
                 receivable,
@@ -6097,18 +6041,14 @@ class AccountingServiceTest {
     createdEntry.setDealer(dealer);
     createdEntry.setReferenceNumber("DR-SPLIT-RACE-NEW-1");
     createdEntry.setMemo("Dealer split race");
-    createdEntry
-        .getLines()
-        .add(
+    createdEntry.addLine(
             journalLine(
                 createdEntry,
                 cash,
                 "Dealer split race",
                 new BigDecimal("100.00"),
                 BigDecimal.ZERO));
-    createdEntry
-        .getLines()
-        .add(
+    createdEntry.addLine(
             journalLine(
                 createdEntry,
                 receivable,
@@ -6121,18 +6061,14 @@ class AccountingServiceTest {
     concurrentEntry.setDealer(dealer);
     concurrentEntry.setReferenceNumber("DR-SPLIT-RACE-EXIST-1");
     concurrentEntry.setMemo("Dealer split race");
-    concurrentEntry
-        .getLines()
-        .add(
+    concurrentEntry.addLine(
             journalLine(
                 concurrentEntry,
                 cash,
                 "Dealer split race",
                 new BigDecimal("100.00"),
                 BigDecimal.ZERO));
-    concurrentEntry
-        .getLines()
-        .add(
+    concurrentEntry.addLine(
             journalLine(
                 concurrentEntry,
                 receivable,
@@ -6238,18 +6174,14 @@ class AccountingServiceTest {
     createdEntry.setSupplier(supplier);
     createdEntry.setReferenceNumber("SUP-PAY-RACE-NEW-1");
     createdEntry.setMemo("Supplier payment race");
-    createdEntry
-        .getLines()
-        .add(
+    createdEntry.addLine(
             journalLine(
                 createdEntry,
                 payable,
                 "Supplier payment race",
                 new BigDecimal("100.00"),
                 BigDecimal.ZERO));
-    createdEntry
-        .getLines()
-        .add(
+    createdEntry.addLine(
             journalLine(
                 createdEntry,
                 cash,
@@ -6262,18 +6194,14 @@ class AccountingServiceTest {
     concurrentEntry.setSupplier(supplier);
     concurrentEntry.setReferenceNumber("SUP-PAY-RACE-EXIST-1");
     concurrentEntry.setMemo("Supplier payment race");
-    concurrentEntry
-        .getLines()
-        .add(
+    concurrentEntry.addLine(
             journalLine(
                 concurrentEntry,
                 payable,
                 "Supplier payment race",
                 new BigDecimal("100.00"),
                 BigDecimal.ZERO));
-    concurrentEntry
-        .getLines()
-        .add(
+    concurrentEntry.addLine(
             journalLine(
                 concurrentEntry,
                 cash,
@@ -6389,18 +6317,14 @@ class AccountingServiceTest {
     createdEntry.setDealer(dealer);
     createdEntry.setReferenceNumber("DR-SETTLE-RACE-NEW-1");
     createdEntry.setMemo("Dealer settlement race");
-    createdEntry
-        .getLines()
-        .add(
+    createdEntry.addLine(
             journalLine(
                 createdEntry,
                 cash,
                 "Dealer settlement race",
                 new BigDecimal("100.00"),
                 BigDecimal.ZERO));
-    createdEntry
-        .getLines()
-        .add(
+    createdEntry.addLine(
             journalLine(
                 createdEntry,
                 receivable,
@@ -6413,18 +6337,14 @@ class AccountingServiceTest {
     concurrentEntry.setDealer(dealer);
     concurrentEntry.setReferenceNumber("DR-SETTLE-RACE-EXIST-1");
     concurrentEntry.setMemo("Dealer settlement race");
-    concurrentEntry
-        .getLines()
-        .add(
+    concurrentEntry.addLine(
             journalLine(
                 concurrentEntry,
                 cash,
                 "Dealer settlement race",
                 new BigDecimal("100.00"),
                 BigDecimal.ZERO));
-    concurrentEntry
-        .getLines()
-        .add(
+    concurrentEntry.addLine(
             journalLine(
                 concurrentEntry,
                 receivable,
@@ -6556,18 +6476,14 @@ class AccountingServiceTest {
     ReflectionTestUtils.setField(purchaseJournal, "id", 959L);
     purchaseJournal.setSupplier(supplier);
     purchaseJournal.setReferenceNumber("RMP-SETTLE-RACE-1");
-    purchaseJournal
-        .getLines()
-        .add(
+    purchaseJournal.addLine(
             journalLine(
                 purchaseJournal,
                 inventory,
                 "Purchase invoice race",
                 new BigDecimal("100.00"),
                 BigDecimal.ZERO));
-    purchaseJournal
-        .getLines()
-        .add(
+    purchaseJournal.addLine(
             journalLine(
                 purchaseJournal,
                 payable,
@@ -6581,18 +6497,14 @@ class AccountingServiceTest {
     createdEntry.setSupplier(supplier);
     createdEntry.setReferenceNumber("SUP-SETTLE-RACE-NEW-1");
     createdEntry.setMemo("Supplier settlement race");
-    createdEntry
-        .getLines()
-        .add(
+    createdEntry.addLine(
             journalLine(
                 createdEntry,
                 payable,
                 "Supplier settlement race",
                 new BigDecimal("100.00"),
                 BigDecimal.ZERO));
-    createdEntry
-        .getLines()
-        .add(
+    createdEntry.addLine(
             journalLine(
                 createdEntry,
                 cash,
@@ -6605,18 +6517,14 @@ class AccountingServiceTest {
     concurrentEntry.setSupplier(supplier);
     concurrentEntry.setReferenceNumber("SUP-SETTLE-RACE-NEW-1");
     concurrentEntry.setMemo("Supplier settlement race");
-    concurrentEntry
-        .getLines()
-        .add(
+    concurrentEntry.addLine(
             journalLine(
                 concurrentEntry,
                 payable,
                 "Supplier settlement race",
                 new BigDecimal("100.00"),
                 BigDecimal.ZERO));
-    concurrentEntry
-        .getLines()
-        .add(
+    concurrentEntry.addLine(
             journalLine(
                 concurrentEntry,
                 cash,
@@ -7286,18 +7194,14 @@ class AccountingServiceTest {
     JournalEntry purchaseJournalA = new JournalEntry();
     ReflectionTestUtils.setField(purchaseJournalA, "id", 1801L);
     purchaseJournalA.setSupplier(supplier);
-    purchaseJournalA
-        .getLines()
-        .add(
+    purchaseJournalA.addLine(
             journalLine(
                 purchaseJournalA,
                 inventoryA,
                 "Purchase replay A",
                 new BigDecimal("100.00"),
                 BigDecimal.ZERO));
-    purchaseJournalA
-        .getLines()
-        .add(
+    purchaseJournalA.addLine(
             journalLine(
                 purchaseJournalA,
                 payable,
@@ -7309,18 +7213,14 @@ class AccountingServiceTest {
     JournalEntry purchaseJournalB = new JournalEntry();
     ReflectionTestUtils.setField(purchaseJournalB, "id", 1802L);
     purchaseJournalB.setSupplier(supplier);
-    purchaseJournalB
-        .getLines()
-        .add(
+    purchaseJournalB.addLine(
             journalLine(
                 purchaseJournalB,
                 inventoryB,
                 "Purchase replay B",
                 new BigDecimal("200.00"),
                 BigDecimal.ZERO));
-    purchaseJournalB
-        .getLines()
-        .add(
+    purchaseJournalB.addLine(
             journalLine(
                 purchaseJournalB,
                 payable,
@@ -7545,27 +7445,21 @@ class AccountingServiceTest {
     journalEntry.setEntryDate(LocalDate.of(2024, 4, 9));
     journalEntry.setReferenceNumber("DR-TEST-1");
     journalEntry.setMemo("Dealer settlement");
-    journalEntry
-        .getLines()
-        .add(
+    journalEntry.addLine(
             journalLine(
                 journalEntry,
                 cash,
                 "Dealer settlement",
                 new BigDecimal("450.00"),
                 BigDecimal.ZERO));
-    journalEntry
-        .getLines()
-        .add(
+    journalEntry.addLine(
             journalLine(
                 journalEntry,
                 discount,
                 "Settlement discount",
                 new BigDecimal("50.00"),
                 BigDecimal.ZERO));
-    journalEntry
-        .getLines()
-        .add(
+    journalEntry.addLine(
             journalLine(
                 journalEntry,
                 receivable,
@@ -8157,18 +8051,14 @@ class AccountingServiceTest {
     ReflectionTestUtils.setField(settlementCashAccount, "id", 20L);
 
     JournalEntry existingEntry = new JournalEntry();
-    existingEntry
-        .getLines()
-        .add(
+    existingEntry.addLine(
             journalLine(
                 existingEntry,
                 settlementCashAccount,
                 "payment-cash",
                 new BigDecimal("60.00"),
                 BigDecimal.ZERO));
-    existingEntry
-        .getLines()
-        .add(
+    existingEntry.addLine(
             journalLine(
                 existingEntry,
                 settlementCashAccount,
@@ -8289,27 +8179,21 @@ class AccountingServiceTest {
     ReflectionTestUtils.setField(adjustmentAssetAccount, "id", 99L);
 
     JournalEntry existingEntry = new JournalEntry();
-    existingEntry
-        .getLines()
-        .add(
+    existingEntry.addLine(
             journalLine(
                 existingEntry,
                 settlementCashAccount,
                 "payment-cash",
                 new BigDecimal("60.00"),
                 BigDecimal.ZERO));
-    existingEntry
-        .getLines()
-        .add(
+    existingEntry.addLine(
             journalLine(
                 existingEntry,
                 settlementCashAccount,
                 "payment-bank",
                 new BigDecimal("40.00"),
                 BigDecimal.ZERO));
-    existingEntry
-        .getLines()
-        .add(
+    existingEntry.addLine(
             journalLine(
                 existingEntry,
                 adjustmentAssetAccount,
@@ -8424,18 +8308,14 @@ class AccountingServiceTest {
     ReflectionTestUtils.setField(settlementCashAccount, "id", 20L);
 
     JournalEntry existingEntry = new JournalEntry();
-    existingEntry
-        .getLines()
-        .add(
+    existingEntry.addLine(
             journalLine(
                 existingEntry,
                 settlementCashAccount,
                 "payment-cash",
                 new BigDecimal("60.00"),
                 BigDecimal.ZERO));
-    existingEntry
-        .getLines()
-        .add(
+    existingEntry.addLine(
             journalLine(
                 existingEntry,
                 settlementCashAccount,
@@ -8613,9 +8493,7 @@ class AccountingServiceTest {
     ReflectionTestUtils.setField(legacyCashAccount, "id", 20L);
 
     JournalEntry existingEntry = new JournalEntry();
-    existingEntry
-        .getLines()
-        .add(
+    existingEntry.addLine(
             journalLine(
                 existingEntry,
                 legacyCashAccount,
@@ -8712,27 +8590,21 @@ class AccountingServiceTest {
     ReflectionTestUtils.setField(receivableAccount, "id", 10L);
 
     JournalEntry existingEntry = new JournalEntry();
-    existingEntry
-        .getLines()
-        .add(
+    existingEntry.addLine(
             journalLine(
                 existingEntry,
                 cashAccount,
                 "Dealer settlement",
                 new BigDecimal("60.00"),
                 BigDecimal.ZERO));
-    existingEntry
-        .getLines()
-        .add(
+    existingEntry.addLine(
             journalLine(
                 existingEntry,
                 cashAccount,
                 "Settlement discount",
                 new BigDecimal("40.00"),
                 BigDecimal.ZERO));
-    existingEntry
-        .getLines()
-        .add(
+    existingEntry.addLine(
             journalLine(
                 existingEntry,
                 receivableAccount,
@@ -8826,36 +8698,28 @@ class AccountingServiceTest {
     ReflectionTestUtils.setField(receivableAccount, "id", 10L);
 
     JournalEntry existingEntry = new JournalEntry();
-    existingEntry
-        .getLines()
-        .add(
+    existingEntry.addLine(
             journalLine(
                 existingEntry,
                 cashAccount,
                 "Dealer settlement",
                 new BigDecimal("60.00"),
                 BigDecimal.ZERO));
-    existingEntry
-        .getLines()
-        .add(
+    existingEntry.addLine(
             journalLine(
                 existingEntry,
                 cashAccount,
                 "Settlement discount",
                 new BigDecimal("20.00"),
                 BigDecimal.ZERO));
-    existingEntry
-        .getLines()
-        .add(
+    existingEntry.addLine(
             journalLine(
                 existingEntry,
                 cashAccount,
                 "Settlement discount",
                 new BigDecimal("20.00"),
                 BigDecimal.ZERO));
-    existingEntry
-        .getLines()
-        .add(
+    existingEntry.addLine(
             journalLine(
                 existingEntry,
                 receivableAccount,
@@ -8956,27 +8820,21 @@ class AccountingServiceTest {
     ReflectionTestUtils.setField(receivableAccount, "id", 10L);
 
     JournalEntry existingEntry = new JournalEntry();
-    existingEntry
-        .getLines()
-        .add(
+    existingEntry.addLine(
             journalLine(
                 existingEntry,
                 cashAccount,
                 "Dealer settlement",
                 new BigDecimal("80.00"),
                 BigDecimal.ZERO));
-    existingEntry
-        .getLines()
-        .add(
+    existingEntry.addLine(
             journalLine(
                 existingEntry,
                 discountAssetAccount,
                 "Settlement discount",
                 new BigDecimal("40.00"),
                 BigDecimal.ZERO));
-    existingEntry
-        .getLines()
-        .add(
+    existingEntry.addLine(
             journalLine(
                 existingEntry,
                 receivableAccount,
@@ -9069,18 +8927,14 @@ class AccountingServiceTest {
     ReflectionTestUtils.setField(receivableAccount, "id", 10L);
 
     JournalEntry existingEntry = new JournalEntry();
-    existingEntry
-        .getLines()
-        .add(
+    existingEntry.addLine(
             journalLine(
                 existingEntry,
                 cashAccount,
                 "Settlement discount",
                 new BigDecimal("100.00"),
                 BigDecimal.ZERO));
-    existingEntry
-        .getLines()
-        .add(
+    existingEntry.addLine(
             journalLine(
                 existingEntry,
                 receivableAccount,
@@ -9209,36 +9063,28 @@ class AccountingServiceTest {
     ReflectionTestUtils.setField(receivableAccount, "id", 10L);
 
     JournalEntry existingEntry = new JournalEntry();
-    existingEntry
-        .getLines()
-        .add(
+    existingEntry.addLine(
             journalLine(
                 existingEntry,
                 account20,
                 "Dealer settlement",
                 new BigDecimal("40.00"),
                 BigDecimal.ZERO));
-    existingEntry
-        .getLines()
-        .add(
+    existingEntry.addLine(
             journalLine(
                 existingEntry,
                 account21,
                 "Dealer settlement",
                 new BigDecimal("40.00"),
                 BigDecimal.ZERO));
-    existingEntry
-        .getLines()
-        .add(
+    existingEntry.addLine(
             journalLine(
                 existingEntry,
                 account20,
                 "Settlement discount",
                 new BigDecimal("40.00"),
                 BigDecimal.ZERO));
-    existingEntry
-        .getLines()
-        .add(
+    existingEntry.addLine(
             journalLine(
                 existingEntry,
                 receivableAccount,
@@ -9367,36 +9213,28 @@ class AccountingServiceTest {
     ReflectionTestUtils.setField(receivableAccount, "id", 10L);
 
     JournalEntry existingEntry = new JournalEntry();
-    existingEntry
-        .getLines()
-        .add(
+    existingEntry.addLine(
             journalLine(
                 existingEntry,
                 account20,
                 "Settlement discount",
                 new BigDecimal("40.00"),
                 BigDecimal.ZERO));
-    existingEntry
-        .getLines()
-        .add(
+    existingEntry.addLine(
             journalLine(
                 existingEntry,
                 account21,
                 "Settlement discount",
                 new BigDecimal("40.00"),
                 BigDecimal.ZERO));
-    existingEntry
-        .getLines()
-        .add(
+    existingEntry.addLine(
             journalLine(
                 existingEntry,
                 account20,
                 "Settlement discount",
                 new BigDecimal("40.00"),
                 BigDecimal.ZERO));
-    existingEntry
-        .getLines()
-        .add(
+    existingEntry.addLine(
             journalLine(
                 existingEntry,
                 receivableAccount,
@@ -9515,36 +9353,28 @@ class AccountingServiceTest {
     ReflectionTestUtils.setField(receivableAccount, "id", 10L);
 
     JournalEntry existingEntry = new JournalEntry();
-    existingEntry
-        .getLines()
-        .add(
+    existingEntry.addLine(
             journalLine(
                 existingEntry,
                 account20,
                 "Dealer settlement",
                 new BigDecimal("40.00"),
                 BigDecimal.ZERO));
-    existingEntry
-        .getLines()
-        .add(
+    existingEntry.addLine(
             journalLine(
                 existingEntry,
                 account21,
                 "Dealer settlement",
                 new BigDecimal("40.00"),
                 BigDecimal.ZERO));
-    existingEntry
-        .getLines()
-        .add(
+    existingEntry.addLine(
             journalLine(
                 existingEntry,
                 account21,
                 "Settlement discount",
                 new BigDecimal("40.00"),
                 BigDecimal.ZERO));
-    existingEntry
-        .getLines()
-        .add(
+    existingEntry.addLine(
             journalLine(
                 existingEntry,
                 receivableAccount,
@@ -9863,18 +9693,14 @@ class AccountingServiceTest {
     existingEntry.setReferenceNumber("DR-SETTLE-REPLAY-1");
     existingEntry.setEntryDate(LocalDate.of(2024, 4, 9));
     existingEntry.setMemo("Dealer settlement replay");
-    existingEntry
-        .getLines()
-        .add(
+    existingEntry.addLine(
             journalLine(
                 existingEntry,
                 cash,
                 "Dealer settlement replay",
                 new BigDecimal("100.00"),
                 BigDecimal.ZERO));
-    existingEntry
-        .getLines()
-        .add(
+    existingEntry.addLine(
             journalLine(
                 existingEntry,
                 receivable,
@@ -9987,28 +9813,26 @@ class AccountingServiceTest {
     existingEntry.setReferenceNumber("DR-SETTLE-REPLAY-ADJ-1");
     existingEntry.setEntryDate(LocalDate.of(2024, 4, 9));
     existingEntry.setMemo("Dealer settlement replay");
-    existingEntry
-        .getLines()
-        .addAll(
-            List.of(
-                journalLine(
-                    existingEntry,
-                    cash,
-                    "Dealer settlement replay",
-                    new BigDecimal("90.00"),
-                    BigDecimal.ZERO),
-                journalLine(
-                    existingEntry,
-                    discount,
-                    "Settlement discount",
-                    new BigDecimal("10.00"),
-                    BigDecimal.ZERO),
-                journalLine(
-                    existingEntry,
-                    receivable,
-                    "Dealer settlement replay",
-                    BigDecimal.ZERO,
-                    new BigDecimal("100.00"))));
+    List.of(
+            journalLine(
+                existingEntry,
+                cash,
+                "Dealer settlement replay",
+                new BigDecimal("90.00"),
+                BigDecimal.ZERO),
+            journalLine(
+                existingEntry,
+                discount,
+                "Settlement discount",
+                new BigDecimal("10.00"),
+                BigDecimal.ZERO),
+            journalLine(
+                existingEntry,
+                receivable,
+                "Dealer settlement replay",
+                BigDecimal.ZERO,
+                new BigDecimal("100.00")))
+        .forEach(existingEntry::addLine);
 
     PartnerSettlementAllocation existingRow = new PartnerSettlementAllocation();
     existingRow.setCompany(company);
@@ -10115,18 +9939,14 @@ class AccountingServiceTest {
     existingEntry.setReferenceNumber("DR-SETTLE-DATE-REPLAY-1");
     existingEntry.setEntryDate(persistedSettlementDate);
     existingEntry.setMemo("Dealer settlement replay");
-    existingEntry
-        .getLines()
-        .add(
+    existingEntry.addLine(
             journalLine(
                 existingEntry,
                 cash,
                 "Dealer settlement replay",
                 new BigDecimal("100.00"),
                 BigDecimal.ZERO));
-    existingEntry
-        .getLines()
-        .add(
+    existingEntry.addLine(
             journalLine(
                 existingEntry,
                 receivable,
@@ -10586,9 +10406,7 @@ class AccountingServiceTest {
     JournalEntry firstPosting = new JournalEntry();
     ReflectionTestUtils.setField(firstPosting, "id", 811L);
     firstPosting.setSupplier(supplier);
-    firstPosting
-        .getLines()
-        .add(
+    firstPosting.addLine(
             journalLine(
                 firstPosting, payable, "purchase 801", BigDecimal.ZERO, new BigDecimal("100.00")));
     first.setJournalEntry(firstPosting);
@@ -10603,9 +10421,7 @@ class AccountingServiceTest {
     JournalEntry secondPosting = new JournalEntry();
     ReflectionTestUtils.setField(secondPosting, "id", 812L);
     secondPosting.setSupplier(supplier);
-    secondPosting
-        .getLines()
-        .add(
+    secondPosting.addLine(
             journalLine(
                 secondPosting, payable, "purchase 802", BigDecimal.ZERO, new BigDecimal("50.00")));
     second.setJournalEntry(secondPosting);
@@ -11273,18 +11089,14 @@ class AccountingServiceTest {
     existingEntry.setReferenceNumber("SUP-SETTLE-REPLAY-1");
     existingEntry.setEntryDate(LocalDate.of(2024, 4, 9));
     existingEntry.setMemo("Supplier settlement replay");
-    existingEntry
-        .getLines()
-        .add(
+    existingEntry.addLine(
             journalLine(
                 existingEntry,
                 payable,
                 "Supplier settlement replay",
                 new BigDecimal("100.00"),
                 BigDecimal.ZERO));
-    existingEntry
-        .getLines()
-        .add(
+    existingEntry.addLine(
             journalLine(
                 existingEntry,
                 cash,
@@ -11395,28 +11207,26 @@ class AccountingServiceTest {
     existingEntry.setReferenceNumber("SUP-SETTLE-REPLAY-ADJ-1");
     existingEntry.setEntryDate(LocalDate.of(2024, 4, 9));
     existingEntry.setMemo("Supplier settlement replay");
-    existingEntry
-        .getLines()
-        .addAll(
-            List.of(
-                journalLine(
-                    existingEntry,
-                    payable,
-                    "Supplier settlement replay",
-                    new BigDecimal("100.00"),
-                    BigDecimal.ZERO),
-                journalLine(
-                    existingEntry,
-                    cash,
-                    "Supplier settlement replay",
-                    BigDecimal.ZERO,
-                    new BigDecimal("90.00")),
-                journalLine(
-                    existingEntry,
-                    discount,
-                    "Settlement discount received",
-                    BigDecimal.ZERO,
-                    new BigDecimal("10.00"))));
+    List.of(
+            journalLine(
+                existingEntry,
+                payable,
+                "Supplier settlement replay",
+                new BigDecimal("100.00"),
+                BigDecimal.ZERO),
+            journalLine(
+                existingEntry,
+                cash,
+                "Supplier settlement replay",
+                BigDecimal.ZERO,
+                new BigDecimal("90.00")),
+            journalLine(
+                existingEntry,
+                discount,
+                "Settlement discount received",
+                BigDecimal.ZERO,
+                new BigDecimal("10.00")))
+        .forEach(existingEntry::addLine);
 
     com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAllocation existingRow =
         new com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAllocation();
@@ -11521,18 +11331,14 @@ class AccountingServiceTest {
     existingEntry.setReferenceNumber("SUP-SETTLE-DATE-REPLAY-1");
     existingEntry.setEntryDate(persistedSettlementDate);
     existingEntry.setMemo("Supplier settlement replay");
-    existingEntry
-        .getLines()
-        .add(
+    existingEntry.addLine(
             journalLine(
                 existingEntry,
                 payable,
                 "Supplier settlement replay",
                 new BigDecimal("100.00"),
                 BigDecimal.ZERO));
-    existingEntry
-        .getLines()
-        .add(
+    existingEntry.addLine(
             journalLine(
                 existingEntry,
                 cash,
@@ -13009,7 +12815,7 @@ class AccountingServiceTest {
     invoice.setDealer(dealer);
     invoice.setInvoiceNumber("INV-801");
     invoice.setTotalAmount(new BigDecimal("100.00"));
-    invoice.getPaymentReferences().add("CN-OK");
+    invoice.addPaymentReference("CN-OK");
 
     JournalEntry source = journalEntry(9001L, "INV-801-JE");
     source.setDealer(dealer);
@@ -16592,7 +16398,7 @@ class AccountingServiceTest {
       String description,
       BigDecimal debit,
       BigDecimal credit) {
-    entry.getLines().add(journalLine(entry, account, description, debit, credit));
+    entry.addLine(journalLine(entry, account, description, debit, credit));
   }
 
   private void setCreateJournalEntryEventTrailStrictness(boolean strict) {
@@ -16701,7 +16507,7 @@ class AccountingServiceTest {
     line.setDescription("line");
     line.setDebit(new BigDecimal("10.00"));
     line.setCredit(BigDecimal.ZERO);
-    entry.getLines().add(line);
+    entry.addLine(line);
     return entry;
   }
 }

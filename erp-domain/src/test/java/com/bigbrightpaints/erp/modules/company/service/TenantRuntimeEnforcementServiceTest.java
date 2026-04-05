@@ -316,6 +316,43 @@ class TenantRuntimeEnforcementServiceTest {
   }
 
   @Test
+  void enforceAuthOperationAllowed_failClosedWhenCompanyLookupUnavailableAfterPolicyWarmup() {
+    TenantRuntimeEnforcementService.TenantRuntimeSnapshot warmed = service.snapshot("ACME");
+    assertThat(warmed.state())
+        .isEqualTo(TenantRuntimeEnforcementService.TenantRuntimeState.ACTIVE);
+    when(companyRepository.findByCodeIgnoreCase(eq("ACME")))
+        .thenThrow(new RuntimeException("company-lookup-unavailable"));
+
+    assertThatThrownBy(
+            () -> admissionService.enforceAuthOperationAllowed("ACME", "actor@bbp.com", "login"))
+        .isInstanceOf(AuthSecurityContractException.class)
+        .satisfies(
+            error -> {
+              AuthSecurityContractException ex = (AuthSecurityContractException) error;
+              assertThat(ex.getHttpStatus()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+              assertThat(ex.getCode()).isEqualTo("TENANT_COMPANY_LOOKUP_UNAVAILABLE");
+              assertThat(ex.getUserMessage()).isEqualTo("Tenant company lookup is unavailable");
+            });
+  }
+
+  @Test
+  void enforceAuthOperationAllowed_failClosedWhenActiveUserQuotaLookupUnavailable() {
+    when(userAccountRepository.countByCompany_IdAndEnabledTrue(eq(1L)))
+        .thenThrow(new RuntimeException("active-user-count-unavailable"));
+
+    assertThatThrownBy(
+            () -> admissionService.enforceAuthOperationAllowed("ACME", "actor@bbp.com", "login"))
+        .isInstanceOf(AuthSecurityContractException.class)
+        .satisfies(
+            error -> {
+              AuthSecurityContractException ex = (AuthSecurityContractException) error;
+              assertThat(ex.getHttpStatus()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+              assertThat(ex.getCode()).isEqualTo("TENANT_ACTIVE_USER_QUOTA_UNAVAILABLE");
+              assertThat(ex.getUserMessage()).isEqualTo("Tenant active-user quota is unavailable");
+            });
+  }
+
+  @Test
   void holdTenant_failClosedWhenCompanyNotFound() {
     assertThatThrownBy(() -> service.holdTenant("UNKNOWN", "ops_hold", "ops@bbp.com"))
         .isInstanceOf(ApplicationException.class)

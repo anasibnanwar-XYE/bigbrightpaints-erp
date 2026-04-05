@@ -104,6 +104,7 @@ public class DealerReceiptService extends AccountingCoreEngineCore {
     this.journalEntryService = journalEntryService;
   }
 
+  @Override
   public JournalEntryDto recordDealerReceipt(DealerReceiptRequest request) {
     DealerReceiptRequest normalized = normalizeDealerReceiptRequest(request);
     return super.recordDealerReceipt(normalized);

@@ -813,8 +813,8 @@ class TS_RuntimeAccountingReplayConflictExecutableCoverageTest {
     replayEntry.setSupplier(supplier);
     replayEntry.setMemo("supplier settle memo");
     replayEntry.setEntryDate(LocalDate.of(2026, 2, 15));
-    replayEntry.getLines().add(journalLine(701L, "100.00", "0.00"));
-    replayEntry.getLines().add(journalLine(702L, "0.00", "100.00"));
+    replayEntry.addLine(journalLine(701L, "100.00", "0.00"));
+    replayEntry.addLine(journalLine(702L, "0.00", "100.00"));
 
     PartnerSettlementAllocation existingAllocation =
         partnerAllocationForSupplier(301L, "100.00", "alloc-1");
@@ -1251,7 +1251,7 @@ class TS_RuntimeAccountingReplayConflictExecutableCoverageTest {
     JournalEntry entry = new JournalEntry();
     entry.setDealer(dealer(dealerId));
     entry.setMemo(memo);
-    entry.getLines().add(journalLine(accountId, debit, credit));
+    entry.addLine(journalLine(accountId, debit, credit));
     return entry;
   }
 
@@ -1260,7 +1260,7 @@ class TS_RuntimeAccountingReplayConflictExecutableCoverageTest {
     JournalEntry entry = new JournalEntry();
     entry.setSupplier(supplier(supplierId));
     entry.setMemo(memo);
-    entry.getLines().add(journalLine(accountId, debit, credit));
+    entry.addLine(journalLine(accountId, debit, credit));
     return entry;
   }
 

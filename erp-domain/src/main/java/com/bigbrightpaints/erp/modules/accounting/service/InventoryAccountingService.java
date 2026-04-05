@@ -101,16 +101,19 @@ public class InventoryAccountingService extends AccountingCoreEngineCore {
     this.journalEntryService = journalEntryService;
   }
 
+  @Override
   public JournalEntryDto recordLandedCost(LandedCostRequest request) {
     LandedCostRequest normalized = normalizeLandedCostRequest(request);
     return super.recordLandedCost(normalized);
   }
 
+  @Override
   public JournalEntryDto revalueInventory(InventoryRevaluationRequest request) {
     InventoryRevaluationRequest normalized = normalizeInventoryRevaluationRequest(request);
     return super.revalueInventory(normalized);
   }
 
+  @Override
   public JournalEntryDto adjustWip(WipAdjustmentRequest request) {
     WipAdjustmentRequest normalized = normalizeWipAdjustmentRequest(request);
     return super.adjustWip(normalized);

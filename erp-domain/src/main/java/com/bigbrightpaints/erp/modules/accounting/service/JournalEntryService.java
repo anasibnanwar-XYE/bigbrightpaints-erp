@@ -131,15 +131,18 @@ public class JournalEntryService extends AccountingCoreEngineCore {
         accountingEventStore);
   }
 
+  @Override
   public List<JournalEntryDto> listJournalEntries(
       Long dealerId, Long supplierId, int page, int size) {
     return super.listJournalEntries(dealerId, supplierId, page, size);
   }
 
+  @Override
   public List<JournalEntryDto> listJournalEntries(Long dealerId) {
     return super.listJournalEntries(dealerId);
   }
 
+  @Override
   public List<JournalEntryDto> listJournalEntriesByReferencePrefix(String prefix) {
     return super.listJournalEntriesByReferencePrefix(prefix);
   }
@@ -215,7 +218,7 @@ public class JournalEntryService extends AccountingCoreEngineCore {
                   resolvePostingDocumentType(entry),
                   resolvePostingDocumentReference(entry),
                   request.memo(),
-                  overrideRequested);
+                  overrideAuthorized);
         } else {
           validateEntryDate(company, entryDate, overrideRequested, overrideAuthorized);
           postingPeriod = accountingPeriodService.ensurePeriod(company, entryDate);
@@ -411,7 +414,7 @@ public class JournalEntryService extends AccountingCoreEngineCore {
         BigDecimal baseCredit = toBaseCurrency(creditInput, fxRate);
         line.setDebit(baseDebit);
         line.setCredit(baseCredit);
-        entry.getLines().add(line);
+        entry.addLine(line);
         postedLines.add(line);
         accountDeltas.merge(account, baseDebit.subtract(baseCredit), BigDecimal::add);
         totalBaseDebit = totalBaseDebit.add(baseDebit);
@@ -623,6 +626,7 @@ public class JournalEntryService extends AccountingCoreEngineCore {
     }
   }
 
+  @Override
   public JournalEntryDto createStandardJournal(JournalCreationRequest request) {
     if (request == null) {
       throw new ApplicationException(
