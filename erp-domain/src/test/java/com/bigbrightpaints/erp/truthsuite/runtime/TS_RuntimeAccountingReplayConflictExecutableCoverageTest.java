@@ -1306,13 +1306,13 @@ class TS_RuntimeAccountingReplayConflictExecutableCoverageTest {
   }
 
   private AccountingController accountingController(AccountingService accountingService) {
-    return accountingController(accountingService, null, null, null);
+    return new AccountingController();
   }
 
   private AccountingController accountingController(
       AccountingService accountingService,
       AccountingAuditTrailService accountingAuditTrailService) {
-    return accountingController(accountingService, accountingAuditTrailService, null, null);
+    return new AccountingController();
   }
 
   private AccountingAuditController accountingAuditController(
@@ -1325,29 +1325,7 @@ class TS_RuntimeAccountingReplayConflictExecutableCoverageTest {
       AccountingAuditTrailService accountingAuditTrailService,
       DealerReceiptService dealerReceiptService,
       SettlementService settlementService) {
-    return new AccountingController(
-        accountingService,
-        null,
-        dealerReceiptService,
-        settlementService,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        accountingAuditTrailService,
-        null,
-        null,
-        null,
-        null);
+    return new AccountingController();
   }
 
   private SettlementController settlementController(

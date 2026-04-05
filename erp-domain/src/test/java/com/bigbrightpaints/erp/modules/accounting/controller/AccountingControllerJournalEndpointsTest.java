@@ -16,10 +16,10 @@ import java.util.List;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
+import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
@@ -202,38 +202,18 @@ class AccountingControllerJournalEndpointsTest {
 
   @Test
   void parseOptionalDate_returnsNullForBlankInput() {
-    AccountingController controller =
-        newController(mock(AccountingService.class), mock(JournalEntryService.class), null);
-
-    LocalDate parsed =
-        (LocalDate)
-            ReflectionTestUtils.invokeMethod(controller, "parseOptionalDate", "   ", "fromDate");
-
-    assertThat(parsed).isNull();
+    assertThat(AccountingDateParameters.parseOptionalDate("   ", "fromDate")).isNull();
   }
 
   @Test
   void parseRequiredDate_trimsValidIsoDate() {
-    AccountingController controller =
-        newController(mock(AccountingService.class), mock(JournalEntryService.class), null);
-
-    LocalDate parsed =
-        (LocalDate)
-            ReflectionTestUtils.invokeMethod(
-                controller, "parseRequiredDate", " 2026-03-10 ", "fromDate");
-
+    LocalDate parsed = AccountingDateParameters.parseRequiredDate(" 2026-03-10 ", "fromDate");
     assertThat(parsed).isEqualTo(LocalDate.of(2026, 3, 10));
   }
 
   @Test
   void parseRequiredDate_rejectsInvalidIsoDateWithFieldDetail() {
-    AccountingController controller =
-        newController(mock(AccountingService.class), mock(JournalEntryService.class), null);
-
-    assertThatThrownBy(
-            () ->
-                ReflectionTestUtils.invokeMethod(
-                    controller, "parseRequiredDate", "03/10/2026", "date"))
+    assertThatThrownBy(() -> AccountingDateParameters.parseRequiredDate("03/10/2026", "date"))
         .isInstanceOf(ApplicationException.class)
         .satisfies(
             ex -> {
@@ -360,7 +340,7 @@ class AccountingControllerJournalEndpointsTest {
 
   @Test
   void getAccountActivity_wrapsInvalidDateFormat() {
-    AccountingController controller =
+    StatementReportController controller =
         controllerWithTemporalBalanceService(mock(TemporalBalanceService.class));
 
     assertThatThrownBy(() -> controller.getAccountActivity(9L, "bad", "2026-03-31", null, null))
@@ -476,9 +456,9 @@ class AccountingControllerJournalEndpointsTest {
 
   @Test
   void listSalesReturns_usesSalesReturnReferencePrefix() {
-    AccountingService accountingService = mock(AccountingService.class);
     JournalEntryService journalEntryService = mock(JournalEntryService.class);
-    AccountingController controller = newController(accountingService, journalEntryService, null);
+    StatementReportController controller =
+        newStatementController(journalEntryService, mock(SalesReturnService.class));
 
     controller.listSalesReturns();
 
@@ -487,9 +467,9 @@ class AccountingControllerJournalEndpointsTest {
 
   @Test
   void listSalesReturns_filtersOutCogsAndOrphanedCreditNotes() {
-    AccountingService accountingService = mock(AccountingService.class);
     JournalEntryService journalEntryService = mock(JournalEntryService.class);
-    AccountingController controller = newController(accountingService, journalEntryService, null);
+    StatementReportController controller =
+        newStatementController(journalEntryService, mock(SalesReturnService.class));
     JournalEntryDto legacySalesReturn = journalEntry(301L, "CRN-100", 11L, null, "Sales return");
     JournalEntryDto correctionLinkedSalesReturn =
         journalEntry(302L, "CRN-101", null, "SALES_RETURN", "Correction-linked sales return");
@@ -508,9 +488,9 @@ class AccountingControllerJournalEndpointsTest {
 
   @Test
   void listSalesReturns_filtersNullBlankAndNonCrnEntries() {
-    AccountingService accountingService = mock(AccountingService.class);
     JournalEntryService journalEntryService = mock(JournalEntryService.class);
-    AccountingController controller = newController(accountingService, journalEntryService, null);
+    StatementReportController controller =
+        newStatementController(journalEntryService, mock(SalesReturnService.class));
     JournalEntryDto blankReference = journalEntry(305L, "   ", 12L, null, "Blank reference");
     JournalEntryDto nonCrnReference =
         journalEntry(306L, "DN-200", 12L, "SALES_RETURN", "Wrong prefix");
@@ -529,10 +509,9 @@ class AccountingControllerJournalEndpointsTest {
 
   @Test
   void previewSalesReturn_delegatesToSalesReturnService() {
-    AccountingService accountingService = mock(AccountingService.class);
     SalesReturnService salesReturnService = mock(SalesReturnService.class);
-    AccountingController controller =
-        newController(accountingService, mock(JournalEntryService.class), salesReturnService);
+    StatementReportController controller =
+        newStatementController(mock(JournalEntryService.class), salesReturnService);
     SalesReturnRequest request =
         new SalesReturnRequest(
             10L,
@@ -1095,35 +1074,6 @@ class AccountingControllerJournalEndpointsTest {
         .hasMessageContaining("Manual journal reason is required");
   }
 
-  private AccountingController newController(
-      AccountingService accountingService,
-      JournalEntryService journalEntryService,
-      SalesReturnService salesReturnService) {
-    return new AccountingController(
-        accountingService,
-        journalEntryService,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        salesReturnService,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null);
-  }
-
   private JournalController newJournalController(
       AccountingService accountingService,
       JournalEntryService journalEntryService,
@@ -1143,57 +1093,45 @@ class AccountingControllerJournalEndpointsTest {
     return new SettlementController(mock(DealerReceiptService.class), settlementService);
   }
 
-  private AccountingController controllerWithStatementService(StatementService statementService) {
-    return new AccountingController(
-        mock(AccountingService.class),
-        mock(JournalEntryService.class),
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        mock(SalesReturnService.class),
-        null,
-        null,
-        statementService,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null);
+  private StatementReportController newStatementController(
+      JournalEntryService journalEntryService, SalesReturnService salesReturnService) {
+    return new StatementReportController(
+        new StatementReportControllerSupport(
+            mock(TaxService.class),
+            journalEntryService,
+            salesReturnService,
+            mock(StatementService.class),
+            mock(TemporalBalanceService.class),
+            mock(CompanyContextService.class),
+            mock(CompanyClock.class),
+            mock(AuditService.class)));
   }
 
-  private AccountingController controllerWithTemporalBalanceService(
+  private StatementReportController controllerWithStatementService(StatementService statementService) {
+    return new StatementReportController(
+        new StatementReportControllerSupport(
+            mock(TaxService.class),
+            mock(JournalEntryService.class),
+            mock(SalesReturnService.class),
+            statementService,
+            mock(TemporalBalanceService.class),
+            mock(CompanyContextService.class),
+            mock(CompanyClock.class),
+            mock(AuditService.class)));
+  }
+
+  private StatementReportController controllerWithTemporalBalanceService(
       TemporalBalanceService temporalBalanceService) {
-    return new AccountingController(
-        mock(AccountingService.class),
-        mock(JournalEntryService.class),
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        mock(SalesReturnService.class),
-        null,
-        null,
-        mock(StatementService.class),
-        null,
-        temporalBalanceService,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null);
+    return new StatementReportController(
+        new StatementReportControllerSupport(
+            mock(TaxService.class),
+            mock(JournalEntryService.class),
+            mock(SalesReturnService.class),
+            mock(StatementService.class),
+            temporalBalanceService,
+            mock(CompanyContextService.class),
+            mock(CompanyClock.class),
+            mock(AuditService.class)));
   }
 
   private JournalEntryDto expectedJournal(Long id, String referenceNumber) {

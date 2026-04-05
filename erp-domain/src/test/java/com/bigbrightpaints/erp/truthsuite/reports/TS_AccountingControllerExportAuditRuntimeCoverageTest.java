@@ -14,20 +14,13 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.http.ResponseEntity;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import com.bigbrightpaints.erp.core.audit.AuditEvent;
 import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
-import com.bigbrightpaints.erp.modules.accounting.controller.AccountingController;
-import com.bigbrightpaints.erp.modules.accounting.service.AccountHierarchyService;
-import com.bigbrightpaints.erp.modules.accounting.service.AccountingAuditTrailService;
-import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
-import com.bigbrightpaints.erp.modules.accounting.service.AccountingPeriodService;
-import com.bigbrightpaints.erp.modules.accounting.service.AccountingService;
-import com.bigbrightpaints.erp.modules.accounting.service.AgingReportService;
-import com.bigbrightpaints.erp.modules.accounting.service.CompanyDefaultAccountsService;
-import com.bigbrightpaints.erp.modules.accounting.service.ReconciliationService;
+import com.bigbrightpaints.erp.modules.accounting.controller.StatementReportController;
+import com.bigbrightpaints.erp.modules.accounting.controller.StatementReportControllerSupport;
+import com.bigbrightpaints.erp.modules.accounting.service.JournalEntryService;
 import com.bigbrightpaints.erp.modules.accounting.service.StatementService;
 import com.bigbrightpaints.erp.modules.accounting.service.TaxService;
 import com.bigbrightpaints.erp.modules.accounting.service.TemporalBalanceService;
@@ -43,9 +36,8 @@ class TS_AccountingControllerExportAuditRuntimeCoverageTest {
   void supplierStatementPdf_logsDeterministicExportAuditEvidence() {
     StatementService statementService = mock(StatementService.class);
     when(statementService.supplierStatementPdf(eq(17L), any(), any())).thenReturn("pdf".getBytes());
-    AccountingController controller = newController(statementService);
     AuditService auditService = mock(AuditService.class);
-    ReflectionTestUtils.setField(controller, "auditService", auditService);
+    StatementReportController controller = newController(statementService, auditService);
 
     ResponseEntity<byte[]> response =
         controller.supplierStatementPdf(17L, "2026-02-01", "2026-02-28");
@@ -65,14 +57,15 @@ class TS_AccountingControllerExportAuditRuntimeCoverageTest {
   @SuppressWarnings("unchecked")
   @Test
   void logAccountingExport_handlesMissingAuditService_andResourceIdBranch() {
-    AccountingController controller = newController(mock(StatementService.class));
-    ReflectionTestUtils.invokeMethod(
-        controller, "logAccountingExport", "ACCOUNTING_SUPPLIER_STATEMENT", 42L, "pdf");
+    StatementService statementService = mock(StatementService.class);
+    when(statementService.supplierStatementPdf(eq(42L), any(), any())).thenReturn("pdf".getBytes());
+    StatementReportController controllerWithoutAudit = newController(statementService, null);
+    ResponseEntity<byte[]> response = controllerWithoutAudit.supplierStatementPdf(42L, null, null);
+    assertThat(response.getBody()).isEqualTo("pdf".getBytes());
 
     AuditService auditService = mock(AuditService.class);
-    ReflectionTestUtils.setField(controller, "auditService", auditService);
-    ReflectionTestUtils.invokeMethod(
-        controller, "logAccountingExport", "ACCOUNTING_SUPPLIER_STATEMENT", 42L, "pdf");
+    StatementReportController controller = newController(statementService, auditService);
+    controller.supplierStatementPdf(42L, null, null);
 
     ArgumentCaptor<Map<String, String>> metadataCaptor = ArgumentCaptor.forClass(Map.class);
     verify(auditService).logSuccess(eq(AuditEvent.DATA_EXPORT), metadataCaptor.capture());
@@ -83,29 +76,17 @@ class TS_AccountingControllerExportAuditRuntimeCoverageTest {
         .containsEntry("format", "pdf");
   }
 
-  private static AccountingController newController(StatementService statementService) {
-    return new AccountingController(
-        mock(AccountingService.class),
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        mock(AccountingFacade.class),
-        mock(SalesReturnService.class),
-        mock(AccountingPeriodService.class),
-        mock(ReconciliationService.class),
-        statementService,
-        mock(TaxService.class),
-        mock(TemporalBalanceService.class),
-        mock(AccountHierarchyService.class),
-        mock(AgingReportService.class),
-        mock(CompanyDefaultAccountsService.class),
-        mock(AccountingAuditTrailService.class),
-        mock(CompanyContextService.class),
-        mock(CompanyClock.class),
-        null,
-        null);
+  private static StatementReportController newController(
+      StatementService statementService, AuditService auditService) {
+    return new StatementReportController(
+        new StatementReportControllerSupport(
+            mock(TaxService.class),
+            mock(JournalEntryService.class),
+            mock(SalesReturnService.class),
+            statementService,
+            mock(TemporalBalanceService.class),
+            mock(CompanyContextService.class),
+            mock(CompanyClock.class),
+            auditService));
   }
 }

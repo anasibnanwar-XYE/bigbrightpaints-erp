@@ -16,7 +16,10 @@ import jakarta.servlet.http.HttpServletRequest;
       AccountController.class,
       JournalController.class,
       SettlementController.class,
-      PeriodController.class
+      PeriodController.class,
+      ReconciliationController.class,
+      StatementReportController.class,
+      InventoryAccountingController.class
     })
 public class AccountingApplicationExceptionAdvice {
 

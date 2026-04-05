@@ -108,7 +108,7 @@ class AccountingExportGovernanceIT extends AbstractIntegrationTest {
 
   private void assertMethodIsAdminOnly(String methodName, Class<?>... parameterTypes)
       throws Exception {
-    Method method = AccountingController.class.getMethod(methodName, parameterTypes);
+    Method method = StatementReportController.class.getMethod(methodName, parameterTypes);
     PreAuthorize preAuthorize = method.getAnnotation(PreAuthorize.class);
     assertThat(preAuthorize).isNotNull();
     assertThat(preAuthorize.value()).isEqualTo("hasAuthority('ROLE_ADMIN')");

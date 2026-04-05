@@ -21,6 +21,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.ReconciliationDiscrepan
 import com.bigbrightpaints.erp.modules.accounting.dto.ReconciliationDiscrepancyDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.ReconciliationDiscrepancyListResponse;
 import com.bigbrightpaints.erp.modules.accounting.dto.ReconciliationDiscrepancyResolveRequest;
+import com.bigbrightpaints.erp.modules.accounting.service.BankReconciliationSessionService;
 import com.bigbrightpaints.erp.modules.accounting.service.ReconciliationService;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 
@@ -29,7 +30,7 @@ class AccountingControllerReconciliationDiscrepancyEndpointsTest {
   @Test
   void listDiscrepancies_parsesFiltersAndDelegates() {
     ReconciliationService reconciliationService = mock(ReconciliationService.class);
-    AccountingController controller = controller(reconciliationService);
+    ReconciliationController controller = controller(reconciliationService);
 
     ReconciliationDiscrepancyDto item = discrepancyDto(11L, "OPEN", "AR", null, null);
     ReconciliationDiscrepancyListResponse response =
@@ -51,7 +52,7 @@ class AccountingControllerReconciliationDiscrepancyEndpointsTest {
   @Test
   void listDiscrepancies_withoutFiltersPassesNulls() {
     ReconciliationService reconciliationService = mock(ReconciliationService.class);
-    AccountingController controller = controller(reconciliationService);
+    ReconciliationController controller = controller(reconciliationService);
 
     ReconciliationDiscrepancyListResponse response =
         new ReconciliationDiscrepancyListResponse(List.of(), 0, 0);
@@ -68,7 +69,7 @@ class AccountingControllerReconciliationDiscrepancyEndpointsTest {
 
   @Test
   void listDiscrepancies_rejectsInvalidStatus() {
-    AccountingController controller = controller(mock(ReconciliationService.class));
+    ReconciliationController controller = controller(mock(ReconciliationService.class));
 
     assertThatThrownBy(() -> controller.listReconciliationDiscrepancies("UNKNOWN", "AR"))
         .isInstanceOf(ApplicationException.class)
@@ -78,7 +79,7 @@ class AccountingControllerReconciliationDiscrepancyEndpointsTest {
 
   @Test
   void listDiscrepancies_rejectsInvalidType() {
-    AccountingController controller = controller(mock(ReconciliationService.class));
+    ReconciliationController controller = controller(mock(ReconciliationService.class));
 
     assertThatThrownBy(() -> controller.listReconciliationDiscrepancies("OPEN", "BANK"))
         .isInstanceOf(ApplicationException.class)
@@ -89,7 +90,7 @@ class AccountingControllerReconciliationDiscrepancyEndpointsTest {
   @Test
   void resolveDiscrepancy_delegatesAndWrapsResponse() {
     ReconciliationService reconciliationService = mock(ReconciliationService.class);
-    AccountingController controller = controller(reconciliationService);
+    ReconciliationController controller = controller(reconciliationService);
 
     ReconciliationDiscrepancyResolveRequest request =
         new ReconciliationDiscrepancyResolveRequest(
@@ -108,30 +109,8 @@ class AccountingControllerReconciliationDiscrepancyEndpointsTest {
     verify(reconciliationService).resolveDiscrepancy(51L, request);
   }
 
-  private AccountingController controller(ReconciliationService reconciliationService) {
-    return new AccountingController(
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        reconciliationService,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null);
+  private ReconciliationController controller(ReconciliationService reconciliationService) {
+    return new ReconciliationController(reconciliationService, mock(BankReconciliationSessionService.class));
   }
 
   private ReconciliationDiscrepancyDto discrepancyDto(

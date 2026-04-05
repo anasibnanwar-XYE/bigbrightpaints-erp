@@ -17,10 +17,15 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.modules.accounting.service.TemporalBalanceService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
+import com.bigbrightpaints.erp.modules.accounting.service.JournalEntryService;
+import com.bigbrightpaints.erp.modules.accounting.service.StatementService;
+import com.bigbrightpaints.erp.modules.accounting.service.TaxService;
+import com.bigbrightpaints.erp.modules.sales.service.SalesReturnService;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 
 class AccountingControllerActivityContractTest {
@@ -30,7 +35,7 @@ class AccountingControllerActivityContractTest {
     TemporalBalanceService temporalBalanceService = mock(TemporalBalanceService.class);
     CompanyContextService companyContextService = mock(CompanyContextService.class);
     CompanyClock companyClock = mock(CompanyClock.class);
-    AccountingController controller =
+    StatementReportController controller =
         controller(temporalBalanceService, companyContextService, companyClock);
 
     TemporalBalanceService.AccountActivityReport report =
@@ -60,7 +65,7 @@ class AccountingControllerActivityContractTest {
 
   @Test
   void getAccountActivity_rejectsMissingDateParameters() {
-    AccountingController controller = controller(null, null, null);
+    StatementReportController controller = controller(null, null, null);
 
     assertThatThrownBy(() -> controller.getAccountActivity(1L, null, null, null, null))
         .isInstanceOf(ApplicationException.class)
@@ -72,7 +77,7 @@ class AccountingControllerActivityContractTest {
     TemporalBalanceService temporalBalanceService = mock(TemporalBalanceService.class);
     CompanyContextService companyContextService = mock(CompanyContextService.class);
     CompanyClock companyClock = mock(CompanyClock.class);
-    AccountingController controller =
+    StatementReportController controller =
         controller(temporalBalanceService, companyContextService, companyClock);
 
     Company company = new Company();
@@ -92,32 +97,19 @@ class AccountingControllerActivityContractTest {
     assertThat(response.getBody().data()).containsEntry("today", LocalDate.of(2026, 2, 10));
   }
 
-  private AccountingController controller(
+  private StatementReportController controller(
       TemporalBalanceService temporalBalanceService,
       CompanyContextService companyContextService,
       CompanyClock companyClock) {
-    return new AccountingController(
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        temporalBalanceService,
-        null,
-        null,
-        null,
-        null,
-        companyContextService,
-        companyClock,
-        null,
-        null);
+    return new StatementReportController(
+        new StatementReportControllerSupport(
+            mock(TaxService.class),
+            mock(JournalEntryService.class),
+            mock(SalesReturnService.class),
+            mock(StatementService.class),
+            temporalBalanceService,
+            companyContextService,
+            companyClock,
+            mock(AuditService.class)));
   }
 }

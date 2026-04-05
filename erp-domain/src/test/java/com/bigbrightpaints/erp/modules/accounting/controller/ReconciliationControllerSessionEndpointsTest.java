@@ -1,0 +1,192 @@
+package com.bigbrightpaints.erp.modules.accounting.controller;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.util.List;
+
+import org.junit.jupiter.api.Test;
+
+import com.bigbrightpaints.erp.modules.accounting.dto.BankReconciliationSessionCompletionRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.BankReconciliationSessionCreateRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.BankReconciliationSessionDetailDto;
+import com.bigbrightpaints.erp.modules.accounting.dto.BankReconciliationSessionItemsUpdateRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.BankReconciliationSessionSummaryDto;
+import com.bigbrightpaints.erp.modules.accounting.service.BankReconciliationSessionService;
+import com.bigbrightpaints.erp.modules.accounting.service.ReconciliationService;
+import com.bigbrightpaints.erp.shared.dto.ApiResponse;
+import com.bigbrightpaints.erp.shared.dto.PageResponse;
+
+class ReconciliationControllerSessionEndpointsTest {
+
+  @Test
+  void legacyBankEndpoint_returnsNotFound() {
+    ReconciliationController controller =
+        controller(mock(ReconciliationService.class), mock(BankReconciliationSessionService.class));
+    var response =
+        controller.reconcileBank(
+            new com.bigbrightpaints.erp.modules.accounting.dto.BankReconciliationRequest(
+                7L,
+                LocalDate.of(2026, 3, 31),
+                new BigDecimal("1200.50"),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null));
+
+    assertThat(response.getStatusCode().value()).isEqualTo(404);
+    assertThat(response.getBody()).isNotNull();
+    assertThat(response.getBody().message())
+        .isEqualTo(
+            "Legacy bank reconciliation endpoint has been retired; use session-based reconciliation");
+  }
+
+  @Test
+  void startBankReconciliationSession_delegates() {
+    BankReconciliationSessionService sessionService = mock(BankReconciliationSessionService.class);
+    ReconciliationController controller = controller(mock(ReconciliationService.class), sessionService);
+    BankReconciliationSessionCreateRequest request =
+        new BankReconciliationSessionCreateRequest(
+            8L,
+            LocalDate.of(2026, 3, 31),
+            new BigDecimal("1200.50"),
+            LocalDate.of(2026, 3, 1),
+            LocalDate.of(2026, 3, 31),
+            5L,
+            "March bank rec");
+    BankReconciliationSessionSummaryDto expected = sessionSummary(17L);
+    when(sessionService.startSession(request)).thenReturn(expected);
+
+    ApiResponse<BankReconciliationSessionSummaryDto> body =
+        controller.startBankReconciliationSession(request).getBody();
+
+    assertThat(body).isNotNull();
+    assertThat(body.message()).isEqualTo("Bank reconciliation session started");
+    assertThat(body.data()).isEqualTo(expected);
+    verify(sessionService).startSession(request);
+  }
+
+  @Test
+  void updateBankReconciliationSessionItems_delegates() {
+    BankReconciliationSessionService sessionService = mock(BankReconciliationSessionService.class);
+    ReconciliationController controller = controller(mock(ReconciliationService.class), sessionService);
+    BankReconciliationSessionItemsUpdateRequest request =
+        new BankReconciliationSessionItemsUpdateRequest(List.of(11L, 12L), List.of(13L), "matched");
+    BankReconciliationSessionDetailDto expected = sessionDetail(21L);
+    when(sessionService.updateItems(21L, request)).thenReturn(expected);
+
+    ApiResponse<BankReconciliationSessionDetailDto> body =
+        controller.updateBankReconciliationSessionItems(21L, request).getBody();
+
+    assertThat(body).isNotNull();
+    assertThat(body.message()).isEqualTo("Bank reconciliation session updated");
+    assertThat(body.data()).isEqualTo(expected);
+    verify(sessionService).updateItems(21L, request);
+  }
+
+  @Test
+  void completeBankReconciliationSession_delegates() {
+    BankReconciliationSessionService sessionService = mock(BankReconciliationSessionService.class);
+    ReconciliationController controller = controller(mock(ReconciliationService.class), sessionService);
+    BankReconciliationSessionCompletionRequest request =
+        new BankReconciliationSessionCompletionRequest("ready to close", 9L);
+    BankReconciliationSessionDetailDto expected = sessionDetail(22L);
+    when(sessionService.completeSession(22L, request)).thenReturn(expected);
+
+    ApiResponse<BankReconciliationSessionDetailDto> body =
+        controller.completeBankReconciliationSession(22L, request).getBody();
+
+    assertThat(body).isNotNull();
+    assertThat(body.message()).isEqualTo("Bank reconciliation session completed");
+    assertThat(body.data()).isEqualTo(expected);
+    verify(sessionService).completeSession(22L, request);
+  }
+
+  @Test
+  void listAndGetBankReconciliationSessions_delegate() {
+    BankReconciliationSessionService sessionService = mock(BankReconciliationSessionService.class);
+    ReconciliationController controller = controller(mock(ReconciliationService.class), sessionService);
+    BankReconciliationSessionSummaryDto summary = sessionSummary(30L);
+    BankReconciliationSessionDetailDto detail = sessionDetail(30L);
+    PageResponse<BankReconciliationSessionSummaryDto> page = PageResponse.of(List.of(summary), 1, 0, 20);
+    when(sessionService.listSessions(0, 20)).thenReturn(page);
+    when(sessionService.getSessionDetail(30L)).thenReturn(detail);
+
+    ApiResponse<PageResponse<BankReconciliationSessionSummaryDto>> pageBody =
+        controller.listBankReconciliationSessions(0, 20).getBody();
+    ApiResponse<BankReconciliationSessionDetailDto> detailBody =
+        controller.getBankReconciliationSession(30L).getBody();
+
+    assertThat(pageBody).isNotNull();
+    assertThat(pageBody.data()).isEqualTo(page);
+    assertThat(detailBody).isNotNull();
+    assertThat(detailBody.data()).isEqualTo(detail);
+    verify(sessionService).listSessions(0, 20);
+    verify(sessionService).getSessionDetail(30L);
+  }
+
+  @Test
+  void subledgerAndInterCompanyReports_delegate() {
+    ReconciliationService reconciliationService = mock(ReconciliationService.class);
+    ReconciliationController controller =
+        controller(reconciliationService, mock(BankReconciliationSessionService.class));
+
+    controller.reconcileSubledger();
+    controller.reconcileInterCompany(3L, 4L);
+
+    verify(reconciliationService).reconcileSubledgerBalances();
+    verify(reconciliationService).interCompanyReconcile(3L, 4L);
+  }
+
+  private ReconciliationController controller(
+      ReconciliationService reconciliationService,
+      BankReconciliationSessionService bankReconciliationSessionService) {
+    return new ReconciliationController(reconciliationService, bankReconciliationSessionService);
+  }
+
+  private BankReconciliationSessionSummaryDto sessionSummary(Long sessionId) {
+    return new BankReconciliationSessionSummaryDto(
+        sessionId,
+        "BRS-" + sessionId,
+        8L,
+        "BANK-001",
+        "Main Bank",
+        LocalDate.of(2026, 3, 31),
+        new BigDecimal("1200.50"),
+        "IN_PROGRESS",
+        "tester",
+        Instant.parse("2026-03-31T10:00:00Z"),
+        null,
+        null,
+        0);
+  }
+
+  private BankReconciliationSessionDetailDto sessionDetail(Long sessionId) {
+    return new BankReconciliationSessionDetailDto(
+        sessionId,
+        "BRS-" + sessionId,
+        8L,
+        "BANK-001",
+        "Main Bank",
+        LocalDate.of(2026, 3, 31),
+        new BigDecimal("1200.50"),
+        "IN_PROGRESS",
+        9L,
+        "March bank rec",
+        "tester",
+        Instant.parse("2026-03-31T10:00:00Z"),
+        null,
+        null,
+        List.of(),
+        List.of(),
+        List.of(),
+        null);
+  }
+}

@@ -13,20 +13,13 @@ import java.util.Map;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import com.bigbrightpaints.erp.core.audit.AuditEvent;
 import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
-import com.bigbrightpaints.erp.modules.accounting.controller.AccountingController;
-import com.bigbrightpaints.erp.modules.accounting.service.AccountHierarchyService;
-import com.bigbrightpaints.erp.modules.accounting.service.AccountingAuditTrailService;
-import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
-import com.bigbrightpaints.erp.modules.accounting.service.AccountingPeriodService;
-import com.bigbrightpaints.erp.modules.accounting.service.AccountingService;
-import com.bigbrightpaints.erp.modules.accounting.service.AgingReportService;
-import com.bigbrightpaints.erp.modules.accounting.service.CompanyDefaultAccountsService;
-import com.bigbrightpaints.erp.modules.accounting.service.ReconciliationService;
+import com.bigbrightpaints.erp.modules.accounting.controller.StatementReportController;
+import com.bigbrightpaints.erp.modules.accounting.controller.StatementReportControllerSupport;
+import com.bigbrightpaints.erp.modules.accounting.service.JournalEntryService;
 import com.bigbrightpaints.erp.modules.accounting.service.StatementService;
 import com.bigbrightpaints.erp.modules.accounting.service.TaxService;
 import com.bigbrightpaints.erp.modules.accounting.service.TemporalBalanceService;
@@ -40,7 +33,7 @@ class TS_RuntimeAccountingControllerExportCoverageTest {
   void supplierPdfExportEndpoints_emitAuditMetadataAndPdfHeaders() {
     StatementService statementService = mock(StatementService.class);
     AuditService auditService = mock(AuditService.class);
-    AccountingController controller = newController(statementService, auditService);
+    StatementReportController controller = newController(statementService, auditService);
 
     when(statementService.supplierStatementPdf(eq(20L), any(), any()))
         .thenReturn("supplier".getBytes());
@@ -80,7 +73,7 @@ class TS_RuntimeAccountingControllerExportCoverageTest {
   @Test
   void supplierPdfExportEndpoints_remainAvailableWhenAuditServiceUnavailable() {
     StatementService statementService = mock(StatementService.class);
-    AccountingController controller = newController(statementService, null);
+    StatementReportController controller = newController(statementService, null);
     when(statementService.supplierStatementPdf(eq(20L), any(), any()))
         .thenReturn("supplier".getBytes());
 
@@ -89,33 +82,17 @@ class TS_RuntimeAccountingControllerExportCoverageTest {
     assertThat(response.getBody()).isEqualTo("supplier".getBytes());
   }
 
-  private AccountingController newController(
+  private StatementReportController newController(
       StatementService statementService, AuditService auditService) {
-    AccountingController controller =
-        new AccountingController(
-            mock(AccountingService.class),
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            mock(AccountingFacade.class),
-            mock(SalesReturnService.class),
-            mock(AccountingPeriodService.class),
-            mock(ReconciliationService.class),
-            statementService,
+    return new StatementReportController(
+        new StatementReportControllerSupport(
             mock(TaxService.class),
+            mock(JournalEntryService.class),
+            mock(SalesReturnService.class),
+            statementService,
             mock(TemporalBalanceService.class),
-            mock(AccountHierarchyService.class),
-            mock(AgingReportService.class),
-            mock(CompanyDefaultAccountsService.class),
-            mock(AccountingAuditTrailService.class),
             mock(CompanyContextService.class),
             mock(CompanyClock.class),
-            null,
-            null);
-    ReflectionTestUtils.setField(controller, "auditService", auditService);
-    return controller;
+            auditService));
   }
 }

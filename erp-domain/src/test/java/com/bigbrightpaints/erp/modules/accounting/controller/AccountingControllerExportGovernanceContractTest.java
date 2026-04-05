@@ -19,19 +19,22 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import com.bigbrightpaints.erp.core.audit.AuditEvent;
 import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
-import com.bigbrightpaints.erp.modules.accounting.service.AccountingService;
+import com.bigbrightpaints.erp.modules.accounting.service.JournalEntryService;
 import com.bigbrightpaints.erp.modules.accounting.service.StatementService;
+import com.bigbrightpaints.erp.modules.accounting.service.TaxService;
+import com.bigbrightpaints.erp.modules.accounting.service.TemporalBalanceService;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
+import com.bigbrightpaints.erp.modules.sales.service.SalesReturnService;
 
 class AccountingControllerExportGovernanceContractTest {
 
   @Test
   void supplierPdfExports_requireAdminAuthorityAnnotation() throws NoSuchMethodException {
     Method supplierStatementPdf =
-        AccountingController.class.getMethod(
+        StatementReportController.class.getMethod(
             "supplierStatementPdf", Long.class, String.class, String.class);
     Method supplierAgingPdf =
-        AccountingController.class.getMethod(
+        StatementReportController.class.getMethod(
             "supplierAgingPdf", Long.class, String.class, String.class);
 
     assertThat(supplierStatementPdf.getAnnotation(PreAuthorize.class)).isNotNull();
@@ -44,7 +47,6 @@ class AccountingControllerExportGovernanceContractTest {
 
   @Test
   void supplierStatementPdf_logsDeterministicDataExportEvidence() {
-    AccountingService accountingService = mock(AccountingService.class);
     StatementService statementService = mock(StatementService.class);
     AuditService auditService = mock(AuditService.class);
     CompanyContextService companyContextService = mock(CompanyContextService.class);
@@ -54,30 +56,17 @@ class AccountingControllerExportGovernanceContractTest {
             17L, LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 31)))
         .thenReturn(pdf);
 
-    AccountingController controller =
-        new AccountingController(
-            accountingService,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            statementService,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            companyContextService,
-            companyClock,
-            null,
-            auditService);
+    StatementReportController controller =
+        new StatementReportController(
+            new StatementReportControllerSupport(
+                mock(TaxService.class),
+                mock(JournalEntryService.class),
+                mock(SalesReturnService.class),
+                statementService,
+                mock(TemporalBalanceService.class),
+                companyContextService,
+                companyClock,
+                auditService));
 
     ResponseEntity<byte[]> response =
         controller.supplierStatementPdf(17L, "2026-01-01", "2026-01-31");
