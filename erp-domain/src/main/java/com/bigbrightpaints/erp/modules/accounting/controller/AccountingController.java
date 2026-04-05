@@ -31,19 +31,14 @@ import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.core.util.IdempotencyHeaderUtils;
-import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
 import com.bigbrightpaints.erp.modules.accounting.domain.ReconciliationDiscrepancyStatus;
 import com.bigbrightpaints.erp.modules.accounting.domain.ReconciliationDiscrepancyType;
-import com.bigbrightpaints.erp.modules.accounting.dto.AccountDto;
-import com.bigbrightpaints.erp.modules.accounting.dto.AccountRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodReopenRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodUpdateRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodUpsertRequest;
-import com.bigbrightpaints.erp.modules.accounting.dto.AccrualRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.AgingSummaryResponse;
 import com.bigbrightpaints.erp.modules.accounting.dto.AutoSettlementRequest;
-import com.bigbrightpaints.erp.modules.accounting.dto.BadDebtWriteOffRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.BankReconciliationRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.BankReconciliationSessionCompletionRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.BankReconciliationSessionCreateRequest;
@@ -51,20 +46,13 @@ import com.bigbrightpaints.erp.modules.accounting.dto.BankReconciliationSessionD
 import com.bigbrightpaints.erp.modules.accounting.dto.BankReconciliationSessionItemsUpdateRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.BankReconciliationSessionSummaryDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.BankReconciliationSummaryDto;
-import com.bigbrightpaints.erp.modules.accounting.dto.CompanyDefaultAccountsRequest;
-import com.bigbrightpaints.erp.modules.accounting.dto.CompanyDefaultAccountsResponse;
-import com.bigbrightpaints.erp.modules.accounting.dto.CreditNoteRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.DealerReceiptRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.DealerReceiptSplitRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.DealerSettlementRequest;
-import com.bigbrightpaints.erp.modules.accounting.dto.DebitNoteRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.GstReconciliationDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.GstReturnDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.InventoryRevaluationRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
-import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest;
-import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryReversalRequest;
-import com.bigbrightpaints.erp.modules.accounting.dto.JournalListItemDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.LandedCostRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.MonthEndChecklistDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.MonthEndChecklistUpdateRequest;
@@ -99,12 +87,10 @@ import com.bigbrightpaints.erp.modules.accounting.service.TaxService;
 import com.bigbrightpaints.erp.modules.accounting.service.TemporalBalanceService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
-import com.bigbrightpaints.erp.modules.hr.dto.PayrollPaymentRequest;
 import com.bigbrightpaints.erp.modules.sales.service.SalesReturnService;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 import com.bigbrightpaints.erp.shared.dto.PageResponse;
 
-import io.micrometer.core.annotation.Timed;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -214,130 +200,6 @@ public class AccountingController {
         && ex.getErrorCode().getCode().startsWith("CONC_");
   }
 
-  @GetMapping("/accounts")
-  @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
-  public ResponseEntity<ApiResponse<List<AccountDto>>> accounts() {
-    return ResponseEntity.ok(ApiResponse.success(accountingService.listAccounts()));
-  }
-
-  @GetMapping("/default-accounts")
-  @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
-  public ResponseEntity<ApiResponse<CompanyDefaultAccountsResponse>> defaultAccounts() {
-    CompanyDefaultAccountsService.DefaultAccounts defaults =
-        companyDefaultAccountsService.getDefaults();
-    return ResponseEntity.ok(
-        ApiResponse.success(
-            new CompanyDefaultAccountsResponse(
-                defaults.inventoryAccountId(),
-                defaults.cogsAccountId(),
-                defaults.revenueAccountId(),
-                defaults.discountAccountId(),
-                defaults.taxAccountId())));
-  }
-
-  @PutMapping("/default-accounts")
-  @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
-  public ResponseEntity<ApiResponse<CompanyDefaultAccountsResponse>> updateDefaultAccounts(
-      @Valid @RequestBody CompanyDefaultAccountsRequest request) {
-    CompanyDefaultAccountsService.DefaultAccounts defaults =
-        companyDefaultAccountsService.updateDefaults(
-            request.inventoryAccountId(),
-            request.cogsAccountId(),
-            request.revenueAccountId(),
-            request.discountAccountId(),
-            request.taxAccountId());
-    return ResponseEntity.ok(
-        ApiResponse.success(
-            "Default accounts updated",
-            new CompanyDefaultAccountsResponse(
-                defaults.inventoryAccountId(),
-                defaults.cogsAccountId(),
-                defaults.revenueAccountId(),
-                defaults.discountAccountId(),
-                defaults.taxAccountId())));
-  }
-
-  @PostMapping("/accounts")
-  @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
-  public ResponseEntity<ApiResponse<AccountDto>> createAccount(
-      @Valid @RequestBody AccountRequest request) {
-    return ResponseEntity.ok(
-        ApiResponse.success("Account created", accountingService.createAccount(request)));
-  }
-
-  @GetMapping("/journal-entries")
-  @Timed(value = "erp.accounting.journal_entries.list", description = "List journal entries")
-  @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
-  public ResponseEntity<ApiResponse<List<JournalEntryDto>>> journalEntries(
-      @RequestParam(required = false) Long dealerId,
-      @RequestParam(required = false) Long supplierId,
-      @RequestParam(defaultValue = "0") int page,
-      @RequestParam(defaultValue = "100") int size) {
-    return ResponseEntity.ok(
-        ApiResponse.success(
-            journalEntryService.listJournalEntries(dealerId, supplierId, page, size)));
-  }
-
-  @GetMapping("/journals")
-  @Timed(value = "erp.accounting.journals.list", description = "List journals with filters")
-  @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
-  public ResponseEntity<ApiResponse<PageResponse<JournalListItemDto>>> listJournals(
-      @RequestParam(required = false) LocalDate fromDate,
-      @RequestParam(required = false) LocalDate toDate,
-      @RequestParam(required = false) String type,
-      @RequestParam(required = false) String sourceModule,
-      @RequestParam(defaultValue = "0") int page,
-      @RequestParam(defaultValue = "50") int size) {
-    return ResponseEntity.ok(
-        ApiResponse.success(
-            accountingService.listJournals(fromDate, toDate, type, sourceModule, page, size)));
-  }
-
-  @PostMapping("/journal-entries")
-  @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
-  public ResponseEntity<ApiResponse<JournalEntryDto>> createJournalEntry(
-      @Valid @RequestBody JournalEntryRequest request) {
-    String idempotencyKey = request != null ? request.referenceNumber() : null;
-    if (AccountingFacade.isReservedReferenceNamespace(idempotencyKey)) {
-      throw new ApplicationException(
-              ErrorCode.VALIDATION_INVALID_INPUT,
-              "Reference number is reserved for system journals; use a client idempotency key"
-                  + " without system prefixes")
-          .withDetail("referenceNumber", idempotencyKey);
-    }
-    JournalEntryRequest sanitized =
-        request == null
-            ? null
-            : new JournalEntryRequest(
-                null,
-                request.entryDate(),
-                request.memo(),
-                request.dealerId(),
-                request.supplierId(),
-                request.adminOverride(),
-                request.lines(),
-                request.currency(),
-                request.fxRate(),
-                null,
-                null,
-                null,
-                request.attachmentReferences());
-    return ResponseEntity.ok(
-        ApiResponse.success(
-            "Journal entry posted",
-            accountingService.createManualJournalEntry(sanitized, idempotencyKey)));
-  }
-
-  @PostMapping("/journal-entries/{entryId}/reverse")
-  @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
-  public ResponseEntity<ApiResponse<JournalEntryDto>> reverseJournalEntry(
-      @PathVariable Long entryId,
-      @RequestBody(required = false) JournalEntryReversalRequest request) {
-    return ResponseEntity.ok(
-        ApiResponse.success(
-            "Journal entry corrected", journalEntryService.reverseJournalEntry(entryId, request)));
-  }
-
   @PostMapping("/receipts/dealer")
   @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
   public ResponseEntity<ApiResponse<JournalEntryDto>> recordDealerReceipt(
@@ -384,15 +246,6 @@ public class AccountingController {
             "Auto-settlement recorded", settlementService.autoSettleDealer(dealerId, resolved)));
   }
 
-  @PostMapping("/payroll/payments")
-  @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
-  public ResponseEntity<ApiResponse<JournalEntryDto>> recordPayrollPayment(
-      @Valid @RequestBody PayrollPaymentRequest request) {
-    return ResponseEntity.ok(
-        ApiResponse.success(
-            "Payroll payment recorded", accountingFacade.recordPayrollPayment(request)));
-  }
-
   @PostMapping("/settlements/suppliers")
   @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
   public ResponseEntity<ApiResponse<PartnerSettlementResponse>> settleSupplier(
@@ -416,30 +269,6 @@ public class AccountingController {
         ApiResponse.success(
             "Auto-settlement recorded",
             settlementService.autoSettleSupplier(supplierId, resolved)));
-  }
-
-  @PostMapping("/credit-notes")
-  @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
-  public ResponseEntity<ApiResponse<JournalEntryDto>> postCreditNote(
-      @Valid @RequestBody CreditNoteRequest request) {
-    return ResponseEntity.ok(
-        ApiResponse.success("Credit note posted", creditDebitNoteService.postCreditNote(request)));
-  }
-
-  @PostMapping("/debit-notes")
-  @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
-  public ResponseEntity<ApiResponse<JournalEntryDto>> postDebitNote(
-      @Valid @RequestBody DebitNoteRequest request) {
-    return ResponseEntity.ok(
-        ApiResponse.success("Debit note posted", creditDebitNoteService.postDebitNote(request)));
-  }
-
-  @PostMapping("/accruals")
-  @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
-  public ResponseEntity<ApiResponse<JournalEntryDto>> postAccrual(
-      @Valid @RequestBody AccrualRequest request) {
-    return ResponseEntity.ok(
-        ApiResponse.success("Accrual posted", creditDebitNoteService.postAccrual(request)));
   }
 
   private DealerReceiptRequest applyIdempotencyKey(
@@ -609,15 +438,6 @@ public class AccountingController {
       @RequestParam(required = false) String period) {
     YearMonth target = period != null && !period.isBlank() ? YearMonth.parse(period) : null;
     return ResponseEntity.ok(ApiResponse.success(taxService.generateGstReconciliation(target)));
-  }
-
-  @PostMapping("/bad-debts/write-off")
-  @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
-  public ResponseEntity<ApiResponse<JournalEntryDto>> writeOffBadDebt(
-      @Valid @RequestBody BadDebtWriteOffRequest request) {
-    return ResponseEntity.ok(
-        ApiResponse.success(
-            "Bad debt written off", creditDebitNoteService.writeOffBadDebt(request)));
   }
 
   @GetMapping("/sales/returns")
@@ -1038,27 +858,6 @@ public class AccountingController {
               "Invalid " + fieldName + " date format; expected ISO date yyyy-MM-dd")
           .withDetail(fieldName, rawDate);
     }
-  }
-
-  // ==================== ACCOUNT HIERARCHY ====================
-
-  @GetMapping("/accounts/tree")
-  @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
-  public ResponseEntity<ApiResponse<java.util.List<AccountHierarchyService.AccountNode>>>
-      getChartOfAccountsTree() {
-    return ResponseEntity.ok(
-        ApiResponse.success(
-            "Chart of accounts hierarchy", accountHierarchyService.getChartOfAccountsTree()));
-  }
-
-  @GetMapping("/accounts/tree/{type}")
-  @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
-  public ResponseEntity<ApiResponse<java.util.List<AccountHierarchyService.AccountNode>>>
-      getAccountTreeByType(@PathVariable String type) {
-    AccountType accountType = AccountType.valueOf(type.toUpperCase());
-    return ResponseEntity.ok(
-        ApiResponse.success(
-            "Account hierarchy for " + type, accountHierarchyService.getTreeByType(accountType)));
   }
 
   private void logAccountingExport(String resourceType, Long resourceId, String format) {

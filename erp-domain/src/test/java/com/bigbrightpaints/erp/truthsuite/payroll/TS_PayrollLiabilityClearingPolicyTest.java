@@ -11,8 +11,8 @@ class TS_PayrollLiabilityClearingPolicyTest {
 
   private static final String PAYROLL_SERVICE =
       "src/main/java/com/bigbrightpaints/erp/modules/hr/service/PayrollService.java";
-  private static final String ACCOUNTING_CONTROLLER =
-      "src/main/java/com/bigbrightpaints/erp/modules/accounting/controller/AccountingController.java";
+  private static final String JOURNAL_CONTROLLER =
+      "src/main/java/com/bigbrightpaints/erp/modules/accounting/controller/JournalController.java";
   private static final String ACCOUNTING_FACADE =
       "src/main/java/com/bigbrightpaints/erp/modules/accounting/service/AccountingFacade.java";
   private static final String ACCOUNTING_SERVICE =
@@ -115,7 +115,7 @@ class TS_PayrollLiabilityClearingPolicyTest {
   @Test
   void payrollPaymentUsesCanonicalAccountingBoundary() {
     TruthSuiteFileAssert.assertContains(
-        ACCOUNTING_CONTROLLER,
+        JOURNAL_CONTROLLER,
         "@PostMapping(\"/payroll/payments\")",
         "accountingFacade.recordPayrollPayment(request)");
     TruthSuiteFileAssert.assertContains(

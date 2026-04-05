@@ -26,8 +26,12 @@ import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalReferenceMappingRepository;
 import com.bigbrightpaints.erp.modules.accounting.dto.AgingSummaryResponse;
+import com.bigbrightpaints.erp.modules.accounting.dto.AccrualRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.AutoSettlementRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.BadDebtWriteOffRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.CreditNoteRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.DealerSettlementRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.DebitNoteRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalCreationRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest;
@@ -48,6 +52,7 @@ import com.bigbrightpaints.erp.modules.accounting.service.AccountingService;
 import com.bigbrightpaints.erp.modules.accounting.service.AgingReportService;
 import com.bigbrightpaints.erp.modules.accounting.service.CompanyAccountingSettingsService;
 import com.bigbrightpaints.erp.modules.accounting.service.CompanyDefaultAccountsService;
+import com.bigbrightpaints.erp.modules.accounting.service.CreditDebitNoteService;
 import com.bigbrightpaints.erp.modules.accounting.service.JournalEntryService;
 import com.bigbrightpaints.erp.modules.accounting.service.JournalReferenceResolver;
 import com.bigbrightpaints.erp.modules.accounting.service.ReconciliationService;
@@ -57,6 +62,7 @@ import com.bigbrightpaints.erp.modules.accounting.service.StatementService;
 import com.bigbrightpaints.erp.modules.accounting.service.TaxService;
 import com.bigbrightpaints.erp.modules.accounting.service.TemporalBalanceService;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
+import com.bigbrightpaints.erp.modules.hr.dto.PayrollPaymentRequest;
 import com.bigbrightpaints.erp.modules.purchasing.domain.SupplierRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
 import com.bigbrightpaints.erp.modules.sales.service.SalesReturnService;
@@ -69,8 +75,8 @@ class AccountingControllerJournalEndpointsTest {
   @Test
   void createJournalEntry_delegatesToAccountingServiceWithReferenceAsIdempotencyKey() {
     AccountingService accountingService = mock(AccountingService.class);
-    AccountingController controller =
-        newController(accountingService, mock(JournalEntryService.class), null);
+    JournalController controller =
+        newJournalController(accountingService, mock(JournalEntryService.class), null, null);
     JournalEntryRequest request =
         new JournalEntryRequest(
             "manual-100",
@@ -131,8 +137,9 @@ class AccountingControllerJournalEndpointsTest {
 
   @Test
   void createJournalEntry_rejectsReservedReferenceNamespace() {
-    AccountingController controller =
-        newController(mock(AccountingService.class), mock(JournalEntryService.class), null);
+    JournalController controller =
+        newJournalController(
+            mock(AccountingService.class), mock(JournalEntryService.class), null, null);
     JournalEntryRequest request =
         new JournalEntryRequest(
             "INV-2026-0001",
@@ -162,8 +169,8 @@ class AccountingControllerJournalEndpointsTest {
   @Test
   void listJournals_appliesFilterArguments() {
     AccountingService accountingService = mock(AccountingService.class);
-    AccountingController controller =
-        newController(accountingService, mock(JournalEntryService.class), null);
+    JournalController controller =
+        newJournalController(accountingService, mock(JournalEntryService.class), null, null);
     List<JournalListItemDto> expected =
         List.of(
             new JournalListItemDto(
@@ -426,8 +433,8 @@ class AccountingControllerJournalEndpointsTest {
   @Test
   void reverseJournalEntry_delegatesToJournalEntryService() {
     JournalEntryService journalEntryService = mock(JournalEntryService.class);
-    AccountingController controller =
-        newController(mock(AccountingService.class), journalEntryService, null);
+    JournalController controller =
+        newJournalController(mock(AccountingService.class), journalEntryService, null, null);
     JournalEntryReversalRequest request =
         new JournalEntryReversalRequest(
             LocalDate.of(2026, 2, 28), false, "Correction", "Reversal", false);
@@ -544,8 +551,8 @@ class AccountingControllerJournalEndpointsTest {
   @Test
   void createJournalEntry_delegatesToAccountingServiceWithSanitizedManualPayload() {
     AccountingService accountingService = mock(AccountingService.class);
-    AccountingController controller =
-        newController(accountingService, mock(JournalEntryService.class), null);
+    JournalController controller =
+        newJournalController(accountingService, mock(JournalEntryService.class), null, null);
     JournalEntryRequest request =
         new JournalEntryRequest(
             "BRIDGE-ENTRY-1",
@@ -607,8 +614,8 @@ class AccountingControllerJournalEndpointsTest {
   @Test
   void createJournalEntry_keepsAttachmentReferencesWhileSanitizingManualFields() {
     AccountingService accountingService = mock(AccountingService.class);
-    AccountingController controller =
-        newController(accountingService, mock(JournalEntryService.class), null);
+    JournalController controller =
+        newJournalController(accountingService, mock(JournalEntryService.class), null, null);
     JournalEntryRequest request =
         new JournalEntryRequest(
             "MANUAL-2026-0001",
@@ -644,6 +651,145 @@ class AccountingControllerJournalEndpointsTest {
     assertThat(sanitized.sourceReference()).isNull();
     assertThat(sanitized.journalType()).isNull();
     assertThat(sanitized.attachmentReferences()).containsExactly("scan-1", "scan-2");
+  }
+
+  @Test
+  void journalEntries_delegatesToJournalEntryService() {
+    JournalEntryService journalEntryService = mock(JournalEntryService.class);
+    List<JournalEntryDto> expected = List.of(expectedJournal(81L, "JRN-81"));
+    when(journalEntryService.listJournalEntries(1L, 2L, 3, 4)).thenReturn(expected);
+
+    ApiResponse<List<JournalEntryDto>> body =
+        newJournalController(mock(AccountingService.class), journalEntryService, null, null)
+            .journalEntries(1L, 2L, 3, 4)
+            .getBody();
+
+    assertThat(body).isNotNull();
+    assertThat(body.data()).isEqualTo(expected);
+  }
+
+  @Test
+  void recordPayrollPayment_delegatesToAccountingFacade() {
+    AccountingFacade accountingFacade = mock(AccountingFacade.class);
+    PayrollPaymentRequest request =
+        new PayrollPaymentRequest(7L, 11L, 12L, new BigDecimal("25.00"), "PAY-7", "memo");
+    JournalEntryDto expected = expectedJournal(82L, "PAY-7");
+    when(accountingFacade.recordPayrollPayment(request)).thenReturn(expected);
+
+    ApiResponse<JournalEntryDto> body =
+        newJournalController(
+                mock(AccountingService.class),
+                mock(JournalEntryService.class),
+                null,
+                accountingFacade)
+            .recordPayrollPayment(request)
+            .getBody();
+
+    assertThat(body).isNotNull();
+    assertThat(body.data()).isEqualTo(expected);
+  }
+
+  @Test
+  void postCreditNote_delegatesToCreditDebitNoteService() {
+    CreditDebitNoteService creditDebitNoteService = mock(CreditDebitNoteService.class);
+    CreditNoteRequest request =
+        new CreditNoteRequest(
+            4L, new BigDecimal("10.00"), LocalDate.of(2026, 3, 2), "CRN-1", "memo", null, false);
+    JournalEntryDto expected = expectedJournal(83L, "CRN-1");
+    when(creditDebitNoteService.postCreditNote(request)).thenReturn(expected);
+
+    ApiResponse<JournalEntryDto> body =
+        newJournalController(
+                mock(AccountingService.class),
+                mock(JournalEntryService.class),
+                creditDebitNoteService,
+                null)
+            .postCreditNote(request)
+            .getBody();
+
+    assertThat(body).isNotNull();
+    assertThat(body.data()).isEqualTo(expected);
+  }
+
+  @Test
+  void postDebitNote_delegatesToCreditDebitNoteService() {
+    CreditDebitNoteService creditDebitNoteService = mock(CreditDebitNoteService.class);
+    DebitNoteRequest request =
+        new DebitNoteRequest(
+            5L, new BigDecimal("12.00"), LocalDate.of(2026, 3, 3), "DBN-1", "memo", null, false);
+    JournalEntryDto expected = expectedJournal(84L, "DBN-1");
+    when(creditDebitNoteService.postDebitNote(request)).thenReturn(expected);
+
+    ApiResponse<JournalEntryDto> body =
+        newJournalController(
+                mock(AccountingService.class),
+                mock(JournalEntryService.class),
+                creditDebitNoteService,
+                null)
+            .postDebitNote(request)
+            .getBody();
+
+    assertThat(body).isNotNull();
+    assertThat(body.data()).isEqualTo(expected);
+  }
+
+  @Test
+  void postAccrual_delegatesToCreditDebitNoteService() {
+    CreditDebitNoteService creditDebitNoteService = mock(CreditDebitNoteService.class);
+    AccrualRequest request =
+        new AccrualRequest(
+            5L,
+            6L,
+            new BigDecimal("13.00"),
+            LocalDate.of(2026, 3, 4),
+            "ACR-1",
+            "memo",
+            null,
+            LocalDate.of(2026, 4, 4),
+            false);
+    JournalEntryDto expected = expectedJournal(85L, "ACR-1");
+    when(creditDebitNoteService.postAccrual(request)).thenReturn(expected);
+
+    ApiResponse<JournalEntryDto> body =
+        newJournalController(
+                mock(AccountingService.class),
+                mock(JournalEntryService.class),
+                creditDebitNoteService,
+                null)
+            .postAccrual(request)
+            .getBody();
+
+    assertThat(body).isNotNull();
+    assertThat(body.data()).isEqualTo(expected);
+  }
+
+  @Test
+  void writeOffBadDebt_delegatesToCreditDebitNoteService() {
+    CreditDebitNoteService creditDebitNoteService = mock(CreditDebitNoteService.class);
+    BadDebtWriteOffRequest request =
+        new BadDebtWriteOffRequest(
+            5L,
+            6L,
+            new BigDecimal("14.00"),
+            LocalDate.of(2026, 3, 5),
+            "BD-1",
+            "memo",
+            null,
+            false);
+    JournalEntryDto expected = expectedJournal(86L, "BD-1");
+    when(creditDebitNoteService.writeOffBadDebt(request)).thenReturn(expected);
+
+    ApiResponse<JournalEntryDto> body =
+        newJournalController(
+                mock(AccountingService.class),
+                mock(JournalEntryService.class),
+                creditDebitNoteService,
+                null)
+            .writeOffBadDebt(request)
+            .getBody();
+
+    assertThat(body).isNotNull();
+    assertThat(body.data()).isEqualTo(expected);
   }
 
   @Test
@@ -975,6 +1121,20 @@ class AccountingControllerJournalEndpointsTest {
         null,
         null,
         null);
+  }
+
+  private JournalController newJournalController(
+      AccountingService accountingService,
+      JournalEntryService journalEntryService,
+      CreditDebitNoteService creditDebitNoteService,
+      AccountingFacade accountingFacade) {
+    return new JournalController(
+        accountingService != null ? accountingService : mock(AccountingService.class),
+        journalEntryService != null ? journalEntryService : mock(JournalEntryService.class),
+        creditDebitNoteService != null
+            ? creditDebitNoteService
+            : mock(CreditDebitNoteService.class),
+        accountingFacade != null ? accountingFacade : mock(AccountingFacade.class));
   }
 
   private AccountingController controllerWithSettlementService(
