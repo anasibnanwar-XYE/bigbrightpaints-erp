@@ -41,6 +41,7 @@ Most operational modules post financial effects through accounting service/facad
 - Factory/production/packing → WIP/consumption/value journals (`ProductionLogService`, `PackingService`, `BulkPackingService`).
 - Accounting also performs company-scoped factory lookups when reconciling production/packing-linked financial references, but those reads stay behind `CompanyScopedFactoryLookupService` while journal writes still enter through the accounting service/facade seams rather than factory-owned workflows.
 - Payroll run posting/payment → payroll journals (`PayrollPostingService`, `AccountingFacade.postPayrollRun`, `PayrollAccountingService`, `JournalController.recordPayrollPayment`).
+- Settlement write ownership is hard-cut across focused collaborators: `SettlementAllocationResolutionService` (allocation resolution), `SettlementTotalsValidationService` (totals/validation), and `SettlementJournalLineDraftService` (journal-line drafting), consumed by `DealerSettlementService`, `SupplierSettlementService`, and `SupplierPaymentService` without a monolithic replacement seam.
 
 Canonical seam rule after Wave 3:
 

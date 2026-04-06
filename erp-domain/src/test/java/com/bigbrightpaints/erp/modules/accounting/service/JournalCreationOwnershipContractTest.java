@@ -7,6 +7,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -58,6 +59,7 @@ class JournalCreationOwnershipContractTest {
   void legacySettlementSupportSeamsRemainDeleted() {
     assertThat(serviceFile("SettlementSupportService.java").toFile()).doesNotExist();
     assertThat(serviceFile("SettlementCoreSupport.java").toFile()).doesNotExist();
+    assertThat(serviceFile("SettlementRequestResolutionService.java").toFile()).doesNotExist();
     assertThat(legacySettlementSupportFiles()).isEmpty();
   }
 
@@ -75,11 +77,14 @@ class JournalCreationOwnershipContractTest {
   void settlementAndPostingFacadesDoNotDependOnDeletedLegacySeams() {
     assertThat(readService("DealerReceiptService.java")).doesNotContain("SettlementSupportService");
     assertThat(readService("SupplierPaymentService.java"))
-        .doesNotContain("SettlementSupportService");
+        .doesNotContain("SettlementSupportService")
+        .doesNotContain("SettlementRequestResolutionService");
     assertThat(readService("DealerSettlementService.java"))
-        .doesNotContain("SettlementSupportService");
+        .doesNotContain("SettlementSupportService")
+        .doesNotContain("SettlementRequestResolutionService");
     assertThat(readService("SupplierSettlementService.java"))
-        .doesNotContain("SettlementSupportService");
+        .doesNotContain("SettlementSupportService")
+        .doesNotContain("SettlementRequestResolutionService");
     assertThat(readService("ManualJournalService.java")).doesNotContain("SettlementSupportService");
     assertThat(readService("PayrollAccountingService.java"))
         .doesNotContain("SettlementSupportService");
@@ -98,6 +103,41 @@ class JournalCreationOwnershipContractTest {
     assertThat(lineCount("JournalPartnerContextService.java")).isLessThan(500);
     assertThat(lineCount("JournalDuplicateGuardService.java")).isLessThan(500);
     assertThat(lineCount("JournalLinePostingService.java")).isLessThan(500);
+    assertThat(lineCount("SettlementAllocationResolutionService.java")).isLessThan(500);
+    assertThat(lineCount("SettlementTotalsValidationService.java")).isLessThan(500);
+    assertThat(lineCount("SettlementJournalLineDraftService.java")).isLessThan(500);
+  }
+
+  @Test
+  void settlementWritePathRejectsOversizedReplacementSeams() {
+    Map<Class<?>, String> settlementWriteOwners =
+        Map.of(
+            DealerSettlementService.class, "DealerSettlementService",
+            SupplierSettlementService.class, "SupplierSettlementService",
+            SupplierPaymentService.class, "SupplierPaymentService");
+
+    Set<String> oversizedCollaborators =
+        settlementWriteOwners.keySet().stream()
+            .flatMap(
+                owner ->
+                    Arrays.stream(owner.getDeclaredFields())
+                        .map(field -> field.getType())
+                        .filter(
+                            type ->
+                                type.getPackageName()
+                                    .equals(
+                                        "com.bigbrightpaints.erp.modules.accounting.service"))
+                        .map(Class::getSimpleName))
+            .filter(name -> name.contains("Settlement"))
+            .filter(name -> !settlementWriteOwners.containsValue(name))
+            .filter(name -> lineCount(name + ".java") >= 500)
+            .collect(Collectors.toSet());
+
+    assertThat(oversizedCollaborators)
+        .as(
+            "Settlement write path must not inject a renamed settlement-resolution replacement seam"
+                + " above the 500-line mission cap")
+        .isEmpty();
   }
 
   private Set<Class<?>> fieldTypes(Class<?> type) {
@@ -134,6 +174,7 @@ class JournalCreationOwnershipContractTest {
       return stream
           .map(path -> path.getFileName().toString())
           .filter(name -> name.matches("Settlement.*Support.*\\.java"))
+          .filter(name -> !name.equals("SettlementAuditMemoDecoder.java"))
           .toList();
     } catch (IOException ex) {
       throw new AssertionError(ex);

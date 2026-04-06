@@ -26,6 +26,7 @@ orchestrator-erp is a modular monolith built with Spring Boot. The base package 
 - **Tenant scoping is mandatory.** All company-scoped data depends on company context and scoped queries.
 - **`ApplicationException` + `ErrorCode` are the business error contract.**
 - **Accounting is the financial truth boundary.** Journals, settlements, period control, and reconciliation depend on explicit accounting ownership.
+- **Settlement writes use focused collaborators.** Allocation resolution, totals/validation, and journal-line drafting are split across dedicated accounting services used by dealer/supplier settlement and supplier-payment writers.
 - **Idempotency is a shared pattern with module-local implementations.**
 - **Role/host boundaries are part of the architecture.** Admin/internal portal, dealer self-service portal, and superadmin/control-plane surfaces are distinct contract surfaces.
 

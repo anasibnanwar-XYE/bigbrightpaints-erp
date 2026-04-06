@@ -52,7 +52,7 @@ class SupplierPaymentService {
   private final SettlementReferenceService settlementReferenceService;
   private final JournalReplayService journalReplayService;
   private final SettlementReplayValidationService settlementReplayValidationService;
-  private final SettlementRequestResolutionService settlementRequestResolutionService;
+  private final SettlementTotalsValidationService settlementTotalsValidationService;
   private final SettlementOutcomeService settlementOutcomeService;
   private final AccountingDtoMapperService dtoMapperService;
 
@@ -67,7 +67,7 @@ class SupplierPaymentService {
       SettlementReferenceService settlementReferenceService,
       JournalReplayService journalReplayService,
       SettlementReplayValidationService settlementReplayValidationService,
-      SettlementRequestResolutionService settlementRequestResolutionService,
+      SettlementTotalsValidationService settlementTotalsValidationService,
       SettlementOutcomeService settlementOutcomeService,
       AccountingDtoMapperService dtoMapperService) {
     this.companyContextService = companyContextService;
@@ -80,7 +80,7 @@ class SupplierPaymentService {
     this.settlementReferenceService = settlementReferenceService;
     this.journalReplayService = journalReplayService;
     this.settlementReplayValidationService = settlementReplayValidationService;
-    this.settlementRequestResolutionService = settlementRequestResolutionService;
+    this.settlementTotalsValidationService = settlementTotalsValidationService;
     this.settlementOutcomeService = settlementOutcomeService;
     this.dtoMapperService = dtoMapperService;
   }
@@ -106,7 +106,7 @@ class SupplierPaymentService {
     Account payableAccount = accountResolutionService.requireSupplierPayable(supplier);
     BigDecimal amount = ValidationUtils.requirePositive(request.amount(), "amount");
     List<SettlementAllocationRequest> allocations = request.allocations();
-    settlementRequestResolutionService.validatePaymentAllocations(
+    settlementTotalsValidationService.validatePaymentAllocations(
         allocations, amount, "supplier payment", false);
     Account cashAccount =
         accountResolutionService.requireCashAccountForSettlement(

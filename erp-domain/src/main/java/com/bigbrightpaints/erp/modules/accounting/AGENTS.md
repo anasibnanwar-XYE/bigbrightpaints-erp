@@ -38,6 +38,11 @@ The accounting module owns financial posting, corrections, period controls, sett
 - `AccountingFacade` — cross-module facade for financial side effects, including payroll posting entry and accounting-host payroll payment recording.
 - `PayrollAccountingService` — canonical payroll journal owner invoked directly by `AccountingFacade` for `postPayrollRun` and `recordPayrollPayment`.
 - `ReconciliationService` — reconciliation and discrepancy resolution at the module boundary.
+- Settlement write collaborators:
+  - `SettlementAllocationResolutionService` — resolves explicit/header/replay allocations for dealer/supplier settlement writers.
+  - `SettlementTotalsValidationService` — owns settlement/payment allocation validation, totals, application-type resolution, and override detection.
+  - `SettlementJournalLineDraftService` — drafts dealer/supplier settlement journal lines from resolved totals and account bindings.
+  - `DealerSettlementService`, `SupplierSettlementService`, and `SupplierPaymentService` consume the focused collaborators directly; `SettlementRequestResolutionService` is retired.
 - `OpeningBalanceImportService` — opening balance import processing.
 - `TallyImportService` — Tally XML import processing.
 

@@ -57,7 +57,9 @@ class DealerSettlementService {
   private final SettlementReferenceService settlementReferenceService;
   private final JournalReplayService journalReplayService;
   private final SettlementReplayValidationService settlementReplayValidationService;
-  private final SettlementRequestResolutionService settlementRequestResolutionService;
+  private final SettlementAllocationResolutionService settlementAllocationResolutionService;
+  private final SettlementTotalsValidationService settlementTotalsValidationService;
+  private final SettlementJournalLineDraftService settlementJournalLineDraftService;
   private final SettlementOutcomeService settlementOutcomeService;
   private final AccountingAuditService accountingAuditService;
 
@@ -75,7 +77,9 @@ class DealerSettlementService {
       SettlementReferenceService settlementReferenceService,
       JournalReplayService journalReplayService,
       SettlementReplayValidationService settlementReplayValidationService,
-      SettlementRequestResolutionService settlementRequestResolutionService,
+      SettlementAllocationResolutionService settlementAllocationResolutionService,
+      SettlementTotalsValidationService settlementTotalsValidationService,
+      SettlementJournalLineDraftService settlementJournalLineDraftService,
       SettlementOutcomeService settlementOutcomeService,
       AccountingAuditService accountingAuditService) {
     this.companyContextService = companyContextService;
@@ -91,7 +95,9 @@ class DealerSettlementService {
     this.settlementReferenceService = settlementReferenceService;
     this.journalReplayService = journalReplayService;
     this.settlementReplayValidationService = settlementReplayValidationService;
-    this.settlementRequestResolutionService = settlementRequestResolutionService;
+    this.settlementAllocationResolutionService = settlementAllocationResolutionService;
+    this.settlementTotalsValidationService = settlementTotalsValidationService;
+    this.settlementJournalLineDraftService = settlementJournalLineDraftService;
     this.settlementOutcomeService = settlementOutcomeService;
     this.accountingAuditService = accountingAuditService;
   }
@@ -114,7 +120,7 @@ class DealerSettlementService {
     String trimmedIdempotencyKey =
         settlementReferenceService.resolveDealerSettlementIdempotencyKey(request);
     List<SettlementAllocationRequest> allocations =
-        settlementRequestResolutionService.resolveDealerSettlementAllocations(
+        settlementAllocationResolutionService.resolveDealerSettlementAllocations(
             company, dealer, request, trimmedIdempotencyKey);
     PartnerSettlementRequest requestForReplay =
         request.allocations() == allocations
@@ -146,10 +152,9 @@ class DealerSettlementService {
     boolean replayCandidate =
         journalReplayService.hasExistingSettlementAllocations(company, trimmedIdempotencyKey);
     if (!replayCandidate) {
-      settlementRequestResolutionService.validateDealerSettlementAllocations(allocations);
+      settlementTotalsValidationService.validateDealerSettlementAllocations(allocations);
     }
-    SettlementRequestResolutionService.SettlementTotals totals =
-        settlementRequestResolutionService.computeSettlementTotals(allocations);
+    SettlementTotals totals = settlementTotalsValidationService.computeSettlementTotals(allocations);
     String memo =
         StringUtils.hasText(request.memo())
             ? request.memo().trim()
@@ -159,7 +164,7 @@ class DealerSettlementService {
             ? request.settlementDate()
             : accountResolutionService.currentDate(company);
     boolean settlementOverrideRequested =
-        settlementRequestResolutionService.settlementOverrideRequested(totals);
+        settlementTotalsValidationService.settlementOverrideRequested(totals);
     if (settlementOverrideRequested) {
       requireAdminExceptionReason("Settlement override", request.adminOverride(), request.memo());
     }
@@ -174,8 +179,8 @@ class DealerSettlementService {
         && journalReplayService.isReservedReference(reference)) {
       reference = referenceNumberService.dealerReceiptReference(company, dealer);
     }
-    SettlementRequestResolutionService.SettlementLineDraft lineDraft =
-        settlementRequestResolutionService.buildDealerSettlementLines(
+    SettlementLineDraft lineDraft =
+        settlementJournalLineDraftService.buildDealerSettlementLines(
             company, request, receivableAccount, totals, memo, false);
 
     if (!reservation.leader()) {
@@ -235,7 +240,7 @@ class DealerSettlementService {
     }
 
     lineDraft =
-        settlementRequestResolutionService.buildDealerSettlementLines(
+        settlementJournalLineDraftService.buildDealerSettlementLines(
             company, request, receivableAccount, totals, memo, true);
     LocalDate entryDate = requestedEffectiveSettlementDate;
 
@@ -257,14 +262,14 @@ class DealerSettlementService {
       BigDecimal applied =
           ValidationUtils.requirePositive(allocation.appliedAmount(), "appliedAmount");
       BigDecimal discount =
-          settlementRequestResolutionService.normalizeNonNegative(
+          settlementTotalsValidationService.normalizeNonNegative(
               allocation.discountAmount(), "discountAmount");
       BigDecimal writeOff =
-          settlementRequestResolutionService.normalizeNonNegative(
+          settlementTotalsValidationService.normalizeNonNegative(
               allocation.writeOffAmount(), "writeOffAmount");
       BigDecimal fxAdjustment = MoneyUtils.zeroIfNull(allocation.fxAdjustment());
       SettlementAllocationApplication applicationType =
-          settlementRequestResolutionService.resolveSettlementApplicationType(allocation);
+          settlementTotalsValidationService.resolveSettlementApplicationType(allocation);
 
       if (applicationType.isUnapplied()
           && (discount.compareTo(BigDecimal.ZERO) > 0
@@ -323,7 +328,7 @@ class DealerSettlementService {
         row.setCurrency(invoice.getCurrency());
       }
       row.setMemo(
-          settlementRequestResolutionService.encodeSettlementAllocationMemo(
+          settlementTotalsValidationService.encodeSettlementAllocationMemo(
               applicationType, allocation.memo()));
       settlementRows.add(row);
     }
@@ -421,7 +426,7 @@ class DealerSettlementService {
         accountResolutionService.resolveAutoSettlementCashAccountId(
             company, request.cashAccountId(), "dealer auto-settlement");
     List<SettlementAllocationRequest> allocations =
-        settlementRequestResolutionService.buildDealerAutoSettlementAllocations(
+        settlementAllocationResolutionService.buildDealerAutoSettlementAllocations(
             company, dealer, amount);
     String memo =
         StringUtils.hasText(request.memo())
