@@ -14,7 +14,7 @@ flowchart LR
     Controllers[Spring REST Controllers]
     Services[Module Services / Engines]
     Domain[JPA Domain + Repositories]
-    Accounting[Accounting Core / Facade]
+    Accounting[Accounting Facade / Services]
     Events[Spring Domain Events]
     Outbox[Orchestrator Outbox]
     DB[(PostgreSQL)]
@@ -40,12 +40,12 @@ Most operational modules post financial effects through accounting service/facad
 - Purchasing/GRN/returns → inventory movements + accounting entries (`GoodsReceiptService`, `PurchaseReturnService`, `InventoryAccountingEventListener`).
 - Factory/production/packing → WIP/consumption/value journals (`ProductionLogService`, `PackingService`, `BulkPackingService`).
 - Accounting also performs company-scoped factory lookups when reconciling production/packing-linked financial references, but those reads stay behind `CompanyScopedFactoryLookupService` while journal writes still enter through the accounting service/facade seams rather than factory-owned workflows.
-- Payroll run posting/payment → payroll journals (`PayrollPostingService`, `AccountingService.postPayrollRun`, `JournalController.recordPayrollPayment`).
+- Payroll run posting/payment → payroll journals (`PayrollPostingService`, `AccountingFacade.postPayrollRun`, `JournalController.recordPayrollPayment`).
 
 Canonical seam rule after Wave 3:
 
 - Inject `AccountingFacade`, `AccountingService`, `AccountingPeriodService`, `ReconciliationService`, and `AccountingAuditTrailService` at module boundaries.
-- Treat the `*Core` / `*Engine` accounting ladder as internal implementation scaffolding, not as new public service entrypoints.
+- Keep new work on those flat facade/service seams only. Any remaining `*Core` / `*Engine` helpers are historical implementation detail, not canonical module entrypoints.
 - Operational finished-good costing stays in `modules.inventory.service.InventoryValuationService`; report and snapshot valuation reads live in `modules.reports.service.InventoryValuationQueryService`.
 
 Key facade entrypoint: `JournalCreationRequest` encapsulates debit/credit lines, source module/reference, and period date semantics (`erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/dto/JournalCreationRequest.java`).
@@ -60,7 +60,7 @@ sequenceDiagram
     participant S as SalesCoreEngine
     participant I as FinishedGoodsService
     participant D as FinishedGoodsDispatchEngine
-    participant A as AccountingFacade/Core
+    participant A as AccountingFacade
     participant V as InvoiceService
 
     C->>S: createOrder()
@@ -176,7 +176,7 @@ Evidence and invariants:
 - Payroll run identity/idempotency is period+type keyed with signature checks (`PayrollRunService.createPayrollRun`, `buildIdempotencyKey`, `assertRunSignatureMatches`).
 - Calculation derives line-level earnings/deductions from attendance + statutory engines (`PayrollCalculationService.calculatePayroll`, `calculateEmployeePay`).
 - Posting enforces required payroll account availability, deduction classification constraints, and posted-status/journal-link invariants (`PayrollPostingService.postPayrollToAccounting`).
-- Journal posting path goes through standardized lines into `AccountingService.postPayrollRun`, which delegates canonical journal creation without reopening a retired core-class boundary.
+- Journal posting path goes through standardized lines into `AccountingFacade.postPayrollRun`, which keeps payroll on the live accounting facade/service seam without reopening retired core-class boundaries.
 
 Primary files:
 
@@ -184,7 +184,7 @@ Primary files:
 - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/hr/service/PayrollRunService.java`
 - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/hr/service/PayrollCalculationService.java`
 - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/hr/service/PayrollPostingService.java`
-- `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/AccountingService.java`
+- `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/AccountingFacade.java`
 
 ### 2.5 Tenant onboarding / lifecycle / runtime controls
 
@@ -237,14 +237,14 @@ Primary files:
 
 - Period close uses request/approve/reject maker-checker workflow (`AccountingPeriodService.requestPeriodClose`, `approvePeriodClose`, `rejectPeriodClose`).
 - Checklist and reconciliation gates are validated before closure; close creates closing journal and snapshot, reopen reverses closing journal and drops snapshot (`closePeriod`, `reopenPeriod`, `createSystemJournal`, `reverseClosingJournalIfNeeded`).
-- Reconciliation discrepancy resolution supports acknowledged / adjustment journal / write-off with typed control account selection (`ReconciliationServiceCore.resolveDiscrepancy`, `createResolutionJournal`).
+- Reconciliation discrepancy resolution supports acknowledged / adjustment journal / write-off with typed control account selection through the live `ReconciliationService.resolveDiscrepancy(...)` boundary.
 - Reopen endpoint is super-admin-only through service override (`AccountingPeriodService.reopenPeriod`).
 
 Primary files:
 
 - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/controller/PeriodController.java`
 - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/AccountingPeriodService.java`
-- `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/ReconciliationServiceCore.java`
+- `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/ReconciliationService.java`
 
 ### 2.8 Support ticket -> GitHub sync -> resolved notification
 
@@ -339,9 +339,9 @@ Representative entities used by the major flows:
 
 Journal anchor/reference conventions are explicit in source-module posting calls, e.g.:
 
-- payroll: `PAYROLL-<runToken>` (`AccountingService.postPayrollRun`)
+- payroll: `PAYROLL-<runToken>` (`AccountingFacade.postPayrollRun`)
 - period close: `PERIOD-CLOSE-<year><month>` (`AccountingPeriodService.postClosingJournal`)
-- discrepancy resolution: `RECON-<resolution>-<id>` (`ReconciliationServiceCore.buildResolutionReference`)
+- discrepancy resolution: `RECON-<resolution>-<id>` (reconciliation resolution journal flow)
 - opening data migration: `OPEN-BAL-...`, `OPEN-STOCK-...` (import services)
 
 ## 4) Security, tenancy, and authorization architecture
@@ -425,7 +425,7 @@ Strengths:
 - Strong idempotency discipline across transactional APIs.
 - Clear maker-checker workflow for period close and explicit super-admin gate for reopen.
 - Company/tenant enforcement early in request chain plus optional module gating.
-- Accounting posting centralization via `JournalCreationRequest`/facade/core paths.
+- Accounting posting centralization via `JournalCreationRequest` and the live accounting facade/service seams.
 
 Trade-offs:
 
@@ -447,7 +447,7 @@ All paths below are relative to `erp-domain/src/main/java/com/bigbrightpaints/er
 - Sales/O2C: `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/sales/controller/`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/sales/service/`
 - Inventory dispatch/reservation/slips: `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/inventory/service/*`
 - Invoice linkage: `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/invoice/service/InvoiceService.java`
-- Accounting core/period/reconciliation: `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/internal/*`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/*`
+- Accounting period/reconciliation and posting seams: `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/controller/*`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/*`
 - Purchasing/P2P: `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/purchasing/controller/`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/purchasing/service/`
 - Factory/M2S: `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/factory/service/*`
 - Payroll: `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/hr/controller/`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/hr/service/`

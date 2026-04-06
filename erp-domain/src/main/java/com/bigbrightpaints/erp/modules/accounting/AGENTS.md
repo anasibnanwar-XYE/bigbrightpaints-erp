@@ -32,12 +32,14 @@ The accounting module owns financial posting, corrections, period controls, sett
 
 ## Key Services/Facades
 
-- `AccountingService` — centralized journal creation, module-owned accounting workflows, and the payroll posting seam consumed by HR.
+- `AccountingService` — centralized journal creation and module-owned accounting workflows behind the live accounting facade/service boundary.
 - `AccountingPeriodService` — period lifecycle management, close/reopen orchestration, and closing-journal ownership.
-- `AccountingFacade` — cross-module facade for financial side effects, including accounting-host payroll payment recording.
+- `AccountingFacade` — cross-module facade for financial side effects, including payroll posting entry and accounting-host payroll payment recording.
 - `ReconciliationService` — reconciliation and discrepancy resolution at the module boundary.
 - `OpeningBalanceImportService` — opening balance import processing.
 - `TallyImportService` — Tally XML import processing.
+
+Canonical module-boundary guidance: route new cross-module work through `AccountingFacade`, `AccountingService`, `AccountingPeriodService`, and `ReconciliationService`. Do not treat legacy support or `*Core` classes as public accounting seams.
 
 ## DTO Families
 
@@ -51,7 +53,7 @@ The accounting module owns financial posting, corrections, period controls, sett
 - **Sales → Accounting:** dispatch-linked journals, invoice-linked journals, AR settlements.
 - **Purchasing → Accounting:** GRN-linked journals, purchase return journals, AP settlements.
 - **Factory → Accounting:** WIP/consumption journals, packaging material journals.
-- **HR → Accounting:** payroll posting enters via `PayrollPostingService` → `AccountingService.postPayrollRun`, while payroll payment references are recorded through the accounting payroll-payment journal seam.
+- **HR → Accounting:** payroll posting enters via `PayrollPostingService` → `AccountingFacade.postPayrollRun`, while payroll payment references are recorded through the accounting payroll-payment journal seam.
 - **Inventory -.events.→ Accounting:** `InventoryMovementEvent` → `InventoryAccountingEventListener`.
 
 ## Canonical Documentation
