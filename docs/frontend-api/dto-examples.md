@@ -426,9 +426,16 @@ Change `partnerType`, `partnerId`, and allocation document identifiers to match
 the partner flow. Do not send retired `DealerSettlementRequest` or
 `SupplierSettlementRequest` payloads.
 
-Header-level `unappliedAmountApplication` accepts only `ON_ACCOUNT` or
-`FUTURE_APPLICATION`. Use `DOCUMENT` only on allocation rows
-(`allocations[].applicationType`).
+`unappliedAmountApplication` behavior depends on request mode:
+
+- **With explicit `allocations` present**: allocation rows are canonical, and
+  `allocations[].applicationType` drives behavior (`DOCUMENT` for
+  invoice/purchase rows, unapplied modes only for rows without a document id).
+  Header-level `unappliedAmountApplication` is ignored for those explicit rows.
+- **Without `allocations` (header/FIFO settlement mode)**: the backend derives
+  document allocations automatically and uses header-level
+  `unappliedAmountApplication` only for any remaining unapplied balance. In this
+  mode, use `ON_ACCOUNT` or `FUTURE_APPLICATION`; `DOCUMENT` is rejected.
 
 ## Accounting period create or update request
 
@@ -542,11 +549,19 @@ always `GET /api/v1/admin/approvals`.
 {
   "success": false,
   "message": "Validation failed",
-  "errorCode": "VALIDATION_ERROR",
-  "errors": [
-    { "field": "email", "message": "Invalid email format" },
-    { "field": "password", "message": "Password must be at least 8 characters" }
-  ],
+  "data": {
+    "code": "VAL_001",
+    "message": "Validation failed",
+    "reason": "Validation failed",
+    "path": "/api/v1/admin/users",
+    "traceId": "c2608f47-b9bb-4ec8-b725-c8caf7302af5",
+    "details": {
+      "fieldErrors": [
+        { "field": "email", "message": "Invalid email format" },
+        { "field": "password", "message": "Password must be at least 8 characters" }
+      ]
+    }
+  },
   "timestamp": "2026-03-31T10:00:00Z"
 }
 ```
