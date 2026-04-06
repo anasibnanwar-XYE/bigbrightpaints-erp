@@ -73,7 +73,7 @@ Retired routes should be absent or explicitly fail closed. Do not leave a second
 
 Primary hotspots:
 
-- `modules/accounting/service/SettlementSupportService`
+- `modules/accounting/service/SettlementRequestResolutionService`
 - `modules/accounting/service/JournalPostingService`
 - `modules/accounting/service/AccountingFacade`
 
@@ -81,7 +81,7 @@ Supporting sprawl:
 
 - `modules/accounting/service/AccountingPeriodService`
 - `modules/accounting/service/AccountingAuditTrailService`
-- `modules/accounting/service/ReconciliationServiceCore`
+- `modules/accounting/service/ReconciliationService`
 - focused accounting controllers under `modules/accounting/controller/`, especially:
   - `AccountController`
   - `JournalController`
@@ -93,10 +93,11 @@ Supporting sprawl:
 
 Cleanup direction:
 
-- Treat retired `internal/AccountingCoreEngineCore` / `AccountingFacadeCore` references as stale history, not live ownership.
+- Treat retired `internal/AccountingCoreEngineCore`, `AccountingFacadeCore`, and `SettlementSupportService` references as stale history, not live ownership.
 - Split by business flow, not by more wrapper layers
 - Keep one canonical write path per operation
 - Remove duplicate helper logic while preserving downstream module behavior
+- Continue shrinking settlement write-path helpers until no single service centralizes allocation resolution, totals, validation, and line drafting above the mission size cap
 
 ### 2. Dispatch truth
 
@@ -115,14 +116,14 @@ Primary hotspots:
 - `modules/company/service/TenantRuntimeEnforcementService`
 - `modules/company/service/TenantRuntimeRequestAdmissionService`
 - `core/security/TenantRuntimeAccessService`
-- `core/util/CompanyEntityLookup`
+- module-scoped `CompanyScoped*LookupService` implementations
 
 Cleanup direction:
 
 - Keep tenant binding fail-closed
 - Keep canonical control-plane paths singular
 - Remove shadow runtime owners
-- Replace giant generic lookup gravity wells with narrower module-scoped resolution
+- Keep the retired `CompanyEntityLookup` gravity well out of live production ownership and favor narrower module-scoped resolution
 
 ### 4. Deployment-proof and CI truth
 

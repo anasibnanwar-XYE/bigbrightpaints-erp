@@ -94,6 +94,7 @@ If the packet changes implemented truth, update the matching canonical docs in t
 Use code, tests, controller annotations, DTOs, and `openapi.json` as source of truth. Update canonical docs, not stale duplicates, and never present planned behavior as implemented.
 
 If `docs/frontend-api/*` changes, verify the examples against the live DTO/controller contract and exception envelope. Do not leave impossible enum values or invented top-level `ApiResponse` fields in canonical examples.
+For this mission, canonical docs are the default frontend contract artifact. Do not update `.factory/library/frontend-handoff.md` or `.factory/library/frontend-v2.md` unless the feature, mission artifacts, or the user explicitly requires those internal handoff files.
 
 If the packet is docs-only, use the docs-only lane: run `bash ci/lint-knowledgebase.sh` and skip runtime/scrutiny validators unless the packet also changes code, config, schema, scripts, OpenAPI, or test behavior.
 
