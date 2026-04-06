@@ -632,6 +632,7 @@ class HighImpactRegressionIT extends AbstractIntegrationTest {
         Map.of("invoiceId", invoice.getId(), "appliedAmount", new BigDecimal("500.00"));
     PartnerSettlementRequest request =
         new PartnerSettlementRequest(
+            PartnerType.DEALER,
             dealerA.getId(),
             accountsA.get("CASH").getId(),
             null,

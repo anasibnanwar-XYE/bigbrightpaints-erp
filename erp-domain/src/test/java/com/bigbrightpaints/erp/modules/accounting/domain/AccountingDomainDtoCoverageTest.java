@@ -12,6 +12,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import com.bigbrightpaints.erp.modules.accounting.domain.PartnerType;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalCreationRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.ManualJournalRequest;
@@ -205,6 +206,7 @@ class AccountingDomainDtoCoverageTest {
 
     PartnerSettlementRequest dealerRequest =
         new PartnerSettlementRequest(
+            PartnerType.DEALER,
             1L,
             10L,
             11L,
@@ -220,6 +222,7 @@ class AccountingDomainDtoCoverageTest {
             List.of());
     PartnerSettlementRequest supplierRequest =
         new PartnerSettlementRequest(
+            PartnerType.SUPPLIER,
             2L,
             20L,
             21L,
@@ -231,7 +234,8 @@ class AccountingDomainDtoCoverageTest {
             "memo",
             "idem-2",
             false,
-            allocations);
+            allocations,
+            null);
     JournalEntryRequest journalEntryRequest =
         new JournalEntryRequest(
             "JE-1",

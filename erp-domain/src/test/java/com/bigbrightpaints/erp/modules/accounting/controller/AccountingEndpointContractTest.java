@@ -22,6 +22,7 @@ import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
+import com.bigbrightpaints.erp.modules.accounting.domain.PartnerType;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalReferenceMappingRepository;
@@ -763,6 +764,7 @@ class AccountingEndpointContractTest {
     SettlementController controller = controllerWithSettlementFacade(accountingFacade);
     PartnerSettlementRequest request =
         new PartnerSettlementRequest(
+            PartnerType.DEALER,
             9L,
             20L,
             21L,
@@ -809,6 +811,7 @@ class AccountingEndpointContractTest {
     SettlementController controller = controllerWithSettlementFacade(accountingFacade);
     PartnerSettlementRequest request =
         new PartnerSettlementRequest(
+            PartnerType.SUPPLIER,
             8L,
             20L,
             21L,
@@ -822,6 +825,7 @@ class AccountingEndpointContractTest {
             "supplier settlement",
             null,
             Boolean.TRUE,
+            null,
             null);
     PartnerSettlementResponse expected =
         new PartnerSettlementResponse(

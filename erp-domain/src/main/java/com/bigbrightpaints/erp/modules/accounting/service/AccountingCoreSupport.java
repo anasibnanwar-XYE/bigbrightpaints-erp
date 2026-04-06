@@ -2762,7 +2762,7 @@ class AccountingCoreSupport {
             .collect(java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new));
     Map<String, Long> requestedAdjustmentAccountIds = requestedAdjustmentAccountIds(request);
 
-    Long dealerId = request.dealerId();
+    Long dealerId = request.partnerId();
     Set<Long> invoiceIds =
         request.allocations().stream()
             .map(SettlementAllocationRequest::invoiceId)
@@ -2835,7 +2835,7 @@ class AccountingCoreSupport {
     if (requestSignatures.isEmpty()) {
       return false;
     }
-    Long dealerId = request.dealerId();
+    Long dealerId = request.partnerId();
     boolean dealerMismatch =
         existing.stream()
             .anyMatch(
@@ -5077,7 +5077,7 @@ class AccountingCoreSupport {
       return UUID.randomUUID().toString();
     }
     StringBuilder fingerprint = new StringBuilder();
-    appendPartnerFingerprint(fingerprint, PartnerType.DEALER, request.dealerId());
+    appendPartnerFingerprint(fingerprint, PartnerType.DEALER, request.partnerId());
     List<SettlementAllocationRequest> allocations =
         request.allocations() != null
             ? request.allocations().stream()
@@ -5125,7 +5125,7 @@ class AccountingCoreSupport {
       return UUID.randomUUID().toString();
     }
     StringBuilder fingerprint = new StringBuilder();
-    appendPartnerFingerprint(fingerprint, PartnerType.SUPPLIER, request.supplierId());
+    appendPartnerFingerprint(fingerprint, PartnerType.SUPPLIER, request.partnerId());
     fingerprint
         .append("|cashAccountId=")
         .append(request.cashAccountId() != null ? request.cashAccountId() : "null");

@@ -26,6 +26,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.PartnerType;
 import com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAllocationRepository;
 import com.bigbrightpaints.erp.modules.accounting.dto.DealerReceiptRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.DealerReceiptSplitRequest;
@@ -263,6 +264,7 @@ class CR_DealerReceiptSettlementAuditTrailTest extends AbstractIntegrationTest {
 
     PartnerSettlementRequest settlementRequest =
         new PartnerSettlementRequest(
+            PartnerType.DEALER,
             dealer.getId(),
             accounts.get("BANK").getId(),
             null,
@@ -347,6 +349,7 @@ class CR_DealerReceiptSettlementAuditTrailTest extends AbstractIntegrationTest {
           outstanding.divide(new BigDecimal("2"), 2, java.math.RoundingMode.HALF_UP);
       PartnerSettlementRequest conflictRequest =
           new PartnerSettlementRequest(
+              PartnerType.DEALER,
               dealer.getId(),
               accounts.get("BANK").getId(),
               null,
@@ -412,6 +415,7 @@ class CR_DealerReceiptSettlementAuditTrailTest extends AbstractIntegrationTest {
 
     PartnerSettlementRequest settlementRequest =
         new PartnerSettlementRequest(
+            PartnerType.DEALER,
             dealer.getId(),
             accounts.get("BANK").getId(),
             null,
@@ -495,6 +499,7 @@ class CR_DealerReceiptSettlementAuditTrailTest extends AbstractIntegrationTest {
 
     PartnerSettlementRequest settlementRequest =
         new PartnerSettlementRequest(
+            PartnerType.DEALER,
             dealer.getId(),
             accounts.get("BANK").getId(),
             null,
@@ -570,6 +575,7 @@ class CR_DealerReceiptSettlementAuditTrailTest extends AbstractIntegrationTest {
 
     PartnerSettlementRequest firstRequest =
         new PartnerSettlementRequest(
+            PartnerType.DEALER,
             dealer.getId(),
             accounts.get("BANK").getId(),
             null,
@@ -594,6 +600,7 @@ class CR_DealerReceiptSettlementAuditTrailTest extends AbstractIntegrationTest {
 
     PartnerSettlementRequest secondRequest =
         new PartnerSettlementRequest(
+            PartnerType.DEALER,
             dealer.getId(),
             accounts.get("BANK").getId(),
             null,

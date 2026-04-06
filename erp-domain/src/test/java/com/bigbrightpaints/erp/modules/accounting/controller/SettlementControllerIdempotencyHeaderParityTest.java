@@ -19,6 +19,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import com.bigbrightpaints.erp.modules.accounting.domain.PartnerType;
 import com.bigbrightpaints.erp.modules.accounting.dto.DealerReceiptRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.DealerReceiptSplitRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.PartnerSettlementRequest;
@@ -226,6 +227,7 @@ class SettlementControllerIdempotencyHeaderParityTest {
 
   private PartnerSettlementRequest dealerSettlementRequest(String idempotencyKey) {
     return new PartnerSettlementRequest(
+        PartnerType.DEALER,
         1001L,
         2001L,
         null,
@@ -243,6 +245,7 @@ class SettlementControllerIdempotencyHeaderParityTest {
 
   private PartnerSettlementRequest supplierSettlementRequest(String idempotencyKey) {
     return new PartnerSettlementRequest(
+        PartnerType.SUPPLIER,
         3001L,
         2001L,
         null,
@@ -254,7 +257,8 @@ class SettlementControllerIdempotencyHeaderParityTest {
         "memo",
         idempotencyKey,
         Boolean.FALSE,
-        allocations());
+        allocations(),
+        null);
   }
 
   private com.bigbrightpaints.erp.modules.accounting.dto.AutoSettlementRequest

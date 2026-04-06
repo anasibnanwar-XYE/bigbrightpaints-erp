@@ -388,7 +388,8 @@ public class ErpInvariantsSuiteIT extends AbstractIntegrationTest {
     Map<String, Object> allocation =
         Map.of("invoiceId", invoiceId, "appliedAmount", invoice.getTotalAmount());
     Map<String, Object> settlementReq = new HashMap<>();
-    settlementReq.put("dealerId", o2c.dealer().getId());
+    settlementReq.put("partnerType", "DEALER");
+    settlementReq.put("partnerId", o2c.dealer().getId());
     settlementReq.put("cashAccountId", o2c.requireAccount("CASH").getId());
     settlementReq.put("settlementDate", entryDate);
     settlementReq.put("referenceNumber", "O2C-SETTLE-001");
@@ -770,7 +771,8 @@ public class ErpInvariantsSuiteIT extends AbstractIntegrationTest {
     Map<String, Object> allocation =
         Map.of("purchaseId", purchaseId, "appliedAmount", purchase.getTotalAmount());
     Map<String, Object> settlementReq = new HashMap<>();
-    settlementReq.put("supplierId", p2p.supplier().getId());
+    settlementReq.put("partnerType", "SUPPLIER");
+    settlementReq.put("partnerId", p2p.supplier().getId());
     settlementReq.put("cashAccountId", p2p.requireAccount("CASH").getId());
     settlementReq.put("settlementDate", entryDate);
     settlementReq.put("referenceNumber", "P2P-SETTLE-001");
@@ -1725,7 +1727,8 @@ public class ErpInvariantsSuiteIT extends AbstractIntegrationTest {
     Map<String, Object> allocation =
         Map.of("invoiceId", invoiceId, "appliedAmount", invoice.getTotalAmount());
     Map<String, Object> settlementReq = new HashMap<>();
-    settlementReq.put("dealerId", dealer.getId());
+    settlementReq.put("partnerType", "DEALER");
+    settlementReq.put("partnerId", dealer.getId());
     settlementReq.put("cashAccountId", requireAccountId(tenantCompany, "CASH"));
     settlementReq.put("settlementDate", entryDate);
     settlementReq.put("referenceNumber", settlementRef);

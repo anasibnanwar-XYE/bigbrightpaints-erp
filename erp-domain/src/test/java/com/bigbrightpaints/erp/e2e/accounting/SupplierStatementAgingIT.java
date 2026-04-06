@@ -117,7 +117,8 @@ class SupplierStatementAgingIT extends AbstractIntegrationTest {
             "purchaseId", purchaseId,
             "appliedAmount", paymentAmount);
     Map<String, Object> settlementReq = new HashMap<>();
-    settlementReq.put("supplierId", supplierId);
+    settlementReq.put("partnerType", "SUPPLIER");
+    settlementReq.put("partnerId", supplierId);
     settlementReq.put("cashAccountId", cash.getId());
     settlementReq.put("settlementDate", entryDate);
     settlementReq.put("referenceNumber", settlementRef);

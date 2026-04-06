@@ -87,7 +87,7 @@ class DealerSettlementService {
     Company company = companyContextService.requireCurrentCompany();
     Dealer dealer =
         dealerRepository
-            .lockByCompanyAndId(company, request.dealerId())
+            .lockByCompanyAndId(company, request.partnerId())
             .orElseThrow(
                 () ->
                     new ApplicationException(

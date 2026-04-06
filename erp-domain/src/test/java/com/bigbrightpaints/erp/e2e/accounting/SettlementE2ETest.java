@@ -77,7 +77,8 @@ class SettlementE2ETest extends AbstractIntegrationTest {
             "appliedAmount", new BigDecimal("100.00"),
             "discountAmount", new BigDecimal("5.00"));
     Map<String, Object> payload = new HashMap<>();
-    payload.put("dealerId", dealer.getId());
+    payload.put("partnerType", "DEALER");
+    payload.put("partnerId", dealer.getId());
     payload.put("cashAccountId", cash.getId());
     payload.put("amount", new BigDecimal("95.00"));
     payload.put("settlementDate", LocalDate.now());
@@ -98,7 +99,8 @@ class SettlementE2ETest extends AbstractIntegrationTest {
   void dealerSettlement_OverApplicationRejected() {
     String idemKey = "SETTLE-OVER-" + UUID.randomUUID();
     Map<String, Object> payload = new HashMap<>();
-    payload.put("dealerId", dealer.getId());
+    payload.put("partnerType", "DEALER");
+    payload.put("partnerId", dealer.getId());
     payload.put("cashAccountId", cash.getId());
     payload.put("amount", new BigDecimal("900.00"));
     payload.put("settlementDate", LocalDate.now());

@@ -183,7 +183,8 @@ public class FullCycleE2ETest extends AbstractIntegrationTest {
             : null; // simplistic, in real test query properly
     Map<String, Object> settleReq =
         Map.of(
-            "dealerId", dealer.getId(),
+            "partnerType", "DEALER",
+            "partnerId", dealer.getId(),
             "cashAccountId",
                 accountRepository.findByCompanyAndCodeIgnoreCase(company, "CASH").get().getId(),
             "allocations",
@@ -244,7 +245,8 @@ public class FullCycleE2ETest extends AbstractIntegrationTest {
     String settlementKey = "SET-" + shortSuffix();
     Map<String, Object> settleReq =
         Map.of(
-            "supplierId", supplier.getId(),
+            "partnerType", "SUPPLIER",
+            "partnerId", supplier.getId(),
             "cashAccountId",
                 accountRepository.findByCompanyAndCodeIgnoreCase(company, "CASH").get().getId(),
             "idempotencyKey", settlementKey,

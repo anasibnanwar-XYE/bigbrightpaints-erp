@@ -179,7 +179,8 @@ class CreditDebitNoteIT extends AbstractIntegrationTest {
             "memo",
             "Partial settlement before credit note");
     Map<String, Object> settlementReq = new HashMap<>();
-    settlementReq.put("dealerId", dealer.getId());
+    settlementReq.put("partnerType", "DEALER");
+    settlementReq.put("partnerId", dealer.getId());
     settlementReq.put("cashAccountId", cash.getId());
     settlementReq.put("settlementDate", LocalDate.now());
     settlementReq.put("referenceNumber", settlementRef);

@@ -81,7 +81,7 @@ class SupplierSettlementService {
     Company company = companyContextService.requireCurrentCompany();
     Supplier supplier =
         supplierRepository
-            .lockByCompanyAndId(company, request.supplierId())
+            .lockByCompanyAndId(company, request.partnerId())
             .orElseThrow(
                 () ->
                     new ApplicationException(

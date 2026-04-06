@@ -10,7 +10,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.bigbrightpaints.erp.core.util.IdempotencyHeaderUtils;
-import com.bigbrightpaints.erp.modules.accounting.domain.PartnerType;
 import com.bigbrightpaints.erp.modules.accounting.dto.AutoSettlementRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.DealerReceiptRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.DealerReceiptSplitRequest;
@@ -81,7 +80,7 @@ public class SettlementController {
             "Settlement recorded",
             accountingFacade.settleDealerInvoices(
                 applyHeaderOnlyIdempotencyKey(
-                    normalizePartnerSettlementRequest(request, PartnerType.DEALER),
+                    request,
                     SettlementRequestCopies::partnerSettlement,
                     idempotencyKey,
                     legacyIdempotencyKey,
@@ -121,7 +120,7 @@ public class SettlementController {
             "Settlement recorded",
             accountingFacade.settleSupplierInvoices(
                 applyHeaderOnlyIdempotencyKey(
-                    normalizePartnerSettlementRequest(request, PartnerType.SUPPLIER),
+                    request,
                     SettlementRequestCopies::partnerSettlement,
                     idempotencyKey,
                     legacyIdempotencyKey,
@@ -171,29 +170,5 @@ public class SettlementController {
       throw IdempotencyHeaderUtils.unsupportedLegacyHeader(
           "X-Idempotency-Key", resourceDescription, canonicalPath);
     }
-  }
-
-  private PartnerSettlementRequest normalizePartnerSettlementRequest(
-      PartnerSettlementRequest request, PartnerType requiredType) {
-    if (request == null) {
-      return null;
-    }
-    return new PartnerSettlementRequest(
-        request.partnerType() == null ? requiredType : request.partnerType(),
-        request.partnerId(),
-        request.cashAccountId(),
-        request.discountAccountId(),
-        request.writeOffAccountId(),
-        request.fxGainAccountId(),
-        request.fxLossAccountId(),
-        request.amount(),
-        request.unappliedAmountApplication(),
-        request.settlementDate(),
-        request.referenceNumber(),
-        request.memo(),
-        request.idempotencyKey(),
-        request.adminOverride(),
-        request.allocations(),
-        request.payments());
   }
 }

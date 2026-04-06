@@ -2,8 +2,6 @@ package com.bigbrightpaints.erp.modules.accounting.service;
 
 import java.math.BigDecimal;
 
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Service;
 
 import com.bigbrightpaints.erp.core.idempotency.IdempotencyUtils;
@@ -18,14 +16,10 @@ import com.bigbrightpaints.erp.modules.accounting.dto.SupplierPaymentRequest;
 @Service
 public class SettlementService {
 
-  @SuppressWarnings("unused")
-  private Environment environment;
-
   private final SupplierPaymentService supplierPaymentService;
   private final DealerSettlementService dealerSettlementService;
   private final SupplierSettlementService supplierSettlementService;
 
-  @Autowired
   public SettlementService(
       SupplierPaymentService supplierPaymentService,
       DealerSettlementService dealerSettlementService,

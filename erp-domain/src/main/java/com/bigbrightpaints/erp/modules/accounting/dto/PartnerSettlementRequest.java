@@ -4,7 +4,6 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 
-import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonFormat;
 
 import com.bigbrightpaints.erp.modules.accounting.domain.PartnerType;
@@ -15,8 +14,8 @@ import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotNull;
 
 public record PartnerSettlementRequest(
-    PartnerType partnerType,
-    @NotNull @JsonAlias({"dealerId", "supplierId"}) Long partnerId,
+    @NotNull PartnerType partnerType,
+    @NotNull Long partnerId,
     Long cashAccountId,
     Long discountAccountId,
     Long writeOffAccountId,
@@ -69,143 +68,5 @@ public record PartnerSettlementRequest(
         adminOverride,
         allocations,
         payments);
-  }
-
-  public PartnerSettlementRequest(
-      Long dealerId,
-      Long cashAccountId,
-      Long discountAccountId,
-      Long writeOffAccountId,
-      Long fxGainAccountId,
-      Long fxLossAccountId,
-      BigDecimal amount,
-      SettlementAllocationApplication unappliedAmountApplication,
-      @JsonFormat(pattern = "yyyy-MM-dd") LocalDate settlementDate,
-      String referenceNumber,
-      String memo,
-      String idempotencyKey,
-      Boolean adminOverride,
-      List<@Valid SettlementAllocationRequest> allocations,
-      List<@Valid SettlementPaymentRequest> payments) {
-    this(
-        PartnerType.DEALER,
-        dealerId,
-        cashAccountId,
-        discountAccountId,
-        writeOffAccountId,
-        fxGainAccountId,
-        fxLossAccountId,
-        amount,
-        unappliedAmountApplication,
-        settlementDate,
-        referenceNumber,
-        memo,
-        idempotencyKey,
-        adminOverride,
-        allocations,
-        payments);
-  }
-
-  public PartnerSettlementRequest(
-      Long dealerId,
-      Long cashAccountId,
-      Long discountAccountId,
-      Long writeOffAccountId,
-      Long fxGainAccountId,
-      Long fxLossAccountId,
-      @JsonFormat(pattern = "yyyy-MM-dd") LocalDate settlementDate,
-      String referenceNumber,
-      String memo,
-      String idempotencyKey,
-      Boolean adminOverride,
-      List<@Valid SettlementAllocationRequest> allocations,
-      List<@Valid SettlementPaymentRequest> payments) {
-    this(
-        PartnerType.DEALER,
-        dealerId,
-        cashAccountId,
-        discountAccountId,
-        writeOffAccountId,
-        fxGainAccountId,
-        fxLossAccountId,
-        settlementDate,
-        referenceNumber,
-        memo,
-        idempotencyKey,
-        adminOverride,
-        allocations,
-        payments);
-  }
-
-  public PartnerSettlementRequest(
-      Long supplierId,
-      Long cashAccountId,
-      Long discountAccountId,
-      Long writeOffAccountId,
-      Long fxGainAccountId,
-      Long fxLossAccountId,
-      BigDecimal amount,
-      SettlementAllocationApplication unappliedAmountApplication,
-      @JsonFormat(pattern = "yyyy-MM-dd") LocalDate settlementDate,
-      String referenceNumber,
-      String memo,
-      String idempotencyKey,
-      Boolean adminOverride,
-      List<@Valid SettlementAllocationRequest> allocations) {
-    this(
-        PartnerType.SUPPLIER,
-        supplierId,
-        cashAccountId,
-        discountAccountId,
-        writeOffAccountId,
-        fxGainAccountId,
-        fxLossAccountId,
-        amount,
-        unappliedAmountApplication,
-        settlementDate,
-        referenceNumber,
-        memo,
-        idempotencyKey,
-        adminOverride,
-        allocations,
-        null);
-  }
-
-  public PartnerSettlementRequest(
-      Long supplierId,
-      Long cashAccountId,
-      Long discountAccountId,
-      Long writeOffAccountId,
-      Long fxGainAccountId,
-      Long fxLossAccountId,
-      @JsonFormat(pattern = "yyyy-MM-dd") LocalDate settlementDate,
-      String referenceNumber,
-      String memo,
-      String idempotencyKey,
-      Boolean adminOverride,
-      List<@Valid SettlementAllocationRequest> allocations) {
-    this(
-        PartnerType.SUPPLIER,
-        supplierId,
-        cashAccountId,
-        discountAccountId,
-        writeOffAccountId,
-        fxGainAccountId,
-        fxLossAccountId,
-        settlementDate,
-        referenceNumber,
-        memo,
-        idempotencyKey,
-        adminOverride,
-        allocations,
-        null);
-  }
-
-  public Long dealerId() {
-    return partnerType == PartnerType.DEALER ? partnerId : null;
-  }
-
-  public Long supplierId() {
-    return partnerType == PartnerType.SUPPLIER ? partnerId : null;
   }
 }

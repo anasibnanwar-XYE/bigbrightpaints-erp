@@ -38,6 +38,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalReferenceMapping;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalReferenceMappingRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.PartnerType;
 import com.bigbrightpaints.erp.modules.accounting.dto.AutoSettlementRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.DealerReceiptRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.DealerReceiptSplitRequest;
@@ -968,6 +969,7 @@ class AccountingFacadeTest {
             List.of());
     PartnerSettlementRequest dealerSettlementRequest =
         new PartnerSettlementRequest(
+            PartnerType.DEALER,
             7L,
             3L,
             null,
@@ -992,6 +994,7 @@ class AccountingFacadeTest {
             null);
     PartnerSettlementRequest supplierSettlementRequest =
         new PartnerSettlementRequest(
+            PartnerType.SUPPLIER,
             8L,
             4L,
             null,
@@ -1012,7 +1015,8 @@ class AccountingFacadeTest {
                     BigDecimal.ZERO,
                     BigDecimal.ZERO,
                     SettlementAllocationApplication.DOCUMENT,
-                    "allocation")));
+                    "allocation")),
+            null);
     AutoSettlementRequest autoSettlementRequest =
         new AutoSettlementRequest(
             3L, new BigDecimal("150.00"), "AUTO-SET", "Auto settlement", "auto-key");
