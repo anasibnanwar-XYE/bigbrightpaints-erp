@@ -77,6 +77,7 @@ class OpeningBalanceImportControllerSecurityIT extends AbstractIntegrationTest {
   }
 
   @Test
+  @SuppressWarnings("unchecked")
   void openingBalanceImport_allowsAdminOnly() {
     ResponseEntity<Map> adminResponse =
         importOpeningBalances(
@@ -85,6 +86,9 @@ class OpeningBalanceImportControllerSecurityIT extends AbstractIntegrationTest {
                 + "CAP-001,Capital,EQUITY,0,500.00,Opening capital\n",
             "opening-balances-admin.csv");
     assertThat(adminResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    Map<String, Object> adminData = (Map<String, Object>) adminResponse.getBody().get("data");
+    assertThat(adminData).containsEntry("successCount", 2).containsEntry("failureCount", 0);
+    assertThat((List<Map<String, Object>>) adminData.get("errors")).isEmpty();
 
     ResponseEntity<Map> accountingResponse =
         importOpeningBalances(
@@ -126,6 +130,24 @@ class OpeningBalanceImportControllerSecurityIT extends AbstractIntegrationTest {
         journalEntryRepository.findByCompanyAndId(company, importRecord.getJournalEntryId());
     assertThat(journal).isPresent();
     assertThat(journal.orElseThrow().getReferenceNumber()).startsWith("OPEN-BAL-OBALSECA1-");
+  }
+
+  @SuppressWarnings("unchecked")
+  @Test
+  void openingBalanceImport_unbalancedRowsReturnFailureCountsAndRowLevelErrors() {
+    ResponseEntity<Map> response =
+        importOpeningBalances(
+            authHeaders(ADMIN_EMAIL, PASSWORD, COMPANY_CODE),
+            "BANK-001,Main Bank,ASSET,500.00,0,Opening bank\n"
+                + "CAP-001,Capital,EQUITY,0,300.00,Opening capital\n",
+            "opening-balances-unbalanced.csv");
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+    Map<String, Object> data = (Map<String, Object>) response.getBody().get("data");
+    assertThat(data).containsEntry("successCount", 0).containsEntry("failureCount", 1);
+    List<Map<String, Object>> errors = (List<Map<String, Object>>) data.get("errors");
+    assertThat(errors).hasSize(1);
+    assertThat(errors.getFirst()).containsEntry("rowNumber", 0).containsKey("message");
   }
 
   private ResponseEntity<Map> importOpeningBalances(

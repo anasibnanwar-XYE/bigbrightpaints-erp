@@ -130,6 +130,8 @@ class OpeningBalanceImportServiceTest {
                 "BANK-001,Main Bank,ASSET,100.00,0,Opening cash\n"
                     + "CAP-001,Capital,EQUITY,0,100.00,Owner capital\n"));
 
+    assertThat(response.successCount()).isEqualTo(2);
+    assertThat(response.failureCount()).isZero();
     assertThat(response.rowsProcessed()).isEqualTo(2);
     assertThat(response.accountsCreated()).isZero();
     assertThat(response.errors()).isEmpty();
@@ -176,7 +178,9 @@ class OpeningBalanceImportServiceTest {
                 "BANK-001,Main Bank,ASSET,200.00,0,Opening cash\n"
                     + "AR-001,Debtors,ASSET,0,100.00,Wrong side\n"));
 
-    assertThat(response.rowsProcessed()).isEqualTo(2);
+    assertThat(response.successCount()).isZero();
+    assertThat(response.failureCount()).isEqualTo(1);
+    assertThat(response.rowsProcessed()).isZero();
     assertThat(response.errors())
         .extracting(OpeningBalanceImportResponse.ImportError::message)
         .anyMatch(message -> message.contains("Import totals are unbalanced"));
@@ -246,6 +250,8 @@ class OpeningBalanceImportServiceTest {
                     + "BROKEN,,ASSET,0,0,Invalid zero row\n"
                     + "NEW-EQ-01,Opening Capital,EQUITY,0,100.00,Auto-create equity\n"));
 
+    assertThat(response.successCount()).isEqualTo(2);
+    assertThat(response.failureCount()).isEqualTo(1);
     assertThat(response.rowsProcessed()).isEqualTo(2);
     assertThat(response.accountsCreated()).isEqualTo(1);
     assertThat(response.errors()).hasSize(1);
@@ -271,6 +277,8 @@ class OpeningBalanceImportServiceTest {
     OpeningBalanceImportResponse replay =
         service.importOpeningBalances(csvFile("BANK-001,Main Bank,ASSET,100.00,0,Opening\n"));
 
+    assertThat(replay.successCount()).isEqualTo(7);
+    assertThat(replay.failureCount()).isEqualTo(1);
     assertThat(replay.rowsProcessed()).isEqualTo(7);
     assertThat(replay.accountsCreated()).isEqualTo(2);
     assertThat(replay.errors()).hasSize(1);
@@ -298,6 +306,8 @@ class OpeningBalanceImportServiceTest {
     OpeningBalanceImportResponse response =
         service.importOpeningBalances(csvFile("BANK-001,Main Bank,ASSET,100.00,0,Type mismatch\n"));
 
+    assertThat(response.successCount()).isZero();
+    assertThat(response.failureCount()).isEqualTo(1);
     assertThat(response.rowsProcessed()).isZero();
     assertThat(response.errors()).hasSize(1);
     assertThat(response.errors().getFirst().message()).contains("Account mapping mismatch");

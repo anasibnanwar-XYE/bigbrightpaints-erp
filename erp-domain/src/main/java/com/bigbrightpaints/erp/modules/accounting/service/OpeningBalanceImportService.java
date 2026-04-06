@@ -250,9 +250,9 @@ public class OpeningBalanceImportService {
 
   private ImportResult processParsedRowsInternal(
       Company company, List<ParsedOpeningBalanceRow> parsedRows, String referenceNumber) {
-    int rowsProcessed = 0;
     int accountsCreated = 0;
     List<ImportError> errors = new ArrayList<>();
+    List<ValidatedOpeningBalanceRow> validatedRows = new ArrayList<>();
     List<JournalCreationRequest.LineRequest> lines = new ArrayList<>();
     BigDecimal totalDebit = BigDecimal.ZERO;
     BigDecimal totalCredit = BigDecimal.ZERO;
@@ -267,6 +267,46 @@ public class OpeningBalanceImportService {
       }
 
       try {
+        validateAccountReference(company, row.accountCode(), row.accountName(), row.accountType());
+        BigDecimal debitAmount =
+            row.debitAmount() != null ? row.debitAmount() : BigDecimal.ZERO;
+        BigDecimal creditAmount =
+            row.creditAmount() != null ? row.creditAmount() : BigDecimal.ZERO;
+        validatedRows.add(
+            new ValidatedOpeningBalanceRow(
+                row.rowNumber(),
+                row.accountCode(),
+                row.accountName(),
+                row.accountType(),
+                debitAmount,
+                creditAmount,
+                row.narration()));
+        totalDebit = totalDebit.add(debitAmount);
+        totalCredit = totalCredit.add(creditAmount);
+      } catch (RuntimeException ex) {
+        errors.add(new ImportError(row.rowNumber(), ex.getMessage()));
+      }
+    }
+
+    if (validatedRows.isEmpty()) {
+      return new ImportResult(new OpeningBalanceImportResponse(0, accountsCreated, errors), null);
+    }
+
+    if (totalDebit.subtract(totalCredit).compareTo(BigDecimal.ZERO) != 0) {
+      errors.add(
+          new ImportError(
+              0,
+              "Import totals are unbalanced: totalDebit="
+                  + totalDebit
+                  + ", totalCredit="
+                  + totalCredit));
+      return new ImportResult(new OpeningBalanceImportResponse(0, accountsCreated, errors), null);
+    }
+
+    BigDecimal postedDebit = BigDecimal.ZERO;
+    BigDecimal postedCredit = BigDecimal.ZERO;
+    for (ValidatedOpeningBalanceRow row : validatedRows) {
+      try {
         ResolvedAccount resolvedAccount =
             resolveAccount(company, row.accountCode(), row.accountName(), row.accountType());
         if (resolvedAccount.created()) {
@@ -279,33 +319,36 @@ public class OpeningBalanceImportService {
                 row.debitAmount(),
                 row.creditAmount(),
                 row.narration()));
-        totalDebit = totalDebit.add(row.debitAmount());
-        totalCredit = totalCredit.add(row.creditAmount());
-        rowsProcessed++;
+        postedDebit = postedDebit.add(row.debitAmount());
+        postedCredit = postedCredit.add(row.creditAmount());
       } catch (RuntimeException ex) {
         errors.add(new ImportError(row.rowNumber(), ex.getMessage()));
       }
     }
 
+    if (lines.isEmpty()) {
+      return new ImportResult(new OpeningBalanceImportResponse(0, accountsCreated, errors), null);
+    }
+
+    if (postedDebit.subtract(postedCredit).compareTo(BigDecimal.ZERO) != 0) {
+      errors.add(
+          new ImportError(
+              0,
+              "Import totals became unbalanced during account resolution: totalDebit="
+                  + postedDebit
+                  + ", totalCredit="
+                  + postedCredit));
+      return new ImportResult(new OpeningBalanceImportResponse(0, accountsCreated, errors), null);
+    }
+
     Long journalEntryId = null;
-    if (!lines.isEmpty()) {
-      if (totalDebit.subtract(totalCredit).compareTo(BigDecimal.ZERO) != 0) {
-        errors.add(
-            new ImportError(
-                0,
-                "Import totals are unbalanced: totalDebit="
-                    + totalDebit
-                    + ", totalCredit="
-                    + totalCredit));
-      } else if (StringUtils.hasText(referenceNumber)) {
-        JournalEntryDto journalEntry =
-            postOpeningBalanceJournal(lines, totalDebit, referenceNumber);
-        journalEntryId = journalEntry != null ? journalEntry.id() : null;
-      }
+    if (StringUtils.hasText(referenceNumber)) {
+      JournalEntryDto journalEntry = postOpeningBalanceJournal(lines, postedDebit, referenceNumber);
+      journalEntryId = journalEntry != null ? journalEntry.id() : null;
     }
 
     OpeningBalanceImportResponse response =
-        new OpeningBalanceImportResponse(rowsProcessed, accountsCreated, errors);
+        new OpeningBalanceImportResponse(lines.size(), accountsCreated, errors);
     return new ImportResult(response, journalEntryId);
   }
 
@@ -328,8 +371,28 @@ public class OpeningBalanceImportService {
     }
   }
 
-  private ResolvedAccount resolveAccount(Company company, OpeningBalanceCsvRow row) {
-    return resolveAccount(company, row.accountCode(), row.accountName(), row.accountType());
+  private void validateAccountReference(
+      Company company, String accountCode, String accountName, AccountType accountType) {
+    Optional<Account> existingOptional =
+        accountRepository.findByCompanyAndCodeIgnoreCase(company, accountCode);
+    if (existingOptional.isPresent()) {
+      Account existing = existingOptional.get();
+      if (existing.getType() != accountType) {
+        throw ValidationUtils.invalidInput(
+            "Account mapping mismatch for code "
+                + accountCode
+                + ": expected "
+                + accountType
+                + " but found "
+                + existing.getType());
+      }
+      return;
+    }
+
+    if (!StringUtils.hasText(accountName)) {
+      throw ValidationUtils.invalidInput(
+          "account_name is required for new account code " + accountCode);
+    }
   }
 
   private ResolvedAccount resolveAccount(
@@ -510,6 +573,15 @@ public class OpeningBalanceImportService {
   private record ResolvedAccount(Account account, boolean created) {}
 
   private record ImportResult(OpeningBalanceImportResponse response, Long journalEntryId) {}
+
+  private record ValidatedOpeningBalanceRow(
+      long rowNumber,
+      String accountCode,
+      String accountName,
+      AccountType accountType,
+      BigDecimal debitAmount,
+      BigDecimal creditAmount,
+      String narration) {}
 
   public record ParsedOpeningBalanceRow(
       long rowNumber,
