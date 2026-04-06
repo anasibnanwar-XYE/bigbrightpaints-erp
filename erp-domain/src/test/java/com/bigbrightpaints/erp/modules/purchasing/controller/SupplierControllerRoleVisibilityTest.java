@@ -7,21 +7,27 @@ import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 import java.util.List;
+import java.nio.charset.StandardCharsets;
 
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 
+import com.bigbrightpaints.erp.modules.purchasing.dto.SupplierImportResponse;
 import com.bigbrightpaints.erp.modules.purchasing.dto.SupplierResponse;
+import com.bigbrightpaints.erp.modules.purchasing.service.SupplierImportService;
 import com.bigbrightpaints.erp.modules.purchasing.service.SupplierService;
 
 @Tag("critical")
 class SupplierControllerRoleVisibilityTest {
 
   private final SupplierService supplierService = mock(SupplierService.class);
-  private final SupplierController controller = new SupplierController(supplierService);
+  private final SupplierImportService supplierImportService = mock(SupplierImportService.class);
+  private final SupplierController controller =
+      new SupplierController(supplierService, supplierImportService);
 
   @Test
   void listSuppliers_redactsSensitiveBankDetailsForFactoryRole() {
@@ -89,6 +95,27 @@ class SupplierControllerRoleVisibilityTest {
     controller.listSuppliers(authentication("ROLE_SALES"));
 
     verify(supplierService).listSuppliers(false);
+  }
+
+  @Test
+  void importSuppliers_routesThroughSupplierImportService() {
+    MockMultipartFile file =
+        new MockMultipartFile(
+            "file",
+            "suppliers.csv",
+            "text/csv",
+            "name,email,creditLimit,paymentTerms\nSupplier,supplier@example.com,1000,NET_30\n"
+                .getBytes(StandardCharsets.UTF_8));
+    SupplierImportResponse payload =
+        new SupplierImportResponse(
+            1, 0, List.of(new SupplierImportResponse.ImportError(0L, "placeholder")));
+    when(supplierImportService.importSuppliers(file)).thenReturn(payload);
+
+    var response = controller.importSuppliers(file);
+
+    verify(supplierImportService).importSuppliers(file);
+    assertThat(response.getBody()).isNotNull();
+    assertThat(response.getBody().data()).isEqualTo(payload);
   }
 
   private SupplierResponse sampleSupplier() {

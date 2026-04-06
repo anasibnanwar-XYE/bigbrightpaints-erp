@@ -14,11 +14,16 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.RequestPart;
+import org.springframework.http.MediaType;
+import org.springframework.web.multipart.MultipartFile;
 
 import com.bigbrightpaints.erp.core.security.PortalRoleActionMatrix;
 import com.bigbrightpaints.erp.modules.sales.dto.CreateDealerRequest;
+import com.bigbrightpaints.erp.modules.sales.dto.DealerImportResponse;
 import com.bigbrightpaints.erp.modules.sales.dto.DealerLookupResponse;
 import com.bigbrightpaints.erp.modules.sales.dto.DealerResponse;
+import com.bigbrightpaints.erp.modules.sales.service.DealerImportService;
 import com.bigbrightpaints.erp.modules.sales.service.DealerService;
 import com.bigbrightpaints.erp.modules.sales.service.DunningService;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
@@ -30,10 +35,15 @@ import jakarta.validation.Valid;
 public class DealerController {
 
   private final DealerService dealerService;
+  private final DealerImportService dealerImportService;
   private final DunningService dunningService;
 
-  public DealerController(DealerService dealerService, DunningService dunningService) {
+  public DealerController(
+      DealerService dealerService,
+      DealerImportService dealerImportService,
+      DunningService dunningService) {
     this.dealerService = dealerService;
+    this.dealerImportService = dealerImportService;
     this.dunningService = dunningService;
   }
 
@@ -43,6 +53,14 @@ public class DealerController {
       @Valid @RequestBody CreateDealerRequest request) {
     return ResponseEntity.ok(
         ApiResponse.success("Dealer created", dealerService.createDealer(request)));
+  }
+
+  @PostMapping(value = "/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+  @PreAuthorize(PortalRoleActionMatrix.ADMIN_SALES_ACCOUNTING)
+  public ResponseEntity<ApiResponse<DealerImportResponse>> importDealers(
+      @RequestPart("file") MultipartFile file) {
+    return ResponseEntity.ok(
+        ApiResponse.success("Dealer import processed", dealerImportService.importDealers(file)));
   }
 
   @GetMapping
