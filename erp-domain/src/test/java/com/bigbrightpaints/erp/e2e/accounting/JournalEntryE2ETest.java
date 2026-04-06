@@ -534,6 +534,32 @@ public class JournalEntryE2ETest extends AbstractIntegrationTest {
   }
 
   @Test
+  @DisplayName("Journal Reversal: void-only rejects partial reversal percentage")
+  void journalReversal_VoidOnlyRejectsPartialPercentage() {
+    Company company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
+    Long originalEntryId = createBalancedJournalEntry(company, new BigDecimal("1250.00"));
+
+    Map<String, Object> partialVoidRequest = new HashMap<>();
+    partialVoidRequest.put("reversalDate", LocalDate.now());
+    partialVoidRequest.put("voidOnly", true);
+    partialVoidRequest.put("reversalPercentage", new BigDecimal("50.00"));
+    partialVoidRequest.put("reason", "Attempt partial void");
+
+    ResponseEntity<Map> response =
+        rest.exchange(
+            "/api/v1/accounting/journal-entries/" + originalEntryId + "/reverse",
+            HttpMethod.POST,
+            new HttpEntity<>(partialVoidRequest, headers),
+            Map.class);
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+    JournalEntry originalEntry = journalEntryRepository.findById(originalEntryId).orElseThrow();
+    assertThat(originalEntry.getStatus()).isEqualTo(JournalEntryStatus.POSTED);
+    assertThat(journalEntryRepository.findByCompanyAndReversalOf(company, originalEntry)).isEmpty();
+  }
+
+  @Test
   @DisplayName("Journal reverse route rejects cascade requests and keeps linked entries untouched")
   void journalReverseRouteRejectsCascadeLinkedCorrections() {
     Company company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();

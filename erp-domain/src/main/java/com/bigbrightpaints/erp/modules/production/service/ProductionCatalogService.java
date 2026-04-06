@@ -49,6 +49,7 @@ import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.idempotency.IdempotencyReservationService;
 import com.bigbrightpaints.erp.core.idempotency.IdempotencyUtils;
 import com.bigbrightpaints.erp.core.util.CostingMethodUtils;
+import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
 import com.bigbrightpaints.erp.modules.accounting.service.CompanyDefaultAccountsService;
 import com.bigbrightpaints.erp.modules.accounting.service.CompanyScopedAccountingLookupService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
@@ -112,6 +113,11 @@ public class ProductionCatalogService {
           "fgRevenueAccountId",
           "fgDiscountAccountId",
           "fgTaxAccountId");
+  private static final Map<String, AccountType> FINISHED_GOOD_OVERRIDE_ACCOUNT_TYPES =
+      Map.of(
+          "fgValuationAccountId", AccountType.ASSET,
+          "fgCogsAccountId", AccountType.COGS,
+          "fgRevenueAccountId", AccountType.REVENUE);
   private static final Map<String, String> ACCOUNT_COLUMN_HINTS =
       Map.of(
           "fgValuationAccountId", "fg_valuation_account_id",
@@ -1456,7 +1462,8 @@ public class ProductionCatalogService {
       Long accountId,
       String sku,
       String key,
-      Map<Long, Long> validatedFinishedGoodAccounts) {
+      Map<Long, Long> validatedFinishedGoodAccounts,
+      AccountType expectedType) {
     if (accountId == null || accountId <= 0) {
       return null;
     }
@@ -1467,7 +1474,18 @@ public class ProductionCatalogService {
       }
     }
     try {
-      Long validatedAccountId = accountingLookupService.requireAccount(company, accountId).getId();
+      var account = accountingLookupService.requireAccount(company, accountId);
+      if (expectedType != null && account.getType() != expectedType) {
+        throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+            "Finished good SKU "
+                + sku
+                + " requires "
+                + key
+                + " to reference a "
+                + expectedType
+                + " account");
+      }
+      Long validatedAccountId = account.getId();
       if (validatedFinishedGoodAccounts != null) {
         validatedFinishedGoodAccounts.put(accountId, validatedAccountId);
       }
@@ -2023,8 +2041,10 @@ public class ProductionCatalogService {
       if (accountId == null) {
         continue;
       }
+      AccountType expectedType = FINISHED_GOOD_OVERRIDE_ACCOUNT_TYPES.get(key);
       Long validatedAccountId =
-          requireFinishedGoodAccount(company, accountId, sku, key, validatedFinishedGoodAccounts);
+          requireFinishedGoodAccount(
+              company, accountId, sku, key, validatedFinishedGoodAccounts, expectedType);
       if (!Objects.equals(accountId, validatedAccountId)) {
         working.put(key, validatedAccountId);
       }

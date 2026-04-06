@@ -167,6 +167,62 @@ class CatalogControllerCanonicalProductIT extends AbstractIntegrationTest {
   }
 
   @Test
+  void createItem_rejectsFinishedGoodOverrideAccountsWithWrongTypes() {
+    ProductionBrand brand = saveBrand("Wrong Type Override Brand", true);
+    Account wrongInventory =
+        ensureAccount("INV-WRONG-" + shortId(), "Wrong Inventory Type", AccountType.COGS);
+    Account wrongCogs = ensureAccount("COGS-WRONG-" + shortId(), "Wrong COGS Type", AccountType.ASSET);
+    Account wrongRevenue =
+        ensureAccount("REV-WRONG-" + shortId(), "Wrong Revenue Type", AccountType.EXPENSE);
+
+    Map<String, Object> wrongInventoryPayload =
+        finishedGoodPayload(brand.getId(), "Wrong Inventory Override");
+    wrongInventoryPayload.put("inventoryAccountId", wrongInventory.getId());
+    ResponseEntity<Map> wrongInventoryResponse = postCatalogItem(wrongInventoryPayload, adminHeaders);
+    assertThat(wrongInventoryResponse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(String.valueOf(errorData(wrongInventoryResponse).get("reason")))
+        .contains("fgValuationAccountId")
+        .contains("ASSET");
+
+    Map<String, Object> wrongCogsPayload = finishedGoodPayload(brand.getId(), "Wrong COGS Override");
+    wrongCogsPayload.put("cogsAccountId", wrongCogs.getId());
+    ResponseEntity<Map> wrongCogsResponse = postCatalogItem(wrongCogsPayload, adminHeaders);
+    assertThat(wrongCogsResponse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(String.valueOf(errorData(wrongCogsResponse).get("reason")))
+        .contains("fgCogsAccountId")
+        .contains("COGS");
+
+    Map<String, Object> wrongRevenuePayload =
+        finishedGoodPayload(brand.getId(), "Wrong Revenue Override");
+    wrongRevenuePayload.put("revenueAccountId", wrongRevenue.getId());
+    ResponseEntity<Map> wrongRevenueResponse = postCatalogItem(wrongRevenuePayload, adminHeaders);
+    assertThat(wrongRevenueResponse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(String.valueOf(errorData(wrongRevenueResponse).get("reason")))
+        .contains("fgRevenueAccountId")
+        .contains("REVENUE");
+  }
+
+  @Test
+  void updateItem_rejectsFinishedGoodOverrideAccountsOutsideCompanyScope() {
+    ProductionBrand brand = saveBrand("Cross Company Override Brand", true);
+    Map<String, Object> created =
+        data(postCatalogItem(finishedGoodPayload(brand.getId(), "Cross Company Override"), adminHeaders));
+    Long itemId = ((Number) created.get("id")).longValue();
+
+    Company foreignCompany = dataSeeder.ensureCompany("CAT-FOREIGN-" + shortId(), "Catalog Foreign Co");
+    Account foreignInventory =
+        ensureAccountFor(
+            foreignCompany, "INV-FOREIGN-" + shortId(), "Foreign Inventory", AccountType.ASSET);
+
+    Map<String, Object> payload = finishedGoodPayload(brand.getId(), "Cross Company Override");
+    payload.put("inventoryAccountId", foreignInventory.getId());
+
+    ResponseEntity<Map> updateResponse = putCatalogItem(itemId, payload, adminHeaders);
+    assertThat(updateResponse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(String.valueOf(errorData(updateResponse).get("reason"))).contains("invalid account id");
+  }
+
+  @Test
   void createItem_persistsPackagingRawMaterial_withoutNameOrSkuInference() {
     ProductionBrand brand = saveBrand("Packaging Brand", true);
     Map<String, Object> payload = new LinkedHashMap<>();
@@ -550,6 +606,20 @@ class CatalogControllerCanonicalProductIT extends AbstractIntegrationTest {
             () -> {
               Account account = new Account();
               account.setCompany(company);
+              account.setCode(code);
+              account.setName(name);
+              account.setType(type);
+              return accountRepository.save(account);
+            });
+  }
+
+  private Account ensureAccountFor(Company owner, String code, String name, AccountType type) {
+    return accountRepository
+        .findByCompanyAndCodeIgnoreCase(owner, code)
+        .orElseGet(
+            () -> {
+              Account account = new Account();
+              account.setCompany(owner);
               account.setCode(code);
               account.setName(name);
               account.setType(type);

@@ -101,6 +101,7 @@ class JournalReversalService {
   private JournalEntryDto reverseJournalEntryInternal(
       Company company, JournalEntry entry, JournalEntryReversalRequest request) {
     rejectCascadeReversalRequest(request);
+    rejectPartialVoidReversalRequest(request);
     if (entry.getStatus() == JournalEntryStatus.VOIDED) {
       throw new ApplicationException(ErrorCode.BUSINESS_INVALID_STATE, "Entry is already voided");
     }
@@ -310,6 +311,17 @@ class JournalReversalService {
         .withDetail(
             "relatedEntryCount",
             request.relatedEntryIds() == null ? 0 : request.relatedEntryIds().size());
+  }
+
+  private void rejectPartialVoidReversalRequest(JournalEntryReversalRequest request) {
+    if (request == null || !request.voidOnly() || !request.isPartialReversal()) {
+      return;
+    }
+    throw new ApplicationException(
+            ErrorCode.VALIDATION_INVALID_INPUT,
+            "voidOnly reversal cannot use reversalPercentage less than 100")
+        .withDetail("voidOnly", true)
+        .withDetail("reversalPercentage", request.getEffectivePercentage());
   }
 
   private String buildAuditReason(JournalEntryReversalRequest request, JournalEntry originalEntry) {
