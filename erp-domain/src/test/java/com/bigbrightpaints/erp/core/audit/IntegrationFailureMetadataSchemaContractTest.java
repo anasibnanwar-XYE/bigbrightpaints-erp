@@ -19,43 +19,17 @@ import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.context.request.ServletWebRequest;
 
-import com.bigbrightpaints.erp.core.config.SystemSettingsService;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.exception.GlobalExceptionHandler;
-import com.bigbrightpaints.erp.core.util.CompanyClock;
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
-import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
-import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
-import com.bigbrightpaints.erp.modules.accounting.domain.JournalReferenceMappingRepository;
-import com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAllocationRepository;
-import com.bigbrightpaints.erp.modules.accounting.event.AccountingEventStore;
-import com.bigbrightpaints.erp.modules.accounting.service.AccountingPeriodService;
-import com.bigbrightpaints.erp.modules.accounting.service.AccountingService;
-import com.bigbrightpaints.erp.modules.accounting.service.DealerLedgerService;
-import com.bigbrightpaints.erp.modules.accounting.service.JournalReferenceResolver;
-import com.bigbrightpaints.erp.modules.accounting.service.ReferenceNumberService;
-import com.bigbrightpaints.erp.modules.accounting.service.SupplierLedgerService;
-import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
-import com.bigbrightpaints.erp.modules.hr.domain.PayrollRunLineRepository;
-import com.bigbrightpaints.erp.modules.hr.domain.PayrollRunRepository;
-import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatchRepository;
-import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatchRepository;
-import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovementRepository;
-import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceRepository;
-import com.bigbrightpaints.erp.modules.invoice.service.InvoiceSettlementPolicy;
-import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchaseRepository;
-import com.bigbrightpaints.erp.modules.purchasing.domain.SupplierRepository;
-import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
-
-import jakarta.persistence.EntityManager;
+import com.bigbrightpaints.erp.modules.accounting.service.AccountingAuditService;
 
 class IntegrationFailureMetadataSchemaContractTest {
 
   @Test
   void accountingIntegrationFailureMetadataIncludesRequiredSchemaKeys() {
     AuditService auditService = mock(AuditService.class);
-    AccountingService service = buildAccountingService(auditService);
+    AccountingAuditService service = buildAccountingAuditService(auditService);
     ReflectionTestUtils.setField(service, "strictAccountingEventTrail", false);
 
     ReflectionTestUtils.invokeMethod(
@@ -160,41 +134,11 @@ class IntegrationFailureMetadataSchemaContractTest {
     assertThat(metadata.get(IntegrationFailureMetadataSchema.KEY_ALERT_ROUTE)).isNotBlank();
   }
 
-  private AccountingService buildAccountingService(AuditService auditService) {
-    return new AccountingService(
-        mock(CompanyContextService.class),
-        mock(AccountRepository.class),
-        mock(JournalEntryRepository.class),
-        mock(DealerLedgerService.class),
-        mock(SupplierLedgerService.class),
-        mock(PayrollRunRepository.class),
-        mock(PayrollRunLineRepository.class),
-        mock(AccountingPeriodService.class),
-        mock(ReferenceNumberService.class),
+  private AccountingAuditService buildAccountingAuditService(AuditService auditService) {
+    return new AccountingAuditService(
         mock(ApplicationEventPublisher.class),
-        mock(CompanyClock.class),
-        mock(CompanyEntityLookup.class),
-        mock(PartnerSettlementAllocationRepository.class),
-        mock(RawMaterialPurchaseRepository.class),
-        mock(InvoiceRepository.class),
-        mock(RawMaterialMovementRepository.class),
-        mock(RawMaterialBatchRepository.class),
-        mock(FinishedGoodBatchRepository.class),
-        mock(DealerRepository.class),
-        mock(SupplierRepository.class),
-        mock(InvoiceSettlementPolicy.class),
-        mock(JournalReferenceResolver.class),
-        mock(JournalReferenceMappingRepository.class),
-        mock(EntityManager.class),
-        mock(SystemSettingsService.class),
         auditService,
-        mock(AccountingEventStore.class),
-        mock(com.bigbrightpaints.erp.modules.accounting.service.JournalEntryService.class),
-        mock(com.bigbrightpaints.erp.modules.accounting.service.DealerReceiptService.class),
-        mock(com.bigbrightpaints.erp.modules.accounting.service.SettlementService.class),
-        mock(com.bigbrightpaints.erp.modules.accounting.service.CreditDebitNoteService.class),
-        mock(com.bigbrightpaints.erp.modules.accounting.service.InventoryAccountingService.class),
-        mock(org.springframework.beans.factory.ObjectProvider.class));
+        mock(com.bigbrightpaints.erp.modules.accounting.event.AccountingEventStore.class));
   }
 
   private static void setActiveProfile(GlobalExceptionHandler handler, String value)

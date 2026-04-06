@@ -42,7 +42,7 @@ class SupplierPaymentService {
 
   private static final Logger log = LoggerFactory.getLogger(SupplierPaymentService.class);
 
-  private final AccountingCoreSupport accountingCoreSupport;
+  private final SettlementSupportService accountingCoreSupport;
   private final CompanyContextService companyContextService;
   private final ObjectProvider<AccountingFacade> accountingFacadeProvider;
   private final SupplierRepository supplierRepository;
@@ -51,7 +51,7 @@ class SupplierPaymentService {
   private final RawMaterialPurchaseRepository rawMaterialPurchaseRepository;
 
   SupplierPaymentService(
-      AccountingCoreSupport accountingCoreSupport,
+      SettlementSupportService accountingCoreSupport,
       CompanyContextService companyContextService,
       ObjectProvider<AccountingFacade> accountingFacadeProvider,
       SupplierRepository supplierRepository,
@@ -103,9 +103,12 @@ class SupplierPaymentService {
     String reference =
         accountingCoreSupport.resolveSupplierPaymentReference(
             company, supplier, request.referenceNumber(), idempotencyKey);
-    AccountingCoreSupport.IdempotencyReservation reservation =
+    SettlementSupportService.IdempotencyReservation reservation =
         accountingCoreSupport.reserveReferenceMapping(
-            company, idempotencyKey, reference, AccountingCoreSupport.ENTITY_TYPE_SUPPLIER_PAYMENT);
+            company,
+            idempotencyKey,
+            reference,
+            SettlementSupportService.ENTITY_TYPE_SUPPLIER_PAYMENT);
 
     if (!reservation.leader()) {
       JournalEntry existingEntry =
@@ -117,7 +120,7 @@ class SupplierPaymentService {
             accountingCoreSupport.resolveReplayJournalEntry(
                 idempotencyKey, existingEntry, existingAllocations);
         accountingCoreSupport.linkReferenceMapping(
-            company, idempotencyKey, entry, AccountingCoreSupport.ENTITY_TYPE_SUPPLIER_PAYMENT);
+            company, idempotencyKey, entry, SettlementSupportService.ENTITY_TYPE_SUPPLIER_PAYMENT);
         accountingCoreSupport.validateSupplierPaymentIdempotency(
             idempotencyKey,
             supplier,
@@ -141,7 +144,7 @@ class SupplierPaymentService {
           accountingCoreSupport.resolveReplayJournalEntryFromExistingAllocations(
               company, reference, idempotencyKey, existingAllocations);
       accountingCoreSupport.linkReferenceMapping(
-          company, idempotencyKey, entry, AccountingCoreSupport.ENTITY_TYPE_SUPPLIER_PAYMENT);
+          company, idempotencyKey, entry, SettlementSupportService.ENTITY_TYPE_SUPPLIER_PAYMENT);
       accountingCoreSupport.validateSupplierPaymentIdempotency(
           idempotencyKey,
           supplier,
@@ -167,7 +170,7 @@ class SupplierPaymentService {
                     payableAccount.getId(),
                     cashAccount.getId(),
                     memo,
-                    AccountingCoreSupport.ENTITY_TYPE_SUPPLIER_PAYMENT,
+                    SettlementSupportService.ENTITY_TYPE_SUPPLIER_PAYMENT,
                     reference,
                     null,
                     List.of(
@@ -181,7 +184,7 @@ class SupplierPaymentService {
                     Boolean.FALSE));
     JournalEntry entry = accountingLookupService.requireJournalEntry(company, entryDto.id());
     accountingCoreSupport.linkReferenceMapping(
-        company, idempotencyKey, entry, AccountingCoreSupport.ENTITY_TYPE_SUPPLIER_PAYMENT);
+        company, idempotencyKey, entry, SettlementSupportService.ENTITY_TYPE_SUPPLIER_PAYMENT);
     existingAllocations =
         accountingCoreSupport.findAllocationsByIdempotencyKey(company, idempotencyKey);
     if (!existingAllocations.isEmpty()) {

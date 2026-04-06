@@ -26,7 +26,7 @@ import com.bigbrightpaints.erp.modules.hr.dto.PayrollPaymentRequest;
 @Service
 class PayrollAccountingService {
 
-  private final AccountingCoreSupport accountingCoreSupport;
+  private final SettlementSupportService accountingCoreSupport;
   private final PayrollRunRepository payrollRunRepository;
   private final CompanyContextService companyContextService;
   private final com.bigbrightpaints.erp.core.util.CompanyClock companyClock;
@@ -38,7 +38,7 @@ class PayrollAccountingService {
   private final JournalEntryService journalEntryService;
 
   PayrollAccountingService(
-      AccountingCoreSupport accountingCoreSupport,
+      SettlementSupportService accountingCoreSupport,
       PayrollRunRepository payrollRunRepository,
       CompanyContextService companyContextService,
       com.bigbrightpaints.erp.core.util.CompanyClock companyClock,

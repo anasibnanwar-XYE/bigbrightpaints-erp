@@ -509,7 +509,7 @@ public class JournalEntryE2ETest extends AbstractIntegrationTest {
     assertThat(reversalEntry.getCorrectionType()).isEqualTo(JournalCorrectionType.REVERSAL);
 
     JournalEntry originalEntry = journalEntryRepository.findById(originalEntryId).orElseThrow();
-    assertThat(originalEntry.getStatus()).isEqualTo("REVERSED");
+    assertThat(originalEntry.getStatus()).isEqualTo(JournalEntryStatus.REVERSED);
 
     Account cashAfter = accountRepository.findById(cashAccount.getId()).orElseThrow();
     Account revenueAfter = accountRepository.findById(revenueAccount.getId()).orElseThrow();
@@ -612,8 +612,8 @@ public class JournalEntryE2ETest extends AbstractIntegrationTest {
 
     JournalEntry baseEntry = journalEntryRepository.findById(baseEntryId).orElseThrow();
     JournalEntry relatedEntry = journalEntryRepository.findById(relatedEntryId).orElseThrow();
-    assertThat(baseEntry.getStatus()).isEqualTo("REVERSED");
-    assertThat(relatedEntry.getStatus()).isEqualTo("REVERSED");
+    assertThat(baseEntry.getStatus()).isEqualTo(JournalEntryStatus.REVERSED);
+    assertThat(relatedEntry.getStatus()).isEqualTo(JournalEntryStatus.REVERSED);
 
     long reversalCount =
         journalEntryRepository.findAll().stream()

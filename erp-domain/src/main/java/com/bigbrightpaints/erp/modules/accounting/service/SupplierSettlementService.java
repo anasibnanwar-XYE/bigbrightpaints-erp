@@ -47,7 +47,7 @@ class SupplierSettlementService {
 
   private static final Logger log = LoggerFactory.getLogger(SupplierSettlementService.class);
 
-  private final AccountingCoreSupport accountingCoreSupport;
+  private final SettlementSupportService accountingCoreSupport;
   private final CompanyContextService companyContextService;
   private final ObjectProvider<AccountingFacade> accountingFacadeProvider;
   private final SupplierRepository supplierRepository;
@@ -56,7 +56,7 @@ class SupplierSettlementService {
   private final RawMaterialPurchaseRepository rawMaterialPurchaseRepository;
 
   SupplierSettlementService(
-      AccountingCoreSupport accountingCoreSupport,
+      SettlementSupportService accountingCoreSupport,
       CompanyContextService companyContextService,
       ObjectProvider<AccountingFacade> accountingFacadeProvider,
       SupplierRepository supplierRepository,
@@ -121,7 +121,7 @@ class SupplierSettlementService {
     if (!replayCandidate) {
       accountingCoreSupport.validateSupplierSettlementAllocations(allocations);
     }
-    AccountingCoreSupport.SettlementTotals totals =
+    SettlementSupportService.SettlementTotals totals =
         accountingCoreSupport.computeSettlementTotals(allocations);
     String memo =
         StringUtils.hasText(request.memo())
@@ -139,12 +139,12 @@ class SupplierSettlementService {
     String reference =
         accountingCoreSupport.resolveSupplierSettlementReference(
             company, supplier, request, trimmedIdempotencyKey);
-    AccountingCoreSupport.IdempotencyReservation reservation =
+    SettlementSupportService.IdempotencyReservation reservation =
         accountingCoreSupport.reserveReferenceMapping(
             company,
             trimmedIdempotencyKey,
             reference,
-            AccountingCoreSupport.ENTITY_TYPE_SUPPLIER_SETTLEMENT);
+            SettlementSupportService.ENTITY_TYPE_SUPPLIER_SETTLEMENT);
 
     if (!reservation.leader()) {
       JournalEntry existingEntry =
@@ -152,7 +152,7 @@ class SupplierSettlementService {
       List<PartnerSettlementAllocation> existingAllocations =
           accountingCoreSupport.awaitAllocations(company, trimmedIdempotencyKey);
       if (!existingAllocations.isEmpty()) {
-        AccountingCoreSupport.SettlementLineDraft replayLineDraft =
+        SettlementSupportService.SettlementLineDraft replayLineDraft =
             accountingCoreSupport.buildSupplierSettlementLines(
                 company, request, payableAccount, totals, memo, false);
         JournalEntry entry =
@@ -162,7 +162,7 @@ class SupplierSettlementService {
             company,
             trimmedIdempotencyKey,
             entry,
-            AccountingCoreSupport.ENTITY_TYPE_SUPPLIER_SETTLEMENT);
+            SettlementSupportService.ENTITY_TYPE_SUPPLIER_SETTLEMENT);
         accountingCoreSupport.validateSettlementIdempotencyKey(
             trimmedIdempotencyKey,
             PartnerType.SUPPLIER,
@@ -193,7 +193,7 @@ class SupplierSettlementService {
           company,
           trimmedIdempotencyKey,
           entry,
-          AccountingCoreSupport.ENTITY_TYPE_SUPPLIER_SETTLEMENT);
+          SettlementSupportService.ENTITY_TYPE_SUPPLIER_SETTLEMENT);
       accountingCoreSupport.validateSettlementIdempotencyKey(
           trimmedIdempotencyKey,
           PartnerType.SUPPLIER,
@@ -214,7 +214,7 @@ class SupplierSettlementService {
     }
 
     supplier.requireTransactionalUsage("settle supplier invoices");
-    AccountingCoreSupport.SettlementLineDraft lineDraft =
+    SettlementSupportService.SettlementLineDraft lineDraft =
         accountingCoreSupport.buildSupplierSettlementLines(
             company, request, payableAccount, totals, memo, true);
     LocalDate entryDate = requestedEffectiveSettlementDate;
@@ -313,7 +313,7 @@ class SupplierSettlementService {
                     null,
                     null,
                     memo,
-                    AccountingCoreSupport.ENTITY_TYPE_SUPPLIER_SETTLEMENT,
+                    SettlementSupportService.ENTITY_TYPE_SUPPLIER_SETTLEMENT,
                     reference,
                     null,
                     toCreationLines(lineDraft.lines()),
@@ -328,7 +328,7 @@ class SupplierSettlementService {
         company,
         trimmedIdempotencyKey,
         journalEntry,
-        AccountingCoreSupport.ENTITY_TYPE_SUPPLIER_SETTLEMENT);
+        SettlementSupportService.ENTITY_TYPE_SUPPLIER_SETTLEMENT);
     for (PartnerSettlementAllocation allocation : settlementRows) {
       allocation.setJournalEntry(journalEntry);
     }

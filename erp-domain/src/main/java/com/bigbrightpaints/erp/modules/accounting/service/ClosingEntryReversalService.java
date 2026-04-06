@@ -9,14 +9,14 @@ import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 @Service
 class ClosingEntryReversalService {
 
-  private final AccountingCoreSupport accountingCoreSupport;
+  private final JournalReversalService journalReversalService;
 
-  ClosingEntryReversalService(AccountingCoreSupport accountingCoreSupport) {
-    this.accountingCoreSupport = accountingCoreSupport;
+  ClosingEntryReversalService(JournalReversalService journalReversalService) {
+    this.journalReversalService = journalReversalService;
   }
 
   JournalEntryDto reverseClosingEntryForPeriodReopen(
       JournalEntry entry, AccountingPeriod period, String reason) {
-    return accountingCoreSupport.reverseClosingEntryForPeriodReopen(entry, period, reason);
+    return journalReversalService.reverseClosingEntryForPeriodReopen(entry, period, reason);
   }
 }

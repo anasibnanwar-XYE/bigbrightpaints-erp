@@ -27,7 +27,7 @@ class TS_Wave3CanonicalSurfaceContractTest {
     assertRemoved(
         "com.bigbrightpaints.erp.modules.accounting.service.AccountingAuditTrailServiceCore");
     assertRemoved("com.bigbrightpaints.erp.modules.accounting.service.AccountingPeriodServiceCore");
-    assertHidden("com.bigbrightpaints.erp.modules.accounting.service.AccountingCoreSupport");
+    assertRemoved("com.bigbrightpaints.erp.modules.accounting.service.AccountingCoreSupport");
     assertRemoved("com.bigbrightpaints.erp.modules.accounting.service.AccountingCoreEngine");
     assertRemoved("com.bigbrightpaints.erp.modules.accounting.service.AccountingCoreLogic");
     assertRemoved("com.bigbrightpaints.erp.modules.accounting.service.AccountingCoreService");

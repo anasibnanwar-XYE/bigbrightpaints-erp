@@ -15,8 +15,6 @@ import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryReversalRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalListItemDto;
-import com.bigbrightpaints.erp.modules.purchasing.service.CompanyScopedPurchasingLookupService;
-import com.bigbrightpaints.erp.modules.sales.service.CompanyScopedSalesLookupService;
 import com.bigbrightpaints.erp.shared.dto.PageResponse;
 
 @Service
@@ -32,118 +30,6 @@ public class JournalEntryService {
   private final ManualJournalService manualJournalService;
   private final ClosingEntryReversalService closingEntryReversalService;
 
-  private record LegacyBundle(
-      JournalQueryService journalQueryService,
-      JournalPostingService journalPostingService,
-      JournalReversalService journalReversalService,
-      PeriodValidationService periodValidationService,
-      ManualJournalService manualJournalService,
-      ClosingEntryReversalService closingEntryReversalService) {}
-
-  private static LegacyBundle legacyBundle(
-      com.bigbrightpaints.erp.modules.company.service.CompanyContextService companyContextService,
-      com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository accountRepository,
-      com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository
-          journalEntryRepository,
-      DealerLedgerService dealerLedgerService,
-      SupplierLedgerService supplierLedgerService,
-      com.bigbrightpaints.erp.modules.hr.domain.PayrollRunRepository payrollRunRepository,
-      com.bigbrightpaints.erp.modules.hr.domain.PayrollRunLineRepository payrollRunLineRepository,
-      AccountingPeriodService accountingPeriodService,
-      ReferenceNumberService referenceNumberService,
-      org.springframework.context.ApplicationEventPublisher eventPublisher,
-      com.bigbrightpaints.erp.core.util.CompanyClock companyClock,
-      com.bigbrightpaints.erp.core.util.CompanyEntityLookup companyEntityLookup,
-      com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAllocationRepository
-          settlementAllocationRepository,
-      com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchaseRepository
-          rawMaterialPurchaseRepository,
-      com.bigbrightpaints.erp.modules.invoice.domain.InvoiceRepository invoiceRepository,
-      com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovementRepository
-          rawMaterialMovementRepository,
-      com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatchRepository
-          rawMaterialBatchRepository,
-      com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatchRepository
-          finishedGoodBatchRepository,
-      com.bigbrightpaints.erp.modules.sales.domain.DealerRepository dealerRepository,
-      com.bigbrightpaints.erp.modules.purchasing.domain.SupplierRepository supplierRepository,
-      com.bigbrightpaints.erp.modules.invoice.service.InvoiceSettlementPolicy
-          invoiceSettlementPolicy,
-      JournalReferenceResolver journalReferenceResolver,
-      com.bigbrightpaints.erp.modules.accounting.domain.JournalReferenceMappingRepository
-          journalReferenceMappingRepository,
-      jakarta.persistence.EntityManager entityManager,
-      com.bigbrightpaints.erp.core.config.SystemSettingsService systemSettingsService,
-      com.bigbrightpaints.erp.core.audit.AuditService auditService,
-      com.bigbrightpaints.erp.modules.accounting.event.AccountingEventStore accountingEventStore) {
-    AccountingCoreSupport accountingCoreSupport =
-        new AccountingCoreSupport(
-            companyContextService,
-            accountRepository,
-            journalEntryRepository,
-            dealerLedgerService,
-            supplierLedgerService,
-            payrollRunRepository,
-            payrollRunLineRepository,
-            accountingPeriodService,
-            referenceNumberService,
-            eventPublisher,
-            companyClock,
-            companyEntityLookup,
-            settlementAllocationRepository,
-            rawMaterialPurchaseRepository,
-            invoiceRepository,
-            rawMaterialMovementRepository,
-            rawMaterialBatchRepository,
-            finishedGoodBatchRepository,
-            dealerRepository,
-            supplierRepository,
-            invoiceSettlementPolicy,
-            journalReferenceResolver,
-            journalReferenceMappingRepository,
-            entityManager,
-            systemSettingsService,
-            auditService,
-            accountingEventStore);
-    CompanyScopedAccountingLookupService accountingLookupService =
-        CompanyScopedAccountingLookupService.fromLegacy(companyEntityLookup);
-    CompanyScopedSalesLookupService salesLookupService =
-        CompanyScopedSalesLookupService.fromLegacy(companyEntityLookup);
-    CompanyScopedPurchasingLookupService purchasingLookupService =
-        CompanyScopedPurchasingLookupService.fromLegacy(companyEntityLookup);
-    AccountResolutionService accountResolutionService =
-        new AccountResolutionService(
-            salesLookupService,
-            purchasingLookupService,
-            accountingLookupService,
-            accountRepository,
-            companyClock);
-    AccountingDtoMapperService accountingDtoMapperService =
-        new AccountingDtoMapperService(journalReferenceMappingRepository);
-    return new LegacyBundle(
-        new JournalQueryService(
-            companyContextService,
-            journalEntryRepository,
-            accountingDtoMapperService,
-            accountResolutionService),
-        new JournalPostingService(accountingCoreSupport),
-        new JournalReversalService(accountingCoreSupport),
-        new PeriodValidationService(accountingCoreSupport),
-        new ManualJournalService(
-            accountingCoreSupport, new JournalPostingService(accountingCoreSupport)),
-        new ClosingEntryReversalService(accountingCoreSupport));
-  }
-
-  private JournalEntryService(LegacyBundle legacyBundle) {
-    this(
-        legacyBundle.journalQueryService(),
-        legacyBundle.journalPostingService(),
-        legacyBundle.journalReversalService(),
-        legacyBundle.periodValidationService(),
-        legacyBundle.manualJournalService(),
-        legacyBundle.closingEntryReversalService());
-  }
-
   @Autowired
   public JournalEntryService(
       JournalQueryService journalQueryService,
@@ -158,73 +44,6 @@ public class JournalEntryService {
     this.periodValidationService = periodValidationService;
     this.manualJournalService = manualJournalService;
     this.closingEntryReversalService = closingEntryReversalService;
-  }
-
-  public JournalEntryService(
-      com.bigbrightpaints.erp.modules.company.service.CompanyContextService companyContextService,
-      com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository accountRepository,
-      com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository
-          journalEntryRepository,
-      DealerLedgerService dealerLedgerService,
-      SupplierLedgerService supplierLedgerService,
-      com.bigbrightpaints.erp.modules.hr.domain.PayrollRunRepository payrollRunRepository,
-      com.bigbrightpaints.erp.modules.hr.domain.PayrollRunLineRepository payrollRunLineRepository,
-      AccountingPeriodService accountingPeriodService,
-      ReferenceNumberService referenceNumberService,
-      org.springframework.context.ApplicationEventPublisher eventPublisher,
-      com.bigbrightpaints.erp.core.util.CompanyClock companyClock,
-      com.bigbrightpaints.erp.core.util.CompanyEntityLookup companyEntityLookup,
-      com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAllocationRepository
-          settlementAllocationRepository,
-      com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchaseRepository
-          rawMaterialPurchaseRepository,
-      com.bigbrightpaints.erp.modules.invoice.domain.InvoiceRepository invoiceRepository,
-      com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovementRepository
-          rawMaterialMovementRepository,
-      com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatchRepository
-          rawMaterialBatchRepository,
-      com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatchRepository
-          finishedGoodBatchRepository,
-      com.bigbrightpaints.erp.modules.sales.domain.DealerRepository dealerRepository,
-      com.bigbrightpaints.erp.modules.purchasing.domain.SupplierRepository supplierRepository,
-      com.bigbrightpaints.erp.modules.invoice.service.InvoiceSettlementPolicy
-          invoiceSettlementPolicy,
-      JournalReferenceResolver journalReferenceResolver,
-      com.bigbrightpaints.erp.modules.accounting.domain.JournalReferenceMappingRepository
-          journalReferenceMappingRepository,
-      jakarta.persistence.EntityManager entityManager,
-      com.bigbrightpaints.erp.core.config.SystemSettingsService systemSettingsService,
-      com.bigbrightpaints.erp.core.audit.AuditService auditService,
-      com.bigbrightpaints.erp.modules.accounting.event.AccountingEventStore accountingEventStore) {
-    this(
-        legacyBundle(
-            companyContextService,
-            accountRepository,
-            journalEntryRepository,
-            dealerLedgerService,
-            supplierLedgerService,
-            payrollRunRepository,
-            payrollRunLineRepository,
-            accountingPeriodService,
-            referenceNumberService,
-            eventPublisher,
-            companyClock,
-            companyEntityLookup,
-            settlementAllocationRepository,
-            rawMaterialPurchaseRepository,
-            invoiceRepository,
-            rawMaterialMovementRepository,
-            rawMaterialBatchRepository,
-            finishedGoodBatchRepository,
-            dealerRepository,
-            supplierRepository,
-            invoiceSettlementPolicy,
-            journalReferenceResolver,
-            journalReferenceMappingRepository,
-            entityManager,
-            systemSettingsService,
-            auditService,
-            accountingEventStore));
   }
 
   public List<JournalEntryDto> listJournalEntries(

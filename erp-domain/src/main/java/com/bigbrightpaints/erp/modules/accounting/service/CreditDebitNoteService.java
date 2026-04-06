@@ -19,11 +19,14 @@ public class CreditDebitNoteService {
   @SuppressWarnings("unused")
   private Environment environment;
 
-  private final AccountingCoreSupport accountingCoreSupport;
+  private final SettlementSupportService accountingCoreSupport;
+  private final JournalPostingService journalPostingService;
 
   @Autowired
-  public CreditDebitNoteService(AccountingCoreSupport accountingCoreSupport) {
+  public CreditDebitNoteService(
+      SettlementSupportService accountingCoreSupport, JournalPostingService journalPostingService) {
     this.accountingCoreSupport = accountingCoreSupport;
+    this.journalPostingService = journalPostingService;
   }
 
   public JournalEntryDto postCreditNote(CreditNoteRequest request) {
@@ -43,7 +46,7 @@ public class CreditDebitNoteService {
   }
 
   JournalEntryDto createJournalEntry(JournalEntryRequest request) {
-    return accountingCoreSupport.createJournalEntry(request);
+    return journalPostingService.createJournalEntry(request);
   }
 
   private CreditNoteRequest normalizeCreditNoteRequest(CreditNoteRequest request) {

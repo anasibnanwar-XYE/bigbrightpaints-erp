@@ -9,21 +9,37 @@ import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
+import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryType;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalReferenceMapping;
+import com.bigbrightpaints.erp.modules.accounting.domain.JournalReferenceMappingRepository;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest;
+import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 
 @Service
 class ManualJournalService {
 
-  private final AccountingCoreSupport accountingCoreSupport;
+  private final SettlementSupportService accountingCoreSupport;
   private final JournalPostingService journalPostingService;
+  private final CompanyContextService companyContextService;
+  private final JournalEntryRepository journalEntryRepository;
+  private final JournalReferenceResolver journalReferenceResolver;
+  private final JournalReferenceMappingRepository journalReferenceMappingRepository;
 
   ManualJournalService(
-      AccountingCoreSupport accountingCoreSupport, JournalPostingService journalPostingService) {
+      SettlementSupportService accountingCoreSupport,
+      JournalPostingService journalPostingService,
+      CompanyContextService companyContextService,
+      JournalEntryRepository journalEntryRepository,
+      JournalReferenceResolver journalReferenceResolver,
+      JournalReferenceMappingRepository journalReferenceMappingRepository) {
     this.accountingCoreSupport = accountingCoreSupport;
     this.journalPostingService = journalPostingService;
+    this.companyContextService = companyContextService;
+    this.journalEntryRepository = journalEntryRepository;
+    this.journalReferenceResolver = journalReferenceResolver;
+    this.journalReferenceMappingRepository = journalReferenceMappingRepository;
   }
 
   JournalEntryDto createManualJournalEntry(JournalEntryRequest request, String idempotencyKey) {
@@ -31,7 +47,7 @@ class ManualJournalService {
       throw new ApplicationException(
           ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD, "Journal entry request is required");
     }
-    var company = accountingCoreSupport.companyContextService.requireCurrentCompany();
+    var company = companyContextService.requireCurrentCompany();
     String rawKey = StringUtils.hasText(idempotencyKey) ? idempotencyKey.trim() : null;
     String key =
         StringUtils.hasText(rawKey)
@@ -39,18 +55,17 @@ class ManualJournalService {
             : null;
     if (StringUtils.hasText(rawKey)) {
       Optional<JournalEntry> existingByReference =
-          accountingCoreSupport.journalEntryRepository.findByCompanyAndReferenceNumber(
-              company, rawKey);
+          journalEntryRepository.findByCompanyAndReferenceNumber(company, rawKey);
       if (existingByReference.isPresent()) {
         return accountingCoreSupport.toDto(existingByReference.get());
       }
       Optional<JournalEntry> existingByResolver =
-          accountingCoreSupport.journalReferenceResolver.findExistingEntry(company, rawKey);
+          journalReferenceResolver.findExistingEntry(company, rawKey);
       if (existingByResolver.isPresent()) {
         return accountingCoreSupport.toDto(existingByResolver.get());
       }
       int reserved =
-          accountingCoreSupport.journalReferenceMappingRepository.reserveManualReference(
+          journalReferenceMappingRepository.reserveManualReference(
               company.getId(),
               key,
               accountingCoreSupport.reservedManualReference(key),
@@ -81,7 +96,7 @@ class ManualJournalService {
                   request.lines(),
                   request.currency(),
                   request.fxRate(),
-                  request.sourceModule(),
+                  StringUtils.hasText(request.sourceModule()) ? request.sourceModule() : "MANUAL",
                   request.sourceReference(),
                   StringUtils.hasText(request.journalType())
                       ? request.journalType()
@@ -112,7 +127,7 @@ class ManualJournalService {
                           .withDetail("referenceNumber", rawKey));
       mapping.setCanonicalReference(created.referenceNumber());
       mapping.setEntityId(created.id());
-      accountingCoreSupport.journalReferenceMappingRepository.save(mapping);
+      journalReferenceMappingRepository.save(mapping);
     }
     return created;
   }

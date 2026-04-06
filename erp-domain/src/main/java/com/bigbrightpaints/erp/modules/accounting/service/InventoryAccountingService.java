@@ -18,11 +18,14 @@ public class InventoryAccountingService {
   @SuppressWarnings("unused")
   private Environment environment;
 
-  private final AccountingCoreSupport accountingCoreSupport;
+  private final SettlementSupportService accountingCoreSupport;
+  private final JournalPostingService journalPostingService;
 
   @Autowired
-  public InventoryAccountingService(AccountingCoreSupport accountingCoreSupport) {
+  public InventoryAccountingService(
+      SettlementSupportService accountingCoreSupport, JournalPostingService journalPostingService) {
     this.accountingCoreSupport = accountingCoreSupport;
+    this.journalPostingService = journalPostingService;
   }
 
   public JournalEntryDto recordLandedCost(LandedCostRequest request) {
@@ -38,7 +41,7 @@ public class InventoryAccountingService {
   }
 
   JournalEntryDto createJournalEntry(JournalEntryRequest request) {
-    return accountingCoreSupport.createJournalEntry(request);
+    return journalPostingService.createJournalEntry(request);
   }
 
   private LandedCostRequest normalizeLandedCostRequest(LandedCostRequest request) {

@@ -44,7 +44,7 @@ import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
 @Service
 class DealerSettlementService {
 
-  private final AccountingCoreSupport accountingCoreSupport;
+  private final SettlementSupportService accountingCoreSupport;
   private final CompanyContextService companyContextService;
   private final ObjectProvider<AccountingFacade> accountingFacadeProvider;
   private final DealerRepository dealerRepository;
@@ -56,7 +56,7 @@ class DealerSettlementService {
   private final InvoiceRepository invoiceRepository;
 
   DealerSettlementService(
-      AccountingCoreSupport accountingCoreSupport,
+      SettlementSupportService accountingCoreSupport,
       CompanyContextService companyContextService,
       ObjectProvider<AccountingFacade> accountingFacadeProvider,
       DealerRepository dealerRepository,
@@ -130,7 +130,7 @@ class DealerSettlementService {
     if (!replayCandidate) {
       accountingCoreSupport.validateDealerSettlementAllocations(allocations);
     }
-    AccountingCoreSupport.SettlementTotals totals =
+    SettlementSupportService.SettlementTotals totals =
         accountingCoreSupport.computeSettlementTotals(allocations);
     String memo =
         StringUtils.hasText(request.memo())
@@ -148,18 +148,18 @@ class DealerSettlementService {
     String reference =
         accountingCoreSupport.resolveDealerSettlementReference(
             company, dealer, request, trimmedIdempotencyKey);
-    AccountingCoreSupport.IdempotencyReservation reservation =
+    SettlementSupportService.IdempotencyReservation reservation =
         accountingCoreSupport.reserveReferenceMapping(
             company,
             trimmedIdempotencyKey,
             reference,
-            AccountingCoreSupport.ENTITY_TYPE_DEALER_SETTLEMENT);
+            SettlementSupportService.ENTITY_TYPE_DEALER_SETTLEMENT);
     if (reservation.leader()
         && !StringUtils.hasText(request.referenceNumber())
         && accountingCoreSupport.isReservedReference(reference)) {
       reference = referenceNumberService.dealerReceiptReference(company, dealer);
     }
-    AccountingCoreSupport.SettlementLineDraft lineDraft =
+    SettlementSupportService.SettlementLineDraft lineDraft =
         accountingCoreSupport.buildDealerSettlementLines(
             company, request, receivableAccount, totals, memo, false);
 
@@ -176,7 +176,7 @@ class DealerSettlementService {
             company,
             trimmedIdempotencyKey,
             entry,
-            AccountingCoreSupport.ENTITY_TYPE_DEALER_SETTLEMENT);
+            SettlementSupportService.ENTITY_TYPE_DEALER_SETTLEMENT);
         accountingCoreSupport.validateSettlementIdempotencyKey(
             trimmedIdempotencyKey,
             PartnerType.DEALER,
@@ -207,7 +207,7 @@ class DealerSettlementService {
           company,
           trimmedIdempotencyKey,
           entry,
-          AccountingCoreSupport.ENTITY_TYPE_DEALER_SETTLEMENT);
+          SettlementSupportService.ENTITY_TYPE_DEALER_SETTLEMENT);
       accountingCoreSupport.validateSettlementIdempotencyKey(
           trimmedIdempotencyKey,
           PartnerType.DEALER,
@@ -324,7 +324,7 @@ class DealerSettlementService {
                     null,
                     null,
                     memo,
-                    AccountingCoreSupport.ENTITY_TYPE_DEALER_SETTLEMENT,
+                    SettlementSupportService.ENTITY_TYPE_DEALER_SETTLEMENT,
                     reference,
                     null,
                     toCreationLines(lineDraft.lines()),
@@ -340,7 +340,7 @@ class DealerSettlementService {
         company,
         trimmedIdempotencyKey,
         journalEntry,
-        AccountingCoreSupport.ENTITY_TYPE_DEALER_SETTLEMENT);
+        SettlementSupportService.ENTITY_TYPE_DEALER_SETTLEMENT);
     for (PartnerSettlementAllocation allocation : settlementRows) {
       allocation.setJournalEntry(journalEntry);
     }

@@ -20,11 +20,14 @@ public class DealerReceiptService {
   @SuppressWarnings("unused")
   private Environment environment;
 
-  private final AccountingCoreSupport accountingCoreSupport;
+  private final SettlementSupportService accountingCoreSupport;
+  private final JournalQueryService journalQueryService;
 
   @Autowired
-  public DealerReceiptService(AccountingCoreSupport accountingCoreSupport) {
+  public DealerReceiptService(
+      SettlementSupportService accountingCoreSupport, JournalQueryService journalQueryService) {
     this.accountingCoreSupport = accountingCoreSupport;
+    this.journalQueryService = journalQueryService;
   }
 
   public JournalEntryDto recordDealerReceipt(DealerReceiptRequest request) {
@@ -43,7 +46,7 @@ public class DealerReceiptService {
 
   public List<JournalEntryDto> listDealerReceipts(Long dealerId, int page, int size) {
     ValidationUtils.requireNotNull(dealerId, "dealerId");
-    return accountingCoreSupport.listJournalEntries(
+    return journalQueryService.listJournalEntries(
         dealerId, null, Math.max(page, 0), Math.max(1, Math.min(size, 200)));
   }
 

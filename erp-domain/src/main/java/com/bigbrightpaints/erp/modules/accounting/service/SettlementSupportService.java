@@ -3,7 +3,6 @@ package com.bigbrightpaints.erp.modules.accounting.service;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Duration;
-import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -29,17 +28,12 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.core.env.Environment;
 import org.springframework.core.env.Profiles;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Sort;
-import org.springframework.data.jpa.domain.Specification;
 import org.springframework.retry.annotation.Backoff;
 import org.springframework.retry.annotation.Retryable;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Propagation;
+import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
@@ -62,11 +56,9 @@ import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriod;
-import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodStatus;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalCorrectionType;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
-import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryStatus;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryType;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalLine;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalReferenceMapping;
@@ -75,7 +67,6 @@ import com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAlloca
 import com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAllocationRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.PartnerType;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountDto;
-import com.bigbrightpaints.erp.modules.accounting.dto.AccountRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccrualRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.BadDebtWriteOffRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.CreditNoteRequest;
@@ -90,7 +81,6 @@ import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryReversalReques
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalLineDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalListItemDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.LandedCostRequest;
-import com.bigbrightpaints.erp.modules.accounting.dto.ManualJournalRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.PartnerSettlementRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.PartnerSettlementResponse;
 import com.bigbrightpaints.erp.modules.accounting.dto.SettlementAllocationApplication;
@@ -122,14 +112,13 @@ import com.bigbrightpaints.erp.modules.purchasing.service.CompanyScopedPurchasin
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
 import com.bigbrightpaints.erp.modules.sales.service.CompanyScopedSalesLookupService;
-import com.bigbrightpaints.erp.shared.dto.PageResponse;
 
 import jakarta.persistence.EntityManager;
 
-@Component
-class AccountingCoreSupport {
+@Service
+class SettlementSupportService {
 
-  protected static final Logger log = LoggerFactory.getLogger(AccountingCoreSupport.class);
+  protected static final Logger log = LoggerFactory.getLogger(SettlementSupportService.class);
 
   // Exact zero tolerance enforced for double-entry accounting integrity.
   // All amounts must be properly rounded before posting to ensure perfect balance.
@@ -189,6 +178,7 @@ class AccountingCoreSupport {
   protected final SystemSettingsService systemSettingsService;
   protected final AuditService auditService;
   protected final AccountingEventStore accountingEventStore;
+  private final JournalPostingService journalPostingService;
 
   @Autowired(required = false)
   private Environment environment;
@@ -220,7 +210,7 @@ class AccountingCoreSupport {
   private boolean strictAccountingEventTrail = true;
 
   @Autowired
-  public AccountingCoreSupport(
+  public SettlementSupportService(
       CompanyContextService companyContextService,
       AccountRepository accountRepository,
       JournalEntryRepository journalEntryRepository,
@@ -250,7 +240,8 @@ class AccountingCoreSupport {
       EntityManager entityManager,
       SystemSettingsService systemSettingsService,
       AuditService auditService,
-      AccountingEventStore accountingEventStore) {
+      AccountingEventStore accountingEventStore,
+      JournalPostingService journalPostingService) {
     this.companyContextService = companyContextService;
     this.accountRepository = accountRepository;
     this.journalEntryRepository = journalEntryRepository;
@@ -281,9 +272,10 @@ class AccountingCoreSupport {
     this.systemSettingsService = systemSettingsService;
     this.auditService = auditService;
     this.accountingEventStore = accountingEventStore;
+    this.journalPostingService = journalPostingService;
   }
 
-  protected AccountingCoreSupport(
+  protected SettlementSupportService(
       CompanyContextService companyContextService,
       AccountRepository accountRepository,
       JournalEntryRepository journalEntryRepository,
@@ -310,7 +302,8 @@ class AccountingCoreSupport {
       EntityManager entityManager,
       SystemSettingsService systemSettingsService,
       AuditService auditService,
-      AccountingEventStore accountingEventStore) {
+      AccountingEventStore accountingEventStore,
+      JournalPostingService journalPostingService) {
     this(
         companyContextService,
         accountRepository,
@@ -341,1052 +334,8 @@ class AccountingCoreSupport {
         entityManager,
         systemSettingsService,
         auditService,
-        accountingEventStore);
-  }
-
-  /* Accounts */
-  public List<AccountDto> listAccounts() {
-    Company company = companyContextService.requireCurrentCompany();
-    return accountRepository.findByCompanyOrderByCodeAsc(company).stream()
-        .map(this::toDto)
-        .toList();
-  }
-
-  @Transactional
-  public AccountDto createAccount(AccountRequest request) {
-    Company company = companyContextService.requireCurrentCompany();
-    Account account = new Account();
-    account.setCompany(company);
-    account.setCode(request.code());
-    account.setName(request.name());
-    account.setType(request.type());
-
-    // Handle parent-child hierarchy
-    if (request.parentId() != null) {
-      Account parent =
-          accountRepository
-              .findByCompanyAndId(company, request.parentId())
-              .orElseThrow(
-                  () ->
-                      new ApplicationException(
-                          ErrorCode.VALIDATION_INVALID_REFERENCE, "Parent account not found"));
-      if (parent.getType() != request.type()) {
-        throw new ApplicationException(
-            ErrorCode.VALIDATION_INVALID_INPUT, "Child account must have same type as parent");
-      }
-      account.setParent(parent);
-    }
-
-    Account saved = accountRepository.save(account);
-    publishAccountCacheInvalidated(company.getId());
-    if (accountingComplianceAuditService != null) {
-      accountingComplianceAuditService.recordAccountCreated(company, saved);
-    }
-    return toDto(saved);
-  }
-
-  /* Journal Entries */
-  @Transactional(propagation = Propagation.SUPPORTS)
-  public List<JournalEntryDto> listJournalEntries(
-      Long dealerId, Long supplierId, int page, int size) {
-    if (dealerId != null && supplierId != null) {
-      throw new ApplicationException(
-          ErrorCode.VALIDATION_INVALID_INPUT, "Only one of dealerId or supplierId can be provided");
-    }
-    Company company = companyContextService.requireCurrentCompany();
-    int safeSize = Math.max(1, Math.min(size, 200));
-    PageRequest pageable = PageRequest.of(Math.max(page, 0), safeSize);
-    List<JournalEntry> entries;
-    if (dealerId != null) {
-      Dealer dealer = requireDealer(company, dealerId);
-      entries =
-          journalEntryRepository
-              .findByCompanyAndDealerOrderByEntryDateDescIdDesc(company, dealer, pageable)
-              .getContent();
-    } else if (supplierId != null) {
-      Supplier supplier = requireSupplier(company, supplierId);
-      entries =
-          journalEntryRepository
-              .findByCompanyAndSupplierOrderByEntryDateDescIdDesc(company, supplier, pageable)
-              .getContent();
-    } else {
-      entries =
-          journalEntryRepository
-              .findByCompanyOrderByEntryDateDescIdDesc(company, pageable)
-              .getContent();
-    }
-    return entries.stream()
-        .map(entry -> toDto(entry, resolveDisplayReferenceNumber(company, entry)))
-        .toList();
-  }
-
-  public List<JournalEntryDto> listJournalEntries(Long dealerId) {
-    return listJournalEntries(dealerId, null, 0, 100);
-  }
-
-  public List<JournalEntryDto> listJournalEntriesByReferencePrefix(String prefix) {
-    Company company = companyContextService.requireCurrentCompany();
-    List<JournalEntry> entries =
-        journalEntryRepository.findByCompanyAndReferenceNumberStartingWith(company, prefix);
-    return entries.stream().map(this::toDto).toList();
-  }
-
-  @Transactional
-  protected JournalEntryDto createStandardJournal(JournalCreationRequest request) {
-    if (request == null) {
-      throw new ApplicationException(
-          ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD, "Journal creation request is required");
-    }
-    ValidationUtils.requirePositive(request.amount(), "amount");
-    if (!StringUtils.hasText(request.narration())) {
-      throw new ApplicationException(
-          ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,
-          "Narration is required for journal creation");
-    }
-    if (!StringUtils.hasText(request.sourceModule())) {
-      throw new ApplicationException(
-          ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,
-          "Source module is required for journal creation");
-    }
-    if (!StringUtils.hasText(request.sourceReference())) {
-      throw new ApplicationException(
-          ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,
-          "Source reference is required for journal creation");
-    }
-
-    List<JournalEntryRequest.JournalLineRequest> resolvedLines = request.resolvedLines();
-    if (resolvedLines == null || resolvedLines.isEmpty()) {
-      throw new ApplicationException(
-          ErrorCode.VALIDATION_INVALID_INPUT, "At least one journal line is required");
-    }
-
-    BigDecimal totalDebit = BigDecimal.ZERO;
-    BigDecimal totalCredit = BigDecimal.ZERO;
-    for (JournalEntryRequest.JournalLineRequest line : resolvedLines) {
-      if (line.accountId() == null) {
-        throw new ApplicationException(
-            ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,
-            "Account is required for every journal line");
-      }
-      BigDecimal debit = line.debit() == null ? BigDecimal.ZERO : line.debit();
-      BigDecimal credit = line.credit() == null ? BigDecimal.ZERO : line.credit();
-      if (debit.compareTo(BigDecimal.ZERO) < 0 || credit.compareTo(BigDecimal.ZERO) < 0) {
-        throw new ApplicationException(
-            ErrorCode.VALIDATION_INVALID_INPUT, "Journal line amounts cannot be negative");
-      }
-      if (debit.compareTo(BigDecimal.ZERO) > 0 && credit.compareTo(BigDecimal.ZERO) > 0) {
-        throw new ApplicationException(
-            ErrorCode.VALIDATION_INVALID_INPUT,
-            "Debit and credit cannot both be non-zero on the same line");
-      }
-      totalDebit = totalDebit.add(debit);
-      totalCredit = totalCredit.add(credit);
-    }
-    if (totalDebit.compareTo(BigDecimal.ZERO) <= 0 || totalCredit.compareTo(BigDecimal.ZERO) <= 0) {
-      throw new ApplicationException(
-          ErrorCode.VALIDATION_INVALID_INPUT,
-          "Journal lines must include at least one debit and one credit");
-    }
-    if (totalDebit.subtract(totalCredit).abs().compareTo(JOURNAL_BALANCE_TOLERANCE) > 0) {
-      throw new ApplicationException(
-              ErrorCode.VALIDATION_INVALID_INPUT, "Journal entry must balance")
-          .withDetail("totalDebit", totalDebit)
-          .withDetail("totalCredit", totalCredit);
-    }
-
-    LocalDate entryDate =
-        request.entryDate() != null
-            ? request.entryDate()
-            : companyClock.today(companyContextService.requireCurrentCompany());
-    String narration = request.narration().trim();
-    String sourceModule = request.sourceModule().trim();
-    String sourceReference = request.sourceReference().trim();
-    String journalType =
-        "MANUAL".equalsIgnoreCase(sourceModule)
-            ? JournalEntryType.MANUAL.name()
-            : JournalEntryType.AUTOMATED.name();
-    JournalEntryRequest journalRequest =
-        new JournalEntryRequest(
-            sourceReference,
-            entryDate,
-            narration,
-            request.dealerId(),
-            request.supplierId(),
-            Boolean.TRUE.equals(request.adminOverride()),
-            resolvedLines,
-            null,
-            null,
-            sourceModule,
-            sourceReference,
-            journalType,
-            request.attachmentReferences());
-    return createJournalEntry(journalRequest);
-  }
-
-  @Transactional
-  protected JournalEntryDto createManualJournal(ManualJournalRequest request) {
-    if (request == null) {
-      throw new ApplicationException(
-          ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD, "Manual journal request is required");
-    }
-    if (request.lines() == null || request.lines().isEmpty()) {
-      throw new ApplicationException(
-          ErrorCode.VALIDATION_INVALID_INPUT, "Manual journal requires at least one line");
-    }
-    BigDecimal totalDebit = BigDecimal.ZERO;
-    BigDecimal totalCredit = BigDecimal.ZERO;
-    List<JournalEntryRequest.JournalLineRequest> lines = new ArrayList<>();
-    for (ManualJournalRequest.LineRequest line : request.lines()) {
-      if (line == null || line.accountId() == null) {
-        throw new ApplicationException(
-            ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,
-            "Account is required for manual journal lines");
-      }
-      BigDecimal amount = ValidationUtils.requirePositive(line.amount(), "amount");
-      ManualJournalRequest.EntryType entryType = line.entryType();
-      if (entryType == null) {
-        throw new ApplicationException(
-            ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,
-            "Entry type is required for manual journal lines");
-      }
-      String lineNarration =
-          StringUtils.hasText(line.narration())
-              ? line.narration().trim()
-              : (StringUtils.hasText(request.narration())
-                  ? request.narration().trim()
-                  : "Manual journal line");
-      BigDecimal debit =
-          entryType == ManualJournalRequest.EntryType.DEBIT ? amount : BigDecimal.ZERO;
-      BigDecimal credit =
-          entryType == ManualJournalRequest.EntryType.CREDIT ? amount : BigDecimal.ZERO;
-      totalDebit = totalDebit.add(debit);
-      totalCredit = totalCredit.add(credit);
-      lines.add(
-          new JournalEntryRequest.JournalLineRequest(
-              line.accountId(), lineNarration, debit, credit));
-    }
-    if (totalDebit.subtract(totalCredit).abs().compareTo(JOURNAL_BALANCE_TOLERANCE) > 0) {
-      throw new ApplicationException(
-              ErrorCode.VALIDATION_INVALID_INPUT, "Manual journal entry must balance")
-          .withDetail("totalDebit", totalDebit)
-          .withDetail("totalCredit", totalCredit);
-    }
-
-    LocalDate entryDate =
-        request.entryDate() != null
-            ? request.entryDate()
-            : companyClock.today(companyContextService.requireCurrentCompany());
-    if (!StringUtils.hasText(request.narration())) {
-      throw new ApplicationException(
-          ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD, "Manual journal reason is required");
-    }
-    String narration = request.narration().trim();
-    String sourceReference =
-        StringUtils.hasText(request.idempotencyKey()) ? request.idempotencyKey().trim() : null;
-    JournalEntryRequest journalRequest =
-        new JournalEntryRequest(
-            null,
-            entryDate,
-            narration,
-            null,
-            null,
-            Boolean.TRUE.equals(request.adminOverride()),
-            lines,
-            null,
-            null,
-            "MANUAL",
-            sourceReference,
-            JournalEntryType.MANUAL.name(),
-            request.attachmentReferences());
-    return createJournalEntry(journalRequest);
-  }
-
-  @Transactional(readOnly = true)
-  public PageResponse<JournalListItemDto> listJournals(
-      LocalDate fromDate,
-      LocalDate toDate,
-      String journalType,
-      String sourceModule,
-      int page,
-      int size) {
-    if (fromDate != null && toDate != null && fromDate.isAfter(toDate)) {
-      throw new ApplicationException(
-              ErrorCode.VALIDATION_INVALID_DATE, "fromDate cannot be after toDate")
-          .withDetail("fromDate", fromDate)
-          .withDetail("toDate", toDate);
-    }
-    JournalEntryType typeFilter = parseJournalTypeFilter(journalType);
-    String normalizedSourceModule = normalizeSourceModule(sourceModule);
-    Company company = companyContextService.requireCurrentCompany();
-    int safePage = Math.max(page, 0);
-    int safeSize = Math.max(1, Math.min(size, 200));
-    Specification<JournalEntry> spec =
-        Specification.where(byJournalCompany(company))
-            .and(byJournalEntryDateRange(fromDate, toDate))
-            .and(byJournalType(typeFilter))
-            .and(byJournalSourceModule(normalizedSourceModule));
-    Page<JournalEntry> journalPage =
-        journalEntryRepository.findAll(
-            spec,
-            PageRequest.of(safePage, safeSize, Sort.by(Sort.Direction.DESC, "entryDate", "id")));
-    List<JournalListItemDto> content =
-        journalPage.getContent().stream().map(this::toJournalListItemDto).toList();
-    return PageResponse.of(content, journalPage.getTotalElements(), safePage, safeSize);
-  }
-
-  private Specification<JournalEntry> byJournalCompany(Company company) {
-    return (root, query, cb) -> cb.equal(root.get("company"), company);
-  }
-
-  private Specification<JournalEntry> byJournalEntryDateRange(
-      LocalDate fromDate, LocalDate toDate) {
-    return (root, query, cb) -> {
-      if (fromDate == null && toDate == null) {
-        return cb.conjunction();
-      }
-      if (fromDate != null && toDate != null) {
-        return cb.between(root.get("entryDate"), fromDate, toDate);
-      }
-      if (fromDate != null) {
-        return cb.greaterThanOrEqualTo(root.get("entryDate"), fromDate);
-      }
-      return cb.lessThanOrEqualTo(root.get("entryDate"), toDate);
-    };
-  }
-
-  private Specification<JournalEntry> byJournalType(JournalEntryType typeFilter) {
-    return (root, query, cb) ->
-        typeFilter != null ? cb.equal(root.get("journalType"), typeFilter) : cb.conjunction();
-  }
-
-  private Specification<JournalEntry> byJournalSourceModule(String normalizedSourceModule) {
-    return (root, query, cb) ->
-        normalizedSourceModule != null
-            ? cb.equal(
-                cb.lower(root.get("sourceModule")), normalizedSourceModule.toLowerCase(Locale.ROOT))
-            : cb.conjunction();
-  }
-
-  @Retryable(
-      value = DataIntegrityViolationException.class,
-      maxAttempts = 3,
-      backoff = @Backoff(delay = 50, maxDelay = 250, multiplier = 2.0))
-  @Transactional
-  protected JournalEntryDto createJournalEntry(JournalEntryRequest request) {
-    Map<String, String> auditMetadata = new HashMap<>();
-    if (request != null && request.referenceNumber() != null) {
-      auditMetadata.put("requestedReference", request.referenceNumber());
-    }
-    try {
-      if (request == null) {
-        throw new ApplicationException(
-            ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD, "Journal entry request is required");
-      }
-      Company company = companyContextService.requireCurrentCompany();
-      List<JournalEntryRequest.JournalLineRequest> lines = request.lines();
-      if (company.getId() != null) {
-        auditMetadata.put("companyId", company.getId().toString());
-      }
-      if (lines == null || lines.isEmpty()) {
-        throw new ApplicationException(
-            ErrorCode.VALIDATION_INVALID_INPUT, "At least one journal line is required");
-      }
-      String currency = resolveCurrency(request.currency(), company);
-      BigDecimal fxRate = resolveFxRate(currency, company, request.fxRate());
-      String baseCurrency =
-          company.getBaseCurrency() != null && !company.getBaseCurrency().isBlank()
-              ? company.getBaseCurrency().trim().toUpperCase()
-              : "INR";
-      boolean foreignCurrency = !currency.equalsIgnoreCase(baseCurrency);
-      JournalEntry entry = new JournalEntry();
-      entry.setCompany(company);
-      entry.setCurrency(currency);
-      entry.setFxRate(fxRate);
-      entry.setJournalType(resolveJournalEntryType(request.journalType()));
-      entry.setSourceModule(normalizeSourceModule(request.sourceModule()));
-      entry.setSourceReference(normalizeSourceReference(request.sourceReference()));
-      entry.setReferenceNumber(resolveJournalReference(company, request.referenceNumber()));
-      auditMetadata.put("referenceNumber", entry.getReferenceNumber());
-
-      Optional<JournalEntry> duplicate =
-          journalEntryRepository.findByCompanyAndReferenceNumber(
-              company, entry.getReferenceNumber());
-
-      LocalDate entryDate = request.entryDate();
-      if (entryDate == null) {
-        throw new ApplicationException(
-            ErrorCode.VALIDATION_INVALID_INPUT, "Entry date is required");
-      }
-      boolean overrideRequested = Boolean.TRUE.equals(request.adminOverride());
-      boolean overrideAuthorized = overrideRequested && hasEntryDateOverrideAuthority();
-      boolean manualJournal =
-          entry.getJournalType() == JournalEntryType.MANUAL
-              || "MANUAL".equalsIgnoreCase(entry.getSourceModule());
-      if (manualJournal && !StringUtils.hasText(request.memo())) {
-        throw new ApplicationException(
-            ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD, "Manual journal reason is required");
-      }
-      entry.setAttachmentReferences(joinAttachmentReferences(request.attachmentReferences()));
-      if (duplicate.isEmpty()) {
-        AccountingPeriod postingPeriod;
-        if (systemSettingsService.isPeriodLockEnforced()) {
-          validateEntryDate(company, entryDate, overrideRequested, overrideAuthorized);
-          postingPeriod =
-              accountingPeriodService.requirePostablePeriod(
-                  company,
-                  entryDate,
-                  resolvePostingDocumentType(entry),
-                  resolvePostingDocumentReference(entry),
-                  request.memo(),
-                  overrideAuthorized);
-        } else {
-          validateEntryDate(company, entryDate, overrideRequested, overrideAuthorized);
-          postingPeriod = accountingPeriodService.ensurePeriod(company, entryDate);
-        }
-        if (postingPeriod == null) {
-          throw new ApplicationException(
-              ErrorCode.VALIDATION_INVALID_INPUT,
-              "Accounting period is required for journal posting");
-        }
-        entry.setAccountingPeriod(postingPeriod);
-      }
-      entry.setEntryDate(entryDate);
-      entry.setMemo(request.memo());
-      entry.setStatus(JournalEntryStatus.POSTED);
-      Dealer dealer = null;
-      Account dealerReceivableAccount = null;
-      Supplier supplier = null;
-      Account supplierPayableAccount = null;
-      if (request.dealerId() != null) {
-        dealer = requireDealer(company, request.dealerId());
-        dealerReceivableAccount = dealer.getReceivableAccount();
-        entry.setDealer(dealer);
-      }
-      if (request.supplierId() != null) {
-        supplier = requireSupplier(company, request.supplierId());
-        supplierPayableAccount = supplier.getPayableAccount();
-        entry.setSupplier(supplier);
-      }
-      Map<Account, BigDecimal> accountDeltas = new HashMap<>();
-      BigDecimal dealerLedgerDebitTotal = BigDecimal.ZERO;
-      BigDecimal dealerLedgerCreditTotal = BigDecimal.ZERO;
-      BigDecimal supplierLedgerDebitTotal = BigDecimal.ZERO;
-      BigDecimal supplierLedgerCreditTotal = BigDecimal.ZERO;
-      int dealerArLines = 0;
-      int supplierApLines = 0;
-      List<Long> sortedAccountIds =
-          lines.stream()
-              .map(JournalEntryRequest.JournalLineRequest::accountId)
-              .filter(Objects::nonNull)
-              .distinct()
-              .sorted()
-              .toList();
-      Map<Long, Account> lockedAccounts = new HashMap<>();
-      for (Long accountId : sortedAccountIds) {
-        Account account =
-            accountRepository
-                .lockByCompanyAndId(company, accountId)
-                .orElseThrow(
-                    () ->
-                        new ApplicationException(
-                            ErrorCode.VALIDATION_INVALID_REFERENCE, "Account not found"));
-        lockedAccounts.put(accountId, account);
-      }
-      Dealer dealerContext = dealer;
-      Supplier supplierContext = supplier;
-      boolean hasReceivableAccount = false;
-      boolean hasPayableAccount = false;
-      List<Account> distinctAccounts = lockedAccounts.values().stream().distinct().toList();
-      Map<Long, Set<Long>> dealerOwnerByReceivableAccountId = new HashMap<>();
-      Map<Long, Set<Long>> supplierOwnerByPayableAccountId = new HashMap<>();
-      List<Account> receivableAccounts =
-          distinctAccounts.stream().filter(this::isReceivableAccount).toList();
-      if (!receivableAccounts.isEmpty()) {
-        hasReceivableAccount = true;
-        List<Dealer> dealerOwners =
-            dealerRepository.findByCompanyAndReceivableAccountIn(company, receivableAccounts);
-        for (Dealer owner : dealerOwners) {
-          if (owner.getReceivableAccount() == null
-              || owner.getReceivableAccount().getId() == null
-              || owner.getId() == null) {
-            continue;
-          }
-          dealerOwnerByReceivableAccountId
-              .computeIfAbsent(owner.getReceivableAccount().getId(), ignored -> new HashSet<>())
-              .add(owner.getId());
-        }
-      }
-      List<Account> payableAccounts =
-          distinctAccounts.stream().filter(this::isPayableAccount).toList();
-      if (!payableAccounts.isEmpty()) {
-        hasPayableAccount = true;
-        List<Supplier> supplierOwners =
-            supplierRepository.findByCompanyAndPayableAccountIn(company, payableAccounts);
-        for (Supplier owner : supplierOwners) {
-          if (owner.getPayableAccount() == null
-              || owner.getPayableAccount().getId() == null
-              || owner.getId() == null) {
-            continue;
-          }
-          supplierOwnerByPayableAccountId
-              .computeIfAbsent(owner.getPayableAccount().getId(), ignored -> new HashSet<>())
-              .add(owner.getId());
-        }
-      }
-      for (Account account : distinctAccounts) {
-        Long accountId = account.getId();
-        if (accountId == null) {
-          continue;
-        }
-        Set<Long> dealerOwnerIds = dealerOwnerByReceivableAccountId.get(accountId);
-        if (dealerOwnerIds != null && !dealerOwnerIds.isEmpty()) {
-          if (dealerContext == null) {
-            throw new ApplicationException(
-                ErrorCode.VALIDATION_INVALID_REFERENCE,
-                "Dealer receivable account " + account.getCode() + " requires a dealer context");
-          }
-          Long dealerContextId = dealerContext.getId();
-          if (dealerContextId == null || !dealerOwnerIds.contains(dealerContextId)) {
-            throw new ApplicationException(
-                ErrorCode.VALIDATION_INVALID_REFERENCE,
-                "Dealer receivable account "
-                    + account.getCode()
-                    + " requires matching dealer context");
-          }
-        }
-        Set<Long> supplierOwnerIds = supplierOwnerByPayableAccountId.get(accountId);
-        if (supplierOwnerIds != null && !supplierOwnerIds.isEmpty()) {
-          if (supplierContext == null) {
-            throw new ApplicationException(
-                ErrorCode.VALIDATION_INVALID_REFERENCE,
-                "Supplier payable account " + account.getCode() + " requires a supplier context");
-          }
-          Long supplierContextId = supplierContext.getId();
-          if (supplierContextId == null || !supplierOwnerIds.contains(supplierContextId)) {
-            throw new ApplicationException(
-                ErrorCode.VALIDATION_INVALID_REFERENCE,
-                "Supplier payable account "
-                    + account.getCode()
-                    + " requires matching supplier context");
-          }
-        }
-      }
-      if (hasReceivableAccount && hasPayableAccount) {
-        throw new ApplicationException(
-            ErrorCode.VALIDATION_INVALID_INPUT,
-            "Journal entry cannot combine AR and AP accounts; split into separate entries");
-      }
-      if (hasReceivableAccount && dealerContext == null) {
-        throw new ApplicationException(
-            ErrorCode.VALIDATION_INVALID_INPUT, "Posting to AR requires a dealer context");
-      }
-      if (hasPayableAccount && supplierContext == null) {
-        throw new ApplicationException(
-            ErrorCode.VALIDATION_INVALID_INPUT, "Posting to AP requires a supplier context");
-      }
-      if (dealerContext != null && hasReceivableAccount && dealerReceivableAccount == null) {
-        dealerReceivableAccount = requireDealerReceivable(dealerContext);
-      }
-      if (supplierContext != null && hasPayableAccount && supplierPayableAccount == null) {
-        supplierPayableAccount = requireSupplierPayable(supplierContext);
-      }
-      BigDecimal totalBaseDebit = BigDecimal.ZERO;
-      BigDecimal totalBaseCredit = BigDecimal.ZERO;
-      BigDecimal totalForeignDebit = BigDecimal.ZERO;
-      BigDecimal totalForeignCredit = BigDecimal.ZERO;
-      List<JournalLine> postedLines = new ArrayList<>();
-      for (JournalEntryRequest.JournalLineRequest lineRequest : lines) {
-        if (lineRequest.accountId() == null) {
-          throw new ApplicationException(
-              ErrorCode.VALIDATION_INVALID_INPUT, "Account is required for every journal line");
-        }
-        Account account = lockedAccounts.get(lineRequest.accountId());
-        if (account == null) {
-          throw new ApplicationException(
-              ErrorCode.VALIDATION_INVALID_REFERENCE, "Account not found");
-        }
-        JournalLine line = new JournalLine();
-        line.setJournalEntry(entry);
-        line.setAccount(account);
-        line.setDescription(lineRequest.description());
-
-        BigDecimal debitInput = lineRequest.debit() == null ? BigDecimal.ZERO : lineRequest.debit();
-        BigDecimal creditInput =
-            lineRequest.credit() == null ? BigDecimal.ZERO : lineRequest.credit();
-        if (debitInput.compareTo(BigDecimal.ZERO) < 0
-            || creditInput.compareTo(BigDecimal.ZERO) < 0) {
-          throw new ApplicationException(
-              ErrorCode.VALIDATION_INVALID_INPUT, "Debit/Credit cannot be negative");
-        }
-        if (debitInput.compareTo(BigDecimal.ZERO) > 0
-            && creditInput.compareTo(BigDecimal.ZERO) > 0) {
-          throw new ApplicationException(
-              ErrorCode.VALIDATION_INVALID_INPUT,
-              "Debit and credit cannot both be non-zero on the same line");
-        }
-
-        if (foreignCurrency) {
-          totalForeignDebit = totalForeignDebit.add(debitInput);
-          totalForeignCredit = totalForeignCredit.add(creditInput);
-        }
-
-        BigDecimal baseDebit = toBaseCurrency(debitInput, fxRate);
-        BigDecimal baseCredit = toBaseCurrency(creditInput, fxRate);
-        line.setDebit(baseDebit);
-        line.setCredit(baseCredit);
-        entry.addLine(line);
-        postedLines.add(line);
-        accountDeltas.merge(account, baseDebit.subtract(baseCredit), BigDecimal::add);
-        totalBaseDebit = totalBaseDebit.add(baseDebit);
-        totalBaseCredit = totalBaseCredit.add(baseCredit);
-
-        if (dealerReceivableAccount != null
-            && Objects.equals(account.getId(), dealerReceivableAccount.getId())) {
-          dealerArLines++;
-        }
-        if (supplierPayableAccount != null
-            && Objects.equals(account.getId(), supplierPayableAccount.getId())) {
-          supplierApLines++;
-        }
-      }
-      BigDecimal roundingDelta = totalBaseDebit.subtract(totalBaseCredit);
-      if (roundingDelta.compareTo(BigDecimal.ZERO) != 0) {
-        if (roundingDelta.abs().compareTo(FX_ROUNDING_TOLERANCE) > 0) {
-          throw new ApplicationException(
-                  ErrorCode.VALIDATION_INVALID_INPUT, "Journal entry must balance")
-              .withDetail("delta", roundingDelta)
-              .withDetail("currency", currency)
-              .withDetail("fxRate", fxRate);
-        }
-        // Adjust a single line to absorb minor FX/base rounding variance.
-        if (roundingDelta.signum() > 0) {
-          JournalLine target =
-              postedLines.stream()
-                  .filter(l -> l.getCredit().compareTo(BigDecimal.ZERO) > 0)
-                  .max(Comparator.comparing(JournalLine::getCredit))
-                  .orElse(null);
-          if (target != null) {
-            target.setCredit(target.getCredit().add(roundingDelta));
-            accountDeltas.merge(target.getAccount(), roundingDelta.negate(), BigDecimal::add);
-            totalBaseCredit = totalBaseCredit.add(roundingDelta);
-          }
-        } else {
-          BigDecimal adjust = roundingDelta.abs();
-          JournalLine target =
-              postedLines.stream()
-                  .filter(l -> l.getDebit().compareTo(BigDecimal.ZERO) > 0)
-                  .max(Comparator.comparing(JournalLine::getDebit))
-                  .orElse(null);
-          if (target != null) {
-            target.setDebit(target.getDebit().add(adjust));
-            accountDeltas.merge(target.getAccount(), adjust, BigDecimal::add);
-            totalBaseDebit = totalBaseDebit.add(adjust);
-          }
-        }
-      }
-      if (totalBaseDebit.subtract(totalBaseCredit).abs().compareTo(JOURNAL_BALANCE_TOLERANCE) > 0) {
-        throw new ApplicationException(
-            ErrorCode.VALIDATION_INVALID_INPUT, "Journal entry must balance");
-      }
-
-      if (foreignCurrency && totalForeignDebit.compareTo(BigDecimal.ZERO) > 0) {
-        entry.setForeignAmountTotal(totalForeignDebit.setScale(2, RoundingMode.HALF_UP));
-      }
-
-      if (duplicate.isPresent()) {
-        JournalEntry existingEntry = duplicate.get();
-        if (existingEntry.getId() != null) {
-          auditMetadata.put("journalEntryId", existingEntry.getId().toString());
-        }
-        ensureDuplicateMatchesExisting(existingEntry, entry, postedLines);
-        log.info("Idempotent return: journal entry already exists, returning existing entry");
-        auditMetadata.put("idempotent", "true");
-        logAuditSuccessAfterCommit(AuditEvent.JOURNAL_ENTRY_POSTED, auditMetadata);
-        return toDto(existingEntry);
-      }
-
-      // Only enforce AR/AP validation when AR/AP lines are present (allow partner context with zero
-      // AR/AP lines for COGS/inventory entries)
-      if (dealer != null
-          && dealerReceivableAccount != null
-          && dealerArLines > 1
-          && !overrideAuthorized) {
-        throw new ApplicationException(
-            ErrorCode.VALIDATION_INVALID_INPUT,
-            "Dealer journal entry has multiple receivable lines; admin override required");
-      }
-      if (supplier != null
-          && supplierPayableAccount != null
-          && supplierApLines > 1
-          && !overrideAuthorized) {
-        throw new ApplicationException(
-            ErrorCode.VALIDATION_INVALID_INPUT,
-            "Supplier journal entry has multiple payable lines; admin override required");
-      }
-      Instant now = CompanyTime.now(company);
-      String username = resolveCurrentUsername();
-      entry.setCreatedAt(now);
-      entry.setUpdatedAt(now);
-      entry.setPostedAt(now);
-      entry.setCreatedBy(username);
-      entry.setLastModifiedBy(username);
-      entry.setPostedBy(username);
-      JournalEntry saved;
-      try {
-        saved = journalEntryRepository.save(entry);
-      } catch (DataIntegrityViolationException ex) {
-        Optional<JournalEntry> existing =
-            journalEntryRepository.findByCompanyAndReferenceNumber(
-                company, entry.getReferenceNumber());
-        if (existing.isPresent()) {
-          JournalEntry existingEntry = existing.get();
-          if (existingEntry.getId() != null) {
-            auditMetadata.put("journalEntryId", existingEntry.getId().toString());
-          }
-          ensureDuplicateMatchesExisting(existingEntry, entry, postedLines);
-          log.info(
-              "Idempotent return after concurrent save race: journal entry already exists,"
-                  + " returning existing entry");
-          auditMetadata.put("idempotent", "true");
-          logAuditSuccessAfterCommit(AuditEvent.JOURNAL_ENTRY_POSTED, auditMetadata);
-          return toDto(existingEntry);
-        }
-        log.info("Concurrent journal save conflict detected; retrying in fresh transaction");
-        throw ex;
-      }
-      boolean postedEventTrailRecorded = true;
-      if (!accountDeltas.isEmpty()) {
-        // Sort accounts by ID to prevent deadlocks - consistent lock ordering
-        List<Map.Entry<Account, BigDecimal>> sortedDeltas =
-            accountDeltas.entrySet().stream()
-                .sorted(java.util.Comparator.comparing(e -> e.getKey().getId()))
-                .toList();
-        Map<Long, BigDecimal> balancesBefore = new HashMap<>();
-        for (Map.Entry<Account, BigDecimal> delta : sortedDeltas) {
-          Account account = delta.getKey();
-          BigDecimal current =
-              account.getBalance() == null ? BigDecimal.ZERO : account.getBalance();
-          if (account.getId() != null) {
-            balancesBefore.putIfAbsent(account.getId(), current);
-          }
-          BigDecimal updated = current.add(delta.getValue());
-          account.validateBalanceUpdate(updated);
-          int rows =
-              accountRepository.updateBalanceAtomic(company, account.getId(), delta.getValue());
-          if (rows != 1) {
-            throw new ApplicationException(
-                ErrorCode.INTERNAL_CONCURRENCY_FAILURE,
-                "Account balance update failed for " + account.getCode());
-          }
-        }
-        // Detach accounts from persistence context so they'll be re-fetched fresh with updated
-        // balances
-        for (Account account : accountDeltas.keySet()) {
-          entityManager.detach(account);
-        }
-        publishAccountCacheInvalidated(company.getId());
-        postedEventTrailRecorded = recordJournalEntryPostedEventSafe(saved, balancesBefore);
-      }
-      if (saved.getDealer() != null && dealerReceivableAccount != null) {
-        for (JournalLine l : saved.getLines()) {
-          if (l.getAccount() != null
-              && Objects.equals(l.getAccount().getId(), dealerReceivableAccount.getId())) {
-            dealerLedgerDebitTotal = dealerLedgerDebitTotal.add(l.getDebit());
-            dealerLedgerCreditTotal = dealerLedgerCreditTotal.add(l.getCredit());
-          }
-        }
-        if (dealerLedgerDebitTotal.compareTo(BigDecimal.ZERO) != 0
-            || dealerLedgerCreditTotal.compareTo(BigDecimal.ZERO) != 0) {
-          dealerLedgerService.recordLedgerEntry(
-              saved.getDealer(),
-              new AbstractPartnerLedgerService.LedgerContext(
-                  saved.getEntryDate(),
-                  saved.getReferenceNumber(),
-                  saved.getMemo(),
-                  dealerLedgerDebitTotal,
-                  dealerLedgerCreditTotal,
-                  saved));
-        }
-      }
-      if (saved.getSupplier() != null && supplierPayableAccount != null) {
-        for (JournalLine l : saved.getLines()) {
-          if (l.getAccount() != null
-              && Objects.equals(l.getAccount().getId(), supplierPayableAccount.getId())) {
-            supplierLedgerDebitTotal = supplierLedgerDebitTotal.add(l.getDebit());
-            supplierLedgerCreditTotal = supplierLedgerCreditTotal.add(l.getCredit());
-          }
-        }
-        if (supplierLedgerDebitTotal.compareTo(BigDecimal.ZERO) != 0
-            || supplierLedgerCreditTotal.compareTo(BigDecimal.ZERO) != 0) {
-          supplierLedgerService.recordLedgerEntry(
-              saved.getSupplier(),
-              new AbstractPartnerLedgerService.LedgerContext(
-                  saved.getEntryDate(),
-                  saved.getReferenceNumber(),
-                  saved.getMemo(),
-                  supplierLedgerDebitTotal,
-                  supplierLedgerCreditTotal,
-                  saved));
-        }
-      }
-      if (saved.getId() != null) {
-        auditMetadata.put("journalEntryId", saved.getId().toString());
-      }
-      auditMetadata.put("status", saved.getStatus() != null ? saved.getStatus().name() : null);
-      if (postedEventTrailRecorded) {
-        logAuditSuccessAfterCommit(AuditEvent.JOURNAL_ENTRY_POSTED, auditMetadata);
-      }
-      if (accountingComplianceAuditService != null) {
-        accountingComplianceAuditService.recordJournalCreation(company, saved);
-      }
-      if (closedPeriodPostingExceptionService != null
-          && saved.getAccountingPeriod() != null
-          && saved.getAccountingPeriod().getStatus() != AccountingPeriodStatus.OPEN) {
-        closedPeriodPostingExceptionService.linkJournalEntry(
-            company,
-            resolvePostingDocumentType(saved),
-            resolvePostingDocumentReference(saved),
-            saved);
-      }
-      return toDto(saved);
-    } catch (Exception e) {
-      if (e.getMessage() != null) {
-        auditMetadata.put("error", e.getMessage());
-      }
-      auditService.logFailure(AuditEvent.JOURNAL_ENTRY_POSTED, auditMetadata);
-      throw e;
-    }
-  }
-
-  @Transactional
-  public JournalEntryDto reverseJournalEntry(Long entryId, JournalEntryReversalRequest request) {
-    Company company = companyContextService.requireCurrentCompany();
-    JournalEntry entry = accountingLookupService.requireJournalEntry(company, entryId);
-    return reverseJournalEntryInternal(company, entry, request);
-  }
-
-  @Transactional
-  JournalEntryDto reverseClosingEntryForPeriodReopen(
-      JournalEntry entry, AccountingPeriod period, String reason) {
-    if (entry == null) {
-      throw new ApplicationException(
-          ErrorCode.VALIDATION_INVALID_REFERENCE, "Closing journal entry is required");
-    }
-    Company company = companyContextService.requireCurrentCompany();
-    LocalDate reversalDate =
-        entry.getEntryDate() != null
-            ? entry.getEntryDate()
-            : (period != null ? period.getEndDate() : currentDate(company));
-    LocalDate today = currentDate(company);
-    if (reversalDate != null && reversalDate.isAfter(today)) {
-      reversalDate = today;
-    }
-    String memo = "Reopen reversal of " + entry.getReferenceNumber();
-    JournalEntryReversalRequest request =
-        new JournalEntryReversalRequest(
-            reversalDate,
-            false,
-            StringUtils.hasText(reason) ? reason.trim() : "Period reopen",
-            memo,
-            Boolean.TRUE);
-    return runWithSystemEntryDateOverride(
-        () -> reverseJournalEntryInternal(company, entry, request));
-  }
-
-  private JournalEntryDto reverseJournalEntryInternal(
-      Company company, JournalEntry entry, JournalEntryReversalRequest request) {
-    // Validate entry state
-    if (entry.getStatus() == JournalEntryStatus.VOIDED) {
-      throw new ApplicationException(ErrorCode.BUSINESS_INVALID_STATE, "Entry is already voided");
-    }
-    if (entry.getStatus() == JournalEntryStatus.REVERSED) {
-      throw new ApplicationException(
-          ErrorCode.BUSINESS_INVALID_STATE, "Entry has already been reversed");
-    }
-
-    // Determine reversal date and authorization
-    LocalDate reversalDate =
-        request != null && request.reversalDate() != null
-            ? request.reversalDate()
-            : currentDate(company);
-    boolean overrideRequested = request != null && Boolean.TRUE.equals(request.adminOverride());
-    boolean systemEntryDateOverrideActive = Boolean.TRUE.equals(SYSTEM_ENTRY_DATE_OVERRIDE.get());
-    boolean userHasEntryDateOverrideAuthority = hasEntryDateOverrideAuthority();
-    boolean overrideAuthorized =
-        systemEntryDateOverrideActive || (overrideRequested && userHasEntryDateOverrideAuthority);
-    AccountingPeriod postingPeriod;
-    if (systemSettingsService.isPeriodLockEnforced()) {
-      validateEntryDate(company, reversalDate, overrideRequested, overrideAuthorized);
-      postingPeriod =
-          accountingPeriodService.requirePostablePeriod(
-              company,
-              reversalDate,
-              "JOURNAL_REVERSAL",
-              entry.getReferenceNumber(),
-              request != null ? request.reason() : null,
-              overrideAuthorized);
-    } else {
-      validateEntryDate(company, reversalDate, overrideRequested, overrideAuthorized);
-      postingPeriod = accountingPeriodService.ensurePeriod(company, reversalDate);
-    }
-    AccountingPeriod originalPeriod = entry.getAccountingPeriod();
-    if (originalPeriod != null) {
-      if (originalPeriod.getStatus() == AccountingPeriodStatus.LOCKED) {
-        throw new ApplicationException(
-            ErrorCode.BUSINESS_INVALID_STATE,
-            "Cannot reverse entry from LOCKED period "
-                + originalPeriod.getYear()
-                + "-"
-                + originalPeriod.getMonth()
-                + ". Period must be unlocked first.");
-      }
-      if (originalPeriod.getStatus() == AccountingPeriodStatus.CLOSED && !overrideAuthorized) {
-        throw new ApplicationException(
-            ErrorCode.BUSINESS_INVALID_STATE,
-            "Entry belongs to CLOSED period. Administrator override with audit approval required.");
-      }
-    }
-
-    // Build audit trail reason
-    String sanitizedReason = buildAuditReason(request, entry);
-    String memo =
-        request != null && StringUtils.hasText(request.memo())
-            ? request.memo().trim()
-            : "Reversal of " + entry.getReferenceNumber();
-    // Calculate reversal amounts (supports partial reversals)
-    BigDecimal reversalFactor =
-        request != null && request.isPartialReversal()
-            ? request
-                .getEffectivePercentage()
-                .divide(new BigDecimal("100"), 4, RoundingMode.HALF_UP)
-            : BigDecimal.ONE;
-    boolean isPartial = request != null && request.isPartialReversal();
-    String partialNote = isPartial ? " (" + request.getEffectivePercentage() + "% partial)" : "";
-
-    List<JournalEntryRequest.JournalLineRequest> reversedLines =
-        entry.getLines().stream()
-            .map(
-                line ->
-                    new JournalEntryRequest.JournalLineRequest(
-                        line.getAccount().getId(),
-                        "Reversal"
-                            + partialNote
-                            + ": "
-                            + (line.getDescription() == null
-                                ? entry.getMemo()
-                                : line.getDescription()),
-                        line.getCredit().multiply(reversalFactor).setScale(2, RoundingMode.HALF_UP),
-                        line.getDebit().multiply(reversalFactor).setScale(2, RoundingMode.HALF_UP)))
-            .toList();
-    JournalEntryRequest payload =
-        new JournalEntryRequest(
-            referenceNumberService.reversalReference(entry.getReferenceNumber()),
-            reversalDate,
-            memo,
-            entry.getDealer() != null ? entry.getDealer().getId() : null,
-            entry.getSupplier() != null ? entry.getSupplier().getId() : null,
-            request != null ? request.adminOverride() : null,
-            reversedLines);
-    if (request != null && request.voidOnly()) {
-      Instant now = CompanyTime.now(company);
-      JournalEntryDto reversalDto =
-          createJournalEntryForReversal(payload, systemEntryDateOverrideActive);
-      JournalEntry reversalEntry =
-          accountingLookupService.requireJournalEntry(company, reversalDto.id());
-      reversalEntry.setReversalOf(entry);
-      reversalEntry.setAccountingPeriod(postingPeriod);
-      reversalEntry.setCorrectionType(JournalCorrectionType.VOID);
-      reversalEntry.setCorrectionReason(sanitizedReason);
-      reversalEntry.setLastModifiedBy(resolveCurrentUsername());
-      journalEntryRepository.save(reversalEntry);
-
-      entry.setStatus(JournalEntryStatus.VOIDED);
-      entry.setCorrectionType(JournalCorrectionType.VOID);
-      entry.setCorrectionReason(sanitizedReason);
-      entry.setVoidReason(sanitizedReason);
-      entry.setVoidedAt(now);
-      entry.setReversalEntry(reversalEntry);
-      entry.setLastModifiedBy(resolveCurrentUsername());
-      journalEntryRepository.save(entry);
-      Map<String, String> auditMetadata = new HashMap<>();
-      auditMetadata.put("originalJournalEntryId", entry.getId().toString());
-      auditMetadata.put("reversalEntryId", reversalEntry.getId().toString());
-      auditMetadata.put("reversalType", JournalCorrectionType.VOID.name());
-      auditMetadata.put("reversalDate", reversalDate.toString());
-      auditMetadata.put("partial", Boolean.toString(isPartial));
-      auditMetadata.put("reversalFactor", reversalFactor.toPlainString());
-      auditMetadata.put("adminOverrideRequested", Boolean.toString(overrideRequested));
-      auditMetadata.put("adminOverrideAuthorized", Boolean.toString(overrideAuthorized));
-      if (entry.getReferenceNumber() != null) {
-        auditMetadata.put("referenceNumber", entry.getReferenceNumber());
-      }
-      if (sanitizedReason != null) {
-        auditMetadata.put("reason", sanitizedReason);
-      }
-      recordJournalEntryReversedEventSafe(entry, reversalEntry, sanitizedReason);
-      logAuditSuccessAfterCommit(AuditEvent.JOURNAL_ENTRY_REVERSED, auditMetadata);
-      if (accountingComplianceAuditService != null) {
-        accountingComplianceAuditService.recordJournalReversal(
-            company, entry, reversalEntry, sanitizedReason);
-        accountingComplianceAuditService.recordAdminOverrideJournalReversal(
-            company,
-            entry,
-            reversalEntry,
-            resolveCurrentUsername(),
-            sanitizedReason,
-            overrideRequested,
-            overrideAuthorized);
-      }
-      return toDto(reversalEntry);
-    }
-    JournalEntryDto reversalDto =
-        createJournalEntryForReversal(payload, systemEntryDateOverrideActive);
-    JournalEntry reversalEntry =
-        accountingLookupService.requireJournalEntry(company, reversalDto.id());
-    reversalEntry.setReversalOf(entry);
-    reversalEntry.setAccountingPeriod(postingPeriod);
-    reversalEntry.setCorrectionType(JournalCorrectionType.REVERSAL);
-    reversalEntry.setCorrectionReason(sanitizedReason);
-    reversalEntry.setLastModifiedBy(resolveCurrentUsername());
-    journalEntryRepository.save(reversalEntry);
-    entry.setStatus(JournalEntryStatus.REVERSED);
-    entry.setCorrectionType(JournalCorrectionType.REVERSAL);
-    entry.setCorrectionReason(sanitizedReason);
-    entry.setVoidReason(null);
-    entry.setVoidedAt(null);
-    entry.setReversalEntry(reversalEntry);
-    entry.setLastModifiedBy(resolveCurrentUsername());
-    journalEntryRepository.save(entry);
-    Map<String, String> auditMetadata = new HashMap<>();
-    auditMetadata.put("originalJournalEntryId", entry.getId().toString());
-    auditMetadata.put("reversalEntryId", reversalEntry.getId().toString());
-    auditMetadata.put("reversalType", JournalCorrectionType.REVERSAL.name());
-    auditMetadata.put("reversalDate", reversalDate.toString());
-    auditMetadata.put("partial", Boolean.toString(isPartial));
-    auditMetadata.put("reversalFactor", reversalFactor.toPlainString());
-    auditMetadata.put("adminOverrideRequested", Boolean.toString(overrideRequested));
-    auditMetadata.put("adminOverrideAuthorized", Boolean.toString(overrideAuthorized));
-    if (entry.getReferenceNumber() != null) {
-      auditMetadata.put("referenceNumber", entry.getReferenceNumber());
-    }
-    if (sanitizedReason != null) {
-      auditMetadata.put("reason", sanitizedReason);
-    }
-    recordJournalEntryReversedEventSafe(entry, reversalEntry, sanitizedReason);
-    logAuditSuccessAfterCommit(AuditEvent.JOURNAL_ENTRY_REVERSED, auditMetadata);
-    if (accountingComplianceAuditService != null) {
-      accountingComplianceAuditService.recordJournalReversal(
-          company, entry, reversalEntry, sanitizedReason);
-      accountingComplianceAuditService.recordAdminOverrideJournalReversal(
-          company,
-          entry,
-          reversalEntry,
-          resolveCurrentUsername(),
-          sanitizedReason,
-          overrideRequested,
-          overrideAuthorized);
-    }
-    return toDto(reversalEntry);
+        accountingEventStore,
+        journalPostingService);
   }
 
   private JournalEntryDto createFacadeJournal(
@@ -1432,6 +381,10 @@ class AccountingCoreSupport {
       value = DataIntegrityViolationException.class,
       maxAttempts = 3,
       backoff = @Backoff(delay = 50, maxDelay = 250, multiplier = 2.0))
+  protected JournalEntryDto createJournalEntry(JournalEntryRequest request) {
+    return journalPostingService.createJournalEntry(request);
+  }
+
   @Transactional
   public JournalEntryDto recordDealerReceipt(DealerReceiptRequest request) {
     Company company = companyContextService.requireCurrentCompany();
