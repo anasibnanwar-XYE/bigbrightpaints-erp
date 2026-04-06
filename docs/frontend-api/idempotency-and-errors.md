@@ -54,8 +54,9 @@ Recommended client behavior:
 
 ## Error payload expectations
 
-Frontend should expect `ApiResponse.failure(...)` style payloads with explicit
-reason codes or detail maps and preserve:
+Frontend should expect `ApiResponse.failure(...)` style payloads with error
+metadata inside `data` (`data.code`, `data.reason`, `data.path`,
+`data.traceId`, and optional `data.details`) and preserve:
 
 - request trace identifiers
 - field validation hints
@@ -68,12 +69,18 @@ Example error envelope:
 {
   "success": false,
   "message": "Opening stock batch already processed for this openingStockBatchKey",
-  "reason": "VALIDATION_CONFLICT",
-  "details": {
-    "openingStockBatchKey": "FY26-OPENING-STOCK-01",
-    "canonicalPath": "/api/v1/inventory/opening-stock",
-    "traceId": "c41fd8c34b2942f4"
-  }
+  "data": {
+    "code": "VAL_001",
+    "message": "Opening stock batch already processed for this openingStockBatchKey",
+    "reason": "Opening stock batch already processed for this openingStockBatchKey",
+    "path": "/api/v1/inventory/opening-stock",
+    "traceId": "d84e75a7-b1c2-44ee-a84d-4ab5fda403b6",
+    "details": {
+      "openingStockBatchKey": "FY26-OPENING-STOCK-01",
+      "canonicalPath": "/api/v1/inventory/opening-stock"
+    }
+  },
+  "timestamp": "2026-04-06T16:00:00Z"
 }
 ```
 
@@ -83,12 +90,19 @@ Legacy-header rejection example:
 {
   "success": false,
   "message": "X-Idempotency-Key is not supported for dealer settlements; use Idempotency-Key",
-  "reason": "VALIDATION_INVALID_INPUT",
-  "details": {
-    "legacyHeader": "X-Idempotency-Key",
-    "canonicalHeader": "Idempotency-Key",
-    "canonicalPath": "/api/v1/accounting/settlements/dealers"
-  }
+  "data": {
+    "code": "VAL_001",
+    "message": "X-Idempotency-Key is not supported for dealer settlements; use Idempotency-Key",
+    "reason": "X-Idempotency-Key is not supported for dealer settlements; use Idempotency-Key",
+    "path": "/api/v1/accounting/settlements/dealers",
+    "traceId": "749b4ef0-1aa1-4cc7-b404-5df5bd5d9d50",
+    "details": {
+      "legacyHeader": "X-Idempotency-Key",
+      "canonicalHeader": "Idempotency-Key",
+      "canonicalPath": "/api/v1/accounting/settlements/dealers"
+    }
+  },
+  "timestamp": "2026-04-06T16:00:00Z"
 }
 ```
 

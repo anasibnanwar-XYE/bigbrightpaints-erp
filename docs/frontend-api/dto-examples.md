@@ -399,7 +399,7 @@ POST /api/v1/accounting/settlements/dealers
   "partnerId": 101,
   "cashAccountId": 1101,
   "amount": 1650.00,
-  "unappliedAmountApplication": "DOCUMENT",
+  "unappliedAmountApplication": "ON_ACCOUNT",
   "settlementDate": "2026-03-31",
   "referenceNumber": "RCPT-2026-0042",
   "memo": "Invoice settlement",
@@ -410,6 +410,7 @@ POST /api/v1/accounting/settlements/dealers
       "discountAmount": 0,
       "fxAdjustment": 0,
       "writeOffAmount": 0,
+      "applicationType": "DOCUMENT",
       "memo": "Full settlement"
     }
   ]
@@ -424,6 +425,10 @@ Use the same DTO on:
 Change `partnerType`, `partnerId`, and allocation document identifiers to match
 the partner flow. Do not send retired `DealerSettlementRequest` or
 `SupplierSettlementRequest` payloads.
+
+Header-level `unappliedAmountApplication` accepts only `ON_ACCOUNT` or
+`FUTURE_APPLICATION`. Use `DOCUMENT` only on allocation rows
+(`allocations[].applicationType`).
 
 ## Accounting period create or update request
 
