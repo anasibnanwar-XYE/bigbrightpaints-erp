@@ -66,16 +66,22 @@ public class IntegrationCoordinator {
       PlatformTransactionManager txManager) {
     this.supportService = new IntegrationCoordinatorSupportService(companyRepository);
     this.legacySalesService = salesService;
-    this.orderIntegrationCoordinator =
-        new OrderIntegrationCoordinator(
+    OrderSupportCoordinator orderSupportCoordinator =
+        new OrderSupportCoordinator(
             salesService,
             factoryService,
-            finishedGoodsService,
             orderAutoApprovalStateRepository,
             companyClock,
             featureFlags,
             supportService,
             txManager);
+    this.orderIntegrationCoordinator =
+        new OrderIntegrationCoordinator(
+            salesService,
+            factoryService,
+            finishedGoodsService,
+            orderSupportCoordinator,
+            supportService);
     this.payrollIntegrationCoordinator =
         new PayrollIntegrationCoordinator(
             hrService, accountingFacade, featureFlags, supportService);

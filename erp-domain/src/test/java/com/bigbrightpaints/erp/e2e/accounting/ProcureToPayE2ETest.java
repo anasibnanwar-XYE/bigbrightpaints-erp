@@ -434,9 +434,11 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
             "purchaseId", purchaseId,
             "appliedAmount", totalAmount);
     Map<String, Object> paymentReq = new HashMap<>();
-    paymentReq.put("supplierId", supplierId);
+    paymentReq.put("partnerType", "SUPPLIER");
+    paymentReq.put("partnerId", supplierId);
     paymentReq.put("cashAccountId", cash.getId());
     paymentReq.put("amount", totalAmount);
+    paymentReq.put("settlementDate", entryDate);
     String paymentRef = "PAY-" + shortSuffix();
     paymentReq.put("referenceNumber", paymentRef);
     paymentReq.put("memo", "Supplier payment allocation");

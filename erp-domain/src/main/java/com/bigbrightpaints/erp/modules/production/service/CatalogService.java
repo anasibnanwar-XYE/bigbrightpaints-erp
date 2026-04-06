@@ -24,7 +24,6 @@ import org.springframework.util.StringUtils;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.core.validation.ValidationUtils;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
@@ -61,7 +60,7 @@ public class CatalogService {
   private static final Pattern NON_ALPHANUM = Pattern.compile("[^A-Z0-9]");
 
   private final CompanyContextService companyContextService;
-  private final CompanyEntityLookup companyEntityLookup;
+  private final CompanyScopedProductionLookupService productionLookupService;
   private final ProductionBrandRepository brandRepository;
   private final ProductionProductRepository productRepository;
   private final FinishedGoodRepository finishedGoodRepository;
@@ -72,7 +71,7 @@ public class CatalogService {
   @Autowired
   public CatalogService(
       CompanyContextService companyContextService,
-      CompanyEntityLookup companyEntityLookup,
+      CompanyScopedProductionLookupService productionLookupService,
       ProductionBrandRepository brandRepository,
       ProductionProductRepository productRepository,
       FinishedGoodRepository finishedGoodRepository,
@@ -80,7 +79,7 @@ public class CatalogService {
       SkuReadinessService skuReadinessService,
       ProductionCatalogService productionCatalogService) {
     this.companyContextService = companyContextService;
-    this.companyEntityLookup = companyEntityLookup;
+    this.productionLookupService = productionLookupService;
     this.brandRepository = brandRepository;
     this.productRepository = productRepository;
     this.finishedGoodRepository = finishedGoodRepository;
@@ -396,12 +395,7 @@ public class CatalogService {
   }
 
   private ProductionBrand requireBrand(Company company, Long brandId) {
-    return brandRepository
-        .findByCompanyAndId(company, brandId)
-        .orElseThrow(
-            () ->
-                new ApplicationException(
-                    ErrorCode.BUSINESS_ENTITY_NOT_FOUND, "Brand not found for id " + brandId));
+    return productionLookupService.requireProductionBrand(company, brandId);
   }
 
   private ProductionBrand requireActiveBrand(Company company, Long brandId) {
@@ -414,12 +408,7 @@ public class CatalogService {
   }
 
   private ProductionProduct requireProduct(Company company, Long productId) {
-    return productRepository
-        .findByCompanyAndId(company, productId)
-        .orElseThrow(
-            () ->
-                new ApplicationException(
-                    ErrorCode.BUSINESS_ENTITY_NOT_FOUND, "Product not found for id " + productId));
+    return productionLookupService.requireProductionProduct(company, productId);
   }
 
   private void assertBrandNameUnique(Company company, String name, Long currentBrandId) {

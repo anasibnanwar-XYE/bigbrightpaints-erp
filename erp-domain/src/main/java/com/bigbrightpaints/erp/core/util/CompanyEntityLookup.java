@@ -1,8 +1,5 @@
 package com.bigbrightpaints.erp.core.util;
 
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Component;
-
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriod;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
@@ -47,7 +44,6 @@ import com.bigbrightpaints.erp.modules.sales.domain.SalesTargetRepository;
 import com.bigbrightpaints.erp.modules.sales.service.CompanyScopedSalesLookupService;
 
 @Deprecated(forRemoval = true)
-@Component
 public class CompanyEntityLookup {
 
   private final CompanyScopedAccountingLookupService accountingLookupService;
@@ -59,7 +55,6 @@ public class CompanyEntityLookup {
   private final CompanyScopedProductionLookupService productionLookupService;
   private final CompanyScopedInvoiceLookupService invoiceLookupService;
 
-  @Autowired
   public CompanyEntityLookup(
       CompanyScopedAccountingLookupService accountingLookupService,
       CompanyScopedSalesLookupService salesLookupService,

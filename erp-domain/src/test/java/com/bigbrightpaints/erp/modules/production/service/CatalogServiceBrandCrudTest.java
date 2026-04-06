@@ -13,7 +13,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodRepository;
@@ -28,7 +27,7 @@ import com.bigbrightpaints.erp.modules.production.dto.CatalogBrandRequest;
 class CatalogServiceBrandCrudTest {
 
   @Mock private CompanyContextService companyContextService;
-  @Mock private CompanyEntityLookup companyEntityLookup;
+  @Mock private CompanyScopedProductionLookupService productionLookupService;
   @Mock private ProductionBrandRepository brandRepository;
   @Mock private ProductionProductRepository productRepository;
   @Mock private FinishedGoodRepository finishedGoodRepository;
@@ -44,7 +43,7 @@ class CatalogServiceBrandCrudTest {
     service =
         new CatalogService(
             companyContextService,
-            companyEntityLookup,
+            productionLookupService,
             brandRepository,
             productRepository,
             finishedGoodRepository,
@@ -96,7 +95,7 @@ class CatalogServiceBrandCrudTest {
     existing.setCode("OLDBRAND");
     existing.setActive(true);
 
-    when(brandRepository.findByCompanyAndId(company, 55L)).thenReturn(Optional.of(existing));
+    when(productionLookupService.requireProductionBrand(company, 55L)).thenReturn(existing);
     when(brandRepository.findByCompanyAndNameIgnoreCase(company, "Updated Brand"))
         .thenReturn(Optional.empty());
     when(brandRepository.save(any(ProductionBrand.class)))
@@ -124,7 +123,7 @@ class CatalogServiceBrandCrudTest {
     existing.setCode("DEACTIVATE");
     existing.setActive(true);
 
-    when(brandRepository.findByCompanyAndId(company, 91L)).thenReturn(Optional.of(existing));
+    when(productionLookupService.requireProductionBrand(company, 91L)).thenReturn(existing);
     when(brandRepository.save(any(ProductionBrand.class)))
         .thenAnswer(invocation -> invocation.getArgument(0));
 
