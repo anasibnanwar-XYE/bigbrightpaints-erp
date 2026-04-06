@@ -1,0 +1,120 @@
+package com.bigbrightpaints.erp.modules.accounting.service;
+
+import java.math.BigDecimal;
+
+import org.springframework.beans.factory.ObjectProvider;
+
+import com.bigbrightpaints.erp.core.util.CompanyClock;
+import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriod;
+import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
+import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.JournalLineRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.PeriodCloseRequest;
+import com.bigbrightpaints.erp.modules.accounting.domain.PeriodCloseRequestRepository;
+import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodDto;
+import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodReopenRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.PeriodCloseRequestActionRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.PeriodCloseRequestDto;
+import com.bigbrightpaints.erp.modules.accounting.dto.PeriodStatusChangeRequest;
+import com.bigbrightpaints.erp.modules.company.domain.Company;
+import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
+
+final class AccountingPeriodCloseWorkflow {
+
+  private final AccountingPeriodCloseRequestWorkflow requestWorkflow;
+  private final AccountingPeriodStatusWorkflow statusWorkflow;
+
+  AccountingPeriodCloseWorkflow(
+      AccountingPeriodRepository accountingPeriodRepository,
+      CompanyContextService companyContextService,
+      JournalEntryRepository journalEntryRepository,
+      JournalLineRepository journalLineRepository,
+      AccountRepository accountRepository,
+      CompanyClock companyClock,
+      PeriodCloseRequestRepository periodCloseRequestRepository,
+      ObjectProvider<AccountingFacade> accountingFacadeProvider,
+      PeriodCloseHook periodCloseHook,
+      AccountingPeriodSnapshotService snapshotService,
+      AccountingPeriodLifecycleService lifecycleService,
+      AccountingPeriodChecklistService checklistService) {
+    this.statusWorkflow =
+        new AccountingPeriodStatusWorkflow(
+            accountingPeriodRepository,
+            companyContextService,
+            journalEntryRepository,
+            journalLineRepository,
+            accountRepository,
+            companyClock,
+            accountingFacadeProvider,
+            periodCloseHook,
+            snapshotService,
+            lifecycleService,
+            checklistService);
+    this.requestWorkflow =
+        new AccountingPeriodCloseRequestWorkflow(
+            accountingPeriodRepository,
+            companyContextService,
+            periodCloseRequestRepository,
+            statusWorkflow);
+  }
+
+  PeriodCloseRequestDto requestPeriodClose(
+      Long periodId,
+      PeriodCloseRequestActionRequest request,
+      AccountingComplianceAuditService accountingComplianceAuditService) {
+    return requestWorkflow.requestPeriodClose(periodId, request, accountingComplianceAuditService);
+  }
+
+  AccountingPeriodDto approvePeriodClose(
+      Long periodId,
+      PeriodCloseRequestActionRequest request,
+      AccountingComplianceAuditService accountingComplianceAuditService) {
+    return requestWorkflow.approvePeriodClose(periodId, request, accountingComplianceAuditService);
+  }
+
+  PeriodCloseRequestDto rejectPeriodClose(
+      Long periodId,
+      PeriodCloseRequestActionRequest request,
+      AccountingComplianceAuditService accountingComplianceAuditService) {
+    return requestWorkflow.rejectPeriodClose(periodId, request, accountingComplianceAuditService);
+  }
+
+  AccountingPeriodDto closePeriod(
+      Long periodId,
+      PeriodStatusChangeRequest request,
+      boolean fromApprovedRequest,
+      PeriodCloseRequest approvedRequest,
+      AccountingComplianceAuditService accountingComplianceAuditService) {
+    return statusWorkflow.closePeriod(
+        periodId, request, fromApprovedRequest, approvedRequest, accountingComplianceAuditService);
+  }
+
+  AccountingPeriodDto lockPeriod(
+      Long periodId,
+      PeriodStatusChangeRequest request,
+      AccountingComplianceAuditService accountingComplianceAuditService) {
+    return statusWorkflow.lockPeriod(periodId, request, accountingComplianceAuditService);
+  }
+
+  AccountingPeriodDto reopenPeriod(
+      Long periodId,
+      AccountingPeriodReopenRequest request,
+      AccountingComplianceAuditService accountingComplianceAuditService) {
+    return statusWorkflow.reopenPeriod(periodId, request, accountingComplianceAuditService);
+  }
+
+  JournalEntry createSystemJournal(
+      Company company,
+      AccountingPeriod period,
+      String reference,
+      String note,
+      BigDecimal netIncome) {
+    return statusWorkflow.createSystemJournal(company, period, reference, note, netIncome);
+  }
+
+  void reverseClosingJournalIfNeeded(JournalEntry closing, AccountingPeriod period, String reason) {
+    statusWorkflow.reverseClosingJournalIfNeeded(closing, period, reason);
+  }
+}

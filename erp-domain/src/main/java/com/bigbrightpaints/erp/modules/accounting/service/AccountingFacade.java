@@ -53,6 +53,7 @@ public class AccountingFacade {
           "DISPATCH-");
 
   private final AccountingService accountingService;
+  private final DealerReceiptService dealerReceiptService;
   private final SalesJournalFacadeOperations salesJournalOperations;
   private final SalesReturnJournalFacadeOperations salesReturnJournalOperations;
   private final PurchaseJournalFacadeOperations purchaseJournalOperations;
@@ -63,6 +64,7 @@ public class AccountingFacade {
 
   public AccountingFacade(
       AccountingService accountingService,
+      DealerReceiptService dealerReceiptService,
       SalesJournalFacadeOperations salesJournalOperations,
       SalesReturnJournalFacadeOperations salesReturnJournalOperations,
       PurchaseJournalFacadeOperations purchaseJournalOperations,
@@ -71,6 +73,7 @@ public class AccountingFacade {
       ManualJournalFacadeOperations manualJournalOperations,
       AccountingFacadeAccountResolver accountResolver) {
     this.accountingService = accountingService;
+    this.dealerReceiptService = dealerReceiptService;
     this.salesJournalOperations = salesJournalOperations;
     this.salesReturnJournalOperations = salesReturnJournalOperations;
     this.purchaseJournalOperations = purchaseJournalOperations;
@@ -416,11 +419,11 @@ public class AccountingFacade {
   }
 
   public JournalEntryDto recordDealerReceipt(DealerReceiptRequest request) {
-    return accountingService.recordDealerReceipt(request);
+    return dealerReceiptService.recordDealerReceipt(request);
   }
 
   public JournalEntryDto recordDealerReceiptSplit(DealerReceiptSplitRequest request) {
-    return accountingService.recordDealerReceiptSplit(request);
+    return dealerReceiptService.recordDealerReceiptSplit(request);
   }
 
   public JournalEntryDto recordSupplierPayment(SupplierPaymentRequest request) {
@@ -460,25 +463,6 @@ public class AccountingFacade {
 
   public JournalEntryDto recordPayrollPayment(PayrollPaymentRequest request) {
     return accountingService.recordPayrollPayment(request);
-  }
-
-  private void upsertJournalReferenceMapping(
-      com.bigbrightpaints.erp.modules.company.domain.Company company,
-      String legacyReference,
-      String canonicalReference,
-      JournalEntry entry) {
-    salesJournalOperations.upsertJournalReferenceMapping(
-        company, legacyReference, canonicalReference, entry);
-  }
-
-  private boolean reserveSalesJournalReference(
-      com.bigbrightpaints.erp.modules.company.domain.Company company, String canonicalReference) {
-    return salesJournalOperations.reserveSalesJournalReference(company, canonicalReference);
-  }
-
-  private Optional<JournalEntry> resolveReservedSalesJournalEntry(
-      com.bigbrightpaints.erp.modules.company.domain.Company company, String canonicalReference) {
-    return salesJournalOperations.resolveReservedSalesJournalEntry(company, canonicalReference);
   }
 
   public void clearAccountCache() {

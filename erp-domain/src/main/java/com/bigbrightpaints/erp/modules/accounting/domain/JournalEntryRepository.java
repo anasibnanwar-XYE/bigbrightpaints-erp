@@ -76,6 +76,7 @@ public interface JournalEntryRepository
   @EntityGraph(attributePaths = {"lines", "lines.account"})
   List<JournalEntry> findByCompanyAndEntryDateAfterOrderByEntryDateAsc(
       Company company, LocalDate end);
+
   @Query("select je.company.id from JournalEntry je where je.id = :id")
   Optional<Long> findCompanyIdById(@Param("id") Long id);
 }

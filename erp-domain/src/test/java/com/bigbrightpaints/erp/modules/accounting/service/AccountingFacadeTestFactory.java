@@ -27,12 +27,45 @@ public final class AccountingFacadeTestFactory {
       CompanyAccountingSettingsService companyAccountingSettingsService,
       JournalReferenceResolver journalReferenceResolver,
       JournalReferenceMappingRepository journalReferenceMappingRepository) {
+    return create(
+        companyContextService,
+        accountRepository,
+        accountingService,
+        org.mockito.Mockito.mock(DealerReceiptService.class),
+        journalEntryRepository,
+        referenceNumberService,
+        dealerRepository,
+        supplierRepository,
+        companyClock,
+        salesLookupService,
+        accountingLookupService,
+        companyAccountingSettingsService,
+        journalReferenceResolver,
+        journalReferenceMappingRepository);
+  }
+
+  public static AccountingFacade create(
+      CompanyContextService companyContextService,
+      AccountRepository accountRepository,
+      AccountingService accountingService,
+      DealerReceiptService dealerReceiptService,
+      JournalEntryRepository journalEntryRepository,
+      ReferenceNumberService referenceNumberService,
+      DealerRepository dealerRepository,
+      SupplierRepository supplierRepository,
+      CompanyClock companyClock,
+      CompanyScopedSalesLookupService salesLookupService,
+      CompanyScopedAccountingLookupService accountingLookupService,
+      CompanyAccountingSettingsService companyAccountingSettingsService,
+      JournalReferenceResolver journalReferenceResolver,
+      JournalReferenceMappingRepository journalReferenceMappingRepository) {
     AccountingFacadeAccountResolver accountResolver =
         new AccountingFacadeAccountResolver(accountingLookupService);
     AccountingFacadeTaxSupport taxSupport =
         new AccountingFacadeTaxSupport(companyAccountingSettingsService);
     return new AccountingFacade(
         accountingService,
+        dealerReceiptService,
         new SalesJournalFacadeOperations(
             companyContextService,
             accountingService,
