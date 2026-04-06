@@ -65,10 +65,11 @@ import com.bigbrightpaints.erp.shared.dto.PageResponse;
 class AccountingEndpointContractTest {
 
   @Test
-  void createJournalEntry_delegatesToAccountingServiceWithReferenceAsIdempotencyKey() {
-    AccountingService accountingService = mock(AccountingService.class);
+  void createJournalEntry_delegatesToAccountingFacadeWithReferenceAsIdempotencyKey() {
+    AccountingFacade accountingFacade = mock(AccountingFacade.class);
     JournalController controller =
-        newJournalController(accountingService, mock(JournalEntryService.class), null, null);
+        newJournalController(
+            mock(AccountingService.class), mock(JournalEntryService.class), null, accountingFacade);
     JournalEntryRequest request =
         new JournalEntryRequest(
             "manual-100",
@@ -111,7 +112,7 @@ class AccountingEndpointContractTest {
             null);
     ArgumentCaptor<JournalEntryRequest> requestCaptor =
         ArgumentCaptor.forClass(JournalEntryRequest.class);
-    when(accountingService.createManualJournalEntry(
+    when(accountingFacade.createManualJournalEntry(
             any(JournalEntryRequest.class), eq("manual-100")))
         .thenReturn(expected);
 
@@ -120,7 +121,7 @@ class AccountingEndpointContractTest {
     assertThat(body).isNotNull();
     assertThat(body.success()).isTrue();
     assertThat(body.data()).isEqualTo(expected);
-    verify(accountingService).createManualJournalEntry(requestCaptor.capture(), eq("manual-100"));
+    verify(accountingFacade).createManualJournalEntry(requestCaptor.capture(), eq("manual-100"));
     assertThat(requestCaptor.getValue().referenceNumber()).isNull();
     assertThat(requestCaptor.getValue().entryDate()).isEqualTo(request.entryDate());
     assertThat(requestCaptor.getValue().memo()).isEqualTo(request.memo());
@@ -160,9 +161,10 @@ class AccountingEndpointContractTest {
 
   @Test
   void createJournalEntry_allowsNullSupplierForApAdjacentManualPosting() {
-    AccountingService accountingService = mock(AccountingService.class);
+    AccountingFacade accountingFacade = mock(AccountingFacade.class);
     JournalController controller =
-        newJournalController(accountingService, mock(JournalEntryService.class), null, null);
+        newJournalController(
+            mock(AccountingService.class), mock(JournalEntryService.class), null, accountingFacade);
     JournalEntryRequest request =
         new JournalEntryRequest(
             "client-ap-accrual-001",
@@ -177,7 +179,7 @@ class AccountingEndpointContractTest {
                 new JournalEntryRequest.JournalLineRequest(
                     202L, "AP accrual", BigDecimal.ZERO, new BigDecimal("500.00"))));
     JournalEntryDto expected = expectedJournal(612L, "JRN-612");
-    when(accountingService.createManualJournalEntry(
+    when(accountingFacade.createManualJournalEntry(
             any(JournalEntryRequest.class), eq("client-ap-accrual-001")))
         .thenReturn(expected);
 
@@ -189,7 +191,7 @@ class AccountingEndpointContractTest {
 
     ArgumentCaptor<JournalEntryRequest> requestCaptor =
         ArgumentCaptor.forClass(JournalEntryRequest.class);
-    verify(accountingService)
+    verify(accountingFacade)
         .createManualJournalEntry(requestCaptor.capture(), eq("client-ap-accrual-001"));
     JournalEntryRequest sanitized = requestCaptor.getValue();
     assertThat(sanitized.supplierId()).isNull();
@@ -559,10 +561,11 @@ class AccountingEndpointContractTest {
   }
 
   @Test
-  void createJournalEntry_delegatesToAccountingServiceWithSanitizedManualPayload() {
-    AccountingService accountingService = mock(AccountingService.class);
+  void createJournalEntry_delegatesToAccountingFacadeWithSanitizedManualPayload() {
+    AccountingFacade accountingFacade = mock(AccountingFacade.class);
     JournalController controller =
-        newJournalController(accountingService, mock(JournalEntryService.class), null, null);
+        newJournalController(
+            mock(AccountingService.class), mock(JournalEntryService.class), null, accountingFacade);
     JournalEntryRequest request =
         new JournalEntryRequest(
             "BRIDGE-ENTRY-1",
@@ -601,7 +604,7 @@ class AccountingEndpointContractTest {
             null,
             null,
             null);
-    when(accountingService.createManualJournalEntry(
+    when(accountingFacade.createManualJournalEntry(
             any(JournalEntryRequest.class), eq("BRIDGE-ENTRY-1")))
         .thenReturn(expected);
 
@@ -611,7 +614,7 @@ class AccountingEndpointContractTest {
     assertThat(body.data()).isEqualTo(expected);
     ArgumentCaptor<JournalEntryRequest> requestCaptor =
         ArgumentCaptor.forClass(JournalEntryRequest.class);
-    verify(accountingService)
+    verify(accountingFacade)
         .createManualJournalEntry(requestCaptor.capture(), eq("BRIDGE-ENTRY-1"));
     JournalEntryRequest sanitized = requestCaptor.getValue();
     assertThat(sanitized.referenceNumber()).isNull();
@@ -623,9 +626,10 @@ class AccountingEndpointContractTest {
 
   @Test
   void createJournalEntry_keepsAttachmentReferencesWhileSanitizingManualFields() {
-    AccountingService accountingService = mock(AccountingService.class);
+    AccountingFacade accountingFacade = mock(AccountingFacade.class);
     JournalController controller =
-        newJournalController(accountingService, mock(JournalEntryService.class), null, null);
+        newJournalController(
+            mock(AccountingService.class), mock(JournalEntryService.class), null, accountingFacade);
     JournalEntryRequest request =
         new JournalEntryRequest(
             "MANUAL-2026-0001",
@@ -645,7 +649,7 @@ class AccountingEndpointContractTest {
             "SRC-1",
             "AUTOMATED",
             List.of("scan-1", "scan-2"));
-    when(accountingService.createManualJournalEntry(
+    when(accountingFacade.createManualJournalEntry(
             any(JournalEntryRequest.class), eq("MANUAL-2026-0001")))
         .thenReturn(expectedJournal(611L, "MANUAL-2026-0001"));
 
@@ -653,7 +657,7 @@ class AccountingEndpointContractTest {
 
     ArgumentCaptor<JournalEntryRequest> requestCaptor =
         ArgumentCaptor.forClass(JournalEntryRequest.class);
-    verify(accountingService)
+    verify(accountingFacade)
         .createManualJournalEntry(requestCaptor.capture(), eq("MANUAL-2026-0001"));
     JournalEntryRequest sanitized = requestCaptor.getValue();
     assertThat(sanitized.referenceNumber()).isNull();
@@ -992,9 +996,10 @@ class AccountingEndpointContractTest {
             mock(CompanyAccountingSettingsService.class),
             mock(JournalReferenceResolver.class),
             mock(JournalReferenceMappingRepository.class));
-    ArgumentCaptor<JournalCreationRequest> requestCaptor =
-        ArgumentCaptor.forClass(JournalCreationRequest.class);
-    when(accountingService.createStandardJournal(requestCaptor.capture()))
+    ArgumentCaptor<JournalEntryRequest> requestCaptor =
+        ArgumentCaptor.forClass(JournalEntryRequest.class);
+    when(accountingService.createManualJournalEntry(
+            requestCaptor.capture(), eq("IDEMP-FACADE-1")))
         .thenReturn(expectedJournal(703L, "MANUAL-FACADE-1"));
 
     facade.createManualJournalEntry(
@@ -1019,7 +1024,8 @@ class AccountingEndpointContractTest {
         "IDEMP-FACADE-1");
 
     assertThat(requestCaptor.getValue().attachmentReferences()).containsExactly("scan-a", "scan-b");
-    assertThat(requestCaptor.getValue().narration()).isEqualTo("manual facade journal");
+    assertThat(requestCaptor.getValue().memo()).isEqualTo("manual facade journal");
+    assertThat(requestCaptor.getValue().sourceModule()).isNull();
   }
 
   @Test

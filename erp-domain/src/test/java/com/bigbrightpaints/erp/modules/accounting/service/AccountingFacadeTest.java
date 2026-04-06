@@ -763,7 +763,7 @@ class AccountingFacadeTest {
   }
 
   @Test
-  void createManualJournalEntry_routesThroughStandardJournalWithManualSource() {
+  void createManualJournalEntry_routesThroughAccountingServiceManualEntryPath() {
     JournalEntryRequest request =
         new JournalEntryRequest(
             null,
@@ -809,20 +809,26 @@ class AccountingFacadeTest {
             null,
             null,
             null);
-    when(accountingService.createStandardJournal(any(JournalCreationRequest.class)))
+    when(accountingService.createManualJournalEntry(any(JournalEntryRequest.class), eq("MANUAL-XYZ")))
         .thenReturn(expected);
 
     JournalEntryDto actual = accountingFacade.createManualJournalEntry(request, "MANUAL-XYZ");
 
     assertThat(actual).isSameAs(expected);
     verify(accountingService)
-        .createStandardJournal(
+        .createManualJournalEntry(
             argThat(
-                journalRequest ->
-                    journalRequest != null
-                        && "MANUAL".equals(journalRequest.sourceModule())
-                        && "MANUAL-XYZ".equals(journalRequest.sourceReference())
-                        && journalRequest.amount().compareTo(new BigDecimal("75.00")) == 0));
+                entryRequest ->
+                    entryRequest != null
+                        && entryRequest.referenceNumber() == null
+                        && LocalDate.of(2026, 2, 28).equals(entryRequest.entryDate())
+                        && "Manual single".equals(entryRequest.memo())
+                        && entryRequest.sourceModule() == null
+                        && entryRequest.sourceReference() == null
+                        && entryRequest.journalType() == null
+                        && entryRequest.lines() != null
+                        && entryRequest.lines().size() == 2),
+            eq("MANUAL-XYZ"));
   }
 
   @Test
@@ -856,15 +862,16 @@ class AccountingFacadeTest {
     accountingFacade.createManualJournalEntry(request, null);
 
     verify(accountingService)
-        .createStandardJournal(
+        .createManualJournalEntry(
             argThat(
-                journalRequest ->
-                    journalRequest != null
-                        && tenantToday.equals(journalRequest.entryDate())
-                        && journalRequest.sourceReference() != null
-                        && journalRequest
-                            .sourceReference()
-                            .startsWith("MANUAL-" + tenantToday + "-")));
+                entryRequest ->
+                    entryRequest != null
+                        && tenantToday.equals(entryRequest.entryDate())
+                        && entryRequest.referenceNumber() == null
+                        && entryRequest.sourceModule() == null
+                        && entryRequest.sourceReference() == null
+                        && entryRequest.journalType() == null),
+            eq(null));
   }
 
   @Test
@@ -892,15 +899,16 @@ class AccountingFacadeTest {
     accountingFacade.createManualJournalEntry(request, null);
 
     verify(accountingService)
-        .createStandardJournal(
+        .createManualJournalEntry(
             argThat(
-                journalRequest ->
-                    journalRequest != null
-                        && explicitDate.equals(journalRequest.entryDate())
-                        && journalRequest.sourceReference() != null
-                        && journalRequest
-                            .sourceReference()
-                            .startsWith("MANUAL-" + explicitDate + "-")));
+                entryRequest ->
+                    entryRequest != null
+                        && explicitDate.equals(entryRequest.entryDate())
+                        && entryRequest.referenceNumber() == null
+                        && entryRequest.sourceModule() == null
+                        && entryRequest.sourceReference() == null
+                        && entryRequest.journalType() == null),
+            eq(null));
   }
 
   @Test

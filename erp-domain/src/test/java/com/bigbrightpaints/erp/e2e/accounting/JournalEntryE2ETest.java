@@ -534,8 +534,8 @@ public class JournalEntryE2ETest extends AbstractIntegrationTest {
   }
 
   @Test
-  @DisplayName("Journal reverse route cascades linked reversals through the canonical endpoint")
-  void journalReverseRouteSupportsCascadeLinkedCorrections() {
+  @DisplayName("Journal reverse route rejects cascade requests and keeps linked entries untouched")
+  void journalReverseRouteRejectsCascadeLinkedCorrections() {
     Company company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
     Account cashAccount =
         accountRepository.findByCompanyAndCodeIgnoreCase(company, "CASH").orElseThrow();
@@ -624,17 +624,17 @@ public class JournalEntryE2ETest extends AbstractIntegrationTest {
             HttpMethod.POST,
             new HttpEntity<>(reversalReq, headers),
             String.class);
-    assertThat(reversalResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(reversalResp.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
 
     JournalEntry baseEntry = journalEntryRepository.findById(baseEntryId).orElseThrow();
     JournalEntry relatedEntry = journalEntryRepository.findById(relatedEntryId).orElseThrow();
-    assertThat(baseEntry.getStatus()).isEqualTo(JournalEntryStatus.REVERSED);
-    assertThat(relatedEntry.getStatus()).isEqualTo(JournalEntryStatus.REVERSED);
+    assertThat(baseEntry.getStatus()).isEqualTo(JournalEntryStatus.POSTED);
+    assertThat(relatedEntry.getStatus()).isEqualTo(JournalEntryStatus.POSTED);
 
     long reversalCount =
         journalEntryRepository.findByCompanyAndReversalOf(company, baseEntry).size()
             + journalEntryRepository.findByCompanyAndReversalOf(company, relatedEntry).size();
-    assertThat(reversalCount).isEqualTo(2);
+    assertThat(reversalCount).isZero();
   }
 
   @Test

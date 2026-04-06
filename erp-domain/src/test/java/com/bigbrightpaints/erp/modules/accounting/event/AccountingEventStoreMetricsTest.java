@@ -11,6 +11,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -49,7 +50,7 @@ class AccountingEventStoreMetricsTest {
 
     JournalEntry entry = buildJournalEntry();
 
-    when(eventRepository.getNextSequenceNumber(any(UUID.class))).thenReturn(1L, 1L, 2L);
+    when(eventRepository.getNextSequenceNumber(any(UUID.class))).thenReturn(1L, 2L, 1L, 1L);
     when(eventRepository.save(any(AccountingEvent.class)))
         .thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -71,7 +72,18 @@ class AccountingEventStoreMetricsTest {
     verify(eventPublisher, times(1)).publishEvent(eventCaptor.capture());
     assertThat(eventCaptor.getValue().entryId()).isEqualTo(77L);
 
-    verify(eventRepository, times(3)).save(any(AccountingEvent.class));
+    ArgumentCaptor<AccountingEvent> accountingEventCaptor =
+        ArgumentCaptor.forClass(AccountingEvent.class);
+    verify(eventRepository, times(4)).save(accountingEventCaptor.capture());
+    assertThat(
+            accountingEventCaptor.getAllValues().stream()
+                .map(AccountingEvent::getEventType)
+                .collect(Collectors.toSet()))
+        .contains(
+            AccountingEventType.JOURNAL_ENTRY_CREATED,
+            AccountingEventType.JOURNAL_ENTRY_POSTED,
+            AccountingEventType.ACCOUNT_DEBIT_POSTED,
+            AccountingEventType.ACCOUNT_CREDIT_POSTED);
   }
 
   private JournalEntry buildJournalEntry() {

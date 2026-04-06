@@ -104,6 +104,20 @@ public class AccountingAuditService {
     }
   }
 
+  void recordJournalEntryVoidedEventSafe(
+      JournalEntry original, JournalEntry voidEntry, String reason) {
+    if (original == null || voidEntry == null) {
+      return;
+    }
+    validateReversalEventPayloadCompatibility(original, reason);
+    try {
+      accountingEventStore.recordJournalEntryVoided(original, voidEntry, reason);
+    } catch (Exception ex) {
+      handleAccountingEventTrailFailure(
+          "JOURNAL_ENTRY_VOIDED", original.getReferenceNumber(), ex);
+    }
+  }
+
   void logSettlementAuditSuccess(
       PartnerType partnerType,
       Long partnerId,

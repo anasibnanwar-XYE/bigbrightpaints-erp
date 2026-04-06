@@ -100,6 +100,7 @@ class JournalReversalService {
 
   private JournalEntryDto reverseJournalEntryInternal(
       Company company, JournalEntry entry, JournalEntryReversalRequest request) {
+    rejectCascadeReversalRequest(request);
     if (entry.getStatus() == JournalEntryStatus.VOIDED) {
       throw new ApplicationException(ErrorCode.BUSINESS_INVALID_STATE, "Entry is already voided");
     }
@@ -225,8 +226,7 @@ class JournalReversalService {
       if (sanitizedReason != null) {
         auditMetadata.put("reason", sanitizedReason);
       }
-      accountingAuditService.recordJournalEntryReversedEventSafe(
-          entry, reversalEntry, sanitizedReason);
+      accountingAuditService.recordJournalEntryVoidedEventSafe(entry, reversalEntry, sanitizedReason);
       accountingAuditService.logAuditSuccessAfterCommit(
           AuditEvent.JOURNAL_ENTRY_REVERSED, auditMetadata);
       if (accountingComplianceAuditService != null) {
@@ -241,7 +241,6 @@ class JournalReversalService {
             overrideRequested,
             overrideAuthorized);
       }
-      cascadeRelatedEntries(company, entry, request);
       return journalPostingService.toDto(reversalEntry);
     }
     JournalEntryDto reversalDto =
@@ -293,40 +292,24 @@ class JournalReversalService {
           overrideRequested,
           overrideAuthorized);
     }
-    cascadeRelatedEntries(company, entry, request);
     return journalPostingService.toDto(reversalEntry);
   }
 
-  private void cascadeRelatedEntries(
-      Company company, JournalEntry entry, JournalEntryReversalRequest request) {
-    if (company == null
-        || entry == null
-        || request == null
-        || !request.cascadeRelatedEntries()
-        || request.relatedEntryIds() == null
-        || request.relatedEntryIds().isEmpty()) {
+  private void rejectCascadeReversalRequest(JournalEntryReversalRequest request) {
+    if (request == null) {
       return;
     }
-    JournalEntryReversalRequest cascadeRequest =
-        request.forCascadeChild(
-            StringUtils.hasText(request.reason())
-                ? request.reason().trim()
-                : "Cascade reversal of " + entry.getReferenceNumber(),
-            StringUtils.hasText(request.memo())
-                ? request.memo().trim()
-                : "Cascade reversal of " + entry.getReferenceNumber());
-    for (Long relatedEntryId : request.relatedEntryIds()) {
-      if (relatedEntryId == null || relatedEntryId.equals(entry.getId())) {
-        continue;
-      }
-      JournalEntry relatedEntry =
-          accountingLookupService.requireJournalEntry(company, relatedEntryId);
-      if (relatedEntry.getStatus() == JournalEntryStatus.REVERSED
-          || relatedEntry.getStatus() == JournalEntryStatus.VOIDED) {
-        continue;
-      }
-      reverseJournalEntryInternal(company, relatedEntry, cascadeRequest);
+    if (!request.cascadeRelatedEntries()
+        && (request.relatedEntryIds() == null || request.relatedEntryIds().isEmpty())) {
+      return;
     }
+    throw new ApplicationException(
+            ErrorCode.VALIDATION_INVALID_INPUT,
+            "Cascade reversal is not supported; reverse each related entry individually")
+        .withDetail("cascadeRelatedEntries", request.cascadeRelatedEntries())
+        .withDetail(
+            "relatedEntryCount",
+            request.relatedEntryIds() == null ? 0 : request.relatedEntryIds().size());
   }
 
   private String buildAuditReason(JournalEntryReversalRequest request, JournalEntry originalEntry) {

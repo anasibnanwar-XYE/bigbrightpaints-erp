@@ -110,87 +110,31 @@ class ManualJournalFacadeOperations {
       throw validationMissingField("Journal entry request is required");
     }
 
-    String resolvedIdempotencyKey =
-        StringUtils.hasText(idempotencyKey) ? idempotencyKey.trim() : null;
     if (!StringUtils.hasText(request.memo())) {
       throw validationMissingField("Manual journal reason is required");
     }
-    LocalDate entryDate = resolveManualEntryDate(request.entryDate());
-    String sourceReference =
-        StringUtils.hasText(request.sourceReference())
-            ? request.sourceReference().trim()
-            : (StringUtils.hasText(resolvedIdempotencyKey)
-                ? resolvedIdempotencyKey
-                : generatedManualSourceReference(entryDate));
-
-    BigDecimal amount = resolveManualAmount(request.lines());
-    return accountingService.createStandardJournal(
-        new JournalCreationRequest(
-            amount,
-            firstDebitAccountFromEntryLines(request.lines()),
-            firstCreditAccountFromEntryLines(request.lines()),
-            request.memo().trim(),
-            "MANUAL",
-            sourceReference,
+    String resolvedIdempotencyKey =
+        StringUtils.hasText(idempotencyKey)
+            ? idempotencyKey.trim()
+            : (StringUtils.hasText(request.referenceNumber())
+                ? request.referenceNumber().trim()
+                : null);
+    JournalEntryRequest sanitizedRequest =
+        new JournalEntryRequest(
             null,
-            toCreationLines(request.lines(), request.memo()),
-            entryDate,
+            resolveManualEntryDate(request.entryDate()),
+            request.memo().trim(),
             request.dealerId(),
             request.supplierId(),
             Boolean.TRUE.equals(request.adminOverride()),
-            request.attachmentReferences()));
-  }
-
-  private List<JournalCreationRequest.LineRequest> toCreationLines(
-      List<JournalEntryRequest.JournalLineRequest> lines, String fallbackNarration) {
-    if (lines == null || lines.isEmpty()) {
-      return List.of();
-    }
-    String resolvedNarration =
-        StringUtils.hasText(fallbackNarration) ? fallbackNarration.trim() : "Manual journal line";
-    return lines.stream()
-        .map(
-            line ->
-                new JournalCreationRequest.LineRequest(
-                    line.accountId(),
-                    line.debit(),
-                    line.credit(),
-                    StringUtils.hasText(line.description())
-                        ? line.description().trim()
-                        : resolvedNarration))
-        .toList();
-  }
-
-  private BigDecimal resolveManualAmount(List<JournalEntryRequest.JournalLineRequest> lines) {
-    BigDecimal debitTotal = totalDebit(lines);
-    BigDecimal creditTotal = totalCredit(lines);
-    if (debitTotal.compareTo(BigDecimal.ZERO) <= 0 || creditTotal.compareTo(BigDecimal.ZERO) <= 0) {
-      throw validationInvalidInput("Journal lines must include at least one debit and one credit");
-    }
-    if (debitTotal.subtract(creditTotal).abs().compareTo(BigDecimal.ZERO) > 0) {
-      throw validationInvalidInput("Manual journal entry must balance")
-          .withDetail("totalDebit", debitTotal)
-          .withDetail("totalCredit", creditTotal);
-    }
-    return debitTotal;
-  }
-
-  private BigDecimal totalDebit(List<JournalEntryRequest.JournalLineRequest> lines) {
-    if (lines == null) {
-      return BigDecimal.ZERO;
-    }
-    return lines.stream()
-        .map(line -> line.debit() == null ? BigDecimal.ZERO : line.debit())
-        .reduce(BigDecimal.ZERO, BigDecimal::add);
-  }
-
-  private BigDecimal totalCredit(List<JournalEntryRequest.JournalLineRequest> lines) {
-    if (lines == null) {
-      return BigDecimal.ZERO;
-    }
-    return lines.stream()
-        .map(line -> line.credit() == null ? BigDecimal.ZERO : line.credit())
-        .reduce(BigDecimal.ZERO, BigDecimal::add);
+            request.lines(),
+            request.currency(),
+            request.fxRate(),
+            null,
+            null,
+            null,
+            request.attachmentReferences());
+    return accountingService.createManualJournalEntry(sanitizedRequest, resolvedIdempotencyKey);
   }
 
   private Long firstDebitAccountFromCreationLines(List<JournalCreationRequest.LineRequest> lines) {
@@ -208,29 +152,6 @@ class ManualJournalFacadeOperations {
     return lines.stream()
         .filter(line -> line.credit() != null && line.credit().compareTo(BigDecimal.ZERO) > 0)
         .map(JournalCreationRequest.LineRequest::accountId)
-        .findFirst()
-        .orElseThrow(
-            () ->
-                validationInvalidInput(
-                    "Journal lines must include at least one debit and one credit"));
-  }
-
-  private Long firstDebitAccountFromEntryLines(List<JournalEntryRequest.JournalLineRequest> lines) {
-    return lines.stream()
-        .filter(line -> line.debit() != null && line.debit().compareTo(BigDecimal.ZERO) > 0)
-        .map(JournalEntryRequest.JournalLineRequest::accountId)
-        .findFirst()
-        .orElseThrow(
-            () ->
-                validationInvalidInput(
-                    "Journal lines must include at least one debit and one credit"));
-  }
-
-  private Long firstCreditAccountFromEntryLines(
-      List<JournalEntryRequest.JournalLineRequest> lines) {
-    return lines.stream()
-        .filter(line -> line.credit() != null && line.credit().compareTo(BigDecimal.ZERO) > 0)
-        .map(JournalEntryRequest.JournalLineRequest::accountId)
         .findFirst()
         .orElseThrow(
             () ->

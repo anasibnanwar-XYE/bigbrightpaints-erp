@@ -97,7 +97,7 @@ public class JournalController {
     return ResponseEntity.ok(
         ApiResponse.success(
             "Journal entry posted",
-            accountingService.createManualJournalEntry(
+            accountingFacade.createManualJournalEntry(
                 sanitizeManualJournalRequest(request), idempotencyKey)));
   }
 

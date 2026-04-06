@@ -77,19 +77,40 @@ public class AccountingEventStore {
     List<AccountingEvent> events = new ArrayList<>();
     String userId = getCurrentUserId();
 
-    // Main journal entry event
-    AccountingEvent entryEvent = new AccountingEvent();
-    entryEvent.setCompany(entry.getCompany());
-    entryEvent.setEventType(AccountingEventType.JOURNAL_ENTRY_POSTED);
-    entryEvent.setAggregateId(entry.getPublicId());
-    entryEvent.setAggregateType("JournalEntry");
-    entryEvent.setSequenceNumber(eventRepository.getNextSequenceNumber(entry.getPublicId()));
-    entryEvent.setEffectiveDate(entry.getEntryDate());
-    entryEvent.setJournalEntryId(entry.getId());
-    entryEvent.setJournalReference(entry.getReferenceNumber());
-    entryEvent.setDescription(entry.getMemo());
-    entryEvent.setUserId(userId);
-    entryEvent.setCorrelationId(correlationId);
+    // Journal created event (created and posted are distinct lifecycle markers)
+    AccountingEvent createdEvent = new AccountingEvent();
+    createdEvent.setCompany(entry.getCompany());
+    createdEvent.setEventType(AccountingEventType.JOURNAL_ENTRY_CREATED);
+    createdEvent.setAggregateId(entry.getPublicId());
+    createdEvent.setAggregateType("JournalEntry");
+    createdEvent.setSequenceNumber(eventRepository.getNextSequenceNumber(entry.getPublicId()));
+    createdEvent.setEffectiveDate(entry.getEntryDate());
+    createdEvent.setJournalEntryId(entry.getId());
+    createdEvent.setJournalReference(entry.getReferenceNumber());
+    createdEvent.setDescription(entry.getMemo());
+    createdEvent.setUserId(userId);
+    createdEvent.setCorrelationId(correlationId);
+    Map<String, Object> createdPayload = new HashMap<>();
+    createdPayload.put("status", entry.getStatus());
+    createdPayload.put("journalType", entry.getJournalType());
+    createdPayload.put("sourceModule", entry.getSourceModule());
+    createdPayload.put("sourceReference", entry.getSourceReference());
+    createdEvent.setPayload(serializePayload(createdPayload));
+    events.add(saveWithSequenceRetry(createdEvent, createdEvent.getAggregateId()));
+
+    // Journal posted event
+    AccountingEvent postedEvent = new AccountingEvent();
+    postedEvent.setCompany(entry.getCompany());
+    postedEvent.setEventType(AccountingEventType.JOURNAL_ENTRY_POSTED);
+    postedEvent.setAggregateId(entry.getPublicId());
+    postedEvent.setAggregateType("JournalEntry");
+    postedEvent.setSequenceNumber(eventRepository.getNextSequenceNumber(entry.getPublicId()));
+    postedEvent.setEffectiveDate(entry.getEntryDate());
+    postedEvent.setJournalEntryId(entry.getId());
+    postedEvent.setJournalReference(entry.getReferenceNumber());
+    postedEvent.setDescription(entry.getMemo());
+    postedEvent.setUserId(userId);
+    postedEvent.setCorrelationId(correlationId);
     BigDecimal totalDebit =
         entry.getLines().stream()
             .map(JournalLine::getDebit)
@@ -102,8 +123,8 @@ public class AccountingEventStore {
     entryPayload.put("status", entry.getStatus());
     entryPayload.put("totalDebit", totalDebit);
     entryPayload.put("totalCredit", totalCredit);
-    entryEvent.setPayload(serializePayload(entryPayload));
-    events.add(saveWithSequenceRetry(entryEvent, entryEvent.getAggregateId()));
+    postedEvent.setPayload(serializePayload(entryPayload));
+    events.add(saveWithSequenceRetry(postedEvent, postedEvent.getAggregateId()));
 
     // Individual line events (for balance tracking)
     for (JournalLine line : entry.getLines()) {
@@ -156,24 +177,18 @@ public class AccountingEventStore {
   @Transactional
   public AccountingEvent recordJournalEntryReversed(
       JournalEntry original, JournalEntry reversal, String reason) {
-    AccountingEvent event = new AccountingEvent();
-    event.setCompany(original.getCompany());
-    event.setEventType(AccountingEventType.JOURNAL_ENTRY_REVERSED);
-    event.setAggregateId(original.getPublicId());
-    event.setAggregateType("JournalEntry");
-    event.setSequenceNumber(eventRepository.getNextSequenceNumber(original.getPublicId()));
-    event.setEffectiveDate(reversal.getEntryDate());
-    event.setJournalEntryId(original.getId());
-    event.setJournalReference(original.getReferenceNumber());
-    event.setDescription(reason);
-    event.setUserId(getCurrentUserId());
-    Map<String, Object> payload = new HashMap<>();
-    payload.put("reversalEntryId", reversal.getId());
-    payload.put("reversalReference", reversal.getReferenceNumber());
-    payload.put("reason", reason != null ? reason : "");
-    event.setPayload(serializePayload(payload));
+    return recordJournalEntryCorrection(
+        original, reversal, reason, AccountingEventType.JOURNAL_ENTRY_REVERSED);
+  }
 
-    return saveWithSequenceRetry(event, event.getAggregateId());
+  /**
+   * Record a journal entry void operation.
+   */
+  @Transactional
+  public AccountingEvent recordJournalEntryVoided(
+      JournalEntry original, JournalEntry voidEntry, String reason) {
+    return recordJournalEntryCorrection(
+        original, voidEntry, reason, AccountingEventType.JOURNAL_ENTRY_VOIDED);
   }
 
   /**
@@ -223,6 +238,36 @@ public class AccountingEventStore {
     }
     throw new IllegalStateException(
         "Failed to persist accounting event for aggregate " + aggregateId);
+  }
+
+  private AccountingEvent recordJournalEntryCorrection(
+      JournalEntry original,
+      JournalEntry correctionEntry,
+      String reason,
+      AccountingEventType eventType) {
+    AccountingEvent event = new AccountingEvent();
+    event.setCompany(original.getCompany());
+    event.setEventType(eventType);
+    event.setAggregateId(original.getPublicId());
+    event.setAggregateType("JournalEntry");
+    event.setSequenceNumber(eventRepository.getNextSequenceNumber(original.getPublicId()));
+    event.setEffectiveDate(correctionEntry.getEntryDate());
+    event.setJournalEntryId(original.getId());
+    event.setJournalReference(original.getReferenceNumber());
+    event.setDescription(reason);
+    event.setUserId(getCurrentUserId());
+    Map<String, Object> payload = new HashMap<>();
+    payload.put("correctionEntryId", correctionEntry.getId());
+    payload.put("correctionReference", correctionEntry.getReferenceNumber());
+    payload.put("reason", reason != null ? reason : "");
+    payload.put("correctionType", eventType.name());
+    if (eventType == AccountingEventType.JOURNAL_ENTRY_REVERSED) {
+      payload.put("reversalEntryId", correctionEntry.getId());
+      payload.put("reversalReference", correctionEntry.getReferenceNumber());
+    }
+    event.setPayload(serializePayload(payload));
+
+    return saveWithSequenceRetry(event, event.getAggregateId());
   }
 
   /**

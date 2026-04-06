@@ -3,8 +3,12 @@ package com.bigbrightpaints.erp.modules.accounting.service;
 import java.math.BigDecimal;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
@@ -17,12 +21,19 @@ import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest;
 @Service
 class JournalLinePostingService {
 
+  private static final Logger log = LoggerFactory.getLogger(JournalLinePostingService.class);
   private static final BigDecimal FX_ROUNDING_TOLERANCE = new BigDecimal("0.05");
 
+  private final NormalBalanceConflictMode normalBalanceConflictMode;
   private final JournalReferenceService journalReferenceService;
 
-  JournalLinePostingService(JournalReferenceService journalReferenceService) {
+  JournalLinePostingService(
+      JournalReferenceService journalReferenceService,
+      @Value("${erp.accounting.journal-line.normal-balance-conflict-mode:WARN}")
+          String normalBalanceConflictMode) {
     this.journalReferenceService = journalReferenceService;
+    this.normalBalanceConflictMode =
+        NormalBalanceConflictMode.fromConfig(normalBalanceConflictMode);
   }
 
   JournalLine buildPostedLine(
@@ -38,6 +49,12 @@ class JournalLinePostingService {
     if (account == null) {
       throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Account not found");
     }
+    if (!account.isActive()) {
+      throw new ApplicationException(
+              ErrorCode.VALIDATION_INVALID_INPUT, "Cannot post journal line to inactive account")
+          .withDetail("accountId", account.getId())
+          .withDetail("accountCode", account.getCode());
+    }
     BigDecimal debitInput = lineRequest.debit() == null ? BigDecimal.ZERO : lineRequest.debit();
     BigDecimal creditInput = lineRequest.credit() == null ? BigDecimal.ZERO : lineRequest.credit();
     if (debitInput.compareTo(BigDecimal.ZERO) < 0 || creditInput.compareTo(BigDecimal.ZERO) < 0) {
@@ -49,6 +66,7 @@ class JournalLinePostingService {
           ErrorCode.VALIDATION_INVALID_INPUT,
           "Debit and credit cannot both be non-zero on the same line");
     }
+    validateNormalBalanceDirection(account, debitInput, creditInput);
     JournalLine line = new JournalLine();
     line.setJournalEntry(entry);
     line.setAccount(account);
@@ -89,6 +107,56 @@ class JournalLinePostingService {
     if (target != null) {
       target.setDebit(target.getDebit().add(adjust));
       accountDeltas.merge(target.getAccount(), adjust, BigDecimal::add);
+    }
+  }
+
+  private void validateNormalBalanceDirection(
+      Account account, BigDecimal debitInput, BigDecimal creditInput) {
+    if (account.getType() == null) {
+      return;
+    }
+    boolean hasDebit = debitInput.compareTo(BigDecimal.ZERO) > 0;
+    boolean hasCredit = creditInput.compareTo(BigDecimal.ZERO) > 0;
+    if (!hasDebit && !hasCredit) {
+      return;
+    }
+    boolean debitNormal = account.getType().isDebitNormalBalance();
+    boolean conflict = (hasDebit && !debitNormal) || (hasCredit && debitNormal);
+    if (!conflict) {
+      return;
+    }
+    String direction = hasDebit ? "DEBIT" : "CREDIT";
+    if (normalBalanceConflictMode == NormalBalanceConflictMode.REJECT) {
+      throw new ApplicationException(
+              ErrorCode.VALIDATION_INVALID_INPUT,
+              "Journal line direction conflicts with account normal balance")
+          .withDetail("accountId", account.getId())
+          .withDetail("accountCode", account.getCode())
+          .withDetail("accountType", account.getType().name())
+          .withDetail("direction", direction)
+          .withDetail("policy", normalBalanceConflictMode.name());
+    }
+    log.warn(
+        "Journal line direction {} conflicts with normal balance for account {} ({})",
+        direction,
+        account.getCode(),
+        account.getType());
+  }
+
+  private enum NormalBalanceConflictMode {
+    WARN,
+    REJECT;
+
+    static NormalBalanceConflictMode fromConfig(String configuredMode) {
+      if (configuredMode == null || configuredMode.isBlank()) {
+        return WARN;
+      }
+      try {
+        return NormalBalanceConflictMode.valueOf(
+            configuredMode.trim().toUpperCase(Locale.ROOT));
+      } catch (IllegalArgumentException ex) {
+        return WARN;
+      }
     }
   }
 }
