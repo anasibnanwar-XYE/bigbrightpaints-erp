@@ -14,7 +14,7 @@ public record ManualJournalRequest(
     List<LineRequest> lines,
     List<String> attachmentReferences) {
   public ManualJournalRequest(
-      LocalDate entryDate,
+      @JsonFormat(pattern = "yyyy-MM-dd") LocalDate entryDate,
       String narration,
       String idempotencyKey,
       Boolean adminOverride,

@@ -35,7 +35,11 @@ public record JournalEntryReversalRequest(
     String supportingDocumentRef) {
   // Convenience constructor for simple reversals
   public JournalEntryReversalRequest(
-      LocalDate reversalDate, boolean voidOnly, String reason, String memo, Boolean adminOverride) {
+      @JsonFormat(pattern = "yyyy-MM-dd") LocalDate reversalDate,
+      boolean voidOnly,
+      String reason,
+      String memo,
+      Boolean adminOverride) {
     this(reversalDate, voidOnly, reason, memo, adminOverride, null, false, null, null, null, null);
   }
 

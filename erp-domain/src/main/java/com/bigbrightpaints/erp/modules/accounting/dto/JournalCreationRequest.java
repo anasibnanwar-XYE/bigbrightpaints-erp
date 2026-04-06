@@ -31,7 +31,7 @@ public record JournalCreationRequest(
       String sourceReference,
       GstBreakdown gstBreakdown,
       List<LineRequest> lines,
-      LocalDate entryDate,
+      @JsonFormat(pattern = "yyyy-MM-dd") LocalDate entryDate,
       Long dealerId,
       Long supplierId,
       Boolean adminOverride) {

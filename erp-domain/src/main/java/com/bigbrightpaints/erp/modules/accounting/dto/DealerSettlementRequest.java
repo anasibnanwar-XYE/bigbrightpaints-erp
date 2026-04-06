@@ -41,7 +41,7 @@ public record DealerSettlementRequest(
       Long writeOffAccountId,
       Long fxGainAccountId,
       Long fxLossAccountId,
-      LocalDate settlementDate,
+      @JsonFormat(pattern = "yyyy-MM-dd") LocalDate settlementDate,
       String referenceNumber,
       String memo,
       String idempotencyKey,
