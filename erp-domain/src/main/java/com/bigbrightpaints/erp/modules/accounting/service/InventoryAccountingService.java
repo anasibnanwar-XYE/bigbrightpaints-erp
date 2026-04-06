@@ -1,47 +1,34 @@
 package com.bigbrightpaints.erp.modules.accounting.service;
 
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Service;
 
 import com.bigbrightpaints.erp.core.idempotency.IdempotencyUtils;
 import com.bigbrightpaints.erp.core.validation.ValidationUtils;
 import com.bigbrightpaints.erp.modules.accounting.dto.InventoryRevaluationRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
-import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.LandedCostRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.WipAdjustmentRequest;
 
 @Service
 public class InventoryAccountingService {
+  private final InventoryValuationPostingService inventoryValuationPostingService;
 
-  @SuppressWarnings("unused")
-  private Environment environment;
-
-  private final SettlementSupportService accountingCoreSupport;
-  private final JournalPostingService journalPostingService;
-
-  @Autowired
   public InventoryAccountingService(
-      SettlementSupportService accountingCoreSupport, JournalPostingService journalPostingService) {
-    this.accountingCoreSupport = accountingCoreSupport;
-    this.journalPostingService = journalPostingService;
+      InventoryValuationPostingService inventoryValuationPostingService) {
+    this.inventoryValuationPostingService = inventoryValuationPostingService;
   }
 
   public JournalEntryDto recordLandedCost(LandedCostRequest request) {
-    return accountingCoreSupport.recordLandedCost(normalizeLandedCostRequest(request));
+    return inventoryValuationPostingService.recordLandedCost(normalizeLandedCostRequest(request));
   }
 
   public JournalEntryDto revalueInventory(InventoryRevaluationRequest request) {
-    return accountingCoreSupport.revalueInventory(normalizeInventoryRevaluationRequest(request));
+    return inventoryValuationPostingService.revalueInventory(
+        normalizeInventoryRevaluationRequest(request));
   }
 
   public JournalEntryDto adjustWip(WipAdjustmentRequest request) {
-    return accountingCoreSupport.adjustWip(normalizeWipAdjustmentRequest(request));
-  }
-
-  JournalEntryDto createJournalEntry(JournalEntryRequest request) {
-    return journalPostingService.createJournalEntry(request);
+    return inventoryValuationPostingService.adjustWip(normalizeWipAdjustmentRequest(request));
   }
 
   private LandedCostRequest normalizeLandedCostRequest(LandedCostRequest request) {

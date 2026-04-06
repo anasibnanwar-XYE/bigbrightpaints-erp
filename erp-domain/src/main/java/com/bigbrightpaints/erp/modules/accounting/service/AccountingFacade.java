@@ -12,12 +12,8 @@ import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
-import com.bigbrightpaints.erp.core.util.CompanyClock;
-import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriod;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
-import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
-import com.bigbrightpaints.erp.modules.accounting.domain.JournalReferenceMappingRepository;
 import com.bigbrightpaints.erp.modules.accounting.dto.AutoSettlementRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.DealerReceiptRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.DealerReceiptSplitRequest;
@@ -29,11 +25,7 @@ import com.bigbrightpaints.erp.modules.accounting.dto.PartnerSettlementRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.PartnerSettlementResponse;
 import com.bigbrightpaints.erp.modules.accounting.dto.SupplierPaymentRequest;
 import com.bigbrightpaints.erp.modules.accounting.event.AccountCacheInvalidatedEvent;
-import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.hr.dto.PayrollPaymentRequest;
-import com.bigbrightpaints.erp.modules.purchasing.domain.SupplierRepository;
-import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
-import com.bigbrightpaints.erp.modules.sales.service.CompanyScopedSalesLookupService;
 
 @Service
 public class AccountingFacade {
@@ -41,8 +33,23 @@ public class AccountingFacade {
   public static final String MANUAL_REFERENCE_PREFIX = "MANUAL-";
   private static final Set<String> RESERVED_REFERENCE_PREFIXES =
       Set.of(
-          "JRN-", "INV-", "SALE-", "COGS-", "RMP-", "PRN-", "PAYROLL-", "RM-", "ADJ-",
-          "OPEN-STOCK-", "CAL-", "INVJ-", "RCPT-", "SUP-", "COST-ALLOC-", "CRN-", "DBN-",
+          "JRN-",
+          "INV-",
+          "SALE-",
+          "COGS-",
+          "RMP-",
+          "PRN-",
+          "PAYROLL-",
+          "RM-",
+          "ADJ-",
+          "OPEN-STOCK-",
+          "CAL-",
+          "INVJ-",
+          "RCPT-",
+          "SUP-",
+          "COST-ALLOC-",
+          "CRN-",
+          "DBN-",
           "DISPATCH-");
 
   private final AccountingService accountingService;
@@ -102,7 +109,14 @@ public class AccountingFacade {
       BigDecimal totalAmount,
       String referenceNumber) {
     return salesJournalOperations.postSalesJournal(
-        dealerId, orderNumber, entryDate, memo, revenueLines, taxLines, totalAmount, referenceNumber);
+        dealerId,
+        orderNumber,
+        entryDate,
+        memo,
+        revenueLines,
+        taxLines,
+        totalAmount,
+        referenceNumber);
   }
 
   public JournalEntryDto postSalesJournal(
@@ -224,13 +238,7 @@ public class AccountingFacade {
       Map<Long, BigDecimal> taxCredits,
       BigDecimal totalAmount) {
     return purchaseJournalOperations.postPurchaseReturn(
-        supplierId,
-        referenceNumber,
-        returnDate,
-        memo,
-        inventoryCredits,
-        taxCredits,
-        totalAmount);
+        supplierId, referenceNumber, returnDate, memo, inventoryCredits, taxCredits, totalAmount);
   }
 
   public JournalEntryDto postPurchaseReturn(

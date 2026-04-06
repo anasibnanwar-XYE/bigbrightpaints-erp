@@ -4,7 +4,6 @@ import java.time.LocalDate;
 import java.util.List;
 
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,13 +19,9 @@ import com.bigbrightpaints.erp.shared.dto.PageResponse;
 @Service
 public class JournalEntryService {
 
-  @SuppressWarnings("unused")
-  private Environment environment;
-
   private final JournalQueryService journalQueryService;
   private final JournalPostingService journalPostingService;
   private final JournalReversalService journalReversalService;
-  private final PeriodValidationService periodValidationService;
   private final ManualJournalService manualJournalService;
   private final ClosingEntryReversalService closingEntryReversalService;
 
@@ -35,13 +30,11 @@ public class JournalEntryService {
       JournalQueryService journalQueryService,
       JournalPostingService journalPostingService,
       JournalReversalService journalReversalService,
-      PeriodValidationService periodValidationService,
       ManualJournalService manualJournalService,
       ClosingEntryReversalService closingEntryReversalService) {
     this.journalQueryService = journalQueryService;
     this.journalPostingService = journalPostingService;
     this.journalReversalService = journalReversalService;
-    this.periodValidationService = periodValidationService;
     this.manualJournalService = manualJournalService;
     this.closingEntryReversalService = closingEntryReversalService;
   }

@@ -17,8 +17,10 @@ import com.bigbrightpaints.erp.truthsuite.support.TruthSuiteFileAssert;
 @Tag("reconciliation")
 class TS_DoubleEntryMathInvariantTest {
 
-  private static final String ACCOUNTING_SERVICE =
-      "src/main/java/com/bigbrightpaints/erp/modules/accounting/service/JournalPostingService.java";
+  private static final String ACCOUNTING_MUTATION_SERVICE =
+      "src/main/java/com/bigbrightpaints/erp/modules/accounting/service/JournalEntryMutationService.java";
+  private static final String ACCOUNTING_LINE_SERVICE =
+      "src/main/java/com/bigbrightpaints/erp/modules/accounting/service/JournalLinePostingService.java";
 
   @RepeatedTest(20)
   void generatedJournalStaysBalancedWhenCreditsMirrorDebits() {
@@ -46,10 +48,13 @@ class TS_DoubleEntryMathInvariantTest {
   @Test
   void accountingServiceValidatesLineIntegrityAndFinalBalance() {
     TruthSuiteFileAssert.assertContains(
-        ACCOUNTING_SERVICE,
+        ACCOUNTING_LINE_SERVICE,
         "if (debitInput.compareTo(BigDecimal.ZERO) < 0 || creditInput.compareTo(BigDecimal.ZERO) <"
             + " 0) {",
         "\"Debit and credit cannot both be non-zero on the same line\"",
+        "\"Journal entry must balance\"");
+    TruthSuiteFileAssert.assertContains(
+        ACCOUNTING_MUTATION_SERVICE,
         "if (totalBaseDebit.subtract(totalBaseCredit).abs().compareTo(JOURNAL_BALANCE_TOLERANCE) >"
             + " 0) {",
         "\"Journal entry must balance\"");

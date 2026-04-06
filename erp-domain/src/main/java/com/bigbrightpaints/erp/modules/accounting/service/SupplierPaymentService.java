@@ -42,29 +42,47 @@ class SupplierPaymentService {
 
   private static final Logger log = LoggerFactory.getLogger(SupplierPaymentService.class);
 
-  private final SettlementSupportService accountingCoreSupport;
   private final CompanyContextService companyContextService;
   private final ObjectProvider<AccountingFacade> accountingFacadeProvider;
   private final SupplierRepository supplierRepository;
   private final CompanyScopedAccountingLookupService accountingLookupService;
   private final PartnerSettlementAllocationRepository settlementAllocationRepository;
   private final RawMaterialPurchaseRepository rawMaterialPurchaseRepository;
+  private final AccountResolutionService accountResolutionService;
+  private final SettlementReferenceService settlementReferenceService;
+  private final JournalReplayService journalReplayService;
+  private final SettlementReplayValidationService settlementReplayValidationService;
+  private final SettlementRequestResolutionService settlementRequestResolutionService;
+  private final SettlementOutcomeService settlementOutcomeService;
+  private final AccountingDtoMapperService dtoMapperService;
 
   SupplierPaymentService(
-      SettlementSupportService accountingCoreSupport,
       CompanyContextService companyContextService,
       ObjectProvider<AccountingFacade> accountingFacadeProvider,
       SupplierRepository supplierRepository,
       CompanyScopedAccountingLookupService accountingLookupService,
       PartnerSettlementAllocationRepository settlementAllocationRepository,
-      RawMaterialPurchaseRepository rawMaterialPurchaseRepository) {
-    this.accountingCoreSupport = accountingCoreSupport;
+      RawMaterialPurchaseRepository rawMaterialPurchaseRepository,
+      AccountResolutionService accountResolutionService,
+      SettlementReferenceService settlementReferenceService,
+      JournalReplayService journalReplayService,
+      SettlementReplayValidationService settlementReplayValidationService,
+      SettlementRequestResolutionService settlementRequestResolutionService,
+      SettlementOutcomeService settlementOutcomeService,
+      AccountingDtoMapperService dtoMapperService) {
     this.companyContextService = companyContextService;
     this.accountingFacadeProvider = accountingFacadeProvider;
     this.supplierRepository = supplierRepository;
     this.accountingLookupService = accountingLookupService;
     this.settlementAllocationRepository = settlementAllocationRepository;
     this.rawMaterialPurchaseRepository = rawMaterialPurchaseRepository;
+    this.accountResolutionService = accountResolutionService;
+    this.settlementReferenceService = settlementReferenceService;
+    this.journalReplayService = journalReplayService;
+    this.settlementReplayValidationService = settlementReplayValidationService;
+    this.settlementRequestResolutionService = settlementRequestResolutionService;
+    this.settlementOutcomeService = settlementOutcomeService;
+    this.dtoMapperService = dtoMapperService;
   }
 
   @Retryable(
@@ -85,43 +103,40 @@ class SupplierPaymentService {
                 () ->
                     new ApplicationException(
                         ErrorCode.VALIDATION_INVALID_REFERENCE, "Supplier not found"));
-    Account payableAccount = accountingCoreSupport.requireSupplierPayable(supplier);
+    Account payableAccount = accountResolutionService.requireSupplierPayable(supplier);
     BigDecimal amount = ValidationUtils.requirePositive(request.amount(), "amount");
     List<SettlementAllocationRequest> allocations = request.allocations();
-    accountingCoreSupport.validatePaymentAllocations(
+    settlementRequestResolutionService.validatePaymentAllocations(
         allocations, amount, "supplier payment", false);
     Account cashAccount =
-        accountingCoreSupport.requireCashAccountForSettlement(
+        accountResolutionService.requireCashAccountForSettlement(
             company, request.cashAccountId(), "supplier payment", false);
     String memo =
         StringUtils.hasText(request.memo())
             ? request.memo().trim()
             : "Payment to supplier " + supplier.getName();
     String idempotencyKey =
-        accountingCoreSupport.resolveReceiptIdempotencyKey(
+        settlementReferenceService.resolveReceiptIdempotencyKey(
             request.idempotencyKey(), request.referenceNumber(), "supplier payment");
     String reference =
-        accountingCoreSupport.resolveSupplierPaymentReference(
+        settlementReferenceService.resolveSupplierPaymentReference(
             company, supplier, request.referenceNumber(), idempotencyKey);
-    SettlementSupportService.IdempotencyReservation reservation =
-        accountingCoreSupport.reserveReferenceMapping(
-            company,
-            idempotencyKey,
-            reference,
-            SettlementSupportService.ENTITY_TYPE_SUPPLIER_PAYMENT);
+    JournalReplayService.IdempotencyReservation reservation =
+        journalReplayService.reserveReferenceMapping(
+            company, idempotencyKey, reference, "SUPPLIER_PAYMENT");
 
     if (!reservation.leader()) {
       JournalEntry existingEntry =
-          accountingCoreSupport.awaitJournalEntry(company, reference, idempotencyKey);
+          journalReplayService.awaitJournalEntry(company, reference, idempotencyKey);
       List<PartnerSettlementAllocation> existingAllocations =
-          accountingCoreSupport.awaitAllocations(company, idempotencyKey);
+          journalReplayService.awaitAllocations(company, idempotencyKey);
       if (!existingAllocations.isEmpty()) {
         JournalEntry entry =
-            accountingCoreSupport.resolveReplayJournalEntry(
+            journalReplayService.resolveReplayJournalEntry(
                 idempotencyKey, existingEntry, existingAllocations);
-        accountingCoreSupport.linkReferenceMapping(
-            company, idempotencyKey, entry, SettlementSupportService.ENTITY_TYPE_SUPPLIER_PAYMENT);
-        accountingCoreSupport.validateSupplierPaymentIdempotency(
+        journalReplayService.linkReferenceMapping(
+            company, idempotencyKey, entry, "SUPPLIER_PAYMENT");
+        settlementReplayValidationService.validateSupplierPaymentIdempotency(
             idempotencyKey,
             supplier,
             cashAccount,
@@ -131,21 +146,20 @@ class SupplierPaymentService {
             entry,
             existingAllocations,
             allocations);
-        return accountingCoreSupport.toDto(entry);
+        return dtoMapperService.toJournalEntryDto(entry);
       }
-      throw accountingCoreSupport.missingReservedPartnerAllocation(
+      throw journalReplayService.missingReservedPartnerAllocation(
           "Supplier payment", idempotencyKey, PartnerType.SUPPLIER, supplier.getId());
     }
 
     List<PartnerSettlementAllocation> existingAllocations =
-        accountingCoreSupport.findAllocationsByIdempotencyKey(company, idempotencyKey);
+        journalReplayService.findAllocationsByIdempotencyKey(company, idempotencyKey);
     if (!existingAllocations.isEmpty()) {
       JournalEntry entry =
-          accountingCoreSupport.resolveReplayJournalEntryFromExistingAllocations(
+          journalReplayService.resolveReplayJournalEntryFromExistingAllocations(
               company, reference, idempotencyKey, existingAllocations);
-      accountingCoreSupport.linkReferenceMapping(
-          company, idempotencyKey, entry, SettlementSupportService.ENTITY_TYPE_SUPPLIER_PAYMENT);
-      accountingCoreSupport.validateSupplierPaymentIdempotency(
+      journalReplayService.linkReferenceMapping(company, idempotencyKey, entry, "SUPPLIER_PAYMENT");
+      settlementReplayValidationService.validateSupplierPaymentIdempotency(
           idempotencyKey,
           supplier,
           cashAccount,
@@ -155,12 +169,12 @@ class SupplierPaymentService {
           entry,
           existingAllocations,
           allocations);
-      return accountingCoreSupport.toDto(entry);
+      return dtoMapperService.toJournalEntryDto(entry);
     }
 
     supplier.requireTransactionalUsage("record supplier payments");
     cashAccount =
-        accountingCoreSupport.requireCashAccountForSettlement(
+        accountResolutionService.requireCashAccountForSettlement(
             company, request.cashAccountId(), "supplier payment", true);
     JournalEntryDto entryDto =
         resolveAccountingFacade()
@@ -170,7 +184,7 @@ class SupplierPaymentService {
                     payableAccount.getId(),
                     cashAccount.getId(),
                     memo,
-                    SettlementSupportService.ENTITY_TYPE_SUPPLIER_PAYMENT,
+                    "SUPPLIER_PAYMENT",
                     reference,
                     null,
                     List.of(
@@ -178,17 +192,16 @@ class SupplierPaymentService {
                             payableAccount.getId(), amount, BigDecimal.ZERO, memo),
                         new JournalCreationRequest.LineRequest(
                             cashAccount.getId(), BigDecimal.ZERO, amount, memo)),
-                    accountingCoreSupport.currentDate(company),
+                    accountResolutionService.currentDate(company),
                     null,
                     supplier.getId(),
                     Boolean.FALSE));
     JournalEntry entry = accountingLookupService.requireJournalEntry(company, entryDto.id());
-    accountingCoreSupport.linkReferenceMapping(
-        company, idempotencyKey, entry, SettlementSupportService.ENTITY_TYPE_SUPPLIER_PAYMENT);
+    journalReplayService.linkReferenceMapping(company, idempotencyKey, entry, "SUPPLIER_PAYMENT");
     existingAllocations =
-        accountingCoreSupport.findAllocationsByIdempotencyKey(company, idempotencyKey);
+        journalReplayService.findAllocationsByIdempotencyKey(company, idempotencyKey);
     if (!existingAllocations.isEmpty()) {
-      accountingCoreSupport.validateSupplierPaymentIdempotency(
+      settlementReplayValidationService.validateSupplierPaymentIdempotency(
           idempotencyKey,
           supplier,
           cashAccount,
@@ -266,7 +279,7 @@ class SupplierPaymentService {
       log.info(
           "Concurrent supplier payment allocation conflict for idempotency key hash={} detected;"
               + " retrying in fresh transaction",
-          accountingCoreSupport.sanitizeIdempotencyLogValue(idempotencyKey));
+          journalReplayService.sanitizeIdempotencyLogValue(idempotencyKey));
       throw ex;
     }
     for (Map.Entry<Long, BigDecimal> entryState : remainingByPurchase.entrySet()) {
@@ -275,7 +288,7 @@ class SupplierPaymentService {
         continue;
       }
       purchase.setOutstandingAmount(entryState.getValue().max(BigDecimal.ZERO));
-      accountingCoreSupport.updatePurchaseStatus(purchase);
+      settlementOutcomeService.updatePurchaseStatus(purchase);
       touchedPurchases.add(purchase);
     }
     if (!touchedPurchases.isEmpty()) {

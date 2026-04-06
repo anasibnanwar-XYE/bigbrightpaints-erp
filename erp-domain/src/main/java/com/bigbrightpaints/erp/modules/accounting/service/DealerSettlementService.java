@@ -44,7 +44,6 @@ import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
 @Service
 class DealerSettlementService {
 
-  private final SettlementSupportService accountingCoreSupport;
   private final CompanyContextService companyContextService;
   private final ObjectProvider<AccountingFacade> accountingFacadeProvider;
   private final DealerRepository dealerRepository;
@@ -54,9 +53,15 @@ class DealerSettlementService {
   private final InvoiceSettlementPolicy invoiceSettlementPolicy;
   private final DealerLedgerService dealerLedgerService;
   private final InvoiceRepository invoiceRepository;
+  private final AccountResolutionService accountResolutionService;
+  private final SettlementReferenceService settlementReferenceService;
+  private final JournalReplayService journalReplayService;
+  private final SettlementReplayValidationService settlementReplayValidationService;
+  private final SettlementRequestResolutionService settlementRequestResolutionService;
+  private final SettlementOutcomeService settlementOutcomeService;
+  private final AccountingAuditService accountingAuditService;
 
   DealerSettlementService(
-      SettlementSupportService accountingCoreSupport,
       CompanyContextService companyContextService,
       ObjectProvider<AccountingFacade> accountingFacadeProvider,
       DealerRepository dealerRepository,
@@ -65,8 +70,14 @@ class DealerSettlementService {
       PartnerSettlementAllocationRepository settlementAllocationRepository,
       InvoiceSettlementPolicy invoiceSettlementPolicy,
       DealerLedgerService dealerLedgerService,
-      InvoiceRepository invoiceRepository) {
-    this.accountingCoreSupport = accountingCoreSupport;
+      InvoiceRepository invoiceRepository,
+      AccountResolutionService accountResolutionService,
+      SettlementReferenceService settlementReferenceService,
+      JournalReplayService journalReplayService,
+      SettlementReplayValidationService settlementReplayValidationService,
+      SettlementRequestResolutionService settlementRequestResolutionService,
+      SettlementOutcomeService settlementOutcomeService,
+      AccountingAuditService accountingAuditService) {
     this.companyContextService = companyContextService;
     this.accountingFacadeProvider = accountingFacadeProvider;
     this.dealerRepository = dealerRepository;
@@ -76,6 +87,13 @@ class DealerSettlementService {
     this.invoiceSettlementPolicy = invoiceSettlementPolicy;
     this.dealerLedgerService = dealerLedgerService;
     this.invoiceRepository = invoiceRepository;
+    this.accountResolutionService = accountResolutionService;
+    this.settlementReferenceService = settlementReferenceService;
+    this.journalReplayService = journalReplayService;
+    this.settlementReplayValidationService = settlementReplayValidationService;
+    this.settlementRequestResolutionService = settlementRequestResolutionService;
+    this.settlementOutcomeService = settlementOutcomeService;
+    this.accountingAuditService = accountingAuditService;
   }
 
   @Retryable(
@@ -92,11 +110,11 @@ class DealerSettlementService {
                 () ->
                     new ApplicationException(
                         ErrorCode.VALIDATION_INVALID_REFERENCE, "Dealer not found"));
-    Account receivableAccount = accountingCoreSupport.requireDealerReceivable(dealer);
+    Account receivableAccount = accountResolutionService.requireDealerReceivable(dealer);
     String trimmedIdempotencyKey =
-        accountingCoreSupport.resolveDealerSettlementIdempotencyKey(company, request);
+        settlementReferenceService.resolveDealerSettlementIdempotencyKey(request);
     List<SettlementAllocationRequest> allocations =
-        accountingCoreSupport.resolveDealerSettlementAllocations(
+        settlementRequestResolutionService.resolveDealerSettlementAllocations(
             company, dealer, request, trimmedIdempotencyKey);
     PartnerSettlementRequest requestForReplay =
         request.allocations() == allocations
@@ -119,19 +137,19 @@ class DealerSettlementService {
                 allocations,
                 request.payments());
     trimmedIdempotencyKey =
-        accountingCoreSupport.resolveDealerSettlementIdempotencyKey(company, requestForReplay);
+        settlementReferenceService.resolveDealerSettlementIdempotencyKey(requestForReplay);
     if (!StringUtils.hasText(trimmedIdempotencyKey)) {
       throw new ApplicationException(
           ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,
           "Idempotency key is required for dealer settlements");
     }
     boolean replayCandidate =
-        accountingCoreSupport.hasExistingSettlementAllocations(company, trimmedIdempotencyKey);
+        journalReplayService.hasExistingSettlementAllocations(company, trimmedIdempotencyKey);
     if (!replayCandidate) {
-      accountingCoreSupport.validateDealerSettlementAllocations(allocations);
+      settlementRequestResolutionService.validateDealerSettlementAllocations(allocations);
     }
-    SettlementSupportService.SettlementTotals totals =
-        accountingCoreSupport.computeSettlementTotals(allocations);
+    SettlementRequestResolutionService.SettlementTotals totals =
+        settlementRequestResolutionService.computeSettlementTotals(allocations);
     String memo =
         StringUtils.hasText(request.memo())
             ? request.memo().trim()
@@ -139,51 +157,45 @@ class DealerSettlementService {
     LocalDate requestedEffectiveSettlementDate =
         request.settlementDate() != null
             ? request.settlementDate()
-            : accountingCoreSupport.currentDate(company);
-    boolean settlementOverrideRequested = accountingCoreSupport.settlementOverrideRequested(totals);
+            : accountResolutionService.currentDate(company);
+    boolean settlementOverrideRequested =
+        settlementRequestResolutionService.settlementOverrideRequested(totals);
     if (settlementOverrideRequested) {
-      accountingCoreSupport.requireAdminExceptionReason(
-          "Settlement override", request.adminOverride(), request.memo());
+      requireAdminExceptionReason("Settlement override", request.adminOverride(), request.memo());
     }
     String reference =
-        accountingCoreSupport.resolveDealerSettlementReference(
+        settlementReferenceService.resolveDealerSettlementReference(
             company, dealer, request, trimmedIdempotencyKey);
-    SettlementSupportService.IdempotencyReservation reservation =
-        accountingCoreSupport.reserveReferenceMapping(
-            company,
-            trimmedIdempotencyKey,
-            reference,
-            SettlementSupportService.ENTITY_TYPE_DEALER_SETTLEMENT);
+    JournalReplayService.IdempotencyReservation reservation =
+        journalReplayService.reserveReferenceMapping(
+            company, trimmedIdempotencyKey, reference, "DEALER_SETTLEMENT");
     if (reservation.leader()
         && !StringUtils.hasText(request.referenceNumber())
-        && accountingCoreSupport.isReservedReference(reference)) {
+        && journalReplayService.isReservedReference(reference)) {
       reference = referenceNumberService.dealerReceiptReference(company, dealer);
     }
-    SettlementSupportService.SettlementLineDraft lineDraft =
-        accountingCoreSupport.buildDealerSettlementLines(
+    SettlementRequestResolutionService.SettlementLineDraft lineDraft =
+        settlementRequestResolutionService.buildDealerSettlementLines(
             company, request, receivableAccount, totals, memo, false);
 
     if (!reservation.leader()) {
       JournalEntry existingEntry =
-          accountingCoreSupport.awaitJournalEntry(company, reference, trimmedIdempotencyKey);
+          journalReplayService.awaitJournalEntry(company, reference, trimmedIdempotencyKey);
       List<PartnerSettlementAllocation> existingAllocations =
-          accountingCoreSupport.awaitAllocations(company, trimmedIdempotencyKey);
+          journalReplayService.awaitAllocations(company, trimmedIdempotencyKey);
       if (!existingAllocations.isEmpty()) {
         JournalEntry entry =
-            accountingCoreSupport.resolveReplayJournalEntry(
+            journalReplayService.resolveReplayJournalEntry(
                 trimmedIdempotencyKey, existingEntry, existingAllocations);
-        accountingCoreSupport.linkReferenceMapping(
-            company,
-            trimmedIdempotencyKey,
-            entry,
-            SettlementSupportService.ENTITY_TYPE_DEALER_SETTLEMENT);
-        accountingCoreSupport.validateSettlementIdempotencyKey(
+        journalReplayService.linkReferenceMapping(
+            company, trimmedIdempotencyKey, entry, "DEALER_SETTLEMENT");
+        settlementReplayValidationService.validateSettlementIdempotencyKey(
             trimmedIdempotencyKey,
             PartnerType.DEALER,
             dealer.getId(),
             existingAllocations,
             allocations);
-        accountingCoreSupport.validatePartnerSettlementJournalLines(
+        settlementReplayValidationService.validatePartnerSettlementJournalLines(
             trimmedIdempotencyKey,
             PartnerType.DEALER,
             dealer.getId(),
@@ -191,30 +203,27 @@ class DealerSettlementService {
             memo,
             entry,
             lineDraft.lines());
-        return accountingCoreSupport.buildDealerSettlementResponse(existingAllocations);
+        return settlementOutcomeService.buildDealerSettlementResponse(existingAllocations);
       }
-      throw accountingCoreSupport.missingReservedPartnerAllocation(
+      throw journalReplayService.missingReservedPartnerAllocation(
           "Dealer settlement", trimmedIdempotencyKey, PartnerType.DEALER, dealer.getId());
     }
 
     List<PartnerSettlementAllocation> existingAllocations =
-        accountingCoreSupport.findAllocationsByIdempotencyKey(company, trimmedIdempotencyKey);
+        journalReplayService.findAllocationsByIdempotencyKey(company, trimmedIdempotencyKey);
     if (!existingAllocations.isEmpty()) {
       JournalEntry entry =
-          accountingCoreSupport.resolveReplayJournalEntryFromExistingAllocations(
+          journalReplayService.resolveReplayJournalEntryFromExistingAllocations(
               company, reference, trimmedIdempotencyKey, existingAllocations);
-      accountingCoreSupport.linkReferenceMapping(
-          company,
-          trimmedIdempotencyKey,
-          entry,
-          SettlementSupportService.ENTITY_TYPE_DEALER_SETTLEMENT);
-      accountingCoreSupport.validateSettlementIdempotencyKey(
+      journalReplayService.linkReferenceMapping(
+          company, trimmedIdempotencyKey, entry, "DEALER_SETTLEMENT");
+      settlementReplayValidationService.validateSettlementIdempotencyKey(
           trimmedIdempotencyKey,
           PartnerType.DEALER,
           dealer.getId(),
           existingAllocations,
           allocations);
-      accountingCoreSupport.validatePartnerSettlementJournalLines(
+      settlementReplayValidationService.validatePartnerSettlementJournalLines(
           trimmedIdempotencyKey,
           PartnerType.DEALER,
           dealer.getId(),
@@ -222,11 +231,11 @@ class DealerSettlementService {
           memo,
           entry,
           lineDraft.lines());
-      return accountingCoreSupport.buildDealerSettlementResponse(existingAllocations);
+      return settlementOutcomeService.buildDealerSettlementResponse(existingAllocations);
     }
 
     lineDraft =
-        accountingCoreSupport.buildDealerSettlementLines(
+        settlementRequestResolutionService.buildDealerSettlementLines(
             company, request, receivableAccount, totals, memo, true);
     LocalDate entryDate = requestedEffectiveSettlementDate;
 
@@ -248,12 +257,14 @@ class DealerSettlementService {
       BigDecimal applied =
           ValidationUtils.requirePositive(allocation.appliedAmount(), "appliedAmount");
       BigDecimal discount =
-          accountingCoreSupport.normalizeNonNegative(allocation.discountAmount(), "discountAmount");
+          settlementRequestResolutionService.normalizeNonNegative(
+              allocation.discountAmount(), "discountAmount");
       BigDecimal writeOff =
-          accountingCoreSupport.normalizeNonNegative(allocation.writeOffAmount(), "writeOffAmount");
+          settlementRequestResolutionService.normalizeNonNegative(
+              allocation.writeOffAmount(), "writeOffAmount");
       BigDecimal fxAdjustment = MoneyUtils.zeroIfNull(allocation.fxAdjustment());
       SettlementAllocationApplication applicationType =
-          accountingCoreSupport.resolveSettlementApplicationType(allocation);
+          settlementRequestResolutionService.resolveSettlementApplicationType(allocation);
 
       if (applicationType.isUnapplied()
           && (discount.compareTo(BigDecimal.ZERO) > 0
@@ -278,7 +289,7 @@ class DealerSettlementService {
           throw new ApplicationException(
               ErrorCode.VALIDATION_INVALID_REFERENCE, "Invoice does not belong to the dealer");
         }
-        accountingCoreSupport.enforceSettlementCurrency(company, invoice);
+        settlementOutcomeService.enforceSettlementCurrency(company, invoice);
 
         BigDecimal cleared = applied;
         BigDecimal currentOutstanding =
@@ -312,7 +323,8 @@ class DealerSettlementService {
         row.setCurrency(invoice.getCurrency());
       }
       row.setMemo(
-          accountingCoreSupport.encodeSettlementAllocationMemo(applicationType, allocation.memo()));
+          settlementRequestResolutionService.encodeSettlementAllocationMemo(
+              applicationType, allocation.memo()));
       settlementRows.add(row);
     }
 
@@ -324,7 +336,7 @@ class DealerSettlementService {
                     null,
                     null,
                     memo,
-                    SettlementSupportService.ENTITY_TYPE_DEALER_SETTLEMENT,
+                    "DEALER_SETTLEMENT",
                     reference,
                     null,
                     toCreationLines(lineDraft.lines()),
@@ -336,11 +348,8 @@ class DealerSettlementService {
 
     JournalEntry journalEntry =
         accountingLookupService.requireJournalEntry(company, journalEntryDto.id());
-    accountingCoreSupport.linkReferenceMapping(
-        company,
-        trimmedIdempotencyKey,
-        journalEntry,
-        SettlementSupportService.ENTITY_TYPE_DEALER_SETTLEMENT);
+    journalReplayService.linkReferenceMapping(
+        company, trimmedIdempotencyKey, journalEntry, "DEALER_SETTLEMENT");
     for (PartnerSettlementAllocation allocation : settlementRows) {
       allocation.setJournalEntry(journalEntry);
     }
@@ -360,8 +369,8 @@ class DealerSettlementService {
     }
 
     List<PartnerSettlementResponse.Allocation> allocationSummaries =
-        accountingCoreSupport.toSettlementAllocationSummaries(settlementRows);
-    accountingCoreSupport.logSettlementAuditSuccess(
+        settlementOutcomeService.toSettlementAllocationSummaries(settlementRows);
+    accountingAuditService.logSettlementAuditSuccess(
         PartnerType.DEALER,
         dealer.getId(),
         journalEntryDto,
@@ -376,7 +385,7 @@ class DealerSettlementService {
         totalFxLoss,
         settlementOverrideRequested,
         settlementOverrideRequested ? memo : null,
-        settlementOverrideRequested ? accountingCoreSupport.resolveCurrentUsername() : null);
+        settlementOverrideRequested ? accountingAuditService.resolveCurrentUsername() : null);
 
     return new PartnerSettlementResponse(
         journalEntryDto,
@@ -401,8 +410,7 @@ class DealerSettlementService {
     }
     Company company = companyContextService.requireCurrentCompany();
     Dealer dealer =
-        accountingCoreSupport
-            .dealerRepository
+        dealerRepository
             .lockByCompanyAndId(company, dealerId)
             .orElseThrow(
                 () ->
@@ -410,10 +418,11 @@ class DealerSettlementService {
                         ErrorCode.VALIDATION_INVALID_REFERENCE, "Dealer not found"));
     BigDecimal amount = ValidationUtils.requirePositive(request.amount(), "amount");
     Long cashAccountId =
-        accountingCoreSupport.resolveAutoSettlementCashAccountId(
+        accountResolutionService.resolveAutoSettlementCashAccountId(
             company, request.cashAccountId(), "dealer auto-settlement");
     List<SettlementAllocationRequest> allocations =
-        accountingCoreSupport.buildDealerAutoSettlementAllocations(company, dealer, amount);
+        settlementRequestResolutionService.buildDealerAutoSettlementAllocations(
+            company, dealer, amount);
     String memo =
         StringUtils.hasText(request.memo())
             ? request.memo().trim()
@@ -428,7 +437,22 @@ class DealerSettlementService {
             request.idempotencyKey(),
             allocations);
     JournalEntryDto journalEntry = resolveAccountingFacade().recordDealerReceipt(receiptRequest);
-    return accountingCoreSupport.buildAutoSettlementResponse(company, journalEntry);
+    return settlementOutcomeService.buildAutoSettlementResponse(company, journalEntry);
+  }
+
+  private String requireAdminExceptionReason(
+      String operation, Boolean adminOverride, String reason) {
+    if (!Boolean.TRUE.equals(adminOverride)) {
+      throw new ApplicationException(
+          ErrorCode.AUTH_INSUFFICIENT_PERMISSIONS,
+          operation + " requires an explicit admin override for this document");
+    }
+    if (StringUtils.hasText(reason)) {
+      return reason.trim();
+    }
+    throw new ApplicationException(
+            ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD, operation + " reason is required")
+        .withDetail("field", "memo");
   }
 
   private AccountingFacade resolveAccountingFacade() {

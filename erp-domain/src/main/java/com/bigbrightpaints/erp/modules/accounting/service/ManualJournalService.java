@@ -20,26 +20,29 @@ import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 @Service
 class ManualJournalService {
 
-  private final SettlementSupportService accountingCoreSupport;
   private final JournalPostingService journalPostingService;
   private final CompanyContextService companyContextService;
   private final JournalEntryRepository journalEntryRepository;
   private final JournalReferenceResolver journalReferenceResolver;
   private final JournalReferenceMappingRepository journalReferenceMappingRepository;
+  private final JournalReplayService journalReplayService;
+  private final AccountingDtoMapperService dtoMapperService;
 
   ManualJournalService(
-      SettlementSupportService accountingCoreSupport,
       JournalPostingService journalPostingService,
       CompanyContextService companyContextService,
       JournalEntryRepository journalEntryRepository,
       JournalReferenceResolver journalReferenceResolver,
-      JournalReferenceMappingRepository journalReferenceMappingRepository) {
-    this.accountingCoreSupport = accountingCoreSupport;
+      JournalReferenceMappingRepository journalReferenceMappingRepository,
+      JournalReplayService journalReplayService,
+      AccountingDtoMapperService dtoMapperService) {
     this.journalPostingService = journalPostingService;
     this.companyContextService = companyContextService;
     this.journalEntryRepository = journalEntryRepository;
     this.journalReferenceResolver = journalReferenceResolver;
     this.journalReferenceMappingRepository = journalReferenceMappingRepository;
+    this.journalReplayService = journalReplayService;
+    this.dtoMapperService = dtoMapperService;
   }
 
   JournalEntryDto createManualJournalEntry(JournalEntryRequest request, String idempotencyKey) {
@@ -51,30 +54,30 @@ class ManualJournalService {
     String rawKey = StringUtils.hasText(idempotencyKey) ? idempotencyKey.trim() : null;
     String key =
         StringUtils.hasText(rawKey)
-            ? accountingCoreSupport.normalizeIdempotencyMappingKey(rawKey)
+            ? journalReplayService.normalizeIdempotencyMappingKey(rawKey)
             : null;
     if (StringUtils.hasText(rawKey)) {
       Optional<JournalEntry> existingByReference =
           journalEntryRepository.findByCompanyAndReferenceNumber(company, rawKey);
       if (existingByReference.isPresent()) {
-        return accountingCoreSupport.toDto(existingByReference.get());
+        return dtoMapperService.toJournalEntryDto(existingByReference.get());
       }
       Optional<JournalEntry> existingByResolver =
           journalReferenceResolver.findExistingEntry(company, rawKey);
       if (existingByResolver.isPresent()) {
-        return accountingCoreSupport.toDto(existingByResolver.get());
+        return dtoMapperService.toJournalEntryDto(existingByResolver.get());
       }
       int reserved =
           journalReferenceMappingRepository.reserveManualReference(
               company.getId(),
               key,
-              accountingCoreSupport.reservedManualReference(key),
+              journalReplayService.reservedManualReference(key),
               "JOURNAL_ENTRY",
               CompanyTime.now(company));
       if (reserved == 0) {
-        JournalEntry already = accountingCoreSupport.awaitJournalEntry(company, rawKey, key);
+        JournalEntry already = journalReplayService.awaitJournalEntry(company, rawKey, key);
         if (already != null) {
-          return accountingCoreSupport.toDto(already);
+          return dtoMapperService.toJournalEntryDto(already);
         }
         throw new ApplicationException(
                 ErrorCode.INTERNAL_CONCURRENCY_FAILURE,
@@ -104,12 +107,12 @@ class ManualJournalService {
                   request.attachmentReferences()));
     } catch (RuntimeException ex) {
       if (!StringUtils.hasText(rawKey)
-          || !accountingCoreSupport.isRetryableManualConcurrencyFailure(ex)) {
+          || !journalReplayService.isRetryableManualConcurrencyFailure(ex)) {
         throw ex;
       }
-      JournalEntry already = accountingCoreSupport.awaitJournalEntry(company, rawKey, key);
+      JournalEntry already = journalReplayService.awaitJournalEntry(company, rawKey, key);
       if (already != null) {
-        return accountingCoreSupport.toDto(already);
+        return dtoMapperService.toJournalEntryDto(already);
       }
       throw ex;
     }
@@ -117,7 +120,7 @@ class ManualJournalService {
         && created != null
         && StringUtils.hasText(created.referenceNumber())) {
       JournalReferenceMapping mapping =
-          accountingCoreSupport
+          journalReplayService
               .findLatestLegacyReferenceMapping(company, key)
               .orElseThrow(
                   () ->

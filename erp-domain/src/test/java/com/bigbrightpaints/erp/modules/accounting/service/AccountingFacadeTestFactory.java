@@ -76,8 +76,7 @@ public final class AccountingFacadeTestFactory {
             companyClock,
             journalEntryRepository,
             accountResolver),
-        new ManualJournalFacadeOperations(
-            accountingService, companyContextService, companyClock),
+        new ManualJournalFacadeOperations(accountingService, companyContextService, companyClock),
         accountResolver);
   }
 }

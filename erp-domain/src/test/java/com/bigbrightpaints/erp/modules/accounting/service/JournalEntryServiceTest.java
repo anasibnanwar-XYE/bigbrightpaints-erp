@@ -30,7 +30,6 @@ class JournalEntryServiceTest {
   @Mock private JournalQueryService journalQueryService;
   @Mock private JournalPostingService journalPostingService;
   @Mock private JournalReversalService journalReversalService;
-  @Mock private PeriodValidationService periodValidationService;
   @Mock private ManualJournalService manualJournalService;
   @Mock private ClosingEntryReversalService closingEntryReversalService;
 
@@ -43,7 +42,6 @@ class JournalEntryServiceTest {
             journalQueryService,
             journalPostingService,
             journalReversalService,
-            periodValidationService,
             manualJournalService,
             closingEntryReversalService);
   }

@@ -140,7 +140,9 @@ class InventoryAdjustmentFacadeOperations {
     accountResolver.requireAccountById(company, varianceAcctId, "Variance account");
     inventoryLines
         .keySet()
-        .forEach(accountId -> accountResolver.requireAccountById(company, accountId, "Inventory account"));
+        .forEach(
+            accountId ->
+                accountResolver.requireAccountById(company, accountId, "Inventory account"));
 
     BigDecimal totalAmount =
         inventoryLines.values().stream()

@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
+import com.bigbrightpaints.erp.core.idempotency.IdempotencyUtils;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
@@ -140,24 +141,34 @@ class AccountResolutionService {
   }
 
   boolean isReceivableAccount(Account account) {
-    if (account == null) {
+    if (account == null || account.getType() != AccountType.ASSET) {
       return false;
     }
-    String code =
-        account.getCode() == null ? "" : account.getCode().trim().toUpperCase(Locale.ROOT);
-    return code.startsWith("AR") || code.contains("RECEIVABLE");
+    String code = IdempotencyUtils.normalizeUpperToken(account.getCode());
+    String name = IdempotencyUtils.normalizeUpperToken(account.getName());
+    return isTokenMatch(code, "AR") || name.contains("ACCOUNTS RECEIVABLE");
   }
 
   boolean isPayableAccount(Account account) {
-    if (account == null) {
+    if (account == null || account.getType() != AccountType.LIABILITY) {
       return false;
     }
-    String code =
-        account.getCode() == null ? "" : account.getCode().trim().toUpperCase(Locale.ROOT);
-    return code.startsWith("AP") || code.contains("PAYABLE");
+    String code = IdempotencyUtils.normalizeUpperToken(account.getCode());
+    String name = IdempotencyUtils.normalizeUpperToken(account.getName());
+    return isTokenMatch(code, "AP") || name.contains("ACCOUNTS PAYABLE");
   }
 
   LocalDate currentDate(Company company) {
     return companyClock.today(company);
+  }
+
+  private boolean isTokenMatch(String value, String token) {
+    if (value == null || value.isBlank()) {
+      return false;
+    }
+    return value.equals(token)
+        || value.startsWith(token + "-")
+        || value.endsWith("-" + token)
+        || value.contains("-" + token + "-");
   }
 }

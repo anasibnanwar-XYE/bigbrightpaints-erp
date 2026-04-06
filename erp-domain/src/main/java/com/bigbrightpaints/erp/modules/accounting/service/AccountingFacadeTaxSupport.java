@@ -20,8 +20,7 @@ final class AccountingFacadeTaxSupport {
 
   private final CompanyAccountingSettingsService companyAccountingSettingsService;
 
-  AccountingFacadeTaxSupport(
-      CompanyAccountingSettingsService companyAccountingSettingsService) {
+  AccountingFacadeTaxSupport(CompanyAccountingSettingsService companyAccountingSettingsService) {
     this.companyAccountingSettingsService = companyAccountingSettingsService;
   }
 

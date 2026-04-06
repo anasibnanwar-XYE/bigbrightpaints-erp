@@ -1,7 +1,6 @@
 package com.bigbrightpaints.erp.orchestrator.service;
 
 import java.math.BigDecimal;
-import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -17,7 +16,6 @@ import com.bigbrightpaints.erp.modules.factory.dto.ProductionPlanDto;
 import com.bigbrightpaints.erp.modules.factory.service.FactoryService;
 import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService;
 import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService.InventoryReservationResult;
-import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService.InventoryShortage;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrder;
 import com.bigbrightpaints.erp.modules.sales.service.SalesService;
 

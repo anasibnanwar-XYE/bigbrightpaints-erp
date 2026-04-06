@@ -301,7 +301,7 @@ class HighImpactRegressionIT extends AbstractIntegrationTest {
     JournalEntry originalEntry = journalEntryRepository.findById(originalId).orElseThrow();
     assertThat(originalEntry.getStatus())
         .as("Original entry should be marked VOIDED")
-        .isEqualTo("VOIDED");
+        .isEqualTo(JournalEntryStatus.VOIDED);
     assertThat(originalEntry.getVoidedAt()).isNotNull();
     assertThat(originalEntry.getReversalEntry()).isNotNull();
 

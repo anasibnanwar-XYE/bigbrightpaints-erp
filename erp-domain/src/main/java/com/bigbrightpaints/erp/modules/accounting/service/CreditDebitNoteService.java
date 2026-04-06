@@ -1,7 +1,5 @@
 package com.bigbrightpaints.erp.modules.accounting.service;
 
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Service;
 
 import com.bigbrightpaints.erp.core.idempotency.IdempotencyUtils;
@@ -11,42 +9,33 @@ import com.bigbrightpaints.erp.modules.accounting.dto.BadDebtWriteOffRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.CreditNoteRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.DebitNoteRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
-import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest;
 
 @Service
 public class CreditDebitNoteService {
+  private final NotePostingService notePostingService;
+  private final AccrualBadDebtPostingService accrualBadDebtPostingService;
 
-  @SuppressWarnings("unused")
-  private Environment environment;
-
-  private final SettlementSupportService accountingCoreSupport;
-  private final JournalPostingService journalPostingService;
-
-  @Autowired
   public CreditDebitNoteService(
-      SettlementSupportService accountingCoreSupport, JournalPostingService journalPostingService) {
-    this.accountingCoreSupport = accountingCoreSupport;
-    this.journalPostingService = journalPostingService;
+      NotePostingService notePostingService,
+      AccrualBadDebtPostingService accrualBadDebtPostingService) {
+    this.notePostingService = notePostingService;
+    this.accrualBadDebtPostingService = accrualBadDebtPostingService;
   }
 
   public JournalEntryDto postCreditNote(CreditNoteRequest request) {
-    return accountingCoreSupport.postCreditNote(normalizeCreditNoteRequest(request));
+    return notePostingService.postCreditNote(normalizeCreditNoteRequest(request));
   }
 
   public JournalEntryDto postDebitNote(DebitNoteRequest request) {
-    return accountingCoreSupport.postDebitNote(normalizeDebitNoteRequest(request));
+    return notePostingService.postDebitNote(normalizeDebitNoteRequest(request));
   }
 
   public JournalEntryDto postAccrual(AccrualRequest request) {
-    return accountingCoreSupport.postAccrual(normalizeAccrualRequest(request));
+    return accrualBadDebtPostingService.postAccrual(normalizeAccrualRequest(request));
   }
 
   public JournalEntryDto writeOffBadDebt(BadDebtWriteOffRequest request) {
-    return accountingCoreSupport.writeOffBadDebt(normalizeBadDebtRequest(request));
-  }
-
-  JournalEntryDto createJournalEntry(JournalEntryRequest request) {
-    return journalPostingService.createJournalEntry(request);
+    return accrualBadDebtPostingService.writeOffBadDebt(normalizeBadDebtRequest(request));
   }
 
   private CreditNoteRequest normalizeCreditNoteRequest(CreditNoteRequest request) {

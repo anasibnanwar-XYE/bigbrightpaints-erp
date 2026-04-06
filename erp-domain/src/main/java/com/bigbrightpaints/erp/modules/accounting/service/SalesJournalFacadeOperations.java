@@ -386,5 +386,4 @@ class SalesJournalFacadeOperations {
         ? journalReferenceResolver.findExistingEntry(company, mapping.get().getCanonicalReference())
         : Optional.empty();
   }
-
 }

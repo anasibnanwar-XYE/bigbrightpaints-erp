@@ -38,6 +38,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriod;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryStatus;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodReopenRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest;
@@ -211,7 +212,7 @@ class CR_PeriodCloseAtomicityTest extends AbstractIntegrationTest {
           journalEntryRepository
               .findByCompanyAndReferenceNumber(company, closingReference(period))
               .orElseThrow();
-      assertThat(closing.getStatus()).isEqualTo("REVERSED");
+      assertThat(closing.getStatus()).isEqualTo(JournalEntryStatus.REVERSED);
       Integer reversalCount =
           jdbcTemplate.queryForObject(
               "select count(*) from journal_entries where reversal_of_id = ?",

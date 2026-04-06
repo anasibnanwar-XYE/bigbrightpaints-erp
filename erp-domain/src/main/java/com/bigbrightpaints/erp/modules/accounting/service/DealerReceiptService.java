@@ -4,8 +4,6 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.Locale;
 
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Service;
 
 import com.bigbrightpaints.erp.core.idempotency.IdempotencyUtils;
@@ -16,31 +14,27 @@ import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 
 @Service
 public class DealerReceiptService {
-
-  @SuppressWarnings("unused")
-  private Environment environment;
-
-  private final SettlementSupportService accountingCoreSupport;
+  private final DealerReceiptPostingService dealerReceiptPostingService;
   private final JournalQueryService journalQueryService;
 
-  @Autowired
   public DealerReceiptService(
-      SettlementSupportService accountingCoreSupport, JournalQueryService journalQueryService) {
-    this.accountingCoreSupport = accountingCoreSupport;
+      DealerReceiptPostingService dealerReceiptPostingService,
+      JournalQueryService journalQueryService) {
+    this.dealerReceiptPostingService = dealerReceiptPostingService;
     this.journalQueryService = journalQueryService;
   }
 
   public JournalEntryDto recordDealerReceipt(DealerReceiptRequest request) {
-    return accountingCoreSupport.recordDealerReceipt(normalizeDealerReceiptRequest(request));
+    return dealerReceiptPostingService.recordDealerReceipt(normalizeDealerReceiptRequest(request));
   }
 
   JournalEntryDto recordDealerReceiptNormalized(DealerReceiptRequest request) {
     ValidationUtils.requireNotNull(request, "request");
-    return accountingCoreSupport.recordDealerReceipt(request);
+    return dealerReceiptPostingService.recordDealerReceipt(request);
   }
 
   public JournalEntryDto recordDealerReceiptSplit(DealerReceiptSplitRequest request) {
-    return accountingCoreSupport.recordDealerReceiptSplit(
+    return dealerReceiptPostingService.recordDealerReceiptSplit(
         normalizeDealerReceiptSplitRequest(request));
   }
 

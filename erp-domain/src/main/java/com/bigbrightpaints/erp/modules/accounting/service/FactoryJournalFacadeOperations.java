@@ -17,8 +17,6 @@ import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
-import com.bigbrightpaints.erp.core.exception.ApplicationException;
-import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
@@ -223,7 +221,10 @@ class FactoryJournalFacadeOperations {
     List<JournalEntryRequest.JournalLineRequest> lines =
         List.of(
             new JournalEntryRequest.JournalLineRequest(
-                cogsAccountId, memo != null ? memo : "COGS for " + referenceId, cost, BigDecimal.ZERO),
+                cogsAccountId,
+                memo != null ? memo : "COGS for " + referenceId,
+                cost,
+                BigDecimal.ZERO),
             new JournalEntryRequest.JournalLineRequest(
                 inventoryAcctId,
                 memo != null ? memo : "COGS for " + referenceId,
@@ -347,11 +348,17 @@ class FactoryJournalFacadeOperations {
     if (totalAmount.compareTo(BigDecimal.ZERO) > 0) {
       lines.add(
           new JournalEntryRequest.JournalLineRequest(
-              finishedGoodsAcctId, "Underapplied labor/overhead", totalAmount.abs(), BigDecimal.ZERO));
+              finishedGoodsAcctId,
+              "Underapplied labor/overhead",
+              totalAmount.abs(),
+              BigDecimal.ZERO));
     } else {
       lines.add(
           new JournalEntryRequest.JournalLineRequest(
-              finishedGoodsAcctId, "Overapplied labor/overhead", BigDecimal.ZERO, totalAmount.abs()));
+              finishedGoodsAcctId,
+              "Overapplied labor/overhead",
+              BigDecimal.ZERO,
+              totalAmount.abs()));
     }
     if (laborAmount.compareTo(BigDecimal.ZERO) > 0) {
       lines.add(

@@ -59,8 +59,14 @@ public class PayrollPostingService {
           Map.entry("PROFESSIONAL-TAX-PAYABLE", AccountType.LIABILITY));
   private static final List<String> REQUIRED_PAYROLL_ACCOUNTS =
       List.of(
-          "SALARY-EXP", "WAGE-EXP", "SALARY-PAYABLE", "EMP-ADV", "PF-PAYABLE", "ESI-PAYABLE",
-          "TDS-PAYABLE", "PROFESSIONAL-TAX-PAYABLE");
+          "SALARY-EXP",
+          "WAGE-EXP",
+          "SALARY-PAYABLE",
+          "EMP-ADV",
+          "PF-PAYABLE",
+          "ESI-PAYABLE",
+          "TDS-PAYABLE",
+          "PROFESSIONAL-TAX-PAYABLE");
 
   private final PayrollRunRepository payrollRunRepository;
   private final PayrollRunLineRepository payrollRunLineRepository;

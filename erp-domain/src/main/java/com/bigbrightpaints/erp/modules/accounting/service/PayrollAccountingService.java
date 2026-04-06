@@ -26,7 +26,6 @@ import com.bigbrightpaints.erp.modules.hr.dto.PayrollPaymentRequest;
 @Service
 class PayrollAccountingService {
 
-  private final SettlementSupportService accountingCoreSupport;
   private final PayrollRunRepository payrollRunRepository;
   private final CompanyContextService companyContextService;
   private final com.bigbrightpaints.erp.core.util.CompanyClock companyClock;
@@ -36,17 +35,19 @@ class PayrollAccountingService {
   private final com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository
       accountRepository;
   private final JournalEntryService journalEntryService;
+  private final AccountResolutionService accountResolutionService;
+  private final AccountingDtoMapperService dtoMapperService;
 
   PayrollAccountingService(
-      SettlementSupportService accountingCoreSupport,
       PayrollRunRepository payrollRunRepository,
       CompanyContextService companyContextService,
       com.bigbrightpaints.erp.core.util.CompanyClock companyClock,
       com.bigbrightpaints.erp.modules.hr.service.CompanyScopedHrLookupService hrLookupService,
       CompanyScopedAccountingLookupService accountingLookupService,
       com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository accountRepository,
-      JournalEntryService journalEntryService) {
-    this.accountingCoreSupport = accountingCoreSupport;
+      JournalEntryService journalEntryService,
+      AccountResolutionService accountResolutionService,
+      AccountingDtoMapperService dtoMapperService) {
     this.payrollRunRepository = payrollRunRepository;
     this.companyContextService = companyContextService;
     this.companyClock = companyClock;
@@ -54,6 +55,8 @@ class PayrollAccountingService {
     this.accountingLookupService = accountingLookupService;
     this.accountRepository = accountRepository;
     this.journalEntryService = journalEntryService;
+    this.accountResolutionService = accountResolutionService;
+    this.dtoMapperService = dtoMapperService;
   }
 
   @Transactional
@@ -63,7 +66,7 @@ class PayrollAccountingService {
       LocalDate postingDate,
       String memo,
       List<JournalEntryRequest.JournalLineRequest> lines) {
-    String runToken = accountingCoreSupport.resolvePayrollRunToken(runNumber, runId);
+    String runToken = resolvePayrollRunToken(runNumber, runId);
     if (!StringUtils.hasText(runToken)) {
       throw new ApplicationException(
           ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,
@@ -124,7 +127,7 @@ class PayrollAccountingService {
     }
 
     Account cashAccount =
-        accountingCoreSupport.requireCashAccountForSettlement(
+        accountResolutionService.requireCashAccountForSettlement(
             company, request.cashAccountId(), "payroll payment");
     BigDecimal amount = ValidationUtils.requirePositive(request.amount(), "amount");
     Account salaryPayableAccount =
@@ -173,16 +176,15 @@ class PayrollAccountingService {
     if (run.getPaymentJournalEntryId() != null) {
       JournalEntry paid =
           accountingLookupService.requireJournalEntry(company, run.getPaymentJournalEntryId());
-      accountingCoreSupport.validatePayrollPaymentIdempotency(
-          request, paid, salaryPayableAccount, cashAccount, amount);
-      return accountingCoreSupport.toDto(paid);
+      validatePayrollPaymentIdempotency(request, paid, salaryPayableAccount, cashAccount, amount);
+      return dtoMapperService.toJournalEntryDto(paid);
     }
 
     String memo =
         StringUtils.hasText(request.memo())
             ? request.memo().trim()
             : "Payroll payment for " + run.getRunDate();
-    String reference = accountingCoreSupport.resolvePayrollPaymentReference(run, request, company);
+    String reference = resolvePayrollPaymentReference(run, request, company);
     List<JournalCreationRequest.LineRequest> lines =
         List.of(
             new JournalCreationRequest.LineRequest(
@@ -200,7 +202,7 @@ class PayrollAccountingService {
                 reference,
                 null,
                 lines,
-                accountingCoreSupport.currentDate(company),
+                accountResolutionService.currentDate(company),
                 null,
                 null,
                 Boolean.FALSE));
@@ -222,5 +224,73 @@ class PayrollAccountingService {
       totalDebit = totalDebit.add(line.debit());
     }
     return totalDebit;
+  }
+
+  private String resolvePayrollPaymentReference(
+      PayrollRun run, PayrollPaymentRequest request, Company company) {
+    if (StringUtils.hasText(request.referenceNumber())) {
+      return request.referenceNumber().trim();
+    }
+    String runToken = resolvePayrollRunToken(run.getRunNumber(), run.getId());
+    if (!StringUtils.hasText(runToken)) {
+      return "PAYROLL-PAY-" + companyClock.today(company);
+    }
+    return "PAYROLL-PAY-" + runToken;
+  }
+
+  private String resolvePayrollRunToken(String runNumber, Long runId) {
+    if (StringUtils.hasText(runNumber)) {
+      String normalizedRunNumber = runNumber.trim();
+      if (runId == null
+          || normalizedRunNumber.equalsIgnoreCase("LEGACY-" + runId)
+          || normalizedRunNumber.endsWith("-" + runId)) {
+        return normalizedRunNumber;
+      }
+      return normalizedRunNumber + "-" + runId;
+    }
+    return runId != null ? "LEGACY-" + runId : null;
+  }
+
+  private void validatePayrollPaymentIdempotency(
+      PayrollPaymentRequest request,
+      JournalEntry existing,
+      Account salaryPayableAccount,
+      Account cashAccount,
+      BigDecimal amount) {
+    List<String> mismatches = new java.util.ArrayList<>();
+    if (StringUtils.hasText(request.referenceNumber())
+        && existing.getReferenceNumber() != null
+        && !request.referenceNumber().trim().equalsIgnoreCase(existing.getReferenceNumber())) {
+      mismatches.add("referenceNumber");
+    }
+    BigDecimal payableDebit = BigDecimal.ZERO;
+    BigDecimal cashCredit = BigDecimal.ZERO;
+    if (existing.getLines() != null) {
+      for (var line : existing.getLines()) {
+        if (line.getAccount() == null || line.getAccount().getId() == null) {
+          continue;
+        }
+        if (salaryPayableAccount.getId().equals(line.getAccount().getId())) {
+          payableDebit = payableDebit.add(MoneyUtils.zeroIfNull(line.getDebit()));
+        }
+        if (cashAccount.getId().equals(line.getAccount().getId())) {
+          cashCredit = cashCredit.add(MoneyUtils.zeroIfNull(line.getCredit()));
+        }
+      }
+    }
+    if (payableDebit.subtract(amount).abs().compareTo(AccountingConstants.ALLOCATION_TOLERANCE)
+        > 0) {
+      mismatches.add("salaryPayableDebit");
+    }
+    if (cashCredit.subtract(amount).abs().compareTo(AccountingConstants.ALLOCATION_TOLERANCE) > 0) {
+      mismatches.add("cashCredit");
+    }
+    if (!mismatches.isEmpty()) {
+      throw new ApplicationException(
+              ErrorCode.CONCURRENCY_CONFLICT,
+              "Payroll payment already recorded with different details")
+          .withDetail("payrollRunId", request.payrollRunId())
+          .withDetail("mismatches", mismatches);
+    }
   }
 }

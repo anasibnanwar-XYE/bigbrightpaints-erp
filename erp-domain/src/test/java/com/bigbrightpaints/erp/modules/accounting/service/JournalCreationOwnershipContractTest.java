@@ -2,8 +2,11 @@ package com.bigbrightpaints.erp.modules.accounting.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -28,7 +31,6 @@ class JournalCreationOwnershipContractTest {
             JournalPostingService.class,
             JournalQueryService.class,
             JournalReversalService.class,
-            PeriodValidationService.class,
             ManualJournalService.class,
             ClosingEntryReversalService.class);
   }
@@ -48,13 +50,10 @@ class JournalCreationOwnershipContractTest {
   }
 
   @Test
-  void settlementSupportWrapperIsDeleted() {
-    assertThat(
-            Path.of(
-                    "/home/realnigga/Desktop/Mission-control/erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/"
-                        + settlementSupportFileName())
-                .toFile())
-        .doesNotExist();
+  void legacySettlementSupportSeamsRemainDeleted() {
+    assertThat(serviceFile("SettlementSupportService.java").toFile()).doesNotExist();
+    assertThat(serviceFile("SettlementCoreSupport.java").toFile()).doesNotExist();
+    assertThat(legacySettlementSupportFiles()).isEmpty();
   }
 
   @Test
@@ -67,13 +66,72 @@ class JournalCreationOwnershipContractTest {
             SupplierSettlementService.class);
   }
 
+  @Test
+  void settlementAndPostingFacadesDoNotDependOnDeletedLegacySeams() {
+    assertThat(readService("DealerReceiptService.java")).doesNotContain("SettlementSupportService");
+    assertThat(readService("SupplierPaymentService.java"))
+        .doesNotContain("SettlementSupportService");
+    assertThat(readService("DealerSettlementService.java"))
+        .doesNotContain("SettlementSupportService");
+    assertThat(readService("SupplierSettlementService.java"))
+        .doesNotContain("SettlementSupportService");
+    assertThat(readService("ManualJournalService.java")).doesNotContain("SettlementSupportService");
+    assertThat(readService("PayrollAccountingService.java"))
+        .doesNotContain("SettlementSupportService");
+    assertThat(readService("CreditDebitNoteService.java"))
+        .doesNotContain("SettlementSupportService")
+        .doesNotContain("JournalPostingService");
+    assertThat(readService("InventoryAccountingService.java"))
+        .doesNotContain("SettlementSupportService")
+        .doesNotContain("JournalPostingService");
+  }
+
+  @Test
+  void journalPostingFacadeAndCollaboratorsStayBelowHotspotThresholds() {
+    assertThat(lineCount("JournalPostingService.java")).isLessThan(500);
+    assertThat(lineCount("JournalEntryMutationService.java")).isLessThan(500);
+    assertThat(lineCount("JournalPartnerContextService.java")).isLessThan(500);
+    assertThat(lineCount("JournalDuplicateGuardService.java")).isLessThan(500);
+    assertThat(lineCount("JournalLinePostingService.java")).isLessThan(500);
+  }
+
   private Set<Class<?>> fieldTypes(Class<?> type) {
     return Arrays.stream(type.getDeclaredFields())
         .map(field -> field.getType())
         .collect(Collectors.toSet());
   }
 
-  private String settlementSupportFileName() {
-    return "Settlement" + "CoreSupport.java";
+  private Path serviceFile(String name) {
+    return Path.of(
+        "/home/realnigga/Desktop/Mission-control/erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/"
+            + name);
+  }
+
+  private String readService(String name) {
+    try {
+      return Files.readString(serviceFile(name));
+    } catch (IOException ex) {
+      throw new AssertionError(ex);
+    }
+  }
+
+  private long lineCount(String name) {
+    try {
+      return Files.lines(serviceFile(name)).count();
+    } catch (IOException ex) {
+      throw new AssertionError(ex);
+    }
+  }
+
+  private List<String> legacySettlementSupportFiles() {
+    Path serviceDir = serviceFile("placeholder").getParent();
+    try (var stream = Files.list(serviceDir)) {
+      return stream
+          .map(path -> path.getFileName().toString())
+          .filter(name -> name.matches("Settlement.*Support.*\\.java"))
+          .toList();
+    } catch (IOException ex) {
+      throw new AssertionError(ex);
+    }
   }
 }
