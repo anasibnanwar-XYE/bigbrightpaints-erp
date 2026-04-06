@@ -1910,7 +1910,7 @@ class AccountingAuditTrailServiceTest {
 
   @Test
   void specificationHelpers_coverBlankReferenceAndModulePrefixBranches() {
-    Class<?> coreClass = service.getClass().getSuperclass();
+    Class<?> coreClass = service.getClass();
     @SuppressWarnings("rawtypes")
     jakarta.persistence.criteria.Root root =
         org.mockito.Mockito.mock(jakarta.persistence.criteria.Root.class);

@@ -12,7 +12,6 @@ import com.bigbrightpaints.erp.modules.accounting.dto.AutoSettlementRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.DealerSettlementRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.PartnerSettlementResponse;
-import com.bigbrightpaints.erp.modules.accounting.dto.SettlementAllocationApplication;
 import com.bigbrightpaints.erp.modules.accounting.dto.SupplierPaymentRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.SupplierSettlementRequest;
 
@@ -32,7 +31,8 @@ public class SettlementService {
   public SettlementService(
       com.bigbrightpaints.erp.modules.company.service.CompanyContextService companyContextService,
       com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository accountRepository,
-      com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository journalEntryRepository,
+      com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository
+          journalEntryRepository,
       DealerLedgerService dealerLedgerService,
       SupplierLedgerService supplierLedgerService,
       com.bigbrightpaints.erp.modules.hr.domain.PayrollRunRepository payrollRunRepository,
@@ -55,7 +55,8 @@ public class SettlementService {
           finishedGoodBatchRepository,
       com.bigbrightpaints.erp.modules.sales.domain.DealerRepository dealerRepository,
       com.bigbrightpaints.erp.modules.purchasing.domain.SupplierRepository supplierRepository,
-      com.bigbrightpaints.erp.modules.invoice.service.InvoiceSettlementPolicy invoiceSettlementPolicy,
+      com.bigbrightpaints.erp.modules.invoice.service.InvoiceSettlementPolicy
+          invoiceSettlementPolicy,
       JournalReferenceResolver journalReferenceResolver,
       com.bigbrightpaints.erp.modules.accounting.domain.JournalReferenceMappingRepository
           journalReferenceMappingRepository,
@@ -99,7 +100,7 @@ public class SettlementService {
   }
 
   public JournalEntryDto recordSupplierPayment(SupplierPaymentRequest request) {
-    return recordSupplierPaymentInternal(normalizeSupplierPaymentRequest(request));
+    return settlementCoreSupport.recordSupplierPayment(normalizeSupplierPaymentRequest(request));
   }
 
   JournalEntryDto recordSupplierPaymentInternal(SupplierPaymentRequest request) {
@@ -107,7 +108,7 @@ public class SettlementService {
   }
 
   public PartnerSettlementResponse settleDealerInvoices(DealerSettlementRequest request) {
-    return settleDealerInvoicesInternal(normalizeDealerSettlementRequest(request));
+    return settlementCoreSupport.settleDealerInvoices(normalizeDealerSettlementRequest(request));
   }
 
   PartnerSettlementResponse settleDealerInvoicesInternal(DealerSettlementRequest request) {
@@ -115,7 +116,8 @@ public class SettlementService {
   }
 
   public PartnerSettlementResponse autoSettleDealer(Long dealerId, AutoSettlementRequest request) {
-    return autoSettleDealerInternal(dealerId, normalizeAutoSettlementRequest(dealerId, request));
+    return settlementCoreSupport.autoSettleDealer(
+        dealerId, normalizeAutoSettlementRequest(dealerId, request));
   }
 
   PartnerSettlementResponse autoSettleDealerInternal(Long dealerId, AutoSettlementRequest request) {
@@ -123,15 +125,18 @@ public class SettlementService {
   }
 
   public PartnerSettlementResponse settleSupplierInvoices(SupplierSettlementRequest request) {
-    return settleSupplierInvoicesInternal(normalizeSupplierSettlementRequest(request));
+    return settlementCoreSupport.settleSupplierInvoices(
+        normalizeSupplierSettlementRequest(request));
   }
 
   PartnerSettlementResponse settleSupplierInvoicesInternal(SupplierSettlementRequest request) {
     return settlementCoreSupport.settleSupplierInvoicesInternal(request);
   }
 
-  public PartnerSettlementResponse autoSettleSupplier(Long supplierId, AutoSettlementRequest request) {
-    return autoSettleSupplierInternal(supplierId, normalizeAutoSettlementRequest(supplierId, request));
+  public PartnerSettlementResponse autoSettleSupplier(
+      Long supplierId, AutoSettlementRequest request) {
+    return settlementCoreSupport.autoSettleSupplier(
+        supplierId, normalizeAutoSettlementRequest(supplierId, request));
   }
 
   PartnerSettlementResponse autoSettleSupplierInternal(

@@ -139,7 +139,7 @@ public interface JournalLineRepository extends JpaRepository<JournalLine, Long> 
       @Param("accountIds") Collection<Long> accountIds,
       @Param("start") LocalDate start,
       @Param("end") LocalDate end,
-      @Param("status") String status);
+      @Param("status") JournalEntryStatus status);
 
   @Query(
       """

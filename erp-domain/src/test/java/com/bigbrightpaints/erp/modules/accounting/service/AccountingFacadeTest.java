@@ -152,13 +152,14 @@ class AccountingFacadeTest {
             null,
             null,
             null);
-    ArgumentCaptor<JournalEntryRequest> requestCaptor =
-        ArgumentCaptor.forClass(JournalEntryRequest.class);
-    doReturn(stub).when(accountingService).createJournalEntry(requestCaptor.capture());
+    ArgumentCaptor<JournalCreationRequest> requestCaptor =
+        ArgumentCaptor.forClass(JournalCreationRequest.class);
+    doReturn(stub).when(accountingService).createStandardJournal(requestCaptor.capture());
 
     accountingFacade.postSalesReturn(dealerId, invoiceNumber, returnLines, total, reason);
 
-    assertThat(requestCaptor.getValue().referenceNumber()).isEqualTo(hashReference);
+    assertThat(requestCaptor.getValue().sourceReference()).isEqualTo(hashReference);
+    assertThat(requestCaptor.getValue().sourceModule()).isEqualTo("SALES_RETURN");
   }
 
   @Test

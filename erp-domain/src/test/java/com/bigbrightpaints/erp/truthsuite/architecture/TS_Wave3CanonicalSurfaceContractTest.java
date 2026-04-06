@@ -23,7 +23,10 @@ class TS_Wave3CanonicalSurfaceContractTest {
 
   @Test
   void accountingCoreScaffoldsStayHiddenBehindPublicServiceEntryPoints() throws Exception {
-    assertHidden("com.bigbrightpaints.erp.modules.accounting.service.AccountingFacadeCore");
+    assertRemoved("com.bigbrightpaints.erp.modules.accounting.service.AccountingFacadeCore");
+    assertRemoved(
+        "com.bigbrightpaints.erp.modules.accounting.service.AccountingAuditTrailServiceCore");
+    assertRemoved("com.bigbrightpaints.erp.modules.accounting.service.AccountingPeriodServiceCore");
     assertHidden("com.bigbrightpaints.erp.modules.accounting.service.AccountingCoreSupport");
     assertRemoved("com.bigbrightpaints.erp.modules.accounting.service.AccountingCoreEngine");
     assertRemoved("com.bigbrightpaints.erp.modules.accounting.service.AccountingCoreLogic");

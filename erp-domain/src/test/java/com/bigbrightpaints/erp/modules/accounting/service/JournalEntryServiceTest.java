@@ -99,58 +99,40 @@ class JournalEntryServiceTest {
   void listJournals_delegatesToJournalQueryService() {
     PageResponse<JournalListItemDto> expected = PageResponse.of(List.of(), 0, 0, 50);
     when(journalQueryService.listJournals(
-            LocalDate.of(2026, 4, 1),
-            LocalDate.of(2026, 4, 30),
-            "MANUAL",
-            "SALES",
-            0,
-            50))
+            LocalDate.of(2026, 4, 1), LocalDate.of(2026, 4, 30), "MANUAL", "SALES", 0, 50))
         .thenReturn(expected);
 
     assertThat(
             journalEntryService.listJournals(
-                LocalDate.of(2026, 4, 1),
-                LocalDate.of(2026, 4, 30),
-                "MANUAL",
-                "SALES",
-                0,
-                50))
+                LocalDate.of(2026, 4, 1), LocalDate.of(2026, 4, 30), "MANUAL", "SALES", 0, 50))
         .isSameAs(expected);
 
     verify(journalQueryService)
         .listJournals(
-            LocalDate.of(2026, 4, 1),
-            LocalDate.of(2026, 4, 30),
-            "MANUAL",
-            "SALES",
-            0,
-            50);
+            LocalDate.of(2026, 4, 1), LocalDate.of(2026, 4, 30), "MANUAL", "SALES", 0, 50);
   }
 
   @Test
   void reverseJournalEntry_delegatesToJournalReversalService() {
     JournalEntryReversalRequest request =
         new JournalEntryReversalRequest(
-            LocalDate.of(2026, 4, 2), false, "reason", null, Boolean.FALSE, null, false, List.of(), null, null, null);
+            LocalDate.of(2026, 4, 2),
+            false,
+            "reason",
+            null,
+            Boolean.FALSE,
+            null,
+            false,
+            List.of(),
+            null,
+            null,
+            null);
     JournalEntryDto expected = journalEntryDto(2004L, "REV-2004");
     when(journalReversalService.reverseJournalEntry(44L, request)).thenReturn(expected);
 
     assertThat(journalEntryService.reverseJournalEntry(44L, request)).isSameAs(expected);
 
     verify(journalReversalService).reverseJournalEntry(44L, request);
-  }
-
-  @Test
-  void cascadeReverseRelatedEntries_delegatesToJournalReversalService() {
-    JournalEntryReversalRequest request =
-        new JournalEntryReversalRequest(
-            LocalDate.of(2026, 4, 2), false, "reason", null, Boolean.FALSE, null, true, List.of(45L), null, null, null);
-    List<JournalEntryDto> expected = List.of(journalEntryDto(2005L, "REV-2005"));
-    when(journalReversalService.cascadeReverseRelatedEntries(44L, request)).thenReturn(expected);
-
-    assertThat(journalEntryService.cascadeReverseRelatedEntries(44L, request)).isSameAs(expected);
-
-    verify(journalReversalService).cascadeReverseRelatedEntries(44L, request);
   }
 
   @Test

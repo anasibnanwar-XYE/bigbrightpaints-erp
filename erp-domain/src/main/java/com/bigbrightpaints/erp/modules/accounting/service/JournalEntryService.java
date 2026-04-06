@@ -10,6 +10,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
+import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriod;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryType;
@@ -19,9 +22,6 @@ import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryReversalRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalListItemDto;
-import com.bigbrightpaints.erp.core.exception.ApplicationException;
-import com.bigbrightpaints.erp.core.exception.ErrorCode;
-import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.shared.dto.PageResponse;
 
 @Service
@@ -46,7 +46,8 @@ public class JournalEntryService {
   private static LegacyBundle legacyBundle(
       com.bigbrightpaints.erp.modules.company.service.CompanyContextService companyContextService,
       com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository accountRepository,
-      com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository journalEntryRepository,
+      com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository
+          journalEntryRepository,
       DealerLedgerService dealerLedgerService,
       SupplierLedgerService supplierLedgerService,
       com.bigbrightpaints.erp.modules.hr.domain.PayrollRunRepository payrollRunRepository,
@@ -69,7 +70,8 @@ public class JournalEntryService {
           finishedGoodBatchRepository,
       com.bigbrightpaints.erp.modules.sales.domain.DealerRepository dealerRepository,
       com.bigbrightpaints.erp.modules.purchasing.domain.SupplierRepository supplierRepository,
-      com.bigbrightpaints.erp.modules.invoice.service.InvoiceSettlementPolicy invoiceSettlementPolicy,
+      com.bigbrightpaints.erp.modules.invoice.service.InvoiceSettlementPolicy
+          invoiceSettlementPolicy,
       JournalReferenceResolver journalReferenceResolver,
       com.bigbrightpaints.erp.modules.accounting.domain.JournalReferenceMappingRepository
           journalReferenceMappingRepository,
@@ -148,7 +150,8 @@ public class JournalEntryService {
   public JournalEntryService(
       com.bigbrightpaints.erp.modules.company.service.CompanyContextService companyContextService,
       com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository accountRepository,
-      com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository journalEntryRepository,
+      com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository
+          journalEntryRepository,
       DealerLedgerService dealerLedgerService,
       SupplierLedgerService supplierLedgerService,
       com.bigbrightpaints.erp.modules.hr.domain.PayrollRunRepository payrollRunRepository,
@@ -171,7 +174,8 @@ public class JournalEntryService {
           finishedGoodBatchRepository,
       com.bigbrightpaints.erp.modules.sales.domain.DealerRepository dealerRepository,
       com.bigbrightpaints.erp.modules.purchasing.domain.SupplierRepository supplierRepository,
-      com.bigbrightpaints.erp.modules.invoice.service.InvoiceSettlementPolicy invoiceSettlementPolicy,
+      com.bigbrightpaints.erp.modules.invoice.service.InvoiceSettlementPolicy
+          invoiceSettlementPolicy,
       JournalReferenceResolver journalReferenceResolver,
       com.bigbrightpaints.erp.modules.accounting.domain.JournalReferenceMappingRepository
           journalReferenceMappingRepository,
@@ -210,7 +214,8 @@ public class JournalEntryService {
             accountingEventStore));
   }
 
-  public List<JournalEntryDto> listJournalEntries(Long dealerId, Long supplierId, int page, int size) {
+  public List<JournalEntryDto> listJournalEntries(
+      Long dealerId, Long supplierId, int page, int size) {
     return journalQueryService.listJournalEntries(dealerId, supplierId, page, size);
   }
 
@@ -238,21 +243,27 @@ public class JournalEntryService {
       String sourceModule,
       int page,
       int size) {
-    return journalQueryService.listJournals(fromDate, toDate, journalType, sourceModule, page, size);
+    return journalQueryService.listJournals(
+        fromDate, toDate, journalType, sourceModule, page, size);
   }
 
   @Transactional
-  public JournalEntryDto createManualJournalEntry(JournalEntryRequest request, String idempotencyKey) {
+  public JournalEntryDto createManualJournalEntry(
+      JournalEntryRequest request, String idempotencyKey) {
     if (request == null) {
       throw new ApplicationException(
           ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD, "Journal entry request is required");
     }
     var company = accountingCoreSupport.companyContextService.requireCurrentCompany();
     String rawKey = StringUtils.hasText(idempotencyKey) ? idempotencyKey.trim() : null;
-    String key = StringUtils.hasText(rawKey) ? accountingCoreSupport.normalizeIdempotencyMappingKey(rawKey) : null;
+    String key =
+        StringUtils.hasText(rawKey)
+            ? accountingCoreSupport.normalizeIdempotencyMappingKey(rawKey)
+            : null;
     if (StringUtils.hasText(rawKey)) {
       Optional<JournalEntry> existingByReference =
-          accountingCoreSupport.journalEntryRepository.findByCompanyAndReferenceNumber(company, rawKey);
+          accountingCoreSupport.journalEntryRepository.findByCompanyAndReferenceNumber(
+              company, rawKey);
       if (existingByReference.isPresent()) {
         return accountingCoreSupport.toDto(existingByReference.get());
       }
@@ -300,7 +311,8 @@ public class JournalEntryService {
                       : JournalEntryType.MANUAL.name(),
                   request.attachmentReferences()));
     } catch (RuntimeException ex) {
-      if (!StringUtils.hasText(rawKey) || !accountingCoreSupport.isRetryableManualConcurrencyFailure(ex)) {
+      if (!StringUtils.hasText(rawKey)
+          || !accountingCoreSupport.isRetryableManualConcurrencyFailure(ex)) {
         throw ex;
       }
       JournalEntry already = accountingCoreSupport.awaitJournalEntry(company, rawKey, key);
@@ -313,7 +325,8 @@ public class JournalEntryService {
         && created != null
         && StringUtils.hasText(created.referenceNumber())) {
       JournalReferenceMapping mapping =
-          accountingCoreSupport.findLatestLegacyReferenceMapping(company, key)
+          accountingCoreSupport
+              .findLatestLegacyReferenceMapping(company, key)
               .orElseThrow(
                   () ->
                       new ApplicationException(
@@ -331,11 +344,6 @@ public class JournalEntryService {
     return journalReversalService.reverseJournalEntry(entryId, request);
   }
 
-  public List<JournalEntryDto> cascadeReverseRelatedEntries(
-      Long primaryEntryId, JournalEntryReversalRequest request) {
-    return journalReversalService.cascadeReverseRelatedEntries(primaryEntryId, request);
-  }
-
   JournalEntryDto reverseClosingEntryForPeriodReopen(
       JournalEntry entry, AccountingPeriod period, String reason) {
     return accountingCoreSupport.reverseClosingEntryForPeriodReopen(entry, period, reason);
@@ -346,6 +354,7 @@ public class JournalEntryService {
     if (!allowClosedPeriodOverride) {
       return createJournalEntry(payload);
     }
-    return periodValidationService.runWithSystemEntryDateOverride(() -> createJournalEntry(payload));
+    return periodValidationService.runWithSystemEntryDateOverride(
+        () -> createJournalEntry(payload));
   }
 }

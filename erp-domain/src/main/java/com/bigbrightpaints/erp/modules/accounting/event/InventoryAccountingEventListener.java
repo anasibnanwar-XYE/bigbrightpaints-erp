@@ -18,8 +18,9 @@ import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
+import com.bigbrightpaints.erp.modules.accounting.dto.JournalCreationRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest;
-import com.bigbrightpaints.erp.modules.accounting.service.AccountingService;
+import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.InventoryReference;
@@ -42,19 +43,19 @@ public class InventoryAccountingEventListener {
 
   private static final Logger log = LoggerFactory.getLogger(InventoryAccountingEventListener.class);
 
-  private final AccountingService accountingService;
+  private final AccountingFacade accountingFacade;
   private final AccountRepository accountRepository;
   private final CompanyRepository companyRepository;
   private final JournalEntryRepository journalEntryRepository;
   private final CompanyClock companyClock;
 
   public InventoryAccountingEventListener(
-      AccountingService accountingService,
+      AccountingFacade accountingFacade,
       AccountRepository accountRepository,
       CompanyRepository companyRepository,
       JournalEntryRepository journalEntryRepository,
       CompanyClock companyClock) {
-    this.accountingService = accountingService;
+    this.accountingFacade = accountingFacade;
     this.accountRepository = accountRepository;
     this.companyRepository = companyRepository;
     this.journalEntryRepository = journalEntryRepository;
@@ -143,10 +144,27 @@ public class InventoryAccountingEventListener {
       }
 
       LocalDate entryDate = companyClock.dateForInstant(company, event.timestamp());
-      JournalEntryRequest request =
-          new JournalEntryRequest(refNumber, entryDate, memo, null, null, false, lines);
+      JournalCreationRequest request =
+          new JournalCreationRequest(
+              valueChange.abs(),
+              event.isIncrease() ? inventoryAccount.getId() : revaluationAccount.getId(),
+              event.isIncrease() ? revaluationAccount.getId() : inventoryAccount.getId(),
+              memo,
+              "INVENTORY_REVALUATION",
+              refNumber,
+              null,
+              lines.stream()
+                  .map(
+                      line ->
+                          new JournalCreationRequest.LineRequest(
+                              line.accountId(), line.debit(), line.credit(), line.description()))
+                  .toList(),
+              entryDate,
+              null,
+              null,
+              Boolean.FALSE);
 
-      accountingService.createJournalEntry(request);
+      accountingFacade.createStandardJournal(request);
       log.info("Created revaluation journal entry: {}", refNumber);
 
     } catch (Exception e) {
@@ -222,17 +240,28 @@ public class InventoryAccountingEventListener {
               new JournalEntryRequest.JournalLineRequest(
                   event.sourceAccountId(), memo, BigDecimal.ZERO, event.totalCost()));
 
-      JournalEntryRequest request =
-          new JournalEntryRequest(
+      String resolvedMemo = event.memo() != null ? event.memo() : memo;
+      JournalCreationRequest request =
+          new JournalCreationRequest(
+              event.totalCost(),
+              event.destinationAccountId(),
+              event.sourceAccountId(),
+              resolvedMemo,
+              "INVENTORY_MOVEMENT",
               refNumber,
+              null,
+              lines.stream()
+                  .map(
+                      line ->
+                          new JournalCreationRequest.LineRequest(
+                              line.accountId(), line.debit(), line.credit(), line.description()))
+                  .toList(),
               event.movementDate(),
-              event.memo() != null ? event.memo() : memo,
               null,
               null,
-              false,
-              lines);
+              Boolean.FALSE);
 
-      accountingService.createJournalEntry(request);
+      accountingFacade.createStandardJournal(request);
       log.info("Created movement journal entry: {}", refNumber);
 
     } catch (Exception e) {
