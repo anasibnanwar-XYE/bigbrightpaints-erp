@@ -42,16 +42,14 @@ import com.bigbrightpaints.erp.modules.accounting.domain.PeriodCloseRequestRepos
 import com.bigbrightpaints.erp.modules.accounting.domain.PeriodCloseRequestStatus;
 import com.bigbrightpaints.erp.modules.accounting.domain.ReconciliationDiscrepancyRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.ReconciliationDiscrepancyStatus;
-import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodCloseRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodDto;
-import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodLockRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodReopenRequest;
-import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodUpdateRequest;
-import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodUpsertRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.GstReconciliationDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalCreationRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.MonthEndChecklistDto;
+import com.bigbrightpaints.erp.modules.accounting.dto.PeriodStatusChangeRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.MonthEndChecklistItemDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.MonthEndChecklistUpdateRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.PeriodCloseRequestActionRequest;
@@ -176,10 +174,18 @@ public class AccountingPeriodService {
   }
 
   @Transactional
-  public AccountingPeriodDto createOrUpdatePeriod(AccountingPeriodUpsertRequest request) {
+  public AccountingPeriodDto createOrUpdatePeriod(AccountingPeriodRequest request) {
     if (request == null) {
       throw new ApplicationException(
           ErrorCode.VALIDATION_INVALID_INPUT, "Accounting period request is required");
+    }
+    if (request.year() == null) {
+      throw new ApplicationException(
+          ErrorCode.VALIDATION_INVALID_INPUT, "Accounting period year is required");
+    }
+    if (request.month() == null) {
+      throw new ApplicationException(
+          ErrorCode.VALIDATION_INVALID_INPUT, "Accounting period month is required");
     }
     if (request.month() < 1 || request.month() > 12) {
       throw new ApplicationException(
@@ -213,7 +219,7 @@ public class AccountingPeriodService {
   }
 
   @Transactional
-  public AccountingPeriodDto updatePeriod(Long periodId, AccountingPeriodUpdateRequest request) {
+  public AccountingPeriodDto updatePeriod(Long periodId, AccountingPeriodRequest request) {
     if (request == null || request.costingMethod() == null) {
       throw new ApplicationException(
           ErrorCode.VALIDATION_INVALID_INPUT, "Costing method is required");
@@ -364,7 +370,12 @@ public class AccountingPeriodService {
     pending.setForceRequested(force);
 
     AccountingPeriodDto closed =
-        closePeriod(periodId, new AccountingPeriodCloseRequest(force, approvalNote), true, pending);
+        closePeriod(
+            periodId,
+            new PeriodStatusChangeRequest(
+                PeriodStatusChangeRequest.PeriodStatusAction.CLOSE, force, approvalNote),
+            true,
+            pending);
     periodCloseRequestRepository.save(pending);
     if (accountingComplianceAuditService != null) {
       accountingComplianceAuditService.recordPeriodCloseRequestLifecycle(
@@ -435,7 +446,7 @@ public class AccountingPeriodService {
   }
 
   @Transactional
-  public AccountingPeriodDto closePeriod(Long periodId, AccountingPeriodCloseRequest request) {
+  public AccountingPeriodDto closePeriod(Long periodId, PeriodStatusChangeRequest request) {
     throw ValidationUtils.invalidState(
         "Direct close is disabled; submit /request-close and approve via maker-checker workflow");
   }
@@ -443,7 +454,7 @@ public class AccountingPeriodService {
   @Transactional
   private AccountingPeriodDto closePeriod(
       Long periodId,
-      AccountingPeriodCloseRequest request,
+      PeriodStatusChangeRequest request,
       boolean fromApprovedRequest,
       PeriodCloseRequest approvedRequest) {
     Company company = companyContextService.requireCurrentCompany();
@@ -458,8 +469,14 @@ public class AccountingPeriodService {
     if (period.getStatus() == AccountingPeriodStatus.CLOSED) {
       return toDto(period);
     }
+    if (request != null
+        && request.action() != null
+        && request.action() != PeriodStatusChangeRequest.PeriodStatusAction.CLOSE) {
+      throw new ApplicationException(
+          ErrorCode.VALIDATION_INVALID_INPUT, "Period status action must be CLOSE");
+    }
     String note =
-        request != null && StringUtils.hasText(request.note()) ? request.note().trim() : null;
+        request != null && StringUtils.hasText(request.reason()) ? request.reason().trim() : null;
     if (!StringUtils.hasText(note)) {
       throw new ApplicationException(
           ErrorCode.VALIDATION_INVALID_INPUT, "Close reason is required");
@@ -543,7 +560,7 @@ public class AccountingPeriodService {
   }
 
   @Transactional
-  public AccountingPeriodDto lockPeriod(Long periodId, AccountingPeriodLockRequest request) {
+  public AccountingPeriodDto lockPeriod(Long periodId, PeriodStatusChangeRequest request) {
     Company company = companyContextService.requireCurrentCompany();
     AccountingPeriod period =
         accountingPeriodRepository
@@ -556,7 +573,11 @@ public class AccountingPeriodService {
         || period.getStatus() == AccountingPeriodStatus.CLOSED) {
       return toDto(period);
     }
-    if (request == null || !StringUtils.hasText(request.reason())) {
+    if (request == null || request.action() != PeriodStatusChangeRequest.PeriodStatusAction.LOCK) {
+      throw new ApplicationException(
+          ErrorCode.VALIDATION_INVALID_INPUT, "Period status action must be LOCK");
+    }
+    if (!StringUtils.hasText(request.reason())) {
       throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "Lock reason is required");
     }
     String beforeStatus = period.getStatus() != null ? period.getStatus().name() : null;

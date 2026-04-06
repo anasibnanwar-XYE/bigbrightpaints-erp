@@ -630,8 +630,8 @@ class HighImpactRegressionIT extends AbstractIntegrationTest {
     String idempotencyKey = "SETTLE-IDEM-" + UUID.randomUUID();
     Map<String, Object> allocation =
         Map.of("invoiceId", invoice.getId(), "appliedAmount", new BigDecimal("500.00"));
-    DealerSettlementRequest request =
-        new DealerSettlementRequest(
+    PartnerSettlementRequest request =
+        new PartnerSettlementRequest(
             dealerA.getId(),
             accountsA.get("CASH").getId(),
             null,

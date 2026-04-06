@@ -35,15 +35,14 @@ import com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAlloca
 import com.bigbrightpaints.erp.modules.accounting.domain.PartnerType;
 import com.bigbrightpaints.erp.modules.accounting.dto.AutoSettlementRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.DealerReceiptRequest;
-import com.bigbrightpaints.erp.modules.accounting.dto.DealerSettlementRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalCreationRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.PartnerSettlementRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.PartnerSettlementResponse;
 import com.bigbrightpaints.erp.modules.accounting.dto.SettlementAllocationApplication;
 import com.bigbrightpaints.erp.modules.accounting.dto.SettlementAllocationRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.SupplierPaymentRequest;
-import com.bigbrightpaints.erp.modules.accounting.dto.SupplierSettlementRequest;
 import com.bigbrightpaints.erp.modules.accounting.event.AccountingEventStore;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
@@ -148,8 +147,8 @@ class SettlementCoreSupport extends AccountingCoreSupport {
       maxAttempts = 3,
       backoff = @Backoff(delay = 50, maxDelay = 250, multiplier = 2.0))
   @Transactional
-  public PartnerSettlementResponse settleDealerInvoices(DealerSettlementRequest request) {
-    DealerSettlementRequest normalized = normalizeDealerSettlementRequest(request);
+  public PartnerSettlementResponse settleDealerInvoices(PartnerSettlementRequest request) {
+    PartnerSettlementRequest normalized = normalizePartnerSettlementRequest(request);
     return settleDealerInvoicesInternal(normalized);
   }
 
@@ -168,8 +167,8 @@ class SettlementCoreSupport extends AccountingCoreSupport {
       maxAttempts = 3,
       backoff = @Backoff(delay = 50, maxDelay = 250, multiplier = 2.0))
   @Transactional
-  public PartnerSettlementResponse settleSupplierInvoices(SupplierSettlementRequest request) {
-    SupplierSettlementRequest normalized = normalizeSupplierSettlementRequest(request);
+  public PartnerSettlementResponse settleSupplierInvoices(PartnerSettlementRequest request) {
+    PartnerSettlementRequest normalized = normalizePartnerSettlementRequest(request);
     return settleSupplierInvoicesInternal(normalized);
   }
 
@@ -450,7 +449,7 @@ class SettlementCoreSupport extends AccountingCoreSupport {
     return buildAutoSettlementResponse(company, journalEntry);
   }
 
-  PartnerSettlementResponse settleDealerInvoicesInternal(DealerSettlementRequest request) {
+  PartnerSettlementResponse settleDealerInvoicesInternal(PartnerSettlementRequest request) {
     Company company = companyContextService.requireCurrentCompany();
     Dealer dealer =
         dealerRepository
@@ -463,11 +462,12 @@ class SettlementCoreSupport extends AccountingCoreSupport {
     String trimmedIdempotencyKey = resolveDealerSettlementIdempotencyKey(company, request);
     List<SettlementAllocationRequest> allocations =
         resolveDealerSettlementAllocations(company, dealer, request, trimmedIdempotencyKey);
-    DealerSettlementRequest requestForReplay =
+    PartnerSettlementRequest requestForReplay =
         request.allocations() == allocations
             ? request
-            : new DealerSettlementRequest(
-                request.dealerId(),
+            : new PartnerSettlementRequest(
+                request.partnerType(),
+                request.partnerId(),
                 request.cashAccountId(),
                 request.discountAccountId(),
                 request.writeOffAccountId(),
@@ -730,7 +730,7 @@ class SettlementCoreSupport extends AccountingCoreSupport {
         allocationSummaries);
   }
 
-  PartnerSettlementResponse settleSupplierInvoicesInternal(SupplierSettlementRequest request) {
+  PartnerSettlementResponse settleSupplierInvoicesInternal(PartnerSettlementRequest request) {
     Company company = companyContextService.requireCurrentCompany();
     Supplier supplier =
         supplierRepository
@@ -743,11 +743,12 @@ class SettlementCoreSupport extends AccountingCoreSupport {
     String trimmedIdempotencyKey = resolveSupplierSettlementIdempotencyKey(request);
     List<SettlementAllocationRequest> allocations =
         resolveSupplierSettlementAllocations(company, supplier, request, trimmedIdempotencyKey);
-    SupplierSettlementRequest requestForReplay =
+    PartnerSettlementRequest requestForReplay =
         request.allocations() == allocations
             ? request
-            : new SupplierSettlementRequest(
-                request.supplierId(),
+            : new PartnerSettlementRequest(
+                request.partnerType(),
+                request.partnerId(),
                 request.cashAccountId(),
                 request.discountAccountId(),
                 request.writeOffAccountId(),
@@ -760,7 +761,8 @@ class SettlementCoreSupport extends AccountingCoreSupport {
                 request.memo(),
                 request.idempotencyKey(),
                 request.adminOverride(),
-                allocations);
+                allocations,
+                request.payments());
     trimmedIdempotencyKey = resolveSupplierSettlementIdempotencyKey(requestForReplay);
     boolean replayCandidate =
         hasExistingIdempotencyMapping(company, trimmedIdempotencyKey)
@@ -1028,12 +1030,14 @@ class SettlementCoreSupport extends AccountingCoreSupport {
         request.allocations());
   }
 
-  private DealerSettlementRequest normalizeDealerSettlementRequest(
-      DealerSettlementRequest request) {
+  private PartnerSettlementRequest normalizePartnerSettlementRequest(
+      PartnerSettlementRequest request) {
     ValidationUtils.requireNotNull(request, "request");
-    ValidationUtils.requireNotNull(request.dealerId(), "dealerId");
-    return new DealerSettlementRequest(
-        request.dealerId(),
+    ValidationUtils.requireNotNull(request.partnerType(), "partnerType");
+    ValidationUtils.requireNotNull(request.partnerId(), "partnerId");
+    return new PartnerSettlementRequest(
+        request.partnerType(),
+        request.partnerId(),
         request.cashAccountId(),
         request.discountAccountId(),
         request.writeOffAccountId(),
@@ -1048,27 +1052,6 @@ class SettlementCoreSupport extends AccountingCoreSupport {
         Boolean.TRUE.equals(request.adminOverride()),
         request.allocations(),
         request.payments());
-  }
-
-  private SupplierSettlementRequest normalizeSupplierSettlementRequest(
-      SupplierSettlementRequest request) {
-    ValidationUtils.requireNotNull(request, "request");
-    ValidationUtils.requireNotNull(request.supplierId(), "supplierId");
-    return new SupplierSettlementRequest(
-        request.supplierId(),
-        request.cashAccountId(),
-        request.discountAccountId(),
-        request.writeOffAccountId(),
-        request.fxGainAccountId(),
-        request.fxLossAccountId(),
-        positiveAmountOrNull(request.amount()),
-        normalizeUnappliedApplication(request.unappliedAmountApplication()),
-        request.settlementDate(),
-        normalizeText(request.referenceNumber()),
-        normalizeText(request.memo()),
-        normalizeText(request.idempotencyKey()),
-        Boolean.TRUE.equals(request.adminOverride()),
-        request.allocations());
   }
 
   private AutoSettlementRequest normalizeAutoSettlementRequest(

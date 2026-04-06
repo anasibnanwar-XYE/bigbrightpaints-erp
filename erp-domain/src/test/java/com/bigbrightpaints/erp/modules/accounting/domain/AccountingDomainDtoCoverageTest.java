@@ -12,14 +12,13 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
-import com.bigbrightpaints.erp.modules.accounting.dto.DealerSettlementRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalCreationRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.ManualJournalRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.SalesReturnPreviewDto;
+import com.bigbrightpaints.erp.modules.accounting.dto.PartnerSettlementRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.SettlementAllocationApplication;
 import com.bigbrightpaints.erp.modules.accounting.dto.SettlementAllocationRequest;
-import com.bigbrightpaints.erp.modules.accounting.dto.SupplierSettlementRequest;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.purchasing.dto.PurchaseReturnPreviewDto;
 
@@ -113,7 +112,7 @@ class AccountingDomainDtoCoverageTest {
     assertThat(entry.getReferenceNumber()).isEqualTo("JE-100");
     assertThat(entry.getEntryDate()).isEqualTo(LocalDate.of(2026, 3, 12));
     assertThat(entry.getMemo()).isEqualTo("memo");
-    assertThat(entry.getStatus()).isEqualTo("POSTED");
+    assertThat(entry.getStatus()).isEqualTo(JournalEntryStatus.POSTED);
     assertThat(entry.getSourceModule()).isEqualTo("ACCOUNTING");
     assertThat(entry.getSourceReference()).isEqualTo("SRC-1");
     assertThat(entry.getAttachmentReferences()).isEqualTo("att-1");
@@ -204,8 +203,8 @@ class AccountingDomainDtoCoverageTest {
                 SettlementAllocationApplication.DOCUMENT,
                 null));
 
-    DealerSettlementRequest dealerRequest =
-        new DealerSettlementRequest(
+    PartnerSettlementRequest dealerRequest =
+        new PartnerSettlementRequest(
             1L,
             10L,
             11L,
@@ -219,8 +218,8 @@ class AccountingDomainDtoCoverageTest {
             true,
             allocations,
             List.of());
-    SupplierSettlementRequest supplierRequest =
-        new SupplierSettlementRequest(
+    PartnerSettlementRequest supplierRequest =
+        new PartnerSettlementRequest(
             2L,
             20L,
             21L,

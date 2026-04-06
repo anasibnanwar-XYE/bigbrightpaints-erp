@@ -40,9 +40,8 @@ import com.bigbrightpaints.erp.modules.accounting.domain.PeriodCloseRequestRepos
 import com.bigbrightpaints.erp.modules.accounting.domain.PeriodCloseRequestStatus;
 import com.bigbrightpaints.erp.modules.accounting.domain.ReconciliationDiscrepancyRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.ReconciliationDiscrepancyStatus;
-import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodCloseRequest;
-import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodLockRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodReopenRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.PeriodStatusChangeRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.MonthEndChecklistUpdateRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.PeriodCloseRequestActionRequest;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
@@ -112,7 +111,7 @@ class AccountingPeriodServicePolicyTest {
     when(accountingPeriodRepository.lockByCompanyAndId(company, 10L))
         .thenReturn(Optional.of(period));
 
-    assertThatThrownBy(() -> service.lockPeriod(10L, new AccountingPeriodLockRequest("   ")))
+    assertThatThrownBy(() -> service.lockPeriod(10L, new PeriodStatusChangeRequest("   ")))
         .isInstanceOf(ApplicationException.class)
         .hasMessageContaining("Lock reason is required");
   }
@@ -120,7 +119,7 @@ class AccountingPeriodServicePolicyTest {
   @Test
   void closePeriod_requiresApprovedMakerCheckerRequestForOpenPeriod() {
     assertThatThrownBy(
-            () -> service.closePeriod(10L, new AccountingPeriodCloseRequest(true, "policy close")))
+            () -> service.closePeriod(10L, new PeriodStatusChangeRequest(true, "policy close")))
         .isInstanceOf(ApplicationException.class)
         .hasMessageContaining("submit /request-close and approve");
   }
@@ -128,7 +127,7 @@ class AccountingPeriodServicePolicyTest {
   @Test
   void closePeriod_requiresApprovedMakerCheckerRequestForLockedPeriod() {
     assertThatThrownBy(
-            () -> service.closePeriod(10L, new AccountingPeriodCloseRequest(true, "policy close")))
+            () -> service.closePeriod(10L, new PeriodStatusChangeRequest(true, "policy close")))
         .isInstanceOf(ApplicationException.class)
         .hasMessageContaining("submit /request-close and approve");
   }
@@ -243,7 +242,7 @@ class AccountingPeriodServicePolicyTest {
   @Test
   void closePeriod_whenAlreadyClosed_stillRejectsDirectClosePath() {
     assertThatThrownBy(
-            () -> service.closePeriod(14L, new AccountingPeriodCloseRequest(true, "repeat close")))
+            () -> service.closePeriod(14L, new PeriodStatusChangeRequest(true, "repeat close")))
         .isInstanceOf(ApplicationException.class)
         .hasMessageContaining("submit /request-close and approve");
     verify(snapshotService, never()).captureSnapshot(any(), any(), anyString());

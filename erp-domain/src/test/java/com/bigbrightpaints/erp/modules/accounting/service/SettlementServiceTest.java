@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -27,13 +26,12 @@ import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
 import com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAllocationRepository;
 import com.bigbrightpaints.erp.modules.accounting.dto.AutoSettlementRequest;
-import com.bigbrightpaints.erp.modules.accounting.dto.DealerSettlementRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.PartnerSettlementRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.SettlementAllocationApplication;
 import com.bigbrightpaints.erp.modules.accounting.dto.SettlementAllocationRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.SettlementPaymentRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.SupplierPaymentRequest;
-import com.bigbrightpaints.erp.modules.accounting.dto.SupplierSettlementRequest;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.invoice.domain.Invoice;
@@ -57,68 +55,64 @@ class SettlementServiceTest {
   @Mock private SupplierRepository supplierRepository;
   @Mock private JournalEntryService journalEntryService;
   @Mock private DealerReceiptService dealerReceiptService;
+  @Mock private SettlementCoreSupport settlementCoreSupport;
 
   private SettlementService settlementService;
+  private SettlementCoreSupport coreSupport;
   private Company company;
 
   @BeforeEach
   void setUp() {
-    settlementService =
-        org.mockito.Mockito.spy(
-            new SettlementService(
-                companyContextService,
-                org.mockito.Mockito.mock(
-                    com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository.class),
-                org.mockito.Mockito.mock(
-                    com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository.class),
-                org.mockito.Mockito.mock(
-                    com.bigbrightpaints.erp.modules.accounting.service.DealerLedgerService.class),
-                org.mockito.Mockito.mock(
-                    com.bigbrightpaints.erp.modules.accounting.service.SupplierLedgerService.class),
-                org.mockito.Mockito.mock(
-                    com.bigbrightpaints.erp.modules.hr.domain.PayrollRunRepository.class),
-                org.mockito.Mockito.mock(
-                    com.bigbrightpaints.erp.modules.hr.domain.PayrollRunLineRepository.class),
-                org.mockito.Mockito.mock(
-                    com.bigbrightpaints.erp.modules.accounting.service.AccountingPeriodService
-                        .class),
-                org.mockito.Mockito.mock(
-                    com.bigbrightpaints.erp.modules.accounting.service.ReferenceNumberService
-                        .class),
-                org.mockito.Mockito.mock(
-                    org.springframework.context.ApplicationEventPublisher.class),
-                org.mockito.Mockito.mock(com.bigbrightpaints.erp.core.util.CompanyClock.class),
-                companyEntityLookup,
-                settlementAllocationRepository,
-                rawMaterialPurchaseRepository,
-                invoiceRepository,
-                org.mockito.Mockito.mock(
-                    com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovementRepository
-                        .class),
-                org.mockito.Mockito.mock(
-                    com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatchRepository
-                        .class),
-                org.mockito.Mockito.mock(
-                    com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatchRepository
-                        .class),
-                dealerRepository,
-                supplierRepository,
-                org.mockito.Mockito.mock(
-                    com.bigbrightpaints.erp.modules.invoice.service.InvoiceSettlementPolicy.class),
-                org.mockito.Mockito.mock(
-                    com.bigbrightpaints.erp.modules.accounting.service.JournalReferenceResolver
-                        .class),
-                org.mockito.Mockito.mock(
-                    com.bigbrightpaints.erp.modules.accounting.domain
-                        .JournalReferenceMappingRepository.class),
-                org.mockito.Mockito.mock(jakarta.persistence.EntityManager.class),
-                org.mockito.Mockito.mock(
-                    com.bigbrightpaints.erp.core.config.SystemSettingsService.class),
-                org.mockito.Mockito.mock(com.bigbrightpaints.erp.core.audit.AuditService.class),
-                org.mockito.Mockito.mock(
-                    com.bigbrightpaints.erp.modules.accounting.event.AccountingEventStore.class),
-                journalEntryService,
-                dealerReceiptService));
+    settlementService = new SettlementService(settlementCoreSupport);
+    coreSupport =
+        new SettlementCoreSupport(
+            companyContextService,
+            org.mockito.Mockito.mock(
+                com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository.class),
+            org.mockito.Mockito.mock(
+                com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository.class),
+            org.mockito.Mockito.mock(
+                com.bigbrightpaints.erp.modules.accounting.service.DealerLedgerService.class),
+            org.mockito.Mockito.mock(
+                com.bigbrightpaints.erp.modules.accounting.service.SupplierLedgerService.class),
+            org.mockito.Mockito.mock(
+                com.bigbrightpaints.erp.modules.hr.domain.PayrollRunRepository.class),
+            org.mockito.Mockito.mock(
+                com.bigbrightpaints.erp.modules.hr.domain.PayrollRunLineRepository.class),
+            org.mockito.Mockito.mock(
+                com.bigbrightpaints.erp.modules.accounting.service.AccountingPeriodService.class),
+            org.mockito.Mockito.mock(
+                com.bigbrightpaints.erp.modules.accounting.service.ReferenceNumberService.class),
+            org.mockito.Mockito.mock(org.springframework.context.ApplicationEventPublisher.class),
+            org.mockito.Mockito.mock(com.bigbrightpaints.erp.core.util.CompanyClock.class),
+            companyEntityLookup,
+            settlementAllocationRepository,
+            rawMaterialPurchaseRepository,
+            invoiceRepository,
+            org.mockito.Mockito.mock(
+                com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovementRepository
+                    .class),
+            org.mockito.Mockito.mock(
+                com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatchRepository.class),
+            org.mockito.Mockito.mock(
+                com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatchRepository
+                    .class),
+            dealerRepository,
+            supplierRepository,
+            org.mockito.Mockito.mock(
+                com.bigbrightpaints.erp.modules.invoice.service.InvoiceSettlementPolicy.class),
+            org.mockito.Mockito.mock(
+                com.bigbrightpaints.erp.modules.accounting.service.JournalReferenceResolver.class),
+            org.mockito.Mockito.mock(
+                com.bigbrightpaints.erp.modules.accounting.domain.JournalReferenceMappingRepository
+                    .class),
+            org.mockito.Mockito.mock(jakarta.persistence.EntityManager.class),
+            org.mockito.Mockito.mock(com.bigbrightpaints.erp.core.config.SystemSettingsService.class),
+            org.mockito.Mockito.mock(com.bigbrightpaints.erp.core.audit.AuditService.class),
+            org.mockito.Mockito.mock(
+                com.bigbrightpaints.erp.modules.accounting.event.AccountingEventStore.class),
+            journalEntryService,
+            dealerReceiptService);
     company = new Company();
     ReflectionTestUtils.setField(company, "id", 55L);
     company.setCode("BBP");
@@ -140,7 +134,7 @@ class SettlementServiceTest {
             BigDecimal.ZERO,
             SettlementAllocationApplication.DOCUMENT,
             " memo ");
-    doReturn(null).when(settlementService).recordSupplierPaymentInternal(any());
+    when(settlementCoreSupport.recordSupplierPayment(any())).thenReturn(null);
 
     settlementService.recordSupplierPayment(
         new SupplierPaymentRequest(
@@ -154,7 +148,7 @@ class SettlementServiceTest {
 
     ArgumentCaptor<SupplierPaymentRequest> captor =
         ArgumentCaptor.forClass(SupplierPaymentRequest.class);
-    verify(settlementService).recordSupplierPaymentInternal(captor.capture());
+    verify(settlementCoreSupport).recordSupplierPayment(captor.capture());
     assertThat(captor.getValue().referenceNumber()).isEqualTo("SUP-REF-1");
     assertThat(captor.getValue().memo()).isEqualTo("supplier memo");
     assertThat(captor.getValue().idempotencyKey()).isEqualTo("supplier-key");
@@ -163,11 +157,11 @@ class SettlementServiceTest {
 
   @Test
   void settlementRequests_normalizeAmountFlagsAndUnappliedApplication() {
-    doReturn(null).when(settlementService).settleDealerInvoicesInternal(any());
-    doReturn(null).when(settlementService).settleSupplierInvoicesInternal(any());
+    when(settlementCoreSupport.settleDealerInvoices(any())).thenReturn(null);
+    when(settlementCoreSupport.settleSupplierInvoices(any())).thenReturn(null);
 
     settlementService.settleDealerInvoices(
-        new DealerSettlementRequest(
+        new PartnerSettlementRequest(
             71L,
             200L,
             null,
@@ -184,7 +178,7 @@ class SettlementServiceTest {
             List.of(),
             List.of()));
     settlementService.settleSupplierInvoices(
-        new SupplierSettlementRequest(
+        new PartnerSettlementRequest(
             72L,
             300L,
             null,
@@ -200,12 +194,12 @@ class SettlementServiceTest {
             Boolean.TRUE,
             List.of()));
 
-    ArgumentCaptor<DealerSettlementRequest> dealerCaptor =
-        ArgumentCaptor.forClass(DealerSettlementRequest.class);
-    ArgumentCaptor<SupplierSettlementRequest> supplierCaptor =
-        ArgumentCaptor.forClass(SupplierSettlementRequest.class);
-    verify(settlementService).settleDealerInvoicesInternal(dealerCaptor.capture());
-    verify(settlementService).settleSupplierInvoicesInternal(supplierCaptor.capture());
+    ArgumentCaptor<PartnerSettlementRequest> dealerCaptor =
+        ArgumentCaptor.forClass(PartnerSettlementRequest.class);
+    ArgumentCaptor<PartnerSettlementRequest> supplierCaptor =
+        ArgumentCaptor.forClass(PartnerSettlementRequest.class);
+    verify(settlementCoreSupport).settleDealerInvoices(dealerCaptor.capture());
+    verify(settlementCoreSupport).settleSupplierInvoices(supplierCaptor.capture());
 
     assertThat(dealerCaptor.getValue().amount()).isEqualByComparingTo("25.00");
     assertThat(dealerCaptor.getValue().unappliedAmountApplication())
@@ -220,11 +214,11 @@ class SettlementServiceTest {
 
   @Test
   void settlementRequests_allowNullAmountAndNullUnappliedApplication() {
-    doReturn(null).when(settlementService).settleDealerInvoicesInternal(any());
-    doReturn(null).when(settlementService).settleSupplierInvoicesInternal(any());
+    when(settlementCoreSupport.settleDealerInvoices(any())).thenReturn(null);
+    when(settlementCoreSupport.settleSupplierInvoices(any())).thenReturn(null);
 
     settlementService.settleDealerInvoices(
-        new DealerSettlementRequest(
+        new PartnerSettlementRequest(
             81L,
             210L,
             null,
@@ -241,7 +235,7 @@ class SettlementServiceTest {
             List.of(),
             List.of()));
     settlementService.settleSupplierInvoices(
-        new SupplierSettlementRequest(
+        new PartnerSettlementRequest(
             82L,
             310L,
             null,
@@ -257,15 +251,15 @@ class SettlementServiceTest {
             null,
             List.of()));
 
-    ArgumentCaptor<DealerSettlementRequest> dealerCaptor =
-        ArgumentCaptor.forClass(DealerSettlementRequest.class);
-    ArgumentCaptor<SupplierSettlementRequest> supplierCaptor =
-        ArgumentCaptor.forClass(SupplierSettlementRequest.class);
-    verify(settlementService).settleDealerInvoicesInternal(dealerCaptor.capture());
-    verify(settlementService).settleSupplierInvoicesInternal(supplierCaptor.capture());
+    ArgumentCaptor<PartnerSettlementRequest> dealerCaptor =
+        ArgumentCaptor.forClass(PartnerSettlementRequest.class);
+    ArgumentCaptor<PartnerSettlementRequest> supplierCaptor =
+        ArgumentCaptor.forClass(PartnerSettlementRequest.class);
+    verify(settlementCoreSupport).settleDealerInvoices(dealerCaptor.capture());
+    verify(settlementCoreSupport).settleSupplierInvoices(supplierCaptor.capture());
 
-    DealerSettlementRequest dealerRequest = dealerCaptor.getValue();
-    SupplierSettlementRequest supplierRequest = supplierCaptor.getValue();
+    PartnerSettlementRequest dealerRequest = dealerCaptor.getValue();
+    PartnerSettlementRequest supplierRequest = supplierCaptor.getValue();
     assertThat(dealerRequest.amount()).isNull();
     assertThat(dealerRequest.unappliedAmountApplication()).isNull();
     assertThat(dealerRequest.adminOverride()).isTrue();
@@ -279,7 +273,7 @@ class SettlementServiceTest {
     assertThatThrownBy(
             () ->
                 settlementService.settleDealerInvoices(
-                    new DealerSettlementRequest(
+                    new PartnerSettlementRequest(
                         83L,
                         210L,
                         null,
@@ -301,8 +295,8 @@ class SettlementServiceTest {
 
   @Test
   void autoSettlement_generatesDeterministicReferencesAndNormalizesExplicitValues() {
-    doReturn(null).when(settlementService).autoSettleDealerInternal(anyLong(), any());
-    doReturn(null).when(settlementService).autoSettleSupplierInternal(anyLong(), any());
+    when(settlementCoreSupport.autoSettleDealer(anyLong(), any())).thenReturn(null);
+    when(settlementCoreSupport.autoSettleSupplier(anyLong(), any())).thenReturn(null);
 
     settlementService.autoSettleDealer(
         91L,
@@ -320,10 +314,10 @@ class SettlementServiceTest {
         ArgumentCaptor.forClass(AutoSettlementRequest.class);
     ArgumentCaptor<AutoSettlementRequest> supplierCaptor =
         ArgumentCaptor.forClass(AutoSettlementRequest.class);
-    verify(settlementService)
-        .autoSettleDealerInternal(org.mockito.ArgumentMatchers.eq(91L), dealerCaptor.capture());
-    verify(settlementService)
-        .autoSettleSupplierInternal(org.mockito.ArgumentMatchers.eq(92L), supplierCaptor.capture());
+    verify(settlementCoreSupport)
+        .autoSettleDealer(org.mockito.ArgumentMatchers.eq(91L), dealerCaptor.capture());
+    verify(settlementCoreSupport)
+        .autoSettleSupplier(org.mockito.ArgumentMatchers.eq(92L), supplierCaptor.capture());
 
     assertThat(dealerCaptor.getValue().referenceNumber()).isNull();
     assertThat(dealerCaptor.getValue().idempotencyKey()).isNull();
@@ -336,8 +330,8 @@ class SettlementServiceTest {
 
   @Test
   void resolveDealerHeaderSettlementAmount_usesPaymentTotalWhenHeaderAmountIsOmitted() {
-    DealerSettlementRequest request =
-        new DealerSettlementRequest(
+    PartnerSettlementRequest request =
+        new PartnerSettlementRequest(
             91L,
             null,
             null,
@@ -358,15 +352,15 @@ class SettlementServiceTest {
 
     BigDecimal resolved =
         ReflectionTestUtils.invokeMethod(
-            settlementService, "resolveDealerHeaderSettlementAmount", request);
+            coreSupport, "resolveDealerHeaderSettlementAmount", request);
 
     assertThat(resolved).isEqualByComparingTo("55.00");
   }
 
   @Test
   void resolveDealerHeaderSettlementAmount_rejectsMismatchedHeaderAmountAndPayments() {
-    DealerSettlementRequest request =
-        new DealerSettlementRequest(
+    PartnerSettlementRequest request =
+        new PartnerSettlementRequest(
             92L,
             null,
             null,
@@ -386,7 +380,7 @@ class SettlementServiceTest {
     assertThatThrownBy(
             () ->
                 ReflectionTestUtils.invokeMethod(
-                    settlementService, "resolveDealerHeaderSettlementAmount", request))
+                    coreSupport, "resolveDealerHeaderSettlementAmount", request))
         .isInstanceOf(ApplicationException.class)
         .hasMessageContaining("Dealer settlement amount must match the total payment amount");
   }
@@ -400,7 +394,7 @@ class SettlementServiceTest {
     @SuppressWarnings("unchecked")
     List<SettlementAllocationRequest> allocations =
         ReflectionTestUtils.invokeMethod(
-            settlementService,
+            coreSupport,
             "buildDealerHeaderSettlementAllocations",
             company,
             dealer,
@@ -425,7 +419,7 @@ class SettlementServiceTest {
     @SuppressWarnings("unchecked")
     List<SettlementAllocationRequest> allocations =
         ReflectionTestUtils.invokeMethod(
-            settlementService,
+            coreSupport,
             "buildSupplierHeaderSettlementAllocations",
             company,
             supplier,
@@ -467,7 +461,7 @@ class SettlementServiceTest {
     assertThatThrownBy(
             () ->
                 ReflectionTestUtils.invokeMethod(
-                    settlementService, "validateSupplierSettlementAllocations", allocations))
+                    coreSupport, "validateSupplierSettlementAllocations", allocations))
         .isInstanceOf(ApplicationException.class)
         .hasMessageContaining("duplicate purchase allocations");
   }
@@ -482,8 +476,8 @@ class SettlementServiceTest {
     Account fxGain = account(105L, "FXG", AccountType.REVENUE);
     Account fxLoss = account(106L, "FXL", AccountType.EXPENSE);
     stubAccounts(bankA, bankB, discount, writeOff, fxGain, fxLoss);
-    DealerSettlementRequest request =
-        new DealerSettlementRequest(
+    PartnerSettlementRequest request =
+        new PartnerSettlementRequest(
             501L,
             null,
             discount.getId(),
@@ -503,7 +497,7 @@ class SettlementServiceTest {
                 new SettlementPaymentRequest(bankB.getId(), new BigDecimal("70.00"), "CHEQUE")));
     Object totals =
         ReflectionTestUtils.invokeMethod(
-            settlementService,
+            coreSupport,
             "computeSettlementTotals",
             List.of(
                 new SettlementAllocationRequest(
@@ -527,7 +521,7 @@ class SettlementServiceTest {
 
     Object draft =
         ReflectionTestUtils.invokeMethod(
-            settlementService,
+            coreSupport,
             "buildDealerSettlementLines",
             company,
             request,
@@ -553,8 +547,8 @@ class SettlementServiceTest {
     Account fxGain = account(204L, "FXG", AccountType.REVENUE);
     Account fxLoss = account(205L, "FXL", AccountType.EXPENSE);
     stubAccounts(cash, discount, writeOff, fxGain, fxLoss);
-    SupplierSettlementRequest request =
-        new SupplierSettlementRequest(
+    PartnerSettlementRequest request =
+        new PartnerSettlementRequest(
             601L,
             cash.getId(),
             discount.getId(),
@@ -571,7 +565,7 @@ class SettlementServiceTest {
             List.of());
     Object totals =
         ReflectionTestUtils.invokeMethod(
-            settlementService,
+            coreSupport,
             "computeSettlementTotals",
             List.of(
                 new SettlementAllocationRequest(
@@ -595,7 +589,7 @@ class SettlementServiceTest {
 
     Object draft =
         ReflectionTestUtils.invokeMethod(
-            settlementService,
+            coreSupport,
             "buildSupplierSettlementLines",
             company,
             request,

@@ -9,11 +9,11 @@ import org.springframework.stereotype.Service;
 import com.bigbrightpaints.erp.core.idempotency.IdempotencyUtils;
 import com.bigbrightpaints.erp.core.validation.ValidationUtils;
 import com.bigbrightpaints.erp.modules.accounting.dto.AutoSettlementRequest;
-import com.bigbrightpaints.erp.modules.accounting.dto.DealerSettlementRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
+import com.bigbrightpaints.erp.modules.accounting.dto.PartnerSettlementRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.PartnerSettlementResponse;
 import com.bigbrightpaints.erp.modules.accounting.dto.SupplierPaymentRequest;
-import com.bigbrightpaints.erp.modules.accounting.dto.SupplierSettlementRequest;
+import com.bigbrightpaints.erp.modules.accounting.domain.PartnerType;
 
 @Service
 public class SettlementService {
@@ -107,11 +107,11 @@ public class SettlementService {
     return settlementCoreSupport.recordSupplierPaymentInternal(request);
   }
 
-  public PartnerSettlementResponse settleDealerInvoices(DealerSettlementRequest request) {
+  public PartnerSettlementResponse settleDealerInvoices(PartnerSettlementRequest request) {
     return settlementCoreSupport.settleDealerInvoices(normalizeDealerSettlementRequest(request));
   }
 
-  PartnerSettlementResponse settleDealerInvoicesInternal(DealerSettlementRequest request) {
+  PartnerSettlementResponse settleDealerInvoicesInternal(PartnerSettlementRequest request) {
     return settlementCoreSupport.settleDealerInvoicesInternal(request);
   }
 
@@ -124,12 +124,12 @@ public class SettlementService {
     return settlementCoreSupport.autoSettleDealerInternal(dealerId, request);
   }
 
-  public PartnerSettlementResponse settleSupplierInvoices(SupplierSettlementRequest request) {
+  public PartnerSettlementResponse settleSupplierInvoices(PartnerSettlementRequest request) {
     return settlementCoreSupport.settleSupplierInvoices(
         normalizeSupplierSettlementRequest(request));
   }
 
-  PartnerSettlementResponse settleSupplierInvoicesInternal(SupplierSettlementRequest request) {
+  PartnerSettlementResponse settleSupplierInvoicesInternal(PartnerSettlementRequest request) {
     return settlementCoreSupport.settleSupplierInvoicesInternal(request);
   }
 
@@ -159,12 +159,17 @@ public class SettlementService {
         request.allocations());
   }
 
-  private DealerSettlementRequest normalizeDealerSettlementRequest(
-      DealerSettlementRequest request) {
+  private PartnerSettlementRequest normalizeDealerSettlementRequest(
+      PartnerSettlementRequest request) {
     ValidationUtils.requireNotNull(request, "request");
-    ValidationUtils.requireNotNull(request.dealerId(), "dealerId");
-    return new DealerSettlementRequest(
-        request.dealerId(),
+    ValidationUtils.requireNotNull(request.partnerType(), "partnerType");
+    if (request.partnerType() != PartnerType.DEALER) {
+      throw ValidationUtils.invalidState("Dealer settlements require partnerType DEALER");
+    }
+    ValidationUtils.requireNotNull(request.partnerId(), "partnerId");
+    return new PartnerSettlementRequest(
+        request.partnerType(),
+        request.partnerId(),
         request.cashAccountId(),
         request.discountAccountId(),
         request.writeOffAccountId(),
@@ -181,12 +186,17 @@ public class SettlementService {
         request.payments());
   }
 
-  private SupplierSettlementRequest normalizeSupplierSettlementRequest(
-      SupplierSettlementRequest request) {
+  private PartnerSettlementRequest normalizeSupplierSettlementRequest(
+      PartnerSettlementRequest request) {
     ValidationUtils.requireNotNull(request, "request");
-    ValidationUtils.requireNotNull(request.supplierId(), "supplierId");
-    return new SupplierSettlementRequest(
-        request.supplierId(),
+    ValidationUtils.requireNotNull(request.partnerType(), "partnerType");
+    if (request.partnerType() != PartnerType.SUPPLIER) {
+      throw ValidationUtils.invalidState("Supplier settlements require partnerType SUPPLIER");
+    }
+    ValidationUtils.requireNotNull(request.partnerId(), "partnerId");
+    return new PartnerSettlementRequest(
+        request.partnerType(),
+        request.partnerId(),
         request.cashAccountId(),
         request.discountAccountId(),
         request.writeOffAccountId(),
@@ -199,7 +209,8 @@ public class SettlementService {
         normalizeText(request.memo()),
         normalizeText(request.idempotencyKey()),
         Boolean.TRUE.equals(request.adminOverride()),
-        request.allocations());
+        request.allocations(),
+        request.payments());
   }
 
   private AutoSettlementRequest normalizeAutoSettlementRequest(

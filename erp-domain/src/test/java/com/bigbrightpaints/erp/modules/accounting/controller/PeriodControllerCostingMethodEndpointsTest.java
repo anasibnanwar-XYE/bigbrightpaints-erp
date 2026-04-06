@@ -10,8 +10,7 @@ import org.junit.jupiter.api.Test;
 
 import com.bigbrightpaints.erp.modules.accounting.domain.CostingMethod;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodDto;
-import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodUpdateRequest;
-import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodUpsertRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodRequest;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingPeriodService;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 
@@ -21,8 +20,8 @@ class PeriodControllerCostingMethodEndpointsTest {
   void createOrUpdatePeriod_delegatesWithCostingMethod() {
     AccountingPeriodService periodService = mock(AccountingPeriodService.class);
     PeriodController controller = controller(periodService);
-    AccountingPeriodUpsertRequest request =
-        new AccountingPeriodUpsertRequest(2026, 2, CostingMethod.LIFO);
+    AccountingPeriodRequest request =
+        new AccountingPeriodRequest(2026, 2, CostingMethod.LIFO);
     AccountingPeriodDto expected = dto(10L, "LIFO");
     when(periodService.createOrUpdatePeriod(request)).thenReturn(expected);
 
@@ -37,8 +36,8 @@ class PeriodControllerCostingMethodEndpointsTest {
   void updatePeriod_delegatesCostingMethodChange() {
     AccountingPeriodService periodService = mock(AccountingPeriodService.class);
     PeriodController controller = controller(periodService);
-    AccountingPeriodUpdateRequest request =
-        new AccountingPeriodUpdateRequest(CostingMethod.WEIGHTED_AVERAGE);
+    AccountingPeriodRequest request =
+        new AccountingPeriodRequest(CostingMethod.WEIGHTED_AVERAGE);
     AccountingPeriodDto expected = dto(11L, "WEIGHTED_AVERAGE");
     when(periodService.updatePeriod(11L, request)).thenReturn(expected);
 

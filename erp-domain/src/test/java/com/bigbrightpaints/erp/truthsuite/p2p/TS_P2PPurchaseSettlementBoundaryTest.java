@@ -21,7 +21,7 @@ class TS_P2PPurchaseSettlementBoundaryTest {
   private static final String PURCHASING_SERVICE =
       "src/main/java/com/bigbrightpaints/erp/modules/purchasing/service/PurchasingService.java";
   private static final String SUPPLIER_SETTLEMENT_REQUEST =
-      "src/main/java/com/bigbrightpaints/erp/modules/accounting/dto/SupplierSettlementRequest.java";
+      "src/main/java/com/bigbrightpaints/erp/modules/accounting/dto/PartnerSettlementRequest.java";
 
   @Test
   void purchasingAndSupplierSettlementEndpointsRemainIsolated() {

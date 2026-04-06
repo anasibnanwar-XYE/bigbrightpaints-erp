@@ -1,8 +1,10 @@
 package com.bigbrightpaints.erp.modules.accounting.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
@@ -19,9 +21,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import com.bigbrightpaints.erp.modules.accounting.dto.DealerReceiptRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.DealerReceiptSplitRequest;
-import com.bigbrightpaints.erp.modules.accounting.dto.DealerSettlementRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.PartnerSettlementRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.SettlementAllocationRequest;
-import com.bigbrightpaints.erp.modules.accounting.dto.SupplierSettlementRequest;
 import com.bigbrightpaints.erp.modules.accounting.service.DealerReceiptService;
 import com.bigbrightpaints.erp.modules.accounting.service.SettlementService;
 
@@ -33,16 +34,16 @@ class SettlementControllerIdempotencyHeaderParityTest {
   @Mock private SettlementService settlementService;
 
   @Test
-  void recordDealerReceipt_acceptsMatchingBodyIdempotencyKeyWhenHeaderMatches() {
+  void recordDealerReceipt_usesCanonicalHeaderEvenWhenBodyKeyIsPresent() {
     SettlementController controller = controller();
     when(dealerReceiptService.recordDealerReceipt(any())).thenReturn(null);
 
     assertForwardedIdempotencyKey(
         DealerReceiptRequest.class,
-        () -> controller.recordDealerReceipt(dealerReceiptRequest("body-001"), "body-001"),
+        () -> controller.recordDealerReceipt(dealerReceiptRequest("body-001"), "hdr-001", null),
         captor -> verify(dealerReceiptService).recordDealerReceipt(captor.capture()),
         DealerReceiptRequest::idempotencyKey,
-        "body-001");
+        "hdr-001");
   }
 
   @Test
@@ -52,23 +53,25 @@ class SettlementControllerIdempotencyHeaderParityTest {
 
     assertForwardedIdempotencyKey(
         DealerReceiptRequest.class,
-        () -> controller.recordDealerReceipt(dealerReceiptRequest("   "), "hdr-blank-001"),
+        () -> controller.recordDealerReceipt(dealerReceiptRequest("   "), "hdr-blank-001", null),
         captor -> verify(dealerReceiptService).recordDealerReceipt(captor.capture()),
         DealerReceiptRequest::idempotencyKey,
         "hdr-blank-001");
   }
 
   @Test
-  void recordDealerHybridReceipt_acceptsMatchingBodyIdempotencyKeyWhenHeaderMatches() {
+  void recordDealerHybridReceipt_usesCanonicalHeaderEvenWhenBodyKeyIsPresent() {
     SettlementController controller = controller();
     when(dealerReceiptService.recordDealerReceiptSplit(any())).thenReturn(null);
 
     assertForwardedIdempotencyKey(
         DealerReceiptSplitRequest.class,
-        () -> controller.recordDealerHybridReceipt(dealerReceiptSplitRequest("body-001"), "body-001"),
+        () ->
+            controller.recordDealerHybridReceipt(
+                dealerReceiptSplitRequest("body-001"), "hdr-002", null),
         captor -> verify(dealerReceiptService).recordDealerReceiptSplit(captor.capture()),
         DealerReceiptSplitRequest::idempotencyKey,
-        "body-001");
+        "hdr-002");
   }
 
   @Test
@@ -78,7 +81,9 @@ class SettlementControllerIdempotencyHeaderParityTest {
 
     assertForwardedIdempotencyKey(
         DealerReceiptSplitRequest.class,
-        () -> controller.recordDealerHybridReceipt(dealerReceiptSplitRequest("   "), "hdr-blank-002"),
+        () ->
+            controller.recordDealerHybridReceipt(
+                dealerReceiptSplitRequest("   "), "hdr-blank-002", null),
         captor -> verify(dealerReceiptService).recordDealerReceiptSplit(captor.capture()),
         DealerReceiptSplitRequest::idempotencyKey,
         "hdr-blank-002");
@@ -90,24 +95,24 @@ class SettlementControllerIdempotencyHeaderParityTest {
     when(settlementService.settleSupplierInvoices(any())).thenReturn(null);
 
     assertForwardedIdempotencyKey(
-        SupplierSettlementRequest.class,
-        () -> controller.settleSupplier(supplierSettlementRequest(null), "hdr-001"),
+        PartnerSettlementRequest.class,
+        () -> controller.settleSupplier(supplierSettlementRequest(null), "hdr-003", null),
         captor -> verify(settlementService).settleSupplierInvoices(captor.capture()),
-        SupplierSettlementRequest::idempotencyKey,
-        "hdr-001");
+        PartnerSettlementRequest::idempotencyKey,
+        "hdr-003");
   }
 
   @Test
-  void settleSupplier_acceptsMatchingBodyIdempotencyKeyWhenHeaderMatches() {
+  void settleSupplier_usesCanonicalHeaderEvenWhenBodyKeyIsPresent() {
     SettlementController controller = controller();
     when(settlementService.settleSupplierInvoices(any())).thenReturn(null);
 
     assertForwardedIdempotencyKey(
-        SupplierSettlementRequest.class,
-        () -> controller.settleSupplier(supplierSettlementRequest("body-001"), "body-001"),
+        PartnerSettlementRequest.class,
+        () -> controller.settleSupplier(supplierSettlementRequest("body-001"), "hdr-004", null),
         captor -> verify(settlementService).settleSupplierInvoices(captor.capture()),
-        SupplierSettlementRequest::idempotencyKey,
-        "body-001");
+        PartnerSettlementRequest::idempotencyKey,
+        "hdr-004");
   }
 
   @Test
@@ -116,24 +121,24 @@ class SettlementControllerIdempotencyHeaderParityTest {
     when(settlementService.settleSupplierInvoices(any())).thenReturn(null);
 
     assertForwardedIdempotencyKey(
-        SupplierSettlementRequest.class,
-        () -> controller.settleSupplier(supplierSettlementRequest("   "), "hdr-blank-004"),
+        PartnerSettlementRequest.class,
+        () -> controller.settleSupplier(supplierSettlementRequest("   "), "hdr-blank-004", null),
         captor -> verify(settlementService).settleSupplierInvoices(captor.capture()),
-        SupplierSettlementRequest::idempotencyKey,
+        PartnerSettlementRequest::idempotencyKey,
         "hdr-blank-004");
   }
 
   @Test
-  void settleDealer_acceptsMatchingBodyIdempotencyKeyWhenHeaderMatches() {
+  void settleDealer_usesCanonicalHeaderEvenWhenBodyKeyIsPresent() {
     SettlementController controller = controller();
     when(settlementService.settleDealerInvoices(any())).thenReturn(null);
 
     assertForwardedIdempotencyKey(
-        DealerSettlementRequest.class,
-        () -> controller.settleDealer(dealerSettlementRequest("body-001"), "body-001"),
+        PartnerSettlementRequest.class,
+        () -> controller.settleDealer(dealerSettlementRequest("body-001"), "hdr-005", null),
         captor -> verify(settlementService).settleDealerInvoices(captor.capture()),
-        DealerSettlementRequest::idempotencyKey,
-        "body-001");
+        PartnerSettlementRequest::idempotencyKey,
+        "hdr-005");
   }
 
   @Test
@@ -142,10 +147,10 @@ class SettlementControllerIdempotencyHeaderParityTest {
     when(settlementService.settleDealerInvoices(any())).thenReturn(null);
 
     assertForwardedIdempotencyKey(
-        DealerSettlementRequest.class,
-        () -> controller.settleDealer(dealerSettlementRequest("   "), "hdr-blank-005"),
+        PartnerSettlementRequest.class,
+        () -> controller.settleDealer(dealerSettlementRequest("   "), "hdr-blank-005", null),
         captor -> verify(settlementService).settleDealerInvoices(captor.capture()),
-        DealerSettlementRequest::idempotencyKey,
+        PartnerSettlementRequest::idempotencyKey,
         "hdr-blank-005");
   }
 
@@ -156,36 +161,48 @@ class SettlementControllerIdempotencyHeaderParityTest {
 
     assertForwardedIdempotencyKey(
         com.bigbrightpaints.erp.modules.accounting.dto.AutoSettlementRequest.class,
-        () -> controller.autoSettleDealer(1001L, autoSettlementRequest(null), "hdr-auto-001"),
+        () -> controller.autoSettleDealer(1001L, autoSettlementRequest(null), "hdr-auto-001", null),
         captor -> verify(settlementService).autoSettleDealer(any(), captor.capture()),
         com.bigbrightpaints.erp.modules.accounting.dto.AutoSettlementRequest::idempotencyKey,
         "hdr-auto-001");
   }
 
   @Test
-  void autoSettleDealer_acceptsMatchingBodyIdempotencyKeyWhenHeaderMatches() {
+  void autoSettleDealer_usesCanonicalHeaderEvenWhenBodyKeyIsPresent() {
     SettlementController controller = controller();
     when(settlementService.autoSettleDealer(any(), any())).thenReturn(null);
 
     assertForwardedIdempotencyKey(
         com.bigbrightpaints.erp.modules.accounting.dto.AutoSettlementRequest.class,
-        () -> controller.autoSettleDealer(1001L, autoSettlementRequest("body-001"), "body-001"),
+        () -> controller.autoSettleDealer(1001L, autoSettlementRequest("body-001"), "hdr-auto-002", null),
         captor -> verify(settlementService).autoSettleDealer(any(), captor.capture()),
         com.bigbrightpaints.erp.modules.accounting.dto.AutoSettlementRequest::idempotencyKey,
-        "body-001");
+        "hdr-auto-002");
   }
 
   @Test
-  void autoSettleSupplier_acceptsMatchingBodyIdempotencyKeyWhenHeaderMatches() {
+  void autoSettleSupplier_usesCanonicalHeaderEvenWhenBodyKeyIsPresent() {
     SettlementController controller = controller();
     when(settlementService.autoSettleSupplier(any(), any())).thenReturn(null);
 
     assertForwardedIdempotencyKey(
         com.bigbrightpaints.erp.modules.accounting.dto.AutoSettlementRequest.class,
-        () -> controller.autoSettleSupplier(3001L, autoSettlementRequest("body-001"), "body-001"),
+        () -> controller.autoSettleSupplier(3001L, autoSettlementRequest("body-001"), "hdr-auto-003", null),
         captor -> verify(settlementService).autoSettleSupplier(any(), captor.capture()),
         com.bigbrightpaints.erp.modules.accounting.dto.AutoSettlementRequest::idempotencyKey,
-        "body-001");
+        "hdr-auto-003");
+  }
+
+  @Test
+  void settleDealer_rejectsRetiredLegacyHeader() {
+    SettlementController controller = controller();
+
+    assertThatThrownBy(
+            () ->
+                controller.settleDealer(
+                    dealerSettlementRequest(null), null, "legacy-settlement-header"))
+        .hasMessageContaining("X-Idempotency-Key is not supported for dealer settlements");
+    verifyNoInteractions(settlementService);
   }
 
   private SettlementController controller() {
@@ -206,8 +223,8 @@ class SettlementControllerIdempotencyHeaderParityTest {
         idempotencyKey);
   }
 
-  private DealerSettlementRequest dealerSettlementRequest(String idempotencyKey) {
-    return new DealerSettlementRequest(
+  private PartnerSettlementRequest dealerSettlementRequest(String idempotencyKey) {
+    return new PartnerSettlementRequest(
         1001L,
         2001L,
         null,
@@ -223,8 +240,8 @@ class SettlementControllerIdempotencyHeaderParityTest {
         null);
   }
 
-  private SupplierSettlementRequest supplierSettlementRequest(String idempotencyKey) {
-    return new SupplierSettlementRequest(
+  private PartnerSettlementRequest supplierSettlementRequest(String idempotencyKey) {
+    return new PartnerSettlementRequest(
         3001L,
         2001L,
         null,

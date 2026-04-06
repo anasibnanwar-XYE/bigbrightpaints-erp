@@ -81,7 +81,6 @@ import com.bigbrightpaints.erp.modules.accounting.dto.BadDebtWriteOffRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.CreditNoteRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.DealerReceiptRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.DealerReceiptSplitRequest;
-import com.bigbrightpaints.erp.modules.accounting.dto.DealerSettlementRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.DebitNoteRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.InventoryRevaluationRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalCreationRequest;
@@ -92,11 +91,11 @@ import com.bigbrightpaints.erp.modules.accounting.dto.JournalLineDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalListItemDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.LandedCostRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.ManualJournalRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.PartnerSettlementRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.PartnerSettlementResponse;
 import com.bigbrightpaints.erp.modules.accounting.dto.SettlementAllocationApplication;
 import com.bigbrightpaints.erp.modules.accounting.dto.SettlementAllocationRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.SettlementPaymentRequest;
-import com.bigbrightpaints.erp.modules.accounting.dto.SupplierSettlementRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.WipAdjustmentRequest;
 import com.bigbrightpaints.erp.modules.accounting.event.AccountCacheInvalidatedEvent;
 import com.bigbrightpaints.erp.modules.accounting.event.AccountingEventStore;
@@ -2045,7 +2044,7 @@ class AccountingCoreSupport {
   }
 
   protected List<SettlementAllocationRequest> resolveDealerSettlementAllocations(
-      Company company, Dealer dealer, DealerSettlementRequest request) {
+      Company company, Dealer dealer, PartnerSettlementRequest request) {
     return resolveDealerSettlementAllocations(
         company,
         dealer,
@@ -2060,7 +2059,7 @@ class AccountingCoreSupport {
   protected List<SettlementAllocationRequest> resolveDealerSettlementAllocations(
       Company company,
       Dealer dealer,
-      DealerSettlementRequest request,
+      PartnerSettlementRequest request,
       String replayIdempotencyKey) {
     List<SettlementAllocationRequest> provided = request != null ? request.allocations() : null;
     if (provided != null && !provided.isEmpty()) {
@@ -2080,7 +2079,7 @@ class AccountingCoreSupport {
     return buildDealerHeaderSettlementAllocations(company, dealer, amount, unappliedApplication);
   }
 
-  private BigDecimal resolveDealerHeaderSettlementAmount(DealerSettlementRequest request) {
+  private BigDecimal resolveDealerHeaderSettlementAmount(PartnerSettlementRequest request) {
     if (request == null) {
       throw new ApplicationException(
           ErrorCode.VALIDATION_INVALID_INPUT, "Dealer settlement request is required");
@@ -2194,7 +2193,7 @@ class AccountingCoreSupport {
   }
 
   protected List<SettlementAllocationRequest> resolveSupplierSettlementAllocations(
-      Company company, Supplier supplier, SupplierSettlementRequest request) {
+      Company company, Supplier supplier, PartnerSettlementRequest request) {
     return resolveSupplierSettlementAllocations(
         company,
         supplier,
@@ -2209,7 +2208,7 @@ class AccountingCoreSupport {
   protected List<SettlementAllocationRequest> resolveSupplierSettlementAllocations(
       Company company,
       Supplier supplier,
-      SupplierSettlementRequest request,
+      PartnerSettlementRequest request,
       String replayIdempotencyKey) {
     List<SettlementAllocationRequest> provided = request != null ? request.allocations() : null;
     if (provided != null && !provided.isEmpty()) {
@@ -2230,7 +2229,7 @@ class AccountingCoreSupport {
         company, supplier, amount, unappliedApplication);
   }
 
-  private BigDecimal resolveSupplierHeaderSettlementAmount(SupplierSettlementRequest request) {
+  private BigDecimal resolveSupplierHeaderSettlementAmount(PartnerSettlementRequest request) {
     if (request == null || request.amount() == null) {
       throw new ApplicationException(
           ErrorCode.VALIDATION_INVALID_INPUT,
@@ -2482,7 +2481,7 @@ class AccountingCoreSupport {
         "Idempotency key or reference number is required for " + label);
   }
 
-  protected String resolveSupplierSettlementIdempotencyKey(SupplierSettlementRequest request) {
+  protected String resolveSupplierSettlementIdempotencyKey(PartnerSettlementRequest request) {
     if (request == null) {
       return "";
     }
@@ -2590,7 +2589,7 @@ class AccountingCoreSupport {
   }
 
   protected String resolveDealerSettlementIdempotencyKey(
-      Company company, DealerSettlementRequest request) {
+      Company company, PartnerSettlementRequest request) {
     if (request == null) {
       return "";
     }
@@ -2623,7 +2622,7 @@ class AccountingCoreSupport {
   }
 
   private Optional<String> findMatchingDealerSettlementReplayKey(
-      Company company, DealerSettlementRequest request) {
+      Company company, PartnerSettlementRequest request) {
     if (company == null
         || request == null
         || request.allocations() == null
@@ -2703,7 +2702,7 @@ class AccountingCoreSupport {
   }
 
   private boolean dealerSettlementReplayKeyMatchesRequest(
-      Company company, DealerSettlementRequest request, String candidateKey) {
+      Company company, PartnerSettlementRequest request, String candidateKey) {
     if (company == null || request == null || !StringUtils.hasText(candidateKey)) {
       return false;
     }
@@ -2790,7 +2789,7 @@ class AccountingCoreSupport {
   }
 
   protected String resolveDealerSettlementReference(
-      Company company, Dealer dealer, DealerSettlementRequest request, String idempotencyKey) {
+      Company company, Dealer dealer, PartnerSettlementRequest request, String idempotencyKey) {
     if (request != null && StringUtils.hasText(request.referenceNumber())) {
       return request.referenceNumber().trim();
     }
@@ -2823,7 +2822,7 @@ class AccountingCoreSupport {
   protected String resolveSupplierSettlementReference(
       Company company,
       Supplier supplier,
-      SupplierSettlementRequest request,
+      PartnerSettlementRequest request,
       String idempotencyKey) {
     if (request != null && StringUtils.hasText(request.referenceNumber())) {
       return request.referenceNumber().trim();
@@ -3622,7 +3621,7 @@ class AccountingCoreSupport {
 
   protected SettlementLineDraft buildDealerSettlementLines(
       Company company,
-      DealerSettlementRequest request,
+      PartnerSettlementRequest request,
       Account receivableAccount,
       SettlementTotals totals,
       String memo,
@@ -3775,7 +3774,7 @@ class AccountingCoreSupport {
 
   protected SettlementLineDraft buildSupplierSettlementLines(
       Company company,
-      SupplierSettlementRequest request,
+      PartnerSettlementRequest request,
       Account payableAccount,
       SettlementTotals totals,
       String memo,
@@ -4903,7 +4902,7 @@ class AccountingCoreSupport {
     return "RCPT-%s-%s".formatted(dealerToken, hash);
   }
 
-  private String buildDealerSettlementIdempotencyKey(DealerSettlementRequest request) {
+  private String buildDealerSettlementIdempotencyKey(PartnerSettlementRequest request) {
     Comparator<SettlementPaymentRequest> paymentComparator =
         Comparator.comparing(
                 SettlementPaymentRequest::accountId, Comparator.nullsLast(Long::compareTo))
@@ -4912,7 +4911,7 @@ class AccountingCoreSupport {
     return buildDealerSettlementIdempotencyKey(request, paymentComparator, true);
   }
 
-  private String buildLegacyDealerSettlementIdempotencyKey(DealerSettlementRequest request) {
+  private String buildLegacyDealerSettlementIdempotencyKey(PartnerSettlementRequest request) {
     Comparator<SettlementPaymentRequest> paymentComparator =
         Comparator.comparing(
             SettlementPaymentRequest::accountId, Comparator.nullsLast(Long::compareTo));
@@ -4920,7 +4919,7 @@ class AccountingCoreSupport {
   }
 
   private String buildDealerSettlementIdempotencyKey(
-      DealerSettlementRequest request,
+      PartnerSettlementRequest request,
       Comparator<SettlementPaymentRequest> paymentComparator,
       boolean includeImplicitCashFallback) {
     List<SettlementPaymentRequest> orderedPayments =
@@ -4930,7 +4929,7 @@ class AccountingCoreSupport {
   }
 
   private List<SettlementPaymentRequest> orderedDealerSettlementPaymentsForFingerprint(
-      DealerSettlementRequest request,
+      PartnerSettlementRequest request,
       Comparator<SettlementPaymentRequest> paymentComparator,
       boolean includeImplicitCashFallback) {
     if (request == null) {
@@ -4958,7 +4957,7 @@ class AccountingCoreSupport {
   }
 
   private String buildDealerSettlementIdempotencyKey(
-      DealerSettlementRequest request, List<SettlementPaymentRequest> orderedPayments) {
+      PartnerSettlementRequest request, List<SettlementPaymentRequest> orderedPayments) {
     if (request == null) {
       return UUID.randomUUID().toString();
     }
@@ -5006,7 +5005,7 @@ class AccountingCoreSupport {
     return "DEALER-SETTLEMENT-" + hash;
   }
 
-  protected String buildSupplierSettlementIdempotencyKey(SupplierSettlementRequest request) {
+  protected String buildSupplierSettlementIdempotencyKey(PartnerSettlementRequest request) {
     if (request == null) {
       return UUID.randomUUID().toString();
     }
@@ -6184,7 +6183,7 @@ class AccountingCoreSupport {
   }
 
   private Map<DealerPaymentSignature, Integer> dealerPaymentSignatureCountsFromRequest(
-      DealerSettlementRequest request) {
+      PartnerSettlementRequest request) {
     Map<DealerPaymentSignature, Integer> counts = new HashMap<>();
     if (request == null) {
       return counts;
@@ -6403,7 +6402,7 @@ class AccountingCoreSupport {
     return signatures;
   }
 
-  private Map<String, Long> requestedAdjustmentAccountIds(DealerSettlementRequest request) {
+  private Map<String, Long> requestedAdjustmentAccountIds(PartnerSettlementRequest request) {
     if (request == null) {
       return Map.of();
     }

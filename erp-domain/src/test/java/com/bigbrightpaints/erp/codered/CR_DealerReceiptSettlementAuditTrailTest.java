@@ -29,8 +29,8 @@ import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAllocationRepository;
 import com.bigbrightpaints.erp.modules.accounting.dto.DealerReceiptRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.DealerReceiptSplitRequest;
-import com.bigbrightpaints.erp.modules.accounting.dto.DealerSettlementRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
+import com.bigbrightpaints.erp.modules.accounting.dto.PartnerSettlementRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.PartnerSettlementResponse;
 import com.bigbrightpaints.erp.modules.accounting.dto.SettlementAllocationApplication;
 import com.bigbrightpaints.erp.modules.accounting.dto.SettlementAllocationRequest;
@@ -261,8 +261,8 @@ class CR_DealerReceiptSettlementAuditTrailTest extends AbstractIntegrationTest {
     String referenceNumber = "DS-" + UUID.randomUUID();
     String idempotencyKey = "DS-IDEMP-" + UUID.randomUUID();
 
-    DealerSettlementRequest settlementRequest =
-        new DealerSettlementRequest(
+    PartnerSettlementRequest settlementRequest =
+        new PartnerSettlementRequest(
             dealer.getId(),
             accounts.get("BANK").getId(),
             null,
@@ -345,8 +345,8 @@ class CR_DealerReceiptSettlementAuditTrailTest extends AbstractIntegrationTest {
           .isEqualTo(journalId);
       BigDecimal halfOutstanding =
           outstanding.divide(new BigDecimal("2"), 2, java.math.RoundingMode.HALF_UP);
-      DealerSettlementRequest conflictRequest =
-          new DealerSettlementRequest(
+      PartnerSettlementRequest conflictRequest =
+          new PartnerSettlementRequest(
               dealer.getId(),
               accounts.get("BANK").getId(),
               null,
@@ -410,8 +410,8 @@ class CR_DealerReceiptSettlementAuditTrailTest extends AbstractIntegrationTest {
     BigDecimal outstanding = invoice.getOutstandingAmount();
     String idempotencyKey = "DS-NOREF-IDEMP-" + UUID.randomUUID();
 
-    DealerSettlementRequest settlementRequest =
-        new DealerSettlementRequest(
+    PartnerSettlementRequest settlementRequest =
+        new PartnerSettlementRequest(
             dealer.getId(),
             accounts.get("BANK").getId(),
             null,
@@ -493,8 +493,8 @@ class CR_DealerReceiptSettlementAuditTrailTest extends AbstractIntegrationTest {
     String referenceNumber = "DS-HDR-FUT-" + UUID.randomUUID();
     String idempotencyKey = "DS-HDR-FUT-IDEMP-" + UUID.randomUUID();
 
-    DealerSettlementRequest settlementRequest =
-        new DealerSettlementRequest(
+    PartnerSettlementRequest settlementRequest =
+        new PartnerSettlementRequest(
             dealer.getId(),
             accounts.get("BANK").getId(),
             null,
@@ -568,8 +568,8 @@ class CR_DealerReceiptSettlementAuditTrailTest extends AbstractIntegrationTest {
     BigDecimal outstanding = invoice.getOutstandingAmount();
     String referenceNumber = "DS-REF-REUSE-" + UUID.randomUUID();
 
-    DealerSettlementRequest firstRequest =
-        new DealerSettlementRequest(
+    PartnerSettlementRequest firstRequest =
+        new PartnerSettlementRequest(
             dealer.getId(),
             accounts.get("BANK").getId(),
             null,
@@ -592,8 +592,8 @@ class CR_DealerReceiptSettlementAuditTrailTest extends AbstractIntegrationTest {
                     "Apply to invoice")),
             null);
 
-    DealerSettlementRequest secondRequest =
-        new DealerSettlementRequest(
+    PartnerSettlementRequest secondRequest =
+        new PartnerSettlementRequest(
             dealer.getId(),
             accounts.get("BANK").getId(),
             null,

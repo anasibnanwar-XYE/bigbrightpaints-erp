@@ -43,10 +43,9 @@ import com.bigbrightpaints.erp.modules.accounting.domain.PeriodCloseRequestRepos
 import com.bigbrightpaints.erp.modules.accounting.domain.PeriodCloseRequestStatus;
 import com.bigbrightpaints.erp.modules.accounting.domain.ReconciliationDiscrepancyRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.ReconciliationDiscrepancyStatus;
-import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodLockRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodReopenRequest;
-import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodUpdateRequest;
-import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodUpsertRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.PeriodStatusChangeRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.MonthEndChecklistUpdateRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.PeriodCloseRequestActionRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.PeriodCloseRequestDto;
@@ -150,7 +149,7 @@ class AccountingPeriodServiceTest {
   }
 
   @Test
-  void lockPeriod_requiresReasonWhenRequestMissing() {
+  void lockPeriod_requiresLockActionWhenRequestMissing() {
     Company company = company(1L, "ACME");
     AccountingPeriod period = openPeriod(company, 2026, 2);
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
@@ -158,6 +157,24 @@ class AccountingPeriodServiceTest {
         .thenReturn(Optional.of(period));
 
     assertThatThrownBy(() -> service.lockPeriod(12L, null))
+        .isInstanceOf(ApplicationException.class)
+        .hasMessageContaining("Period status action must be LOCK");
+  }
+
+  @Test
+  void lockPeriod_requiresReasonWhenLockActionProvided() {
+    Company company = company(1L, "ACME");
+    AccountingPeriod period = openPeriod(company, 2026, 2);
+    when(companyContextService.requireCurrentCompany()).thenReturn(company);
+    when(accountingPeriodRepository.lockByCompanyAndId(company, 12L))
+        .thenReturn(Optional.of(period));
+
+    assertThatThrownBy(
+            () ->
+                service.lockPeriod(
+                    12L,
+                    new PeriodStatusChangeRequest(
+                        PeriodStatusChangeRequest.PeriodStatusAction.LOCK, null, "   ")))
         .isInstanceOf(ApplicationException.class)
         .hasMessageContaining("Lock reason is required");
   }
@@ -172,7 +189,7 @@ class AccountingPeriodServiceTest {
     when(accountingPeriodRepository.save(period)).thenReturn(period);
 
     assertThat(
-            service.lockPeriod(13L, new AccountingPeriodLockRequest("  lock for audit  ")).status())
+            service.lockPeriod(13L, new PeriodStatusChangeRequest("  lock for audit  ")).status())
         .isEqualTo("LOCKED");
     assertThat(period.getLockReason()).isEqualTo("lock for audit");
     assertThat(period.getLockedBy()).isEqualTo(SYSTEM_PROCESS_ACTOR);
@@ -1321,7 +1338,7 @@ class AccountingPeriodServiceTest {
 
     var dto =
         service.createOrUpdatePeriod(
-            new AccountingPeriodUpsertRequest(2026, 4, CostingMethod.LIFO));
+            new AccountingPeriodRequest(2026, 4, CostingMethod.LIFO));
 
     assertThat(dto.year()).isEqualTo(2026);
     assertThat(dto.month()).isEqualTo(4);
@@ -1340,7 +1357,7 @@ class AccountingPeriodServiceTest {
     assertThatThrownBy(
             () ->
                 service.createOrUpdatePeriod(
-                    new AccountingPeriodUpsertRequest(2026, 13, CostingMethod.FIFO)))
+                    new AccountingPeriodRequest(2026, 13, CostingMethod.FIFO)))
         .isInstanceOf(ApplicationException.class)
         .hasMessageContaining("month must be between 1 and 12");
   }
@@ -1354,7 +1371,7 @@ class AccountingPeriodServiceTest {
     when(accountingPeriodRepository.save(any(AccountingPeriod.class)))
         .thenAnswer(invocation -> invocation.getArgument(0));
 
-    var dto = service.createOrUpdatePeriod(new AccountingPeriodUpsertRequest(2026, 6, null));
+    var dto = service.createOrUpdatePeriod(new AccountingPeriodRequest(2026, 6, null));
 
     assertThat(dto.costingMethod()).isEqualTo("FIFO");
   }
@@ -1371,7 +1388,7 @@ class AccountingPeriodServiceTest {
 
     var dto =
         service.updatePeriod(
-            77L, new AccountingPeriodUpdateRequest(CostingMethod.WEIGHTED_AVERAGE));
+            77L, new AccountingPeriodRequest(CostingMethod.WEIGHTED_AVERAGE));
 
     assertThat(dto.costingMethod()).isEqualTo("WEIGHTED_AVERAGE");
     assertThat(period.getStartDate()).isEqualTo(LocalDate.of(2026, 5, 1));
@@ -1387,7 +1404,7 @@ class AccountingPeriodServiceTest {
 
   @Test
   void updatePeriod_rejectsMissingCostingMethod() {
-    assertThatThrownBy(() -> service.updatePeriod(77L, new AccountingPeriodUpdateRequest(null)))
+    assertThatThrownBy(() -> service.updatePeriod(77L, new AccountingPeriodRequest(null)))
         .isInstanceOf(ApplicationException.class)
         .hasMessageContaining("Costing method is required");
   }
@@ -1399,7 +1416,7 @@ class AccountingPeriodServiceTest {
     when(accountingPeriodRepository.lockByCompanyAndId(company, 77L)).thenReturn(Optional.empty());
 
     assertThatThrownBy(
-            () -> service.updatePeriod(77L, new AccountingPeriodUpdateRequest(CostingMethod.FIFO)))
+            () -> service.updatePeriod(77L, new AccountingPeriodRequest(CostingMethod.FIFO)))
         .isInstanceOf(ApplicationException.class)
         .hasMessageContaining("Accounting period not found");
   }

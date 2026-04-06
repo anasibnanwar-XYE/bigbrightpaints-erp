@@ -1,9 +1,11 @@
 package com.bigbrightpaints.erp.truthsuite.accounting;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
@@ -25,18 +27,18 @@ import com.bigbrightpaints.erp.modules.accounting.service.SettlementService;
 class TS_AccountingIdempotencyHeaderParityRuntimeCoverageTest {
 
   @Test
-  void recordDealerReceipt_noBodyAndNoHeaders_keepsOriginalRequest() {
+  void recordDealerReceipt_noBodyAndNoHeaders_clearsIdempotencyKeyOnCopiedRequest() {
     DealerReceiptService dealerReceiptService = mock(DealerReceiptService.class);
     SettlementController controller = newController(dealerReceiptService);
     DealerReceiptRequest request = dealerReceiptRequest(null);
     when(dealerReceiptService.recordDealerReceipt(any())).thenReturn(null);
 
-    controller.recordDealerReceipt(request, null);
+    controller.recordDealerReceipt(request, null, null);
 
     ArgumentCaptor<DealerReceiptRequest> captor =
         ArgumentCaptor.forClass(DealerReceiptRequest.class);
     verify(dealerReceiptService).recordDealerReceipt(captor.capture());
-    assertThat(captor.getValue()).isSameAs(request);
+    assertThat(captor.getValue()).isNotSameAs(request);
     assertThat(captor.getValue().idempotencyKey()).isNull();
   }
 
@@ -47,7 +49,7 @@ class TS_AccountingIdempotencyHeaderParityRuntimeCoverageTest {
     DealerReceiptRequest request = dealerReceiptRequest(null);
     when(dealerReceiptService.recordDealerReceipt(any())).thenReturn(null);
 
-    controller.recordDealerReceipt(request, "hdr-001");
+    controller.recordDealerReceipt(request, "hdr-001", null);
 
     ArgumentCaptor<DealerReceiptRequest> captor =
         ArgumentCaptor.forClass(DealerReceiptRequest.class);
@@ -57,18 +59,19 @@ class TS_AccountingIdempotencyHeaderParityRuntimeCoverageTest {
   }
 
   @Test
-  void recordDealerReceipt_bodyPresent_acceptsMatchingBodyIdempotencyKey() {
+  void recordDealerReceipt_bodyKeyWithoutCanonicalHeader_isCleared() {
     DealerReceiptService dealerReceiptService = mock(DealerReceiptService.class);
     SettlementController controller = newController(dealerReceiptService);
     DealerReceiptRequest request = dealerReceiptRequest("body-001");
     when(dealerReceiptService.recordDealerReceipt(any())).thenReturn(null);
 
-    controller.recordDealerReceipt(request, "body-001");
+    controller.recordDealerReceipt(request, null, null);
 
     ArgumentCaptor<DealerReceiptRequest> captor =
         ArgumentCaptor.forClass(DealerReceiptRequest.class);
     verify(dealerReceiptService).recordDealerReceipt(captor.capture());
-    assertThat(captor.getValue().idempotencyKey()).isEqualTo("body-001");
+    assertThat(captor.getValue()).isNotSameAs(request);
+    assertThat(captor.getValue().idempotencyKey()).isNull();
   }
 
   @Test
@@ -79,8 +82,8 @@ class TS_AccountingIdempotencyHeaderParityRuntimeCoverageTest {
     DealerReceiptRequest blankHeaderRequest = dealerReceiptRequest(null);
     when(dealerReceiptService.recordDealerReceipt(any())).thenReturn(null);
 
-    controller.recordDealerReceipt(nonBlankHeaderRequest, "  hdr-trim-001  ");
-    controller.recordDealerReceipt(blankHeaderRequest, "   ");
+    controller.recordDealerReceipt(nonBlankHeaderRequest, "  hdr-trim-001  ", null);
+    controller.recordDealerReceipt(blankHeaderRequest, "   ", null);
 
     ArgumentCaptor<DealerReceiptRequest> captor =
         ArgumentCaptor.forClass(DealerReceiptRequest.class);
@@ -90,8 +93,19 @@ class TS_AccountingIdempotencyHeaderParityRuntimeCoverageTest {
 
     assertThat(captured.get(0)).isNotSameAs(nonBlankHeaderRequest);
     assertThat(captured.get(0).idempotencyKey()).isEqualTo("hdr-trim-001");
-    assertThat(captured.get(1)).isSameAs(blankHeaderRequest);
+    assertThat(captured.get(1)).isNotSameAs(blankHeaderRequest);
     assertThat(captured.get(1).idempotencyKey()).isNull();
+  }
+
+  @Test
+  void recordDealerReceipt_rejectsLegacyHeader() {
+    DealerReceiptService dealerReceiptService = mock(DealerReceiptService.class);
+    SettlementController controller = newController(dealerReceiptService);
+
+    assertThatThrownBy(() -> controller.recordDealerReceipt(dealerReceiptRequest(null), null, "legacy-001"))
+        .isInstanceOf(com.bigbrightpaints.erp.core.exception.ApplicationException.class)
+        .hasMessageContaining("X-Idempotency-Key");
+    verifyNoInteractions(dealerReceiptService);
   }
 
   private SettlementController newController(DealerReceiptService dealerReceiptService) {

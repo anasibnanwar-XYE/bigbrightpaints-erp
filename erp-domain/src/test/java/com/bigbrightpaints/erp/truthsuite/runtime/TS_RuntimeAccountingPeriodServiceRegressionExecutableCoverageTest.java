@@ -34,8 +34,8 @@ import com.bigbrightpaints.erp.modules.accounting.domain.PeriodCloseRequest;
 import com.bigbrightpaints.erp.modules.accounting.domain.PeriodCloseRequestRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.PeriodCloseRequestStatus;
 import com.bigbrightpaints.erp.modules.accounting.domain.ReconciliationDiscrepancyRepository;
-import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodLockRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodReopenRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.PeriodStatusChangeRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.PeriodCloseRequestActionRequest;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingPeriodService;
@@ -94,7 +94,7 @@ class TS_RuntimeAccountingPeriodServiceRegressionExecutableCoverageTest {
     when(accountingPeriodRepository.save(period)).thenReturn(period);
 
     assertThat(
-            service.lockPeriod(13L, new AccountingPeriodLockRequest("  lock for audit  ")).status())
+            service.lockPeriod(13L, new PeriodStatusChangeRequest("  lock for audit  ")).status())
         .isEqualTo("LOCKED");
     assertThat(period.getStatus()).isEqualTo(AccountingPeriodStatus.LOCKED);
     assertThat(period.getLockReason()).isEqualTo("lock for audit");

@@ -26,7 +26,6 @@ import com.bigbrightpaints.erp.modules.accounting.dto.BadDebtWriteOffRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.CreditNoteRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.DealerReceiptRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.DealerReceiptSplitRequest;
-import com.bigbrightpaints.erp.modules.accounting.dto.DealerSettlementRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.DebitNoteRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.InventoryRevaluationRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalCreationRequest;
@@ -36,9 +35,9 @@ import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryReversalReques
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalListItemDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.LandedCostRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.ManualJournalRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.PartnerSettlementRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.PartnerSettlementResponse;
 import com.bigbrightpaints.erp.modules.accounting.dto.SupplierPaymentRequest;
-import com.bigbrightpaints.erp.modules.accounting.dto.SupplierSettlementRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.WipAdjustmentRequest;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
@@ -402,7 +401,7 @@ public class AccountingService {
     return entry;
   }
 
-  public PartnerSettlementResponse settleDealerInvoices(DealerSettlementRequest request) {
+  public PartnerSettlementResponse settleDealerInvoices(PartnerSettlementRequest request) {
     return settlementService.settleDealerInvoices(request);
   }
 
@@ -410,7 +409,7 @@ public class AccountingService {
     return settlementService.autoSettleDealer(dealerId, request);
   }
 
-  public PartnerSettlementResponse settleSupplierInvoices(SupplierSettlementRequest request) {
+  public PartnerSettlementResponse settleSupplierInvoices(PartnerSettlementRequest request) {
     return settlementService.settleSupplierInvoices(request);
   }
 

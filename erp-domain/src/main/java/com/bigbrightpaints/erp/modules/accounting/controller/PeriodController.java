@@ -13,10 +13,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodReopenRequest;
-import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodUpdateRequest;
-import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodUpsertRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.MonthEndChecklistDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.MonthEndChecklistUpdateRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.PeriodCloseRequestActionRequest;
@@ -45,7 +44,7 @@ public class PeriodController {
   @PostMapping("/periods")
   @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
   public ResponseEntity<ApiResponse<AccountingPeriodDto>> createOrUpdatePeriod(
-      @Valid @RequestBody AccountingPeriodUpsertRequest request) {
+      @Valid @RequestBody AccountingPeriodRequest request) {
     return ResponseEntity.ok(
         ApiResponse.success(
             "Accounting period saved", accountingPeriodService.createOrUpdatePeriod(request)));
@@ -54,7 +53,7 @@ public class PeriodController {
   @PutMapping("/periods/{periodId}")
   @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
   public ResponseEntity<ApiResponse<AccountingPeriodDto>> updatePeriod(
-      @PathVariable Long periodId, @Valid @RequestBody AccountingPeriodUpdateRequest request) {
+      @PathVariable Long periodId, @Valid @RequestBody AccountingPeriodRequest request) {
     return ResponseEntity.ok(
         ApiResponse.success(
             "Accounting period updated", accountingPeriodService.updatePeriod(periodId, request)));
