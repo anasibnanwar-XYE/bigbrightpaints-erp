@@ -7,14 +7,10 @@ import java.util.List;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
-import com.bigbrightpaints.erp.core.util.MoneyUtils;
-import com.bigbrightpaints.erp.core.validation.ValidationUtils;
-import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriod;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
@@ -41,7 +37,6 @@ import com.bigbrightpaints.erp.modules.accounting.dto.SupplierPaymentRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.WipAdjustmentRequest;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
-import com.bigbrightpaints.erp.modules.hr.domain.PayrollRun;
 import com.bigbrightpaints.erp.modules.hr.domain.PayrollRunRepository;
 import com.bigbrightpaints.erp.modules.hr.dto.PayrollPaymentRequest;
 import com.bigbrightpaints.erp.shared.dto.PageResponse;
@@ -49,76 +44,35 @@ import com.bigbrightpaints.erp.shared.dto.PageResponse;
 @Service
 public class AccountingService {
 
-  private final AccountingCoreSupport accountingCoreSupport;
+  private final AccountCatalogService accountCatalogService;
   private final JournalEntryService journalEntryService;
   private final DealerReceiptService dealerReceiptService;
   private final SettlementService settlementService;
   private final CreditDebitNoteService creditDebitNoteService;
   private final InventoryAccountingService inventoryAccountingService;
   private final ObjectProvider<AccountingFacade> accountingFacadeProvider;
-  private final PayrollRunRepository payrollRunRepository;
-  private final CompanyContextService companyContextService;
-  private final com.bigbrightpaints.erp.core.util.CompanyClock companyClock;
-  private final com.bigbrightpaints.erp.modules.hr.service.CompanyScopedHrLookupService
-      hrLookupService;
-  private final CompanyScopedAccountingLookupService accountingLookupService;
-  private final AccountRepository accountRepository;
+  private final PayrollAccountingService payrollAccountingService;
   private boolean strictAccountingEventTrail = true;
   private com.bigbrightpaints.erp.core.audit.AuditService auditService;
 
   @Autowired
   public AccountingService(
-      AccountingCoreSupport accountingCoreSupport,
+      AccountCatalogService accountCatalogService,
       JournalEntryService journalEntryService,
       DealerReceiptService dealerReceiptService,
       SettlementService settlementService,
       CreditDebitNoteService creditDebitNoteService,
       InventoryAccountingService inventoryAccountingService,
       ObjectProvider<AccountingFacade> accountingFacadeProvider,
-      PayrollRunRepository payrollRunRepository,
-      CompanyContextService companyContextService,
-      com.bigbrightpaints.erp.core.util.CompanyClock companyClock,
-      com.bigbrightpaints.erp.modules.hr.service.CompanyScopedHrLookupService hrLookupService,
-      CompanyScopedAccountingLookupService accountingLookupService,
-      AccountRepository accountRepository) {
-    this.accountingCoreSupport = accountingCoreSupport;
+      PayrollAccountingService payrollAccountingService) {
+    this.accountCatalogService = accountCatalogService;
     this.journalEntryService = journalEntryService;
     this.dealerReceiptService = dealerReceiptService;
     this.settlementService = settlementService;
     this.creditDebitNoteService = creditDebitNoteService;
     this.inventoryAccountingService = inventoryAccountingService;
     this.accountingFacadeProvider = accountingFacadeProvider;
-    this.payrollRunRepository = payrollRunRepository;
-    this.companyContextService = companyContextService;
-    this.companyClock = companyClock;
-    this.hrLookupService = hrLookupService;
-    this.accountingLookupService = accountingLookupService;
-    this.accountRepository = accountRepository;
-    this.auditService = null;
-  }
-
-  public AccountingService(
-      AccountingCoreSupport accountingCoreSupport,
-      JournalEntryService journalEntryService,
-      DealerReceiptService dealerReceiptService,
-      SettlementService settlementService,
-      CreditDebitNoteService creditDebitNoteService,
-      InventoryAccountingService inventoryAccountingService,
-      ObjectProvider<AccountingFacade> accountingFacadeProvider,
-      PayrollRunRepository payrollRunRepository) {
-    this.accountingCoreSupport = accountingCoreSupport;
-    this.journalEntryService = journalEntryService;
-    this.dealerReceiptService = dealerReceiptService;
-    this.settlementService = settlementService;
-    this.creditDebitNoteService = creditDebitNoteService;
-    this.inventoryAccountingService = inventoryAccountingService;
-    this.accountingFacadeProvider = accountingFacadeProvider;
-    this.payrollRunRepository = payrollRunRepository;
-    this.companyContextService = null;
-    this.companyClock = null;
-    this.hrLookupService = null;
-    this.accountingLookupService = null;
-    this.accountRepository = null;
+    this.payrollAccountingService = payrollAccountingService;
     this.auditService = null;
   }
 
@@ -150,6 +104,39 @@ public class AccountingService {
             companyEntityLookup),
         CompanyScopedAccountingLookupService.fromLegacy(companyEntityLookup),
         accountRepository);
+  }
+
+  public AccountingService(
+      AccountingCoreSupport accountingCoreSupport,
+      JournalEntryService journalEntryService,
+      DealerReceiptService dealerReceiptService,
+      SettlementService settlementService,
+      CreditDebitNoteService creditDebitNoteService,
+      InventoryAccountingService inventoryAccountingService,
+      ObjectProvider<AccountingFacade> accountingFacadeProvider,
+      PayrollRunRepository payrollRunRepository,
+      CompanyContextService companyContextService,
+      com.bigbrightpaints.erp.core.util.CompanyClock companyClock,
+      com.bigbrightpaints.erp.modules.hr.service.CompanyScopedHrLookupService hrLookupService,
+      CompanyScopedAccountingLookupService accountingLookupService,
+      AccountRepository accountRepository) {
+    this(
+        new AccountCatalogService(accountingCoreSupport),
+        journalEntryService,
+        dealerReceiptService,
+        settlementService,
+        creditDebitNoteService,
+        inventoryAccountingService,
+        accountingFacadeProvider,
+        new PayrollAccountingService(
+            accountingCoreSupport,
+            payrollRunRepository,
+            companyContextService,
+            companyClock,
+            hrLookupService,
+            accountingLookupService,
+            accountRepository,
+            journalEntryService));
   }
 
   public AccountingService(
@@ -195,7 +182,7 @@ public class AccountingService {
       InventoryAccountingService inventoryAccountingService,
       ObjectProvider<AccountingFacade> accountingFacadeProvider) {
     this(
-        new AccountingCoreSupport(
+        legacySupport(
             companyContextService,
             accountRepository,
             journalEntryRepository,
@@ -232,9 +219,77 @@ public class AccountingService {
         payrollRunRepository,
         companyContextService,
         companyClock,
-        companyEntityLookup,
+        com.bigbrightpaints.erp.modules.hr.service.CompanyScopedHrLookupService.fromLegacy(
+            companyEntityLookup),
+        CompanyScopedAccountingLookupService.fromLegacy(companyEntityLookup),
         accountRepository);
     this.auditService = auditService;
+  }
+
+  private static AccountingCoreSupport legacySupport(
+      CompanyContextService companyContextService,
+      AccountRepository accountRepository,
+      com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository
+          journalEntryRepository,
+      DealerLedgerService dealerLedgerService,
+      SupplierLedgerService supplierLedgerService,
+      PayrollRunRepository payrollRunRepository,
+      com.bigbrightpaints.erp.modules.hr.domain.PayrollRunLineRepository payrollRunLineRepository,
+      AccountingPeriodService accountingPeriodService,
+      ReferenceNumberService referenceNumberService,
+      org.springframework.context.ApplicationEventPublisher eventPublisher,
+      com.bigbrightpaints.erp.core.util.CompanyClock companyClock,
+      com.bigbrightpaints.erp.core.util.CompanyEntityLookup companyEntityLookup,
+      com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAllocationRepository
+          settlementAllocationRepository,
+      com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchaseRepository
+          rawMaterialPurchaseRepository,
+      com.bigbrightpaints.erp.modules.invoice.domain.InvoiceRepository invoiceRepository,
+      com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovementRepository
+          rawMaterialMovementRepository,
+      com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatchRepository
+          rawMaterialBatchRepository,
+      com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatchRepository
+          finishedGoodBatchRepository,
+      com.bigbrightpaints.erp.modules.sales.domain.DealerRepository dealerRepository,
+      com.bigbrightpaints.erp.modules.purchasing.domain.SupplierRepository supplierRepository,
+      com.bigbrightpaints.erp.modules.invoice.service.InvoiceSettlementPolicy
+          invoiceSettlementPolicy,
+      JournalReferenceResolver journalReferenceResolver,
+      com.bigbrightpaints.erp.modules.accounting.domain.JournalReferenceMappingRepository
+          journalReferenceMappingRepository,
+      jakarta.persistence.EntityManager entityManager,
+      com.bigbrightpaints.erp.core.config.SystemSettingsService systemSettingsService,
+      com.bigbrightpaints.erp.core.audit.AuditService auditService,
+      com.bigbrightpaints.erp.modules.accounting.event.AccountingEventStore accountingEventStore) {
+    return new AccountingCoreSupport(
+        companyContextService,
+        accountRepository,
+        journalEntryRepository,
+        dealerLedgerService,
+        supplierLedgerService,
+        payrollRunRepository,
+        payrollRunLineRepository,
+        accountingPeriodService,
+        referenceNumberService,
+        eventPublisher,
+        companyClock,
+        companyEntityLookup,
+        settlementAllocationRepository,
+        rawMaterialPurchaseRepository,
+        invoiceRepository,
+        rawMaterialMovementRepository,
+        rawMaterialBatchRepository,
+        finishedGoodBatchRepository,
+        dealerRepository,
+        supplierRepository,
+        invoiceSettlementPolicy,
+        journalReferenceResolver,
+        journalReferenceMappingRepository,
+        entityManager,
+        systemSettingsService,
+        auditService,
+        accountingEventStore);
   }
 
   @SuppressWarnings("unused")
@@ -296,11 +351,11 @@ public class AccountingService {
   }
 
   public List<AccountDto> listAccounts() {
-    return accountingCoreSupport.listAccounts();
+    return accountCatalogService.listAccounts();
   }
 
   public AccountDto createAccount(AccountRequest request) {
-    return accountingCoreSupport.createAccount(request);
+    return accountCatalogService.createAccount(request);
   }
 
   public List<JournalEntryDto> listJournalEntries(
@@ -339,45 +394,13 @@ public class AccountingService {
         fromDate, toDate, journalType, sourceModule, page, size);
   }
 
-  @Transactional
   public JournalEntryDto postPayrollRun(
       String runNumber,
       Long runId,
       LocalDate postingDate,
       String memo,
       List<JournalEntryRequest.JournalLineRequest> lines) {
-    String runToken = accountingCoreSupport.resolvePayrollRunToken(runNumber, runId);
-    if (!StringUtils.hasText(runToken)) {
-      throw new ApplicationException(
-          ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,
-          "Payroll run number or id is required for posting");
-    }
-    Company company = companyContextService.requireCurrentCompany();
-    LocalDate entryDate = postingDate != null ? postingDate : companyClock.today(company);
-    String resolvedMemo = StringUtils.hasText(memo) ? memo : "Payroll - " + runToken;
-    List<JournalCreationRequest.LineRequest> standardizedLines =
-        lines == null
-            ? List.of()
-            : lines.stream()
-                .map(
-                    line ->
-                        new JournalCreationRequest.LineRequest(
-                            line.accountId(), line.debit(), line.credit(), line.description()))
-                .toList();
-    return createStandardJournal(
-        new JournalCreationRequest(
-            totalPayrollLinesAmount(lines),
-            null,
-            null,
-            resolvedMemo,
-            "PAYROLL",
-            "PAYROLL-" + runToken,
-            null,
-            standardizedLines,
-            entryDate,
-            null,
-            null,
-            false));
+    return payrollAccountingService.postPayrollRun(runNumber, runId, postingDate, memo, lines);
   }
 
   public JournalEntryDto reverseJournalEntry(Long entryId, JournalEntryReversalRequest request) {
@@ -402,130 +425,12 @@ public class AccountingService {
     return dealerReceiptService.recordDealerReceiptSplit(request);
   }
 
-  void updatePurchaseStatus(
-      com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchase purchase) {
-    accountingCoreSupport.updatePurchaseStatus(purchase);
-  }
-
   public JournalEntryDto recordSupplierPayment(SupplierPaymentRequest request) {
     return settlementService.recordSupplierPayment(request);
   }
 
-  @Transactional
   public JournalEntryDto recordPayrollPayment(PayrollPaymentRequest request) {
-    Company company = companyContextService.requireCurrentCompany();
-    PayrollRun run = hrLookupService.lockPayrollRun(company, request.payrollRunId());
-
-    if (run.getStatus() == PayrollRun.PayrollStatus.PAID
-        && run.getPaymentJournalEntryId() == null) {
-      throw new ApplicationException(
-              ErrorCode.BUSINESS_INVALID_STATE,
-              "Payroll run already marked PAID but payment journal reference is missing")
-          .withDetail("payrollRunId", run.getId());
-    }
-    if (run.getStatus() != PayrollRun.PayrollStatus.POSTED
-        && run.getStatus() != PayrollRun.PayrollStatus.PAID) {
-      throw new ApplicationException(
-              ErrorCode.BUSINESS_INVALID_STATE,
-              "Payroll must be posted to accounting before recording payment")
-          .withDetail("requiredStatus", PayrollRun.PayrollStatus.POSTED.name());
-    }
-    if (run.getJournalEntryId() == null) {
-      throw new ApplicationException(
-              ErrorCode.BUSINESS_INVALID_STATE,
-              "Payroll must be posted to accounting before recording payment")
-          .withDetail("requiredStatus", PayrollRun.PayrollStatus.POSTED.name());
-    }
-
-    Account cashAccount =
-        accountingCoreSupport.requireCashAccountForSettlement(
-            company, request.cashAccountId(), "payroll payment");
-    BigDecimal amount = ValidationUtils.requirePositive(request.amount(), "amount");
-    // Truth-suite contract marker:
-    // "Salary payable account (SALARY-PAYABLE) is required to record payroll payments"
-    Account salaryPayableAccount =
-        accountRepository
-            .findByCompanyAndCodeIgnoreCase(company, "SALARY-PAYABLE")
-            .orElseThrow(
-                () ->
-                    new ApplicationException(
-                        ErrorCode.SYSTEM_CONFIGURATION_ERROR,
-                        "Salary payable account (SALARY-PAYABLE) is required to record payroll"
-                            + " payments"));
-
-    JournalEntry postingJournal =
-        accountingLookupService.requireJournalEntry(company, run.getJournalEntryId());
-    BigDecimal payableAmount = BigDecimal.ZERO;
-    if (postingJournal.getLines() != null) {
-      for (var line : postingJournal.getLines()) {
-        if (line.getAccount() == null || line.getAccount().getId() == null) {
-          continue;
-        }
-        if (!salaryPayableAccount.getId().equals(line.getAccount().getId())) {
-          continue;
-        }
-        payableAmount =
-            payableAmount.add(
-                MoneyUtils.zeroIfNull(line.getCredit())
-                    .subtract(MoneyUtils.zeroIfNull(line.getDebit())));
-      }
-    }
-    if (payableAmount.compareTo(BigDecimal.ZERO) <= 0) {
-      throw new ApplicationException(
-              ErrorCode.SYSTEM_CONFIGURATION_ERROR,
-              "Posted payroll journal does not contain a payable amount for SALARY-PAYABLE")
-          .withDetail("postingJournalId", postingJournal.getId());
-    }
-    // Truth-suite contract marker:
-    // "Payroll payment amount does not match salary payable from the posted payroll journal"
-    if (payableAmount.subtract(amount).abs().compareTo(AccountingCoreSupport.ALLOCATION_TOLERANCE)
-        > 0) {
-      throw new ApplicationException(
-              ErrorCode.VALIDATION_INVALID_INPUT,
-              "Payroll payment amount does not match salary payable from the posted payroll"
-                  + " journal")
-          .withDetail("expectedAmount", payableAmount)
-          .withDetail("requestAmount", amount);
-    }
-
-    if (run.getPaymentJournalEntryId() != null) {
-      JournalEntry paid =
-          accountingLookupService.requireJournalEntry(company, run.getPaymentJournalEntryId());
-      accountingCoreSupport.validatePayrollPaymentIdempotency(
-          request, paid, salaryPayableAccount, cashAccount, amount);
-      return accountingCoreSupport.toDto(paid);
-    }
-
-    String memo =
-        StringUtils.hasText(request.memo())
-            ? request.memo().trim()
-            : "Payroll payment for " + run.getRunDate();
-    String reference = accountingCoreSupport.resolvePayrollPaymentReference(run, request, company);
-    List<JournalCreationRequest.LineRequest> lines =
-        List.of(
-            new JournalCreationRequest.LineRequest(
-                salaryPayableAccount.getId(), payableAmount, BigDecimal.ZERO, memo),
-            new JournalCreationRequest.LineRequest(
-                cashAccount.getId(), BigDecimal.ZERO, payableAmount, memo));
-    JournalEntryDto entry =
-        createStandardJournal(
-            new JournalCreationRequest(
-                payableAmount,
-                salaryPayableAccount.getId(),
-                cashAccount.getId(),
-                memo,
-                "PAYROLL",
-                reference,
-                null,
-                lines,
-                accountingCoreSupport.currentDate(company),
-                null,
-                null,
-                Boolean.FALSE));
-    JournalEntry paymentJournal = accountingLookupService.requireJournalEntry(company, entry.id());
-    run.setPaymentJournalEntryId(paymentJournal.getId());
-    payrollRunRepository.save(run);
-    return entry;
+    return payrollAccountingService.recordPayrollPayment(request);
   }
 
   public PartnerSettlementResponse settleDealerInvoices(PartnerSettlementRequest request) {
@@ -571,20 +476,6 @@ public class AccountingService {
 
   public JournalEntryDto adjustWip(WipAdjustmentRequest request) {
     return inventoryAccountingService.adjustWip(request);
-  }
-
-  private BigDecimal totalPayrollLinesAmount(List<JournalEntryRequest.JournalLineRequest> lines) {
-    if (lines == null || lines.isEmpty()) {
-      return BigDecimal.ZERO;
-    }
-    BigDecimal totalDebit = BigDecimal.ZERO;
-    for (JournalEntryRequest.JournalLineRequest line : lines) {
-      if (line == null || line.debit() == null) {
-        continue;
-      }
-      totalDebit = totalDebit.add(line.debit());
-    }
-    return totalDebit;
   }
 
   private AccountingFacade resolveAccountingFacade() {

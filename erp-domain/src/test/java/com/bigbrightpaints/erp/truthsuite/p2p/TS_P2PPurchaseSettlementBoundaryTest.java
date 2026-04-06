@@ -83,7 +83,7 @@ class TS_P2PPurchaseSettlementBoundaryTest {
   @Test
   void supplierSettlementFlowRetainsOpenItemAndIdempotencyFailClosedGuards() {
     TruthSuiteFileAssert.assertContains(
-        "src/main/java/com/bigbrightpaints/erp/modules/accounting/service/SettlementCoreSupport.java",
+        "src/main/java/com/bigbrightpaints/erp/modules/accounting/service/SupplierSettlementService.java",
         "On-account supplier settlement allocations cannot include discount/write-off/FX",
         "Settlement allocation exceeds purchase outstanding amount",
         "remainingByPurchase.put(",

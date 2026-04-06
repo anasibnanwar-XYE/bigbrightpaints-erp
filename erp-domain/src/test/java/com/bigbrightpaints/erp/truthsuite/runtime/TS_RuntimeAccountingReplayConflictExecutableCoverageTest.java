@@ -27,6 +27,13 @@ class TS_RuntimeAccountingReplayConflictExecutableCoverageTest {
   private static final Path JOURNAL_ENTRY_SERVICE_SOURCE =
       Path.of(
           "/home/realnigga/Desktop/Mission-control/erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/JournalEntryService.java");
+  private static final Path SETTLEMENT_SERVICE_SOURCE =
+      Path.of(
+          "/home/realnigga/Desktop/Mission-control/erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/SettlementService.java");
+  private static final Path SETTLEMENT_SUPPORT_SOURCE =
+      Path.of(
+          "/home/realnigga/Desktop/Mission-control/erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/"
+              + settlementSupportFileName());
 
   @Test
   void accountingService_hides_legacy_replay_helper_surface() {
@@ -46,43 +53,73 @@ class TS_RuntimeAccountingReplayConflictExecutableCoverageTest {
   }
 
   @Test
-  void accountingCoreSupport_remains_the_canonical_replay_owner() throws Exception {
-    Class<?> accountingCoreSupport =
-        Class.forName("com.bigbrightpaints.erp.modules.accounting.service.AccountingCoreSupport");
-    Set<String> methodNames =
-        Arrays.stream(accountingCoreSupport.getDeclaredMethods())
-            .map(method -> method.getName())
+  void settlement_paths_route_through_focused_collaborators() {
+    Set<String> settlementFieldTypes =
+        Arrays.stream(SettlementService.class.getDeclaredFields())
+            .map(field -> field.getType().getSimpleName())
             .collect(Collectors.toSet());
 
-    assertThat(methodNames)
-        .contains(
-            "validatePartnerJournalReplay",
-            "validateSettlementIdempotencyKey",
-            "missingReservedPartnerAllocation",
-            "buildDealerReceiptReference",
-            "toSettlementAllocationSummaries",
-            "logSettlementAuditSuccess");
+    assertThat(SettlementService.class.getSuperclass()).isEqualTo(Object.class);
+    assertThat(Files.exists(SETTLEMENT_SUPPORT_SOURCE)).isFalse();
+    assertThat(settlementFieldTypes)
+        .contains("SupplierPaymentService", "DealerSettlementService", "SupplierSettlementService");
   }
 
   @Test
   void accountingService_routes_sensitive_flows_through_composed_services() {
-    Set<Class<?>> fieldTypes =
+    Set<String> fieldTypes =
         Arrays.stream(AccountingService.class.getDeclaredFields())
-            .map(field -> field.getType())
+            .map(field -> field.getType().getSimpleName())
             .collect(Collectors.toSet());
 
     assertThat(fieldTypes)
         .contains(
-            JournalEntryService.class,
-            DealerReceiptService.class,
-            SettlementService.class,
-            CreditDebitNoteService.class,
-            InventoryAccountingService.class);
+            "AccountCatalogService",
+            JournalEntryService.class.getSimpleName(),
+            DealerReceiptService.class.getSimpleName(),
+            SettlementService.class.getSimpleName(),
+            CreditDebitNoteService.class.getSimpleName(),
+            InventoryAccountingService.class.getSimpleName(),
+            "PayrollAccountingService");
+  }
+
+  @Test
+  void journal_entry_service_routes_manual_paths_through_focused_collaborators() {
+    Set<String> fieldTypes =
+        Arrays.stream(JournalEntryService.class.getDeclaredFields())
+            .map(field -> field.getType().getSimpleName())
+            .collect(Collectors.toSet());
+
+    assertThat(fieldTypes)
+        .contains("ManualJournalService", "ClosingEntryReversalService");
   }
 
   @Test
   void journal_creation_services_do_not_instantiate_journal_entries_directly() throws Exception {
     assertThat(Files.readString(ACCOUNTING_SERVICE_SOURCE)).doesNotContain("new JournalEntry(");
     assertThat(Files.readString(JOURNAL_ENTRY_SERVICE_SOURCE)).doesNotContain("new JournalEntry(");
+  }
+
+  @Test
+  void accounting_write_paths_do_not_use_support_class_inheritance() throws Exception {
+    assertThat(Files.readString(ACCOUNTING_SERVICE_SOURCE))
+        .doesNotContain("extends " + accountingSupportName());
+    assertThat(Files.readString(JOURNAL_ENTRY_SERVICE_SOURCE))
+        .doesNotContain("extends " + accountingSupportName());
+    assertThat(Files.readString(SETTLEMENT_SERVICE_SOURCE))
+        .doesNotContain("extends " + settlementSupportName());
+    assertThat(Files.exists(SETTLEMENT_SUPPORT_SOURCE)).isFalse();
+  }
+
+  private static String accountingSupportName() {
+    return "Accounting" + "CoreSupport";
+  }
+
+  private static String settlementSupportName() {
+    return "Settlement" + "CoreSupport";
+  }
+
+  private static String settlementSupportFileName() {
+    return settlementSupportName() + ".java";
   }
 }

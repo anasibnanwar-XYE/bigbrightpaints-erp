@@ -28,14 +28,14 @@ import com.bigbrightpaints.erp.modules.hr.domain.PayrollRunRepository;
 @ExtendWith(MockitoExtension.class)
 class AccountingServiceTest {
 
-  @Mock private AccountingCoreSupport accountingCoreSupport;
+  @Mock private AccountCatalogService accountCatalogService;
   @Mock private JournalEntryService journalEntryService;
   @Mock private DealerReceiptService dealerReceiptService;
   @Mock private SettlementService settlementService;
   @Mock private CreditDebitNoteService creditDebitNoteService;
   @Mock private InventoryAccountingService inventoryAccountingService;
   @Mock private ObjectProvider<AccountingFacade> accountingFacadeProvider;
-  @Mock private PayrollRunRepository payrollRunRepository;
+  @Mock private PayrollAccountingService payrollAccountingService;
   @Mock private AccountingFacade accountingFacade;
 
   private AccountingService accountingService;
@@ -44,14 +44,14 @@ class AccountingServiceTest {
   void setUp() {
     accountingService =
         new AccountingService(
-            accountingCoreSupport,
+            accountCatalogService,
             journalEntryService,
             dealerReceiptService,
             settlementService,
             creditDebitNoteService,
             inventoryAccountingService,
             accountingFacadeProvider,
-            payrollRunRepository);
+            payrollAccountingService);
   }
 
   @Test

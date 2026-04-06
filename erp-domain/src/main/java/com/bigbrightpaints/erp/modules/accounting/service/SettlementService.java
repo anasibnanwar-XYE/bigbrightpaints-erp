@@ -21,127 +21,42 @@ public class SettlementService {
   @SuppressWarnings("unused")
   private Environment environment;
 
-  private final SettlementCoreSupport settlementCoreSupport;
+  private final SupplierPaymentService supplierPaymentService;
+  private final DealerSettlementService dealerSettlementService;
+  private final SupplierSettlementService supplierSettlementService;
 
   @Autowired
-  public SettlementService(SettlementCoreSupport settlementCoreSupport) {
-    this.settlementCoreSupport = settlementCoreSupport;
-  }
-
   public SettlementService(
-      com.bigbrightpaints.erp.modules.company.service.CompanyContextService companyContextService,
-      com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository accountRepository,
-      com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository
-          journalEntryRepository,
-      DealerLedgerService dealerLedgerService,
-      SupplierLedgerService supplierLedgerService,
-      com.bigbrightpaints.erp.modules.hr.domain.PayrollRunRepository payrollRunRepository,
-      com.bigbrightpaints.erp.modules.hr.domain.PayrollRunLineRepository payrollRunLineRepository,
-      AccountingPeriodService accountingPeriodService,
-      ReferenceNumberService referenceNumberService,
-      org.springframework.context.ApplicationEventPublisher eventPublisher,
-      com.bigbrightpaints.erp.core.util.CompanyClock companyClock,
-      com.bigbrightpaints.erp.core.util.CompanyEntityLookup companyEntityLookup,
-      com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAllocationRepository
-          settlementAllocationRepository,
-      com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchaseRepository
-          rawMaterialPurchaseRepository,
-      com.bigbrightpaints.erp.modules.invoice.domain.InvoiceRepository invoiceRepository,
-      com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovementRepository
-          rawMaterialMovementRepository,
-      com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatchRepository
-          rawMaterialBatchRepository,
-      com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatchRepository
-          finishedGoodBatchRepository,
-      com.bigbrightpaints.erp.modules.sales.domain.DealerRepository dealerRepository,
-      com.bigbrightpaints.erp.modules.purchasing.domain.SupplierRepository supplierRepository,
-      com.bigbrightpaints.erp.modules.invoice.service.InvoiceSettlementPolicy
-          invoiceSettlementPolicy,
-      JournalReferenceResolver journalReferenceResolver,
-      com.bigbrightpaints.erp.modules.accounting.domain.JournalReferenceMappingRepository
-          journalReferenceMappingRepository,
-      jakarta.persistence.EntityManager entityManager,
-      com.bigbrightpaints.erp.core.config.SystemSettingsService systemSettingsService,
-      com.bigbrightpaints.erp.core.audit.AuditService auditService,
-      com.bigbrightpaints.erp.modules.accounting.event.AccountingEventStore accountingEventStore,
-      JournalEntryService journalEntryService,
-      DealerReceiptService dealerReceiptService) {
-    this(
-        new SettlementCoreSupport(
-            companyContextService,
-            accountRepository,
-            journalEntryRepository,
-            dealerLedgerService,
-            supplierLedgerService,
-            payrollRunRepository,
-            payrollRunLineRepository,
-            accountingPeriodService,
-            referenceNumberService,
-            eventPublisher,
-            companyClock,
-            companyEntityLookup,
-            settlementAllocationRepository,
-            rawMaterialPurchaseRepository,
-            invoiceRepository,
-            rawMaterialMovementRepository,
-            rawMaterialBatchRepository,
-            finishedGoodBatchRepository,
-            dealerRepository,
-            supplierRepository,
-            invoiceSettlementPolicy,
-            journalReferenceResolver,
-            journalReferenceMappingRepository,
-            entityManager,
-            systemSettingsService,
-            auditService,
-            accountingEventStore,
-            journalEntryService,
-            dealerReceiptService));
+      SupplierPaymentService supplierPaymentService,
+      DealerSettlementService dealerSettlementService,
+      SupplierSettlementService supplierSettlementService) {
+    this.supplierPaymentService = supplierPaymentService;
+    this.dealerSettlementService = dealerSettlementService;
+    this.supplierSettlementService = supplierSettlementService;
   }
 
   public JournalEntryDto recordSupplierPayment(SupplierPaymentRequest request) {
-    return settlementCoreSupport.recordSupplierPayment(normalizeSupplierPaymentRequest(request));
-  }
-
-  JournalEntryDto recordSupplierPaymentInternal(SupplierPaymentRequest request) {
-    return settlementCoreSupport.recordSupplierPaymentInternal(request);
+    return supplierPaymentService.recordSupplierPayment(normalizeSupplierPaymentRequest(request));
   }
 
   public PartnerSettlementResponse settleDealerInvoices(PartnerSettlementRequest request) {
-    return settlementCoreSupport.settleDealerInvoices(normalizeDealerSettlementRequest(request));
-  }
-
-  PartnerSettlementResponse settleDealerInvoicesInternal(PartnerSettlementRequest request) {
-    return settlementCoreSupport.settleDealerInvoicesInternal(request);
+    return dealerSettlementService.settleDealerInvoices(normalizeDealerSettlementRequest(request));
   }
 
   public PartnerSettlementResponse autoSettleDealer(Long dealerId, AutoSettlementRequest request) {
-    return settlementCoreSupport.autoSettleDealer(
+    return dealerSettlementService.autoSettleDealer(
         dealerId, normalizeAutoSettlementRequest(dealerId, request));
   }
 
-  PartnerSettlementResponse autoSettleDealerInternal(Long dealerId, AutoSettlementRequest request) {
-    return settlementCoreSupport.autoSettleDealerInternal(dealerId, request);
-  }
-
   public PartnerSettlementResponse settleSupplierInvoices(PartnerSettlementRequest request) {
-    return settlementCoreSupport.settleSupplierInvoices(
+    return supplierSettlementService.settleSupplierInvoices(
         normalizeSupplierSettlementRequest(request));
-  }
-
-  PartnerSettlementResponse settleSupplierInvoicesInternal(PartnerSettlementRequest request) {
-    return settlementCoreSupport.settleSupplierInvoicesInternal(request);
   }
 
   public PartnerSettlementResponse autoSettleSupplier(
       Long supplierId, AutoSettlementRequest request) {
-    return settlementCoreSupport.autoSettleSupplier(
+    return supplierSettlementService.autoSettleSupplier(
         supplierId, normalizeAutoSettlementRequest(supplierId, request));
-  }
-
-  PartnerSettlementResponse autoSettleSupplierInternal(
-      Long supplierId, AutoSettlementRequest request) {
-    return settlementCoreSupport.autoSettleSupplierInternal(supplierId, request);
   }
 
   private SupplierPaymentRequest normalizeSupplierPaymentRequest(SupplierPaymentRequest request) {

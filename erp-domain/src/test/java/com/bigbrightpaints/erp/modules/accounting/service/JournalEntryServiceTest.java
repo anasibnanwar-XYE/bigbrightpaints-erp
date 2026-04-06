@@ -31,7 +31,8 @@ class JournalEntryServiceTest {
   @Mock private JournalPostingService journalPostingService;
   @Mock private JournalReversalService journalReversalService;
   @Mock private PeriodValidationService periodValidationService;
-  @Mock private AccountingCoreSupport accountingCoreSupport;
+  @Mock private ManualJournalService manualJournalService;
+  @Mock private ClosingEntryReversalService closingEntryReversalService;
 
   private JournalEntryService journalEntryService;
 
@@ -43,7 +44,8 @@ class JournalEntryServiceTest {
             journalPostingService,
             journalReversalService,
             periodValidationService,
-            accountingCoreSupport);
+            manualJournalService,
+            closingEntryReversalService);
   }
 
   @Test
@@ -136,10 +138,17 @@ class JournalEntryServiceTest {
   }
 
   @Test
-  void createManualJournalEntry_rejectsNullRequest() {
+  void createManualJournalEntry_delegatesToManualJournalService() {
+    ApplicationException failure =
+        new ApplicationException(
+            com.bigbrightpaints.erp.core.exception.ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,
+            "Journal entry request is required");
+    when(manualJournalService.createManualJournalEntry(null, "manual-key")).thenThrow(failure);
+
     assertThatThrownBy(() -> journalEntryService.createManualJournalEntry(null, "manual-key"))
-        .isInstanceOf(ApplicationException.class)
-        .hasMessageContaining("Journal entry request is required");
+        .isSameAs(failure);
+
+    verify(manualJournalService).createManualJournalEntry(null, "manual-key");
   }
 
   private JournalEntryRequest journalEntryRequest(String referenceNumber) {

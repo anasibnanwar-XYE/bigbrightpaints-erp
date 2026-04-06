@@ -2,21 +2,13 @@ package com.bigbrightpaints.erp.modules.accounting.service;
 
 import java.time.LocalDate;
 import java.util.List;
-import java.util.Optional;
-
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.util.StringUtils;
-
-import com.bigbrightpaints.erp.core.exception.ApplicationException;
-import com.bigbrightpaints.erp.core.exception.ErrorCode;
-import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriod;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryType;
-import com.bigbrightpaints.erp.modules.accounting.domain.JournalReferenceMapping;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalCreationRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest;
@@ -36,14 +28,16 @@ public class JournalEntryService {
   private final JournalPostingService journalPostingService;
   private final JournalReversalService journalReversalService;
   private final PeriodValidationService periodValidationService;
-  private final AccountingCoreSupport accountingCoreSupport;
+  private final ManualJournalService manualJournalService;
+  private final ClosingEntryReversalService closingEntryReversalService;
 
   private record LegacyBundle(
       JournalQueryService journalQueryService,
       JournalPostingService journalPostingService,
       JournalReversalService journalReversalService,
       PeriodValidationService periodValidationService,
-      AccountingCoreSupport accountingCoreSupport) {}
+      ManualJournalService manualJournalService,
+      ClosingEntryReversalService closingEntryReversalService) {}
 
   private static LegacyBundle legacyBundle(
       com.bigbrightpaints.erp.modules.company.service.CompanyContextService companyContextService,
@@ -134,7 +128,9 @@ public class JournalEntryService {
         new JournalPostingService(accountingCoreSupport),
         new JournalReversalService(accountingCoreSupport),
         new PeriodValidationService(accountingCoreSupport),
-        accountingCoreSupport);
+        new ManualJournalService(
+            accountingCoreSupport, new JournalPostingService(accountingCoreSupport)),
+        new ClosingEntryReversalService(accountingCoreSupport));
   }
 
   private JournalEntryService(LegacyBundle legacyBundle) {
@@ -143,7 +139,8 @@ public class JournalEntryService {
         legacyBundle.journalPostingService(),
         legacyBundle.journalReversalService(),
         legacyBundle.periodValidationService(),
-        legacyBundle.accountingCoreSupport());
+        legacyBundle.manualJournalService(),
+        legacyBundle.closingEntryReversalService());
   }
 
   @Autowired
@@ -152,12 +149,14 @@ public class JournalEntryService {
       JournalPostingService journalPostingService,
       JournalReversalService journalReversalService,
       PeriodValidationService periodValidationService,
-      AccountingCoreSupport accountingCoreSupport) {
+      ManualJournalService manualJournalService,
+      ClosingEntryReversalService closingEntryReversalService) {
     this.journalQueryService = journalQueryService;
     this.journalPostingService = journalPostingService;
     this.journalReversalService = journalReversalService;
     this.periodValidationService = periodValidationService;
-    this.accountingCoreSupport = accountingCoreSupport;
+    this.manualJournalService = manualJournalService;
+    this.closingEntryReversalService = closingEntryReversalService;
   }
 
   public JournalEntryService(
@@ -263,94 +262,7 @@ public class JournalEntryService {
   @Transactional
   public JournalEntryDto createManualJournalEntry(
       JournalEntryRequest request, String idempotencyKey) {
-    if (request == null) {
-      throw new ApplicationException(
-          ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD, "Journal entry request is required");
-    }
-    var company = accountingCoreSupport.companyContextService.requireCurrentCompany();
-    String rawKey = StringUtils.hasText(idempotencyKey) ? idempotencyKey.trim() : null;
-    String key =
-        StringUtils.hasText(rawKey)
-            ? accountingCoreSupport.normalizeIdempotencyMappingKey(rawKey)
-            : null;
-    if (StringUtils.hasText(rawKey)) {
-      Optional<JournalEntry> existingByReference =
-          accountingCoreSupport.journalEntryRepository.findByCompanyAndReferenceNumber(
-              company, rawKey);
-      if (existingByReference.isPresent()) {
-        return accountingCoreSupport.toDto(existingByReference.get());
-      }
-      Optional<JournalEntry> existingByResolver =
-          accountingCoreSupport.journalReferenceResolver.findExistingEntry(company, rawKey);
-      if (existingByResolver.isPresent()) {
-        return accountingCoreSupport.toDto(existingByResolver.get());
-      }
-      int reserved =
-          accountingCoreSupport.journalReferenceMappingRepository.reserveManualReference(
-              company.getId(),
-              key,
-              accountingCoreSupport.reservedManualReference(key),
-              "JOURNAL_ENTRY",
-              CompanyTime.now(company));
-      if (reserved == 0) {
-        JournalEntry already = accountingCoreSupport.awaitJournalEntry(company, rawKey, key);
-        if (already != null) {
-          return accountingCoreSupport.toDto(already);
-        }
-        throw new ApplicationException(
-                ErrorCode.INTERNAL_CONCURRENCY_FAILURE,
-                "Manual journal idempotency key already reserved but entry not found")
-            .withDetail("referenceNumber", rawKey);
-      }
-    }
-    JournalEntryDto created;
-    try {
-      created =
-          createJournalEntry(
-              new JournalEntryRequest(
-                  null,
-                  request.entryDate(),
-                  request.memo(),
-                  request.dealerId(),
-                  request.supplierId(),
-                  request.adminOverride(),
-                  request.lines(),
-                  request.currency(),
-                  request.fxRate(),
-                  request.sourceModule(),
-                  request.sourceReference(),
-                  StringUtils.hasText(request.journalType())
-                      ? request.journalType()
-                      : JournalEntryType.MANUAL.name(),
-                  request.attachmentReferences()));
-    } catch (RuntimeException ex) {
-      if (!StringUtils.hasText(rawKey)
-          || !accountingCoreSupport.isRetryableManualConcurrencyFailure(ex)) {
-        throw ex;
-      }
-      JournalEntry already = accountingCoreSupport.awaitJournalEntry(company, rawKey, key);
-      if (already != null) {
-        return accountingCoreSupport.toDto(already);
-      }
-      throw ex;
-    }
-    if (StringUtils.hasText(key)
-        && created != null
-        && StringUtils.hasText(created.referenceNumber())) {
-      JournalReferenceMapping mapping =
-          accountingCoreSupport
-              .findLatestLegacyReferenceMapping(company, key)
-              .orElseThrow(
-                  () ->
-                      new ApplicationException(
-                              ErrorCode.INTERNAL_CONCURRENCY_FAILURE,
-                              "Manual journal idempotency reservation missing")
-                          .withDetail("referenceNumber", rawKey));
-      mapping.setCanonicalReference(created.referenceNumber());
-      mapping.setEntityId(created.id());
-      accountingCoreSupport.journalReferenceMappingRepository.save(mapping);
-    }
-    return created;
+    return manualJournalService.createManualJournalEntry(request, idempotencyKey);
   }
 
   public JournalEntryDto reverseJournalEntry(Long entryId, JournalEntryReversalRequest request) {
@@ -359,15 +271,6 @@ public class JournalEntryService {
 
   JournalEntryDto reverseClosingEntryForPeriodReopen(
       JournalEntry entry, AccountingPeriod period, String reason) {
-    return accountingCoreSupport.reverseClosingEntryForPeriodReopen(entry, period, reason);
-  }
-
-  private JournalEntryDto createJournalEntryForReversal(
-      JournalEntryRequest payload, boolean allowClosedPeriodOverride) {
-    if (!allowClosedPeriodOverride) {
-      return createJournalEntry(payload);
-    }
-    return periodValidationService.runWithSystemEntryDateOverride(
-        () -> createJournalEntry(payload));
+    return closingEntryReversalService.reverseClosingEntryForPeriodReopen(entry, period, reason);
   }
 }
