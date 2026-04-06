@@ -2,7 +2,7 @@
 
 `docs/frontend-api/` documents the shared API contracts and rules that apply across all frontend portal shells. This is the canonical source for cross-portal frontend contracts and replaces any older handoff docs that referenced deprecated routes or tenant-scoping assumptions.
 
-Last reviewed: 2026-03-31
+Last reviewed: 2026-04-06
 
 ## Purpose
 
@@ -44,6 +44,8 @@ See [`docs/frontend-portals/README.md`](../frontend-portals/README.md) for detai
 
 - **Manual journals:** `POST /api/v1/accounting/journal-entries` is the only public manual journal create route.
 - **Reversals:** `POST /api/v1/accounting/journal-entries/{entryId}/reverse` is the only public reversal route.
+- **Settlement writes:** dealer and supplier settlement routes both accept the same `PartnerSettlementRequest` body; use `partnerType` + `partnerId`, not retired dealer/supplier-specific request DTOs.
+- **Period writes:** both `POST /api/v1/accounting/periods` and `PUT /api/v1/accounting/periods/{periodId}` use `AccountingPeriodRequest`; close request/approve/reject use `PeriodCloseRequestActionRequest`, and reopen uses `AccountingPeriodReopenRequest`.
 - **Period close:** frontend must follow maker-checker flow: request close → tenant-admin approvals inbox → approve/reject close.
 - **Exports:** export approval belongs to `tenant-admin`; report consumption stays in `accounting`.
 - **Dispatch:** dispatch confirmation belongs to `factory` even when invoice or journal side effects follow.
@@ -71,6 +73,8 @@ The following routes are no longer part of the current frontend contract:
 | `POST /api/v1/accounting/journals/manual` | Use `POST /api/v1/accounting/journal-entries` |
 | `POST /api/v1/accounting/journal-entries/{entryId}/cascade-reverse` | Use `POST /api/v1/accounting/journal-entries/{entryId}/reverse` |
 | `POST /api/v1/accounting/periods/{periodId}/close` | Use maker-checker flow: request close → admin approvals → approve/reject close |
+| `DealerSettlementRequest` / `SupplierSettlementRequest` | Use `PartnerSettlementRequest` on both settlement routes |
+| `AccountingPeriodUpsertRequest` / `AccountingPeriodUpdateRequest` | Use `AccountingPeriodRequest` for period create and update |
 
 ## Relationship to Frontend Portals
 

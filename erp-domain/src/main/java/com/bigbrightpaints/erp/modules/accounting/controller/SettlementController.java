@@ -19,6 +19,7 @@ import com.bigbrightpaints.erp.modules.accounting.dto.PartnerSettlementResponse;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 
+import io.swagger.v3.oas.annotations.Parameter;
 import jakarta.validation.Valid;
 
 @RestController
@@ -36,7 +37,9 @@ public class SettlementController {
   public ResponseEntity<ApiResponse<JournalEntryDto>> recordDealerReceipt(
       @Valid @RequestBody DealerReceiptRequest request,
       @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
-      @RequestHeader(value = "X-Idempotency-Key", required = false) String legacyIdempotencyKey) {
+      @Parameter(hidden = true)
+          @RequestHeader(value = "X-Idempotency-Key", required = false)
+          String legacyIdempotencyKey) {
     return ResponseEntity.ok(
         ApiResponse.success(
             "Receipt recorded",
@@ -55,7 +58,9 @@ public class SettlementController {
   public ResponseEntity<ApiResponse<JournalEntryDto>> recordDealerHybridReceipt(
       @Valid @RequestBody DealerReceiptSplitRequest request,
       @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
-      @RequestHeader(value = "X-Idempotency-Key", required = false) String legacyIdempotencyKey) {
+      @Parameter(hidden = true)
+          @RequestHeader(value = "X-Idempotency-Key", required = false)
+          String legacyIdempotencyKey) {
     return ResponseEntity.ok(
         ApiResponse.success(
             "Receipt recorded",
@@ -74,7 +79,9 @@ public class SettlementController {
   public ResponseEntity<ApiResponse<PartnerSettlementResponse>> settleDealer(
       @Valid @RequestBody PartnerSettlementRequest request,
       @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
-      @RequestHeader(value = "X-Idempotency-Key", required = false) String legacyIdempotencyKey) {
+      @Parameter(hidden = true)
+          @RequestHeader(value = "X-Idempotency-Key", required = false)
+          String legacyIdempotencyKey) {
     return ResponseEntity.ok(
         ApiResponse.success(
             "Settlement recorded",
@@ -94,7 +101,9 @@ public class SettlementController {
       @PathVariable Long dealerId,
       @Valid @RequestBody AutoSettlementRequest request,
       @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
-      @RequestHeader(value = "X-Idempotency-Key", required = false) String legacyIdempotencyKey) {
+      @Parameter(hidden = true)
+          @RequestHeader(value = "X-Idempotency-Key", required = false)
+          String legacyIdempotencyKey) {
     return ResponseEntity.ok(
         ApiResponse.success(
             "Auto-settlement recorded",
@@ -114,7 +123,9 @@ public class SettlementController {
   public ResponseEntity<ApiResponse<PartnerSettlementResponse>> settleSupplier(
       @Valid @RequestBody PartnerSettlementRequest request,
       @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
-      @RequestHeader(value = "X-Idempotency-Key", required = false) String legacyIdempotencyKey) {
+      @Parameter(hidden = true)
+          @RequestHeader(value = "X-Idempotency-Key", required = false)
+          String legacyIdempotencyKey) {
     return ResponseEntity.ok(
         ApiResponse.success(
             "Settlement recorded",
@@ -134,7 +145,9 @@ public class SettlementController {
       @PathVariable Long supplierId,
       @Valid @RequestBody AutoSettlementRequest request,
       @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
-      @RequestHeader(value = "X-Idempotency-Key", required = false) String legacyIdempotencyKey) {
+      @Parameter(hidden = true)
+          @RequestHeader(value = "X-Idempotency-Key", required = false)
+          String legacyIdempotencyKey) {
     return ResponseEntity.ok(
         ApiResponse.success(
             "Auto-settlement recorded",

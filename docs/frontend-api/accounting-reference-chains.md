@@ -1,6 +1,6 @@
 # Accounting Reference Chains
 
-Last reviewed: 2026-04-01
+Last reviewed: 2026-04-06
 
 This file captures the canonical document and reference chains frontend uses across onboarding, stock bootstrap, accounting workflows, and audit/provenance reads.
 
@@ -168,6 +168,8 @@ UI implication:
 - Direct close is not a supported frontend action. Render period close as a
   maker-checker flow with approval state, approver identity, and rejection
   reason tracking.
+- Use `PeriodCloseRequestActionRequest` for request-close, approve-close, and
+  reject-close. Use `AccountingPeriodReopenRequest` only on the reopen route.
 
 ## AR settlement and dealer finance reads
 
@@ -190,6 +192,8 @@ UI implication:
   `GET /api/v1/portal/finance/invoices?dealerId={dealerId}`,
   and `GET /api/v1/portal/finance/aging?dealerId={dealerId}` as one connected
   clearing chain.
+- Dealer settlements now use `PartnerSettlementRequest` with
+  `partnerType=DEALER` and `partnerId=<dealerId>`.
 
 ## AP settlement and supplier finance reads
 
@@ -206,6 +210,8 @@ UI implication:
   `GET /api/v1/accounting/statements/suppliers/{supplierId}`,
   and `GET /api/v1/accounting/aging/suppliers/{supplierId}` as one connected
   AP-clearing chain.
+- Supplier settlements use the same `PartnerSettlementRequest` DTO with
+  `partnerType=SUPPLIER` and `partnerId=<supplierId>`.
 
 ## Purchase debit-note replay lineage
 

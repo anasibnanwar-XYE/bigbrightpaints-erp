@@ -1,6 +1,6 @@
 # Idempotency and Errors
 
-Last reviewed: 2026-04-01
+Last reviewed: 2026-04-06
 
 ## Idempotency rules
 
@@ -10,6 +10,13 @@ Last reviewed: 2026-04-01
 - `POST /api/v1/purchasing/goods-receipts` and
   `POST /api/v1/inventory/raw-materials/adjustments` accept only
   `Idempotency-Key`.
+- `POST /api/v1/accounting/receipts/dealer`,
+  `POST /api/v1/accounting/receipts/dealer/hybrid`,
+  `POST /api/v1/accounting/settlements/dealers`,
+  `POST /api/v1/accounting/dealers/{dealerId}/auto-settle`,
+  `POST /api/v1/accounting/settlements/suppliers`, and
+  `POST /api/v1/accounting/suppliers/{supplierId}/auto-settle` also accept only
+  `Idempotency-Key`.
 - High-value financial writes must preserve and replay the same idempotency key
   from the originating form state.
 - Journal creation should use a stable client reference number that the backend
@@ -18,8 +25,9 @@ Last reviewed: 2026-04-01
   `referenceNumber`, and `idempotencyKey`. Reusing a correction reference for a
   different purchase or invoice is a new action, not a safe retry.
 - Frontend should send `Idempotency-Key`, not `X-Idempotency-Key`. Legacy
-  headers are not part of the frontend contract even when reject coverage still
-  exists server-side.
+  headers are not part of the frontend contract. Accounting settlement and
+  receipt routes reject `X-Idempotency-Key` with a `400` validation error and
+  details that point back to the canonical header and path.
 - Reversal requests should never mint a second endpoint for cascade behavior;
   use the canonical reverse path with explicit payload fields.
 
@@ -65,6 +73,21 @@ Example error envelope:
     "openingStockBatchKey": "FY26-OPENING-STOCK-01",
     "canonicalPath": "/api/v1/inventory/opening-stock",
     "traceId": "c41fd8c34b2942f4"
+  }
+}
+```
+
+Legacy-header rejection example:
+
+```json
+{
+  "success": false,
+  "message": "X-Idempotency-Key is not supported for dealer settlements; use Idempotency-Key",
+  "reason": "VALIDATION_INVALID_INPUT",
+  "details": {
+    "legacyHeader": "X-Idempotency-Key",
+    "canonicalHeader": "Idempotency-Key",
+    "canonicalPath": "/api/v1/accounting/settlements/dealers"
   }
 }
 ```

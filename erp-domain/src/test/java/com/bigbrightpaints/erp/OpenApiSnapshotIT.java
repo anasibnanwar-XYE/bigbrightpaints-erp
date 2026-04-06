@@ -865,6 +865,44 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
         root, "/api/v1/accounting/settlements/suppliers", "post", "Idempotency-Key");
     assertHeaderParameters(
         root, "/api/v1/accounting/suppliers/{supplierId}/auto-settle", "post", "Idempotency-Key");
+
+    assertOperationContract(
+        root,
+        "/api/v1/accounting/settlements/dealers",
+        "post",
+        "#/components/schemas/PartnerSettlementRequest",
+        "200",
+        "#/components/schemas/ApiResponsePartnerSettlementResponse");
+    assertOperationContract(
+        root,
+        "/api/v1/accounting/settlements/suppliers",
+        "post",
+        "#/components/schemas/PartnerSettlementRequest",
+        "200",
+        "#/components/schemas/ApiResponsePartnerSettlementResponse");
+    assertOperationContract(
+        root,
+        "/api/v1/accounting/periods",
+        "post",
+        "#/components/schemas/AccountingPeriodRequest",
+        "200",
+        "#/components/schemas/ApiResponseAccountingPeriodDto");
+    assertOperationContract(
+        root,
+        "/api/v1/accounting/periods/{periodId}",
+        "put",
+        "#/components/schemas/AccountingPeriodRequest",
+        "200",
+        "#/components/schemas/ApiResponseAccountingPeriodDto");
+
+    assertSchemaPresence(root, "PartnerSettlementRequest", true);
+    assertSchemaPresence(root, "AccountingPeriodRequest", true);
+    assertSchemaPresence(root, "DealerSettlementRequest", false);
+    assertSchemaPresence(root, "SupplierSettlementRequest", false);
+    assertSchemaPresence(root, "AccountingPeriodUpsertRequest", false);
+    assertSchemaPresence(root, "AccountingPeriodUpdateRequest", false);
+    assertSchemaPresence(root, "AccountingPeriodCloseRequest", false);
+    assertSchemaPresence(root, "AccountingPeriodLockRequest", false);
   }
 
   @Test
@@ -1011,6 +1049,14 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
           }
         });
     assertThat(parameterNames).containsExactly(expectedHeaderNames);
+  }
+
+  private void assertSchemaPresence(JsonNode root, String schemaName, boolean expectedPresence) {
+    assertThat(root.path("components").path("schemas").has(schemaName))
+        .withFailMessage(
+            "Expected schema %s presence=%s in generated OpenAPI spec",
+            schemaName, expectedPresence)
+        .isEqualTo(expectedPresence);
   }
 
   private static List<String> extractOperationSignatures(String spec) throws IOException {

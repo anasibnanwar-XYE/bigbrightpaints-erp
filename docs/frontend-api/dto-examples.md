@@ -1,6 +1,6 @@
 # DTO Examples
 
-Last reviewed: 2026-04-02
+Last reviewed: 2026-04-06
 
 ## Overview
 
@@ -387,6 +387,88 @@ Finished goods may also rely on explicit item metadata fields:
 Public route:
 
 - `POST /api/v1/accounting/journal-entries`
+
+## Partner settlement request
+
+Dealer and supplier settlement routes now share the same request body.
+
+```json
+POST /api/v1/accounting/settlements/dealers
+{
+  "partnerType": "DEALER",
+  "partnerId": 101,
+  "cashAccountId": 1101,
+  "amount": 1650.00,
+  "unappliedAmountApplication": "DOCUMENT",
+  "settlementDate": "2026-03-31",
+  "referenceNumber": "RCPT-2026-0042",
+  "memo": "Invoice settlement",
+  "allocations": [
+    {
+      "invoiceId": 1001,
+      "appliedAmount": 1650.00,
+      "discountAmount": 0,
+      "fxAdjustment": 0,
+      "writeOffAmount": 0,
+      "memo": "Full settlement"
+    }
+  ]
+}
+```
+
+Use the same DTO on:
+
+- `POST /api/v1/accounting/settlements/dealers`
+- `POST /api/v1/accounting/settlements/suppliers`
+
+Change `partnerType`, `partnerId`, and allocation document identifiers to match
+the partner flow. Do not send retired `DealerSettlementRequest` or
+`SupplierSettlementRequest` payloads.
+
+## Accounting period create or update request
+
+```json
+POST /api/v1/accounting/periods
+{
+  "year": 2026,
+  "month": 4,
+  "costingMethod": "FIFO"
+}
+```
+
+```json
+PUT /api/v1/accounting/periods/12
+{
+  "costingMethod": "WEIGHTED_AVERAGE"
+}
+```
+
+Both routes use the same `AccountingPeriodRequest` DTO.
+
+## Period close action request
+
+```json
+POST /api/v1/accounting/periods/12/request-close
+{
+  "note": "Bank reconciliation and checklist completed",
+  "force": true
+}
+```
+
+The same `PeriodCloseRequestActionRequest` body applies to:
+
+- `POST /api/v1/accounting/periods/{periodId}/request-close`
+- `POST /api/v1/accounting/periods/{periodId}/approve-close`
+- `POST /api/v1/accounting/periods/{periodId}/reject-close`
+
+## Period reopen request
+
+```json
+POST /api/v1/accounting/periods/12/reopen
+{
+  "reason": "Late audit adjustment"
+}
+```
 
 ## Journal reversal request
 
