@@ -15,7 +15,6 @@ import com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAlloca
 import com.bigbrightpaints.erp.modules.accounting.dto.PartnerSettlementRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.SettlementAllocationApplication;
 import com.bigbrightpaints.erp.modules.accounting.dto.SettlementAllocationRequest;
-import com.bigbrightpaints.erp.modules.accounting.dto.SettlementPaymentRequest;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.invoice.domain.Invoice;
 import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceRepository;
@@ -131,27 +130,12 @@ class SettlementAllocationResolutionService {
       throw new ApplicationException(
           ErrorCode.VALIDATION_INVALID_INPUT, "Dealer settlement request is required");
     }
-    BigDecimal requestedAmount =
-        request.amount() != null
-            ? ValidationUtils.requirePositive(request.amount(), "amount")
-            : null;
-    BigDecimal paymentTotal = null;
-    if (request.payments() != null && !request.payments().isEmpty()) {
-      paymentTotal = BigDecimal.ZERO;
-      for (SettlementPaymentRequest payment : request.payments()) {
-        paymentTotal =
-            paymentTotal.add(ValidationUtils.requirePositive(payment.amount(), "payment amount"));
-      }
-    }
-    if (requestedAmount != null) {
-      return requestedAmount;
-    }
-    if (paymentTotal != null && paymentTotal.compareTo(BigDecimal.ZERO) > 0) {
-      return paymentTotal;
+    if (request.amount() != null) {
+      return ValidationUtils.requirePositive(request.amount(), "amount");
     }
     throw new ApplicationException(
         ErrorCode.VALIDATION_INVALID_INPUT,
-        "Provide allocations or an amount (or payment lines) for dealer settlements");
+        "Provide allocations or an amount for dealer settlements");
   }
 
   private BigDecimal resolveSupplierHeaderSettlementAmount(PartnerSettlementRequest request) {

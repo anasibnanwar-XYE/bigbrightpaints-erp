@@ -47,8 +47,7 @@ final class SettlementRequestCopies {
         request.memo(),
         idempotencyKey,
         request.adminOverride(),
-        request.allocations(),
-        request.payments());
+        request.allocations());
   }
 
   static AutoSettlementRequest autoSettlement(

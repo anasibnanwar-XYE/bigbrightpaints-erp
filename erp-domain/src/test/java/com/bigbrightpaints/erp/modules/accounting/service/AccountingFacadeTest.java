@@ -1010,8 +1010,7 @@ class AccountingFacadeTest {
                     BigDecimal.ZERO,
                     BigDecimal.ZERO,
                     SettlementAllocationApplication.DOCUMENT,
-                    "allocation")),
-            null);
+                    "allocation")));
     PartnerSettlementRequest supplierSettlementRequest =
         new PartnerSettlementRequest(
             PartnerType.SUPPLIER,
@@ -1035,8 +1034,7 @@ class AccountingFacadeTest {
                     BigDecimal.ZERO,
                     BigDecimal.ZERO,
                     SettlementAllocationApplication.DOCUMENT,
-                    "allocation")),
-            null);
+                    "allocation")));
     AutoSettlementRequest autoSettlementRequest =
         new AutoSettlementRequest(
             3L, new BigDecimal("150.00"), "AUTO-SET", "Auto settlement", "auto-key");

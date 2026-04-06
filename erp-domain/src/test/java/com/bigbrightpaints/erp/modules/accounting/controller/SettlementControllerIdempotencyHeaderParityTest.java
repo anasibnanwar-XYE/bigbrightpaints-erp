@@ -239,8 +239,7 @@ class SettlementControllerIdempotencyHeaderParityTest {
         "memo",
         idempotencyKey,
         Boolean.FALSE,
-        allocations(),
-        null);
+        allocations());
   }
 
   private PartnerSettlementRequest supplierSettlementRequest(String idempotencyKey) {
@@ -257,8 +256,7 @@ class SettlementControllerIdempotencyHeaderParityTest {
         "memo",
         idempotencyKey,
         Boolean.FALSE,
-        allocations(),
-        null);
+        allocations());
   }
 
   private com.bigbrightpaints.erp.modules.accounting.dto.AutoSettlementRequest

@@ -426,6 +426,8 @@ Use the same DTO on:
 Change `partnerType`, `partnerId`, and allocation document identifiers to match
 the partner flow. Do not send retired `DealerSettlementRequest` or
 `SupplierSettlementRequest` payloads.
+Do not send a separate `payments` array; settlement cash modeling uses
+`cashAccountId` + `amount` within `PartnerSettlementRequest`.
 
 `unappliedAmountApplication` behavior depends on request mode:
 

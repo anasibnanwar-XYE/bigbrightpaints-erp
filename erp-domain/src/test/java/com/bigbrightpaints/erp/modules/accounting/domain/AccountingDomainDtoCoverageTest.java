@@ -217,8 +217,7 @@ class AccountingDomainDtoCoverageTest {
             "memo",
             "idem-1",
             true,
-            allocations,
-            List.of());
+            allocations);
     PartnerSettlementRequest supplierRequest =
         new PartnerSettlementRequest(
             PartnerType.SUPPLIER,
@@ -233,8 +232,7 @@ class AccountingDomainDtoCoverageTest {
             "memo",
             "idem-2",
             false,
-            allocations,
-            null);
+            allocations);
     JournalEntryRequest journalEntryRequest =
         new JournalEntryRequest(
             "JE-1",

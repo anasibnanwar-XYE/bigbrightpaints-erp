@@ -18,7 +18,6 @@ import com.bigbrightpaints.erp.modules.accounting.dto.DealerReceiptSplitRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.PartnerSettlementRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.SettlementAllocationApplication;
 import com.bigbrightpaints.erp.modules.accounting.dto.SettlementAllocationRequest;
-import com.bigbrightpaints.erp.modules.accounting.dto.SettlementPaymentRequest;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.purchasing.domain.Supplier;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
@@ -225,6 +224,12 @@ class SettlementReferenceService {
     }
     StringBuilder fingerprint = new StringBuilder();
     appendPartnerFingerprint(fingerprint, PartnerType.DEALER, request.partnerId());
+    fingerprint
+        .append("|cashAccountId=")
+        .append(request.cashAccountId() != null ? request.cashAccountId() : "null");
+    if (request.amount() != null) {
+      fingerprint.append("|amount=").append(normalizeDecimal(request.amount()));
+    }
     List<SettlementAllocationRequest> allocations =
         request.allocations() != null
             ? request.allocations().stream()
@@ -256,51 +261,7 @@ class SettlementReferenceService {
           .append(":app=")
           .append(resolveSettlementApplicationType(allocation).name());
     }
-    List<SettlementPaymentRequest> payments =
-        request.payments() != null
-            ? request.payments()
-            : implicitDealerPayment(request, allocations);
-    for (SettlementPaymentRequest payment : payments) {
-      fingerprint
-          .append("|pay=")
-          .append(payment.accountId() != null ? payment.accountId() : "null")
-          .append(":")
-          .append(normalizeDecimal(payment.amount()));
-    }
     return "DEALER-SETTLEMENT-" + IdempotencyUtils.sha256Hex(fingerprint.toString(), 12);
-  }
-
-  private List<SettlementPaymentRequest> implicitDealerPayment(
-      PartnerSettlementRequest request, List<SettlementAllocationRequest> allocations) {
-    if (request == null || request.cashAccountId() == null) {
-      return List.of();
-    }
-    BigDecimal totalApplied = BigDecimal.ZERO;
-    BigDecimal totalDiscount = BigDecimal.ZERO;
-    BigDecimal totalWriteOff = BigDecimal.ZERO;
-    BigDecimal totalFxGain = BigDecimal.ZERO;
-    BigDecimal totalFxLoss = BigDecimal.ZERO;
-    for (SettlementAllocationRequest allocation : allocations) {
-      totalApplied = totalApplied.add(zeroIfNull(allocation.appliedAmount()));
-      totalDiscount = totalDiscount.add(zeroIfNull(allocation.discountAmount()));
-      totalWriteOff = totalWriteOff.add(zeroIfNull(allocation.writeOffAmount()));
-      BigDecimal fxAdjustment = zeroIfNull(allocation.fxAdjustment());
-      if (fxAdjustment.compareTo(BigDecimal.ZERO) > 0) {
-        totalFxGain = totalFxGain.add(fxAdjustment);
-      } else if (fxAdjustment.compareTo(BigDecimal.ZERO) < 0) {
-        totalFxLoss = totalFxLoss.add(fxAdjustment.abs());
-      }
-    }
-    BigDecimal cashAmount =
-        totalApplied
-            .add(totalFxGain)
-            .subtract(totalFxLoss)
-            .subtract(totalDiscount)
-            .subtract(totalWriteOff);
-    if (cashAmount.compareTo(BigDecimal.ZERO) <= 0) {
-      return List.of();
-    }
-    return List.of(new SettlementPaymentRequest(request.cashAccountId(), cashAmount, "AUTO"));
   }
 
   private String buildSupplierSettlementIdempotencyKey(PartnerSettlementRequest request) {
@@ -378,9 +339,5 @@ class SettlementReferenceService {
         .append(partnerType == PartnerType.SUPPLIER ? "supplierId" : "dealerId")
         .append("=")
         .append(partnerId != null ? partnerId : "null");
-  }
-
-  private BigDecimal zeroIfNull(BigDecimal value) {
-    return value == null ? BigDecimal.ZERO : value;
   }
 }

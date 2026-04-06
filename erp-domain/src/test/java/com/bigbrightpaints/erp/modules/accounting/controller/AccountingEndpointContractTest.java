@@ -776,7 +776,6 @@ class AccountingEndpointContractTest {
             "dealer settlement",
             null,
             Boolean.TRUE,
-            null,
             null);
     PartnerSettlementResponse expected =
         new PartnerSettlementResponse(
@@ -823,7 +822,6 @@ class AccountingEndpointContractTest {
             "supplier settlement",
             null,
             Boolean.TRUE,
-            null,
             null);
     PartnerSettlementResponse expected =
         new PartnerSettlementResponse(

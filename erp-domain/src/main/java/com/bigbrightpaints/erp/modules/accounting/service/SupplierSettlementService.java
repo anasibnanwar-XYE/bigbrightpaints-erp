@@ -134,8 +134,7 @@ class SupplierSettlementService {
                 request.memo(),
                 request.idempotencyKey(),
                 request.adminOverride(),
-                allocations,
-                request.payments());
+                allocations);
     trimmedIdempotencyKey =
         settlementReferenceService.resolveSupplierSettlementIdempotencyKey(requestForReplay);
     boolean replayCandidate =

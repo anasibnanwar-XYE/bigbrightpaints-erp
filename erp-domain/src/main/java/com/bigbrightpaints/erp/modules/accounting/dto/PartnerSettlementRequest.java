@@ -33,8 +33,7 @@ public record PartnerSettlementRequest(
     String memo,
     String idempotencyKey,
     Boolean adminOverride,
-    List<@Valid SettlementAllocationRequest> allocations,
-    List<@Valid SettlementPaymentRequest> payments) {
+    List<@Valid SettlementAllocationRequest> allocations) {
 
   public PartnerSettlementRequest(
       PartnerType partnerType,
@@ -49,8 +48,7 @@ public record PartnerSettlementRequest(
       String memo,
       String idempotencyKey,
       Boolean adminOverride,
-      List<@Valid SettlementAllocationRequest> allocations,
-      List<@Valid SettlementPaymentRequest> payments) {
+      List<@Valid SettlementAllocationRequest> allocations) {
     this(
         partnerType,
         partnerId,
@@ -66,7 +64,6 @@ public record PartnerSettlementRequest(
         memo,
         idempotencyKey,
         adminOverride,
-        allocations,
-        payments);
+        allocations);
   }
 }

@@ -8,11 +8,9 @@ import org.springframework.stereotype.Service;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
-import com.bigbrightpaints.erp.core.validation.ValidationUtils;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.PartnerSettlementRequest;
-import com.bigbrightpaints.erp.modules.accounting.dto.SettlementPaymentRequest;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 
 @Service
@@ -55,35 +53,13 @@ class SettlementJournalLineDraftService {
             .subtract(totals.totalDiscount())
             .subtract(totals.totalWriteOff());
     List<JournalEntryRequest.JournalLineRequest> paymentLines = new ArrayList<>();
-    if (request.payments() == null || request.payments().isEmpty()) {
-      if (cashAmount.compareTo(BigDecimal.ZERO) > 0) {
-        Account cashAccount =
-            accountResolutionService.requireCashAccountForSettlement(
-                company, request.cashAccountId(), "dealer settlement", requireActiveCashAccounts);
-        paymentLines.add(
-            new JournalEntryRequest.JournalLineRequest(
-                cashAccount.getId(), memo, cashAmount, BigDecimal.ZERO));
-      }
-    } else {
-      BigDecimal paymentTotal = BigDecimal.ZERO;
-      for (SettlementPaymentRequest payment : request.payments()) {
-        BigDecimal amount = ValidationUtils.requirePositive(payment.amount(), "payment amount");
-        Account account =
-            accountResolutionService.requireCashAccountForSettlement(
-                company,
-                payment.accountId(),
-                "dealer settlement payment line",
-                requireActiveCashAccounts);
-        paymentLines.add(
-            new JournalEntryRequest.JournalLineRequest(
-                account.getId(), memo, amount, BigDecimal.ZERO));
-        paymentTotal = paymentTotal.add(amount);
-      }
-      if (cashAmount.compareTo(paymentTotal) != 0) {
-        throw new ApplicationException(
-            ErrorCode.VALIDATION_INVALID_INPUT,
-            "Payment total must equal net cash required for dealer settlement");
-      }
+    if (cashAmount.compareTo(BigDecimal.ZERO) > 0) {
+      Account cashAccount =
+          accountResolutionService.requireCashAccountForSettlement(
+              company, request.cashAccountId(), "dealer settlement", requireActiveCashAccounts);
+      paymentLines.add(
+          new JournalEntryRequest.JournalLineRequest(
+              cashAccount.getId(), memo, cashAmount, BigDecimal.ZERO));
     }
     List<JournalEntryRequest.JournalLineRequest> lines = new ArrayList<>(paymentLines);
     if (discountAccount != null) {

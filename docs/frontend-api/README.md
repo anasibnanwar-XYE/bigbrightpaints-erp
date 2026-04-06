@@ -44,7 +44,7 @@ See [`docs/frontend-portals/README.md`](../frontend-portals/README.md) for detai
 
 - **Manual journals:** `POST /api/v1/accounting/journal-entries` is the only public manual journal create route.
 - **Reversals:** `POST /api/v1/accounting/journal-entries/{entryId}/reverse` is the only public reversal route.
-- **Settlement writes:** dealer and supplier settlement routes both accept the same `PartnerSettlementRequest` body; use `partnerType` + `partnerId`, not retired dealer/supplier-specific request DTOs.
+- **Settlement writes:** dealer and supplier settlement routes both accept the same `PartnerSettlementRequest` body; use `partnerType` + `partnerId`, not retired dealer/supplier-specific request DTOs, and do not send a separate `payments` list.
 - **Period writes:** both `POST /api/v1/accounting/periods` and `PUT /api/v1/accounting/periods/{periodId}` use `AccountingPeriodRequest`; close request/approve/reject use `PeriodCloseRequestActionRequest`, and reopen uses `AccountingPeriodReopenRequest`.
 - **Period close:** frontend must follow maker-checker flow: request close → tenant-admin approvals inbox → approve/reject close.
 - **Exports:** export approval belongs to `tenant-admin`; report consumption stays in `accounting`.

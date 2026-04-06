@@ -140,8 +140,7 @@ class DealerSettlementService {
                 request.memo(),
                 request.idempotencyKey(),
                 request.adminOverride(),
-                allocations,
-                request.payments());
+                allocations);
     trimmedIdempotencyKey =
         settlementReferenceService.resolveDealerSettlementIdempotencyKey(requestForReplay);
     if (!StringUtils.hasText(trimmedIdempotencyKey)) {

@@ -284,8 +284,7 @@ class CR_DealerReceiptSettlementAuditTrailTest extends AbstractIntegrationTest {
                     BigDecimal.ZERO,
                     BigDecimal.ZERO,
                     null,
-                    "Apply to invoice")),
-            null);
+                    "Apply to invoice")));
 
     CoderedConcurrencyHarness.RunResult<PartnerSettlementResponse> result =
         CoderedConcurrencyHarness.run(
@@ -369,8 +368,7 @@ class CR_DealerReceiptSettlementAuditTrailTest extends AbstractIntegrationTest {
                       BigDecimal.ZERO,
                       BigDecimal.ZERO,
                       null,
-                      "Apply to invoice")),
-              null);
+                      "Apply to invoice")));
       org.assertj.core.api.Assertions.assertThatThrownBy(
               () -> accountingService.settleDealerInvoices(conflictRequest))
           .isInstanceOf(com.bigbrightpaints.erp.core.exception.ApplicationException.class)
@@ -435,8 +433,7 @@ class CR_DealerReceiptSettlementAuditTrailTest extends AbstractIntegrationTest {
                     BigDecimal.ZERO,
                     BigDecimal.ZERO,
                     null,
-                    "Apply to invoice")),
-            null);
+                    "Apply to invoice")));
 
     CoderedConcurrencyHarness.RunResult<PartnerSettlementResponse> result =
         CoderedConcurrencyHarness.run(
@@ -513,7 +510,6 @@ class CR_DealerReceiptSettlementAuditTrailTest extends AbstractIntegrationTest {
             "CODE-RED header settlement",
             idempotencyKey,
             Boolean.FALSE,
-            null,
             null);
 
     CompanyContextHolder.setCompanyCode(companyCode);
@@ -595,8 +591,7 @@ class CR_DealerReceiptSettlementAuditTrailTest extends AbstractIntegrationTest {
                     BigDecimal.ZERO,
                     BigDecimal.ZERO,
                     null,
-                    "Apply to invoice")),
-            null);
+                    "Apply to invoice")));
 
     PartnerSettlementRequest secondRequest =
         new PartnerSettlementRequest(
@@ -620,8 +615,7 @@ class CR_DealerReceiptSettlementAuditTrailTest extends AbstractIntegrationTest {
                     BigDecimal.ZERO,
                     BigDecimal.ZERO,
                     null,
-                    "Apply to invoice")),
-            null);
+                    "Apply to invoice")));
 
     CompanyContextHolder.setCompanyCode(companyCode);
     try {

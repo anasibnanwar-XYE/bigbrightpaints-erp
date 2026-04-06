@@ -96,7 +96,6 @@ class SettlementServiceTest {
             "  dealer memo  ",
             "  dealer-key  ",
             null,
-            List.of(),
             List.of()));
     settlementService.settleSupplierInvoices(
         new PartnerSettlementRequest(
@@ -114,7 +113,6 @@ class SettlementServiceTest {
             "  supplier memo  ",
             "  supplier-key  ",
             Boolean.TRUE,
-            List.of(),
             List.of()));
 
     ArgumentCaptor<PartnerSettlementRequest> dealerCaptor =
@@ -156,7 +154,6 @@ class SettlementServiceTest {
             " dealer memo ",
             " dealer-null-key ",
             Boolean.TRUE,
-            List.of(),
             List.of()));
     settlementService.settleSupplierInvoices(
         new PartnerSettlementRequest(
@@ -174,7 +171,6 @@ class SettlementServiceTest {
             " supplier memo ",
             " supplier-null-key ",
             null,
-            List.of(),
             List.of()));
 
     ArgumentCaptor<PartnerSettlementRequest> dealerCaptor =
@@ -214,7 +210,6 @@ class SettlementServiceTest {
                         null,
                         null,
                         null,
-                        List.of(),
                         List.of())))
         .isInstanceOf(ApplicationException.class)
         .hasMessageContaining("amount");

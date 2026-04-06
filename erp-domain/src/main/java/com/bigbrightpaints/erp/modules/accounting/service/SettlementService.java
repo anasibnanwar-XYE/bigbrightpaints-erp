@@ -91,8 +91,7 @@ public class SettlementService {
         normalizeText(request.memo()),
         normalizeText(request.idempotencyKey()),
         Boolean.TRUE.equals(request.adminOverride()),
-        request.allocations(),
-        request.payments());
+        request.allocations());
   }
 
   private PartnerSettlementRequest normalizeSupplierSettlementRequest(
@@ -118,8 +117,7 @@ public class SettlementService {
         normalizeText(request.memo()),
         normalizeText(request.idempotencyKey()),
         Boolean.TRUE.equals(request.adminOverride()),
-        request.allocations(),
-        request.payments());
+        request.allocations());
   }
 
   private AutoSettlementRequest normalizeAutoSettlementRequest(

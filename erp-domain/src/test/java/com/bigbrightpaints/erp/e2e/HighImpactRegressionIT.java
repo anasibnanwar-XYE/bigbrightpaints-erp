@@ -652,9 +652,7 @@ class HighImpactRegressionIT extends AbstractIntegrationTest {
                     BigDecimal.ZERO,
                     BigDecimal.ZERO,
                     null,
-                    null)),
-            null // payments (optional)
-            );
+                    null)));
 
     // Both should succeed (idempotent)
     PartnerSettlementResponse first = accountingService.settleDealerInvoices(request);
