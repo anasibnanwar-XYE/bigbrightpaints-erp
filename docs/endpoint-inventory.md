@@ -19,9 +19,9 @@ Portal scope guardrail:
 ## Canonical API contract gate
 
 - Canonical machine contract source: repo-root `openapi.json`.
-- OpenAPI snapshot: `openapi.json` (sha256 `766dc08908b0b8441862250ed038fdbf1c3454c97a98c6e51e1cf6fa1a0911ea`)
-- OpenAPI total paths: `269`
-- OpenAPI total operations: `320`
+- OpenAPI snapshot: `openapi.json` (sha256 `6542985efae584f93e007612aaf03e62f0c28e2b7505aa8d1674b5706e9eed3d`)
+- OpenAPI total paths: `271`
+- OpenAPI total operations: `322`
 - Guard remediation flow: if parity drifts, regenerate this inventory from canonical `openapi.json`, then rerun `bash scripts/guard_openapi_contract_drift.sh` and `bash scripts/guard_accounting_portal_scope_contract.sh`.
 - Hard-cut contract reminder: retired surfaces such as `/api/v1/auth/profile`, `/api/v1/accounting/journals/manual`, `/api/v1/accounting/journals/{entryId}/reverse`, and direct `/api/v1/accounting/periods/{periodId}/close` are intentionally absent from this inventory and must not be reintroduced in frontend or review docs.
 
@@ -38,7 +38,7 @@ Portal scope guardrail:
 | `companies` | 2 | /api/v1/companies, /api/v1/companies/{id} |
 | `credit` | 6 | /api/v1/credit/limit-requests, /api/v1/credit/limit-requests/{id}/approve, /api/v1/credit/override-requests |
 | `dealer-portal` | 7 | /api/v1/dealer-portal/aging, /api/v1/dealer-portal/credit-limit-requests, /api/v1/dealer-portal/dashboard |
-| `dealers` | 4 | /api/v1/dealers, /api/v1/dealers/search, /api/v1/dealers/{dealerId} |
+| `dealers` | 5 | /api/v1/dealers, /api/v1/dealers/import, /api/v1/dealers/search |
 | `demo` | 1 | /api/v1/demo/ping |
 | `dispatch` | 8 | /api/v1/dispatch/confirm, /api/v1/dispatch/order/{orderId}, /api/v1/dispatch/slip/{slipId}/status |
 | `exports` | 2 | /api/v1/exports/request, /api/v1/exports/{requestId}/download |
@@ -57,7 +57,7 @@ Portal scope guardrail:
 | `reports` | 17 | /api/v1/reports/account-statement, /api/v1/reports/aged-debtors, /api/v1/reports/aging/receivables |
 | `sales` | 16 | /api/v1/sales/dashboard, /api/v1/sales/dealers, /api/v1/sales/dealers/search |
 | `superadmin` | 18 | /api/v1/superadmin/audit/platform-events, /api/v1/superadmin/changelog, /api/v1/superadmin/dashboard |
-| `suppliers` | 5 | /api/v1/suppliers, /api/v1/suppliers/{id}, /api/v1/suppliers/{id}/activate |
+| `suppliers` | 6 | /api/v1/suppliers, /api/v1/suppliers/import, /api/v1/suppliers/{id} |
 | `support` | 4 | /api/v1/portal/support/tickets, /api/v1/dealer-portal/support/tickets, /api/v1/portal/support/tickets/{ticketId} |
 
 ## `accounting`
@@ -193,6 +193,7 @@ Portal scope guardrail:
 ## `dealers`
 
 - `GET, POST` `/api/v1/dealers`
+- `POST` `/api/v1/dealers/import`
 - `GET` `/api/v1/dealers/search`
 - `PUT` `/api/v1/dealers/{dealerId}`
 - `POST` `/api/v1/dealers/{dealerId}/dunning/hold`
@@ -411,6 +412,7 @@ Bulk operator note: `/api/v1/factory/bulk-batches/{finishedGoodId}` and `/api/v1
 ## `suppliers`
 
 - `GET, POST` `/api/v1/suppliers`
+- `POST` `/api/v1/suppliers/import`
 - `GET, PUT` `/api/v1/suppliers/{id}`
 - `POST` `/api/v1/suppliers/{id}/activate`
 - `POST` `/api/v1/suppliers/{id}/approve`

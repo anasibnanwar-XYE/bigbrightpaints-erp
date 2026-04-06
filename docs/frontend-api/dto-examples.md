@@ -350,6 +350,7 @@ metadata.
     "cogsAccountId": 5101,
     "revenueAccountId": 4101,
     "discountAccountId": 4102,
+    "fgDiscountAccountId": 4102,
     "taxAccountId": 2105
   }
 }
@@ -362,6 +363,16 @@ Finished goods may also rely on explicit item metadata fields:
 - `fgRevenueAccountId`
 - `fgDiscountAccountId`
 - `fgTaxAccountId`
+
+`POST /api/v1/catalog/items` also accepts explicit account override fields in
+`CatalogItemRequest`:
+
+- `inventoryAccountId`
+- `cogsAccountId`
+- `revenueAccountId`
+
+`GET /api/v1/accounting/accounts/tree` returns recursive nodes where each
+`AccountNode` includes `children`.
 
 ## Journal create request
 

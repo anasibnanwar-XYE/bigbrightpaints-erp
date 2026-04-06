@@ -13,6 +13,9 @@ import org.springframework.transaction.annotation.Transactional;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
+
+import io.swagger.v3.oas.annotations.media.ArraySchema;
+import io.swagger.v3.oas.annotations.media.Schema;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 
@@ -245,6 +248,7 @@ public class AccountHierarchyService {
   }
 
   // DTOs
+  @Schema(name = "AccountNode", description = "Chart of accounts node with recursive children")
   public record AccountNode(
       Long id,
       String code,
@@ -253,6 +257,7 @@ public class AccountHierarchyService {
       BigDecimal balance,
       Integer level,
       Long parentId,
+      @ArraySchema(schema = @Schema(implementation = AccountNode.class))
       List<AccountNode> children) {}
 
   public record BalanceSheetHierarchy(
