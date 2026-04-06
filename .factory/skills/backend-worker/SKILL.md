@@ -58,6 +58,7 @@ None.
    - Create new focused service classes
    - Move methods from the god service to appropriate new services
    - Make the extracted service the canonical owner of the migrated behavior; deleting wrapper shells is not enough if real logic still lives behind `super` calls or dependency hops back into the god class
+   - If a surviving public service only forwards into the new owner, delete that delegating wrapper method and move tests onto the collaborator/public behavior; do not keep `ReflectionTestUtils.invokeMethod(...)` coverage for retired wrappers
    - Delete the retired service/helper/test files once the new owner is live; a renamed monolith or compatibility shim still in the production write path does not count as a completed hard cut
    - Update the god service to delegate to the new services only as a thin facade/shim if needed; do not leave business logic ownership in the god service
    - Update all controllers and other services that call the moved methods
@@ -91,6 +92,8 @@ If the packet changes implemented truth, update the matching canonical docs in t
 - Deprecation / replacement changes → `docs/deprecated/INDEX.md` plus replacement links
 
 Use code, tests, controller annotations, DTOs, and `openapi.json` as source of truth. Update canonical docs, not stale duplicates, and never present planned behavior as implemented.
+
+If `docs/frontend-api/*` changes, verify the examples against the live DTO/controller contract and exception envelope. Do not leave impossible enum values or invented top-level `ApiResponse` fields in canonical examples.
 
 If the packet is docs-only, use the docs-only lane: run `bash ci/lint-knowledgebase.sh` and skip runtime/scrutiny validators unless the packet also changes code, config, schema, scripts, OpenAPI, or test behavior.
 

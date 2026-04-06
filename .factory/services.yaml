@@ -73,6 +73,10 @@ commands:
     ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT" && bash ci/lint-knowledgebase.sh && bash ci/check-architecture.sh && bash ci/check-enterprise-policy.sh && bash ci/check-orchestrator-layer.sh && python3 scripts/check_flaky_tags.py --tests-root erp-domain/src/test/java --gate gate-fast && bash scripts/guard_openapi_contract_drift.sh
   docs-lint: >-
     ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT" && bash ci/lint-knowledgebase.sh
+  audit-trail-ownership-guard: >-
+    ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT" && bash scripts/guard_audit_trail_ownership_contract.sh
+  accounting-frontend-doc-contract-proof: >-
+    ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT/erp-domain" && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='SettlementControllerIdempotencyHeaderParityTest,AccountingEndpointContractTest,AccountingApplicationExceptionResponsesTest,OpenApiSnapshotIT' test
   codex-review-policy: >-
     ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT" && bash scripts/enforce_codex_review_policy.sh
   docs-governance: >-
