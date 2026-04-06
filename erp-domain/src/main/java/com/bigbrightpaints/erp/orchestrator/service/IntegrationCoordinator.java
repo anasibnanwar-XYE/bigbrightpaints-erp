@@ -11,6 +11,8 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
@@ -147,6 +149,20 @@ public class IntegrationCoordinator {
       String companyId,
       String traceId,
       String idempotencyKey) {
+    String normalizedStatus = requestedStatus == null ? "" : requestedStatus.trim().toUpperCase();
+    switch (normalizedStatus) {
+      case "SHIPPED":
+      case "DISPATCHED":
+      case "FULFILLED":
+      case "COMPLETED":
+        throw new ApplicationException(
+                ErrorCode.BUSINESS_INVALID_STATE,
+                "Orchestrator cannot update dispatch-like statuses. Use /api/v1/dispatch/confirm.")
+            .withDetail("canonicalPath", "/api/v1/dispatch/confirm")
+            .withDetail("requestedStatus", requestedStatus);
+      default:
+        break;
+    }
     return orderIntegrationCoordinator.updateFulfillment(
         orderId, requestedStatus, companyId, traceId, idempotencyKey);
   }

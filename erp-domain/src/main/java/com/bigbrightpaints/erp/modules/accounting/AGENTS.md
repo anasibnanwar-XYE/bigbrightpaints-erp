@@ -32,10 +32,10 @@ The accounting module owns financial posting, corrections, period controls, sett
 
 ## Key Services/Facades
 
-- `AccountingCoreEngineCore` — centralized journal creation and payroll posting.
-- `AccountingPeriodServiceCore` — period lifecycle management.
-- `AccountingFacade` — cross-module facade for financial side effects.
-- `ReconciliationServiceCore` — reconciliation and discrepancy resolution.
+- `AccountingService` — centralized journal creation, module-owned accounting workflows, and the payroll posting seam consumed by HR.
+- `AccountingPeriodService` — period lifecycle management, close/reopen orchestration, and closing-journal ownership.
+- `AccountingFacade` — cross-module facade for financial side effects, including accounting-host payroll payment recording.
+- `ReconciliationService` — reconciliation and discrepancy resolution at the module boundary.
 - `OpeningBalanceImportService` — opening balance import processing.
 - `TallyImportService` — Tally XML import processing.
 
@@ -51,7 +51,7 @@ The accounting module owns financial posting, corrections, period controls, sett
 - **Sales → Accounting:** dispatch-linked journals, invoice-linked journals, AR settlements.
 - **Purchasing → Accounting:** GRN-linked journals, purchase return journals, AP settlements.
 - **Factory → Accounting:** WIP/consumption journals, packaging material journals.
-- **HR → Accounting:** payroll posting and payment seams (`PayrollPostingService` → `AccountingFacade`).
+- **HR → Accounting:** payroll posting enters via `PayrollPostingService` → `AccountingService.postPayrollRun`, while payroll payment references are recorded through the accounting payroll-payment journal seam.
 - **Inventory -.events.→ Accounting:** `InventoryMovementEvent` → `InventoryAccountingEventListener`.
 
 ## Canonical Documentation

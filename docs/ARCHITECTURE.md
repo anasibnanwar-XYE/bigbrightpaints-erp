@@ -34,12 +34,13 @@ flowchart LR
 
 ### 1.3 Cross-module accounting dependency model
 
-Most operational modules post financial effects through accounting facade/core APIs:
+Most operational modules post financial effects through accounting service/facade APIs:
 
 - Sales/O2C dispatch + invoicing → accounting postings (`SalesCoreEngine.confirmDispatch`, `InvoiceService.issueInvoiceForOrder`, `AccountingFacade.createStandardJournal`).
 - Purchasing/GRN/returns → inventory movements + accounting entries (`GoodsReceiptService`, `PurchaseReturnService`, `InventoryAccountingEventListener`).
 - Factory/production/packing → WIP/consumption/value journals (`ProductionLogService`, `PackingService`, `BulkPackingService`).
-- Payroll run posting/payment → payroll journals (`PayrollPostingService`, `AccountingCoreEngineCore.postPayrollRun`).
+- Accounting also performs company-scoped factory lookups when reconciling production/packing-linked financial references, but those reads stay behind `CompanyScopedFactoryLookupService` while journal writes still enter through the accounting service/facade seams rather than factory-owned workflows.
+- Payroll run posting/payment → payroll journals (`PayrollPostingService`, `AccountingService.postPayrollRun`, `JournalController.recordPayrollPayment`).
 
 Canonical seam rule after Wave 3:
 
@@ -160,7 +161,7 @@ sequenceDiagram
     participant PR as PayrollRunService
     participant PC as PayrollCalculationService
     participant PP as PayrollPostingService
-    participant AC as AccountingFacade/Core
+    participant AC as AccountingService/Facade
 
     HC->>PR: createPayrollRun()
     HC->>PC: calculatePayroll()
@@ -175,7 +176,7 @@ Evidence and invariants:
 - Payroll run identity/idempotency is period+type keyed with signature checks (`PayrollRunService.createPayrollRun`, `buildIdempotencyKey`, `assertRunSignatureMatches`).
 - Calculation derives line-level earnings/deductions from attendance + statutory engines (`PayrollCalculationService.calculatePayroll`, `calculateEmployeePay`).
 - Posting enforces required payroll account availability, deduction classification constraints, and posted-status/journal-link invariants (`PayrollPostingService.postPayrollToAccounting`).
-- Journal posting path goes through standardized lines into accounting core (`AccountingCoreEngineCore.postPayrollRun` -> `createStandardJournal`).
+- Journal posting path goes through standardized lines into `AccountingService.postPayrollRun`, which delegates canonical journal creation without reopening a retired core-class boundary.
 
 Primary files:
 
@@ -183,7 +184,7 @@ Primary files:
 - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/hr/service/PayrollRunService.java`
 - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/hr/service/PayrollCalculationService.java`
 - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/hr/service/PayrollPostingService.java`
-- `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/internal/AccountingCoreEngineCore.java`
+- `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/AccountingService.java`
 
 ### 2.5 Tenant onboarding / lifecycle / runtime controls
 
@@ -234,16 +235,16 @@ Primary files:
 
 ### 2.7 Period close, reopen, and reconciliation coupling
 
-- Period close uses request/approve/reject maker-checker workflow (`AccountingPeriodServiceCore.requestPeriodClose`, `approvePeriodClose`, `rejectPeriodClose`).
+- Period close uses request/approve/reject maker-checker workflow (`AccountingPeriodService.requestPeriodClose`, `approvePeriodClose`, `rejectPeriodClose`).
 - Checklist and reconciliation gates are validated before closure; close creates closing journal and snapshot, reopen reverses closing journal and drops snapshot (`closePeriod`, `reopenPeriod`, `createSystemJournal`, `reverseClosingJournalIfNeeded`).
 - Reconciliation discrepancy resolution supports acknowledged / adjustment journal / write-off with typed control account selection (`ReconciliationServiceCore.resolveDiscrepancy`, `createResolutionJournal`).
 - Reopen endpoint is super-admin-only through service override (`AccountingPeriodService.reopenPeriod`).
 
 Primary files:
 
-- `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/internal/AccountingPeriodServiceCore.java`
+- `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/controller/PeriodController.java`
 - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/AccountingPeriodService.java`
-- `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/internal/ReconciliationServiceCore.java`
+- `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/ReconciliationServiceCore.java`
 
 ### 2.8 Support ticket -> GitHub sync -> resolved notification
 
@@ -338,8 +339,8 @@ Representative entities used by the major flows:
 
 Journal anchor/reference conventions are explicit in source-module posting calls, e.g.:
 
-- payroll: `PAYROLL-<runToken>` (`AccountingCoreEngineCore.postPayrollRun`)
-- period close: `PERIOD-CLOSE-<year><month>` (`AccountingPeriodServiceCore.postClosingJournal`)
+- payroll: `PAYROLL-<runToken>` (`AccountingService.postPayrollRun`)
+- period close: `PERIOD-CLOSE-<year><month>` (`AccountingPeriodService.postClosingJournal`)
 - discrepancy resolution: `RECON-<resolution>-<id>` (`ReconciliationServiceCore.buildResolutionReference`)
 - opening data migration: `OPEN-BAL-...`, `OPEN-STOCK-...` (import services)
 
