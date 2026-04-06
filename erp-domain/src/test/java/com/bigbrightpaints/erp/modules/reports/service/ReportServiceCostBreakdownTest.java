@@ -15,7 +15,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import com.bigbrightpaints.erp.core.util.CompanyClock;
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodSnapshotRepository;
@@ -34,6 +33,7 @@ import com.bigbrightpaints.erp.modules.factory.domain.ProductionLog;
 import com.bigbrightpaints.erp.modules.factory.domain.ProductionLogRepository;
 import com.bigbrightpaints.erp.modules.factory.domain.SizeVariant;
 import com.bigbrightpaints.erp.modules.factory.dto.CostBreakdownDto;
+import com.bigbrightpaints.erp.modules.factory.service.CompanyScopedFactoryLookupService;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatch;
 import com.bigbrightpaints.erp.modules.inventory.domain.InventoryMovement;
@@ -66,7 +66,7 @@ class ReportServiceCostBreakdownTest {
   @Mock private InventoryMovementRepository inventoryMovementRepository;
   @Mock private RawMaterialMovementRepository rawMaterialMovementRepository;
   @Mock private CompanyScopedAccountingLookupService accountingLookupService;
-  @Mock private CompanyEntityLookup companyEntityLookup;
+  @Mock private CompanyScopedFactoryLookupService factoryLookupService;
   @Mock private CompanyClock companyClock;
   @Mock private InventoryValuationQueryService inventoryValuationService;
   @Mock private TrialBalanceReportQueryService trialBalanceReportQueryService;
@@ -99,7 +99,7 @@ class ReportServiceCostBreakdownTest {
             inventoryMovementRepository,
             rawMaterialMovementRepository,
             accountingLookupService,
-            companyEntityLookup,
+            factoryLookupService,
             companyClock,
             inventoryValuationService,
             trialBalanceReportQueryService,
@@ -131,7 +131,7 @@ class ReportServiceCostBreakdownTest {
     product.setProductName("Primer Blue");
     log.setProduct(product);
 
-    when(companyEntityLookup.requireProductionLog(company, 88L)).thenReturn(log);
+    when(factoryLookupService.requireProductionLog(company, 88L)).thenReturn(log);
 
     CostBreakdownDto dto = reportService.costBreakdown(88L);
 
@@ -223,7 +223,7 @@ class ReportServiceCostBreakdownTest {
     fgMovement.setUnitCost(new BigDecimal("14.5000"));
     fgMovement.setJournalEntryId(901L);
 
-    when(companyEntityLookup.requireProductionLog(company, 77L)).thenReturn(log);
+    when(factoryLookupService.requireProductionLog(company, 77L)).thenReturn(log);
     when(packingRecordRepository.findByCompanyAndProductionLogOrderByPackedDateAscIdAsc(
             company, log))
         .thenReturn(List.of(packingRecord));
@@ -274,7 +274,7 @@ class ReportServiceCostBreakdownTest {
     log.setProducedAt(Instant.parse("2026-02-13T01:00:00Z"));
     log.setProduct(null);
 
-    when(companyEntityLookup.requireProductionLog(company, 99L)).thenReturn(log);
+    when(factoryLookupService.requireProductionLog(company, 99L)).thenReturn(log);
 
     CostBreakdownDto dto = reportService.costBreakdown(99L);
 

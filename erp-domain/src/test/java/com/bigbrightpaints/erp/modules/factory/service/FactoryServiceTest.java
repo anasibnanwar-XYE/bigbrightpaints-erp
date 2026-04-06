@@ -26,7 +26,6 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.factory.domain.FactoryTask;
@@ -47,7 +46,7 @@ class FactoryServiceTest {
   @Mock private ProductionPlanRepository planRepository;
   @Mock private ProductionLogRepository productionLogRepository;
   @Mock private FactoryTaskRepository taskRepository;
-  @Mock private CompanyEntityLookup companyEntityLookup;
+  @Mock private CompanyScopedFactoryLookupService factoryLookupService;
 
   private FactoryService factoryService;
   private Company company;
@@ -60,7 +59,7 @@ class FactoryServiceTest {
             planRepository,
             productionLogRepository,
             taskRepository,
-            companyEntityLookup);
+            factoryLookupService);
     company = new Company();
     company.setTimezone("UTC");
     org.mockito.Mockito.lenient()

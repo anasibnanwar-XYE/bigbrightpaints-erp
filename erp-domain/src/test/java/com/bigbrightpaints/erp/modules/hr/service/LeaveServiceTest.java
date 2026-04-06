@@ -25,7 +25,6 @@ import org.springframework.test.util.ReflectionTestUtils;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
@@ -48,7 +47,7 @@ class LeaveServiceTest {
   @Mock private CompanyContextService companyContextService;
   @Mock private EmployeeRepository employeeRepository;
   @Mock private LeaveRequestRepository leaveRequestRepository;
-  @Mock private CompanyEntityLookup companyEntityLookup;
+  @Mock private CompanyScopedHrLookupService hrLookupService;
   @Mock private LeaveTypePolicyRepository leaveTypePolicyRepository;
   @Mock private LeaveBalanceRepository leaveBalanceRepository;
 
@@ -65,7 +64,7 @@ class LeaveServiceTest {
             companyContextService,
             employeeRepository,
             leaveRequestRepository,
-            companyEntityLookup,
+            hrLookupService,
             leaveTypePolicyRepository,
             leaveBalanceRepository);
     companyClock = mock(CompanyClock.class);
@@ -88,7 +87,7 @@ class LeaveServiceTest {
     LeaveBalance balance = balanceForYear(tenantToday.getYear());
 
     when(companyClock.today(company)).thenReturn(tenantToday);
-    when(companyEntityLookup.requireEmployee(company, 10L)).thenReturn(employee);
+    when(hrLookupService.requireEmployee(company, 10L)).thenReturn(employee);
     when(leaveTypePolicyRepository.findByCompanyAndActiveTrueOrderByDisplayNameAsc(company))
         .thenReturn(java.util.List.of(policy));
     when(leaveBalanceRepository.findByCompanyAndEmployeeAndLeaveTypeAndBalanceYear(
@@ -110,7 +109,7 @@ class LeaveServiceTest {
     LeaveTypePolicy policy = activePolicy("CASUAL", "Casual leave");
     LeaveBalance balance = balanceForYear(2024);
 
-    when(companyEntityLookup.requireEmployee(company, 10L)).thenReturn(employee);
+    when(hrLookupService.requireEmployee(company, 10L)).thenReturn(employee);
     when(leaveTypePolicyRepository.findByCompanyAndActiveTrueOrderByDisplayNameAsc(company))
         .thenReturn(java.util.List.of(policy));
     when(leaveBalanceRepository.findByCompanyAndEmployeeAndLeaveTypeAndBalanceYear(
@@ -239,7 +238,7 @@ class LeaveServiceTest {
     balance.setUsed(new BigDecimal("3.00"));
     balance.setRemaining(new BigDecimal("9.00"));
 
-    when(companyEntityLookup.requireLeaveRequest(company, 401L)).thenReturn(leaveRequest);
+    when(hrLookupService.requireLeaveRequest(company, 401L)).thenReturn(leaveRequest);
     when(leaveBalanceRepository.findByCompanyAndEmployeeAndLeaveTypeAndBalanceYear(
             company, employee, "CASUAL", 2026))
         .thenReturn(Optional.of(balance));
@@ -272,7 +271,7 @@ class LeaveServiceTest {
     leaveRequest.setEndDate(LocalDate.of(2026, 3, 1));
     leaveRequest.setEmployee(employee);
 
-    when(companyEntityLookup.requireLeaveRequest(company, 501L)).thenReturn(leaveRequest);
+    when(hrLookupService.requireLeaveRequest(company, 501L)).thenReturn(leaveRequest);
 
     assertThatThrownBy(
             () ->

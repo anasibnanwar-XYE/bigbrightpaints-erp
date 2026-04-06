@@ -48,7 +48,6 @@ import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.idempotency.IdempotencyReservationService;
 import com.bigbrightpaints.erp.core.idempotency.IdempotencyUtils;
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.core.util.CostingMethodUtils;
 import com.bigbrightpaints.erp.modules.accounting.service.CompanyDefaultAccountsService;
 import com.bigbrightpaints.erp.modules.accounting.service.CompanyScopedAccountingLookupService;
@@ -205,58 +204,6 @@ public class ProductionCatalogService {
     this.rowTransactionTemplate = new TransactionTemplate(transactionManager);
     this.rowTransactionTemplate.setPropagationBehavior(
         TransactionDefinition.PROPAGATION_REQUIRES_NEW);
-  }
-
-  public ProductionCatalogService(
-      CompanyContextService companyContextService,
-      ProductionBrandRepository brandRepository,
-      ProductionProductRepository productRepository,
-      FinishedGoodRepository finishedGoodRepository,
-      RawMaterialRepository rawMaterialRepository,
-      FinishedGoodBatchRepository finishedGoodBatchRepository,
-      InventoryMovementRepository inventoryMovementRepository,
-      InventoryReservationRepository inventoryReservationRepository,
-      RawMaterialBatchRepository rawMaterialBatchRepository,
-      RawMaterialMovementRepository rawMaterialMovementRepository,
-      PurchaseOrderRepository purchaseOrderRepository,
-      GoodsReceiptRepository goodsReceiptRepository,
-      RawMaterialPurchaseRepository rawMaterialPurchaseRepository,
-      PackagingSizeMappingRepository packagingSizeMappingRepository,
-      PackingRecordRepository packingRecordRepository,
-      ProductionLogMaterialRepository productionLogMaterialRepository,
-      SalesOrderItemRepository salesOrderItemRepository,
-      CompanyEntityLookup companyEntityLookup,
-      CompanyScopedAccountingLookupService accountingLookupService,
-      CompanyDefaultAccountsService companyDefaultAccountsService,
-      CatalogImportRepository catalogImportRepository,
-      AuditService auditService,
-      SkuReadinessService skuReadinessService,
-      PlatformTransactionManager transactionManager) {
-    this(
-        companyContextService,
-        brandRepository,
-        productRepository,
-        finishedGoodRepository,
-        rawMaterialRepository,
-        finishedGoodBatchRepository,
-        inventoryMovementRepository,
-        inventoryReservationRepository,
-        rawMaterialBatchRepository,
-        rawMaterialMovementRepository,
-        purchaseOrderRepository,
-        goodsReceiptRepository,
-        rawMaterialPurchaseRepository,
-        packagingSizeMappingRepository,
-        packingRecordRepository,
-        productionLogMaterialRepository,
-        salesOrderItemRepository,
-        CompanyScopedProductionLookupService.fromLegacy(companyEntityLookup),
-        accountingLookupService,
-        companyDefaultAccountsService,
-        catalogImportRepository,
-        auditService,
-        skuReadinessService,
-        transactionManager);
   }
 
   public CatalogImportResponse importCatalog(MultipartFile file) {

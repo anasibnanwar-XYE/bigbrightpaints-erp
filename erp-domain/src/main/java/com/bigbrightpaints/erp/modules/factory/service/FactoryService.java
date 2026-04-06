@@ -11,7 +11,6 @@ import org.springframework.util.StringUtils;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.factory.domain.*;
@@ -41,20 +40,6 @@ public class FactoryService {
     this.productionLogRepository = productionLogRepository;
     this.taskRepository = taskRepository;
     this.factoryLookupService = factoryLookupService;
-  }
-
-  public FactoryService(
-      CompanyContextService companyContextService,
-      ProductionPlanRepository planRepository,
-      ProductionLogRepository productionLogRepository,
-      FactoryTaskRepository taskRepository,
-      CompanyEntityLookup companyEntityLookup) {
-    this(
-        companyContextService,
-        planRepository,
-        productionLogRepository,
-        taskRepository,
-        CompanyScopedFactoryLookupService.fromLegacy(companyEntityLookup));
   }
 
   public List<ProductionPlanDto> listPlans() {

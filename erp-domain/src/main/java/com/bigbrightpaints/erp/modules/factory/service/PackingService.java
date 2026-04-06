@@ -14,7 +14,6 @@ import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.idempotency.IdempotencyReservationService;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.core.util.MoneyUtils;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalCreationRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
@@ -98,44 +97,6 @@ public class PackingService {
     this.packingJournalBuilder = packingJournalBuilder;
     this.packingJournalLinkHelper = packingJournalLinkHelper;
     this.packingReadService = packingReadService;
-  }
-
-  public PackingService(
-      CompanyContextService companyContextService,
-      ProductionLogRepository productionLogRepository,
-      PackingRecordRepository packingRecordRepository,
-      ProductionLogService productionLogService,
-      CompanyClock companyClock,
-      AccountingFacade accountingFacade,
-      CompanyEntityLookup companyEntityLookup,
-      PackagingMaterialService packagingMaterialService,
-      PackingProductSupport packingProductSupport,
-      PackingAllowedSizeService packingAllowedSizeService,
-      PackingLineResolver packingLineResolver,
-      PackingIdempotencyService packingIdempotencyService,
-      PackingInventoryService packingInventoryService,
-      PackingBatchService packingBatchService,
-      PackingJournalBuilder packingJournalBuilder,
-      PackingJournalLinkHelper packingJournalLinkHelper,
-      PackingReadService packingReadService) {
-    this(
-        companyContextService,
-        productionLogRepository,
-        packingRecordRepository,
-        productionLogService,
-        companyClock,
-        accountingFacade,
-        CompanyScopedFactoryLookupService.fromLegacy(companyEntityLookup),
-        packagingMaterialService,
-        packingProductSupport,
-        packingAllowedSizeService,
-        packingLineResolver,
-        packingIdempotencyService,
-        packingInventoryService,
-        packingBatchService,
-        packingJournalBuilder,
-        packingJournalLinkHelper,
-        packingReadService);
   }
 
   @Transactional

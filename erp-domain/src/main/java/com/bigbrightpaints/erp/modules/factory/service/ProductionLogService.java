@@ -22,7 +22,6 @@ import org.springframework.util.StringUtils;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.core.util.CostingMethodUtils;
 import com.bigbrightpaints.erp.core.util.MoneyUtils;
@@ -109,35 +108,6 @@ public class ProductionLogService {
     this.inventoryLookupService = inventoryLookupService;
     this.companyClock = companyClock;
     this.packingAllowedSizeService = packingAllowedSizeService;
-  }
-
-  public ProductionLogService(
-      CompanyContextService companyContextService,
-      CompanyRepository companyRepository,
-      ProductionLogRepository logRepository,
-      RawMaterialRepository rawMaterialRepository,
-      RawMaterialBatchRepository rawMaterialBatchRepository,
-      RawMaterialMovementRepository rawMaterialMovementRepository,
-      AccountingFacade accountingFacade,
-      CompanyEntityLookup companyEntityLookup,
-      CompanyScopedSalesLookupService salesLookupService,
-      CompanyScopedInventoryLookupService inventoryLookupService,
-      CompanyClock companyClock,
-      PackingAllowedSizeService packingAllowedSizeService) {
-    this(
-        companyContextService,
-        companyRepository,
-        logRepository,
-        rawMaterialRepository,
-        rawMaterialBatchRepository,
-        rawMaterialMovementRepository,
-        accountingFacade,
-        CompanyScopedFactoryLookupService.fromLegacy(companyEntityLookup),
-        CompanyScopedProductionLookupService.fromLegacy(companyEntityLookup),
-        salesLookupService,
-        inventoryLookupService,
-        companyClock,
-        packingAllowedSizeService);
   }
 
   @Transactional

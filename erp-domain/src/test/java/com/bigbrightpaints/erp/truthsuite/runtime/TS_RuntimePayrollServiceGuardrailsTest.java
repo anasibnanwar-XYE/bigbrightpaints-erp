@@ -20,7 +20,6 @@ import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
@@ -34,6 +33,7 @@ import com.bigbrightpaints.erp.modules.hr.domain.PayrollRun;
 import com.bigbrightpaints.erp.modules.hr.domain.PayrollRunLine;
 import com.bigbrightpaints.erp.modules.hr.domain.PayrollRunLineRepository;
 import com.bigbrightpaints.erp.modules.hr.domain.PayrollRunRepository;
+import com.bigbrightpaints.erp.modules.hr.service.CompanyScopedHrLookupService;
 import com.bigbrightpaints.erp.modules.hr.service.PayrollService;
 
 @Tag("critical")
@@ -48,7 +48,7 @@ class TS_RuntimePayrollServiceGuardrailsTest {
     AccountingFacade accountingFacade = mock(AccountingFacade.class);
     AccountRepository accountRepository = mock(AccountRepository.class);
     CompanyContextService companyContextService = mock(CompanyContextService.class);
-    CompanyEntityLookup companyEntityLookup = mock(CompanyEntityLookup.class);
+    CompanyScopedHrLookupService hrLookupService = mock(CompanyScopedHrLookupService.class);
     CompanyScopedAccountingLookupService accountingLookupService =
         mock(CompanyScopedAccountingLookupService.class);
     CompanyClock companyClock = mock(CompanyClock.class);
@@ -63,7 +63,7 @@ class TS_RuntimePayrollServiceGuardrailsTest {
             accountingFacade,
             accountRepository,
             companyContextService,
-            companyEntityLookup,
+            hrLookupService,
             accountingLookupService,
             companyClock,
             auditService);
@@ -80,7 +80,7 @@ class TS_RuntimePayrollServiceGuardrailsTest {
     paymentJournal.setReferenceNumber("PAY-2026-001");
 
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
-    when(companyEntityLookup.lockPayrollRun(company, 91L)).thenReturn(run);
+    when(hrLookupService.lockPayrollRun(company, 91L)).thenReturn(run);
     when(accountingLookupService.requireJournalEntry(company, 701L)).thenReturn(paymentJournal);
     when(payrollRunLineRepository.findByPayrollRun(run)).thenReturn(List.of(line));
 
@@ -98,7 +98,7 @@ class TS_RuntimePayrollServiceGuardrailsTest {
     AccountingFacade accountingFacade = mock(AccountingFacade.class);
     AccountRepository accountRepository = mock(AccountRepository.class);
     CompanyContextService companyContextService = mock(CompanyContextService.class);
-    CompanyEntityLookup companyEntityLookup = mock(CompanyEntityLookup.class);
+    CompanyScopedHrLookupService hrLookupService = mock(CompanyScopedHrLookupService.class);
     CompanyScopedAccountingLookupService accountingLookupService =
         mock(CompanyScopedAccountingLookupService.class);
     CompanyClock companyClock = mock(CompanyClock.class);
@@ -113,7 +113,7 @@ class TS_RuntimePayrollServiceGuardrailsTest {
             accountingFacade,
             accountRepository,
             companyContextService,
-            companyEntityLookup,
+            hrLookupService,
             accountingLookupService,
             companyClock,
             auditService);
@@ -136,7 +136,7 @@ class TS_RuntimePayrollServiceGuardrailsTest {
     paymentJournal.setReferenceNumber("PAY-811");
 
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
-    when(companyEntityLookup.lockPayrollRun(company, 191L)).thenReturn(run);
+    when(hrLookupService.lockPayrollRun(company, 191L)).thenReturn(run);
     when(accountingLookupService.requireJournalEntry(company, 811L)).thenReturn(paymentJournal);
     when(payrollRunLineRepository.findByPayrollRun(run)).thenReturn(List.of(line));
 
@@ -156,7 +156,7 @@ class TS_RuntimePayrollServiceGuardrailsTest {
     AccountingFacade accountingFacade = mock(AccountingFacade.class);
     AccountRepository accountRepository = mock(AccountRepository.class);
     CompanyContextService companyContextService = mock(CompanyContextService.class);
-    CompanyEntityLookup companyEntityLookup = mock(CompanyEntityLookup.class);
+    CompanyScopedHrLookupService hrLookupService = mock(CompanyScopedHrLookupService.class);
     CompanyScopedAccountingLookupService accountingLookupService =
         mock(CompanyScopedAccountingLookupService.class);
     CompanyClock companyClock = mock(CompanyClock.class);
@@ -171,7 +171,7 @@ class TS_RuntimePayrollServiceGuardrailsTest {
             accountingFacade,
             accountRepository,
             companyContextService,
-            companyEntityLookup,
+            hrLookupService,
             accountingLookupService,
             companyClock,
             auditService);
@@ -214,7 +214,7 @@ class TS_RuntimePayrollServiceGuardrailsTest {
     AccountingFacade accountingFacade = mock(AccountingFacade.class);
     AccountRepository accountRepository = mock(AccountRepository.class);
     CompanyContextService companyContextService = mock(CompanyContextService.class);
-    CompanyEntityLookup companyEntityLookup = mock(CompanyEntityLookup.class);
+    CompanyScopedHrLookupService hrLookupService = mock(CompanyScopedHrLookupService.class);
     CompanyScopedAccountingLookupService accountingLookupService =
         mock(CompanyScopedAccountingLookupService.class);
     CompanyClock companyClock = mock(CompanyClock.class);
@@ -229,7 +229,7 @@ class TS_RuntimePayrollServiceGuardrailsTest {
             accountingFacade,
             accountRepository,
             companyContextService,
-            companyEntityLookup,
+            hrLookupService,
             accountingLookupService,
             companyClock,
             auditService);

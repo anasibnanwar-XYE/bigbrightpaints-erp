@@ -22,7 +22,6 @@ import org.springframework.transaction.annotation.Transactional;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
@@ -152,60 +151,6 @@ public class ReportService {
     this.invoiceRepository = invoiceRepository;
     this.rawMaterialPurchaseRepository = rawMaterialPurchaseRepository;
     this.gstService = gstService;
-  }
-
-  public ReportService(
-      CompanyContextService companyContextService,
-      AccountRepository accountRepository,
-      AccountingPeriodRepository accountingPeriodRepository,
-      AccountingPeriodSnapshotRepository snapshotRepository,
-      AccountingPeriodTrialBalanceLineRepository snapshotLineRepository,
-      DealerRepository dealerRepository,
-      DealerLedgerService dealerLedgerService,
-      DealerLedgerRepository dealerLedgerRepository,
-      JournalEntryRepository journalEntryRepository,
-      JournalLineRepository journalLineRepository,
-      ProductionLogRepository productionLogRepository,
-      PackingRecordRepository packingRecordRepository,
-      InventoryMovementRepository inventoryMovementRepository,
-      RawMaterialMovementRepository rawMaterialMovementRepository,
-      CompanyScopedAccountingLookupService accountingLookupService,
-      CompanyEntityLookup companyEntityLookup,
-      CompanyClock companyClock,
-      InventoryValuationQueryService inventoryValuationService,
-      TrialBalanceReportQueryService trialBalanceReportQueryService,
-      ProfitLossReportQueryService profitLossReportQueryService,
-      BalanceSheetReportQueryService balanceSheetReportQueryService,
-      AgedDebtorsReportQueryService agedDebtorsReportQueryService,
-      InvoiceRepository invoiceRepository,
-      RawMaterialPurchaseRepository rawMaterialPurchaseRepository,
-      GstService gstService) {
-    this(
-        companyContextService,
-        accountRepository,
-        accountingPeriodRepository,
-        snapshotRepository,
-        snapshotLineRepository,
-        dealerRepository,
-        dealerLedgerService,
-        dealerLedgerRepository,
-        journalEntryRepository,
-        journalLineRepository,
-        productionLogRepository,
-        packingRecordRepository,
-        inventoryMovementRepository,
-        rawMaterialMovementRepository,
-        accountingLookupService,
-        CompanyScopedFactoryLookupService.fromLegacy(companyEntityLookup),
-        companyClock,
-        inventoryValuationService,
-        trialBalanceReportQueryService,
-        profitLossReportQueryService,
-        balanceSheetReportQueryService,
-        agedDebtorsReportQueryService,
-        invoiceRepository,
-        rawMaterialPurchaseRepository,
-        gstService);
   }
 
   @Transactional(readOnly = true)

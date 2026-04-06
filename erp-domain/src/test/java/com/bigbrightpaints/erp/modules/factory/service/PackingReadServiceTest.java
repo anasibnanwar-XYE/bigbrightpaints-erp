@@ -38,7 +38,7 @@ class PackingReadServiceTest {
   @Mock private CompanyContextService companyContextService;
   @Mock private ProductionLogRepository productionLogRepository;
   @Mock private PackingRecordRepository packingRecordRepository;
-  @Mock private com.bigbrightpaints.erp.core.util.CompanyEntityLookup companyEntityLookup;
+  @Mock private CompanyScopedFactoryLookupService factoryLookupService;
   @Mock private PackingAllowedSizeService packingAllowedSizeService;
 
   private PackingReadService packingReadService;
@@ -51,7 +51,7 @@ class PackingReadServiceTest {
             companyContextService,
             productionLogRepository,
             packingRecordRepository,
-            companyEntityLookup,
+            factoryLookupService,
             packingAllowedSizeService);
     company = new Company();
     when(companyContextService.requireCurrentCompany()).thenReturn(company);

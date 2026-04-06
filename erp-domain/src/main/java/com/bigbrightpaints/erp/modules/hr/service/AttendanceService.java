@@ -17,7 +17,6 @@ import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.security.SecurityActorResolver;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.core.validation.ValidationUtils;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
@@ -54,20 +53,6 @@ public class AttendanceService {
     this.employeeRepository = employeeRepository;
     this.hrLookupService = hrLookupService;
     this.companyClock = companyClock;
-  }
-
-  public AttendanceService(
-      CompanyContextService companyContextService,
-      AttendanceRepository attendanceRepository,
-      EmployeeRepository employeeRepository,
-      CompanyEntityLookup companyEntityLookup,
-      CompanyClock companyClock) {
-    this(
-        companyContextService,
-        attendanceRepository,
-        employeeRepository,
-        CompanyScopedHrLookupService.fromLegacy(companyEntityLookup),
-        companyClock);
   }
 
   public List<AttendanceDto> listAttendanceByDate(LocalDate date) {

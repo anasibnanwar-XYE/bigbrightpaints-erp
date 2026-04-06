@@ -28,7 +28,6 @@ import org.springframework.test.util.ReflectionTestUtils;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
@@ -46,6 +45,7 @@ import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovementRepos
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialRepository;
 import com.bigbrightpaints.erp.modules.inventory.service.CompanyScopedInventoryLookupService;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionProduct;
+import com.bigbrightpaints.erp.modules.production.service.CompanyScopedProductionLookupService;
 import com.bigbrightpaints.erp.modules.sales.service.CompanyScopedSalesLookupService;
 
 @Tag("critical")
@@ -59,7 +59,8 @@ class ProductionLogServiceCostingFallbackTest {
   @Mock private RawMaterialBatchRepository rawMaterialBatchRepository;
   @Mock private RawMaterialMovementRepository rawMaterialMovementRepository;
   @Mock private AccountingFacade accountingFacade;
-  @Mock private CompanyEntityLookup companyEntityLookup;
+  @Mock private CompanyScopedFactoryLookupService factoryLookupService;
+  @Mock private CompanyScopedProductionLookupService productionLookupService;
   @Mock private CompanyScopedSalesLookupService salesLookupService;
   @Mock private CompanyScopedInventoryLookupService inventoryLookupService;
   @Mock private CompanyClock companyClock;
@@ -78,7 +79,8 @@ class ProductionLogServiceCostingFallbackTest {
             rawMaterialBatchRepository,
             rawMaterialMovementRepository,
             accountingFacade,
-            companyEntityLookup,
+            factoryLookupService,
+            productionLookupService,
             salesLookupService,
             inventoryLookupService,
             companyClock,

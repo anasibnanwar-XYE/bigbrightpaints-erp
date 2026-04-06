@@ -14,7 +14,6 @@ import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.idempotency.IdempotencyUtils;
 import com.bigbrightpaints.erp.core.security.CryptoService;
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.core.validation.ValidationUtils;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
@@ -46,20 +45,6 @@ public class EmployeeService {
     this.hrLookupService = hrLookupService;
     this.salaryStructureTemplateRepository = salaryStructureTemplateRepository;
     this.cryptoService = cryptoService;
-  }
-
-  public EmployeeService(
-      CompanyContextService companyContextService,
-      EmployeeRepository employeeRepository,
-      CompanyEntityLookup companyEntityLookup,
-      SalaryStructureTemplateRepository salaryStructureTemplateRepository,
-      CryptoService cryptoService) {
-    this(
-        companyContextService,
-        employeeRepository,
-        CompanyScopedHrLookupService.fromLegacy(companyEntityLookup),
-        salaryStructureTemplateRepository,
-        cryptoService);
   }
 
   public List<EmployeeDto> listEmployees() {

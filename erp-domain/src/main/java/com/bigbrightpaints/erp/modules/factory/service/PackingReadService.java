@@ -11,7 +11,6 @@ import java.util.Optional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.factory.domain.PackingRecord;
@@ -44,20 +43,6 @@ public class PackingReadService {
     this.packingRecordRepository = packingRecordRepository;
     this.factoryLookupService = factoryLookupService;
     this.packingAllowedSizeService = packingAllowedSizeService;
-  }
-
-  public PackingReadService(
-      CompanyContextService companyContextService,
-      ProductionLogRepository productionLogRepository,
-      PackingRecordRepository packingRecordRepository,
-      CompanyEntityLookup companyEntityLookup,
-      PackingAllowedSizeService packingAllowedSizeService) {
-    this(
-        companyContextService,
-        productionLogRepository,
-        packingRecordRepository,
-        CompanyScopedFactoryLookupService.fromLegacy(companyEntityLookup),
-        packingAllowedSizeService);
   }
 
   public List<UnpackedBatchDto> listUnpackedBatches() {

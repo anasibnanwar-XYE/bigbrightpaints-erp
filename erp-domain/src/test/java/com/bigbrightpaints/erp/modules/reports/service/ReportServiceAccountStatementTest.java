@@ -20,7 +20,6 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodSnapshotRepository;
@@ -37,6 +36,7 @@ import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.factory.domain.PackingRecordRepository;
 import com.bigbrightpaints.erp.modules.factory.domain.ProductionLogRepository;
+import com.bigbrightpaints.erp.modules.factory.service.CompanyScopedFactoryLookupService;
 import com.bigbrightpaints.erp.modules.inventory.domain.InventoryMovementRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovementRepository;
 import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceRepository;
@@ -62,7 +62,7 @@ class ReportServiceAccountStatementTest {
   @Mock private InventoryMovementRepository inventoryMovementRepository;
   @Mock private RawMaterialMovementRepository rawMaterialMovementRepository;
   @Mock private CompanyScopedAccountingLookupService accountingLookupService;
-  @Mock private CompanyEntityLookup companyEntityLookup;
+  @Mock private CompanyScopedFactoryLookupService factoryLookupService;
   @Mock private CompanyClock companyClock;
   @Mock private InventoryValuationQueryService inventoryValuationService;
   @Mock private TrialBalanceReportQueryService trialBalanceReportQueryService;
@@ -95,7 +95,7 @@ class ReportServiceAccountStatementTest {
             inventoryMovementRepository,
             rawMaterialMovementRepository,
             accountingLookupService,
-            companyEntityLookup,
+            factoryLookupService,
             companyClock,
             inventoryValuationService,
             trialBalanceReportQueryService,

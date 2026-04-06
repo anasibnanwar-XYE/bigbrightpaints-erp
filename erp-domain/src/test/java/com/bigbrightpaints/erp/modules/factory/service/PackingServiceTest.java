@@ -34,7 +34,6 @@ import org.springframework.test.util.ReflectionTestUtils;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalCreationRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
@@ -64,7 +63,7 @@ class PackingServiceTest {
   @Mock private PackingRecordRepository packingRecordRepository;
   @Mock private AccountingFacade accountingFacade;
   @Mock private CompanyClock companyClock;
-  @Mock private CompanyEntityLookup companyEntityLookup;
+  @Mock private CompanyScopedFactoryLookupService factoryLookupService;
   @Mock private PackagingMaterialService packagingMaterialService;
   @Mock private ProductionLogService productionLogService;
   @Mock private PackingProductSupport packingProductSupport;
@@ -90,7 +89,7 @@ class PackingServiceTest {
             productionLogService,
             companyClock,
             accountingFacade,
-            companyEntityLookup,
+            factoryLookupService,
             packagingMaterialService,
             packingProductSupport,
             packingAllowedSizeService,
@@ -136,8 +135,8 @@ class PackingServiceTest {
     ReflectionTestUtils.setField(sizeVariant, "id", 41L);
     sizeVariant.setSizeLabel("500ML");
 
-    when(companyEntityLookup.lockProductionLog(company, 1L)).thenReturn(log);
-    when(companyEntityLookup.requireProductionLog(company, 1L)).thenReturn(log);
+    when(factoryLookupService.lockProductionLog(company, 1L)).thenReturn(log);
+    when(factoryLookupService.requireProductionLog(company, 1L)).thenReturn(log);
     when(packingLineResolver.normalizePackagingSize("500ML", 1)).thenReturn("500ML");
     when(packingAllowedSizeService.resolveAllowedSellableSizeTargets(company, log))
         .thenReturn(List.of(allowedTarget(product, targetFinishedGood, sizeVariant)));
@@ -283,8 +282,8 @@ class PackingServiceTest {
     ReflectionTestUtils.setField(sizeVariant, "id", 41L);
     sizeVariant.setSizeLabel("500ML");
 
-    when(companyEntityLookup.lockProductionLog(company, 1L)).thenReturn(lockedLog);
-    when(companyEntityLookup.requireProductionLog(company, 1L)).thenReturn(refreshedLog);
+    when(factoryLookupService.lockProductionLog(company, 1L)).thenReturn(lockedLog);
+    when(factoryLookupService.requireProductionLog(company, 1L)).thenReturn(refreshedLog);
     when(packingLineResolver.normalizePackagingSize("500ML", 1)).thenReturn("500ML");
     when(packingAllowedSizeService.resolveAllowedSellableSizeTargets(company, lockedLog))
         .thenReturn(List.of(allowedTarget(product, targetFinishedGood, sizeVariant)));
@@ -404,8 +403,8 @@ class PackingServiceTest {
     refreshedLog.setStatus(ProductionLogStatus.PARTIAL_PACKED);
     refreshedLog.setUnitCost(new BigDecimal("12.50"));
 
-    when(companyEntityLookup.lockProductionLog(company, 1L)).thenReturn(lockedLog);
-    when(companyEntityLookup.requireProductionLog(company, 1L)).thenReturn(refreshedLog);
+    when(factoryLookupService.lockProductionLog(company, 1L)).thenReturn(lockedLog);
+    when(factoryLookupService.requireProductionLog(company, 1L)).thenReturn(refreshedLog);
     when(productionLogRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
     when(accountingFacade.createStandardJournal(any(JournalCreationRequest.class)))
         .thenReturn(stubEntry(91L));
@@ -626,7 +625,7 @@ class PackingServiceTest {
     log.setCompany(company);
     log.setProductionCode("PROD-001");
     log.setStatus(ProductionLogStatus.READY_TO_PACK);
-    when(companyEntityLookup.lockProductionLog(company, 1L)).thenReturn(log);
+    when(factoryLookupService.lockProductionLog(company, 1L)).thenReturn(log);
 
     PackingRequest request =
         new PackingRequest(1L, LocalDate.of(2024, 1, 2), "packer", "empty-1", List.of(), false);
@@ -667,7 +666,7 @@ class PackingServiceTest {
     ReflectionTestUtils.setField(sizeVariant, "id", 41L);
     sizeVariant.setSizeLabel("500ML");
 
-    when(companyEntityLookup.lockProductionLog(company, 1L)).thenReturn(log);
+    when(factoryLookupService.lockProductionLog(company, 1L)).thenReturn(log);
     when(packingLineResolver.normalizePackagingSize("500ML", 1)).thenReturn("500ML");
     when(packingAllowedSizeService.resolveAllowedSellableSizeTargets(company, log))
         .thenReturn(List.of(allowedTarget(product, targetFinishedGood, sizeVariant)));
@@ -723,7 +722,7 @@ class PackingServiceTest {
   @Test
   void recordPacking_idempotentReplayDoesNotConsumeOrPostAgain() {
     ProductionLog log = new ProductionLog();
-    when(companyEntityLookup.lockProductionLog(company, 1L)).thenReturn(log);
+    when(factoryLookupService.lockProductionLog(company, 1L)).thenReturn(log);
 
     ProductionLogDetailDto detailDto =
         new ProductionLogDetailDto(
@@ -781,7 +780,7 @@ class PackingServiceTest {
   @Test
   void recordPacking_idempotencyMismatchConflicts() {
     ProductionLog log = new ProductionLog();
-    when(companyEntityLookup.lockProductionLog(company, 1L)).thenReturn(log);
+    when(factoryLookupService.lockProductionLog(company, 1L)).thenReturn(log);
 
     when(packingIdempotencyService.reserveIdempotencyRecord(
             eq(company), eq(1L), eq("pack-mismatch"), anyString()))
@@ -843,8 +842,8 @@ class PackingServiceTest {
     secondRecord.setCompany(company);
     secondRecord.setProductionLog(log);
 
-    when(companyEntityLookup.lockProductionLog(company, 1L)).thenReturn(log);
-    when(companyEntityLookup.requireProductionLog(company, 1L)).thenReturn(log);
+    when(factoryLookupService.lockProductionLog(company, 1L)).thenReturn(log);
+    when(factoryLookupService.requireProductionLog(company, 1L)).thenReturn(log);
     when(packingAllowedSizeService.resolveAllowedSellableSizeTargets(company, log))
         .thenReturn(allowedTargets);
     when(packingLineResolver.normalizePackagingSize("500ML", 1)).thenReturn("500ML");

@@ -15,7 +15,6 @@ import org.junit.jupiter.api.Test;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.hr.domain.AttendanceRepository;
@@ -26,6 +25,7 @@ import com.bigbrightpaints.erp.modules.hr.domain.LeaveRequestRepository;
 import com.bigbrightpaints.erp.modules.hr.dto.BulkMarkAttendanceRequest;
 import com.bigbrightpaints.erp.modules.hr.dto.EmployeeRequest;
 import com.bigbrightpaints.erp.modules.hr.dto.MarkAttendanceRequest;
+import com.bigbrightpaints.erp.modules.hr.service.CompanyScopedHrLookupService;
 import com.bigbrightpaints.erp.modules.hr.service.HrService;
 
 @Tag("critical")
@@ -37,20 +37,16 @@ class TS_RuntimeHrServiceEnumParsingCoverageTest {
     EmployeeRepository employeeRepository = mock(EmployeeRepository.class);
     LeaveRequestRepository leaveRequestRepository = mock(LeaveRequestRepository.class);
     AttendanceRepository attendanceRepository = mock(AttendanceRepository.class);
-    CompanyEntityLookup companyEntityLookup = mock(CompanyEntityLookup.class);
+    CompanyScopedHrLookupService hrLookupService = mock(CompanyScopedHrLookupService.class);
     CompanyClock companyClock = mock(CompanyClock.class);
     HrService service =
-        new HrService(
+        createHrService(
             companyContextService,
             employeeRepository,
             leaveRequestRepository,
             attendanceRepository,
-            companyEntityLookup,
-            companyClock,
-            mock(com.bigbrightpaints.erp.modules.hr.domain.SalaryStructureTemplateRepository.class),
-            mock(com.bigbrightpaints.erp.modules.hr.domain.LeaveTypePolicyRepository.class),
-            mock(com.bigbrightpaints.erp.modules.hr.domain.LeaveBalanceRepository.class),
-            mock(com.bigbrightpaints.erp.core.security.CryptoService.class));
+            hrLookupService,
+            companyClock);
 
     Company company = new Company();
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
@@ -104,20 +100,16 @@ class TS_RuntimeHrServiceEnumParsingCoverageTest {
     EmployeeRepository employeeRepository = mock(EmployeeRepository.class);
     LeaveRequestRepository leaveRequestRepository = mock(LeaveRequestRepository.class);
     AttendanceRepository attendanceRepository = mock(AttendanceRepository.class);
-    CompanyEntityLookup companyEntityLookup = mock(CompanyEntityLookup.class);
+    CompanyScopedHrLookupService hrLookupService = mock(CompanyScopedHrLookupService.class);
     CompanyClock companyClock = mock(CompanyClock.class);
     HrService service =
-        new HrService(
+        createHrService(
             companyContextService,
             employeeRepository,
             leaveRequestRepository,
             attendanceRepository,
-            companyEntityLookup,
-            companyClock,
-            mock(com.bigbrightpaints.erp.modules.hr.domain.SalaryStructureTemplateRepository.class),
-            mock(com.bigbrightpaints.erp.modules.hr.domain.LeaveTypePolicyRepository.class),
-            mock(com.bigbrightpaints.erp.modules.hr.domain.LeaveBalanceRepository.class),
-            mock(com.bigbrightpaints.erp.core.security.CryptoService.class));
+            hrLookupService,
+            companyClock);
 
     Company company = new Company();
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
@@ -171,25 +163,21 @@ class TS_RuntimeHrServiceEnumParsingCoverageTest {
     EmployeeRepository employeeRepository = mock(EmployeeRepository.class);
     LeaveRequestRepository leaveRequestRepository = mock(LeaveRequestRepository.class);
     AttendanceRepository attendanceRepository = mock(AttendanceRepository.class);
-    CompanyEntityLookup companyEntityLookup = mock(CompanyEntityLookup.class);
+    CompanyScopedHrLookupService hrLookupService = mock(CompanyScopedHrLookupService.class);
     CompanyClock companyClock = mock(CompanyClock.class);
     HrService service =
-        new HrService(
+        createHrService(
             companyContextService,
             employeeRepository,
             leaveRequestRepository,
             attendanceRepository,
-            companyEntityLookup,
-            companyClock,
-            mock(com.bigbrightpaints.erp.modules.hr.domain.SalaryStructureTemplateRepository.class),
-            mock(com.bigbrightpaints.erp.modules.hr.domain.LeaveTypePolicyRepository.class),
-            mock(com.bigbrightpaints.erp.modules.hr.domain.LeaveBalanceRepository.class),
-            mock(com.bigbrightpaints.erp.core.security.CryptoService.class));
+            hrLookupService,
+            companyClock);
 
     Company company = new Company();
     Employee employee = new Employee();
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
-    when(companyEntityLookup.requireEmployee(company, 5L)).thenReturn(employee);
+    when(hrLookupService.requireEmployee(company, 5L)).thenReturn(employee);
     when(companyClock.today(company)).thenReturn(LocalDate.of(2026, 2, 1));
     when(attendanceRepository.findByCompanyAndEmployeeAndAttendanceDate(
             company, employee, LocalDate.of(2026, 2, 1)))
@@ -213,26 +201,21 @@ class TS_RuntimeHrServiceEnumParsingCoverageTest {
     EmployeeRepository employeeRepository = mock(EmployeeRepository.class);
     LeaveRequestRepository leaveRequestRepository = mock(LeaveRequestRepository.class);
     AttendanceRepository attendanceRepository = mock(AttendanceRepository.class);
-    CompanyEntityLookup companyEntityLookup = mock(CompanyEntityLookup.class);
+    CompanyScopedHrLookupService hrLookupService = mock(CompanyScopedHrLookupService.class);
     CompanyClock companyClock = mock(CompanyClock.class);
     HrService service =
-        new HrService(
+        createHrService(
             companyContextService,
             employeeRepository,
             leaveRequestRepository,
             attendanceRepository,
-            companyEntityLookup,
-            companyClock,
-            mock(com.bigbrightpaints.erp.modules.hr.domain.SalaryStructureTemplateRepository.class),
-            mock(com.bigbrightpaints.erp.modules.hr.domain.LeaveTypePolicyRepository.class),
-            mock(com.bigbrightpaints.erp.modules.hr.domain.LeaveBalanceRepository.class),
-            mock(com.bigbrightpaints.erp.core.security.CryptoService.class));
+            hrLookupService,
+            companyClock);
 
     Company company = new Company();
     Employee employee = new Employee();
     LocalDate date = LocalDate.of(2026, 2, 1);
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
-    when(companyEntityLookup.requireEmployee(company, 7L)).thenReturn(employee);
     when(attendanceRepository.findByCompanyAndEmployeeAndAttendanceDate(company, employee, date))
         .thenReturn(Optional.empty());
 
@@ -253,25 +236,21 @@ class TS_RuntimeHrServiceEnumParsingCoverageTest {
     EmployeeRepository employeeRepository = mock(EmployeeRepository.class);
     LeaveRequestRepository leaveRequestRepository = mock(LeaveRequestRepository.class);
     AttendanceRepository attendanceRepository = mock(AttendanceRepository.class);
-    CompanyEntityLookup companyEntityLookup = mock(CompanyEntityLookup.class);
+    CompanyScopedHrLookupService hrLookupService = mock(CompanyScopedHrLookupService.class);
     CompanyClock companyClock = mock(CompanyClock.class);
     HrService service =
-        new HrService(
+        createHrService(
             companyContextService,
             employeeRepository,
             leaveRequestRepository,
             attendanceRepository,
-            companyEntityLookup,
-            companyClock,
-            mock(com.bigbrightpaints.erp.modules.hr.domain.SalaryStructureTemplateRepository.class),
-            mock(com.bigbrightpaints.erp.modules.hr.domain.LeaveTypePolicyRepository.class),
-            mock(com.bigbrightpaints.erp.modules.hr.domain.LeaveBalanceRepository.class),
-            mock(com.bigbrightpaints.erp.core.security.CryptoService.class));
+            hrLookupService,
+            companyClock);
 
     Company company = new Company();
     LeaveRequest leaveRequest = new LeaveRequest();
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
-    when(companyEntityLookup.requireLeaveRequest(company, 11L)).thenReturn(leaveRequest);
+    when(hrLookupService.requireLeaveRequest(company, 11L)).thenReturn(leaveRequest);
 
     assertThatThrownBy(() -> service.updateLeaveStatus(11L, "UNSUPPORTED_STATUS"))
         .isInstanceOf(ApplicationException.class)
@@ -279,5 +258,43 @@ class TS_RuntimeHrServiceEnumParsingCoverageTest {
             ex ->
                 assertThat(((ApplicationException) ex).getErrorCode())
                     .isEqualTo(ErrorCode.VALIDATION_INVALID_INPUT));
+  }
+
+  private HrService createHrService(
+      CompanyContextService companyContextService,
+      EmployeeRepository employeeRepository,
+      LeaveRequestRepository leaveRequestRepository,
+      AttendanceRepository attendanceRepository,
+      CompanyScopedHrLookupService hrLookupService,
+      CompanyClock companyClock) {
+    var salaryStructureTemplateRepository =
+        mock(com.bigbrightpaints.erp.modules.hr.domain.SalaryStructureTemplateRepository.class);
+    var leaveTypePolicyRepository =
+        mock(com.bigbrightpaints.erp.modules.hr.domain.LeaveTypePolicyRepository.class);
+    var leaveBalanceRepository =
+        mock(com.bigbrightpaints.erp.modules.hr.domain.LeaveBalanceRepository.class);
+
+    return new HrService(
+        new com.bigbrightpaints.erp.modules.hr.service.EmployeeService(
+            companyContextService,
+            employeeRepository,
+            hrLookupService,
+            salaryStructureTemplateRepository,
+            mock(com.bigbrightpaints.erp.core.security.CryptoService.class)),
+        new com.bigbrightpaints.erp.modules.hr.service.LeaveService(
+            companyContextService,
+            employeeRepository,
+            leaveRequestRepository,
+            hrLookupService,
+            leaveTypePolicyRepository,
+            leaveBalanceRepository),
+        new com.bigbrightpaints.erp.modules.hr.service.AttendanceService(
+            companyContextService,
+            attendanceRepository,
+            employeeRepository,
+            hrLookupService,
+            companyClock),
+        new com.bigbrightpaints.erp.modules.hr.service.SalaryStructureTemplateService(
+            companyContextService, salaryStructureTemplateRepository));
   }
 }

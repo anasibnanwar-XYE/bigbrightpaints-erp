@@ -29,7 +29,6 @@ import org.springframework.transaction.PlatformTransactionManager;
 import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.idempotency.IdempotencyUtils;
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.service.CompanyDefaultAccountsService;
 import com.bigbrightpaints.erp.modules.accounting.service.CompanyScopedAccountingLookupService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
@@ -80,7 +79,7 @@ class ProductionCatalogServiceRetryPolicyTest {
   @Mock private PackingRecordRepository packingRecordRepository;
   @Mock private ProductionLogMaterialRepository productionLogMaterialRepository;
   @Mock private SalesOrderItemRepository salesOrderItemRepository;
-  @Mock private CompanyEntityLookup companyEntityLookup;
+  @Mock private CompanyScopedProductionLookupService productionLookupService;
   @Mock private CompanyScopedAccountingLookupService accountingLookupService;
   @Mock private CompanyDefaultAccountsService companyDefaultAccountsService;
   @Mock private CatalogImportRepository catalogImportRepository;
@@ -111,7 +110,7 @@ class ProductionCatalogServiceRetryPolicyTest {
             packingRecordRepository,
             productionLogMaterialRepository,
             salesOrderItemRepository,
-            companyEntityLookup,
+            productionLookupService,
             accountingLookupService,
             companyDefaultAccountsService,
             catalogImportRepository,

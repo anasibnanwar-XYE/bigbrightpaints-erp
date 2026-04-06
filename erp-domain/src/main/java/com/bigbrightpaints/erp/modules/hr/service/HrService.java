@@ -7,16 +7,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.bigbrightpaints.erp.core.security.CryptoService;
-import com.bigbrightpaints.erp.core.util.CompanyClock;
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
-import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
-import com.bigbrightpaints.erp.modules.hr.domain.AttendanceRepository;
-import com.bigbrightpaints.erp.modules.hr.domain.EmployeeRepository;
-import com.bigbrightpaints.erp.modules.hr.domain.LeaveBalanceRepository;
-import com.bigbrightpaints.erp.modules.hr.domain.LeaveRequestRepository;
-import com.bigbrightpaints.erp.modules.hr.domain.LeaveTypePolicyRepository;
-import com.bigbrightpaints.erp.modules.hr.domain.SalaryStructureTemplateRepository;
 import com.bigbrightpaints.erp.modules.hr.dto.AttendanceBulkImportRequest;
 import com.bigbrightpaints.erp.modules.hr.dto.AttendanceDto;
 import com.bigbrightpaints.erp.modules.hr.dto.AttendanceSummaryDto;
@@ -51,41 +41,6 @@ public class HrService {
     this.leaveService = leaveService;
     this.attendanceService = attendanceService;
     this.salaryStructureTemplateService = salaryStructureTemplateService;
-  }
-
-  public HrService(
-      CompanyContextService companyContextService,
-      EmployeeRepository employeeRepository,
-      LeaveRequestRepository leaveRequestRepository,
-      AttendanceRepository attendanceRepository,
-      CompanyEntityLookup companyEntityLookup,
-      CompanyClock companyClock,
-      SalaryStructureTemplateRepository salaryStructureTemplateRepository,
-      LeaveTypePolicyRepository leaveTypePolicyRepository,
-      LeaveBalanceRepository leaveBalanceRepository,
-      CryptoService cryptoService) {
-    this(
-        new EmployeeService(
-            companyContextService,
-            employeeRepository,
-            companyEntityLookup,
-            salaryStructureTemplateRepository,
-            cryptoService),
-        new LeaveService(
-            companyContextService,
-            employeeRepository,
-            leaveRequestRepository,
-            companyEntityLookup,
-            leaveTypePolicyRepository,
-            leaveBalanceRepository),
-        new AttendanceService(
-            companyContextService,
-            attendanceRepository,
-            employeeRepository,
-            companyEntityLookup,
-            companyClock),
-        new SalaryStructureTemplateService(
-            companyContextService, salaryStructureTemplateRepository));
   }
 
   public List<EmployeeDto> listEmployees() {

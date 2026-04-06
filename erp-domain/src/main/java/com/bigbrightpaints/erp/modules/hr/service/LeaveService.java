@@ -16,7 +16,6 @@ import org.springframework.util.StringUtils;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.security.SecurityActorResolver;
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.core.validation.ValidationUtils;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
@@ -59,22 +58,6 @@ public class LeaveService {
     this.hrLookupService = hrLookupService;
     this.leaveTypePolicyRepository = leaveTypePolicyRepository;
     this.leaveBalanceRepository = leaveBalanceRepository;
-  }
-
-  public LeaveService(
-      CompanyContextService companyContextService,
-      EmployeeRepository employeeRepository,
-      LeaveRequestRepository leaveRequestRepository,
-      CompanyEntityLookup companyEntityLookup,
-      LeaveTypePolicyRepository leaveTypePolicyRepository,
-      LeaveBalanceRepository leaveBalanceRepository) {
-    this(
-        companyContextService,
-        employeeRepository,
-        leaveRequestRepository,
-        CompanyScopedHrLookupService.fromLegacy(companyEntityLookup),
-        leaveTypePolicyRepository,
-        leaveBalanceRepository);
   }
 
   public List<LeaveRequestDto> listLeaveRequests() {
