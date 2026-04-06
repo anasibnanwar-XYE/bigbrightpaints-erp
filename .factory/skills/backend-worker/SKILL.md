@@ -80,8 +80,21 @@ None.
 9. If the working tree is dirty only because of pre-existing `.factory/validation/**` or other orchestrator-owned mission artifacts that AGENTS says must remain uncommitted, do not treat that dirtiness as a feature failure. Leave it alone, or if you must temporarily stash it to get a clean feature commit, say so explicitly in the handoff and identify the stash.
 10. If optional dependent-proof packs expose clearly pre-existing failures outside your feature while the required validators and `gate_fast` pass, record them as discovered issues with the most relevant pending feature/owner instead of failing an otherwise-correct packet.
 
-### Step 5: Document Frontend Handoff
-If your feature adds or changes frontend-facing API endpoints or contracts, you MUST update `.factory/library/frontend-handoff.md` with:
+### Step 5: Update Canonical Docs When the Changed Truth Requires It
+If the packet changes implemented truth, update the matching canonical docs in the same packet:
+- API / DTO / auth / error changes → `docs/frontend-api/*`
+- Portal route / role / UX-state / workflow changes → `docs/frontend-portals/<portal>/*`
+- Module ownership / services / invariants / business rules → `docs/modules/<module>.md`
+- Lifecycle / business flow / process changes → `docs/flows/*.md` and/or `docs/workflows/*.md`
+- Architecture / boundaries / canonical ownership changes → `docs/ARCHITECTURE.md`, root `ARCHITECTURE.md`, and relevant `docs/adrs/*.md`
+- Known limitation / accepted decision / bug-status changes → `docs/RECOMMENDATIONS.md` and any module/flow doc that defers to it
+- Deprecation / replacement changes → `docs/deprecated/INDEX.md` plus replacement links
+
+Use code, tests, controller annotations, DTOs, and `openapi.json` as source of truth. Update canonical docs, not stale duplicates, and never present planned behavior as implemented.
+
+If the packet is docs-only, use the docs-only lane: run `bash ci/lint-knowledgebase.sh` and skip runtime/scrutiny validators unless the packet also changes code, config, schema, scripts, OpenAPI, or test behavior.
+
+If your feature adds or changes frontend-facing API endpoints or contracts and the mission still expects an internal handoff artifact, update `.factory/library/frontend-handoff.md` with:
 1. **Endpoint map**: Every new/changed endpoint (method, path, auth, request/response types)
 2. **User flows**: Step-by-step API call sequences for each user-facing flow
 3. **State machines**: Entity lifecycle states and valid transitions with triggering API calls
@@ -89,7 +102,7 @@ If your feature adds or changes frontend-facing API endpoints or contracts, you 
 5. **Data contracts**: Request/response record definitions with field types, validation, required/optional
 6. **UI hints**: Dropdown sources (endpoint for options), computed fields, field dependencies
 
-This is a mandatory deliverable. A frontend developer should be able to build the UI from this documentation alone.
+This supplements canonical docs when the mission explicitly wants the internal handoff artifact. A frontend developer should be able to build the UI from this documentation alone.
 
 Also update `.factory/library/frontend-v2.md` when the feature changes role surfaces, blocker semantics, generated artifacts, or backend-facing frontend assumptions.
 
