@@ -609,6 +609,56 @@ class InvoiceServiceTest {
   }
 
   @Test
+  void listInvoices_filtersBySalesOrderWhenOrderIdProvided() {
+    when(companyContextService.requireCurrentCompany()).thenReturn(company);
+    when(invoiceRepository.findIdsByCompanyAndSalesOrderIdOrderByIssueDateDescIdDesc(
+            company, 101L, PageRequest.of(0, 20)))
+        .thenReturn(new PageImpl<>(List.of(11L)));
+
+    SalesOrder firstOrder = new SalesOrder();
+    ReflectionTestUtils.setField(firstOrder, "id", 101L);
+    firstOrder.setCompany(company);
+    firstOrder.setOrderNumber("SO-101");
+
+    Invoice firstInvoice = new Invoice();
+    ReflectionTestUtils.setField(firstInvoice, "id", 11L);
+    firstInvoice.setCompany(company);
+    firstInvoice.setInvoiceNumber("INV-11");
+    firstInvoice.setStatus("ISSUED");
+    firstInvoice.setSalesOrder(firstOrder);
+    when(invoiceRepository.findByCompanyAndIdInOrderByIssueDateDescIdDesc(company, List.of(11L)))
+        .thenReturn(List.of(firstInvoice));
+    when(packagingSlipRepository.findAllByCompanyAndSalesOrderIdIn(company, List.of(101L)))
+        .thenReturn(List.of());
+    when(settlementAllocationRepository.findByCompanyAndInvoice_IdInOrderByCreatedAtDesc(
+            company, List.of(11L)))
+        .thenReturn(List.of());
+
+    List<InvoiceDto> invoices = invoiceService.listInvoices(0, 20, 101L);
+
+    assertThat(invoices).singleElement().extracting(InvoiceDto::invoiceNumber).isEqualTo("INV-11");
+    verify(invoiceRepository)
+        .findIdsByCompanyAndSalesOrderIdOrderByIssueDateDescIdDesc(
+            company, 101L, PageRequest.of(0, 20));
+    verify(invoiceRepository, org.mockito.Mockito.never())
+        .findIdsByCompanyOrderByIssueDateDescIdDesc(company, PageRequest.of(0, 20));
+  }
+
+  @Test
+  void listInvoices_returnsEmptyWhenOrderFilterHasNoInvoices() {
+    when(companyContextService.requireCurrentCompany()).thenReturn(company);
+    when(invoiceRepository.findIdsByCompanyAndSalesOrderIdOrderByIssueDateDescIdDesc(
+            company, 202L, PageRequest.of(0, 10)))
+        .thenReturn(new PageImpl<>(List.of()));
+
+    assertThat(invoiceService.listInvoices(0, 10, 202L)).isEmpty();
+
+    verify(invoiceRepository)
+        .findIdsByCompanyAndSalesOrderIdOrderByIssueDateDescIdDesc(
+            company, 202L, PageRequest.of(0, 10));
+  }
+
+  @Test
   void listDealerInvoices_batchesLookupsForDealerPage() {
     Dealer dealer = new Dealer();
     ReflectionTestUtils.setField(dealer, "id", 901L);

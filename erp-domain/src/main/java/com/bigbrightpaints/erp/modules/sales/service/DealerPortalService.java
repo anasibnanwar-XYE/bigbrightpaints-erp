@@ -131,14 +131,14 @@ public class DealerPortalService {
   @Transactional(readOnly = true)
   public Map<String, Object> getMyLedger() {
     Dealer dealer = getCurrentDealer();
-    return dealerService.ledgerView(dealer.getId());
+    return normalizeLedgerView(dealerService.ledgerView(dealer.getId()));
   }
 
   @Transactional(readOnly = true)
   public Map<String, Object> getLedgerForDealer(Long dealerId) {
     verifyDealerAccess(dealerId);
     Dealer dealer = requireDealerForScopedRead(dealerId);
-    return dealerService.ledgerView(dealer.getId());
+    return normalizeLedgerView(dealerService.ledgerView(dealer.getId()));
   }
 
   @Transactional(readOnly = true)
@@ -168,6 +168,7 @@ public class DealerPortalService {
       invMap.put("issueDate", inv.getIssueDate());
       invMap.put("dueDate", inv.getDueDate());
       invMap.put("totalAmount", inv.getTotalAmount());
+      invMap.put("amount", inv.getTotalAmount());
       invMap.put("outstandingAmount", inv.getOutstandingAmount());
       invMap.put("status", inv.getStatus());
       invMap.put("currency", inv.getCurrency());
@@ -231,6 +232,14 @@ public class DealerPortalService {
     result.put("creditUsed", creditUsed);
     result.put("availableCredit", availableCredit);
     result.put("agingBuckets", agingBuckets);
+    result.put(
+        "buckets",
+        Map.of(
+            "current", agingBuckets.getOrDefault("current", BigDecimal.ZERO),
+            "30days", agingBuckets.getOrDefault("30days", BigDecimal.ZERO),
+            "60days", agingBuckets.getOrDefault("60days", BigDecimal.ZERO),
+            "90days", agingBuckets.getOrDefault("90days", BigDecimal.ZERO),
+            "over90", agingBuckets.getOrDefault("over90", BigDecimal.ZERO)));
     result.put("overdueInvoices", overdueInvoices);
     return result;
   }
@@ -251,6 +260,9 @@ public class DealerPortalService {
     long pendingInvoices = statementService.dealerOpenInvoiceCount(dealer, today);
     long pendingOrderCount = ((Number) aging.get("pendingOrderCount")).longValue();
     BigDecimal pendingOrderExposure = (BigDecimal) aging.get("pendingOrderExposure");
+    List<SalesOrder> dealerOrders =
+        salesOrderRepository.findByCompanyAndDealerOrderByCreatedAtDesc(dealer.getCompany(), dealer);
+    long orderCount = dealerOrders != null ? dealerOrders.size() : 0L;
 
     Map<String, Object> result = new LinkedHashMap<>();
     result.put("dealerId", dealer.getId());
@@ -261,11 +273,14 @@ public class DealerPortalService {
     result.put("availableCredit", aging.get("availableCredit"));
     result.put("totalOutstanding", aging.get("totalOutstanding"));
     result.put("pendingInvoices", pendingInvoices);
+    result.put("orderCount", orderCount);
     result.put("pendingOrderCount", pendingOrderCount);
     result.put("pendingOrderExposure", pendingOrderExposure);
     result.put("creditUsed", aging.get("creditUsed"));
     result.put("creditStatus", aging.get("creditStatus"));
     result.put("agingBuckets", aging.get("agingBuckets"));
+    result.put("outstandingBalance", aging.get("totalOutstanding"));
+    result.put("creditAvailable", aging.get("availableCredit"));
     return result;
   }
 
@@ -286,10 +301,12 @@ public class DealerPortalService {
           contributesPendingCreditExposure(order, activeInvoicedOrderIds);
       Map<String, Object> orderMap = new LinkedHashMap<>();
       orderMap.put("id", order.getId());
+      orderMap.put("orderId", order.getId());
       orderMap.put("orderNumber", order.getOrderNumber());
       orderMap.put("status", order.getStatus());
       orderMap.put("totalAmount", order.getTotalAmount());
       orderMap.put("createdAt", order.getCreatedAt());
+      orderMap.put("orderDate", order.getCreatedAt());
       orderMap.put("notes", order.getNotes());
       orderMap.put("pendingCreditExposure", pendingCreditExposure);
       orderList.add(orderMap);
@@ -431,6 +448,10 @@ public class DealerPortalService {
     buckets.put("31-60 days", BigDecimal.ZERO);
     buckets.put("61-90 days", BigDecimal.ZERO);
     buckets.put("90+ days", BigDecimal.ZERO);
+    buckets.put("30days", BigDecimal.ZERO);
+    buckets.put("60days", BigDecimal.ZERO);
+    buckets.put("90days", BigDecimal.ZERO);
+    buckets.put("over90", BigDecimal.ZERO);
     if (aging == null || aging.buckets() == null) {
       return buckets;
     }
@@ -441,9 +462,47 @@ public class DealerPortalService {
       String key = resolvePortalAgingBucketKey(bucket);
       if (key != null) {
         buckets.put(key, bucket.amount());
+        if ("1-30 days".equals(key)) {
+          buckets.put("30days", bucket.amount());
+        } else if ("31-60 days".equals(key)) {
+          buckets.put("60days", bucket.amount());
+        } else if ("61-90 days".equals(key)) {
+          buckets.put("90days", bucket.amount());
+        } else if ("90+ days".equals(key)) {
+          buckets.put("over90", bucket.amount());
+        }
       }
     }
     return buckets;
+  }
+
+  private Map<String, Object> normalizeLedgerView(Map<String, Object> ledgerView) {
+    if (ledgerView == null || ledgerView.isEmpty()) {
+      return Map.of();
+    }
+    Map<String, Object> normalized = new LinkedHashMap<>(ledgerView);
+    Object entriesCandidate = ledgerView.get("entries");
+    if (!(entriesCandidate instanceof List<?> entries)) {
+      return normalized;
+    }
+    List<Map<String, Object>> ledgerEntries = new ArrayList<>();
+    for (Object entryCandidate : entries) {
+      if (!(entryCandidate instanceof Map<?, ?> entry)) {
+        continue;
+      }
+      Map<String, Object> normalizedEntry = new LinkedHashMap<>();
+      normalizedEntry.put("date", entry.get("date"));
+      Object memo = entry.get("memo");
+      Object reference = entry.get("reference");
+      String memoText = memo != null ? String.valueOf(memo).trim() : null;
+      normalizedEntry.put("description", StringUtils.hasText(memoText) ? memoText : reference);
+      normalizedEntry.put("debit", entry.get("debit"));
+      normalizedEntry.put("credit", entry.get("credit"));
+      normalizedEntry.put("balance", entry.get("runningBalance"));
+      ledgerEntries.add(normalizedEntry);
+    }
+    normalized.put("ledgerEntries", ledgerEntries);
+    return normalized;
   }
 
   private String resolvePortalAgingBucketKey(AgingBucketDto bucket) {

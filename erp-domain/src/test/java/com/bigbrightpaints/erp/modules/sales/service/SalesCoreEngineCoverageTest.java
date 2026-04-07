@@ -9,6 +9,7 @@ import static org.mockito.Mockito.when;
 
 import java.lang.reflect.Method;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -16,6 +17,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
@@ -28,6 +30,8 @@ import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
 import com.bigbrightpaints.erp.core.audit.AuditService;
+import com.bigbrightpaints.erp.core.audittrail.AuditActionEventCommand;
+import com.bigbrightpaints.erp.core.audittrail.EnterpriseAuditTrailService;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
@@ -100,6 +104,7 @@ class SalesCoreEngineCoverageTest {
   @Mock private AuditService auditService;
   @Mock private CompanyClock companyClock;
   @Mock private PlatformTransactionManager transactionManager;
+  @Mock private EnterpriseAuditTrailService enterpriseAuditTrailService;
 
   private SalesCoreEngine engine;
 
@@ -138,6 +143,38 @@ class SalesCoreEngineCoverageTest {
             companyClock,
             transactionManager,
             null);
+    ReflectionTestUtils.setField(engine, "enterpriseAuditTrailService", enterpriseAuditTrailService);
+  }
+
+  @Test
+  void recordOrderStatusHistory_emitsSalesBusinessAuditEvent() {
+    Company company = new Company();
+    SalesOrder order = new SalesOrder();
+    order.setCompany(company);
+    order.setStatus("DRAFT");
+    order.setOrderNumber("SO-100");
+    ReflectionTestUtils.setField(order, "id", 100L);
+    when(companyClock.now(company)).thenReturn(Instant.parse("2026-04-07T16:30:00Z"));
+
+    ReflectionTestUtils.invokeMethod(
+        engine,
+        "recordOrderStatusHistory",
+        order,
+        "DRAFT",
+        "CONFIRMED",
+        "ORDER_CONFIRMED",
+        "Order confirmed",
+        "alice@example.com");
+
+    ArgumentCaptor<AuditActionEventCommand> commandCaptor =
+        ArgumentCaptor.forClass(AuditActionEventCommand.class);
+    verify(enterpriseAuditTrailService).recordBusinessEvent(commandCaptor.capture());
+    AuditActionEventCommand command = commandCaptor.getValue();
+    assertThat(command.module()).isEqualTo("SALES");
+    assertThat(command.action()).isEqualTo("ORDER_CONFIRMED");
+    assertThat(command.entityType()).isEqualTo("SALES_ORDER");
+    assertThat(command.entityId()).isEqualTo("100");
+    assertThat(command.referenceNumber()).isEqualTo("SO-100");
   }
 
   @Test

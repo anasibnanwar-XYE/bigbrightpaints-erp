@@ -58,6 +58,14 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
       @Param("company") Company company, Pageable pageable);
 
   @Query(
+      "select i.id from Invoice i where i.company = :company and i.salesOrder.id = :salesOrderId"
+          + " order by i.issueDate desc, i.id desc")
+  Page<Long> findIdsByCompanyAndSalesOrderIdOrderByIssueDateDescIdDesc(
+      @Param("company") Company company,
+      @Param("salesOrderId") Long salesOrderId,
+      Pageable pageable);
+
+  @Query(
       "select i.id from Invoice i where i.company = :company and i.dealer = :dealer order by"
           + " i.issueDate desc, i.id desc")
   Page<Long> findIdsByCompanyAndDealerOrderByIssueDateDescIdDesc(

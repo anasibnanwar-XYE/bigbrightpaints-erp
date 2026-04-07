@@ -264,7 +264,8 @@ public class SalesController {
   @PreAuthorize("hasAnyAuthority('ROLE_SALES','ROLE_ADMIN')")
   public ResponseEntity<ApiResponse<PromotionDto>> createPromotion(
       @Valid @RequestBody PromotionRequest request) {
-    return ResponseEntity.ok(
+    return ResponseEntity.status(org.springframework.http.HttpStatus.CREATED)
+        .body(
         ApiResponse.success("Promotion created", salesService.createPromotion(request)));
   }
 

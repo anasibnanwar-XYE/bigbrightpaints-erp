@@ -7,6 +7,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.retry.annotation.Backoff;
@@ -40,6 +41,7 @@ import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceRepository;
 import com.bigbrightpaints.erp.modules.invoice.service.InvoiceSettlementPolicy;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
+import com.bigbrightpaints.erp.modules.sales.service.SalesOrderAutoCloseService;
 
 @Service
 class DealerSettlementService {
@@ -62,6 +64,9 @@ class DealerSettlementService {
   private final SettlementJournalLineDraftService settlementJournalLineDraftService;
   private final SettlementOutcomeService settlementOutcomeService;
   private final AccountingAuditService accountingAuditService;
+
+  @Autowired(required = false)
+  private SalesOrderAutoCloseService salesOrderAutoCloseService;
 
   DealerSettlementService(
       CompanyContextService companyContextService,
@@ -370,6 +375,7 @@ class DealerSettlementService {
     }
     if (!touchedInvoices.isEmpty()) {
       invoiceRepository.saveAll(touchedInvoices);
+      autoClosePaidOrders(company, touchedInvoices);
     }
     accountingAuditService.recordDealerReceiptPostedEventSafe(
         journalEntry, dealer.getId(), cashAmount, trimmedIdempotencyKey);
@@ -409,6 +415,13 @@ class DealerSettlementService {
         totalFxGain,
         totalFxLoss,
         allocationSummaries);
+  }
+
+  private void autoClosePaidOrders(Company company, List<Invoice> touchedInvoices) {
+    if (salesOrderAutoCloseService == null) {
+      return;
+    }
+    salesOrderAutoCloseService.autoCloseFullyPaidOrders(company, touchedInvoices);
   }
 
   @Retryable(

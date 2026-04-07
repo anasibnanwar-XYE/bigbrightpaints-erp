@@ -65,7 +65,9 @@ public class AuditVisibilityPolicy {
   }
 
   public boolean isAccountingModule(String module) {
-    return "ACCOUNTING".equalsIgnoreCase(module) || "INVENTORY".equalsIgnoreCase(module);
+    return "ACCOUNTING".equalsIgnoreCase(module)
+        || "INVENTORY".equalsIgnoreCase(module)
+        || "SALES".equalsIgnoreCase(module);
   }
 
   private jakarta.persistence.criteria.Predicate pathEqualsOrStartsWith(

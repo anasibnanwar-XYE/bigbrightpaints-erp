@@ -207,11 +207,22 @@ public class InvoiceService {
 
   @Transactional
   public List<InvoiceDto> listInvoices(int page, int size) {
+    return listInvoices(page, size, null);
+  }
+
+  @Transactional
+  public List<InvoiceDto> listInvoices(int page, int size, Long salesOrderId) {
     Company company = companyContextService.requireCurrentCompany();
     int safeSize = Math.max(1, Math.min(size, 200));
     PageRequest pageable = PageRequest.of(Math.max(page, 0), safeSize);
-    Page<Long> invoiceIds =
-        invoiceRepository.findIdsByCompanyOrderByIssueDateDescIdDesc(company, pageable);
+    Page<Long> invoiceIds;
+    if (salesOrderId != null) {
+      invoiceIds =
+          invoiceRepository.findIdsByCompanyAndSalesOrderIdOrderByIssueDateDescIdDesc(
+              company, salesOrderId, pageable);
+    } else {
+      invoiceIds = invoiceRepository.findIdsByCompanyOrderByIssueDateDescIdDesc(company, pageable);
+    }
     List<Long> ids = invoiceIds.getContent();
     if (ids.isEmpty()) {
       return List.of();

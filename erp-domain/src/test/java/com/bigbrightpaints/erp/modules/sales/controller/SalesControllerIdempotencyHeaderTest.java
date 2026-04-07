@@ -22,6 +22,8 @@ import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.modules.sales.dto.SalesOrderItemRequest;
 import com.bigbrightpaints.erp.modules.sales.dto.SalesOrderRequest;
 import com.bigbrightpaints.erp.modules.sales.dto.SalesOrderStatusHistoryDto;
+import com.bigbrightpaints.erp.modules.sales.dto.PromotionDto;
+import com.bigbrightpaints.erp.modules.sales.dto.PromotionRequest;
 import com.bigbrightpaints.erp.modules.sales.service.DealerService;
 import com.bigbrightpaints.erp.modules.sales.service.SalesDashboardService;
 import com.bigbrightpaints.erp.modules.sales.service.SalesDispatchReconciliationService;
@@ -132,6 +134,38 @@ class SalesControllerIdempotencyHeaderTest {
     assertThat(response.getBody()).isNotNull();
     assertThat(response.getBody().data()).hasSize(1);
     verify(salesOrderLifecycleService).orderTimeline(99L);
+  }
+
+  @Test
+  void createPromotion_returnsCreatedStatus() {
+    SalesController controller = createController();
+    PromotionRequest request =
+        new PromotionRequest(
+            "Summer Offer",
+            "seasonal discount",
+            "PERCENTAGE",
+            new BigDecimal("10.00"),
+            java.time.LocalDate.of(2026, 4, 1),
+            java.time.LocalDate.of(2026, 4, 30),
+            "ACTIVE");
+    PromotionDto dto =
+        new PromotionDto(
+            11L,
+            java.util.UUID.randomUUID(),
+            "Summer Offer",
+            "seasonal discount",
+            "PERCENTAGE",
+            new BigDecimal("10.00"),
+            java.time.LocalDate.of(2026, 4, 1),
+            java.time.LocalDate.of(2026, 4, 30),
+            "ACTIVE");
+    when(salesService.createPromotion(request)).thenReturn(dto);
+
+    var response = controller.createPromotion(request);
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+    assertThat(response.getBody()).isNotNull();
+    assertThat(response.getBody().data()).isEqualTo(dto);
   }
 
   private SalesOrderRequest requestWithoutIdempotencyKey() {

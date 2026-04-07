@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.retry.annotation.Backoff;
@@ -39,6 +40,7 @@ import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceRepository;
 import com.bigbrightpaints.erp.modules.invoice.service.InvoiceSettlementPolicy;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
+import com.bigbrightpaints.erp.modules.sales.service.SalesOrderAutoCloseService;
 
 @Service
 class DealerReceiptPostingService {
@@ -58,6 +60,9 @@ class DealerReceiptPostingService {
   private final AccountingDtoMapperService dtoMapperService;
   private final AccountingAuditService accountingAuditService;
   private final SettlementTotalsValidationService settlementTotalsValidationService;
+
+  @Autowired(required = false)
+  private SalesOrderAutoCloseService salesOrderAutoCloseService;
 
   DealerReceiptPostingService(
       CompanyContextService companyContextService,
@@ -461,6 +466,7 @@ class DealerReceiptPostingService {
     }
     if (!touchedInvoices.isEmpty()) {
       invoiceRepository.saveAll(touchedInvoices);
+      autoClosePaidOrders(company, touchedInvoices);
     }
   }
 
@@ -473,6 +479,7 @@ class DealerReceiptPostingService {
             .toList();
     BigDecimal remaining = total;
     List<PartnerSettlementAllocation> settlementRows = new ArrayList<>();
+    List<Invoice> touchedInvoices = new ArrayList<>();
     for (Invoice invoice : openInvoices) {
       BigDecimal currentOutstanding = MoneyUtils.zeroIfNull(invoice.getOutstandingAmount());
       if (currentOutstanding.compareTo(BigDecimal.ZERO) <= 0
@@ -516,7 +523,19 @@ class DealerReceiptPostingService {
       invoiceSettlementPolicy.applySettlement(
           row.getInvoice(), row.getAllocationAmount(), settlementRef);
       dealerLedgerService.syncInvoiceLedger(row.getInvoice(), entryDate);
+      touchedInvoices.add(row.getInvoice());
     }
+    if (!touchedInvoices.isEmpty()) {
+      invoiceRepository.saveAll(touchedInvoices);
+      autoClosePaidOrders(company, touchedInvoices);
+    }
+  }
+
+  private void autoClosePaidOrders(Company company, List<Invoice> touchedInvoices) {
+    if (salesOrderAutoCloseService == null) {
+      return;
+    }
+    salesOrderAutoCloseService.autoCloseFullyPaidOrders(company, touchedInvoices);
   }
 
   private void validateDealerReceiptAllocations(

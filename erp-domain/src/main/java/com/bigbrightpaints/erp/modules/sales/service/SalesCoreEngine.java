@@ -34,6 +34,8 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.StringUtils;
 import org.springframework.web.context.request.RequestContextHolder;
@@ -41,6 +43,10 @@ import org.springframework.web.context.request.ServletRequestAttributes;
 
 import com.bigbrightpaints.erp.core.audit.AuditEvent;
 import com.bigbrightpaints.erp.core.audit.AuditService;
+import com.bigbrightpaints.erp.core.audittrail.AuditActionEventCommand;
+import com.bigbrightpaints.erp.core.audittrail.AuditActionEventSource;
+import com.bigbrightpaints.erp.core.audittrail.AuditActionEventStatus;
+import com.bigbrightpaints.erp.core.audittrail.EnterpriseAuditTrailService;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.CreditLimitExceededException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
@@ -224,6 +230,9 @@ public class SalesCoreEngine {
 
   @Autowired(required = false)
   private AccountingComplianceAuditService accountingComplianceAuditService;
+
+  @Autowired(required = false)
+  private EnterpriseAuditTrailService enterpriseAuditTrailService;
 
   @Autowired
   public SalesCoreEngine(
@@ -3864,16 +3873,8 @@ public class SalesCoreEngine {
       return;
     }
     String actor = currentActorIdentity();
-    SalesOrderStatusHistory history = new SalesOrderStatusHistory();
-    history.setCompany(order.getCompany());
-    history.setSalesOrder(order);
-    history.setFromStatus(null);
-    history.setToStatus(canonicalOrderStatus(order.getStatus()));
-    history.setReasonCode("ORDER_CREATED");
-    history.setReason("Order created");
-    history.setChangedBy(actor);
-    history.setChangedAt(companyClock.now(order.getCompany()));
-    salesOrderStatusHistoryRepository.save(history);
+    recordOrderStatusHistory(
+        order, null, canonicalOrderStatus(order.getStatus()), "ORDER_CREATED", "Order created", actor);
   }
 
   private void transitionOrderStatus(
@@ -3921,6 +3922,73 @@ public class SalesCoreEngine {
     history.setChangedBy(StringUtils.hasText(actor) ? actor.trim() : "system");
     history.setChangedAt(companyClock.now(order.getCompany()));
     salesOrderStatusHistoryRepository.save(history);
+    recordOrderStatusBusinessEvent(order, history);
+  }
+
+  private void recordOrderStatusBusinessEvent(SalesOrder order, SalesOrderStatusHistory history) {
+    if (enterpriseAuditTrailService == null
+        || order == null
+        || order.getCompany() == null
+        || order.getId() == null
+        || history == null) {
+      return;
+    }
+    String action =
+        StringUtils.hasText(history.getReasonCode()) ? history.getReasonCode() : "ORDER_STATUS_CHANGED";
+    Map<String, String> metadata = new LinkedHashMap<>();
+    if (StringUtils.hasText(history.getFromStatus())) {
+      metadata.put("fromStatus", history.getFromStatus());
+    }
+    if (StringUtils.hasText(history.getToStatus())) {
+      metadata.put("toStatus", history.getToStatus());
+    }
+    if (StringUtils.hasText(history.getReason())) {
+      metadata.put("reason", history.getReason());
+    }
+    if (order.getDealer() != null && order.getDealer().getId() != null) {
+      metadata.put("dealerId", order.getDealer().getId().toString());
+    }
+    AuditActionEventCommand command =
+        new AuditActionEventCommand(
+            order.getCompany(),
+            AuditActionEventSource.BACKEND,
+            "SALES",
+            action,
+            "SALES_ORDER",
+            order.getId().toString(),
+            order.getOrderNumber(),
+            AuditActionEventStatus.SUCCESS,
+            null,
+            order.getTotalAmount(),
+            order.getCurrency(),
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            false,
+            null,
+            metadata,
+            history.getChangedAt());
+    dispatchSalesBusinessEvent(command);
+  }
+
+  private void dispatchSalesBusinessEvent(AuditActionEventCommand command) {
+    if (enterpriseAuditTrailService == null || command == null) {
+      return;
+    }
+    if (TransactionSynchronizationManager.isSynchronizationActive()) {
+      TransactionSynchronizationManager.registerSynchronization(
+          new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+              enterpriseAuditTrailService.recordBusinessEvent(command);
+            }
+          });
+      return;
+    }
+    enterpriseAuditTrailService.recordBusinessEvent(command);
   }
 
   private boolean isValidOrderTransition(String fromStatus, String toStatus) {

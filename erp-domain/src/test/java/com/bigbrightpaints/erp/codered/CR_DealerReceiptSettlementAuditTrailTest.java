@@ -86,6 +86,78 @@ class CR_DealerReceiptSettlementAuditTrailTest extends AbstractIntegrationTest {
   }
 
   @Test
+  void dealerReceipt_fullSettlement_autoClosesInvoicedOrder() {
+    String companyCode = "CR-AUTOCLOSE-" + shortId();
+    Company company = bootstrapCompany(companyCode, "UTC");
+    Map<String, Account> accounts = ensureCoreAccounts(company);
+    Dealer dealer = ensureDealer(company, accounts.get("AR"));
+
+    FinishedGood fg =
+        ensureFinishedGoodWithCatalog(company, accounts, "FG-" + shortId(), BigDecimal.ZERO);
+    CompanyContextHolder.setCompanyCode(companyCode);
+    registerFinishedGoodBatchForTest(
+        new FinishedGoodBatchRequest(
+            fg.getId(),
+            "BATCH-AUTO",
+            new BigDecimal("20"),
+            new BigDecimal("10.00"),
+            Instant.now(),
+            null));
+    CompanyContextHolder.clear();
+
+    SalesOrder order =
+        createOrder(
+            company, dealer, fg.getProductCode(), new BigDecimal("5"), new BigDecimal("15.50"));
+    order.setStatus("INVOICED");
+    salesOrderRepository.saveAndFlush(order);
+
+    Invoice invoice = issueInvoiceForOrder(company, dealer, order);
+    BigDecimal outstanding = invoice.getOutstandingAmount();
+    DealerReceiptRequest receiptRequest =
+        new DealerReceiptRequest(
+            dealer.getId(),
+            accounts.get("BANK").getId(),
+            outstanding,
+            "DR-AUTO-" + UUID.randomUUID(),
+            "Auto-close receipt",
+            "DR-AUTO-IDEMP-" + UUID.randomUUID(),
+            List.of(
+                new SettlementAllocationRequest(
+                    invoice.getId(),
+                    null,
+                    outstanding,
+                    BigDecimal.ZERO,
+                    BigDecimal.ZERO,
+                    null,
+                    "Apply to invoice")));
+
+    CompanyContextHolder.setCompanyCode(companyCode);
+    try {
+      accountingService.recordDealerReceipt(receiptRequest);
+    } finally {
+      CompanyContextHolder.clear();
+    }
+
+    SalesOrder refreshedOrder =
+        salesOrderRepository.findByCompanyAndId(company, order.getId()).orElseThrow();
+    assertThat(refreshedOrder.getStatus()).isEqualTo("CLOSED");
+    Integer autoCloseEvents =
+        jdbcTemplate.queryForObject(
+            """
+            select count(*)
+            from sales_order_status_history
+            where company_id = ?
+              and sales_order_id = ?
+              and reason_code = 'ORDER_CLOSED_AUTO'
+            """,
+            Integer.class,
+            company.getId(),
+            order.getId());
+    assertThat(autoCloseEvents).isNotNull();
+    assertThat(autoCloseEvents).isGreaterThan(0);
+  }
+
+  @Test
   void dealerReceipt_isIdempotent_underConcurrency_andWritesAuditTrail() {
     String companyCode = "CR-AR-" + shortId();
     Company company = bootstrapCompany(companyCode, "UTC");
