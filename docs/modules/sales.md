@@ -1,6 +1,6 @@
 # Sales / Order-to-Cash Module Packet
 
-Last reviewed: 2026-04-02
+Last reviewed: 2026-04-07
 
 This packet documents the sales module, which owns **commercial lifecycle truth** for the ERP. It covers dealer/customer management, order lifecycle, credit controls, dispatch coordination, dealer self-service, and the canonical order-to-cash path through dispatch and settlement boundaries.
 
@@ -34,12 +34,12 @@ Stock and dispatch execution truth is documented separately in [inventory.md](in
 
 | Route | Method | Roles | Purpose |
 | --- | --- | --- | --- |
-| `/api/v1/sales/orders` | POST | SALES, ADMIN | Create sales order (idempotent) |
+| `/api/v1/sales/orders` | POST | SALES, ADMIN | Create sales order (idempotent; `201 Created` for draft-lifecycle payloads, otherwise `200 OK`) |
 | `/api/v1/sales/orders` | GET | ADMIN, SALES, FACTORY, ACCOUNTING | List orders (paginated) |
 | `/api/v1/sales/orders/search` | GET | ADMIN, SALES, FACTORY, ACCOUNTING | Search orders with filters (`orderNumber` contains match; canonical status filters normalize legacy stored statuses) |
 | `/api/v1/sales/orders/{id}` | PUT | SALES, ADMIN | Update draft order |
 | `/api/v1/sales/orders/{id}` | DELETE | SALES, ADMIN | Delete draft order |
-| `/api/v1/sales/orders/{id}/confirm` | POST | SALES, ADMIN | Confirm order (triggers credit check + stock validation) |
+| `/api/v1/sales/orders/{id}/confirm` | POST | SALES, ADMIN | Confirm order (triggers credit check + stock validation/reservation) |
 | `/api/v1/sales/orders/{id}/cancel` | POST | SALES, ADMIN | Cancel order (requires reason code) |
 | `/api/v1/sales/orders/{id}/status` | PATCH | SALES, ADMIN | Manual status update (ON_HOLD, REJECTED, CLOSED only) |
 | `/api/v1/sales/orders/{id}/timeline` | GET | ADMIN, SALES, FACTORY, ACCOUNTING | Order status history timeline |
@@ -210,12 +210,12 @@ Provides dashboard data: active dealer count, order counts bucketed by status (o
 
 | DTO | Purpose |
 | --- | --- |
-| `SalesOrderRequest` | Order creation/update payload with items, GST treatment, payment mode, idempotency key |
+| `SalesOrderRequest` | Order creation/update payload with items, GST treatment, payment mode, optional `paymentTerms`, idempotency key |
 | `SalesOrderDto` | Order response with status, amounts, GST, payment mode |
-| `SalesOrderItemRequest` | Line item with product code, quantity, unit price, GST rate |
-| `SalesOrderItemDto` | Line item response |
+| `SalesOrderItemRequest` | Line item with product code, quantity, unit price, GST rate, optional `finishedGoodId` |
+| `SalesOrderItemDto` | Line item response (includes optional `finishedGoodId`) |
 | `SalesOrderSearchFilters` | Search parameters (status, dealer, order number, date range, pagination) |
-| `SalesOrderStatusHistoryDto` | Status transition record |
+| `SalesOrderStatusHistoryDto` | Status transition record with alias fields (`status`, `actor`, `timestamp`) mirroring `toStatus`, `changedBy`, `changedAt` |
 | `CancelRequest` | **SalesController inner record** — Cancellation reason code and reason text |
 | `StatusRequest` | **SalesController inner record** — Manual status update target |
 

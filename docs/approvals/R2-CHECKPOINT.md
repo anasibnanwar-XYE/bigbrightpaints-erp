@@ -1,6 +1,72 @@
 # R2 Checkpoint
 
-Last reviewed: 2026-04-06
+Last reviewed: 2026-04-07
+
+## Scope
+- Feature: `m7-fix-sales-order-confirm-inventory-reservation-and-contract-refresh`
+- Branch: current sales-order remediation branch
+- Review candidate:
+  - keep Flyway v2 migration `erp-domain/src/main/resources/db/migration_v2/V179__sales_order_lifecycle_payment_terms_finished_good.sql` as the canonical schema source for `sales_orders.payment_terms` and `sales_order_items.finished_good_id`
+  - enforce draft-lifecycle confirmation reservation semantics in `SalesCoreEngine.confirmOrder()` so confirm reserves inventory and fails closed when reservation is incomplete
+  - refresh public contract surfaces (`openapi.json`, canonical sales docs, endpoint inventory metadata) so published DTO/status semantics match runtime behavior
+- Why this is R2: the packet relies on and validates an active `migration_v2` schema addition and updates runtime behavior that depends on those columns.
+
+## Risk Trigger
+- Triggered by:
+  - `erp-domain/src/main/resources/db/migration_v2/V179__sales_order_lifecycle_payment_terms_finished_good.sql` (active migration lane scope)
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/sales/service/SalesCoreEngine.java`
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/sales/controller/SalesController.java`
+  - `openapi.json`
+- Contract surfaces affected:
+  - sales order create payload/response fields (`paymentTerms`, `finishedGoodId`)
+  - order confirmation reservation behavior and cancellation release path for draft-lifecycle orders
+  - published OpenAPI response semantics for `POST /api/v1/sales/orders` and timeline alias fields
+- Failure mode if wrong:
+  - draft lifecycle orders can confirm without owning stock reservations
+  - cancellation may not release meaningful reservations for draft-lifecycle orders
+  - generated clients/frontend packets can drift from runtime if OpenAPI/docs remain stale
+
+## Approval Authority
+- Mode: orchestrator
+- Approver: Droid mission orchestrator
+- Canary owner: Droid mission orchestrator
+- Approval status: approved for compatibility-preserving remediation
+- Basis: the migration scope is additive/compatibility-preserving and runtime changes tighten correctness without widening privileges or crossing tenant boundaries.
+
+## Escalation Decision
+- Human escalation required: no
+- Reason: no privilege widening, tenant-boundary expansion, or destructive DDL is introduced; remediation is bounded by regression and contract guards.
+
+## Rollback Owner
+- Owner: Droid mission orchestrator
+- Rollback method:
+  - before merge: revert the reservation/contract/doc packet together
+  - after merge: revert packet plus restore from backup/PITR if data backfill behavior must be undone
+- Rollback trigger:
+  - sales confirm/cancel lifecycle regression on draft-lifecycle orders
+  - openapi drift guard or gate-fast regression after merge
+
+## Expiry
+- Valid until: 2026-04-21
+- Re-evaluate if: the packet expands into auth/RBAC/tenant-boundary changes or introduces destructive migration rewrites.
+
+## Test Waiver
+- Not applicable — runtime, contract, and governance surfaces changed and validator evidence is required.
+
+## Verification Evidence
+- Commands run:
+  - `cd "/home/realnigga/Desktop/Mission-control/erp-domain" && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='SalesServiceTest,SalesControllerIT' test`
+  - `ROOT="/home/realnigga/Desktop/Mission-control" && cd "$ROOT/erp-domain" && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest=OpenApiSnapshotIT -Derp.openapi.snapshot.verify=true -Derp.openapi.snapshot.refresh=true test`
+  - `cd "/home/realnigga/Desktop/Mission-control" && bash scripts/guard_openapi_contract_drift.sh`
+  - `cd "/home/realnigga/Desktop/Mission-control" && bash scripts/gate_fast.sh`
+  - `cd "/home/realnigga/Desktop/Mission-control" && bash ci/check-codex-review-guidelines.sh`
+  - `cd "/home/realnigga/Desktop/Mission-control" && bash ci/check-enterprise-policy.sh`
+- Result summary:
+  - draft-lifecycle confirm now reserves stock and lifecycle tests cover reserve-on-confirm plus release-on-cancel behavior
+  - OpenAPI snapshot and canonical docs reflect `paymentTerms`, `finishedGoodId`, timeline aliases, and create-order status semantics
+  - governance checkpoint now records migration-v2 risk handling and verification proof for V179 scope
+
+---
 
 ## Scope
 - Feature: `m3-fix-packaging-slip-backfill-v2`

@@ -1,6 +1,6 @@
 # Sales API Contracts
 
-Last reviewed: 2026-04-02
+Last reviewed: 2026-04-07
 
 This file defines which backend surfaces sales can call directly and where the
 portal must stop.
@@ -37,12 +37,19 @@ Rules:
 Rules:
 
 - Order create and confirm happen in sales.
+- `POST /api/v1/sales/orders` returns `201 Created` when the request opts into the
+  draft lifecycle contract (`paymentTerms` present and/or any item includes
+  `finishedGoodId`); legacy payloads continue to receive `200 OK`.
+- `SalesOrderRequest` now accepts `paymentTerms` and
+  `SalesOrderItemRequest.finishedGoodId`.
 - Order search treats `orderNumber` as a case-insensitive contains filter.
 - Order search normalizes legacy stored statuses:
   - `DRAFT` also matches `BOOKED`
   - `DISPATCHED` also matches `SHIPPED` and `FULFILLED`
   - `SETTLED` also matches `COMPLETED`
 - Confirm should be treated as commercial confirmation and reservation intent.
+- Order timeline rows expose canonical + alias fields:
+  `toStatus`/`status`, `changedBy`/`actor`, and `changedAt`/`timestamp`.
 - Do not infer invoice generation from order confirmation alone.
 
 ## Dispatch And Invoice Reads

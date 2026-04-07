@@ -154,6 +154,56 @@ GET /api/v1/dealers?status=ALL&page=0&size=50
 
 > **Note**: There is no `GET /api/v1/dealers/{dealerId}` endpoint for fetching a single dealer by ID. Dealer details are available through the list endpoint with filters, or via search endpoints.
 
+## Sales orders (draft lifecycle contract)
+
+### Create order (`201 Created` when draft-lifecycle fields are present)
+
+```json
+POST /api/v1/sales/orders
+→ 201 Created
+{
+  "dealerId": 101,
+  "paymentMode": "CREDIT",
+  "paymentTerms": "NET_30",
+  "gstTreatment": "INTRA_STATE",
+  "items": [
+    {
+      "productCode": "FG-PRM-WHT-20L",
+      "finishedGoodId": 501,
+      "quantity": 10,
+      "unitPrice": 1850.0,
+      "gstRate": 18.0
+    }
+  ]
+}
+```
+
+`POST /api/v1/sales/orders` remains `200 OK` for legacy payloads that do not use
+`paymentTerms` and `finishedGoodId`.
+
+### Order timeline (canonical + alias fields)
+
+```json
+GET /api/v1/sales/orders/1201/timeline
+{
+  "success": true,
+  "data": [
+    {
+      "id": 77,
+      "fromStatus": "DRAFT",
+      "toStatus": "CONFIRMED",
+      "status": "CONFIRMED",
+      "changedBy": "sales.lead@acme.test",
+      "actor": "sales.lead@acme.test",
+      "changedAt": "2026-04-07T10:25:18Z",
+      "timestamp": "2026-04-07T10:25:18Z",
+      "reasonCode": "MANUAL_CONFIRM",
+      "reason": "Sales confirmation after stock reservation"
+    }
+  ]
+}
+```
+
 ## Inventory and purchasing (M6 contract refresh)
 
 ### Finished goods list (paginated)

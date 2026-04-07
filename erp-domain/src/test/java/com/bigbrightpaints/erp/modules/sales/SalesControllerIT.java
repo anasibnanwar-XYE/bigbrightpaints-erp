@@ -22,6 +22,9 @@ import org.springframework.test.util.ReflectionTestUtils;
 import com.bigbrightpaints.erp.core.fixture.E2eFixtureCatalog;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
+import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
+import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatch;
+import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatchRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
@@ -50,6 +53,7 @@ public class SalesControllerIT extends AbstractIntegrationTest {
   @Autowired private DealerRepository dealerRepository;
   @Autowired private SalesOrderRepository salesOrderRepository;
   @Autowired private FinishedGoodRepository finishedGoodRepository;
+  @Autowired private FinishedGoodBatchRepository finishedGoodBatchRepository;
 
   @BeforeEach
   void seed() {
@@ -199,6 +203,35 @@ public class SalesControllerIT extends AbstractIntegrationTest {
         .findByCompanyAndProductCode(company, E2eFixtureCatalog.ORDER_PRIMARY_SKU)
         .orElseThrow()
         .getId();
+  }
+
+  private void ensureReservableFinishedGoodStock(Long finishedGoodId, BigDecimal requiredQuantity) {
+    Company company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
+    FinishedGood finishedGood =
+        finishedGoodRepository.findByCompanyAndId(company, finishedGoodId).orElseThrow();
+
+    BigDecimal currentStock =
+        finishedGood.getCurrentStock() == null ? BigDecimal.ZERO : finishedGood.getCurrentStock();
+    BigDecimal reservedStock =
+        finishedGood.getReservedStock() == null
+            ? BigDecimal.ZERO
+            : finishedGood.getReservedStock();
+    BigDecimal availableStock = currentStock.subtract(reservedStock);
+    if (availableStock.compareTo(requiredQuantity) >= 0) {
+      return;
+    }
+
+    BigDecimal stockDelta = requiredQuantity.subtract(availableStock);
+    finishedGood.setCurrentStock(currentStock.add(stockDelta));
+    finishedGoodRepository.saveAndFlush(finishedGood);
+
+    FinishedGoodBatch batch = new FinishedGoodBatch();
+    batch.setFinishedGood(finishedGood);
+    batch.setBatchCode("IT-RESERVE-" + System.nanoTime());
+    batch.setQuantityTotal(stockDelta);
+    batch.setQuantityAvailable(stockDelta);
+    batch.setUnitCost(new BigDecimal("10.00"));
+    finishedGoodBatchRepository.saveAndFlush(batch);
   }
 
   private Map<String, Object> salesOrderPayloadWithFinishedGoodId(
@@ -647,6 +680,13 @@ public class SalesControllerIT extends AbstractIntegrationTest {
     HttpHeaders headers = authenticatedHeaders(loginToken(SALES_EMAIL, SALES_PASSWORD));
     Long dealerId = createDealer(headers, "Lifecycle Dealer");
     Long finishedGoodId = resolveFinishedGoodId();
+    ensureReservableFinishedGoodStock(finishedGoodId, new BigDecimal("2.00"));
+    Company company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
+    BigDecimal reservedBefore =
+        finishedGoodRepository
+            .findByCompanyAndId(company, finishedGoodId)
+            .orElseThrow()
+            .getReservedStock();
 
     ResponseEntity<Map> createResponse =
         rest.exchange(
@@ -683,6 +723,12 @@ public class SalesControllerIT extends AbstractIntegrationTest {
     assertThat(confirmResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
     Map<?, ?> confirmedData = (Map<?, ?>) confirmResponse.getBody().get("data");
     assertThat(confirmedData.get("status")).isEqualTo("CONFIRMED");
+    BigDecimal reservedAfterConfirm =
+        finishedGoodRepository
+            .findByCompanyAndId(company, finishedGoodId)
+            .orElseThrow()
+            .getReservedStock();
+    assertThat(reservedAfterConfirm).isGreaterThan(reservedBefore);
 
     ResponseEntity<Map> timelineResponse =
         rest.exchange(
@@ -722,6 +768,12 @@ public class SalesControllerIT extends AbstractIntegrationTest {
     assertThat(cancelResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
     Map<?, ?> cancelledData = (Map<?, ?>) cancelResponse.getBody().get("data");
     assertThat(cancelledData.get("status")).isEqualTo("CANCELLED");
+    BigDecimal reservedAfterCancel =
+        finishedGoodRepository
+            .findByCompanyAndId(company, finishedGoodId)
+            .orElseThrow()
+            .getReservedStock();
+    assertThat(reservedAfterCancel).isEqualByComparingTo(reservedBefore);
   }
 
   @Test

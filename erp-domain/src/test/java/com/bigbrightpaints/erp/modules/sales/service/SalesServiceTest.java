@@ -4395,6 +4395,111 @@ class SalesServiceTest {
   }
 
   @Test
+  void confirmOrderReservesInventoryForDraftLifecycleOrdersBeforeConfirming() {
+    SalesOrder order = new SalesOrder();
+    order.setCompany(company);
+    order.setStatus("DRAFT");
+    order.setTotalAmount(new BigDecimal("100.00"));
+    order.setPaymentMode("CASH");
+    setField(order, "id", 906L);
+
+    SalesOrderItem item = new SalesOrderItem();
+    item.setSalesOrder(order);
+    item.setFinishedGoodId(501L);
+    item.setProductCode("SKU-RESERVE");
+    item.setDescription("Draft lifecycle item");
+    item.setQuantity(new BigDecimal("2.00"));
+    item.setUnitPrice(new BigDecimal("50.00"));
+    item.setGstRate(BigDecimal.ZERO);
+    order.getItems().add(item);
+
+    FinishedGood finishedGood = buildFinishedGood("SKU-RESERVE");
+    FinishedGoodBatch batch = new FinishedGoodBatch();
+    batch.setFinishedGood(finishedGood);
+    batch.setBatchCode("BATCH-RESERVE");
+
+    PackagingSlipLine line = new PackagingSlipLine();
+    line.setFinishedGoodBatch(batch);
+    line.setOrderedQuantity(new BigDecimal("2.00"));
+    line.setBackorderQuantity(BigDecimal.ZERO);
+    line.setShippedQuantity(BigDecimal.ZERO);
+    line.setQuantity(new BigDecimal("2.00"));
+
+    PackagingSlip slip = new PackagingSlip();
+    slip.setCompany(company);
+    slip.setSalesOrder(order);
+    slip.setStatus("RESERVED");
+    slip.getLines().add(line);
+
+    when(salesLookupService.requireSalesOrder(company, 906L)).thenReturn(order);
+    when(finishedGoodsService.reserveForOrder(order))
+        .thenReturn(
+            new InventoryReservationResult(
+                new com.bigbrightpaints.erp.modules.inventory.dto.PackagingSlipDto(
+                    906L,
+                    java.util.UUID.randomUUID(),
+                    906L,
+                    "SO-906",
+                    null,
+                    "PS-906",
+                    "RESERVED",
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    List.of(),
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null),
+                List.of()));
+    when(packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, 906L))
+        .thenReturn(List.of(slip));
+
+    SalesOrderDto dto = salesService.confirmOrder(906L);
+
+    assertEquals("CONFIRMED", dto.status());
+    verify(finishedGoodsService).reserveForOrder(order);
+  }
+
+  @Test
+  void confirmOrderRejectsDraftLifecycleWhenReservationIsIncomplete() {
+    SalesOrder order = new SalesOrder();
+    order.setCompany(company);
+    order.setStatus("DRAFT");
+    order.setTotalAmount(new BigDecimal("100.00"));
+    order.setPaymentMode("CASH");
+    setField(order, "id", 907L);
+
+    SalesOrderItem item = new SalesOrderItem();
+    item.setSalesOrder(order);
+    item.setFinishedGoodId(601L);
+    item.setProductCode("SKU-NO-RESERVE");
+    item.setDescription("Draft lifecycle shortage item");
+    item.setQuantity(new BigDecimal("1.00"));
+    item.setUnitPrice(new BigDecimal("100.00"));
+    item.setGstRate(BigDecimal.ZERO);
+    order.getItems().add(item);
+
+    when(salesLookupService.requireSalesOrder(company, 907L)).thenReturn(order);
+    when(finishedGoodsService.reserveForOrder(order))
+        .thenReturn(
+            new InventoryReservationResult(
+                null, List.of(new InventoryShortage("SKU-NO-RESERVE", BigDecimal.ONE, "Short"))));
+
+    ApplicationException ex =
+        assertThrows(ApplicationException.class, () -> salesService.confirmOrder(907L));
+
+    assertEquals(ErrorCode.BUSINESS_INVALID_STATE, ex.getErrorCode());
+    verify(finishedGoodsService).reserveForOrder(order);
+  }
+
+  @Test
   void cancelOrderReleasesReservations() {
     SalesOrder order = new SalesOrder();
     order.setCompany(company);

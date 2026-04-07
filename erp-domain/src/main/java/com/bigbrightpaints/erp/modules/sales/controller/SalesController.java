@@ -22,7 +22,9 @@ import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 import com.bigbrightpaints.erp.shared.dto.PageResponse;
 
 import io.micrometer.core.annotation.Timed;
+import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import jakarta.validation.Valid;
 
 @RestController
@@ -119,6 +121,15 @@ public class SalesController {
 
   @PostMapping("/sales/orders")
   @PreAuthorize("hasAnyAuthority('ROLE_SALES','ROLE_ADMIN')")
+  @Operation(summary = "Create sales order")
+  @ApiResponses({
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+        responseCode = "200",
+        description = "Order created (legacy contract-compatible response)"),
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+        responseCode = "201",
+        description = "Order created for draft-lifecycle requests with paymentTerms/finishedGoodId")
+  })
   public ResponseEntity<ApiResponse<SalesOrderDto>> createOrder(
       @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
       @Parameter(hidden = true) @RequestHeader(value = "X-Idempotency-Key", required = false)

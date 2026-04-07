@@ -1,6 +1,6 @@
 # Order-to-Cash (O2C) Flow
 
-Last reviewed: 2026-04-02
+Last reviewed: 2026-04-07
 
 This packet documents the **order-to-cash flow**: the canonical commercial lifecycle from dealer onboarding through sales order creation, confirmation, dispatch, invoicing, and settlement. It covers credit management, inventory reservation, dispatch execution, invoice generation, and the accounting boundary for AR (accounts receivable).
 
@@ -40,15 +40,15 @@ This flow is **behavior-first** and **code-grounded**. Where the backend is inco
 
 | Entrypoint | Method | Path | Actor | Purpose |
 | --- | --- | --- | --- | --- |
-| Create Order | POST | `/api/v1/sales/orders` | SALES, ADMIN | Create sales order (idempotent) |
+| Create Order | POST | `/api/v1/sales/orders` | SALES, ADMIN | Create sales order (idempotent; `201` for draft-lifecycle payloads, otherwise `200`) |
 | List Orders | GET | `/api/v1/sales/orders` | ADMIN, SALES, FACTORY, ACCOUNTING | List orders (paginated) |
 | Search Orders | GET | `/api/v1/sales/orders/search` | ADMIN, SALES, FACTORY, ACCOUNTING | Search with filters (`orderNumber` contains match; canonical status filters normalize legacy stored statuses) |
 | Update Order | PUT | `/api/v1/sales/orders/{id}` | SALES, ADMIN | Update draft order |
 | Delete Order | DELETE | `/api/v1/sales/orders/{id}` | SALES, ADMIN | Delete draft order |
-| Confirm Order | POST | `/api/v1/sales/orders/{id}/confirm` | SALES, ADMIN | Confirm order (credit check + stock validation) |
+| Confirm Order | POST | `/api/v1/sales/orders/{id}/confirm` | SALES, ADMIN | Confirm order (credit check + stock validation/reservation) |
 | Cancel Order | POST | `/api/v1/sales/orders/{id}/cancel` | SALES, ADMIN | Cancel order (requires reason) |
 | Update Status | PATCH | `/api/v1/sales/orders/{id}/status` | SALES, ADMIN | Manual status (ON_HOLD, REJECTED, CLOSED) |
-| Order Timeline | GET | `/api/v1/sales/orders/{id}/timeline` | ADMIN, SALES, FACTORY, ACCOUNTING | Status history |
+| Order Timeline | GET | `/api/v1/sales/orders/{id}/timeline` | ADMIN, SALES, FACTORY, ACCOUNTING | Status history (`toStatus` + alias `status`, `changedBy` + alias `actor`, `changedAt` + alias `timestamp`) |
 
 ### Dealer Management — `DealerController` (`/api/v1/dealers/**`)
 
@@ -101,7 +101,7 @@ Dealer-directory compatibility rules:
 
 1. **Order must be in valid status** — DRAFT, RESERVED, or PENDING_PRODUCTION
 2. **Credit limit must allow** — credit used (outstanding + pending) < credit limit for credit-mode orders
-3. **Stock must be available** — RESERVED status or explicit override request exists
+3. **Stock must be available** — RESERVED status or explicit override request exists; draft-lifecycle confirms reserve finished-goods stock during confirmation
 4. **No dunning hold on dealer** — dealer status must not be ON_HOLD
 
 ### Dispatch Confirmation Preconditions
@@ -162,8 +162,8 @@ Generate order number → Save order → [Optional: Reserve stock] →
 
 **Key behaviors:**
 - Credit re-checked at confirmation time
+- Draft-lifecycle payloads reserve finished-goods stock during confirmation and fail closed on reservation shortages
 - Stock validated (not already reserved by another order)
-- Triggers inventory reservation for the confirmed order
 
 ### 4.4 Dispatch Confirmation Lifecycle (Fulfillment)
 

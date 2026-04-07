@@ -1220,6 +1220,11 @@ public class SalesCoreEngine {
         requiredAmount,
         order.getPaymentMode(),
         order.getId());
+    if (ORDER_STATUS_DRAFT.equals(currentStatus) && isDraftLifecycleOrder(order)) {
+      FinishedGoodsService.InventoryReservationResult reservationResult =
+          finishedGoodsService.reserveForOrder(order);
+      assertDraftLifecycleReservationBacked(order, reservationResult);
+    }
     validateStockAvailabilityForConfirmation(order);
     transitionOrderStatus(
         order,
@@ -4094,7 +4099,6 @@ public class SalesCoreEngine {
       }
       return;
     }
-    boolean hasAnyReserved = false;
     List<String> shortages = new ArrayList<>();
     for (PackagingSlip slip : slips) {
       if (slip == null || slip.getLines() == null || slip.getLines().isEmpty()) {
@@ -4108,31 +4112,61 @@ public class SalesCoreEngine {
             line.getOrderedQuantity() != null ? line.getOrderedQuantity() : line.getQuantity();
         BigDecimal shipped =
             line.getShippedQuantity() != null ? line.getShippedQuantity() : BigDecimal.ZERO;
-        BigDecimal backorder =
-            line.getBackorderQuantity() != null
-                ? line.getBackorderQuantity()
-                : (ordered != null
-                    ? ordered.subtract(shipped).max(BigDecimal.ZERO)
-                    : BigDecimal.ZERO);
-        BigDecimal reservedQty =
-            ordered != null ? ordered.subtract(backorder).max(BigDecimal.ZERO) : BigDecimal.ZERO;
-        if (reservedQty.compareTo(BigDecimal.ZERO) > 0) {
-          hasAnyReserved = true;
-          continue;
+        BigDecimal reservedQty;
+        if (line.getBackorderQuantity() != null) {
+          BigDecimal baseline = ordered != null ? ordered : BigDecimal.ZERO;
+          reservedQty = baseline.subtract(line.getBackorderQuantity()).max(BigDecimal.ZERO);
+        } else if (line.getQuantity() != null) {
+          reservedQty = line.getQuantity().subtract(shipped).max(BigDecimal.ZERO);
+        } else if (ordered != null) {
+          reservedQty = ordered.subtract(shipped).max(BigDecimal.ZERO);
+        } else {
+          reservedQty = BigDecimal.ZERO;
         }
-        String sku =
-            line.getFinishedGoodBatch() != null
-                    && line.getFinishedGoodBatch().getFinishedGood() != null
-                ? line.getFinishedGoodBatch().getFinishedGood().getProductCode()
-                : "UNKNOWN";
-        shortages.add(sku);
+        if (reservedQty.compareTo(BigDecimal.ZERO) <= 0) {
+          String sku =
+              line.getFinishedGoodBatch() != null
+                      && line.getFinishedGoodBatch().getFinishedGood() != null
+                  ? line.getFinishedGoodBatch().getFinishedGood().getProductCode()
+                  : "UNKNOWN";
+          shortages.add(sku);
+        }
       }
     }
-    if (!hasAnyReserved && !shortages.isEmpty()) {
+    if (!shortages.isEmpty()) {
       throw new ApplicationException(
               ErrorCode.BUSINESS_INVALID_STATE,
               "Order cannot be confirmed because no stock is reserved for line items")
           .withDetail("unreservedSkus", shortages);
+    }
+  }
+
+  private void assertDraftLifecycleReservationBacked(
+      SalesOrder order, FinishedGoodsService.InventoryReservationResult reservationResult) {
+    if (reservationResult == null) {
+      throw new ApplicationException(
+              ErrorCode.BUSINESS_INVALID_STATE,
+              "Order cannot be confirmed because inventory reservation failed")
+          .withDetail("orderId", order.getId());
+    }
+    if (reservationResult.shortages() != null && !reservationResult.shortages().isEmpty()) {
+      List<String> shortageSkus =
+          reservationResult.shortages().stream()
+              .map(FinishedGoodsService.InventoryShortage::productCode)
+              .filter(StringUtils::hasText)
+              .toList();
+      throw new ApplicationException(
+              ErrorCode.BUSINESS_INVALID_STATE,
+              "Order cannot be confirmed because stock reservation is incomplete")
+          .withDetail("orderId", order.getId())
+          .withDetail("unreservedSkus", shortageSkus)
+          .withDetail("reservationShortages", reservationResult.shortages());
+    }
+    if (reservationResult.packagingSlip() == null) {
+      throw new ApplicationException(
+              ErrorCode.BUSINESS_INVALID_STATE,
+              "Order cannot be confirmed because inventory reservation is missing")
+          .withDetail("orderId", order.getId());
     }
   }
 
