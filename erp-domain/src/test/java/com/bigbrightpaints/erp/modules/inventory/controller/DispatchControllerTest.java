@@ -412,7 +412,7 @@ class DispatchControllerTest {
   }
 
   @Test
-  void getPendingSlips_filtersDispatchedAndRedactsFactoryView() {
+  void getPendingSlips_filtersTerminalSlipsAndRedactsFactoryView() {
     DispatchController controller =
         new DispatchController(
             finishedGoodsService, salesDispatchReconciliationService, deliveryChallanPdfService);
@@ -432,7 +432,10 @@ class DispatchControllerTest {
             "LR-7788");
     PackagingSlipDto dispatched =
         packagingSlip(6L, "PS-6", "DISPATCHED", 333L, 444L, List.of(), null, null, null, null);
-    when(finishedGoodsService.listPackagingSlips()).thenReturn(List.of(pending, dispatched));
+    PackagingSlipDto cancelled =
+        packagingSlip(7L, "PS-7", "CANCELLED", 555L, 666L, List.of(), null, null, null, null);
+    when(finishedGoodsService.listPackagingSlips())
+        .thenReturn(List.of(pending, dispatched, cancelled));
 
     List<PackagingSlipDto> slips = controller.getPendingSlips().getBody().data();
 
