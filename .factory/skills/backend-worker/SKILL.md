@@ -28,7 +28,8 @@ None.
 2. Read `AGENTS.md` for mission boundaries and coding conventions.
 3. Read `.factory/services.yaml` for available commands.
 4. Read `.factory/library/architecture.md` for codebase patterns.
-5. Identify all files that need to change. For refactoring features, trace all callers/importers of the classes being modified.
+5. If verification uses live runtime/API proof, also read `.factory/library/user-testing.md` before planning setup so you inherit the current validation-runtime constraints and workarounds.
+6. Identify all files that need to change. For refactoring features, trace all callers/importers of the classes being modified.
 
 ### Step 2: Freeze Behavior First, Then Add the Right Tests
 1. Choose the safety pattern that fits the feature instead of forcing one workflow on every packet:
@@ -75,6 +76,8 @@ None.
    - For refactoring: confirm all callers are updated, tests pass, and extracted services own the migrated behavior instead of delegating back through `super` or monolithic helpers
    - For bug fixes: confirm the specific bug is fixed via the test you wrote
    - For script/governance features: document the exact guard/policy probes that now enforce the intended lane
+   - If runtime proof depends on seeded/authenticated actors, verify those actors actually exist before claiming the runtime is blocked; if the reset/runtime script left `app_users` empty, provision the required actors first and say so in the handoff
+   - If the feature claims audit/event emission, include at least one executable proof of persisted/readable events (database row, audit API/read surface, or equivalent live evidence). Static source-inspection tests are supportive but do not satisfy the audit proof on their own
 6. Check for any regressions in related modules.
 7. If the feature touches accounting or another shared seam, run the dependent proof packs from `.factory/services.yaml` that cover downstream consumers.
 8. If the packet changes a public endpoint contract (controller annotations, request/response DTO fields, validation envelopes, or canonical examples), run `openapi-refresh` plus the matching contract-proof pack from `.factory/services.yaml` (`accounting-frontend-doc-contract-proof` for accounting/frontend-api work). Do not claim full procedure compliance in the handoff unless you cite that proof or explicitly explain why no public contract artifact changed.
