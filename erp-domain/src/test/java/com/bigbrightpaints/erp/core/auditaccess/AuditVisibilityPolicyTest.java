@@ -71,6 +71,7 @@ class AuditVisibilityPolicyTest {
     assertThat(policy.isAccountingModule("INVENTORY")).isTrue();
     assertThat(policy.isAccountingModule("inventory")).isTrue();
     assertThat(policy.isAccountingModule("sales")).isTrue();
+    assertThat(policy.isAccountingModule("EXPORT")).isTrue();
   }
 
   private CompanyRepository.CompanyCodeProjection projection(Long id, String code) {

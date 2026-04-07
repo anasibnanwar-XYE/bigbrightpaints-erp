@@ -406,13 +406,16 @@ class AccountingEndpointContractTest {
             9L, LocalDate.of(2026, 3, 1), LocalDate.of(2026, 3, 31)))
         .thenReturn(expected);
 
-    ApiResponse<TemporalBalanceService.AccountActivityReport> body =
+    ApiResponse<StatementReportControllerSupport.AccountActivitySummaryResponse> body =
         controllerWithTemporalBalanceService(temporalBalanceService)
             .getAccountActivity(9L, " 2026-03-01 ", "2026-03-31 ", null, null)
             .getBody();
 
     assertThat(body).isNotNull();
-    assertThat(body.data()).isSameAs(expected);
+    assertThat(body.data().totalDebits()).isEqualByComparingTo("20.00");
+    assertThat(body.data().totalCredits()).isEqualByComparingTo("18.00");
+    assertThat(body.data().netMovement()).isEqualByComparingTo("2.00");
+    assertThat(body.data().transactionCount()).isEqualTo(0);
     verify(temporalBalanceService)
         .getAccountActivity(9L, LocalDate.of(2026, 3, 1), LocalDate.of(2026, 3, 31));
   }
@@ -432,13 +435,15 @@ class AccountingEndpointContractTest {
             9L, LocalDate.of(2026, 3, 1), LocalDate.of(2026, 3, 31)))
         .thenReturn(expected);
 
-    ApiResponse<TemporalBalanceService.BalanceComparison> body =
+    ApiResponse<StatementReportControllerSupport.BalanceComparisonResponse> body =
         controllerWithTemporalBalanceService(temporalBalanceService)
-            .compareBalances(9L, " 2026-03-01 ", "2026-03-31 ")
+            .compareBalances(9L, " 2026-03-01 ", "2026-03-31 ", null, null)
             .getBody();
 
     assertThat(body).isNotNull();
-    assertThat(body.data()).isSameAs(expected);
+    assertThat(body.data().fromBalance()).isEqualByComparingTo("10.00");
+    assertThat(body.data().toBalance()).isEqualByComparingTo("12.00");
+    assertThat(body.data().change()).isEqualByComparingTo("2.00");
     verify(temporalBalanceService)
         .compareBalances(9L, LocalDate.of(2026, 3, 1), LocalDate.of(2026, 3, 31));
   }

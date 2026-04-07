@@ -3,6 +3,7 @@ package com.bigbrightpaints.erp.modules.admin.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.time.Instant;
@@ -12,6 +13,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -19,6 +21,8 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import com.bigbrightpaints.erp.core.config.SystemSettingsService;
+import com.bigbrightpaints.erp.core.audittrail.AuditActionEventCommand;
+import com.bigbrightpaints.erp.core.audittrail.EnterpriseAuditTrailService;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.modules.admin.domain.ExportRequest;
@@ -37,6 +41,7 @@ class ExportApprovalServiceTest {
   @Mock private UserAccountRepository userAccountRepository;
   @Mock private ExportRequestRepository exportRequestRepository;
   @Mock private SystemSettingsService systemSettingsService;
+  @Mock private EnterpriseAuditTrailService enterpriseAuditTrailService;
 
   private ExportApprovalService service;
   private Company company;
@@ -49,7 +54,8 @@ class ExportApprovalServiceTest {
             companyContextService,
             userAccountRepository,
             exportRequestRepository,
-            systemSettingsService);
+            systemSettingsService,
+            enterpriseAuditTrailService);
 
     company = new Company();
     ReflectionTestUtils.setField(company, "id", 1L);
@@ -81,13 +87,20 @@ class ExportApprovalServiceTest {
             });
 
     var response =
-        service.createRequest(new ExportRequestCreateRequest("trial-balance", "periodId=12"));
+        service.createRequest(
+            new ExportRequestCreateRequest("trial-balance", "PDF", "periodId=12"));
 
     assertThat(response.id()).isEqualTo(101L);
     assertThat(response.userId()).isEqualTo(11L);
     assertThat(response.userEmail()).isEqualTo("admin@bbp.com");
     assertThat(response.reportType()).isEqualTo("TRIAL-BALANCE");
     assertThat(response.status()).isEqualTo(ExportApprovalStatus.PENDING);
+
+    ArgumentCaptor<AuditActionEventCommand> commandCaptor =
+        ArgumentCaptor.forClass(AuditActionEventCommand.class);
+    verify(enterpriseAuditTrailService).recordBusinessEvent(commandCaptor.capture());
+    assertThat(commandCaptor.getValue().module()).isEqualTo("EXPORT");
+    assertThat(commandCaptor.getValue().action()).isEqualTo("EXPORT_REQUESTED");
   }
 
   @Test
@@ -196,9 +209,15 @@ class ExportApprovalServiceTest {
 
     var response = service.resolveDownload(91L);
 
-    assertThat(response.requestId()).isEqualTo(91L);
-    assertThat(response.status()).isEqualTo(ExportApprovalStatus.APPROVED);
-    assertThat(response.message()).contains("approved");
+    assertThat(response.content()).isNotEmpty();
+    assertThat(response.contentType()).isEqualTo("application/pdf");
+    assertThat(response.fileName()).contains("trial-balance-91");
+
+    ArgumentCaptor<AuditActionEventCommand> commandCaptor =
+        ArgumentCaptor.forClass(AuditActionEventCommand.class);
+    verify(enterpriseAuditTrailService).recordBusinessEvent(commandCaptor.capture());
+    assertThat(commandCaptor.getValue().module()).isEqualTo("EXPORT");
+    assertThat(commandCaptor.getValue().action()).isEqualTo("EXPORT_DOWNLOADED");
   }
 
   @Test
@@ -243,9 +262,9 @@ class ExportApprovalServiceTest {
 
     var response = service.resolveDownload(92L);
 
-    assertThat(response.requestId()).isEqualTo(92L);
-    assertThat(response.status()).isEqualTo(ExportApprovalStatus.REJECTED);
-    assertThat(response.message()).contains("disabled");
+    assertThat(response.content()).isNotEmpty();
+    assertThat(response.contentType()).isEqualTo("application/pdf");
+    assertThat(response.fileName()).contains("trial-balance-92");
   }
 
   @Test

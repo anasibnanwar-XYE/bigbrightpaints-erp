@@ -130,7 +130,7 @@ public class StatementReportController {
 
   @GetMapping("/accounts/{accountId}/activity")
   @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
-  public ResponseEntity<ApiResponse<TemporalBalanceService.AccountActivityReport>>
+  public ResponseEntity<ApiResponse<StatementReportControllerSupport.AccountActivitySummaryResponse>>
       getAccountActivity(
           @PathVariable Long accountId,
           @RequestParam(required = false) String startDate,
@@ -152,10 +152,15 @@ public class StatementReportController {
 
   @GetMapping("/accounts/{accountId}/balance/compare")
   @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
-  public ResponseEntity<ApiResponse<TemporalBalanceService.BalanceComparison>> compareBalances(
-      @PathVariable Long accountId, @RequestParam String date1, @RequestParam String date2) {
+  public ResponseEntity<ApiResponse<StatementReportControllerSupport.BalanceComparisonResponse>>
+      compareBalances(
+          @PathVariable Long accountId,
+          @RequestParam(required = false) String from,
+          @RequestParam(required = false) String to,
+          @RequestParam(required = false) String date1,
+          @RequestParam(required = false) String date2) {
     return ResponseEntity.ok(
         ApiResponse.success(
-            "Balance comparison", support.compareBalances(accountId, date1, date2)));
+            "Balance comparison", support.compareBalances(accountId, from, to, date1, date2)));
   }
 }

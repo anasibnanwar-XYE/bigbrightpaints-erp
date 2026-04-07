@@ -345,14 +345,14 @@ class AccountingApplicationExceptionAdviceTest {
     accountingMvc()
         .perform(
             get("/api/v1/accounting/accounts/42/balance/compare")
-                .param("date1", "2026-03-01")
-                .param("date2", "invalid"))
+                .param("from", "2026-03-01")
+                .param("to", "invalid"))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.success").value(false))
         .andExpect(
-            jsonPath("$.message").value("Invalid date2 date format; expected ISO date yyyy-MM-dd"))
+            jsonPath("$.message").value("Invalid to date format; expected ISO date yyyy-MM-dd"))
         .andExpect(jsonPath("$.data.code").value(ErrorCode.VALIDATION_INVALID_DATE.getCode()))
-        .andExpect(jsonPath("$.data.details.date2").value("invalid"));
+        .andExpect(jsonPath("$.data.details.to").value("invalid"));
   }
 
   private ApiResponse<Map<String, Object>> assertReplayErrorEnvelope(

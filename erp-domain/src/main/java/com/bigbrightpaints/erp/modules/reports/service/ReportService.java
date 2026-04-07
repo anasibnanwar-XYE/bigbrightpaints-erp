@@ -2,6 +2,7 @@ package com.bigbrightpaints.erp.modules.reports.service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
@@ -659,6 +660,61 @@ public class ReportService {
   }
 
   @Transactional(readOnly = true)
+  public AccountStatementReportDto accountStatement(
+      Long accountId, LocalDate fromDate, LocalDate toDate) {
+    Company company = companyContextService.requireCurrentCompany();
+    if (accountId == null) {
+      throw new ApplicationException(
+          ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD, "accountId is required");
+    }
+
+    LocalDate today = companyClock.today(company);
+    LocalDate from = fromDate != null ? fromDate : today.withDayOfMonth(1);
+    LocalDate to = toDate != null ? toDate : today;
+    if (from.isAfter(to)) {
+      throw new ApplicationException(
+              ErrorCode.VALIDATION_INVALID_DATE, "from date must be on or before to date")
+          .withDetail("from", from.toString())
+          .withDetail("to", to.toString());
+    }
+
+    Account account = accountingLookupService.requireAccount(company, accountId);
+    BigDecimal openingBalance =
+        safe(journalLineRepository.netBalanceUpTo(company, accountId, from.minusDays(1)));
+    List<JournalLine> lines = journalLineRepository.findLinesForAccountBetween(company, accountId, from, to);
+
+    BigDecimal runningBalance = openingBalance;
+    List<AccountStatementLineDto> entries = new ArrayList<>();
+    for (JournalLine line : lines) {
+      JournalEntry entry = line.getJournalEntry();
+      BigDecimal debit = safe(line.getDebit());
+      BigDecimal credit = safe(line.getCredit());
+      runningBalance = runningBalance.add(debit).subtract(credit);
+      entries.add(
+          new AccountStatementLineDto(
+              entry != null ? entry.getId() : null,
+              entry != null ? entry.getEntryDate() : null,
+              resolveEntryTimestamp(entry),
+              entry != null ? entry.getReferenceNumber() : null,
+              resolveEntryDescription(entry, line),
+              debit,
+              credit,
+              runningBalance));
+    }
+
+    BigDecimal closingBalance = entries.isEmpty() ? openingBalance : runningBalance;
+    return new AccountStatementReportDto(
+        account.getId(),
+        account.getCode(),
+        account.getName(),
+        from,
+        to,
+        openingBalance,
+        entries,
+        closingBalance);
+  }
+
+  @Transactional(readOnly = true)
   public List<AccountStatementEntryDto> accountStatement() {
     Company company = companyContextService.requireCurrentCompany();
     var dealers = dealerRepository.findByCompanyOrderByNameAsc(company);
@@ -699,6 +755,26 @@ public class ReportService {
                   journalEntryId);
             })
         .toList();
+  }
+
+  private Instant resolveEntryTimestamp(JournalEntry entry) {
+    if (entry == null) {
+      return null;
+    }
+    if (entry.getPostedAt() != null) {
+      return entry.getPostedAt();
+    }
+    return entry.getCreatedAt();
+  }
+
+  private String resolveEntryDescription(JournalEntry entry, JournalLine line) {
+    if (line != null && line.getDescription() != null && !line.getDescription().isBlank()) {
+      return line.getDescription();
+    }
+    if (entry != null && entry.getMemo() != null && !entry.getMemo().isBlank()) {
+      return entry.getMemo();
+    }
+    return null;
   }
 
   @Transactional(readOnly = true)

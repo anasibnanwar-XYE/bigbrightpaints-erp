@@ -53,12 +53,17 @@ class StatementReportControllerActivityContractTest {
             1L, LocalDate.of(2026, 2, 9), LocalDate.of(2026, 2, 10)))
         .thenReturn(report);
 
-    ResponseEntity<ApiResponse<TemporalBalanceService.AccountActivityReport>> response =
+    ResponseEntity<ApiResponse<StatementReportControllerSupport.AccountActivitySummaryResponse>>
+        response =
         controller.getAccountActivity(1L, null, null, "2026-02-09", "2026-02-10");
 
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
     assertThat(response.getBody()).isNotNull();
-    assertThat(response.getBody().data()).isEqualTo(report);
+    assertThat(response.getBody().data().accountCode()).isEqualTo("CASH");
+    assertThat(response.getBody().data().totalDebits()).isEqualByComparingTo("0");
+    assertThat(response.getBody().data().totalCredits()).isEqualByComparingTo("0");
+    assertThat(response.getBody().data().netMovement()).isEqualByComparingTo("0");
+    assertThat(response.getBody().data().transactionCount()).isEqualTo(0);
     verify(temporalBalanceService)
         .getAccountActivity(1L, LocalDate.of(2026, 2, 9), LocalDate.of(2026, 2, 10));
   }

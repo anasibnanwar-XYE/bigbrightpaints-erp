@@ -126,7 +126,7 @@ public class StatementReportControllerSupport {
         AccountingDateParameters.parseRequiredDate(date, "date"));
   }
 
-  TemporalBalanceService.AccountActivityReport getAccountActivity(
+  AccountActivitySummaryResponse getAccountActivity(
       Long accountId, String startDate, String endDate, String from, String to) {
     String resolvedStart = StringUtils.hasText(startDate) ? startDate : from;
     String resolvedEnd = StringUtils.hasText(endDate) ? endDate : to;
@@ -147,7 +147,25 @@ public class StatementReportControllerSupport {
           .withDetail("startDate", resolvedStart)
           .withDetail("endDate", resolvedEnd);
     }
-    return temporalBalanceService.getAccountActivity(accountId, start, end);
+    TemporalBalanceService.AccountActivityReport report =
+        temporalBalanceService.getAccountActivity(accountId, start, end);
+    List<TemporalBalanceService.AccountMovement> movements =
+        report != null && report.movements() != null ? report.movements() : List.of();
+    BigDecimal totalDebits = report != null ? report.totalDebits() : BigDecimal.ZERO;
+    BigDecimal totalCredits = report != null ? report.totalCredits() : BigDecimal.ZERO;
+    BigDecimal netMovement = totalDebits.subtract(totalCredits);
+    return new AccountActivitySummaryResponse(
+        report != null ? report.accountCode() : null,
+        report != null ? report.accountName() : null,
+        report != null ? report.startDate() : start,
+        report != null ? report.endDate() : end,
+        report != null ? report.openingBalance() : BigDecimal.ZERO,
+        report != null ? report.closingBalance() : BigDecimal.ZERO,
+        totalDebits,
+        totalCredits,
+        netMovement,
+        movements.size(),
+        movements);
   }
 
   Map<String, Object> getAccountingDateContext() {
@@ -163,12 +181,25 @@ public class StatementReportControllerSupport {
     return payload;
   }
 
-  TemporalBalanceService.BalanceComparison compareBalances(
-      Long accountId, String date1, String date2) {
-    return temporalBalanceService.compareBalances(
-        accountId,
-        AccountingDateParameters.parseRequiredDate(date1, "date1"),
-        AccountingDateParameters.parseRequiredDate(date2, "date2"));
+  BalanceComparisonResponse compareBalances(
+      Long accountId, String from, String to, String date1, String date2) {
+    String resolvedFrom = StringUtils.hasText(from) ? from : date1;
+    String resolvedTo = StringUtils.hasText(to) ? to : date2;
+    if (!StringUtils.hasText(resolvedFrom) || !StringUtils.hasText(resolvedTo)) {
+      throw new ApplicationException(
+          ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,
+          "Balance compare requires from/to (or date1/date2) query parameters");
+    }
+    LocalDate fromDate = AccountingDateParameters.parseRequiredDate(resolvedFrom, "from");
+    LocalDate toDate = AccountingDateParameters.parseRequiredDate(resolvedTo, "to");
+    TemporalBalanceService.BalanceComparison comparison =
+        temporalBalanceService.compareBalances(accountId, fromDate, toDate);
+    return new BalanceComparisonResponse(
+        fromDate,
+        comparison.balance1(),
+        toDate,
+        comparison.balance2(),
+        comparison.change());
   }
 
   private boolean isSalesReturnCreditNote(JournalEntryDto entry) {
@@ -193,4 +224,24 @@ public class StatementReportControllerSupport {
     metadata.put("format", format);
     auditService.logSuccess(AuditEvent.DATA_EXPORT, metadata);
   }
+
+  record BalanceComparisonResponse(
+      LocalDate from,
+      BigDecimal fromBalance,
+      LocalDate to,
+      BigDecimal toBalance,
+      BigDecimal change) {}
+
+  record AccountActivitySummaryResponse(
+      String accountCode,
+      String accountName,
+      LocalDate startDate,
+      LocalDate endDate,
+      BigDecimal openingBalance,
+      BigDecimal closingBalance,
+      BigDecimal totalDebits,
+      BigDecimal totalCredits,
+      BigDecimal netMovement,
+      int transactionCount,
+      List<TemporalBalanceService.AccountMovement> movements) {}
 }

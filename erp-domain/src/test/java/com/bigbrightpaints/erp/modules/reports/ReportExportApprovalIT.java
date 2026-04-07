@@ -92,11 +92,12 @@ class ReportExportApprovalIT extends AbstractIntegrationTest {
             new HttpEntity<>(
                 Map.of(
                     "reportType", "trial-balance",
+                    "format", "PDF",
                     "parameters", "periodId=10"),
                 jsonHeaders(accountingHeaders)),
             Map.class);
 
-    assertThat(createResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(createResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
     Map<?, ?> createBody = createResponse.getBody();
     assertThat(createBody).isNotNull();
     Map<?, ?> createData = (Map<?, ?>) createBody.get("data");
@@ -119,7 +120,7 @@ class ReportExportApprovalIT extends AbstractIntegrationTest {
             row -> {
               assertThat(row.get("originType")).isEqualTo("EXPORT_REQUEST");
               assertThat(row.get("reportType")).isEqualTo("TRIAL-BALANCE");
-              assertThat(row.get("parameters")).isEqualTo("periodId=10");
+              assertThat(String.valueOf(row.get("parameters"))).contains("periodId=10");
               assertThat(row.get("requesterEmail")).isEqualTo(ACCOUNTING_EMAIL);
               assertThat(String.valueOf(row.get("reference"))).startsWith("EXP-");
             });
@@ -173,25 +174,17 @@ class ReportExportApprovalIT extends AbstractIntegrationTest {
             Map.class);
     assertThat(adminDownloadAfterApproval.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
 
-    ResponseEntity<Map> downloadAfterApproval =
+    ResponseEntity<byte[]> downloadAfterApproval =
         rest.exchange(
             "/api/v1/exports/" + requestId.longValue() + "/download",
             HttpMethod.GET,
             new HttpEntity<>(accountingHeaders),
-            Map.class);
+            byte[].class);
     assertThat(downloadAfterApproval.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(downloadAfterApproval.getHeaders().getContentType())
+        .isEqualTo(MediaType.APPLICATION_PDF);
     assertThat(downloadAfterApproval.getBody()).isNotNull();
-    @SuppressWarnings("unchecked")
-    Map<String, Object> downloadData =
-        (Map<String, Object>) downloadAfterApproval.getBody().get("data");
-    assertThat(downloadData).isNotNull();
-    assertThat(downloadData)
-        .containsEntry("requestId", requestId.intValue())
-        .containsEntry("status", "APPROVED")
-        .containsEntry("reportType", "TRIAL-BALANCE")
-        .containsEntry("parameters", "periodId=10")
-        .containsEntry("message", "Export request approved for download");
-    assertThat(downloadData).doesNotContainKeys("downloadUrl", "fileName");
+    assertThat(new String(downloadAfterApproval.getBody())).contains("%PDF");
   }
 
   @Test
@@ -205,6 +198,7 @@ class ReportExportApprovalIT extends AbstractIntegrationTest {
             new HttpEntity<>(
                 Map.of(
                     "reportType", "trial-balance",
+                    "format", "PDF",
                     "parameters", "periodId=10"),
                 jsonHeaders(superAdminHeaders)),
             Map.class);
@@ -270,25 +264,17 @@ class ReportExportApprovalIT extends AbstractIntegrationTest {
     request = exportRequestRepository.save(request);
 
     HttpHeaders accountingHeaders = authHeaders(ACCOUNTING_EMAIL);
-    ResponseEntity<Map> download =
+    ResponseEntity<byte[]> download =
         rest.exchange(
             "/api/v1/exports/" + request.getId() + "/download",
             HttpMethod.GET,
             new HttpEntity<>(accountingHeaders),
-            Map.class);
+            byte[].class);
 
     assertThat(download.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(download.getHeaders().getContentType()).isEqualTo(MediaType.APPLICATION_PDF);
     assertThat(download.getBody()).isNotNull();
-    @SuppressWarnings("unchecked")
-    Map<String, Object> data = (Map<String, Object>) download.getBody().get("data");
-    assertThat(data).isNotNull();
-    assertThat(data)
-        .containsEntry("requestId", request.getId().intValue())
-        .containsEntry("status", "REJECTED")
-        .containsEntry("reportType", "TRIAL-BALANCE")
-        .containsEntry("parameters", "periodId=2");
-    assertThat(String.valueOf(data.get("message"))).contains("disabled");
-    assertThat(data).doesNotContainKeys("downloadUrl", "fileName");
+    assertThat(new String(download.getBody())).contains("%PDF");
   }
 
   @Test
@@ -311,10 +297,11 @@ class ReportExportApprovalIT extends AbstractIntegrationTest {
             new HttpEntity<>(
                 Map.of(
                     "reportType", "trial-balance",
+                    "format", "PDF",
                     "parameters", "periodId=11"),
                 jsonHeaders(accountingHeaders)),
             Map.class);
-    assertThat(createResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(createResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
     Number requestId = (Number) ((Map<?, ?>) createResponse.getBody().get("data")).get("id");
     assertThat(requestId).isNotNull();
 

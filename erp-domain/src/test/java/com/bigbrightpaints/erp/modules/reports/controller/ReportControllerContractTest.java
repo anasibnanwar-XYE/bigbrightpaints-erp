@@ -29,7 +29,8 @@ import com.bigbrightpaints.erp.core.exception.GlobalExceptionHandler;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountHierarchyService;
 import com.bigbrightpaints.erp.modules.accounting.service.AgingReportService;
 import com.bigbrightpaints.erp.modules.admin.service.ExportApprovalService;
-import com.bigbrightpaints.erp.modules.reports.dto.AccountStatementEntryDto;
+import com.bigbrightpaints.erp.modules.reports.dto.AccountStatementLineDto;
+import com.bigbrightpaints.erp.modules.reports.dto.AccountStatementReportDto;
 import com.bigbrightpaints.erp.modules.reports.dto.BalanceSheetDto;
 import com.bigbrightpaints.erp.modules.reports.dto.GstReturnReportDto;
 import com.bigbrightpaints.erp.modules.reports.dto.ProfitLossDto;
@@ -137,63 +138,47 @@ class ReportControllerContractTest {
   }
 
   @Test
-  void accountStatement_serializesJournalEntryIdInApiResponse() throws Exception {
+  void accountStatement_serializesOpeningEntriesAndClosingBalances() throws Exception {
     ReportService reportService = mock(ReportService.class);
     ExportApprovalService exportApprovalService = mock(ExportApprovalService.class);
     ReportController controller = controller(reportService, exportApprovalService);
-    when(reportService.accountStatement())
+    when(reportService.accountStatement(
+            55L, LocalDate.of(2026, 2, 1), LocalDate.of(2026, 2, 28)))
         .thenReturn(
-            List.of(
-                new AccountStatementEntryDto(
-                    "Dealer Trace",
-                    LocalDate.of(2026, 2, 12),
-                    "INV-9001",
-                    new BigDecimal("300.00"),
-                    new BigDecimal("25.00"),
-                    new BigDecimal("275.00"),
-                    9001L)));
+            new AccountStatementReportDto(
+                55L,
+                "AR-55",
+                "Account 55",
+                LocalDate.of(2026, 2, 1),
+                LocalDate.of(2026, 2, 28),
+                new BigDecimal("100.00"),
+                List.of(
+                    new AccountStatementLineDto(
+                        9001L,
+                        LocalDate.of(2026, 2, 12),
+                        null,
+                        "INV-9001",
+                        "Invoice posting",
+                        new BigDecimal("300.00"),
+                        new BigDecimal("25.00"),
+                        new BigDecimal("375.00"))),
+                new BigDecimal("375.00")));
 
-    ResponseEntity<ApiResponse<List<AccountStatementEntryDto>>> response =
-        controller.accountStatement();
+    ResponseEntity<ApiResponse<AccountStatementReportDto>> response =
+        controller.accountStatement(55L, "2026-02-01", "2026-02-28");
 
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
     assertThat(response.getBody()).isNotNull();
-    assertThat(response.getBody().data()).hasSize(1);
-    assertThat(response.getBody().data().get(0).journalEntryId()).isEqualTo(9001L);
+    assertThat(response.getBody().data().openingBalance()).isEqualByComparingTo("100.00");
+    assertThat(response.getBody().data().closingBalance()).isEqualByComparingTo("375.00");
+    assertThat(response.getBody().data().entries()).hasSize(1);
+    assertThat(response.getBody().data().entries().get(0).journalEntryId()).isEqualTo(9001L);
 
     ObjectMapper mapper = new ObjectMapper().registerModule(new JavaTimeModule());
     String json = mapper.writeValueAsString(response.getBody());
+    assertThat(json).contains("\"openingBalance\":100.00");
+    assertThat(json).contains("\"closingBalance\":375.00");
     assertThat(json).contains("\"journalEntryId\":9001");
-  }
-
-  @Test
-  void accountStatement_serializesNullJournalEntryIdInApiResponse() throws Exception {
-    ReportService reportService = mock(ReportService.class);
-    ExportApprovalService exportApprovalService = mock(ExportApprovalService.class);
-    ReportController controller = controller(reportService, exportApprovalService);
-    when(reportService.accountStatement())
-        .thenReturn(
-            List.of(
-                new AccountStatementEntryDto(
-                    "Dealer No Journal",
-                    LocalDate.of(2026, 2, 12),
-                    "BALANCE",
-                    new BigDecimal("0.00"),
-                    new BigDecimal("0.00"),
-                    new BigDecimal("0.00"),
-                    null)));
-
-    ResponseEntity<ApiResponse<List<AccountStatementEntryDto>>> response =
-        controller.accountStatement();
-
-    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-    assertThat(response.getBody()).isNotNull();
-    assertThat(response.getBody().data()).hasSize(1);
-    assertThat(response.getBody().data().get(0).journalEntryId()).isNull();
-
-    ObjectMapper mapper = new ObjectMapper().registerModule(new JavaTimeModule());
-    String json = mapper.writeValueAsString(response.getBody());
-    assertThat(json).contains("\"journalEntryId\":null");
   }
 
   @Test

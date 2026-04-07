@@ -276,15 +276,9 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
         "/api/v1/exports/request",
         "post",
         "#/components/schemas/ExportRequestCreateRequest",
-        "200",
+        "201",
         "#/components/schemas/ApiResponseExportRequestDto");
-    assertOperationContract(
-        root,
-        "/api/v1/exports/{requestId}/download",
-        "get",
-        null,
-        "200",
-        "#/components/schemas/ApiResponseExportRequestDownloadResponse");
+    assertBinaryOperationResponse(root, "/api/v1/exports/{requestId}/download", "get", "200");
     assertOperationContract(
         root,
         "/api/v1/superadmin/changelog",
@@ -1307,6 +1301,38 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
             "Unexpected response contract for %s %s %s",
             expectedResponseCode, method.toUpperCase(), path)
         .isEqualTo(expectedResponseRef);
+  }
+
+  private void assertBinaryOperationResponse(
+      JsonNode root, String path, String method, String expectedResponseCode) {
+    JsonNode operation = root.path("paths").path(path).path(method);
+    assertThat(operation.isMissingNode())
+        .withFailMessage("Missing %s %s from generated OpenAPI spec", method.toUpperCase(), path)
+        .isFalse();
+
+    JsonNode responses = operation.path("responses");
+    assertThat(responses.has(expectedResponseCode))
+        .withFailMessage(
+            "Expected %s response for %s %s",
+            expectedResponseCode, method.toUpperCase(), path)
+        .isTrue();
+
+    JsonNode response = responses.path(expectedResponseCode);
+    JsonNode content = response.path("content");
+    JsonNode schema = content.path("application/pdf").path("schema");
+    if (schema.isMissingNode() || schema.isEmpty()) {
+      schema = content.path("*/*").path("schema");
+    }
+    assertThat(schema.path("type").asText())
+        .withFailMessage(
+            "Expected binary response schema type for %s %s %s",
+            expectedResponseCode, method.toUpperCase(), path)
+        .isEqualTo("string");
+    assertThat(schema.path("format").asText())
+        .withFailMessage(
+            "Expected binary response schema format for %s %s %s",
+            expectedResponseCode, method.toUpperCase(), path)
+        .isIn("binary", "byte", "");
   }
 
   private void assertQueryParameter(
