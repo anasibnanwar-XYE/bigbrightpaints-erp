@@ -584,6 +584,37 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
     assertThat(purchase.getOutstandingAmount())
         .isEqualByComparingTo(totalAmount.subtract(debitAmount));
     assertThat(purchase.getStatus()).isEqualTo("PARTIAL");
+
+    ResponseEntity<Map> purchaseDetailResp =
+        rest.exchange(
+            "/api/v1/purchasing/raw-material-purchases/" + purchaseId,
+            HttpMethod.GET,
+            new HttpEntity<>(headers),
+            Map.class);
+    assertThat(purchaseDetailResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+    Map<String, Object> purchaseDetailData = (Map<String, Object>) purchaseDetailResp.getBody().get("data");
+    assertThat(new BigDecimal(purchaseDetailData.get("outstandingAmount").toString()))
+        .isEqualByComparingTo(totalAmount.subtract(debitAmount));
+    assertThat(((Map<String, Object>) purchaseDetailData.get("lifecycle")).get("workflowStatus"))
+        .isEqualTo("PARTIAL");
+    assertThat((List<Map<String, Object>>) purchaseDetailData.get("linkedReferences"))
+        .isNotEmpty()
+        .anySatisfy(reference -> assertThat(reference.get("relationType")).isEqualTo("SELF"));
+
+    ResponseEntity<Map> purchaseListResp =
+        rest.exchange(
+            "/api/v1/purchasing/raw-material-purchases?supplierId=" + supplierId,
+            HttpMethod.GET,
+            new HttpEntity<>(headers),
+            Map.class);
+    assertThat(purchaseListResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+    List<Map<String, Object>> listedPurchases =
+        (List<Map<String, Object>>) purchaseListResp.getBody().get("data");
+    assertThat(listedPurchases)
+        .isNotEmpty()
+        .anySatisfy(
+            listed ->
+                assertThat(((Number) listed.get("id")).longValue()).isEqualTo(purchaseId));
   }
 
   @Test
