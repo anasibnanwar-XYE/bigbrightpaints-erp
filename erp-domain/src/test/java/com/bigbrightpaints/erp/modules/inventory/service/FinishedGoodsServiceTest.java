@@ -39,7 +39,7 @@ import com.bigbrightpaints.erp.modules.inventory.domain.PackagingSlipRepository;
 import com.bigbrightpaints.erp.modules.inventory.dto.DispatchConfirmationRequest;
 import com.bigbrightpaints.erp.modules.inventory.dto.DispatchPreviewDto;
 import com.bigbrightpaints.erp.modules.inventory.dto.FinishedGoodBatchRequest;
-import com.bigbrightpaints.erp.modules.inventory.dto.StockSummaryDto;
+import com.bigbrightpaints.erp.modules.inventory.dto.FinishedGoodStockSummaryDto;
 import com.bigbrightpaints.erp.modules.reports.service.InventoryValuationQueryService;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrder;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderItem;
@@ -640,6 +640,7 @@ class FinishedGoodsServiceTest extends AbstractIntegrationTest {
   }
 
   @Test
+  @Transactional(propagation = Propagation.NOT_SUPPORTED)
   void stockSummaryWeightedAverageAlignsWithInventoryValuationForWacGoods() {
     Company company = seedCompany("WAC-PARITY");
     BigDecimal baselineValue = inventoryValuationService.currentSnapshot(company).totalValue();
@@ -648,21 +649,22 @@ class FinishedGoodsServiceTest extends AbstractIntegrationTest {
     createBatch(fg, "WAC-PARITY-1", new BigDecimal("4"), new BigDecimal("4"), new BigDecimal("8"));
     createBatch(fg, "WAC-PARITY-2", new BigDecimal("6"), new BigDecimal("6"), new BigDecimal("12"));
 
-    StockSummaryDto summary =
+    FinishedGoodStockSummaryDto summary =
         finishedGoodsService.getStockSummary().stream()
-            .filter(item -> "FG-WAC-PARITY".equals(item.code()))
+            .filter(item -> "FG-WAC-PARITY".equals(item.productCode()))
             .findFirst()
             .orElseThrow();
     InventoryValuationQueryService.InventorySnapshot snapshot =
         inventoryValuationService.currentSnapshot(company);
 
     assertThat(summary.weightedAverageCost()).isEqualByComparingTo(new BigDecimal("10.4"));
-    assertThat(summary.currentStock()).isEqualByComparingTo(new BigDecimal("10"));
+    assertThat(summary.totalStock()).isEqualByComparingTo(new BigDecimal("10"));
     BigDecimal expectedDelta = new BigDecimal("104.00");
     assertThat(snapshot.totalValue().subtract(baselineValue)).isEqualByComparingTo(expectedDelta);
   }
 
   @Test
+  @Transactional(propagation = Propagation.NOT_SUPPORTED)
   void stockSummaryUsesBatchValuationUnitCostForFifoGoods() {
     Company company = seedCompany("FIFO-PARITY");
     FinishedGood fg =
@@ -682,9 +684,9 @@ class FinishedGoodsServiceTest extends AbstractIntegrationTest {
     newer.setManufacturedAt(Instant.now().minusSeconds(3600));
     finishedGoodBatchRepository.saveAndFlush(newer);
 
-    StockSummaryDto summary =
+    FinishedGoodStockSummaryDto summary =
         finishedGoodsService.getStockSummary().stream()
-            .filter(item -> "FG-FIFO-PARITY".equals(item.code()))
+            .filter(item -> "FG-FIFO-PARITY".equals(item.productCode()))
             .findFirst()
             .orElseThrow();
 
@@ -693,6 +695,7 @@ class FinishedGoodsServiceTest extends AbstractIntegrationTest {
   }
 
   @Test
+  @Transactional(propagation = Propagation.NOT_SUPPORTED)
   void stockSummaryUsesFifoValuationWhenFinishedGoodSettingIsLifo() {
     Company company = seedCompany("LIFO-PARITY");
     FinishedGood fg =
@@ -712,9 +715,9 @@ class FinishedGoodsServiceTest extends AbstractIntegrationTest {
     newer.setManufacturedAt(Instant.now().minusSeconds(3600));
     finishedGoodBatchRepository.saveAndFlush(newer);
 
-    StockSummaryDto summary =
+    FinishedGoodStockSummaryDto summary =
         finishedGoodsService.getStockSummary().stream()
-            .filter(item -> "FG-LIFO-PARITY".equals(item.code()))
+            .filter(item -> "FG-LIFO-PARITY".equals(item.productCode()))
             .findFirst()
             .orElseThrow();
 
@@ -723,6 +726,7 @@ class FinishedGoodsServiceTest extends AbstractIntegrationTest {
   }
 
   @Test
+  @Transactional(propagation = Propagation.NOT_SUPPORTED)
   void stockSummaryNonWacValuationUsesAvailableBatchQuantity() {
     Company company = seedCompany("FIFO-RESERVED-PARITY");
     FinishedGood fg =
@@ -743,9 +747,9 @@ class FinishedGoodsServiceTest extends AbstractIntegrationTest {
     available.setManufacturedAt(Instant.now().minusSeconds(3600));
     finishedGoodBatchRepository.saveAndFlush(available);
 
-    StockSummaryDto summary =
+    FinishedGoodStockSummaryDto summary =
         finishedGoodsService.getStockSummary().stream()
-            .filter(item -> "FG-FIFO-RESERVED".equals(item.code()))
+            .filter(item -> "FG-FIFO-RESERVED".equals(item.productCode()))
             .findFirst()
             .orElseThrow();
 

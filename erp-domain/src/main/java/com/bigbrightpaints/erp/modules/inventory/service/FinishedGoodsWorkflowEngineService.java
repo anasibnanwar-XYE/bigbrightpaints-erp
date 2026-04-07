@@ -128,7 +128,7 @@ class FinishedGoodsWorkflowEngineService {
                     inventoryValuationService
                         .safeQuantity(fg.getCurrentStock())
                         .subtract(inventoryValuationService.safeQuantity(fg.getReservedStock())),
-                    inventoryValuationService.stockSummaryUnitCost(fg)))
+                    inventoryValuationService.stockSummaryUnitCost(fg, company)))
         .toList();
   }
 
