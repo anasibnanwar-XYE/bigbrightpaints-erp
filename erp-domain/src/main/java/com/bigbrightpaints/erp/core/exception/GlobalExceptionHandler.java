@@ -95,6 +95,31 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     return ResponseEntity.status(status).body(ApiResponse.failure(ex.getUserMessage(), data));
   }
 
+  @ExceptionHandler(CreditLimitExceededException.class)
+  public ResponseEntity<ApiResponse<Map<String, Object>>> handleCreditLimitExceeded(
+      CreditLimitExceededException ex, HttpServletRequest request) {
+    String traceId = UUID.randomUUID().toString();
+    logger.warn(
+        "Credit limit exceeded [{}] - Path: {}, User: {}",
+        traceId,
+        request.getRequestURI(),
+        request.getUserPrincipal() != null ? request.getUserPrincipal().getName() : "anonymous");
+    Map<String, Object> data = new HashMap<>();
+    data.put("code", ex.getErrorCode().getCode());
+    data.put("message", ex.getUserMessage());
+    data.put("reason", ex.getUserMessage());
+    data.put("traceId", traceId);
+    data.put("timestamp", LocalDateTime.now());
+    data.put("path", request.getRequestURI());
+    Map<String, Object> details = resolveResponseDetails(ex, request, ex.getDetails());
+    if (!details.isEmpty()) {
+      data.put("details", details);
+    }
+    auditExceptionRoutingService.routeApplicationException(auditService, request, traceId, ex);
+    return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+        .body(ApiResponse.failure(ex.getUserMessage(), data));
+  }
+
   @Override
   protected ResponseEntity<Object> handleMethodArgumentNotValid(
       MethodArgumentNotValidException ex,

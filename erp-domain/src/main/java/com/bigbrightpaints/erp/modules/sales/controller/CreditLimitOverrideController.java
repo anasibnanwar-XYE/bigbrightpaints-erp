@@ -3,6 +3,7 @@ package com.bigbrightpaints.erp.modules.sales.controller;
 import java.security.Principal;
 import java.util.List;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -39,7 +40,8 @@ public class CreditLimitOverrideController {
     String requestedBy = principal != null ? principal.getName() : "system";
     CreditLimitOverrideRequestDto response =
         creditLimitOverrideService.createRequest(request, requestedBy);
-    return ResponseEntity.ok(ApiResponse.success("Override request created", response));
+    return ResponseEntity.status(HttpStatus.CREATED)
+        .body(ApiResponse.success("Override request created", response));
   }
 
   @GetMapping

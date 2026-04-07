@@ -412,16 +412,33 @@ class AdminApprovalRbacIT extends AbstractIntegrationTest {
 
     ResponseEntity<Map> createResponse =
         rest.exchange(
-            ErpApiRoutes.DEALER_PORTAL_CREDIT_LIMIT_REQUESTS,
+            ErpApiRoutes.CREDIT_LIMIT_REQUESTS,
             HttpMethod.POST,
             new HttpEntity<>(payload, dealerHeaders),
             Map.class);
-    assertThat(createResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(createResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
     Map<?, ?> createBody = createResponse.getBody();
     assertThat(createBody).isNotNull();
     Map<?, ?> createData = (Map<?, ?>) createBody.get("data");
     assertThat(createData).isNotNull();
     long requestId = ((Number) createData.get("id")).longValue();
+
+    ResponseEntity<Map> listResponse =
+        rest.exchange(
+            ErpApiRoutes.CREDIT_LIMIT_REQUESTS,
+            HttpMethod.GET,
+            new HttpEntity<>(adminHeaders),
+            Map.class);
+    assertThat(listResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> pendingRequests =
+        (List<Map<String, Object>>) listResponse.getBody().get("data");
+    assertThat(pendingRequests)
+        .anySatisfy(
+            row -> {
+              assertThat(((Number) row.get("id")).longValue()).isEqualTo(requestId);
+              assertThat(String.valueOf(row.get("status"))).isEqualTo("PENDING");
+            });
 
     ResponseEntity<Map> approvalsResponse =
         rest.exchange(
@@ -567,7 +584,7 @@ class AdminApprovalRbacIT extends AbstractIntegrationTest {
             HttpMethod.POST,
             new HttpEntity<>(payload, headers),
             Map.class);
-    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
     Map<?, ?> body = response.getBody();
     assertThat(body).isNotNull();
     Map<?, ?> data = (Map<?, ?>) body.get("data");

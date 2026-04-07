@@ -4,6 +4,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -112,7 +113,8 @@ public class DealerPortalController {
                 dealerId, request.amountRequested(), request.reason()),
             requesterIdentity.userId(),
             requesterIdentity.email());
-    return ResponseEntity.ok(ApiResponse.success("Credit limit request submitted", response));
+    return ResponseEntity.status(HttpStatus.CREATED)
+        .body(ApiResponse.success("Credit limit request submitted", response));
   }
 
   /**

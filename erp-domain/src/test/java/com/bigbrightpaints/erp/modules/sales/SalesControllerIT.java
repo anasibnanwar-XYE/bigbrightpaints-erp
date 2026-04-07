@@ -135,7 +135,7 @@ public class SalesControllerIT extends AbstractIntegrationTest {
             HttpMethod.POST,
             new HttpEntity<>(request, headers),
             Map.class);
-    assertThat(createResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(createResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
     Map<?, ?> data = (Map<?, ?>) createResponse.getBody().get("data");
     return ((Number) data.get("id")).longValue();
   }
@@ -311,10 +311,12 @@ public class SalesControllerIT extends AbstractIntegrationTest {
             Map.class);
     assertThat(directoryResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
     @SuppressWarnings("unchecked")
-    List<Map<String, Object>> dealers = (List<Map<String, Object>>) directoryResponse.getBody().get("data");
+    List<Map<String, Object>> dealers =
+        (List<Map<String, Object>>) directoryResponse.getBody().get("data");
     Map<String, Object> dealerRow =
         dealers.stream()
-            .filter(row -> row.get("id") != null && ((Number) row.get("id")).longValue() == dealerId)
+            .filter(
+                row -> row.get("id") != null && ((Number) row.get("id")).longValue() == dealerId)
             .findFirst()
             .orElseThrow();
     assertThat(dealerRow).containsKeys("id", "name", "creditLimit", "outstandingBalance");
@@ -327,7 +329,8 @@ public class SalesControllerIT extends AbstractIntegrationTest {
             Map.class);
     assertThat(searchResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
     @SuppressWarnings("unchecked")
-    List<Map<String, Object>> searchRows = (List<Map<String, Object>>) searchResponse.getBody().get("data");
+    List<Map<String, Object>> searchRows =
+        (List<Map<String, Object>>) searchResponse.getBody().get("data");
     Map<String, Object> searchedDealer =
         searchRows.stream()
             .filter(
@@ -650,7 +653,8 @@ public class SalesControllerIT extends AbstractIntegrationTest {
             ErpApiRoutes.SALES_ORDERS,
             HttpMethod.POST,
             new HttpEntity<>(
-                salesOrderPayloadWithFinishedGoodId(dealerId, finishedGoodId, "CUSTOM_120"), headers),
+                salesOrderPayloadWithFinishedGoodId(dealerId, finishedGoodId, "CUSTOM_120"),
+                headers),
             Map.class);
     assertThat(createResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
     Map<?, ?> createdData = (Map<?, ?>) createResponse.getBody().get("data");
@@ -703,8 +707,11 @@ public class SalesControllerIT extends AbstractIntegrationTest {
     assertThat(searchResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
     @SuppressWarnings("unchecked")
     List<Map<String, Object>> searchContent =
-        (List<Map<String, Object>>) ((Map<?, ?>) searchResponse.getBody().get("data")).get("content");
-    assertThat(searchContent).extracting(entry -> ((Number) entry.get("id")).longValue()).contains(orderId);
+        (List<Map<String, Object>>)
+            ((Map<?, ?>) searchResponse.getBody().get("data")).get("content");
+    assertThat(searchContent)
+        .extracting(entry -> ((Number) entry.get("id")).longValue())
+        .contains(orderId);
 
     ResponseEntity<Map> cancelResponse =
         rest.exchange(
@@ -731,7 +738,8 @@ public class SalesControllerIT extends AbstractIntegrationTest {
                 salesOrderPayloadWithFinishedGoodId(dealerId, finishedGoodId, "NET_45"), headers),
             Map.class);
     assertThat(createResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
-    Long orderId = ((Number) ((Map<?, ?>) createResponse.getBody().get("data")).get("id")).longValue();
+    Long orderId =
+        ((Number) ((Map<?, ?>) createResponse.getBody().get("data")).get("id")).longValue();
 
     ResponseEntity<Void> deleteResponse =
         rest.exchange(
@@ -746,8 +754,11 @@ public class SalesControllerIT extends AbstractIntegrationTest {
             ErpApiRoutes.SALES_ORDERS, HttpMethod.GET, new HttpEntity<>(headers), Map.class);
     assertThat(listResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
     @SuppressWarnings("unchecked")
-    List<Map<String, Object>> listed = (List<Map<String, Object>>) listResponse.getBody().get("data");
-    assertThat(listed).extracting(entry -> ((Number) entry.get("id")).longValue()).doesNotContain(orderId);
+    List<Map<String, Object>> listed =
+        (List<Map<String, Object>>) listResponse.getBody().get("data");
+    assertThat(listed)
+        .extracting(entry -> ((Number) entry.get("id")).longValue())
+        .doesNotContain(orderId);
   }
 
   @Test
@@ -770,7 +781,8 @@ public class SalesControllerIT extends AbstractIntegrationTest {
         .isGreaterThanOrEqualTo(recentOrdersBefore + 1);
     assertThat(longValue(dashboardAfter.get("pendingOrders")))
         .isGreaterThanOrEqualTo(pendingOrdersBefore + 1);
-    assertThat(decimalValue(dashboardAfter.get("totalRevenue"))).isGreaterThanOrEqualTo(revenueBefore);
+    assertThat(decimalValue(dashboardAfter.get("totalRevenue")))
+        .isGreaterThanOrEqualTo(revenueBefore);
     assertThat(decimalValue(dashboardAfter.get("totalReceivables")))
         .isGreaterThanOrEqualTo(receivablesBefore);
   }
@@ -796,6 +808,101 @@ public class SalesControllerIT extends AbstractIntegrationTest {
             Map.class);
 
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+  }
+
+  @Test
+  void sales_order_create_returnsUnprocessableEntityWhenCreditLimitExceeded() {
+    String token = loginToken();
+    HttpHeaders headers = authenticatedHeaders(token);
+    Long dealerId = createDealer(headers, "Low Credit Dealer");
+    Company company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
+    Dealer dealer = dealerRepository.findByCompanyAndId(company, dealerId).orElseThrow();
+    dealer.setCreditLimit(new BigDecimal("100.00"));
+    dealerRepository.saveAndFlush(dealer);
+
+    ResponseEntity<Map> response =
+        rest.exchange(
+            ErpApiRoutes.SALES_ORDERS,
+            HttpMethod.POST,
+            new HttpEntity<>(salesOrderPayload(dealerId), headers),
+            Map.class);
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+    assertThat(response.getBody()).isNotNull();
+    Map<?, ?> data = (Map<?, ?>) response.getBody().get("data");
+    assertThat(data).isNotNull();
+    assertThat(data.get("code")).isEqualTo("BUS_006");
+    assertThat(String.valueOf(data.get("message")).toLowerCase()).contains("credit");
+  }
+
+  @Test
+  void credit_override_request_create_approve_and_reject_follow_expected_lifecycle() {
+    HttpHeaders salesHeaders = authenticatedHeaders(loginToken(SALES_EMAIL, SALES_PASSWORD));
+    HttpHeaders adminHeaders = authenticatedHeaders(loginToken());
+    Long dealerId = createDealer(adminHeaders, "Override Dealer");
+    Map<?, ?> order = createSalesOrder(salesHeaders, dealerId);
+    Long orderId = ((Number) order.get("id")).longValue();
+
+    ResponseEntity<Map> createResponse =
+        rest.exchange(
+            "/api/v1/credit/override-requests",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of(
+                    "dealerId",
+                    dealerId,
+                    "salesOrderId",
+                    orderId,
+                    "dispatchAmount",
+                    new BigDecimal("500.00"),
+                    "reason",
+                    "Need dispatch override for urgent order"),
+                salesHeaders),
+            Map.class);
+    assertThat(createResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+    Map<?, ?> createdData = (Map<?, ?>) createResponse.getBody().get("data");
+    assertThat(createdData.get("status")).isEqualTo("PENDING");
+    Long overrideRequestId = ((Number) createdData.get("id")).longValue();
+
+    ResponseEntity<Map> approveResponse =
+        rest.exchange(
+            "/api/v1/credit/override-requests/" + overrideRequestId + "/approve",
+            HttpMethod.POST,
+            new HttpEntity<>(Map.of("reason", "Approved after admin review"), adminHeaders),
+            Map.class);
+    assertThat(approveResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    Map<?, ?> approvedData = (Map<?, ?>) approveResponse.getBody().get("data");
+    assertThat(approvedData.get("status")).isEqualTo("APPROVED");
+
+    ResponseEntity<Map> secondCreateResponse =
+        rest.exchange(
+            "/api/v1/credit/override-requests",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of(
+                    "dealerId",
+                    dealerId,
+                    "salesOrderId",
+                    orderId,
+                    "dispatchAmount",
+                    new BigDecimal("450.00"),
+                    "reason",
+                    "Second override candidate"),
+                salesHeaders),
+            Map.class);
+    assertThat(secondCreateResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+    Long rejectId =
+        ((Number) ((Map<?, ?>) secondCreateResponse.getBody().get("data")).get("id")).longValue();
+
+    ResponseEntity<Map> rejectResponse =
+        rest.exchange(
+            "/api/v1/credit/override-requests/" + rejectId + "/reject",
+            HttpMethod.POST,
+            new HttpEntity<>(Map.of("reason", "Rejected after risk review"), adminHeaders),
+            Map.class);
+    assertThat(rejectResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    Map<?, ?> rejectedData = (Map<?, ?>) rejectResponse.getBody().get("data");
+    assertThat(rejectedData.get("status")).isEqualTo("REJECTED");
   }
 
   @Test

@@ -12,8 +12,7 @@ import jakarta.validation.constraints.Positive;
 
 public final class CreditLimitRequestCreateRequest {
 
-  @NotNull
-  @Schema(requiredMode = Schema.RequiredMode.REQUIRED)
+  @Schema(description = "Dealer id (required for admin/sales callers; ignored for dealer callers)")
   private final Long dealerId;
 
   @NotNull @Positive private final BigDecimal amountRequested;

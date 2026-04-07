@@ -82,7 +82,7 @@ class DealerPortalControllerExportAuditTest {
             new DealerPortalCreditLimitRequestCreateRequest(
                 new BigDecimal("1500"), "Seasonal growth"));
 
-    assertThat(response.getStatusCode().value()).isEqualTo(200);
+    assertThat(response.getStatusCode().value()).isEqualTo(201);
     assertThat(response.getBody()).isNotNull();
     assertThat(response.getBody().message()).isEqualTo("Credit limit request submitted");
     assertThat(response.getBody().data()).isEqualTo(created);

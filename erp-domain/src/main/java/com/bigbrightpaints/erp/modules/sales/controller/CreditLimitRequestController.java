@@ -2,6 +2,7 @@ package com.bigbrightpaints.erp.modules.sales.controller;
 
 import java.util.List;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -16,6 +17,7 @@ import com.bigbrightpaints.erp.modules.sales.dto.CreditLimitRequestCreateRequest
 import com.bigbrightpaints.erp.modules.sales.dto.CreditLimitRequestDecisionRequest;
 import com.bigbrightpaints.erp.modules.sales.dto.CreditLimitRequestDto;
 import com.bigbrightpaints.erp.modules.sales.service.CreditLimitRequestService;
+import com.bigbrightpaints.erp.modules.sales.service.DealerPortalService;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 
 import jakarta.validation.Valid;
@@ -25,9 +27,13 @@ import jakarta.validation.Valid;
 public class CreditLimitRequestController {
 
   private final CreditLimitRequestService creditLimitRequestService;
+  private final DealerPortalService dealerPortalService;
 
-  public CreditLimitRequestController(CreditLimitRequestService creditLimitRequestService) {
+  public CreditLimitRequestController(
+      CreditLimitRequestService creditLimitRequestService,
+      DealerPortalService dealerPortalService) {
     this.creditLimitRequestService = creditLimitRequestService;
+    this.dealerPortalService = dealerPortalService;
   }
 
   @GetMapping
@@ -37,12 +43,25 @@ public class CreditLimitRequestController {
   }
 
   @PostMapping
-  @PreAuthorize("hasAnyAuthority('ROLE_SALES','ROLE_ADMIN')")
+  @PreAuthorize("hasAnyAuthority('ROLE_SALES','ROLE_ADMIN','ROLE_DEALER')")
   public ResponseEntity<ApiResponse<CreditLimitRequestDto>> createRequest(
       @Valid @RequestBody CreditLimitRequestCreateRequest request) {
-    return ResponseEntity.ok(
-        ApiResponse.success(
-            "Credit limit request created", creditLimitRequestService.createRequest(request)));
+    CreditLimitRequestDto response;
+    if (dealerPortalService.isDealerUser()) {
+      Long dealerId = dealerPortalService.getCurrentDealer().getId();
+      DealerPortalService.RequesterIdentity requesterIdentity =
+          dealerPortalService.getCurrentRequesterIdentity();
+      response =
+          creditLimitRequestService.createRequest(
+              new CreditLimitRequestCreateRequest(
+                  dealerId, request.amountRequested(), request.reason()),
+              requesterIdentity.userId(),
+              requesterIdentity.email());
+    } else {
+      response = creditLimitRequestService.createRequest(request);
+    }
+    return ResponseEntity.status(HttpStatus.CREATED)
+        .body(ApiResponse.success("Credit limit request created", response));
   }
 
   @PostMapping("/{id}/approve")
