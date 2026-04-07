@@ -760,6 +760,50 @@ class CR_DealerReceiptSettlementAuditTrailTest extends AbstractIntegrationTest {
   }
 
   @Test
+  void dealerReceiptSplit_zeroAllocationReplay_returnsOriginalJournal() {
+    String companyCode = "CR-DRS-ZERO-" + shortId();
+    Company company = bootstrapCompany(companyCode, "UTC");
+    Map<String, Account> accounts = ensureCoreAccounts(company);
+    Account cash = ensureAccount(company, "CASH", "Cash", AccountType.ASSET);
+    Dealer dealer = ensureDealer(company, accounts.get("AR"));
+    String referenceNumber = "DRS-ZERO-" + UUID.randomUUID();
+    String idempotencyKey = "DRS-ZERO-IDEMP-" + UUID.randomUUID();
+
+    DealerReceiptSplitRequest request =
+        new DealerReceiptSplitRequest(
+            dealer.getId(),
+            List.of(
+                new DealerReceiptSplitRequest.IncomingLine(
+                    accounts.get("BANK").getId(), new BigDecimal("90.00")),
+                new DealerReceiptSplitRequest.IncomingLine(cash.getId(), new BigDecimal("10.00"))),
+            referenceNumber,
+            "CODE-RED zero-allocation split receipt",
+            idempotencyKey);
+
+    Long journalId;
+    CompanyContextHolder.setCompanyCode(companyCode);
+    try {
+      JournalEntryDto first = accountingService.recordDealerReceiptSplit(request);
+      JournalEntryDto replay = accountingService.recordDealerReceiptSplit(request);
+      journalId = first.id();
+      assertThat(replay.id()).as("replay keeps original split receipt journal").isEqualTo(journalId);
+    } finally {
+      CompanyContextHolder.clear();
+    }
+
+    assertThat(
+            settlementAllocationRepository.findByCompanyAndIdempotencyKey(company, referenceNumber))
+        .as("reference number never persists as idempotency key")
+        .isEmpty();
+    assertThat(
+            settlementAllocationRepository.findByCompanyAndIdempotencyKey(company, idempotencyKey))
+        .as("zero-allocation split receipt does not create allocation rows")
+        .isEmpty();
+    CoderedDbAssertions.assertBalancedJournal(journalEntryRepository, journalId);
+    CoderedDbAssertions.assertAuditLogRecordedForJournal(jdbcTemplate, journalId);
+  }
+
+  @Test
   void dealerReceipt_reusedReferenceWithDifferentIdempotencyKey_doesNotDuplicateAllocations() {
     String companyCode = "CR-DR-REF-REUSE-" + shortId();
     Company company = bootstrapCompany(companyCode, "UTC");

@@ -276,10 +276,10 @@ class DealerReceiptPostingService {
           journalReplayService.awaitJournalEntry(company, reference, idempotencyKey);
       List<PartnerSettlementAllocation> existingAllocations =
           resolveAllocationsForReplay(company, idempotencyKey, existingEntry);
-      if (!existingAllocations.isEmpty()) {
-        JournalEntry entry =
-            journalReplayService.resolveReplayJournalEntry(
-                idempotencyKey, existingEntry, existingAllocations);
+      JournalEntry entry =
+          journalReplayService.resolveReplayJournalEntry(
+              idempotencyKey, existingEntry, existingAllocations);
+      if (entry != null) {
         journalReplayService.linkReferenceMapping(
             company, idempotencyKey, entry, "DEALER_RECEIPT_SPLIT");
         settlementReplayValidationService.validateSplitReceiptIdempotency(
