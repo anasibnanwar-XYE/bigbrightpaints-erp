@@ -1,6 +1,6 @@
 # Sales API Contracts
 
-Last reviewed: 2026-04-07
+Last reviewed: 2026-04-08
 
 This file defines which backend surfaces sales can call directly and where the
 portal must stop.
@@ -107,8 +107,15 @@ Rules:
 - Canonical override create payload uses `requestedAmount` + `reason` and may
   include `dealerId`, `salesOrderId`, and/or `packagingSlipId` for identity
   resolution context.
+- `requestedBy` is server-derived from the authenticated principal; clients must
+  not send requester identity fields.
 - `dispatchAmount` is a legacy alias for `requestedAmount` and should not be
   used by new clients.
+- Override `requiredHeadroom` is computed using the same exposure posture as
+  order creation (`outstandingBalance + pendingOrderExposure + requestedAmount - creditLimit`).
+- Approved override headroom contributes to effective dealer credit posture in
+  `POST /api/v1/sales/orders`; `422` applies only when approved headroom still
+  cannot cover the request.
 - Sales must not surface accounting settlement, journal reversal, or period
   close as a workaround for credit issues.
 

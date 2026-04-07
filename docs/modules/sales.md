@@ -1,6 +1,6 @@
 # Sales / Order-to-Cash Module Packet
 
-Last reviewed: 2026-04-07
+Last reviewed: 2026-04-08
 
 This packet documents the sales module, which owns **commercial lifecycle truth** for the ERP. It covers dealer/customer management, order lifecycle, credit controls, dispatch coordination, dealer self-service, and the canonical order-to-cash path through dispatch and settlement boundaries.
 
@@ -16,7 +16,7 @@ Stock and dispatch execution truth is documented separately in [inventory.md](in
 | Order lifecycle (create → confirm → dispatch → invoice → settle) | `SalesCoreEngine`, `SalesOrderLifecycleService`, `SalesOrderCrudService` |
 | Credit limit enforcement on order creation and confirmation | `SalesCoreEngine` |
 | Durable credit-limit increase requests (dealer self-service and internal) | `CreditLimitRequestService` |
-| Per-dispatch credit-limit override requests | `CreditLimitOverrideService` |
+| Dealer-level temporary credit headroom override requests | `CreditLimitOverrideService` |
 | Dispatch reconciliation: AR/revenue journal, COGS journal, invoice issuance | `SalesCoreEngine.confirmDispatch()` via `SalesDispatchReconciliationService` |
 | Sales fulfillment orchestration | `SalesFulfillmentService` |
 | Sales returns (goods return + reversal journals) | `SalesReturnService` |
@@ -183,7 +183,7 @@ Temporary credit headroom override requests:
 - Created when a dealer needs temporary headroom beyond base credit limit
 - Canonical request payload uses `requestedAmount` (legacy `dispatchAmount` remains as an alias)
 - May optionally bind to a specific packaging slip and/or sales order context
-- Calculates required headroom from current exposure + requested amount vs base credit limit
+- Calculates required headroom from **outstanding + pending-order exposure + requested amount** vs base credit limit
 - Approval raises effective credit headroom consumed by canonical order credit checks
 - Has expiry behavior (`EXPIRED` status for stale requests)
 
@@ -275,7 +275,7 @@ Provides sales dashboard contract fields via `SalesDashboardDto`:
 | `SalesOrderItem` | `sales_order_items` | Line items with product code, quantity, unit price, GST rate. Related to parent `SalesOrder` via `@ManyToOne` FK. |
 | `SalesOrderStatusHistory` | `sales_order_status_histories` | Append-only status transition log |
 | `CreditRequest` | `credit_requests` | Durable credit limit increase requests with requester identity |
-| `CreditLimitOverrideRequest` | `credit_limit_override_requests` | Per-dispatch override requests linked to slip/order |
+| `CreditLimitOverrideRequest` | `credit_limit_override_requests` | Temporary dealer headroom overrides; optional slip/order context remains for backward-compatible correlation |
 | `Promotion` | (promotions) | Sales promotions |
 | `SalesTarget` | (sales targets) | Sales targets |
 
@@ -356,15 +356,17 @@ These are permanent credit-limit increases:
 - **Effect on approval**: dealer credit limit incremented by `amountRequested`
 - **Audit**: approval and rejection decisions are audited with old/new limits
 
-### Credit Limit Overrides (Per-Dispatch)
+### Credit Limit Overrides (Temporary Dealer Headroom)
 
-These are temporary exceptions allowing a single dispatch to exceed the credit limit:
+These are temporary dealer-level headroom exceptions used by canonical order credit checks:
 
 - **Created by**: admin/factory/sales via `/api/v1/credit/override-requests`
-- **Approved by**: admin or accounting
-- **Linked to**: a specific packaging slip and/or sales order
+- **Approved by**: admin or accounting (`/approve`)
+- **Canonical payload**: `dealerId` + `requestedAmount` + `reason` (legacy `dispatchAmount` remains an alias)
+- **Optional context**: `salesOrderId` / `packagingSlipId` for correlation only
 - **Lifecycle**: PENDING → APPROVED / REJECTED / EXPIRED
-- **Effect**: allows the referenced dispatch to proceed despite credit limit breach
+- **Headroom formula**: `requiredHeadroom = max(0, outstandingBalance + pendingOrderExposure + requestedAmount - creditLimit)`
+- **Effect**: approval raises effective dealer headroom consumed by order-create/order-confirm credit posture checks; over-limit orders return `422` only when approved headroom is insufficient
 
 ### Dunning
 

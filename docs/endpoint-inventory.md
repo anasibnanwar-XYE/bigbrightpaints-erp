@@ -2,10 +2,10 @@
 
 > ⚠️ **REFERENCE ONLY**: This inventory is retained for review and governance cross-reference, but it is not the canonical API truth. Use repo-root `openapi.json`, [docs/frontend-api/README.md](frontend-api/README.md), and the module/flow packets linked from [docs/INDEX.md](INDEX.md) as the primary contract surfaces.
 
-Last reviewed: 2026-04-07
+Last reviewed: 2026-04-08
 
 Source: `openapi.json`
-Updated: 2026-04-07
+Updated: 2026-04-08
 
 Related behavior contract:
 - `docs/ACCOUNTING_PORTAL_SCOPE_GUARDRAIL.md`
@@ -19,7 +19,7 @@ Portal scope guardrail:
 ## Canonical API contract gate
 
 - Canonical machine contract source: repo-root `openapi.json`.
-- OpenAPI snapshot: `openapi.json` (sha256 `0129a51b9c4528c53c87569e233cd060a86d7e7c776b83cd32221fcca9c8d283`)
+- OpenAPI snapshot: `openapi.json` (sha256 `e3ded87e650236105ec0278481d750ab897ff0797bad982a05051279794a8285`)
 - OpenAPI total paths: `271`
 - OpenAPI total operations: `322`
 - Guard remediation flow: if parity drifts, regenerate this inventory from canonical `openapi.json`, then rerun `bash scripts/guard_openapi_contract_drift.sh` and `bash scripts/guard_accounting_portal_scope_contract.sh`.

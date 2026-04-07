@@ -108,7 +108,8 @@ public class CreditLimitOverrideService {
       }
     }
 
-    BigDecimal exposure = dealerLedgerService.currentBalance(dealer.getId());
+    Long excludeOrderId = order != null ? order.getId() : null;
+    BigDecimal exposure = resolveCurrentExposure(company, dealer, excludeOrderId);
     BigDecimal limit = dealer.getCreditLimit() == null ? BigDecimal.ZERO : dealer.getCreditLimit();
     BigDecimal requiredHeadroom = exposure.add(requestedAmount).subtract(limit);
     if (requiredHeadroom.compareTo(BigDecimal.ZERO) < 0) {
@@ -244,7 +245,7 @@ public class CreditLimitOverrideService {
           && dispatchAmount.compareTo(approvedDispatchAmount.add(DISPATCH_AMOUNT_TOLERANCE)) > 0) {
         return false;
       }
-      if (!isWithinApprovedHeadroom(overrideRequest, dealer, dispatchAmount)) {
+      if (!isWithinApprovedHeadroom(company, overrideRequest, dealer, order, dispatchAmount)) {
         return false;
       }
     }
@@ -280,8 +281,12 @@ public class CreditLimitOverrideService {
   }
 
   private boolean isWithinApprovedHeadroom(
-      CreditLimitOverrideRequest overrideRequest, Dealer dealer, BigDecimal dispatchAmount) {
-    if (dealer == null || dealer.getId() == null || dispatchAmount == null) {
+      Company company,
+      CreditLimitOverrideRequest overrideRequest,
+      Dealer dealer,
+      SalesOrder order,
+      BigDecimal dispatchAmount) {
+    if (company == null || dealer == null || dealer.getId() == null || dispatchAmount == null) {
       return false;
     }
     BigDecimal creditLimit = dealer.getCreditLimit();
@@ -292,10 +297,8 @@ public class CreditLimitOverrideService {
     if (approvedHeadroom == null) {
       return false;
     }
-    BigDecimal exposure = dealerLedgerService.currentBalance(dealer.getId());
-    if (exposure == null) {
-      exposure = BigDecimal.ZERO;
-    }
+    Long excludeOrderId = order != null ? order.getId() : null;
+    BigDecimal exposure = resolveCurrentExposure(company, dealer, excludeOrderId);
     BigDecimal requiredHeadroom = exposure.add(dispatchAmount).subtract(creditLimit);
     if (requiredHeadroom.compareTo(BigDecimal.ZERO) < 0) {
       requiredHeadroom = BigDecimal.ZERO;
@@ -569,6 +572,22 @@ public class CreditLimitOverrideService {
       metadata.put("expiresAt", overrideRequest.getExpiresAt().toString());
     }
     auditService.logSuccess(event, metadata);
+  }
+
+  private BigDecimal resolveCurrentExposure(Company company, Dealer dealer, Long excludeOrderId) {
+    BigDecimal outstandingBalance = safe(dealerLedgerService.currentBalance(dealer.getId()));
+    BigDecimal pendingOrderExposure =
+        safe(
+            salesOrderRepository.sumPendingCreditExposureByCompanyAndDealer(
+                company,
+                dealer,
+                SalesOrderCreditExposurePolicy.pendingCreditExposureStatuses(),
+                excludeOrderId));
+    return outstandingBalance.add(pendingOrderExposure);
+  }
+
+  private BigDecimal safe(BigDecimal value) {
+    return value == null ? BigDecimal.ZERO : value;
   }
 
   private CreditLimitOverrideRequestDto toDto(CreditLimitOverrideRequest request) {

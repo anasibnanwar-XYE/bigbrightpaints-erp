@@ -952,14 +952,32 @@ public class SalesControllerIT extends AbstractIntegrationTest {
   }
 
   @Test
-  void sales_order_create_allows_over_limit_when_approved_override_covers_headroom() {
+  void sales_order_create_allows_over_limit_when_approved_override_covers_pending_exposure_headroom() {
     HttpHeaders salesHeaders = authenticatedHeaders(loginToken(SALES_EMAIL, SALES_PASSWORD));
     HttpHeaders adminHeaders = authenticatedHeaders(loginToken());
     Long dealerId = createDealer(adminHeaders, "Headroom Dealer");
     Company company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
     Dealer dealer = dealerRepository.findByCompanyAndId(company, dealerId).orElseThrow();
-    dealer.setCreditLimit(new BigDecimal("100.00"));
+    dealer.setCreditLimit(new BigDecimal("300.00"));
     dealerRepository.saveAndFlush(dealer);
+    SalesOrder pendingExposureOrder =
+        createPersistedOrder(
+            company,
+            dealer,
+            "SO-PENDING-" + System.nanoTime(),
+            "CONFIRMED",
+            Instant.parse("2026-03-01T10:00:00Z"));
+    pendingExposureOrder.setTotalAmount(new BigDecimal("200.00"));
+    pendingExposureOrder.setPaymentMode("CREDIT");
+    salesOrderRepository.saveAndFlush(pendingExposureOrder);
+
+    ResponseEntity<Map> blockedOrderWithoutOverride =
+        rest.exchange(
+            ErpApiRoutes.SALES_ORDERS,
+            HttpMethod.POST,
+            new HttpEntity<>(salesOrderPayload(dealerId), salesHeaders),
+            Map.class);
+    assertThat(blockedOrderWithoutOverride.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
 
     ResponseEntity<Map> createOverrideResponse =
         rest.exchange(
@@ -976,8 +994,12 @@ public class SalesControllerIT extends AbstractIntegrationTest {
                 salesHeaders),
             Map.class);
     assertThat(createOverrideResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
-    Long overrideRequestId =
-        ((Number) ((Map<?, ?>) createOverrideResponse.getBody().get("data")).get("id")).longValue();
+    Map<?, ?> createdOverrideData = (Map<?, ?>) createOverrideResponse.getBody().get("data");
+    assertThat(decimalValue(createdOverrideData.get("currentExposure")))
+        .isEqualByComparingTo("200.00");
+    assertThat(decimalValue(createdOverrideData.get("requiredHeadroom")))
+        .isEqualByComparingTo("100.00");
+    Long overrideRequestId = ((Number) createdOverrideData.get("id")).longValue();
 
     ResponseEntity<Map> approveResponse =
         rest.exchange(

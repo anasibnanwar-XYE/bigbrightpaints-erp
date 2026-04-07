@@ -1,6 +1,6 @@
 # Sales Portal Frontend Engineer Handoff
 
-Last reviewed: 2026-04-07
+Last reviewed: 2026-04-08
 
 This document is the backend-to-frontend contract for the **Sales Portal**.
 
@@ -589,12 +589,17 @@ type CreditLimitOverrideRequestDto = {
   dealerName: string | null
   packagingSlipId: number | null
   salesOrderId: number | null
+  requestedAmount: number
+  // legacy alias; present for compatibility only
   dispatchAmount: number
+  // outstanding ledger balance + pending-order exposure at request evaluation time
   currentExposure: number
   creditLimit: number
+  // max(0, currentExposure + requestedAmount - creditLimit)
   requiredHeadroom: number
   status: string
   reason: string | null
+  // server-populated from authenticated principal
   requestedBy: string | null
   reviewedBy: string | null
   reviewedAt: string | null
@@ -620,6 +625,13 @@ Sales cannot:
 - approve/reject credit override requests
 
 So FE should not render approval buttons in the sales portal.
+
+Runtime credit-check behavior:
+
+- `POST /api/v1/sales/orders` returns `422` only when dealer credit posture is
+  still over limit after applying approved override headroom.
+- Approved override headroom is consumed against the same exposure posture used
+  by order creation (`outstanding + pending-order exposure`).
 
 ---
 
