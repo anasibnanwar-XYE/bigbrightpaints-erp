@@ -15,6 +15,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
@@ -287,6 +288,81 @@ class TaxServiceTest {
     assertThat(dto.getNetLiability().getCgst()).isEqualByComparingTo("9.00");
     assertThat(dto.getNetLiability().getSgst()).isEqualByComparingTo("9.00");
     assertThat(dto.getNetLiability().getIgst()).isEqualByComparingTo("-18.00");
+    assertThat(dto.getNetLiability().getTotal()).isEqualByComparingTo("0.00");
+  }
+
+  @Test
+  void generateGstReconciliation_ignoresDraftDocuments_withoutMutatingImmutableLineCollections() {
+    YearMonth period = YearMonth.of(2024, 8);
+    LocalDate start = period.atDay(1);
+    LocalDate end = period.atEndOfMonth();
+
+    Invoice postedInvoice = new Invoice();
+    postedInvoice.setStatus("POSTED");
+    Dealer postedDealer = new Dealer();
+    postedDealer.setStateCode("27");
+    postedInvoice.setDealer(postedDealer);
+    InvoiceLine postedInvoiceLine = new InvoiceLine();
+    postedInvoiceLine.setTaxAmount(new BigDecimal("18.00"));
+    postedInvoiceLine.setTaxableAmount(new BigDecimal("100.00"));
+    postedInvoiceLine.setCgstAmount(new BigDecimal("9.00"));
+    postedInvoiceLine.setSgstAmount(new BigDecimal("9.00"));
+    postedInvoiceLine.setIgstAmount(BigDecimal.ZERO);
+    ReflectionTestUtils.setField(postedInvoice, "lines", List.of(postedInvoiceLine));
+
+    Invoice draftInvoice = new Invoice();
+    draftInvoice.setStatus("DRAFT");
+    Dealer draftDealer = new Dealer();
+    draftDealer.setStateCode("27");
+    draftInvoice.setDealer(draftDealer);
+    InvoiceLine draftInvoiceLine = new InvoiceLine();
+    draftInvoiceLine.setTaxAmount(new BigDecimal("180.00"));
+    draftInvoiceLine.setTaxableAmount(new BigDecimal("1000.00"));
+    draftInvoiceLine.setCgstAmount(new BigDecimal("90.00"));
+    draftInvoiceLine.setSgstAmount(new BigDecimal("90.00"));
+    draftInvoiceLine.setIgstAmount(BigDecimal.ZERO);
+    ReflectionTestUtils.setField(draftInvoice, "lines", List.of(draftInvoiceLine));
+
+    RawMaterialPurchase postedPurchase = new RawMaterialPurchase();
+    postedPurchase.setStatus("POSTED");
+    Supplier postedSupplier = new Supplier();
+    postedSupplier.setStateCode("29");
+    postedPurchase.setSupplier(postedSupplier);
+    RawMaterialPurchaseLine postedPurchaseLine = new RawMaterialPurchaseLine();
+    postedPurchaseLine.setQuantity(new BigDecimal("10.00"));
+    postedPurchaseLine.setReturnedQuantity(BigDecimal.ZERO);
+    postedPurchaseLine.setLineTotal(new BigDecimal("118.00"));
+    postedPurchaseLine.setTaxAmount(new BigDecimal("18.00"));
+    postedPurchaseLine.setIgstAmount(new BigDecimal("18.00"));
+    postedPurchaseLine.setCgstAmount(BigDecimal.ZERO);
+    postedPurchaseLine.setSgstAmount(BigDecimal.ZERO);
+    postedPurchase.setLines(List.of(postedPurchaseLine));
+
+    RawMaterialPurchase draftPurchase = new RawMaterialPurchase();
+    draftPurchase.setStatus("DRAFT");
+    Supplier draftSupplier = new Supplier();
+    draftSupplier.setStateCode("29");
+    draftPurchase.setSupplier(draftSupplier);
+    RawMaterialPurchaseLine draftPurchaseLine = new RawMaterialPurchaseLine();
+    draftPurchaseLine.setQuantity(new BigDecimal("10.00"));
+    draftPurchaseLine.setReturnedQuantity(BigDecimal.ZERO);
+    draftPurchaseLine.setLineTotal(new BigDecimal("1180.00"));
+    draftPurchaseLine.setTaxAmount(new BigDecimal("180.00"));
+    draftPurchaseLine.setIgstAmount(new BigDecimal("180.00"));
+    draftPurchaseLine.setCgstAmount(BigDecimal.ZERO);
+    draftPurchaseLine.setSgstAmount(BigDecimal.ZERO);
+    draftPurchase.setLines(List.of(draftPurchaseLine));
+
+    when(invoiceRepository.findByCompanyAndIssueDateBetweenOrderByIssueDateAsc(company, start, end))
+        .thenReturn(List.of(postedInvoice, draftInvoice));
+    when(rawMaterialPurchaseRepository.findByCompanyAndInvoiceDateBetweenOrderByInvoiceDateAsc(
+            company, start, end))
+        .thenReturn(List.of(postedPurchase, draftPurchase));
+
+    GstReconciliationDto dto = taxService.generateGstReconciliation(period);
+
+    assertThat(dto.getCollected().getTotal()).isEqualByComparingTo("18.00");
+    assertThat(dto.getInputTaxCredit().getTotal()).isEqualByComparingTo("18.00");
     assertThat(dto.getNetLiability().getTotal()).isEqualByComparingTo("0.00");
   }
 

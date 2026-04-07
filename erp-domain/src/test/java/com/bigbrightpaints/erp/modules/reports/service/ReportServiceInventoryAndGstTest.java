@@ -491,6 +491,119 @@ class ReportServiceInventoryAndGstTest {
   }
 
   @Test
+  void gstReturn_ignoresDraftDocuments_withoutMutatingImmutableLineCollections() {
+    AccountingPeriod period = new AccountingPeriod();
+    ReflectionTestUtils.setField(period, "id", 28L);
+    period.setYear(2026);
+    period.setMonth(2);
+    period.setStartDate(LocalDate.of(2026, 2, 1));
+    period.setEndDate(LocalDate.of(2026, 2, 28));
+    period.setStatus(AccountingPeriodStatus.CLOSED);
+
+    when(accountingPeriodRepository.findByCompanyAndId(company, 28L))
+        .thenReturn(Optional.of(period));
+
+    Dealer postedDealer = new Dealer();
+    postedDealer.setName("Posted Dealer");
+    postedDealer.setStateCode("27");
+
+    Invoice postedInvoice = new Invoice();
+    ReflectionTestUtils.setField(postedInvoice, "id", 104L);
+    postedInvoice.setInvoiceNumber("INV-POSTED");
+    postedInvoice.setIssueDate(LocalDate.of(2026, 2, 5));
+    postedInvoice.setStatus("POSTED");
+    postedInvoice.setDealer(postedDealer);
+    InvoiceLine postedInvoiceLine = new InvoiceLine();
+    postedInvoiceLine.setTaxRate(new BigDecimal("18"));
+    postedInvoiceLine.setTaxableAmount(new BigDecimal("100"));
+    postedInvoiceLine.setTaxAmount(new BigDecimal("18"));
+    postedInvoiceLine.setCgstAmount(new BigDecimal("9"));
+    postedInvoiceLine.setSgstAmount(new BigDecimal("9"));
+    postedInvoiceLine.setIgstAmount(BigDecimal.ZERO);
+    ReflectionTestUtils.setField(postedInvoice, "lines", List.of(postedInvoiceLine));
+
+    Dealer draftDealer = new Dealer();
+    draftDealer.setName("Draft Dealer");
+    draftDealer.setStateCode("27");
+
+    Invoice draftInvoice = new Invoice();
+    ReflectionTestUtils.setField(draftInvoice, "id", 105L);
+    draftInvoice.setInvoiceNumber("INV-DRAFT");
+    draftInvoice.setIssueDate(LocalDate.of(2026, 2, 6));
+    draftInvoice.setStatus("DRAFT");
+    draftInvoice.setDealer(draftDealer);
+    InvoiceLine draftInvoiceLine = new InvoiceLine();
+    draftInvoiceLine.setTaxRate(new BigDecimal("18"));
+    draftInvoiceLine.setTaxableAmount(new BigDecimal("1000"));
+    draftInvoiceLine.setTaxAmount(new BigDecimal("180"));
+    draftInvoiceLine.setCgstAmount(new BigDecimal("90"));
+    draftInvoiceLine.setSgstAmount(new BigDecimal("90"));
+    draftInvoiceLine.setIgstAmount(BigDecimal.ZERO);
+    ReflectionTestUtils.setField(draftInvoice, "lines", List.of(draftInvoiceLine));
+
+    Supplier postedSupplier = new Supplier();
+    postedSupplier.setName("Posted Supplier");
+    postedSupplier.setStateCode("29");
+
+    RawMaterialPurchase postedPurchase = new RawMaterialPurchase();
+    ReflectionTestUtils.setField(postedPurchase, "id", 203L);
+    postedPurchase.setInvoiceNumber("PUR-POSTED");
+    postedPurchase.setInvoiceDate(LocalDate.of(2026, 2, 7));
+    postedPurchase.setStatus("POSTED");
+    postedPurchase.setSupplier(postedSupplier);
+    RawMaterialPurchaseLine postedPurchaseLine = new RawMaterialPurchaseLine();
+    postedPurchaseLine.setTaxRate(new BigDecimal("18"));
+    postedPurchaseLine.setQuantity(new BigDecimal("10"));
+    postedPurchaseLine.setReturnedQuantity(BigDecimal.ZERO);
+    postedPurchaseLine.setCostPerUnit(new BigDecimal("10"));
+    postedPurchaseLine.setLineTotal(new BigDecimal("118"));
+    postedPurchaseLine.setTaxAmount(new BigDecimal("18"));
+    postedPurchaseLine.setCgstAmount(BigDecimal.ZERO);
+    postedPurchaseLine.setSgstAmount(BigDecimal.ZERO);
+    postedPurchaseLine.setIgstAmount(new BigDecimal("18"));
+    postedPurchase.setLines(List.of(postedPurchaseLine));
+
+    Supplier draftSupplier = new Supplier();
+    draftSupplier.setName("Draft Supplier");
+    draftSupplier.setStateCode("29");
+
+    RawMaterialPurchase draftPurchase = new RawMaterialPurchase();
+    ReflectionTestUtils.setField(draftPurchase, "id", 204L);
+    draftPurchase.setInvoiceNumber("PUR-DRAFT");
+    draftPurchase.setInvoiceDate(LocalDate.of(2026, 2, 8));
+    draftPurchase.setStatus("DRAFT");
+    draftPurchase.setSupplier(draftSupplier);
+    RawMaterialPurchaseLine draftPurchaseLine = new RawMaterialPurchaseLine();
+    draftPurchaseLine.setTaxRate(new BigDecimal("18"));
+    draftPurchaseLine.setQuantity(new BigDecimal("10"));
+    draftPurchaseLine.setReturnedQuantity(BigDecimal.ZERO);
+    draftPurchaseLine.setCostPerUnit(new BigDecimal("100"));
+    draftPurchaseLine.setLineTotal(new BigDecimal("1180"));
+    draftPurchaseLine.setTaxAmount(new BigDecimal("180"));
+    draftPurchaseLine.setCgstAmount(BigDecimal.ZERO);
+    draftPurchaseLine.setSgstAmount(BigDecimal.ZERO);
+    draftPurchaseLine.setIgstAmount(new BigDecimal("180"));
+    draftPurchase.setLines(List.of(draftPurchaseLine));
+
+    when(invoiceRepository.findByCompanyAndIssueDateBetweenOrderByIssueDateAsc(
+            company, LocalDate.of(2026, 2, 1), LocalDate.of(2026, 2, 28)))
+        .thenReturn(List.of(postedInvoice, draftInvoice));
+
+    when(rawMaterialPurchaseRepository.findByCompanyAndInvoiceDateBetweenOrderByInvoiceDateAsc(
+            company, LocalDate.of(2026, 2, 1), LocalDate.of(2026, 2, 28)))
+        .thenReturn(List.of(postedPurchase, draftPurchase));
+
+    GstReturnReportDto report = reportService.gstReturn(28L);
+
+    assertThat(report.outputTax().total()).isEqualByComparingTo("18.00");
+    assertThat(report.inputTaxCredit().total()).isEqualByComparingTo("18.00");
+    assertThat(report.netLiability().total()).isEqualByComparingTo("0.00");
+    assertThat(report.transactionDetails())
+        .extracting(GstReturnReportDto.GstTransactionDetail::referenceNumber)
+        .containsExactlyInAnyOrder("INV-POSTED", "PUR-POSTED");
+  }
+
+  @Test
   void gstReturn_rejectsTaxedInvoiceLinesMissingCanonicalTaxableAmount() {
     AccountingPeriod period = new AccountingPeriod();
     ReflectionTestUtils.setField(period, "id", 25L);
