@@ -198,6 +198,82 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
   }
 
   @Test
+  @DisplayName("Goods receipt detail remains readable after linked invoice posting")
+  void goodsReceiptDetailRemainsReadableAfterInvoicePosting() {
+    LocalDate entryDate = TestDateUtils.safeDate(company);
+    Long supplierId = createSupplier("P2P Detail Supplier", "P2P-DETAIL-" + shortSuffix());
+    Long rawMaterialId =
+        createRawMaterial("P2P Detail Material", "RM-DETAIL-" + shortSuffix(), inventory.getId());
+    BigDecimal quantity = new BigDecimal("6");
+    BigDecimal costPerUnit = new BigDecimal("15.00");
+    PurchaseWorkflowIds workflow =
+        createPurchaseOrderAndReceipt(supplierId, rawMaterialId, quantity, costPerUnit, entryDate);
+
+    Map<String, Object> purchaseReq = new HashMap<>();
+    purchaseReq.put("supplierId", supplierId);
+    purchaseReq.put("invoiceNumber", "INV-DETAIL-" + shortSuffix());
+    purchaseReq.put("invoiceDate", entryDate);
+    purchaseReq.put("purchaseOrderId", workflow.purchaseOrderId());
+    purchaseReq.put("goodsReceiptId", workflow.goodsReceiptId());
+    purchaseReq.put(
+        "lines",
+        List.of(
+            Map.of(
+                "rawMaterialId",
+                rawMaterialId,
+                "quantity",
+                quantity,
+                "costPerUnit",
+                costPerUnit)));
+
+    ResponseEntity<Map> purchaseResp =
+        rest.exchange(
+            "/api/v1/purchasing/raw-material-purchases",
+            HttpMethod.POST,
+            new HttpEntity<>(purchaseReq, headers),
+            Map.class);
+    assertThat(purchaseResp.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+    Map<String, Object> purchaseData = (Map<String, Object>) purchaseResp.getBody().get("data");
+    Long purchaseId = ((Number) purchaseData.get("id")).longValue();
+
+    ResponseEntity<Map> goodsReceiptDetailResp =
+        rest.exchange(
+            "/api/v1/purchasing/goods-receipts/" + workflow.goodsReceiptId(),
+            HttpMethod.GET,
+            new HttpEntity<>(headers),
+            Map.class);
+    assertThat(goodsReceiptDetailResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+    Map<String, Object> receiptData = (Map<String, Object>) goodsReceiptDetailResp.getBody().get("data");
+
+    assertThat(((Number) receiptData.get("supplierId")).longValue()).isEqualTo(supplierId);
+    assertThat(((Number) receiptData.get("purchaseOrderId")).longValue())
+        .isEqualTo(workflow.purchaseOrderId());
+    assertThat((List<Map<String, Object>>) receiptData.get("lines"))
+        .isNotEmpty()
+        .anySatisfy(
+            line ->
+                assertThat(((Number) line.get("rawMaterialId")).longValue())
+                    .isEqualTo(rawMaterialId));
+
+    Map<String, Object> lifecycle = (Map<String, Object>) receiptData.get("lifecycle");
+    assertThat(lifecycle.get("workflowStatus")).isEqualTo("INVOICED");
+    assertThat(lifecycle.get("accountingStatus")).isEqualTo("POSTED");
+
+    List<Map<String, Object>> linkedReferences =
+        (List<Map<String, Object>>) receiptData.get("linkedReferences");
+    assertThat(linkedReferences)
+        .extracting(reference -> reference.get("relationType"))
+        .contains("PURCHASE_ORDER", "PURCHASE_INVOICE", "ACCOUNTING_ENTRY", "SELF");
+    assertThat(linkedReferences)
+        .filteredOn(reference -> "PURCHASE_INVOICE".equals(reference.get("relationType")))
+        .singleElement()
+        .satisfies(
+            reference ->
+                assertThat(((Number) reference.get("documentId")).longValue())
+                    .isEqualTo(purchaseId));
+  }
+
+  @Test
   @DisplayName(
       "GST-bearing purchase invoice succeeds when fresh tenant and supplier state metadata are"
           + " missing")
