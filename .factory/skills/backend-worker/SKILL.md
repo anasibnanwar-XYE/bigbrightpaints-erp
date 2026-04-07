@@ -24,6 +24,7 @@ None.
 ## Work Procedure
 
 ### Step 1: Understand the Feature
+0. If you are resuming after context compaction or continuing a previously-started feature lineage, re-invoke the required skills before any tool use, cite the prior lineage/baseline you are inheriting, and only skip repeated startup work when you explicitly verify that earlier baseline still applies.
 1. Read the feature description, preconditions, expectedBehavior, and verificationSteps carefully.
 2. Read `AGENTS.md` for mission boundaries and coding conventions.
 3. Read `.factory/services.yaml` for available commands.
@@ -80,7 +81,7 @@ None.
    - If the feature claims audit/event emission, include at least one executable proof of persisted/readable events (database row, audit API/read surface, or equivalent live evidence). Static source-inspection tests are supportive but do not satisfy the audit proof on their own
 6. Check for any regressions in related modules.
 7. If the feature touches accounting or another shared seam, run the dependent proof packs from `.factory/services.yaml` that cover downstream consumers.
-8. If the packet changes a public endpoint contract (controller annotations, request/response DTO fields, response status codes, timeline/list fields, validation envelopes, or canonical examples), run `openapi-refresh` plus the matching contract-proof pack from `.factory/services.yaml` and update the matching canonical docs. This applies to inventory, purchasing, supplier, catalog, and other non-accounting public surfaces too—not just accounting endpoints. Hard stop: the feature is incomplete until the refreshed artifacts are actually in the working tree and the handoff cites the exact `openapi-refresh`/drift-guard proof plus the canonical doc files updated. Do not claim full procedure compliance or `followedProcedure=true` unless you cite that proof or explicitly explain, with file-level evidence, why no public contract artifact changed.
+8. If the packet changes a public endpoint contract (controller annotations, request/response DTO fields, response status codes, timeline/list fields, validation envelopes, or canonical examples), run `openapi-refresh` plus the matching contract-proof pack from `.factory/services.yaml` and update the matching canonical docs. This applies to inventory, purchasing, supplier, catalog, and other non-accounting public surfaces too—not just accounting endpoints. Hard stop: the feature is incomplete until the refreshed artifacts are actually in the working tree and the handoff cites the exact `openapi-refresh`/drift-guard proof plus the canonical doc files updated. For this repo, cite the concrete `OpenApiSnapshotIT` refresh command (or the manifest wrapper that runs it); the drift guard alone is not sufficient evidence. Do not claim full procedure compliance or `followedProcedure=true` unless you cite that proof or explicitly explain, with file-level evidence, why no public contract artifact changed.
 9. If your change exposed stale adjacent tests in the touched control surface, either fix them in the same feature or return a clearly tracked discovered issue tied to a pending feature.
 10. If the working tree is dirty only because of pre-existing `.factory/validation/**` or other orchestrator-owned mission artifacts that AGENTS says must remain uncommitted, do not treat that dirtiness as a feature failure. Leave it alone, or if you must temporarily stash it to get a clean feature commit, say so explicitly in the handoff and identify the stash.
 11. If optional dependent-proof packs expose clearly pre-existing failures outside your feature while the required validators and `gate_fast` pass, record them as discovered issues with the most relevant pending feature/owner instead of failing an otherwise-correct packet.
@@ -99,6 +100,7 @@ If the packet changes implemented truth, update the matching canonical docs in t
 - Deprecation / replacement changes → `docs/deprecated/INDEX.md` plus replacement links
 
 Use code, tests, controller annotations, DTOs, and `openapi.json` as source of truth. Update canonical docs, not stale duplicates, and never present planned behavior as implemented.
+If an affected portal lane has multiple canonical files carrying the same contract (for example `api-contracts.md` and `frontend-engineer-handoff.md`), refresh all of them or explicitly justify why one surface is unaffected.
 
 If `docs/frontend-api/*` changes, verify the examples against the live DTO/controller contract and exception envelope. Do not leave impossible enum values or invented top-level `ApiResponse` fields in canonical examples.
 For this mission, canonical docs are the default frontend contract artifact. Do not update `.factory/library/frontend-handoff.md` or `.factory/library/frontend-v2.md` unless the feature, mission artifacts, or the user explicitly requires those internal handoff files.
