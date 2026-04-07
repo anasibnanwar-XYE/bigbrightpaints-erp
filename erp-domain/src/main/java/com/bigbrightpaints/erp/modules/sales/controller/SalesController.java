@@ -24,6 +24,8 @@ import com.bigbrightpaints.erp.shared.dto.PageResponse;
 import io.micrometer.core.annotation.Timed;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import jakarta.validation.Valid;
 
@@ -132,7 +134,11 @@ public class SalesController {
             "Order created for draft-lifecycle requests with paymentTerms/finishedGoodId"),
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
         responseCode = "422",
-        description = "Credit limit exceeded and no approved override covers required headroom")
+        description = "Credit limit exceeded and no approved override covers required headroom",
+        content =
+            @Content(
+                mediaType = "application/json",
+                schema = @Schema(ref = "#/components/schemas/ApiResponseMapStringObject")))
   })
   public ResponseEntity<ApiResponse<SalesOrderDto>> createOrder(
       @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
