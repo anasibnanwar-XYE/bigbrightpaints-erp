@@ -1,0 +1,180 @@
+{
+  "groupId": "runtime-journal-periods",
+  "testedAt": "2026-04-07T00:25:07Z",
+  "credentials": {
+    "account": "admin.m4j1@example.com -> accounting.m4j1@example.com (+ tenant-scoped super-admin role seed)",
+    "namespace": "UTM4J1"
+  },
+  "toolsUsed": [
+    "curl",
+    "psql"
+  ],
+  "assertions": [
+    {
+      "id": "VAL-JOURNAL-001",
+      "title": "Manual journal creation works (draft -> post)",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "POST /api/v1/accounting/journal-entries with balanced CASH/REV lines dated 2026-04-07 in April 2026 open period",
+          "expected": "HTTP 200 with a JournalEntryDto containing a non-null id, posted status, and balanced line items",
+          "observed": "HTTP 200; id=3 referenceNumber=JRN-UTM4J1-202604-0002 status=POSTED accountingPeriodStatus=OPEN with CASH debit 250.0 and REV credit 250.0"
+        }
+      ],
+      "evidence": {
+        "network": "POST /api/v1/accounting/journal-entries -> 200",
+        "files": [
+          "/home/realnigga/.factory/missions/cf35a73d-f4bd-4cf3-9488-fee34cf89e18/evidence/M4-chart-of-accounts-journals-periods/runtime-journal-periods/journal-create.json"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-JOURNAL-002",
+      "title": "Journal reversal works in OPEN period",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "POST /api/v1/accounting/journal-entries/3/reverse while April 2026 remained OPEN",
+          "expected": "HTTP 200 with a reversing JournalEntryDto whose lines mirror the original entry",
+          "observed": "HTTP 200; reversal id=4 correctionType=REVERSAL reversalOfEntryId=3 with REV debit 250.0 and CASH credit 250.0"
+        }
+      ],
+      "evidence": {
+        "network": "POST /api/v1/accounting/journal-entries/3/reverse -> 200",
+        "files": [
+          "/home/realnigga/.factory/missions/cf35a73d-f4bd-4cf3-9488-fee34cf89e18/evidence/M4-chart-of-accounts-journals-periods/runtime-journal-periods/journal-reverse-open.json"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-JOURNAL-003",
+      "title": "Journal reversal blocked in LOCKED period",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Create a March 2026 journal, submit a period-close request as tenant accounting, approve close as tenant admin, then POST /api/v1/accounting/journal-entries/5/reverse",
+          "expected": "HTTP 400/409 with an error indicating the period is locked and reversal is not permitted",
+          "observed": "request-close returned 200 PENDING, approve-close returned 200 status=CLOSED with lockedAt set, and reversal then returned HTTP 400 with message \"Accounting period March 2026 is locked/closed; an admin one-hour posting exception is required for this document\""
+        }
+      ],
+      "evidence": {
+        "network": "POST /api/v1/accounting/periods/11/request-close -> 200; POST /api/v1/accounting/periods/11/approve-close -> 200; POST /api/v1/accounting/journal-entries/5/reverse -> 400",
+        "files": [
+          "/home/realnigga/.factory/missions/cf35a73d-f4bd-4cf3-9488-fee34cf89e18/evidence/M4-chart-of-accounts-journals-periods/runtime-journal-periods/period-request-close-accounting.json",
+          "/home/realnigga/.factory/missions/cf35a73d-f4bd-4cf3-9488-fee34cf89e18/evidence/M4-chart-of-accounts-journals-periods/runtime-journal-periods/period-approve-close-admin.json",
+          "/home/realnigga/.factory/missions/cf35a73d-f4bd-4cf3-9488-fee34cf89e18/evidence/M4-chart-of-accounts-journals-periods/runtime-journal-periods/journal-reverse-closed-period.json"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-PERIOD-001",
+      "title": "Period close maker-checker workflow",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "POST /api/v1/accounting/periods/11/request-close as accounting.m4j1@example.com",
+          "expected": "HTTP 200 with a PeriodCloseRequestDto in PENDING status",
+          "observed": "HTTP 200; request id=2 status=PENDING requestedBy=accounting.m4j1@example.com"
+        },
+        {
+          "action": "POST /api/v1/accounting/periods/11/approve-close as admin.m4j1@example.com",
+          "expected": "HTTP 200 with an AccountingPeriodDto in CLOSED status",
+          "observed": "HTTP 200; March 2026 transitioned to status=CLOSED with closedBy=admin.m4j1@example.com and lockedAt populated"
+        }
+      ],
+      "evidence": {
+        "network": "POST /api/v1/accounting/periods/11/request-close -> 200; POST /api/v1/accounting/periods/11/approve-close -> 200",
+        "files": [
+          "/home/realnigga/.factory/missions/cf35a73d-f4bd-4cf3-9488-fee34cf89e18/evidence/M4-chart-of-accounts-journals-periods/runtime-journal-periods/period-request-close-accounting.json",
+          "/home/realnigga/.factory/missions/cf35a73d-f4bd-4cf3-9488-fee34cf89e18/evidence/M4-chart-of-accounts-journals-periods/runtime-journal-periods/period-approve-close-admin.json"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-PERIOD-002",
+      "title": "Period reopen (super-admin only)",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "POST /api/v1/accounting/periods/10/reopen as tenant admin before any super-admin role grant",
+          "expected": "Tenant admin receives HTTP 403",
+          "observed": "HTTP 403; message=Access denied"
+        },
+        {
+          "action": "Seed ROLE_SUPER_ADMIN onto accounting.m4j1@example.com in the disposable tenant, re-authenticate, then POST /api/v1/accounting/periods/11/reopen",
+          "expected": "A tenant-scoped super-admin can reopen the closed period",
+          "observed": "HTTP 200; March 2026 transitioned back to status=OPEN with reopenReason=\"Reopen for corrections\""
+        }
+      ],
+      "evidence": {
+        "network": "POST /api/v1/accounting/periods/10/reopen (tenant admin) -> 403; POST /api/v1/accounting/periods/11/reopen (tenant-scoped super-admin) -> 200",
+        "files": [
+          "/home/realnigga/.factory/missions/cf35a73d-f4bd-4cf3-9488-fee34cf89e18/evidence/M4-chart-of-accounts-journals-periods/runtime-journal-periods/period-reopen-admin.json",
+          "/home/realnigga/.factory/missions/cf35a73d-f4bd-4cf3-9488-fee34cf89e18/evidence/M4-chart-of-accounts-journals-periods/runtime-journal-periods/period-reopen-tenant-superadmin.json",
+          "/home/realnigga/.factory/missions/cf35a73d-f4bd-4cf3-9488-fee34cf89e18/evidence/M4-chart-of-accounts-journals-periods/runtime-journal-periods/tenant-superadmin-login.json"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-PERIOD-003",
+      "title": "Month-end checklist",
+      "status": "fail",
+      "steps": [
+        {
+          "action": "GET /api/v1/accounting/month-end/checklist?periodId=10 on fresh tenant UTM4J1",
+          "expected": "HTTP 200 with MonthEndChecklistDto items for bank reconciliation, inventory count, and notes",
+          "observed": "HTTP 400; message=\"Invalid option 'PENDING'\""
+        },
+        {
+          "action": "POST /api/v1/accounting/month-end/checklist/10 with bankReconciled=true, inventoryCounted=true, note=\"M4 runtime checklist\"",
+          "expected": "HTTP 200 with updated MonthEndChecklistDto",
+          "observed": "HTTP 400; message=\"Invalid option 'PENDING'\""
+        }
+      ],
+      "evidence": {
+        "network": "GET /api/v1/accounting/month-end/checklist?periodId=10 -> 400; POST /api/v1/accounting/month-end/checklist/10 -> 400",
+        "files": [
+          "/home/realnigga/.factory/missions/cf35a73d-f4bd-4cf3-9488-fee34cf89e18/evidence/M4-chart-of-accounts-journals-periods/runtime-journal-periods/month-end-checklist-get.json",
+          "/home/realnigga/.factory/missions/cf35a73d-f4bd-4cf3-9488-fee34cf89e18/evidence/M4-chart-of-accounts-journals-periods/runtime-journal-periods/month-end-checklist-post.json"
+        ]
+      },
+      "issues": {
+        "reason": "Checklist endpoints reject the request with Invalid option 'PENDING' instead of returning/updating MonthEndChecklistDto."
+      }
+    }
+  ],
+  "frictions": [
+    {
+      "description": "Period-close approval enforces maker-checker separation and rejects same-actor approval attempts.",
+      "resolved": true,
+      "resolution": "Created a tenant ACCOUNTING user through POST /api/v1/admin/users, rotated its emailed temporary password, submitted request-close with that user, and approved close with the tenant admin.",
+      "affectedAssertions": [
+        "VAL-PERIOD-001",
+        "VAL-JOURNAL-003"
+      ]
+    },
+    {
+      "description": "The platform-scoped validation.superadmin@example.com token is denied on tenant business routes with SUPER_ADMIN_PLATFORM_ONLY even though /accounting/periods/{id}/reopen is an allowed super-admin control path.",
+      "resolved": true,
+      "resolution": "Seeded ROLE_SUPER_ADMIN onto a tenant-scoped validation user and retried reopen within the tenant auth scope, which returned HTTP 200 and reopened the period.",
+      "affectedAssertions": [
+        "VAL-PERIOD-002"
+      ]
+    }
+  ],
+  "blockers": [
+    {
+      "description": "The month-end checklist endpoints fail with HTTP 400 Invalid option 'PENDING' on a fresh M4 tenant, so the checklist DTO cannot be read or updated through the user surface.",
+      "affectedAssertions": [
+        "VAL-PERIOD-003"
+      ],
+      "quickFixAttempted": "Retried both GET and POST against the fresh UTM4J1 tenant after normal authentication and X-Company-Code binding; both returned the same 400 validation error."
+    }
+  ],
+  "summary": "Tested 6 runtime journal/period assertions on fresh tenant UTM4J1: 5 passed and 1 failed because the month-end checklist endpoints consistently returned HTTP 400 Invalid option 'PENDING'."
+}

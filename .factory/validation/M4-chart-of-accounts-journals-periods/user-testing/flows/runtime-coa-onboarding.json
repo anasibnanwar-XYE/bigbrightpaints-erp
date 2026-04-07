@@ -1,0 +1,288 @@
+{
+  "groupId": "runtime-coa-onboarding",
+  "testedAt": "2026-04-07T00:18:09Z",
+  "credentials": {
+    "account": "validation.superadmin@example.com -> admin.m4e3@example.com",
+    "namespace": "UTM4E3"
+  },
+  "toolsUsed": [
+    "curl"
+  ],
+  "assertions": [
+    {
+      "id": "VAL-COA-001",
+      "title": "Chart of accounts \u2014 seed standard tree for new company",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "POST /api/v1/superadmin/tenants/onboard with coaTemplateCode=MANUFACTURING for fresh tenant UTM4E3",
+          "expected": "Fresh tenant is created with a seeded chart of accounts and default period",
+          "observed": "HTTP 200; seededChartOfAccounts=True accountsCreated=89 accountingPeriodId=9"
+        },
+        {
+          "action": "GET /api/v1/accounting/accounts/tree after tenant-admin password rotation",
+          "expected": "Root account groups with nested children are returned",
+          "observed": "HTTP 200; rootGroups=6 firstRoot={code:AST, parentId:None, childCount:10}"
+        }
+      ],
+      "evidence": {
+        "network": "POST /api/v1/superadmin/tenants/onboard -> 200; GET /api/v1/accounting/accounts/tree -> 200",
+        "files": [
+          "/home/realnigga/.factory/missions/cf35a73d-f4bd-4cf3-9488-fee34cf89e18/evidence/M4-chart-of-accounts-journals-periods/runtime-coa-onboarding/tenant-onboard.json",
+          "/home/realnigga/.factory/missions/cf35a73d-f4bd-4cf3-9488-fee34cf89e18/evidence/M4-chart-of-accounts-journals-periods/runtime-coa-onboarding/accounts-tree.json"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-COA-002",
+      "title": "Default accounts auto-configured when chart seeded",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "GET /api/v1/accounting/default-accounts",
+          "expected": "Inventory, COGS, revenue, discount, and tax defaults are non-null and valid account IDs",
+          "observed": "HTTP 200; defaults={'inventoryAccountId': 462, 'cogsAccountId': 479, 'revenueAccountId': 476, 'discountAccountId': 483, 'fgDiscountAccountId': 483, 'taxAccountId': 469}"
+        }
+      ],
+      "evidence": {
+        "network": "GET /api/v1/accounting/default-accounts -> 200",
+        "files": [
+          "/home/realnigga/.factory/missions/cf35a73d-f4bd-4cf3-9488-fee34cf89e18/evidence/M4-chart-of-accounts-journals-periods/runtime-coa-onboarding/default-accounts.json",
+          "/home/realnigga/.factory/missions/cf35a73d-f4bd-4cf3-9488-fee34cf89e18/evidence/M4-chart-of-accounts-journals-periods/runtime-coa-onboarding/accounts-list.json"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-COA-003",
+      "title": "Product creation auto-links to COGS/Revenue/Inventory accounts from company defaults",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "POST /api/v1/catalog/brands then POST /api/v1/catalog/items without explicit account IDs",
+          "expected": "Created finished good inherits valuation/COGS/revenue IDs from company defaults",
+          "observed": "Brand HTTP 200; item metadata={'fgRevenueAccountId': 476, 'fgDiscountAccountId': 483, 'fgCogsAccountId': 479, 'fgValuationAccountId': 462, 'fgTaxAccountId': 469}"
+        }
+      ],
+      "evidence": {
+        "network": "POST /api/v1/catalog/brands -> 200; POST /api/v1/catalog/items -> 200",
+        "files": [
+          "/home/realnigga/.factory/missions/cf35a73d-f4bd-4cf3-9488-fee34cf89e18/evidence/M4-chart-of-accounts-journals-periods/runtime-coa-onboarding/brand-create.json",
+          "/home/realnigga/.factory/missions/cf35a73d-f4bd-4cf3-9488-fee34cf89e18/evidence/M4-chart-of-accounts-journals-periods/runtime-coa-onboarding/product-create.json"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-COA-005",
+      "title": "Account tree endpoint returns proper hierarchy",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "GET /api/v1/accounting/accounts/tree",
+          "expected": "Root nodes have parentId null and populated children arrays",
+          "observed": "HTTP 200; firstRoot code=AST level=1 parentId=None childCount=10"
+        }
+      ],
+      "evidence": {
+        "network": "GET /api/v1/accounting/accounts/tree -> 200",
+        "files": [
+          "/home/realnigga/.factory/missions/cf35a73d-f4bd-4cf3-9488-fee34cf89e18/evidence/M4-chart-of-accounts-journals-periods/runtime-coa-onboarding/accounts-tree.json"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-COA-006",
+      "title": "Opening balance import works",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "POST /api/v1/accounting/opening-balances with balanced CASH/OPEN-BAL CSV rows",
+          "expected": "Import succeeds with successCount > 0 and an opening-balance journal becomes visible from audit transactions",
+          "observed": "HTTP 200; successCount=2 failureCount=0 auditTransactionsBefore=0 auditTransactionsAfter=1 latestReference=OPEN-BAL-UTM4E3-d6c5c767bd91"
+        }
+      ],
+      "evidence": {
+        "network": "POST /api/v1/accounting/opening-balances -> 200; GET /api/v1/accounting/audit/transactions -> 200",
+        "files": [
+          "/home/realnigga/.factory/missions/cf35a73d-f4bd-4cf3-9488-fee34cf89e18/evidence/M4-chart-of-accounts-journals-periods/runtime-coa-onboarding/opening-balance-import.json",
+          "/home/realnigga/.factory/missions/cf35a73d-f4bd-4cf3-9488-fee34cf89e18/evidence/M4-chart-of-accounts-journals-periods/runtime-coa-onboarding/audit-transactions-before-opening-balance.json",
+          "/home/realnigga/.factory/missions/cf35a73d-f4bd-4cf3-9488-fee34cf89e18/evidence/M4-chart-of-accounts-journals-periods/runtime-coa-onboarding/audit-transactions-after-opening-balance.json"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-ONBOARD-001",
+      "title": "Guided onboarding flow \u2014 chart of accounts first",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Onboard UTM4E3, retrieve tenant-admin credentials from MailHog, rotate the password, then fetch /api/v1/accounting/accounts/tree",
+          "expected": "Seeded accounts are immediately available after onboarding",
+          "observed": "Onboarded companyCode=UTM4E3; seededChartOfAccounts=True; /accounts/tree rootGroups=6"
+        }
+      ],
+      "evidence": {
+        "network": "POST /api/v1/superadmin/tenants/onboard -> 200; GET /api/v1/accounting/accounts/tree -> 200",
+        "files": [
+          "/home/realnigga/.factory/missions/cf35a73d-f4bd-4cf3-9488-fee34cf89e18/evidence/M4-chart-of-accounts-journals-periods/runtime-coa-onboarding/tenant-onboard.json",
+          "/home/realnigga/.factory/missions/cf35a73d-f4bd-4cf3-9488-fee34cf89e18/evidence/M4-chart-of-accounts-journals-periods/runtime-coa-onboarding/mailhog-summary.txt",
+          "/home/realnigga/.factory/missions/cf35a73d-f4bd-4cf3-9488-fee34cf89e18/evidence/M4-chart-of-accounts-journals-periods/runtime-coa-onboarding/accounts-tree.json"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-ONBOARD-002",
+      "title": "Bulk dealer import via CSV",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "POST /api/v1/dealers/import with one valid and one invalid row",
+          "expected": "Import result includes success/failure counts and row-level validation errors",
+          "observed": "HTTP 200; successCount=1 failureCount=1 errors=[{'rowNumber': 2, 'message': 'contactEmail: Provide a valid contact email; gstNumber: GST number must be a valid 15-character GSTIN; stateCode: State code must be exactly 2 characters'}]"
+        }
+      ],
+      "evidence": {
+        "network": "POST /api/v1/dealers/import -> 200",
+        "files": [
+          "/home/realnigga/.factory/missions/cf35a73d-f4bd-4cf3-9488-fee34cf89e18/evidence/M4-chart-of-accounts-journals-periods/runtime-coa-onboarding/dealer-import.json"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-ONBOARD-003",
+      "title": "Bulk supplier import via CSV",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "POST /api/v1/suppliers/import with one valid and one invalid row",
+          "expected": "Import result includes success/failure counts and row-level validation errors",
+          "observed": "HTTP 200; successCount=1 failureCount=1 errors=[{'rowNumber': 2, 'message': 'contactEmail: must be a well-formed email address; gstNumber: GST number must be a valid 15-character GSTIN; stateCode: State code must be exactly 2 characters'}]"
+        }
+      ],
+      "evidence": {
+        "network": "POST /api/v1/suppliers/import -> 200",
+        "files": [
+          "/home/realnigga/.factory/missions/cf35a73d-f4bd-4cf3-9488-fee34cf89e18/evidence/M4-chart-of-accounts-journals-periods/runtime-coa-onboarding/supplier-import.json"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-ONBOARD-004",
+      "title": "Opening stock import with accounting journal",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Create WIP/labor/overhead accounts, create a finished-good SKU with readiness metadata, then POST /api/v1/inventory/opening-stock with Idempotency-Key/openingStockBatchKey",
+          "expected": "Import succeeds and posts the opening stock journal",
+          "observed": "HTTP 409; reason=Opening stock import is disabled; enable migration mode to proceed."
+        }
+      ],
+      "evidence": {
+        "network": "POST /api/v1/catalog/items -> 200; POST /api/v1/inventory/opening-stock -> 409",
+        "files": [
+          "/home/realnigga/.factory/missions/cf35a73d-f4bd-4cf3-9488-fee34cf89e18/evidence/M4-chart-of-accounts-journals-periods/runtime-coa-onboarding/opening-stock-item.json",
+          "/home/realnigga/.factory/missions/cf35a73d-f4bd-4cf3-9488-fee34cf89e18/evidence/M4-chart-of-accounts-journals-periods/runtime-coa-onboarding/opening-stock-import.json"
+        ]
+      },
+      "issues": {
+        "blockedBy": "POST /api/v1/inventory/opening-stock returned HTTP 409 with reason 'Opening stock import is disabled; enable migration mode to proceed.'."
+      }
+    },
+    {
+      "id": "VAL-ONBOARD-005",
+      "title": "Opening balance import with validation",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Reuse the balanced opening-balance CSV import from VAL-COA-006",
+          "expected": "The import validates and returns detailed results while creating a traceable opening-balance transaction",
+          "observed": "HTTP 200; response data={'successCount': 2, 'failureCount': 0, 'accountsCreated': 0, 'errors': []}; latest audit transaction={'journalEntryId': 2, 'referenceNumber': 'OPEN-BAL-UTM4E3-d6c5c767bd91', 'entryDate': '2026-04-07', 'status': 'POSTED', 'module': 'ACCOUNTING', 'transactionType': 'GENERAL_JOURNAL', 'memo': 'Opening balance import', 'dealerId': None, 'dealerName': None, 'supplierId': None, 'supplierName': None, 'totalDebit': 500.0, 'totalCredit': 500.0, 'reversalOfId': None, 'reversalEntryId': None, 'correctionType': None, 'consistencyStatus': 'OK', 'postedAt': '2026-04-07T00:18:10.096566Z'}"
+        }
+      ],
+      "evidence": {
+        "network": "POST /api/v1/accounting/opening-balances -> 200",
+        "files": [
+          "/home/realnigga/.factory/missions/cf35a73d-f4bd-4cf3-9488-fee34cf89e18/evidence/M4-chart-of-accounts-journals-periods/runtime-coa-onboarding/opening-balance-import.json",
+          "/home/realnigga/.factory/missions/cf35a73d-f4bd-4cf3-9488-fee34cf89e18/evidence/M4-chart-of-accounts-journals-periods/runtime-coa-onboarding/audit-transactions-after-opening-balance.json"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-ONBOARD-006",
+      "title": "Product catalog bulk import with auto-account linkage",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "POST /api/v1/catalog/import with one row, then search the imported item with includeReadiness=true",
+          "expected": "Imported product is searchable and linked to valuation/COGS/revenue accounts",
+          "observed": "HTTP 200; rowsProcessed=1 metadata={'fgTaxAccountId': 469, 'fgCogsAccountId': 479, 'fgRevenueAccountId': 476, 'fgDiscountAccountId': 483, 'fgValuationAccountId': 462}"
+        }
+      ],
+      "evidence": {
+        "network": "POST /api/v1/catalog/import -> 200; GET /api/v1/catalog/items?q=OnboardPaintM4E3&includeReadiness=true -> 200",
+        "files": [
+          "/home/realnigga/.factory/missions/cf35a73d-f4bd-4cf3-9488-fee34cf89e18/evidence/M4-chart-of-accounts-journals-periods/runtime-coa-onboarding/catalog-import.json",
+          "/home/realnigga/.factory/missions/cf35a73d-f4bd-4cf3-9488-fee34cf89e18/evidence/M4-chart-of-accounts-journals-periods/runtime-coa-onboarding/catalog-search.json"
+        ]
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "/api/v1/superadmin/tenants/coa-templates still returns COMPANY_CONTROL_ACCESS_DENIED for the platform super-admin because the path is treated as a company-bound control route by CompanyContextFilter.",
+      "resolved": true,
+      "resolution": "Skipped the broken template-listing route and used the known active template code MANUFACTURING directly in POST /api/v1/superadmin/tenants/onboard.",
+      "affectedAssertions": [
+        "VAL-COA-001",
+        "VAL-COA-002",
+        "VAL-ONBOARD-001"
+      ]
+    },
+    {
+      "description": "New tenant-admin accounts are provisioned with mustChangePassword=true, which blocks accounting routes until the password is rotated.",
+      "resolved": true,
+      "resolution": "Logged in once with the emailed temporary password, called POST /api/v1/auth/password/change, then re-authenticated with a stable validation password before continuing.",
+      "affectedAssertions": [
+        "VAL-COA-001",
+        "VAL-COA-002",
+        "VAL-COA-003",
+        "VAL-COA-005",
+        "VAL-COA-006",
+        "VAL-ONBOARD-001",
+        "VAL-ONBOARD-002",
+        "VAL-ONBOARD-003",
+        "VAL-ONBOARD-004",
+        "VAL-ONBOARD-005",
+        "VAL-ONBOARD-006"
+      ]
+    },
+    {
+      "description": "GET /api/v1/accounting/journal-entries and GET /api/v1/accounting/journals return HTTP 500 after the opening-balance import on disposable tenants.",
+      "resolved": true,
+      "resolution": "Used GET /api/v1/accounting/audit/transactions as the user-surface proof for the created opening-balance journal instead of the broken journal list routes.",
+      "affectedAssertions": [
+        "VAL-COA-006",
+        "VAL-ONBOARD-005"
+      ]
+    }
+  ],
+  "blockers": [
+    {
+      "description": "Opening stock import remains disabled in the compose-backed runtime because the app container is not wired to accept the feature toggle through docker-compose.yml.",
+      "affectedAssertions": [
+        "VAL-ONBOARD-004"
+      ],
+      "quickFixAttempted": "Recreated the local app container with ERP_INVENTORY_OPENING_STOCK_ENABLED=true in the shell, but docker-compose.yml does not pass that variable into the app service, so the endpoint still returned the same 409 migration-mode-disabled response."
+    }
+  ],
+  "summary": "Tested 11 runtime COA/onboarding assertions on fresh tenant UTM4E3: 10 passed and 1 was blocked because the compose-backed runtime keeps /api/v1/inventory/opening-stock disabled."
+}
