@@ -523,7 +523,7 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
             HttpMethod.POST,
             new HttpEntity<>(duplicateReq, headers),
             Map.class);
-    assertThat(duplicateResp.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+    assertThat(duplicateResp.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
   }
 
   @Test
@@ -735,7 +735,7 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
             HttpMethod.POST,
             new HttpEntity<>(debitNoteReq, headers),
             Map.class);
-    assertThat(debitResp.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+    assertThat(debitResp.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
 
     RawMaterialPurchase refreshed = purchaseRepository.findById(purchaseId).orElseThrow();
     assertThat(refreshed.getOutstandingAmount()).isEqualByComparingTo(BigDecimal.ZERO);

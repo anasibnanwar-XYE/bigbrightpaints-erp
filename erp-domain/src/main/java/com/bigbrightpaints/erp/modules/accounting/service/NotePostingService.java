@@ -32,6 +32,8 @@ import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchaseRepo
 @Service
 class NotePostingService {
 
+  private static final BigDecimal NOTE_AMOUNT_TOLERANCE = new BigDecimal("0.01");
+
   private final CompanyContextService companyContextService;
   private final InvoiceRepository invoiceRepository;
   private final RawMaterialPurchaseRepository rawMaterialPurchaseRepository;
@@ -80,6 +82,10 @@ class NotePostingService {
                     new ApplicationException(
                         ErrorCode.VALIDATION_INVALID_REFERENCE, "Invoice not found"));
     JournalEntry source = invoice.getJournalEntry();
+    Long receivableAccountId =
+        invoice.getDealer() != null && invoice.getDealer().getReceivableAccount() != null
+            ? invoice.getDealer().getReceivableAccount().getId()
+            : null;
     if (source == null) {
       throw new ApplicationException(
           ErrorCode.VALIDATION_INVALID_REFERENCE,
@@ -94,17 +100,33 @@ class NotePostingService {
     LocalDate entryDate = request.entryDate() != null ? request.entryDate() : source.getEntryDate();
     JournalEntry existingEntry =
         journalReplayService.findExistingEntry(company, reference, idempotencyKey);
+    BigDecimal sourceAmount = calculateControlAccountAmount(source, receivableAccountId);
+    BigDecimal creditedSoFar =
+        totalNoteAmount(company, source, "CREDIT_NOTE", receivableAccountId);
+    BigDecimal remainingBySource = sourceAmount.subtract(creditedSoFar).max(BigDecimal.ZERO);
+    BigDecimal currentOutstanding = MoneyUtils.zeroIfNull(invoice.getOutstandingAmount());
+    BigDecimal allowedAmount = remainingBySource.min(currentOutstanding).max(BigDecimal.ZERO);
+    BigDecimal creditAmount = request.amount() != null ? request.amount() : allowedAmount;
     if (existingEntry != null) {
       BigDecimal existingAmount = calculateEntryTotal(existingEntry);
-      BigDecimal totalCredited = totalNoteAmount(company, source, "CREDIT_NOTE");
+      existingAmount = calculateControlAccountAmount(existingEntry, receivableAccountId);
+      ensureIdempotentAmountMatch(
+          existingAmount, request.amount(), idempotencyKey, "credit note", reference);
+      BigDecimal totalCredited =
+          totalNoteAmount(company, source, "CREDIT_NOTE", receivableAccountId);
       settlementOutcomeService.applyCreditNoteToInvoice(
           invoice, existingAmount, totalCredited, existingEntry.getReferenceNumber(), entryDate);
       return dtoFrom(company, existingEntry);
     }
-    BigDecimal totalAmount = MoneyUtils.zeroIfNull(invoice.getTotalAmount());
-    BigDecimal creditedSoFar = totalNoteAmount(company, source, "CREDIT_NOTE");
-    BigDecimal remaining = totalAmount.subtract(creditedSoFar).max(BigDecimal.ZERO);
-    BigDecimal creditAmount = request.amount() != null ? request.amount() : remaining;
+    validateNoteAmount(
+        creditAmount,
+        allowedAmount,
+        request.amount() != null,
+        "Credit note has no remaining outstanding amount to apply",
+        "Credit note exceeds remaining invoice outstanding amount",
+        "invoiceId",
+        invoice.getId(),
+        currentOutstanding);
     JournalReplayService.IdempotencyReservation reservation =
         journalReplayService.reserveReferenceMapping(
             company, idempotencyKey, reference, "CREDIT_NOTE");
@@ -125,7 +147,7 @@ class NotePostingService {
         StringUtils.hasText(request.memo())
             ? request.memo().trim()
             : "Credit note for invoice " + invoice.getInvoiceNumber();
-    BigDecimal ratio = creditAmount.divide(totalAmount, 6, RoundingMode.HALF_UP);
+    BigDecimal ratio = creditAmount.divide(sourceAmount, 6, RoundingMode.HALF_UP);
     List<JournalEntryRequest.JournalLineRequest> lines =
         buildScaledReversalLines(source, ratio, "Credit note reversal - ");
     JournalEntryDto dto =
@@ -151,7 +173,7 @@ class NotePostingService {
     saved.setSourceReference(invoice.getInvoiceNumber());
     journalEntryRepository.save(saved);
     journalReplayService.linkReferenceMapping(company, idempotencyKey, saved, "CREDIT_NOTE");
-    BigDecimal postedAmount = calculateEntryTotal(saved);
+    BigDecimal postedAmount = calculateControlAccountAmount(saved, receivableAccountId);
     settlementOutcomeService.applyCreditNoteToInvoice(
         invoice,
         postedAmount,
@@ -172,6 +194,10 @@ class NotePostingService {
                     new ApplicationException(
                         ErrorCode.VALIDATION_INVALID_REFERENCE, "Raw material purchase not found"));
     JournalEntry source = purchase.getJournalEntry();
+    Long payableAccountId =
+        purchase.getSupplier() != null && purchase.getSupplier().getPayableAccount() != null
+            ? purchase.getSupplier().getPayableAccount().getId()
+            : null;
     if (source == null) {
       throw new ApplicationException(
           ErrorCode.VALIDATION_INVALID_REFERENCE,
@@ -192,13 +218,31 @@ class NotePostingService {
     LocalDate entryDate = request.entryDate() != null ? request.entryDate() : source.getEntryDate();
     JournalEntry existingEntry =
         journalReplayService.findExistingEntry(company, reference, idempotencyKey);
+    BigDecimal sourceAmount = calculateControlAccountAmount(source, payableAccountId);
+    BigDecimal debitedSoFar =
+        totalNoteAmount(company, source, "DEBIT_NOTE", payableAccountId);
+    BigDecimal remainingBySource = sourceAmount.subtract(debitedSoFar).max(BigDecimal.ZERO);
+    BigDecimal currentOutstanding = MoneyUtils.zeroIfNull(purchase.getOutstandingAmount());
+    BigDecimal allowedAmount = remainingBySource.min(currentOutstanding).max(BigDecimal.ZERO);
+    BigDecimal debitAmount = request.amount() != null ? request.amount() : allowedAmount;
     if (existingEntry != null) {
+      ensureIdempotentAmountMatch(
+          calculateControlAccountAmount(existingEntry, payableAccountId),
+          request.amount(),
+          idempotencyKey,
+          "debit note",
+          reference);
       return dtoFrom(company, existingEntry);
     }
-    BigDecimal totalAmount = MoneyUtils.zeroIfNull(purchase.getTotalAmount());
-    BigDecimal debitedSoFar = totalNoteAmount(company, source, "DEBIT_NOTE");
-    BigDecimal remaining = totalAmount.subtract(debitedSoFar).max(BigDecimal.ZERO);
-    BigDecimal debitAmount = request.amount() != null ? request.amount() : remaining;
+    validateNoteAmount(
+        debitAmount,
+        allowedAmount,
+        request.amount() != null,
+        "Debit note has no remaining outstanding amount to apply",
+        "Debit note exceeds remaining purchase outstanding amount",
+        "purchaseId",
+        purchase.getId(),
+        currentOutstanding);
     JournalReplayService.IdempotencyReservation reservation =
         journalReplayService.reserveReferenceMapping(
             company, idempotencyKey, reference, "DEBIT_NOTE");
@@ -213,7 +257,7 @@ class NotePostingService {
         StringUtils.hasText(request.memo())
             ? request.memo().trim()
             : "Debit note for purchase " + purchase.getInvoiceNumber();
-    BigDecimal ratio = debitAmount.divide(totalAmount, 6, RoundingMode.HALF_UP);
+    BigDecimal ratio = debitAmount.divide(sourceAmount, 6, RoundingMode.HALF_UP);
     List<JournalEntryRequest.JournalLineRequest> lines =
         buildScaledReversalLines(source, ratio, "Debit note reversal - ");
     JournalEntryDto dto =
@@ -239,21 +283,93 @@ class NotePostingService {
     saved.setSourceReference(purchase.getInvoiceNumber());
     journalEntryRepository.save(saved);
     journalReplayService.linkReferenceMapping(company, idempotencyKey, saved, "DEBIT_NOTE");
+    BigDecimal postedAmount = calculateControlAccountAmount(saved, payableAccountId);
     settlementOutcomeService.applyDebitNoteToPurchase(
-        purchase, calculateEntryTotal(saved), debitedSoFar.add(calculateEntryTotal(saved)));
+        purchase, postedAmount, debitedSoFar.add(postedAmount));
     return dto;
   }
 
+  private void validateNoteAmount(
+      BigDecimal requestedAmount,
+      BigDecimal allowedAmount,
+      boolean explicitAmountProvided,
+      String emptyMessage,
+      String overflowMessage,
+      String entityKey,
+      Long entityId,
+      BigDecimal currentOutstanding) {
+    BigDecimal resolvedAmount = MoneyUtils.zeroIfNull(requestedAmount);
+    if (resolvedAmount.compareTo(BigDecimal.ZERO) <= 0) {
+      throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, emptyMessage)
+          .withDetail(entityKey, entityId)
+          .withDetail("outstandingAmount", MoneyUtils.zeroIfNull(currentOutstanding));
+    }
+    if (explicitAmountProvided
+        && resolvedAmount.subtract(MoneyUtils.zeroIfNull(allowedAmount))
+                .compareTo(NOTE_AMOUNT_TOLERANCE)
+            > 0) {
+      throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, overflowMessage)
+          .withDetail(entityKey, entityId)
+          .withDetail("requested", resolvedAmount)
+          .withDetail("outstandingAmount", MoneyUtils.zeroIfNull(currentOutstanding));
+    }
+  }
+
+  private void ensureIdempotentAmountMatch(
+      BigDecimal existingAmount,
+      BigDecimal requestedAmount,
+      String idempotencyKey,
+      String label,
+      String reference) {
+    if (requestedAmount == null) {
+      return;
+    }
+    BigDecimal existing = MoneyUtils.zeroIfNull(existingAmount);
+    BigDecimal requested = MoneyUtils.zeroIfNull(requestedAmount);
+    if (requested.subtract(existing).abs().compareTo(NOTE_AMOUNT_TOLERANCE) <= 0) {
+      return;
+    }
+    throw new ApplicationException(
+            ErrorCode.CONCURRENCY_CONFLICT,
+            "Idempotency key already used for another " + label + " amount")
+        .withDetail("idempotencyKey", idempotencyKey)
+        .withDetail("referenceNumber", reference)
+        .withDetail("existingAmount", existing)
+        .withDetail("requestedAmount", requested);
+  }
+
   private BigDecimal totalNoteAmount(
-      Company company, JournalEntry source, String correctionReason) {
+      Company company, JournalEntry source, String correctionReason, Long controlAccountId) {
     if (source == null) {
       return BigDecimal.ZERO;
     }
     return journalEntryRepository
         .findByCompanyAndReversalOfAndCorrectionReasonIgnoreCase(company, source, correctionReason)
         .stream()
-        .map(this::calculateEntryTotal)
+        .map(entry -> calculateControlAccountAmount(entry, controlAccountId))
         .reduce(BigDecimal.ZERO, BigDecimal::add);
+  }
+
+  private BigDecimal calculateControlAccountAmount(JournalEntry entry, Long controlAccountId) {
+    if (entry == null || entry.getLines() == null || entry.getLines().isEmpty()) {
+      return BigDecimal.ZERO;
+    }
+    if (controlAccountId == null) {
+      return calculateEntryTotal(entry);
+    }
+    BigDecimal net =
+        entry.getLines().stream()
+            .filter(line -> line.getAccount() != null && controlAccountId.equals(line.getAccount().getId()))
+            .map(
+                line ->
+                    MoneyUtils.zeroIfNull(line.getDebit())
+                        .subtract(MoneyUtils.zeroIfNull(line.getCredit())))
+            .reduce(BigDecimal.ZERO, BigDecimal::add)
+            .abs();
+    if (net.compareTo(BigDecimal.ZERO) > 0) {
+      return net;
+    }
+    return calculateEntryTotal(entry);
   }
 
   private BigDecimal calculateEntryTotal(JournalEntry entry) {
