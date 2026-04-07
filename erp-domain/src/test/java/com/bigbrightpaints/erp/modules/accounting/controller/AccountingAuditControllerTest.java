@@ -11,9 +11,6 @@ import java.util.List;
 import java.util.Map;
 
 import org.junit.jupiter.api.Test;
-import org.springframework.mock.web.MockHttpServletRequest;
-import org.springframework.web.context.request.RequestContextHolder;
-import org.springframework.web.context.request.ServletRequestAttributes;
 
 import com.bigbrightpaints.erp.core.auditaccess.AuditAccessService;
 import com.bigbrightpaints.erp.core.auditaccess.AuditFeedFilter;
@@ -76,6 +73,7 @@ class AccountingAuditControllerTest {
                 " 2026-03-01 ",
                 "2026-03-31 ",
                 "ACCOUNTING",
+                null,
                 "JOURNAL_ENTRY_POSTED",
                 "SUCCESS",
                 "ops@example.com",
@@ -208,20 +206,13 @@ class AccountingAuditControllerTest {
         new AuditFeedFilter(null, null, "INVENTORY", null, null, null, null, null, 0, 50);
     when(auditAccessService.queryAccountingFeed(expectedFilter)).thenReturn(expected);
 
-    MockHttpServletRequest request = new MockHttpServletRequest();
-    request.setParameter("category", "INVENTORY");
-    RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
-    try {
-      ApiResponse<PageResponse<AuditFeedItemDto>> body =
-          controller
-              .listEvents(null, null, null, null, null, null, null, null, 0, 50)
-              .getBody();
+    ApiResponse<PageResponse<AuditFeedItemDto>> body =
+        controller
+            .listEvents(null, null, null, "INVENTORY", null, null, null, null, null, 0, 50)
+            .getBody();
 
-      assertThat(body).isNotNull();
-      assertThat(body.data()).isEqualTo(expected);
-      verify(auditAccessService).queryAccountingFeed(expectedFilter);
-    } finally {
-      RequestContextHolder.resetRequestAttributes();
-    }
+    assertThat(body).isNotNull();
+    assertThat(body.data()).isEqualTo(expected);
+    verify(auditAccessService).queryAccountingFeed(expectedFilter);
   }
 }

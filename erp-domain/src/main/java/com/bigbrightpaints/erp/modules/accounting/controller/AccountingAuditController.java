@@ -10,8 +10,6 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.context.request.RequestContextHolder;
-import org.springframework.web.context.request.ServletRequestAttributes;
 
 import com.bigbrightpaints.erp.core.auditaccess.AuditAccessService;
 import com.bigbrightpaints.erp.core.auditaccess.AuditControllerSupport;
@@ -47,6 +45,7 @@ public class AccountingAuditController extends AuditControllerSupport {
       @RequestParam(required = false) String from,
       @RequestParam(required = false) String to,
       @RequestParam(required = false) String module,
+      @RequestParam(required = false) String category,
       @RequestParam(required = false) String action,
       @RequestParam(required = false) String status,
       @RequestParam(required = false) String actor,
@@ -54,7 +53,7 @@ public class AccountingAuditController extends AuditControllerSupport {
       @RequestParam(required = false) String reference,
       @RequestParam(defaultValue = "0") int page,
       @RequestParam(defaultValue = "50") int size) {
-    String resolvedModule = resolveModuleOrCategory(module);
+    String resolvedModule = resolveModuleOrCategory(module, category);
     return ResponseEntity.ok(
         ApiResponse.success(
             auditAccessService.queryAccountingFeed(
@@ -102,14 +101,10 @@ public class AccountingAuditController extends AuditControllerSupport {
         ApiResponse.success(auditAccessService.getAccountingTransactionDetail(journalEntryId)));
   }
 
-  private String resolveModuleOrCategory(String module) {
+  private String resolveModuleOrCategory(String module, String category) {
     if (module != null && !module.trim().isEmpty()) {
       return module;
     }
-    if (!(RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes attrs)) {
-      return module;
-    }
-    String category = attrs.getRequest().getParameter("category");
     if (category == null || category.trim().isEmpty()) {
       return module;
     }

@@ -20,6 +20,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import com.bigbrightpaints.erp.core.audittrail.AuditActionEventCommand;
+import com.bigbrightpaints.erp.core.audittrail.EnterpriseAuditTrailService;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.invoice.domain.Invoice;
@@ -37,6 +39,7 @@ class SalesOrderAutoCloseServiceTest {
   @Mock private SalesOrderStatusHistoryRepository salesOrderStatusHistoryRepository;
   @Mock private InvoiceRepository invoiceRepository;
   @Mock private CompanyClock companyClock;
+  @Mock private EnterpriseAuditTrailService enterpriseAuditTrailService;
 
   private SalesOrderAutoCloseService service;
   private Company company;
@@ -45,7 +48,11 @@ class SalesOrderAutoCloseServiceTest {
   void setUp() {
     service =
         new SalesOrderAutoCloseService(
-            salesOrderRepository, salesOrderStatusHistoryRepository, invoiceRepository, companyClock);
+            salesOrderRepository,
+            salesOrderStatusHistoryRepository,
+            invoiceRepository,
+            companyClock,
+            enterpriseAuditTrailService);
     company = new Company();
     ReflectionTestUtils.setField(company, "id", 7L);
   }
@@ -85,6 +92,14 @@ class SalesOrderAutoCloseServiceTest {
     assertThat(historyCaptor.getValue().getReasonCode()).isEqualTo("ORDER_CLOSED_AUTO");
     assertThat(historyCaptor.getValue().getFromStatus()).isEqualTo("INVOICED");
     assertThat(historyCaptor.getValue().getToStatus()).isEqualTo("CLOSED");
+    ArgumentCaptor<AuditActionEventCommand> commandCaptor =
+        ArgumentCaptor.forClass(AuditActionEventCommand.class);
+    verify(enterpriseAuditTrailService).recordBusinessEvent(commandCaptor.capture());
+    AuditActionEventCommand command = commandCaptor.getValue();
+    assertThat(command.module()).isEqualTo("SALES");
+    assertThat(command.action()).isEqualTo("ORDER_CLOSED_AUTO");
+    assertThat(command.entityType()).isEqualTo("SALES_ORDER");
+    assertThat(command.entityId()).isEqualTo("44");
   }
 
   @Test
@@ -102,7 +117,8 @@ class SalesOrderAutoCloseServiceTest {
 
     when(salesOrderRepository.findWithItemsByCompanyAndIdForUpdate(company, 45L))
         .thenReturn(Optional.of(order));
-    when(invoiceRepository.findAllByCompanyAndSalesOrderId(company, 45L)).thenReturn(List.of(touched));
+    when(invoiceRepository.findAllByCompanyAndSalesOrderId(company, 45L))
+        .thenReturn(List.of(touched));
 
     service.autoCloseFullyPaidOrders(company, List.of(touched));
 

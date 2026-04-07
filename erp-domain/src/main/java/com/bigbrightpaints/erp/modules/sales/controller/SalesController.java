@@ -128,7 +128,8 @@ public class SalesController {
         description = "Order created (legacy contract-compatible response)"),
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
         responseCode = "201",
-        description = "Order created for draft-lifecycle requests with paymentTerms/finishedGoodId"),
+        description =
+            "Order created for draft-lifecycle requests with paymentTerms/finishedGoodId"),
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
         responseCode = "422",
         description = "Credit limit exceeded and no approved override covers required headroom")
@@ -276,11 +277,19 @@ public class SalesController {
 
   @PostMapping("/sales/promotions")
   @PreAuthorize("hasAnyAuthority('ROLE_SALES','ROLE_ADMIN')")
+  @Operation(summary = "Create promotion")
+  @ApiResponses({
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+        responseCode = "201",
+        description = "Promotion created"),
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+        responseCode = "400",
+        description = "Validation failed")
+  })
   public ResponseEntity<ApiResponse<PromotionDto>> createPromotion(
       @Valid @RequestBody PromotionRequest request) {
     return ResponseEntity.status(org.springframework.http.HttpStatus.CREATED)
-        .body(
-        ApiResponse.success("Promotion created", salesService.createPromotion(request)));
+        .body(ApiResponse.success("Promotion created", salesService.createPromotion(request)));
   }
 
   @PutMapping("/sales/promotions/{id}")

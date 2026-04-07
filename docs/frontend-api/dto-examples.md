@@ -408,6 +408,12 @@ GET /api/v1/purchasing/purchase-orders/8801/timeline
 GET /api/v1/invoices
 ```
 
+```json
+GET /api/v1/invoices?orderId=1201
+```
+
+Use `orderId` to scope the list to invoices linked to a specific sales order.
+
 ### Invoice Response
 
 ```json

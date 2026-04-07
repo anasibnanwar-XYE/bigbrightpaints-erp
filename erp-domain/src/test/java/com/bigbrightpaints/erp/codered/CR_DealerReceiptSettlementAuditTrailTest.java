@@ -155,6 +155,22 @@ class CR_DealerReceiptSettlementAuditTrailTest extends AbstractIntegrationTest {
             order.getId());
     assertThat(autoCloseEvents).isNotNull();
     assertThat(autoCloseEvents).isGreaterThan(0);
+    Integer salesAuditEvents =
+        jdbcTemplate.queryForObject(
+            """
+            select count(*)
+            from audit_action_events
+            where company_id = ?
+              and module = 'SALES'
+              and action = 'ORDER_CLOSED_AUTO'
+              and entity_type = 'SALES_ORDER'
+              and entity_id = ?
+            """,
+            Integer.class,
+            company.getId(),
+            order.getId().toString());
+    assertThat(salesAuditEvents).isNotNull();
+    assertThat(salesAuditEvents).isGreaterThan(0);
   }
 
   @Test
@@ -858,7 +874,9 @@ class CR_DealerReceiptSettlementAuditTrailTest extends AbstractIntegrationTest {
       JournalEntryDto first = accountingService.recordDealerReceiptSplit(request);
       JournalEntryDto replay = accountingService.recordDealerReceiptSplit(request);
       journalId = first.id();
-      assertThat(replay.id()).as("replay keeps original split receipt journal").isEqualTo(journalId);
+      assertThat(replay.id())
+          .as("replay keeps original split receipt journal")
+          .isEqualTo(journalId);
     } finally {
       CompanyContextHolder.clear();
     }

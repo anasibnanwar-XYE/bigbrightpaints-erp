@@ -49,6 +49,8 @@ This flow is **behavior-first** and **code-grounded**. Where the backend is inco
 | Cancel Order | POST | `/api/v1/sales/orders/{id}/cancel` | SALES, ADMIN | Cancel order (requires reason) |
 | Update Status | PATCH | `/api/v1/sales/orders/{id}/status` | SALES, ADMIN | Manual status (ON_HOLD, REJECTED, CLOSED) |
 | Order Timeline | GET | `/api/v1/sales/orders/{id}/timeline` | ADMIN, SALES, FACTORY, ACCOUNTING | Status history (`toStatus` + alias `status`, `changedBy` + alias `actor`, `changedAt` + alias `timestamp`) |
+| List Promotions | GET | `/api/v1/sales/promotions` | SALES, ADMIN | List active promotions |
+| Create Promotion | POST | `/api/v1/sales/promotions` | SALES, ADMIN | Create promotion (`201 Created`) |
 
 ### Dealer Management — `DealerController` (`/api/v1/dealers/**`)
 
@@ -199,12 +201,13 @@ Update invoice status (PARTIAL/PAID) → Update dealer balance →
 ### 4.6 Order Closure Lifecycle
 
 ```
-[Start] → Verify SETTLED → Update status to CLOSED → [End: Order complete]
+[Start] → Detect all linked actionable invoices fully paid → Auto-close order → [End: Order complete]
 ```
 
 **Key behaviors:**
-- Manual status update required (`PATCH /sales/orders/{id}/status` with CLOSED)
-- Only allowed after SETTLED status
+- Auto-close is triggered by settlement flows when every actionable linked invoice is paid
+- Sales order history records `ORDER_CLOSED_AUTO`
+- The SALES audit feed (`GET /api/v1/accounting/audit/events?module=SALES` or `?category=SALES`) includes `ORDER_CLOSED_AUTO`
 
 ---
 
@@ -216,23 +219,21 @@ The flow is complete when:
 2. **Order Confirmed** — Order moves to CONFIRMED, inventory reserved
 3. **Dispatched & Invoiced** — Order moved to DISPATCHED/INVOICED, invoice generated, AR posted
 4. **Settled** — Payment recorded against invoice, invoice status PAID, dealer balance reduced
-5. **Closed** — Order manually moved to CLOSED (optional terminal state)
+5. **Closed** — Order auto-transitions to CLOSED after full settlement of linked actionable invoices
 
 ### Current Limitations
 
 1. **No automated settlement** — Payment receipt and allocation happens through accounting workflows, not automatically through sales module. Orders move to SETTLED externally.
 
-2. **No automated order closure** — After settlement, orders must be manually closed via `PATCH /sales/orders/{id}/status` with CLOSED.
+2. **No automatic payment reconciliation** — Manual settlement required; no webhook or scheduled matching.
 
-3. **No automatic payment reconciliation** — Manual settlement required; no webhook or scheduled matching.
+3. **Single domain event** — Only `SalesOrderCreatedEvent` is published. Confirmation, dispatch, cancellation do not emit domain events.
 
-4. **Single domain event** — Only `SalesOrderCreatedEvent` is published. Confirmation, dispatch, cancellation do not emit domain events.
+4. **No shipment tracking integration** — Transport metadata captured at dispatch but no carrier integration.
 
-5. **No shipment tracking integration** — Transport metadata captured at dispatch but no carrier integration.
+5. **Dunning is rudimentary** — Scheduled task evaluates only 45+ day aging bucket; no graduated escalation.
 
-6. **Dunning is rudimentary** — Scheduled task evaluates only 45+ day aging bucket; no graduated escalation.
-
-7. **No partial fulfillment by default** — Orders with stock shortages fail unless `allowPartialFulfillment` explicitly enabled.
+6. **No partial fulfillment by default** — Orders with stock shortages fail unless `allowPartialFulfillment` explicitly enabled.
 
 ---
 
@@ -255,7 +256,7 @@ The flow is complete when:
 | `GET /api/v1/sales/dealers` | Deprecated (frontend alias) | Use `/api/v1/dealers` |
 | Legacy idempotency key resolution | Deprecated | Use canonical `Idempotency-Key` header |
 | Legacy order statuses (BOOKED, SHIPPED, etc.) | Legacy compatibility | Use canonical statuses only |
-| `POST /api/v1/sales/promotions` | Planned foundation | Sales targets only; promotions infrastructure exists for future activation |
+| `POST /api/v1/sales/promotions` | Canonical | Promotion create endpoint (`201 Created`) for SALES/ADMIN users |
 
 ---
 
