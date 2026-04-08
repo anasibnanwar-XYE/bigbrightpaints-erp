@@ -44,10 +44,8 @@ public final class AuditCorrelationIdResolver {
       if (parsed != null) {
         return parsed;
       }
-      if (StringUtils.hasText(candidate)) {
-        return UUID.nameUUIDFromBytes(
-            (NAMESPACE_PREFIX + candidate.trim()).getBytes(StandardCharsets.UTF_8));
-      }
+      return UUID.nameUUIDFromBytes(
+          (NAMESPACE_PREFIX + candidate.trim()).getBytes(StandardCharsets.UTF_8));
     }
     return null;
   }
@@ -79,7 +77,7 @@ public final class AuditCorrelationIdResolver {
   }
 
   private static String header(HttpServletRequest request, String headerName) {
-    if (request == null || !StringUtils.hasText(headerName)) {
+    if (request == null) {
       return null;
     }
     String raw = request.getHeader(headerName);
@@ -87,7 +85,7 @@ public final class AuditCorrelationIdResolver {
   }
 
   private static String requestAttribute(HttpServletRequest request, String attributeName) {
-    if (request == null || !StringUtils.hasText(attributeName)) {
+    if (request == null) {
       return null;
     }
     Object raw = request.getAttribute(attributeName);

@@ -18,6 +18,7 @@ import java.util.Optional;
 import java.util.Set;
 
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -56,6 +57,7 @@ import com.bigbrightpaints.erp.shared.dto.PageResponse;
 import com.bigbrightpaints.erp.test.support.ReflectionFieldAccess;
 
 @ExtendWith(MockitoExtension.class)
+@Tag("critical")
 class BankReconciliationSessionServiceTest {
 
   @Mock private CompanyContextService companyContextService;
@@ -457,6 +459,162 @@ class BankReconciliationSessionServiceTest {
     persistenceOrder.verify(itemRepository).flush();
     persistenceOrder.verify(itemRepository).save(firstPersisted);
     persistenceOrder.verify(itemRepository).save(secondPersisted);
+  }
+
+  @Test
+  void updateItems_keepsPersistedAssignmentWhenRequestedBankItemAlreadyMatches() {
+    Account bankAccount = bankAccount(99L, "BANK", "Main Bank");
+    BankReconciliationSession session =
+        session(30L, bankAccount, BankReconciliationSessionStatus.IN_PROGRESS);
+    when(sessionRepository.findByCompanyAndId(company, 30L)).thenReturn(Optional.of(session));
+
+    JournalLine line =
+        journalLine(
+            8001L,
+            company,
+            bankAccount,
+            "MATCH-STABLE",
+            LocalDate.of(2026, 3, 14),
+            "Stable assignment",
+            "50.00",
+            "0.00");
+    BankReconciliationItem persisted =
+        item(9001L, session, line, "MATCH-STABLE", "50.00", "admin", 9301L);
+    when(itemRepository.findBySessionOrderByClearedAtAscIdAsc(session))
+        .thenReturn(List.of(persisted));
+    when(journalLineRepository.findAllById(Set.of(8001L))).thenReturn(List.of(line));
+
+    BankReconciliationSession detailed =
+        session(30L, bankAccount, BankReconciliationSessionStatus.IN_PROGRESS);
+    when(sessionRepository.findDetailedByCompanyAndId(company, 30L))
+        .thenReturn(Optional.of(detailed));
+    when(itemRepository.findDetailedBySession(detailed)).thenReturn(List.of(persisted));
+    when(reconciliationService.reconcileBankAccount(
+            eq(99L),
+            eq(detailed.getStatementDate()),
+            eq(detailed.getStatementEndingBalance()),
+            eq(LocalDate.of(2026, 3, 1)),
+            eq(LocalDate.of(2026, 3, 31)),
+            eq(Set.of(8001L)),
+            eq(Collections.emptySet())))
+        .thenReturn(summary("0.00", "0.00", "0.00", true));
+
+    service.updateItems(
+        30L,
+        new BankReconciliationSessionItemsUpdateRequest(
+            List.of(8001L),
+            List.of(),
+            null,
+            List.of(
+                new BankReconciliationSessionItemsUpdateRequest.BankStatementMatchRequest(
+                    9301L, null, 8001L))));
+
+    verify(itemRepository, never()).flush();
+    verify(itemRepository, never()).save(persisted);
+  }
+
+  @Test
+  void updateItems_reassignsPersistedNullHolderWithoutClearingPass() {
+    Account bankAccount = bankAccount(99L, "BANK", "Main Bank");
+    BankReconciliationSession session =
+        session(31L, bankAccount, BankReconciliationSessionStatus.IN_PROGRESS);
+    when(sessionRepository.findByCompanyAndId(company, 31L)).thenReturn(Optional.of(session));
+
+    JournalLine line =
+        journalLine(
+            8101L,
+            company,
+            bankAccount,
+            "MATCH-NULL",
+            LocalDate.of(2026, 3, 15),
+            "Null holder",
+            "40.00",
+            "0.00");
+    BankReconciliationItem persisted =
+        item(9101L, session, line, "MATCH-NULL", "40.00", "admin", null);
+    when(itemRepository.findBySessionOrderByClearedAtAscIdAsc(session))
+        .thenReturn(List.of(persisted));
+    when(journalLineRepository.findAllById(Set.of(8101L))).thenReturn(List.of(line));
+
+    BankReconciliationSession detailed =
+        session(31L, bankAccount, BankReconciliationSessionStatus.IN_PROGRESS);
+    when(sessionRepository.findDetailedByCompanyAndId(company, 31L))
+        .thenReturn(Optional.of(detailed));
+    when(itemRepository.findDetailedBySession(detailed)).thenReturn(List.of(persisted));
+    when(reconciliationService.reconcileBankAccount(
+            eq(99L),
+            eq(detailed.getStatementDate()),
+            eq(detailed.getStatementEndingBalance()),
+            eq(LocalDate.of(2026, 3, 1)),
+            eq(LocalDate.of(2026, 3, 31)),
+            eq(Set.of(8101L)),
+            eq(Collections.emptySet())))
+        .thenReturn(summary("0.00", "0.00", "0.00", true));
+
+    service.updateItems(
+        31L,
+        new BankReconciliationSessionItemsUpdateRequest(
+            List.of(8101L),
+            List.of(),
+            null,
+            List.of(
+                new BankReconciliationSessionItemsUpdateRequest.BankStatementMatchRequest(
+                    9401L, null, 8101L))));
+
+    verify(itemRepository, never()).flush();
+    verify(itemRepository).save(persisted);
+  }
+
+  @Test
+  void updateItems_skipsSecondReassignmentWriteWhenTargetAlreadyClearedToNull() {
+    Account bankAccount = bankAccount(99L, "BANK", "Main Bank");
+    BankReconciliationSession session =
+        session(32L, bankAccount, BankReconciliationSessionStatus.IN_PROGRESS);
+    when(sessionRepository.findByCompanyAndId(company, 32L)).thenReturn(Optional.of(session));
+
+    JournalLine line =
+        journalLine(
+            8201L,
+            company,
+            bankAccount,
+            "MATCH-CLEAR",
+            LocalDate.of(2026, 3, 16),
+            "Clear to null",
+            "30.00",
+            "0.00");
+    BankReconciliationItem persisted =
+        item(9201L, session, line, "MATCH-CLEAR", "30.00", "admin", 9501L);
+    when(itemRepository.findBySessionOrderByClearedAtAscIdAsc(session))
+        .thenReturn(List.of(persisted));
+    when(journalLineRepository.findAllById(Set.of(8201L))).thenReturn(List.of(line));
+
+    BankReconciliationSession detailed =
+        session(32L, bankAccount, BankReconciliationSessionStatus.IN_PROGRESS);
+    when(sessionRepository.findDetailedByCompanyAndId(company, 32L))
+        .thenReturn(Optional.of(detailed));
+    when(itemRepository.findDetailedBySession(detailed)).thenReturn(List.of(persisted));
+    when(reconciliationService.reconcileBankAccount(
+            eq(99L),
+            eq(detailed.getStatementDate()),
+            eq(detailed.getStatementEndingBalance()),
+            eq(LocalDate.of(2026, 3, 1)),
+            eq(LocalDate.of(2026, 3, 31)),
+            eq(Set.of(8201L)),
+            eq(Collections.emptySet())))
+        .thenReturn(summary("0.00", "0.00", "0.00", true));
+
+    service.updateItems(
+        32L,
+        new BankReconciliationSessionItemsUpdateRequest(
+            List.of(8201L),
+            List.of(),
+            null,
+            List.of(
+                new BankReconciliationSessionItemsUpdateRequest.BankStatementMatchRequest(
+                    null, null, 8201L))));
+
+    verify(itemRepository).save(persisted);
+    verify(itemRepository).flush();
   }
 
   @Test

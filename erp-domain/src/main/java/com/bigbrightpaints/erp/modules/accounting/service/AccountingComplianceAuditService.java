@@ -382,12 +382,13 @@ public class AccountingComplianceAuditService {
       String currency,
       Map<String, String> metadata) {
     HttpServletRequest request = currentRequest();
+    Map<String, String> safeMetadata = metadata != null ? metadata : Map.of();
     UUID correlationId =
         AuditCorrelationIdResolver.resolveCorrelationId(
             request,
             referenceNumber,
-            metadata != null ? metadata.get("sourceReference") : null,
-            metadata != null ? metadata.get("journalSource") : null,
+            safeMetadata.get("sourceReference"),
+            safeMetadata.get("journalSource"),
             entityType,
             entityId);
     enterpriseAuditTrailService.recordBusinessEvent(
@@ -411,7 +412,7 @@ public class AccountingComplianceAuditService {
             null,
             false,
             null,
-            metadata,
+            safeMetadata,
             CompanyTime.now(company)));
   }
 

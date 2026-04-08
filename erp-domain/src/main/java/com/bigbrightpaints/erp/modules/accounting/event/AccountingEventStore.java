@@ -433,14 +433,10 @@ public class AccountingEventStore {
 
   private UUID resolveFlowCorrelationId(JournalEntry entry, String... additionalKeys) {
     List<String> fallbackKeys = new ArrayList<>();
-    if (entry != null) {
-      appendCorrelationFallback(fallbackKeys, entry.getSourceReference());
-      appendCorrelationFallback(fallbackKeys, entry.getSourceModule());
-    }
-    if (additionalKeys != null) {
-      for (String additionalKey : additionalKeys) {
-        appendCorrelationFallback(fallbackKeys, additionalKey);
-      }
+    appendCorrelationFallback(fallbackKeys, entry.getSourceReference());
+    appendCorrelationFallback(fallbackKeys, entry.getSourceModule());
+    for (String additionalKey : additionalKeys) {
+      appendCorrelationFallback(fallbackKeys, additionalKey);
     }
     return AuditCorrelationIdResolver.resolveCorrelationId(
         AuditCorrelationIdResolver.currentRequest(), fallbackKeys.toArray(String[]::new));

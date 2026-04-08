@@ -9,6 +9,7 @@ import java.time.LocalDate;
 import java.util.Map;
 
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -29,6 +30,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.JournalLine;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 
 @ExtendWith(MockitoExtension.class)
+@Tag("critical")
 class AccountingComplianceAuditServiceTest {
 
   @Mock private EnterpriseAuditTrailService enterpriseAuditTrailService;
@@ -123,6 +125,19 @@ class AccountingComplianceAuditServiceTest {
     assertThat(command.metadata()).containsEntry("adjustedAmount", "1200.02");
     assertThat(command.metadata())
         .containsEntry("adjustmentReason", "FX_ROUNDING_CREDIT_ADJUSTMENT");
+  }
+
+  @Test
+  void recordJournalCreation_allowsNullAdditionalMetadata() {
+    Company company = company(86L, "BBP");
+    JournalEntry entry = journalEntry(108L, "JE-NO-META", JournalEntryType.AUTOMATED);
+
+    service.recordJournalCreation(company, entry, null);
+
+    AuditActionEventCommand command = captureCommand();
+    assertThat(command.referenceNumber()).isEqualTo("JE-NO-META");
+    assertThat(command.metadata()).containsEntry("journalSource", "SYSTEM_GENERATED");
+    assertThat(command.metadata()).containsEntry("sensitiveOperation", "false");
   }
 
   @Test

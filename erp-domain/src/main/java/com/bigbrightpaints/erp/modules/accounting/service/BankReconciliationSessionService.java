@@ -192,8 +192,7 @@ public class BankReconciliationSessionService {
         itemRepository.flush();
       }
 
-      for (Map.Entry<Long, BankReconciliationItem> reassignment :
-          existingItemsToReassign.entrySet()) {
+      for (var reassignment : existingItemsToReassign.entrySet()) {
         Long targetBankItemId = matchedLineBankItemIds.get(reassignment.getKey());
         BankReconciliationItem existingItem = reassignment.getValue();
         if (Objects.equals(existingItem.getBankItemId(), targetBankItemId)) {

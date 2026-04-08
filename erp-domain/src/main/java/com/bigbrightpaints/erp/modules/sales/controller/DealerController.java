@@ -98,14 +98,6 @@ public class DealerController {
   @GetMapping("/{dealerId}")
   @PreAuthorize(PortalRoleActionMatrix.ADMIN_SALES_ACCOUNTING)
   @Operation(summary = "Get dealer detail")
-  @ApiResponses({
-    @io.swagger.v3.oas.annotations.responses.ApiResponse(
-        responseCode = "200",
-        description = "Dealer detail"),
-    @io.swagger.v3.oas.annotations.responses.ApiResponse(
-        responseCode = "404",
-        description = "Dealer not found")
-  })
   public ResponseEntity<ApiResponse<DealerResponse>> getDealer(@PathVariable Long dealerId) {
     return ResponseEntity.ok(
         ApiResponse.success("Dealer detail", dealerService.getDealer(dealerId)));

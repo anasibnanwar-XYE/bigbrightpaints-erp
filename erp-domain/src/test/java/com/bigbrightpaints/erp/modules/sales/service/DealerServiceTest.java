@@ -404,6 +404,24 @@ class DealerServiceTest {
   }
 
   @Test
+  void getDealer_defaultsPortalEmailAndOutstandingBalanceWhenDataMissing() {
+    Dealer dealer = dealer("D-DEFAULTS", new BigDecimal("1000"), "WEST");
+    dealer.setPortalUser(null);
+    dealer.setReceivableAccount(null);
+    when(dealerRepository.findByCompanyAndId(company, 99L)).thenReturn(Optional.of(dealer));
+    when(dealerLedgerService.currentBalance(99L)).thenReturn(null);
+    when(salesOrderRepository.sumPendingCreditExposureByCompanyAndDealer(
+            eq(company), eq(dealer), any(), eq(null)))
+        .thenReturn(BigDecimal.ZERO);
+
+    var response = dealerService.getDealer(99L);
+
+    assertThat(response.id()).isEqualTo(99L);
+    assertThat(response.portalEmail()).isNull();
+    assertThat(response.outstandingBalance()).isEqualByComparingTo(BigDecimal.ZERO);
+  }
+
+  @Test
   void getDealer_returnsNotFoundWhenDealerDoesNotExist() {
     when(dealerRepository.findByCompanyAndId(company, 404L)).thenReturn(Optional.empty());
 

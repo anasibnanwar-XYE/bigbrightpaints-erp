@@ -181,7 +181,7 @@ public class SalesOrderAutoCloseService {
             AuditCorrelationIdResolver.currentRequest(),
             order.getTraceId(),
             order.getOrderNumber(),
-            order.getId() != null ? "SALES_ORDER:" + order.getId() : null);
+            "SALES_ORDER:" + order.getId());
     AuditActionEventCommand command =
         new AuditActionEventCommand(
             order.getCompany(),

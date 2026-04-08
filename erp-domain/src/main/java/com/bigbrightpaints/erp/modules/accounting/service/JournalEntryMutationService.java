@@ -477,9 +477,8 @@ class JournalEntryMutationService {
       throw new ApplicationException(
               ErrorCode.INTERNAL_CONCURRENCY_FAILURE,
               "FX rounding adjustment metadata could not resolve persisted journal line id")
-          .withDetail(
-              "referenceNumber", savedEntry != null ? savedEntry.getReferenceNumber() : null)
-          .withDetail("companyId", company != null ? company.getId() : null);
+          .withDetail("referenceNumber", savedEntry.getReferenceNumber())
+          .withDetail("companyId", company.getId());
     }
     Map<String, String> metadata = new LinkedHashMap<>();
     metadata.put("adjustedLineId", adjustedLineId.toString());
@@ -492,9 +491,6 @@ class JournalEntryMutationService {
   private Long resolveAdjustedLineId(
       JournalLinePostingService.RoundingAdjustment roundingAdjustment, JournalEntry savedEntry) {
     JournalLine adjustedLine = roundingAdjustment.adjustedLine();
-    if (adjustedLine == null) {
-      return null;
-    }
     if (adjustedLine.getId() != null) {
       return adjustedLine.getId();
     }
@@ -517,55 +513,53 @@ class JournalEntryMutationService {
       JournalEntry savedEntry,
       JournalLine adjustedLine,
       JournalLinePostingService.RoundingAdjustment roundingAdjustment) {
-    if (savedEntry == null || savedEntry.getLines() == null || savedEntry.getLines().isEmpty()) {
+    if (savedEntry.getLines() == null || savedEntry.getLines().isEmpty()) {
       return null;
     }
-    Long adjustedAccountId =
-        adjustedLine.getAccount() != null ? adjustedLine.getAccount().getId() : null;
-    BigDecimal adjustedDebit =
-        adjustedLine.getDebit() != null ? adjustedLine.getDebit() : BigDecimal.ZERO;
+    if (adjustedLine.getAccount() == null || adjustedLine.getAccount().getId() == null) {
+      return null;
+    }
+    Long adjustedAccountId = adjustedLine.getAccount().getId();
+    BigDecimal adjustedDebit = Objects.requireNonNullElse(adjustedLine.getDebit(), BigDecimal.ZERO);
     BigDecimal adjustedCredit =
-        adjustedLine.getCredit() != null ? adjustedLine.getCredit() : BigDecimal.ZERO;
+        Objects.requireNonNullElse(adjustedLine.getCredit(), BigDecimal.ZERO);
+    String adjustedDescription =
+        StringUtils.hasText(adjustedLine.getDescription()) ? adjustedLine.getDescription() : null;
 
-    return savedEntry.getLines().stream()
-        .filter(line -> line.getId() != null)
-        .filter(
-            line ->
-                adjustedAccountId != null
-                    && line.getAccount() != null
-                    && adjustedAccountId.equals(line.getAccount().getId()))
-        .filter(
-            line ->
-                equalsAmount(line.getDebit(), adjustedDebit)
-                    && equalsAmount(line.getCredit(), adjustedCredit))
-        .filter(
-            line ->
-                !StringUtils.hasText(adjustedLine.getDescription())
-                    || Objects.equals(line.getDescription(), adjustedLine.getDescription()))
-        .map(JournalLine::getId)
-        .findFirst()
-        .orElseGet(
-            () ->
-                savedEntry.getLines().stream()
-                    .filter(line -> line.getId() != null)
-                    .filter(
-                        line ->
-                            adjustedAccountId != null
-                                && line.getAccount() != null
-                                && adjustedAccountId.equals(line.getAccount().getId()))
-                    .filter(
-                        line ->
-                            equalsAmount(line.getDebit(), roundingAdjustment.adjustedAmount())
-                                || equalsAmount(
-                                    line.getCredit(), roundingAdjustment.adjustedAmount()))
-                    .map(JournalLine::getId)
-                    .findFirst()
-                    .orElse(null));
+    for (JournalLine line : savedEntry.getLines()) {
+      if (line.getId() == null || !matchesAdjustedAccount(line, adjustedAccountId)) {
+        continue;
+      }
+      if (!equalsAmount(line.getDebit(), adjustedDebit)
+          || !equalsAmount(line.getCredit(), adjustedCredit)) {
+        continue;
+      }
+      if (adjustedDescription != null
+          && !Objects.equals(line.getDescription(), adjustedDescription)) {
+        continue;
+      }
+      return line.getId();
+    }
+
+    for (JournalLine line : savedEntry.getLines()) {
+      if (line.getId() == null || !matchesAdjustedAccount(line, adjustedAccountId)) {
+        continue;
+      }
+      if (equalsAmount(line.getDebit(), roundingAdjustment.adjustedAmount())
+          || equalsAmount(line.getCredit(), roundingAdjustment.adjustedAmount())) {
+        return line.getId();
+      }
+    }
+    return null;
+  }
+
+  private boolean matchesAdjustedAccount(JournalLine line, Long adjustedAccountId) {
+    return line.getAccount() != null && adjustedAccountId.equals(line.getAccount().getId());
   }
 
   private boolean equalsAmount(BigDecimal left, BigDecimal right) {
-    BigDecimal normalizedLeft = left != null ? left : BigDecimal.ZERO;
-    BigDecimal normalizedRight = right != null ? right : BigDecimal.ZERO;
+    BigDecimal normalizedLeft = Objects.requireNonNullElse(left, BigDecimal.ZERO);
+    BigDecimal normalizedRight = Objects.requireNonNullElse(right, BigDecimal.ZERO);
     return normalizedLeft.compareTo(normalizedRight) == 0;
   }
 

@@ -81,6 +81,7 @@ RawMaterialServiceReceiptContextTest
 SalesControllerIdempotencyHeaderTest
 SalesControllerIT
 com.bigbrightpaints.erp.modules.sales.service.OrderNumberServiceTest
+com.bigbrightpaints.erp.modules.sales.service.SalesOrderAutoCloseServiceTest
 SalesCoreEngineCoverageTest
 SalesFulfillmentServiceTest
 SalesOrderDtoContractTest

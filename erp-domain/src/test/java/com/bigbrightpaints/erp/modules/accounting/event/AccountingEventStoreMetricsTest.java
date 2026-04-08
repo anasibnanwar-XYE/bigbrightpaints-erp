@@ -13,6 +13,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -22,6 +23,7 @@ import org.springframework.context.ApplicationEventPublisher;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import com.bigbrightpaints.erp.core.audittrail.AuditCorrelationIdResolver;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
@@ -33,6 +35,7 @@ import com.bigbrightpaints.erp.test.support.ReflectionFieldAccess;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 
 @ExtendWith(MockitoExtension.class)
+@Tag("critical")
 class AccountingEventStoreMetricsTest {
 
   @Mock private AccountingEventRepository eventRepository;
@@ -157,6 +160,73 @@ class AccountingEventStoreMetricsTest {
         .contains("\"partnerId\":711")
         .contains("\"allocationCount\":3")
         .contains("\"idempotencyKey\":\"dealer-settlement-idempotency-key\"");
+  }
+
+  @Test
+  void recordJournalEntryPosted_usesFlowCorrelationFallbackFromSourceFields() {
+    AccountingEventStore store =
+        new AccountingEventStore(
+            eventRepository, eventPublisher, new ObjectMapper(), companyClock, null);
+    JournalEntry entry = buildJournalEntry();
+    entry.setSourceReference("SRC-77");
+    entry.setSourceModule("SALES");
+    when(eventRepository.getNextSequenceNumber(any(UUID.class))).thenReturn(1L, 2L, 1L, 1L);
+    when(eventRepository.save(any(AccountingEvent.class)))
+        .thenAnswer(invocation -> invocation.getArgument(0));
+
+    store.recordJournalEntryPosted(entry, Map.of());
+
+    ArgumentCaptor<AccountingEvent> eventCaptor = ArgumentCaptor.forClass(AccountingEvent.class);
+    verify(eventRepository, times(4)).save(eventCaptor.capture());
+    UUID expectedCorrelation =
+        AuditCorrelationIdResolver.resolveCorrelationId(null, "SRC-77", "SALES");
+    assertThat(eventCaptor.getAllValues())
+        .extracting(AccountingEvent::getCorrelationId)
+        .allMatch(expectedCorrelation::equals);
+  }
+
+  @Test
+  void recordJournalCorrectionApplied_usesOriginalSourceReferenceWhenCorrectionHasNoSourceFields() {
+    AccountingEventStore store =
+        new AccountingEventStore(
+            eventRepository, eventPublisher, new ObjectMapper(), companyClock, null);
+    JournalEntry original = buildJournalEntry();
+    original.setSourceReference("ORIGINAL-SRC");
+    JournalEntry reversal = buildJournalEntry();
+    ReflectionFieldAccess.setField(reversal, "id", 88L);
+    reversal.setSourceReference(null);
+    reversal.setSourceModule(null);
+    reversal.setReferenceNumber("REV-88");
+    when(eventRepository.getNextSequenceNumber(any(UUID.class))).thenReturn(5L);
+    when(eventRepository.save(any(AccountingEvent.class)))
+        .thenAnswer(invocation -> invocation.getArgument(0));
+
+    store.recordJournalEntryReversed(original, reversal, "reversal reason");
+
+    ArgumentCaptor<AccountingEvent> eventCaptor = ArgumentCaptor.forClass(AccountingEvent.class);
+    verify(eventRepository).save(eventCaptor.capture());
+    UUID expectedCorrelation =
+        AuditCorrelationIdResolver.resolveCorrelationId(null, "ORIGINAL-SRC");
+    assertThat(eventCaptor.getValue().getCorrelationId()).isEqualTo(expectedCorrelation);
+  }
+
+  @Test
+  void recordSettlementAllocated_keepsCorrelationNullWhenAllFallbackCandidatesAreBlank() {
+    AccountingEventStore store =
+        new AccountingEventStore(
+            eventRepository, eventPublisher, new ObjectMapper(), companyClock, null);
+    JournalEntry entry = buildJournalEntry();
+    entry.setSourceReference(" ");
+    entry.setSourceModule(null);
+    when(eventRepository.getNextSequenceNumber(any(UUID.class))).thenReturn(6L);
+    when(eventRepository.save(any(AccountingEvent.class)))
+        .thenAnswer(invocation -> invocation.getArgument(0));
+
+    store.recordSettlementAllocated(entry, " ", 701L, new BigDecimal("10.00"), 1, " ");
+
+    ArgumentCaptor<AccountingEvent> eventCaptor = ArgumentCaptor.forClass(AccountingEvent.class);
+    verify(eventRepository).save(eventCaptor.capture());
+    assertThat(eventCaptor.getValue().getCorrelationId()).isNull();
   }
 
   private JournalEntry buildJournalEntry() {
