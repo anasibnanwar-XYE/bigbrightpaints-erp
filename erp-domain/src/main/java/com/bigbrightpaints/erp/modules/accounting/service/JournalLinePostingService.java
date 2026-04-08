@@ -23,6 +23,8 @@ class JournalLinePostingService {
 
   private static final Logger log = LoggerFactory.getLogger(JournalLinePostingService.class);
   private static final BigDecimal FX_ROUNDING_TOLERANCE = new BigDecimal("0.05");
+  private static final String CREDIT_ROUNDING_ADJUSTMENT_REASON = "FX_ROUNDING_CREDIT_ADJUSTMENT";
+  private static final String DEBIT_ROUNDING_ADJUSTMENT_REASON = "FX_ROUNDING_DEBIT_ADJUSTMENT";
 
   private final NormalBalanceConflictMode normalBalanceConflictMode;
   private final JournalReferenceService journalReferenceService;
@@ -77,7 +79,7 @@ class JournalLinePostingService {
     return line;
   }
 
-  void absorbRoundingDelta(
+  RoundingAdjustment absorbRoundingDelta(
       BigDecimal roundingDelta,
       List<JournalLine> postedLines,
       Map<Account, BigDecimal> accountDeltas) {
@@ -93,10 +95,14 @@ class JournalLinePostingService {
               .max(Comparator.comparing(JournalLine::getCredit))
               .orElse(null);
       if (target != null) {
-        target.setCredit(target.getCredit().add(roundingDelta));
+        BigDecimal originalAmount = target.getCredit();
+        BigDecimal adjustedAmount = originalAmount.add(roundingDelta);
+        target.setCredit(adjustedAmount);
         accountDeltas.merge(target.getAccount(), roundingDelta.negate(), BigDecimal::add);
+        return new RoundingAdjustment(
+            target, originalAmount, adjustedAmount, CREDIT_ROUNDING_ADJUSTMENT_REASON);
       }
-      return;
+      return null;
     }
     BigDecimal adjust = roundingDelta.abs();
     JournalLine target =
@@ -105,10 +111,21 @@ class JournalLinePostingService {
             .max(Comparator.comparing(JournalLine::getDebit))
             .orElse(null);
     if (target != null) {
-      target.setDebit(target.getDebit().add(adjust));
+      BigDecimal originalAmount = target.getDebit();
+      BigDecimal adjustedAmount = originalAmount.add(adjust);
+      target.setDebit(adjustedAmount);
       accountDeltas.merge(target.getAccount(), adjust, BigDecimal::add);
+      return new RoundingAdjustment(
+          target, originalAmount, adjustedAmount, DEBIT_ROUNDING_ADJUSTMENT_REASON);
     }
+    return null;
   }
+
+  record RoundingAdjustment(
+      JournalLine adjustedLine,
+      BigDecimal originalAmount,
+      BigDecimal adjustedAmount,
+      String adjustmentReason) {}
 
   private void validateNormalBalanceDirection(
       Account account, BigDecimal debitInput, BigDecimal creditInput) {

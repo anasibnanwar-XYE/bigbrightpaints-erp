@@ -401,6 +401,14 @@ class CompanyContextFilterControlPlaneBindingTest {
                     "/api/v1/superadmin/tenants/42/limits",
                     "PUT"))
         .isTrue();
+    assertThat(
+            (Boolean)
+                ReflectionTestUtils.invokeMethod(
+                    filter,
+                    "isLifecycleControlRequest",
+                    "/api/v1/superadmin/tenants/coa-templates",
+                    "GET"))
+        .isFalse();
   }
 
   @Test

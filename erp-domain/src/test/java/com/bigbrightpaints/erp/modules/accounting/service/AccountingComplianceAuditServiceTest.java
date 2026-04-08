@@ -6,6 +6,7 @@ import static org.mockito.Mockito.verify;
 import java.lang.reflect.Field;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Map;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -96,6 +97,32 @@ class AccountingComplianceAuditServiceTest {
     AuditActionEventCommand command = captureCommand();
     assertThat(command.metadata()).containsEntry("sourceReference", "SRC-ATT-1");
     assertThat(command.metadata()).containsEntry("attachmentReferences", "att-1,att-2");
+  }
+
+  @Test
+  void recordJournalCreation_includesAdditionalFxRoundingMetadataWhenProvided() {
+    Company company = company(85L, "BBP");
+    JournalEntry entry = journalEntry(107L, "JE-FX-1", JournalEntryType.AUTOMATED);
+
+    service.recordJournalCreation(
+        company,
+        entry,
+        Map.of(
+            "adjustedLineId",
+            "9001",
+            "originalAmount",
+            "1200.00",
+            "adjustedAmount",
+            "1200.02",
+            "adjustmentReason",
+            "FX_ROUNDING_CREDIT_ADJUSTMENT"));
+
+    AuditActionEventCommand command = captureCommand();
+    assertThat(command.metadata()).containsEntry("adjustedLineId", "9001");
+    assertThat(command.metadata()).containsEntry("originalAmount", "1200.00");
+    assertThat(command.metadata()).containsEntry("adjustedAmount", "1200.02");
+    assertThat(command.metadata())
+        .containsEntry("adjustmentReason", "FX_ROUNDING_CREDIT_ADJUSTMENT");
   }
 
   @Test

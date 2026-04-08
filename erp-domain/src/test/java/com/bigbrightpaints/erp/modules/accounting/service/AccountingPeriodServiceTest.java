@@ -718,7 +718,7 @@ class AccountingPeriodServiceTest {
     Company company = company(1L, "ACME");
     AccountingPeriod period = openPeriod(company, 2026, 2);
     period.setStatus(AccountingPeriodStatus.CLOSED);
-    when(accountingPeriodRepository.findByCompanyAndYearAndMonth(company, 2026, 2))
+    when(accountingPeriodRepository.lockByCompanyAndYearAndMonth(company, 2026, 2))
         .thenReturn(Optional.of(period));
 
     assertThatThrownBy(
@@ -963,6 +963,29 @@ class AccountingPeriodServiceTest {
                     false))
         .isInstanceOf(ApplicationException.class)
         .hasMessageContaining("admin one-hour posting exception is required");
+    verify(closedPeriodPostingExceptionService, never())
+        .authorize(any(), any(), anyString(), anyString(), anyString());
+  }
+
+  @Test
+  void requirePostablePeriod_rejectsMissingPeriodWithoutAutoCreation() {
+    Company company = company(1L, "ACME");
+    when(accountingPeriodRepository.lockByCompanyAndYearAndMonth(company, 2026, 2))
+        .thenReturn(Optional.empty());
+
+    assertThatThrownBy(
+            () ->
+                service.requirePostablePeriod(
+                    company,
+                    LocalDate.of(2026, 2, 12),
+                    "JOURNAL_ENTRY",
+                    "JE-MISSING-PERIOD",
+                    "requires explicit period setup",
+                    false))
+        .isInstanceOf(ApplicationException.class)
+        .hasMessageContaining("not found")
+        .hasMessageContaining("create it first");
+    verify(accountingPeriodRepository, never()).save(any(AccountingPeriod.class));
     verify(closedPeriodPostingExceptionService, never())
         .authorize(any(), any(), anyString(), anyString(), anyString());
   }

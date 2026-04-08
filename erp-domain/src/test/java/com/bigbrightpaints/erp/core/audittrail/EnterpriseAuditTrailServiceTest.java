@@ -119,6 +119,20 @@ class EnterpriseAuditTrailServiceTest {
     AuditActionEvent saved = eventCaptor.getValue();
     assertThat(saved.getActorUserId()).isEqualTo(300L);
     assertThat(saved.getActorIdentifier()).isEqualTo("snapshot@bbp.com");
+    assertThat(saved.getCorrelationId()).isNotNull();
+  }
+
+  @Test
+  void recordBusinessEventAsync_generatesCorrelationIdWhenMissingInCommand() {
+    EnterpriseAuditTrailService service = newService();
+    Company company = new Company();
+    setField(company, "id", 17L);
+
+    service.recordBusinessEventAsync(command(company, null), null);
+
+    verify(auditActionEventRepository).save(eventCaptor.capture());
+    AuditActionEvent saved = eventCaptor.getValue();
+    assertThat(saved.getCorrelationId()).isNotNull();
   }
 
   @Test

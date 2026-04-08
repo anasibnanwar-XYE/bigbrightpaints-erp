@@ -157,7 +157,7 @@ final class AccountingPeriodLifecycleService {
       String reason,
       boolean overrideRequested,
       ClosedPeriodPostingExceptionService closedPeriodPostingExceptionService) {
-    AccountingPeriod period = lockOrCreatePeriod(company, referenceDate);
+    AccountingPeriod period = lockExistingPeriod(company, referenceDate);
     if (period.getStatus() == AccountingPeriodStatus.OPEN) {
       return period;
     }
@@ -277,6 +277,20 @@ final class AccountingPeriodLifecycleService {
     return accountingPeriodRepository
         .lockByCompanyAndYearAndMonth(company, year, month)
         .orElseGet(() -> ensurePeriod(company, safeDate));
+  }
+
+  private AccountingPeriod lockExistingPeriod(Company company, LocalDate referenceDate) {
+    LocalDate baseDate = referenceDate == null ? resolveCurrentDate(company) : referenceDate;
+    LocalDate safeDate = baseDate.withDayOfMonth(1);
+    int year = safeDate.getYear();
+    int month = safeDate.getMonthValue();
+    return accountingPeriodRepository
+        .lockByCompanyAndYearAndMonth(company, year, month)
+        .orElseThrow(
+            () ->
+                new ApplicationException(
+                    ErrorCode.VALIDATION_INVALID_REFERENCE,
+                    "Accounting period " + year + "-" + month + " not found; create it first"));
   }
 
   private void ensureSurroundingPeriods(Company company) {

@@ -316,7 +316,8 @@ public class EnterpriseAuditTrailService {
     event.setFailureReason(trim(command.failureReason(), 512, null));
     event.setAmount(command.amount());
     event.setCurrency(trim(command.currency(), 16, null));
-    event.setCorrelationId(command.correlationId());
+    event.setCorrelationId(
+        command.correlationId() != null ? command.correlationId() : java.util.UUID.randomUUID());
     event.setRequestId(trim(command.requestId(), 128, null));
     event.setTraceId(trim(command.traceId(), 128, null));
     event.setIpAddress(trim(command.ipAddress(), 64, null));
@@ -351,7 +352,8 @@ public class EnterpriseAuditTrailService {
     event.setFailureReason(trim(payload.failureReason(), 512, null));
     event.setAmount(payload.amount());
     event.setCurrency(trim(payload.currency(), 16, null));
-    event.setCorrelationId(payload.correlationId());
+    event.setCorrelationId(
+        payload.correlationId() != null ? payload.correlationId() : java.util.UUID.randomUUID());
     event.setRequestId(trim(payload.requestId(), 128, null));
     event.setTraceId(trim(payload.traceId(), 128, null));
     event.setIpAddress(trim(payload.ipAddress(), 64, null));

@@ -4,10 +4,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -17,6 +19,8 @@ import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.http.*;
 
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
+import com.bigbrightpaints.erp.core.audittrail.AuditActionEvent;
+import com.bigbrightpaints.erp.core.audittrail.AuditActionEventRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
@@ -79,6 +83,7 @@ public class OrderFulfillmentE2ETest extends AbstractIntegrationTest {
   @Autowired private AccountRepository accountRepository;
   @Autowired private ProductionProductRepository productionProductRepository;
   @Autowired private ProductionBrandRepository productionBrandRepository;
+  @Autowired private AuditActionEventRepository auditActionEventRepository;
 
   private String authToken;
   private HttpHeaders headers;
@@ -303,8 +308,7 @@ public class OrderFulfillmentE2ETest extends AbstractIntegrationTest {
             new HttpEntity<>(orderReq, headers),
             Map.class);
 
-    assertThat(response.getStatusCode())
-        .isIn(HttpStatus.CONFLICT, HttpStatus.INTERNAL_SERVER_ERROR);
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
     assertThat(response.getBody()).isNotNull();
     Object message = response.getBody().get("message");
     assertThat(message).as("credit limit rejection response").isNotNull();
@@ -524,6 +528,30 @@ public class OrderFulfillmentE2ETest extends AbstractIntegrationTest {
     PackagingSlip dispatchedSlip = packagingSlipRepository.findById(slip.getId()).orElseThrow();
     assertThat(((Number) data.get("packagingSlipId")).longValue()).isEqualTo(slip.getId());
     assertThat(dispatchedSlip.getInvoiceId()).isNotNull();
+    assertThat(dispatchedSlip.getJournalEntryId()).isNotNull();
+    assertThat(dispatchedSlip.getCogsJournalEntryId()).isNotNull();
+
+    AuditActionEvent dispatchAudit =
+        awaitBusinessAuditEvent(
+            company.getId(), "SALES", "DISPATCH_CONFIRMED", "SALES_ORDER", orderId.toString());
+    assertThat(dispatchAudit.getCorrelationId()).isNotNull();
+
+    AuditActionEvent arJournalAudit =
+        awaitBusinessAuditEvent(
+            company.getId(),
+            "ACCOUNTING",
+            "SYSTEM_JOURNAL_CREATED",
+            "JOURNAL_ENTRY",
+            dispatchedSlip.getJournalEntryId().toString());
+    AuditActionEvent cogsJournalAudit =
+        awaitBusinessAuditEvent(
+            company.getId(),
+            "ACCOUNTING",
+            "SYSTEM_JOURNAL_CREATED",
+            "JOURNAL_ENTRY",
+            dispatchedSlip.getCogsJournalEntryId().toString());
+    assertThat(arJournalAudit.getCorrelationId()).isNotNull();
+    assertThat(cogsJournalAudit.getCorrelationId()).isNotNull();
   }
 
   @Test
@@ -1398,5 +1426,38 @@ public class OrderFulfillmentE2ETest extends AbstractIntegrationTest {
       return new BigDecimal(str);
     }
     return BigDecimal.ZERO;
+  }
+
+  private AuditActionEvent awaitBusinessAuditEvent(
+      Long companyId, String module, String action, String entityType, String entityId) {
+    Instant deadline = Instant.now().plus(Duration.ofSeconds(5));
+    while (Instant.now().isBefore(deadline)) {
+      Optional<AuditActionEvent> match =
+          auditActionEventRepository.findAll().stream()
+              .filter(event -> Objects.equals(event.getCompanyId(), companyId))
+              .filter(event -> module.equalsIgnoreCase(event.getModule()))
+              .filter(event -> action.equalsIgnoreCase(event.getAction()))
+              .filter(event -> entityType.equalsIgnoreCase(event.getEntityType()))
+              .filter(event -> entityId.equals(event.getEntityId()))
+              .max(java.util.Comparator.comparing(AuditActionEvent::getOccurredAt));
+      if (match.isPresent()) {
+        return match.get();
+      }
+      try {
+        Thread.sleep(100);
+      } catch (InterruptedException ex) {
+        Thread.currentThread().interrupt();
+        throw new AssertionError("Interrupted while waiting for audit event", ex);
+      }
+    }
+    throw new AssertionError(
+        "Audit event not found: module="
+            + module
+            + ", action="
+            + action
+            + ", entityType="
+            + entityType
+            + ", entityId="
+            + entityId);
   }
 }

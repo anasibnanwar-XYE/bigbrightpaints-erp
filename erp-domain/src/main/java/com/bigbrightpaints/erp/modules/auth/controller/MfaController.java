@@ -11,6 +11,9 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.bigbrightpaints.erp.core.audit.AuditEvent;
+import com.bigbrightpaints.erp.core.audit.AuditService;
+import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
 import com.bigbrightpaints.erp.modules.auth.domain.UserPrincipal;
 import com.bigbrightpaints.erp.modules.auth.service.MfaService;
 import com.bigbrightpaints.erp.modules.auth.service.MfaService.MfaEnrollment;
@@ -27,9 +30,11 @@ import jakarta.validation.Valid;
 public class MfaController {
 
   private final MfaService mfaService;
+  private final AuditService auditService;
 
-  public MfaController(MfaService mfaService) {
+  public MfaController(MfaService mfaService, AuditService auditService) {
     this.mfaService = mfaService;
+    this.auditService = auditService;
   }
 
   @PostMapping("/setup")
@@ -40,6 +45,11 @@ public class MfaController {
           .body(ApiResponse.failure("Unauthenticated"));
     }
     MfaEnrollment enrollment = mfaService.beginEnrollment(principal.getUser());
+    auditService.logAuthSuccess(
+        AuditEvent.MFA_ENROLLED,
+        principal.getUsername(),
+        resolveCompanyCode(principal),
+        auditMetadata("mfa_enrollment_started"));
     MfaSetupResponse payload =
         new MfaSetupResponse(enrollment.secret(), enrollment.qrUri(), enrollment.recoveryCodes());
     return ResponseEntity.ok(ApiResponse.success("MFA enrollment started", payload));
@@ -54,6 +64,11 @@ public class MfaController {
           .body(ApiResponse.failure("Unauthenticated"));
     }
     mfaService.activate(principal.getUser(), request.code());
+    auditService.logAuthSuccess(
+        AuditEvent.MFA_ACTIVATED,
+        principal.getUsername(),
+        resolveCompanyCode(principal),
+        auditMetadata("mfa_enabled"));
     return ResponseEntity.ok(ApiResponse.success("MFA enabled", Map.of("enabled", true)));
   }
 
@@ -66,6 +81,31 @@ public class MfaController {
           .body(ApiResponse.failure("Unauthenticated"));
     }
     mfaService.disable(principal.getUser(), request.code(), request.recoveryCode());
+    auditService.logAuthSuccess(
+        AuditEvent.MFA_DISABLED,
+        principal.getUsername(),
+        resolveCompanyCode(principal),
+        auditMetadata("mfa_disabled"));
     return ResponseEntity.ok(ApiResponse.success("MFA disabled", Map.of("enabled", false)));
+  }
+
+  private String resolveCompanyCode(UserPrincipal principal) {
+    String companyCode = CompanyContextHolder.getCompanyCode();
+    if (org.springframework.util.StringUtils.hasText(companyCode)) {
+      return companyCode;
+    }
+    if (principal == null || principal.getUser() == null) {
+      return null;
+    }
+    return principal.getUser().getAuthScopeCode();
+  }
+
+  private Map<String, String> auditMetadata(String outcome) {
+    Map<String, String> metadata = new java.util.LinkedHashMap<>();
+    metadata.put("operation", "mfa_profile_change");
+    if (outcome != null) {
+      metadata.put("outcome", outcome);
+    }
+    return metadata;
   }
 }

@@ -42,6 +42,8 @@ public class CompanyContextFilter extends OncePerRequestFilter {
   private static final Logger log = LoggerFactory.getLogger(CompanyContextFilter.class);
   private static final Set<String> TENANT_AUDIT_WORKFLOW_PREFIXES =
       Set.of("/api/v1/audit", "/api/v1/admin/audit");
+  private static final Set<String> SUPERADMIN_TENANT_COLLECTION_EXCLUDED_PATHS =
+      Set.of("/api/v1/superadmin/tenants/coa-templates");
   private static final List<CompanyBoundControlRoute> COMPANY_BOUND_CONTROL_ROUTES =
       List.of(
           controlRoute("GET", "^/api/v1/superadmin/tenants/([^/]+)$", false),
@@ -417,6 +419,9 @@ public class CompanyContextFilter extends OncePerRequestFilter {
     String normalizedPath = normalizePath(path);
     String normalizedMethod = normalizeMethod(method);
     if (!StringUtils.hasText(normalizedPath)) {
+      return null;
+    }
+    if (SUPERADMIN_TENANT_COLLECTION_EXCLUDED_PATHS.contains(normalizedPath)) {
       return null;
     }
     for (CompanyBoundControlRoute route : COMPANY_BOUND_CONTROL_ROUTES) {

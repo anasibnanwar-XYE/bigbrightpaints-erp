@@ -6,6 +6,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -252,6 +253,7 @@ class JournalEntryMutationService {
       BigDecimal totalBaseCredit = BigDecimal.ZERO;
       BigDecimal totalForeignDebit = BigDecimal.ZERO;
       BigDecimal totalForeignCredit = BigDecimal.ZERO;
+      JournalLinePostingService.RoundingAdjustment roundingAdjustment = null;
       int dealerArLines = 0;
       int supplierApLines = 0;
       for (JournalEntryRequest.JournalLineRequest lineRequest : lines) {
@@ -282,7 +284,8 @@ class JournalEntryMutationService {
 
       BigDecimal roundingDelta = totalBaseDebit.subtract(totalBaseCredit);
       if (roundingDelta.compareTo(BigDecimal.ZERO) != 0) {
-        journalLinePostingService.absorbRoundingDelta(roundingDelta, postedLines, accountDeltas);
+        roundingAdjustment =
+            journalLinePostingService.absorbRoundingDelta(roundingDelta, postedLines, accountDeltas);
         totalBaseDebit =
             postedLines.stream()
                 .map(JournalLine::getDebit)
@@ -373,7 +376,8 @@ class JournalEntryMutationService {
             AuditEvent.JOURNAL_ENTRY_POSTED, auditMetadata);
       }
       if (accountingComplianceAuditService != null) {
-        accountingComplianceAuditService.recordJournalCreation(company, saved);
+        accountingComplianceAuditService.recordJournalCreation(
+            company, saved, buildFxRoundingMetadata(roundingAdjustment));
       }
       if (closedPeriodPostingExceptionService != null
           && saved.getAccountingPeriod() != null
@@ -457,5 +461,27 @@ class JournalEntryMutationService {
             .distinct()
             .toList();
     return normalized.isEmpty() ? null : String.join("\n", normalized);
+  }
+
+  private Map<String, String> buildFxRoundingMetadata(
+      JournalLinePostingService.RoundingAdjustment roundingAdjustment) {
+    if (roundingAdjustment == null
+        || roundingAdjustment.adjustedLine() == null
+        || roundingAdjustment.adjustedLine().getId() == null) {
+      return Map.of();
+    }
+    Map<String, String> metadata = new LinkedHashMap<>();
+    metadata.put("adjustedLineId", roundingAdjustment.adjustedLine().getId().toString());
+    metadata.put("originalAmount", toPlainAmount(roundingAdjustment.originalAmount()));
+    metadata.put("adjustedAmount", toPlainAmount(roundingAdjustment.adjustedAmount()));
+    metadata.put("adjustmentReason", roundingAdjustment.adjustmentReason());
+    return metadata;
+  }
+
+  private String toPlainAmount(BigDecimal amount) {
+    if (amount == null) {
+      return "0";
+    }
+    return amount.stripTrailingZeros().toPlainString();
   }
 }

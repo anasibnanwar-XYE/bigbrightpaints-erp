@@ -4,11 +4,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -30,6 +34,8 @@ import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalLine;
 import com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAllocationRepository;
+import com.bigbrightpaints.erp.core.audittrail.AuditActionEvent;
+import com.bigbrightpaints.erp.core.audittrail.AuditActionEventRepository;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.InventoryReference;
@@ -64,6 +70,7 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
   @Autowired private JournalEntryRepository journalEntryRepository;
   @Autowired private RawMaterialPurchaseRepository purchaseRepository;
   @Autowired private PartnerSettlementAllocationRepository settlementAllocationRepository;
+  @Autowired private AuditActionEventRepository auditActionEventRepository;
 
   private HttpHeaders headers;
   private Company company;
@@ -195,6 +202,26 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
     assertThat(
             settlementAllocationRepository.findByCompanyAndIdempotencyKey(company, settlementRef))
         .hasSize(1);
+    assertThat(purchase.getJournalEntry()).isNotNull();
+    JournalEntry settlementJournal =
+        journalEntryRepository.findByCompanyAndReferenceNumber(company, settlementRef).orElseThrow();
+
+    AuditActionEvent purchaseAudit =
+        awaitBusinessAuditEvent(
+            company.getId(),
+            "ACCOUNTING",
+            "SYSTEM_JOURNAL_CREATED",
+            "JOURNAL_ENTRY",
+            purchase.getJournalEntry().getId().toString());
+    AuditActionEvent settlementAudit =
+        awaitBusinessAuditEvent(
+            company.getId(),
+            "ACCOUNTING",
+            "SETTLEMENT_JOURNAL_CREATED",
+            "JOURNAL_ENTRY",
+            settlementJournal.getId().toString());
+    assertThat(purchaseAudit.getCorrelationId()).isNotNull();
+    assertThat(settlementAudit.getCorrelationId()).isNotNull();
   }
 
   @Test
@@ -1829,5 +1856,38 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
   private String shortSuffix() {
     String token = Long.toString(System.nanoTime());
     return token.length() > 8 ? token.substring(token.length() - 8) : token;
+  }
+
+  private AuditActionEvent awaitBusinessAuditEvent(
+      Long companyId, String module, String action, String entityType, String entityId) {
+    Instant deadline = Instant.now().plus(Duration.ofSeconds(5));
+    while (Instant.now().isBefore(deadline)) {
+      Optional<AuditActionEvent> match =
+          auditActionEventRepository.findAll().stream()
+              .filter(event -> Objects.equals(event.getCompanyId(), companyId))
+              .filter(event -> module.equalsIgnoreCase(event.getModule()))
+              .filter(event -> action.equalsIgnoreCase(event.getAction()))
+              .filter(event -> entityType.equalsIgnoreCase(event.getEntityType()))
+              .filter(event -> entityId.equals(event.getEntityId()))
+              .max(java.util.Comparator.comparing(AuditActionEvent::getOccurredAt));
+      if (match.isPresent()) {
+        return match.get();
+      }
+      try {
+        Thread.sleep(100);
+      } catch (InterruptedException ex) {
+        Thread.currentThread().interrupt();
+        throw new AssertionError("Interrupted while waiting for audit event", ex);
+      }
+    }
+    throw new AssertionError(
+        "Audit event not found: module="
+            + module
+            + ", action="
+            + action
+            + ", entityType="
+            + entityType
+            + ", entityId="
+            + entityId);
   }
 }

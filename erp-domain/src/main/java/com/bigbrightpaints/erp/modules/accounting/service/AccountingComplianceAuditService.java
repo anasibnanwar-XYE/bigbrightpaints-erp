@@ -53,6 +53,11 @@ public class AccountingComplianceAuditService {
   }
 
   public void recordJournalCreation(Company company, JournalEntry entry) {
+    recordJournalCreation(company, entry, Map.of());
+  }
+
+  public void recordJournalCreation(
+      Company company, JournalEntry entry, Map<String, String> additionalMetadata) {
     if (company == null || entry == null) {
       return;
     }
@@ -94,6 +99,7 @@ public class AccountingComplianceAuditService {
     if (StringUtils.hasText(entry.getAttachmentReferences())) {
       metadata.put("attachmentReferences", entry.getAttachmentReferences().trim());
     }
+    mergeAdditionalMetadata(metadata, additionalMetadata);
 
     record(
         company,
@@ -459,6 +465,20 @@ public class AccountingComplianceAuditService {
 
   private String stringifyId(Long id) {
     return id != null ? id.toString() : null;
+  }
+
+  private void mergeAdditionalMetadata(
+      Map<String, String> metadata, Map<String, String> additionalMetadata) {
+    if (metadata == null || additionalMetadata == null || additionalMetadata.isEmpty()) {
+      return;
+    }
+    additionalMetadata.forEach(
+        (key, value) -> {
+          if (!StringUtils.hasText(key) || value == null) {
+            return;
+          }
+          metadata.put(key.trim(), value.trim());
+        });
   }
 
   private HttpServletRequest currentRequest() {
