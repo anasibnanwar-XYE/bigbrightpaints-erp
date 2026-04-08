@@ -7,6 +7,7 @@ import static org.mockito.Mockito.when;
 
 import java.util.List;
 
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -15,6 +16,7 @@ import org.springframework.boot.actuate.health.Health;
 import org.springframework.boot.actuate.health.Status;
 
 @ExtendWith(MockitoExtension.class)
+@Tag("critical")
 class ConfigurationHealthIndicatorTest {
 
   @Mock private ConfigurationHealthService configurationHealthService;

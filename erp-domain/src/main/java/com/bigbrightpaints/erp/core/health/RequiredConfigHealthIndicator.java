@@ -43,8 +43,7 @@ public class RequiredConfigHealthIndicator implements HealthIndicator {
       @Value("${spring.mail.username:}") String mailUsername,
       @Value("${spring.mail.password:}") String mailPassword,
       @Value("${erp.environment.validation.enabled:false}") boolean environmentValidationEnabled,
-      @Value(
-              "${erp.environment.validation.health-indicator.skip-when-validation-disabled:false}")
+      @Value("${erp.environment.validation.health-indicator.skip-when-validation-disabled:false}")
           boolean skipChecksWhenValidationDisabled) {
     this.jwtSecret = jwtSecret;
     this.encryptionKey = encryptionKey;

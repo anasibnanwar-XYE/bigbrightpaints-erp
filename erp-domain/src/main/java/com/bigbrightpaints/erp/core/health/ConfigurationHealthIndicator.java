@@ -35,8 +35,7 @@ public class ConfigurationHealthIndicator implements HealthIndicator {
       ConfigurationHealthService configurationHealthService,
       @Value("${erp.environment.validation.health-cache-seconds:60}") long cacheSeconds,
       @Value("${erp.environment.validation.enabled:false}") boolean environmentValidationEnabled,
-      @Value(
-              "${erp.environment.validation.health-indicator.skip-when-validation-disabled:false}")
+      @Value("${erp.environment.validation.health-indicator.skip-when-validation-disabled:false}")
           boolean skipChecksWhenValidationDisabled) {
     this.configurationHealthService = configurationHealthService;
     this.cacheTtl = Duration.ofSeconds(Math.max(5, cacheSeconds));

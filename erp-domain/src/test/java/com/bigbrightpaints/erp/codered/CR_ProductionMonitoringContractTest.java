@@ -67,7 +67,8 @@ class CR_ProductionMonitoringContractTest {
         .contains("http://localhost:8081/api/v1/auth/me")
         .contains("[ \"$auth\" = \"200\" ] || [ \"$auth\" = \"401\" ] || [ \"$auth\" = \"403\" ];")
         .contains("backend-compose-v2:")
-        .contains("ERP_ENVIRONMENT_VALIDATION_HEALTH_INDICATOR_SKIP_WHEN_VALIDATION_DISABLED='true'")
+        .contains(
+            "ERP_ENVIRONMENT_VALIDATION_HEALTH_INDICATOR_SKIP_WHEN_VALIDATION_DISABLED='true'")
         .contains("SPRING_MAIL_USERNAME='mailhog-user'")
         .contains("SPRING_MAIL_PASSWORD='mailhog-password'")
         .contains("SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH='false'");
@@ -101,7 +102,8 @@ class CR_ProductionMonitoringContractTest {
         .contains("DB_PORT=\"5433\"")
         .contains("strict_compose up -d db rabbitmq mailhog")
         .contains("strict_compose up -d --build app")
-        .contains("ERP_ENVIRONMENT_VALIDATION_HEALTH_INDICATOR_SKIP_WHEN_VALIDATION_DISABLED='true'")
+        .contains(
+            "ERP_ENVIRONMENT_VALIDATION_HEALTH_INDICATOR_SKIP_WHEN_VALIDATION_DISABLED='true'")
         .contains("http://localhost:9090/actuator/health")
         .contains("http://localhost:9090/actuator/health/readiness")
         .contains("http://localhost:8081/api/v1/auth/me")

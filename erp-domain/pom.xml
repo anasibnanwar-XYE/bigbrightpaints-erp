@@ -603,6 +603,8 @@
                                 <include>**/truthsuite/**/*IT.java</include>
                                 <include>**/truthsuite/**/*Suite.java</include>
                                 <include>**/core/audittrail/AuditCorrelationIdResolverTest.java</include>
+                                <include>**/core/health/ConfigurationHealthIndicatorTest.java</include>
+                                <include>**/core/health/RequiredConfigHealthIndicatorTest.java</include>
                                 <include>**/smoke/**/*Test.java</include>
                                 <include>**/core/util/BusinessDocumentTruthsTest.java</include>
                                 <include>**/modules/admin/AdminUserSecurityIT.java</include>
@@ -679,6 +681,8 @@
                                 <include>**/truthsuite/**/*IT.java</include>
                                 <include>**/truthsuite/**/*Suite.java</include>
                                 <include>**/core/audittrail/AuditCorrelationIdResolverTest.java</include>
+                                <include>**/core/health/ConfigurationHealthIndicatorTest.java</include>
+                                <include>**/core/health/RequiredConfigHealthIndicatorTest.java</include>
                                 <include>**/core/util/BusinessDocumentTruthsTest.java</include>
                                 <include>**/modules/admin/AdminUserSecurityIT.java</include>
                                 <include>**/modules/accounting/service/AccountingAuditTrailServiceTest.java</include>
