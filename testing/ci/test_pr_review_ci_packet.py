@@ -199,6 +199,9 @@ class ChangedFilesCoverageTest(unittest.TestCase):
     def test_structural_classifier_accepts_java_declarations_and_continuations(self):
         self.assertTrue(changed_files_coverage.is_structural_source_line("public final class Demo {", False))
         self.assertTrue(changed_files_coverage.is_structural_source_line("private Demo() {", False))
+        self.assertTrue(
+            changed_files_coverage.is_structural_source_line("private AuditCorrelationIdResolver() {}", False)
+        )
         self.assertTrue(changed_files_coverage.is_structural_source_line('private static final String MODE = "CREDIT";', False))
         self.assertTrue(changed_files_coverage.is_structural_source_line("private Long invoiceId;", False))
         self.assertTrue(changed_files_coverage.is_structural_source_line('static final String DEFAULT_MODE = "CREDIT";', False))
@@ -225,6 +228,22 @@ class ChangedFilesCoverageTest(unittest.TestCase):
             )
         )
         self.assertTrue(changed_files_coverage.is_structural_source_line("RawMaterialPurchase::getCompany,", False))
+        self.assertTrue(
+            changed_files_coverage.is_structural_source_line(
+                "line ->",
+                False,
+                "        .filter(",
+                "                adjustedAccountId != null",
+            )
+        )
+        self.assertTrue(
+            changed_files_coverage.is_structural_source_line(
+                "() ->",
+                False,
+                "        .orElseGet(",
+                "                savedEntry.getLines().stream()",
+            )
+        )
         self.assertTrue(changed_files_coverage.is_structural_source_line("and upper(trim(o.status)) in :statuses", False))
         self.assertTrue(changed_files_coverage.is_structural_source_line('"Cannot auto-create packing slip"', False))
         self.assertTrue(changed_files_coverage.is_structural_source_line("try {", False))
@@ -393,6 +412,36 @@ class RuntimeProbeContractTest(unittest.TestCase):
             },
             summary,
         )
+
+    def test_pr_ci_parity_allows_threshold_only_changed_coverage_failure_in_compat_mode(self):
+        compatible, reason = pr_ci_parity.changed_coverage_failure_is_compatible(
+            {
+                "passes": False,
+                "skipped": False,
+                "missing_coverage": False,
+                "vacuous": False,
+                "coverage_skipped_files": [],
+                "files_with_unmapped_lines": [],
+            }
+        )
+
+        self.assertTrue(compatible)
+        self.assertEqual("threshold-only-compatibility", reason)
+
+    def test_pr_ci_parity_rejects_unmapped_changed_coverage_failure(self):
+        compatible, reason = pr_ci_parity.changed_coverage_failure_is_compatible(
+            {
+                "passes": False,
+                "skipped": False,
+                "missing_coverage": False,
+                "vacuous": False,
+                "coverage_skipped_files": [],
+                "files_with_unmapped_lines": ["erp-domain/src/main/java/com/example/Demo.java"],
+            }
+        )
+
+        self.assertFalse(compatible)
+        self.assertEqual("unmapped-changed-lines", reason)
 
     def test_pr_ci_parity_merge_gate_blocks_failed_jobs(self):
         blocking = pr_ci_parity.evaluate_merge_gate(
