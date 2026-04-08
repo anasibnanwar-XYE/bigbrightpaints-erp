@@ -42,6 +42,7 @@ import com.bigbrightpaints.erp.modules.factory.domain.ProductionLogRepository;
 import com.bigbrightpaints.erp.modules.factory.service.CompanyScopedFactoryLookupService;
 import com.bigbrightpaints.erp.modules.inventory.domain.InventoryMovementRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovementRepository;
+import com.bigbrightpaints.erp.modules.inventory.service.InventoryPhysicalCountService;
 import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceRepository;
 import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchaseRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
@@ -74,6 +75,7 @@ class ReportServiceAccountStatementTest {
   @Mock private AgedDebtorsReportQueryService agedDebtorsReportQueryService;
   @Mock private InvoiceRepository invoiceRepository;
   @Mock private RawMaterialPurchaseRepository rawMaterialPurchaseRepository;
+  @Mock private InventoryPhysicalCountService inventoryPhysicalCountService;
 
   private final GstService gstService = new GstService();
   private ReportService reportService;
@@ -107,7 +109,8 @@ class ReportServiceAccountStatementTest {
             agedDebtorsReportQueryService,
             invoiceRepository,
             rawMaterialPurchaseRepository,
-            gstService);
+            gstService,
+            inventoryPhysicalCountService);
     company = new Company();
     ReflectionTestUtils.setField(company, "id", 501L);
     when(companyContextService.requireCurrentCompany()).thenReturn(company);

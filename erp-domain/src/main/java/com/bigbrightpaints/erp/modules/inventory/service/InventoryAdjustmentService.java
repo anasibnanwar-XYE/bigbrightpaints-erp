@@ -12,6 +12,7 @@ import java.util.Map;
 import com.bigbrightpaints.erp.core.audit.AuditEvent;
 import com.bigbrightpaints.erp.core.audit.AuditService;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.retry.annotation.Backoff;
@@ -69,6 +70,9 @@ public class InventoryAdjustmentService {
   private final IdempotencyReservationService idempotencyReservationService =
       new IdempotencyReservationService();
   private final TransactionTemplate transactionTemplate;
+
+  @Autowired(required = false)
+  private InventoryPhysicalCountService inventoryPhysicalCountService;
 
   public InventoryAdjustmentService(
       CompanyContextService companyContextService,
@@ -326,13 +330,15 @@ public class InventoryAdjustmentService {
                     finishedGood.getCurrentStock() == null
                         ? BigDecimal.ZERO
                         : finishedGood.getCurrentStock();
-                finishedGood.setCurrentStock(currentStock.add(line.getQuantity()));
+                BigDecimal physicalQuantity = currentStock.add(line.getQuantity());
+                finishedGood.setCurrentStock(physicalQuantity);
 
                 BigDecimal lineUnitCost = safeQuantity(line.getUnitCost());
                 BigDecimal lineAmount =
                     line.getQuantity().multiply(lineUnitCost).setScale(4, RoundingMode.HALF_UP);
                 line.setAmount(lineAmount);
                 line.setUnitCost(lineUnitCost);
+                recordFinishedGoodPhysicalCount(adjustment, line, physicalQuantity);
 
                 FinishedGoodBatch adjustmentBatch = new FinishedGoodBatch();
                 adjustmentBatch.setFinishedGood(finishedGood);
@@ -365,7 +371,8 @@ public class InventoryAdjustmentService {
                   finishedGood.getCurrentStock() == null
                       ? BigDecimal.ZERO
                       : finishedGood.getCurrentStock();
-              finishedGood.setCurrentStock(currentStock.subtract(line.getQuantity()));
+              BigDecimal physicalQuantity = currentStock.subtract(line.getQuantity());
+              finishedGood.setCurrentStock(physicalQuantity);
               ConsumedBatchCost consumedCost =
                   adjustBatchQuantities(
                       finishedGood, line.getQuantity(), adjustment.getAdjustmentDate());
@@ -373,6 +380,7 @@ public class InventoryAdjustmentService {
 
               line.setAmount(consumedCost.totalCost());
               line.setUnitCost(consumedCost.unitCost());
+              recordFinishedGoodPhysicalCount(adjustment, line, physicalQuantity);
 
               InventoryMovement movement = new InventoryMovement();
               movement.setFinishedGood(finishedGood);
@@ -490,6 +498,25 @@ public class InventoryAdjustmentService {
 
   private BigDecimal safeQuantity(BigDecimal value) {
     return value != null ? value : BigDecimal.ZERO;
+  }
+
+  private void recordFinishedGoodPhysicalCount(
+      InventoryAdjustment adjustment, InventoryAdjustmentLine line, BigDecimal physicalQuantity) {
+    if (inventoryPhysicalCountService == null
+        || adjustment == null
+        || adjustment.getCompany() == null
+        || line == null
+        || line.getFinishedGood() == null
+        || line.getFinishedGood().getId() == null) {
+      return;
+    }
+    inventoryPhysicalCountService.recordFinishedGoodCount(
+        adjustment.getCompany(),
+        line.getFinishedGood().getId(),
+        safeQuantity(physicalQuantity),
+        adjustment.getAdjustmentDate(),
+        adjustment.getReferenceNumber(),
+        line.getNote());
   }
 
   private String normalizeIdempotencyKey(String raw) {

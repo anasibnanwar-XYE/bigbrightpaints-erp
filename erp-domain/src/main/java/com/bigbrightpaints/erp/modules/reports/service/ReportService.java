@@ -64,6 +64,7 @@ import com.bigbrightpaints.erp.modules.inventory.domain.InventoryMovementReposit
 import com.bigbrightpaints.erp.modules.inventory.domain.InventoryReference;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovement;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovementRepository;
+import com.bigbrightpaints.erp.modules.inventory.service.InventoryPhysicalCountService;
 import com.bigbrightpaints.erp.modules.invoice.domain.Invoice;
 import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceLine;
 import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceRepository;
@@ -102,6 +103,7 @@ public class ReportService {
   private final InvoiceRepository invoiceRepository;
   private final RawMaterialPurchaseRepository rawMaterialPurchaseRepository;
   private final GstService gstService;
+  private final InventoryPhysicalCountService inventoryPhysicalCountService;
   private static final BigDecimal BALANCE_TOLERANCE = new BigDecimal("0.01");
 
   @Autowired(required = false)
@@ -133,7 +135,8 @@ public class ReportService {
       AgedDebtorsReportQueryService agedDebtorsReportQueryService,
       InvoiceRepository invoiceRepository,
       RawMaterialPurchaseRepository rawMaterialPurchaseRepository,
-      GstService gstService) {
+      GstService gstService,
+      InventoryPhysicalCountService inventoryPhysicalCountService) {
     this.companyContextService = companyContextService;
     this.accountRepository = accountRepository;
     this.accountingPeriodRepository = accountingPeriodRepository;
@@ -159,6 +162,7 @@ public class ReportService {
     this.invoiceRepository = invoiceRepository;
     this.rawMaterialPurchaseRepository = rawMaterialPurchaseRepository;
     this.gstService = gstService;
+    this.inventoryPhysicalCountService = inventoryPhysicalCountService;
   }
 
   @Transactional(readOnly = true)
@@ -810,6 +814,12 @@ public class ReportService {
         inventoryValuationService.currentSnapshot(company);
     List<InventoryValuationQueryService.InventoryItemSnapshot> snapshotItems =
         totals.items() == null ? List.of() : totals.items();
+    Map<Long, BigDecimal> latestFinishedGoodCounts =
+        inventoryPhysicalCountService.latestFinishedGoodCounts(
+            company, inventoryReconciliationItemIds(snapshotItems, true));
+    Map<Long, BigDecimal> latestRawMaterialCounts =
+        inventoryPhysicalCountService.latestRawMaterialCounts(
+            company, inventoryReconciliationItemIds(snapshotItems, false));
 
     List<InventoryReconciliationItemDto> items =
         snapshotItems.stream()
@@ -818,7 +828,7 @@ public class ReportService {
                 item -> {
                   BigDecimal systemQty = safe(item.quantityOnHand());
                   BigDecimal physicalQty =
-                      safe(item.availableQuantity()).add(safe(item.reservedQuantity()));
+                      resolvePhysicalQuantity(item, systemQty, latestFinishedGoodCounts, latestRawMaterialCounts);
                   BigDecimal variance = physicalQty.subtract(systemQty);
                   return new InventoryReconciliationItemDto(
                       item.inventoryItemId(),
@@ -842,7 +852,18 @@ public class ReportService {
             .reduce(BigDecimal.ZERO, BigDecimal::add);
     BigDecimal quantityVarianceTotal = physicalQuantityTotal.subtract(systemQuantityTotal);
 
-    BigDecimal physicalInventoryValue = safe(totals.totalValue());
+    BigDecimal physicalInventoryValue =
+        snapshotItems.stream()
+            .filter(Objects::nonNull)
+            .map(
+                item -> {
+                  BigDecimal systemQty = safe(item.quantityOnHand());
+                  BigDecimal physicalQty =
+                      resolvePhysicalQuantity(
+                          item, systemQty, latestFinishedGoodCounts, latestRawMaterialCounts);
+                  return physicalQty.multiply(safe(item.unitCost()));
+                })
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
     BigDecimal ledgerBalance = resolveInventoryLedgerBalance(company);
     BigDecimal valueVariance = physicalInventoryValue.subtract(ledgerBalance);
     return new InventoryReconciliationReportDto(
@@ -853,6 +874,37 @@ public class ReportService {
         roundCurrency(physicalInventoryValue),
         roundCurrency(valueVariance),
         items);
+  }
+
+  private List<Long> inventoryReconciliationItemIds(
+      List<InventoryValuationQueryService.InventoryItemSnapshot> snapshotItems, boolean finishedGoods) {
+    InventoryValuationQueryService.InventoryTypeBucket expectedType =
+        finishedGoods
+            ? InventoryValuationQueryService.InventoryTypeBucket.FINISHED_GOOD
+            : InventoryValuationQueryService.InventoryTypeBucket.RAW_MATERIAL;
+    return snapshotItems.stream()
+        .filter(Objects::nonNull)
+        .filter(item -> item.inventoryType() == expectedType)
+        .map(InventoryValuationQueryService.InventoryItemSnapshot::inventoryItemId)
+        .filter(Objects::nonNull)
+        .distinct()
+        .toList();
+  }
+
+  private BigDecimal resolvePhysicalQuantity(
+      InventoryValuationQueryService.InventoryItemSnapshot item,
+      BigDecimal systemQty,
+      Map<Long, BigDecimal> latestFinishedGoodCounts,
+      Map<Long, BigDecimal> latestRawMaterialCounts) {
+    if (item == null || item.inventoryItemId() == null) {
+      return systemQty;
+    }
+    BigDecimal physicalQty =
+        switch (item.inventoryType()) {
+          case FINISHED_GOOD -> latestFinishedGoodCounts.get(item.inventoryItemId());
+          case RAW_MATERIAL -> latestRawMaterialCounts.get(item.inventoryItemId());
+        };
+    return physicalQty == null ? systemQty : safe(physicalQty);
   }
 
   @Transactional(readOnly = true)

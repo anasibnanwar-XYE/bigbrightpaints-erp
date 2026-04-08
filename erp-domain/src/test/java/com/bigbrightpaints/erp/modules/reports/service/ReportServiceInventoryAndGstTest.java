@@ -45,6 +45,7 @@ import com.bigbrightpaints.erp.modules.factory.domain.ProductionLogRepository;
 import com.bigbrightpaints.erp.modules.factory.service.CompanyScopedFactoryLookupService;
 import com.bigbrightpaints.erp.modules.inventory.domain.InventoryMovementRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovementRepository;
+import com.bigbrightpaints.erp.modules.inventory.service.InventoryPhysicalCountService;
 import com.bigbrightpaints.erp.modules.invoice.domain.Invoice;
 import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceLine;
 import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceRepository;
@@ -53,6 +54,8 @@ import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchaseLine
 import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchaseRepository;
 import com.bigbrightpaints.erp.modules.purchasing.domain.Supplier;
 import com.bigbrightpaints.erp.modules.reports.dto.GstReturnReportDto;
+import com.bigbrightpaints.erp.modules.reports.dto.InventoryReconciliationItemDto;
+import com.bigbrightpaints.erp.modules.reports.dto.InventoryReconciliationReportDto;
 import com.bigbrightpaints.erp.modules.reports.dto.InventoryValuationDto;
 import com.bigbrightpaints.erp.modules.reports.dto.InventoryValuationGroupDto;
 import com.bigbrightpaints.erp.modules.reports.dto.InventoryValuationItemDto;
@@ -89,6 +92,7 @@ class ReportServiceInventoryAndGstTest {
   @Mock private AgedDebtorsReportQueryService agedDebtorsReportQueryService;
   @Mock private InvoiceRepository invoiceRepository;
   @Mock private RawMaterialPurchaseRepository rawMaterialPurchaseRepository;
+  @Mock private InventoryPhysicalCountService inventoryPhysicalCountService;
 
   private final GstService gstService = new GstService();
 
@@ -123,7 +127,8 @@ class ReportServiceInventoryAndGstTest {
             agedDebtorsReportQueryService,
             invoiceRepository,
             rawMaterialPurchaseRepository,
-            gstService);
+            gstService,
+            inventoryPhysicalCountService);
 
     company = new Company();
     ReflectionTestUtils.setField(company, "id", 901L);
@@ -131,6 +136,12 @@ class ReportServiceInventoryAndGstTest {
     company.setTimezone("UTC");
 
     lenient().when(companyContextService.requireCurrentCompany()).thenReturn(company);
+    lenient()
+        .when(inventoryPhysicalCountService.latestFinishedGoodCounts(any(), any()))
+        .thenReturn(Map.of());
+    lenient()
+        .when(inventoryPhysicalCountService.latestRawMaterialCounts(any(), any()))
+        .thenReturn(Map.of());
   }
 
   private void stubToday() {
@@ -232,6 +243,80 @@ class ReportServiceInventoryAndGstTest {
     assertThat(response.items()).isEmpty();
     assertThat(response.groupByCategory()).isEmpty();
     assertThat(response.groupByBrand()).isEmpty();
+  }
+
+  @Test
+  void inventoryReconciliationReport_usesIndependentPhysicalCountSource() {
+    company.setDefaultInventoryAccountId(321L);
+    Account inventoryAccount = account(321L, "INV", "Inventory", AccountType.ASSET, "90");
+    when(accountingLookupService.requireAccount(company, 321L)).thenReturn(inventoryAccount);
+
+    InventoryValuationQueryService.InventoryItemSnapshot finishedGoodItem =
+        new InventoryValuationQueryService.InventoryItemSnapshot(
+            41L,
+            InventoryValuationQueryService.InventoryTypeBucket.FINISHED_GOOD,
+            "FG-041",
+            "Acrylic Primer",
+            "PAINT",
+            "Shield",
+            new BigDecimal("10"),
+            new BigDecimal("2"),
+            new BigDecimal("8"),
+            new BigDecimal("12"),
+            new BigDecimal("120"),
+            false);
+    when(inventoryValuationService.currentSnapshot(company))
+        .thenReturn(
+            new InventoryValuationQueryService.InventorySnapshot(
+                new BigDecimal("120"), 0L, "FIFO", List.of(finishedGoodItem)));
+    when(inventoryPhysicalCountService.latestFinishedGoodCounts(company, List.of(41L)))
+        .thenReturn(Map.of(41L, new BigDecimal("8")));
+
+    InventoryReconciliationReportDto report = reportService.inventoryReconciliationReport();
+
+    assertThat(report.systemQuantityTotal()).isEqualByComparingTo("10.00");
+    assertThat(report.physicalQuantityTotal()).isEqualByComparingTo("8.00");
+    assertThat(report.quantityVarianceTotal()).isEqualByComparingTo("-2.00");
+    assertThat(report.physicalInventoryValue()).isEqualByComparingTo("96.00");
+    assertThat(report.valueVariance()).isEqualByComparingTo("6.00");
+    assertThat(report.items())
+        .extracting(InventoryReconciliationItemDto::physicalQty)
+        .containsExactly(new BigDecimal("8.00"));
+  }
+
+  @Test
+  void inventoryReconciliationReport_fallsBackToSystemQuantityWithoutPhysicalCountInput() {
+    company.setDefaultInventoryAccountId(322L);
+    Account inventoryAccount = account(322L, "INV", "Inventory", AccountType.ASSET, "35");
+    when(accountingLookupService.requireAccount(company, 322L)).thenReturn(inventoryAccount);
+
+    InventoryValuationQueryService.InventoryItemSnapshot rawMaterialItem =
+        new InventoryValuationQueryService.InventoryItemSnapshot(
+            12L,
+            InventoryValuationQueryService.InventoryTypeBucket.RAW_MATERIAL,
+            "RM-012",
+            "Resin",
+            "RAW_MATERIAL",
+            "Raw Materials",
+            new BigDecimal("5"),
+            BigDecimal.ZERO,
+            new BigDecimal("5"),
+            new BigDecimal("7"),
+            new BigDecimal("35"),
+            false);
+    when(inventoryValuationService.currentSnapshot(company))
+        .thenReturn(
+            new InventoryValuationQueryService.InventorySnapshot(
+                new BigDecimal("35"), 0L, "FIFO", List.of(rawMaterialItem)));
+
+    InventoryReconciliationReportDto report = reportService.inventoryReconciliationReport();
+
+    assertThat(report.systemQuantityTotal()).isEqualByComparingTo("5.00");
+    assertThat(report.physicalQuantityTotal()).isEqualByComparingTo("5.00");
+    assertThat(report.quantityVarianceTotal()).isEqualByComparingTo("0.00");
+    assertThat(report.items())
+        .extracting(InventoryReconciliationItemDto::variance)
+        .containsExactly(new BigDecimal("0.00"));
   }
 
   @Test

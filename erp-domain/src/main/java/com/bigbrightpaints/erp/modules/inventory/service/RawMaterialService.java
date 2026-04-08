@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.env.Environment;
 import org.springframework.core.env.Profiles;
@@ -81,6 +82,9 @@ public class RawMaterialService {
   private final Environment environment;
   private final TransactionTemplate transactionTemplate;
   private final boolean rawMaterialIntakeEnabled;
+
+  @Autowired(required = false)
+  private InventoryPhysicalCountService inventoryPhysicalCountService;
 
   public RawMaterialService(
       RawMaterialRepository rawMaterialRepository,
@@ -492,8 +496,16 @@ public class RawMaterialService {
 
       BigDecimal delta = increaseInventory ? quantity : quantity.negate();
       BigDecimal amount = quantity.multiply(unitCost).setScale(4, RoundingMode.HALF_UP);
-      material.setCurrentStock(currentStock.add(delta));
+      BigDecimal physicalQuantity = currentStock.add(delta);
+      material.setCurrentStock(physicalQuantity);
       rawMaterialRepository.save(material);
+      recordRawMaterialPhysicalCount(
+          company,
+          material,
+          physicalQuantity,
+          adjustmentDate,
+          adjustment.getReferenceNumber(),
+          lineRequest.note());
 
       RawMaterialAdjustmentLine line = new RawMaterialAdjustmentLine();
       line.setAdjustment(adjustment);
@@ -749,6 +761,28 @@ public class RawMaterialService {
         safeQuantity(material.getMinStock()),
         safeQuantity(material.getMaxStock()),
         stockStatus(material));
+  }
+
+  private void recordRawMaterialPhysicalCount(
+      Company company,
+      RawMaterial material,
+      BigDecimal physicalQuantity,
+      LocalDate countDate,
+      String sourceReference,
+      String note) {
+    if (inventoryPhysicalCountService == null
+        || company == null
+        || material == null
+        || material.getId() == null) {
+      return;
+    }
+    inventoryPhysicalCountService.recordRawMaterialCount(
+        company,
+        material.getId(),
+        safeQuantity(physicalQuantity),
+        countDate,
+        sourceReference,
+        note);
   }
 
   private BigDecimal safeQuantity(BigDecimal quantity) {
