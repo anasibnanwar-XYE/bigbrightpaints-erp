@@ -135,9 +135,13 @@ Request and response rules:
 - Bank-session create requires `bankAccountId`, `statementDate`,
   `statementEndingBalance`, and may also send `startDate`, `endDate`,
   `accountingPeriodId`, and `note`.
-- Session item updates use `addJournalLineIds`, `removeJournalLineIds`, and
-  optional `note`.
+- Session item updates use `addJournalLineIds`, `removeJournalLineIds`,
+  optional `note`, and optional `matches[]`. Each `matches[]` item supports
+  `bankItemId` plus either `journalLineId` or `journalEntryId`.
 - Session completion uses optional `note` and `accountingPeriodId`.
+- Session detail (`GET /reconciliation/bank/sessions/{sessionId}`) returns
+  `matchedItems[]` and `unmatchedItems[]`. `matchedItems[]` carries persisted
+  `bankItemId` linkage for reconciled statement lines.
 - Discrepancy resolution uses `resolution`, optional `note`, and optional
   `adjustmentAccountId`.
 - Discrepancy list filters are `status` and `type`.

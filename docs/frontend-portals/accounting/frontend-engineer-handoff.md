@@ -829,6 +829,45 @@ Use these as frontend contract names:
 - `SubledgerReconciliationReport`
 - `InterCompanyReconciliationReport`
 
+Session detail contract highlights:
+
+```ts
+type BankStatementMatchRequest = {
+  bankItemId?: number | null
+  journalEntryId?: number | null
+  journalLineId?: number | null
+}
+
+type BankReconciliationSessionItemsUpdateRequest = {
+  addJournalLineIds?: number[]
+  removeJournalLineIds?: number[]
+  note?: string | null
+  matches?: BankStatementMatchRequest[]
+}
+
+type StatementItemDto = {
+  itemId?: number | null
+  bankItemId?: number | null
+  journalLineId?: number | null
+  journalEntryId?: number | null
+  referenceNumber?: string | null
+  entryDate?: string | null
+  memo?: string | null
+  debit?: number | null
+  credit?: number | null
+  netAmount?: number | null
+  matchedAt?: string | null
+  matchedBy?: string | null
+}
+
+type BankReconciliationSessionDetailDto = {
+  sessionId: number
+  status: string
+  matchedItems: StatementItemDto[]
+  unmatchedItems: StatementItemDto[]
+}
+```
+
 Recommended FE structure:
 
 - Bank reconciliation
