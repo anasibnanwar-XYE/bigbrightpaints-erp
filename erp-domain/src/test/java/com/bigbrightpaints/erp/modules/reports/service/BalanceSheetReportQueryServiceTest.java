@@ -596,7 +596,10 @@ class BalanceSheetReportQueryServiceTest {
             com.bigbrightpaints.erp.modules.reports.dto.ReportSource.SNAPSHOT,
             base.exportOptions());
 
-    assertThat((Boolean) com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "usesClosedSnapshot", base))
+    assertThat(
+            (Boolean)
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    service, "usesClosedSnapshot", base))
         .isFalse();
     assertThat(
             (Boolean)
@@ -676,7 +679,8 @@ class BalanceSheetReportQueryServiceTest {
 
     assertThat(
             (Boolean)
-                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "isBalanceSheetType", AccountType.ASSET))
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    service, "isBalanceSheetType", AccountType.ASSET))
         .isTrue();
     assertThat(
             (Boolean)

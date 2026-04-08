@@ -1306,7 +1306,9 @@ class TenantRuntimeEnforcementServiceTest {
     when(mockedPolicies.get("ACME")).thenReturn(stalePolicy, freshPolicy);
     ReflectionTestUtils.setField(service, "policies", mockedPolicies);
 
-    Object resolved = com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "policyFor", "ACME");
+    Object resolved =
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "policyFor", "ACME");
 
     assertThat(resolved).isSameAs(freshPolicy);
     verifyNoInteractions(systemSettingsRepository);
@@ -1396,7 +1398,9 @@ class TenantRuntimeEnforcementServiceTest {
     assertThat(invokeParsePositiveInt("bad", 5)).isEqualTo(5);
 
     assertThat(invokeParseInstantOrNull("bad-instant")).isNull();
-    Object missingPolicy = com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "loadPersistedPolicy", "   ");
+    Object missingPolicy =
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "loadPersistedPolicy", "   ");
     assertThat(missingPolicy).isNull();
   }
 
@@ -1616,7 +1620,8 @@ class TenantRuntimeEnforcementServiceTest {
         tenantRuntimeAdmissionFailure(rejection, new IllegalStateException("policy backend down"));
 
     ApplicationException ex =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "toManagedOperationException", "ACME", failure);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "toManagedOperationException", "ACME", failure);
 
     assertThat(ex).isNotNull();
     assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.SYSTEM_SERVICE_UNAVAILABLE);
@@ -1712,7 +1717,8 @@ class TenantRuntimeEnforcementServiceTest {
       throws Exception {
     @SuppressWarnings("unchecked")
     Map<String, String> emptyPersistedState =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "policyToPersistedState", null, null);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "policyToPersistedState", null, null);
     assertThat(emptyPersistedState).isEmpty();
 
     @SuppressWarnings("unchecked")
@@ -1731,9 +1737,11 @@ class TenantRuntimeEnforcementServiceTest {
                 null,
                 0L));
     Object noPolicy =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "policyFromPersistedState", 1L, Map.of());
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "policyFromPersistedState", 1L, Map.of());
     Object resolvedPolicy =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "policyFromPersistedState", 1L, persistedState);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "policyFromPersistedState", 1L, persistedState);
 
     assertThat(noPolicy).isNull();
     assertThat(ReflectionTestUtils.getField(resolvedPolicy, "reasonCode")).isEqualTo("MAINTENANCE");
@@ -1789,13 +1797,17 @@ class TenantRuntimeEnforcementServiceTest {
   void resolveActiveUsers_returnsZeroForUnknownTenantAndWrapsLookupFailures() {
     companiesByCode.remove("ACME");
 
-    Long activeUsers = com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "resolveActiveUsers", "ACME");
+    Long activeUsers =
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "resolveActiveUsers", "ACME");
 
     assertThat(activeUsers).isZero();
     when(companyRepository.findByCodeIgnoreCase("FAIL"))
         .thenThrow(new RuntimeException("lookup down"));
     assertThatThrownBy(
-            () -> com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "resolveActiveUsers", "FAIL"))
+            () ->
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    service, "resolveActiveUsers", "FAIL"))
         .isInstanceOf(ApplicationException.class)
         .hasMessageContaining("Tenant company lookup is unavailable");
   }
@@ -1946,7 +1958,8 @@ class TenantRuntimeEnforcementServiceTest {
 
   private boolean invokeShouldUsePersistedPolicy(Object current, Object persisted) {
     Boolean result =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "shouldUsePersistedPolicy", current, persisted);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "shouldUsePersistedPolicy", current, persisted);
     assertThat(result).isNotNull();
     return result;
   }
@@ -1965,24 +1978,28 @@ class TenantRuntimeEnforcementServiceTest {
   }
 
   private Object invokeLoadPersistedPolicy(String companyCode) {
-    return com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "loadPersistedPolicy", companyCode);
+    return com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+        service, "loadPersistedPolicy", companyCode);
   }
 
   private TenantRuntimeEnforcementService.TenantRuntimeState invokeNormalizeState(String rawState) {
     TenantRuntimeEnforcementService.TenantRuntimeState state =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "normalizeState", rawState);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "normalizeState", rawState);
     assertThat(state).isNotNull();
     return state;
   }
 
   private int invokeParsePositiveInt(String rawValue, int fallback) {
     Integer value =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "parsePositiveInt", rawValue, fallback);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "parsePositiveInt", rawValue, fallback);
     assertThat(value).isNotNull();
     return value;
   }
 
   private Instant invokeParseInstantOrNull(String rawValue) {
-    return com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "parseInstantOrNull", rawValue);
+    return com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+        service, "parseInstantOrNull", rawValue);
   }
 }

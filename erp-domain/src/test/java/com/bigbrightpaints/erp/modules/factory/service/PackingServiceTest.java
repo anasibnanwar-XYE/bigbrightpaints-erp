@@ -568,7 +568,8 @@ class PackingServiceTest {
     log.setMixedQuantity(new BigDecimal("10.0"));
     log.setStatus(ProductionLogStatus.PARTIAL_PACKED);
 
-    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(packingService, "updateStatus", log, BigDecimal.ZERO);
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+        packingService, "updateStatus", log, BigDecimal.ZERO);
 
     assertThat(log.getStatus()).isEqualTo(ProductionLogStatus.READY_TO_PACK);
   }
@@ -600,7 +601,8 @@ class PackingServiceTest {
   @Test
   void safeQuantity_returnsZeroForNull() {
     BigDecimal safeQuantity =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(packingService, "safeQuantity", (Object) null);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            packingService, "safeQuantity", (Object) null);
 
     assertThat(safeQuantity).isEqualByComparingTo(BigDecimal.ZERO);
   }

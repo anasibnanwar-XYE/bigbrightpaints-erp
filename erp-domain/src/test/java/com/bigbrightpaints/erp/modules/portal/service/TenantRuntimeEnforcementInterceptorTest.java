@@ -21,7 +21,6 @@ import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
@@ -372,7 +371,8 @@ class TenantRuntimeEnforcementInterceptorTest {
             companyContextService, tenantRuntimeRequestAdmissionService);
 
     RuntimeException exception =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(interceptor, "admissionException", "   ", "   ", null);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            interceptor, "admissionException", "   ", "   ", null);
 
     assertThat(exception).isInstanceOf(ApplicationException.class);
     ApplicationException applicationException = (ApplicationException) exception;

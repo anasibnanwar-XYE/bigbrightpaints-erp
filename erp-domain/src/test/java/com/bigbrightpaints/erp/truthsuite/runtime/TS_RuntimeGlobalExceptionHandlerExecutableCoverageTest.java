@@ -11,7 +11,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.mock.web.MockHttpServletRequest;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
@@ -247,7 +246,8 @@ class TS_RuntimeGlobalExceptionHandlerExecutableCoverageTest {
 
     @SuppressWarnings("unchecked")
     List<String> emptyPaths =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(handler, "resolveNormalizedRequestPaths", (Object) null);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            handler, "resolveNormalizedRequestPaths", (Object) null);
     assertThat(emptyPaths).isEmpty();
 
     String pathInfoFallback =
@@ -255,11 +255,14 @@ class TS_RuntimeGlobalExceptionHandlerExecutableCoverageTest {
             handler, "joinServletPathAndPathInfo", "/", CATALOG_ITEM_PATH);
     assertThat(pathInfoFallback).isEqualTo(CATALOG_ITEM_PATH);
 
-    String emptyUri = com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(handler, "stripContextPath", "", "/tenant");
+    String emptyUri =
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            handler, "stripContextPath", "", "/tenant");
     assertThat(emptyUri).isEmpty();
 
     String rootPath =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(handler, "stripContextPath", "/tenant", "/tenant");
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            handler, "stripContextPath", "/tenant", "/tenant");
     assertThat(rootPath).isEqualTo("/");
 
     String unchangedUri =
@@ -268,7 +271,8 @@ class TS_RuntimeGlobalExceptionHandlerExecutableCoverageTest {
     assertThat(unchangedUri).isEqualTo("/api/v1/catalog/items");
 
     Boolean nullPathRejected =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(handler, "matchesEndpointPath", "", CATALOG_ITEM_PATH);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            handler, "matchesEndpointPath", "", CATALOG_ITEM_PATH);
     assertThat(nullPathRejected).isFalse();
 
     Boolean blankEndpointRejected =
@@ -282,10 +286,13 @@ class TS_RuntimeGlobalExceptionHandlerExecutableCoverageTest {
     assertThat(prefixedPathAccepted).isTrue();
 
     String normalizedWithoutSlash =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(handler, "normalizeEndpointPath", "api/v1/catalog/items");
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            handler, "normalizeEndpointPath", "api/v1/catalog/items");
     assertThat(normalizedWithoutSlash).isEqualTo("/api/v1/catalog/items");
 
-    String normalizedRoot = com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(handler, "normalizeEndpointPath", "/");
+    String normalizedRoot =
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            handler, "normalizeEndpointPath", "/");
     assertThat(normalizedRoot).isEqualTo("/");
 
     String normalizedTrimmed =

@@ -213,7 +213,8 @@ class PackingAllowedSizeServiceTest {
 
     @SuppressWarnings("unchecked")
     List<ProductionProduct> familyProducts =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "resolveFamilyProducts", company, base);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "resolveFamilyProducts", company, base);
 
     assertThat(familyProducts).containsExactly(base);
   }

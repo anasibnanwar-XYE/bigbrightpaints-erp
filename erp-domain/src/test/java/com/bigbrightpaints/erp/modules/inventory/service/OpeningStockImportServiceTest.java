@@ -588,7 +588,8 @@ class OpeningStockImportServiceTest {
 
     assertThat(
             (String)
-                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "sanitizeCompanyCode", company.getCode()))
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    service, "sanitizeCompanyCode", company.getCode()))
         .isEqualTo("ACME");
     assertThat(
             (String)
@@ -903,7 +904,10 @@ class OpeningStockImportServiceTest {
 
   @Test
   void serializeResults_returnsNullForEmptyAndSerializationFailure() throws Exception {
-    assertThat((Object) com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "serializeResults", List.of()))
+    assertThat(
+            (Object)
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    service, "serializeResults", List.of()))
         .isNull();
 
     ObjectMapper failingObjectMapper = org.mockito.Mockito.mock(ObjectMapper.class);
@@ -2004,8 +2008,13 @@ class OpeningStockImportServiceTest {
                     + "RAW_MATERIAL,RM-1,Resin,KG,KG,RM-B1,10,5.00,PRODUCTION\r\n")
                 .getBytes(StandardCharsets.UTF_8));
 
-    assertThat((String) com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "fingerprintFile", canonical))
-        .isEqualTo(com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "fingerprintFile", bomAndCrlf));
+    assertThat(
+            (String)
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    service, "fingerprintFile", canonical))
+        .isEqualTo(
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                service, "fingerprintFile", bomAndCrlf));
   }
 
   @Test
@@ -2150,7 +2159,8 @@ class OpeningStockImportServiceTest {
         .thenReturn(null);
 
     OpeningStockImport replay =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "findContentReplay", company, "missing-target");
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "findContentReplay", company, "missing-target");
 
     assertThat(replay).isNull();
     verify(openingStockImportRepository)
@@ -2172,7 +2182,8 @@ class OpeningStockImportServiceTest {
 
     @SuppressWarnings("unchecked")
     List<String> parsedRows =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "parseFingerprintRows", normalizedPayload);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "parseFingerprintRows", normalizedPayload);
 
     assertThat(parsedRows).containsExactly("FINISHED_GOOD|FG-1|1000|12|2026-02-01|2026-08-01");
     assertThat(
@@ -2183,14 +2194,19 @@ class OpeningStockImportServiceTest {
                     "\uFEFFa\r\nb\rc".getBytes(StandardCharsets.UTF_8)))
         .isEqualTo("a\nb\nc");
     assertThat(
-            (String) com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "normalizeDecimal", (Object) null))
+            (String)
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    service, "normalizeDecimal", (Object) null))
         .isEmpty();
     assertThat(
             (String)
                 com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     service, "normalizeDecimal", new BigDecimal("1000.0")))
         .isEqualTo("1000");
-    assertThat((String) com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "normalizeDate", (Object) null))
+    assertThat(
+            (String)
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    service, "normalizeDate", (Object) null))
         .isEmpty();
   }
 
@@ -2294,7 +2310,8 @@ class OpeningStockImportServiceTest {
   }
 
   private String fingerprint(String payload) {
-    return com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "fingerprintFile", csvFile(payload));
+    return com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+        service, "fingerprintFile", csvFile(payload));
   }
 
   private String legacyFingerprint(String openingStockBatchKey, String idempotencyKey) {

@@ -1039,7 +1039,8 @@ class InvoiceServiceTest {
             com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                 invoiceService, "findOrderSlips", company, orderId, true);
     SalesOrder resolved =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(invoiceService, "requireOrderForUpdate", company, orderId);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            invoiceService, "requireOrderForUpdate", company, orderId);
 
     assertThat(slips).isEmpty();
     assertThat(resolved).isSameAs(lockedOrder);
@@ -1063,7 +1064,8 @@ class InvoiceServiceTest {
         .thenReturn(List.of(existingSlip));
 
     SalesOrder resolved =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(invoiceService, "requireOrderForUpdate", company, orderId);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            invoiceService, "requireOrderForUpdate", company, orderId);
     @SuppressWarnings("unchecked")
     List<PackagingSlip> slips =
         (List<PackagingSlip>)
@@ -1230,7 +1232,10 @@ class InvoiceServiceTest {
     assertThat(invoiceService.getInvoice(1501L).invoiceNumber()).isEqualTo("INV-1501");
     assertThat(invoiceService.getInvoiceWithDealerEmail(1501L).dealerEmail())
         .isEqualTo("dealer1500@example.com");
-    assertThat((Object) com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(invoiceService, "toDtos", company, null))
+    assertThat(
+            (Object)
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    invoiceService, "toDtos", company, null))
         .isEqualTo(List.of());
   }
 
@@ -1406,7 +1411,8 @@ class InvoiceServiceTest {
   void helperMethods_coverNullGuardsAndFilteredLinkedReferenceContext() throws Exception {
     assertThat(
             (Object)
-                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(invoiceService, "findOrderSlips", null, 1L, false))
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    invoiceService, "findOrderSlips", null, 1L, false))
         .isEqualTo(List.of());
     assertThat(
             (Object)
@@ -1473,7 +1479,8 @@ class InvoiceServiceTest {
     assertThat(settlementMap).isEmpty();
     assertThat(
             (Long)
-                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(invoiceService, "activeSlipCount", (Object) null))
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    invoiceService, "activeSlipCount", (Object) null))
         .isZero();
   }
 
@@ -1509,7 +1516,9 @@ class InvoiceServiceTest {
                     invoiceService, "findOrderSlips", company, 1603L, false))
         .isEqualTo(List.of());
     assertThat(
-            (Object) com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(invoiceService, "toDtos", company, List.of()))
+            (Object)
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    invoiceService, "toDtos", company, List.of()))
         .isEqualTo(List.of());
     assertThat(
             (Object)

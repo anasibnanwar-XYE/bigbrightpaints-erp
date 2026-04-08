@@ -164,7 +164,8 @@ class ProductionLogServiceCostingFallbackTest {
     when(packingAllowedSizeService.listAllowedSellableSizes(company, log)).thenReturn(List.of());
 
     ProductionLogDetailDto dto =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(productionLogService, "toDetailDto", log);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            productionLogService, "toDetailDto", log);
 
     assertThat(dto.id()).isEqualTo(77L);
     assertThat(dto.productFamilyName()).isNull();

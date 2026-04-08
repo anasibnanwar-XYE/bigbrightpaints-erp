@@ -456,11 +456,13 @@ class TS_truthsuite_o2c_Override_RuntimeTest {
     assertThat(normalizedReason).isEqualTo("[CREDIT_LIMIT_EXCEPTION_APPROVED] reviewed by finance");
 
     String malformedCode =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "extractReasonCode", "[] malformed");
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "extractReasonCode", "[] malformed");
     assertThat(malformedCode).isEmpty();
 
     String emptyCode =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "extractReasonCode", new Object[] {null});
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "extractReasonCode", new Object[] {null});
     assertThat(emptyCode).isEmpty();
 
     String strippedReason =
@@ -469,7 +471,8 @@ class TS_truthsuite_o2c_Override_RuntimeTest {
     assertThat(strippedReason).isEmpty();
 
     String legacyReason =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "stripReasonCodePrefix", "legacy reason only");
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "stripReasonCodePrefix", "legacy reason only");
     assertThat(legacyReason).isEqualTo("legacy reason only");
 
     CreditLimitOverrideRequest incompleteMetadata = new CreditLimitOverrideRequest();
@@ -490,7 +493,8 @@ class TS_truthsuite_o2c_Override_RuntimeTest {
     assertThat(normalizedWithoutClosingBracket).contains("[legacy reason");
 
     String unresolvedCode =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "extractReasonCode", "[legacy_reason");
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "extractReasonCode", "[legacy_reason");
     assertThat(unresolvedCode).isEmpty();
 
     CreditLimitOverrideRequest withIncomingDecision = new CreditLimitOverrideRequest();
@@ -505,7 +509,8 @@ class TS_truthsuite_o2c_Override_RuntimeTest {
     assertThat(incomingDecision).isEqualTo("explicit reviewer reason");
 
     String nonBracketPrefix =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "stripReasonCodePrefix", "[legacy_reason");
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "stripReasonCodePrefix", "[legacy_reason");
     assertThat(nonBracketPrefix).isEqualTo("[legacy_reason");
 
     CreditLimitOverrideRequest missingRequestedBy = new CreditLimitOverrideRequest();

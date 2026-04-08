@@ -728,7 +728,8 @@ class AdminUserServiceTest {
     when(dealerRepository.findByCompanyAndCodeIgnoreCase(any(Company.class), anyString()))
         .thenReturn(Optional.empty());
 
-    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "createDealerForUser", user, tenant);
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+        service, "createDealerForUser", user, tenant);
 
     verify(dealerRepository, times(2)).save(any(Dealer.class));
     verify(accountRepository).save(any(Account.class));
@@ -773,7 +774,8 @@ class AdminUserServiceTest {
     UserAccount user = new UserAccount("user@example.com", "TEST", "hash", "User");
     when(roleService.isSystemRole("ROLE_ADMIN")).thenReturn(true);
 
-    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "attachRoles", user, List.of(" ", "admin"));
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+        service, "attachRoles", user, List.of(" ", "admin"));
 
     assertThat(user.getRoles()).extracting(Role::getName).containsExactly("ROLE_ADMIN");
   }
@@ -790,7 +792,8 @@ class AdminUserServiceTest {
     blankEmailUser.setEmail(" ");
     assertThat(
             (Object)
-                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "resolveLastLoginAt", blankEmailUser))
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    service, "resolveLastLoginAt", blankEmailUser))
         .isNull();
   }
 }

@@ -208,18 +208,31 @@ class TS_RuntimeEventPublisherExecutableCoverageTest {
             objectMapper(),
             null);
 
-    assertThat((Long) com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "computeBackoffDelay", -3))
+    assertThat(
+            (Long)
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    service, "computeBackoffDelay", -3))
         .isEqualTo(30L);
-    assertThat((Long) com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "computeBackoffDelay", 0))
+    assertThat(
+            (Long)
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    service, "computeBackoffDelay", 0))
         .isEqualTo(30L);
-    assertThat((Long) com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "computeBackoffDelay", 1))
+    assertThat(
+            (Long)
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    service, "computeBackoffDelay", 1))
         .isEqualTo(60L);
-    assertThat((Long) com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "computeBackoffDelay", 11))
+    assertThat(
+            (Long)
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    service, "computeBackoffDelay", 11))
         .isEqualTo(30720L);
 
     assertThat(
             (String)
-                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "resolveFailureMessage", (Object) null))
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    service, "resolveFailureMessage", (Object) null))
         .isEqualTo("unknown publish failure");
     assertThat(
             (String)

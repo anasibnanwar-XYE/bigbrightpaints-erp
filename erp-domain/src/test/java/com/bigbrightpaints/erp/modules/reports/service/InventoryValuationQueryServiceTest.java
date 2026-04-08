@@ -367,9 +367,16 @@ class InventoryValuationQueryServiceTest {
             null,
             LocalDate.of(2026, 3, 15));
 
-    assertThat((String) com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(context, "canonicalMethod"))
+    assertThat(
+            (String)
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    context, "canonicalMethod"))
         .isEqualTo("FIFO");
-    assertThat((Object) com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(context, "method")).isNull();
+    assertThat(
+            (Object)
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    context, "method"))
+        .isNull();
   }
 
   @Test

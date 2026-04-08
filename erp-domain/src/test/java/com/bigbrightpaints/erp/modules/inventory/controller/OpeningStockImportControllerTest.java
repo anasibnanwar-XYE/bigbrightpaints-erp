@@ -20,7 +20,6 @@ import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
@@ -483,7 +482,8 @@ class OpeningStockImportControllerTest {
   private List<String> blockersForStage(
       OpeningStockImportController controller, SkuReadinessDto readiness, String stage) {
     return (List<String>)
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(controller, "blockersForStage", readiness, stage);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            controller, "blockersForStage", readiness, stage);
   }
 
   private String sanitizeErrorMessage(
@@ -504,19 +504,22 @@ class OpeningStockImportControllerTest {
   private boolean canViewAccountingMetadata(
       OpeningStockImportController controller, Authentication authentication) {
     Boolean result =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(controller, "canViewAccountingMetadata", authentication);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            controller, "canViewAccountingMetadata", authentication);
     return Boolean.TRUE.equals(result);
   }
 
   private ApplicationException sanitizeImportException(
       OpeningStockImportController controller, ApplicationException ex) {
-    return com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(controller, "sanitizeImportException", ex);
+    return com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+        controller, "sanitizeImportException", ex);
   }
 
   private boolean isAccountingSensitiveImportFailure(
       OpeningStockImportController controller, String message) {
     Boolean result =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(controller, "isAccountingSensitiveImportFailure", message);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            controller, "isAccountingSensitiveImportFailure", message);
     return Boolean.TRUE.equals(result);
   }
 }

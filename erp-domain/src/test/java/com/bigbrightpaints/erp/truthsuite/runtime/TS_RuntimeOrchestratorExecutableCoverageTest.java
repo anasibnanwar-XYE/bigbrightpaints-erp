@@ -543,7 +543,9 @@ class TS_RuntimeOrchestratorExecutableCoverageTest {
     assertThat(normalizedFromFallback).isEqualTo("idem-fallback");
 
     String normalizedNull =
-        (String) com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(dispatcher, "normalizeRequestId", null, "   ");
+        (String)
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                dispatcher, "normalizeRequestId", null, "   ");
     assertThat(normalizedNull).isNull();
 
     OrchestratorCommand commandWithIdempotency =
@@ -579,7 +581,8 @@ class TS_RuntimeOrchestratorExecutableCoverageTest {
 
     String canonicalNull =
         (String)
-            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(dispatcher, "canonicalIdempotencyKey", null, null);
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                dispatcher, "canonicalIdempotencyKey", null, null);
     assertThat(canonicalNull).isNull();
   }
 }

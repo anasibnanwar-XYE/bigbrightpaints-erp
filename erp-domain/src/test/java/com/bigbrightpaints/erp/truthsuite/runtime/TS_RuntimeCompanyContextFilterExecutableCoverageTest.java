@@ -26,7 +26,6 @@ import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -298,20 +297,24 @@ class TS_RuntimeCompanyContextFilterExecutableCoverageTest {
 
   private boolean invokeIsLifecycleControlRequest(String path, String method) {
     return (Boolean)
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(filter, "isLifecycleControlRequest", path, method);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            filter, "isLifecycleControlRequest", path, method);
   }
 
   private String invokeResolveApplicationPath(MockHttpServletRequest request) {
-    return com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(filter, "resolveApplicationPath", request);
+    return com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+        filter, "resolveApplicationPath", request);
   }
 
   private boolean invokeIsPublicPasswordResetRequest(String path, String method) {
     return (Boolean)
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(filter, "isPublicPasswordResetRequest", path, method);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            filter, "isPublicPasswordResetRequest", path, method);
   }
 
   private String invokeNormalizePath(String path) {
-    return com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(filter, "normalizePath", path);
+    return com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+        filter, "normalizePath", path);
   }
 
   private boolean invokeIsTenantBusinessRequestBlockedForSuperAdmin(String path) {
@@ -321,7 +324,9 @@ class TS_RuntimeCompanyContextFilterExecutableCoverageTest {
   }
 
   private boolean invokeIsTenantAuditWorkflowRequest(String path) {
-    return (Boolean) com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(filter, "isTenantAuditWorkflowRequest", path);
+    return (Boolean)
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            filter, "isTenantAuditWorkflowRequest", path);
   }
 
   private boolean invokeHasTenantRuntimePolicyControlAuthority(String path, String method) {
@@ -332,11 +337,13 @@ class TS_RuntimeCompanyContextFilterExecutableCoverageTest {
 
   private Long invokeExtractCompanyIdFromControlPlanePath(String path) {
     return (Long)
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(filter, "extractCompanyIdFromControlPlanePath", path);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            filter, "extractCompanyIdFromControlPlanePath", path);
   }
 
   private String invokeSanitizeForLog(String value) {
-    return com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(filter, "sanitizeForLog", value);
+    return com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+        filter, "sanitizeForLog", value);
   }
 
   private void authenticate(String email, Set<String> authorities, Set<String> companyCodes) {

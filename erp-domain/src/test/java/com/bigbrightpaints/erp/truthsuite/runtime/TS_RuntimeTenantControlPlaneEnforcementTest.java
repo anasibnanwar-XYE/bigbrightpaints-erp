@@ -290,18 +290,22 @@ class TS_RuntimeTenantControlPlaneEnforcementTest {
             1);
 
     Object cachedPolicy =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(shortCacheService, "resolvePolicy", "acme", 1L);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            shortCacheService, "resolvePolicy", "acme", 1L);
     assertThat(cachedPolicy).isNotNull();
     Object cacheHitPolicy =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(shortCacheService, "resolvePolicy", "acme", 1L);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            shortCacheService, "resolvePolicy", "acme", 1L);
     assertThat(cacheHitPolicy).isNotNull();
 
     Thread.sleep(1100L);
     Object expiredCachePolicy =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(shortCacheService, "resolvePolicy", "acme", 1L);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            shortCacheService, "resolvePolicy", "acme", 1L);
     assertThat(expiredCachePolicy).isNotNull();
     Object nullCompanyPolicy =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(shortCacheService, "resolvePolicy", "acme", null);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            shortCacheService, "resolvePolicy", "acme", null);
     assertThat(nullCompanyPolicy).isNotNull();
   }
 
@@ -345,7 +349,8 @@ class TS_RuntimeTenantControlPlaneEnforcementTest {
     assertThat(stillDeniedFromCache.allowed()).isFalse();
     assertThat(stillDeniedFromCache.reasonCode()).isEqualTo("TENANT_ON_HOLD");
 
-    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(coreRuntimeService, "evictPolicyCache", "ACME");
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+        coreRuntimeService, "evictPolicyCache", "ACME");
     com.bigbrightpaints.erp.core.security.TenantRuntimeAccessService.AccessHandle
         allowedAfterEviction =
             coreRuntimeService.acquire(
@@ -353,8 +358,10 @@ class TS_RuntimeTenantControlPlaneEnforcementTest {
     assertThat(allowedAfterEviction.allowed()).isTrue();
     allowedAfterEviction.close();
 
-    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(coreRuntimeService, "evictPolicyCache", "UNKNOWN");
-    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(coreRuntimeService, "evictPolicyCache", "   ");
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+        coreRuntimeService, "evictPolicyCache", "UNKNOWN");
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+        coreRuntimeService, "evictPolicyCache", "   ");
   }
 
   @Test
@@ -388,7 +395,8 @@ class TS_RuntimeTenantControlPlaneEnforcementTest {
 
     persistedSettingsByKey.put(keyHoldState(1L), "");
     persistedSettingsByKey.put(legacyKey("acme", "state"), "HOLD");
-    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(coreRuntimeService, "evictPolicyCache", "ACME");
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+        coreRuntimeService, "evictPolicyCache", "ACME");
     com.bigbrightpaints.erp.core.security.TenantRuntimeAccessService.AccessHandle hold =
         coreRuntimeService.acquire("ACME", new MockHttpServletRequest("POST", "/api/v1/private"));
     assertThat(hold.allowed()).isFalse();
@@ -438,7 +446,8 @@ class TS_RuntimeTenantControlPlaneEnforcementTest {
     Map<String, Object> runtimeMetrics =
         (Map<String, Object>) ReflectionTestUtils.getField(coreRuntimeService, "runtimeMetrics");
     Object legacyMetrics =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(coreRuntimeService, "createMetrics", "ACME");
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            coreRuntimeService, "createMetrics", "ACME");
     runtimeMetrics.put("acme", legacyMetrics);
 
     Optional<
@@ -457,7 +466,9 @@ class TS_RuntimeTenantControlPlaneEnforcementTest {
     @SuppressWarnings("unchecked")
     Map<String, Object> runtimeMetrics =
         (Map<String, Object>) ReflectionTestUtils.getField(coreRuntimeService, "runtimeMetrics");
-    Object metrics = com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(coreRuntimeService, "createMetrics", "ACME");
+    Object metrics =
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            coreRuntimeService, "createMetrics", "ACME");
     runtimeMetrics.put("201:acme", metrics);
 
     Map<
@@ -506,9 +517,11 @@ class TS_RuntimeTenantControlPlaneEnforcementTest {
         coreRuntimeService();
 
     String normalizedNull =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(coreRuntimeService, "normalizeTenantToken", (Object) null);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            coreRuntimeService, "normalizeTenantToken", (Object) null);
     String normalizedBlank =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(coreRuntimeService, "normalizeTenantToken", "   ");
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            coreRuntimeService, "normalizeTenantToken", "   ");
 
     assertThat(normalizedNull).isEqualTo("unknown");
     assertThat(normalizedBlank).isEqualTo("unknown");
@@ -590,7 +603,9 @@ class TS_RuntimeTenantControlPlaneEnforcementTest {
             0,
             30);
 
-    Object metrics = com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(meteredService, "createMetrics", "   ");
+    Object metrics =
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            meteredService, "createMetrics", "   ");
     assertThat(metrics).isNotNull();
     assertThat(
             meterRegistry.find("tenant.runtime.requests.active").tag("tenant", "UNKNOWN").gauge())

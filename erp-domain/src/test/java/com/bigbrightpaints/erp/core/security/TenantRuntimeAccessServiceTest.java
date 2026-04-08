@@ -468,8 +468,11 @@ class TenantRuntimeAccessServiceTest {
   @Test
   void normalizeTenantToken_returnsUnknown_forNullOrBlank() {
     String tokenForNull =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "normalizeTenantToken", (Object) null);
-    String tokenForBlank = com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "normalizeTenantToken", "   ");
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "normalizeTenantToken", (Object) null);
+    String tokenForBlank =
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "normalizeTenantToken", "   ");
 
     assertThat(tokenForNull).isEqualTo("unknown");
     assertThat(tokenForBlank).isEqualTo("unknown");
@@ -477,9 +480,15 @@ class TenantRuntimeAccessServiceTest {
 
   @Test
   void isMutating_treatsHeadAndOptionsAsNonMutating_andBlankAsMutating() {
-    Boolean head = com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "isMutating", "HEAD");
-    Boolean options = com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "isMutating", "OPTIONS");
-    Boolean blank = com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "isMutating", "   ");
+    Boolean head =
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "isMutating", "HEAD");
+    Boolean options =
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "isMutating", "OPTIONS");
+    Boolean blank =
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "isMutating", "   ");
 
     assertThat(head).isFalse();
     assertThat(options).isFalse();

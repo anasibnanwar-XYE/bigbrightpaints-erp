@@ -27,7 +27,6 @@ import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -477,7 +476,8 @@ class CompanyContextFilterControlPlaneBindingTest {
 
   private Long extractCompanyId(String path) {
     return (Long)
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(filter, "extractCompanyIdFromControlPlanePath", path);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            filter, "extractCompanyIdFromControlPlanePath", path);
   }
 
   private boolean isTenantBusinessRequestBlockedForSuperAdmin(String path) {

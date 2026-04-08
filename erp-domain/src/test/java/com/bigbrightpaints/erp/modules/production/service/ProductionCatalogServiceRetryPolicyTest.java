@@ -270,7 +270,8 @@ class ProductionCatalogServiceRetryPolicyTest {
             brandsByName, productsBySku, productsByBrandName, new HashMap<Long, Long>());
     Object importRow = newImportRow(1L, null, "branda", "shared product");
 
-    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "evictRowCache", company, importRow, context);
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+        service, "evictRowCache", company, importRow, context);
 
     assertThat(productsByBrandName.values())
         .extracting(product -> product.getId())
@@ -318,7 +319,8 @@ class ProductionCatalogServiceRetryPolicyTest {
             brandsByName, productsBySku, productsByBrandName, new HashMap<Long, Long>());
     Object importRow = newImportRow(1L, null, "branda", "shared product");
 
-    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "evictRowCache", company, importRow, context);
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+        service, "evictRowCache", company, importRow, context);
 
     assertThat(productsByBrandName.values())
         .extracting(product -> product.getId())
@@ -366,7 +368,8 @@ class ProductionCatalogServiceRetryPolicyTest {
             brandsByName, productsBySku, productsByBrandName, new HashMap<Long, Long>());
     Object importRow = newImportRow(1L, null, "branda", "shared product");
 
-    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "evictRowCache", company, importRow, context);
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+        service, "evictRowCache", company, importRow, context);
 
     assertThat(productsByBrandName.values())
         .extracting(product -> product.getId())
@@ -421,13 +424,15 @@ class ProductionCatalogServiceRetryPolicyTest {
             brandsByName, productsBySku, productsByBrandName, new HashMap<Long, Long>());
     Object importRow = newImportRow(1L, null, "branda", "shared product");
 
-    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "evictRowCache", company, importRow, context);
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+        service, "evictRowCache", company, importRow, context);
     assertThat(productsByBrandName.values())
         .extracting(product -> product.getId())
         .containsExactly(202L);
 
     productsByBrandName.put(newProductKey(brandA.getId(), "shared product"), replayedBrandA);
-    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "evictRowCache", company, importRow, context);
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+        service, "evictRowCache", company, importRow, context);
 
     assertThat(productsByBrandName.values())
         .extracting(product -> product.getId())
@@ -464,7 +469,8 @@ class ProductionCatalogServiceRetryPolicyTest {
         .thenReturn(Optional.of(material));
 
     Object outcome =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "upsertProduct", company, importRow, context);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "upsertProduct", company, importRow, context);
 
     assertThat(outcome).isNotNull();
     verifyNoInteractions(finishedGoodRepository);
@@ -504,7 +510,8 @@ class ProductionCatalogServiceRetryPolicyTest {
         .thenReturn(Optional.of(staleFinishedGood));
 
     Object outcome =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "upsertProduct", company, importRow, context);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "upsertProduct", company, importRow, context);
 
     assertThat(outcome).isNotNull();
     verify(finishedGoodRepository).delete(staleFinishedGood);
@@ -545,7 +552,8 @@ class ProductionCatalogServiceRetryPolicyTest {
         .thenReturn(Optional.of(staleFinishedGood));
 
     Object outcome =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "upsertProduct", company, importRow, context);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "upsertProduct", company, importRow, context);
 
     assertThat(outcome).isNotNull();
     verify(finishedGoodRepository).delete(staleFinishedGood);
@@ -553,7 +561,8 @@ class ProductionCatalogServiceRetryPolicyTest {
 
   private boolean invokeIsRetryableImportFailure(Throwable error) {
     Boolean retryable =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "isRetryableImportFailure", error);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "isRetryableImportFailure", error);
     return Boolean.TRUE.equals(retryable);
   }
 

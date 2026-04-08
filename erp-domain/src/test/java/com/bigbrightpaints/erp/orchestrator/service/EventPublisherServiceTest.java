@@ -486,7 +486,8 @@ class EventPublisherServiceTest {
     OutboxEvent pendingEntity = pendingEvent(eventId);
     when(outboxEventRepository.findByIdForUpdate(eventId)).thenReturn(Optional.of(pendingEntity));
 
-    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "markPublished", eventId, pendingEntity.getVersion());
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+        service, "markPublished", eventId, pendingEntity.getVersion());
 
     verify(outboxEventRepository, never()).saveAndFlush(any(OutboxEvent.class));
     assertThat(pendingEntity.getStatus()).isEqualTo(OutboxEvent.Status.PENDING);
@@ -577,7 +578,8 @@ class EventPublisherServiceTest {
         com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             service, "staleLeaseMarkerForReconciliation", finalizeFailure);
     String staleLeaseMarker =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "staleLeaseMarkerForReconciliation", staleLease);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "staleLeaseMarkerForReconciliation", staleLease);
 
     assertThat(finalizeMarker).isEqualTo("FINALIZE_FAILURE:broker-ack-lost");
     assertThat(staleLeaseMarker).isEqualTo("STALE_LEASE_UNCERTAIN:7");
@@ -617,7 +619,8 @@ class EventPublisherServiceTest {
     EventPublisherService service = service();
 
     Duration parsedDuration =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "parseDuration", " ", "PT7M");
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "parseDuration", " ", "PT7M");
 
     assertThat(parsedDuration).isEqualTo(Duration.parse("PT7M"));
   }
@@ -627,7 +630,8 @@ class EventPublisherServiceTest {
     EventPublisherService service = service();
 
     Duration parsedDuration =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "parseDuration", (Object) null, "PT9M");
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "parseDuration", (Object) null, "PT9M");
 
     assertThat(parsedDuration).isEqualTo(Duration.parse("PT9M"));
   }
@@ -644,11 +648,14 @@ class EventPublisherServiceTest {
         futureAttemptPending, "nextAttemptAt", Instant.now().plusSeconds(60));
 
     Boolean deadLetterPublishable =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "isPublishable", deadLetterPending);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "isPublishable", deadLetterPending);
     Boolean nullNextAttemptPublishable =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "isPublishable", nullNextAttemptPending);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "isPublishable", nullNextAttemptPending);
     Boolean futureAttemptPublishable =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "isPublishable", futureAttemptPending);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "isPublishable", futureAttemptPending);
 
     assertThat(deadLetterPublishable).isFalse();
     assertThat(nullNextAttemptPublishable).isTrue();
@@ -722,7 +729,8 @@ class EventPublisherServiceTest {
     ReflectionTestUtils.setField(event, "nextAttemptAt", null);
 
     Boolean leaseDue =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "isLeaseDue", event, Instant.now());
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "isLeaseDue", event, Instant.now());
 
     assertThat(leaseDue).isTrue();
   }
@@ -734,7 +742,8 @@ class EventPublisherServiceTest {
     ReflectionTestUtils.setField(event, "lastError", "NON_RECONCILIATION_MARKER");
 
     Boolean ambiguous =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "isAmbiguousPublishingState", event);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "isAmbiguousPublishingState", event);
 
     assertThat(ambiguous).isFalse();
   }
@@ -743,8 +752,12 @@ class EventPublisherServiceTest {
   void computeBackoffDelay_usesIntegerDoublingAndCapsExponent() {
     EventPublisherService service = service();
 
-    Long firstRetryDelay = com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "computeBackoffDelay", 0);
-    Long cappedDelay = com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "computeBackoffDelay", 20);
+    Long firstRetryDelay =
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "computeBackoffDelay", 0);
+    Long cappedDelay =
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "computeBackoffDelay", 20);
 
     assertThat(firstRetryDelay).isEqualTo(30L);
     assertThat(cappedDelay).isEqualTo(30L * 1024L);

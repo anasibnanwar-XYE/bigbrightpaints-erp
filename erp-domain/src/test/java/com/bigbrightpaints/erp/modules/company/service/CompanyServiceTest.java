@@ -1261,7 +1261,9 @@ class CompanyServiceTest {
   @Test
   void normalizeStateCode_rejectsNonTwoCharacterValues() {
     assertThatThrownBy(
-            () -> com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(companyService, "normalizeStateCode", "ABC"))
+            () ->
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    companyService, "normalizeStateCode", "ABC"))
         .hasMessageContaining("State code must be exactly 2 characters");
   }
 

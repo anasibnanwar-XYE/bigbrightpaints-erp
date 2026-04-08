@@ -26,7 +26,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import com.bigbrightpaints.erp.core.audit.AuditEvent;
 import com.bigbrightpaints.erp.core.audit.AuditService;
@@ -458,7 +457,9 @@ class AuthServiceAuditAttributionTest {
   @Test
   void normalizeEmail_returnsNullForNullInput() {
     assertThat(
-            (String) com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(authService, "normalizeEmail", (Object) null))
+            (String)
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    authService, "normalizeEmail", (Object) null))
         .isNull();
   }
 

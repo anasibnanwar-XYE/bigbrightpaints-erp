@@ -174,7 +174,8 @@ class MockDataInitializerTest {
         .thenAnswer(invocation -> invocation.getArgument(0, Company.class));
 
     Company company =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(initializer, "createCompany", companyRepository);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            initializer, "createCompany", companyRepository);
 
     assertThat(company.getCode()).isEqualTo("MOCK");
     assertThat(company.getStateCode()).isEqualTo("MH");
@@ -188,7 +189,8 @@ class MockDataInitializerTest {
         .thenAnswer(invocation -> invocation.getArgument(0, Company.class));
 
     Company company =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(initializer, "createCompany", companyRepository);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            initializer, "createCompany", companyRepository);
 
     assertThat(company.getStateCode()).isEqualTo("MH");
   }

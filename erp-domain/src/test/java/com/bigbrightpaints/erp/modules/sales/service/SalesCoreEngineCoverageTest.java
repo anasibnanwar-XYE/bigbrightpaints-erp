@@ -754,15 +754,30 @@ class SalesCoreEngineCoverageTest {
         method.invoke(
             engine, new BigDecimal("100"), new BigDecimal("10"), new BigDecimal("18"), false);
 
-    assertThat((BigDecimal) com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(inclusive, "net"))
+    assertThat(
+            (BigDecimal)
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    inclusive, "net"))
         .isEqualTo(new BigDecimal("100.00"));
-    assertThat((BigDecimal) com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(inclusive, "tax"))
+    assertThat(
+            (BigDecimal)
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    inclusive, "tax"))
         .isEqualTo(new BigDecimal("18.00"));
-    assertThat((BigDecimal) com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(exclusive, "net"))
+    assertThat(
+            (BigDecimal)
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    exclusive, "net"))
         .isEqualTo(new BigDecimal("90.00"));
-    assertThat((BigDecimal) com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(exclusive, "tax"))
+    assertThat(
+            (BigDecimal)
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    exclusive, "tax"))
         .isEqualTo(new BigDecimal("16.20"));
-    assertThat((BigDecimal) com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(exclusive, "total"))
+    assertThat(
+            (BigDecimal)
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    exclusive, "total"))
         .isEqualTo(new BigDecimal("106.20"));
   }
 

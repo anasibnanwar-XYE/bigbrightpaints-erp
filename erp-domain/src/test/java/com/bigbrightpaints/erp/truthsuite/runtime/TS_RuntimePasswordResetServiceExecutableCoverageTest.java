@@ -106,14 +106,20 @@ class TS_RuntimePasswordResetServiceExecutableCoverageTest {
             mock(PasswordResetTokenRepository.class),
             mock(EmailService.class));
 
-    assertThat((String) com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "firstNonBlank", (Object) null))
+    assertThat(
+            (String)
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    service, "firstNonBlank", (Object) null))
         .isNull();
     assertThat(
             (String)
-                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "firstNonBlank", (Object) new String[0]))
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    service, "firstNonBlank", (Object) new String[0]))
         .isNull();
     assertThat(
-            (String) com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "sanitizeCorrelationId", "\u0000"))
+            (String)
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    service, "sanitizeCorrelationId", "\u0000"))
         .isNull();
     assertThat(
             (String)
@@ -132,9 +138,13 @@ class TS_RuntimePasswordResetServiceExecutableCoverageTest {
         .isEqualTo("corr__segment_value");
     assertThat(
             (String)
-                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "sanitizeForPlainTextLog", (Object) null))
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    service, "sanitizeForPlainTextLog", (Object) null))
         .isEqualTo("<empty>");
-    assertThat((String) com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "obfuscateEmail", (Object) null))
+    assertThat(
+            (String)
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    service, "obfuscateEmail", (Object) null))
         .isEqualTo("<empty>");
   }
 

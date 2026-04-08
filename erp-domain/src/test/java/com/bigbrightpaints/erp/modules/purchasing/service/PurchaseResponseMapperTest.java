@@ -393,12 +393,16 @@ class PurchaseResponseMapperTest {
     GoodsReceipt receipt = new GoodsReceipt();
     ReflectionTestUtils.setField(receipt, "id", 910L);
 
-    assertThat((Object) com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(mapper, "resolveLinkedPurchase", receipt))
+    assertThat(
+            (Object)
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    mapper, "resolveLinkedPurchase", receipt))
         .isNull();
 
     @SuppressWarnings("unchecked")
     Map<Long, RawMaterialPurchase> emptyLookup =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(mapper, "resolveLinkedPurchases", List.of(receipt));
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            mapper, "resolveLinkedPurchases", List.of(receipt));
     assertThat(emptyLookup).isEmpty();
 
     PurchaseResponseMapper noSettlementMapper = new PurchaseResponseMapper(purchaseRepository);
@@ -421,7 +425,8 @@ class PurchaseResponseMapperTest {
     ReflectionTestUtils.setField(noCompanyReceipt, "id", 925L);
     assertThat(
             (Object)
-                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(mapper, "resolveLinkedPurchase", noCompanyReceipt))
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    mapper, "resolveLinkedPurchase", noCompanyReceipt))
         .isNull();
 
     PurchaseResponseMapper noRepoMapper = new PurchaseResponseMapper();
@@ -432,7 +437,8 @@ class PurchaseResponseMapperTest {
     assertThat(noRepoLookup).isEmpty();
     @SuppressWarnings("unchecked")
     Map<Long, RawMaterialPurchase> nullInputLookup =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(mapper, "resolveLinkedPurchases", new Object[] {null});
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            mapper, "resolveLinkedPurchases", new Object[] {null});
     assertThat(nullInputLookup).isEmpty();
   }
 
@@ -447,13 +453,17 @@ class PurchaseResponseMapperTest {
     when(purchaseRepository.findByCompanyAndGoodsReceipt(company, receipt))
         .thenReturn(Optional.of(purchase));
 
-    assertThat((Object) com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(mapper, "resolveLinkedPurchase", receipt))
+    assertThat(
+            (Object)
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    mapper, "resolveLinkedPurchase", receipt))
         .isSameAs(purchase);
 
     GoodsReceipt noIdReceipt = goodsReceipt(null, "GRN-NO-ID");
     @SuppressWarnings("unchecked")
     Map<Long, RawMaterialPurchase> emptyLookup =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(mapper, "resolveLinkedPurchases", List.of(noIdReceipt));
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            mapper, "resolveLinkedPurchases", List.of(noIdReceipt));
     assertThat(emptyLookup).isEmpty();
   }
 
@@ -478,7 +488,8 @@ class PurchaseResponseMapperTest {
 
     @SuppressWarnings("unchecked")
     Map<Long, RawMaterialPurchase> linkedPurchases =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(mapper, "resolveLinkedPurchases", List.of(receipt));
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            mapper, "resolveLinkedPurchases", List.of(receipt));
     assertThat(linkedPurchases).containsEntry(944L, firstPurchase);
 
     RawMaterialPurchase companyTwoPurchase = new RawMaterialPurchase();

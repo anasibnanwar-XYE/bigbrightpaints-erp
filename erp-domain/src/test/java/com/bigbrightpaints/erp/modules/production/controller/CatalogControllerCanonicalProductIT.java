@@ -25,7 +25,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 
@@ -404,17 +403,28 @@ class CatalogControllerCanonicalProductIT extends AbstractIntegrationTest {
 
     assertThat(
             (Boolean)
-                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(controller, "canViewStock", new Object[] {null}))
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    controller, "canViewStock", new Object[] {null}))
         .isFalse();
     assertThat(
             (Boolean)
-                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(controller, "canViewStock", authoritiesMissing))
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    controller, "canViewStock", authoritiesMissing))
         .isFalse();
-    assertThat((Boolean) com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(controller, "canViewStock", admin))
+    assertThat(
+            (Boolean)
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    controller, "canViewStock", admin))
         .isTrue();
-    assertThat((Boolean) com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(controller, "canViewStock", accounting))
+    assertThat(
+            (Boolean)
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    controller, "canViewStock", accounting))
         .isTrue();
-    assertThat((Boolean) com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(controller, "canViewStock", sales))
+    assertThat(
+            (Boolean)
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    controller, "canViewStock", sales))
         .isFalse();
   }
 

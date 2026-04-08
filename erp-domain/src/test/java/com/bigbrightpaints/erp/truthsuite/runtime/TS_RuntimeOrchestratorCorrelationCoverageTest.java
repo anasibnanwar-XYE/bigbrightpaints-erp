@@ -230,7 +230,8 @@ class TS_RuntimeOrchestratorCorrelationCoverageTest {
         com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             coordinator, "correlationSuffix", " trace-201 ", " idem-201 ");
     String suffixWithoutCorrelation =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(coordinator, "correlationSuffix", null, "   ");
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            coordinator, "correlationSuffix", null, "   ");
 
     assertThat(memoWithCorrelation).contains("[trace=trace-200]").contains("[idem=idem-200]");
     assertThat(memoWithoutCorrelation).isEqualTo("dispatch memo");
@@ -246,8 +247,10 @@ class TS_RuntimeOrchestratorCorrelationCoverageTest {
 
     com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         coordinator, "attachOrderTrace", (Long) null, "trace-null-order");
-    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(coordinator, "attachOrderTrace", 77L, "   ");
-    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(coordinator, "attachOrderTrace", 78L, " trace-78 ");
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+        coordinator, "attachOrderTrace", 77L, "   ");
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+        coordinator, "attachOrderTrace", 78L, " trace-78 ");
 
     verify(salesService, never()).attachTraceId(eq(77L), any());
     verify(salesService).attachTraceId(78L, "trace-78");

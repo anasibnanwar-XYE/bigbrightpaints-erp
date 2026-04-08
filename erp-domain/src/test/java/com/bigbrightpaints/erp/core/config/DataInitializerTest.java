@@ -235,7 +235,8 @@ class DataInitializerTest {
   void ensureCompanyMembership_handlesNullsAndAvoidsDuplicateMemberships() {
     Company targetCompany = company("BBP");
 
-    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(initializer, "ensureCompanyMembership", null, targetCompany);
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+        initializer, "ensureCompanyMembership", null, targetCompany);
     com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         initializer, "ensureCompanyMembership", new UserAccount("u@x.com", "hash", "User"), null);
 
@@ -260,13 +261,15 @@ class DataInitializerTest {
   void ensureRoleMembership_handlesNullsAndAvoidsDuplicateRoleNames() {
     Role adminRole = role("ROLE_ADMIN");
 
-    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(initializer, "ensureRoleMembership", null, adminRole);
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+        initializer, "ensureRoleMembership", null, adminRole);
     com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         initializer, "ensureRoleMembership", new UserAccount("u@x.com", "hash", "User"), null);
 
     UserAccount user = new UserAccount("seed@x.com", "hash", "Seed");
     user.addRole(role("role_admin"));
-    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(initializer, "ensureRoleMembership", user, adminRole);
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+        initializer, "ensureRoleMembership", user, adminRole);
 
     assertThat(
             user.getRoles().stream()

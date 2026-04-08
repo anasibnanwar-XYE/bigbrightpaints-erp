@@ -571,7 +571,8 @@ class DealerServiceTest {
         .thenReturn(null);
     BigDecimal nullRepositoryExposure =
         (BigDecimal)
-            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(dealerService, "resolvePendingOrderExposure", dealer);
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                dealerService, "resolvePendingOrderExposure", dealer);
 
     assertThat(missingDealer).isEqualByComparingTo(BigDecimal.ZERO);
     assertThat(missingContext).isEqualByComparingTo(BigDecimal.ZERO);
@@ -784,7 +785,8 @@ class DealerServiceTest {
   void safeReturnsProvidedValueWhenPresent() {
     BigDecimal value =
         (BigDecimal)
-            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(dealerService, "safe", new BigDecimal("25.00"));
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                dealerService, "safe", new BigDecimal("25.00"));
 
     assertThat(value).isEqualByComparingTo("25.00");
   }
