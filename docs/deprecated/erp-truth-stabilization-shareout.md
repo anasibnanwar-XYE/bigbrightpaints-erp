@@ -1,5 +1,7 @@
 # ERP Truth Stabilization Shareout
 
+> ⚠️ **RETIRED / REFERENCE ONLY**: This packet shareout is archived historical evidence. For current canonical backend truth, use [docs/INDEX.md](../INDEX.md), [docs/ARCHITECTURE.md](../ARCHITECTURE.md), [docs/flows/FLOW-INVENTORY.md](../flows/FLOW-INVENTORY.md), and [docs/modules/MODULE-INVENTORY.md](../modules/MODULE-INVENTORY.md).
+
 ## Purpose
 
 This is the single engineer-facing handoff for the ERP truth-stabilization packet that landed on `Factory-droid` and then `main`. It summarizes what shipped relative to the approved O2C/P2P definition-of-done scope, what accounting/control and portal-boundary work shipped with it, what cleanup/removal work landed in touched areas, and what validation evidence proved the delivered packet is stable.
@@ -159,7 +161,7 @@ The curated final-hardening suite specifically covered O2C fulfillment, sales re
 
 ## Delivered Artifacts Worth Sharing
 
-- `docs/runbooks/erp-truth-stabilization-shareout.md` — this document
+- `docs/deprecated/erp-truth-stabilization-shareout.md` — this archived document
 - `.factory/library/erp-definition-of-done.md` — approved scope baseline
 - `.factory/library/remediation-log.md` — cleanup/remediation record
 - `.factory/library/frontend-v2.md` — concise backend-facing frontend contract snapshot
