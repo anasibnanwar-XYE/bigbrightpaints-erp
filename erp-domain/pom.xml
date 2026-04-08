@@ -22,6 +22,7 @@
         <testcontainers.version>1.20.2</testcontainers.version>
         <skipTests>false</skipTests>
         <jacoco.skip>false</jacoco.skip>
+        <jacoco.check.skip>false</jacoco.check.skip>
         <test.groups></test.groups>
         <test.excludedGroups></test.excludedGroups>
         <test.failIfNoTests>true</test.failIfNoTests>
@@ -339,6 +340,7 @@
                             <goal>check</goal>
                         </goals>
                         <configuration>
+                            <skip>${jacoco.check.skip}</skip>
                             <rules>
                                 <rule>
                                     <element>PACKAGE</element>
@@ -656,6 +658,7 @@
                 <test.groups>critical</test.groups>
                 <test.excludedGroups>flaky</test.excludedGroups>
                 <test.failIfNoTests>true</test.failIfNoTests>
+                <jacoco.check.skip>true</jacoco.check.skip>
             </properties>
             <build>
                 <plugins>
