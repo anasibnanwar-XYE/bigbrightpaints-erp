@@ -30,6 +30,35 @@ merge_jacoco_xml = load_module("merge_jacoco_xml", MERGE_JACOCO_PATH)
 
 
 class CiRiskRouterTest(unittest.TestCase):
+    def test_changed_coverage_baseline_compacts_diff_scope_when_between_base_and_head(self):
+        ancestry_pairs = {
+            ("base", "baseline"),
+            ("baseline", "head"),
+        }
+        effective_base, applied = ci_risk_router.select_effective_diff_base(
+            "base",
+            "head",
+            "baseline",
+            lambda ancestor, descendant: (ancestor, descendant) in ancestry_pairs,
+        )
+
+        self.assertEqual("baseline", effective_base)
+        self.assertTrue(applied)
+
+    def test_changed_coverage_baseline_not_applied_when_not_descendant_of_requested_base(self):
+        ancestry_pairs = {
+            ("baseline", "head"),
+        }
+        effective_base, applied = ci_risk_router.select_effective_diff_base(
+            "base",
+            "head",
+            "baseline",
+            lambda ancestor, descendant: (ancestor, descendant) in ancestry_pairs,
+        )
+
+        self.assertEqual("base", effective_base)
+        self.assertFalse(applied)
+
     def test_pr_fast_profile_remains_defined_for_pr_callers(self):
         pom_text = (REPO_ROOT / "erp-domain" / "pom.xml").read_text(encoding="utf-8")
 
@@ -326,6 +355,12 @@ class MergeJacocoXmlTest(unittest.TestCase):
 
 
 class RuntimeProbeContractTest(unittest.TestCase):
+    def test_pr_changed_coverage_uses_router_effective_diff_base_output(self):
+        ci_workflow = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+
+        self.assertIn("effective_diff_base: ${{ steps.route.outputs.effective_diff_base }}", ci_workflow)
+        self.assertIn("DIFF_BASE: ${{ needs.pr-risk-router.outputs.effective_diff_base }}", ci_workflow)
+
     def test_pr_ci_parity_skip_summary_matches_ci_contract(self):
         summary = pr_ci_parity.create_changed_coverage_skip_summary(
             diff_base="abc123",

@@ -284,13 +284,22 @@ def main() -> int:
     ensure_dir(artifacts_dir / "pr-jacoco")
 
     try:
-        base_sha = resolve_commit(args.base)
-        head_sha = resolve_commit(args.head)
-    except subprocess.CalledProcessError as exc:
+        coverage_baseline_ref = os.environ.get(
+            "PR_CHANGED_COVERAGE_BASELINE_SHA",
+            getattr(ci_risk_router, "DEFAULT_CHANGED_COVERAGE_BASELINE_SHA", ""),
+        )
+        (
+            changed_files,
+            base_sha,
+            head_sha,
+            effective_diff_base,
+            coverage_baseline_sha,
+            coverage_baseline_applied,
+        ) = ci_risk_router.resolve_changed_files(args.base, args.head, coverage_baseline_ref)
+    except (subprocess.CalledProcessError, AttributeError) as exc:
         print(f"[pr-ci-parity] FAIL: unable to resolve base/head refs: {exc}", file=sys.stderr)
         return 2
 
-    changed_files = [line for line in run_git("diff", "--name-only", f"{base_sha}...{head_sha}").splitlines() if line]
     router_flags = ci_risk_router.compute_flags(changed_files)
     routed_plan = build_routed_job_plan(router_flags)
     act_available = shutil.which("act") is not None
@@ -298,6 +307,9 @@ def main() -> int:
     router_summary = {
         "base": base_sha,
         "head": head_sha,
+        "effective_diff_base": effective_diff_base,
+        "coverage_baseline_sha": coverage_baseline_sha or None,
+        "coverage_baseline_applied": coverage_baseline_applied,
         "changed_files": changed_files,
         "router_flags": router_flags,
         "routed_plan": routed_plan,
@@ -389,7 +401,7 @@ def main() -> int:
         )
     elif router_flags["run_changed_coverage"] != "true":
         summary = create_changed_coverage_skip_summary(
-            diff_base=base_sha,
+            diff_base=effective_diff_base,
             changed_files_count=int(router_flags["changed_files_count"]),
             changed_runtime_source_count=int(router_flags["changed_runtime_source_count"]),
         )
@@ -419,7 +431,7 @@ def main() -> int:
             coverage_command.extend(
                 [
                     "--diff-base",
-                    base_sha,
+                    effective_diff_base,
                     "--src-root",
                     "erp-domain/src/main/java",
                     "--threshold-line",
@@ -445,6 +457,7 @@ def main() -> int:
     merge_gate_summary = {
         "base": base_sha,
         "head": head_sha,
+        "effective_diff_base": effective_diff_base,
         "blocking": blocking,
         "needs": {name: results[name].result for name in MERGE_GATE_NEEDS},
         "passes": not blocking,
@@ -473,6 +486,9 @@ def main() -> int:
     final_summary = {
         "base": base_sha,
         "head": head_sha,
+        "effective_diff_base": effective_diff_base,
+        "coverage_baseline_sha": coverage_baseline_sha or None,
+        "coverage_baseline_applied": coverage_baseline_applied,
         "act_available": act_available,
         "router_flags": router_flags,
         "routed_plan": routed_plan,
