@@ -399,6 +399,182 @@ class BankReconciliationSessionPersistenceIT extends AbstractIntegrationTest {
     assertThat(persistedItems.getFirst().getBankItemId()).isEqualTo(88002L);
   }
 
+  @Test
+  void updateItems_allowsMovingBankItemAssignmentBetweenPersistedItemsInSingleRequest() {
+    Company company = useCompany("BRS-MOVE-PERSISTED-ROWS");
+    Account bankAccount = requireAccount(company, "CASH");
+    Account revenueAccount = requireAccount(company, "REV");
+    Account cogsAccount = requireAccount(company, "COGS");
+    LocalDate statementDate = currentStatementDate();
+
+    BankReconciliationSessionSummaryDto started =
+        sessionService.startSession(
+            new BankReconciliationSessionCreateRequest(
+                bankAccount.getId(),
+                statementDate,
+                new BigDecimal("1000.00"),
+                null,
+                null,
+                null,
+                "move bank-item between persisted rows"));
+    Long sessionId = started.sessionId();
+
+    JournalEntryDto firstEntry =
+        createJournal(
+            bankAccount.getId(),
+            revenueAccount.getId(),
+            statementDate,
+            "Persisted move source line",
+            new BigDecimal("120.00"),
+            BigDecimal.ZERO);
+    JournalEntryDto secondEntry =
+        createJournal(
+            bankAccount.getId(),
+            cogsAccount.getId(),
+            statementDate,
+            "Persisted move target line",
+            BigDecimal.ZERO,
+            new BigDecimal("30.00"));
+
+    List<JournalLine> bankLines =
+        journalLineRepository.findPostedLinesForAccountByJournalEntryIds(
+            company, Set.of(firstEntry.id(), secondEntry.id()), bankAccount.getId());
+    assertThat(bankLines).hasSize(2);
+    Long sourceLineId = bankLines.get(0).getId();
+    Long targetLineId = bankLines.get(1).getId();
+
+    sessionService.updateItems(
+        sessionId,
+        new BankReconciliationSessionItemsUpdateRequest(
+            List.of(sourceLineId, targetLineId),
+            List.of(),
+            "persist both rows",
+            List.of(
+                new BankReconciliationSessionItemsUpdateRequest.BankStatementMatchRequest(
+                    88101L, null, sourceLineId))));
+
+    sessionService.updateItems(
+        sessionId,
+        new BankReconciliationSessionItemsUpdateRequest(
+            List.of(sourceLineId, targetLineId),
+            List.of(),
+            "move assignment between persisted rows",
+            List.of(
+                new BankReconciliationSessionItemsUpdateRequest.BankStatementMatchRequest(
+                    null, null, sourceLineId),
+                new BankReconciliationSessionItemsUpdateRequest.BankStatementMatchRequest(
+                    88101L, null, targetLineId))));
+
+    BankReconciliationSession session =
+        sessionRepository.findByCompanyAndId(company, sessionId).orElseThrow();
+    List<BankReconciliationItem> persistedItems =
+        itemRepository.findBySessionAndJournalLineIdIn(session, Set.of(sourceLineId, targetLineId));
+    assertThat(persistedItems).hasSize(2);
+    assertThat(
+            persistedItems.stream()
+                .filter(item -> item.getJournalLine().getId().equals(sourceLineId))
+                .findFirst()
+                .orElseThrow()
+                .getBankItemId())
+        .isNull();
+    assertThat(
+            persistedItems.stream()
+                .filter(item -> item.getJournalLine().getId().equals(targetLineId))
+                .findFirst()
+                .orElseThrow()
+                .getBankItemId())
+        .isEqualTo(88101L);
+  }
+
+  @Test
+  void updateItems_allowsSwappingPersistedBankItemAssignmentsInSingleRequest() {
+    Company company = useCompany("BRS-SWAP-PERSISTED-ROWS");
+    Account bankAccount = requireAccount(company, "CASH");
+    Account revenueAccount = requireAccount(company, "REV");
+    Account cogsAccount = requireAccount(company, "COGS");
+    LocalDate statementDate = currentStatementDate();
+
+    BankReconciliationSessionSummaryDto started =
+        sessionService.startSession(
+            new BankReconciliationSessionCreateRequest(
+                bankAccount.getId(),
+                statementDate,
+                new BigDecimal("1000.00"),
+                null,
+                null,
+                null,
+                "swap bank-item between persisted rows"));
+    Long sessionId = started.sessionId();
+
+    JournalEntryDto firstEntry =
+        createJournal(
+            bankAccount.getId(),
+            revenueAccount.getId(),
+            statementDate,
+            "Persisted swap first line",
+            new BigDecimal("120.00"),
+            BigDecimal.ZERO);
+    JournalEntryDto secondEntry =
+        createJournal(
+            bankAccount.getId(),
+            cogsAccount.getId(),
+            statementDate,
+            "Persisted swap second line",
+            BigDecimal.ZERO,
+            new BigDecimal("30.00"));
+
+    List<JournalLine> bankLines =
+        journalLineRepository.findPostedLinesForAccountByJournalEntryIds(
+            company, Set.of(firstEntry.id(), secondEntry.id()), bankAccount.getId());
+    assertThat(bankLines).hasSize(2);
+    Long firstLineId = bankLines.get(0).getId();
+    Long secondLineId = bankLines.get(1).getId();
+
+    sessionService.updateItems(
+        sessionId,
+        new BankReconciliationSessionItemsUpdateRequest(
+            List.of(firstLineId, secondLineId),
+            List.of(),
+            "persist two distinct assignments",
+            List.of(
+                new BankReconciliationSessionItemsUpdateRequest.BankStatementMatchRequest(
+                    88201L, null, firstLineId),
+                new BankReconciliationSessionItemsUpdateRequest.BankStatementMatchRequest(
+                    88202L, null, secondLineId))));
+
+    sessionService.updateItems(
+        sessionId,
+        new BankReconciliationSessionItemsUpdateRequest(
+            List.of(firstLineId, secondLineId),
+            List.of(),
+            "swap persisted assignments",
+            List.of(
+                new BankReconciliationSessionItemsUpdateRequest.BankStatementMatchRequest(
+                    88202L, null, firstLineId),
+                new BankReconciliationSessionItemsUpdateRequest.BankStatementMatchRequest(
+                    88201L, null, secondLineId))));
+
+    BankReconciliationSession session =
+        sessionRepository.findByCompanyAndId(company, sessionId).orElseThrow();
+    List<BankReconciliationItem> persistedItems =
+        itemRepository.findBySessionAndJournalLineIdIn(session, Set.of(firstLineId, secondLineId));
+    assertThat(persistedItems).hasSize(2);
+    assertThat(
+            persistedItems.stream()
+                .filter(item -> item.getJournalLine().getId().equals(firstLineId))
+                .findFirst()
+                .orElseThrow()
+                .getBankItemId())
+        .isEqualTo(88202L);
+    assertThat(
+            persistedItems.stream()
+                .filter(item -> item.getJournalLine().getId().equals(secondLineId))
+                .findFirst()
+                .orElseThrow()
+                .getBankItemId())
+        .isEqualTo(88201L);
+  }
+
   private Company useCompany(String companyCode) {
     CompanyContextHolder.setCompanyCode(companyCode);
     Company company = dataSeeder.ensureCompany(companyCode, companyCode + " Ltd");

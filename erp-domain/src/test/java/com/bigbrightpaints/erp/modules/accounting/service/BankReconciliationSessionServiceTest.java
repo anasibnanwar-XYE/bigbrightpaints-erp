@@ -373,6 +373,84 @@ class BankReconciliationSessionServiceTest {
   }
 
   @Test
+  void updateItems_allowsSwappingPersistedBankItemAssignmentsInSingleRequest() {
+    Account bankAccount = bankAccount(99L, "BANK", "Main Bank");
+    BankReconciliationSession session =
+        session(29L, bankAccount, BankReconciliationSessionStatus.IN_PROGRESS);
+    when(sessionRepository.findByCompanyAndId(company, 29L)).thenReturn(Optional.of(session));
+
+    JournalLine firstLine =
+        journalLine(
+            7901L,
+            company,
+            bankAccount,
+            "SWAP-FIRST",
+            LocalDate.of(2026, 3, 14),
+            "First persisted match",
+            "50.00",
+            "0.00");
+    JournalLine secondLine =
+        journalLine(
+            7902L,
+            company,
+            bankAccount,
+            "SWAP-SECOND",
+            LocalDate.of(2026, 3, 14),
+            "Second persisted match",
+            "0.00",
+            "50.00");
+    BankReconciliationItem firstPersisted =
+        item(8901L, session, firstLine, "SWAP-FIRST", "50.00", "admin", 91001L);
+    BankReconciliationItem secondPersisted =
+        item(8902L, session, secondLine, "SWAP-SECOND", "50.00", "admin", 91002L);
+
+    when(itemRepository.findBySessionOrderByClearedAtAscIdAsc(session))
+        .thenReturn(List.of(firstPersisted, secondPersisted));
+    when(journalLineRepository.findAllById(Set.of(7901L, 7902L)))
+        .thenReturn(List.of(firstLine, secondLine));
+
+    BankReconciliationSession detailed =
+        session(29L, bankAccount, BankReconciliationSessionStatus.IN_PROGRESS);
+    when(sessionRepository.findDetailedByCompanyAndId(company, 29L)).thenReturn(Optional.of(detailed));
+    when(itemRepository.findDetailedBySession(detailed))
+        .thenAnswer(invocation -> List.of(firstPersisted, secondPersisted));
+    when(reconciliationService.reconcileBankAccount(
+            eq(99L),
+            eq(detailed.getStatementDate()),
+            eq(detailed.getStatementEndingBalance()),
+            eq(LocalDate.of(2026, 3, 1)),
+            eq(LocalDate.of(2026, 3, 31)),
+            eq(Set.of(7901L, 7902L)),
+            eq(Collections.emptySet())))
+        .thenReturn(summary("0.00", "0.00", "0.00", true));
+
+    BankReconciliationSessionDetailDto response =
+        service.updateItems(
+            29L,
+            new BankReconciliationSessionItemsUpdateRequest(
+                List.of(7901L, 7902L),
+                List.of(),
+                null,
+                List.of(
+                    new BankReconciliationSessionItemsUpdateRequest.BankStatementMatchRequest(
+                        91002L, null, 7901L),
+                    new BankReconciliationSessionItemsUpdateRequest.BankStatementMatchRequest(
+                        91001L, null, 7902L))));
+
+    assertThat(response.matchedItems())
+        .anyMatch(
+            item -> item.journalLineId().equals(7901L) && Long.valueOf(91002L).equals(item.bankItemId()))
+        .anyMatch(
+            item -> item.journalLineId().equals(7902L) && Long.valueOf(91001L).equals(item.bankItemId()));
+    var persistenceOrder = inOrder(itemRepository);
+    persistenceOrder.verify(itemRepository).save(firstPersisted);
+    persistenceOrder.verify(itemRepository).save(secondPersisted);
+    persistenceOrder.verify(itemRepository).flush();
+    persistenceOrder.verify(itemRepository).save(firstPersisted);
+    persistenceOrder.verify(itemRepository).save(secondPersisted);
+  }
+
+  @Test
   void updateItems_acceptsMatchPayloadUsingJournalEntryIds() {
     Account bankAccount = bankAccount(99L, "BANK", "Main Bank");
     BankReconciliationSession session =

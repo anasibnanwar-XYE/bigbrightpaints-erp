@@ -156,15 +156,16 @@ public class BankReconciliationSessionService {
               .filter(entry -> addIds.contains(entry.getKey()))
               .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
       String actor = resolveCurrentActor();
+      Map<Long, BankReconciliationItem> existingItemsToReassign = new LinkedHashMap<>();
+      List<BankReconciliationItem> itemsToCreate = new ArrayList<>();
       for (JournalLine line : lines) {
         validateJournalLineForSession(company, session, line);
+        Long resolvedBankItemId = matchedLineBankItemIds.get(line.getId());
         BankReconciliationItem existingItem = existingItemsByLineId.get(line.getId());
         if (existingItem != null) {
           if (matchedLineBankItemIds.containsKey(line.getId())
-              && !Objects.equals(
-                  existingItem.getBankItemId(), matchedLineBankItemIds.get(line.getId()))) {
-            existingItem.setBankItemId(matchedLineBankItemIds.get(line.getId()));
-            itemRepository.save(existingItem);
+              && !Objects.equals(existingItem.getBankItemId(), resolvedBankItemId)) {
+            existingItemsToReassign.put(line.getId(), existingItem);
           }
           continue;
         }
@@ -172,10 +173,37 @@ public class BankReconciliationSessionService {
         item.setCompany(company);
         item.setSession(session);
         item.setJournalLine(line);
-        item.setBankItemId(matchedLineBankItemIds.get(line.getId()));
+        item.setBankItemId(resolvedBankItemId);
         item.setReferenceNumber(resolveReference(line));
         item.setAmount(resolveNetAmount(line));
         item.setClearedBy(actor);
+        itemsToCreate.add(item);
+      }
+
+      boolean clearedPersistedBankItemHolder = false;
+      for (BankReconciliationItem existingItem : existingItemsToReassign.values()) {
+        if (existingItem.getBankItemId() != null) {
+          existingItem.setBankItemId(null);
+          itemRepository.save(existingItem);
+          clearedPersistedBankItemHolder = true;
+        }
+      }
+      if (clearedPersistedBankItemHolder) {
+        itemRepository.flush();
+      }
+
+      for (Map.Entry<Long, BankReconciliationItem> reassignment :
+          existingItemsToReassign.entrySet()) {
+        Long targetBankItemId = matchedLineBankItemIds.get(reassignment.getKey());
+        BankReconciliationItem existingItem = reassignment.getValue();
+        if (Objects.equals(existingItem.getBankItemId(), targetBankItemId)) {
+          continue;
+        }
+        existingItem.setBankItemId(targetBankItemId);
+        itemRepository.save(existingItem);
+      }
+
+      for (BankReconciliationItem item : itemsToCreate) {
         itemRepository.save(item);
       }
     }
