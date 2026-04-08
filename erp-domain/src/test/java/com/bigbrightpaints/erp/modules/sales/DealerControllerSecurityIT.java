@@ -259,9 +259,13 @@ class DealerControllerSecurityIT extends AbstractIntegrationTest {
 
     ResponseEntity<Map> existingResponse =
         rest.exchange(
-            "/api/v1/dealers/" + dealerA.getId(), HttpMethod.GET, new HttpEntity<>(headers), Map.class);
+            "/api/v1/dealers/" + dealerA.getId(),
+            HttpMethod.GET,
+            new HttpEntity<>(headers),
+            Map.class);
     ResponseEntity<Map> missingResponse =
-        rest.exchange("/api/v1/dealers/999999", HttpMethod.GET, new HttpEntity<>(headers), Map.class);
+        rest.exchange(
+            "/api/v1/dealers/999999", HttpMethod.GET, new HttpEntity<>(headers), Map.class);
 
     assertThat(existingResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
     assertThat(existingResponse.getBody()).isNotNull();
@@ -279,7 +283,10 @@ class DealerControllerSecurityIT extends AbstractIntegrationTest {
 
     ResponseEntity<Map> response =
         rest.exchange(
-            "/api/v1/dealers/" + dealerA.getId(), HttpMethod.GET, new HttpEntity<>(headers), Map.class);
+            "/api/v1/dealers/" + dealerA.getId(),
+            HttpMethod.GET,
+            new HttpEntity<>(headers),
+            Map.class);
 
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
   }

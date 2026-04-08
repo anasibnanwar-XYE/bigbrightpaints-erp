@@ -339,9 +339,11 @@ class BankReconciliationSessionServiceTest {
 
     BankReconciliationSession detailed =
         session(28L, bankAccount, BankReconciliationSessionStatus.IN_PROGRESS);
-    when(sessionRepository.findDetailedByCompanyAndId(company, 28L)).thenReturn(Optional.of(detailed));
+    when(sessionRepository.findDetailedByCompanyAndId(company, 28L))
+        .thenReturn(Optional.of(detailed));
     when(itemRepository.findDetailedBySession(detailed))
-        .thenReturn(List.of(item(8802L, detailed, targetLine, "MATCH-TARGET", "40.00", "admin", 9001L)));
+        .thenReturn(
+            List.of(item(8802L, detailed, targetLine, "MATCH-TARGET", "40.00", "admin", 9001L)));
     when(reconciliationService.reconcileBankAccount(
             eq(99L),
             eq(detailed.getStatementDate()),
@@ -367,7 +369,9 @@ class BankReconciliationSessionServiceTest {
     assertThat(response.matchedItems().get(0).journalLineId()).isEqualTo(7802L);
     assertThat(response.matchedItems().get(0).bankItemId()).isEqualTo(9001L);
     var persistenceOrder = inOrder(itemRepository);
-    persistenceOrder.verify(itemRepository).deleteBySessionAndJournalLineIdIn(session, Set.of(7801L));
+    persistenceOrder
+        .verify(itemRepository)
+        .deleteBySessionAndJournalLineIdIn(session, Set.of(7801L));
     persistenceOrder.verify(itemRepository).flush();
     persistenceOrder.verify(itemRepository).save(any(BankReconciliationItem.class));
   }
@@ -411,7 +415,8 @@ class BankReconciliationSessionServiceTest {
 
     BankReconciliationSession detailed =
         session(29L, bankAccount, BankReconciliationSessionStatus.IN_PROGRESS);
-    when(sessionRepository.findDetailedByCompanyAndId(company, 29L)).thenReturn(Optional.of(detailed));
+    when(sessionRepository.findDetailedByCompanyAndId(company, 29L))
+        .thenReturn(Optional.of(detailed));
     when(itemRepository.findDetailedBySession(detailed))
         .thenAnswer(invocation -> List.of(firstPersisted, secondPersisted));
     when(reconciliationService.reconcileBankAccount(
@@ -439,9 +444,13 @@ class BankReconciliationSessionServiceTest {
 
     assertThat(response.matchedItems())
         .anyMatch(
-            item -> item.journalLineId().equals(7901L) && Long.valueOf(91002L).equals(item.bankItemId()))
+            item ->
+                item.journalLineId().equals(7901L)
+                    && Long.valueOf(91002L).equals(item.bankItemId()))
         .anyMatch(
-            item -> item.journalLineId().equals(7902L) && Long.valueOf(91001L).equals(item.bankItemId()));
+            item ->
+                item.journalLineId().equals(7902L)
+                    && Long.valueOf(91001L).equals(item.bankItemId()));
     var persistenceOrder = inOrder(itemRepository);
     persistenceOrder.verify(itemRepository).save(firstPersisted);
     persistenceOrder.verify(itemRepository).save(secondPersisted);

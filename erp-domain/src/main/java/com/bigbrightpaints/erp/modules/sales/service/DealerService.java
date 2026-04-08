@@ -187,7 +187,9 @@ public class DealerService {
         dealerRepository
             .findByCompanyAndId(company, dealerId)
             .orElseThrow(
-                () -> new ApplicationException(ErrorCode.BUSINESS_ENTITY_NOT_FOUND, "Dealer not found"));
+                () ->
+                    new ApplicationException(
+                        ErrorCode.BUSINESS_ENTITY_NOT_FOUND, "Dealer not found"));
     BigDecimal outstandingBalance = dealerLedgerService.currentBalance(dealerId);
     BigDecimal pendingOrderExposure = resolvePendingOrderExposure(dealer);
     return toResponse(
