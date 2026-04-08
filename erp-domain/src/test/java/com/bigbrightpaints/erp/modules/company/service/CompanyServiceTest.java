@@ -192,7 +192,7 @@ class CompanyServiceTest {
     Company target = company(4L, "ACME");
     target.setCode("   ");
 
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         companyService, "synchronizeRuntimePolicyEnvelope", target, null, "test-sync");
 
     verifyNoInteractions(tenantRuntimeEnforcementService);
@@ -217,7 +217,7 @@ class CompanyServiceTest {
     target.setQuotaMaxApiRequests(77L);
     target.setQuotaMaxActiveUsers((long) Integer.MAX_VALUE + 1L);
 
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         companyService,
         "synchronizeRuntimePolicyEnvelope",
         target,
@@ -252,7 +252,7 @@ class CompanyServiceTest {
 
     assertThatThrownBy(
             () ->
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     withoutRuntimeEnforcementService,
                     "synchronizeRuntimePolicyEnvelope",
                     target,
@@ -502,7 +502,7 @@ class CompanyServiceTest {
 
     assertThatCode(
             () ->
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     companyService, "assertBoundControlPlaneCompanyMatchesTarget", "   "))
         .doesNotThrowAnyException();
   }
@@ -513,7 +513,7 @@ class CompanyServiceTest {
 
     assertThatCode(
             () ->
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     companyService, "assertBoundControlPlaneCompanyMatchesTarget", "tenant-a"))
         .doesNotThrowAnyException();
   }
@@ -835,12 +835,12 @@ class CompanyServiceTest {
 
     assertThatCode(
             () ->
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     companyService, "synchronizeScopedAccountsToCompanyCode", null, "BBB"))
         .doesNotThrowAnyException();
     assertThatCode(
             () ->
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     companyService,
                     "synchronizeScopedAccountsToCompanyCode",
                     company(null, "ACME"),
@@ -848,12 +848,12 @@ class CompanyServiceTest {
         .doesNotThrowAnyException();
     assertThatCode(
             () ->
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     companyService, "synchronizeScopedAccountsToCompanyCode", persisted, "   "))
         .doesNotThrowAnyException();
     assertThatCode(
             () ->
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     withoutUserRepository,
                     "synchronizeScopedAccountsToCompanyCode",
                     persisted,
@@ -861,7 +861,7 @@ class CompanyServiceTest {
         .doesNotThrowAnyException();
     assertThatCode(
             () ->
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     companyService, "synchronizeScopedAccountsToCompanyCode", persisted, "ACME"))
         .doesNotThrowAnyException();
 
@@ -1238,22 +1238,22 @@ class CompanyServiceTest {
 
     assertThatThrownBy(
             () ->
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     companyService, "requireMembershipById", null, Set.of(allowed)))
         .isInstanceOf(AccessDeniedException.class);
     assertThatThrownBy(
             () ->
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     companyService, "requireMembershipById", 2L, Set.of(allowed)))
         .isInstanceOf(AccessDeniedException.class);
     assertThatThrownBy(
             () ->
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     companyService, "requireMembershipByCode", " ", Set.of(allowed)))
         .isInstanceOf(AccessDeniedException.class);
     assertThatThrownBy(
             () ->
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     companyService, "requireMembershipByCode", "BBB", Set.of(allowed)))
         .isInstanceOf(AccessDeniedException.class);
   }
@@ -1261,7 +1261,7 @@ class CompanyServiceTest {
   @Test
   void normalizeStateCode_rejectsNonTwoCharacterValues() {
     assertThatThrownBy(
-            () -> ReflectionTestUtils.invokeMethod(companyService, "normalizeStateCode", "ABC"))
+            () -> com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(companyService, "normalizeStateCode", "ABC"))
         .hasMessageContaining("State code must be exactly 2 characters");
   }
 
@@ -1271,7 +1271,7 @@ class CompanyServiceTest {
 
     assertThatThrownBy(
             () ->
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     companyService, "requireSuperAdminForTenantBootstrap", "MOCK"))
         .isInstanceOf(AccessDeniedException.class)
         .hasMessageContaining("SUPER_ADMIN authority required for tenant bootstrap");
@@ -1673,7 +1673,7 @@ class CompanyServiceTest {
 
     assertThatCode(
             () ->
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     companyService,
                     "assertBoundControlPlaneMutationContextMatchesTarget",
                     "TENANT-A"))
@@ -1684,7 +1684,7 @@ class CompanyServiceTest {
   void mutationContextHelper_allowsBlankTargetCode() {
     assertThatCode(
             () ->
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     companyService, "assertBoundControlPlaneMutationContextMatchesTarget", "   "))
         .doesNotThrowAnyException();
   }

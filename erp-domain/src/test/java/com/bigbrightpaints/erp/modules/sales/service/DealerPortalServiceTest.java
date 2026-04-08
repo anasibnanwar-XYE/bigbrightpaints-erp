@@ -214,7 +214,7 @@ class DealerPortalServiceTest {
   void requireActivePortalDealer_rejectsNullDealer() {
     assertThatThrownBy(
             () ->
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     dealerPortalService, "requireActivePortalDealer", new Object[] {null}))
         .isInstanceOf(AccessDeniedException.class)
         .hasMessageContaining("mapping missing");
@@ -517,7 +517,7 @@ class DealerPortalServiceTest {
     @SuppressWarnings("unchecked")
     List<Map<String, Object>> payload =
         (List<Map<String, Object>>)
-            ReflectionTestUtils.invokeMethod(
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                 dealerPortalService, "toOverdueInvoicePayload", new Object[] {null});
 
     assertThat(payload).isEqualTo(List.of());
@@ -528,7 +528,7 @@ class DealerPortalServiceTest {
     @SuppressWarnings("unchecked")
     Map<String, Object> buckets =
         (Map<String, Object>)
-            ReflectionTestUtils.invokeMethod(
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                 dealerPortalService, "toPortalAgingBuckets", new Object[] {null});
 
     assertThat(buckets)
@@ -541,7 +541,7 @@ class DealerPortalServiceTest {
     @SuppressWarnings("unchecked")
     Map<String, Object> buckets =
         (Map<String, Object>)
-            ReflectionTestUtils.invokeMethod(
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                 dealerPortalService,
                 "toPortalAgingBuckets",
                 new AgingSummaryResponse(
@@ -557,7 +557,7 @@ class DealerPortalServiceTest {
   void resolveCreditStatusReturnsWithinLimitBelowThreshold() {
     String status =
         (String)
-            ReflectionTestUtils.invokeMethod(
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                 dealerPortalService,
                 "resolveCreditStatus",
                 new BigDecimal("1000"),
@@ -608,7 +608,7 @@ class DealerPortalServiceTest {
 
     Boolean contributes =
         (Boolean)
-            ReflectionTestUtils.invokeMethod(
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                 dealerPortalService, "contributesPendingCreditExposure", cashOrder, Set.<Long>of());
 
     assertThat(contributes).isFalse();

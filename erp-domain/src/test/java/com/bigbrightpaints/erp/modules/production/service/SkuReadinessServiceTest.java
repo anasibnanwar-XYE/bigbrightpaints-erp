@@ -302,7 +302,7 @@ class SkuReadinessServiceTest {
     ProductionProduct product = finishedGoodProduct("PKG-FG-1");
 
     SkuReadinessService.ExpectedStockType stockType =
-        ReflectionTestUtils.invokeMethod(service, "resolveExpectedStockType", product, null, null);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "resolveExpectedStockType", product, null, null);
 
     assertThat(stockType).isEqualTo(SkuReadinessService.ExpectedStockType.FINISHED_GOOD);
   }
@@ -315,7 +315,7 @@ class SkuReadinessServiceTest {
     rawMaterial.setMaterialType(MaterialType.PRODUCTION);
 
     SkuReadinessService.ExpectedStockType stockType =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             service, "resolveExpectedStockType", product, rawMaterial, null);
 
     assertThat(stockType).isEqualTo(SkuReadinessService.ExpectedStockType.RAW_MATERIAL);
@@ -714,12 +714,12 @@ class SkuReadinessServiceTest {
     assertThat(service.sanitizeForCatalogViewer(null, false)).isNull();
 
     SkuReadinessDto.Stage nullBlockers = new SkuReadinessDto.Stage(false, null);
-    assertThat((Object) ReflectionTestUtils.invokeMethod(service, "sanitizeStage", nullBlockers))
+    assertThat((Object) com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "sanitizeStage", nullBlockers))
         .isSameAs(nullBlockers);
 
     @SuppressWarnings("unchecked")
     SkuReadinessDto.Stage synthesizedEmptyStage =
-        (SkuReadinessDto.Stage) ReflectionTestUtils.invokeMethod(service, "stage", (Object) null);
+        (SkuReadinessDto.Stage) com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "stage", (Object) null);
     assertThat(synthesizedEmptyStage.ready()).isTrue();
     assertThat(synthesizedEmptyStage.blockers()).isEmpty();
 

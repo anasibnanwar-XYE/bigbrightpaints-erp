@@ -1118,7 +1118,7 @@ class PurchaseReturnServiceTest {
 
     assertThatThrownBy(
             () ->
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     purchaseReturnService,
                     "validateReturnReplay",
                     material,
@@ -1140,7 +1140,7 @@ class PurchaseReturnServiceTest {
 
     assertThatThrownBy(
             () ->
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     purchaseReturnService,
                     "validateReturnReplay",
                     material,
@@ -1193,17 +1193,17 @@ class PurchaseReturnServiceTest {
 
   @Test
   void purchaseReturnHelpers_noopWhenReplayOrPostedPurchaseContextIsMissing() {
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         purchaseReturnService, "ensurePostedPurchase", new Object[] {null});
 
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         purchaseReturnService,
         "ensureLinkedCorrectionJournal",
         company,
         null,
         new JournalEntry(),
         "PI-NOOP");
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         purchaseReturnService,
         "ensureLinkedCorrectionJournal",
         company,
@@ -1212,7 +1212,7 @@ class PurchaseReturnServiceTest {
         "PI-NOOP");
 
     JournalEntry sourceWithoutId = new JournalEntry();
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         purchaseReturnService,
         "ensureLinkedCorrectionJournal",
         company,
@@ -1225,11 +1225,11 @@ class PurchaseReturnServiceTest {
 
   @Test
   void purchaseReturnHelpers_validateReplayPurchaseReturnProvenanceReturnsForMissingInputs() {
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         purchaseReturnService,
         "validateReplayPurchaseReturnProvenance",
         new Object[] {null, "PR-30", List.of()});
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         purchaseReturnService,
         "validateReplayPurchaseReturnProvenance",
         purchase,
@@ -1247,7 +1247,7 @@ class PurchaseReturnServiceTest {
 
     assertThatThrownBy(
             () ->
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     purchaseReturnService, "ensurePostedPurchase", reversed))
         .isInstanceOf(ApplicationException.class)
         .hasMessageContaining("Only posted purchases can be corrected");
@@ -1258,7 +1258,7 @@ class PurchaseReturnServiceTest {
 
     assertThatThrownBy(
             () ->
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     purchaseReturnService, "ensurePostedPurchase", blankStatus))
         .isInstanceOf(ApplicationException.class)
         .hasMessageContaining("Only posted purchases can be corrected");
@@ -1269,7 +1269,7 @@ class PurchaseReturnServiceTest {
 
     assertThatThrownBy(
             () ->
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     purchaseReturnService, "ensurePostedPurchase", draftStatus))
         .isInstanceOf(ApplicationException.class)
         .hasMessageContaining("Only posted purchases can be corrected");
@@ -1280,12 +1280,12 @@ class PurchaseReturnServiceTest {
 
     assertThatThrownBy(
             () ->
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     purchaseReturnService, "ensurePostedPurchase", journalWithoutId))
         .isInstanceOf(ApplicationException.class)
         .hasMessageContaining("Only posted purchases can be corrected");
 
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         purchaseReturnService,
         "ensureLinkedCorrectionJournal",
         company,
@@ -1310,7 +1310,7 @@ class PurchaseReturnServiceTest {
     when(journalCorrectionMetadataService.findByCompanyAndId(company, 992L))
         .thenReturn(Optional.of(aligned));
 
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         purchaseReturnService,
         "ensureLinkedCorrectionJournal",
         company,
@@ -1333,7 +1333,7 @@ class PurchaseReturnServiceTest {
     when(journalCorrectionMetadataService.findByCompanyAndId(company, 992L))
         .thenReturn(Optional.of(bootstrap));
 
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         purchaseReturnService,
         "ensureLinkedCorrectionJournal",
         company,
@@ -1350,7 +1350,7 @@ class PurchaseReturnServiceTest {
     JournalEntry blankSourceReference = new JournalEntry();
     assertThat(
             (Boolean)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     purchaseReturnService,
                     "canCanonicalizeFreshPurchaseReturnJournal",
                     blankSourceReference,
@@ -1362,7 +1362,7 @@ class PurchaseReturnServiceTest {
     purchaseReference.setSourceReference("PI-30");
     assertThat(
             (Boolean)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     purchaseReturnService,
                     "canCanonicalizeFreshPurchaseReturnJournal",
                     purchaseReference,
@@ -1374,7 +1374,7 @@ class PurchaseReturnServiceTest {
     returnReference.setSourceReference("PR-30");
     assertThat(
             (Boolean)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     purchaseReturnService,
                     "canCanonicalizeFreshPurchaseReturnJournal",
                     returnReference,
@@ -1384,7 +1384,7 @@ class PurchaseReturnServiceTest {
 
     assertThat(
             (Boolean)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     purchaseReturnService,
                     "canCanonicalizeFreshPurchaseReturnJournal",
                     blankSourceReference,
@@ -1396,7 +1396,7 @@ class PurchaseReturnServiceTest {
     conflictingReason.setCorrectionReason("OTHER");
     assertThat(
             (Boolean)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     purchaseReturnService,
                     "canCanonicalizeFreshPurchaseReturnJournal",
                     conflictingReason,
@@ -1408,7 +1408,7 @@ class PurchaseReturnServiceTest {
     conflictingSourceModule.setSourceModule("OTHER");
     assertThat(
             (Boolean)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     purchaseReturnService,
                     "canCanonicalizeFreshPurchaseReturnJournal",
                     conflictingSourceModule,
@@ -1420,7 +1420,7 @@ class PurchaseReturnServiceTest {
     conflictingCorrectionType.setCorrectionType(JournalCorrectionType.VOID);
     assertThat(
             (Boolean)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     purchaseReturnService,
                     "canCanonicalizeFreshPurchaseReturnJournal",
                     conflictingCorrectionType,
@@ -1432,7 +1432,7 @@ class PurchaseReturnServiceTest {
     conflictingSourceReference.setSourceReference("PI-OTHER");
     assertThat(
             (Boolean)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     purchaseReturnService,
                     "canCanonicalizeFreshPurchaseReturnJournal",
                     conflictingSourceReference,
@@ -1442,7 +1442,7 @@ class PurchaseReturnServiceTest {
 
     assertThat(
             (Boolean)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     purchaseReturnService,
                     "canCanonicalizeFreshPurchaseReturnJournal",
                     null,
@@ -1458,7 +1458,7 @@ class PurchaseReturnServiceTest {
 
     assertThatThrownBy(
             () ->
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     purchaseReturnService,
                     "validateReplayCorrectionJournal",
                     conflictingReason,
@@ -1472,7 +1472,7 @@ class PurchaseReturnServiceTest {
 
     assertThatThrownBy(
             () ->
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     purchaseReturnService,
                     "validateReplayCorrectionJournal",
                     conflictingSourceModule,
@@ -1493,7 +1493,7 @@ class PurchaseReturnServiceTest {
     canonical.setSourceModule("PURCHASING_RETURN");
     canonical.setSourceReference("PI-30");
 
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         purchaseReturnService, "validateReplayCorrectionJournal", canonical, source, "PI-30");
 
     JournalEntry reversalMismatch = new JournalEntry();
@@ -1503,7 +1503,7 @@ class PurchaseReturnServiceTest {
 
     assertThatThrownBy(
             () ->
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     purchaseReturnService,
                     "validateReplayCorrectionJournal",
                     reversalMismatch,
@@ -1517,7 +1517,7 @@ class PurchaseReturnServiceTest {
 
     assertThatThrownBy(
             () ->
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     purchaseReturnService,
                     "validateReplayCorrectionJournal",
                     sourceReferenceMismatch,
@@ -1529,7 +1529,7 @@ class PurchaseReturnServiceTest {
 
   @Test
   void purchaseReturnHelpers_validateReplayCorrectionJournalReturnsForMissingEntry() {
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         purchaseReturnService,
         "validateReplayCorrectionJournal",
         new Object[] {null, purchase.getJournalEntry(), "PI-30"});
@@ -1540,7 +1540,7 @@ class PurchaseReturnServiceTest {
     replay.setSourceModule("PURCHASING_RETURN");
     replay.setSourceReference("PI-30");
 
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         purchaseReturnService, "validateReplayCorrectionJournal", replay, null, "PI-30");
   }
 
@@ -1560,7 +1560,7 @@ class PurchaseReturnServiceTest {
 
     when(journalEntryRepository.findByCompanyAndId(company, 992L)).thenReturn(Optional.empty());
 
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         purchaseReturnService,
         "validateReplayPurchaseReturnProvenance",
         replayPurchase,
@@ -1588,7 +1588,7 @@ class PurchaseReturnServiceTest {
     when(journalEntryRepository.findByCompanyAndId(company, 992L))
         .thenReturn(Optional.of(legacyReturnEntry));
 
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         purchaseReturnService,
         "validateReplayPurchaseReturnProvenance",
         replayPurchase,

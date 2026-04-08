@@ -181,7 +181,7 @@ class ProductionCatalogRawMaterialInvariantIT extends AbstractIntegrationTest {
             "RM-TIO2-MANUAL", alternateInventoryAccount.getId(), inventoryAccount.getId());
     product.setGstRate(new BigDecimal("12.00"));
     ProductionCatalogService targetService = AopTestUtils.getTargetObject(productionCatalogService);
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         targetService, "syncRawMaterial", company, product, new HashMap<Long, Long>(), false);
 
     RawMaterial replayed =

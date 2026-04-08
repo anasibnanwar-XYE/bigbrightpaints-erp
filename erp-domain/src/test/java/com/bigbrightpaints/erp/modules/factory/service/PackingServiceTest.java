@@ -477,7 +477,7 @@ class PackingServiceTest {
 
     when(productionLogRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         packingService, "closeResidualWastage", log, LocalDate.of(2024, 1, 3));
 
     verify(packingInventoryService).consumeSemiFinishedWastage(log, BigDecimal.ZERO);
@@ -509,7 +509,7 @@ class PackingServiceTest {
     when(packingProductSupport.requireWipAccountId(product)).thenReturn(811L);
     when(packingProductSupport.metadataLong(product, "wastageAccountId")).thenReturn(902L);
 
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         packingService, "closeResidualWastage", log, LocalDate.of(2024, 1, 4));
 
     ArgumentCaptor<JournalCreationRequest> requestCaptor =
@@ -539,7 +539,7 @@ class PackingServiceTest {
 
     assertThatThrownBy(
             () ->
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     packingService, "closeResidualWastage", log, LocalDate.of(2024, 1, 5)))
         .isInstanceOf(ApplicationException.class)
         .hasMessage("Product Primer missing wastageAccountId metadata");
@@ -556,7 +556,7 @@ class PackingServiceTest {
 
     assertThatThrownBy(
             () ->
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     packingService, "applyPackedQuantity", log, new BigDecimal("2.0")))
         .isInstanceOf(ApplicationException.class)
         .hasMessage("Packed quantity would exceed mixed quantity for PROD-OVERFLOW");
@@ -568,7 +568,7 @@ class PackingServiceTest {
     log.setMixedQuantity(new BigDecimal("10.0"));
     log.setStatus(ProductionLogStatus.PARTIAL_PACKED);
 
-    ReflectionTestUtils.invokeMethod(packingService, "updateStatus", log, BigDecimal.ZERO);
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(packingService, "updateStatus", log, BigDecimal.ZERO);
 
     assertThat(log.getStatus()).isEqualTo(ProductionLogStatus.READY_TO_PACK);
   }
@@ -587,7 +587,7 @@ class PackingServiceTest {
     log.setMaterialCostTotal(new BigDecimal("25.0"));
     log.setUnitCost(BigDecimal.ZERO);
 
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         packingService,
         "postResidualWastageJournal",
         log,
@@ -600,7 +600,7 @@ class PackingServiceTest {
   @Test
   void safeQuantity_returnsZeroForNull() {
     BigDecimal safeQuantity =
-        ReflectionTestUtils.invokeMethod(packingService, "safeQuantity", (Object) null);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(packingService, "safeQuantity", (Object) null);
 
     assertThat(safeQuantity).isEqualByComparingTo(BigDecimal.ZERO);
   }
@@ -608,10 +608,10 @@ class PackingServiceTest {
   @Test
   void calculateUnitCost_returnsZeroWhenInputsAreMissing() {
     BigDecimal missingTotal =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             packingService, "calculateUnitCost", null, new BigDecimal("10.0"));
     BigDecimal missingQuantity =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             packingService, "calculateUnitCost", new BigDecimal("10.0"), null);
 
     assertThat(missingTotal).isEqualByComparingTo(BigDecimal.ZERO);

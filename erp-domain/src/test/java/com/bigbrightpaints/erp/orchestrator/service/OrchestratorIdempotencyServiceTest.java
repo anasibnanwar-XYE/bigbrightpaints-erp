@@ -56,7 +56,7 @@ class OrchestratorIdempotencyServiceTest {
   void startReservesNewScopeWithoutDuplicateKeyFallback() {
     Map<String, Object> payload = Map.of("orderId", "101", "amount", "5000");
     String requestHash =
-        ReflectionTestUtils.invokeMethod(service, "hashRequest", 7L, "ORCH.ORDER.APPROVE", payload);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "hashRequest", 7L, "ORCH.ORDER.APPROVE", payload);
 
     OrchestratorCommand created =
         new OrchestratorCommand(7L, "ORCH.ORDER.APPROVE", "idem-new", requestHash, "trace-created");
@@ -83,7 +83,7 @@ class OrchestratorIdempotencyServiceTest {
   void startReturnsExistingLeaseWhenReservationAlreadyExistsWithSamePayload() {
     Map<String, Object> payload = Map.of("orderId", "101", "amount", "5000");
     String requestHash =
-        ReflectionTestUtils.invokeMethod(service, "hashRequest", 7L, "ORCH.ORDER.APPROVE", payload);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "hashRequest", 7L, "ORCH.ORDER.APPROVE", payload);
 
     OrchestratorCommand existing =
         new OrchestratorCommand(
@@ -108,7 +108,7 @@ class OrchestratorIdempotencyServiceTest {
   void startRejectsSameScopeWithDifferentPayload() {
     Map<String, Object> payload = Map.of("orderId", "101", "amount", "5000");
     String requestHash =
-        ReflectionTestUtils.invokeMethod(service, "hashRequest", 7L, "ORCH.ORDER.APPROVE", payload);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "hashRequest", 7L, "ORCH.ORDER.APPROVE", payload);
 
     OrchestratorCommand existing =
         new OrchestratorCommand(
@@ -136,7 +136,7 @@ class OrchestratorIdempotencyServiceTest {
   void startRetriesFailedReservationWhenPayloadMatches() {
     Map<String, Object> payload = Map.of("orderId", "101", "amount", "5000");
     String requestHash =
-        ReflectionTestUtils.invokeMethod(service, "hashRequest", 7L, "ORCH.ORDER.APPROVE", payload);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "hashRequest", 7L, "ORCH.ORDER.APPROVE", payload);
 
     OrchestratorCommand existing =
         new OrchestratorCommand(

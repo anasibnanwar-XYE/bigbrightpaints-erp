@@ -404,17 +404,17 @@ class CatalogControllerCanonicalProductIT extends AbstractIntegrationTest {
 
     assertThat(
             (Boolean)
-                ReflectionTestUtils.invokeMethod(controller, "canViewStock", new Object[] {null}))
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(controller, "canViewStock", new Object[] {null}))
         .isFalse();
     assertThat(
             (Boolean)
-                ReflectionTestUtils.invokeMethod(controller, "canViewStock", authoritiesMissing))
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(controller, "canViewStock", authoritiesMissing))
         .isFalse();
-    assertThat((Boolean) ReflectionTestUtils.invokeMethod(controller, "canViewStock", admin))
+    assertThat((Boolean) com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(controller, "canViewStock", admin))
         .isTrue();
-    assertThat((Boolean) ReflectionTestUtils.invokeMethod(controller, "canViewStock", accounting))
+    assertThat((Boolean) com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(controller, "canViewStock", accounting))
         .isTrue();
-    assertThat((Boolean) ReflectionTestUtils.invokeMethod(controller, "canViewStock", sales))
+    assertThat((Boolean) com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(controller, "canViewStock", sales))
         .isFalse();
   }
 

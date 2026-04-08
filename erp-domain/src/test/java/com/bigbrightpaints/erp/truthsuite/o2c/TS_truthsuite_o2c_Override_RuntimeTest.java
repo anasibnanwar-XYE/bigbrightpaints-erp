@@ -448,7 +448,7 @@ class TS_truthsuite_o2c_Override_RuntimeTest {
   @Test
   void helperMethodsNormalizeLegacyReasonMarkersForBackwardCompatibility() {
     String normalizedReason =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             service,
             "reasonWithCode",
             "CREDIT_LIMIT_EXCEPTION_APPROVED",
@@ -456,47 +456,47 @@ class TS_truthsuite_o2c_Override_RuntimeTest {
     assertThat(normalizedReason).isEqualTo("[CREDIT_LIMIT_EXCEPTION_APPROVED] reviewed by finance");
 
     String malformedCode =
-        ReflectionTestUtils.invokeMethod(service, "extractReasonCode", "[] malformed");
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "extractReasonCode", "[] malformed");
     assertThat(malformedCode).isEmpty();
 
     String emptyCode =
-        ReflectionTestUtils.invokeMethod(service, "extractReasonCode", new Object[] {null});
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "extractReasonCode", new Object[] {null});
     assertThat(emptyCode).isEmpty();
 
     String strippedReason =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             service, "stripReasonCodePrefix", "[CREDIT_LIMIT_EXCEPTION_APPROVED]");
     assertThat(strippedReason).isEmpty();
 
     String legacyReason =
-        ReflectionTestUtils.invokeMethod(service, "stripReasonCodePrefix", "legacy reason only");
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "stripReasonCodePrefix", "legacy reason only");
     assertThat(legacyReason).isEqualTo("legacy reason only");
 
     CreditLimitOverrideRequest incompleteMetadata = new CreditLimitOverrideRequest();
     incompleteMetadata.setRequestedBy("maker@bbp.com");
     boolean hasImmutableMetadata =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             service, "hasImmutableApprovalMetadata", incompleteMetadata);
     assertThat(hasImmutableMetadata).isFalse();
 
     String normalizedWithoutReason =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             service, "reasonWithCode", "CREDIT_LIMIT_EXCEPTION_APPROVED", null);
     assertThat(normalizedWithoutReason).isEqualTo("[CREDIT_LIMIT_EXCEPTION_APPROVED] ");
 
     String normalizedWithoutClosingBracket =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             service, "reasonWithCode", "CREDIT_LIMIT_EXCEPTION_APPROVED", "[legacy reason");
     assertThat(normalizedWithoutClosingBracket).contains("[legacy reason");
 
     String unresolvedCode =
-        ReflectionTestUtils.invokeMethod(service, "extractReasonCode", "[legacy_reason");
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "extractReasonCode", "[legacy_reason");
     assertThat(unresolvedCode).isEmpty();
 
     CreditLimitOverrideRequest withIncomingDecision = new CreditLimitOverrideRequest();
     withIncomingDecision.setReason("[CREDIT_LIMIT_EXCEPTION_REQUESTED] fallback");
     String incomingDecision =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             service,
             "resolveDecisionReason",
             withIncomingDecision,
@@ -505,7 +505,7 @@ class TS_truthsuite_o2c_Override_RuntimeTest {
     assertThat(incomingDecision).isEqualTo("explicit reviewer reason");
 
     String nonBracketPrefix =
-        ReflectionTestUtils.invokeMethod(service, "stripReasonCodePrefix", "[legacy_reason");
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "stripReasonCodePrefix", "[legacy_reason");
     assertThat(nonBracketPrefix).isEqualTo("[legacy_reason");
 
     CreditLimitOverrideRequest missingRequestedBy = new CreditLimitOverrideRequest();
@@ -513,7 +513,7 @@ class TS_truthsuite_o2c_Override_RuntimeTest {
     missingRequestedBy.setReviewedBy("checker@bbp.com");
     missingRequestedBy.setReviewedAt(Instant.parse("2026-02-20T00:00:00Z"));
     boolean hasMetadataWithoutRequester =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             service, "hasImmutableApprovalMetadata", missingRequestedBy);
     assertThat(hasMetadataWithoutRequester).isFalse();
 
@@ -522,7 +522,7 @@ class TS_truthsuite_o2c_Override_RuntimeTest {
     missingReviewedAt.setReviewedBy("checker@bbp.com");
     missingReviewedAt.setReviewedAt(null);
     boolean hasMetadataWithoutReviewedAt =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             service, "hasImmutableApprovalMetadata", missingReviewedAt);
     assertThat(hasMetadataWithoutReviewedAt).isFalse();
   }
@@ -558,7 +558,7 @@ class TS_truthsuite_o2c_Override_RuntimeTest {
         request, "publicId", UUID.fromString("00000000-0000-0000-0000-000000000701"));
     ReflectionTestUtils.setField(request, "createdAt", Instant.parse("2026-02-20T01:30:00Z"));
 
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         service,
         "auditOverrideLifecycle",
         AuditEvent.TRANSACTION_APPROVED,
@@ -595,7 +595,7 @@ class TS_truthsuite_o2c_Override_RuntimeTest {
     request.setReviewedBy(null);
     request.setReason(null);
 
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         service,
         "auditOverrideLifecycle",
         AuditEvent.TRANSACTION_APPROVED,

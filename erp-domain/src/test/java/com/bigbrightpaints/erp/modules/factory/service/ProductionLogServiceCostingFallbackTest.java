@@ -116,7 +116,7 @@ class ProductionLogServiceCostingFallbackTest {
         .thenReturn(1);
 
     List<?> issues =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             productionLogService, "issueFromBatches", rawMaterial, new BigDecimal("3"), "PROD-REF");
 
     assertThat(issues).hasSize(2);
@@ -164,7 +164,7 @@ class ProductionLogServiceCostingFallbackTest {
     when(packingAllowedSizeService.listAllowedSellableSizes(company, log)).thenReturn(List.of());
 
     ProductionLogDetailDto dto =
-        ReflectionTestUtils.invokeMethod(productionLogService, "toDetailDto", log);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(productionLogService, "toDetailDto", log);
 
     assertThat(dto.id()).isEqualTo(77L);
     assertThat(dto.productFamilyName()).isNull();
@@ -184,7 +184,7 @@ class ProductionLogServiceCostingFallbackTest {
         .thenAnswer(invocation -> invocation.getArgument(0));
 
     RawMaterial created =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             productionLogService,
             "initializeSemiFinishedRawMaterial",
             company,
@@ -212,7 +212,7 @@ class ProductionLogServiceCostingFallbackTest {
         .thenReturn(java.util.Optional.of(existing));
 
     RawMaterial resolved =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             productionLogService, "ensureSemiFinishedRawMaterial", company, product);
 
     assertThat(resolved).isSameAs(existing);
@@ -230,7 +230,7 @@ class ProductionLogServiceCostingFallbackTest {
 
     assertThatThrownBy(
             () ->
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     productionLogService,
                     "initializeSemiFinishedRawMaterial",
                     company,
@@ -247,19 +247,19 @@ class ProductionLogServiceCostingFallbackTest {
     when(companyClock.zoneId(company)).thenReturn(zoneId);
 
     Instant offsetDateTime =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             productionLogService, "resolveProducedAt", company, "2026-04-05T10:15:30+05:30");
     Instant isoInstant =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             productionLogService, "resolveProducedAt", company, "2026-04-05T04:45:30Z");
     Instant localMinutes =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             productionLogService, "resolveProducedAt", company, "05-04-2026 10:15");
     Instant localSeconds =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             productionLogService, "resolveProducedAt", company, "05-04-2026 10:15:30");
     Instant dateOnly =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             productionLogService, "resolveProducedAt", company, "2026-04-05");
 
     assertThat(offsetDateTime).isEqualTo(Instant.parse("2026-04-05T04:45:30Z"));
@@ -276,7 +276,7 @@ class ProductionLogServiceCostingFallbackTest {
 
     assertThatThrownBy(
             () ->
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     productionLogService, "resolveProducedAt", company, "04/05/2026"))
         .isInstanceOf(ApplicationException.class)
         .satisfies(

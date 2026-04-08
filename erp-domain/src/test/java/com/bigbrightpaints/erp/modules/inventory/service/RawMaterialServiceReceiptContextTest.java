@@ -515,7 +515,7 @@ class RawMaterialServiceReceiptContextTest {
 
     assertThatThrownBy(
             () ->
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     rawMaterialService, "ensureReceiptAccounts", orphanMaterial, supplier, false))
         .isInstanceOfSatisfying(
             ApplicationException.class,

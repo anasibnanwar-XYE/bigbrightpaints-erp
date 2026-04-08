@@ -1759,14 +1759,14 @@ class FinishedGoodsReservationEngineTest extends AbstractIntegrationTest {
 
   private boolean synchronizeReservationsForSlip(PackagingSlip slip, SalesOrder order) {
     return Boolean.TRUE.equals(
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             reservationEngine(), "synchronizeReservationsForSlip", slip, order));
   }
 
   private boolean quantitiesMatch(
       List<InventoryReservation> reservations, BigDecimal expectedQuantity) {
     return Boolean.TRUE.equals(
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             reservationEngine(), "quantitiesMatch", reservations, expectedQuantity));
   }
 
@@ -1774,13 +1774,13 @@ class FinishedGoodsReservationEngineTest extends AbstractIntegrationTest {
   private Map<Long, BigDecimal> fulfilledReservationQuantitiesByBatchId(
       List<InventoryReservation> reservations) {
     return (Map<Long, BigDecimal>)
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             reservationEngine(), "fulfilledReservationQuantitiesByBatchId", reservations);
   }
 
   private void applySynchronizedAllocation(
       InventoryReservation reservation, BigDecimal allocation, PackagingSlip slip) {
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         reservationEngine(), "applySynchronizedAllocation", reservation, allocation, slip);
   }
 
@@ -1789,7 +1789,7 @@ class FinishedGoodsReservationEngineTest extends AbstractIntegrationTest {
       List<InventoryReservation> reservations,
       Map<Long, BigDecimal> expectedByBatchId) {
     return Boolean.TRUE.equals(
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             reservationEngine(),
             "isTerminalDispatchReplay",
             slip,
@@ -1799,13 +1799,13 @@ class FinishedGoodsReservationEngineTest extends AbstractIntegrationTest {
 
   private boolean isActiveReservation(InventoryReservation reservation) {
     return Boolean.TRUE.equals(
-        ReflectionTestUtils.invokeMethod(reservationEngine(), "isActiveReservation", reservation));
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(reservationEngine(), "isActiveReservation", reservation));
   }
 
   @SuppressWarnings("unchecked")
   private Map<Long, BigDecimal> dispatchedMovementQuantitiesByBatchId(PackagingSlip slip) {
     return (Map<Long, BigDecimal>)
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             reservationEngine(), "dispatchedMovementQuantitiesByBatchId", slip);
   }
 
@@ -1813,14 +1813,14 @@ class FinishedGoodsReservationEngineTest extends AbstractIntegrationTest {
   private Map<Long, FinishedGood> lockTouchedGoods(
       Company company, List<InventoryReservation> reservations) {
     return (Map<Long, FinishedGood>)
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             reservationEngine(), "lockTouchedGoods", company, reservations);
   }
 
   @SuppressWarnings("unchecked")
   private Map<Long, FinishedGoodBatch> lockTouchedBatches(List<InventoryReservation> reservations) {
     return (Map<Long, FinishedGoodBatch>)
-        ReflectionTestUtils.invokeMethod(reservationEngine(), "lockTouchedBatches", reservations);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(reservationEngine(), "lockTouchedBatches", reservations);
   }
 
   private List<InventoryReservation> rebuildReservationsFromSlip(
@@ -1828,20 +1828,20 @@ class FinishedGoodsReservationEngineTest extends AbstractIntegrationTest {
     @SuppressWarnings("unchecked")
     List<InventoryReservation> reservations =
         (List<InventoryReservation>)
-            ReflectionTestUtils.invokeMethod(
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                 reservationEngine(), "rebuildReservationsFromSlip", slip, salesOrderId);
     return reservations;
   }
 
   private BigDecimal resolveReservedQuantity(InventoryReservation reservation) {
     return (BigDecimal)
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             reservationEngine(), "resolveReservedQuantity", reservation);
   }
 
   private void updateSlipStatusBasedOnAvailability(
       PackagingSlip slip, List<FinishedGoodsService.InventoryShortage> shortages) {
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         reservationEngine(), "updateSlipStatusBasedOnAvailability", slip, shortages);
   }
 
@@ -1851,7 +1851,7 @@ class FinishedGoodsReservationEngineTest extends AbstractIntegrationTest {
       FinishedGood finishedGood,
       SalesOrderItem item,
       List<FinishedGoodsService.InventoryShortage> shortages) {
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         reservationEngine(), "allocateItem", order, slip, finishedGood, item, shortages);
   }
 
@@ -1859,18 +1859,18 @@ class FinishedGoodsReservationEngineTest extends AbstractIntegrationTest {
   private List<FinishedGoodBatch> selectBatchesByCostingMethod(
       FinishedGood finishedGood, LocalDate referenceDate) {
     return (List<FinishedGoodBatch>)
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             reservationEngine(), "selectBatchesByCostingMethod", finishedGood, referenceDate);
   }
 
   private FinishedGood lockFinishedGoodById(Company company, Long id) {
     return (FinishedGood)
-        ReflectionTestUtils.invokeMethod(reservationEngine(), "lockFinishedGood", company, id);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(reservationEngine(), "lockFinishedGood", company, id);
   }
 
   private FinishedGood lockFinishedGoodByProductCode(Company company, String productCode) {
     return (FinishedGood)
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             reservationEngine(), "lockFinishedGood", company, productCode);
   }
 

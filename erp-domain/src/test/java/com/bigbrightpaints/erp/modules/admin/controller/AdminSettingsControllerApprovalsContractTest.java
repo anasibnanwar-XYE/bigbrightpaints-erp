@@ -687,7 +687,7 @@ class AdminSettingsControllerApprovalsContractTest {
             null);
 
     AdminApprovalItemDto exportApproval =
-        ReflectionTestUtils.invokeMethod(controller, "toExportApprovalItem", request, true);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(controller, "toExportApprovalItem", request, true);
 
     assertThat(exportApproval).isNotNull();
     assertThat(exportApproval.summary()).contains("report INVENTORY_LEDGER");
@@ -717,7 +717,7 @@ class AdminSettingsControllerApprovalsContractTest {
     authenticateAs("ROLE_ADMIN");
     try {
       Boolean includeSensitiveDetails =
-          ReflectionTestUtils.invokeMethod(controller, "canViewSensitiveApprovalRequesterDetails");
+          com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(controller, "canViewSensitiveApprovalRequesterDetails");
       assertThat(includeSensitiveDetails).isTrue();
     } finally {
       SecurityContextHolder.clearContext();
@@ -748,7 +748,7 @@ class AdminSettingsControllerApprovalsContractTest {
 
     try {
       Boolean includeSensitiveDetails =
-          ReflectionTestUtils.invokeMethod(controller, "canViewSensitiveApprovalRequesterDetails");
+          com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(controller, "canViewSensitiveApprovalRequesterDetails");
       assertThat(includeSensitiveDetails).isFalse();
     } finally {
       SecurityContextHolder.clearContext();

@@ -190,7 +190,7 @@ class TS_RuntimeOrchestratorExecutableCoverageTest {
 
     String explicit =
         (String)
-            ReflectionTestUtils.invokeMethod(
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                 OrchestratorController.class,
                 "selectPayloadForIdempotency",
                 " idem-1 ",
@@ -198,7 +198,7 @@ class TS_RuntimeOrchestratorExecutableCoverageTest {
                 normalizedPayload);
     String derived =
         (String)
-            ReflectionTestUtils.invokeMethod(
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                 OrchestratorController.class,
                 "selectPayloadForIdempotency",
                 null,
@@ -526,24 +526,24 @@ class TS_RuntimeOrchestratorExecutableCoverageTest {
     String hashInput = "X".repeat(160);
     String normalizedHashed =
         (String)
-            ReflectionTestUtils.invokeMethod(
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                 dispatcher, "normalizeRequestId", hashInput, "idem-fallback");
     assertThat(normalizedHashed).startsWith("RIDH|");
 
     String normalizedFromRequest =
         (String)
-            ReflectionTestUtils.invokeMethod(
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                 dispatcher, "normalizeRequestId", "  req-1  ", "idem-fallback");
     assertThat(normalizedFromRequest).isEqualTo("req-1");
 
     String normalizedFromFallback =
         (String)
-            ReflectionTestUtils.invokeMethod(
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                 dispatcher, "normalizeRequestId", "   ", "  idem-fallback  ");
     assertThat(normalizedFromFallback).isEqualTo("idem-fallback");
 
     String normalizedNull =
-        (String) ReflectionTestUtils.invokeMethod(dispatcher, "normalizeRequestId", null, "   ");
+        (String) com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(dispatcher, "normalizeRequestId", null, "   ");
     assertThat(normalizedNull).isNull();
 
     OrchestratorCommand commandWithIdempotency =
@@ -552,7 +552,7 @@ class TS_RuntimeOrchestratorExecutableCoverageTest {
         new OrchestratorIdempotencyService.CommandLease("trace-1", commandWithIdempotency, true);
     String canonicalFromLease =
         (String)
-            ReflectionTestUtils.invokeMethod(
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                 dispatcher, "canonicalIdempotencyKey", leaseWithCommandKey, "fallback-key");
     assertThat(canonicalFromLease).isEqualTo("persisted-key");
 
@@ -562,7 +562,7 @@ class TS_RuntimeOrchestratorExecutableCoverageTest {
         new OrchestratorIdempotencyService.CommandLease("trace-2", commandWithoutIdempotency, true);
     String canonicalFromFallback =
         (String)
-            ReflectionTestUtils.invokeMethod(
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                 dispatcher, "canonicalIdempotencyKey", leaseWithoutCommandKey, "  fallback-key  ");
     assertThat(canonicalFromFallback).isEqualTo("fallback-key");
 
@@ -570,7 +570,7 @@ class TS_RuntimeOrchestratorExecutableCoverageTest {
         new OrchestratorIdempotencyService.CommandLease("trace-3", null, true);
     String canonicalFromNullCommand =
         (String)
-            ReflectionTestUtils.invokeMethod(
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                 dispatcher,
                 "canonicalIdempotencyKey",
                 leaseWithNullCommand,
@@ -579,7 +579,7 @@ class TS_RuntimeOrchestratorExecutableCoverageTest {
 
     String canonicalNull =
         (String)
-            ReflectionTestUtils.invokeMethod(dispatcher, "canonicalIdempotencyKey", null, null);
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(dispatcher, "canonicalIdempotencyKey", null, null);
     assertThat(canonicalNull).isNull();
   }
 }

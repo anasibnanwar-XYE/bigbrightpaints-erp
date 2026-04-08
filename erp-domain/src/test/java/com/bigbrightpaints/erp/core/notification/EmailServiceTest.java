@@ -217,7 +217,7 @@ class EmailServiceTest {
 
     assertThatThrownBy(
             () ->
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     emailService,
                     "sendHtmlEmailRequired",
                     "user@example.com",
@@ -236,7 +236,7 @@ class EmailServiceTest {
   void sendAdminEmailChangeVerificationRequired_formatsExpiryAsDeterministicUtcText()
       throws Exception {
     String formatted =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             emailService, "formatUtcTimestamp", Instant.parse("2026-03-27T12:34:56Z"));
 
     assertThat(formatted).isEqualTo("2026-03-27 12:34:56 UTC");
@@ -311,7 +311,7 @@ class EmailServiceTest {
   void formatUtcTimestamp_returnsNullWhenTimestampMissing() {
     assertThat(
             (String)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     emailService, "formatUtcTimestamp", (Instant) null))
         .isNull();
   }

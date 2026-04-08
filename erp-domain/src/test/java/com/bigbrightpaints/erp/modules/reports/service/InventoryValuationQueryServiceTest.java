@@ -361,22 +361,22 @@ class InventoryValuationQueryServiceTest {
   @Test
   void resolveCostingMethodContext_returnsFifoDefaultsWhenCompanyMissing() {
     Object context =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             inventoryValuationService,
             "resolveCostingMethodContext",
             null,
             LocalDate.of(2026, 3, 15));
 
-    assertThat((String) ReflectionTestUtils.invokeMethod(context, "canonicalMethod"))
+    assertThat((String) com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(context, "canonicalMethod"))
         .isEqualTo("FIFO");
-    assertThat((Object) ReflectionTestUtils.invokeMethod(context, "method")).isNull();
+    assertThat((Object) com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(context, "method")).isNull();
   }
 
   @Test
   void canonicalMethodLabel_defaultsToFifoWhenMethodMissing() {
     assertThat(
             (String)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     inventoryValuationService, "canonicalMethodLabel", (Object) null))
         .isEqualTo("FIFO");
   }

@@ -39,7 +39,7 @@ class DataInitializerSecurityTest {
   void dataInitializer_skipsDevAdminBootstrapWhenEmailBlank() {
     DataInitializer initializer = new DataInitializer();
 
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         initializer,
         "seedConfiguredDevAdmin",
         userRepository,
@@ -63,7 +63,7 @@ class DataInitializerSecurityTest {
 
     assertThatThrownBy(
             () ->
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     initializer,
                     "seedConfiguredDevAdmin",
                     userRepository,
@@ -89,7 +89,7 @@ class DataInitializerSecurityTest {
     when(userRepository.save(any(UserAccount.class)))
         .thenAnswer(invocation -> invocation.getArgument(0));
 
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         initializer,
         "seedConfiguredDevAdmin",
         userRepository,
@@ -121,7 +121,7 @@ class DataInitializerSecurityTest {
 
     assertThatThrownBy(
             () ->
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     initializer,
                     "seedConfiguredDevAdmin",
                     userRepository,
@@ -150,7 +150,7 @@ class DataInitializerSecurityTest {
 
     assertThatThrownBy(
             () ->
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     initializer,
                     "seedConfiguredDevAdmin",
                     userRepository,
@@ -177,7 +177,7 @@ class DataInitializerSecurityTest {
     when(userRepository.save(any(UserAccount.class)))
         .thenAnswer(invocation -> invocation.getArgument(0));
 
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         initializer,
         "seedConfiguredDevAdmin",
         userRepository,
@@ -208,7 +208,7 @@ class DataInitializerSecurityTest {
 
     assertThatThrownBy(
             () ->
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     initializer,
                     "seedRolesAndUsers",
                     roleRepository,
@@ -227,7 +227,7 @@ class DataInitializerSecurityTest {
   void mockInitializer_skipsWhenAdminEmailBlank() {
     MockDataInitializer initializer = new MockDataInitializer();
 
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         initializer,
         "seedRolesAndUsers",
         roleRepository,
@@ -258,7 +258,7 @@ class DataInitializerSecurityTest {
     when(userRepository.save(any(UserAccount.class)))
         .thenAnswer(invocation -> invocation.getArgument(0));
 
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         initializer,
         "seedRolesAndUsers",
         roleRepository,
@@ -287,7 +287,7 @@ class DataInitializerSecurityTest {
 
     assertThatThrownBy(
             () ->
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     initializer,
                     "seedRolesAndUsers",
                     roleRepository,
@@ -306,7 +306,7 @@ class DataInitializerSecurityTest {
   void benchmarkInitializer_skipsWhenAdminEmailBlank() {
     BenchmarkDataInitializer initializer = new BenchmarkDataInitializer();
 
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         initializer,
         "seedRolesAndUsers",
         roleRepository,
@@ -338,7 +338,7 @@ class DataInitializerSecurityTest {
     when(userRepository.save(any(UserAccount.class)))
         .thenAnswer(invocation -> invocation.getArgument(0));
 
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         initializer,
         "seedRolesAndUsers",
         roleRepository,
@@ -365,7 +365,7 @@ class DataInitializerSecurityTest {
         .thenReturn(
             Optional.of(new UserAccount("mock.admin@bbp.com", "existing-hash", "Mock Admin")));
 
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         initializer,
         "seedRolesAndUsers",
         roleRepository,
@@ -393,7 +393,7 @@ class DataInitializerSecurityTest {
             Optional.of(
                 new UserAccount("benchmark.admin@bbp.com", "existing-hash", "Benchmark Admin")));
 
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         initializer,
         "seedRolesAndUsers",
         roleRepository,

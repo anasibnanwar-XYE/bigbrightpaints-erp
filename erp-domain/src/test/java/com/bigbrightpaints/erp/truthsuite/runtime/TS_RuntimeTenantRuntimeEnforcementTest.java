@@ -229,7 +229,7 @@ class TS_RuntimeTenantRuntimeEnforcementTest {
   void privateHelperMethods_coverCanonicalControlRequestBranches() {
     assertThat(
             (Boolean)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     filter,
                     "isLifecycleControlRequest",
                     "/api/v1/superadmin/tenants/7/limits",
@@ -237,7 +237,7 @@ class TS_RuntimeTenantRuntimeEnforcementTest {
         .isTrue();
     assertThat(
             (Boolean)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     filter,
                     "isLifecycleControlRequest",
                     "/api/v1/superadmin/tenants/7/admins/3/email-change/confirm",
@@ -245,7 +245,7 @@ class TS_RuntimeTenantRuntimeEnforcementTest {
         .isTrue();
     assertThat(
             (Boolean)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     filter,
                     "isLifecycleControlRequest",
                     "/api/v1/superadmin/tenants/7/limits",

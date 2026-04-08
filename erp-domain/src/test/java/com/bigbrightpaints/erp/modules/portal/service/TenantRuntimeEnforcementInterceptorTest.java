@@ -372,7 +372,7 @@ class TenantRuntimeEnforcementInterceptorTest {
             companyContextService, tenantRuntimeRequestAdmissionService);
 
     RuntimeException exception =
-        ReflectionTestUtils.invokeMethod(interceptor, "admissionException", "   ", "   ", null);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(interceptor, "admissionException", "   ", "   ", null);
 
     assertThat(exception).isInstanceOf(ApplicationException.class);
     ApplicationException applicationException = (ApplicationException) exception;
@@ -400,7 +400,7 @@ class TenantRuntimeEnforcementInterceptorTest {
             "ACTIVE");
 
     RuntimeException exception =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             interceptor, "admissionException", "   ", "/api/v1/portal/orders", rejected);
 
     assertThat(exception).isInstanceOf(ApplicationException.class);
@@ -434,7 +434,7 @@ class TenantRuntimeEnforcementInterceptorTest {
             "   ");
 
     RuntimeException exception =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             interceptor, "admissionException", "   ", "/api/v1/portal/orders", rejected);
 
     assertThat(exception).isInstanceOf(ApplicationException.class);
@@ -481,7 +481,7 @@ class TenantRuntimeEnforcementInterceptorTest {
                 0L));
 
     RuntimeException exception =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             interceptor, "admissionException", "ACME", "/api/v1/portal/orders", rejected);
 
     assertThat(exception).isInstanceOf(ApplicationException.class);
@@ -515,7 +515,7 @@ class TenantRuntimeEnforcementInterceptorTest {
             "policy-denied");
 
     RuntimeException exception =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             interceptor, "admissionException", "ACME", "/api/v1/portal/orders", rejected);
 
     assertThat(exception).isInstanceOf(ApplicationException.class);
@@ -551,7 +551,7 @@ class TenantRuntimeEnforcementInterceptorTest {
         .thenThrow(new IllegalStateException("db offline"));
 
     RuntimeException exception =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             interceptor, "admissionException", "ACME", "/api/v1/portal/orders", rejected);
 
     assertThat(exception).isInstanceOf(ApplicationException.class);

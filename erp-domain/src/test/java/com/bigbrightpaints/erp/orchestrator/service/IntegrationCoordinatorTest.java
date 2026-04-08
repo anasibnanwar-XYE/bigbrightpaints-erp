@@ -473,24 +473,24 @@ class IntegrationCoordinatorTest {
 
     assertThat(
             (Boolean)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     integrationCoordinator, "isHrPayrollEnabled", (Company) null))
         .isFalse();
     assertThat(
             (Boolean)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     integrationCoordinator, "isHrPayrollEnabled", modulesMissing))
         .isFalse();
     assertThat(
             (Boolean)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     integrationCoordinator, "isHrPayrollEnabled", company))
         .isFalse();
 
     company.setEnabledModules(Set.of("HR_PAYROLL"));
     assertThat(
             (Boolean)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     integrationCoordinator, "isHrPayrollEnabled", company))
         .isTrue();
   }

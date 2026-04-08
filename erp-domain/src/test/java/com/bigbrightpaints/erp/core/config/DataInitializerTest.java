@@ -235,13 +235,13 @@ class DataInitializerTest {
   void ensureCompanyMembership_handlesNullsAndAvoidsDuplicateMemberships() {
     Company targetCompany = company("BBP");
 
-    ReflectionTestUtils.invokeMethod(initializer, "ensureCompanyMembership", null, targetCompany);
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(initializer, "ensureCompanyMembership", null, targetCompany);
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         initializer, "ensureCompanyMembership", new UserAccount("u@x.com", "hash", "User"), null);
 
     UserAccount userWithCodeMatch = new UserAccount("a@x.com", "hash", "User A");
     userWithCodeMatch.setCompany(company("bbp"));
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         initializer, "ensureCompanyMembership", userWithCodeMatch, targetCompany);
     assertThat(userWithCodeMatch.getCompany()).isNotNull();
 
@@ -251,7 +251,7 @@ class DataInitializerTest {
     Company sameId = company("DIFFERENT");
     ReflectionTestUtils.setField(sameId, "id", 7L);
     userWithIdMatch.setCompany(existing);
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         initializer, "ensureCompanyMembership", userWithIdMatch, sameId);
     assertThat(userWithIdMatch.getCompany()).isNotNull();
   }
@@ -260,13 +260,13 @@ class DataInitializerTest {
   void ensureRoleMembership_handlesNullsAndAvoidsDuplicateRoleNames() {
     Role adminRole = role("ROLE_ADMIN");
 
-    ReflectionTestUtils.invokeMethod(initializer, "ensureRoleMembership", null, adminRole);
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(initializer, "ensureRoleMembership", null, adminRole);
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         initializer, "ensureRoleMembership", new UserAccount("u@x.com", "hash", "User"), null);
 
     UserAccount user = new UserAccount("seed@x.com", "hash", "Seed");
     user.addRole(role("role_admin"));
-    ReflectionTestUtils.invokeMethod(initializer, "ensureRoleMembership", user, adminRole);
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(initializer, "ensureRoleMembership", user, adminRole);
 
     assertThat(
             user.getRoles().stream()

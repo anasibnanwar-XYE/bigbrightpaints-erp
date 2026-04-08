@@ -458,7 +458,7 @@ class AuthServiceAuditAttributionTest {
   @Test
   void normalizeEmail_returnsNullForNullInput() {
     assertThat(
-            (String) ReflectionTestUtils.invokeMethod(authService, "normalizeEmail", (Object) null))
+            (String) com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(authService, "normalizeEmail", (Object) null))
         .isNull();
   }
 

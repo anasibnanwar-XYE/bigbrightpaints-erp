@@ -444,17 +444,17 @@ class DealerServiceTest {
     @SuppressWarnings("unchecked")
     Map<Long, BigDecimal> noCompany =
         (Map<Long, BigDecimal>)
-            ReflectionTestUtils.invokeMethod(
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                 dealerService, "resolvePendingOrderExposureMap", null, List.of(1L));
     @SuppressWarnings("unchecked")
     Map<Long, BigDecimal> nullDealerIds =
         (Map<Long, BigDecimal>)
-            ReflectionTestUtils.invokeMethod(
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                 dealerService, "resolvePendingOrderExposureMap", company, null);
     @SuppressWarnings("unchecked")
     Map<Long, BigDecimal> noDealerIds =
         (Map<Long, BigDecimal>)
-            ReflectionTestUtils.invokeMethod(
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                 dealerService, "resolvePendingOrderExposureMap", company, List.<Long>of());
 
     assertThat(noCompany).isEmpty();
@@ -476,7 +476,7 @@ class DealerServiceTest {
     @SuppressWarnings("unchecked")
     Map<Long, BigDecimal> exposures =
         (Map<Long, BigDecimal>)
-            ReflectionTestUtils.invokeMethod(
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                 dealerService, "resolvePendingOrderExposureMap", company, List.of(1L, 2L));
 
     assertThat(exposures)
@@ -556,13 +556,13 @@ class DealerServiceTest {
       resolvePendingOrderExposure_returnsZeroWhenDealerContextIsIncompleteOrRepositoryReturnsNull() {
     BigDecimal missingDealer =
         (BigDecimal)
-            ReflectionTestUtils.invokeMethod(
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                 dealerService, "resolvePendingOrderExposure", new Object[] {null});
 
     Dealer dealerWithoutContext = new Dealer();
     BigDecimal missingContext =
         (BigDecimal)
-            ReflectionTestUtils.invokeMethod(
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                 dealerService, "resolvePendingOrderExposure", dealerWithoutContext);
 
     Dealer dealer = dealer("D-NULL-EXPOSURE", new BigDecimal("1000"), "WEST");
@@ -571,7 +571,7 @@ class DealerServiceTest {
         .thenReturn(null);
     BigDecimal nullRepositoryExposure =
         (BigDecimal)
-            ReflectionTestUtils.invokeMethod(dealerService, "resolvePendingOrderExposure", dealer);
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(dealerService, "resolvePendingOrderExposure", dealer);
 
     assertThat(missingDealer).isEqualByComparingTo(BigDecimal.ZERO);
     assertThat(missingContext).isEqualByComparingTo(BigDecimal.ZERO);
@@ -744,7 +744,7 @@ class DealerServiceTest {
     @SuppressWarnings("unchecked")
     List<java.util.Map<String, Object>> payload =
         (List<java.util.Map<String, Object>>)
-            ReflectionTestUtils.invokeMethod(
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                 dealerService, "toOverdueInvoicePayload", new Object[] {null});
 
     assertThat(payload).isEqualTo(List.of());
@@ -755,7 +755,7 @@ class DealerServiceTest {
     @SuppressWarnings("unchecked")
     java.util.Map<String, Object> buckets =
         (java.util.Map<String, Object>)
-            ReflectionTestUtils.invokeMethod(
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                 dealerService, "toPortalAgingBuckets", new Object[] {null});
 
     assertThat(buckets)
@@ -768,7 +768,7 @@ class DealerServiceTest {
     @SuppressWarnings("unchecked")
     java.util.Map<String, Object> buckets =
         (java.util.Map<String, Object>)
-            ReflectionTestUtils.invokeMethod(
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                 dealerService,
                 "toPortalAgingBuckets",
                 new AgingSummaryResponse(
@@ -784,7 +784,7 @@ class DealerServiceTest {
   void safeReturnsProvidedValueWhenPresent() {
     BigDecimal value =
         (BigDecimal)
-            ReflectionTestUtils.invokeMethod(dealerService, "safe", new BigDecimal("25.00"));
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(dealerService, "safe", new BigDecimal("25.00"));
 
     assertThat(value).isEqualByComparingTo("25.00");
   }

@@ -352,26 +352,26 @@ class PasswordResetServiceTest {
     assertEquals(
         "<empty>",
         (String)
-            ReflectionTestUtils.invokeMethod(
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                 passwordResetService, "sanitizeForPlainTextLog", "   "));
     assertEquals(
         "<unknown>",
         (String)
-            ReflectionTestUtils.invokeMethod(
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                 passwordResetService, "sanitizeExceptionClass", (Object) null));
     org.assertj.core.api.Assertions.assertThat(
             (String)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     passwordResetService, "normalizeEmail", (Object) null))
         .isNull();
     assertEquals(
         "x".repeat(160),
         (String)
-            ReflectionTestUtils.invokeMethod(
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                 passwordResetService, "sanitizeForPlainTextLog", "x".repeat(170)));
     String anonymousClass =
         (String)
-            ReflectionTestUtils.invokeMethod(
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                 passwordResetService, "sanitizeExceptionClass", new RuntimeException("boom") {});
     org.assertj.core.api.Assertions.assertThat(anonymousClass).contains("PasswordResetServiceTest");
   }
@@ -385,27 +385,27 @@ class PasswordResetServiceTest {
     disabledUser.setEnabled(false);
     org.assertj.core.api.Assertions.assertThat(
             (Object)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     passwordResetService, "lockUserForResetIssuance", disabledUser))
         .isNull();
 
     UserAccount unsavedUser = enabledUser("user@example.com", TENANT_SCOPE);
     assertEquals(
         unsavedUser,
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             passwordResetService, "lockUserForResetIssuance", unsavedUser));
 
     assertDoesNotThrow(
         () ->
-            ReflectionTestUtils.invokeMethod(
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                 passwordResetService, "cleanupIssuedResetToken", null, "corr", "masked"));
     assertDoesNotThrow(
         () ->
-            ReflectionTestUtils.invokeMethod(
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                 passwordResetService, "markIssuedResetTokenDelivered", null, "corr", "masked"));
     assertEquals(
         false,
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             passwordResetService, "dispatchResetEmail", null, "corr", "forgot_password"));
   }
 

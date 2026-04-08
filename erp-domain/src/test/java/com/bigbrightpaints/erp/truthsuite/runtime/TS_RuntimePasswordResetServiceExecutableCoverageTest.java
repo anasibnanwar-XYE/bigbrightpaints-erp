@@ -106,35 +106,35 @@ class TS_RuntimePasswordResetServiceExecutableCoverageTest {
             mock(PasswordResetTokenRepository.class),
             mock(EmailService.class));
 
-    assertThat((String) ReflectionTestUtils.invokeMethod(service, "firstNonBlank", (Object) null))
+    assertThat((String) com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "firstNonBlank", (Object) null))
         .isNull();
     assertThat(
             (String)
-                ReflectionTestUtils.invokeMethod(service, "firstNonBlank", (Object) new String[0]))
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "firstNonBlank", (Object) new String[0]))
         .isNull();
     assertThat(
-            (String) ReflectionTestUtils.invokeMethod(service, "sanitizeCorrelationId", "\u0000"))
+            (String) com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "sanitizeCorrelationId", "\u0000"))
         .isNull();
     assertThat(
             (String)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     service, "sanitizeCorrelationId", "corr-with-cr\rsegment"))
         .isNull();
     assertThat(
             (String)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     service, "sanitizeCorrelationId", "corr-with-lf\nsegment"))
         .isNull();
     assertThat(
             (String)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     service, "sanitizeForPlainTextLog", " corr\r\nsegment\tvalue "))
         .isEqualTo("corr__segment_value");
     assertThat(
             (String)
-                ReflectionTestUtils.invokeMethod(service, "sanitizeForPlainTextLog", (Object) null))
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "sanitizeForPlainTextLog", (Object) null))
         .isEqualTo("<empty>");
-    assertThat((String) ReflectionTestUtils.invokeMethod(service, "obfuscateEmail", (Object) null))
+    assertThat((String) com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(service, "obfuscateEmail", (Object) null))
         .isEqualTo("<empty>");
   }
 

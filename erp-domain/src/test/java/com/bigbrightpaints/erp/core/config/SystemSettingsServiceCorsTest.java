@@ -218,22 +218,22 @@ class SystemSettingsServiceCorsTest {
 
     assertThat(
             (Boolean)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     loopbackOnly, "isLocalOrPrivateHttpOrigin", "http://localhost:3002"))
         .isTrue();
     assertThat(
             (Boolean)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     loopbackOnly, "isLocalOrPrivateHttpOrigin", "http://100.109.241.47:3000"))
         .isFalse();
     assertThat(
             (Boolean)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     tailscaleAllowed, "isLocalOrPrivateHttpOrigin", "http://192.168.29.187:3002"))
         .isFalse();
     assertThat(
             (Boolean)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     tailscaleAllowed, "isLocalOrPrivateHttpOrigin", "http://100.109.241.47:3000"))
         .isTrue();
   }
@@ -267,27 +267,27 @@ class SystemSettingsServiceCorsTest {
 
     assertThat(
             (Boolean)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     tailscaleBlocked, "isDisallowedProdHttpOrigin", "http://localhost:3002"))
         .isTrue();
     assertThat(
             (Boolean)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     tailscaleBlocked, "isDisallowedProdHttpOrigin", "http://100.109.241.47:3000"))
         .isTrue();
     assertThat(
             (Boolean)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     tailscaleBlocked, "isDisallowedProdHttpOrigin", "http://192.168.29.187:3002"))
         .isFalse();
     assertThat(
             (Boolean)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     tailscaleBlocked, "isDisallowedProdHttpOrigin", "https://example.com"))
         .isFalse();
     assertThat(
             (Boolean)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     tailscaleAllowed, "isDisallowedProdHttpOrigin", "http://100.109.241.47:3000"))
         .isFalse();
   }

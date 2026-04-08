@@ -32,7 +32,7 @@ class IntegrationFailureMetadataSchemaContractTest {
     AccountingAuditService service = buildAccountingAuditService(auditService);
     ReflectionTestUtils.setField(service, "strictAccountingEventTrail", false);
 
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         service,
         "handleAccountingEventTrailFailure",
         "JOURNAL_ENTRY_POSTED",
@@ -58,7 +58,7 @@ class IntegrationFailureMetadataSchemaContractTest {
     HttpMessageNotReadableException malformed =
         new HttpMessageNotReadableException(
             "JSON parse error", new IllegalArgumentException("Unrecognized field"));
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         handler,
         "handleHttpMessageNotReadable",
         malformed,

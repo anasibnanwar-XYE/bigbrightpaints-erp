@@ -290,18 +290,18 @@ class TS_RuntimeTenantControlPlaneEnforcementTest {
             1);
 
     Object cachedPolicy =
-        ReflectionTestUtils.invokeMethod(shortCacheService, "resolvePolicy", "acme", 1L);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(shortCacheService, "resolvePolicy", "acme", 1L);
     assertThat(cachedPolicy).isNotNull();
     Object cacheHitPolicy =
-        ReflectionTestUtils.invokeMethod(shortCacheService, "resolvePolicy", "acme", 1L);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(shortCacheService, "resolvePolicy", "acme", 1L);
     assertThat(cacheHitPolicy).isNotNull();
 
     Thread.sleep(1100L);
     Object expiredCachePolicy =
-        ReflectionTestUtils.invokeMethod(shortCacheService, "resolvePolicy", "acme", 1L);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(shortCacheService, "resolvePolicy", "acme", 1L);
     assertThat(expiredCachePolicy).isNotNull();
     Object nullCompanyPolicy =
-        ReflectionTestUtils.invokeMethod(shortCacheService, "resolvePolicy", "acme", null);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(shortCacheService, "resolvePolicy", "acme", null);
     assertThat(nullCompanyPolicy).isNotNull();
   }
 
@@ -345,7 +345,7 @@ class TS_RuntimeTenantControlPlaneEnforcementTest {
     assertThat(stillDeniedFromCache.allowed()).isFalse();
     assertThat(stillDeniedFromCache.reasonCode()).isEqualTo("TENANT_ON_HOLD");
 
-    ReflectionTestUtils.invokeMethod(coreRuntimeService, "evictPolicyCache", "ACME");
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(coreRuntimeService, "evictPolicyCache", "ACME");
     com.bigbrightpaints.erp.core.security.TenantRuntimeAccessService.AccessHandle
         allowedAfterEviction =
             coreRuntimeService.acquire(
@@ -353,8 +353,8 @@ class TS_RuntimeTenantControlPlaneEnforcementTest {
     assertThat(allowedAfterEviction.allowed()).isTrue();
     allowedAfterEviction.close();
 
-    ReflectionTestUtils.invokeMethod(coreRuntimeService, "evictPolicyCache", "UNKNOWN");
-    ReflectionTestUtils.invokeMethod(coreRuntimeService, "evictPolicyCache", "   ");
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(coreRuntimeService, "evictPolicyCache", "UNKNOWN");
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(coreRuntimeService, "evictPolicyCache", "   ");
   }
 
   @Test
@@ -388,7 +388,7 @@ class TS_RuntimeTenantControlPlaneEnforcementTest {
 
     persistedSettingsByKey.put(keyHoldState(1L), "");
     persistedSettingsByKey.put(legacyKey("acme", "state"), "HOLD");
-    ReflectionTestUtils.invokeMethod(coreRuntimeService, "evictPolicyCache", "ACME");
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(coreRuntimeService, "evictPolicyCache", "ACME");
     com.bigbrightpaints.erp.core.security.TenantRuntimeAccessService.AccessHandle hold =
         coreRuntimeService.acquire("ACME", new MockHttpServletRequest("POST", "/api/v1/private"));
     assertThat(hold.allowed()).isFalse();
@@ -438,7 +438,7 @@ class TS_RuntimeTenantControlPlaneEnforcementTest {
     Map<String, Object> runtimeMetrics =
         (Map<String, Object>) ReflectionTestUtils.getField(coreRuntimeService, "runtimeMetrics");
     Object legacyMetrics =
-        ReflectionTestUtils.invokeMethod(coreRuntimeService, "createMetrics", "ACME");
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(coreRuntimeService, "createMetrics", "ACME");
     runtimeMetrics.put("acme", legacyMetrics);
 
     Optional<
@@ -457,7 +457,7 @@ class TS_RuntimeTenantControlPlaneEnforcementTest {
     @SuppressWarnings("unchecked")
     Map<String, Object> runtimeMetrics =
         (Map<String, Object>) ReflectionTestUtils.getField(coreRuntimeService, "runtimeMetrics");
-    Object metrics = ReflectionTestUtils.invokeMethod(coreRuntimeService, "createMetrics", "ACME");
+    Object metrics = com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(coreRuntimeService, "createMetrics", "ACME");
     runtimeMetrics.put("201:acme", metrics);
 
     Map<
@@ -473,23 +473,23 @@ class TS_RuntimeTenantControlPlaneEnforcementTest {
   @Test
   void coreRuntimeAdmission_runtimeMetricHelpers_coverNullAndBlankBranches() {
     String keyWithoutCompany =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             com.bigbrightpaints.erp.core.security.TenantRuntimeAccessService.class,
             "runtimeMetricsKey",
             null,
             "acme");
     String tokenForBlank =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             com.bigbrightpaints.erp.core.security.TenantRuntimeAccessService.class,
             "metricsToken",
             "   ");
     String tokenWithoutSeparator =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             com.bigbrightpaints.erp.core.security.TenantRuntimeAccessService.class,
             "metricsToken",
             "acme");
     String tokenWithTrailingSeparator =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             com.bigbrightpaints.erp.core.security.TenantRuntimeAccessService.class,
             "metricsToken",
             "7:");
@@ -506,9 +506,9 @@ class TS_RuntimeTenantControlPlaneEnforcementTest {
         coreRuntimeService();
 
     String normalizedNull =
-        ReflectionTestUtils.invokeMethod(coreRuntimeService, "normalizeTenantToken", (Object) null);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(coreRuntimeService, "normalizeTenantToken", (Object) null);
     String normalizedBlank =
-        ReflectionTestUtils.invokeMethod(coreRuntimeService, "normalizeTenantToken", "   ");
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(coreRuntimeService, "normalizeTenantToken", "   ");
 
     assertThat(normalizedNull).isEqualTo("unknown");
     assertThat(normalizedBlank).isEqualTo("unknown");
@@ -517,27 +517,27 @@ class TS_RuntimeTenantControlPlaneEnforcementTest {
   @Test
   void coreRuntimeAdmission_isMutating_handlesNullBlankSafeMethodsAndPost() {
     Boolean nullMethod =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             com.bigbrightpaints.erp.core.security.TenantRuntimeAccessService.class,
             "isMutating",
             (Object) null);
     Boolean blankMethod =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             com.bigbrightpaints.erp.core.security.TenantRuntimeAccessService.class,
             "isMutating",
             "");
     Boolean headMethod =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             com.bigbrightpaints.erp.core.security.TenantRuntimeAccessService.class,
             "isMutating",
             "HEAD");
     Boolean optionsMethod =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             com.bigbrightpaints.erp.core.security.TenantRuntimeAccessService.class,
             "isMutating",
             "OPTIONS");
     Boolean postMethod =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             com.bigbrightpaints.erp.core.security.TenantRuntimeAccessService.class,
             "isMutating",
             "POST");
@@ -590,7 +590,7 @@ class TS_RuntimeTenantControlPlaneEnforcementTest {
             0,
             30);
 
-    Object metrics = ReflectionTestUtils.invokeMethod(meteredService, "createMetrics", "   ");
+    Object metrics = com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(meteredService, "createMetrics", "   ");
     assertThat(metrics).isNotNull();
     assertThat(
             meterRegistry.find("tenant.runtime.requests.active").tag("tenant", "UNKNOWN").gauge())

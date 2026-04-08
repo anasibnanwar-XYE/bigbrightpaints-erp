@@ -1,6 +1,7 @@
 package com.bigbrightpaints.erp.test.support;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.Arrays;
 
@@ -42,6 +43,16 @@ public final class ReflectionFieldAccess {
     try {
       method.setAccessible(true);
       return (T) method.invoke(invocationTarget, effectiveArgs);
+    } catch (InvocationTargetException ex) {
+      Throwable cause = ex.getCause();
+      if (cause instanceof RuntimeException runtimeException) {
+        throw runtimeException;
+      }
+      if (cause instanceof Error error) {
+        throw error;
+      }
+      throw new RuntimeException(
+          "Failed to invoke method '" + methodName + "' on " + targetType.getName(), cause);
     } catch (ReflectiveOperationException ex) {
       throw new RuntimeException(
           "Failed to invoke method '" + methodName + "' on " + targetType.getName(), ex);

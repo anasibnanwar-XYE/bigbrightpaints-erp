@@ -359,7 +359,7 @@ class ValidationSeedDataInitializerTest {
     company.setCode("HOLD");
     ReflectionTestUtils.setField(company, "id", 41L);
 
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         initializer,
         "ensureRuntimePolicy",
         systemSettingsRepository,

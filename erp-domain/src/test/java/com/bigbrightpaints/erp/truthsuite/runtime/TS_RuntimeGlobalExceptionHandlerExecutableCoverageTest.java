@@ -197,7 +197,7 @@ class TS_RuntimeGlobalExceptionHandlerExecutableCoverageTest {
 
     @SuppressWarnings("unchecked")
     Map<String, Object> noDetails =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             handler,
             "resolveResponseDetails",
             catalogItemConflictException(),
@@ -207,7 +207,7 @@ class TS_RuntimeGlobalExceptionHandlerExecutableCoverageTest {
 
     @SuppressWarnings("unchecked")
     Map<String, Object> allowlistedSubset =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             handler,
             "sanitizeCatalogConflictDetails",
             catalogItemConflictException(),
@@ -216,7 +216,7 @@ class TS_RuntimeGlobalExceptionHandlerExecutableCoverageTest {
     assertThat(allowlistedSubset).containsOnlyKeys("operation");
 
     Boolean nullExceptionRejected =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             handler,
             "isCatalogConflictDetailsSafeToExpose",
             null,
@@ -225,7 +225,7 @@ class TS_RuntimeGlobalExceptionHandlerExecutableCoverageTest {
     assertThat(nullExceptionRejected).isFalse();
 
     Boolean nullRequestRejected =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             handler,
             "isCatalogConflictDetailsSafeToExpose",
             catalogItemConflictException(),
@@ -237,7 +237,7 @@ class TS_RuntimeGlobalExceptionHandlerExecutableCoverageTest {
         new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "invalid")
             .withDetail("operation", CATALOG_ITEM_OPERATION);
     Boolean wrongCodeRejected =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             handler,
             "isCatalogConflictDetailsSafeToExpose",
             wrongCode,
@@ -247,49 +247,49 @@ class TS_RuntimeGlobalExceptionHandlerExecutableCoverageTest {
 
     @SuppressWarnings("unchecked")
     List<String> emptyPaths =
-        ReflectionTestUtils.invokeMethod(handler, "resolveNormalizedRequestPaths", (Object) null);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(handler, "resolveNormalizedRequestPaths", (Object) null);
     assertThat(emptyPaths).isEmpty();
 
     String pathInfoFallback =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             handler, "joinServletPathAndPathInfo", "/", CATALOG_ITEM_PATH);
     assertThat(pathInfoFallback).isEqualTo(CATALOG_ITEM_PATH);
 
-    String emptyUri = ReflectionTestUtils.invokeMethod(handler, "stripContextPath", "", "/tenant");
+    String emptyUri = com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(handler, "stripContextPath", "", "/tenant");
     assertThat(emptyUri).isEmpty();
 
     String rootPath =
-        ReflectionTestUtils.invokeMethod(handler, "stripContextPath", "/tenant", "/tenant");
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(handler, "stripContextPath", "/tenant", "/tenant");
     assertThat(rootPath).isEqualTo("/");
 
     String unchangedUri =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             handler, "stripContextPath", "/api/v1/catalog/items", "/tenant");
     assertThat(unchangedUri).isEqualTo("/api/v1/catalog/items");
 
     Boolean nullPathRejected =
-        ReflectionTestUtils.invokeMethod(handler, "matchesEndpointPath", "", CATALOG_ITEM_PATH);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(handler, "matchesEndpointPath", "", CATALOG_ITEM_PATH);
     assertThat(nullPathRejected).isFalse();
 
     Boolean blankEndpointRejected =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             handler, "matchesEndpointPath", "/erp" + CATALOG_ITEM_PATH, "");
     assertThat(blankEndpointRejected).isFalse();
 
     Boolean prefixedPathAccepted =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             handler, "matchesEndpointPath", "/erp" + CATALOG_ITEM_PATH, CATALOG_ITEM_PATH);
     assertThat(prefixedPathAccepted).isTrue();
 
     String normalizedWithoutSlash =
-        ReflectionTestUtils.invokeMethod(handler, "normalizeEndpointPath", "api/v1/catalog/items");
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(handler, "normalizeEndpointPath", "api/v1/catalog/items");
     assertThat(normalizedWithoutSlash).isEqualTo("/api/v1/catalog/items");
 
-    String normalizedRoot = ReflectionTestUtils.invokeMethod(handler, "normalizeEndpointPath", "/");
+    String normalizedRoot = com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(handler, "normalizeEndpointPath", "/");
     assertThat(normalizedRoot).isEqualTo("/");
 
     String normalizedTrimmed =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             handler, "normalizeEndpointPath", " /api/v1/catalog/items/ ");
     assertThat(normalizedTrimmed).isEqualTo(CATALOG_ITEM_PATH);
   }
