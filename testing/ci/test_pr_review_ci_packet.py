@@ -59,6 +59,20 @@ class CiRiskRouterTest(unittest.TestCase):
         self.assertEqual("base", effective_base)
         self.assertFalse(applied)
 
+    def test_compacted_coverage_scope_does_not_suppress_requested_diff_routing(self):
+        flags = ci_risk_router.compute_flags(
+            [
+                "erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/service/AuthService.java",
+            ],
+            coverage_paths=["docs/SECURITY.md"],
+        )
+
+        self.assertEqual("true", flags["run_auth_tenant"])
+        self.assertEqual("true", flags["run_codered_access"])
+        self.assertEqual("false", flags["run_changed_coverage"])
+        self.assertEqual("1", flags["changed_files_count"])
+        self.assertEqual("0", flags["changed_runtime_source_count"])
+
     def test_pr_fast_profile_remains_defined_for_pr_callers(self):
         pom_text = (REPO_ROOT / "erp-domain" / "pom.xml").read_text(encoding="utf-8")
 

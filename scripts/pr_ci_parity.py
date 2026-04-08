@@ -289,18 +289,19 @@ def main() -> int:
             getattr(ci_risk_router, "DEFAULT_CHANGED_COVERAGE_BASELINE_SHA", ""),
         )
         (
-            changed_files,
+            requested_changed_files,
+            coverage_changed_files,
             base_sha,
             head_sha,
             effective_diff_base,
             coverage_baseline_sha,
             coverage_baseline_applied,
-        ) = ci_risk_router.resolve_changed_files(args.base, args.head, coverage_baseline_ref)
+        ) = ci_risk_router.resolve_diff_scopes(args.base, args.head, coverage_baseline_ref)
     except (subprocess.CalledProcessError, AttributeError) as exc:
         print(f"[pr-ci-parity] FAIL: unable to resolve base/head refs: {exc}", file=sys.stderr)
         return 2
 
-    router_flags = ci_risk_router.compute_flags(changed_files)
+    router_flags = ci_risk_router.compute_flags(requested_changed_files, coverage_paths=coverage_changed_files)
     routed_plan = build_routed_job_plan(router_flags)
     act_available = shutil.which("act") is not None
 
@@ -310,7 +311,8 @@ def main() -> int:
         "effective_diff_base": effective_diff_base,
         "coverage_baseline_sha": coverage_baseline_sha or None,
         "coverage_baseline_applied": coverage_baseline_applied,
-        "changed_files": changed_files,
+        "changed_files": requested_changed_files,
+        "coverage_changed_files": coverage_changed_files,
         "router_flags": router_flags,
         "routed_plan": routed_plan,
         "act_available": act_available,
