@@ -26,6 +26,7 @@ public class ConfigurationHealthIndicator implements HealthIndicator {
   private final ConfigurationHealthService configurationHealthService;
   private final Duration cacheTtl;
   private final boolean environmentValidationEnabled;
+  private final boolean skipChecksWhenValidationDisabled;
 
   private volatile Instant cachedAt;
   private volatile ConfigurationHealthService.ConfigurationHealthReport cachedReport;
@@ -33,17 +34,22 @@ public class ConfigurationHealthIndicator implements HealthIndicator {
   public ConfigurationHealthIndicator(
       ConfigurationHealthService configurationHealthService,
       @Value("${erp.environment.validation.health-cache-seconds:60}") long cacheSeconds,
-      @Value("${erp.environment.validation.enabled:false}") boolean environmentValidationEnabled) {
+      @Value("${erp.environment.validation.enabled:false}") boolean environmentValidationEnabled,
+      @Value(
+              "${erp.environment.validation.health-indicator.skip-when-validation-disabled:false}")
+          boolean skipChecksWhenValidationDisabled) {
     this.configurationHealthService = configurationHealthService;
     this.cacheTtl = Duration.ofSeconds(Math.max(5, cacheSeconds));
     this.environmentValidationEnabled = environmentValidationEnabled;
+    this.skipChecksWhenValidationDisabled = skipChecksWhenValidationDisabled;
   }
 
   @Override
   public Health health() {
-    if (!environmentValidationEnabled) {
+    if (!environmentValidationEnabled && skipChecksWhenValidationDisabled) {
       return Health.up()
           .withDetail("validationEnabled", false)
+          .withDetail("skipWhenValidationDisabled", true)
           .withDetail("checksSkipped", true)
           .build();
     }

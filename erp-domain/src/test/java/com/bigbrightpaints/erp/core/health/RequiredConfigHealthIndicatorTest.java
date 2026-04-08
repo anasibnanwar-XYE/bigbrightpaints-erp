@@ -22,7 +22,8 @@ class RequiredConfigHealthIndicatorTest {
             "smtp-relay.example.com",
             "mailer-user",
             "secret-password",
-            true);
+            true,
+            false);
 
     Health health = indicator.health();
 
@@ -42,7 +43,8 @@ class RequiredConfigHealthIndicatorTest {
             "smtp-relay.example.com",
             "",
             "secret-password",
-            true);
+            true,
+            false);
 
     Health health = indicator.health();
 
@@ -64,7 +66,8 @@ class RequiredConfigHealthIndicatorTest {
             "",
             "",
             "",
-            true);
+            true,
+            false);
 
     Health health = indicator.health();
 
@@ -73,15 +76,33 @@ class RequiredConfigHealthIndicatorTest {
   }
 
   @Test
-  void healthUpWhenEnvironmentValidationDisabledEvenWithMissingSecrets() {
+  void healthDownWhenEnvironmentValidationDisabledWithoutBypassAndSecretsAreMissing() {
     RequiredConfigHealthIndicator indicator =
-        new RequiredConfigHealthIndicator("short", "tiny", true, "", true, "", "", "", false);
+        new RequiredConfigHealthIndicator(
+            "short", "tiny", true, "", true, "", "", "", false, false);
+
+    Health health = indicator.health();
+
+    assertThat(health.getStatus()).isEqualTo(Status.DOWN);
+    assertThat((List<String>) health.getDetails().get("missing"))
+        .contains(
+            "jwt.secret",
+            "erp.security.encryption.key",
+            "erp.licensing.license-key",
+            "spring.mail.host/username/password");
+  }
+
+  @Test
+  void healthUpWhenEnvironmentValidationDisabledWithExplicitBypass() {
+    RequiredConfigHealthIndicator indicator =
+        new RequiredConfigHealthIndicator("short", "tiny", true, "", true, "", "", "", false, true);
 
     Health health = indicator.health();
 
     assertThat(health.getStatus()).isEqualTo(Status.UP);
     assertThat(health.getDetails())
         .containsEntry("validationEnabled", false)
+        .containsEntry("skipWhenValidationDisabled", true)
         .containsEntry("checksSkipped", true);
   }
 }

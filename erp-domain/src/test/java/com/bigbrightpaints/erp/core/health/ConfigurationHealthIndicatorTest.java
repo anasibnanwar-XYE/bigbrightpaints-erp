@@ -20,17 +20,23 @@ class ConfigurationHealthIndicatorTest {
   @Mock private ConfigurationHealthService configurationHealthService;
 
   @Test
-  void healthUpAndSkipsValidationWhenEnvironmentValidationDisabled() {
+  void healthUsesConfigurationReportWhenEnvironmentValidationDisabledWithoutBypass() {
+    ConfigurationHealthService.ConfigurationHealthReport report =
+        new ConfigurationHealthService.ConfigurationHealthReport(
+            false,
+            List.of(
+                new ConfigurationHealthService.ConfigurationIssue(
+                    "MOCK", "DEFAULT_ACCOUNTS", "COMPANY_DEFAULTS", "missing defaults")));
+    when(configurationHealthService.evaluate()).thenReturn(report);
+
     ConfigurationHealthIndicator indicator =
-        new ConfigurationHealthIndicator(configurationHealthService, 60, false);
+        new ConfigurationHealthIndicator(configurationHealthService, 60, false, false);
 
     Health health = indicator.health();
 
-    assertThat(health.getStatus()).isEqualTo(Status.UP);
-    assertThat(health.getDetails())
-        .containsEntry("validationEnabled", false)
-        .containsEntry("checksSkipped", true);
-    verifyNoInteractions(configurationHealthService);
+    assertThat(health.getStatus()).isEqualTo(Status.DOWN);
+    assertThat(health.getDetails()).containsEntry("issuesCount", 1);
+    verify(configurationHealthService).evaluate();
   }
 
   @Test
@@ -44,12 +50,27 @@ class ConfigurationHealthIndicatorTest {
     when(configurationHealthService.evaluate()).thenReturn(report);
 
     ConfigurationHealthIndicator indicator =
-        new ConfigurationHealthIndicator(configurationHealthService, 60, true);
+        new ConfigurationHealthIndicator(configurationHealthService, 60, true, false);
 
     Health health = indicator.health();
 
     assertThat(health.getStatus()).isEqualTo(Status.DOWN);
     assertThat(health.getDetails()).containsEntry("issuesCount", 1);
     verify(configurationHealthService).evaluate();
+  }
+
+  @Test
+  void healthUpAndSkipsValidationWhenEnvironmentValidationDisabledWithBypass() {
+    ConfigurationHealthIndicator indicator =
+        new ConfigurationHealthIndicator(configurationHealthService, 60, false, true);
+
+    Health health = indicator.health();
+
+    assertThat(health.getStatus()).isEqualTo(Status.UP);
+    assertThat(health.getDetails())
+        .containsEntry("validationEnabled", false)
+        .containsEntry("skipWhenValidationDisabled", true)
+        .containsEntry("checksSkipped", true);
+    verifyNoInteractions(configurationHealthService);
   }
 }
