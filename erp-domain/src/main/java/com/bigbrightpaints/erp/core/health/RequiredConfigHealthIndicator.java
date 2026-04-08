@@ -30,6 +30,7 @@ public class RequiredConfigHealthIndicator implements HealthIndicator {
   private final String mailHost;
   private final String mailUsername;
   private final String mailPassword;
+  private final boolean environmentValidationEnabled;
 
   public RequiredConfigHealthIndicator(
       @Value("${jwt.secret:}") String jwtSecret,
@@ -39,7 +40,8 @@ public class RequiredConfigHealthIndicator implements HealthIndicator {
       @Value("${erp.mail.enabled:true}") boolean mailEnabled,
       @Value("${spring.mail.host:}") String mailHost,
       @Value("${spring.mail.username:}") String mailUsername,
-      @Value("${spring.mail.password:}") String mailPassword) {
+      @Value("${spring.mail.password:}") String mailPassword,
+      @Value("${erp.environment.validation.enabled:false}") boolean environmentValidationEnabled) {
     this.jwtSecret = jwtSecret;
     this.encryptionKey = encryptionKey;
     this.licenseEnforce = licenseEnforce;
@@ -48,10 +50,18 @@ public class RequiredConfigHealthIndicator implements HealthIndicator {
     this.mailHost = mailHost;
     this.mailUsername = mailUsername;
     this.mailPassword = mailPassword;
+    this.environmentValidationEnabled = environmentValidationEnabled;
   }
 
   @Override
   public Health health() {
+    if (!environmentValidationEnabled) {
+      return Health.up()
+          .withDetail("validationEnabled", false)
+          .withDetail("checksSkipped", true)
+          .build();
+    }
+
     Map<String, Object> details = new LinkedHashMap<>();
     List<String> missing = new ArrayList<>();
 

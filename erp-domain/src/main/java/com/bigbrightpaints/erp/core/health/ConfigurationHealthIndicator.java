@@ -25,19 +25,29 @@ public class ConfigurationHealthIndicator implements HealthIndicator {
 
   private final ConfigurationHealthService configurationHealthService;
   private final Duration cacheTtl;
+  private final boolean environmentValidationEnabled;
 
   private volatile Instant cachedAt;
   private volatile ConfigurationHealthService.ConfigurationHealthReport cachedReport;
 
   public ConfigurationHealthIndicator(
       ConfigurationHealthService configurationHealthService,
-      @Value("${erp.environment.validation.health-cache-seconds:60}") long cacheSeconds) {
+      @Value("${erp.environment.validation.health-cache-seconds:60}") long cacheSeconds,
+      @Value("${erp.environment.validation.enabled:false}") boolean environmentValidationEnabled) {
     this.configurationHealthService = configurationHealthService;
     this.cacheTtl = Duration.ofSeconds(Math.max(5, cacheSeconds));
+    this.environmentValidationEnabled = environmentValidationEnabled;
   }
 
   @Override
   public Health health() {
+    if (!environmentValidationEnabled) {
+      return Health.up()
+          .withDetail("validationEnabled", false)
+          .withDetail("checksSkipped", true)
+          .build();
+    }
+
     try {
       ConfigurationHealthService.ConfigurationHealthReport report = getReport();
       Health.Builder builder = report.healthy() ? Health.up() : Health.down();

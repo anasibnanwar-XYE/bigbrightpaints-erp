@@ -120,7 +120,8 @@ class CR_ProductionMonitoringContractTest {
             true,
             "smtp-relay.example.com",
             "mailer-user",
-            "secret-password");
+            "secret-password",
+            true);
 
     Health health = indicator.health();
 
@@ -136,7 +137,7 @@ class CR_ProductionMonitoringContractTest {
   @DisplayName("Required configuration health indicator fails closed for missing secrets")
   void requiredConfigurationHealthIndicatorFailsClosed() {
     RequiredConfigHealthIndicator indicator =
-        new RequiredConfigHealthIndicator("short", "tiny", true, "", true, "", "", "");
+        new RequiredConfigHealthIndicator("short", "tiny", true, "", true, "", "", "", true);
 
     Health health = indicator.health();
 

@@ -21,7 +21,8 @@ class RequiredConfigHealthIndicatorTest {
             true,
             "smtp-relay.example.com",
             "mailer-user",
-            "secret-password");
+            "secret-password",
+            true);
 
     Health health = indicator.health();
 
@@ -40,7 +41,8 @@ class RequiredConfigHealthIndicatorTest {
             true,
             "smtp-relay.example.com",
             "",
-            "secret-password");
+            "secret-password",
+            true);
 
     Health health = indicator.health();
 
@@ -61,11 +63,25 @@ class RequiredConfigHealthIndicatorTest {
             false,
             "",
             "",
-            "");
+            "",
+            true);
 
     Health health = indicator.health();
 
     assertThat(health.getStatus()).isEqualTo(Status.UP);
     assertThat(health.getDetails()).containsEntry("mailConfigured", true);
+  }
+
+  @Test
+  void healthUpWhenEnvironmentValidationDisabledEvenWithMissingSecrets() {
+    RequiredConfigHealthIndicator indicator =
+        new RequiredConfigHealthIndicator("short", "tiny", true, "", true, "", "", "", false);
+
+    Health health = indicator.health();
+
+    assertThat(health.getStatus()).isEqualTo(Status.UP);
+    assertThat(health.getDetails())
+        .containsEntry("validationEnabled", false)
+        .containsEntry("checksSkipped", true);
   }
 }
