@@ -91,7 +91,7 @@ class BankReconciliationSessionServiceTest {
   }
 
   @Test
-  void startSession_persistsDraftSessionAndReturnsSummary() {
+  void startSession_persistsInProgressSessionAndReturnsSummary() {
     Account bankAccount = bankAccount(99L, "BANK", "Main Bank");
     when(accountRepository.findByCompanyAndId(company, 99L)).thenReturn(Optional.of(bankAccount));
     when(referenceNumberService.nextJournalReference(company)).thenReturn("JRN-ACME-202603-0001");
@@ -99,7 +99,7 @@ class BankReconciliationSessionServiceTest {
     BankReconciliationSession saved = new BankReconciliationSession();
     saved.setCompany(company);
     saved.setBankAccount(bankAccount);
-    saved.setStatus(BankReconciliationSessionStatus.DRAFT);
+    saved.setStatus(BankReconciliationSessionStatus.IN_PROGRESS);
     saved.setCreatedBy("admin@acme.test");
     saved.setReferenceNumber("BANK-RECON-JRN-ACME-202603-0001");
     saved.setStatementDate(LocalDate.of(2026, 3, 31));
@@ -132,7 +132,7 @@ class BankReconciliationSessionServiceTest {
                 "March statement"));
 
     assertThat(response.sessionId()).isEqualTo(11L);
-    assertThat(response.status()).isEqualTo("DRAFT");
+    assertThat(response.status()).isEqualTo("IN_PROGRESS");
     assertThat(response.referenceNumber()).isEqualTo("BANK-RECON-JRN-ACME-202603-0001");
     assertThat(response.summary()).isEqualTo(summary);
     assertThat(response.clearedItemCount()).isZero();
@@ -141,7 +141,7 @@ class BankReconciliationSessionServiceTest {
         ArgumentCaptor.forClass(BankReconciliationSession.class);
     verify(sessionRepository).save(sessionCaptor.capture());
     BankReconciliationSession persisted = sessionCaptor.getValue();
-    assertThat(persisted.getStatus()).isEqualTo(BankReconciliationSessionStatus.DRAFT);
+    assertThat(persisted.getStatus()).isEqualTo(BankReconciliationSessionStatus.IN_PROGRESS);
     assertThat(persisted.getCreatedBy()).isNotBlank();
     assertThat(persisted.getReferenceNumber()).startsWith("BANK-RECON-");
     assertThat(persisted.getStatementDate()).isEqualTo(LocalDate.of(2026, 3, 31));
@@ -222,6 +222,63 @@ class BankReconciliationSessionServiceTest {
                         List.of(888L), List.of(), null)))
         .isInstanceOf(ApplicationException.class)
         .hasMessageContaining("does not belong to the session bank account");
+  }
+
+  @Test
+  void updateItems_acceptsMatchPayloadUsingJournalEntryIds() {
+    Account bankAccount = bankAccount(99L, "BANK", "Main Bank");
+    BankReconciliationSession session =
+        session(26L, bankAccount, BankReconciliationSessionStatus.IN_PROGRESS);
+    when(sessionRepository.findByCompanyAndId(company, 26L)).thenReturn(Optional.of(session));
+
+    JournalLine matchedLine =
+        journalLine(
+            7601L,
+            company,
+            bankAccount,
+            "MATCH-01",
+            LocalDate.of(2026, 3, 11),
+            "Matched line",
+            "40.00",
+            "0.00");
+    Long journalEntryId = matchedLine.getJournalEntry().getId();
+    when(journalLineRepository.findPostedLinesForAccountByJournalEntryIds(
+            company, Set.of(journalEntryId), bankAccount.getId()))
+        .thenReturn(List.of(matchedLine));
+    when(journalLineRepository.findAllById(Set.of(7601L))).thenReturn(List.of(matchedLine));
+    when(itemRepository.findJournalLineIdsBySession(session)).thenReturn(Set.of());
+
+    BankReconciliationSession detailed =
+        session(26L, bankAccount, BankReconciliationSessionStatus.IN_PROGRESS);
+    when(sessionRepository.findDetailedByCompanyAndId(company, 26L))
+        .thenReturn(Optional.of(detailed));
+    when(itemRepository.findDetailedBySession(detailed))
+        .thenReturn(List.of(item(8601L, detailed, matchedLine, "MATCH-01", "40.00", "admin")));
+    when(reconciliationService.reconcileBankAccount(
+            eq(99L),
+            eq(detailed.getStatementDate()),
+            eq(detailed.getStatementEndingBalance()),
+            eq(LocalDate.of(2026, 3, 1)),
+            eq(LocalDate.of(2026, 3, 31)),
+            eq(Set.of(7601L)),
+            eq(Collections.emptySet())))
+        .thenReturn(summary("0.00", "0.00", "0.00", true));
+
+    BankReconciliationSessionDetailDto response =
+        service.updateItems(
+            26L,
+            new BankReconciliationSessionItemsUpdateRequest(
+                List.of(),
+                List.of(),
+                null,
+                List.of(
+                    new BankReconciliationSessionItemsUpdateRequest.BankStatementMatchRequest(
+                        1L, journalEntryId, null))));
+
+    assertThat(response.clearedItems()).hasSize(1);
+    assertThat(response.clearedItems().get(0).journalLineId()).isEqualTo(7601L);
+    verify(journalLineRepository)
+        .findPostedLinesForAccountByJournalEntryIds(company, Set.of(journalEntryId), bankAccount.getId());
   }
 
   @Test

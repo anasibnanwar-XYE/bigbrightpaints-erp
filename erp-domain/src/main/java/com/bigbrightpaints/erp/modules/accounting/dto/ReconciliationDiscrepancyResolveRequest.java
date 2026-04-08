@@ -7,4 +7,11 @@ import jakarta.validation.constraints.NotNull;
 public record ReconciliationDiscrepancyResolveRequest(
     @NotNull ReconciliationDiscrepancyResolution resolution,
     String note,
-    Long adjustmentAccountId) {}
+    Long adjustmentAccountId,
+    Long journalEntryId) {
+
+  public ReconciliationDiscrepancyResolveRequest(
+      ReconciliationDiscrepancyResolution resolution, String note, Long adjustmentAccountId) {
+    this(resolution, note, adjustmentAccountId, null);
+  }
+}

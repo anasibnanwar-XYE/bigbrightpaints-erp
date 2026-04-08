@@ -429,21 +429,45 @@ public class ReconciliationServiceCore {
 
   @Transactional(readOnly = true)
   public InterCompanyReconciliationReport interCompanyReconcile(Long companyAId, Long companyBId) {
-    if (companyAId == null || companyBId == null) {
-      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
-          "companyA and companyB are required");
-    }
-    if (Objects.equals(companyAId, companyBId)) {
-      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
-          "companyA and companyB must be different companies");
-    }
-
     Company activeCompany = companyContextService.requireCurrentCompany();
     Long activeCompanyId = activeCompany != null ? activeCompany.getId() : null;
     if (activeCompanyId == null) {
       throw ValidationUtils.invalidState(
           "Active company must be persisted for inter-company reconciliation");
     }
+
+    if (companyAId == null && companyBId == null) {
+      Optional<Company> counterparty =
+          companyRepository.findAll().stream()
+              .filter(candidate -> !Objects.equals(candidate.getId(), activeCompanyId))
+              .findFirst();
+      if (counterparty.isEmpty()) {
+        return new InterCompanyReconciliationReport(
+            activeCompanyId,
+            normalizeCode(activeCompany.getCode()),
+            null,
+            null,
+            List.of(),
+            List.of(),
+            BigDecimal.ZERO,
+            true);
+      }
+      companyAId = activeCompanyId;
+      companyBId = counterparty.get().getId();
+    } else {
+      if (companyAId == null) {
+        companyAId = activeCompanyId;
+      }
+      if (companyBId == null) {
+        companyBId = activeCompanyId;
+      }
+    }
+
+    if (Objects.equals(companyAId, companyBId)) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          "companyA and companyB must be different companies");
+    }
+
     if (!Objects.equals(companyAId, activeCompanyId)
         && !Objects.equals(companyBId, activeCompanyId)) {
       throw new ApplicationException(
@@ -453,25 +477,27 @@ public class ReconciliationServiceCore {
           .withDetail("companyA", companyAId)
           .withDetail("companyB", companyBId);
     }
+    final Long resolvedCompanyAId = companyAId;
+    final Long resolvedCompanyBId = companyBId;
 
     Company companyA =
-        Objects.equals(companyAId, activeCompanyId)
+        Objects.equals(resolvedCompanyAId, activeCompanyId)
             ? activeCompany
             : companyRepository
-                .findById(companyAId)
+                .findById(resolvedCompanyAId)
                 .orElseThrow(
                     () ->
                         com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
-                            "Company not found: " + companyAId));
+                            "Company not found: " + resolvedCompanyAId));
     Company companyB =
-        Objects.equals(companyBId, activeCompanyId)
+        Objects.equals(resolvedCompanyBId, activeCompanyId)
             ? activeCompany
             : companyRepository
-                .findById(companyBId)
+                .findById(resolvedCompanyBId)
                 .orElseThrow(
                     () ->
                         com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
-                            "Company not found: " + companyBId));
+                            "Company not found: " + resolvedCompanyBId));
 
     InterCompanyReconciliationItem aReceivableVsBPayable =
         reconcileInterCompanyDirection(companyA, companyB);
@@ -788,8 +814,23 @@ public class ReconciliationServiceCore {
     Instant resolvedAt = CompanyTime.now(company);
 
     switch (request.resolution()) {
-      case ACKNOWLEDGED -> applyAcknowledgedResolution(discrepancy, note, actor, resolvedAt);
-      case ADJUSTMENT_JOURNAL ->
+      case ACKNOWLEDGED ->
+          applyAcknowledgedResolution(
+              discrepancy,
+              ReconciliationDiscrepancyResolution.ACKNOWLEDGED,
+              ReconciliationDiscrepancyStatus.ACKNOWLEDGED,
+              note,
+              actor,
+              resolvedAt);
+      case CORRECTION ->
+          applyAcknowledgedResolution(
+              discrepancy,
+              ReconciliationDiscrepancyResolution.CORRECTION,
+              ReconciliationDiscrepancyStatus.RESOLVED,
+              note,
+              actor,
+              resolvedAt);
+      case ADJUSTMENT_JOURNAL, ADJUSTMENT ->
           applyAdjustmentResolution(company, discrepancy, request, note, actor, resolvedAt);
       case WRITE_OFF ->
           applyWriteOffResolution(company, discrepancy, request, note, actor, resolvedAt);
@@ -804,9 +845,14 @@ public class ReconciliationServiceCore {
   }
 
   private void applyAcknowledgedResolution(
-      ReconciliationDiscrepancy discrepancy, String note, String actor, Instant resolvedAt) {
-    discrepancy.setResolution(ReconciliationDiscrepancyResolution.ACKNOWLEDGED);
-    discrepancy.setStatus(ReconciliationDiscrepancyStatus.ACKNOWLEDGED);
+      ReconciliationDiscrepancy discrepancy,
+      ReconciliationDiscrepancyResolution resolution,
+      ReconciliationDiscrepancyStatus status,
+      String note,
+      String actor,
+      Instant resolvedAt) {
+    discrepancy.setResolution(resolution);
+    discrepancy.setStatus(status);
     discrepancy.setResolutionNote(note);
     discrepancy.setResolvedBy(actor);
     discrepancy.setResolvedAt(resolvedAt);
@@ -820,19 +866,20 @@ public class ReconciliationServiceCore {
       String note,
       String actor,
       Instant resolvedAt) {
-    Account adjustmentAccount =
-        requireResolutionAccount(company, request.adjustmentAccountId(), request.resolution());
     JournalEntry resolutionJournal =
-        createResolutionJournal(
+        resolveOrCreateResolutionJournal(
             company,
             discrepancy,
-            adjustmentAccount,
+            request,
             "RECON_DISCREPANCY_ADJUSTMENT",
             request.resolution(),
             note);
 
-    discrepancy.setResolution(ReconciliationDiscrepancyResolution.ADJUSTMENT_JOURNAL);
-    discrepancy.setStatus(ReconciliationDiscrepancyStatus.ADJUSTED);
+    discrepancy.setResolution(
+        request.resolution() == ReconciliationDiscrepancyResolution.ADJUSTMENT
+            ? ReconciliationDiscrepancyResolution.ADJUSTMENT
+            : ReconciliationDiscrepancyResolution.ADJUSTMENT_JOURNAL);
+    discrepancy.setStatus(ReconciliationDiscrepancyStatus.RESOLVED);
     discrepancy.setResolutionNote(note);
     discrepancy.setResolutionJournal(resolutionJournal);
     discrepancy.setResolvedBy(actor);
@@ -846,13 +893,11 @@ public class ReconciliationServiceCore {
       String note,
       String actor,
       Instant resolvedAt) {
-    Account writeOffAccount =
-        requireResolutionAccount(company, request.adjustmentAccountId(), request.resolution());
     JournalEntry resolutionJournal =
-        createResolutionJournal(
+        resolveOrCreateResolutionJournal(
             company,
             discrepancy,
-            writeOffAccount,
+            request,
             "RECON_DISCREPANCY_WRITE_OFF",
             request.resolution(),
             note);
@@ -863,6 +908,22 @@ public class ReconciliationServiceCore {
     discrepancy.setResolutionJournal(resolutionJournal);
     discrepancy.setResolvedBy(actor);
     discrepancy.setResolvedAt(resolvedAt);
+  }
+
+  private JournalEntry resolveOrCreateResolutionJournal(
+      Company company,
+      ReconciliationDiscrepancy discrepancy,
+      ReconciliationDiscrepancyResolveRequest request,
+      String sourceModule,
+      ReconciliationDiscrepancyResolution resolution,
+      String note) {
+    if (request.journalEntryId() != null) {
+      return requireResolutionJournal(company, request.journalEntryId());
+    }
+    Account adjustmentAccount =
+        requireResolutionAccount(company, request.adjustmentAccountId(), request.resolution());
+    return createResolutionJournal(
+        company, discrepancy, adjustmentAccount, sourceModule, resolution, note);
   }
 
   private JournalEntry createResolutionJournal(
@@ -931,6 +992,16 @@ public class ReconciliationServiceCore {
                     "Adjustment account not found: " + accountId));
   }
 
+  private JournalEntry requireResolutionJournal(Company company, Long journalEntryId) {
+    return journalEntryRepository
+        .findByCompanyAndId(company, journalEntryId)
+        .orElseThrow(
+            () ->
+                new ApplicationException(
+                    ErrorCode.VALIDATION_INVALID_REFERENCE,
+                    "Resolution journal not found: " + journalEntryId));
+  }
+
   private Long resolveControlAccountId(Company company, ReconciliationDiscrepancyType type) {
     return switch (type) {
       case AR ->
@@ -990,9 +1061,9 @@ public class ReconciliationServiceCore {
       ReconciliationDiscrepancyResolution resolution) {
     String prefix =
         switch (resolution) {
-          case ADJUSTMENT_JOURNAL -> "Reconciliation adjustment";
+          case ADJUSTMENT_JOURNAL, ADJUSTMENT -> "Reconciliation adjustment";
           case WRITE_OFF -> "Reconciliation write-off";
-          case ACKNOWLEDGED -> "Reconciliation acknowledgement";
+          case ACKNOWLEDGED, CORRECTION -> "Reconciliation acknowledgement";
         };
     String base = prefix + " for " + discrepancy.getType();
     if (!StringUtils.hasText(note)) {

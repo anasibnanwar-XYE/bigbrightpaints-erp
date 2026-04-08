@@ -19,9 +19,9 @@ Portal scope guardrail:
 ## Canonical API contract gate
 
 - Canonical machine contract source: repo-root `openapi.json`.
-- OpenAPI snapshot: `openapi.json` (sha256 `fdaa12ba862cbeecbb1c6a2dd3a0cffec3c00c59a9d414235722c02349233b37`)
-- OpenAPI total paths: `271`
-- OpenAPI total operations: `322`
+- OpenAPI snapshot: `openapi.json` (sha256 `c7bcef312d311b7f8dc9b31098ea3181d0075dbd08fbf04c776a7842a7df371b`)
+- OpenAPI total paths: `273`
+- OpenAPI total operations: `324`
 - Guard remediation flow: if parity drifts, regenerate this inventory from canonical `openapi.json`, then rerun `bash scripts/guard_openapi_contract_drift.sh` and `bash scripts/guard_accounting_portal_scope_contract.sh`.
 - Hard-cut contract reminder: retired surfaces such as `/api/v1/auth/profile`, `/api/v1/accounting/journals/manual`, `/api/v1/accounting/journals/{entryId}/reverse`, and direct `/api/v1/accounting/periods/{periodId}/close` are intentionally absent from this inventory and must not be reintroduced in frontend or review docs.
 
@@ -54,7 +54,7 @@ Portal scope guardrail:
 | `portal` | 6 | /api/v1/portal/dashboard, /api/v1/portal/finance/aging, /api/v1/portal/finance/ledger |
 | `purchasing` | 12 | /api/v1/purchasing/goods-receipts, /api/v1/purchasing/goods-receipts/{id}, /api/v1/purchasing/purchase-orders |
 | `raw-materials` | 3 | /api/v1/raw-materials/stock, /api/v1/raw-materials/stock/inventory, /api/v1/raw-materials/stock/low-stock |
-| `reports` | 17 | /api/v1/reports/account-statement, /api/v1/reports/aged-debtors, /api/v1/reports/aging/receivables |
+| `reports` | 19 | /api/v1/reports/account-statement, /api/v1/reports/aged-debtors, /api/v1/reports/aging/receivables |
 | `sales` | 16 | /api/v1/sales/dashboard, /api/v1/sales/dealers, /api/v1/sales/dealers/search |
 | `superadmin` | 18 | /api/v1/superadmin/audit/platform-events, /api/v1/superadmin/changelog, /api/v1/superadmin/dashboard |
 | `suppliers` | 6 | /api/v1/suppliers, /api/v1/suppliers/import, /api/v1/suppliers/{id} |
@@ -359,6 +359,7 @@ Bulk operator note: `/api/v1/factory/bulk-batches/{finishedGoodId}` and `/api/v1
 - `GET` `/api/v1/reports/balance-sheet/hierarchy`
 - `GET` `/api/v1/reports/balance-warnings`
 - `GET` `/api/v1/reports/cash-flow`
+- `GET` `/api/v1/reports/cost-allocation`
 - `GET` `/api/v1/reports/gst-return`
 - `GET` `/api/v1/reports/income-statement/hierarchy`
 - `GET` `/api/v1/reports/inventory-reconciliation`
@@ -366,6 +367,7 @@ Bulk operator note: `/api/v1/factory/bulk-batches/{finishedGoodId}` and `/api/v1
 - `GET` `/api/v1/reports/monthly-production-costs`
 - `GET` `/api/v1/reports/production-logs/{id}/cost-breakdown`
 - `GET` `/api/v1/reports/profit-loss`
+- `GET` `/api/v1/reports/product-costing`
 - `GET` `/api/v1/reports/reconciliation-dashboard`
 - `GET` `/api/v1/reports/trial-balance`
 - `GET` `/api/v1/reports/wastage`

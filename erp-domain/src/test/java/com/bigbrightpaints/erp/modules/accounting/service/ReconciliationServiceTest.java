@@ -711,7 +711,7 @@ class ReconciliationServiceTest {
   }
 
   @Test
-  void resolveDiscrepancy_adjustmentJournal_createsJournalAndMarksAdjusted() {
+  void resolveDiscrepancy_adjustmentJournal_createsJournalAndMarksResolved() {
     Account arControl = account(701L, "AR", AccountType.ASSET, new BigDecimal("600.00"));
     Account adjustment = account(702L, "REV-ADJ", AccountType.REVENUE, BigDecimal.ZERO);
     ReconciliationDiscrepancy discrepancy =
@@ -742,7 +742,7 @@ class ReconciliationServiceTest {
             new ReconciliationDiscrepancyResolveRequest(
                 ReconciliationDiscrepancyResolution.ADJUSTMENT_JOURNAL, "variance booking", 702L));
 
-    assertThat(resolved.status()).isEqualTo("ADJUSTED");
+    assertThat(resolved.status()).isEqualTo("RESOLVED");
     assertThat(resolved.resolution()).isEqualTo("ADJUSTMENT_JOURNAL");
     assertThat(resolved.resolutionJournalId()).isEqualTo(9001L);
     assertThat(resolved.resolvedBy()).isEqualTo("UNKNOWN_AUTH_ACTOR");
@@ -862,6 +862,37 @@ class ReconciliationServiceTest {
     assertThat(resolved.resolution()).isEqualTo("WRITE_OFF");
     assertThat(resolved.resolutionJournalId()).isEqualTo(9002L);
     verify(accountingFacade).createStandardJournal(any(JournalCreationRequest.class));
+  }
+
+  @Test
+  void resolveDiscrepancy_adjustmentAlias_acceptsExistingResolutionJournal() {
+    ReconciliationDiscrepancy discrepancy =
+        discrepancy(
+            209L,
+            ReconciliationDiscrepancyStatus.OPEN,
+            ReconciliationDiscrepancyType.AR,
+            company,
+            new BigDecimal("5.00"));
+    JournalEntry existingResolutionJournal = new JournalEntry();
+    ReflectionTestUtils.setField(existingResolutionJournal, "id", 9100L);
+    existingResolutionJournal.setCompany(company);
+
+    when(reconciliationDiscrepancyRepository.findByCompanyAndId(company, 209L))
+        .thenReturn(Optional.of(discrepancy));
+    when(journalEntryRepository.findByCompanyAndId(company, 9100L))
+        .thenReturn(Optional.of(existingResolutionJournal));
+    when(reconciliationDiscrepancyRepository.save(discrepancy)).thenReturn(discrepancy);
+
+    ReconciliationDiscrepancyDto resolved =
+        reconciliationService.resolveDiscrepancy(
+            209L,
+            new ReconciliationDiscrepancyResolveRequest(
+                ReconciliationDiscrepancyResolution.ADJUSTMENT, "linked correction", null, 9100L));
+
+    assertThat(resolved.status()).isEqualTo("RESOLVED");
+    assertThat(resolved.resolution()).isEqualTo("ADJUSTMENT");
+    assertThat(resolved.resolutionJournalId()).isEqualTo(9100L);
+    verify(accountingFacadeProvider, never()).getObject();
   }
 
   @Test

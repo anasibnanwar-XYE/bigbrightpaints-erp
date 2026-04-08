@@ -134,8 +134,8 @@ public class ReportController {
   }
 
   @GetMapping("/reports/inventory-reconciliation")
-  public ResponseEntity<ApiResponse<ReconciliationSummaryDto>> inventoryReconciliation() {
-    return ResponseEntity.ok(ApiResponse.success(reportService.inventoryReconciliation()));
+  public ResponseEntity<ApiResponse<InventoryReconciliationReportDto>> inventoryReconciliation() {
+    return ResponseEntity.ok(ApiResponse.success(reportService.inventoryReconciliationReport()));
   }
 
   @GetMapping("/reports/balance-warnings")
@@ -145,7 +145,7 @@ public class ReportController {
 
   @GetMapping("/reports/reconciliation-dashboard")
   public ResponseEntity<ApiResponse<ReconciliationDashboardDto>> reconciliationDashboard(
-      @RequestParam Long bankAccountId,
+      @RequestParam(required = false) Long bankAccountId,
       @RequestParam(required = false) BigDecimal statementBalance) {
     return ResponseEntity.ok(
         ApiResponse.success(

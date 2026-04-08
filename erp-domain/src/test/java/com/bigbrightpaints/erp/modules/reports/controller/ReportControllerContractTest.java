@@ -31,9 +31,15 @@ import com.bigbrightpaints.erp.modules.accounting.service.AgingReportService;
 import com.bigbrightpaints.erp.modules.admin.service.ExportApprovalService;
 import com.bigbrightpaints.erp.modules.reports.dto.AccountStatementLineDto;
 import com.bigbrightpaints.erp.modules.reports.dto.AccountStatementReportDto;
+import com.bigbrightpaints.erp.modules.reports.dto.BankReconciliationDashboardDto;
 import com.bigbrightpaints.erp.modules.reports.dto.BalanceSheetDto;
 import com.bigbrightpaints.erp.modules.reports.dto.GstReturnReportDto;
+import com.bigbrightpaints.erp.modules.reports.dto.InventoryReconciliationDashboardDto;
+import com.bigbrightpaints.erp.modules.reports.dto.InventoryReconciliationItemDto;
+import com.bigbrightpaints.erp.modules.reports.dto.InventoryReconciliationReportDto;
 import com.bigbrightpaints.erp.modules.reports.dto.ProfitLossDto;
+import com.bigbrightpaints.erp.modules.reports.dto.ReconciliationDashboardDto;
+import com.bigbrightpaints.erp.modules.reports.dto.SubledgerReconciliationDashboardDto;
 import com.bigbrightpaints.erp.modules.reports.dto.TrialBalanceDto;
 import com.bigbrightpaints.erp.modules.reports.service.ReportService;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
@@ -209,6 +215,83 @@ class ReportControllerContractTest {
     assertThat(response.getBody()).isNotNull();
     assertThat(response.getBody().data()).isEqualTo(expected);
     verify(reportService).gstReturn(10L);
+  }
+
+  @Test
+  void inventoryReconciliation_usesDetailedReportContract() {
+    ReportService reportService = mock(ReportService.class);
+    ExportApprovalService exportApprovalService = mock(ExportApprovalService.class);
+    ReportController controller = controller(reportService, exportApprovalService);
+    InventoryReconciliationReportDto expected =
+        new InventoryReconciliationReportDto(
+            new BigDecimal("10.00"),
+            new BigDecimal("9.00"),
+            new BigDecimal("-1.00"),
+            new BigDecimal("100.00"),
+            new BigDecimal("95.00"),
+            new BigDecimal("-5.00"),
+            List.of(
+                new InventoryReconciliationItemDto(
+                    1L,
+                    "FG-001",
+                    "Primer",
+                    new BigDecimal("10.00"),
+                    new BigDecimal("9.00"),
+                    new BigDecimal("-1.00"))));
+    when(reportService.inventoryReconciliationReport()).thenReturn(expected);
+
+    ResponseEntity<ApiResponse<InventoryReconciliationReportDto>> response =
+        controller.inventoryReconciliation();
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(response.getBody()).isNotNull();
+    assertThat(response.getBody().data()).isEqualTo(expected);
+    verify(reportService).inventoryReconciliationReport();
+  }
+
+  @Test
+  void reconciliationDashboard_allowsOptionalBankAccountId() {
+    ReportService reportService = mock(ReportService.class);
+    ExportApprovalService exportApprovalService = mock(ExportApprovalService.class);
+    ReportController controller = controller(reportService, exportApprovalService);
+    ReconciliationDashboardDto expected =
+        new ReconciliationDashboardDto(
+            new BankReconciliationDashboardDto(
+                10L,
+                "BANK-001",
+                "Main Bank",
+                new BigDecimal("1000.00"),
+                new BigDecimal("980.00"),
+                new BigDecimal("20.00"),
+                false),
+            new SubledgerReconciliationDashboardDto(
+                new SubledgerReconciliationDashboardDto.SubledgerControlSummary(
+                    new BigDecimal("500.00"),
+                    new BigDecimal("490.00"),
+                    new BigDecimal("10.00"),
+                    false),
+                new SubledgerReconciliationDashboardDto.SubledgerControlSummary(
+                    new BigDecimal("300.00"),
+                    new BigDecimal("300.00"),
+                    BigDecimal.ZERO,
+                    true),
+                new BigDecimal("10.00"),
+                false),
+            new InventoryReconciliationDashboardDto(
+                new BigDecimal("200.00"),
+                new BigDecimal("198.00"),
+                new BigDecimal("-2.00"),
+                false),
+            List.of());
+    when(reportService.reconciliationDashboard(null, null)).thenReturn(expected);
+
+    ResponseEntity<ApiResponse<ReconciliationDashboardDto>> response =
+        controller.reconciliationDashboard(null, null);
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(response.getBody()).isNotNull();
+    assertThat(response.getBody().data()).isEqualTo(expected);
+    verify(reportService).reconciliationDashboard(null, null);
   }
 
   @Test

@@ -5,6 +5,7 @@ import java.time.LocalDate;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -99,7 +100,7 @@ public class BankReconciliationSessionService {
     session.setBankAccount(bankAccount);
     session.setStatementDate(statementDate);
     session.setStatementEndingBalance(statementEndingBalance);
-    session.setStatus(BankReconciliationSessionStatus.DRAFT);
+    session.setStatus(BankReconciliationSessionStatus.IN_PROGRESS);
     session.setCreatedBy(resolveCurrentActor());
     session.setReferenceNumber(nextSessionReference(company));
     session.setNote(normalizeNote(request.note()));
@@ -118,9 +119,10 @@ public class BankReconciliationSessionService {
     ValidationUtils.requireNotNull(request, "request");
     Company company = companyContextService.requireCurrentCompany();
     BankReconciliationSession session = requireSession(company, sessionId);
-    assertSessionDraft(session);
+    assertSessionInProgress(session);
 
-    Set<Long> addIds = normalizeIds(request.addJournalLineIds());
+    Set<Long> addIds = new LinkedHashSet<>(normalizeIds(request.addJournalLineIds()));
+    addIds.addAll(resolveMatchedJournalLineIds(company, session, request.matches()));
     Set<Long> removeIds = normalizeIds(request.removeJournalLineIds());
     if (!addIds.isEmpty()) {
       List<JournalLine> lines = journalLineRepository.findAllById(addIds);
@@ -164,7 +166,7 @@ public class BankReconciliationSessionService {
       Long sessionId, BankReconciliationSessionCompletionRequest request) {
     Company company = companyContextService.requireCurrentCompany();
     BankReconciliationSession session = requireSession(company, sessionId);
-    assertSessionDraft(session);
+    assertSessionInProgress(session);
 
     String note = request == null ? null : normalizeNote(request.note());
     if (note != null) {
@@ -432,11 +434,49 @@ public class BankReconciliationSessionService {
                     "Bank reconciliation session not found: " + sessionId));
   }
 
-  private void assertSessionDraft(BankReconciliationSession session) {
-    if (session.getStatus() != BankReconciliationSessionStatus.DRAFT) {
+  private void assertSessionInProgress(BankReconciliationSession session) {
+    if (session.getStatus() == BankReconciliationSessionStatus.COMPLETED) {
       throw new ApplicationException(
           ErrorCode.BUSINESS_INVALID_STATE, "Bank reconciliation session is already completed");
     }
+  }
+
+  private Set<Long> resolveMatchedJournalLineIds(
+      Company company,
+      BankReconciliationSession session,
+      List<BankReconciliationSessionItemsUpdateRequest.BankStatementMatchRequest> matches) {
+    if (matches == null || matches.isEmpty()) {
+      return Collections.emptySet();
+    }
+
+    Set<Long> matchedLineIds =
+        normalizeIds(
+            matches.stream()
+                .map(BankReconciliationSessionItemsUpdateRequest.BankStatementMatchRequest::journalLineId)
+                .toList());
+
+    Set<Long> journalEntryIds =
+        normalizeIds(
+            matches.stream()
+                .map(BankReconciliationSessionItemsUpdateRequest.BankStatementMatchRequest::journalEntryId)
+                .toList());
+    if (journalEntryIds.isEmpty()) {
+      return matchedLineIds;
+    }
+
+    List<JournalLine> matchedLines =
+        journalLineRepository.findPostedLinesForAccountByJournalEntryIds(
+            company, journalEntryIds, session.getBankAccount().getId());
+    Set<Long> foundJournalEntryIds =
+        matchedLines.stream().map(line -> line.getJournalEntry().getId()).collect(Collectors.toSet());
+    if (!foundJournalEntryIds.containsAll(journalEntryIds)) {
+      throw new ApplicationException(
+          ErrorCode.VALIDATION_INVALID_REFERENCE,
+          "One or more matched journal entries were not found for the session bank account");
+    }
+
+    matchedLineIds.addAll(matchedLines.stream().map(JournalLine::getId).toList());
+    return matchedLineIds;
   }
 
   private String resolveReference(JournalLine line) {

@@ -59,7 +59,7 @@ public class BankReconciliationSession extends VersionedEntity {
 
   @Enumerated(EnumType.STRING)
   @Column(name = "status", nullable = false, length = 16)
-  private BankReconciliationSessionStatus status = BankReconciliationSessionStatus.DRAFT;
+  private BankReconciliationSessionStatus status = BankReconciliationSessionStatus.IN_PROGRESS;
 
   @Column(name = "created_by", nullable = false, length = 255)
   private String createdBy;
@@ -89,7 +89,7 @@ public class BankReconciliationSession extends VersionedEntity {
       updatedAt = now;
     }
     if (status == null) {
-      status = BankReconciliationSessionStatus.DRAFT;
+      status = BankReconciliationSessionStatus.IN_PROGRESS;
     }
   }
 

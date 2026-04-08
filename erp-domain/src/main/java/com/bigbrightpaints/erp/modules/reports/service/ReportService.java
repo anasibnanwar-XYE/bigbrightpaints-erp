@@ -18,6 +18,7 @@ import java.util.Objects;
 import java.util.Optional;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -43,6 +44,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.JournalLineRepository;
 import com.bigbrightpaints.erp.modules.accounting.service.CompanyScopedAccountingLookupService;
 import com.bigbrightpaints.erp.modules.accounting.service.DealerLedgerService;
 import com.bigbrightpaints.erp.modules.accounting.service.GstService;
+import com.bigbrightpaints.erp.modules.accounting.service.ReconciliationService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.factory.domain.PackingRecord;
@@ -101,6 +103,9 @@ public class ReportService {
   private final RawMaterialPurchaseRepository rawMaterialPurchaseRepository;
   private final GstService gstService;
   private static final BigDecimal BALANCE_TOLERANCE = new BigDecimal("0.01");
+
+  @Autowired(required = false)
+  private ObjectProvider<ReconciliationService> reconciliationServiceProvider;
 
   @Autowired
   public ReportService(
@@ -790,8 +795,60 @@ public class ReportService {
     InventoryValuationQueryService.InventorySnapshot totals =
         inventoryValuationService.currentSnapshot(company);
     BigDecimal ledgerBalance = resolveInventoryLedgerBalance(company);
-    BigDecimal variance = totals.totalValue().subtract(ledgerBalance);
-    return new ReconciliationSummaryDto(totals.totalValue(), ledgerBalance, variance);
+    BigDecimal variance = safe(totals.totalValue()).subtract(ledgerBalance);
+    return new ReconciliationSummaryDto(safe(totals.totalValue()), ledgerBalance, variance);
+  }
+
+  @Transactional(readOnly = true)
+  public InventoryReconciliationReportDto inventoryReconciliationReport() {
+    Company company = companyContextService.requireCurrentCompany();
+    InventoryValuationQueryService.InventorySnapshot totals =
+        inventoryValuationService.currentSnapshot(company);
+    List<InventoryValuationQueryService.InventoryItemSnapshot> snapshotItems =
+        totals.items() == null ? List.of() : totals.items();
+
+    List<InventoryReconciliationItemDto> items =
+        snapshotItems.stream()
+            .filter(Objects::nonNull)
+            .map(
+                item -> {
+                  BigDecimal systemQty = safe(item.quantityOnHand());
+                  BigDecimal physicalQty =
+                      safe(item.availableQuantity()).add(safe(item.reservedQuantity()));
+                  BigDecimal variance = physicalQty.subtract(systemQty);
+                  return new InventoryReconciliationItemDto(
+                      item.inventoryItemId(),
+                      item.code(),
+                      item.name(),
+                      roundCurrency(systemQty),
+                      roundCurrency(physicalQty),
+                      roundCurrency(variance));
+                })
+            .toList();
+
+    BigDecimal systemQuantityTotal =
+        items.stream()
+            .map(InventoryReconciliationItemDto::systemQty)
+            .map(this::safe)
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
+    BigDecimal physicalQuantityTotal =
+        items.stream()
+            .map(InventoryReconciliationItemDto::physicalQty)
+            .map(this::safe)
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
+    BigDecimal quantityVarianceTotal = physicalQuantityTotal.subtract(systemQuantityTotal);
+
+    BigDecimal physicalInventoryValue = safe(totals.totalValue());
+    BigDecimal ledgerBalance = resolveInventoryLedgerBalance(company);
+    BigDecimal valueVariance = physicalInventoryValue.subtract(ledgerBalance);
+    return new InventoryReconciliationReportDto(
+        roundCurrency(systemQuantityTotal),
+        roundCurrency(physicalQuantityTotal),
+        roundCurrency(quantityVarianceTotal),
+        roundCurrency(ledgerBalance),
+        roundCurrency(physicalInventoryValue),
+        roundCurrency(valueVariance),
+        items);
   }
 
   @Transactional(readOnly = true)
@@ -804,24 +861,37 @@ public class ReportService {
       AccountType type = account.getType();
       String reason = null;
       String severity = "INFO";
+      String warningType = null;
+      BigDecimal threshold = BigDecimal.ZERO;
       if (type == AccountType.ASSET && balance.compareTo(BigDecimal.ZERO) < 0) {
         reason = "Asset account has a credit balance";
         severity = "HIGH";
+        warningType = "ASSET_CREDIT_BALANCE";
       } else if (type == AccountType.LIABILITY && balance.compareTo(BigDecimal.ZERO) > 0) {
         reason = "Liability account has a debit balance";
         severity = "HIGH";
+        warningType = "LIABILITY_DEBIT_BALANCE";
       } else if (type == AccountType.REVENUE && balance.compareTo(BigDecimal.ZERO) > 0) {
         reason = "Revenue account shows a debit balance";
         severity = "MEDIUM";
+        warningType = "REVENUE_DEBIT_BALANCE";
       } else if ((type == AccountType.EXPENSE || type == AccountType.COGS)
           && balance.compareTo(BigDecimal.ZERO) < 0) {
         reason = "Expense account shows a credit balance";
         severity = "MEDIUM";
+        warningType = "EXPENSE_CREDIT_BALANCE";
       }
       if (reason != null) {
         warnings.add(
             new BalanceWarningDto(
-                account.getId(), account.getCode(), account.getName(), balance, severity, reason));
+                account.getId(),
+                account.getCode(),
+                account.getName(),
+                balance,
+                warningType,
+                threshold,
+                severity,
+                reason));
       }
     }
     return warnings;
@@ -831,28 +901,117 @@ public class ReportService {
   public ReconciliationDashboardDto reconciliationDashboard(
       Long bankAccountId, BigDecimal statementBalance) {
     Company company = companyContextService.requireCurrentCompany();
-    Account bankAccount = accountingLookupService.requireAccount(company, bankAccountId);
+    Account bankAccount = resolveBankAccountForDashboard(company, bankAccountId);
     InventoryValuationQueryService.InventorySnapshot totals =
         inventoryValuationService.currentSnapshot(company);
-    BigDecimal ledgerInventoryBalance = resolveInventoryLedgerBalance(company);
-    BigDecimal physicalInventoryValue = totals.totalValue();
-    BigDecimal inventoryVariance = physicalInventoryValue.subtract(ledgerInventoryBalance);
+    BigDecimal ledgerInventoryValue = resolveInventoryLedgerBalance(company);
+    BigDecimal physicalInventoryValue = safe(totals.totalValue());
+    BigDecimal inventoryVariance = physicalInventoryValue.subtract(ledgerInventoryValue);
+
     BigDecimal bankLedgerBalance = safe(bankAccount.getBalance());
-    BigDecimal bankStatementBalance =
-        statementBalance != null ? statementBalance : bankLedgerBalance;
+    BigDecimal bankStatementBalance = statementBalance != null ? statementBalance : bankLedgerBalance;
     BigDecimal bankVariance = bankLedgerBalance.subtract(bankStatementBalance);
+
     boolean inventoryBalanced = inventoryVariance.abs().compareTo(BALANCE_TOLERANCE) <= 0;
     boolean bankBalanced = bankVariance.abs().compareTo(BALANCE_TOLERANCE) <= 0;
+
+    BankReconciliationDashboardDto bankSummary =
+        new BankReconciliationDashboardDto(
+            bankAccount.getId(),
+            bankAccount.getCode(),
+            bankAccount.getName(),
+            roundCurrency(bankLedgerBalance),
+            roundCurrency(bankStatementBalance),
+            roundCurrency(bankVariance),
+            bankBalanced);
+    InventoryReconciliationDashboardDto inventorySummary =
+        new InventoryReconciliationDashboardDto(
+            roundCurrency(ledgerInventoryValue),
+            roundCurrency(physicalInventoryValue),
+            roundCurrency(inventoryVariance),
+            inventoryBalanced);
+
+    SubledgerReconciliationDashboardDto subledgerSummary =
+        resolveSubledgerDashboardSummary(
+            new SubledgerReconciliationDashboardDto.SubledgerControlSummary(
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, true),
+            new SubledgerReconciliationDashboardDto.SubledgerControlSummary(
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, true));
+
     return new ReconciliationDashboardDto(
-        ledgerInventoryBalance,
-        physicalInventoryValue,
-        inventoryVariance,
-        bankLedgerBalance,
-        bankStatementBalance,
-        bankVariance,
-        inventoryBalanced,
-        bankBalanced,
+        bankSummary,
+        subledgerSummary,
+        inventorySummary,
         balanceWarnings());
+  }
+
+  private SubledgerReconciliationDashboardDto resolveSubledgerDashboardSummary(
+      SubledgerReconciliationDashboardDto.SubledgerControlSummary defaultReceivables,
+      SubledgerReconciliationDashboardDto.SubledgerControlSummary defaultPayables) {
+    if (reconciliationServiceProvider == null) {
+      return new SubledgerReconciliationDashboardDto(
+          defaultReceivables, defaultPayables, BigDecimal.ZERO, true);
+    }
+    ReconciliationService reconciliationService = reconciliationServiceProvider.getIfAvailable();
+    if (reconciliationService == null) {
+      return new SubledgerReconciliationDashboardDto(
+          defaultReceivables, defaultPayables, BigDecimal.ZERO, true);
+    }
+
+    ReconciliationService.ReconciliationResult receivable =
+        reconciliationService.reconcileArWithDealerLedger();
+    ReconciliationService.SupplierReconciliationResult payable =
+        reconciliationService.reconcileApWithSupplierLedger();
+
+    SubledgerReconciliationDashboardDto.SubledgerControlSummary receivableSummary =
+        new SubledgerReconciliationDashboardDto.SubledgerControlSummary(
+            roundCurrency(safe(receivable.glArBalance())),
+            roundCurrency(safe(receivable.dealerLedgerTotal())),
+            roundCurrency(safe(receivable.variance())),
+            receivable.isReconciled());
+    SubledgerReconciliationDashboardDto.SubledgerControlSummary payableSummary =
+        new SubledgerReconciliationDashboardDto.SubledgerControlSummary(
+            roundCurrency(safe(payable.glApBalance())),
+            roundCurrency(safe(payable.supplierLedgerTotal())),
+            roundCurrency(safe(payable.variance())),
+            payable.isReconciled());
+
+    BigDecimal totalDifference =
+        safe(receivable.variance()).add(safe(payable.variance())).setScale(2, RoundingMode.HALF_UP);
+    boolean balanced = receivable.isReconciled() && payable.isReconciled();
+    return new SubledgerReconciliationDashboardDto(
+        receivableSummary, payableSummary, totalDifference, balanced);
+  }
+
+  private Account resolveBankAccountForDashboard(Company company, Long bankAccountId) {
+    if (bankAccountId != null) {
+      return accountingLookupService.requireAccount(company, bankAccountId);
+    }
+    List<Account> accounts = accountRepository.findByCompanyOrderByCodeAsc(company);
+    Optional<Account> preferredBankAccount =
+        accounts.stream()
+            .filter(account -> account.getType() == AccountType.ASSET)
+            .filter(
+                account -> {
+                  String label =
+                      ((account.getCode() != null ? account.getCode() : "")
+                              + " "
+                              + (account.getName() != null ? account.getName() : ""))
+                          .toLowerCase(Locale.ROOT);
+                  return label.contains("bank");
+                })
+            .findFirst();
+    if (preferredBankAccount.isPresent()) {
+      return preferredBankAccount.get();
+    }
+    return accounts.stream()
+        .filter(account -> account.getType() == AccountType.ASSET)
+        .findFirst()
+        .orElseThrow(
+            () ->
+                new ApplicationException(
+                    ErrorCode.BUSINESS_ENTITY_NOT_FOUND,
+                    "No asset bank account is available for reconciliation dashboard"));
   }
 
   @Transactional(readOnly = true)

@@ -7,5 +7,7 @@ public record BalanceWarningDto(
     String accountCode,
     String accountName,
     BigDecimal balance,
+    String warningType,
+    BigDecimal threshold,
     String severity,
     String reason) {}

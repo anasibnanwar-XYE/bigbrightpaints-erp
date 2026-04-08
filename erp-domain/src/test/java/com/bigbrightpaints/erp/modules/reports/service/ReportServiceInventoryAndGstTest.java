@@ -267,6 +267,14 @@ class ReportServiceInventoryAndGstTest {
             "Liability account has a debit balance",
             "Revenue account shows a debit balance",
             "Expense account shows a credit balance");
+    assertThat(warnings)
+        .extracting(warning -> warning.warningType())
+        .containsExactly(
+            "ASSET_CREDIT_BALANCE",
+            "LIABILITY_DEBIT_BALANCE",
+            "REVENUE_DEBIT_BALANCE",
+            "EXPENSE_CREDIT_BALANCE");
+    assertThat(warnings).allMatch(warning -> warning.threshold().compareTo(BigDecimal.ZERO) == 0);
   }
 
   @Test
@@ -284,10 +292,12 @@ class ReportServiceInventoryAndGstTest {
     ReconciliationDashboardDto dashboard =
         reportService.reconciliationDashboard(10L, new BigDecimal("940"));
 
-    assertThat(dashboard.inventoryVariance()).isEqualByComparingTo("50");
-    assertThat(dashboard.bankVariance()).isEqualByComparingTo("60");
-    assertThat(dashboard.inventoryBalanced()).isFalse();
-    assertThat(dashboard.bankBalanced()).isFalse();
+    assertThat(dashboard.inventory().variance()).isEqualByComparingTo("50.00");
+    assertThat(dashboard.bank().variance()).isEqualByComparingTo("60.00");
+    assertThat(dashboard.inventory().balanced()).isFalse();
+    assertThat(dashboard.bank().balanced()).isFalse();
+    assertThat(dashboard.subledger().balanced()).isTrue();
+    assertThat(dashboard.subledger().difference()).isEqualByComparingTo("0.00");
     assertThat(dashboard.balanceWarnings()).isEmpty();
   }
 

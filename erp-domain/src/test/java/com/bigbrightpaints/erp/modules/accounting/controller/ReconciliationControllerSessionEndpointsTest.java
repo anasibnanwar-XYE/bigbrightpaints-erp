@@ -57,12 +57,13 @@ class ReconciliationControllerSessionEndpointsTest {
     BankReconciliationSessionSummaryDto expected = sessionSummary(17L);
     when(sessionService.startSession(request)).thenReturn(expected);
 
-    ApiResponse<BankReconciliationSessionSummaryDto> body =
-        controller.startBankReconciliationSession(request).getBody();
+    var response = controller.startBankReconciliationSession(request);
+    ApiResponse<BankReconciliationSessionSummaryDto> body = response.getBody();
 
     assertThat(body).isNotNull();
     assertThat(body.message()).isEqualTo("Bank reconciliation session started");
     assertThat(body.data()).isEqualTo(expected);
+    assertThat(response.getStatusCode().value()).isEqualTo(201);
     verify(sessionService).startSession(request);
   }
 
@@ -140,6 +141,17 @@ class ReconciliationControllerSessionEndpointsTest {
 
     verify(reconciliationService).reconcileSubledgerBalances();
     verify(reconciliationService).interCompanyReconcile(3L, 4L);
+  }
+
+  @Test
+  void interCompanyReport_allowsMissingQueryParams() {
+    ReconciliationService reconciliationService = mock(ReconciliationService.class);
+    ReconciliationController controller =
+        controller(reconciliationService, mock(BankReconciliationSessionService.class));
+
+    controller.reconcileInterCompany(null, null);
+
+    verify(reconciliationService).interCompanyReconcile(null, null);
   }
 
   private ReconciliationController controller(

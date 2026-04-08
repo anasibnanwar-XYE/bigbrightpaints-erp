@@ -39,6 +39,21 @@ public interface JournalLineRepository extends JpaRepository<JournalLine, Long> 
 
   @Query(
       """
+      select line from JournalLine line
+      join fetch line.journalEntry entry
+      where entry.company = :company
+        and entry.id in :journalEntryIds
+        and line.account.id = :accountId
+        and entry.status = 'POSTED'
+      order by entry.entryDate asc, line.id asc
+      """)
+  List<JournalLine> findPostedLinesForAccountByJournalEntryIds(
+      @Param("company") Company company,
+      @Param("journalEntryIds") Collection<Long> journalEntryIds,
+      @Param("accountId") Long accountId);
+
+  @Query(
+      """
       select line.account.type, sum(line.debit), sum(line.credit)
       from JournalLine line
       join line.journalEntry entry
