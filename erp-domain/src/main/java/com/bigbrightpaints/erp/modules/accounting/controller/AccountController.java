@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.accounting.controller;
 
+import java.util.Arrays;
 import java.util.List;
 
 import org.springframework.http.ResponseEntity;
@@ -12,6 +13,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountRequest;
@@ -90,10 +93,27 @@ public class AccountController {
   @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
   public ResponseEntity<ApiResponse<List<AccountHierarchyService.AccountNode>>>
       getAccountTreeByType(@PathVariable String type) {
-    AccountType accountType = AccountType.valueOf(type.toUpperCase());
+    AccountType accountType = parseAccountType(type);
     return ResponseEntity.ok(
         ApiResponse.success(
             "Account hierarchy for " + type, accountHierarchyService.getTreeByType(accountType)));
+  }
+
+  private AccountType parseAccountType(String type) {
+    if (type == null || type.isBlank()) {
+      throw new ApplicationException(
+              ErrorCode.VALIDATION_INVALID_INPUT, "Account type is required")
+          .withDetail("type", type);
+    }
+    try {
+      return AccountType.valueOf(type.trim().toUpperCase());
+    } catch (IllegalArgumentException ex) {
+      throw new ApplicationException(
+              ErrorCode.VALIDATION_INVALID_INPUT, "Invalid account type '" + type.trim() + "'")
+          .withDetail("type", type.trim())
+          .withDetail(
+              "allowedValues", Arrays.stream(AccountType.values()).map(Enum::name).toList());
+    }
   }
 
   private CompanyDefaultAccountsResponse toResponse(

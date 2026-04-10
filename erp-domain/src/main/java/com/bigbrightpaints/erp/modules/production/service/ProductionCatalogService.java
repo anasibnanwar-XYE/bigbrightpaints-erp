@@ -1803,8 +1803,12 @@ public class ProductionCatalogService {
       if (!normalized.chars().allMatch(Character::isDigit)) {
         return null;
       }
-      long value = Long.parseLong(normalized);
-      return value > 0 ? value : null;
+      try {
+        long value = Long.parseLong(normalized);
+        return value > 0 ? value : null;
+      } catch (NumberFormatException ex) {
+        return null;
+      }
     }
     return null;
   }
@@ -2075,7 +2079,11 @@ public class ProductionCatalogService {
       if (!normalized.chars().allMatch(Character::isDigit)) {
         return false;
       }
-      return Long.parseLong(normalized) > 0;
+      try {
+        return Long.parseLong(normalized) > 0;
+      } catch (NumberFormatException ex) {
+        return false;
+      }
     }
     return false;
   }

@@ -212,7 +212,12 @@ class SalesReturnJournalFacadeOperations {
       if (suffix.isEmpty() || !suffix.chars().allMatch(Character::isDigit)) {
         continue;
       }
-      int index = Integer.parseInt(suffix);
+      int index;
+      try {
+        index = Integer.parseInt(suffix);
+      } catch (NumberFormatException ex) {
+        continue;
+      }
       if (index > maxIndex) {
         maxIndex = index;
       }

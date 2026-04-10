@@ -171,6 +171,11 @@ class PurchaseJournalFacadeOperations {
         StringUtils.hasText(referenceNumber)
             ? referenceNumber.trim()
             : referenceNumberService.purchaseReference(company, supplier, invoiceNumber);
+    if (!StringUtils.hasText(reference)) {
+      throw new ApplicationException(
+          ErrorCode.VALIDATION_INVALID_REFERENCE, "Purchase journal reference is required");
+    }
+    reference = reference.trim();
 
     Optional<JournalEntry> existing =
         journalEntryRepository.findByCompanyAndReferenceNumber(company, reference);

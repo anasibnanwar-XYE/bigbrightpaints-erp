@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
@@ -368,8 +369,7 @@ class AccountingApplicationExceptionAdviceTest {
 
     MockMvcBuilders.standaloneSetup(
             new AccountingConfigurationController(configurationHealthService, companyContextService))
-        .setControllerAdvice(
-            new AccountingApplicationExceptionAdvice(), new GlobalExceptionHandler())
+        .setControllerAdvice(advice(), globalExceptionHandler())
         .build()
         .perform(get("/api/v1/accounting/configuration/health"))
         .andExpect(status().isBadRequest())
@@ -412,7 +412,13 @@ class AccountingApplicationExceptionAdviceTest {
   }
 
   private AccountingApplicationExceptionAdvice advice() {
-    return new AccountingApplicationExceptionAdvice();
+    return new AccountingApplicationExceptionAdvice(globalExceptionHandler());
+  }
+
+  private GlobalExceptionHandler globalExceptionHandler() {
+    GlobalExceptionHandler handler = new GlobalExceptionHandler();
+    ReflectionTestUtils.setField(handler, "activeProfile", "test");
+    return handler;
   }
 
   private StatementReportController statementReportController() {
@@ -443,7 +449,7 @@ class AccountingApplicationExceptionAdviceTest {
   private MockMvc accountingMvc(AuditAccessService auditAccessService) {
     return MockMvcBuilders.standaloneSetup(
             statementReportController(), auditController(auditAccessService))
-        .setControllerAdvice(new AccountingApplicationExceptionAdvice())
+        .setControllerAdvice(advice())
         .build();
   }
 }

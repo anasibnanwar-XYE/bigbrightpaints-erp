@@ -1017,7 +1017,7 @@ final class ReconciliationOperations {
 
   private String buildResolutionReference(
       ReconciliationDiscrepancy discrepancy, ReconciliationDiscrepancyResolution resolution) {
-    Long id = discrepancy.getId() == null ? 0L : discrepancy.getId();
+    long id = discrepancy.getId() == null ? 0L : discrepancy.getId();
     return "RECON-" + resolution.name() + "-" + id;
   }
 

@@ -184,7 +184,6 @@ class SettlementReferenceService {
   }
 
   String buildSupplierAutoSettlementReference(
-      Company company,
       Supplier supplier,
       Long cashAccountId,
       BigDecimal amount,

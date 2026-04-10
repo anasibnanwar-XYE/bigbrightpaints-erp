@@ -104,7 +104,6 @@ public class CompanyEntityLookup {
       ProductionLogRepository productionLogRepository,
       PromotionRepository promotionRepository,
       SalesTargetRepository salesTargetRepository,
-      com.bigbrightpaints.erp.modules.sales.domain.CreditRequestRepository creditRequestRepository,
       com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository accountRepository,
       com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository
           journalEntryRepository,

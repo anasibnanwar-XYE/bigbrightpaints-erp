@@ -23,10 +23,6 @@ public class AccountingApplicationExceptionAdvice {
 
   private final GlobalExceptionHandler globalExceptionHandler;
 
-  public AccountingApplicationExceptionAdvice() {
-    this(new GlobalExceptionHandler());
-  }
-
   @Autowired
   public AccountingApplicationExceptionAdvice(GlobalExceptionHandler globalExceptionHandler) {
     this.globalExceptionHandler = globalExceptionHandler;
@@ -42,7 +38,6 @@ public class AccountingApplicationExceptionAdvice {
             : errorCode != null && errorCode.getCode().startsWith("CONC_")
                 ? AccountingApplicationExceptionResponses.determineHttpStatus(errorCode)
             : HttpStatus.BAD_REQUEST;
-    return globalExceptionHandler.buildApplicationExceptionResponse(
-        ex, request, status, ex != null ? ex.getDetails() : Map.of());
+    return globalExceptionHandler.buildApplicationExceptionResponse(ex, request, status);
   }
 }

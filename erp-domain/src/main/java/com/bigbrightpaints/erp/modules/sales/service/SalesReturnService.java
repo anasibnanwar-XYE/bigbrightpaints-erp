@@ -971,7 +971,12 @@ public class SalesReturnService {
       if (lineIdText.isEmpty() || !lineIdText.chars().allMatch(Character::isDigit)) {
         continue;
       }
-      Long lineId = Long.parseLong(lineIdText);
+      Long lineId;
+      try {
+        lineId = Long.parseLong(lineIdText);
+      } catch (NumberFormatException ex) {
+        continue;
+      }
       totalsByLine.merge(lineId, quantity, BigDecimal::add);
     }
     return new ReturnMovementSummary(totalsByLine, totalsByFinishedGood);

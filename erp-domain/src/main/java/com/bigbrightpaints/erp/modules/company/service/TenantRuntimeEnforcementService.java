@@ -1021,8 +1021,12 @@ public class TenantRuntimeEnforcementService {
     if (!normalized.chars().allMatch(Character::isDigit)) {
       return fallback;
     }
-    int parsed = Integer.parseInt(normalized);
-    return parsed > 0 ? parsed : fallback;
+    try {
+      int parsed = Integer.parseInt(normalized);
+      return parsed > 0 ? parsed : fallback;
+    } catch (NumberFormatException ex) {
+      return fallback;
+    }
   }
 
   private Instant parseInstantOrNull(String rawValue) {

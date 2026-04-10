@@ -113,7 +113,7 @@ final class AccountingAuditTrailReferenceChainService {
                 BusinessDocumentTruths.salesOrderLifecycle(invoice.getSalesOrder()),
                 invoice.getSalesOrder().getSalesJournalEntryId()));
         for (PackagingSlip slip : slips) {
-          if (!isSlipLinkedToInvoice(slip, invoice, slips, salesOrderInvoiceCount)) {
+          if (!isSlipLinkedToInvoice(slip, invoice)) {
             continue;
           }
           chain.add(
@@ -202,11 +202,7 @@ final class AccountingAuditTrailReferenceChainService {
         settlementEntry != null ? settlementEntry.getId() : null);
   }
 
-  private boolean isSlipLinkedToInvoice(
-      PackagingSlip slip,
-      Invoice invoice,
-      List<PackagingSlip> candidateSlips,
-      int salesOrderInvoiceCount) {
+  private boolean isSlipLinkedToInvoice(PackagingSlip slip, Invoice invoice) {
     return slip != null
         && invoice != null
         && slip.getInvoiceId() != null

@@ -180,7 +180,7 @@ class OpeningBalanceImportServiceTest {
 
     assertThat(response.successCount()).isZero();
     assertThat(response.failureCount()).isEqualTo(2);
-    assertThat(response.rowsProcessed()).isZero();
+    assertThat(response.rowsProcessed()).isEqualTo(2);
     assertThat(response.errors()).hasSize(2);
     assertThat(response.errors())
         .extracting(OpeningBalanceImportResponse.ImportError::rowNumber)
@@ -220,7 +220,7 @@ class OpeningBalanceImportServiceTest {
 
     assertThat(response.successCount()).isZero();
     assertThat(response.failureCount()).isEqualTo(2);
-    assertThat(response.rowsProcessed()).isZero();
+    assertThat(response.rowsProcessed()).isEqualTo(2);
     assertThat(response.errors()).hasSize(2);
     assertThat(response.errors())
         .extracting(OpeningBalanceImportResponse.ImportError::rowNumber)
@@ -297,7 +297,7 @@ class OpeningBalanceImportServiceTest {
 
     assertThat(response.successCount()).isEqualTo(2);
     assertThat(response.failureCount()).isEqualTo(1);
-    assertThat(response.rowsProcessed()).isEqualTo(2);
+    assertThat(response.rowsProcessed()).isEqualTo(3);
     assertThat(response.accountsCreated()).isEqualTo(1);
     assertThat(response.errors()).hasSize(1);
     assertThat(response.errors().getFirst().rowNumber()).isEqualTo(2L);
@@ -324,7 +324,7 @@ class OpeningBalanceImportServiceTest {
 
     assertThat(replay.successCount()).isEqualTo(7);
     assertThat(replay.failureCount()).isEqualTo(1);
-    assertThat(replay.rowsProcessed()).isEqualTo(7);
+    assertThat(replay.rowsProcessed()).isEqualTo(8);
     assertThat(replay.accountsCreated()).isEqualTo(2);
     assertThat(replay.errors()).hasSize(1);
     assertThat(replay.errors().getFirst().message()).contains("Invalid account");
@@ -353,7 +353,7 @@ class OpeningBalanceImportServiceTest {
 
     assertThat(response.successCount()).isZero();
     assertThat(response.failureCount()).isEqualTo(1);
-    assertThat(response.rowsProcessed()).isZero();
+    assertThat(response.rowsProcessed()).isEqualTo(1);
     assertThat(response.errors()).hasSize(1);
     assertThat(response.errors().getFirst().message()).contains("Account mapping mismatch");
     verify(accountingFacade, never()).createStandardJournal(any(JournalCreationRequest.class));

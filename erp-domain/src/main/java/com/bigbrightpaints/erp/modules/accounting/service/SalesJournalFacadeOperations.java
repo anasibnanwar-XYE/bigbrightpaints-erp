@@ -160,10 +160,12 @@ class SalesJournalFacadeOperations {
     }
 
     String canonicalReference = SalesOrderReference.invoiceReference(orderNumber);
-    String aliasReference = StringUtils.hasText(referenceNumber) ? referenceNumber.trim() : null;
-    if (StringUtils.hasText(aliasReference)
-        && aliasReference.equalsIgnoreCase(canonicalReference)) {
-      aliasReference = null;
+    String aliasReference = null;
+    if (StringUtils.hasText(referenceNumber)) {
+      aliasReference = referenceNumber.trim();
+      if (aliasReference.equalsIgnoreCase(canonicalReference)) {
+        aliasReference = null;
+      }
     }
 
     Optional<JournalEntry> existing =

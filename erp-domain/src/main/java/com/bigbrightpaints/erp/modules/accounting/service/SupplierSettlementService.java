@@ -286,7 +286,7 @@ class SupplierSettlementService {
               ErrorCode.VALIDATION_INVALID_REFERENCE, "Purchase does not belong to the supplier");
         }
         settlementOutcomeService.enforceSupplierSettlementPostingParity(
-            company, supplier.getId(), purchase, trimmedIdempotencyKey);
+            supplier.getId(), purchase, trimmedIdempotencyKey);
         BigDecimal cleared = applied;
         BigDecimal currentOutstanding =
             remainingByPurchase.getOrDefault(
@@ -440,7 +440,7 @@ class SupplierSettlementService {
         StringUtils.hasText(request.referenceNumber())
             ? request.referenceNumber().trim()
             : settlementReferenceService.buildSupplierAutoSettlementReference(
-                company, supplier, cashAccountId, amount, allocations);
+                supplier, cashAccountId, amount, allocations);
     String idempotencyKey =
         StringUtils.hasText(request.idempotencyKey()) ? request.idempotencyKey().trim() : reference;
     SupplierPaymentRequest paymentRequest =

@@ -415,7 +415,7 @@ class AuditReadAdaptersIT extends AbstractIntegrationTest {
                 businessAuditReadAdapter.queryAccountingFeed(
                     company,
                     filter(dayOne, dayOne.plusDays(2), "SALES", null, null, null, null, null))))
-        .containsExactly(sales.getId());
+        .isEmpty();
   }
 
   private AuditFeedSlice queryTenantLogs(

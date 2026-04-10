@@ -1,6 +1,7 @@
 package com.bigbrightpaints.erp.modules.accounting.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -11,6 +12,8 @@ import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountRequest;
@@ -118,6 +121,21 @@ class AccountControllerTest {
     assertThat(body).isNotNull();
     assertThat(body.data()).isSameAs(expected);
     verify(hierarchyService).getTreeByType(AccountType.LIABILITY);
+  }
+
+  @Test
+  void getAccountTreeByType_rejectsUnknownType() {
+    assertThatThrownBy(() -> controller(null, null, null).getAccountTreeByType("mystery"))
+        .isInstanceOf(ApplicationException.class)
+        .satisfies(
+            ex -> {
+              ApplicationException applicationException = (ApplicationException) ex;
+              assertThat(applicationException.getErrorCode())
+                  .isEqualTo(ErrorCode.VALIDATION_INVALID_INPUT);
+              assertThat(applicationException.getUserMessage())
+                  .isEqualTo("Invalid account type 'mystery'");
+              assertThat(applicationException.getDetails()).containsEntry("type", "mystery");
+            });
   }
 
   private AccountController controller(

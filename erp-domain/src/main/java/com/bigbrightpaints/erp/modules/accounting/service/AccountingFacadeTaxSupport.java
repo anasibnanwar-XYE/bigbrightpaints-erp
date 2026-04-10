@@ -32,7 +32,7 @@ final class AccountingFacadeTaxSupport {
       String resolvedMemo,
       String orderNumber) {
     if (breakdownHasTax(gstBreakdown)) {
-      Long taxAccountId = resolveTaxAccountId(company, taxLines, false);
+      Long taxAccountId = resolveTaxAccountId(taxLines, false);
       appendComponentCreditLines(
           lines, taxAccountId, resolvedMemo, orderNumber, gstBreakdown, "output");
       return;
@@ -57,7 +57,7 @@ final class AccountingFacadeTaxSupport {
       JournalCreationRequest.GstBreakdown gstBreakdown,
       String resolvedMemo) {
     if (breakdownHasTax(gstBreakdown)) {
-      Long taxAccountId = resolveTaxAccountId(company, taxLines, true);
+      Long taxAccountId = resolveTaxAccountId(taxLines, true);
       return appendComponentDebitLines(lines, taxAccountId, resolvedMemo, gstBreakdown, "input");
     }
     BigDecimal taxTotal = BigDecimal.ZERO;
@@ -87,7 +87,7 @@ final class AccountingFacadeTaxSupport {
       JournalCreationRequest.GstBreakdown gstBreakdown,
       String resolvedMemo) {
     if (breakdownHasTax(gstBreakdown)) {
-      Long taxAccountId = resolveTaxAccountId(company, taxCredits, true);
+      Long taxAccountId = resolveTaxAccountId(taxCredits, true);
       return appendComponentCreditLines(
           lines, taxAccountId, resolvedMemo, null, gstBreakdown, "reverse input");
     }
@@ -203,8 +203,7 @@ final class AccountingFacadeTaxSupport {
     return total;
   }
 
-  private Long resolveTaxAccountId(
-      Company company, Map<Long, BigDecimal> taxLines, boolean inputTax) {
+  private Long resolveTaxAccountId(Map<Long, BigDecimal> taxLines, boolean inputTax) {
     if (taxLines != null) {
       Optional<Long> fromMap = taxLines.keySet().stream().filter(Objects::nonNull).findFirst();
       if (fromMap.isPresent()) {

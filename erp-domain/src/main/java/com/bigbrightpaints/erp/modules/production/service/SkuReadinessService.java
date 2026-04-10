@@ -505,7 +505,11 @@ public class SkuReadinessService {
       if (!normalized.chars().allMatch(Character::isDigit)) {
         return null;
       }
-      return Long.parseLong(normalized);
+      try {
+        return Long.parseLong(normalized);
+      } catch (NumberFormatException ex) {
+        return null;
+      }
     }
     return null;
   }

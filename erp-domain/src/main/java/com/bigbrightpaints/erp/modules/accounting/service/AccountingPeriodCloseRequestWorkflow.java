@@ -292,11 +292,12 @@ final class AccountingPeriodCloseRequestWorkflow {
   }
 
   private String normalizeActor(String actor, String fieldName) {
-    if (!StringUtils.hasText(actor)) {
+    String normalized = actor != null ? actor.trim() : "";
+    if (normalized.isEmpty()) {
       throw new ApplicationException(
           ErrorCode.VALIDATION_INVALID_INPUT, fieldName + " is required");
     }
-    return actor.trim();
+    return normalized;
   }
 
   private void requireAdminRole() {

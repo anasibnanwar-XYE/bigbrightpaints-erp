@@ -226,7 +226,7 @@ class SettlementOutcomeService {
   }
 
   void enforceSupplierSettlementPostingParity(
-      Company company, Long supplierId, RawMaterialPurchase purchase, String idempotencyKey) {
+      Long supplierId, RawMaterialPurchase purchase, String idempotencyKey) {
     if (purchase == null || purchase.getId() == null) {
       return;
     }

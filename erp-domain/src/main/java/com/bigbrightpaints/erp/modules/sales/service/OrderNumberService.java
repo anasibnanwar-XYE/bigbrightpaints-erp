@@ -112,7 +112,11 @@ public class OrderNumberService {
     if (!suffix.chars().allMatch(Character::isDigit)) {
       return 0L;
     }
-    return Long.parseLong(suffix);
+    try {
+      return Long.parseLong(suffix);
+    } catch (NumberFormatException ex) {
+      return 0L;
+    }
   }
 
   private void auditOrderNumber(Company company, int fiscalYear, long value, String orderNumber) {

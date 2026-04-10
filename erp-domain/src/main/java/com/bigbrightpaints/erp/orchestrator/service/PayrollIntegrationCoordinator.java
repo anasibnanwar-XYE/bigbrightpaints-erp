@@ -67,11 +67,21 @@ class PayrollIntegrationCoordinator {
     String sanitizedTraceId = CorrelationIdentifierSanitizer.sanitizeOptionalTraceId(traceId);
     String sanitizedIdempotencyKey =
         CorrelationIdentifierSanitizer.sanitizeOptionalIdempotencyKey(idempotencyKey);
+    String normalizedCompanyId = supportService.normalizeCompanyId(companyId);
     if (StringUtils.hasText(sanitizedTraceId)) {
       ex.withDetail("traceId", sanitizedTraceId);
     }
     if (StringUtils.hasText(sanitizedIdempotencyKey)) {
       ex.withDetail("idempotencyKey", sanitizedIdempotencyKey);
+    }
+    if (payrollDate != null) {
+      ex.withDetail("payrollDate", payrollDate);
+    }
+    if (totalAmount != null) {
+      ex.withDetail("totalAmount", totalAmount);
+    }
+    if (StringUtils.hasText(normalizedCompanyId)) {
+      ex.withDetail("companyId", normalizedCompanyId);
     }
     return failDeprecatedPayroll(ex);
   }

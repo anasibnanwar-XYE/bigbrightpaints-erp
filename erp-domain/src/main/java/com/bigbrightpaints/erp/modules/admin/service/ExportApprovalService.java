@@ -279,14 +279,14 @@ public class ExportApprovalService {
   }
 
   private String normalizeParameters(String parameters, String format) {
-    String trimmed = StringUtils.hasText(parameters) ? parameters.trim() : null;
-    if (!StringUtils.hasText(trimmed)) {
+    String normalized = StringUtils.hasText(parameters) ? parameters.trim() : "";
+    if (normalized.isEmpty()) {
       return "format=" + normalizeFormat(format);
     }
-    if (trimmed.toLowerCase(Locale.ROOT).contains("format=")) {
-      return trimmed;
+    if (normalized.toLowerCase(Locale.ROOT).contains("format=")) {
+      return normalized;
     }
-    return trimmed + ";format=" + normalizeFormat(format);
+    return normalized + ";format=" + normalizeFormat(format);
   }
 
   private String normalizeFormat(String format) {

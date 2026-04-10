@@ -201,7 +201,7 @@ public class OpeningBalanceImportService {
       List<ParsedOpeningBalanceRow> parsedRows, String referenceNumber) {
     Company company = companyContextService.requireCurrentCompany();
     if (parsedRows == null || parsedRows.isEmpty()) {
-      return new OpeningBalanceImportResponse(0, 0, java.util.List.of());
+      return OpeningBalanceImportResponse.fromSuccessfulRows(0, 0, java.util.List.of());
     }
     ImportResult result = processParsedRowsInternal(company, parsedRows, referenceNumber);
     return result.response();
@@ -288,7 +288,8 @@ public class OpeningBalanceImportService {
     }
 
     if (validatedRows.isEmpty()) {
-      return new ImportResult(new OpeningBalanceImportResponse(0, accountsCreated, errors), null);
+      return new ImportResult(
+          OpeningBalanceImportResponse.fromSuccessfulRows(0, accountsCreated, errors), null);
     }
 
     if (totalDebit.subtract(totalCredit).compareTo(BigDecimal.ZERO) != 0) {
@@ -299,7 +300,8 @@ public class OpeningBalanceImportService {
               + totalDebit
               + ", totalCredit="
               + totalCredit);
-      return new ImportResult(new OpeningBalanceImportResponse(0, accountsCreated, errors), null);
+      return new ImportResult(
+          OpeningBalanceImportResponse.fromSuccessfulRows(0, accountsCreated, errors), null);
     }
 
     BigDecimal postedDebit = BigDecimal.ZERO;
@@ -327,7 +329,8 @@ public class OpeningBalanceImportService {
     }
 
     if (lines.isEmpty()) {
-      return new ImportResult(new OpeningBalanceImportResponse(0, accountsCreated, errors), null);
+      return new ImportResult(
+          OpeningBalanceImportResponse.fromSuccessfulRows(0, accountsCreated, errors), null);
     }
 
     if (postedDebit.subtract(postedCredit).compareTo(BigDecimal.ZERO) != 0) {
@@ -338,7 +341,8 @@ public class OpeningBalanceImportService {
               + postedDebit
               + ", totalCredit="
               + postedCredit);
-      return new ImportResult(new OpeningBalanceImportResponse(0, accountsCreated, errors), null);
+      return new ImportResult(
+          OpeningBalanceImportResponse.fromSuccessfulRows(0, accountsCreated, errors), null);
     }
 
     Long journalEntryId = null;
@@ -348,7 +352,7 @@ public class OpeningBalanceImportService {
     }
 
     OpeningBalanceImportResponse response =
-        new OpeningBalanceImportResponse(lines.size(), accountsCreated, errors);
+        OpeningBalanceImportResponse.fromSuccessfulRows(lines.size(), accountsCreated, errors);
     return new ImportResult(response, journalEntryId);
   }
 
@@ -512,7 +516,7 @@ public class OpeningBalanceImportService {
   }
 
   private OpeningBalanceImportResponse toResponse(OpeningBalanceImport record) {
-    return new OpeningBalanceImportResponse(
+    return OpeningBalanceImportResponse.fromSuccessfulRows(
         record.getRowsProcessed(),
         record.getAccountsCreated(),
         deserializeErrors(record.getErrorsJson()));

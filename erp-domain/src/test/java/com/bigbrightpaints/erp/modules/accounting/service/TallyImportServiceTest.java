@@ -98,7 +98,7 @@ class TallyImportServiceTest {
         .thenReturn(Optional.of(creditors));
 
     when(openingBalanceImportService.importFromParsedRows(any(List.class), any()))
-        .thenReturn(new OpeningBalanceImportResponse(2, 0, List.of()));
+        .thenReturn(OpeningBalanceImportResponse.fromSuccessfulRows(2, 0, List.of()));
 
     TallyImportResponse response = service.importTallyXml(file);
 
@@ -201,7 +201,7 @@ class TallyImportServiceTest {
         .thenReturn(Optional.empty());
 
     when(openingBalanceImportService.importFromParsedRows(any(List.class), any()))
-        .thenReturn(new OpeningBalanceImportResponse(1, 0, List.of()));
+        .thenReturn(OpeningBalanceImportResponse.fromSuccessfulRows(1, 0, List.of()));
 
     TallyImportResponse response = service.importTallyXml(file);
 

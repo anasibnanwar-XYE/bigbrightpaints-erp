@@ -39,15 +39,16 @@ public final class AuditCorrelationIdResolver {
       }
     }
 
-    for (String candidate : candidates) {
-      UUID parsed = parseUuidOrNull(candidate);
-      if (parsed != null) {
-        return parsed;
-      }
-      return UUID.nameUUIDFromBytes(
-          (NAMESPACE_PREFIX + candidate.trim()).getBytes(StandardCharsets.UTF_8));
+    if (candidates.isEmpty()) {
+      return null;
     }
-    return null;
+    String candidate = candidates.get(0);
+    UUID parsed = parseUuidOrNull(candidate);
+    if (parsed != null) {
+      return parsed;
+    }
+    return UUID.nameUUIDFromBytes(
+        (NAMESPACE_PREFIX + candidate.trim()).getBytes(StandardCharsets.UTF_8));
   }
 
   public static HttpServletRequest currentRequest() {

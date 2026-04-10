@@ -23,6 +23,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
+import com.bigbrightpaints.erp.core.exception.GlobalExceptionHandler;
 import com.bigbrightpaints.erp.modules.accounting.dto.BankReconciliationSessionCompletionRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.BankReconciliationSessionCreateRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.BankReconciliationSessionDetailDto;
@@ -108,7 +109,8 @@ class ReconciliationControllerSessionEndpointsTest {
     MockMvc mvc =
         MockMvcBuilders.standaloneSetup(
                 controller(mock(ReconciliationService.class), sessionService))
-            .setControllerAdvice(new AccountingApplicationExceptionAdvice())
+            .setControllerAdvice(
+                new AccountingApplicationExceptionAdvice(new GlobalExceptionHandler()))
             .build();
 
     mvc.perform(
@@ -156,7 +158,8 @@ class ReconciliationControllerSessionEndpointsTest {
     MockMvc mvc =
         MockMvcBuilders.standaloneSetup(
                 controller(mock(ReconciliationService.class), sessionService))
-            .setControllerAdvice(new AccountingApplicationExceptionAdvice())
+            .setControllerAdvice(
+                new AccountingApplicationExceptionAdvice(new GlobalExceptionHandler()))
             .build();
 
     mvc.perform(

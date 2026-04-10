@@ -374,7 +374,7 @@ public class InvoiceService {
               BusinessDocumentTruths.salesOrderLifecycle(salesOrder),
               salesOrder.getSalesJournalEntryId()));
       for (PackagingSlip slip : slips) {
-        if (!isSlipLinkedToInvoice(slip, invoice, slips, salesOrderInvoiceCount)) {
+        if (!isSlipLinkedToInvoice(slip, invoice)) {
           continue;
         }
         linkedReferences.add(
@@ -491,11 +491,7 @@ public class InvoiceService {
         currentInvoiceCountsBySalesOrderId);
   }
 
-  private boolean isSlipLinkedToInvoice(
-      PackagingSlip slip,
-      Invoice invoice,
-      List<PackagingSlip> candidateSlips,
-      int salesOrderInvoiceCount) {
+  private boolean isSlipLinkedToInvoice(PackagingSlip slip, Invoice invoice) {
     return slip != null
         && invoice != null
         && slip.getInvoiceId() != null

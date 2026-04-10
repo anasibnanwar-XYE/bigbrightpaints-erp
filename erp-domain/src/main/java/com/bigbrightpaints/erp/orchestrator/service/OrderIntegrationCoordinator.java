@@ -92,8 +92,13 @@ class OrderIntegrationCoordinator {
       String orderId, BigDecimal amount, String companyId, String traceId, String idempotencyKey) {
     String correlation = supportService.correlationSuffix(traceId, idempotencyKey);
     String normalizedCompanyId = supportService.normalizeCompanyId(companyId);
+    String normalizedAmount = amount != null ? amount.stripTrailingZeros().toPlainString() : null;
     if (normalizedCompanyId == null) {
-      log.warn("Cannot auto-approve order {} without a company context{}", orderId, correlation);
+      log.warn(
+          "Cannot auto-approve order {} without a company context{}{}",
+          orderId,
+          normalizedAmount != null ? " amount=" + normalizedAmount : "",
+          correlation);
       return new IntegrationCoordinator.AutoApprovalResult("PENDING_PRODUCTION", true);
     }
     Long numericId = orderSupportCoordinator.requireNumericOrderId(orderId, "autoApproveOrder");

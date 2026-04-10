@@ -368,7 +368,7 @@ class SettlementReplayValidationService {
   }
 
   private BigDecimal roundedAmount(BigDecimal amount) {
-    return amount == null ? BigDecimal.ZERO : amount.setScale(2, BigDecimal.ROUND_HALF_UP);
+    return amount == null ? BigDecimal.ZERO : amount.setScale(2, RoundingMode.HALF_UP);
   }
 
   private record JournalLineSignature(Long accountId, BigDecimal debit, BigDecimal credit) {}
