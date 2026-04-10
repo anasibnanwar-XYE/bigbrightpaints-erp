@@ -442,7 +442,7 @@ class TS_RuntimeOrchestratorExecutableCoverageTest {
     when(idempotencyService.start(eq("ORCH.ORDER.AUTO_APPROVE"), eq("idem-auto"), any(), any()))
         .thenReturn(lease);
     when(integrationCoordinator.autoApproveOrder(
-            "SO-901", new BigDecimal("250.00"), "C1", "trace-auto", "persisted-auto-key"))
+            "SO-901", "C1", "trace-auto", "persisted-auto-key"))
         .thenReturn(new IntegrationCoordinator.AutoApprovalResult("READY_TO_SHIP", false));
 
     String trace =

@@ -120,13 +120,13 @@ public class IntegrationCoordinator {
   }
 
   @Transactional(propagation = Propagation.REQUIRES_NEW)
-  public AutoApprovalResult autoApproveOrder(String orderId, BigDecimal amount, String companyId) {
-    return autoApproveOrder(orderId, amount, companyId, null, null);
+  public AutoApprovalResult autoApproveOrder(String orderId, String companyId) {
+    return autoApproveOrder(orderId, companyId, null, null);
   }
 
   @Transactional(propagation = Propagation.REQUIRES_NEW)
   public AutoApprovalResult autoApproveOrder(
-      String orderId, BigDecimal amount, String companyId, String traceId, String idempotencyKey) {
+      String orderId, String companyId, String traceId, String idempotencyKey) {
     return orderIntegrationCoordinator.autoApproveOrder(orderId, companyId, traceId, idempotencyKey);
   }
 

@@ -132,7 +132,7 @@ public class CommandDispatcher {
           String traceId = lease.traceId();
           IntegrationCoordinator.AutoApprovalResult result =
               integrationCoordinator.autoApproveOrder(
-                  orderId, totalAmount, companyId, traceId, canonicalIdempotencyKey);
+                  orderId, companyId, traceId, canonicalIdempotencyKey);
           DomainEvent event =
               DomainEvent.of(
                   "OrderAutoApprovedEvent",

@@ -139,8 +139,7 @@ class IntegrationCoordinatorTest {
     when(finishedGoodsService.reserveForOrder(order)).thenReturn(reservation);
 
     IntegrationCoordinator.AutoApprovalResult result =
-        integrationCoordinator.autoApproveOrder(
-            String.valueOf(ORDER_ID), new BigDecimal("1500"), COMPANY_ID);
+        integrationCoordinator.autoApproveOrder(String.valueOf(ORDER_ID), COMPANY_ID);
 
     assertThat(result.orderStatus()).isEqualTo("READY_TO_SHIP");
     assertThat(result.awaitingProduction()).isFalse();
@@ -174,11 +173,7 @@ class IntegrationCoordinatorTest {
     CompanyContextHolder.setCompanyCode("AMBIENT-COMPANY");
 
     integrationCoordinator.autoApproveOrder(
-        String.valueOf(ORDER_ID),
-        new BigDecimal("1500"),
-        "  " + COMPANY_ID + "  ",
-        "trace-auto-42",
-        null);
+        String.valueOf(ORDER_ID), "  " + COMPANY_ID + "  ", "trace-auto-42", null);
 
     assertThat(contextsDuringAttach).isNotEmpty();
     assertThat(contextsDuringAttach).allMatch(COMPANY_ID::equals);
@@ -334,7 +329,7 @@ class IntegrationCoordinatorTest {
     state.markOrderStatusUpdated();
 
     IntegrationCoordinator.AutoApprovalResult result =
-        integrationCoordinator.autoApproveOrder(String.valueOf(ORDER_ID), null, COMPANY_ID);
+        integrationCoordinator.autoApproveOrder(String.valueOf(ORDER_ID), COMPANY_ID);
 
     assertThat(result.orderStatus()).isEqualTo("READY_TO_SHIP");
     assertThat(result.awaitingProduction()).isFalse();
@@ -356,7 +351,7 @@ class IntegrationCoordinatorTest {
     state.markCompleted();
 
     IntegrationCoordinator.AutoApprovalResult result =
-        integrationCoordinator.autoApproveOrder(String.valueOf(ORDER_ID), null, COMPANY_ID);
+        integrationCoordinator.autoApproveOrder(String.valueOf(ORDER_ID), COMPANY_ID);
 
     assertThat(result.orderStatus()).isEqualTo("READY_TO_SHIP");
     assertThat(result.awaitingProduction()).isFalse();
@@ -368,7 +363,7 @@ class IntegrationCoordinatorTest {
   void autoApproveOrderRetrySkipsReservationAfterPartialProgress() {
     state.markInventoryReserved();
     IntegrationCoordinator.AutoApprovalResult result =
-        integrationCoordinator.autoApproveOrder(String.valueOf(ORDER_ID), null, COMPANY_ID);
+        integrationCoordinator.autoApproveOrder(String.valueOf(ORDER_ID), COMPANY_ID);
 
     assertThat(result.orderStatus()).isEqualTo("READY_TO_SHIP");
     assertThat(result.awaitingProduction()).isFalse();
@@ -383,8 +378,7 @@ class IntegrationCoordinatorTest {
     when(salesService.getOrderWithItems(ORDER_ID)).thenReturn(order);
     when(finishedGoodsService.reserveForOrder(order)).thenReturn(reservation);
 
-    integrationCoordinator.autoApproveOrder(
-        String.valueOf(ORDER_ID), new BigDecimal("1500"), COMPANY_ID);
+    integrationCoordinator.autoApproveOrder(String.valueOf(ORDER_ID), COMPANY_ID);
 
     verify(salesService, never()).confirmDispatch(any());
   }
@@ -396,8 +390,7 @@ class IntegrationCoordinatorTest {
     when(salesService.getOrderWithItems(ORDER_ID)).thenReturn(order);
     when(finishedGoodsService.reserveForOrder(order)).thenReturn(reservation);
 
-    integrationCoordinator.autoApproveOrder(
-        String.valueOf(ORDER_ID), new BigDecimal("1500"), COMPANY_ID);
+    integrationCoordinator.autoApproveOrder(String.valueOf(ORDER_ID), COMPANY_ID);
 
     verify(salesService, never()).confirmDispatch(any());
   }
@@ -405,7 +398,7 @@ class IntegrationCoordinatorTest {
   @Test
   void autoApproveOrderReturnsPendingProductionWhenCompanyContextMissingAndAmountPresent() {
     IntegrationCoordinator.AutoApprovalResult result =
-        integrationCoordinator.autoApproveOrder(String.valueOf(ORDER_ID), new BigDecimal("1500"), " ");
+        integrationCoordinator.autoApproveOrder(String.valueOf(ORDER_ID), " ");
 
     assertThat(result.orderStatus()).isEqualTo("PENDING_PRODUCTION");
     assertThat(result.awaitingProduction()).isTrue();
@@ -415,7 +408,7 @@ class IntegrationCoordinatorTest {
   @Test
   void autoApproveOrderReturnsPendingProductionWhenCompanyContextMissingAndAmountAbsent() {
     IntegrationCoordinator.AutoApprovalResult result =
-        integrationCoordinator.autoApproveOrder(String.valueOf(ORDER_ID), null, null);
+        integrationCoordinator.autoApproveOrder(String.valueOf(ORDER_ID), null);
 
     assertThat(result.orderStatus()).isEqualTo("PENDING_PRODUCTION");
     assertThat(result.awaitingProduction()).isTrue();

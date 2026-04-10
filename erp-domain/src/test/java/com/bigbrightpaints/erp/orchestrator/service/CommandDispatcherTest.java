@@ -484,7 +484,7 @@ class CommandDispatcherTest {
     IntegrationCoordinator.AutoApprovalResult result =
         new IntegrationCoordinator.AutoApprovalResult("READY_TO_SHIP", false);
     when(integrationCoordinator.autoApproveOrder(
-            "101", new BigDecimal("5000"), "COMP", "trace-999", "auto-1"))
+            "101", "COMP", "trace-999", "auto-1"))
         .thenReturn(result);
 
     String traceId =
