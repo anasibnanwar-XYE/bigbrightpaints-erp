@@ -58,6 +58,19 @@ class SettlementControllerIdempotencyHeaderParityTest {
   }
 
   @Test
+  void recordDealerReceipt_preservesBodyKeyWhenHeaderMissing() {
+    SettlementController controller = controller();
+    when(accountingFacade.recordDealerReceipt(any())).thenReturn(null);
+
+    assertForwardedIdempotencyKey(
+        DealerReceiptRequest.class,
+        () -> controller.recordDealerReceipt(dealerReceiptRequest("body-keep-001"), null, null),
+        captor -> verify(accountingFacade).recordDealerReceipt(captor.capture()),
+        DealerReceiptRequest::idempotencyKey,
+        "body-keep-001");
+  }
+
+  @Test
   void recordDealerHybridReceipt_usesCanonicalHeaderEvenWhenBodyKeyIsPresent() {
     SettlementController controller = controller();
     when(accountingFacade.recordDealerReceiptSplit(any())).thenReturn(null);
@@ -85,6 +98,21 @@ class SettlementControllerIdempotencyHeaderParityTest {
         captor -> verify(accountingFacade).recordDealerReceiptSplit(captor.capture()),
         DealerReceiptSplitRequest::idempotencyKey,
         "hdr-blank-002");
+  }
+
+  @Test
+  void recordDealerHybridReceipt_preservesBodyKeyWhenHeaderMissing() {
+    SettlementController controller = controller();
+    when(accountingFacade.recordDealerReceiptSplit(any())).thenReturn(null);
+
+    assertForwardedIdempotencyKey(
+        DealerReceiptSplitRequest.class,
+        () ->
+            controller.recordDealerHybridReceipt(
+                dealerReceiptSplitRequest("body-keep-002"), null, null),
+        captor -> verify(accountingFacade).recordDealerReceiptSplit(captor.capture()),
+        DealerReceiptSplitRequest::idempotencyKey,
+        "body-keep-002");
   }
 
   @Test
@@ -127,6 +155,19 @@ class SettlementControllerIdempotencyHeaderParityTest {
   }
 
   @Test
+  void settleSupplier_preservesBodyKeyWhenHeaderMissing() {
+    SettlementController controller = controller();
+    when(accountingFacade.settleSupplierInvoices(any())).thenReturn(null);
+
+    assertForwardedIdempotencyKey(
+        PartnerSettlementRequest.class,
+        () -> controller.settleSupplier(supplierSettlementRequest("body-keep-003"), null, null),
+        captor -> verify(accountingFacade).settleSupplierInvoices(captor.capture()),
+        PartnerSettlementRequest::idempotencyKey,
+        "body-keep-003");
+  }
+
+  @Test
   void settleDealer_usesCanonicalHeaderEvenWhenBodyKeyIsPresent() {
     SettlementController controller = controller();
     when(accountingFacade.settleDealerInvoices(any())).thenReturn(null);
@@ -150,6 +191,19 @@ class SettlementControllerIdempotencyHeaderParityTest {
         captor -> verify(accountingFacade).settleDealerInvoices(captor.capture()),
         PartnerSettlementRequest::idempotencyKey,
         "hdr-blank-005");
+  }
+
+  @Test
+  void settleDealer_preservesBodyKeyWhenHeaderMissing() {
+    SettlementController controller = controller();
+    when(accountingFacade.settleDealerInvoices(any())).thenReturn(null);
+
+    assertForwardedIdempotencyKey(
+        PartnerSettlementRequest.class,
+        () -> controller.settleDealer(dealerSettlementRequest("body-keep-004"), null, null),
+        captor -> verify(accountingFacade).settleDealerInvoices(captor.capture()),
+        PartnerSettlementRequest::idempotencyKey,
+        "body-keep-004");
   }
 
   @Test
@@ -181,6 +235,19 @@ class SettlementControllerIdempotencyHeaderParityTest {
   }
 
   @Test
+  void autoSettleDealer_preservesBodyKeyWhenHeaderMissing() {
+    SettlementController controller = controller();
+    when(accountingFacade.autoSettleDealer(any(), any())).thenReturn(null);
+
+    assertForwardedIdempotencyKey(
+        com.bigbrightpaints.erp.modules.accounting.dto.AutoSettlementRequest.class,
+        () -> controller.autoSettleDealer(1001L, autoSettlementRequest("body-keep-005"), null, null),
+        captor -> verify(accountingFacade).autoSettleDealer(any(), captor.capture()),
+        com.bigbrightpaints.erp.modules.accounting.dto.AutoSettlementRequest::idempotencyKey,
+        "body-keep-005");
+  }
+
+  @Test
   void autoSettleSupplier_usesCanonicalHeaderEvenWhenBodyKeyIsPresent() {
     SettlementController controller = controller();
     when(accountingFacade.autoSettleSupplier(any(), any())).thenReturn(null);
@@ -193,6 +260,21 @@ class SettlementControllerIdempotencyHeaderParityTest {
         captor -> verify(accountingFacade).autoSettleSupplier(any(), captor.capture()),
         com.bigbrightpaints.erp.modules.accounting.dto.AutoSettlementRequest::idempotencyKey,
         "hdr-auto-003");
+  }
+
+  @Test
+  void autoSettleSupplier_preservesBodyKeyWhenHeaderMissing() {
+    SettlementController controller = controller();
+    when(accountingFacade.autoSettleSupplier(any(), any())).thenReturn(null);
+
+    assertForwardedIdempotencyKey(
+        com.bigbrightpaints.erp.modules.accounting.dto.AutoSettlementRequest.class,
+        () ->
+            controller.autoSettleSupplier(
+                3001L, autoSettlementRequest("body-keep-006"), null, null),
+        captor -> verify(accountingFacade).autoSettleSupplier(any(), captor.capture()),
+        com.bigbrightpaints.erp.modules.accounting.dto.AutoSettlementRequest::idempotencyKey,
+        "body-keep-006");
   }
 
   @Test

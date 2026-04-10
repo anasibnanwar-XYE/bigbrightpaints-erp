@@ -167,8 +167,11 @@ public class SettlementController {
     if (request == null) {
       return null;
     }
-    return requestWithIdempotencyKey.apply(
-        request, IdempotencyHeaderUtils.resolveHeaderKey(idempotencyKeyHeader));
+    String canonicalHeaderKey = IdempotencyHeaderUtils.resolveHeaderKey(idempotencyKeyHeader);
+    if (canonicalHeaderKey == null) {
+      return request;
+    }
+    return requestWithIdempotencyKey.apply(request, canonicalHeaderKey);
   }
 
   private void rejectLegacyHeader(
