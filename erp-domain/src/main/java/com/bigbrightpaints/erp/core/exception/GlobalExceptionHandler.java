@@ -87,11 +87,9 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
       Map<String, Object> responseDetails) {
     String traceId = UUID.randomUUID().toString();
     logger.error(
-        "Application error [{}] - Code: {}, Path: {}, User: {}",
+        "Application error [{}] - Code: {}",
         traceId,
         ex.getErrorCode().getCode(),
-        request.getRequestURI(),
-        request.getUserPrincipal() != null ? request.getUserPrincipal().getName() : "anonymous",
         ex);
     Map<String, Object> data = new HashMap<>();
     data.put("code", ex.getErrorCode().getCode());
@@ -135,7 +133,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
       HttpStatusCode status,
       WebRequest request) {
     String traceId = UUID.randomUUID().toString();
-    logger.warn("Validation error [{}] - Path: {}", traceId, request.getDescription(false));
+    logger.warn("Validation error [{}]", traceId);
     Map<String, String> fieldErrors = new LinkedHashMap<>();
     for (FieldError error : ex.getBindingResult().getFieldErrors()) {
       fieldErrors.putIfAbsent(error.getField(), error.getDefaultMessage());
@@ -159,7 +157,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     String traceId = UUID.randomUUID().toString();
     String reason = "Failed to read request";
     String detail = resolveMostSpecificMessage(ex);
-    logger.warn("Malformed request [{}] - Path: {}", traceId, request.getDescription(false));
+    logger.warn("Malformed request [{}]", traceId);
     Map<String, Object> data = new HashMap<>();
     data.put("code", ErrorCode.VALIDATION_INVALID_INPUT.getCode());
     data.put("message", reason);
@@ -181,7 +179,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
   public ResponseEntity<ApiResponse<Map<String, Object>>> handleConstraintViolation(
       ConstraintViolationException ex, HttpServletRequest request) {
     String traceId = UUID.randomUUID().toString();
-    logger.warn("Constraint violation [{}] - Path: {}", traceId, request.getRequestURI(), ex);
+    logger.warn("Constraint violation [{}]", traceId, ex);
     Map<String, String> violations = new LinkedHashMap<>();
     ex.getConstraintViolations()
         .forEach(
@@ -213,11 +211,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
   public ResponseEntity<ApiResponse<Map<String, Object>>> handleIllegalArgument(
       IllegalArgumentException ex, HttpServletRequest request) {
     String traceId = UUID.randomUUID().toString();
-    logger.warn(
-        "Illegal argument [{}] - Path: {}, Message: {}",
-        traceId,
-        request.getRequestURI(),
-        ex.getMessage());
+    logger.warn("Illegal argument [{}]", traceId);
     String reason = resolveIllegalArgumentMessage(ex.getMessage());
     Map<String, Object> data = new HashMap<>();
     data.put("code", ErrorCode.VALIDATION_INVALID_INPUT.getCode());

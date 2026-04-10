@@ -58,7 +58,7 @@ public class CoreFallbackExceptionHandler {
   @ExceptionHandler(MfaRequiredException.class)
   public ResponseEntity<ApiResponse<MfaChallengeResponse>> handleMfaRequired(
       MfaRequiredException ex, HttpServletRequest request) {
-    logger.info("MFA required for user at path: {}", request.getRequestURI());
+    logger.info("MFA required for current request");
     ApiResponse<MfaChallengeResponse> body =
         ApiResponse.failure(
             ErrorCode.AUTH_MFA_REQUIRED.getDefaultMessage(), new MfaChallengeResponse(true));
