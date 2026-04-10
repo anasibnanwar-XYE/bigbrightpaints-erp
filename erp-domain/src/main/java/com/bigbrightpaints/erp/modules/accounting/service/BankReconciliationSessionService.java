@@ -261,8 +261,10 @@ public class BankReconciliationSessionService {
 
     List<BankReconciliationItem> allItems =
         itemRepository.findByCompanyAndSessionIds(company, sessionIds);
+    List<BankReconciliationItem> matchedItems =
+        allItems.stream().filter(item -> item.getBankItemId() != null).toList();
     Map<Long, Long> itemCountBySession =
-        allItems.stream()
+        matchedItems.stream()
             .collect(
                 Collectors.groupingBy(item -> item.getSession().getId(), Collectors.counting()));
 

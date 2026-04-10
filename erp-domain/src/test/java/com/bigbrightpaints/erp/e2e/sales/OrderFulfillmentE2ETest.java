@@ -1479,13 +1479,9 @@ public class OrderFulfillmentE2ETest extends AbstractIntegrationTest {
     Instant deadline = Instant.now().plus(Duration.ofSeconds(5));
     while (Instant.now().isBefore(deadline)) {
       Optional<AuditActionEvent> match =
-          auditActionEventRepository.findAll().stream()
-              .filter(event -> Objects.equals(event.getCompanyId(), companyId))
-              .filter(event -> module.equalsIgnoreCase(event.getModule()))
-              .filter(event -> action.equalsIgnoreCase(event.getAction()))
-              .filter(event -> entityType.equalsIgnoreCase(event.getEntityType()))
-              .filter(event -> entityId.equals(event.getEntityId()))
-              .max(java.util.Comparator.comparing(AuditActionEvent::getOccurredAt));
+          auditActionEventRepository
+              .findTopByCompanyIdAndModuleIgnoreCaseAndActionIgnoreCaseAndEntityTypeIgnoreCaseAndEntityIdOrderByOccurredAtDesc(
+                  companyId, module, action, entityType, entityId);
       if (match.isPresent()) {
         return match.get();
       }

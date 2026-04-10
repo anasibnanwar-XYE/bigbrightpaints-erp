@@ -35,7 +35,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 
 @ControllerAdvice
-@Order(Ordered.HIGHEST_PRECEDENCE)
+@Order(Ordered.HIGHEST_PRECEDENCE + 10)
 public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
   private static final Logger logger = LoggerFactory.getLogger(GlobalExceptionHandler.class);
   private static final String CATALOG_ITEM_PATH = "/api/v1/catalog/items";
@@ -71,6 +71,20 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
   @ExceptionHandler(ApplicationException.class)
   public ResponseEntity<ApiResponse<Map<String, Object>>> handleApplicationException(
       ApplicationException ex, HttpServletRequest request) {
+    return buildApplicationExceptionResponse(ex, request, determineHttpStatus(ex.getErrorCode()));
+  }
+
+  public ResponseEntity<ApiResponse<Map<String, Object>>> buildApplicationExceptionResponse(
+      ApplicationException ex, HttpServletRequest request, HttpStatus status) {
+    return buildApplicationExceptionResponse(
+        ex, request, status, resolveResponseDetails(ex, request, ex.getDetails()));
+  }
+
+  public ResponseEntity<ApiResponse<Map<String, Object>>> buildApplicationExceptionResponse(
+      ApplicationException ex,
+      HttpServletRequest request,
+      HttpStatus status,
+      Map<String, Object> responseDetails) {
     String traceId = UUID.randomUUID().toString();
     logger.error(
         "Application error [{}] - Code: {}, Path: {}, User: {}",
@@ -86,12 +100,10 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     data.put("traceId", traceId);
     data.put("timestamp", LocalDateTime.now());
     data.put("path", request.getRequestURI());
-    Map<String, Object> details = resolveResponseDetails(ex, request, ex.getDetails());
-    if (!details.isEmpty()) {
-      data.put("details", details);
+    if (responseDetails != null && !responseDetails.isEmpty()) {
+      data.put("details", responseDetails);
     }
     auditExceptionRoutingService.routeApplicationException(auditService, request, traceId, ex);
-    HttpStatus status = determineHttpStatus(ex.getErrorCode());
     return ResponseEntity.status(status).body(ApiResponse.failure(ex.getUserMessage(), data));
   }
 

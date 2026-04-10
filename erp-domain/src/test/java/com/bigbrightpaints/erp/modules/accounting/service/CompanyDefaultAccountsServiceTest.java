@@ -293,6 +293,28 @@ class CompanyDefaultAccountsServiceTest {
         .hasMessageContaining("tax");
   }
 
+  @Test
+  void resolveAutoSettlementCashAccountId_requiresExplicitCashAccountId() {
+    company.setPayrollCashAccount(account(88L, AccountType.ASSET, "PAYROLL-CASH"));
+
+    assertThatThrownBy(
+            () -> service.resolveAutoSettlementCashAccountId(company, null, "dealer auto-settlement"))
+        .isInstanceOf(ApplicationException.class)
+        .hasMessageContaining("cashAccountId is required for dealer auto-settlement");
+  }
+
+  @Test
+  void resolveAutoSettlementCashAccountId_validatesExplicitCashAccount() {
+    Account cash = account(91L, AccountType.ASSET, "BANK-CASH");
+    when(accountingLookupService.requireAccount(company, 91L)).thenReturn(cash);
+
+    Long resolved =
+        service.resolveAutoSettlementCashAccountId(company, 91L, "supplier auto-settlement");
+
+    assertThat(resolved).isEqualTo(91L);
+    verify(accountingLookupService).requireAccount(company, 91L);
+  }
+
   private Account account(Long id, AccountType type, String code) {
     Account account = new Account();
     account.setType(type);

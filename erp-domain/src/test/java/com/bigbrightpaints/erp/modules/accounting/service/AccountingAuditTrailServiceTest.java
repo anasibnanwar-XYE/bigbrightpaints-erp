@@ -1813,6 +1813,23 @@ class AccountingAuditTrailServiceTest {
         .or(any(jakarta.persistence.criteria.Predicate[].class));
   }
 
+  @Test
+  void specificationHelpers_rejectInvalidStatusFilter() {
+    @SuppressWarnings("rawtypes")
+    jakarta.persistence.criteria.Root root =
+        org.mockito.Mockito.mock(jakarta.persistence.criteria.Root.class);
+    @SuppressWarnings("rawtypes")
+    jakarta.persistence.criteria.CriteriaQuery query =
+        org.mockito.Mockito.mock(jakarta.persistence.criteria.CriteriaQuery.class);
+    jakarta.persistence.criteria.CriteriaBuilder cb =
+        org.mockito.Mockito.mock(jakarta.persistence.criteria.CriteriaBuilder.class);
+
+    assertThatThrownBy(
+            () -> transactionQueryService.byStatus("not-a-status").toPredicate(root, query, cb))
+        .isInstanceOf(com.bigbrightpaints.erp.core.exception.ApplicationException.class)
+        .hasMessageContaining("Invalid accounting audit status: not-a-status");
+  }
+
   private static JournalLine line(String accountCode, String debitAmount, String creditAmount) {
     Account account = new Account();
     account.setCode(accountCode);

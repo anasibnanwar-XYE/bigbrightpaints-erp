@@ -750,7 +750,7 @@ class BankReconciliationSessionServiceTest {
     JournalLine lineB =
         journalLine(
             3002L, company, bankB, "CHK-B", LocalDate.of(2026, 3, 9), "memo", "0.00", "15.00");
-    BankReconciliationItem itemA = item(7001L, sessionNew, lineA, "DEP-A", "20.00", "u1");
+    BankReconciliationItem itemA = item(7001L, sessionNew, lineA, "DEP-A", "20.00", "u1", 9001L);
     BankReconciliationItem itemB = item(7002L, sessionOld, lineB, "CHK-B", "-15.00", "u2");
     when(itemRepository.findByCompanyAndSessionIds(company, List.of(101L, 100L)))
         .thenReturn(List.of(itemA, itemB));
@@ -768,6 +768,7 @@ class BankReconciliationSessionServiceTest {
     assertThat(response.content().get(0).sessionId()).isEqualTo(101L);
     assertThat(response.content().get(1).sessionId()).isEqualTo(100L);
     assertThat(response.content().get(0).clearedItemCount()).isEqualTo(1);
+    assertThat(response.content().get(1).clearedItemCount()).isZero();
     assertThat(response.totalElements()).isEqualTo(2L);
   }
 

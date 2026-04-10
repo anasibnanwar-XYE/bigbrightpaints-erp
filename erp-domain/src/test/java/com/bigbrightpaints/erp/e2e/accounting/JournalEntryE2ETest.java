@@ -10,7 +10,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -1042,12 +1041,9 @@ public class JournalEntryE2ETest extends AbstractIntegrationTest {
     Instant deadline = Instant.now().plus(Duration.ofSeconds(5));
     while (Instant.now().isBefore(deadline)) {
       Optional<AuditActionEvent> match =
-          auditActionEventRepository.findAll().stream()
-              .filter(event -> Objects.equals(event.getCompanyId(), companyId))
-              .filter(event -> "ACCOUNTING".equalsIgnoreCase(event.getModule()))
-              .filter(event -> "JOURNAL_ENTRY".equalsIgnoreCase(event.getEntityType()))
-              .filter(event -> entityId.equals(event.getEntityId()))
-              .max(java.util.Comparator.comparing(AuditActionEvent::getOccurredAt));
+          auditActionEventRepository
+              .findTopByCompanyIdAndModuleIgnoreCaseAndEntityTypeIgnoreCaseAndEntityIdOrderByOccurredAtDesc(
+                  companyId, "ACCOUNTING", "JOURNAL_ENTRY", entityId);
       if (match.isPresent()) {
         return match.get();
       }

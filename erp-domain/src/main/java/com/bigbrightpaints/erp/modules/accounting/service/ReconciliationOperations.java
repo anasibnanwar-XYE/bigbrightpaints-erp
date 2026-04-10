@@ -421,23 +421,8 @@ final class ReconciliationOperations {
     }
 
     if (companyAId == null && companyBId == null) {
-      Optional<Company> counterparty =
-          companyRepository.findAll().stream()
-              .filter(candidate -> !Objects.equals(candidate.getId(), activeCompanyId))
-              .findFirst();
-      if (counterparty.isEmpty()) {
-        return new InterCompanyReconciliationReport(
-            activeCompanyId,
-            normalizeCode(activeCompany.getCode()),
-            null,
-            null,
-            List.of(),
-            List.of(),
-            BigDecimal.ZERO,
-            true);
-      }
-      companyAId = activeCompanyId;
-      companyBId = counterparty.get().getId();
+      throw ValidationUtils.invalidInput(
+          "companyA or companyB is required for inter-company reconciliation");
     } else {
       if (companyAId == null) {
         companyAId = activeCompanyId;

@@ -130,20 +130,11 @@ public class CompanyDefaultAccountsService {
       throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
           "Company context is required");
     }
-    if (requestedCashAccountId != null) {
-      Account account = accountingLookupService.requireAccount(company, requestedCashAccountId);
-      validateSettlementCashAccount(account, operation);
-      return account.getId();
+    if (requestedCashAccountId == null) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          "cashAccountId is required for " + operation);
     }
-    Account configuredCashAccount = company.getPayrollCashAccount();
-    if (configuredCashAccount == null || configuredCashAccount.getId() == null) {
-      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState(
-          "cashAccountId is required when no company default settlement cash account is"
-              + " configured for "
-              + operation);
-    }
-    Account account =
-        accountingLookupService.requireAccount(company, configuredCashAccount.getId());
+    Account account = accountingLookupService.requireAccount(company, requestedCashAccountId);
     validateSettlementCashAccount(account, operation);
     return account.getId();
   }

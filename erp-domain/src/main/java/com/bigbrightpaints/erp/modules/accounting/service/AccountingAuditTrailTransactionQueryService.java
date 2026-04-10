@@ -14,6 +14,7 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.util.StringUtils;
 
 import com.bigbrightpaints.erp.core.util.CompanyTime;
+import com.bigbrightpaints.erp.core.validation.ValidationUtils;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryStatus;
@@ -196,7 +197,7 @@ final class AccountingAuditTrailTransactionQueryService {
       try {
         normalizedStatus = JournalEntryStatus.valueOf(status.trim().toUpperCase(Locale.ROOT));
       } catch (IllegalArgumentException ex) {
-        return cb.disjunction();
+        throw ValidationUtils.invalidInput("Invalid accounting audit status: " + status.trim());
       }
       return cb.equal(root.get("status"), normalizedStatus);
     };

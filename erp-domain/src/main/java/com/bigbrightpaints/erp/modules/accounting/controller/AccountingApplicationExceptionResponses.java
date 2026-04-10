@@ -48,7 +48,7 @@ final class AccountingApplicationExceptionResponses {
     return errorData;
   }
 
-  private static HttpStatus determineHttpStatus(ErrorCode errorCode) {
+  static HttpStatus determineHttpStatus(ErrorCode errorCode) {
     if (errorCode == null) {
       return HttpStatus.INTERNAL_SERVER_ERROR;
     }

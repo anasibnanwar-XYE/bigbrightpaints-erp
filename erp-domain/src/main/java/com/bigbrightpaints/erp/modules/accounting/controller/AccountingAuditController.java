@@ -1,10 +1,7 @@
 package com.bigbrightpaints.erp.modules.accounting.controller;
 
-import java.util.Map;
-
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -14,14 +11,11 @@ import org.springframework.web.bind.annotation.RestController;
 import com.bigbrightpaints.erp.core.auditaccess.AuditAccessService;
 import com.bigbrightpaints.erp.core.auditaccess.AuditControllerSupport;
 import com.bigbrightpaints.erp.core.auditaccess.dto.AuditFeedItemDto;
-import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.security.PortalRoleActionMatrix;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountingTransactionAuditDetailDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountingTransactionAuditListItemDto;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 import com.bigbrightpaints.erp.shared.dto.PageResponse;
-
-import jakarta.servlet.http.HttpServletRequest;
 
 @RestController
 @RequestMapping("/api/v1/accounting/audit")
@@ -31,12 +25,6 @@ public class AccountingAuditController extends AuditControllerSupport {
 
   public AccountingAuditController(AuditAccessService auditAccessService) {
     this.auditAccessService = auditAccessService;
-  }
-
-  @ExceptionHandler(ApplicationException.class)
-  public ResponseEntity<ApiResponse<Map<String, Object>>> handleApplicationException(
-      ApplicationException ex, HttpServletRequest request) {
-    return AccountingApplicationExceptionResponses.mappedStatus(ex, request);
   }
 
   @GetMapping("/events")

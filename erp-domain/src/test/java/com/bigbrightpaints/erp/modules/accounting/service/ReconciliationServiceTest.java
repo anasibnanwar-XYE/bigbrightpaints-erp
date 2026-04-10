@@ -610,6 +610,13 @@ class ReconciliationServiceTest {
   }
 
   @Test
+  void interCompanyReconcile_requiresAtLeastOneExplicitCompany() {
+    assertThatThrownBy(() -> reconciliationService.interCompanyReconcile(null, null))
+        .isInstanceOf(ApplicationException.class)
+        .hasMessageContaining("companyA or companyB is required for inter-company reconciliation");
+  }
+
+  @Test
   void interCompanyReconcile_usesActiveCompanyWhenPassedAsCompanyB() {
     Company companyA = company(22L, "COMP-B", "Company B");
 

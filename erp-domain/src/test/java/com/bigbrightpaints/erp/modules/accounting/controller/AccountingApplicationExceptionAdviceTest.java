@@ -22,6 +22,8 @@ import com.bigbrightpaints.erp.core.audit.IntegrationFailureMetadataSchema;
 import com.bigbrightpaints.erp.core.auditaccess.AuditAccessService;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
+import com.bigbrightpaints.erp.core.exception.GlobalExceptionHandler;
+import com.bigbrightpaints.erp.core.health.ConfigurationHealthService;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.modules.accounting.service.JournalEntryService;
 import com.bigbrightpaints.erp.modules.accounting.service.StatementService;
@@ -353,6 +355,28 @@ class AccountingApplicationExceptionAdviceTest {
             jsonPath("$.message").value("Invalid to date format; expected ISO date yyyy-MM-dd"))
         .andExpect(jsonPath("$.data.code").value(ErrorCode.VALIDATION_INVALID_DATE.getCode()))
         .andExpect(jsonPath("$.data.details.to").value("invalid"));
+  }
+
+  @Test
+  void configurationHealth_applicationExceptionUsesAccountingAdviceEnvelope() throws Exception {
+    ConfigurationHealthService configurationHealthService = mock(ConfigurationHealthService.class);
+    CompanyContextService companyContextService = mock(CompanyContextService.class);
+    when(companyContextService.requireCurrentCompany())
+        .thenThrow(
+            new ApplicationException(
+                ErrorCode.BUSINESS_INVALID_STATE, "Configuration health is unavailable"));
+
+    MockMvcBuilders.standaloneSetup(
+            new AccountingConfigurationController(configurationHealthService, companyContextService))
+        .setControllerAdvice(
+            new AccountingApplicationExceptionAdvice(), new GlobalExceptionHandler())
+        .build()
+        .perform(get("/api/v1/accounting/configuration/health"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.success").value(false))
+        .andExpect(jsonPath("$.message").value("Configuration health is unavailable"))
+        .andExpect(jsonPath("$.data.code").value(ErrorCode.BUSINESS_INVALID_STATE.getCode()))
+        .andExpect(jsonPath("$.data.path").value("/api/v1/accounting/configuration/health"));
   }
 
   private ApiResponse<Map<String, Object>> assertReplayErrorEnvelope(
