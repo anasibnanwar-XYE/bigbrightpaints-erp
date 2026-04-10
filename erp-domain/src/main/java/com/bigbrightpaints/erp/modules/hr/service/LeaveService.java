@@ -301,9 +301,18 @@ public class LeaveService {
   }
 
   private BigDecimal computeLeaveDays(LocalDate startDate, LocalDate endDate) {
-    long inclusiveDays = ChronoUnit.DAYS.between(startDate, endDate) + 1;
-    if (inclusiveDays <= 0) {
+    long rawDays = ChronoUnit.DAYS.between(startDate, endDate);
+    if (rawDays < 0) {
       return BigDecimal.ZERO;
+    }
+    long inclusiveDays;
+    try {
+      inclusiveDays = Math.addExact(rawDays, 1L);
+    } catch (ArithmeticException ex) {
+      throw new ApplicationException(
+              ErrorCode.VALIDATION_INVALID_INPUT, "Leave date range is too large", ex)
+          .withDetail("startDate", startDate)
+          .withDetail("endDate", endDate);
     }
     return BigDecimal.valueOf(inclusiveDays).setScale(2, RoundingMode.HALF_UP);
   }

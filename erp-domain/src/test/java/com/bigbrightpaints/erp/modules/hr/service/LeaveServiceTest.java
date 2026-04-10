@@ -3,6 +3,7 @@ package com.bigbrightpaints.erp.modules.hr.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -72,7 +73,7 @@ class LeaveServiceTest {
 
     company = new Company();
     ReflectionTestUtils.setField(company, "id", 77L);
-    when(companyContextService.requireCurrentCompany()).thenReturn(company);
+    lenient().when(companyContextService.requireCurrentCompany()).thenReturn(company);
 
     employee = new Employee();
     ReflectionTestUtils.setField(employee, "id", 10L);
@@ -253,6 +254,32 @@ class LeaveServiceTest {
     verify(leaveBalanceRepository).save(any(LeaveBalance.class));
     assertThat(balance.getUsed()).isEqualByComparingTo("2.00");
     assertThat(balance.getRemaining()).isEqualByComparingTo("10.00");
+  }
+
+  @Test
+  void computeLeaveDays_countsInclusiveRangeAndHandlesExtremeDatesSafely() {
+    BigDecimal threeDayRange =
+        (BigDecimal)
+            ReflectionTestUtils.invokeMethod(
+                leaveService,
+                "computeLeaveDays",
+                LocalDate.of(2026, 2, 10),
+                LocalDate.of(2026, 2, 12));
+    BigDecimal reversedRange =
+        (BigDecimal)
+            ReflectionTestUtils.invokeMethod(
+                leaveService,
+                "computeLeaveDays",
+                LocalDate.of(2026, 2, 12),
+                LocalDate.of(2026, 2, 10));
+    BigDecimal extremeRange =
+        (BigDecimal)
+            ReflectionTestUtils.invokeMethod(
+                leaveService, "computeLeaveDays", LocalDate.MIN, LocalDate.MAX);
+
+    assertThat(threeDayRange).isEqualByComparingTo("3.00");
+    assertThat(reversedRange).isEqualByComparingTo("0.00");
+    assertThat(extremeRange).isGreaterThan(BigDecimal.ZERO);
   }
 
   @AfterEach
