@@ -90,15 +90,9 @@ class OrderIntegrationCoordinator {
   @Transactional(propagation = Propagation.REQUIRES_NEW)
   IntegrationCoordinator.AutoApprovalResult autoApproveOrder(
       String orderId, BigDecimal amount, String companyId, String traceId, String idempotencyKey) {
-    String correlation = supportService.correlationSuffix(traceId, idempotencyKey);
     String normalizedCompanyId = supportService.normalizeCompanyId(companyId);
-    String normalizedAmount = amount != null ? amount.stripTrailingZeros().toPlainString() : null;
     if (normalizedCompanyId == null) {
-      log.warn(
-          "Cannot auto-approve order {} without a company context{}{}",
-          orderId,
-          normalizedAmount != null ? " amount=" + normalizedAmount : "",
-          correlation);
+      log.warn("Cannot auto-approve order without a company context");
       return new IntegrationCoordinator.AutoApprovalResult("PENDING_PRODUCTION", true);
     }
     Long numericId = orderSupportCoordinator.requireNumericOrderId(orderId, "autoApproveOrder");
@@ -110,11 +104,7 @@ class OrderIntegrationCoordinator {
           orderSupportCoordinator.attachOrderTrace(numericId, traceId);
           var state = orderSupportCoordinator.lockAutoApprovalState(normalizedCompanyId, numericId);
           if (state.isCompleted()) {
-            log.info(
-                "Auto-approval already completed for order {} (company {}){}",
-                orderId,
-                normalizedCompanyId,
-                correlation);
+            log.info("Auto-approval already completed for order {}", numericId);
             status.set(state.isDispatchFinalized() ? "SHIPPED" : "READY_TO_SHIP");
             return;
           }
@@ -132,11 +122,9 @@ class OrderIntegrationCoordinator {
               state.markOrderStatusUpdated();
             }
             log.info(
-                "Auto-approved order {} for company {}; awaitingProduction={}{}",
-                orderId,
-                normalizedCompanyId,
-                awaitingProduction.get(),
-                correlation);
+                "Auto-approved order {}; awaitingProduction={}",
+                numericId,
+                awaitingProduction.get());
             status.set(awaitingProduction.get() ? "PENDING_PRODUCTION" : "READY_TO_SHIP");
             if (!awaitingProduction.get()) {
               state.markCompleted();
@@ -144,12 +132,7 @@ class OrderIntegrationCoordinator {
           } catch (RuntimeException ex) {
             state.markFailed(ex.getMessage());
             status.set("FAILED");
-            log.error(
-                "Auto-approval failed for order {} (company {}){}",
-                orderId,
-                normalizedCompanyId,
-                correlation,
-                ex);
+            log.error("Auto-approval failed for order {}", numericId, ex);
             throw ex;
           }
         });

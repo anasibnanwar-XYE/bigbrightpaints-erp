@@ -734,9 +734,8 @@ public class TallyImportService {
               file.getOriginalFilename() != null ? file.getOriginalFilename().hashCode() : 0);
       log.warn(
           "Failed to compute SHA-256 hash for uploaded Tally file; falling back to weak hash"
-              + " (filename='{}'): {}",
-          file.getOriginalFilename(),
-          ex.toString());
+              + " (cause={})",
+          ex.getClass().getSimpleName());
       return fallback;
     }
   }

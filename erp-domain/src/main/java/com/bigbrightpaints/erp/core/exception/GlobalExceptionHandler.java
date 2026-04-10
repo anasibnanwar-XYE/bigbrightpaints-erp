@@ -111,11 +111,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
   public ResponseEntity<ApiResponse<Map<String, Object>>> handleCreditLimitExceeded(
       CreditLimitExceededException ex, HttpServletRequest request) {
     String traceId = UUID.randomUUID().toString();
-    logger.warn(
-        "Credit limit exceeded [{}] - Path: {}, User: {}",
-        traceId,
-        request.getRequestURI(),
-        request.getUserPrincipal() != null ? request.getUserPrincipal().getName() : "anonymous");
+    logger.warn("Credit limit exceeded [{}]", traceId);
     Map<String, Object> data = new HashMap<>();
     data.put("code", ex.getErrorCode().getCode());
     data.put("message", ex.getUserMessage());

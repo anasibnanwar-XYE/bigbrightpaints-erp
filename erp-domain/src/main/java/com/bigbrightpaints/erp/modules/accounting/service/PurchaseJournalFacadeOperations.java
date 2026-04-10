@@ -319,8 +319,9 @@ class PurchaseJournalFacadeOperations {
     Optional<JournalEntry> existing =
         journalEntryRepository.findByCompanyAndReferenceNumber(company, reference);
     if (existing.isPresent()) {
-      log.info("Purchase return journal already exists for reference: {}", reference);
-      return AccountingFacadeJournalSupport.toSimpleDto(existing.orElseThrow());
+      JournalEntry existingEntry = existing.orElseThrow();
+      log.info("Purchase return journal already exists for entry {}", existingEntry.getId());
+      return AccountingFacadeJournalSupport.toSimpleDto(existingEntry);
     }
 
     LocalDate postingDate = returnDate != null ? returnDate : companyClock.today(company);
@@ -374,11 +375,7 @@ class PurchaseJournalFacadeOperations {
             supplier.getId(),
             Boolean.FALSE);
 
-    log.info(
-        "Posting purchase return journal: reference={}, supplier={}, amount={}",
-        reference,
-        supplier.getName(),
-        totalAmount);
+    log.info("Posting purchase return journal for supplier {}", supplier.getId());
 
     return accountingService.createStandardJournal(request);
   }
