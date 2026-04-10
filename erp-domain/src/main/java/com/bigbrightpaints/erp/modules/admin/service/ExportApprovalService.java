@@ -1,9 +1,17 @@
 package com.bigbrightpaints.erp.modules.admin.service;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.PDPageContentStream;
+import org.apache.pdfbox.pdmodel.common.PDRectangle;
+import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -256,26 +264,47 @@ public class ExportApprovalService {
               + ","
               + (request.getParameters() != null ? request.getParameters().replace(",", ";") : "")
               + "\n";
-      content = csv.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+      content = csv.getBytes(StandardCharsets.UTF_8);
     } else {
-      String pdfBody =
-          "%PDF-1.4\n"
-              + "1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n"
-              + "2 0 obj << /Type /Pages /Count 1 /Kids [3 0 R] >> endobj\n"
-              + "3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 300 144] /Contents 4 0 R"
-              + " >> endobj\n"
-              + "4 0 obj << /Length 60 >> stream\n"
-              + "BT /F1 12 Tf 20 100 Td ("
-              + normalizedReportType
-              + " export "
-              + request.getId()
-              + ") Tj ET\n"
-              + "endstream endobj\n"
-              + "xref\n0 5\n0000000000 65535 f \n"
-              + "trailer << /Root 1 0 R /Size 5 >>\nstartxref\n0\n%%EOF";
-      content = pdfBody.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+      content = renderExportPdf(request, normalizedReportType);
     }
     return new ExportFileContent(content, contentType, filename);
+  }
+
+  private byte[] renderExportPdf(ExportRequest request, String normalizedReportType) {
+    try (PDDocument document = new PDDocument();
+        ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+      PDPage page = new PDPage(PDRectangle.LETTER);
+      document.addPage(page);
+
+      try (PDPageContentStream content = new PDPageContentStream(document, page)) {
+        float margin = 56f;
+        float y = page.getMediaBox().getUpperRightY() - margin;
+
+        writePdfLine(content, PDType1Font.HELVETICA_BOLD, 18f, margin, y, normalizedReportType + " export");
+        y -= 24f;
+        writePdfLine(content, PDType1Font.HELVETICA, 12f, margin, y, "Request ID: " + safePdfValue(request != null ? request.getId() : null));
+        y -= 18f;
+        writePdfLine(content, PDType1Font.HELVETICA, 12f, margin, y, "Status: " + safePdfValue(request != null ? request.getStatus() : null));
+        y -= 18f;
+        writePdfLine(content, PDType1Font.HELVETICA, 12f, margin, y, "Parameters: " + safePdfValue(request != null ? request.getParameters() : null));
+      }
+
+      document.save(out);
+      return out.toByteArray();
+    } catch (IOException ex) {
+      throw ValidationUtils.invalidState("Failed to render export PDF", ex);
+    }
+  }
+
+  private void writePdfLine(
+      PDPageContentStream content, PDType1Font font, float fontSize, float x, float y, String text)
+      throws IOException {
+    content.beginText();
+    content.setFont(font, fontSize);
+    content.newLineAtOffset(x, y);
+    content.showText(safePdfValue(text));
+    content.endText();
   }
 
   private String normalizeParameters(String parameters, String format) {
@@ -335,6 +364,13 @@ public class ExportApprovalService {
       return fallback;
     }
     return value.trim().replaceAll("[^A-Za-z0-9_-]", "-");
+  }
+
+  private String safePdfValue(Object value) {
+    if (value == null) {
+      return "";
+    }
+    return value.toString().replaceAll("[\\p{Cntrl}&&[^\r\n\t]]", " ").trim();
   }
 
   private void recordExportBusinessEvent(

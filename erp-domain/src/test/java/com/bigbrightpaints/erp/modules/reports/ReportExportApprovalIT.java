@@ -2,9 +2,13 @@ package com.bigbrightpaints.erp.modules.reports;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.text.PDFTextStripper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -184,7 +188,7 @@ class ReportExportApprovalIT extends AbstractIntegrationTest {
     assertThat(downloadAfterApproval.getHeaders().getContentType())
         .isEqualTo(MediaType.APPLICATION_PDF);
     assertThat(downloadAfterApproval.getBody()).isNotNull();
-    assertThat(new String(downloadAfterApproval.getBody())).contains("%PDF");
+    assertThat(extractPdfText(downloadAfterApproval.getBody())).contains("TRIAL-BALANCE export");
   }
 
   @Test
@@ -274,7 +278,15 @@ class ReportExportApprovalIT extends AbstractIntegrationTest {
     assertThat(download.getStatusCode()).isEqualTo(HttpStatus.OK);
     assertThat(download.getHeaders().getContentType()).isEqualTo(MediaType.APPLICATION_PDF);
     assertThat(download.getBody()).isNotNull();
-    assertThat(new String(download.getBody())).contains("%PDF");
+    assertThat(extractPdfText(download.getBody())).contains("TRIAL-BALANCE export");
+  }
+
+  private String extractPdfText(byte[] pdf) {
+    try (PDDocument document = PDDocument.load(new ByteArrayInputStream(pdf))) {
+      return new PDFTextStripper().getText(document);
+    } catch (IOException ex) {
+      throw new RuntimeException("Unable to extract text from export PDF", ex);
+    }
   }
 
   @Test

@@ -301,7 +301,7 @@ class ProductionCatalogRawMaterialInvariantIT extends AbstractIntegrationTest {
             "RM-CAT-IDEMP-05");
 
     assertThat(response.errors()).hasSize(1);
-    assertThat(response.errors().getFirst().message()).contains("invalid inventory account id");
+    assertThat(response.errors().getFirst().message()).contains("Account not found");
     assertThat(rawMaterialRepository.findByCompanyAndSku(company, "RM-TIO2-OUTSIDE")).isEmpty();
   }
 
@@ -335,9 +335,7 @@ class ProductionCatalogRawMaterialInvariantIT extends AbstractIntegrationTest {
 
     assertThat(response.errors()).hasSize(1);
     assertThat(replay.errors()).hasSize(1);
-    assertThat(response.errors().getFirst().message())
-        .contains("invalid account id")
-        .contains("fgValuationAccountId");
+    assertThat(response.errors().getFirst().message()).contains("Account not found");
     assertThat(replay.errors().getFirst().message())
         .isEqualTo(response.errors().getFirst().message());
     assertThat(replayImportRecord.getId()).isEqualTo(firstImportRecord.getId());

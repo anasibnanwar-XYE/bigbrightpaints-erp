@@ -6,10 +6,14 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.text.PDFTextStripper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -212,6 +216,8 @@ class ExportApprovalServiceTest {
     assertThat(response.content()).isNotEmpty();
     assertThat(response.contentType()).isEqualTo("application/pdf");
     assertThat(response.fileName()).contains("trial-balance-91");
+    assertThat(extractPdfText(response.content())).contains("TRIAL-BALANCE export");
+    assertThat(extractPdfText(response.content())).contains("Request ID: 91");
 
     ArgumentCaptor<AuditActionEventCommand> commandCaptor =
         ArgumentCaptor.forClass(AuditActionEventCommand.class);
@@ -290,5 +296,13 @@ class ExportApprovalServiceTest {
               assertThat(appEx.getErrorCode()).isEqualTo(ErrorCode.AUTH_INSUFFICIENT_PERMISSIONS);
               assertThat(appEx.getMessage()).contains("does not belong to the authenticated actor");
             });
+  }
+
+  private String extractPdfText(byte[] pdf) {
+    try (PDDocument document = PDDocument.load(new ByteArrayInputStream(pdf))) {
+      return new PDFTextStripper().getText(document);
+    } catch (IOException ex) {
+      throw new RuntimeException("Unable to extract text from export PDF", ex);
+    }
   }
 }

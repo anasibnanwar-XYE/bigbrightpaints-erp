@@ -35,14 +35,14 @@ class AccountResolutionServiceTest {
     Company company = new Company();
     company.setCode("COA");
     when(companyDefaultAccountsService.resolveAutoSettlementCashAccountId(
-            company, null, "dealer auto-settlement"))
+            company, 88L, "dealer auto-settlement"))
         .thenReturn(88L);
 
     Long resolved =
-        service.resolveAutoSettlementCashAccountId(company, null, "dealer auto-settlement");
+        service.resolveAutoSettlementCashAccountId(company, 88L, "dealer auto-settlement");
 
     assertThat(resolved).isEqualTo(88L);
     verify(companyDefaultAccountsService)
-        .resolveAutoSettlementCashAccountId(company, null, "dealer auto-settlement");
+        .resolveAutoSettlementCashAccountId(company, 88L, "dealer auto-settlement");
   }
 }

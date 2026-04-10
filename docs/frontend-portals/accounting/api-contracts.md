@@ -210,7 +210,7 @@ Rules:
   `writeOffAccountId`, `fxGainAccountId`, `fxLossAccountId`,
   `unappliedAmountApplication`, `referenceNumber`, `memo`,
   `idempotencyKey`, and `adminOverride`.
-- Auto-settle requests use `amount`, optional `cashAccountId`,
+- Auto-settle requests use `cashAccountId`, `amount`,
   `referenceNumber`, `memo`, and `idempotencyKey`.
 - Reports and CSV exports stay inside accountant-facing flows.
 - If export approval is required, frontend must surface approval state instead
