@@ -227,6 +227,30 @@ class ExportApprovalServiceTest {
   }
 
   @Test
+  void resolveDownload_flattensControlCharactersBeforeRenderingPdfText() {
+    ExportRequest approved = new ExportRequest();
+    approved.setCompany(company);
+    approved.setUserId(11L);
+    approved.setStatus(ExportApprovalStatus.APPROVED);
+    approved.setReportType("TRIAL-BALANCE");
+    approved.setParameters("periodId=12\r\nrequestedBy=ops\tteam");
+    ReflectionTestUtils.setField(approved, "id", 191L);
+
+    when(exportRequestRepository.findByCompanyAndId(company, 191L))
+        .thenReturn(Optional.of(approved));
+    when(userAccountRepository.findByEmailIgnoreCaseAndAuthScopeCodeIgnoreCase(
+            "admin@bbp.com", "EXP"))
+        .thenReturn(Optional.of(actor));
+    when(systemSettingsService.isExportApprovalRequired()).thenReturn(true);
+
+    var response = service.resolveDownload(191L);
+
+    assertThat(response.content()).isNotEmpty();
+    assertThat(extractPdfText(response.content()))
+        .contains("Parameters: periodId=12 requestedBy=ops team");
+  }
+
+  @Test
   void resolveDownload_rejectsRequestsOwnedByAnotherActor() {
     ExportRequest approved = new ExportRequest();
     approved.setCompany(company);

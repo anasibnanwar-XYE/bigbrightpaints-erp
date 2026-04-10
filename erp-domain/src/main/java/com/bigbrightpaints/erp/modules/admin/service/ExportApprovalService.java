@@ -370,7 +370,11 @@ public class ExportApprovalService {
     if (value == null) {
       return "";
     }
-    return value.toString().replaceAll("[\\p{Cntrl}&&[^\r\n\t]]", " ").trim();
+    return value
+        .toString()
+        .replaceAll("[\\p{Cntrl}]", " ")
+        .replaceAll("\\s+", " ")
+        .trim();
   }
 
   private void recordExportBusinessEvent(
