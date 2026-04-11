@@ -104,7 +104,7 @@ public class EnterpriseAuditTrailService {
     this.mlInteractionEventRepository = mlInteractionEventRepository;
     this.companyContextService = companyContextService;
     this.objectMapper = objectMapper;
-    String normalizedAuditPrivateKey = StringUtils.trimWhitespace(auditPrivateKey);
+    String normalizedAuditPrivateKey = auditPrivateKey == null ? null : auditPrivateKey.strip();
     if (!StringUtils.hasText(normalizedAuditPrivateKey)) {
       throw new IllegalStateException("erp.security.audit.private-key must be configured");
     }

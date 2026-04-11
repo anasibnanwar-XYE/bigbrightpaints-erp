@@ -71,6 +71,23 @@ class EnterpriseAuditTrailServiceTest {
   }
 
   @Test
+  void constructor_trimsAuditPrivateKey() throws Exception {
+    EnterpriseAuditTrailService service =
+        new EnterpriseAuditTrailService(
+            auditActionEventRepository,
+            auditActionEventRetryRepository,
+            mlInteractionEventRepository,
+            companyContextService,
+            new ObjectMapper(),
+            "  test-audit-private-key  ");
+
+    Field field = EnterpriseAuditTrailService.class.getDeclaredField("auditPrivateKey");
+    field.setAccessible(true);
+
+    assertThat(field.get(service)).isEqualTo("test-audit-private-key");
+  }
+
+  @Test
   void recordBusinessEvent_dispatchesActorSnapshotFromSecurityContext() {
     EnterpriseAuditTrailService service = newService();
 
