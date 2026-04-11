@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 
 import org.junit.jupiter.api.Tag;
@@ -375,8 +376,10 @@ class TS_RuntimeCompanyDefaultAccountsExecutableCoverageTest {
               "isTokenMatch", String.class, String.class);
       method.setAccessible(true);
       return (boolean) method.invoke(service, value, token);
+    } catch (InvocationTargetException ex) {
+      throw propagateInvocationTarget("isTokenMatch", ex);
     } catch (ReflectiveOperationException ex) {
-      throw new IllegalStateException(ex);
+      throw new IllegalStateException("Failed to invoke isTokenMatch reflectively", ex);
     }
   }
 
@@ -387,8 +390,22 @@ class TS_RuntimeCompanyDefaultAccountsExecutableCoverageTest {
           CompanyDefaultAccountsService.class.getDeclaredMethod(methodName, Account.class);
       method.setAccessible(true);
       return (boolean) method.invoke(service, account);
+    } catch (InvocationTargetException ex) {
+      throw propagateInvocationTarget(methodName, ex);
     } catch (ReflectiveOperationException ex) {
-      throw new IllegalStateException(ex);
+      throw new IllegalStateException("Failed to invoke " + methodName + " reflectively", ex);
     }
+  }
+
+  private RuntimeException propagateInvocationTarget(String methodName, InvocationTargetException ex) {
+    Throwable cause = ex.getCause();
+    if (cause instanceof RuntimeException runtimeException) {
+      return runtimeException;
+    }
+    if (cause instanceof Error error) {
+      throw error;
+    }
+    return new IllegalStateException(
+        "Invocation of " + methodName + " failed", cause != null ? cause : ex);
   }
 }
