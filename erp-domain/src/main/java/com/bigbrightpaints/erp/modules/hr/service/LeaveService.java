@@ -285,10 +285,11 @@ public class LeaveService {
     balance.setBalanceYear(year);
 
     BigDecimal carryForward = BigDecimal.ZERO;
-    if (year != Integer.MIN_VALUE) {
+    Integer previousYear = previousBalanceYear(year);
+    if (previousYear != null) {
       carryForward =
           leaveBalanceRepository.findByCompanyAndEmployeeAndLeaveTypeAndBalanceYear(
-              company, employee, policy.getLeaveType(), year - 1)
+              company, employee, policy.getLeaveType(), previousYear)
               .map(previous -> previous.getRemaining().min(policy.getCarryForwardLimit()))
               .orElse(BigDecimal.ZERO);
     }
@@ -308,6 +309,13 @@ public class LeaveService {
       return BigDecimal.ZERO;
     }
     return rawDays.add(BigDecimal.ONE).setScale(2, RoundingMode.HALF_UP);
+  }
+
+  private Integer previousBalanceYear(int year) {
+    if (year == Integer.MIN_VALUE) {
+      return null;
+    }
+    return Math.subtractExact(year, 1);
   }
 
   private String normalizeLeaveType(String leaveType) {
