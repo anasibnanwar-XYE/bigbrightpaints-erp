@@ -738,23 +738,12 @@ public class PurchaseReturnService {
       BigDecimal taxAmount,
       String sourceStateCode,
       String supplierStateCode) {
-    try {
-      GstService.GstBreakdown lineBreakdown =
-          gstService.splitTaxAmount(taxableAmount, taxAmount, sourceStateCode, supplierStateCode);
-      if (lineBreakdown != null) {
-        return lineBreakdown;
-      }
-    } catch (ApplicationException ex) {
-      if (!isMissingStateMetadataError(ex)) {
-        throw ex;
-      }
+    GstService.GstBreakdown lineBreakdown =
+        gstService.splitTaxAmount(taxableAmount, taxAmount, sourceStateCode, supplierStateCode);
+    if (lineBreakdown != null) {
+      return lineBreakdown;
     }
-    return new GstService.GstBreakdown(
-        currency(taxableAmount),
-        BigDecimal.ZERO,
-        BigDecimal.ZERO,
-        currency(taxAmount),
-        GstService.TaxType.INTER_STATE);
+    return fallbackTaxBreakdown(taxableAmount, taxAmount, sourceStateCode, supplierStateCode);
   }
 
   private String resolveCompanyStateCode(Company company) {
@@ -787,11 +776,25 @@ public class PurchaseReturnService {
     return normalized.substring(0, 2);
   }
 
-  private boolean isMissingStateMetadataError(ApplicationException ex) {
-    if (ex == null || ex.getErrorCode() != ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD) {
-      return false;
+  private GstService.GstBreakdown fallbackTaxBreakdown(
+      BigDecimal taxableAmount,
+      BigDecimal taxAmount,
+      String sourceStateCode,
+      String supplierStateCode) {
+    GstService.TaxType taxType =
+        gstService.resolveTaxType(sourceStateCode, supplierStateCode, false);
+    if (taxType == GstService.TaxType.INTER_STATE) {
+      return new GstService.GstBreakdown(
+          currency(taxableAmount),
+          BigDecimal.ZERO,
+          BigDecimal.ZERO,
+          currency(taxAmount),
+          taxType);
     }
-    return ex.getMessage() != null
-        && ex.getMessage().contains("State codes are required for GST decisioning");
+    BigDecimal roundedTax = currency(taxAmount);
+    BigDecimal cgst = currency(roundedTax.divide(new BigDecimal("2"), 6, RoundingMode.HALF_UP));
+    BigDecimal sgst = currency(roundedTax.subtract(cgst));
+    return new GstService.GstBreakdown(
+        currency(taxableAmount), cgst, sgst, BigDecimal.ZERO, taxType);
   }
 }

@@ -802,7 +802,7 @@ class PurchaseReturnServiceTest {
   }
 
   @Test
-  void recordPurchaseReturn_fallsBackToInterStateGstWhenCompanyStateMissing() {
+  void recordPurchaseReturn_rejectsMissingCompanyStateMetadataForGstDecisioning() {
     company.setStateCode(null);
     supplier.setStateCode(null);
     supplier.setGstNumber("27ABCDE1234F1Z5");
@@ -829,60 +829,29 @@ class PurchaseReturnServiceTest {
             new ApplicationException(
                 ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,
                 "State codes are required for GST decisioning"));
-    when(accountingFacade.postPurchaseReturn(
-            eq(10L),
-            eq("PR-30"),
-            eq(LocalDate.of(2026, 3, 9)),
-            eq("Damaged - Resin to Supplier 10"),
-            eq(Map.of(200L, new BigDecimal("5.00"))),
-            any(),
-            any(),
-            eq(new BigDecimal("6.00"))))
-        .thenReturn(
-            journalEntryDto(
-                915L, "PR-30", LocalDate.of(2026, 3, 9), "Damaged - Resin to Supplier 10"));
-    when(journalCorrectionMetadataService.findByCompanyAndId(company, 915L))
-        .thenReturn(Optional.empty());
+    assertThatThrownBy(
+            () ->
+                purchaseReturnService.recordPurchaseReturn(
+                    new PurchaseReturnRequest(
+                        10L,
+                        30L,
+                        20L,
+                        BigDecimal.ONE,
+                        new BigDecimal("5.00"),
+                        "PR-30",
+                        LocalDate.of(2026, 3, 9),
+                        "Damaged")))
+        .isInstanceOfSatisfying(
+            ApplicationException.class,
+            ex -> {
+              assertThat(ex.getErrorCode())
+                  .isEqualTo(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD);
+              assertThat(ex).hasMessageContaining("State codes are required for GST decisioning");
+            });
 
-    JournalEntryDto result =
-        purchaseReturnService.recordPurchaseReturn(
-            new PurchaseReturnRequest(
-                10L,
-                30L,
-                20L,
-                BigDecimal.ONE,
-                new BigDecimal("5.00"),
-                "PR-30",
-                LocalDate.of(2026, 3, 9),
-                "Damaged"));
-
-    assertThat(result.id()).isEqualTo(915L);
-    assertThat(supplier.getStateCode()).isEqualTo("27");
-    ArgumentCaptor<Map> taxCreditCaptor = ArgumentCaptor.forClass(Map.class);
-    ArgumentCaptor<
-            com.bigbrightpaints.erp.modules.accounting.dto.JournalCreationRequest.GstBreakdown>
-        gstBreakdownCaptor =
-            ArgumentCaptor.forClass(
-                com.bigbrightpaints.erp.modules.accounting.dto.JournalCreationRequest.GstBreakdown
-                    .class);
-    verify(accountingFacade)
-        .postPurchaseReturn(
-            eq(10L),
-            eq("PR-30"),
-            eq(LocalDate.of(2026, 3, 9)),
-            eq("Damaged - Resin to Supplier 10"),
-            eq(Map.of(200L, new BigDecimal("5.00"))),
-            taxCreditCaptor.capture(),
-            gstBreakdownCaptor.capture(),
-            eq(new BigDecimal("6.00")));
-    assertThat(taxCreditCaptor.getValue()).isNotNull();
-    assertThat(taxCreditCaptor.getValue()).containsKey(null);
-    assertThat(new BigDecimal(String.valueOf(taxCreditCaptor.getValue().get(null))))
-        .isEqualByComparingTo(new BigDecimal("1.00"));
-    assertThat(gstBreakdownCaptor.getValue()).isNotNull();
-    assertThat(gstBreakdownCaptor.getValue().igst()).isGreaterThan(BigDecimal.ZERO);
-    assertThat(gstBreakdownCaptor.getValue().cgst()).isEqualByComparingTo(BigDecimal.ZERO);
-    assertThat(gstBreakdownCaptor.getValue().sgst()).isEqualByComparingTo(BigDecimal.ZERO);
+    verify(gstService).splitTaxAmount(any(), any(), eq((String) null), eq("27"));
+    verify(accountingFacade, never())
+        .postPurchaseReturn(any(), any(), any(), any(), any(), any(), any(), any());
   }
 
   @Test

@@ -789,7 +789,34 @@ public class PurchaseInvoiceEngine {
       BigDecimal taxAmount,
       String sourceStateCode,
       String supplierStateCode) {
-    return gstService.splitTaxAmount(taxableAmount, taxAmount, sourceStateCode, supplierStateCode);
+    GstService.GstBreakdown lineBreakdown =
+        gstService.splitTaxAmount(taxableAmount, taxAmount, sourceStateCode, supplierStateCode);
+    if (lineBreakdown != null) {
+      return lineBreakdown;
+    }
+    return fallbackTaxBreakdown(taxableAmount, taxAmount, sourceStateCode, supplierStateCode);
+  }
+
+  private GstService.GstBreakdown fallbackTaxBreakdown(
+      BigDecimal taxableAmount,
+      BigDecimal taxAmount,
+      String sourceStateCode,
+      String supplierStateCode) {
+    GstService.TaxType taxType =
+        gstService.resolveTaxType(sourceStateCode, supplierStateCode, false);
+    if (taxType == GstService.TaxType.INTER_STATE) {
+      return new GstService.GstBreakdown(
+          currency(taxableAmount),
+          BigDecimal.ZERO,
+          BigDecimal.ZERO,
+          currency(taxAmount),
+          taxType);
+    }
+    BigDecimal roundedTax = currency(taxAmount);
+    BigDecimal cgst = currency(roundedTax.divide(new BigDecimal("2"), 6, RoundingMode.HALF_UP));
+    BigDecimal sgst = currency(roundedTax.subtract(cgst));
+    return new GstService.GstBreakdown(
+        currency(taxableAmount), cgst, sgst, BigDecimal.ZERO, taxType);
   }
 
   private JournalEntryDto postPurchaseEntry(
