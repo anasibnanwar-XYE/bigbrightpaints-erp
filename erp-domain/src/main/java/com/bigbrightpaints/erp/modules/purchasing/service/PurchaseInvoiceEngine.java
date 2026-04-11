@@ -789,23 +789,7 @@ public class PurchaseInvoiceEngine {
       BigDecimal taxAmount,
       String sourceStateCode,
       String supplierStateCode) {
-    try {
-      GstService.GstBreakdown lineBreakdown =
-          gstService.splitTaxAmount(taxableAmount, taxAmount, sourceStateCode, supplierStateCode);
-      if (lineBreakdown != null) {
-        return lineBreakdown;
-      }
-    } catch (ApplicationException ex) {
-      if (!isMissingStateMetadataError(ex)) {
-        throw ex;
-      }
-    }
-    return new GstService.GstBreakdown(
-        currency(taxableAmount),
-        BigDecimal.ZERO,
-        BigDecimal.ZERO,
-        currency(taxAmount),
-        GstService.TaxType.INTER_STATE);
+    return gstService.splitTaxAmount(taxableAmount, taxAmount, sourceStateCode, supplierStateCode);
   }
 
   private JournalEntryDto postPurchaseEntry(
@@ -915,14 +899,6 @@ public class PurchaseInvoiceEngine {
       return null;
     }
     return normalized.substring(0, 2);
-  }
-
-  private boolean isMissingStateMetadataError(ApplicationException ex) {
-    if (ex == null || ex.getErrorCode() != ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD) {
-      return false;
-    }
-    return ex.getMessage() != null
-        && ex.getMessage().contains("State codes are required for GST decisioning");
   }
 
   private void transitionPurchaseOrderStatus(

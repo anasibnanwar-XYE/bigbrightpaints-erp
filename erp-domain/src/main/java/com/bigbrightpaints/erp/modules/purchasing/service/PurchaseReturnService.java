@@ -47,6 +47,7 @@ import jakarta.transaction.Transactional;
 
 @Service
 public class PurchaseReturnService {
+  private static final int MAX_JOURNAL_REFERENCE_LENGTH = 64;
 
   private final CompanyContextService companyContextService;
   private final RawMaterialPurchaseRepository purchaseRepository;
@@ -675,9 +676,11 @@ public class PurchaseReturnService {
     String canonicalIdempotencyKey =
         idempotencyReservationService.normalizeKey(idempotencyKeyHeader);
     if (!StringUtils.hasText(canonicalIdempotencyKey)) {
-      return StringUtils.hasText(explicitReference)
-          ? explicitReference
-          : referenceNumberService.purchaseReturnReference(company, supplier);
+      String referenceNumber =
+          StringUtils.hasText(explicitReference)
+              ? explicitReference
+              : referenceNumberService.purchaseReturnReference(company, supplier);
+      return requireJournalReferenceLength(referenceNumber);
     }
     String requiredIdempotencyKey =
         idempotencyReservationService.requireKey(canonicalIdempotencyKey, "purchase returns");
@@ -689,7 +692,19 @@ public class PurchaseReturnService {
           .withDetail("referenceNumber", explicitReference)
           .withDetail("idempotencyKey", requiredIdempotencyKey);
     }
-    return requiredIdempotencyKey;
+    return requireJournalReferenceLength(requiredIdempotencyKey);
+  }
+
+  private String requireJournalReferenceLength(String referenceNumber) {
+    if (!StringUtils.hasText(referenceNumber)
+        || referenceNumber.length() <= MAX_JOURNAL_REFERENCE_LENGTH) {
+      return referenceNumber;
+    }
+    throw new ApplicationException(
+            ErrorCode.VALIDATION_INVALID_INPUT,
+            "referenceNumber cannot exceed 64 characters for purchase returns")
+        .withDetail("referenceNumber", referenceNumber)
+        .withDetail("maxLength", MAX_JOURNAL_REFERENCE_LENGTH);
   }
 
   private BigDecimal positive(BigDecimal value, String field) {

@@ -654,14 +654,11 @@ class PurchaseInvoiceEngineLifecycleTest {
   }
 
   @Test
-  @DisplayName(
-      "createPurchase falls back to inter-state GST split when company state metadata is missing")
-  void createPurchase_fallsBackToInterStateGstWhenCompanyStateMissing() {
+  @DisplayName("createPurchase rejects missing company state metadata for GST decisioning")
+  void createPurchase_rejectsMissingCompanyStateMetadataForGstDecisioning() {
     company.setStateCode(null);
     supplier.setStateCode(null);
     supplier.setGstNumber("27ABCDE1234F1Z5");
-    when(goodsReceiptRepository.findByPurchaseOrder(purchaseOrder))
-        .thenReturn(List.of(goodsReceipt));
     when(gstService.splitTaxAmount(any(), any(), eq((String) null), eq("27")))
         .thenThrow(
             new ApplicationException(
@@ -688,11 +685,18 @@ class PurchaseInvoiceEngineLifecycleTest {
                     null,
                     "line")));
 
-    RawMaterialPurchaseResponse response = purchaseInvoiceEngine.createPurchase(request);
+    assertThatThrownBy(() -> purchaseInvoiceEngine.createPurchase(request))
+        .isInstanceOfSatisfying(
+            ApplicationException.class,
+            ex -> {
+              assertThat(ex.getErrorCode())
+                  .isEqualTo(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD);
+              assertThat(ex).hasMessageContaining("State codes are required for GST decisioning");
+            });
 
-    assertThat(response.id()).isEqualTo(600L);
-    assertThat(supplier.getStateCode()).isEqualTo("27");
     verify(gstService).splitTaxAmount(any(), any(), eq((String) null), eq("27"));
+    verify(accountingFacade, never())
+        .postPurchaseJournal(any(), any(), any(), any(), any(), any(), any(), any(), any());
   }
 
   @Test

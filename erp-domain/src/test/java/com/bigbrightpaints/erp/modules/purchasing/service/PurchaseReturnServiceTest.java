@@ -501,6 +501,34 @@ class PurchaseReturnServiceTest {
   }
 
   @Test
+  void recordPurchaseReturn_rejectsIdempotencyKeyLongerThanJournalReferenceLimit() {
+    String overlongIdempotencyKey = "purchase-return-idempotency-key-".repeat(3);
+
+    assertThatThrownBy(
+            () ->
+                purchaseReturnService.recordPurchaseReturn(
+                    new PurchaseReturnRequest(
+                        10L,
+                        30L,
+                        20L,
+                        BigDecimal.ONE,
+                        new BigDecimal("5.00"),
+                        null,
+                        LocalDate.of(2026, 3, 9),
+                        "Damaged"),
+                    overlongIdempotencyKey))
+        .isInstanceOfSatisfying(
+            ApplicationException.class,
+            ex -> {
+              assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_INVALID_INPUT);
+              assertThat(ex)
+                  .hasMessageContaining("referenceNumber cannot exceed 64 characters");
+            });
+
+    verifyNoInteractions(accountingFacade);
+  }
+
+  @Test
   void recordPurchaseReturn_replaysUsingCanonicalHeaderIdempotencyKey() {
     purchase.setInvoiceNumber("PI-30");
 
