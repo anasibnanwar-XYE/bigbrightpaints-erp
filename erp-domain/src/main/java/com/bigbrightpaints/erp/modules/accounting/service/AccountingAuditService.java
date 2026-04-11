@@ -77,8 +77,8 @@ public class AccountingAuditService {
     if (journalEntry == null) {
       return true;
     }
-    validatePostedEventPayloadCompatibility(journalEntry);
     try {
+      validatePostedEventPayloadCompatibility(journalEntry);
       Map<Long, BigDecimal> snapshot =
           balancesBefore != null ? new HashMap<>(balancesBefore) : Map.of();
       accountingEventStore.recordJournalEntryPosted(journalEntry, snapshot);

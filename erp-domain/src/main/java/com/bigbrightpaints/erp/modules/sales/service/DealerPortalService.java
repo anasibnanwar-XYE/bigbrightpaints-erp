@@ -369,7 +369,7 @@ public class DealerPortalService {
     if (!StringUtils.hasText(email)) {
       throw new AccessDeniedException("No authenticated user identity");
     }
-    return StringUtils.trimWhitespace(email);
+    return email.trim();
   }
 
   private Dealer resolveSingleDealerOrNull(List<Dealer> candidates, String identity) {

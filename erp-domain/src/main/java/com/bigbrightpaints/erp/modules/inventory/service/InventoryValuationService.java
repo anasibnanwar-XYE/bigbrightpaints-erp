@@ -66,7 +66,7 @@ public class InventoryValuationService {
     if (!StringUtils.hasText(value)) {
       return null;
     }
-    return StringUtils.trimWhitespace(value).toUpperCase();
+    return value.trim().toUpperCase();
   }
 
   public BigDecimal resolveLowStockThreshold(FinishedGood finishedGood, Integer overrideThreshold) {

@@ -293,6 +293,44 @@ class LeaveServiceTest {
                     .isEqualTo(ErrorCode.VALIDATION_INVALID_INPUT));
   }
 
+  @Test
+  void createOpeningBalance_appliesCarryForwardFromPreviousYearWithinPolicyLimit() {
+    LeaveTypePolicy policy = activePolicy("CASUAL", "Casual leave");
+    policy.setCarryForwardLimit(new BigDecimal("4.00"));
+    LeaveBalance previous = balanceForYear(2025);
+    previous.setRemaining(new BigDecimal("7.50"));
+
+    when(leaveBalanceRepository.findByCompanyAndEmployeeAndLeaveTypeAndBalanceYear(
+            company, employee, "CASUAL", 2025))
+        .thenReturn(Optional.of(previous));
+    when(leaveBalanceRepository.save(any(LeaveBalance.class)))
+        .thenAnswer(invocation -> invocation.getArgument(0));
+
+    LeaveBalance created =
+        ReflectionTestUtils.invokeMethod(
+            leaveService, "createOpeningBalance", company, employee, policy, 2026);
+
+    assertThat(created.getCarryForwardApplied()).isEqualByComparingTo("4.00");
+    assertThat(created.getOpeningBalance()).isEqualByComparingTo("4.00");
+    assertThat(created.getRemaining()).isEqualByComparingTo("16.00");
+  }
+
+  @Test
+  void createOpeningBalance_ignoresPreviousYearLookupWhenYearWouldUnderflow() {
+    LeaveTypePolicy policy = activePolicy("CASUAL", "Casual leave");
+    when(leaveBalanceRepository.save(any(LeaveBalance.class)))
+        .thenAnswer(invocation -> invocation.getArgument(0));
+
+    LeaveBalance created =
+        ReflectionTestUtils.invokeMethod(
+            leaveService, "createOpeningBalance", company, employee, policy, Integer.MIN_VALUE);
+
+    assertThat(created.getCarryForwardApplied()).isEqualByComparingTo(BigDecimal.ZERO);
+    verify(leaveBalanceRepository, org.mockito.Mockito.never())
+        .findByCompanyAndEmployeeAndLeaveTypeAndBalanceYear(
+            any(), any(), any(), any(Integer.class));
+  }
+
   @AfterEach
   void tearDown() {
     ReflectionTestUtils.setField(CompanyTime.class, "companyClock", null);

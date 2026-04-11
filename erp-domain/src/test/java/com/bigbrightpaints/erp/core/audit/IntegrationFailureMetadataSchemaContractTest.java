@@ -4,8 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 import java.lang.reflect.Field;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 
@@ -22,6 +24,9 @@ import org.springframework.web.context.request.ServletWebRequest;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.exception.GlobalExceptionHandler;
+import com.bigbrightpaints.erp.modules.accounting.domain.Account;
+import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
+import com.bigbrightpaints.erp.modules.accounting.domain.JournalLine;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingAuditService;
 
 class IntegrationFailureMetadataSchemaContractTest {
@@ -43,6 +48,42 @@ class IntegrationFailureMetadataSchemaContractTest {
     ArgumentCaptor<Map<String, String>> metadataCaptor = ArgumentCaptor.forClass(Map.class);
     verify(auditService).logFailure(eq(AuditEvent.INTEGRATION_FAILURE), metadataCaptor.capture());
     assertRequiredSchema(metadataCaptor.getValue());
+  }
+
+  @Test
+  void accountingPostedEventBestEffortUsesFailureMarkerWhenPayloadValidationFails() {
+    AuditService auditService = mock(AuditService.class);
+    com.bigbrightpaints.erp.modules.accounting.event.AccountingEventStore accountingEventStore =
+        mock(com.bigbrightpaints.erp.modules.accounting.event.AccountingEventStore.class);
+    AccountingAuditService service =
+        new AccountingAuditService(
+            mock(ApplicationEventPublisher.class), auditService, accountingEventStore);
+    ReflectionTestUtils.setField(service, "strictAccountingEventTrail", false);
+
+    JournalEntry journalEntry = new JournalEntry();
+    journalEntry.setReferenceNumber("JRN-OVERSIZE-1");
+    journalEntry.setMemo("x".repeat(600));
+    JournalLine line = new JournalLine();
+    Account account = new Account();
+    account.setCode("4000");
+    line.setAccount(account);
+    line.setDescription("ok");
+    line.setDebit(BigDecimal.ONE);
+    journalEntry.addLine(line);
+
+    boolean recorded =
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "recordJournalEntryPostedEventSafe", journalEntry, Map.of());
+
+    assertThat(recorded).isFalse();
+    verifyNoInteractions(accountingEventStore);
+    @SuppressWarnings("unchecked")
+    ArgumentCaptor<Map<String, String>> metadataCaptor = ArgumentCaptor.forClass(Map.class);
+    verify(auditService).logFailure(eq(AuditEvent.INTEGRATION_FAILURE), metadataCaptor.capture());
+    assertThat(metadataCaptor.getValue())
+        .containsEntry("eventTrailOperation", "JOURNAL_ENTRY_POSTED")
+        .containsEntry("policy", "BEST_EFFORT")
+        .containsEntry(IntegrationFailureMetadataSchema.KEY_ERROR_CATEGORY, "VALIDATION");
   }
 
   @Test

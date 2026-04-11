@@ -485,7 +485,7 @@ public class CreditLimitOverrideService {
       CreditLimitOverrideRequest overrideRequest,
       CreditLimitOverrideDecisionRequest request,
       String operation) {
-    String incomingReason = request == null ? null : StringUtils.trimWhitespace(request.reason());
+    String incomingReason = request == null || request.reason() == null ? null : request.reason().trim();
     if (StringUtils.hasText(incomingReason)) {
       return incomingReason;
     }

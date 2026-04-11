@@ -9,6 +9,7 @@ import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -16,6 +17,7 @@ import static org.mockito.Mockito.when;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -25,6 +27,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.access.AccessDeniedException;
@@ -1138,6 +1141,26 @@ class CompanyServiceTest {
   }
 
   @Test
+  void updateLifecycleState_deniesNonSuperAdmin_withoutTargetCompanyCodeMetadataWhenBlank() {
+    authenticateAs("ROLE_ADMIN");
+    Company company = company(1L, "   ");
+    when(repository.findById(1L)).thenReturn(Optional.of(company));
+
+    assertThatThrownBy(
+            () ->
+                companyService.updateLifecycleState(
+                    1L, new CompanyLifecycleStateRequest("DEACTIVATED", "fraud-investigation")))
+        .isInstanceOf(AccessDeniedException.class);
+
+    @SuppressWarnings("unchecked")
+    ArgumentCaptor<Map<String, String>> metadataCaptor = ArgumentCaptor.forClass(Map.class);
+    verify(auditService)
+        .logAuthFailure(
+            eq(AuditEvent.ACCESS_DENIED), eq("tester@bbp.com"), eq(""), metadataCaptor.capture());
+    assertThat(metadataCaptor.getValue()).doesNotContainKey("targetCompanyCode");
+  }
+
+  @Test
   void updateLifecycleState_rejectsUnknownCompany() {
     authenticateAs("ROLE_SUPER_ADMIN");
     when(repository.lockById(99L)).thenReturn(Optional.empty());
@@ -1410,6 +1433,26 @@ class CompanyServiceTest {
     assertThat(response.adminEmail()).isEqualTo("tenant-admin@ske.com");
     verify(tenantAdminProvisioningService)
         .resetTenantAdminPassword(company, "tenant-admin@ske.com");
+  }
+
+  @Test
+  void resetTenantAdminPassword_defaultsBlankSupportReasonInAuditMetadata() {
+    authenticateAs("ROLE_SUPER_ADMIN");
+    bindCompanyContext("SKE");
+    Company company = company(5L, "SKE");
+    when(repository.findById(5L)).thenReturn(Optional.of(company));
+    when(passwordResetService.isResetEmailDeliveryEnabled()).thenReturn(true);
+    when(tenantAdminProvisioningService.resetTenantAdminPassword(company, "tenant-admin@ske.com"))
+        .thenReturn("tenant-admin@ske.com");
+
+    companyService.resetTenantAdminPassword(5L, "tenant-admin@ske.com", "   ");
+
+    @SuppressWarnings("unchecked")
+    ArgumentCaptor<Map<String, String>> metadataCaptor = ArgumentCaptor.forClass(Map.class);
+    verify(auditService, times(1))
+        .logSuccess(eq(AuditEvent.ACCESS_GRANTED), metadataCaptor.capture());
+    assertThat(metadataCaptor.getValue())
+        .containsEntry("supportReason", "support-reset-requested");
   }
 
   @Test

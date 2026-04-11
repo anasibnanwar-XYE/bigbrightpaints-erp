@@ -370,9 +370,7 @@ public class ProductionCatalogService {
 
   private ProcessOutcome processCatalogRowWithRetry(
       Company company, ImportRow importRow, ImportContext context) {
-    RuntimeException lastError = null;
-    int attemptsRemaining = 2;
-    while (attemptsRemaining > 0) {
+    for (int attempt = 1; attempt <= 2; attempt++) {
       try {
         ProcessOutcome outcome =
             rowTransactionTemplate.execute(status -> upsertProduct(company, importRow, context));
@@ -382,15 +380,14 @@ public class ProductionCatalogService {
         }
         return outcome;
       } catch (RuntimeException ex) {
-        lastError = ex;
         evictRowCache(company, importRow, context);
-        attemptsRemaining--;
-        if (!isRetryableImportFailure(ex) || attemptsRemaining == 0) {
+        if (!isRetryableImportFailure(ex) || attempt == 2) {
           throw ex;
         }
       }
     }
-    throw lastError;
+    throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState(
+        "Catalog import row exhausted retry policy without returning an outcome");
   }
 
   private void evictRowCache(Company company, ImportRow importRow, ImportContext context) {

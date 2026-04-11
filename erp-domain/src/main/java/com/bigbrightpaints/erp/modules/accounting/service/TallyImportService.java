@@ -721,8 +721,7 @@ public class TallyImportService {
     if (!StringUtils.hasText(code)) {
       return "COMPANY";
     }
-    String normalized =
-        StringUtils.trimWhitespace(code).toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9]", "");
+    String normalized = code.trim().toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9]", "");
     return normalized.isBlank() ? "COMPANY" : normalized;
   }
 

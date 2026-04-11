@@ -123,7 +123,7 @@ public final class BusinessDocumentTruths {
     if (!StringUtils.hasText(value)) {
       return defaultValue;
     }
-    return StringUtils.trimWhitespace(value).toUpperCase(Locale.ROOT);
+    return value.trim().toUpperCase(Locale.ROOT);
   }
 
   private static String journalStatus(JournalEntry journalEntry) {

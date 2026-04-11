@@ -608,7 +608,7 @@ public class CompanyService {
       metadata.put("targetCompanyCode", company.getCode());
       metadata.put("targetCompanyId", String.valueOf(company.getId()));
       metadata.put("resetEmail", resetEmail);
-      String normalizedSupportReason = StringUtils.trimWhitespace(supportReason);
+      String normalizedSupportReason = supportReason == null ? null : supportReason.trim();
       metadata.put(
           "supportReason",
           StringUtils.hasText(normalizedSupportReason)
@@ -1087,7 +1087,7 @@ public class CompanyService {
     metadata.put("actor", resolveActor(authentication));
     metadata.put("reason", LIFECYCLE_SUPER_ADMIN_REQUIRED_REASON);
     metadata.put("tenantScope", resolveTenantScope(authentication));
-    String normalizedTargetCompanyCode = StringUtils.trimWhitespace(targetCompanyCode);
+    String normalizedTargetCompanyCode = targetCompanyCode == null ? null : targetCompanyCode.trim();
     if (companyId != null) {
       metadata.put("targetCompanyId", String.valueOf(companyId));
     }
