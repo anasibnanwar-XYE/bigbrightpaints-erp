@@ -29,11 +29,12 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
+import com.bigbrightpaints.erp.modules.accounting.service.CompanyScopedAccountingLookupService;
 import com.bigbrightpaints.erp.modules.accounting.service.GstService;
 import com.bigbrightpaints.erp.modules.accounting.service.ReferenceNumberService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
@@ -80,7 +81,7 @@ class PurchaseInvoiceEngineLifecycleTest {
   @Mock private AccountingFacade accountingFacade;
   @Mock private CompanyScopedPurchasingLookupService purchasingLookupService;
   @Mock private CompanyScopedInventoryLookupService inventoryLookupService;
-  @Mock private CompanyEntityLookup companyEntityLookup;
+  @Mock private CompanyScopedAccountingLookupService accountingLookupService;
   @Mock private ReferenceNumberService referenceNumberService;
   @Mock private com.bigbrightpaints.erp.core.util.CompanyClock companyClock;
   @Mock private GstService gstService;
@@ -108,7 +109,7 @@ class PurchaseInvoiceEngineLifecycleTest {
             accountingFacade,
             purchasingLookupService,
             inventoryLookupService,
-            companyEntityLookup,
+            accountingLookupService,
             referenceNumberService,
             companyClock,
             gstService,
@@ -194,7 +195,7 @@ class PurchaseInvoiceEngineLifecycleTest {
     movement.setQuantity(new BigDecimal("10.0000"));
     movement.setUnitCost(new BigDecimal("12.50"));
 
-    when(companyContextService.requireCurrentCompany()).thenReturn(company);
+    lenient().when(companyContextService.requireCurrentCompany()).thenReturn(company);
     lenient().when(purchasingLookupService.requireSupplier(company, 10L)).thenReturn(supplier);
     lenient()
         .when(purchaseRepository.lockByCompanyAndInvoiceNumberIgnoreCase(company, "INV-40"))
@@ -205,7 +206,9 @@ class PurchaseInvoiceEngineLifecycleTest {
     lenient()
         .when(purchaseRepository.findByCompanyAndGoodsReceipt(company, goodsReceipt))
         .thenReturn(Optional.empty());
-    lenient().when(inventoryLookupService.lockActiveRawMaterial(company, 20L)).thenReturn(rawMaterial);
+    lenient()
+        .when(inventoryLookupService.lockActiveRawMaterial(company, 20L))
+        .thenReturn(rawMaterial);
     lenient()
         .when(referenceNumberService.purchaseReference(company, supplier, "INV-40"))
         .thenReturn("RMP-SUP10-INV40");
@@ -219,6 +222,13 @@ class PurchaseInvoiceEngineLifecycleTest {
                     invocation.getArgument(1),
                     BigDecimal.ZERO,
                     GstService.TaxType.INTRA_STATE));
+    lenient()
+        .when(gstService.normalizeStateCode(any()))
+        .thenAnswer(
+            invocation -> {
+              String raw = invocation.getArgument(0);
+              return raw == null ? null : raw.trim().toUpperCase(java.util.Locale.ROOT);
+            });
 
     lenient()
         .when(
@@ -263,7 +273,9 @@ class PurchaseInvoiceEngineLifecycleTest {
     ReflectionTestUtils.setField(linkedEntry, "id", 700L);
     linkedEntry.setStatus("POSTED");
     linkedEntry.setReferenceNumber("RMP-SUP10-INV40");
-    lenient().when(companyEntityLookup.requireJournalEntry(company, 700L)).thenReturn(linkedEntry);
+    lenient()
+        .when(accountingLookupService.requireJournalEntry(company, 700L))
+        .thenReturn(linkedEntry);
 
     lenient()
         .when(purchaseRepository.save(any(RawMaterialPurchase.class)))
@@ -277,6 +289,106 @@ class PurchaseInvoiceEngineLifecycleTest {
             });
     lenient().when(goodsReceiptRepository.save(goodsReceipt)).thenReturn(goodsReceipt);
     lenient().when(purchaseOrderRepository.save(purchaseOrder)).thenReturn(purchaseOrder);
+  }
+
+  @Test
+  @DisplayName("createPurchase replays existing purchase for duplicate canonical Idempotency-Key")
+  void createPurchase_replaysExistingPurchaseForDuplicateIdempotencyKey() {
+    RawMaterialPurchase existing = new RawMaterialPurchase();
+    ReflectionTestUtils.setField(existing, "id", 611L);
+    existing.setCompany(company);
+    existing.setSupplier(supplier);
+    existing.setInvoiceNumber("INV-40");
+    existing.setInvoiceDate(LocalDate.of(2026, 3, 2));
+    existing.setMemo("invoice");
+    existing.setTotalAmount(new BigDecimal("125.00"));
+    existing.setTaxAmount(BigDecimal.ZERO);
+    existing.setOutstandingAmount(new BigDecimal("125.00"));
+    existing.setStatus("POSTED");
+    existing.setIdempotencyKey("purchase-idem-40");
+    RawMaterialPurchaseLine existingLine = new RawMaterialPurchaseLine();
+    existingLine.setPurchase(existing);
+    existingLine.setRawMaterial(rawMaterial);
+    existingLine.setQuantity(new BigDecimal("10.0000"));
+    existingLine.setUnit("KG");
+    existingLine.setCostPerUnit(new BigDecimal("12.50"));
+    existingLine.setLineTotal(new BigDecimal("125.00"));
+    existing.getLines().add(existingLine);
+    when(purchaseRepository.findWithLinesByCompanyAndIdempotencyKey(company, "purchase-idem-40"))
+        .thenReturn(Optional.of(existing));
+    when(purchaseRepository.save(existing)).thenReturn(existing);
+
+    RawMaterialPurchaseRequest request =
+        new RawMaterialPurchaseRequest(
+            10L,
+            "INV-40",
+            LocalDate.of(2026, 3, 2),
+            "invoice",
+            30L,
+            40L,
+            BigDecimal.ZERO,
+            List.of(
+                new RawMaterialPurchaseLineRequest(
+                    20L,
+                    null,
+                    new BigDecimal("10.0000"),
+                    "KG",
+                    new BigDecimal("12.50"),
+                    null,
+                    null,
+                    "line")));
+
+    RawMaterialPurchaseResponse replay =
+        purchaseInvoiceEngine.createPurchase(request, " purchase-idem-40 ");
+
+    assertThat(replay.id()).isEqualTo(existing.getId());
+    verify(accountingFacade, never())
+        .postPurchaseJournal(any(), any(), any(), any(), any(), any(), any(), any(), any());
+    verify(purchaseRepository, never()).lockByCompanyAndInvoiceNumberIgnoreCase(any(), any());
+  }
+
+  @Test
+  @DisplayName("createPurchase fails closed when canonical Idempotency-Key payload drifts")
+  void createPurchase_rejectsIdempotencyPayloadDrift() {
+    RawMaterialPurchase existing = new RawMaterialPurchase();
+    existing.setCompany(company);
+    existing.setInvoiceNumber("INV-40");
+    existing.setIdempotencyKey("purchase-idem-drift");
+    existing.setIdempotencyHash("stored-signature");
+    when(purchaseRepository.findWithLinesByCompanyAndIdempotencyKey(company, "purchase-idem-drift"))
+        .thenReturn(Optional.of(existing));
+
+    RawMaterialPurchaseRequest request =
+        new RawMaterialPurchaseRequest(
+            10L,
+            "INV-40",
+            LocalDate.of(2026, 3, 2),
+            "invoice",
+            30L,
+            40L,
+            BigDecimal.ZERO,
+            List.of(
+                new RawMaterialPurchaseLineRequest(
+                    20L,
+                    null,
+                    new BigDecimal("10.0000"),
+                    "KG",
+                    new BigDecimal("12.50"),
+                    null,
+                    null,
+                    "line")));
+
+    assertThatThrownBy(() -> purchaseInvoiceEngine.createPurchase(request, "purchase-idem-drift"))
+        .isInstanceOf(ApplicationException.class)
+        .satisfies(
+            throwable -> {
+              ApplicationException ex = (ApplicationException) throwable;
+              assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.CONCURRENCY_CONFLICT);
+            })
+        .hasMessageContaining("Idempotency key already used with different payload");
+
+    verify(accountingFacade, never())
+        .postPurchaseJournal(any(), any(), any(), any(), any(), any(), any(), any(), any());
   }
 
   @Test
@@ -295,7 +407,7 @@ class PurchaseInvoiceEngineLifecycleTest {
             "invoice",
             30L,
             40L,
-            BigDecimal.ZERO,
+            null,
             List.of(
                 new RawMaterialPurchaseLineRequest(
                     20L,
@@ -539,6 +651,100 @@ class PurchaseInvoiceEngineLifecycleTest {
     assertThat(response.id()).isEqualTo(600L);
     assertThat(goodsReceipt.getStatusEnum()).isEqualTo(GoodsReceiptStatus.INVOICED);
     verify(movementRepository, never()).saveAll(any());
+  }
+
+  @Test
+  @DisplayName("createPurchase rejects missing company state metadata for GST decisioning")
+  void createPurchase_rejectsMissingCompanyStateMetadataForGstDecisioning() {
+    company.setStateCode(null);
+    supplier.setStateCode(null);
+    supplier.setGstNumber("27ABCDE1234F1Z5");
+    when(gstService.splitTaxAmount(any(), any(), eq((String) null), eq("27")))
+        .thenThrow(
+            new ApplicationException(
+                ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,
+                "State codes are required for GST decisioning"));
+
+    RawMaterialPurchaseRequest request =
+        new RawMaterialPurchaseRequest(
+            10L,
+            "INV-40",
+            LocalDate.of(2026, 3, 2),
+            "invoice",
+            30L,
+            40L,
+            BigDecimal.ZERO,
+            List.of(
+                new RawMaterialPurchaseLineRequest(
+                    20L,
+                    null,
+                    new BigDecimal("10.0000"),
+                    "KG",
+                    new BigDecimal("12.50"),
+                    null,
+                    null,
+                    "line")));
+
+    assertThatThrownBy(() -> purchaseInvoiceEngine.createPurchase(request))
+        .isInstanceOfSatisfying(
+            ApplicationException.class,
+            ex -> {
+              assertThat(ex.getErrorCode())
+                  .isEqualTo(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD);
+              assertThat(ex).hasMessageContaining("State codes are required for GST decisioning");
+            });
+
+    verify(gstService).splitTaxAmount(any(), any(), eq((String) null), eq("27"));
+    verify(accountingFacade, never())
+        .postPurchaseJournal(any(), any(), any(), any(), any(), any(), any(), any(), any());
+  }
+
+  @Test
+  @DisplayName("splitTaxAmountSafe falls back to IGST when splitter returns null for inter-state")
+  void splitTaxAmountSafe_fallsBackToInterStateIgstWhenSplitterReturnsNull() {
+    when(gstService.splitTaxAmount(
+            new BigDecimal("100.00"), new BigDecimal("18.00"), "KA", "MH"))
+        .thenReturn(null);
+    when(gstService.resolveTaxType("KA", "MH", false)).thenReturn(GstService.TaxType.INTER_STATE);
+
+    GstService.GstBreakdown breakdown =
+        ReflectionTestUtils.invokeMethod(
+            purchaseInvoiceEngine,
+            "splitTaxAmountSafe",
+            new BigDecimal("100.00"),
+            new BigDecimal("18.00"),
+            "KA",
+            "MH");
+
+    assertThat(breakdown).isNotNull();
+    assertThat(breakdown.taxType()).isEqualTo(GstService.TaxType.INTER_STATE);
+    assertThat(breakdown.cgst()).isEqualByComparingTo(BigDecimal.ZERO);
+    assertThat(breakdown.sgst()).isEqualByComparingTo(BigDecimal.ZERO);
+    assertThat(breakdown.igst()).isEqualByComparingTo("18.00");
+  }
+
+  @Test
+  @DisplayName("splitTaxAmountSafe falls back to CGST SGST split when splitter returns null")
+  void splitTaxAmountSafe_fallsBackToIntraStateSplitWhenSplitterReturnsNull() {
+    when(gstService.splitTaxAmount(
+            new BigDecimal("100.00"), new BigDecimal("18.00"), "KA", "KA"))
+        .thenReturn(null);
+    when(gstService.resolveTaxType("KA", "KA", false)).thenReturn(GstService.TaxType.INTRA_STATE);
+
+    GstService.GstBreakdown breakdown =
+        ReflectionTestUtils.invokeMethod(
+            purchaseInvoiceEngine,
+            "splitTaxAmountSafe",
+            new BigDecimal("100.00"),
+            new BigDecimal("18.00"),
+            "KA",
+            "KA");
+
+    assertThat(breakdown).isNotNull();
+    assertThat(breakdown.taxType()).isEqualTo(GstService.TaxType.INTRA_STATE);
+    assertThat(breakdown.cgst()).isEqualByComparingTo("9.00");
+    assertThat(breakdown.sgst()).isEqualByComparingTo("9.00");
+    assertThat(breakdown.igst()).isEqualByComparingTo(BigDecimal.ZERO);
   }
 
   @Test

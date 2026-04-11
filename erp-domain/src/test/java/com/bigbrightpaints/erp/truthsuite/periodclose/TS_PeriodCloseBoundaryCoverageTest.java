@@ -9,34 +9,41 @@ import com.bigbrightpaints.erp.truthsuite.support.TruthSuiteFileAssert;
 @Tag("reconciliation")
 class TS_PeriodCloseBoundaryCoverageTest {
 
-  private static final String PERIOD_SERVICE =
-      "src/main/java/com/bigbrightpaints/erp/modules/accounting/service/AccountingPeriodService.java";
+  private static final String CHECKLIST_SERVICE =
+      "src/main/java/com/bigbrightpaints/erp/modules/accounting/service/AccountingPeriodChecklistService.java";
+  private static final String LIFECYCLE_SERVICE =
+      "src/main/java/com/bigbrightpaints/erp/modules/accounting/service/AccountingPeriodLifecycleService.java";
+  private static final String STATUS_WORKFLOW =
+      "src/main/java/com/bigbrightpaints/erp/modules/accounting/service/AccountingPeriodStatusWorkflow.java";
 
   @Test
   void closePeriodChecksUninvoicedReceiptsBeforeChecklistForceBypass() {
     TruthSuiteFileAssert.assertContainsInOrder(
-        PERIOD_SERVICE,
+        STATUS_WORKFLOW,
         "boolean force = request != null && Boolean.TRUE.equals(request.force());",
         "assertNoUninvoicedReceipts(company, period);",
         "if (!force) {",
-        "assertChecklistComplete(company, period);");
+        "checklistService.assertChecklistComplete(company, period);");
   }
 
   @Test
   void checklistValidationRemainsFailClosedForUnresolvedAndStructuralDriftSignals() {
     TruthSuiteFileAssert.assertContains(
-        PERIOD_SERVICE,
+        CHECKLIST_SERVICE,
         "UNRESOLVED_CONTROLS_PREFIX + formatUnresolvedControls(unresolvedControls)",
         "if (diagnostics.unbalancedJournals() > 0) {",
         "if (diagnostics.unlinkedDocuments() > 0) {",
-        "if (diagnostics.unpostedDocuments() > 0) {",
-        "if (uninvoicedReceipts > 0) {");
+        "if (diagnostics.unpostedDocuments() > 0) {");
+    TruthSuiteFileAssert.assertContains(
+        STATUS_WORKFLOW,
+        "assertNoUninvoicedReceipts(company, period);",
+        "\"Un-invoiced goods receipts exist in this period (\" + uninvoicedReceipts + \")");
   }
 
   @Test
   void checklistMutationGuardRejectsLockedAndClosedPeriodWrites() {
     TruthSuiteFileAssert.assertContains(
-        PERIOD_SERVICE,
+        CHECKLIST_SERVICE,
         "private void assertChecklistMutable(AccountingPeriod period) {",
         "if (period.getStatus() == AccountingPeriodStatus.CLOSED",
         "|| period.getStatus() == AccountingPeriodStatus.LOCKED)",
@@ -46,8 +53,8 @@ class TS_PeriodCloseBoundaryCoverageTest {
   @Test
   void requireOpenPeriodRejectsLockedOrClosedStates() {
     TruthSuiteFileAssert.assertContains(
-        PERIOD_SERVICE,
-        "public AccountingPeriod requireOpenPeriod(Company company, LocalDate referenceDate) {",
+        LIFECYCLE_SERVICE,
+        "AccountingPeriod requireOpenPeriod(Company company, LocalDate referenceDate) {",
         "if (period.getStatus() != AccountingPeriodStatus.OPEN) {",
         "\"Accounting period \" + period.getLabel() + \" is locked/closed\"");
   }
@@ -55,9 +62,9 @@ class TS_PeriodCloseBoundaryCoverageTest {
   @Test
   void reopenBoundaryReversesClosingEntryAndDropsSnapshot() {
     TruthSuiteFileAssert.assertContains(
-        PERIOD_SERVICE,
+        STATUS_WORKFLOW,
         ".ifPresent(closing -> reverseClosingJournalIfNeeded(closing, period, reason));",
         "snapshotService.deleteSnapshotForPeriod(company, period);",
-        "accountingFacade.reverseClosingEntryForPeriodReopen(closing, period, reason);");
+        ".reverseClosingEntryForPeriodReopen(closing, period, reason);");
   }
 }

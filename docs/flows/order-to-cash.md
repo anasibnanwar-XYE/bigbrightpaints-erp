@@ -1,6 +1,6 @@
 # Order-to-Cash (O2C) Flow
 
-Last reviewed: 2026-04-02
+Last reviewed: 2026-04-07
 
 This packet documents the **order-to-cash flow**: the canonical commercial lifecycle from dealer onboarding through sales order creation, confirmation, dispatch, invoicing, and settlement. It covers credit management, inventory reservation, dispatch execution, invoice generation, and the accounting boundary for AR (accounts receivable).
 
@@ -40,24 +40,26 @@ This flow is **behavior-first** and **code-grounded**. Where the backend is inco
 
 | Entrypoint | Method | Path | Actor | Purpose |
 | --- | --- | --- | --- | --- |
-| Create Order | POST | `/api/v1/sales/orders` | SALES, ADMIN | Create sales order (idempotent) |
+| Create Order | POST | `/api/v1/sales/orders` | SALES, ADMIN | Create sales order (idempotent; `201` for draft-lifecycle payloads, otherwise `200`) |
 | List Orders | GET | `/api/v1/sales/orders` | ADMIN, SALES, FACTORY, ACCOUNTING | List orders (paginated) |
 | Search Orders | GET | `/api/v1/sales/orders/search` | ADMIN, SALES, FACTORY, ACCOUNTING | Search with filters (`orderNumber` contains match; canonical status filters normalize legacy stored statuses) |
 | Update Order | PUT | `/api/v1/sales/orders/{id}` | SALES, ADMIN | Update draft order |
 | Delete Order | DELETE | `/api/v1/sales/orders/{id}` | SALES, ADMIN | Delete draft order |
-| Confirm Order | POST | `/api/v1/sales/orders/{id}/confirm` | SALES, ADMIN | Confirm order (credit check + stock validation) |
+| Confirm Order | POST | `/api/v1/sales/orders/{id}/confirm` | SALES, ADMIN | Confirm order (credit check + stock validation/reservation) |
 | Cancel Order | POST | `/api/v1/sales/orders/{id}/cancel` | SALES, ADMIN | Cancel order (requires reason) |
 | Update Status | PATCH | `/api/v1/sales/orders/{id}/status` | SALES, ADMIN | Manual status (ON_HOLD, REJECTED, CLOSED) |
-| Order Timeline | GET | `/api/v1/sales/orders/{id}/timeline` | ADMIN, SALES, FACTORY, ACCOUNTING | Status history |
+| Order Timeline | GET | `/api/v1/sales/orders/{id}/timeline` | ADMIN, SALES, FACTORY, ACCOUNTING | Status history (`toStatus` + alias `status`, `changedBy` + alias `actor`, `changedAt` + alias `timestamp`) |
+| List Promotions | GET | `/api/v1/sales/promotions` | SALES, ADMIN | List active promotions |
+| Create Promotion | POST | `/api/v1/sales/promotions` | SALES, ADMIN | Create promotion (`201 Created`) |
 
 ### Dealer Management — `DealerController` (`/api/v1/dealers/**`)
 
 | Entrypoint | Method | Path | Actor | Purpose |
 | --- | --- | --- | --- | --- |
-| Create Dealer | POST | `/api/v1/dealers` | ADMIN, SALES, ACCOUNTING | Create dealer |
+| Create Dealer | POST | `/api/v1/dealers` | ADMIN, SALES, ACCOUNTING | Create dealer (`201 Created`) |
 | List Dealers | GET | `/api/v1/dealers` | ADMIN, SALES, ACCOUNTING | List dealers (default active-only; optional `status`, `page`, `size`) |
 | Update Dealer | PUT | `/api/v1/dealers/{dealerId}` | ADMIN, SALES, ACCOUNTING | Update dealer |
-| Dunning Hold | POST | `/api/v1/dealers/{dealerId}/dunning/hold` | ADMIN, SALES, ACCOUNTING | Evaluate dunning hold |
+| Dunning Hold | POST | `/api/v1/dealers/{dealerId}/dunning/hold` | ADMIN, SALES, ACCOUNTING | Explicit hold action (returns `dealerId`, `dunningHeld`, `status`, `alreadyOnHold`) |
 
 Dealer-directory compatibility rules:
 
@@ -74,9 +76,9 @@ Dealer-directory compatibility rules:
 | List Credit Requests | GET | `/api/v1/credit/limit-requests` | ADMIN, SALES | List requests |
 | Approve Credit Request | POST | `/api/v1/credit/limit-requests/{id}/approve` | ADMIN, ACCOUNTING | Approve (increments limit) |
 | Reject Credit Request | POST | `/api/v1/credit/limit-requests/{id}/reject` | ADMIN, ACCOUNTING | Reject request |
-| Create Override Request | POST | `/api/v1/credit/override-requests` | ADMIN, FACTORY, SALES | Per-dispatch override |
+| Create Override Request | POST | `/api/v1/credit/override-requests` | ADMIN, FACTORY, SALES | Temporary dealer headroom override (`201 Created`) |
 | List Override Requests | GET | `/api/v1/credit/override-requests` | ADMIN, ACCOUNTING | List overrides |
-| Approve Override | POST | `/api/v1/credit/override-requests/{id}/approve` | ADMIN, ACCOUNTING | Approve override |
+| Approve Override | POST | `/api/v1/credit/override-requests/{id}/approve` | ADMIN, ACCOUNTING | Approve override (effective headroom raised until expiry) |
 | Reject Override | POST | `/api/v1/credit/override-requests/{id}/reject` | ADMIN, ACCOUNTING | Reject override |
 
 ### Dispatch (Inventory Module) — `DispatchController` (`/api/v1/dispatch/**`)
@@ -95,13 +97,13 @@ Dealer-directory compatibility rules:
 2. **Dealer must not be on dunning hold** — dealer status must not be ON_HOLD
 3. **All order items must reference valid products** — product exists and is sales-ready
 4. **Order number must be unique** — per company, enforced at database level
-5. **Idempotency key recommended** — `Idempotency-Key` or `X-Idempotency-Key` header accepted
+5. **Idempotency key required for safe retries** — canonical `Idempotency-Key` header (`X-Idempotency-Key` is rejected fail-closed)
 
 ### Order Confirmation Preconditions
 
 1. **Order must be in valid status** — DRAFT, RESERVED, or PENDING_PRODUCTION
-2. **Credit limit must allow** — credit used (outstanding + pending) < credit limit for credit-mode orders
-3. **Stock must be available** — RESERVED status or explicit override request exists
+2. **Credit posture must allow** — credit-mode orders pass when base limit plus approved override headroom covers outstanding + pending + requested total; otherwise `422` is returned
+3. **Stock must be available** — RESERVED status or explicit override request exists; draft-lifecycle confirms reserve finished-goods stock during confirmation
 4. **No dunning hold on dealer** — dealer status must not be ON_HOLD
 
 ### Dispatch Confirmation Preconditions
@@ -149,8 +151,9 @@ Generate order number → Save order → [Optional: Reserve stock] →
 - Order number format: configurable, unique per company
 - Stock reservation occurs if all items available → RESERVED
 - Stock shortage triggers → PENDING_PRODUCTION
-- Credit check fires for credit-mode orders
-- Idempotency key supported (canonical + legacy resolution)
+- Credit check fails with `422` only when no approved override headroom can cover the request
+- Approved credit overrides raise effective dealer headroom until expiry
+- Idempotency key supported via canonical `Idempotency-Key`
 
 ### 4.3 Order Confirmation Lifecycle
 
@@ -162,8 +165,8 @@ Generate order number → Save order → [Optional: Reserve stock] →
 
 **Key behaviors:**
 - Credit re-checked at confirmation time
+- Draft-lifecycle payloads reserve finished-goods stock during confirmation and fail closed on reservation shortages
 - Stock validated (not already reserved by another order)
-- Triggers inventory reservation for the confirmed order
 
 ### 4.4 Dispatch Confirmation Lifecycle (Fulfillment)
 
@@ -198,12 +201,13 @@ Update invoice status (PARTIAL/PAID) → Update dealer balance →
 ### 4.6 Order Closure Lifecycle
 
 ```
-[Start] → Verify SETTLED → Update status to CLOSED → [End: Order complete]
+[Start] → Detect all linked actionable invoices fully paid → Auto-close order → [End: Order complete]
 ```
 
 **Key behaviors:**
-- Manual status update required (`PATCH /sales/orders/{id}/status` with CLOSED)
-- Only allowed after SETTLED status
+- Auto-close is triggered by settlement flows when every actionable linked invoice is paid
+- Sales order history records `ORDER_CLOSED_AUTO`
+- The SALES audit feed (`GET /api/v1/accounting/audit/events?module=SALES` or `?category=SALES`) includes `ORDER_CLOSED_AUTO`
 
 ---
 
@@ -215,23 +219,21 @@ The flow is complete when:
 2. **Order Confirmed** — Order moves to CONFIRMED, inventory reserved
 3. **Dispatched & Invoiced** — Order moved to DISPATCHED/INVOICED, invoice generated, AR posted
 4. **Settled** — Payment recorded against invoice, invoice status PAID, dealer balance reduced
-5. **Closed** — Order manually moved to CLOSED (optional terminal state)
+5. **Closed** — Order auto-transitions to CLOSED after full settlement of linked actionable invoices
 
 ### Current Limitations
 
 1. **No automated settlement** — Payment receipt and allocation happens through accounting workflows, not automatically through sales module. Orders move to SETTLED externally.
 
-2. **No automated order closure** — After settlement, orders must be manually closed via `PATCH /sales/orders/{id}/status` with CLOSED.
+2. **No automatic payment reconciliation** — Manual settlement required; no webhook or scheduled matching.
 
-3. **No automatic payment reconciliation** — Manual settlement required; no webhook or scheduled matching.
+3. **Single domain event** — Only `SalesOrderCreatedEvent` is published. Confirmation, dispatch, cancellation do not emit domain events.
 
-4. **Single domain event** — Only `SalesOrderCreatedEvent` is published. Confirmation, dispatch, cancellation do not emit domain events.
+4. **No shipment tracking integration** — Transport metadata captured at dispatch but no carrier integration.
 
-5. **No shipment tracking integration** — Transport metadata captured at dispatch but no carrier integration.
+5. **Dunning is rudimentary** — Scheduled task evaluates only 45+ day aging bucket; no graduated escalation.
 
-6. **Dunning is rudimentary** — Scheduled task evaluates only 45+ day aging bucket; no graduated escalation.
-
-7. **No partial fulfillment by default** — Orders with stock shortages fail unless `allowPartialFulfillment` explicitly enabled.
+6. **No partial fulfillment by default** — Orders with stock shortages fail unless `allowPartialFulfillment` explicitly enabled.
 
 ---
 
@@ -254,7 +256,7 @@ The flow is complete when:
 | `GET /api/v1/sales/dealers` | Deprecated (frontend alias) | Use `/api/v1/dealers` |
 | Legacy idempotency key resolution | Deprecated | Use canonical `Idempotency-Key` header |
 | Legacy order statuses (BOOKED, SHIPPED, etc.) | Legacy compatibility | Use canonical statuses only |
-| `POST /api/v1/sales/promotions` | Planned foundation | Sales targets only; promotions infrastructure exists for future activation |
+| `POST /api/v1/sales/promotions` | Canonical | Promotion create endpoint (`201 Created`) for SALES/ADMIN users |
 
 ---
 

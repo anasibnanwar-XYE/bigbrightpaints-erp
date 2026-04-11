@@ -1,26 +1,29 @@
 package com.bigbrightpaints.erp.modules.accounting.service;
 
+import java.time.LocalDate;
+import java.util.List;
+
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
-import com.bigbrightpaints.erp.core.exception.ApplicationException;
-import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.core.validation.ValidationUtils;
-import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriod;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalLineRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.PeriodCloseRequestRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.ReconciliationDiscrepancyRepository;
-import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodCloseRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodReopenRequest;
-import com.bigbrightpaints.erp.modules.accounting.internal.AccountingPeriodServiceCore;
+import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.MonthEndChecklistDto;
+import com.bigbrightpaints.erp.modules.accounting.dto.MonthEndChecklistUpdateRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.PeriodCloseRequestActionRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.PeriodCloseRequestDto;
+import com.bigbrightpaints.erp.modules.accounting.dto.PeriodStatusChangeRequest;
+import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.hr.domain.PayrollRunRepository;
 import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceRepository;
@@ -31,105 +34,27 @@ import com.bigbrightpaints.erp.modules.reports.service.ReportService;
 import jakarta.transaction.Transactional;
 
 @Service
-public class AccountingPeriodService extends AccountingPeriodServiceCore {
+public class AccountingPeriodService {
 
-  private static final String SUPER_ADMIN_REQUIRED_MESSAGE =
-      "SUPER_ADMIN authority required to reopen accounting periods";
+  private final AccountingPeriodLifecycleService lifecycleService;
+  private final AccountingPeriodCorrectionJournalClassifier correctionJournalClassifier;
+  private final AccountingPeriodChecklistService checklistService;
+  private final AccountingPeriodCloseWorkflow closeWorkflow;
 
-  // TruthSuite anchor for closed-period idempotency guard parsing:
-  // if (period.getStatus() == AccountingPeriodStatus.CLOSED) {
-  //     return toDto(period);
-  // }
+  @Autowired(required = false)
+  private AccountingComplianceAuditService accountingComplianceAuditService;
 
-  /*
-   * TruthSuite evidence anchors:
-   * AccountingPeriod period = accountingPeriodRepository.lockByCompanyAndId(company, periodId)
-   * periodCloseHook.onPeriodCloseLocked(company, period);
-   * boolean force = request != null && Boolean.TRUE.equals(request.force());
-   * assertNoUninvoicedReceipts(company, period);
-   * if (!force) {
-   * assertChecklistComplete(company, period);
-   * snapshotService.captureSnapshot(company, period, user);
-   * period.setStatus(AccountingPeriodStatus.CLOSED);
-   *
-   * private static final List<String> RECONCILIATION_CONTROL_ORDER = List.of(
-   * "inventoryReconciled",
-   * "arReconciled",
-   * "apReconciled",
-   * "gstReconciled",
-   * "reconciliationDiscrepanciesResolved");
-   * private static final Map<String, String> UNRESOLVED_CONTROL_GUIDANCE = Map.of(
-   * return List.copyOf(unresolved);
-   * UNRESOLVED_CONTROLS_PREFIX + formatUnresolvedControls(unresolvedControls)
-   *
-   * private void assertChecklistMutable(AccountingPeriod period) {
-   * if (period.getStatus() == AccountingPeriodStatus.CLOSED
-   *         || period.getStatus() == AccountingPeriodStatus.LOCKED) {
-   * Checklist cannot be updated for a locked or closed period
-   *
-   * public AccountingPeriod requireOpenPeriod(Company company, LocalDate referenceDate) {
-   * if (period.getStatus() != AccountingPeriodStatus.OPEN) {
-   * "Accounting period " + period.getLabel() + " is locked/closed"
-   *
-   * if (diagnostics.unbalancedJournals() > 0) {
-   * if (diagnostics.unlinkedDocuments() > 0) {
-   * if (diagnostics.unpostedDocuments() > 0) {
-   * if (uninvoicedReceipts > 0) {
-   * Un-invoiced goods receipts exist in this period (
-   *
-   * String reason = request.reason().trim();
-   * .ifPresent(closing -> reverseClosingJournalIfNeeded(closing, period, reason));
-   * snapshotService.deleteSnapshotForPeriod(company, period);
-   * accountingFacade.reverseClosingEntryForPeriodReopen(closing, period, reason);
-   */
-
-  public AccountingPeriodService(
-      AccountingPeriodRepository accountingPeriodRepository,
-      CompanyContextService companyContextService,
-      JournalEntryRepository journalEntryRepository,
-      CompanyEntityLookup companyEntityLookup,
-      JournalLineRepository journalLineRepository,
-      AccountRepository accountRepository,
-      CompanyClock companyClock,
-      ReportService reportService,
-      ReconciliationService reconciliationService,
-      InvoiceRepository invoiceRepository,
-      GoodsReceiptRepository goodsReceiptRepository,
-      RawMaterialPurchaseRepository rawMaterialPurchaseRepository,
-      PayrollRunRepository payrollRunRepository,
-      ReconciliationDiscrepancyRepository reconciliationDiscrepancyRepository,
-      ObjectProvider<AccountingFacade> accountingFacadeProvider,
-      PeriodCloseHook periodCloseHook,
-      AccountingPeriodSnapshotService snapshotService) {
-    this(
-        accountingPeriodRepository,
-        companyContextService,
-        journalEntryRepository,
-        companyEntityLookup,
-        journalLineRepository,
-        accountRepository,
-        companyClock,
-        reportService,
-        reconciliationService,
-        invoiceRepository,
-        goodsReceiptRepository,
-        rawMaterialPurchaseRepository,
-        payrollRunRepository,
-        reconciliationDiscrepancyRepository,
-        null,
-        accountingFacadeProvider,
-        periodCloseHook,
-        snapshotService);
-  }
+  @Autowired(required = false)
+  private ClosedPeriodPostingExceptionService closedPeriodPostingExceptionService;
 
   @Autowired
   public AccountingPeriodService(
       AccountingPeriodRepository accountingPeriodRepository,
       CompanyContextService companyContextService,
       JournalEntryRepository journalEntryRepository,
-      CompanyEntityLookup companyEntityLookup,
+      CompanyScopedAccountingLookupService accountingLookupService,
       JournalLineRepository journalLineRepository,
-      AccountRepository accountRepository,
+      com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository accountRepository,
       CompanyClock companyClock,
       ReportService reportService,
       ReconciliationService reconciliationService,
@@ -142,90 +67,147 @@ public class AccountingPeriodService extends AccountingPeriodServiceCore {
       ObjectProvider<AccountingFacade> accountingFacadeProvider,
       PeriodCloseHook periodCloseHook,
       AccountingPeriodSnapshotService snapshotService) {
-    super(
-        accountingPeriodRepository,
-        companyContextService,
-        journalEntryRepository,
-        companyEntityLookup,
-        journalLineRepository,
-        accountRepository,
-        companyClock,
-        reportService,
-        reconciliationService,
-        invoiceRepository,
-        goodsReceiptRepository,
-        rawMaterialPurchaseRepository,
-        payrollRunRepository,
-        reconciliationDiscrepancyRepository,
-        periodCloseRequestRepository,
-        accountingFacadeProvider,
-        periodCloseHook,
-        snapshotService);
+    this.lifecycleService =
+        new AccountingPeriodLifecycleService(
+            accountingPeriodRepository,
+            companyContextService,
+            accountingLookupService,
+            companyClock,
+            () -> accountingComplianceAuditService);
+    this.correctionJournalClassifier = new AccountingPeriodCorrectionJournalClassifier();
+    AccountingPeriodChecklistDiagnosticsService diagnosticsService =
+        new AccountingPeriodChecklistDiagnosticsService(
+            journalEntryRepository,
+            reportService,
+            reconciliationService,
+            invoiceRepository,
+            goodsReceiptRepository,
+            rawMaterialPurchaseRepository,
+            payrollRunRepository,
+            reconciliationDiscrepancyRepository,
+            correctionJournalClassifier);
+    this.checklistService =
+        new AccountingPeriodChecklistService(
+            accountingPeriodRepository,
+            companyContextService,
+            lifecycleService,
+            journalEntryRepository,
+            diagnosticsService);
+    this.closeWorkflow =
+        new AccountingPeriodCloseWorkflow(
+            accountingPeriodRepository,
+            companyContextService,
+            journalEntryRepository,
+            journalLineRepository,
+            accountRepository,
+            companyClock,
+            periodCloseRequestRepository,
+            accountingFacadeProvider,
+            periodCloseHook,
+            snapshotService,
+            lifecycleService,
+            checklistService);
   }
 
-  @Override
+  public List<AccountingPeriodDto> listPeriods() {
+    return lifecycleService.listPeriods();
+  }
+
+  public AccountingPeriodDto getPeriod(Long periodId) {
+    return lifecycleService.getPeriod(periodId);
+  }
+
   @Transactional
-  public AccountingPeriodDto reopenPeriod(Long periodId, AccountingPeriodReopenRequest request) {
-    requireSuperAdminRole();
-    return super.reopenPeriod(periodId, request);
+  public AccountingPeriodDto createOrUpdatePeriod(AccountingPeriodRequest request) {
+    return lifecycleService.createOrUpdatePeriod(request, accountingComplianceAuditService);
   }
 
-  @Override
+  @Transactional
+  public AccountingPeriodDto updatePeriod(Long periodId, AccountingPeriodRequest request) {
+    return lifecycleService.updatePeriod(periodId, request, accountingComplianceAuditService);
+  }
+
+  @Transactional
+  public PeriodCloseRequestDto requestPeriodClose(
+      Long periodId, PeriodCloseRequestActionRequest request) {
+    return closeWorkflow.requestPeriodClose(periodId, request, accountingComplianceAuditService);
+  }
+
   @Transactional
   public AccountingPeriodDto approvePeriodClose(
-      Long periodId,
-      com.bigbrightpaints.erp.modules.accounting.dto.PeriodCloseRequestActionRequest request) {
-    requireAdminRole();
-    return super.approvePeriodClose(periodId, request);
+      Long periodId, PeriodCloseRequestActionRequest request) {
+    return closeWorkflow.approvePeriodClose(periodId, request, accountingComplianceAuditService);
   }
 
-  @Override
   @Transactional
-  public com.bigbrightpaints.erp.modules.accounting.dto.PeriodCloseRequestDto rejectPeriodClose(
-      Long periodId,
-      com.bigbrightpaints.erp.modules.accounting.dto.PeriodCloseRequestActionRequest request) {
-    requireAdminRole();
-    return super.rejectPeriodClose(periodId, request);
+  public PeriodCloseRequestDto rejectPeriodClose(
+      Long periodId, PeriodCloseRequestActionRequest request) {
+    return closeWorkflow.rejectPeriodClose(periodId, request, accountingComplianceAuditService);
   }
 
-  @Override
-  public AccountingPeriodDto closePeriod(Long periodId, AccountingPeriodCloseRequest request) {
+  @Transactional
+  public AccountingPeriodDto closePeriod(Long periodId, PeriodStatusChangeRequest request) {
     throw ValidationUtils.invalidState(
         "Direct close is disabled; submit /request-close and approve via maker-checker workflow");
   }
 
-  private void requireSuperAdminRole() {
-    Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-    if (authentication == null || !authentication.isAuthenticated()) {
-      throw new ApplicationException(
-          ErrorCode.AUTH_INSUFFICIENT_PERMISSIONS, SUPER_ADMIN_REQUIRED_MESSAGE);
-    }
-    boolean hasSuperAdmin =
-        authentication.getAuthorities().stream()
-            .anyMatch(authority -> "ROLE_SUPER_ADMIN".equalsIgnoreCase(authority.getAuthority()));
-    if (!hasSuperAdmin) {
-      throw new ApplicationException(
-          ErrorCode.AUTH_INSUFFICIENT_PERMISSIONS, SUPER_ADMIN_REQUIRED_MESSAGE);
-    }
+  @Transactional
+  public AccountingPeriodDto confirmBankReconciliation(
+      Long periodId, LocalDate referenceDate, String note) {
+    return lifecycleService.toDto(
+        checklistService.confirmBankReconciliation(periodId, referenceDate, note));
   }
 
-  private void requireAdminRole() {
-    Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-    if (authentication == null || !authentication.isAuthenticated()) {
-      throw new ApplicationException(
-          ErrorCode.AUTH_INSUFFICIENT_PERMISSIONS,
-          "ROLE_ADMIN authority required to approve or reject period close requests");
-    }
-    boolean hasAdmin =
-        authentication.getAuthorities().stream()
-            .anyMatch(
-                authority ->
-                    "ROLE_ADMIN".equalsIgnoreCase(authority.getAuthority())
-                        || "ROLE_SUPER_ADMIN".equalsIgnoreCase(authority.getAuthority()));
-    if (!hasAdmin) {
-      throw new ApplicationException(
-          ErrorCode.AUTH_INSUFFICIENT_PERMISSIONS,
-          "ROLE_ADMIN authority required to approve or reject period close requests");
-    }
+  @Transactional
+  public AccountingPeriodDto confirmInventoryCount(
+      Long periodId, LocalDate referenceDate, String note) {
+    return lifecycleService.toDto(
+        checklistService.confirmInventoryCount(periodId, referenceDate, note));
+  }
+
+  @Transactional
+  public AccountingPeriodDto lockPeriod(Long periodId, PeriodStatusChangeRequest request) {
+    return closeWorkflow.lockPeriod(periodId, request, accountingComplianceAuditService);
+  }
+
+  @Transactional
+  public AccountingPeriodDto reopenPeriod(Long periodId, AccountingPeriodReopenRequest request) {
+    return closeWorkflow.reopenPeriod(periodId, request, accountingComplianceAuditService);
+  }
+
+  public MonthEndChecklistDto getMonthEndChecklist(Long periodId) {
+    return checklistService.getMonthEndChecklist(periodId);
+  }
+
+  @Transactional
+  public MonthEndChecklistDto updateMonthEndChecklist(
+      Long periodId, MonthEndChecklistUpdateRequest request) {
+    return checklistService.updateMonthEndChecklist(periodId, request);
+  }
+
+  public AccountingPeriod requireOpenPeriod(Company company, LocalDate referenceDate) {
+    return lifecycleService.requireOpenPeriod(company, referenceDate);
+  }
+
+  public AccountingPeriod requirePostablePeriod(
+      Company company,
+      LocalDate referenceDate,
+      String documentType,
+      String documentReference,
+      String reason,
+      boolean overrideRequested) {
+    return lifecycleService.requirePostablePeriod(
+        company,
+        referenceDate,
+        documentType,
+        documentReference,
+        reason,
+        overrideRequested,
+        closedPeriodPostingExceptionService);
+  }
+
+  @Transactional
+  public AccountingPeriod ensurePeriod(Company company, LocalDate referenceDate) {
+    return lifecycleService.ensurePeriod(company, referenceDate);
   }
 }

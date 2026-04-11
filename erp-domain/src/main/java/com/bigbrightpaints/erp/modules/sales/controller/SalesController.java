@@ -22,12 +22,17 @@ import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 import com.bigbrightpaints.erp.shared.dto.PageResponse;
 
 import io.micrometer.core.annotation.Timed;
+import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import jakarta.validation.Valid;
 
 @RestController
 @RequestMapping("/api/v1")
 public class SalesController {
+  private static final String CANONICAL_SALES_ORDER_PATH = "/api/v1/sales/orders";
 
   private final SalesService salesService;
   private final SalesOrderCrudService salesOrderCrudService;
@@ -118,6 +123,23 @@ public class SalesController {
 
   @PostMapping("/sales/orders")
   @PreAuthorize("hasAnyAuthority('ROLE_SALES','ROLE_ADMIN')")
+  @Operation(summary = "Create sales order")
+  @ApiResponses({
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+        responseCode = "200",
+        description = "Order created (legacy contract-compatible response)"),
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+        responseCode = "201",
+        description =
+            "Order created for draft-lifecycle requests with paymentTerms/finishedGoodId"),
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+        responseCode = "422",
+        description = "Credit limit exceeded and no approved override covers required headroom",
+        content =
+            @Content(
+                mediaType = "application/json",
+                schema = @Schema(ref = "#/components/schemas/ApiResponseMapStringObject")))
+  })
   public ResponseEntity<ApiResponse<SalesOrderDto>> createOrder(
       @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
       @Parameter(hidden = true) @RequestHeader(value = "X-Idempotency-Key", required = false)
@@ -125,8 +147,11 @@ public class SalesController {
       @Valid @RequestBody SalesOrderRequest request) {
     SalesOrderRequest resolved =
         applyOrderIdempotencyKey(request, idempotencyKey, legacyIdempotencyKey);
-    return ResponseEntity.ok(
-        ApiResponse.success("Order created", salesOrderCrudService.createOrder(resolved)));
+    SalesOrderDto created = salesOrderCrudService.createOrder(resolved);
+    if (usesDraftLifecycleContract(resolved)) {
+      return ResponseEntity.status(201).body(ApiResponse.success("Order created", created));
+    }
+    return ResponseEntity.ok(ApiResponse.success("Order created", created));
   }
 
   @PutMapping("/sales/orders/{id}")
@@ -189,11 +214,13 @@ public class SalesController {
     if (request == null) {
       return null;
     }
-    IdempotencyHeaderUtils.rejectLegacyHeader(
-        legacyIdempotencyKeyHeader, "sales orders", "/api/v1/sales/orders");
+    if (StringUtils.hasText(legacyIdempotencyKeyHeader)) {
+      throw IdempotencyHeaderUtils.unsupportedLegacyHeader(
+          "X-Idempotency-Key", "sales orders", CANONICAL_SALES_ORDER_PATH);
+    }
     String resolvedKey =
         IdempotencyHeaderUtils.resolveBodyOrHeaderKey(
-            request.idempotencyKey(), idempotencyKeyHeader, null);
+            request.idempotencyKey(), idempotencyKeyHeader);
     if (!StringUtils.hasText(resolvedKey) || StringUtils.hasText(request.idempotencyKey())) {
       return request;
     }
@@ -207,7 +234,8 @@ public class SalesController {
         request.gstRate(),
         request.gstInclusive(),
         resolvedKey,
-        request.paymentMode());
+        request.paymentMode(),
+        request.paymentTerms());
   }
 
   private String combineCancellationReason(String reasonCode, String reason) {
@@ -239,6 +267,13 @@ public class SalesController {
     }
   }
 
+  private boolean usesDraftLifecycleContract(SalesOrderRequest request) {
+    if (request == null) {
+      return false;
+    }
+    return request.usesFinishedGoodSelection() || StringUtils.hasText(request.paymentTerms());
+  }
+
   /* Promotions */
   @GetMapping("/sales/promotions")
   @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_SALES')")
@@ -248,10 +283,19 @@ public class SalesController {
 
   @PostMapping("/sales/promotions")
   @PreAuthorize("hasAnyAuthority('ROLE_SALES','ROLE_ADMIN')")
+  @Operation(summary = "Create promotion")
+  @ApiResponses({
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+        responseCode = "201",
+        description = "Promotion created"),
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+        responseCode = "400",
+        description = "Validation failed")
+  })
   public ResponseEntity<ApiResponse<PromotionDto>> createPromotion(
       @Valid @RequestBody PromotionRequest request) {
-    return ResponseEntity.ok(
-        ApiResponse.success("Promotion created", salesService.createPromotion(request)));
+    return ResponseEntity.status(org.springframework.http.HttpStatus.CREATED)
+        .body(ApiResponse.success("Promotion created", salesService.createPromotion(request)));
   }
 
   @PutMapping("/sales/promotions/{id}")

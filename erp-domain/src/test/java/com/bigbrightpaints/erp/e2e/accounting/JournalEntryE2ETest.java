@@ -3,10 +3,14 @@ package com.bigbrightpaints.erp.e2e.accounting;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.math.BigDecimal;
+import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -18,9 +22,27 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.web.client.TestRestTemplate;
-import org.springframework.http.*;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.jdbc.core.JdbcTemplate;
 
-import com.bigbrightpaints.erp.modules.accounting.domain.*;
+import com.bigbrightpaints.erp.core.audittrail.AuditActionEvent;
+import com.bigbrightpaints.erp.core.audittrail.AuditActionEventRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.Account;
+import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
+import com.bigbrightpaints.erp.modules.accounting.domain.JournalCorrectionType;
+import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
+import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryStatus;
+import com.bigbrightpaints.erp.modules.accounting.domain.JournalLine;
+import com.bigbrightpaints.erp.modules.accounting.domain.JournalLineRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.JournalReferenceMapping;
+import com.bigbrightpaints.erp.modules.accounting.domain.JournalReferenceMappingRepository;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.modules.purchasing.domain.Supplier;
@@ -47,6 +69,8 @@ public class JournalEntryE2ETest extends AbstractIntegrationTest {
   @Autowired private JournalLineRepository journalLineRepository;
   @Autowired private DealerRepository dealerRepository;
   @Autowired private SupplierRepository supplierRepository;
+  @Autowired private AuditActionEventRepository auditActionEventRepository;
+  @Autowired private JdbcTemplate jdbcTemplate;
 
   private String authToken;
   private HttpHeaders headers;
@@ -263,6 +287,83 @@ public class JournalEntryE2ETest extends AbstractIntegrationTest {
   }
 
   @Test
+  @DisplayName("Journal Entry: FX rounding metadata persists on audit trail live path")
+  void journalEntry_FxRoundingMetadata_PersistsOnAuditTrailLivePath() {
+    Company company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
+    Account cashAccount =
+        accountRepository.findByCompanyAndCodeIgnoreCase(company, "CASH").orElseThrow();
+    Account revenueAccount =
+        accountRepository.findByCompanyAndCodeIgnoreCase(company, "REVENUE").orElseThrow();
+
+    Map<String, Object> debitLine =
+        Map.of(
+            "accountId",
+            cashAccount.getId(),
+            "debit",
+            new BigDecimal("1.00"),
+            "credit",
+            BigDecimal.ZERO,
+            "description",
+            "FX debit line");
+    Map<String, Object> creditLineOne =
+        Map.of(
+            "accountId",
+            revenueAccount.getId(),
+            "debit",
+            BigDecimal.ZERO,
+            "credit",
+            new BigDecimal("0.50"),
+            "description",
+            "FX credit line 1");
+    Map<String, Object> creditLineTwo =
+        Map.of(
+            "accountId",
+            revenueAccount.getId(),
+            "debit",
+            BigDecimal.ZERO,
+            "credit",
+            new BigDecimal("0.50"),
+            "description",
+            "FX credit line 2");
+
+    String reference = "FX-META-" + System.nanoTime();
+    Map<String, Object> request = new HashMap<>();
+    request.put("entryDate", LocalDate.now());
+    request.put("referenceNumber", reference);
+    request.put("memo", "FX rounding metadata proof");
+    request.put("currency", "USD");
+    request.put("fxRate", new BigDecimal("1.333333"));
+    request.put("lines", List.of(debitLine, creditLineOne, creditLineTwo));
+
+    ResponseEntity<Map> response =
+        rest.exchange(
+            "/api/v1/accounting/journal-entries",
+            HttpMethod.POST,
+            new HttpEntity<>(request, headers),
+            Map.class);
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+    Map<?, ?> data = (Map<?, ?>) response.getBody().get("data");
+    assertThat(data).isNotNull();
+    Long entryId = ((Number) data.get("id")).longValue();
+
+    AuditActionEvent auditEvent =
+        awaitAccountingJournalAuditEvent(company.getId(), entryId.toString());
+    assertThat(auditEvent.getAction()).isIn("SYSTEM_JOURNAL_CREATED", "MANUAL_JOURNAL_CREATED");
+    Map<String, String> persistedMetadata = loadAuditMetadata(auditEvent.getId());
+    assertThat(persistedMetadata)
+        .containsKeys("adjustedLineId", "originalAmount", "adjustedAmount", "adjustmentReason");
+    assertThat(persistedMetadata.get("adjustmentReason")).startsWith("FX_ROUNDING_");
+
+    Long adjustedLineId = Long.valueOf(persistedMetadata.get("adjustedLineId"));
+    assertThat(
+            journalLineRepository.findAll().stream()
+                .filter(line -> line.getJournalEntry().getId().equals(entryId))
+                .toList())
+        .anySatisfy(line -> assertThat(line.getId()).isEqualTo(adjustedLineId));
+  }
+
+  @Test
   @DisplayName("Journal Entry: Manual idempotency is concurrency-safe")
   void journalEntry_ManualIdempotencyKey_ConcurrencySafe() throws Exception {
     Company company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
@@ -366,7 +467,7 @@ public class JournalEntryE2ETest extends AbstractIntegrationTest {
     assertThat(journalEntryRepository.findByCompanyAndId(company, id1)).isPresent();
 
     long memoCount =
-        journalEntryRepository.findAll().stream()
+        journalEntryRepository.findByCompanyOrderByEntryDateDesc(company).stream()
             .filter(entry -> memo.equals(entry.getMemo()))
             .count();
     assertThat(memoCount).isEqualTo(1);
@@ -509,7 +610,7 @@ public class JournalEntryE2ETest extends AbstractIntegrationTest {
     assertThat(reversalEntry.getCorrectionType()).isEqualTo(JournalCorrectionType.REVERSAL);
 
     JournalEntry originalEntry = journalEntryRepository.findById(originalEntryId).orElseThrow();
-    assertThat(originalEntry.getStatus()).isEqualTo("REVERSED");
+    assertThat(originalEntry.getStatus()).isEqualTo(JournalEntryStatus.REVERSED);
 
     Account cashAfter = accountRepository.findById(cashAccount.getId()).orElseThrow();
     Account revenueAfter = accountRepository.findById(revenueAccount.getId()).orElseThrow();
@@ -518,8 +619,34 @@ public class JournalEntryE2ETest extends AbstractIntegrationTest {
   }
 
   @Test
-  @DisplayName("Journal reverse route cascades linked reversals through the canonical endpoint")
-  void journalReverseRouteSupportsCascadeLinkedCorrections() {
+  @DisplayName("Journal Reversal: void-only rejects partial reversal percentage")
+  void journalReversal_VoidOnlyRejectsPartialPercentage() {
+    Company company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
+    Long originalEntryId = createBalancedJournalEntry(company, new BigDecimal("1250.00"));
+
+    Map<String, Object> partialVoidRequest = new HashMap<>();
+    partialVoidRequest.put("reversalDate", LocalDate.now());
+    partialVoidRequest.put("voidOnly", true);
+    partialVoidRequest.put("reversalPercentage", new BigDecimal("50.00"));
+    partialVoidRequest.put("reason", "Attempt partial void");
+
+    ResponseEntity<Map> response =
+        rest.exchange(
+            "/api/v1/accounting/journal-entries/" + originalEntryId + "/reverse",
+            HttpMethod.POST,
+            new HttpEntity<>(partialVoidRequest, headers),
+            Map.class);
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+    JournalEntry originalEntry = journalEntryRepository.findById(originalEntryId).orElseThrow();
+    assertThat(originalEntry.getStatus()).isEqualTo(JournalEntryStatus.POSTED);
+    assertThat(journalEntryRepository.findByCompanyAndReversalOf(company, originalEntry)).isEmpty();
+  }
+
+  @Test
+  @DisplayName("Journal reverse route rejects cascade requests and keeps linked entries untouched")
+  void journalReverseRouteRejectsCascadeLinkedCorrections() {
     Company company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
     Account cashAccount =
         accountRepository.findByCompanyAndCodeIgnoreCase(company, "CASH").orElseThrow();
@@ -608,22 +735,17 @@ public class JournalEntryE2ETest extends AbstractIntegrationTest {
             HttpMethod.POST,
             new HttpEntity<>(reversalReq, headers),
             String.class);
-    assertThat(reversalResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(reversalResp.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
 
     JournalEntry baseEntry = journalEntryRepository.findById(baseEntryId).orElseThrow();
     JournalEntry relatedEntry = journalEntryRepository.findById(relatedEntryId).orElseThrow();
-    assertThat(baseEntry.getStatus()).isEqualTo("REVERSED");
-    assertThat(relatedEntry.getStatus()).isEqualTo("REVERSED");
+    assertThat(baseEntry.getStatus()).isEqualTo(JournalEntryStatus.POSTED);
+    assertThat(relatedEntry.getStatus()).isEqualTo(JournalEntryStatus.POSTED);
 
     long reversalCount =
-        journalEntryRepository.findAll().stream()
-            .filter(entry -> entry.getReversalOf() != null)
-            .filter(
-                entry ->
-                    entry.getReversalOf().getId().equals(baseEntryId)
-                        || entry.getReversalOf().getId().equals(relatedEntryId))
-            .count();
-    assertThat(reversalCount).isEqualTo(2);
+        journalEntryRepository.findByCompanyAndReversalOf(company, baseEntry).size()
+            + journalEntryRepository.findByCompanyAndReversalOf(company, relatedEntry).size();
+    assertThat(reversalCount).isZero();
   }
 
   @Test
@@ -706,6 +828,57 @@ public class JournalEntryE2ETest extends AbstractIntegrationTest {
             Map.class);
 
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+  }
+
+  @Test
+  @DisplayName("Manual AP-adjacent accrual allows null supplier context")
+  void manualApAdjacentAccrual_allowsNullSupplierContext() {
+    Company company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
+    Account expenseAccount =
+        accountRepository.findByCompanyAndCodeIgnoreCase(company, "EXPENSE").orElseThrow();
+    Account apAccount =
+        accountRepository.findByCompanyAndCodeIgnoreCase(company, "AP").orElseThrow();
+
+    BigDecimal amount = new BigDecimal("1800.00");
+
+    Map<String, Object> debitLine =
+        Map.of(
+            "accountId",
+            expenseAccount.getId(),
+            "debit",
+            amount,
+            "credit",
+            BigDecimal.ZERO,
+            "description",
+            "Accrual expense");
+    Map<String, Object> creditLine =
+        Map.of(
+            "accountId",
+            apAccount.getId(),
+            "debit",
+            BigDecimal.ZERO,
+            "credit",
+            amount,
+            "description",
+            "Accrual payable");
+
+    Map<String, Object> jeRequest = new HashMap<>();
+    jeRequest.put("entryDate", LocalDate.now());
+    jeRequest.put("memo", "AP accrual adjustment without supplier");
+    jeRequest.put("supplierId", null);
+    jeRequest.put("lines", List.of(debitLine, creditLine));
+
+    ResponseEntity<Map> response =
+        rest.exchange(
+            "/api/v1/accounting/journal-entries",
+            HttpMethod.POST,
+            new HttpEntity<>(jeRequest, headers),
+            Map.class);
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+    Map<?, ?> data = (Map<?, ?>) response.getBody().get("data");
+    assertThat(data).isNotNull();
+    assertThat(data.get("id")).isNotNull();
   }
 
   @Test
@@ -862,5 +1035,50 @@ public class JournalEntryE2ETest extends AbstractIntegrationTest {
             Map.class);
 
     return ((Number) ((Map<?, ?>) response.getBody().get("data")).get("id")).longValue();
+  }
+
+  private AuditActionEvent awaitAccountingJournalAuditEvent(Long companyId, String entityId) {
+    Instant deadline = Instant.now().plus(Duration.ofSeconds(5));
+    while (Instant.now().isBefore(deadline)) {
+      Optional<AuditActionEvent> match =
+          auditActionEventRepository
+              .findTopByCompanyIdAndModuleIgnoreCaseAndEntityTypeIgnoreCaseAndEntityIdOrderByOccurredAtDesc(
+                  companyId, "ACCOUNTING", "JOURNAL_ENTRY", entityId);
+      if (match.isPresent()) {
+        return match.get();
+      }
+      try {
+        Thread.sleep(100);
+      } catch (InterruptedException ex) {
+        Thread.currentThread().interrupt();
+        throw new AssertionError("Interrupted while waiting for accounting audit event", ex);
+      }
+    }
+    throw new AssertionError(
+        "Accounting journal audit event not found for entityId="
+            + entityId
+            + ", companyId="
+            + companyId);
+  }
+
+  private Map<String, String> loadAuditMetadata(Long eventId) {
+    if (eventId == null) {
+      return Map.of();
+    }
+    List<Map<String, Object>> rows =
+        jdbcTemplate.queryForList(
+            "select metadata_key, metadata_value from audit_action_event_metadata where event_id ="
+                + " ?",
+            eventId);
+    Map<String, String> metadata = new HashMap<>();
+    for (Map<String, Object> row : rows) {
+      Object key = row.get("metadata_key");
+      Object value = row.get("metadata_value");
+      if (key == null || value == null) {
+        continue;
+      }
+      metadata.put(key.toString(), value.toString());
+    }
+    return metadata;
   }
 }

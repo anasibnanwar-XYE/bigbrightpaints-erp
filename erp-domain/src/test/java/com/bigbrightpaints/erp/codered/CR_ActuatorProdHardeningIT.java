@@ -8,14 +8,16 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.web.client.TestRestTemplate;
-import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.boot.test.web.server.LocalManagementPort;
+import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.core.env.Environment;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 
+import com.bigbrightpaints.erp.core.health.ConfigurationHealthIndicator;
+import com.bigbrightpaints.erp.core.health.RequiredConfigHealthIndicator;
 import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
 
 @ActiveProfiles(
@@ -45,6 +47,10 @@ class CR_ActuatorProdHardeningIT extends AbstractIntegrationTest {
   @Autowired private TestRestTemplate rest;
 
   @Autowired private Environment environment;
+
+  @Autowired private RequiredConfigHealthIndicator requiredConfigHealthIndicator;
+
+  @Autowired private ConfigurationHealthIndicator configurationHealthIndicator;
 
   @LocalServerPort private int appPort;
 
@@ -86,6 +92,22 @@ class CR_ActuatorProdHardeningIT extends AbstractIntegrationTest {
     ResponseEntity<String> prometheusResponse =
         rest.getForEntity(managementUrl("/actuator/prometheus"), String.class);
     assertThat(prometheusResponse.getStatusCode()).isIn(HttpStatus.NOT_FOUND, HttpStatus.FORBIDDEN);
+  }
+
+  @Test
+  @DisplayName("Prod validation-disabled runtime still executes health indicators without bypass")
+  void prodValidationDisabledRuntimeStillExecutesHealthIndicatorsWithoutBypass() {
+    Map<String, Object> requiredConfigDetails = requiredConfigHealthIndicator.health().getDetails();
+    Map<String, Object> configurationDetails = configurationHealthIndicator.health().getDetails();
+
+    assertThat(requiredConfigDetails)
+        .containsEntry("jwtSecretConfigured", true)
+        .containsEntry("encryptionKeyConfigured", true)
+        .containsEntry("mailConfigured", true)
+        .containsEntry("licenseConfigured", true)
+        .doesNotContainKey("checksSkipped");
+
+    assertThat(configurationDetails).containsKey("issuesCount").doesNotContainKey("checksSkipped");
   }
 
   @Test

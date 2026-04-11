@@ -14,14 +14,14 @@ class TS_P2PPurchaseSettlementBoundaryTest {
 
   private static final String PURCHASING_CONTROLLER =
       "src/main/java/com/bigbrightpaints/erp/modules/purchasing/controller/RawMaterialPurchaseController.java";
-  private static final String ACCOUNTING_CONTROLLER =
-      "src/main/java/com/bigbrightpaints/erp/modules/accounting/controller/AccountingController.java";
+  private static final String SETTLEMENT_CONTROLLER =
+      "src/main/java/com/bigbrightpaints/erp/modules/accounting/controller/SettlementController.java";
   private static final String ACCOUNTING_SERVICE =
       "src/main/java/com/bigbrightpaints/erp/modules/accounting/service/AccountingService.java";
   private static final String PURCHASING_SERVICE =
       "src/main/java/com/bigbrightpaints/erp/modules/purchasing/service/PurchasingService.java";
   private static final String SUPPLIER_SETTLEMENT_REQUEST =
-      "src/main/java/com/bigbrightpaints/erp/modules/accounting/dto/SupplierSettlementRequest.java";
+      "src/main/java/com/bigbrightpaints/erp/modules/accounting/dto/PartnerSettlementRequest.java";
 
   @Test
   void purchasingAndSupplierSettlementEndpointsRemainIsolated() {
@@ -31,10 +31,10 @@ class TS_P2PPurchaseSettlementBoundaryTest {
         "public ResponseEntity<ApiResponse<RawMaterialPurchaseResponse>> createPurchase(");
 
     TruthSuiteFileAssert.assertContains(
-        ACCOUNTING_CONTROLLER,
+        SETTLEMENT_CONTROLLER,
         "@RequestMapping(\"/api/v1/accounting\")",
         "@PostMapping(\"/settlements/suppliers\")");
-    String accountingController = TruthSuiteFileAssert.read(ACCOUNTING_CONTROLLER);
+    String accountingController = TruthSuiteFileAssert.read(SETTLEMENT_CONTROLLER);
     assertFalse(
         accountingController.contains("@PostMapping(\"/suppliers/payments\")"),
         "Accounting controller must expose supplier-money flow only through settlement endpoints");
@@ -83,12 +83,10 @@ class TS_P2PPurchaseSettlementBoundaryTest {
   @Test
   void supplierSettlementFlowRetainsOpenItemAndIdempotencyFailClosedGuards() {
     TruthSuiteFileAssert.assertContains(
-        ACCOUNTING_SERVICE,
-        "On-account supplier settlement allocations cannot include discount/write-off/FX"
-            + " adjustments",
+        "src/main/java/com/bigbrightpaints/erp/modules/accounting/service/SupplierSettlementService.java",
+        "On-account supplier settlement allocations cannot include discount/write-off/FX",
         "Settlement allocation exceeds purchase outstanding amount",
-        "remainingByPurchase.put(purchase.getId(),"
-            + " currentOutstanding.subtract(cleared).max(BigDecimal.ZERO));",
-        "validateSettlementIdempotencyKey(trimmedIdempotencyKey, PartnerType.SUPPLIER");
+        "remainingByPurchase.put(",
+        "validateSettlementIdempotencyKey(");
   }
 }

@@ -8,6 +8,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -15,7 +16,6 @@ import org.springframework.util.StringUtils;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.security.SecurityActorResolver;
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.core.validation.ValidationUtils;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
@@ -40,21 +40,22 @@ public class LeaveService {
   private final CompanyContextService companyContextService;
   private final EmployeeRepository employeeRepository;
   private final LeaveRequestRepository leaveRequestRepository;
-  private final CompanyEntityLookup companyEntityLookup;
+  private final CompanyScopedHrLookupService hrLookupService;
   private final LeaveTypePolicyRepository leaveTypePolicyRepository;
   private final LeaveBalanceRepository leaveBalanceRepository;
 
+  @Autowired
   public LeaveService(
       CompanyContextService companyContextService,
       EmployeeRepository employeeRepository,
       LeaveRequestRepository leaveRequestRepository,
-      CompanyEntityLookup companyEntityLookup,
+      CompanyScopedHrLookupService hrLookupService,
       LeaveTypePolicyRepository leaveTypePolicyRepository,
       LeaveBalanceRepository leaveBalanceRepository) {
     this.companyContextService = companyContextService;
     this.employeeRepository = employeeRepository;
     this.leaveRequestRepository = leaveRequestRepository;
-    this.companyEntityLookup = companyEntityLookup;
+    this.hrLookupService = hrLookupService;
     this.leaveTypePolicyRepository = leaveTypePolicyRepository;
     this.leaveBalanceRepository = leaveBalanceRepository;
   }
@@ -77,7 +78,7 @@ public class LeaveService {
 
   public List<LeaveBalanceDto> getLeaveBalances(Long employeeId, Integer year) {
     Company company = companyContextService.requireCurrentCompany();
-    Employee employee = companyEntityLookup.requireEmployee(company, employeeId);
+    Employee employee = hrLookupService.requireEmployee(company, employeeId);
     int targetYear = year != null ? year : CompanyTime.today(company).getYear();
 
     return leaveTypePolicyRepository
@@ -146,7 +147,7 @@ public class LeaveService {
           ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD, "Leave status update request is required");
     }
     Company company = companyContextService.requireCurrentCompany();
-    LeaveRequest leaveRequest = companyEntityLookup.requireLeaveRequest(company, id);
+    LeaveRequest leaveRequest = hrLookupService.requireLeaveRequest(company, id);
     LeaveStatus newStatus = parseLeaveStatus(request.status());
     LeaveStatus currentStatus = parseLeaveStatus(leaveRequest.getStatus());
 
@@ -283,12 +284,15 @@ public class LeaveService {
     balance.setLeaveType(policy.getLeaveType());
     balance.setBalanceYear(year);
 
-    BigDecimal carryForward =
-        leaveBalanceRepository
-            .findByCompanyAndEmployeeAndLeaveTypeAndBalanceYear(
-                company, employee, policy.getLeaveType(), year - 1)
-            .map(previous -> previous.getRemaining().min(policy.getCarryForwardLimit()))
-            .orElse(BigDecimal.ZERO);
+    BigDecimal carryForward = BigDecimal.ZERO;
+    Integer previousYear = previousBalanceYear(year);
+    if (previousYear != null) {
+      carryForward =
+          leaveBalanceRepository.findByCompanyAndEmployeeAndLeaveTypeAndBalanceYear(
+              company, employee, policy.getLeaveType(), previousYear)
+              .map(previous -> previous.getRemaining().min(policy.getCarryForwardLimit()))
+              .orElse(BigDecimal.ZERO);
+    }
 
     balance.setCarryForwardApplied(carryForward);
     balance.setOpeningBalance(carryForward);
@@ -300,11 +304,18 @@ public class LeaveService {
   }
 
   private BigDecimal computeLeaveDays(LocalDate startDate, LocalDate endDate) {
-    long inclusiveDays = ChronoUnit.DAYS.between(startDate, endDate) + 1;
-    if (inclusiveDays <= 0) {
+    BigDecimal rawDays = BigDecimal.valueOf(ChronoUnit.DAYS.between(startDate, endDate));
+    if (rawDays.signum() < 0) {
       return BigDecimal.ZERO;
     }
-    return BigDecimal.valueOf(inclusiveDays).setScale(2, RoundingMode.HALF_UP);
+    return rawDays.add(BigDecimal.ONE).setScale(2, RoundingMode.HALF_UP);
+  }
+
+  private Integer previousBalanceYear(int year) {
+    if (year == Integer.MIN_VALUE) {
+      return null;
+    }
+    return Math.subtractExact(year, 1);
   }
 
   private String normalizeLeaveType(String leaveType) {

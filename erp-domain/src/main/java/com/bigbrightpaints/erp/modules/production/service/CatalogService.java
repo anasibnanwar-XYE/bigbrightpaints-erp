@@ -12,6 +12,7 @@ import java.util.Optional;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -23,7 +24,6 @@ import org.springframework.util.StringUtils;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.core.validation.ValidationUtils;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
@@ -55,12 +55,15 @@ public class CatalogService {
   private static final String ITEM_CLASS_PACKAGING_RAW_MATERIAL = "PACKAGING_RAW_MATERIAL";
   private static final int MAX_PAGE_SIZE = 100;
   private static final String ACCOUNTING_METADATA_KEY_SUFFIX = "AccountId";
+  private static final String FG_COGS_ACCOUNT_ID_KEY = "fgCogsAccountId";
+  private static final String FG_REVENUE_ACCOUNT_ID_KEY = "fgRevenueAccountId";
+  private static final String FG_VALUATION_ACCOUNT_ID_KEY = "fgValuationAccountId";
   private static final List<String> RAW_MATERIAL_CATEGORIES =
       List.of("RAW_MATERIAL", "RAW MATERIAL", "RAW-MATERIAL");
   private static final Pattern NON_ALPHANUM = Pattern.compile("[^A-Z0-9]");
 
   private final CompanyContextService companyContextService;
-  private final CompanyEntityLookup companyEntityLookup;
+  private final CompanyScopedProductionLookupService productionLookupService;
   private final ProductionBrandRepository brandRepository;
   private final ProductionProductRepository productRepository;
   private final FinishedGoodRepository finishedGoodRepository;
@@ -68,9 +71,10 @@ public class CatalogService {
   private final SkuReadinessService skuReadinessService;
   private final ProductionCatalogService productionCatalogService;
 
+  @Autowired
   public CatalogService(
       CompanyContextService companyContextService,
-      CompanyEntityLookup companyEntityLookup,
+      CompanyScopedProductionLookupService productionLookupService,
       ProductionBrandRepository brandRepository,
       ProductionProductRepository productRepository,
       FinishedGoodRepository finishedGoodRepository,
@@ -78,7 +82,7 @@ public class CatalogService {
       SkuReadinessService skuReadinessService,
       ProductionCatalogService productionCatalogService) {
     this.companyContextService = companyContextService;
-    this.companyEntityLookup = companyEntityLookup;
+    this.productionLookupService = productionLookupService;
     this.brandRepository = brandRepository;
     this.productRepository = productRepository;
     this.finishedGoodRepository = finishedGoodRepository;
@@ -282,6 +286,7 @@ public class CatalogService {
   }
 
   private CatalogItemCreateCommand toCreateCommand(CatalogItemRequest request) {
+    Map<String, Object> metadata = requestMetadataWithFinishedGoodAccountOverrides(request);
     return new CatalogItemCreateCommand(
         request.brandId(),
         null,
@@ -298,11 +303,12 @@ public class CatalogService {
         request.gstRate(),
         request.minDiscountPercent(),
         request.minSellingPrice(),
-        request.metadata(),
+        metadata,
         request.active());
   }
 
   private CatalogItemUpdateCommand toUpdateCommand(CatalogItemRequest request) {
+    Map<String, Object> metadata = requestMetadataWithFinishedGoodAccountOverrides(request);
     return new CatalogItemUpdateCommand(
         request.name(),
         null,
@@ -315,8 +321,46 @@ public class CatalogService {
         request.gstRate(),
         request.minDiscountPercent(),
         request.minSellingPrice(),
-        request.metadata(),
+        metadata,
         request.active());
+  }
+
+  private Map<String, Object> requestMetadataWithFinishedGoodAccountOverrides(
+      CatalogItemRequest request) {
+    if (request == null || !hasExplicitFinishedGoodAccountOverrides(request)) {
+      return request != null ? request.metadata() : null;
+    }
+    if (!ITEM_CLASS_FINISHED_GOOD.equals(normalizeItemClass(request.itemClass()))) {
+      return request.metadata();
+    }
+    LinkedHashMap<String, Object> metadata =
+        request.metadata() == null
+            ? new LinkedHashMap<>()
+            : new LinkedHashMap<>(request.metadata());
+    putFinishedGoodAccountOverride(
+        metadata, "cogsAccountId", FG_COGS_ACCOUNT_ID_KEY, request.cogsAccountId());
+    putFinishedGoodAccountOverride(
+        metadata, "revenueAccountId", FG_REVENUE_ACCOUNT_ID_KEY, request.revenueAccountId());
+    putFinishedGoodAccountOverride(
+        metadata, "inventoryAccountId", FG_VALUATION_ACCOUNT_ID_KEY, request.inventoryAccountId());
+    return metadata;
+  }
+
+  private boolean hasExplicitFinishedGoodAccountOverrides(CatalogItemRequest request) {
+    return request.cogsAccountId() != null
+        || request.revenueAccountId() != null
+        || request.inventoryAccountId() != null;
+  }
+
+  private void putFinishedGoodAccountOverride(
+      Map<String, Object> metadata, String requestFieldName, String metadataKey, Long accountId) {
+    if (accountId == null) {
+      return;
+    }
+    if (accountId <= 0) {
+      throw ValidationUtils.invalidInput(requestFieldName + " must be a positive account id");
+    }
+    metadata.put(metadataKey, accountId);
   }
 
   private String normalizeItemClass(String itemClass) {
@@ -394,12 +438,7 @@ public class CatalogService {
   }
 
   private ProductionBrand requireBrand(Company company, Long brandId) {
-    return brandRepository
-        .findByCompanyAndId(company, brandId)
-        .orElseThrow(
-            () ->
-                new ApplicationException(
-                    ErrorCode.BUSINESS_ENTITY_NOT_FOUND, "Brand not found for id " + brandId));
+    return productionLookupService.requireProductionBrand(company, brandId);
   }
 
   private ProductionBrand requireActiveBrand(Company company, Long brandId) {
@@ -412,12 +451,7 @@ public class CatalogService {
   }
 
   private ProductionProduct requireProduct(Company company, Long productId) {
-    return productRepository
-        .findByCompanyAndId(company, productId)
-        .orElseThrow(
-            () ->
-                new ApplicationException(
-                    ErrorCode.BUSINESS_ENTITY_NOT_FOUND, "Product not found for id " + productId));
+    return productionLookupService.requireProductionProduct(company, productId);
   }
 
   private void assertBrandNameUnique(Company company, String name, Long currentBrandId) {

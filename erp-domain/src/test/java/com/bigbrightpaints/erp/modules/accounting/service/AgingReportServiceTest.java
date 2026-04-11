@@ -14,7 +14,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.modules.accounting.domain.DealerLedgerEntry;
@@ -23,6 +22,7 @@ import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
+import com.bigbrightpaints.erp.test.support.ReflectionFieldAccess;
 
 @ExtendWith(MockitoExtension.class)
 class AgingReportServiceTest {
@@ -41,7 +41,7 @@ class AgingReportServiceTest {
         new AgingReportService(
             dealerLedgerRepository, dealerRepository, companyContextService, companyClock);
     company = new Company();
-    ReflectionTestUtils.setField(company, "id", 99L);
+    ReflectionFieldAccess.setField(company, "id", 99L);
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
   }
 
@@ -49,7 +49,7 @@ class AgingReportServiceTest {
   void getAgedReceivablesReport_usesAsOfScopedQuery() {
     LocalDate asOf = LocalDate.of(2026, 2, 1);
     Dealer dealer = new Dealer();
-    ReflectionTestUtils.setField(dealer, "id", 501L);
+    ReflectionFieldAccess.setField(dealer, "id", 501L);
     dealer.setCode("DLR-501");
     dealer.setName("Dealer 501");
 

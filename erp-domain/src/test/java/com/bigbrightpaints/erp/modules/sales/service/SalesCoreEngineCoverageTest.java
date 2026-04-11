@@ -4,10 +4,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.lang.reflect.Method;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -15,17 +17,23 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 
 import com.bigbrightpaints.erp.core.audit.AuditService;
+import com.bigbrightpaints.erp.core.audittrail.AuditActionEventCommand;
+import com.bigbrightpaints.erp.core.audittrail.EnterpriseAuditTrailService;
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
@@ -33,6 +41,7 @@ import com.bigbrightpaints.erp.modules.accounting.service.AccountingComplianceAu
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.accounting.service.CompanyAccountingSettingsService;
 import com.bigbrightpaints.erp.modules.accounting.service.CompanyDefaultAccountsService;
+import com.bigbrightpaints.erp.modules.accounting.service.CompanyScopedAccountingLookupService;
 import com.bigbrightpaints.erp.modules.accounting.service.DealerLedgerService;
 import com.bigbrightpaints.erp.modules.accounting.service.GstService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
@@ -79,7 +88,8 @@ class SalesCoreEngineCoverageTest {
   @Mock private FinishedGoodRepository finishedGoodRepository;
   @Mock private FinishedGoodBatchRepository finishedGoodBatchRepository;
   @Mock private AccountRepository accountRepository;
-  @Mock private CompanyEntityLookup companyEntityLookup;
+  @Mock private CompanyScopedSalesLookupService salesLookupService;
+  @Mock private CompanyScopedAccountingLookupService accountingLookupService;
   @Mock private PackagingSlipRepository packagingSlipRepository;
   @Mock private FinishedGoodsService finishedGoodsService;
   @Mock private AccountingFacade accountingFacade;
@@ -94,6 +104,7 @@ class SalesCoreEngineCoverageTest {
   @Mock private AuditService auditService;
   @Mock private CompanyClock companyClock;
   @Mock private PlatformTransactionManager transactionManager;
+  @Mock private EnterpriseAuditTrailService enterpriseAuditTrailService;
 
   private SalesCoreEngine engine;
 
@@ -115,7 +126,8 @@ class SalesCoreEngineCoverageTest {
             finishedGoodRepository,
             finishedGoodBatchRepository,
             accountRepository,
-            companyEntityLookup,
+            salesLookupService,
+            accountingLookupService,
             packagingSlipRepository,
             finishedGoodsService,
             accountingFacade,
@@ -131,6 +143,39 @@ class SalesCoreEngineCoverageTest {
             companyClock,
             transactionManager,
             null);
+    ReflectionTestUtils.setField(
+        engine, "enterpriseAuditTrailService", enterpriseAuditTrailService);
+  }
+
+  @Test
+  void recordOrderStatusHistory_emitsSalesBusinessAuditEvent() {
+    Company company = new Company();
+    SalesOrder order = new SalesOrder();
+    order.setCompany(company);
+    order.setStatus("DRAFT");
+    order.setOrderNumber("SO-100");
+    ReflectionTestUtils.setField(order, "id", 100L);
+    when(companyClock.now(company)).thenReturn(Instant.parse("2026-04-07T16:30:00Z"));
+
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+        engine,
+        "recordOrderStatusHistory",
+        order,
+        "DRAFT",
+        "CONFIRMED",
+        "ORDER_CONFIRMED",
+        "Order confirmed",
+        "alice@example.com");
+
+    ArgumentCaptor<AuditActionEventCommand> commandCaptor =
+        ArgumentCaptor.forClass(AuditActionEventCommand.class);
+    verify(enterpriseAuditTrailService).recordBusinessEvent(commandCaptor.capture());
+    AuditActionEventCommand command = commandCaptor.getValue();
+    assertThat(command.module()).isEqualTo("SALES");
+    assertThat(command.action()).isEqualTo("ORDER_CONFIRMED");
+    assertThat(command.entityType()).isEqualTo("SALES_ORDER");
+    assertThat(command.entityId()).isEqualTo("100");
+    assertThat(command.referenceNumber()).isEqualTo("SO-100");
   }
 
   @Test
@@ -392,6 +437,25 @@ class SalesCoreEngineCoverageTest {
   }
 
   @Test
+  void createOrder_rejectsRetiredLegacyHeaderAtExecutionPath() {
+    MockHttpServletRequest servletRequest =
+        new MockHttpServletRequest("POST", "/api/v1/sales/orders");
+    servletRequest.addHeader("X-Idempotency-Key", "legacy-order-key");
+    RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(servletRequest));
+
+    try {
+      SalesOrderRequest request = salesOrderRequest("CREDIT", null);
+
+      assertThatThrownBy(() -> engine.createOrder(request))
+          .isInstanceOf(ApplicationException.class)
+          .hasMessageContaining("X-Idempotency-Key is not supported for sales orders");
+      verifyNoInteractions(companyContextService, salesOrderRepository);
+    } finally {
+      RequestContextHolder.resetRequestAttributes();
+    }
+  }
+
+  @Test
   void
       resolveLegacySplitReplayRequestSignature_returnsDistinctReplaySignature_forLegacySplitRequest()
           throws Exception {
@@ -550,7 +614,7 @@ class SalesCoreEngineCoverageTest {
     dealer.setReceivableAccount(account);
 
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
-    when(companyEntityLookup.requireDealer(company, 301L)).thenReturn(dealer);
+    when(salesLookupService.requireDealer(company, 301L)).thenReturn(dealer);
     when(accountRepository.findByCompanyAndCodeIgnoreCase(company, "AR-NEW-1"))
         .thenReturn(java.util.Optional.empty());
 
@@ -578,7 +642,7 @@ class SalesCoreEngineCoverageTest {
         engine, "accountingComplianceAuditService", complianceAuditService);
 
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
-    when(companyEntityLookup.requireDealer(company, 302L)).thenReturn(dealer);
+    when(salesLookupService.requireDealer(company, 302L)).thenReturn(dealer);
     when(accountRepository.save(account)).thenReturn(account);
 
     engine.deleteDealer(302L);
@@ -612,7 +676,7 @@ class SalesCoreEngineCoverageTest {
     Company company = new Company();
     Dealer dealer = new Dealer();
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
-    when(companyEntityLookup.requireDealer(company, 401L)).thenReturn(dealer);
+    when(salesLookupService.requireDealer(company, 401L)).thenReturn(dealer);
     when(salesOrderRepository.findIdsByCompanyOrderByCreatedAtDescIdDesc(
             company, PageRequest.of(0, 25)))
         .thenReturn(new PageImpl<>(List.of(), PageRequest.of(0, 25), 0));
@@ -638,7 +702,7 @@ class SalesCoreEngineCoverageTest {
     Company company = new Company();
     Dealer dealer = new Dealer();
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
-    when(companyEntityLookup.requireDealer(company, 402L)).thenReturn(dealer);
+    when(salesLookupService.requireDealer(company, 402L)).thenReturn(dealer);
     when(salesOrderRepository.searchIdsByCompany(
             company, "CONFIRMED", dealer, "SO-1", null, null, PageRequest.of(0, 20)))
         .thenReturn(new PageImpl<>(List.of(), PageRequest.of(0, 20), 0));
@@ -690,15 +754,30 @@ class SalesCoreEngineCoverageTest {
         method.invoke(
             engine, new BigDecimal("100"), new BigDecimal("10"), new BigDecimal("18"), false);
 
-    assertThat((BigDecimal) ReflectionTestUtils.invokeMethod(inclusive, "net"))
+    assertThat(
+            (BigDecimal)
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    inclusive, "net"))
         .isEqualTo(new BigDecimal("100.00"));
-    assertThat((BigDecimal) ReflectionTestUtils.invokeMethod(inclusive, "tax"))
+    assertThat(
+            (BigDecimal)
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    inclusive, "tax"))
         .isEqualTo(new BigDecimal("18.00"));
-    assertThat((BigDecimal) ReflectionTestUtils.invokeMethod(exclusive, "net"))
+    assertThat(
+            (BigDecimal)
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    exclusive, "net"))
         .isEqualTo(new BigDecimal("90.00"));
-    assertThat((BigDecimal) ReflectionTestUtils.invokeMethod(exclusive, "tax"))
+    assertThat(
+            (BigDecimal)
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    exclusive, "tax"))
         .isEqualTo(new BigDecimal("16.20"));
-    assertThat((BigDecimal) ReflectionTestUtils.invokeMethod(exclusive, "total"))
+    assertThat(
+            (BigDecimal)
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    exclusive, "total"))
         .isEqualTo(new BigDecimal("106.20"));
   }
 

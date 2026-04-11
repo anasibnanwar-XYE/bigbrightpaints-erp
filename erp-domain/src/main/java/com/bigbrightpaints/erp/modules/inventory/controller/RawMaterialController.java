@@ -11,12 +11,15 @@ import org.springframework.web.bind.annotation.*;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.IdempotencyHeaderUtils;
-import com.bigbrightpaints.erp.modules.inventory.dto.*;
+import com.bigbrightpaints.erp.modules.inventory.dto.InventoryExpiringBatchDto;
+import com.bigbrightpaints.erp.modules.inventory.dto.InventoryStockSnapshot;
+import com.bigbrightpaints.erp.modules.inventory.dto.RawMaterialAdjustmentDto;
+import com.bigbrightpaints.erp.modules.inventory.dto.RawMaterialAdjustmentRequest;
+import com.bigbrightpaints.erp.modules.inventory.dto.RawMaterialStockEntryDto;
 import com.bigbrightpaints.erp.modules.inventory.service.InventoryBatchQueryService;
 import com.bigbrightpaints.erp.modules.inventory.service.RawMaterialService;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 
-import io.swagger.v3.oas.annotations.Parameter;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
 import jakarta.validation.Validator;
@@ -43,8 +46,8 @@ public class RawMaterialController {
   }
 
   @GetMapping("/raw-materials/stock")
-  public ResponseEntity<ApiResponse<StockSummaryDto>> stockSummary() {
-    return ResponseEntity.ok(ApiResponse.success(rawMaterialService.summarizeStock()));
+  public ResponseEntity<ApiResponse<List<RawMaterialStockEntryDto>>> stock() {
+    return ResponseEntity.ok(ApiResponse.success(rawMaterialService.listStockEntries()));
   }
 
   @GetMapping("/raw-materials/stock/inventory")
@@ -61,11 +64,9 @@ public class RawMaterialController {
   @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
   public ResponseEntity<ApiResponse<RawMaterialAdjustmentDto>> adjustRawMaterials(
       @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
-      @Parameter(hidden = true) @RequestHeader(value = "X-Idempotency-Key", required = false)
-          String legacyIdempotencyKey,
       @RequestBody RawMaterialAdjustmentRequest request) {
     RawMaterialAdjustmentRequest resolvedRequest =
-        applyAdjustmentIdempotencyKey(request, idempotencyKey, legacyIdempotencyKey);
+        applyAdjustmentIdempotencyKey(request, idempotencyKey);
     validateAdjustmentRequest(resolvedRequest);
     return ResponseEntity.ok(
         ApiResponse.success(
@@ -82,21 +83,15 @@ public class RawMaterialController {
   }
 
   private RawMaterialAdjustmentRequest applyAdjustmentIdempotencyKey(
-      RawMaterialAdjustmentRequest request,
-      String idempotencyKeyHeader,
-      String legacyIdempotencyKeyHeader) {
+      RawMaterialAdjustmentRequest request, String idempotencyKeyHeader) {
     if (request == null) {
       throw new ApplicationException(
           ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,
           "Raw material adjustment request is required");
     }
-    IdempotencyHeaderUtils.rejectLegacyHeader(
-        legacyIdempotencyKeyHeader,
-        "raw material adjustments",
-        CANONICAL_RAW_MATERIAL_ADJUSTMENT_PATH);
     String resolvedKey =
         IdempotencyHeaderUtils.resolveBodyOrHeaderKey(
-            request.idempotencyKey(), idempotencyKeyHeader, null);
+            request.idempotencyKey(), idempotencyKeyHeader);
     if (StringUtils.hasText(request.idempotencyKey())) {
       return request;
     }

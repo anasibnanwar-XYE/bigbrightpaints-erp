@@ -2,6 +2,8 @@ package com.bigbrightpaints.erp.modules.purchasing.controller;
 
 import java.util.List;
 
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
@@ -11,10 +13,15 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestPart;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
+import com.bigbrightpaints.erp.modules.purchasing.dto.SupplierImportResponse;
 import com.bigbrightpaints.erp.modules.purchasing.dto.SupplierRequest;
 import com.bigbrightpaints.erp.modules.purchasing.dto.SupplierResponse;
+import com.bigbrightpaints.erp.modules.purchasing.service.SupplierImportService;
 import com.bigbrightpaints.erp.modules.purchasing.service.SupplierService;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 
@@ -25,9 +32,12 @@ import jakarta.validation.Valid;
 public class SupplierController {
 
   private final SupplierService supplierService;
+  private final SupplierImportService supplierImportService;
 
-  public SupplierController(SupplierService supplierService) {
+  public SupplierController(
+      SupplierService supplierService, SupplierImportService supplierImportService) {
     this.supplierService = supplierService;
+    this.supplierImportService = supplierImportService;
   }
 
   @GetMapping
@@ -51,10 +61,20 @@ public class SupplierController {
 
   @PostMapping
   @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
+  @ResponseStatus(HttpStatus.CREATED)
   public ResponseEntity<ApiResponse<SupplierResponse>> createSupplier(
       @Valid @RequestBody SupplierRequest request) {
+    return ResponseEntity.status(HttpStatus.CREATED)
+        .body(ApiResponse.success("Supplier created", supplierService.createSupplier(request)));
+  }
+
+  @PostMapping(value = "/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+  @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
+  public ResponseEntity<ApiResponse<SupplierImportResponse>> importSuppliers(
+      @RequestPart("file") MultipartFile file) {
     return ResponseEntity.ok(
-        ApiResponse.success("Supplier created", supplierService.createSupplier(request)));
+        ApiResponse.success(
+            "Supplier import processed", supplierImportService.importSuppliers(file)));
   }
 
   @PutMapping("/{id}")

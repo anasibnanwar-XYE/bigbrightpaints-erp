@@ -1,6 +1,7 @@
 package com.bigbrightpaints.erp.core.audittrail;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyInt;
@@ -27,6 +28,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -71,6 +74,23 @@ class EnterpriseAuditTrailServiceTest {
   }
 
   @Test
+  void constructor_trimsAuditPrivateKey() throws Exception {
+    EnterpriseAuditTrailService service =
+        new EnterpriseAuditTrailService(
+            auditActionEventRepository,
+            auditActionEventRetryRepository,
+            mlInteractionEventRepository,
+            companyContextService,
+            new ObjectMapper(),
+            "  test-audit-private-key  ");
+
+    Field field = EnterpriseAuditTrailService.class.getDeclaredField("auditPrivateKey");
+    field.setAccessible(true);
+
+    assertThat(field.get(service)).isEqualTo("test-audit-private-key");
+  }
+
+  @Test
   void recordBusinessEvent_dispatchesActorSnapshotFromSecurityContext() {
     EnterpriseAuditTrailService service = newService();
 
@@ -98,6 +118,60 @@ class EnterpriseAuditTrailServiceTest {
   }
 
   @Test
+  void recordBusinessEvent_dispatchesSynchronouslyWhenAsyncIsDisabled() {
+    EnterpriseAuditTrailService service = newService();
+    EnterpriseAuditTrailService selfProxy = mock(EnterpriseAuditTrailService.class);
+    doNothing().when(selfProxy).recordBusinessEventSync(any(), any());
+    setField(service, "self", selfProxy);
+    setField(service, "businessEventAsyncEnabled", false);
+
+    Company company = new Company();
+    setField(company, "id", 6L);
+
+    service.recordBusinessEvent(command(company, null));
+
+    verify(selfProxy).recordBusinessEventSync(any(AuditActionEventCommand.class), any());
+    verify(selfProxy, times(0)).recordBusinessEventAsync(any(AuditActionEventCommand.class), any());
+  }
+
+  @Test
+  void recordBusinessEventSync_queuesRetryWhenSynchronousWriteFails() {
+    EnterpriseAuditTrailService service = newService();
+    Company company = new Company();
+    setField(company, "id", 8L);
+
+    when(auditActionEventRepository.save(any(AuditActionEvent.class)))
+        .thenThrow(new RuntimeException("db unavailable"));
+    when(auditActionEventRetryRepository.save(any(AuditActionEventRetry.class)))
+        .thenAnswer(invocation -> invocation.getArgument(0));
+
+    assertThatCode(() -> service.recordBusinessEventSync(command(company, null), null))
+        .doesNotThrowAnyException();
+
+    verify(auditActionEventRepository).save(any(AuditActionEvent.class));
+    verify(auditActionEventRetryRepository).save(any(AuditActionEventRetry.class));
+  }
+
+  @Test
+  void recordBusinessEventSyncTransactional_runsInRequiresNewTransaction() throws Exception {
+    Method outerMethod =
+        EnterpriseAuditTrailService.class.getDeclaredMethod(
+            "recordBusinessEventSync", AuditActionEventCommand.class, UserAccount.class);
+    Method innerMethod =
+        EnterpriseAuditTrailService.class.getDeclaredMethod(
+            "recordBusinessEventSyncTransactional",
+            AuditActionEventCommand.class,
+            UserAccount.class);
+
+    assertThat(outerMethod.getAnnotation(Transactional.class)).isNull();
+
+    Transactional transactional = innerMethod.getAnnotation(Transactional.class);
+
+    assertThat(transactional).isNotNull();
+    assertThat(transactional.propagation()).isEqualTo(Propagation.REQUIRES_NEW);
+  }
+
+  @Test
   void recordBusinessEventAsync_prefersProvidedActorSnapshot() {
     EnterpriseAuditTrailService service = newService();
 
@@ -119,6 +193,20 @@ class EnterpriseAuditTrailServiceTest {
     AuditActionEvent saved = eventCaptor.getValue();
     assertThat(saved.getActorUserId()).isEqualTo(300L);
     assertThat(saved.getActorIdentifier()).isEqualTo("snapshot@bbp.com");
+    assertThat(saved.getCorrelationId()).isNotNull();
+  }
+
+  @Test
+  void recordBusinessEventAsync_generatesCorrelationIdWhenMissingInCommand() {
+    EnterpriseAuditTrailService service = newService();
+    Company company = new Company();
+    setField(company, "id", 17L);
+
+    service.recordBusinessEventAsync(command(company, null), null);
+
+    verify(auditActionEventRepository).save(eventCaptor.capture());
+    AuditActionEvent saved = eventCaptor.getValue();
+    assertThat(saved.getCorrelationId()).isNotNull();
   }
 
   @Test

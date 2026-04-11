@@ -501,9 +501,13 @@ public class SkuReadinessService {
       return number.longValue();
     }
     if (candidate instanceof String stringValue && StringUtils.hasText(stringValue)) {
+      String normalized = stringValue.trim();
+      if (!normalized.chars().allMatch(Character::isDigit)) {
+        return null;
+      }
       try {
-        return Long.parseLong(stringValue.trim());
-      } catch (NumberFormatException ignored) {
+        return Long.parseLong(normalized);
+      } catch (NumberFormatException ex) {
         return null;
       }
     }

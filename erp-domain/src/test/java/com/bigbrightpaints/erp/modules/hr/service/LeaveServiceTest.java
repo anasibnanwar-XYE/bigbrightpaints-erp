@@ -3,6 +3,7 @@ package com.bigbrightpaints.erp.modules.hr.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -25,7 +26,6 @@ import org.springframework.test.util.ReflectionTestUtils;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
@@ -48,7 +48,7 @@ class LeaveServiceTest {
   @Mock private CompanyContextService companyContextService;
   @Mock private EmployeeRepository employeeRepository;
   @Mock private LeaveRequestRepository leaveRequestRepository;
-  @Mock private CompanyEntityLookup companyEntityLookup;
+  @Mock private CompanyScopedHrLookupService hrLookupService;
   @Mock private LeaveTypePolicyRepository leaveTypePolicyRepository;
   @Mock private LeaveBalanceRepository leaveBalanceRepository;
 
@@ -65,7 +65,7 @@ class LeaveServiceTest {
             companyContextService,
             employeeRepository,
             leaveRequestRepository,
-            companyEntityLookup,
+            hrLookupService,
             leaveTypePolicyRepository,
             leaveBalanceRepository);
     companyClock = mock(CompanyClock.class);
@@ -73,7 +73,7 @@ class LeaveServiceTest {
 
     company = new Company();
     ReflectionTestUtils.setField(company, "id", 77L);
-    when(companyContextService.requireCurrentCompany()).thenReturn(company);
+    lenient().when(companyContextService.requireCurrentCompany()).thenReturn(company);
 
     employee = new Employee();
     ReflectionTestUtils.setField(employee, "id", 10L);
@@ -88,7 +88,7 @@ class LeaveServiceTest {
     LeaveBalance balance = balanceForYear(tenantToday.getYear());
 
     when(companyClock.today(company)).thenReturn(tenantToday);
-    when(companyEntityLookup.requireEmployee(company, 10L)).thenReturn(employee);
+    when(hrLookupService.requireEmployee(company, 10L)).thenReturn(employee);
     when(leaveTypePolicyRepository.findByCompanyAndActiveTrueOrderByDisplayNameAsc(company))
         .thenReturn(java.util.List.of(policy));
     when(leaveBalanceRepository.findByCompanyAndEmployeeAndLeaveTypeAndBalanceYear(
@@ -110,7 +110,7 @@ class LeaveServiceTest {
     LeaveTypePolicy policy = activePolicy("CASUAL", "Casual leave");
     LeaveBalance balance = balanceForYear(2024);
 
-    when(companyEntityLookup.requireEmployee(company, 10L)).thenReturn(employee);
+    when(hrLookupService.requireEmployee(company, 10L)).thenReturn(employee);
     when(leaveTypePolicyRepository.findByCompanyAndActiveTrueOrderByDisplayNameAsc(company))
         .thenReturn(java.util.List.of(policy));
     when(leaveBalanceRepository.findByCompanyAndEmployeeAndLeaveTypeAndBalanceYear(
@@ -239,7 +239,7 @@ class LeaveServiceTest {
     balance.setUsed(new BigDecimal("3.00"));
     balance.setRemaining(new BigDecimal("9.00"));
 
-    when(companyEntityLookup.requireLeaveRequest(company, 401L)).thenReturn(leaveRequest);
+    when(hrLookupService.requireLeaveRequest(company, 401L)).thenReturn(leaveRequest);
     when(leaveBalanceRepository.findByCompanyAndEmployeeAndLeaveTypeAndBalanceYear(
             company, employee, "CASUAL", 2026))
         .thenReturn(Optional.of(balance));
@@ -254,6 +254,81 @@ class LeaveServiceTest {
     verify(leaveBalanceRepository).save(any(LeaveBalance.class));
     assertThat(balance.getUsed()).isEqualByComparingTo("2.00");
     assertThat(balance.getRemaining()).isEqualByComparingTo("10.00");
+  }
+
+  @Test
+  void computeLeaveDays_countsInclusiveRangeAndHandlesExtremeDatesSafely() {
+    BigDecimal threeDayRange =
+        (BigDecimal)
+            ReflectionTestUtils.invokeMethod(
+                leaveService,
+                "computeLeaveDays",
+                LocalDate.of(2026, 2, 10),
+                LocalDate.of(2026, 2, 12));
+    BigDecimal reversedRange =
+        (BigDecimal)
+            ReflectionTestUtils.invokeMethod(
+                leaveService,
+                "computeLeaveDays",
+                LocalDate.of(2026, 2, 12),
+                LocalDate.of(2026, 2, 10));
+    BigDecimal extremeRange =
+        (BigDecimal)
+            ReflectionTestUtils.invokeMethod(
+                leaveService, "computeLeaveDays", LocalDate.MIN, LocalDate.MAX);
+
+    assertThat(threeDayRange).isEqualByComparingTo("3.00");
+    assertThat(reversedRange).isEqualByComparingTo("0.00");
+    assertThat(extremeRange).isGreaterThan(BigDecimal.ZERO);
+  }
+
+  @Test
+  void normalizeLeaveType_rejectsBlankInput() {
+    assertThatThrownBy(
+            () -> ReflectionTestUtils.invokeMethod(leaveService, "normalizeLeaveType", "   "))
+        .isInstanceOf(ApplicationException.class)
+        .satisfies(
+            ex ->
+                assertThat(((ApplicationException) ex).getErrorCode())
+                    .isEqualTo(ErrorCode.VALIDATION_INVALID_INPUT));
+  }
+
+  @Test
+  void createOpeningBalance_appliesCarryForwardFromPreviousYearWithinPolicyLimit() {
+    LeaveTypePolicy policy = activePolicy("CASUAL", "Casual leave");
+    policy.setCarryForwardLimit(new BigDecimal("4.00"));
+    LeaveBalance previous = balanceForYear(2025);
+    previous.setRemaining(new BigDecimal("7.50"));
+
+    when(leaveBalanceRepository.findByCompanyAndEmployeeAndLeaveTypeAndBalanceYear(
+            company, employee, "CASUAL", 2025))
+        .thenReturn(Optional.of(previous));
+    when(leaveBalanceRepository.save(any(LeaveBalance.class)))
+        .thenAnswer(invocation -> invocation.getArgument(0));
+
+    LeaveBalance created =
+        ReflectionTestUtils.invokeMethod(
+            leaveService, "createOpeningBalance", company, employee, policy, 2026);
+
+    assertThat(created.getCarryForwardApplied()).isEqualByComparingTo("4.00");
+    assertThat(created.getOpeningBalance()).isEqualByComparingTo("4.00");
+    assertThat(created.getRemaining()).isEqualByComparingTo("16.00");
+  }
+
+  @Test
+  void createOpeningBalance_ignoresPreviousYearLookupWhenYearWouldUnderflow() {
+    LeaveTypePolicy policy = activePolicy("CASUAL", "Casual leave");
+    when(leaveBalanceRepository.save(any(LeaveBalance.class)))
+        .thenAnswer(invocation -> invocation.getArgument(0));
+
+    LeaveBalance created =
+        ReflectionTestUtils.invokeMethod(
+            leaveService, "createOpeningBalance", company, employee, policy, Integer.MIN_VALUE);
+
+    assertThat(created.getCarryForwardApplied()).isEqualByComparingTo(BigDecimal.ZERO);
+    verify(leaveBalanceRepository, org.mockito.Mockito.never())
+        .findByCompanyAndEmployeeAndLeaveTypeAndBalanceYear(
+            any(), any(), any(), any(Integer.class));
   }
 
   @AfterEach
@@ -272,7 +347,7 @@ class LeaveServiceTest {
     leaveRequest.setEndDate(LocalDate.of(2026, 3, 1));
     leaveRequest.setEmployee(employee);
 
-    when(companyEntityLookup.requireLeaveRequest(company, 501L)).thenReturn(leaveRequest);
+    when(hrLookupService.requireLeaveRequest(company, 501L)).thenReturn(leaveRequest);
 
     assertThatThrownBy(
             () ->

@@ -318,7 +318,8 @@ public class TaxService {
       return true;
     }
     String normalized = status.trim().toUpperCase();
-    return !normalized.equals("VOID")
+    return !normalized.equals("DRAFT")
+        && !normalized.equals("VOID")
         && !normalized.equals("REVERSED")
         && !normalized.equals("CANCELLED");
   }

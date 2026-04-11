@@ -22,7 +22,6 @@ import org.springframework.test.util.ReflectionTestUtils;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.security.CryptoService;
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.hr.domain.Employee;
@@ -38,7 +37,7 @@ class EmployeeServiceTest {
 
   @Mock private CompanyContextService companyContextService;
   @Mock private EmployeeRepository employeeRepository;
-  @Mock private CompanyEntityLookup companyEntityLookup;
+  @Mock private CompanyScopedHrLookupService hrLookupService;
   @Mock private SalaryStructureTemplateRepository salaryStructureTemplateRepository;
   @Mock private CryptoService cryptoService;
 
@@ -51,7 +50,7 @@ class EmployeeServiceTest {
         new EmployeeService(
             companyContextService,
             employeeRepository,
-            companyEntityLookup,
+            hrLookupService,
             salaryStructureTemplateRepository,
             cryptoService);
 

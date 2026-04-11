@@ -3,6 +3,8 @@ package com.bigbrightpaints.erp.modules.accounting.dto;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
+
 import jakarta.validation.constraints.NotNull;
 
 public record InventoryRevaluationRequest(
@@ -10,7 +12,7 @@ public record InventoryRevaluationRequest(
     @NotNull Long revaluationAccountId,
     @NotNull BigDecimal deltaAmount,
     String memo,
-    LocalDate entryDate,
+    @JsonFormat(pattern = "yyyy-MM-dd") LocalDate entryDate,
     String referenceNumber,
     String idempotencyKey,
     Boolean adminOverride) {}

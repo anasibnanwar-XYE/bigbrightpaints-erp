@@ -15,6 +15,7 @@ Environment variables, external dependencies, and setup notes.
 - `ERP_SECURITY_AUDIT_PRIVATE_KEY` - required audit signing key for strict runtime
 - `SPRING_MAIL_HOST` / `SPRING_MAIL_PORT` / `SPRING_MAIL_USERNAME` / `SPRING_MAIL_PASSWORD`
 - `ERP_ENVIRONMENT_VALIDATION_ENABLED` / `erp.environment.validation.health-indicator.enabled` when strict readiness proof needs required-config health enabled
+- `ERP_ENVIRONMENT_VALIDATION_HEALTH_INDICATOR_SKIP_WHEN_VALIDATION_DISABLED` is the explicit local validation escape hatch for compose/release proof surfaces that still boot with `erp.environment.validation.enabled=false`; leave it unset in strict runtimes unless you intentionally want required-config/configuration health contributors to report `checksSkipped` instead of running real checks
 - `ERP_LICENSE_ENFORCE` when license enforcement is part of the strict readiness proof
 - `ERP_DISPATCH_DEBIT_ACCOUNT_ID` / `ERP_DISPATCH_CREDIT_ACCOUNT_ID` when dispatch/accounting proofs require explicit mapping
 

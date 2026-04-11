@@ -14,7 +14,23 @@ import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.purchasing.domain.Supplier;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 
-import jakarta.persistence.*;
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.OneToOne;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 
 @Entity
 @Table(
@@ -41,8 +57,9 @@ public class JournalEntry extends VersionedEntity {
 
   private String memo;
 
+  @Enumerated(EnumType.STRING)
   @Column(nullable = false)
-  private String status = "DRAFT";
+  private JournalEntryStatus status = JournalEntryStatus.DRAFT;
 
   @ManyToOne(fetch = FetchType.LAZY)
   @JoinColumn(name = "dealer_id")
@@ -131,7 +148,7 @@ public class JournalEntry extends VersionedEntity {
     if (updatedAt == null) {
       updatedAt = now;
     }
-    if (postedAt == null && "POSTED".equalsIgnoreCase(status)) {
+    if (postedAt == null && status == JournalEntryStatus.POSTED) {
       postedAt = now;
     }
   }
@@ -181,12 +198,16 @@ public class JournalEntry extends VersionedEntity {
     this.memo = memo;
   }
 
-  public String getStatus() {
+  public JournalEntryStatus getStatus() {
     return status;
   }
 
+  public void setStatus(JournalEntryStatus status) {
+    this.status = status == null ? JournalEntryStatus.DRAFT : status;
+  }
+
   public void setStatus(String status) {
-    this.status = status;
+    setStatus(JournalEntryStatus.from(status));
   }
 
   public Dealer getDealer() {

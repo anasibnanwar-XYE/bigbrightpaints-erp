@@ -71,10 +71,12 @@ METHOD_DECL_OPEN_RE = re.compile(
 METHOD_DECL_SEMICOLON_RE = re.compile(
     r"^\s*(?:public\s+|protected\s+|private\s+|static\s+|default\s+|abstract\s+|final\s+|sealed\s+|non-sealed\s+|synchronized\s+)*[\w<>\[\].,@?]+\s+\w+\s*\([^;{}]*\)\s*(?:throws\s+[\w<>\[\].,@? ]+)?\s*;$"
 )
+EMPTY_CONSTRUCTOR_DECL_RE = re.compile(r"^\s*(?:public|protected|private)\s+\w+\s*\(\s*\)\s*\{\s*\}\s*$")
 PARAMETER_FRAGMENT_RE = re.compile(
     r"^\s*(?:@\w[\w.]*?(?:\([^)]*\))?\s+)*(?:[\w<>\[\].,@?]+\s+)+\w+\s*,?$"
 )
 CALL_ARGUMENT_FRAGMENT_RE = re.compile(r"^\s*(?:[\w.<>?]+|null|true|false)\s*,?$")
+LAMBDA_ARROW_ONLY_RE = re.compile(r"^\s*(?:\([^)]*\)|[A-Za-z_][A-Za-z0-9_]*)\s*->\s*$")
 LITERAL_FIELD_INIT_RE = re.compile(
     r"^\s*(?:public\s+|protected\s+|private\s+)(?:static\s+|final\s+|transient\s+|volatile\s+)*[\w<>\[\].,@?]+\s+\w+\s*=\s*(?:\".*\"|\d[\d._]*|true|false|null)\s*;$"
 )
@@ -218,6 +220,10 @@ def is_structural_source_line(
     if stripped in {"try {", "})", "}),"}:
         return True
     if TYPE_DECL_RE.match(stripped):
+        return True
+    if EMPTY_CONSTRUCTOR_DECL_RE.match(stripped):
+        return True
+    if LAMBDA_ARROW_ONLY_RE.match(stripped):
         return True
     if FIELD_DECL_RE.match(stripped):
         return True

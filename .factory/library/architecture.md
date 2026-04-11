@@ -64,6 +64,7 @@ Retired routes should be absent or explicitly fail closed. Do not leave a second
 - **`ApplicationException` + `ErrorCode` remain the business error contract.**
 - **Accounting is the financial truth boundary.** Other modules may initiate business flows, but accounting owns journals, settlements, period control, and reconciliation truth.
 - **Idempotency is mandatory on write surfaces.** Reject stale headers and parallel fallback replay schemes.
+- **Cross-request audit correlation is explicit.** When one business flow spans multiple HTTP requests and must remain traceable as one flow, the caller/test harness must propagate a shared `X-Correlation-Id`; validators should prove related audit rows reuse that exact value.
 - **Role/host boundaries are part of the contract.** Admin/control-plane, operational/factory, sales/commercial, and dealer/self-service surfaces must stay explicit.
 - **Docs/OpenAPI/tests/CI are part of the architecture.** A cleanup is incomplete if these still teach contradictory truths.
 
@@ -71,23 +72,33 @@ Retired routes should be absent or explicitly fail closed. Do not leave a second
 
 ### 1. Accounting core
 
-Primary hotspot:
+Primary hotspots:
 
-- `modules/accounting/internal/AccountingCoreEngineCore`
+- `modules/accounting/service/{SettlementAllocationResolutionService,SettlementTotalsValidationService,SettlementJournalLineDraftService}`
+- `modules/accounting/service/JournalPostingService`
+- `modules/accounting/service/AccountingFacade`
 
 Supporting sprawl:
 
-- `modules/accounting/service/AccountingCoreEngine`
-- `modules/accounting/service/AccountingCoreLogic`
-- `modules/accounting/service/AccountingCoreService`
-- `modules/accounting/internal/AccountingFacadeCore`
-- `modules/accounting/controller/AccountingController`
+- `modules/accounting/service/AccountingPeriodService`
+- `modules/accounting/service/AccountingAuditTrailService`
+- `modules/accounting/service/ReconciliationService`
+- focused accounting controllers under `modules/accounting/controller/`, especially:
+  - `AccountController`
+  - `JournalController`
+  - `SettlementController`
+  - `PeriodController`
+  - `ReconciliationController`
+  - `StatementReportController`
+  - `InventoryAccountingController`
 
 Cleanup direction:
 
+- Treat retired `internal/AccountingCoreEngineCore`, `AccountingFacadeCore`, and `SettlementSupportService` references as stale history, not live ownership.
 - Split by business flow, not by more wrapper layers
 - Keep one canonical write path per operation
 - Remove duplicate helper logic while preserving downstream module behavior
+- Continue shrinking settlement write-path helpers until no single service centralizes allocation resolution, totals, validation, and line drafting above the mission size cap
 
 ### 2. Dispatch truth
 
@@ -106,14 +117,14 @@ Primary hotspots:
 - `modules/company/service/TenantRuntimeEnforcementService`
 - `modules/company/service/TenantRuntimeRequestAdmissionService`
 - `core/security/TenantRuntimeAccessService`
-- `core/util/CompanyEntityLookup`
+- module-scoped `CompanyScoped*LookupService` implementations
 
 Cleanup direction:
 
 - Keep tenant binding fail-closed
 - Keep canonical control-plane paths singular
 - Remove shadow runtime owners
-- Replace giant generic lookup gravity wells with narrower module-scoped resolution
+- Keep the retired `CompanyEntityLookup` gravity well out of live production ownership and favor narrower module-scoped resolution
 
 ### 4. Deployment-proof and CI truth
 

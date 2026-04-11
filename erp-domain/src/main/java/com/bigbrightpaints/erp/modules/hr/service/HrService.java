@@ -7,18 +7,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.bigbrightpaints.erp.core.exception.ApplicationException;
-import com.bigbrightpaints.erp.core.exception.ErrorCode;
-import com.bigbrightpaints.erp.core.security.CryptoService;
-import com.bigbrightpaints.erp.core.util.CompanyClock;
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
-import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
-import com.bigbrightpaints.erp.modules.hr.domain.AttendanceRepository;
-import com.bigbrightpaints.erp.modules.hr.domain.EmployeeRepository;
-import com.bigbrightpaints.erp.modules.hr.domain.LeaveBalanceRepository;
-import com.bigbrightpaints.erp.modules.hr.domain.LeaveRequestRepository;
-import com.bigbrightpaints.erp.modules.hr.domain.LeaveTypePolicyRepository;
-import com.bigbrightpaints.erp.modules.hr.domain.SalaryStructureTemplateRepository;
 import com.bigbrightpaints.erp.modules.hr.dto.AttendanceBulkImportRequest;
 import com.bigbrightpaints.erp.modules.hr.dto.AttendanceDto;
 import com.bigbrightpaints.erp.modules.hr.dto.AttendanceSummaryDto;
@@ -32,8 +20,6 @@ import com.bigbrightpaints.erp.modules.hr.dto.LeaveStatusUpdateRequest;
 import com.bigbrightpaints.erp.modules.hr.dto.LeaveTypePolicyDto;
 import com.bigbrightpaints.erp.modules.hr.dto.MarkAttendanceRequest;
 import com.bigbrightpaints.erp.modules.hr.dto.MonthlyAttendanceSummaryDto;
-import com.bigbrightpaints.erp.modules.hr.dto.PayrollRunDto;
-import com.bigbrightpaints.erp.modules.hr.dto.PayrollRunRequest;
 import com.bigbrightpaints.erp.modules.hr.dto.SalaryStructureTemplateDto;
 import com.bigbrightpaints.erp.modules.hr.dto.SalaryStructureTemplateRequest;
 
@@ -55,42 +41,6 @@ public class HrService {
     this.leaveService = leaveService;
     this.attendanceService = attendanceService;
     this.salaryStructureTemplateService = salaryStructureTemplateService;
-  }
-
-  @SuppressWarnings("unused")
-  public HrService(
-      CompanyContextService companyContextService,
-      EmployeeRepository employeeRepository,
-      LeaveRequestRepository leaveRequestRepository,
-      AttendanceRepository attendanceRepository,
-      CompanyEntityLookup companyEntityLookup,
-      CompanyClock companyClock,
-      SalaryStructureTemplateRepository salaryStructureTemplateRepository,
-      LeaveTypePolicyRepository leaveTypePolicyRepository,
-      LeaveBalanceRepository leaveBalanceRepository,
-      CryptoService cryptoService) {
-    this(
-        new EmployeeService(
-            companyContextService,
-            employeeRepository,
-            companyEntityLookup,
-            salaryStructureTemplateRepository,
-            cryptoService),
-        new LeaveService(
-            companyContextService,
-            employeeRepository,
-            leaveRequestRepository,
-            companyEntityLookup,
-            leaveTypePolicyRepository,
-            leaveBalanceRepository),
-        new AttendanceService(
-            companyContextService,
-            attendanceRepository,
-            employeeRepository,
-            companyEntityLookup,
-            companyClock),
-        new SalaryStructureTemplateService(
-            companyContextService, salaryStructureTemplateRepository));
   }
 
   public List<EmployeeDto> listEmployees() {
@@ -153,15 +103,6 @@ public class HrService {
   @Transactional
   public LeaveRequestDto updateLeaveStatus(Long id, String status) {
     return leaveService.updateLeaveStatus(id, new LeaveStatusUpdateRequest(status, null));
-  }
-
-  @Deprecated
-  @Transactional
-  public PayrollRunDto createPayrollRun(PayrollRunRequest request) {
-    throw new ApplicationException(
-            ErrorCode.BUSINESS_CONSTRAINT_VIOLATION,
-            "Legacy payroll run creation is deprecated; use /api/v1/payroll/runs")
-        .withDetail("canonicalPath", "/api/v1/payroll/runs");
   }
 
   public List<AttendanceDto> listAttendanceByDate(LocalDate date) {

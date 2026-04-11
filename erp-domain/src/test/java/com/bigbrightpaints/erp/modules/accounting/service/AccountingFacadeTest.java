@@ -25,8 +25,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
@@ -36,22 +34,32 @@ import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
-import com.bigbrightpaints.erp.modules.accounting.domain.JournalReferenceMapping;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalReferenceMappingRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.PartnerType;
+import com.bigbrightpaints.erp.modules.accounting.dto.AutoSettlementRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.DealerReceiptRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.DealerReceiptSplitRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalCreationRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalLineDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.ManualJournalRequest;
-import com.bigbrightpaints.erp.modules.accounting.dto.PayrollPaymentRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.PartnerSettlementRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.PartnerSettlementResponse;
+import com.bigbrightpaints.erp.modules.accounting.dto.SettlementAllocationApplication;
+import com.bigbrightpaints.erp.modules.accounting.dto.SettlementAllocationRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.SupplierPaymentRequest;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
+import com.bigbrightpaints.erp.modules.hr.dto.PayrollPaymentRequest;
 import com.bigbrightpaints.erp.modules.purchasing.domain.Supplier;
 import com.bigbrightpaints.erp.modules.purchasing.domain.SupplierRepository;
 import com.bigbrightpaints.erp.modules.purchasing.domain.SupplierStatus;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
+import com.bigbrightpaints.erp.modules.sales.service.CompanyScopedSalesLookupService;
 import com.bigbrightpaints.erp.modules.sales.util.SalesOrderReference;
+import com.bigbrightpaints.erp.test.support.ReflectionFieldAccess;
 
 @ExtendWith(MockitoExtension.class)
 @Tag("critical")
@@ -60,15 +68,19 @@ class AccountingFacadeTest {
   @Mock private CompanyContextService companyContextService;
   @Mock private AccountRepository accountRepository;
   @Mock private AccountingService accountingService;
+  @Mock private DealerReceiptService dealerReceiptService;
   @Mock private JournalEntryRepository journalEntryRepository;
   @Mock private ReferenceNumberService referenceNumberService;
   @Mock private DealerRepository dealerRepository;
   @Mock private SupplierRepository supplierRepository;
   @Mock private CompanyClock companyClock;
   @Mock private CompanyEntityLookup companyEntityLookup;
+  @Mock private CompanyScopedSalesLookupService salesLookupService;
+  @Mock private CompanyScopedAccountingLookupService accountingLookupService;
   @Mock private CompanyAccountingSettingsService companyAccountingSettingsService;
   @Mock private JournalReferenceResolver journalReferenceResolver;
   @Mock private JournalReferenceMappingRepository journalReferenceMappingRepository;
+  @Mock private PayrollAccountingService payrollAccountingService;
 
   private AccountingFacade accountingFacade;
   private Company company;
@@ -76,24 +88,51 @@ class AccountingFacadeTest {
   @BeforeEach
   void setup() {
     accountingFacade =
-        new AccountingFacade(
+        AccountingFacadeTestFactory.create(
             companyContextService,
             accountRepository,
             accountingService,
+            payrollAccountingService,
+            dealerReceiptService,
             journalEntryRepository,
             referenceNumberService,
             dealerRepository,
             supplierRepository,
             companyClock,
-            companyEntityLookup,
+            salesLookupService,
+            accountingLookupService,
             companyAccountingSettingsService,
             journalReferenceResolver,
             journalReferenceMappingRepository);
     company = new Company();
-    ReflectionTestUtils.setField(company, "id", 1L);
+    ReflectionFieldAccess.setField(company, "id", 1L);
     company.setBaseCurrency("INR");
     lenient().when(companyContextService.requireCurrentCompany()).thenReturn(company);
     lenient().when(companyClock.today(company)).thenReturn(LocalDate.of(2024, 4, 9));
+    lenient()
+        .when(salesLookupService.requireDealer(any(), any()))
+        .thenAnswer(
+            invocation ->
+                companyEntityLookup.requireDealer(
+                    invocation.getArgument(0), invocation.getArgument(1)));
+    lenient()
+        .when(salesLookupService.requireSalesOrder(any(), any()))
+        .thenAnswer(
+            invocation ->
+                companyEntityLookup.requireSalesOrder(
+                    invocation.getArgument(0), invocation.getArgument(1)));
+    lenient()
+        .when(accountingLookupService.requireJournalEntry(any(), any()))
+        .thenAnswer(
+            invocation ->
+                companyEntityLookup.requireJournalEntry(
+                    invocation.getArgument(0), invocation.getArgument(1)));
+    lenient()
+        .when(accountingLookupService.requireAccount(any(), any()))
+        .thenAnswer(
+            invocation ->
+                companyEntityLookup.requireAccount(
+                    invocation.getArgument(0), invocation.getArgument(1)));
   }
 
   @Test
@@ -103,7 +142,7 @@ class AccountingFacadeTest {
     receivable.setCode("AR");
     dealer.setReceivableAccount(receivable);
     Long dealerId = 10L;
-    ReflectionTestUtils.setField(dealer, "id", dealerId);
+    ReflectionFieldAccess.setField(dealer, "id", dealerId);
 
     when(companyEntityLookup.requireDealer(eq(company), eq(dealerId))).thenReturn(dealer);
 
@@ -152,63 +191,14 @@ class AccountingFacadeTest {
             null,
             null,
             null);
-    ArgumentCaptor<JournalEntryRequest> requestCaptor =
-        ArgumentCaptor.forClass(JournalEntryRequest.class);
-    doReturn(stub).when(accountingService).createJournalEntry(requestCaptor.capture());
+    ArgumentCaptor<JournalCreationRequest> requestCaptor =
+        ArgumentCaptor.forClass(JournalCreationRequest.class);
+    doReturn(stub).when(accountingService).createStandardJournal(requestCaptor.capture());
 
     accountingFacade.postSalesReturn(dealerId, invoiceNumber, returnLines, total, reason);
 
-    assertThat(requestCaptor.getValue().referenceNumber()).isEqualTo(hashReference);
-  }
-
-  @Test
-  void postPayrollRun_delegatesToAccountingServiceCanonicalMethod() {
-    JournalEntryDto expected =
-        new JournalEntryDto(
-            61L,
-            null,
-            "PAYROLL-PR-W-202602",
-            LocalDate.of(2026, 2, 1),
-            null,
-            "POSTED",
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            List.<JournalLineDto>of(),
-            null,
-            null,
-            null,
-            null,
-            null,
-            null);
-    List<JournalEntryRequest.JournalLineRequest> lines =
-        List.of(
-            new JournalEntryRequest.JournalLineRequest(
-                10L, "Payroll expense", new BigDecimal("1000.00"), BigDecimal.ZERO),
-            new JournalEntryRequest.JournalLineRequest(
-                11L, "Payroll payable", BigDecimal.ZERO, new BigDecimal("1000.00")));
-    when(accountingService.postPayrollRun(
-            "PR-W-202602", 77L, LocalDate.of(2026, 2, 1), "Payroll - PR-W-202602", lines))
-        .thenReturn(expected);
-
-    JournalEntryDto actual =
-        accountingFacade.postPayrollRun(
-            "PR-W-202602", 77L, LocalDate.of(2026, 2, 1), "Payroll - PR-W-202602", lines);
-
-    assertThat(actual).isSameAs(expected);
-    verify(accountingService)
-        .postPayrollRun(
-            "PR-W-202602", 77L, LocalDate.of(2026, 2, 1), "Payroll - PR-W-202602", lines);
-    verify(accountingService, never()).createJournalEntry(any());
+    assertThat(requestCaptor.getValue().sourceReference()).isEqualTo(hashReference);
+    assertThat(requestCaptor.getValue().sourceModule()).isEqualTo("SALES_RETURN");
   }
 
   @Test
@@ -281,18 +271,13 @@ class AccountingFacadeTest {
     Account payable = new Account();
     payable.setCode("AP");
     payable.setName("Accounts Payable");
-    ReflectionTestUtils.setField(payable, "id", 301L);
+    ReflectionFieldAccess.setField(payable, "id", 301L);
     supplier.setStatus(SupplierStatus.ACTIVE);
     supplier.setPayableAccount(payable);
     when(supplierRepository.findByCompanyAndIdWithPayableAccount(eq(company), eq(supplierId)))
         .thenReturn(Optional.of(supplier));
 
     Long inventoryAccountId = 201L;
-    Account inventory = new Account();
-    ReflectionTestUtils.setField(inventory, "id", inventoryAccountId);
-    when(companyEntityLookup.requireAccount(eq(company), eq(inventoryAccountId)))
-        .thenReturn(inventory);
-
     String baseReference = "RMP-ACME-SUP-INV100";
     String canonicalReference = baseReference + "-0005";
     when(referenceNumberService.purchaseReferenceKey(eq(company), eq(supplier), eq("INV-100")))
@@ -336,7 +321,7 @@ class AccountingFacadeTest {
             null);
     when(accountingService.createStandardJournal(any())).thenReturn(created);
     JournalEntry saved = new JournalEntry();
-    ReflectionTestUtils.setField(saved, "id", 915L);
+    ReflectionFieldAccess.setField(saved, "id", 915L);
     saved.setReferenceNumber(canonicalReference);
     when(companyEntityLookup.requireJournalEntry(eq(company), eq(915L))).thenReturn(saved);
 
@@ -370,7 +355,7 @@ class AccountingFacadeTest {
         .thenReturn(baseReference);
 
     JournalEntry existing = new JournalEntry();
-    ReflectionTestUtils.setField(existing, "id", 777L);
+    ReflectionFieldAccess.setField(existing, "id", 777L);
     existing.setReferenceNumber(baseReference);
     existing.setEntryDate(LocalDate.of(2026, 1, 14));
     existing.setStatus("POSTED");
@@ -427,7 +412,7 @@ class AccountingFacadeTest {
     supplier.setName("Blocked Supplier");
     supplier.setStatus(SupplierStatus.SUSPENDED);
     Account payable = new Account();
-    ReflectionTestUtils.setField(payable, "id", 302L);
+    ReflectionFieldAccess.setField(payable, "id", 302L);
     supplier.setPayableAccount(payable);
     when(supplierRepository.findByCompanyAndIdWithPayableAccount(eq(company), eq(supplierId)))
         .thenReturn(Optional.of(supplier));
@@ -467,17 +452,12 @@ class AccountingFacadeTest {
     Account payable = new Account();
     payable.setCode("AP");
     payable.setName("Accounts Payable");
-    ReflectionTestUtils.setField(payable, "id", 303L);
+    ReflectionFieldAccess.setField(payable, "id", 303L);
     supplier.setPayableAccount(payable);
     when(supplierRepository.findByCompanyAndIdWithPayableAccount(eq(company), eq(supplierId)))
         .thenReturn(Optional.of(supplier));
 
     Long inventoryAccountId = 203L;
-    Account inventory = new Account();
-    ReflectionTestUtils.setField(inventory, "id", inventoryAccountId);
-    when(companyEntityLookup.requireAccount(eq(company), eq(inventoryAccountId)))
-        .thenReturn(inventory);
-
     String baseReference = "RMP-ACME-SUP-INV103";
     String canonicalReference = baseReference + "-0001";
     when(referenceNumberService.purchaseReferenceKey(eq(company), eq(supplier), eq("INV-103")))
@@ -519,7 +499,7 @@ class AccountingFacadeTest {
             null);
     when(accountingService.createStandardJournal(any())).thenReturn(created);
     JournalEntry saved = new JournalEntry();
-    ReflectionTestUtils.setField(saved, "id", 910L);
+    ReflectionFieldAccess.setField(saved, "id", 910L);
     saved.setReferenceNumber(canonicalReference);
     when(companyEntityLookup.requireJournalEntry(eq(company), eq(910L))).thenReturn(saved);
     when(journalReferenceMappingRepository.findByCompanyAndLegacyReferenceIgnoreCase(
@@ -549,14 +529,14 @@ class AccountingFacadeTest {
     Account receivable = new Account();
     receivable.setCode("AR");
     receivable.setName("Accounts Receivable");
-    ReflectionTestUtils.setField(receivable, "id", 701L);
+    ReflectionFieldAccess.setField(receivable, "id", 701L);
     dealer.setReceivableAccount(receivable);
     when(companyEntityLookup.requireDealer(eq(company), eq(dealerId))).thenReturn(dealer);
 
     String orderNumber = "SO-1001";
     String canonicalReference = SalesOrderReference.invoiceReference(orderNumber);
     JournalEntry existing = new JournalEntry();
-    ReflectionTestUtils.setField(existing, "id", 777L);
+    ReflectionFieldAccess.setField(existing, "id", 777L);
     existing.setReferenceNumber(canonicalReference);
     existing.setEntryDate(LocalDate.of(2026, 1, 5));
     existing.setStatus("POSTED");
@@ -620,14 +600,14 @@ class AccountingFacadeTest {
     Account receivable = new Account();
     receivable.setCode("AR");
     receivable.setName("Accounts Receivable");
-    ReflectionTestUtils.setField(receivable, "id", 702L);
+    ReflectionFieldAccess.setField(receivable, "id", 702L);
     dealer.setReceivableAccount(receivable);
     when(companyEntityLookup.requireDealer(eq(company), eq(dealerId))).thenReturn(dealer);
 
     String orderNumber = "SO-1002";
     String canonicalReference = SalesOrderReference.invoiceReference(orderNumber);
     JournalEntry existing = new JournalEntry();
-    ReflectionTestUtils.setField(existing, "id", 888L);
+    ReflectionFieldAccess.setField(existing, "id", 888L);
     existing.setReferenceNumber(canonicalReference);
     existing.setEntryDate(LocalDate.of(2026, 1, 6));
     existing.setStatus("POSTED");
@@ -688,14 +668,14 @@ class AccountingFacadeTest {
     Account receivable = new Account();
     receivable.setCode("AR");
     receivable.setName("Accounts Receivable");
-    ReflectionTestUtils.setField(receivable, "id", 703L);
+    ReflectionFieldAccess.setField(receivable, "id", 703L);
     dealer.setReceivableAccount(receivable);
     when(companyEntityLookup.requireDealer(eq(company), eq(dealerId))).thenReturn(dealer);
 
     String orderNumber = "SO-1003";
     String canonicalReference = SalesOrderReference.invoiceReference(orderNumber);
     JournalEntry existing = new JournalEntry();
-    ReflectionTestUtils.setField(existing, "id", 889L);
+    ReflectionFieldAccess.setField(existing, "id", 889L);
     existing.setReferenceNumber(canonicalReference);
     existing.setEntryDate(LocalDate.of(2026, 1, 7));
     existing.setStatus("POSTED");
@@ -783,7 +763,7 @@ class AccountingFacadeTest {
   }
 
   @Test
-  void createManualJournalEntry_routesThroughStandardJournalWithManualSource() {
+  void createManualJournalEntry_routesThroughAccountingServiceManualEntryPath() {
     JournalEntryRequest request =
         new JournalEntryRequest(
             null,
@@ -829,20 +809,27 @@ class AccountingFacadeTest {
             null,
             null,
             null);
-    when(accountingService.createStandardJournal(any(JournalCreationRequest.class)))
+    when(accountingService.createManualJournalEntry(
+            any(JournalEntryRequest.class), eq("MANUAL-XYZ")))
         .thenReturn(expected);
 
     JournalEntryDto actual = accountingFacade.createManualJournalEntry(request, "MANUAL-XYZ");
 
     assertThat(actual).isSameAs(expected);
     verify(accountingService)
-        .createStandardJournal(
+        .createManualJournalEntry(
             argThat(
-                journalRequest ->
-                    journalRequest != null
-                        && "MANUAL".equals(journalRequest.sourceModule())
-                        && "MANUAL-XYZ".equals(journalRequest.sourceReference())
-                        && journalRequest.amount().compareTo(new BigDecimal("75.00")) == 0));
+                entryRequest ->
+                    entryRequest != null
+                        && entryRequest.referenceNumber() == null
+                        && LocalDate.of(2026, 2, 28).equals(entryRequest.entryDate())
+                        && "Manual single".equals(entryRequest.memo())
+                        && entryRequest.sourceModule() == null
+                        && entryRequest.sourceReference() == null
+                        && entryRequest.journalType() == null
+                        && entryRequest.lines() != null
+                        && entryRequest.lines().size() == 2),
+            eq("MANUAL-XYZ"));
   }
 
   @Test
@@ -876,15 +863,16 @@ class AccountingFacadeTest {
     accountingFacade.createManualJournalEntry(request, null);
 
     verify(accountingService)
-        .createStandardJournal(
+        .createManualJournalEntry(
             argThat(
-                journalRequest ->
-                    journalRequest != null
-                        && tenantToday.equals(journalRequest.entryDate())
-                        && journalRequest.sourceReference() != null
-                        && journalRequest
-                            .sourceReference()
-                            .startsWith("MANUAL-" + tenantToday + "-")));
+                entryRequest ->
+                    entryRequest != null
+                        && tenantToday.equals(entryRequest.entryDate())
+                        && entryRequest.referenceNumber() == null
+                        && entryRequest.sourceModule() == null
+                        && entryRequest.sourceReference() == null
+                        && entryRequest.journalType() == null),
+            eq(null));
   }
 
   @Test
@@ -912,19 +900,20 @@ class AccountingFacadeTest {
     accountingFacade.createManualJournalEntry(request, null);
 
     verify(accountingService)
-        .createStandardJournal(
+        .createManualJournalEntry(
             argThat(
-                journalRequest ->
-                    journalRequest != null
-                        && explicitDate.equals(journalRequest.entryDate())
-                        && journalRequest.sourceReference() != null
-                        && journalRequest
-                            .sourceReference()
-                            .startsWith("MANUAL-" + explicitDate + "-")));
+                entryRequest ->
+                    entryRequest != null
+                        && explicitDate.equals(entryRequest.entryDate())
+                        && entryRequest.referenceNumber() == null
+                        && entryRequest.sourceModule() == null
+                        && entryRequest.sourceReference() == null
+                        && entryRequest.journalType() == null),
+            eq(null));
   }
 
   @Test
-  void recordPayrollPayment_delegatesToAccountingService() {
+  void recordPayrollPayment_delegatesToPayrollAccountingService() {
     PayrollPaymentRequest request =
         new PayrollPaymentRequest(
             9L, 2L, 1L, new BigDecimal("800.00"), "PAYROLL-PAY-9", "Payroll clear");
@@ -955,132 +944,165 @@ class AccountingFacadeTest {
             null,
             null,
             null);
-    when(accountingService.recordPayrollPayment(request)).thenReturn(expected);
+    when(payrollAccountingService.recordPayrollPayment(request)).thenReturn(expected);
 
     JournalEntryDto actual = accountingFacade.recordPayrollPayment(request);
 
     assertThat(actual).isSameAs(expected);
-    verify(accountingService).recordPayrollPayment(request);
+    verify(payrollAccountingService).recordPayrollPayment(request);
   }
 
   @Test
-  void upsertJournalReferenceMapping_updatesExistingReservationWithoutEntityId() {
-    JournalReferenceMapping mapping = journalReferenceMapping("LEGACY-100", null, null);
-    JournalEntry entry = journalEntry(1001L, "SALES-100");
-    when(journalReferenceMappingRepository.findByCompanyAndLegacyReferenceIgnoreCase(
-            eq(company), eq("LEGACY-100")))
-        .thenReturn(Optional.of(mapping));
+  void postPayrollRun_delegatesToPayrollAccountingService() {
+    List<JournalEntryRequest.JournalLineRequest> lines =
+        List.of(
+            new JournalEntryRequest.JournalLineRequest(
+                11L, "Payroll expense", new BigDecimal("800.00"), BigDecimal.ZERO),
+            new JournalEntryRequest.JournalLineRequest(
+                12L, "Payroll payable", BigDecimal.ZERO, new BigDecimal("800.00")));
+    JournalEntryDto expected = expectedJournal(89L, "PAYROLL-PR-2026-03");
+    when(payrollAccountingService.postPayrollRun(
+            "PR-2026-03", 19L, LocalDate.of(2026, 3, 31), "Payroll - PR-2026-03", lines))
+        .thenReturn(expected);
 
-    ReflectionTestUtils.invokeMethod(
-        accountingFacade, "upsertJournalReferenceMapping", company, "LEGACY-100", "SALES-100", entry);
+    JournalEntryDto actual =
+        accountingFacade.postPayrollRun(
+            "PR-2026-03", 19L, LocalDate.of(2026, 3, 31), "Payroll - PR-2026-03", lines);
 
-    assertThat(mapping.getCanonicalReference()).isEqualTo("SALES-100");
-    assertThat(mapping.getEntityType()).isEqualTo("JOURNAL_ENTRY");
-    assertThat(mapping.getEntityId()).isEqualTo(1001L);
-    verify(journalReferenceMappingRepository).save(mapping);
+    assertThat(actual).isSameAs(expected);
+    verify(payrollAccountingService)
+        .postPayrollRun(
+            "PR-2026-03", 19L, LocalDate.of(2026, 3, 31), "Payroll - PR-2026-03", lines);
   }
 
   @Test
-  void upsertJournalReferenceMapping_skipsConflictingExistingMapping() {
-    JournalReferenceMapping mapping = journalReferenceMapping("LEGACY-101", "OTHER-REF", 44L);
-    JournalEntry entry = journalEntry(1002L, "SALES-101");
-    when(journalReferenceMappingRepository.findByCompanyAndLegacyReferenceIgnoreCase(
-            eq(company), eq("LEGACY-101")))
-        .thenReturn(Optional.of(mapping));
+  void settlementAndReceiptFlows_delegateToFocusedReceiptAndAccountingServices() {
+    DealerReceiptRequest dealerReceiptRequest =
+        new DealerReceiptRequest(
+            7L, 3L, new BigDecimal("125.00"), "RCPT-7", "Dealer receipt", "receipt-key", List.of());
+    DealerReceiptSplitRequest splitRequest =
+        new DealerReceiptSplitRequest(
+            7L,
+            List.of(new DealerReceiptSplitRequest.IncomingLine(3L, new BigDecimal("125.00"))),
+            "RCPT-SPLIT-7",
+            "Dealer split receipt",
+            "split-key");
+    SupplierPaymentRequest supplierPaymentRequest =
+        new SupplierPaymentRequest(
+            8L,
+            4L,
+            new BigDecimal("90.00"),
+            "SUP-8",
+            "Supplier payment",
+            "supplier-key",
+            List.of());
+    PartnerSettlementRequest dealerSettlementRequest =
+        new PartnerSettlementRequest(
+            PartnerType.DEALER,
+            7L,
+            3L,
+            null,
+            null,
+            null,
+            null,
+            LocalDate.of(2026, 3, 31),
+            "SET-DEALER-7",
+            "Dealer settlement",
+            "dealer-settlement-key",
+            Boolean.FALSE,
+            List.of(
+                new SettlementAllocationRequest(
+                    70L,
+                    null,
+                    new BigDecimal("125.00"),
+                    BigDecimal.ZERO,
+                    BigDecimal.ZERO,
+                    BigDecimal.ZERO,
+                    SettlementAllocationApplication.DOCUMENT,
+                    "allocation")));
+    PartnerSettlementRequest supplierSettlementRequest =
+        new PartnerSettlementRequest(
+            PartnerType.SUPPLIER,
+            8L,
+            4L,
+            null,
+            null,
+            null,
+            null,
+            LocalDate.of(2026, 3, 31),
+            "SET-SUP-8",
+            "Supplier settlement",
+            "supplier-settlement-key",
+            Boolean.FALSE,
+            List.of(
+                new SettlementAllocationRequest(
+                    null,
+                    80L,
+                    new BigDecimal("90.00"),
+                    BigDecimal.ZERO,
+                    BigDecimal.ZERO,
+                    BigDecimal.ZERO,
+                    SettlementAllocationApplication.DOCUMENT,
+                    "allocation")));
+    AutoSettlementRequest autoSettlementRequest =
+        new AutoSettlementRequest(
+            3L, new BigDecimal("150.00"), "AUTO-SET", "Auto settlement", "auto-key");
+    JournalEntryDto receiptJournal = expectedJournal(90L, "RCPT-7");
+    JournalEntryDto splitJournal = expectedJournal(91L, "RCPT-SPLIT-7");
+    JournalEntryDto supplierJournal = expectedJournal(92L, "SUP-8");
+    PartnerSettlementResponse dealerResponse =
+        new PartnerSettlementResponse(
+            receiptJournal,
+            new BigDecimal("125.00"),
+            new BigDecimal("125.00"),
+            BigDecimal.ZERO,
+            BigDecimal.ZERO,
+            BigDecimal.ZERO,
+            BigDecimal.ZERO,
+            List.of());
+    PartnerSettlementResponse supplierResponse =
+        new PartnerSettlementResponse(
+            supplierJournal,
+            new BigDecimal("90.00"),
+            new BigDecimal("90.00"),
+            BigDecimal.ZERO,
+            BigDecimal.ZERO,
+            BigDecimal.ZERO,
+            BigDecimal.ZERO,
+            List.of());
 
-    ReflectionTestUtils.invokeMethod(
-        accountingFacade, "upsertJournalReferenceMapping", company, "LEGACY-101", "SALES-101", entry);
+    when(dealerReceiptService.recordDealerReceipt(dealerReceiptRequest)).thenReturn(receiptJournal);
+    when(dealerReceiptService.recordDealerReceiptSplit(splitRequest)).thenReturn(splitJournal);
+    when(accountingService.recordSupplierPayment(supplierPaymentRequest))
+        .thenReturn(supplierJournal);
+    when(accountingService.settleDealerInvoices(dealerSettlementRequest))
+        .thenReturn(dealerResponse);
+    when(accountingService.settleSupplierInvoices(supplierSettlementRequest))
+        .thenReturn(supplierResponse);
+    when(accountingService.autoSettleDealer(7L, autoSettlementRequest)).thenReturn(dealerResponse);
+    when(accountingService.autoSettleSupplier(8L, autoSettlementRequest))
+        .thenReturn(supplierResponse);
 
-    assertThat(mapping.getCanonicalReference()).isEqualTo("OTHER-REF");
-    assertThat(mapping.getEntityId()).isEqualTo(44L);
-    verify(journalReferenceMappingRepository, never()).save(mapping);
-  }
+    assertThat(accountingFacade.recordDealerReceipt(dealerReceiptRequest)).isSameAs(receiptJournal);
+    assertThat(accountingFacade.recordDealerReceiptSplit(splitRequest)).isSameAs(splitJournal);
+    assertThat(accountingFacade.recordSupplierPayment(supplierPaymentRequest))
+        .isSameAs(supplierJournal);
+    assertThat(accountingFacade.settleDealerInvoices(dealerSettlementRequest))
+        .isSameAs(dealerResponse);
+    assertThat(accountingFacade.settleSupplierInvoices(supplierSettlementRequest))
+        .isSameAs(supplierResponse);
+    assertThat(accountingFacade.autoSettleDealer(7L, autoSettlementRequest))
+        .isSameAs(dealerResponse);
+    assertThat(accountingFacade.autoSettleSupplier(8L, autoSettlementRequest))
+        .isSameAs(supplierResponse);
 
-  @Test
-  void upsertJournalReferenceMapping_ignoresConcurrentInsertViolation() {
-    JournalEntry entry = journalEntry(1003L, "SALES-102");
-    when(journalReferenceMappingRepository.findByCompanyAndLegacyReferenceIgnoreCase(
-            eq(company), eq("LEGACY-102")))
-        .thenReturn(Optional.empty());
-    when(journalReferenceMappingRepository.save(any(JournalReferenceMapping.class)))
-        .thenThrow(new DataIntegrityViolationException("duplicate"));
-
-    ReflectionTestUtils.invokeMethod(
-        accountingFacade, "upsertJournalReferenceMapping", company, "LEGACY-102", "SALES-102", entry);
-
-    verify(journalReferenceMappingRepository).save(any(JournalReferenceMapping.class));
-  }
-
-  @Test
-  void reserveSalesJournalReference_returnsFalseWhenCanonicalReservationExists() {
-    when(journalReferenceMappingRepository.findByCompanyAndLegacyReferenceIgnoreCase(
-            eq(company), eq("SO-200")))
-        .thenReturn(Optional.of(journalReferenceMapping("SO-200", "SO-200", 200L)));
-
-    Boolean leader =
-        ReflectionTestUtils.invokeMethod(
-            accountingFacade, "reserveSalesJournalReference", company, " SO-200 ");
-
-    assertThat(leader).isFalse();
-    verify(journalReferenceMappingRepository, never())
-        .reserveReferenceMapping(any(), any(), any(), any(), any());
-  }
-
-  @Test
-  void reserveSalesJournalReference_throwsWhenReservationCannotBeResolved() {
-    when(journalReferenceMappingRepository.findByCompanyAndLegacyReferenceIgnoreCase(
-            eq(company), eq("SO-201")))
-        .thenReturn(Optional.empty(), Optional.empty());
-    when(journalReferenceMappingRepository.reserveReferenceMapping(
-            eq(company.getId()), eq("SO-201"), eq("SO-201"), eq("SALES_JOURNAL"), any()))
-        .thenReturn(0);
-
-    assertThatThrownBy(
-            () ->
-                ReflectionTestUtils.invokeMethod(
-                    accountingFacade, "reserveSalesJournalReference", company, "SO-201"))
-        .isInstanceOf(ApplicationException.class)
-        .hasMessageContaining("Sales journal reference already reserved but mapping not found");
-  }
-
-  @Test
-  void resolveReservedSalesJournalEntry_returnsMappedEntryByEntityId() {
-    JournalReferenceMapping mapping = journalReferenceMapping("SO-202", "SO-202", 2020L);
-    JournalEntry entry = journalEntry(2020L, "SO-202");
-    when(journalReferenceResolver.findExistingEntry(eq(company), eq("SO-202")))
-        .thenReturn(Optional.empty());
-    when(journalReferenceMappingRepository.findByCompanyAndLegacyReferenceIgnoreCase(
-            eq(company), eq("SO-202")))
-        .thenReturn(Optional.of(mapping));
-    when(journalEntryRepository.findByCompanyAndId(eq(company), eq(2020L)))
-        .thenReturn(Optional.of(entry));
-
-    Optional<JournalEntry> resolved =
-        ReflectionTestUtils.invokeMethod(
-            accountingFacade, "resolveReservedSalesJournalEntry", company, "SO-202");
-
-    assertThat(resolved).contains(entry);
-  }
-
-  @Test
-  void resolveReservedSalesJournalEntry_fallsBackToMappedCanonicalReference() {
-    JournalReferenceMapping mapping = journalReferenceMapping("SO-203", "SALES-203", 2030L);
-    JournalEntry entry = journalEntry(2031L, "SALES-203");
-    when(journalReferenceResolver.findExistingEntry(eq(company), eq("SO-203")))
-        .thenReturn(Optional.empty());
-    when(journalReferenceMappingRepository.findByCompanyAndLegacyReferenceIgnoreCase(
-            eq(company), eq("SO-203")))
-        .thenReturn(Optional.of(mapping));
-    when(journalEntryRepository.findByCompanyAndId(eq(company), eq(2030L)))
-        .thenReturn(Optional.empty());
-    when(journalReferenceResolver.findExistingEntry(eq(company), eq("SALES-203")))
-        .thenReturn(Optional.of(entry));
-
-    Optional<JournalEntry> resolved =
-        ReflectionTestUtils.invokeMethod(
-            accountingFacade, "resolveReservedSalesJournalEntry", company, "SO-203");
-
-    assertThat(resolved).contains(entry);
+    verify(dealerReceiptService).recordDealerReceipt(dealerReceiptRequest);
+    verify(dealerReceiptService).recordDealerReceiptSplit(splitRequest);
+    verify(accountingService).recordSupplierPayment(supplierPaymentRequest);
+    verify(accountingService).settleDealerInvoices(dealerSettlementRequest);
+    verify(accountingService).settleSupplierInvoices(supplierSettlementRequest);
+    verify(accountingService).autoSettleDealer(7L, autoSettlementRequest);
+    verify(accountingService).autoSettleSupplier(8L, autoSettlementRequest);
   }
 
   private String buildExpectedHash(
@@ -1118,22 +1140,40 @@ class AccountingFacadeTest {
     return value.stripTrailingZeros().toPlainString();
   }
 
+  private JournalEntryDto expectedJournal(Long id, String referenceNumber) {
+    return new JournalEntryDto(
+        id,
+        null,
+        referenceNumber,
+        LocalDate.of(2026, 3, 31),
+        "memo",
+        "POSTED",
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        List.<JournalLineDto>of(),
+        null,
+        null,
+        null,
+        null,
+        null,
+        null);
+  }
+
   private JournalEntry journalEntry(Long id, String referenceNumber) {
     JournalEntry entry = new JournalEntry();
-    ReflectionTestUtils.setField(entry, "id", id);
+    ReflectionFieldAccess.setField(entry, "id", id);
     entry.setCompany(company);
     entry.setReferenceNumber(referenceNumber);
     return entry;
-  }
-
-  private JournalReferenceMapping journalReferenceMapping(
-      String legacyReference, String canonicalReference, Long entityId) {
-    JournalReferenceMapping mapping = new JournalReferenceMapping();
-    mapping.setCompany(company);
-    mapping.setLegacyReference(legacyReference);
-    mapping.setCanonicalReference(canonicalReference);
-    mapping.setEntityType("JOURNAL_ENTRY");
-    mapping.setEntityId(entityId);
-    return mapping;
   }
 }

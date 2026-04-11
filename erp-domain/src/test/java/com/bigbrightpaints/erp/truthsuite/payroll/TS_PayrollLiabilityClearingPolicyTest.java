@@ -11,15 +11,15 @@ class TS_PayrollLiabilityClearingPolicyTest {
 
   private static final String PAYROLL_SERVICE =
       "src/main/java/com/bigbrightpaints/erp/modules/hr/service/PayrollService.java";
-  private static final String ACCOUNTING_CONTROLLER =
-      "src/main/java/com/bigbrightpaints/erp/modules/accounting/controller/AccountingController.java";
+  private static final String JOURNAL_CONTROLLER =
+      "src/main/java/com/bigbrightpaints/erp/modules/accounting/controller/JournalController.java";
   private static final String ACCOUNTING_FACADE =
       "src/main/java/com/bigbrightpaints/erp/modules/accounting/service/AccountingFacade.java";
   private static final String ACCOUNTING_SERVICE =
-      "src/main/java/com/bigbrightpaints/erp/modules/accounting/service/AccountingService.java";
+      "src/main/java/com/bigbrightpaints/erp/modules/accounting/service/PayrollAccountingService.java";
 
   @Test
-  void payrollPostingUsesCanonicalFacadeAndSalaryPayableAccount() {
+  void payrollPostingUsesCanonicalAccountingFacadeAndSalaryPayableAccount() {
     TruthSuiteFileAssert.assertContains(
         PAYROLL_SERVICE,
         "PayrollRun run = companyEntityLookup.lockPayrollRun(company, payrollRunId);",
@@ -107,20 +107,21 @@ class TS_PayrollLiabilityClearingPolicyTest {
   void payrollPaymentAmountMustMatchPostedSalaryPayableExactly() {
     TruthSuiteFileAssert.assertContains(
         ACCOUNTING_SERVICE,
-        "\"Salary payable account (SALARY-PAYABLE) is required to record payroll payments\"",
-        "if (payableAmount.subtract(amount).abs().compareTo(ALLOCATION_TOLERANCE) > 0) {",
-        "\"Payroll payment amount does not match salary payable from the posted payroll journal\"");
+        "\"Salary payable account (SALARY-PAYABLE) is required to record payroll\"",
+        "if (payableAmount.subtract(amount).abs().compareTo(AccountingConstants.ALLOCATION_TOLERANCE)"
+            + " > 0) {",
+        "\"Payroll payment amount does not match salary payable from the posted payroll\"");
   }
 
   @Test
   void payrollPaymentUsesCanonicalAccountingBoundary() {
     TruthSuiteFileAssert.assertContains(
-        ACCOUNTING_CONTROLLER,
+        JOURNAL_CONTROLLER,
         "@PostMapping(\"/payroll/payments\")",
         "accountingFacade.recordPayrollPayment(request)");
     TruthSuiteFileAssert.assertContains(
         ACCOUNTING_FACADE,
         "public JournalEntryDto recordPayrollPayment(PayrollPaymentRequest request) {",
-        "return accountingService.recordPayrollPayment(request);");
+        "return payrollAccountingService.recordPayrollPayment(request);");
   }
 }

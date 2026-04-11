@@ -23,7 +23,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.batch.support.transaction.ResourcelessTransactionManager;
 import org.springframework.mock.web.MockMultipartFile;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -41,6 +40,7 @@ import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.OpeningBalanceImportResponse;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
+import com.bigbrightpaints.erp.test.support.ReflectionFieldAccess;
 
 @ExtendWith(MockitoExtension.class)
 class OpeningBalanceImportServiceTest {
@@ -89,7 +89,7 @@ class OpeningBalanceImportServiceTest {
         .thenAnswer(
             invocation -> {
               OpeningBalanceImport importRecord = invocation.getArgument(0);
-              ReflectionTestUtils.setField(importRecord, "id", 101L);
+              ReflectionFieldAccess.setField(importRecord, "id", 101L);
               return importRecord;
             });
     when(openingBalanceImportRepository.save(any(OpeningBalanceImport.class)))
@@ -130,6 +130,8 @@ class OpeningBalanceImportServiceTest {
                 "BANK-001,Main Bank,ASSET,100.00,0,Opening cash\n"
                     + "CAP-001,Capital,EQUITY,0,100.00,Owner capital\n"));
 
+    assertThat(response.successCount()).isEqualTo(2);
+    assertThat(response.failureCount()).isZero();
     assertThat(response.rowsProcessed()).isEqualTo(2);
     assertThat(response.accountsCreated()).isZero();
     assertThat(response.errors()).isEmpty();
@@ -151,7 +153,7 @@ class OpeningBalanceImportServiceTest {
   }
 
   @Test
-  void importOpeningBalances_unbalancedTotalsRecordedAsRowErrorWithoutJournalPosting() {
+  void importOpeningBalances_unbalancedTotalsRecordedPerRejectedRowWithoutJournalPosting() {
     Account cash = existingAccount(11L, "BANK-001", "Main Bank", AccountType.ASSET);
     Account debtors = existingAccount(12L, "AR-001", "Debtors", AccountType.ASSET);
     stubIdempotencyDefaults();
@@ -164,7 +166,7 @@ class OpeningBalanceImportServiceTest {
         .thenAnswer(
             invocation -> {
               OpeningBalanceImport importRecord = invocation.getArgument(0);
-              ReflectionTestUtils.setField(importRecord, "id", 102L);
+              ReflectionFieldAccess.setField(importRecord, "id", 102L);
               return importRecord;
             });
     when(openingBalanceImportRepository.save(any(OpeningBalanceImport.class)))
@@ -176,10 +178,57 @@ class OpeningBalanceImportServiceTest {
                 "BANK-001,Main Bank,ASSET,200.00,0,Opening cash\n"
                     + "AR-001,Debtors,ASSET,0,100.00,Wrong side\n"));
 
+    assertThat(response.successCount()).isZero();
+    assertThat(response.failureCount()).isEqualTo(2);
     assertThat(response.rowsProcessed()).isEqualTo(2);
+    assertThat(response.errors()).hasSize(2);
+    assertThat(response.errors())
+        .extracting(OpeningBalanceImportResponse.ImportError::rowNumber)
+        .containsExactlyInAnyOrder(1L, 2L);
     assertThat(response.errors())
         .extracting(OpeningBalanceImportResponse.ImportError::message)
         .anyMatch(message -> message.contains("Import totals are unbalanced"));
+    verify(accountingFacade, never()).createStandardJournal(any(JournalCreationRequest.class));
+  }
+
+  @Test
+  void importOpeningBalances_accountResolutionImbalanceRecordsResolvedRowsByNumber() {
+    Account cash = existingAccount(11L, "BANK-001", "Main Bank", AccountType.ASSET);
+    stubIdempotencyDefaults();
+    when(accountRepository.findByCompanyAndCodeIgnoreCase(company, "BANK-001"))
+        .thenReturn(Optional.of(cash));
+    when(accountRepository.findByCompanyAndCodeIgnoreCase(company, "NEW-EQ-01"))
+        .thenReturn(Optional.empty());
+    when(accountRepository.save(any(Account.class)))
+        .thenThrow(new RuntimeException("account create failed"));
+
+    when(openingBalanceImportRepository.saveAndFlush(any(OpeningBalanceImport.class)))
+        .thenAnswer(
+            invocation -> {
+              OpeningBalanceImport importRecord = invocation.getArgument(0);
+              ReflectionFieldAccess.setField(importRecord, "id", 1021L);
+              return importRecord;
+            });
+    when(openingBalanceImportRepository.save(any(OpeningBalanceImport.class)))
+        .thenAnswer(invocation -> invocation.getArgument(0));
+
+    OpeningBalanceImportResponse response =
+        service.importOpeningBalances(
+            csvFile(
+                "BANK-001,Main Bank,ASSET,200.00,0,Opening cash\n"
+                    + "NEW-EQ-01,Opening Capital,EQUITY,0,200.00,Opening capital\n"));
+
+    assertThat(response.successCount()).isZero();
+    assertThat(response.failureCount()).isEqualTo(2);
+    assertThat(response.rowsProcessed()).isEqualTo(2);
+    assertThat(response.errors()).hasSize(2);
+    assertThat(response.errors())
+        .extracting(OpeningBalanceImportResponse.ImportError::rowNumber)
+        .containsExactlyInAnyOrder(1L, 2L);
+    assertThat(response.errors())
+        .extracting(OpeningBalanceImportResponse.ImportError::message)
+        .anyMatch(message -> message.contains("account create failed"))
+        .anyMatch(message -> message.contains("became unbalanced during account resolution"));
     verify(accountingFacade, never()).createStandardJournal(any(JournalCreationRequest.class));
   }
 
@@ -196,7 +245,7 @@ class OpeningBalanceImportServiceTest {
         .thenAnswer(
             invocation -> {
               Account created = invocation.getArgument(0);
-              ReflectionTestUtils.setField(created, "id", 44L);
+              ReflectionFieldAccess.setField(created, "id", 44L);
               return created;
             });
 
@@ -204,7 +253,7 @@ class OpeningBalanceImportServiceTest {
         .thenAnswer(
             invocation -> {
               OpeningBalanceImport importRecord = invocation.getArgument(0);
-              ReflectionTestUtils.setField(importRecord, "id", 103L);
+              ReflectionFieldAccess.setField(importRecord, "id", 103L);
               return importRecord;
             });
     when(openingBalanceImportRepository.save(any(OpeningBalanceImport.class)))
@@ -246,7 +295,9 @@ class OpeningBalanceImportServiceTest {
                     + "BROKEN,,ASSET,0,0,Invalid zero row\n"
                     + "NEW-EQ-01,Opening Capital,EQUITY,0,100.00,Auto-create equity\n"));
 
-    assertThat(response.rowsProcessed()).isEqualTo(2);
+    assertThat(response.successCount()).isEqualTo(2);
+    assertThat(response.failureCount()).isEqualTo(1);
+    assertThat(response.rowsProcessed()).isEqualTo(3);
     assertThat(response.accountsCreated()).isEqualTo(1);
     assertThat(response.errors()).hasSize(1);
     assertThat(response.errors().getFirst().rowNumber()).isEqualTo(2L);
@@ -271,7 +322,9 @@ class OpeningBalanceImportServiceTest {
     OpeningBalanceImportResponse replay =
         service.importOpeningBalances(csvFile("BANK-001,Main Bank,ASSET,100.00,0,Opening\n"));
 
-    assertThat(replay.rowsProcessed()).isEqualTo(7);
+    assertThat(replay.successCount()).isEqualTo(7);
+    assertThat(replay.failureCount()).isEqualTo(1);
+    assertThat(replay.rowsProcessed()).isEqualTo(8);
     assertThat(replay.accountsCreated()).isEqualTo(2);
     assertThat(replay.errors()).hasSize(1);
     assertThat(replay.errors().getFirst().message()).contains("Invalid account");
@@ -289,7 +342,7 @@ class OpeningBalanceImportServiceTest {
         .thenAnswer(
             invocation -> {
               OpeningBalanceImport importRecord = invocation.getArgument(0);
-              ReflectionTestUtils.setField(importRecord, "id", 104L);
+              ReflectionFieldAccess.setField(importRecord, "id", 104L);
               return importRecord;
             });
     when(openingBalanceImportRepository.save(any(OpeningBalanceImport.class)))
@@ -298,7 +351,9 @@ class OpeningBalanceImportServiceTest {
     OpeningBalanceImportResponse response =
         service.importOpeningBalances(csvFile("BANK-001,Main Bank,ASSET,100.00,0,Type mismatch\n"));
 
-    assertThat(response.rowsProcessed()).isZero();
+    assertThat(response.successCount()).isZero();
+    assertThat(response.failureCount()).isEqualTo(1);
+    assertThat(response.rowsProcessed()).isEqualTo(1);
     assertThat(response.errors()).hasSize(1);
     assertThat(response.errors().getFirst().message()).contains("Account mapping mismatch");
     verify(accountingFacade, never()).createStandardJournal(any(JournalCreationRequest.class));
@@ -323,7 +378,7 @@ class OpeningBalanceImportServiceTest {
 
   private Account existingAccount(Long id, String code, String name, AccountType type) {
     Account account = new Account();
-    ReflectionTestUtils.setField(account, "id", id);
+    ReflectionFieldAccess.setField(account, "id", id);
     account.setCode(code);
     account.setName(name);
     account.setType(type);

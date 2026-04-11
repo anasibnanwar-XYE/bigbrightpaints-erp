@@ -27,7 +27,6 @@ import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -380,27 +379,35 @@ class CompanyContextFilterControlPlaneBindingTest {
   void platformScopeAllowlist_exposesOnlyPlatformControlRoutes() {
     assertThat(
             (Boolean)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     filter, "isPlatformScopedRequestAllowed", "/api/v1/admin/settings"))
         .isTrue();
     assertThat(
             (Boolean)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     filter, "isPlatformScopedRequestAllowed", "/api/v1/companies"))
         .isTrue();
     assertThat(
             (Boolean)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     filter, "isPlatformScopedRequestAllowed", "/api/v1/admin/audit/events"))
         .isFalse();
     assertThat(
             (Boolean)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     filter,
                     "hasTenantRuntimePolicyControlAuthority",
                     "/api/v1/superadmin/tenants/42/limits",
                     "PUT"))
         .isTrue();
+    assertThat(
+            (Boolean)
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    filter,
+                    "isLifecycleControlRequest",
+                    "/api/v1/superadmin/tenants/coa-templates",
+                    "GET"))
+        .isFalse();
   }
 
   @Test
@@ -469,11 +476,12 @@ class CompanyContextFilterControlPlaneBindingTest {
 
   private Long extractCompanyId(String path) {
     return (Long)
-        ReflectionTestUtils.invokeMethod(filter, "extractCompanyIdFromControlPlanePath", path);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            filter, "extractCompanyIdFromControlPlanePath", path);
   }
 
   private boolean isTenantBusinessRequestBlockedForSuperAdmin(String path) {
-    return ReflectionTestUtils.invokeMethod(
+    return com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         filter, "isTenantBusinessRequestBlockedForSuperAdmin", path);
   }
 

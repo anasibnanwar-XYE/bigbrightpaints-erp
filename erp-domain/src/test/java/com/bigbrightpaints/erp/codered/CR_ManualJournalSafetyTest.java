@@ -21,7 +21,7 @@ import com.bigbrightpaints.erp.codered.support.CoderedConcurrencyHarness;
 import com.bigbrightpaints.erp.codered.support.CoderedDbAssertions;
 import com.bigbrightpaints.erp.codered.support.CoderedRetry;
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
-import com.bigbrightpaints.erp.modules.accounting.controller.AccountingController;
+import com.bigbrightpaints.erp.modules.accounting.controller.JournalController;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
@@ -41,7 +41,6 @@ class CR_ManualJournalSafetyTest extends AbstractIntegrationTest {
   @Autowired private CompanyRepository companyRepository;
   @Autowired private AccountRepository accountRepository;
   @Autowired private AccountingService accountingService;
-  @Autowired private AccountingController accountingController;
   @Autowired private JournalEntryRepository journalEntryRepository;
   @Autowired private JournalReferenceMappingRepository journalReferenceMappingRepository;
   @Autowired private JdbcTemplate jdbcTemplate;
@@ -55,7 +54,7 @@ class CR_ManualJournalSafetyTest extends AbstractIntegrationTest {
   @Test
   void apiBoundary_keepsOnlyCanonicalManualJournalWriteSurface() {
     List<String> manualWriteMethods =
-        java.util.Arrays.stream(AccountingController.class.getDeclaredMethods())
+        java.util.Arrays.stream(JournalController.class.getDeclaredMethods())
             .map(java.lang.reflect.Method::getName)
             .filter(
                 methodName ->
@@ -65,7 +64,7 @@ class CR_ManualJournalSafetyTest extends AbstractIntegrationTest {
             .toList();
 
     assertThat(manualWriteMethods)
-        .as("AccountingController should expose only the canonical manual journal write surface")
+        .as("JournalController should expose only the canonical manual journal write surface")
         .containsExactly("createJournalEntry");
   }
 

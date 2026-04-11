@@ -31,6 +31,7 @@ public interface GoodsReceiptRepository extends JpaRepository<GoodsReceipt, Long
 
   boolean existsByCompanyAndLinesRawMaterial(Company company, RawMaterial rawMaterial);
 
+  @EntityGraph(attributePaths = {"supplier", "purchaseOrder", "lines", "lines.rawMaterial"})
   Optional<GoodsReceipt> findByCompanyAndId(Company company, Long id);
 
   Optional<GoodsReceipt> findByCompanyAndReceiptNumberIgnoreCase(

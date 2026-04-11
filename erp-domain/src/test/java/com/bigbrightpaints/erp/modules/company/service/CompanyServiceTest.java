@@ -9,6 +9,7 @@ import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -16,6 +17,7 @@ import static org.mockito.Mockito.when;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -25,6 +27,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.access.AccessDeniedException;
@@ -192,7 +195,7 @@ class CompanyServiceTest {
     Company target = company(4L, "ACME");
     target.setCode("   ");
 
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         companyService, "synchronizeRuntimePolicyEnvelope", target, null, "test-sync");
 
     verifyNoInteractions(tenantRuntimeEnforcementService);
@@ -207,7 +210,8 @@ class CompanyServiceTest {
   }
 
   @Test
-  void synchronizeRuntimePolicyEnvelope_usesFallbackReasonAndActiveStateWhenLifecycleFieldsAreBlank() {
+  void
+      synchronizeRuntimePolicyEnvelope_usesFallbackReasonAndActiveStateWhenLifecycleFieldsAreBlank() {
     authenticateAs("ROLE_SUPER_ADMIN");
     Company target = company(4L, "ACME");
     target.setLifecycleState(null);
@@ -216,7 +220,7 @@ class CompanyServiceTest {
     target.setQuotaMaxApiRequests(77L);
     target.setQuotaMaxActiveUsers((long) Integer.MAX_VALUE + 1L);
 
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         companyService,
         "synchronizeRuntimePolicyEnvelope",
         target,
@@ -251,7 +255,7 @@ class CompanyServiceTest {
 
     assertThatThrownBy(
             () ->
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     withoutRuntimeEnforcementService,
                     "synchronizeRuntimePolicyEnvelope",
                     target,
@@ -501,7 +505,7 @@ class CompanyServiceTest {
 
     assertThatCode(
             () ->
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     companyService, "assertBoundControlPlaneCompanyMatchesTarget", "   "))
         .doesNotThrowAnyException();
   }
@@ -512,7 +516,7 @@ class CompanyServiceTest {
 
     assertThatCode(
             () ->
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     companyService, "assertBoundControlPlaneCompanyMatchesTarget", "tenant-a"))
         .doesNotThrowAnyException();
   }
@@ -749,16 +753,7 @@ class CompanyServiceTest {
     target.setLifecycleReason("manual_hold");
     CompanyRequest request =
         new CompanyRequest(
-            "Acme Updated",
-            "ACME",
-            "UTC",
-            BigDecimal.TEN,
-            120L,
-            3000L,
-            4096L,
-            7L,
-            false,
-            true);
+            "Acme Updated", "ACME", "UTC", BigDecimal.TEN, 120L, 3000L, 4096L, 7L, false, true);
     when(repository.findById(2L)).thenReturn(Optional.of(target));
     when(repository.findByCodeIgnoreCase("ACME")).thenReturn(Optional.of(target));
     when(authScopeService.isPlatformScope("ACME")).thenReturn(false);
@@ -843,12 +838,12 @@ class CompanyServiceTest {
 
     assertThatCode(
             () ->
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     companyService, "synchronizeScopedAccountsToCompanyCode", null, "BBB"))
         .doesNotThrowAnyException();
     assertThatCode(
             () ->
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     companyService,
                     "synchronizeScopedAccountsToCompanyCode",
                     company(null, "ACME"),
@@ -856,12 +851,12 @@ class CompanyServiceTest {
         .doesNotThrowAnyException();
     assertThatCode(
             () ->
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     companyService, "synchronizeScopedAccountsToCompanyCode", persisted, "   "))
         .doesNotThrowAnyException();
     assertThatCode(
             () ->
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     withoutUserRepository,
                     "synchronizeScopedAccountsToCompanyCode",
                     persisted,
@@ -869,7 +864,7 @@ class CompanyServiceTest {
         .doesNotThrowAnyException();
     assertThatCode(
             () ->
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     companyService, "synchronizeScopedAccountsToCompanyCode", persisted, "ACME"))
         .doesNotThrowAnyException();
 
@@ -1146,6 +1141,26 @@ class CompanyServiceTest {
   }
 
   @Test
+  void updateLifecycleState_deniesNonSuperAdmin_withoutTargetCompanyCodeMetadataWhenBlank() {
+    authenticateAs("ROLE_ADMIN");
+    Company company = company(1L, "   ");
+    when(repository.findById(1L)).thenReturn(Optional.of(company));
+
+    assertThatThrownBy(
+            () ->
+                companyService.updateLifecycleState(
+                    1L, new CompanyLifecycleStateRequest("DEACTIVATED", "fraud-investigation")))
+        .isInstanceOf(AccessDeniedException.class);
+
+    @SuppressWarnings("unchecked")
+    ArgumentCaptor<Map<String, String>> metadataCaptor = ArgumentCaptor.forClass(Map.class);
+    verify(auditService)
+        .logAuthFailure(
+            eq(AuditEvent.ACCESS_DENIED), eq("tester@bbp.com"), eq(""), metadataCaptor.capture());
+    assertThat(metadataCaptor.getValue()).doesNotContainKey("targetCompanyCode");
+  }
+
+  @Test
   void updateLifecycleState_rejectsUnknownCompany() {
     authenticateAs("ROLE_SUPER_ADMIN");
     when(repository.lockById(99L)).thenReturn(Optional.empty());
@@ -1246,22 +1261,22 @@ class CompanyServiceTest {
 
     assertThatThrownBy(
             () ->
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     companyService, "requireMembershipById", null, Set.of(allowed)))
         .isInstanceOf(AccessDeniedException.class);
     assertThatThrownBy(
             () ->
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     companyService, "requireMembershipById", 2L, Set.of(allowed)))
         .isInstanceOf(AccessDeniedException.class);
     assertThatThrownBy(
             () ->
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     companyService, "requireMembershipByCode", " ", Set.of(allowed)))
         .isInstanceOf(AccessDeniedException.class);
     assertThatThrownBy(
             () ->
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     companyService, "requireMembershipByCode", "BBB", Set.of(allowed)))
         .isInstanceOf(AccessDeniedException.class);
   }
@@ -1269,7 +1284,9 @@ class CompanyServiceTest {
   @Test
   void normalizeStateCode_rejectsNonTwoCharacterValues() {
     assertThatThrownBy(
-            () -> ReflectionTestUtils.invokeMethod(companyService, "normalizeStateCode", "ABC"))
+            () ->
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    companyService, "normalizeStateCode", "ABC"))
         .hasMessageContaining("State code must be exactly 2 characters");
   }
 
@@ -1279,7 +1296,7 @@ class CompanyServiceTest {
 
     assertThatThrownBy(
             () ->
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     companyService, "requireSuperAdminForTenantBootstrap", "MOCK"))
         .isInstanceOf(AccessDeniedException.class)
         .hasMessageContaining("SUPER_ADMIN authority required for tenant bootstrap");
@@ -1416,6 +1433,26 @@ class CompanyServiceTest {
     assertThat(response.adminEmail()).isEqualTo("tenant-admin@ske.com");
     verify(tenantAdminProvisioningService)
         .resetTenantAdminPassword(company, "tenant-admin@ske.com");
+  }
+
+  @Test
+  void resetTenantAdminPassword_defaultsBlankSupportReasonInAuditMetadata() {
+    authenticateAs("ROLE_SUPER_ADMIN");
+    bindCompanyContext("SKE");
+    Company company = company(5L, "SKE");
+    when(repository.findById(5L)).thenReturn(Optional.of(company));
+    when(passwordResetService.isResetEmailDeliveryEnabled()).thenReturn(true);
+    when(tenantAdminProvisioningService.resetTenantAdminPassword(company, "tenant-admin@ske.com"))
+        .thenReturn("tenant-admin@ske.com");
+
+    companyService.resetTenantAdminPassword(5L, "tenant-admin@ske.com", "   ");
+
+    @SuppressWarnings("unchecked")
+    ArgumentCaptor<Map<String, String>> metadataCaptor = ArgumentCaptor.forClass(Map.class);
+    verify(auditService, times(1))
+        .logSuccess(eq(AuditEvent.ACCESS_GRANTED), metadataCaptor.capture());
+    assertThat(metadataCaptor.getValue())
+        .containsEntry("supportReason", "support-reset-requested");
   }
 
   @Test
@@ -1681,7 +1718,7 @@ class CompanyServiceTest {
 
     assertThatCode(
             () ->
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     companyService,
                     "assertBoundControlPlaneMutationContextMatchesTarget",
                     "TENANT-A"))
@@ -1692,7 +1729,7 @@ class CompanyServiceTest {
   void mutationContextHelper_allowsBlankTargetCode() {
     assertThatCode(
             () ->
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     companyService, "assertBoundControlPlaneMutationContextMatchesTarget", "   "))
         .doesNotThrowAnyException();
   }

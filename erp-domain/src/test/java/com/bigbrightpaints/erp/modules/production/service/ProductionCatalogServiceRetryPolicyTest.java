@@ -29,8 +29,8 @@ import org.springframework.transaction.PlatformTransactionManager;
 import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.idempotency.IdempotencyUtils;
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.service.CompanyDefaultAccountsService;
+import com.bigbrightpaints.erp.modules.accounting.service.CompanyScopedAccountingLookupService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.factory.domain.PackagingSizeMappingRepository;
@@ -79,7 +79,8 @@ class ProductionCatalogServiceRetryPolicyTest {
   @Mock private PackingRecordRepository packingRecordRepository;
   @Mock private ProductionLogMaterialRepository productionLogMaterialRepository;
   @Mock private SalesOrderItemRepository salesOrderItemRepository;
-  @Mock private CompanyEntityLookup companyEntityLookup;
+  @Mock private CompanyScopedProductionLookupService productionLookupService;
+  @Mock private CompanyScopedAccountingLookupService accountingLookupService;
   @Mock private CompanyDefaultAccountsService companyDefaultAccountsService;
   @Mock private CatalogImportRepository catalogImportRepository;
   @Mock private AuditService auditService;
@@ -109,7 +110,8 @@ class ProductionCatalogServiceRetryPolicyTest {
             packingRecordRepository,
             productionLogMaterialRepository,
             salesOrderItemRepository,
-            companyEntityLookup,
+            productionLookupService,
+            accountingLookupService,
             companyDefaultAccountsService,
             catalogImportRepository,
             auditService,
@@ -268,7 +270,8 @@ class ProductionCatalogServiceRetryPolicyTest {
             brandsByName, productsBySku, productsByBrandName, new HashMap<Long, Long>());
     Object importRow = newImportRow(1L, null, "branda", "shared product");
 
-    ReflectionTestUtils.invokeMethod(service, "evictRowCache", company, importRow, context);
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+        service, "evictRowCache", company, importRow, context);
 
     assertThat(productsByBrandName.values())
         .extracting(product -> product.getId())
@@ -316,7 +319,8 @@ class ProductionCatalogServiceRetryPolicyTest {
             brandsByName, productsBySku, productsByBrandName, new HashMap<Long, Long>());
     Object importRow = newImportRow(1L, null, "branda", "shared product");
 
-    ReflectionTestUtils.invokeMethod(service, "evictRowCache", company, importRow, context);
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+        service, "evictRowCache", company, importRow, context);
 
     assertThat(productsByBrandName.values())
         .extracting(product -> product.getId())
@@ -364,7 +368,8 @@ class ProductionCatalogServiceRetryPolicyTest {
             brandsByName, productsBySku, productsByBrandName, new HashMap<Long, Long>());
     Object importRow = newImportRow(1L, null, "branda", "shared product");
 
-    ReflectionTestUtils.invokeMethod(service, "evictRowCache", company, importRow, context);
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+        service, "evictRowCache", company, importRow, context);
 
     assertThat(productsByBrandName.values())
         .extracting(product -> product.getId())
@@ -419,13 +424,15 @@ class ProductionCatalogServiceRetryPolicyTest {
             brandsByName, productsBySku, productsByBrandName, new HashMap<Long, Long>());
     Object importRow = newImportRow(1L, null, "branda", "shared product");
 
-    ReflectionTestUtils.invokeMethod(service, "evictRowCache", company, importRow, context);
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+        service, "evictRowCache", company, importRow, context);
     assertThat(productsByBrandName.values())
         .extracting(product -> product.getId())
         .containsExactly(202L);
 
     productsByBrandName.put(newProductKey(brandA.getId(), "shared product"), replayedBrandA);
-    ReflectionTestUtils.invokeMethod(service, "evictRowCache", company, importRow, context);
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+        service, "evictRowCache", company, importRow, context);
 
     assertThat(productsByBrandName.values())
         .extracting(product -> product.getId())
@@ -462,7 +469,8 @@ class ProductionCatalogServiceRetryPolicyTest {
         .thenReturn(Optional.of(material));
 
     Object outcome =
-        ReflectionTestUtils.invokeMethod(service, "upsertProduct", company, importRow, context);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "upsertProduct", company, importRow, context);
 
     assertThat(outcome).isNotNull();
     verifyNoInteractions(finishedGoodRepository);
@@ -502,7 +510,8 @@ class ProductionCatalogServiceRetryPolicyTest {
         .thenReturn(Optional.of(staleFinishedGood));
 
     Object outcome =
-        ReflectionTestUtils.invokeMethod(service, "upsertProduct", company, importRow, context);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "upsertProduct", company, importRow, context);
 
     assertThat(outcome).isNotNull();
     verify(finishedGoodRepository).delete(staleFinishedGood);
@@ -543,7 +552,8 @@ class ProductionCatalogServiceRetryPolicyTest {
         .thenReturn(Optional.of(staleFinishedGood));
 
     Object outcome =
-        ReflectionTestUtils.invokeMethod(service, "upsertProduct", company, importRow, context);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "upsertProduct", company, importRow, context);
 
     assertThat(outcome).isNotNull();
     verify(finishedGoodRepository).delete(staleFinishedGood);
@@ -551,12 +561,13 @@ class ProductionCatalogServiceRetryPolicyTest {
 
   private boolean invokeIsRetryableImportFailure(Throwable error) {
     Boolean retryable =
-        ReflectionTestUtils.invokeMethod(service, "isRetryableImportFailure", error);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "isRetryableImportFailure", error);
     return Boolean.TRUE.equals(retryable);
   }
 
   private ProductionProduct invokeRefreshCachedProduct(Company company, ProductionProduct cached) {
-    return ReflectionTestUtils.invokeMethod(
+    return com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         service, "refreshCachedProductFromCurrentTransaction", company, cached);
   }
 
@@ -577,10 +588,15 @@ class ProductionCatalogServiceRetryPolicyTest {
     Class<?> importContextClass =
         Class.forName(ProductionCatalogService.class.getName() + "$ImportContext");
     Constructor<?> constructor =
-        importContextClass.getDeclaredConstructor(Map.class, Map.class, Map.class, Map.class);
+        importContextClass.getDeclaredConstructor(
+            Map.class, Map.class, Map.class, Map.class, Map.class);
     constructor.setAccessible(true);
     return constructor.newInstance(
-        brandsByName, productsBySku, productsByBrandName, validatedRawMaterialInventoryAccounts);
+        brandsByName,
+        productsBySku,
+        productsByBrandName,
+        validatedRawMaterialInventoryAccounts,
+        new HashMap<Long, Long>());
   }
 
   private Object newImportRow(

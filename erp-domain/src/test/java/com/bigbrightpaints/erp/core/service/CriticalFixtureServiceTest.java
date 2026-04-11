@@ -66,16 +66,41 @@ class CriticalFixtureServiceTest {
             finishedGoodBatchRepository,
             companyRepository);
 
-    when(companyRepository.save(any(Company.class)))
+    org.mockito.Mockito.lenient()
+        .when(companyRepository.save(any(Company.class)))
         .thenAnswer(invocation -> invocation.getArgument(0, Company.class));
-    when(dealerRepository.save(any(Dealer.class)))
+    org.mockito.Mockito.lenient()
+        .when(dealerRepository.save(any(Dealer.class)))
         .thenAnswer(invocation -> invocation.getArgument(0, Dealer.class));
-    when(supplierRepository.save(any(Supplier.class)))
+    org.mockito.Mockito.lenient()
+        .when(supplierRepository.save(any(Supplier.class)))
         .thenAnswer(invocation -> invocation.getArgument(0, Supplier.class));
-    when(productRepository.save(any(ProductionProduct.class)))
+    org.mockito.Mockito.lenient()
+        .when(productRepository.save(any(ProductionProduct.class)))
         .thenAnswer(invocation -> invocation.getArgument(0, ProductionProduct.class));
-    when(finishedGoodBatchRepository.existsByFinishedGoodAndBatchCodeIgnoreCase(any(), anyString()))
+    org.mockito.Mockito.lenient()
+        .when(
+            finishedGoodBatchRepository.existsByFinishedGoodAndBatchCodeIgnoreCase(
+                any(), anyString()))
         .thenReturn(true);
+  }
+
+  @Test
+  void criticalFixtureService_isLoadedFromTestClasspath() {
+    String classLocation =
+        CriticalFixtureService.class
+            .getProtectionDomain()
+            .getCodeSource()
+            .getLocation()
+            .toExternalForm();
+    String testClassLocation =
+        CriticalFixtureServiceTest.class
+            .getProtectionDomain()
+            .getCodeSource()
+            .getLocation()
+            .toExternalForm();
+
+    assertThat(classLocation).isEqualTo(testClassLocation);
   }
 
   @Test
@@ -141,7 +166,8 @@ class CriticalFixtureServiceTest {
             });
 
     FinishedGood fixtureFinishedGood = finishedGood(company, 11L, "FG-FIXTURE");
-    FinishedGood orderFinishedGood = finishedGood(company, 12L, E2eFixtureCatalog.ORDER_PRIMARY_SKU);
+    FinishedGood orderFinishedGood =
+        finishedGood(company, 12L, E2eFixtureCatalog.ORDER_PRIMARY_SKU);
     when(finishedGoodRepository.findByCompanyAndProductCode(eq(company), anyString()))
         .thenAnswer(
             invocation -> {

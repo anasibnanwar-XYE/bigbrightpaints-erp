@@ -2,7 +2,7 @@
 
 `docs/frontend-api/` documents the shared API contracts and rules that apply across all frontend portal shells. This is the canonical source for cross-portal frontend contracts and replaces any older handoff docs that referenced deprecated routes or tenant-scoping assumptions.
 
-Last reviewed: 2026-03-31
+Last reviewed: 2026-04-07
 
 ## Purpose
 
@@ -44,6 +44,13 @@ See [`docs/frontend-portals/README.md`](../frontend-portals/README.md) for detai
 
 - **Manual journals:** `POST /api/v1/accounting/journal-entries` is the only public manual journal create route.
 - **Reversals:** `POST /api/v1/accounting/journal-entries/{entryId}/reverse` is the only public reversal route.
+- **Inventory reads:** `GET /api/v1/raw-materials/stock` returns `RawMaterialStockEntryDto[]`; `GET /api/v1/finished-goods` returns a paginated `PageResponse<FinishedGoodDto>`; `GET /api/v1/finished-goods/stock-summary` returns `FinishedGoodStockSummaryDto[]`; `GET /api/v1/finished-goods/{id}/batches` returns `FinishedGoodBatchInventoryDto[]`; and `GET /api/v1/inventory/batches/{id}/movements` returns `InventoryBatchMovementHistoryDto[]`.
+- **M6 create status codes:** `POST /api/v1/inventory/adjustments`, `POST /api/v1/suppliers`, `POST /api/v1/purchasing/purchase-orders`, and `POST /api/v1/purchasing/goods-receipts` return **`201 Created`**.
+- **Opening stock import response:** `OpeningStockImportResponse` includes `importedCount` alongside row/batch counts.
+- **Supplier read model:** `SupplierResponse` includes `outstandingBalance`.
+- **Purchase-order timeline shape:** timeline rows include `status`, `timestamp`, and `actor` (in addition to transition metadata).
+- **Settlement writes:** dealer and supplier settlement routes both accept the same `PartnerSettlementRequest` body; use `partnerType` + `partnerId`, not retired dealer/supplier-specific request DTOs, and do not send a separate `payments` list.
+- **Period writes:** both `POST /api/v1/accounting/periods` and `PUT /api/v1/accounting/periods/{periodId}` use `AccountingPeriodRequest`; close request/approve/reject use `PeriodCloseRequestActionRequest`, and reopen uses `AccountingPeriodReopenRequest`.
 - **Period close:** frontend must follow maker-checker flow: request close → tenant-admin approvals inbox → approve/reject close.
 - **Exports:** export approval belongs to `tenant-admin`; report consumption stays in `accounting`.
 - **Dispatch:** dispatch confirmation belongs to `factory` even when invoice or journal side effects follow.
@@ -59,6 +66,15 @@ See [`docs/frontend-portals/README.md`](../frontend-portals/README.md) for detai
 | [accounting-reference-chains.md](./accounting-reference-chains.md) | Cross-document reference chains, audit trail, provenance fields |
 | [dto-examples.md](./dto-examples.md) | Sample request/response payloads for common operations |
 
+## Role-Oriented Handoff Files
+
+| Role | File |
+|---|---|
+| Admin (`ROLE_ADMIN`) | [admin-role.md](./admin-role.md) |
+| Accounting (`ROLE_ACCOUNTING`) | [accounting-role.md](./accounting-role.md) |
+| Sales (`ROLE_SALES`) | [sales-role.md](./sales-role.md) |
+| Dealer (`ROLE_DEALER`) | [dealer-role.md](./dealer-role.md) |
+
 ## Retired Routes
 
 The following routes are no longer part of the current frontend contract:
@@ -71,6 +87,8 @@ The following routes are no longer part of the current frontend contract:
 | `POST /api/v1/accounting/journals/manual` | Use `POST /api/v1/accounting/journal-entries` |
 | `POST /api/v1/accounting/journal-entries/{entryId}/cascade-reverse` | Use `POST /api/v1/accounting/journal-entries/{entryId}/reverse` |
 | `POST /api/v1/accounting/periods/{periodId}/close` | Use maker-checker flow: request close → admin approvals → approve/reject close |
+| `DealerSettlementRequest` / `SupplierSettlementRequest` | Use `PartnerSettlementRequest` on both settlement routes |
+| `AccountingPeriodUpsertRequest` / `AccountingPeriodUpdateRequest` | Use `AccountingPeriodRequest` for period create and update |
 
 ## Relationship to Frontend Portals
 

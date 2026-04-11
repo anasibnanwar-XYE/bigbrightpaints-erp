@@ -4,6 +4,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -28,6 +29,7 @@ import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import jakarta.validation.Valid;
 
 /**
@@ -101,6 +103,18 @@ public class DealerPortalController {
    * Submit a dealer-scoped credit-limit increase request.
    */
   @PostMapping("/credit-limit-requests")
+  @Operation(summary = "Submit dealer credit-limit request")
+  @ApiResponses({
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+        responseCode = "201",
+        description = "Credit-limit request submitted"),
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+        responseCode = "400",
+        description = "Invalid credit-limit request payload"),
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+        responseCode = "403",
+        description = "Forbidden")
+  })
   public ResponseEntity<ApiResponse<CreditLimitRequestDto>> createCreditLimitRequest(
       @Valid @RequestBody DealerPortalCreditLimitRequestCreateRequest request) {
     Long dealerId = dealerPortalService.getCurrentDealer().getId();
@@ -112,7 +126,8 @@ public class DealerPortalController {
                 dealerId, request.amountRequested(), request.reason()),
             requesterIdentity.userId(),
             requesterIdentity.email());
-    return ResponseEntity.ok(ApiResponse.success("Credit limit request submitted", response));
+    return ResponseEntity.status(HttpStatus.CREATED)
+        .body(ApiResponse.success("Credit limit request submitted", response));
   }
 
   /**

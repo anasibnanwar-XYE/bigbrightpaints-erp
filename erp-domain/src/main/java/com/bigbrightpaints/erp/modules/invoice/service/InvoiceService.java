@@ -7,6 +7,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -14,8 +15,6 @@ import org.springframework.stereotype.Service;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.BusinessDocumentTruths;
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
-import com.bigbrightpaints.erp.core.util.LegacyDispatchInvoiceLinkMatcher;
 import com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAllocation;
 import com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAllocationRepository;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
@@ -29,6 +28,7 @@ import com.bigbrightpaints.erp.modules.invoice.dto.InvoiceLineDto;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrder;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderRepository;
+import com.bigbrightpaints.erp.modules.sales.service.CompanyScopedSalesLookupService;
 import com.bigbrightpaints.erp.modules.sales.service.SalesOrderCrudService;
 import com.bigbrightpaints.erp.shared.dto.DocumentLifecycleDto;
 import com.bigbrightpaints.erp.shared.dto.LinkedBusinessReferenceDto;
@@ -42,23 +42,27 @@ public class InvoiceService {
   private final InvoiceRepository invoiceRepository;
   private final SalesOrderCrudService salesOrderCrudService;
   private final SalesOrderRepository salesOrderRepository;
-  private final CompanyEntityLookup companyEntityLookup;
+  private final CompanyScopedSalesLookupService salesLookupService;
+  private final CompanyScopedInvoiceLookupService invoiceLookupService;
   private final PackagingSlipRepository packagingSlipRepository;
   private final PartnerSettlementAllocationRepository settlementAllocationRepository;
 
+  @Autowired
   public InvoiceService(
       CompanyContextService companyContextService,
       InvoiceRepository invoiceRepository,
       SalesOrderCrudService salesOrderCrudService,
       SalesOrderRepository salesOrderRepository,
-      CompanyEntityLookup companyEntityLookup,
+      CompanyScopedSalesLookupService salesLookupService,
+      CompanyScopedInvoiceLookupService invoiceLookupService,
       PackagingSlipRepository packagingSlipRepository,
       PartnerSettlementAllocationRepository settlementAllocationRepository) {
     this.companyContextService = companyContextService;
     this.invoiceRepository = invoiceRepository;
     this.salesOrderCrudService = salesOrderCrudService;
     this.salesOrderRepository = salesOrderRepository;
-    this.companyEntityLookup = companyEntityLookup;
+    this.salesLookupService = salesLookupService;
+    this.invoiceLookupService = invoiceLookupService;
     this.packagingSlipRepository = packagingSlipRepository;
     this.settlementAllocationRepository = settlementAllocationRepository;
   }
@@ -203,11 +207,22 @@ public class InvoiceService {
 
   @Transactional
   public List<InvoiceDto> listInvoices(int page, int size) {
+    return listInvoices(page, size, null);
+  }
+
+  @Transactional
+  public List<InvoiceDto> listInvoices(int page, int size, Long salesOrderId) {
     Company company = companyContextService.requireCurrentCompany();
     int safeSize = Math.max(1, Math.min(size, 200));
     PageRequest pageable = PageRequest.of(Math.max(page, 0), safeSize);
-    Page<Long> invoiceIds =
-        invoiceRepository.findIdsByCompanyOrderByIssueDateDescIdDesc(company, pageable);
+    Page<Long> invoiceIds;
+    if (salesOrderId != null) {
+      invoiceIds =
+          invoiceRepository.findIdsByCompanyAndSalesOrderIdOrderByIssueDateDescIdDesc(
+              company, salesOrderId, pageable);
+    } else {
+      invoiceIds = invoiceRepository.findIdsByCompanyOrderByIssueDateDescIdDesc(company, pageable);
+    }
     List<Long> ids = invoiceIds.getContent();
     if (ids.isEmpty()) {
       return List.of();
@@ -220,7 +235,7 @@ public class InvoiceService {
   @Transactional
   public List<InvoiceDto> listDealerInvoices(Long dealerId, int page, int size) {
     Company company = companyContextService.requireCurrentCompany();
-    Dealer dealer = companyEntityLookup.requireDealer(company, dealerId);
+    Dealer dealer = salesLookupService.requireDealer(company, dealerId);
     int safeSize = Math.max(1, Math.min(size, 200));
     PageRequest pageable = PageRequest.of(Math.max(page, 0), safeSize);
     Page<Long> invoiceIds =
@@ -244,7 +259,7 @@ public class InvoiceService {
   @Transactional
   public List<InvoiceDto> listDealerInvoices(Long dealerId) {
     Company company = companyContextService.requireCurrentCompany();
-    Dealer dealer = companyEntityLookup.requireDealer(company, dealerId);
+    Dealer dealer = salesLookupService.requireDealer(company, dealerId);
     return toDtos(
         company, invoiceRepository.findByCompanyAndDealerOrderByIssueDateDesc(company, dealer));
   }
@@ -255,7 +270,7 @@ public class InvoiceService {
     Invoice invoice =
         invoiceRepository
             .findByCompanyAndId(company, id)
-            .orElseGet(() -> companyEntityLookup.requireInvoice(company, id));
+            .orElseGet(() -> invoiceLookupService.requireInvoice(company, id));
     return toDto(invoice, buildLinkedReferenceContext(company, List.of(invoice)));
   }
 
@@ -267,7 +282,7 @@ public class InvoiceService {
     Invoice invoice =
         invoiceRepository
             .findByCompanyAndId(company, id)
-            .orElseGet(() -> companyEntityLookup.requireInvoice(company, id));
+            .orElseGet(() -> invoiceLookupService.requireInvoice(company, id));
     String dealerEmail = invoice.getDealer() != null ? invoice.getDealer().getEmail() : null;
     String companyName = invoice.getCompany() != null ? invoice.getCompany().getName() : null;
     return new InvoiceWithEmail(
@@ -303,7 +318,7 @@ public class InvoiceService {
     DocumentLifecycleDto lifecycle =
         BusinessDocumentTruths.invoiceLifecycle(invoice.getStatus(), invoice.getJournalEntry());
     List<LinkedBusinessReferenceDto> linkedReferences =
-        buildLinkedReferences(invoice, lifecycle, linkedReferenceContext);
+        buildLinkedReferences(invoice, linkedReferenceContext);
     Dealer dealer = invoice.getDealer();
     return new InvoiceDto(
         invoice.getId(),
@@ -337,7 +352,6 @@ public class InvoiceService {
 
   private List<LinkedBusinessReferenceDto> buildLinkedReferences(
       Invoice invoice,
-      DocumentLifecycleDto lifecycle,
       LinkedReferenceContext linkedReferenceContext) {
     List<LinkedBusinessReferenceDto> linkedReferences = new ArrayList<>();
     SalesOrder salesOrder = invoice.getSalesOrder();
@@ -346,10 +360,6 @@ public class InvoiceService {
           linkedReferenceContext
               .packagingSlipsBySalesOrderId()
               .getOrDefault(salesOrder.getId(), List.of());
-      int salesOrderInvoiceCount =
-          linkedReferenceContext
-              .currentInvoiceCountsBySalesOrderId()
-              .getOrDefault(salesOrder.getId(), defaultCurrentInvoiceCount(invoice));
       linkedReferences.add(
           BusinessDocumentTruths.reference(
               "SOURCE_ORDER",
@@ -359,7 +369,7 @@ public class InvoiceService {
               BusinessDocumentTruths.salesOrderLifecycle(salesOrder),
               salesOrder.getSalesJournalEntryId()));
       for (PackagingSlip slip : slips) {
-        if (!isSlipLinkedToInvoice(slip, invoice, slips, salesOrderInvoiceCount)) {
+        if (!isSlipLinkedToInvoice(slip, invoice)) {
           continue;
         }
         linkedReferences.add(
@@ -433,9 +443,7 @@ public class InvoiceService {
     List<Long> salesOrderIdsNeedingInvoiceCount =
         packagingSlipsBySalesOrderId.entrySet().stream()
             .filter(entry -> !entry.getValue().isEmpty())
-            .filter(
-                entry ->
-                    !LegacyDispatchInvoiceLinkMatcher.hasExplicitInvoiceLinks(entry.getValue()))
+            .filter(entry -> !hasExplicitInvoiceLinks(entry.getValue()))
             .map(Map.Entry::getKey)
             .toList();
     List<Invoice> salesOrderInvoices =
@@ -458,8 +466,7 @@ public class InvoiceService {
                         Collectors.groupingBy(
                             orderInvoice -> orderInvoice.getSalesOrder().getId(),
                             Collectors.collectingAndThen(
-                                Collectors.toList(),
-                                LegacyDispatchInvoiceLinkMatcher::countCurrentInvoices)));
+                                Collectors.toList(), InvoiceService::countCurrentInvoices)));
 
     List<Long> invoiceIds = invoices.stream().map(Invoice::getId).filter(Objects::nonNull).toList();
     Map<Long, List<PartnerSettlementAllocation>> settlementAllocationsByInvoiceId =
@@ -479,20 +486,43 @@ public class InvoiceService {
         currentInvoiceCountsBySalesOrderId);
   }
 
-  private boolean isSlipLinkedToInvoice(
-      PackagingSlip slip,
-      Invoice invoice,
-      List<PackagingSlip> candidateSlips,
-      int salesOrderInvoiceCount) {
-    return LegacyDispatchInvoiceLinkMatcher.isSlipLinkedToInvoice(
-        slip, invoice, candidateSlips, salesOrderInvoiceCount);
+  private boolean isSlipLinkedToInvoice(PackagingSlip slip, Invoice invoice) {
+    return slip != null
+        && invoice != null
+        && slip.getInvoiceId() != null
+        && invoice.getId() != null
+        && slip.getInvoiceId().equals(invoice.getId());
   }
 
   private int defaultCurrentInvoiceCount(Invoice invoice) {
-    return invoice != null
-            && LegacyDispatchInvoiceLinkMatcher.isCurrentInvoiceStatus(invoice.getStatus())
-        ? 1
-        : 0;
+    return invoice != null && isCurrentInvoiceStatus(invoice.getStatus()) ? 1 : 0;
+  }
+
+  private static boolean hasExplicitInvoiceLinks(List<PackagingSlip> slips) {
+    return slips != null
+        && slips.stream().anyMatch(slip -> slip != null && slip.getInvoiceId() != null);
+  }
+
+  private static int countCurrentInvoices(List<Invoice> invoices) {
+    if (invoices == null) {
+      return 0;
+    }
+    return (int)
+        invoices.stream()
+            .filter(Objects::nonNull)
+            .filter(invoice -> isCurrentInvoiceStatus(invoice.getStatus()))
+            .count();
+  }
+
+  private static boolean isCurrentInvoiceStatus(String status) {
+    if (status == null) {
+      return true;
+    }
+    String normalized = status.trim().toUpperCase(java.util.Locale.ROOT);
+    return !normalized.equals("DRAFT")
+        && !normalized.equals("VOID")
+        && !normalized.equals("REVERSED")
+        && !normalized.equals("WRITTEN_OFF");
   }
 
   private record LinkedReferenceContext(

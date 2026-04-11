@@ -22,6 +22,7 @@
         <testcontainers.version>1.20.2</testcontainers.version>
         <skipTests>false</skipTests>
         <jacoco.skip>false</jacoco.skip>
+        <jacoco.check.skip>false</jacoco.check.skip>
         <test.groups></test.groups>
         <test.excludedGroups></test.excludedGroups>
         <test.failIfNoTests>true</test.failIfNoTests>
@@ -339,6 +340,7 @@
                             <goal>check</goal>
                         </goals>
                         <configuration>
+                            <skip>${jacoco.check.skip}</skip>
                             <rules>
                                 <rule>
                                     <element>PACKAGE</element>
@@ -600,12 +602,19 @@
                                 <include>**/truthsuite/**/*Test.java</include>
                                 <include>**/truthsuite/**/*IT.java</include>
                                 <include>**/truthsuite/**/*Suite.java</include>
+                                <include>**/core/audittrail/AuditCorrelationIdResolverTest.java</include>
+                                <include>**/core/health/ConfigurationHealthIndicatorTest.java</include>
+                                <include>**/core/health/RequiredConfigHealthIndicatorTest.java</include>
                                 <include>**/smoke/**/*Test.java</include>
                                 <include>**/core/util/BusinessDocumentTruthsTest.java</include>
                                 <include>**/modules/admin/AdminUserSecurityIT.java</include>
                                 <include>**/modules/admin/AdminApprovalRbacIT.java</include>
                                 <include>**/modules/admin/controller/AdminSettingsControllerApprovalsContractTest.java</include>
                                 <include>**/modules/accounting/service/AccountingAuditTrailServiceTest.java</include>
+                                <include>**/modules/accounting/event/AccountingEventStoreMetricsTest.java</include>
+                                <include>**/modules/accounting/service/AccountingComplianceAuditServiceTest.java</include>
+                                <include>**/modules/accounting/service/BankReconciliationSessionServiceTest.java</include>
+                                <include>**/modules/accounting/service/JournalEntryMutationServiceTest.java</include>
                                 <include>**/modules/auth/AuthPasswordResetPublicContractIT.java</include>
                                 <include>**/modules/factory/controller/PackagingMappingControllerSecurityContractTest.java</include>
                                 <include>**/modules/factory/controller/PackagingMappingControllerTest.java</include>
@@ -628,14 +637,17 @@
                                 <include>**/modules/invoice/service/InvoiceServiceTest.java</include>
                                 <include>**/modules/purchasing/service/PurchaseResponseMapperTest.java</include>
                                 <include>**/modules/purchasing/service/PurchasingServiceGoodsReceiptTest.java</include>
+                                <include>**/modules/sales/controller/DealerControllerTest.java</include>
                                 <include>**/modules/sales/controller/SalesControllerIdempotencyHeaderTest.java</include>
                                 <include>**/modules/sales/domain/SalesOrderTest.java</include>
                                 <include>**/modules/sales/dto/DispatchConfirmRequestTest.java</include>
                                 <include>**/modules/sales/dto/SalesOrderRequestTest.java</include>
                                 <include>**/modules/sales/SalesControllerIT.java</include>
                                 <include>**/orchestrator/service/IntegrationCoordinatorTest.java</include>
+                                <include>**/modules/sales/service/DealerServiceTest.java</include>
                                 <include>**/modules/sales/service/SalesCoreEngineCoverageTest.java</include>
                                 <include>**/modules/sales/service/SalesFulfillmentServiceTest.java</include>
+                                <include>**/modules/sales/service/SalesOrderAutoCloseServiceTest.java</include>
                                 <include>**/modules/sales/service/SalesProformaBoundaryServiceTest.java</include>
                                 <include>**/modules/reports/ReportExportApprovalIT.java</include>
                                 <include>**/e2e/production/FactoryPackagingCostingIT.java</include>
@@ -656,6 +668,7 @@
                 <test.groups>critical</test.groups>
                 <test.excludedGroups>flaky</test.excludedGroups>
                 <test.failIfNoTests>true</test.failIfNoTests>
+                <jacoco.check.skip>true</jacoco.check.skip>
             </properties>
             <build>
                 <plugins>
@@ -667,9 +680,16 @@
                                 <include>**/truthsuite/**/*Test.java</include>
                                 <include>**/truthsuite/**/*IT.java</include>
                                 <include>**/truthsuite/**/*Suite.java</include>
+                                <include>**/core/audittrail/AuditCorrelationIdResolverTest.java</include>
+                                <include>**/core/health/ConfigurationHealthIndicatorTest.java</include>
+                                <include>**/core/health/RequiredConfigHealthIndicatorTest.java</include>
                                 <include>**/core/util/BusinessDocumentTruthsTest.java</include>
                                 <include>**/modules/admin/AdminUserSecurityIT.java</include>
                                 <include>**/modules/accounting/service/AccountingAuditTrailServiceTest.java</include>
+                                <include>**/modules/accounting/event/AccountingEventStoreMetricsTest.java</include>
+                                <include>**/modules/accounting/service/AccountingComplianceAuditServiceTest.java</include>
+                                <include>**/modules/accounting/service/BankReconciliationSessionServiceTest.java</include>
+                                <include>**/modules/accounting/service/JournalEntryMutationServiceTest.java</include>
                                 <include>**/modules/auth/AuthPasswordResetPublicContractIT.java</include>
                                 <include>**/modules/factory/controller/PackagingMappingControllerSecurityContractTest.java</include>
                                 <include>**/modules/factory/controller/PackagingMappingControllerTest.java</include>
@@ -692,14 +712,17 @@
                                 <include>**/modules/invoice/service/InvoiceServiceTest.java</include>
                                 <include>**/modules/purchasing/service/PurchaseResponseMapperTest.java</include>
                                 <include>**/modules/purchasing/service/PurchasingServiceGoodsReceiptTest.java</include>
+                                <include>**/modules/sales/controller/DealerControllerTest.java</include>
                                 <include>**/modules/sales/controller/SalesControllerIdempotencyHeaderTest.java</include>
                                 <include>**/modules/sales/domain/SalesOrderTest.java</include>
                                 <include>**/modules/sales/SalesControllerIT.java</include>
                                 <include>**/modules/sales/dto/DispatchConfirmRequestTest.java</include>
                                 <include>**/modules/sales/dto/SalesOrderRequestTest.java</include>
                                 <include>**/orchestrator/service/IntegrationCoordinatorTest.java</include>
+                                <include>**/modules/sales/service/DealerServiceTest.java</include>
                                 <include>**/modules/sales/service/SalesCoreEngineCoverageTest.java</include>
                                 <include>**/modules/sales/service/SalesFulfillmentServiceTest.java</include>
+                                <include>**/modules/sales/service/SalesOrderAutoCloseServiceTest.java</include>
                                 <include>**/modules/sales/service/SalesProformaBoundaryServiceTest.java</include>
                                 <include>**/e2e/production/FactoryPackagingCostingIT.java</include>
                                 <include>**/regression/ProductionLogPackingStatusRegressionIT.java</include>

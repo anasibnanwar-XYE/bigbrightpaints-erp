@@ -10,6 +10,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
@@ -256,8 +258,7 @@ class TenantRuntimeAccessServiceTest {
 
   @Test
   void acquire_failsClosed_whenSettingsReadThrows() {
-    when(settingsRepository.findById(any()))
-        .thenThrow(new RuntimeException("settings-store-down"));
+    when(settingsRepository.findById(any())).thenThrow(new RuntimeException("settings-store-down"));
 
     TenantRuntimeAccessService.AccessHandle accessHandle =
         service.acquire("ACME", new MockHttpServletRequest("GET", "/api/v1/auth/me"));
@@ -467,8 +468,11 @@ class TenantRuntimeAccessServiceTest {
   @Test
   void normalizeTenantToken_returnsUnknown_forNullOrBlank() {
     String tokenForNull =
-        ReflectionTestUtils.invokeMethod(service, "normalizeTenantToken", (Object) null);
-    String tokenForBlank = ReflectionTestUtils.invokeMethod(service, "normalizeTenantToken", "   ");
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "normalizeTenantToken", (Object) null);
+    String tokenForBlank =
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "normalizeTenantToken", "   ");
 
     assertThat(tokenForNull).isEqualTo("unknown");
     assertThat(tokenForBlank).isEqualTo("unknown");
@@ -476,9 +480,15 @@ class TenantRuntimeAccessServiceTest {
 
   @Test
   void isMutating_treatsHeadAndOptionsAsNonMutating_andBlankAsMutating() {
-    Boolean head = ReflectionTestUtils.invokeMethod(service, "isMutating", "HEAD");
-    Boolean options = ReflectionTestUtils.invokeMethod(service, "isMutating", "OPTIONS");
-    Boolean blank = ReflectionTestUtils.invokeMethod(service, "isMutating", "   ");
+    Boolean head =
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "isMutating", "HEAD");
+    Boolean options =
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "isMutating", "OPTIONS");
+    Boolean blank =
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "isMutating", "   ");
 
     assertThat(head).isFalse();
     assertThat(options).isFalse();
@@ -518,6 +528,19 @@ class TenantRuntimeAccessServiceTest {
     assertThat(activeGauge.value()).isZero();
     assertThat(totalGauge.value()).isEqualTo(1.0d);
     assertThat(deniedGauge.value()).isZero();
+  }
+
+  @Test
+  void tenantRuntimePolicyResolutionFailure_isStaticAndDeclaresSerialVersionUid() throws Exception {
+    Class<?> failureClass =
+        Class.forName(
+            TenantRuntimeAccessService.class.getName() + "$TenantRuntimePolicyResolutionFailure");
+    Field serialVersionUid = failureClass.getDeclaredField("serialVersionUID");
+    serialVersionUid.setAccessible(true);
+
+    assertThat(Modifier.isStatic(failureClass.getModifiers())).isTrue();
+    assertThat(serialVersionUid.getType()).isEqualTo(long.class);
+    assertThat(serialVersionUid.getLong(null)).isEqualTo(1L);
   }
 
   private String keyHoldState(long companyId) {

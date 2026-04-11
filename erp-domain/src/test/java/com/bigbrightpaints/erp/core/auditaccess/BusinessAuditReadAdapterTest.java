@@ -34,7 +34,9 @@ class BusinessAuditReadAdapterTest {
     event.setMetadata(null);
     event.setTraceId("trace-17");
 
-    AuditFeedItemDto dto = ReflectionTestUtils.invokeMethod(adapter, "toDto", event, "TENANT-A");
+    AuditFeedItemDto dto =
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            adapter, "toDto", event, "TENANT-A");
 
     assertThat(dto.sourceId()).isEqualTo(17L);
     assertThat(dto.companyCode()).isEqualTo("TENANT-A");

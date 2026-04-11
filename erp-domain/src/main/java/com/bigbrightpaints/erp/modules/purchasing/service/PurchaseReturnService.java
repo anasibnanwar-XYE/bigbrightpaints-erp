@@ -14,6 +14,7 @@ import org.springframework.util.StringUtils;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
+import com.bigbrightpaints.erp.core.idempotency.IdempotencyReservationService;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.core.util.MoneyUtils;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalCorrectionType;
@@ -46,6 +47,7 @@ import jakarta.transaction.Transactional;
 
 @Service
 public class PurchaseReturnService {
+  private static final int MAX_JOURNAL_REFERENCE_LENGTH = 64;
 
   private final CompanyContextService companyContextService;
   private final RawMaterialPurchaseRepository purchaseRepository;
@@ -61,6 +63,8 @@ public class PurchaseReturnService {
   private final CompanyClock companyClock;
   private final GstService gstService;
   private final PurchaseReturnAllocationService allocationService;
+  private final IdempotencyReservationService idempotencyReservationService =
+      new IdempotencyReservationService();
 
   public PurchaseReturnService(
       CompanyContextService companyContextService,
@@ -159,6 +163,12 @@ public class PurchaseReturnService {
 
   @Transactional
   public JournalEntryDto recordPurchaseReturn(PurchaseReturnRequest request) {
+    return recordPurchaseReturn(request, null);
+  }
+
+  @Transactional
+  public JournalEntryDto recordPurchaseReturn(
+      PurchaseReturnRequest request, String idempotencyKey) {
     Company company = companyContextService.requireCurrentCompany();
     Supplier supplier = purchasingLookupService.requireSupplier(company, request.supplierId());
     RawMaterialPurchase purchase =
@@ -194,10 +204,7 @@ public class PurchaseReturnService {
     BigDecimal taxAmount = computeReturnTax(purchase, material, quantity);
     BigDecimal totalAmount = currency(lineNet.add(taxAmount));
     String memo = returnMemo(material, supplier, request.reason());
-    String reference =
-        StringUtils.hasText(request.referenceNumber())
-            ? request.referenceNumber().trim()
-            : referenceNumberService.purchaseReturnReference(company, supplier);
+    String reference = resolveReturnReference(company, supplier, request, idempotencyKey);
     LocalDate returnDate =
         request.returnDate() != null ? request.returnDate() : companyClock.today(company);
 
@@ -248,9 +255,13 @@ public class PurchaseReturnService {
     if (taxAmount.compareTo(BigDecimal.ZERO) > 0) {
       taxCredits = new HashMap<>();
       taxCredits.put(null, taxAmount);
+      String companyStateCode = resolveCompanyStateCode(company);
+      String supplierStateCode = resolveSupplierStateCode(supplier);
+      if (!StringUtils.hasText(supplier.getStateCode()) && StringUtils.hasText(supplierStateCode)) {
+        supplier.setStateCode(supplierStateCode);
+      }
       GstService.GstBreakdown split =
-          gstService.splitTaxAmount(
-              lineNet, taxAmount, company.getStateCode(), supplier.getStateCode());
+          splitTaxAmountSafe(lineNet, taxAmount, companyStateCode, supplierStateCode);
       gstBreakdown =
           new JournalCreationRequest.GstBreakdown(
               lineNet, split.cgst(), split.sgst(), split.igst());
@@ -305,12 +316,14 @@ public class PurchaseReturnService {
     if (taxAmount.compareTo(BigDecimal.ZERO) > 0) {
       taxCredits = new HashMap<>();
       taxCredits.put(null, taxAmount);
+      Company company = companyContextService.requireCurrentCompany();
+      String companyStateCode = resolveCompanyStateCode(company);
+      String supplierStateCode = resolveSupplierStateCode(supplier);
+      if (!StringUtils.hasText(supplier.getStateCode()) && StringUtils.hasText(supplierStateCode)) {
+        supplier.setStateCode(supplierStateCode);
+      }
       GstService.GstBreakdown split =
-          gstService.splitTaxAmount(
-              lineNet,
-              taxAmount,
-              companyContextService.requireCurrentCompany().getStateCode(),
-              supplier.getStateCode());
+          splitTaxAmountSafe(lineNet, taxAmount, companyStateCode, supplierStateCode);
       gstBreakdown =
           new JournalCreationRequest.GstBreakdown(
               lineNet, split.cgst(), split.sgst(), split.igst());
@@ -418,9 +431,7 @@ public class PurchaseReturnService {
   }
 
   private void validateReplayPurchaseReturnProvenance(
-      RawMaterialPurchase purchase,
-      String reference,
-      List<RawMaterialMovement> existingMovements) {
+      RawMaterialPurchase purchase, String reference, List<RawMaterialMovement> existingMovements) {
     if (purchase == null || existingMovements == null || existingMovements.isEmpty()) {
       return;
     }
@@ -465,7 +476,8 @@ public class PurchaseReturnService {
       return;
     }
     if (entry.getReversalOf() != null
-        && sourceEntry != null && sourceEntry.getId() != null
+        && sourceEntry != null
+        && sourceEntry.getId() != null
         && !Objects.equals(entry.getReversalOf().getId(), sourceEntry.getId())) {
       throw new ApplicationException(
           ErrorCode.CONCURRENCY_CONFLICT,
@@ -654,6 +666,47 @@ public class PurchaseReturnService {
     return currency(taxPerUnit.multiply(returnQuantity));
   }
 
+  private String resolveReturnReference(
+      Company company,
+      Supplier supplier,
+      PurchaseReturnRequest request,
+      String idempotencyKeyHeader) {
+    String explicitReference =
+        StringUtils.hasText(request.referenceNumber()) ? request.referenceNumber().trim() : null;
+    String canonicalIdempotencyKey =
+        idempotencyReservationService.normalizeKey(idempotencyKeyHeader);
+    if (!StringUtils.hasText(canonicalIdempotencyKey)) {
+      String referenceNumber =
+          StringUtils.hasText(explicitReference)
+              ? explicitReference
+              : referenceNumberService.purchaseReturnReference(company, supplier);
+      return requireJournalReferenceLength(referenceNumber);
+    }
+    String requiredIdempotencyKey =
+        idempotencyReservationService.requireKey(canonicalIdempotencyKey, "purchase returns");
+    if (StringUtils.hasText(explicitReference)
+        && !requiredIdempotencyKey.equals(explicitReference)) {
+      throw new ApplicationException(
+              ErrorCode.VALIDATION_INVALID_INPUT,
+              "referenceNumber must match Idempotency-Key for purchase returns")
+          .withDetail("referenceNumber", explicitReference)
+          .withDetail("idempotencyKey", requiredIdempotencyKey);
+    }
+    return requireJournalReferenceLength(requiredIdempotencyKey);
+  }
+
+  private String requireJournalReferenceLength(String referenceNumber) {
+    if (!StringUtils.hasText(referenceNumber)
+        || referenceNumber.length() <= MAX_JOURNAL_REFERENCE_LENGTH) {
+      return referenceNumber;
+    }
+    throw new ApplicationException(
+            ErrorCode.VALIDATION_INVALID_INPUT,
+            "referenceNumber cannot exceed 64 characters for purchase returns")
+        .withDetail("referenceNumber", referenceNumber)
+        .withDetail("maxLength", MAX_JOURNAL_REFERENCE_LENGTH);
+  }
+
   private BigDecimal positive(BigDecimal value, String field) {
     if (value == null || value.compareTo(BigDecimal.ZERO) <= 0) {
       throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
@@ -678,5 +731,70 @@ public class PurchaseReturnService {
   private String returnMemo(RawMaterial material, Supplier supplier, String reason) {
     String prefix = StringUtils.hasText(reason) ? reason.trim() : "Purchase return";
     return prefix + " - " + material.getName() + " to " + supplier.getName();
+  }
+
+  private GstService.GstBreakdown splitTaxAmountSafe(
+      BigDecimal taxableAmount,
+      BigDecimal taxAmount,
+      String sourceStateCode,
+      String supplierStateCode) {
+    GstService.GstBreakdown lineBreakdown =
+        gstService.splitTaxAmount(taxableAmount, taxAmount, sourceStateCode, supplierStateCode);
+    if (lineBreakdown != null) {
+      return lineBreakdown;
+    }
+    return fallbackTaxBreakdown(taxableAmount, taxAmount, sourceStateCode, supplierStateCode);
+  }
+
+  private String resolveCompanyStateCode(Company company) {
+    if (company == null) {
+      return null;
+    }
+    return gstService.normalizeStateCode(company.getStateCode());
+  }
+
+  private String resolveSupplierStateCode(Supplier supplier) {
+    if (supplier == null) {
+      return null;
+    }
+    String explicit = gstService.normalizeStateCode(supplier.getStateCode());
+    if (StringUtils.hasText(explicit)) {
+      return explicit;
+    }
+    String inferred = inferStateCodeFromGstNumber(supplier.getGstNumber());
+    return gstService.normalizeStateCode(inferred);
+  }
+
+  private String inferStateCodeFromGstNumber(String gstNumber) {
+    if (!StringUtils.hasText(gstNumber)) {
+      return null;
+    }
+    String normalized = gstNumber.trim().toUpperCase(java.util.Locale.ROOT);
+    if (normalized.length() < 2) {
+      return null;
+    }
+    return normalized.substring(0, 2);
+  }
+
+  private GstService.GstBreakdown fallbackTaxBreakdown(
+      BigDecimal taxableAmount,
+      BigDecimal taxAmount,
+      String sourceStateCode,
+      String supplierStateCode) {
+    GstService.TaxType taxType =
+        gstService.resolveTaxType(sourceStateCode, supplierStateCode, false);
+    if (taxType == GstService.TaxType.INTER_STATE) {
+      return new GstService.GstBreakdown(
+          currency(taxableAmount),
+          BigDecimal.ZERO,
+          BigDecimal.ZERO,
+          currency(taxAmount),
+          taxType);
+    }
+    BigDecimal roundedTax = currency(taxAmount);
+    BigDecimal cgst = currency(roundedTax.divide(new BigDecimal("2"), 6, RoundingMode.HALF_UP));
+    BigDecimal sgst = currency(roundedTax.subtract(cgst));
+    return new GstService.GstBreakdown(
+        currency(taxableAmount), cgst, sgst, BigDecimal.ZERO, taxType);
   }
 }

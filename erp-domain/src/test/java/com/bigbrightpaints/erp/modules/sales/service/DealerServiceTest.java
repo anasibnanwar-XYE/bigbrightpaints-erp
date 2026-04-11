@@ -53,8 +53,8 @@ import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerPaymentTerms;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderRepository;
-import com.bigbrightpaints.erp.modules.sales.dto.DealerCreditExposureView;
 import com.bigbrightpaints.erp.modules.sales.dto.CreateDealerRequest;
+import com.bigbrightpaints.erp.modules.sales.dto.DealerCreditExposureView;
 
 @Tag("critical")
 @ExtendWith(MockitoExtension.class)
@@ -308,16 +308,22 @@ class DealerServiceTest {
 
     var results = dealerService.listDealers();
 
-    assertThat(results).singleElement().satisfies(result -> assertThat(result.creditStatus()).isEqualTo("WITHIN_LIMIT"));
+    assertThat(results)
+        .singleElement()
+        .satisfies(result -> assertThat(result.creditStatus()).isEqualTo("WITHIN_LIMIT"));
   }
 
   @Test
   void listDealers_allStatusUsesDirectoryQueryAndPagination() {
     Dealer active = dealer("D-ACTIVE", new BigDecimal("1000"), "NORTH");
     Dealer onHold = dealer("D-HOLD", new BigDecimal("1000"), "SOUTH");
-    PageRequest pageRequest = PageRequest.of(1, 1, org.springframework.data.domain.Sort.by(
-        org.springframework.data.domain.Sort.Order.asc("name"),
-        org.springframework.data.domain.Sort.Order.asc("id")));
+    PageRequest pageRequest =
+        PageRequest.of(
+            1,
+            1,
+            org.springframework.data.domain.Sort.by(
+                org.springframework.data.domain.Sort.Order.asc("name"),
+                org.springframework.data.domain.Sort.Order.asc("id")));
     when(dealerRepository.findByCompany(eq(company), eq(pageRequest)))
         .thenReturn(List.of(active, onHold));
     when(dealerLedgerService.currentBalances(List.of(3L, 4L)))
@@ -351,10 +357,15 @@ class DealerServiceTest {
   @Test
   void listDealers_statusPaginationNormalizesStatusAndCapsPageSize() {
     Dealer onHold = dealer("D-HOLD", new BigDecimal("1000"), "SOUTH");
-    PageRequest pageRequest = PageRequest.of(0, 200, org.springframework.data.domain.Sort.by(
-        org.springframework.data.domain.Sort.Order.asc("name"),
-        org.springframework.data.domain.Sort.Order.asc("id")));
-    when(dealerRepository.findByCompanyAndStatusIgnoreCase(eq(company), eq("ON_HOLD"), eq(pageRequest)))
+    PageRequest pageRequest =
+        PageRequest.of(
+            0,
+            200,
+            org.springframework.data.domain.Sort.by(
+                org.springframework.data.domain.Sort.Order.asc("name"),
+                org.springframework.data.domain.Sort.Order.asc("id")));
+    when(dealerRepository.findByCompanyAndStatusIgnoreCase(
+            eq(company), eq("ON_HOLD"), eq(pageRequest)))
         .thenReturn(List.of(onHold));
     when(dealerLedgerService.currentBalances(List.of(4L))).thenReturn(Map.of(4L, BigDecimal.ZERO));
     when(salesOrderRepository.sumPendingCreditExposureByCompanyAndDealerIds(
@@ -364,7 +375,63 @@ class DealerServiceTest {
     var results = dealerService.listDealers(" on_hold ", 0, 999);
 
     assertThat(results).singleElement().extracting(result -> result.code()).isEqualTo("D-HOLD");
-    verify(dealerRepository).findByCompanyAndStatusIgnoreCase(eq(company), eq("ON_HOLD"), eq(pageRequest));
+    verify(dealerRepository)
+        .findByCompanyAndStatusIgnoreCase(eq(company), eq("ON_HOLD"), eq(pageRequest));
+  }
+
+  @Test
+  void getDealer_returnsDealerPayloadWhenDealerExists() {
+    Dealer dealer = dealer("D-DETAIL", new BigDecimal("1000"), "WEST");
+    UserAccount portalUser = new UserAccount("dealer-detail@bbp.com", "TEST", "hash", "Dealer");
+    dealer.setPortalUser(portalUser);
+    Account receivableAccount = new Account();
+    ReflectionTestUtils.setField(receivableAccount, "id", 321L);
+    receivableAccount.setCode("AR-D-DETAIL");
+    dealer.setReceivableAccount(receivableAccount);
+    when(dealerRepository.findByCompanyAndId(company, 99L)).thenReturn(Optional.of(dealer));
+    when(dealerLedgerService.currentBalance(99L)).thenReturn(new BigDecimal("250"));
+    when(salesOrderRepository.sumPendingCreditExposureByCompanyAndDealer(
+            eq(company), eq(dealer), any(), eq(null)))
+        .thenReturn(new BigDecimal("100"));
+
+    var response = dealerService.getDealer(99L);
+
+    assertThat(response.id()).isEqualTo(99L);
+    assertThat(response.portalEmail()).isEqualTo("dealer-detail@bbp.com");
+    assertThat(response.receivableAccountCode()).isEqualTo("AR-D-DETAIL");
+    assertThat(response.outstandingBalance()).isEqualByComparingTo("250");
+    assertThat(response.creditStatus()).isEqualTo("WITHIN_LIMIT");
+  }
+
+  @Test
+  void getDealer_defaultsPortalEmailAndOutstandingBalanceWhenDataMissing() {
+    Dealer dealer = dealer("D-DEFAULTS", new BigDecimal("1000"), "WEST");
+    dealer.setPortalUser(null);
+    dealer.setReceivableAccount(null);
+    when(dealerRepository.findByCompanyAndId(company, 99L)).thenReturn(Optional.of(dealer));
+    when(dealerLedgerService.currentBalance(99L)).thenReturn(null);
+    when(salesOrderRepository.sumPendingCreditExposureByCompanyAndDealer(
+            eq(company), eq(dealer), any(), eq(null)))
+        .thenReturn(BigDecimal.ZERO);
+
+    var response = dealerService.getDealer(99L);
+
+    assertThat(response.id()).isEqualTo(99L);
+    assertThat(response.portalEmail()).isNull();
+    assertThat(response.outstandingBalance()).isEqualByComparingTo(BigDecimal.ZERO);
+  }
+
+  @Test
+  void getDealer_returnsNotFoundWhenDealerDoesNotExist() {
+    when(dealerRepository.findByCompanyAndId(company, 404L)).thenReturn(Optional.empty());
+
+    assertThatThrownBy(() -> dealerService.getDealer(404L))
+        .isInstanceOfSatisfying(
+            ApplicationException.class,
+            ex -> {
+              assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.BUSINESS_ENTITY_NOT_FOUND);
+              assertThat(ex.getMessage()).isEqualTo("Dealer not found");
+            });
   }
 
   @Test
@@ -395,17 +462,17 @@ class DealerServiceTest {
     @SuppressWarnings("unchecked")
     Map<Long, BigDecimal> noCompany =
         (Map<Long, BigDecimal>)
-            ReflectionTestUtils.invokeMethod(
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                 dealerService, "resolvePendingOrderExposureMap", null, List.of(1L));
     @SuppressWarnings("unchecked")
     Map<Long, BigDecimal> nullDealerIds =
         (Map<Long, BigDecimal>)
-            ReflectionTestUtils.invokeMethod(
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                 dealerService, "resolvePendingOrderExposureMap", company, null);
     @SuppressWarnings("unchecked")
     Map<Long, BigDecimal> noDealerIds =
         (Map<Long, BigDecimal>)
-            ReflectionTestUtils.invokeMethod(
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                 dealerService, "resolvePendingOrderExposureMap", company, List.<Long>of());
 
     assertThat(noCompany).isEmpty();
@@ -427,7 +494,7 @@ class DealerServiceTest {
     @SuppressWarnings("unchecked")
     Map<Long, BigDecimal> exposures =
         (Map<Long, BigDecimal>)
-            ReflectionTestUtils.invokeMethod(
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                 dealerService, "resolvePendingOrderExposureMap", company, List.of(1L, 2L));
 
     assertThat(exposures)
@@ -438,7 +505,8 @@ class DealerServiceTest {
   @Test
   void search_normalizesFiltersAndDefaultsMissingExposureRows() {
     Dealer dealer = dealer("D-MATCH", new BigDecimal("1000"), "NORTH");
-    when(dealerRepository.searchFiltered(eq(company), eq("dealer"), eq("ACTIVE"), eq("NORTH"), any()))
+    when(dealerRepository.searchFiltered(
+            eq(company), eq("dealer"), eq("ACTIVE"), eq("NORTH"), any()))
         .thenReturn(List.of(dealer));
     when(dealerLedgerService.currentBalances(List.of(99L)))
         .thenReturn(Map.of(99L, new BigDecimal("50")));
@@ -448,7 +516,9 @@ class DealerServiceTest {
 
     var results = dealerService.search("  dealer  ", " active ", " north ", " within_limit ");
 
-    assertThat(results).singleElement().satisfies(result -> assertThat(result.creditStatus()).isEqualTo("WITHIN_LIMIT"));
+    assertThat(results)
+        .singleElement()
+        .satisfies(result -> assertThat(result.creditStatus()).isEqualTo("WITHIN_LIMIT"));
   }
 
   @Test
@@ -500,16 +570,17 @@ class DealerServiceTest {
   }
 
   @Test
-  void resolvePendingOrderExposure_returnsZeroWhenDealerContextIsIncompleteOrRepositoryReturnsNull() {
+  void
+      resolvePendingOrderExposure_returnsZeroWhenDealerContextIsIncompleteOrRepositoryReturnsNull() {
     BigDecimal missingDealer =
         (BigDecimal)
-            ReflectionTestUtils.invokeMethod(
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                 dealerService, "resolvePendingOrderExposure", new Object[] {null});
 
     Dealer dealerWithoutContext = new Dealer();
     BigDecimal missingContext =
         (BigDecimal)
-            ReflectionTestUtils.invokeMethod(
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                 dealerService, "resolvePendingOrderExposure", dealerWithoutContext);
 
     Dealer dealer = dealer("D-NULL-EXPOSURE", new BigDecimal("1000"), "WEST");
@@ -517,7 +588,9 @@ class DealerServiceTest {
             eq(company), eq(dealer), any(), eq(null)))
         .thenReturn(null);
     BigDecimal nullRepositoryExposure =
-        (BigDecimal) ReflectionTestUtils.invokeMethod(dealerService, "resolvePendingOrderExposure", dealer);
+        (BigDecimal)
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                dealerService, "resolvePendingOrderExposure", dealer);
 
     assertThat(missingDealer).isEqualByComparingTo(BigDecimal.ZERO);
     assertThat(missingContext).isEqualByComparingTo(BigDecimal.ZERO);
@@ -690,7 +763,7 @@ class DealerServiceTest {
     @SuppressWarnings("unchecked")
     List<java.util.Map<String, Object>> payload =
         (List<java.util.Map<String, Object>>)
-            ReflectionTestUtils.invokeMethod(
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                 dealerService, "toOverdueInvoicePayload", new Object[] {null});
 
     assertThat(payload).isEqualTo(List.of());
@@ -701,7 +774,7 @@ class DealerServiceTest {
     @SuppressWarnings("unchecked")
     java.util.Map<String, Object> buckets =
         (java.util.Map<String, Object>)
-            ReflectionTestUtils.invokeMethod(
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                 dealerService, "toPortalAgingBuckets", new Object[] {null});
 
     assertThat(buckets)
@@ -714,7 +787,7 @@ class DealerServiceTest {
     @SuppressWarnings("unchecked")
     java.util.Map<String, Object> buckets =
         (java.util.Map<String, Object>)
-            ReflectionTestUtils.invokeMethod(
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                 dealerService,
                 "toPortalAgingBuckets",
                 new AgingSummaryResponse(
@@ -730,7 +803,8 @@ class DealerServiceTest {
   void safeReturnsProvidedValueWhenPresent() {
     BigDecimal value =
         (BigDecimal)
-            ReflectionTestUtils.invokeMethod(dealerService, "safe", new BigDecimal("25.00"));
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                dealerService, "safe", new BigDecimal("25.00"));
 
     assertThat(value).isEqualByComparingTo("25.00");
   }

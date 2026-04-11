@@ -4,10 +4,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
@@ -22,7 +24,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.batch.support.transaction.ResourcelessTransactionManager;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.web.multipart.MultipartFile;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import com.bigbrightpaints.erp.core.audit.AuditEvent;
@@ -39,6 +43,7 @@ import com.bigbrightpaints.erp.modules.accounting.dto.OpeningBalanceImportRespon
 import com.bigbrightpaints.erp.modules.accounting.dto.TallyImportResponse;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
+import com.bigbrightpaints.erp.test.support.ReflectionFieldAccess;
 
 @ExtendWith(MockitoExtension.class)
 class TallyImportServiceTest {
@@ -67,7 +72,7 @@ class TallyImportServiceTest {
             new ResourcelessTransactionManager());
     company = new Company();
     company.setCode("ACME");
-    when(companyContextService.requireCurrentCompany()).thenReturn(company);
+    lenient().when(companyContextService.requireCurrentCompany()).thenReturn(company);
   }
 
   @Test
@@ -84,7 +89,7 @@ class TallyImportServiceTest {
         .thenAnswer(
             invocation -> {
               TallyImport record = invocation.getArgument(0);
-              ReflectionTestUtils.setField(record, "id", 401L);
+              ReflectionFieldAccess.setField(record, "id", 401L);
               return record;
             });
     when(tallyImportRepository.save(any(TallyImport.class)))
@@ -98,7 +103,7 @@ class TallyImportServiceTest {
         .thenReturn(Optional.of(creditors));
 
     when(openingBalanceImportService.importFromParsedRows(any(List.class), any()))
-        .thenReturn(new OpeningBalanceImportResponse(2, 0, List.of()));
+        .thenReturn(OpeningBalanceImportResponse.fromSuccessfulRows(2, 0, List.of()));
 
     TallyImportResponse response = service.importTallyXml(file);
 
@@ -201,7 +206,7 @@ class TallyImportServiceTest {
         .thenReturn(Optional.empty());
 
     when(openingBalanceImportService.importFromParsedRows(any(List.class), any()))
-        .thenReturn(new OpeningBalanceImportResponse(1, 0, List.of()));
+        .thenReturn(OpeningBalanceImportResponse.fromSuccessfulRows(1, 0, List.of()));
 
     TallyImportResponse response = service.importTallyXml(file);
 
@@ -213,9 +218,97 @@ class TallyImportServiceTest {
         .contains("opening-row:Unmapped Voucher");
   }
 
+  @Test
+  void resolveFileHash_fallsBackToWeakFilenameHashWhenFileReadFails() {
+    MultipartFile file =
+        new MultipartFile() {
+          @Override
+          public String getName() {
+            return "file";
+          }
+
+          @Override
+          public String getOriginalFilename() {
+            return "broken-tally.xml";
+          }
+
+          @Override
+          public String getContentType() {
+            return "application/xml";
+          }
+
+          @Override
+          public boolean isEmpty() {
+            return false;
+          }
+
+          @Override
+          public long getSize() {
+            return 1;
+          }
+
+          @Override
+          public byte[] getBytes() throws IOException {
+            throw new IOException("boom");
+          }
+
+          @Override
+          public java.io.InputStream getInputStream() throws IOException {
+            throw new IOException("boom");
+          }
+
+          @Override
+          public void transferTo(java.io.File dest) throws IOException {
+            throw new IOException("boom");
+          }
+        };
+
+    String hash = ReflectionTestUtils.invokeMethod(service, "resolveFileHash", file);
+
+    assertThat(hash).isEqualTo(Integer.toHexString("broken-tally.xml".hashCode()));
+  }
+
+  @Test
+  void serializeStringList_returnsNullWhenObjectMapperWriteFails() {
+    TallyImportService failingService = serviceWithObjectMapper(new WriteFailingObjectMapper());
+
+    String serialized =
+        ReflectionTestUtils.invokeMethod(failingService, "serializeStringList", List.of("alpha"));
+
+    assertThat(serialized).isNull();
+  }
+
+  @Test
+  void deserializeStringList_returnsEmptyWhenJsonIsInvalid() {
+    List<String> parsed = ReflectionTestUtils.invokeMethod(service, "deserializeStringList", "{");
+
+    assertThat(parsed).isEmpty();
+  }
+
+  @Test
+  void serializeErrors_returnsNullWhenObjectMapperWriteFails() {
+    TallyImportService failingService = serviceWithObjectMapper(new WriteFailingObjectMapper());
+
+    String serialized =
+        ReflectionTestUtils.invokeMethod(
+            failingService,
+            "serializeErrors",
+            List.of(new TallyImportResponse.ImportError("row-1", "bad ledger")));
+
+    assertThat(serialized).isNull();
+  }
+
+  @Test
+  void deserializeErrors_returnsEmptyWhenJsonIsInvalid() {
+    List<TallyImportResponse.ImportError> parsed =
+        ReflectionTestUtils.invokeMethod(service, "deserializeErrors", "{");
+
+    assertThat(parsed).isEmpty();
+  }
+
   private Account account(Long id, String code, String name, AccountType type) {
     Account account = new Account();
-    ReflectionTestUtils.setField(account, "id", id);
+    ReflectionFieldAccess.setField(account, "id", id);
     account.setCode(code);
     account.setName(name);
     account.setType(type);
@@ -226,6 +319,18 @@ class TallyImportServiceTest {
   private MockMultipartFile xmlFile(String xml) {
     return new MockMultipartFile(
         "file", "tally.xml", "application/xml", xml.getBytes(StandardCharsets.UTF_8));
+  }
+
+  private TallyImportService serviceWithObjectMapper(ObjectMapper objectMapper) {
+    return new TallyImportService(
+        companyContextService,
+        accountRepository,
+        openingBalanceImportService,
+        journalEntryRepository,
+        tallyImportRepository,
+        auditService,
+        objectMapper,
+        new ResourcelessTransactionManager());
   }
 
   private String hashOf(MockMultipartFile file) throws Exception {
@@ -297,5 +402,12 @@ class TallyImportServiceTest {
              </BODY>
            </ENVELOPE>
            """;
+  }
+
+  private static final class WriteFailingObjectMapper extends ObjectMapper {
+    @Override
+    public String writeValueAsString(Object value) throws JsonProcessingException {
+      throw new JsonProcessingException("boom") {};
+    }
   }
 }

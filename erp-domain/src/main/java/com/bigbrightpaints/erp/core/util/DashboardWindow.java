@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.core.util;
 
+import java.time.DateTimeException;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -7,6 +8,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.regex.Pattern;
 
 public record DashboardWindow(
     LocalDate start,
@@ -16,28 +18,27 @@ public record DashboardWindow(
     ZoneId zone,
     String bucket,
     int bucketDays) {
+  private static final int DEFAULT_WINDOW_DAYS = 30;
+  private static final long MAX_WINDOW_DAYS = 366L;
+  private static final Pattern DAY_WINDOW_PATTERN = Pattern.compile("^\\d+d$");
+
   public static DashboardWindow resolve(
       String window, String compare, String timezone, String fallbackTimezone) {
     ZoneId zone = parseZone(timezone, fallbackTimezone);
     LocalDate today = LocalDate.ofInstant(CompanyTime.now(), zone);
     WindowRange range = resolveRange(window, today);
-    int days = (int) ChronoUnit.DAYS.between(range.start(), range.end()) + 1;
-    LocalDate compareStart = null;
-    LocalDate compareEnd = null;
-    if (compare != null && !compare.isBlank()) {
-      String normalized = compare.trim().toLowerCase(Locale.ROOT);
-      if ("prev".equals(normalized)) {
-        compareEnd = range.start().minusDays(1);
-        compareStart = compareEnd.minusDays(days - 1L);
-      } else if ("yoy".equals(normalized)) {
-        compareStart = range.start().minusYears(1);
-        compareEnd = range.end().minusYears(1);
-      }
-    }
+    long days = ChronoUnit.DAYS.between(range.start(), range.end()) + 1;
+    ComparisonRange comparisonRange = resolveComparisonRange(range, days, compare);
     int bucketDays = days <= 31 ? 1 : 7;
     String bucket = bucketDays == 1 ? "DAILY" : "WEEKLY";
     return new DashboardWindow(
-        range.start(), range.end(), compareStart, compareEnd, zone, bucket, bucketDays);
+        range.start(),
+        range.end(),
+        comparisonRange.start(),
+        comparisonRange.end(),
+        zone,
+        bucket,
+        bucketDays);
   }
 
   public Instant startInstant() {
@@ -59,44 +60,55 @@ public record DashboardWindow(
   }
 
   private static ZoneId parseZone(String timezone, String fallbackTimezone) {
-    try {
-      if (timezone != null && !timezone.isBlank()) {
-        return ZoneId.of(timezone.trim());
-      }
-    } catch (Exception ignored) {
+    ZoneId requestedZone = resolveZoneId(timezone);
+    if (requestedZone != null) {
+      return requestedZone;
     }
-    try {
-      if (fallbackTimezone != null && !fallbackTimezone.isBlank()) {
-        return ZoneId.of(fallbackTimezone.trim());
-      }
-    } catch (Exception ignored) {
-    }
-    return ZoneId.of("UTC");
+    ZoneId fallbackZone = resolveZoneId(fallbackTimezone);
+    return fallbackZone != null ? fallbackZone : ZoneId.of("UTC");
   }
 
   private static WindowRange resolveRange(String window, LocalDate today) {
     if (window == null || window.isBlank()) {
-      return rangeForDays(today, 30);
+      return rangeForDays(today, DEFAULT_WINDOW_DAYS);
     }
     String normalized = window.trim().toLowerCase(Locale.ROOT);
-    if (normalized.endsWith("d")) {
+    if (DAY_WINDOW_PATTERN.matcher(normalized).matches()) {
       String daysPart = normalized.substring(0, normalized.length() - 1);
-      try {
-        int days = Integer.parseInt(daysPart);
-        return rangeForDays(today, Math.max(days, 1));
-      } catch (NumberFormatException ignored) {
+      WindowRange dayRange = resolveDayWindow(daysPart, today);
+      if (dayRange != null) {
+        return dayRange;
       }
     }
     return switch (normalized) {
       case "mtd" -> new WindowRange(today.withDayOfMonth(1), today);
       case "qtd" -> new WindowRange(startOfQuarter(today), today);
       case "ytd" -> new WindowRange(LocalDate.of(today.getYear(), 1, 1), today);
-      default -> rangeForDays(today, 30);
+      default -> rangeForDays(today, DEFAULT_WINDOW_DAYS);
     };
   }
 
-  private static WindowRange rangeForDays(LocalDate today, int days) {
-    int safeDays = Math.max(days, 1);
+  private static ZoneId resolveZoneId(String candidate) {
+    if (candidate == null || candidate.isBlank()) {
+      return null;
+    }
+    try {
+      return ZoneId.of(candidate.trim());
+    } catch (DateTimeException ex) {
+      return null;
+    }
+  }
+
+  private static WindowRange resolveDayWindow(String daysPart, LocalDate today) {
+    try {
+      return rangeForDays(today, Long.parseLong(daysPart));
+    } catch (DateTimeException | NumberFormatException ex) {
+      return null;
+    }
+  }
+
+  private static WindowRange rangeForDays(LocalDate today, long days) {
+    long safeDays = Math.min(Math.max(days, 1L), MAX_WINDOW_DAYS);
     LocalDate start = today.minusDays(safeDays - 1L);
     return new WindowRange(start, today);
   }
@@ -107,5 +119,44 @@ public record DashboardWindow(
     return LocalDate.of(today.getYear(), quarterStartMonth, 1);
   }
 
+  private static ComparisonRange resolveComparisonRange(
+      WindowRange range, long days, String compare) {
+    if (compare == null || compare.isBlank()) {
+      return ComparisonRange.empty();
+    }
+    return switch (compare.trim().toLowerCase(Locale.ROOT)) {
+      case "prev" -> resolvePreviousComparisonRange(range, days);
+      case "yoy" -> resolveYearOverYearComparisonRange(range);
+      default -> ComparisonRange.empty();
+    };
+  }
+
+  private static ComparisonRange resolvePreviousComparisonRange(WindowRange range, long days) {
+    long availablePriorDays = ChronoUnit.DAYS.between(LocalDate.MIN, range.start());
+    if (availablePriorDays < days) {
+      return ComparisonRange.empty();
+    }
+    LocalDate compareEnd = range.start().minusDays(1);
+    LocalDate compareStart = compareEnd.minusDays(days - 1L);
+    return new ComparisonRange(compareStart, compareEnd);
+  }
+
+  private static ComparisonRange resolveYearOverYearComparisonRange(WindowRange range) {
+    if (!canShiftBackOneYear(range.start()) || !canShiftBackOneYear(range.end())) {
+      return ComparisonRange.empty();
+    }
+    return new ComparisonRange(range.start().minusYears(1), range.end().minusYears(1));
+  }
+
+  private static boolean canShiftBackOneYear(LocalDate date) {
+    return date.getYear() > LocalDate.MIN.getYear();
+  }
+
   private record WindowRange(LocalDate start, LocalDate end) {}
+
+  private record ComparisonRange(LocalDate start, LocalDate end) {
+    private static ComparisonRange empty() {
+      return new ComparisonRange(null, null);
+    }
+  }
 }

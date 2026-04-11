@@ -30,6 +30,8 @@ public class RequiredConfigHealthIndicator implements HealthIndicator {
   private final String mailHost;
   private final String mailUsername;
   private final String mailPassword;
+  private final boolean environmentValidationEnabled;
+  private final boolean skipChecksWhenValidationDisabled;
 
   public RequiredConfigHealthIndicator(
       @Value("${jwt.secret:}") String jwtSecret,
@@ -39,7 +41,10 @@ public class RequiredConfigHealthIndicator implements HealthIndicator {
       @Value("${erp.mail.enabled:true}") boolean mailEnabled,
       @Value("${spring.mail.host:}") String mailHost,
       @Value("${spring.mail.username:}") String mailUsername,
-      @Value("${spring.mail.password:}") String mailPassword) {
+      @Value("${spring.mail.password:}") String mailPassword,
+      @Value("${erp.environment.validation.enabled:false}") boolean environmentValidationEnabled,
+      @Value("${erp.environment.validation.health-indicator.skip-when-validation-disabled:false}")
+          boolean skipChecksWhenValidationDisabled) {
     this.jwtSecret = jwtSecret;
     this.encryptionKey = encryptionKey;
     this.licenseEnforce = licenseEnforce;
@@ -48,10 +53,20 @@ public class RequiredConfigHealthIndicator implements HealthIndicator {
     this.mailHost = mailHost;
     this.mailUsername = mailUsername;
     this.mailPassword = mailPassword;
+    this.environmentValidationEnabled = environmentValidationEnabled;
+    this.skipChecksWhenValidationDisabled = skipChecksWhenValidationDisabled;
   }
 
   @Override
   public Health health() {
+    if (!environmentValidationEnabled && skipChecksWhenValidationDisabled) {
+      return Health.up()
+          .withDetail("validationEnabled", false)
+          .withDetail("skipWhenValidationDisabled", true)
+          .withDetail("checksSkipped", true)
+          .build();
+    }
+
     Map<String, Object> details = new LinkedHashMap<>();
     List<String> missing = new ArrayList<>();
 

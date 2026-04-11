@@ -8,15 +8,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
+import com.bigbrightpaints.erp.modules.accounting.service.CompanyScopedAccountingLookupService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.hr.domain.AttendanceRepository;
@@ -80,6 +81,7 @@ public class PayrollService {
   private final PayrollCalculationService payrollCalculationService;
   private final PayrollPostingService payrollPostingService;
 
+  @Autowired
   public PayrollService(
       PayrollRunRepository payrollRunRepository,
       PayrollRunLineRepository payrollRunLineRepository,
@@ -88,7 +90,8 @@ public class PayrollService {
       AccountingFacade accountingFacade,
       AccountRepository accountRepository,
       CompanyContextService companyContextService,
-      CompanyEntityLookup companyEntityLookup,
+      CompanyScopedHrLookupService hrLookupService,
+      CompanyScopedAccountingLookupService accountingLookupService,
       CompanyClock companyClock,
       AuditService auditService) {
     this.payrollRunRepository = payrollRunRepository;
@@ -115,7 +118,8 @@ public class PayrollService {
             accountingFacade,
             accountRepository,
             companyContextService,
-            companyEntityLookup,
+            hrLookupService,
+            accountingLookupService,
             companyClock,
             auditService);
   }

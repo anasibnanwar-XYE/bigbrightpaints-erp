@@ -94,6 +94,10 @@ public class InventoryValuationService {
   }
 
   public BigDecimal stockSummaryUnitCost(FinishedGood finishedGood) {
+    return stockSummaryUnitCost(finishedGood, null);
+  }
+
+  public BigDecimal stockSummaryUnitCost(FinishedGood finishedGood, Company company) {
     if (finishedGood == null) {
       return BigDecimal.ZERO;
     }
@@ -102,7 +106,7 @@ public class InventoryValuationService {
       return BigDecimal.ZERO;
     }
     CostingMethodUtils.FinishedGoodBatchSelectionMethod selectionMethod =
-        resolveSelectionMethod(finishedGood);
+        resolveSelectionMethod(finishedGood, company);
     if (selectionMethod == CostingMethodUtils.FinishedGoodBatchSelectionMethod.WAC) {
       return currentWeightedAverageCost(finishedGood);
     }
@@ -198,18 +202,28 @@ public class InventoryValuationService {
 
   private CostingMethodUtils.FinishedGoodBatchSelectionMethod resolveSelectionMethod(
       FinishedGood finishedGood) {
-    CostingMethod activeMethod = resolveActiveMethod(finishedGood);
+    return resolveSelectionMethod(finishedGood, null);
+  }
+
+  private CostingMethodUtils.FinishedGoodBatchSelectionMethod resolveSelectionMethod(
+      FinishedGood finishedGood, Company company) {
+    CostingMethod activeMethod = resolveActiveMethod(finishedGood, company);
     String method = activeMethod != null ? activeMethod.name() : finishedGood.getCostingMethod();
     return CostingMethodUtils.resolveFinishedGoodBatchSelectionMethod(method);
   }
 
   private CostingMethod resolveActiveMethod(FinishedGood finishedGood) {
-    Company company = finishedGood != null ? finishedGood.getCompany() : null;
-    if (company == null || costingMethodService == null || companyClock == null) {
+    return resolveActiveMethod(finishedGood, null);
+  }
+
+  private CostingMethod resolveActiveMethod(FinishedGood finishedGood, Company company) {
+    Company resolvedCompany =
+        company != null ? company : finishedGood != null ? finishedGood.getCompany() : null;
+    if (resolvedCompany == null || costingMethodService == null || companyClock == null) {
       return null;
     }
-    LocalDate referenceDate = companyClock.today(company);
-    return costingMethodService.resolveActiveMethod(company, referenceDate);
+    LocalDate referenceDate = companyClock.today(resolvedCompany);
+    return costingMethodService.resolveActiveMethod(resolvedCompany, referenceDate);
   }
 
   private record CachedWac(BigDecimal cost, long cachedAtMillis) {}

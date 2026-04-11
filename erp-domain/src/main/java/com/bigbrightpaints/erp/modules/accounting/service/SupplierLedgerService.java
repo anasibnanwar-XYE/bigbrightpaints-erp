@@ -8,9 +8,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.domain.SupplierLedgerEntry;
 import com.bigbrightpaints.erp.modules.accounting.domain.SupplierLedgerRepository;
 import com.bigbrightpaints.erp.modules.accounting.dto.SupplierBalanceView;
@@ -18,6 +18,7 @@ import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.purchasing.domain.Supplier;
 import com.bigbrightpaints.erp.modules.purchasing.domain.SupplierRepository;
+import com.bigbrightpaints.erp.modules.purchasing.service.CompanyScopedPurchasingLookupService;
 
 import jakarta.transaction.Transactional;
 
@@ -28,20 +29,22 @@ public class SupplierLedgerService
   private final SupplierLedgerRepository supplierLedgerRepository;
   private final SupplierRepository supplierRepository;
   private final CompanyContextService companyContextService;
-  private final CompanyEntityLookup companyEntityLookup;
+  private final CompanyScopedPurchasingLookupService purchasingLookupService;
 
+  @Autowired
   public SupplierLedgerService(
       SupplierLedgerRepository supplierLedgerRepository,
       SupplierRepository supplierRepository,
       CompanyContextService companyContextService,
-      CompanyEntityLookup companyEntityLookup) {
+      CompanyScopedPurchasingLookupService purchasingLookupService) {
     this.supplierLedgerRepository = supplierLedgerRepository;
     this.supplierRepository = supplierRepository;
     this.companyContextService = companyContextService;
-    this.companyEntityLookup = companyEntityLookup;
+    this.purchasingLookupService = purchasingLookupService;
   }
 
   @Transactional
+  @Override
   public void recordLedgerEntry(Supplier supplier, LedgerContext context) {
     Objects.requireNonNull(supplier, "Partner is required for ledger entry");
     Objects.requireNonNull(context, "Ledger context is required");
@@ -76,7 +79,7 @@ public class SupplierLedgerService
       return BigDecimal.ZERO;
     }
     Company company = companyContextService.requireCurrentCompany();
-    Supplier supplier = companyEntityLookup.requireSupplier(company, supplierId);
+    Supplier supplier = purchasingLookupService.requireSupplier(company, supplierId);
     return supplierLedgerRepository
         .aggregateBalance(company, supplier)
         .map(SupplierBalanceView::balance)

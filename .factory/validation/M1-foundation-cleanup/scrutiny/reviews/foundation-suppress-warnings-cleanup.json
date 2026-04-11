@@ -1,0 +1,21 @@
+{
+  "featureId": "foundation-suppress-warnings-cleanup",
+  "reviewedAt": "2026-04-05T19:47:50Z",
+  "commitId": "44d27ca4a058f57c818ca00575e2eb9d57004a4b",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Reviewed the handoff, transcript skeleton, and commit diff for SalesService, HrService, and TS_truthsuite_o2c_Approval_RuntimeTest. The packet removes the dead SalesService wrapper helpers, unsuppresses the still-used HrService constructor, and the repository now has zero `@SuppressWarnings(\"unused\")` hits under `erp-domain/src/main/java`. I did not find an in-scope correctness regression or contract miss.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "services",
+      "observation": "The worker had to hand-assemble a targeted Maven regression command for this sales-dispatch plus HR-constructor surface because `.factory/services.yaml` does not expose a reusable narrow proof for it.",
+      "evidence": "The transcript skeleton for worker session `1fa62ed6-a584-4eab-aaef-d1528808a605` shows `MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest=\"SalesServiceTest,TS_RuntimeHrServiceEnumParsingCoverageTest,TS_truthsuite_o2c_Approval_RuntimeTest,SalesTargetGovernanceServiceTest\" test`; `.factory/services.yaml` contains targeted accounting/security/dispatch proofs but no equivalent targeted sales+HR cleanup command."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Pass. The cleanup matches the feature contract: production `@SuppressWarnings(\"unused\")` annotations are gone, the dead SalesService wrappers were deleted, the HrService manual constructor remains available without suppression, and I found no in-scope blocking or non-blocking code defects."
+}

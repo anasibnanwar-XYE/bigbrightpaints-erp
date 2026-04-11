@@ -8,19 +8,20 @@ import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.core.util.CostingMethodUtils;
 import com.bigbrightpaints.erp.core.util.MoneyUtils;
@@ -51,7 +52,9 @@ import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialRepository;
 import com.bigbrightpaints.erp.modules.inventory.service.CompanyScopedInventoryLookupService;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionBrand;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionProduct;
+import com.bigbrightpaints.erp.modules.production.service.CompanyScopedProductionLookupService;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrder;
+import com.bigbrightpaints.erp.modules.sales.service.CompanyScopedSalesLookupService;
 
 import jakarta.transaction.Transactional;
 
@@ -70,11 +73,14 @@ public class ProductionLogService {
   private final RawMaterialBatchRepository rawMaterialBatchRepository;
   private final RawMaterialMovementRepository rawMaterialMovementRepository;
   private final AccountingFacade accountingFacade;
-  private final CompanyEntityLookup companyEntityLookup;
+  private final CompanyScopedFactoryLookupService factoryLookupService;
+  private final CompanyScopedProductionLookupService productionLookupService;
+  private final CompanyScopedSalesLookupService salesLookupService;
   private final CompanyScopedInventoryLookupService inventoryLookupService;
   private final CompanyClock companyClock;
   private final PackingAllowedSizeService packingAllowedSizeService;
 
+  @Autowired
   public ProductionLogService(
       CompanyContextService companyContextService,
       CompanyRepository companyRepository,
@@ -83,7 +89,9 @@ public class ProductionLogService {
       RawMaterialBatchRepository rawMaterialBatchRepository,
       RawMaterialMovementRepository rawMaterialMovementRepository,
       AccountingFacade accountingFacade,
-      CompanyEntityLookup companyEntityLookup,
+      CompanyScopedFactoryLookupService factoryLookupService,
+      CompanyScopedProductionLookupService productionLookupService,
+      CompanyScopedSalesLookupService salesLookupService,
       CompanyScopedInventoryLookupService inventoryLookupService,
       CompanyClock companyClock,
       PackingAllowedSizeService packingAllowedSizeService) {
@@ -94,7 +102,9 @@ public class ProductionLogService {
     this.rawMaterialBatchRepository = rawMaterialBatchRepository;
     this.rawMaterialMovementRepository = rawMaterialMovementRepository;
     this.accountingFacade = accountingFacade;
-    this.companyEntityLookup = companyEntityLookup;
+    this.factoryLookupService = factoryLookupService;
+    this.productionLookupService = productionLookupService;
+    this.salesLookupService = salesLookupService;
     this.inventoryLookupService = inventoryLookupService;
     this.companyClock = companyClock;
     this.packingAllowedSizeService = packingAllowedSizeService;
@@ -106,9 +116,10 @@ public class ProductionLogService {
     if (company.getId() != null) {
       companyRepository.lockById(company.getId());
     }
-    ProductionBrand brand = companyEntityLookup.requireProductionBrand(company, request.brandId());
+    ProductionBrand brand =
+        productionLookupService.requireProductionBrand(company, request.brandId());
     ProductionProduct product =
-        companyEntityLookup.requireProductionProduct(company, request.productId());
+        productionLookupService.requireProductionProduct(company, request.productId());
     if (!product.getBrand().getId().equals(brand.getId())) {
       throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
           "Product does not belong to brand");
@@ -140,7 +151,7 @@ public class ProductionLogService {
     log.setNotes(clean(request.notes()));
     log.setCreatedBy(clean(request.createdBy()));
     if (request.salesOrderId() != null) {
-      SalesOrder order = companyEntityLookup.requireSalesOrder(company, request.salesOrderId());
+      SalesOrder order = salesLookupService.requireSalesOrder(company, request.salesOrderId());
       log.setSalesOrderId(order.getId());
       log.setSalesOrderNumber(order.getOrderNumber());
     }
@@ -291,7 +302,7 @@ public class ProductionLogService {
   @Transactional
   public ProductionLogDetailDto getLog(Long id) {
     Company company = companyContextService.requireCurrentCompany();
-    ProductionLog log = companyEntityLookup.requireProductionLog(company, id);
+    ProductionLog log = factoryLookupService.requireProductionLog(company, id);
     return toDetailDto(log);
   }
 
@@ -301,7 +312,7 @@ public class ProductionLogService {
     Map<Long, BigDecimal> accountTotals = new HashMap<>();
     for (ProductionLogRequest.MaterialUsageRequest usage : usages) {
       MaterialConsumption consumption = consumeMaterial(company, log, usage);
-      log.getMaterials().addAll(consumption.materials());
+      log.addMaterials(consumption.materials());
       totalCost = totalCost.add(consumption.totalCost());
       accountTotals.merge(
           consumption.inventoryAccountId(), consumption.totalCost(), BigDecimal::add);
@@ -595,9 +606,13 @@ public class ProductionLogService {
       return number.longValue();
     }
     if (candidate instanceof String str && StringUtils.hasText(str)) {
+      String normalized = str.trim();
+      if (!normalized.chars().allMatch(Character::isDigit)) {
+        return null;
+      }
       try {
-        return Long.parseLong(str.trim());
-      } catch (NumberFormatException ignored) {
+        return Long.parseLong(normalized);
+      } catch (NumberFormatException ex) {
         return null;
       }
     }
@@ -645,36 +660,39 @@ public class ProductionLogService {
     if (!StringUtils.hasText(producedAt)) {
       return CompanyTime.now(company);
     }
-    // Accept common UI formats: ISO_OFFSET_DATE_TIME, ISO_INSTANT, yyyy-MM-dd, dd-MM-yyyy
-    // HH:mm[:ss]
+    String normalized = producedAt.trim();
     ZoneId zoneId = companyClock.zoneId(company);
     try {
-      return OffsetDateTime.parse(producedAt).toInstant();
-    } catch (Exception ignored) {
-      // fall through
-    }
-    try {
-      return Instant.parse(producedAt);
-    } catch (Exception ignored) {
-      // fall through to final attempt
-    }
-    try {
-      DateTimeFormatter fmt = DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm");
-      return java.time.LocalDateTime.parse(producedAt, fmt).atZone(zoneId).toInstant();
-    } catch (Exception ignored) {
-      // fall through
-    }
-    try {
-      DateTimeFormatter fmtSeconds = DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss");
-      return java.time.LocalDateTime.parse(producedAt, fmtSeconds).atZone(zoneId).toInstant();
-    } catch (Exception ignored) {
-      // fall through to final attempt
-    }
-    try {
-      return LocalDate.parse(producedAt).atStartOfDay(zoneId).toInstant();
-    } catch (Exception ex) {
-      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
-          "Invalid producedAt format: " + producedAt, ex);
+      return OffsetDateTime.parse(normalized).toInstant();
+    } catch (DateTimeParseException firstFailure) {
+      try {
+        return Instant.parse(normalized);
+      } catch (DateTimeParseException secondFailure) {
+        try {
+          return java.time.LocalDateTime.parse(
+                  normalized, DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm"))
+              .atZone(zoneId)
+              .toInstant();
+        } catch (DateTimeParseException thirdFailure) {
+          try {
+            return java.time.LocalDateTime.parse(
+                    normalized, DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss"))
+                .atZone(zoneId)
+                .toInstant();
+          } catch (DateTimeParseException fourthFailure) {
+            try {
+              return LocalDate.parse(normalized).atStartOfDay(zoneId).toInstant();
+            } catch (DateTimeParseException finalFailure) {
+              finalFailure.addSuppressed(firstFailure);
+              finalFailure.addSuppressed(secondFailure);
+              finalFailure.addSuppressed(thirdFailure);
+              finalFailure.addSuppressed(fourthFailure);
+              throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+                  "Invalid producedAt format: " + producedAt, finalFailure);
+            }
+          }
+        }
+      }
     }
   }
 

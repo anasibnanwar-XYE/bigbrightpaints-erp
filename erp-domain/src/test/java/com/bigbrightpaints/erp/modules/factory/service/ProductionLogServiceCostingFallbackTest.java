@@ -10,6 +10,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
+import java.time.Instant;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -23,8 +25,9 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
@@ -42,6 +45,8 @@ import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovementRepos
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialRepository;
 import com.bigbrightpaints.erp.modules.inventory.service.CompanyScopedInventoryLookupService;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionProduct;
+import com.bigbrightpaints.erp.modules.production.service.CompanyScopedProductionLookupService;
+import com.bigbrightpaints.erp.modules.sales.service.CompanyScopedSalesLookupService;
 
 @Tag("critical")
 @ExtendWith(MockitoExtension.class)
@@ -54,7 +59,9 @@ class ProductionLogServiceCostingFallbackTest {
   @Mock private RawMaterialBatchRepository rawMaterialBatchRepository;
   @Mock private RawMaterialMovementRepository rawMaterialMovementRepository;
   @Mock private AccountingFacade accountingFacade;
-  @Mock private CompanyEntityLookup companyEntityLookup;
+  @Mock private CompanyScopedFactoryLookupService factoryLookupService;
+  @Mock private CompanyScopedProductionLookupService productionLookupService;
+  @Mock private CompanyScopedSalesLookupService salesLookupService;
   @Mock private CompanyScopedInventoryLookupService inventoryLookupService;
   @Mock private CompanyClock companyClock;
   @Mock private PackingAllowedSizeService packingAllowedSizeService;
@@ -72,7 +79,9 @@ class ProductionLogServiceCostingFallbackTest {
             rawMaterialBatchRepository,
             rawMaterialMovementRepository,
             accountingFacade,
-            companyEntityLookup,
+            factoryLookupService,
+            productionLookupService,
+            salesLookupService,
             inventoryLookupService,
             companyClock,
             packingAllowedSizeService);
@@ -107,7 +116,7 @@ class ProductionLogServiceCostingFallbackTest {
         .thenReturn(1);
 
     List<?> issues =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             productionLogService, "issueFromBatches", rawMaterial, new BigDecimal("3"), "PROD-REF");
 
     assertThat(issues).hasSize(2);
@@ -155,7 +164,8 @@ class ProductionLogServiceCostingFallbackTest {
     when(packingAllowedSizeService.listAllowedSellableSizes(company, log)).thenReturn(List.of());
 
     ProductionLogDetailDto dto =
-        ReflectionTestUtils.invokeMethod(productionLogService, "toDetailDto", log);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            productionLogService, "toDetailDto", log);
 
     assertThat(dto.id()).isEqualTo(77L);
     assertThat(dto.productFamilyName()).isNull();
@@ -175,7 +185,7 @@ class ProductionLogServiceCostingFallbackTest {
         .thenAnswer(invocation -> invocation.getArgument(0));
 
     RawMaterial created =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             productionLogService,
             "initializeSemiFinishedRawMaterial",
             company,
@@ -203,7 +213,7 @@ class ProductionLogServiceCostingFallbackTest {
         .thenReturn(java.util.Optional.of(existing));
 
     RawMaterial resolved =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             productionLogService, "ensureSemiFinishedRawMaterial", company, product);
 
     assertThat(resolved).isSameAs(existing);
@@ -221,7 +231,7 @@ class ProductionLogServiceCostingFallbackTest {
 
     assertThatThrownBy(
             () ->
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     productionLogService,
                     "initializeSemiFinishedRawMaterial",
                     company,
@@ -229,5 +239,50 @@ class ProductionLogServiceCostingFallbackTest {
                     "FG-NO-ACC-BULK"))
         .isInstanceOf(com.bigbrightpaints.erp.core.exception.ApplicationException.class)
         .hasMessageContaining("missing semi-finished account metadata");
+  }
+
+  @Test
+  void resolveProducedAt_supportsIsoAndLocalFormats() {
+    Company company = new Company();
+    ZoneId zoneId = ZoneId.of("Asia/Kolkata");
+    when(companyClock.zoneId(company)).thenReturn(zoneId);
+
+    Instant offsetDateTime =
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            productionLogService, "resolveProducedAt", company, "2026-04-05T10:15:30+05:30");
+    Instant isoInstant =
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            productionLogService, "resolveProducedAt", company, "2026-04-05T04:45:30Z");
+    Instant localMinutes =
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            productionLogService, "resolveProducedAt", company, "05-04-2026 10:15");
+    Instant localSeconds =
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            productionLogService, "resolveProducedAt", company, "05-04-2026 10:15:30");
+    Instant dateOnly =
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            productionLogService, "resolveProducedAt", company, "2026-04-05");
+
+    assertThat(offsetDateTime).isEqualTo(Instant.parse("2026-04-05T04:45:30Z"));
+    assertThat(isoInstant).isEqualTo(Instant.parse("2026-04-05T04:45:30Z"));
+    assertThat(localMinutes).isEqualTo(Instant.parse("2026-04-05T04:45:00Z"));
+    assertThat(localSeconds).isEqualTo(Instant.parse("2026-04-05T04:45:30Z"));
+    assertThat(dateOnly).isEqualTo(Instant.parse("2026-04-04T18:30:00Z"));
+  }
+
+  @Test
+  void resolveProducedAt_rejectsUnknownFormat() {
+    Company company = new Company();
+    when(companyClock.zoneId(company)).thenReturn(ZoneId.of("UTC"));
+
+    assertThatThrownBy(
+            () ->
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    productionLogService, "resolveProducedAt", company, "04/05/2026"))
+        .isInstanceOf(ApplicationException.class)
+        .satisfies(
+            ex ->
+                assertThat(((ApplicationException) ex).getErrorCode())
+                    .isEqualTo(ErrorCode.VALIDATION_INVALID_INPUT));
   }
 }

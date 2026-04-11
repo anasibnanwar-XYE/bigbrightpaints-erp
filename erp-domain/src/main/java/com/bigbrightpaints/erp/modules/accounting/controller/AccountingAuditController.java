@@ -1,11 +1,6 @@
 package com.bigbrightpaints.erp.modules.accounting.controller;
 
-import java.util.Map;
-
-import jakarta.servlet.http.HttpServletRequest;
-
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -15,7 +10,6 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.bigbrightpaints.erp.core.auditaccess.AuditAccessService;
 import com.bigbrightpaints.erp.core.auditaccess.AuditControllerSupport;
-import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.auditaccess.dto.AuditFeedItemDto;
 import com.bigbrightpaints.erp.core.security.PortalRoleActionMatrix;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountingTransactionAuditDetailDto;
@@ -33,18 +27,13 @@ public class AccountingAuditController extends AuditControllerSupport {
     this.auditAccessService = auditAccessService;
   }
 
-  @ExceptionHandler(ApplicationException.class)
-  public ResponseEntity<ApiResponse<Map<String, Object>>> handleApplicationException(
-      ApplicationException ex, HttpServletRequest request) {
-    return AccountingApplicationExceptionResponses.mappedStatus(ex, request);
-  }
-
   @GetMapping("/events")
   @PreAuthorize(PortalRoleActionMatrix.TENANT_ADMIN_OR_ACCOUNTING_ONLY)
   public ResponseEntity<ApiResponse<PageResponse<AuditFeedItemDto>>> listEvents(
       @RequestParam(required = false) String from,
       @RequestParam(required = false) String to,
       @RequestParam(required = false) String module,
+      @RequestParam(required = false) String category,
       @RequestParam(required = false) String action,
       @RequestParam(required = false) String status,
       @RequestParam(required = false) String actor,
@@ -52,22 +41,34 @@ public class AccountingAuditController extends AuditControllerSupport {
       @RequestParam(required = false) String reference,
       @RequestParam(defaultValue = "0") int page,
       @RequestParam(defaultValue = "50") int size) {
+    String resolvedModule = resolveModuleOrCategory(module, category);
     return ResponseEntity.ok(
         ApiResponse.success(
             auditAccessService.queryAccountingFeed(
-                buildFilter(from, to, module, action, status, actor, entityType, reference, page, size))));
+                buildFilter(
+                    from,
+                    to,
+                    resolvedModule,
+                    action,
+                    status,
+                    actor,
+                    entityType,
+                    reference,
+                    page,
+                    size))));
   }
 
   @GetMapping("/transactions")
   @PreAuthorize(PortalRoleActionMatrix.TENANT_ADMIN_OR_ACCOUNTING_ONLY)
-  public ResponseEntity<ApiResponse<PageResponse<AccountingTransactionAuditListItemDto>>> transactionAudit(
-      @RequestParam(required = false) String from,
-      @RequestParam(required = false) String to,
-      @RequestParam(required = false) String module,
-      @RequestParam(required = false) String status,
-      @RequestParam(required = false) String reference,
-      @RequestParam(defaultValue = "0") int page,
-      @RequestParam(defaultValue = "50") int size) {
+  public ResponseEntity<ApiResponse<PageResponse<AccountingTransactionAuditListItemDto>>>
+      transactionAudit(
+          @RequestParam(required = false) String from,
+          @RequestParam(required = false) String to,
+          @RequestParam(required = false) String module,
+          @RequestParam(required = false) String status,
+          @RequestParam(required = false) String reference,
+          @RequestParam(defaultValue = "0") int page,
+          @RequestParam(defaultValue = "50") int size) {
     return ResponseEntity.ok(
         ApiResponse.success(
             auditAccessService.queryAccountingTransactions(
@@ -86,5 +87,15 @@ public class AccountingAuditController extends AuditControllerSupport {
       @PathVariable Long journalEntryId) {
     return ResponseEntity.ok(
         ApiResponse.success(auditAccessService.getAccountingTransactionDetail(journalEntryId)));
+  }
+
+  private String resolveModuleOrCategory(String module, String category) {
+    if (module != null && !module.trim().isEmpty()) {
+      return module;
+    }
+    if (category == null || category.trim().isEmpty()) {
+      return module;
+    }
+    return category;
   }
 }

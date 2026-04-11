@@ -145,7 +145,7 @@ public class DealerService {
           scopedAccountBootstrapService.provisionTenantAccount(
               company, contactEmail, dealer.getName(), List.of(dealerRole));
     }
-    portalUser.getRoles().add(roleService.ensureRoleExists("ROLE_DEALER"));
+    portalUser.addRole(roleService.ensureRoleExists("ROLE_DEALER"));
     portalUser.setCompany(company);
     portalUser = userAccountRepository.save(portalUser);
 
@@ -178,6 +178,25 @@ public class DealerService {
             ? listDealersPage(company, normalizedStatus, page, size)
             : listAllDealers(company, normalizedStatus);
     return toDealerResponses(company, dealers);
+  }
+
+  @Transactional
+  public DealerResponse getDealer(Long dealerId) {
+    Company company = companyContextService.requireCurrentCompany();
+    Dealer dealer =
+        dealerRepository
+            .findByCompanyAndId(company, dealerId)
+            .orElseThrow(
+                () ->
+                    new ApplicationException(
+                        ErrorCode.BUSINESS_ENTITY_NOT_FOUND, "Dealer not found"));
+    BigDecimal outstandingBalance = dealerLedgerService.currentBalance(dealerId);
+    BigDecimal pendingOrderExposure = resolvePendingOrderExposure(dealer);
+    return toResponse(
+        dealer,
+        dealer.getPortalUser() != null ? dealer.getPortalUser().getEmail() : null,
+        outstandingBalance != null ? outstandingBalance : BigDecimal.ZERO,
+        pendingOrderExposure);
   }
 
   @Transactional
@@ -236,7 +255,11 @@ public class DealerService {
 
     dealer = dealerRepository.save(dealer);
     BigDecimal balance = dealerLedgerService.currentBalance(dealer.getId());
-    return toResponse(dealer, dealer.getPortalUser() != null ? dealer.getPortalUser().getEmail() : null, balance, resolvePendingOrderExposure(dealer));
+    return toResponse(
+        dealer,
+        dealer.getPortalUser() != null ? dealer.getPortalUser().getEmail() : null,
+        balance,
+        resolvePendingOrderExposure(dealer));
   }
 
   @Transactional
@@ -316,6 +339,11 @@ public class DealerService {
       BigDecimal outstandingBalance,
       BigDecimal pendingOrderExposure) {
     Account receivableAccount = dealer.getReceivableAccount();
+    BigDecimal resolvedCreditLimit =
+        dealer.getCreditLimit() != null ? dealer.getCreditLimit() : BigDecimal.ZERO;
+    BigDecimal resolvedOutstandingBalance =
+        outstandingBalance != null ? outstandingBalance : BigDecimal.ZERO;
+    Long accountId = receivableAccount != null ? receivableAccount.getId() : null;
     return new DealerResponse(
         dealer.getId(),
         dealer.getPublicId(),
@@ -325,7 +353,8 @@ public class DealerService {
         dealer.getEmail(),
         dealer.getPhone(),
         dealer.getAddress(),
-        receivableAccount != null ? receivableAccount.getId() : null,
+        accountId,
+        accountId,
         receivableAccount != null ? receivableAccount.getCode() : null,
         portalEmail,
         dealer.getGstNumber(),
@@ -333,6 +362,8 @@ public class DealerService {
         dealer.getGstRegistrationType(),
         dealer.getPaymentTerms(),
         dealer.getRegion(),
+        resolvedCreditLimit,
+        resolvedOutstandingBalance,
         resolveCreditStatus(dealer, outstandingBalance, pendingOrderExposure));
   }
 
@@ -382,11 +413,14 @@ public class DealerService {
               dealer.getName(),
               dealer.getCode(),
               receivableAccount != null ? receivableAccount.getId() : null,
+              receivableAccount != null ? receivableAccount.getId() : null,
               receivableAccount != null ? receivableAccount.getCode() : null,
               dealer.getStateCode(),
               dealer.getGstRegistrationType(),
               dealer.getPaymentTerms(),
               dealer.getRegion(),
+              dealer.getCreditLimit() != null ? dealer.getCreditLimit() : BigDecimal.ZERO,
+              outstandingBalance,
               dealerCreditStatus));
     }
     return resolved;
@@ -473,7 +507,8 @@ public class DealerService {
   private List<Dealer> listAllDealers(Company company, String normalizedStatus) {
     return normalizedStatus == null
         ? dealerRepository.findByCompanyOrderByNameAsc(company)
-        : dealerRepository.findByCompanyAndStatusIgnoreCaseOrderByNameAsc(company, normalizedStatus);
+        : dealerRepository.findByCompanyAndStatusIgnoreCaseOrderByNameAsc(
+            company, normalizedStatus);
   }
 
   private List<Dealer> listDealersPage(
@@ -481,12 +516,13 @@ public class DealerService {
     PageRequest directoryPage =
         PageRequest.of(
             normalizePage(page != null ? page : DEALER_DIRECTORY_DEFAULT_PAGE),
-            normalizeSize(size != null ? size : DEALER_DIRECTORY_DEFAULT_SIZE,
-                DEALER_DIRECTORY_DEFAULT_SIZE),
+            normalizeSize(
+                size != null ? size : DEALER_DIRECTORY_DEFAULT_SIZE, DEALER_DIRECTORY_DEFAULT_SIZE),
             Sort.by(Sort.Order.asc("name"), Sort.Order.asc("id")));
     return normalizedStatus == null
         ? dealerRepository.findByCompany(company, directoryPage)
-        : dealerRepository.findByCompanyAndStatusIgnoreCase(company, normalizedStatus, directoryPage);
+        : dealerRepository.findByCompanyAndStatusIgnoreCase(
+            company, normalizedStatus, directoryPage);
   }
 
   private String normalizeCreditStatus(String creditStatus) {
@@ -541,8 +577,8 @@ public class DealerService {
       return Map.of();
     }
     Map<Long, BigDecimal> exposures = new LinkedHashMap<>();
-    for (DealerCreditExposureView row : salesOrderRepository
-        .sumPendingCreditExposureByCompanyAndDealerIds(
+    for (DealerCreditExposureView row :
+        salesOrderRepository.sumPendingCreditExposureByCompanyAndDealerIds(
             company, dealerIds, SalesOrderCreditExposurePolicy.pendingCreditExposureStatuses())) {
       if (row == null || row.dealerId() == null) {
         continue;

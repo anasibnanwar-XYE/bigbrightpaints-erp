@@ -3,6 +3,7 @@ package com.bigbrightpaints.erp.modules.sales.controller;
 import java.security.Principal;
 import java.util.List;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -20,6 +21,8 @@ import com.bigbrightpaints.erp.modules.sales.dto.CreditLimitOverrideRequestDto;
 import com.bigbrightpaints.erp.modules.sales.service.CreditLimitOverrideService;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import jakarta.validation.Valid;
 
 @RestController
@@ -34,12 +37,25 @@ public class CreditLimitOverrideController {
 
   @PostMapping
   @PreAuthorize(PortalRoleActionMatrix.ADMIN_FACTORY_SALES)
+  @Operation(summary = "Create credit limit override request")
+  @ApiResponses({
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+        responseCode = "201",
+        description = "Override request created"),
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+        responseCode = "400",
+        description = "Invalid override request payload"),
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+        responseCode = "403",
+        description = "Forbidden")
+  })
   public ResponseEntity<ApiResponse<CreditLimitOverrideRequestDto>> createRequest(
       @Valid @RequestBody CreditLimitOverrideRequestCreateRequest request, Principal principal) {
     String requestedBy = principal != null ? principal.getName() : "system";
     CreditLimitOverrideRequestDto response =
         creditLimitOverrideService.createRequest(request, requestedBy);
-    return ResponseEntity.ok(ApiResponse.success("Override request created", response));
+    return ResponseEntity.status(HttpStatus.CREATED)
+        .body(ApiResponse.success("Override request created", response));
   }
 
   @GetMapping

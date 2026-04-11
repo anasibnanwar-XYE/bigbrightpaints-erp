@@ -14,8 +14,10 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
@@ -34,11 +36,20 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.StringUtils;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 
 import com.bigbrightpaints.erp.core.audit.AuditEvent;
 import com.bigbrightpaints.erp.core.audit.AuditService;
+import com.bigbrightpaints.erp.core.audittrail.AuditActionEventCommand;
+import com.bigbrightpaints.erp.core.audittrail.AuditActionEventSource;
+import com.bigbrightpaints.erp.core.audittrail.AuditActionEventStatus;
+import com.bigbrightpaints.erp.core.audittrail.AuditCorrelationIdResolver;
+import com.bigbrightpaints.erp.core.audittrail.EnterpriseAuditTrailService;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.CreditLimitExceededException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
@@ -46,7 +57,7 @@ import com.bigbrightpaints.erp.core.idempotency.IdempotencyReservationService;
 import com.bigbrightpaints.erp.core.idempotency.IdempotencySignatureBuilder;
 import com.bigbrightpaints.erp.core.idempotency.IdempotencyUtils;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
+import com.bigbrightpaints.erp.core.util.IdempotencyHeaderUtils;
 import com.bigbrightpaints.erp.core.util.MoneyUtils;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
@@ -58,6 +69,7 @@ import com.bigbrightpaints.erp.modules.accounting.service.AccountingComplianceAu
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.accounting.service.CompanyAccountingSettingsService;
 import com.bigbrightpaints.erp.modules.accounting.service.CompanyDefaultAccountsService;
+import com.bigbrightpaints.erp.modules.accounting.service.CompanyScopedAccountingLookupService;
 import com.bigbrightpaints.erp.modules.accounting.service.DealerLedgerService;
 import com.bigbrightpaints.erp.modules.accounting.service.GstService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
@@ -81,12 +93,15 @@ import com.bigbrightpaints.erp.shared.dto.PageResponse;
 
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
+import jakarta.servlet.http.HttpServletRequest;
 
 @Service
 public class SalesCoreEngine {
   private static final Logger log = LoggerFactory.getLogger(SalesCoreEngine.class);
   private static final BigDecimal MAX_GST_RATE = new BigDecimal("28.00");
   private static final BigDecimal DISPATCH_TOTAL_TOLERANCE = new BigDecimal("0.01");
+  private static final String SALES_ORDER_CREATE_PATH = "/api/v1/sales/orders";
+  private static final String RETIRED_LEGACY_IDEMPOTENCY_HEADER = "X-Idempotency-Key";
 
   private static final String ORDER_STATUS_DRAFT = "DRAFT";
   private static final String ORDER_STATUS_CONFIRMED = "CONFIRMED";
@@ -96,6 +111,7 @@ public class SalesCoreEngine {
   private static final String ORDER_STATUS_SETTLED = "SETTLED";
   private static final String ORDER_STATUS_CLOSED = "CLOSED";
   private static final String ORDER_STATUS_CANCELLED = "CANCELLED";
+  private static final String ORDER_STATUS_DELETED = "DELETED";
   private static final String ORDER_STATUS_ON_HOLD = "ON_HOLD";
   private static final String ORDER_STATUS_REJECTED = "REJECTED";
   private static final String ORDER_STATUS_PENDING_INVENTORY = "PENDING_INVENTORY";
@@ -119,7 +135,8 @@ public class SalesCoreEngine {
   private static final Set<String> MANUAL_STATUSES =
       Set.of(ORDER_STATUS_ON_HOLD, ORDER_STATUS_REJECTED, ORDER_STATUS_CLOSED);
   private static final Set<String> TERMINAL_MANUAL_STATUSES =
-      Set.of(ORDER_STATUS_REJECTED, ORDER_STATUS_CLOSED, ORDER_STATUS_CANCELLED);
+      Set.of(
+          ORDER_STATUS_REJECTED, ORDER_STATUS_CLOSED, ORDER_STATUS_CANCELLED, ORDER_STATUS_DELETED);
   private static final Set<String> ORCHESTRATOR_WORKFLOW_STATUSES =
       Set.of(
           ORDER_STATUS_PROCESSING,
@@ -144,6 +161,7 @@ public class SalesCoreEngine {
           ORDER_STATUS_SETTLED,
           ORDER_STATUS_CLOSED,
           ORDER_STATUS_CANCELLED,
+          ORDER_STATUS_DELETED,
           ORDER_STATUS_ON_HOLD,
           ORDER_STATUS_REJECTED,
           ORDER_STATUS_RESERVED,
@@ -156,7 +174,6 @@ public class SalesCoreEngine {
           "COMPLETED");
   private static final Set<String> VALID_CREDIT_REQUEST_STATUSES =
       Set.of("PENDING", "APPROVED", "REJECTED");
-  private static final String CREDIT_REQUEST_STATUS_PENDING = "PENDING";
   private static final String DEFAULT_ORDER_PAYMENT_MODE =
       SalesProformaBoundaryService.DEFAULT_PAYMENT_MODE;
   private static final String LEGACY_HYBRID_PAYMENT_MODE = "SPLIT";
@@ -166,16 +183,11 @@ public class SalesCoreEngine {
   private static final String DISPATCH_REASON_CODE_TAX_OVERRIDE = "TAX_OVERRIDE";
   private static final String DISPATCH_REASON_CODE_LINE_OVERRIDE = "LINE_OVERRIDE";
   private static final String DISPATCH_REASON_CODE_COMPOSITE_OVERRIDE = "COMPOSITE_OVERRIDE";
-  private static final String DASHBOARD_BUCKET_OPEN = "open";
-  private static final String DASHBOARD_BUCKET_IN_PROGRESS = "in_progress";
-  private static final String DASHBOARD_BUCKET_DISPATCHED = "dispatched";
-  private static final String DASHBOARD_BUCKET_COMPLETED = "completed";
-  private static final String DASHBOARD_BUCKET_CANCELLED = "cancelled";
-  private static final String DASHBOARD_BUCKET_OTHER = "other";
-  private static final Set<String> DASHBOARD_OPEN_STATUSES =
-      Set.of(ORDER_STATUS_DRAFT, ORDER_STATUS_CONFIRMED);
-  private static final Set<String> DASHBOARD_IN_PROGRESS_STATUSES =
+  private static final int DASHBOARD_RECENT_ORDER_WINDOW_DAYS = 30;
+  private static final Set<String> DASHBOARD_PENDING_ORDER_STATUSES =
       Set.of(
+          ORDER_STATUS_DRAFT,
+          ORDER_STATUS_CONFIRMED,
           ORDER_STATUS_PROCESSING,
           ORDER_STATUS_RESERVED,
           ORDER_STATUS_PENDING_PRODUCTION,
@@ -183,12 +195,6 @@ public class SalesCoreEngine {
           ORDER_STATUS_READY_TO_SHIP,
           ORDER_STATUS_ON_HOLD,
           "BOOKED");
-  private static final Set<String> DASHBOARD_DISPATCHED_STATUSES =
-      Set.of(ORDER_STATUS_DISPATCHED, ORDER_STATUS_INVOICED, "SHIPPED", "FULFILLED");
-  private static final Set<String> DASHBOARD_COMPLETED_STATUSES =
-      Set.of(ORDER_STATUS_SETTLED, ORDER_STATUS_CLOSED, "COMPLETED");
-  private static final Set<String> DASHBOARD_CANCELLED_STATUSES =
-      Set.of(ORDER_STATUS_CANCELLED, ORDER_STATUS_REJECTED);
 
   private final CompanyContextService companyContextService;
   private final DealerRepository dealerRepository;
@@ -203,7 +209,8 @@ public class SalesCoreEngine {
   private final FinishedGoodRepository finishedGoodRepository;
   private final DealerLedgerService dealerLedgerService;
   private final AccountRepository accountRepository;
-  private final CompanyEntityLookup companyEntityLookup;
+  private final CompanyScopedSalesLookupService salesLookupService;
+  private final CompanyScopedAccountingLookupService accountingLookupService;
   private final CompanyClock companyClock;
   private final PackagingSlipRepository packagingSlipRepository;
   private final FinishedGoodsService finishedGoodsService;
@@ -227,6 +234,10 @@ public class SalesCoreEngine {
   @Autowired(required = false)
   private AccountingComplianceAuditService accountingComplianceAuditService;
 
+  @Autowired(required = false)
+  private EnterpriseAuditTrailService enterpriseAuditTrailService;
+
+  @Autowired
   public SalesCoreEngine(
       CompanyContextService companyContextService,
       DealerRepository dealerRepository,
@@ -242,7 +253,8 @@ public class SalesCoreEngine {
       FinishedGoodRepository finishedGoodRepository,
       FinishedGoodBatchRepository finishedGoodBatchRepository,
       AccountRepository accountRepository,
-      CompanyEntityLookup companyEntityLookup,
+      CompanyScopedSalesLookupService salesLookupService,
+      CompanyScopedAccountingLookupService accountingLookupService,
       PackagingSlipRepository packagingSlipRepository,
       FinishedGoodsService finishedGoodsService,
       AccountingFacade accountingFacade,
@@ -271,7 +283,8 @@ public class SalesCoreEngine {
     this.dealerLedgerService = dealerLedgerService;
     this.finishedGoodRepository = finishedGoodRepository;
     this.accountRepository = accountRepository;
-    this.companyEntityLookup = companyEntityLookup;
+    this.salesLookupService = salesLookupService;
+    this.accountingLookupService = accountingLookupService;
     this.packagingSlipRepository = packagingSlipRepository;
     this.finishedGoodsService = finishedGoodsService;
     this.accountingFacade = accountingFacade;
@@ -304,7 +317,8 @@ public class SalesCoreEngine {
             finishedGoodRepository,
             finishedGoodBatchRepository,
             factoryTaskRepository,
-            companyClock);
+            companyClock,
+            creditLimitOverrideService);
   }
 
   /* Dealers */
@@ -464,7 +478,7 @@ public class SalesCoreEngine {
 
   private Dealer requireDealer(Long id) {
     Company company = companyContextService.requireCurrentCompany();
-    return companyEntityLookup.requireDealer(company, id);
+    return salesLookupService.requireDealer(company, id);
   }
 
   /* Sales Orders */
@@ -499,7 +513,7 @@ public class SalesCoreEngine {
     }
     List<SalesOrder> orders =
         salesOrderRepository.findByCompanyAndIdInOrderByCreatedAtDescIdDesc(company, ids);
-    return orders.stream().map(this::toDto).toList();
+    return filterVisibleOrders(orders).stream().map(this::toDto).toList();
   }
 
   public List<SalesOrderDto> listOrders(String status) {
@@ -524,7 +538,7 @@ public class SalesCoreEngine {
               : salesOrderRepository.findByCompanyAndDealerAndStatusOrderByCreatedAtDesc(
                   company, dealer, normalizedStatus);
     }
-    return orders.stream().map(this::toDto).toList();
+    return filterVisibleOrders(orders).stream().map(this::toDto).toList();
   }
 
   @Transactional(readOnly = true)
@@ -553,7 +567,7 @@ public class SalesCoreEngine {
     List<SalesOrder> orders =
         salesOrderRepository.findByCompanyAndIdInOrderByCreatedAtDescIdDesc(
             company, orderIds.getContent());
-    List<SalesOrderDto> content = orders.stream().map(this::toDto).toList();
+    List<SalesOrderDto> content = filterVisibleOrders(orders).stream().map(this::toDto).toList();
     return PageResponse.of(
         content, orderIds.getTotalElements(), normalizedFilters.page(), normalizedFilters.size());
   }
@@ -561,60 +575,26 @@ public class SalesCoreEngine {
   @Transactional(readOnly = true)
   public SalesDashboardDto getDashboard() {
     Company company = companyContextService.requireCurrentCompany();
-    long activeDealers =
-        dealerRepository.countByCompanyAndStatusIgnoreCase(
-            company, DealerProvisioningSupport.ACTIVE_STATUS);
-    long pendingCreditRequests =
-        creditRequestRepository.countByCompanyAndStatusIgnoreCase(
-            company, CREDIT_REQUEST_STATUS_PENDING);
-    Map<String, Long> orderStatusBuckets = initializeDashboardBuckets();
-    long totalOrders = 0L;
-    for (Object[] row : salesOrderRepository.countByCompanyGroupedByNormalizedStatus(company)) {
-      if (row == null || row.length < 2 || !(row[1] instanceof Number)) {
-        continue;
-      }
-      String status = row[0] != null ? row[0].toString() : "";
-      long count = ((Number) row[1]).longValue();
-      totalOrders += count;
-      String bucket = resolveDashboardOrderBucket(status);
-      orderStatusBuckets.merge(bucket, count, Long::sum);
-    }
+    Instant recentWindowStart =
+        companyClock
+            .now(company)
+            .minusSeconds(24L * 60L * 60L * DASHBOARD_RECENT_ORDER_WINDOW_DAYS);
+    long recentOrdersCount =
+        salesOrderRepository.countByCompanyAndCreatedAtGreaterThanEqual(company, recentWindowStart);
+    BigDecimal totalRevenue = invoiceRepository.sumTotalRevenueByCompany(company);
+    BigDecimal totalReceivables = invoiceRepository.sumOutstandingReceivablesByCompany(company);
+    long pendingOrders =
+        salesOrderRepository.countByCompanyAndNormalizedStatusIn(
+            company, DASHBOARD_PENDING_ORDER_STATUSES);
     return new SalesDashboardDto(
-        activeDealers, totalOrders, Map.copyOf(orderStatusBuckets), pendingCreditRequests);
-  }
-
-  private Map<String, Long> initializeDashboardBuckets() {
-    Map<String, Long> buckets = new LinkedHashMap<>();
-    buckets.put(DASHBOARD_BUCKET_OPEN, 0L);
-    buckets.put(DASHBOARD_BUCKET_IN_PROGRESS, 0L);
-    buckets.put(DASHBOARD_BUCKET_DISPATCHED, 0L);
-    buckets.put(DASHBOARD_BUCKET_COMPLETED, 0L);
-    buckets.put(DASHBOARD_BUCKET_CANCELLED, 0L);
-    buckets.put(DASHBOARD_BUCKET_OTHER, 0L);
-    return buckets;
-  }
-
-  private String resolveDashboardOrderBucket(String status) {
-    String normalized = normalizeStatusToken(status);
-    if (DASHBOARD_OPEN_STATUSES.contains(normalized)) {
-      return DASHBOARD_BUCKET_OPEN;
-    }
-    if (DASHBOARD_IN_PROGRESS_STATUSES.contains(normalized)) {
-      return DASHBOARD_BUCKET_IN_PROGRESS;
-    }
-    if (DASHBOARD_DISPATCHED_STATUSES.contains(normalized)) {
-      return DASHBOARD_BUCKET_DISPATCHED;
-    }
-    if (DASHBOARD_COMPLETED_STATUSES.contains(normalized)) {
-      return DASHBOARD_BUCKET_COMPLETED;
-    }
-    if (DASHBOARD_CANCELLED_STATUSES.contains(normalized)) {
-      return DASHBOARD_BUCKET_CANCELLED;
-    }
-    return DASHBOARD_BUCKET_OTHER;
+        recentOrdersCount,
+        totalRevenue != null ? totalRevenue : BigDecimal.ZERO,
+        totalReceivables != null ? totalReceivables : BigDecimal.ZERO,
+        pendingOrders);
   }
 
   public SalesOrderDto createOrder(SalesOrderRequest request) {
+    failClosedOnRetiredLegacyIdempotencyHeader();
     Company company = companyContextService.requireCurrentCompany();
     String requestPaymentMode = request.paymentMode();
     String idempotencyKey = request.resolveIdempotencyKey();
@@ -723,6 +703,7 @@ public class SalesCoreEngine {
     order.setCompany(company);
     order.setDealer(dealer);
     order.setPaymentMode(paymentMode);
+    order.setPaymentTerms(normalizePaymentTerms(request.paymentTerms()));
     order.setOrderNumber(orderNumberService.nextOrderNumber(company));
     order.setStatus(ORDER_STATUS_DRAFT);
     order.setCurrency(request.currency() == null ? "INR" : request.currency());
@@ -753,6 +734,10 @@ public class SalesCoreEngine {
     }
     SalesOrder saved = salesOrderRepository.save(order);
     recordInitialOrderHistory(saved);
+
+    if (request.usesFinishedGoodSelection()) {
+      return toDto(saved);
+    }
 
     SalesProformaBoundaryService.CommercialAssessment commercialAssessment =
         salesProformaBoundaryService.assessCommercialAvailability(company, saved);
@@ -948,12 +933,15 @@ public class SalesCoreEngine {
         signature,
         signaturePaymentModeToken(request.paymentMode(), preserveLegacySplitAlias),
         includeDefaultPaymentModeToken);
+    if (StringUtils.hasText(request.paymentTerms())) {
+      signature.add(normalizeText(request.paymentTerms()));
+    }
     request.items().stream()
         .sorted(orderRequestComparator())
         .forEach(
             item ->
                 signature.add(
-                    normalizeText(item.productCode())
+                    requestItemSignatureProductToken(item)
                         + ':'
                         + amountToken(item.quantity())
                         + ':'
@@ -1011,6 +999,9 @@ public class SalesCoreEngine {
         signature,
         signaturePaymentModeToken(effectivePaymentMode, preserveLegacySplitAlias),
         includeDefaultPaymentModeToken);
+    if (StringUtils.hasText(order.getPaymentTerms())) {
+      signature.add(normalizeText(order.getPaymentTerms()));
+    }
     order.getItems().stream()
         .sorted(orderItemComparator())
         .forEach(
@@ -1027,7 +1018,7 @@ public class SalesCoreEngine {
   }
 
   private Comparator<SalesOrderItemRequest> orderRequestComparator() {
-    return Comparator.comparing((SalesOrderItemRequest item) -> normalizeText(item.productCode()))
+    return Comparator.comparing(this::requestItemSignatureProductToken)
         .thenComparing(item -> safeAmount(item.quantity()))
         .thenComparing(item -> safeAmount(item.unitPrice()));
   }
@@ -1036,6 +1027,19 @@ public class SalesCoreEngine {
     return Comparator.comparing((SalesOrderItem item) -> normalizeText(item.getProductCode()))
         .thenComparing(item -> safeAmount(item.getQuantity()))
         .thenComparing(item -> safeAmount(item.getUnitPrice()));
+  }
+
+  private String requestItemSignatureProductToken(SalesOrderItemRequest item) {
+    if (item == null) {
+      return "";
+    }
+    if (item.hasProductCode()) {
+      return normalizeText(item.normalizedProductCode());
+    }
+    if (item.hasFinishedGoodId()) {
+      return "FG#" + item.finishedGoodId();
+    }
+    return "";
   }
 
   private BigDecimal safeAmount(BigDecimal value) {
@@ -1056,6 +1060,14 @@ public class SalesCoreEngine {
   @Transactional
   public SalesOrderDto updateOrder(Long id, SalesOrderRequest request) {
     SalesOrder order = requireOrder(id);
+    if (isDraftLifecycleOrder(order)
+        && !ORDER_STATUS_DRAFT.equals(canonicalOrderStatus(order.getStatus()))) {
+      throw new ApplicationException(
+              ErrorCode.BUSINESS_INVALID_STATE,
+              "Draft-lifecycle orders can only be updated in DRAFT")
+          .withDetail("currentStatus", canonicalOrderStatus(order.getStatus()))
+          .withDetail("requiredStatus", ORDER_STATUS_DRAFT);
+    }
     assertOrderMutable(order, "update");
     GstTreatment gstTreatment = resolveGstTreatment(request.gstTreatment());
     BigDecimal orderLevelRate =
@@ -1082,6 +1094,10 @@ public class SalesCoreEngine {
       currency = "INR";
     }
     order.setCurrency(currency);
+    order.setPaymentTerms(
+        StringUtils.hasText(request.paymentTerms())
+            ? normalizePaymentTerms(request.paymentTerms())
+            : order.getPaymentTerms());
     order.setNotes(request.notes());
     order.setGstInclusive(gstInclusive);
     OrderAmountSummary amounts =
@@ -1092,6 +1108,9 @@ public class SalesCoreEngine {
           order.getCompany(), order.getDealer(), amounts.total(), paymentMode, order.getId());
     }
     salesOrderRepository.save(order);
+    if (isDraftLifecycleOrder(order)) {
+      return toDto(order);
+    }
     SalesProformaBoundaryService.CommercialAssessment commercialAssessment =
         salesProformaBoundaryService.assessCommercialAvailability(order.getCompany(), order);
     if (ORDER_STATUS_PENDING_PRODUCTION.equals(commercialAssessment.commercialStatus())
@@ -1146,8 +1165,29 @@ public class SalesCoreEngine {
     return salesProformaBoundaryService.assessCommercialAvailability(company, order);
   }
 
+  @Transactional
   public void deleteOrder(Long id) {
     SalesOrder order = requireOrder(id);
+    String currentStatus = canonicalOrderStatus(order.getStatus());
+    if (isDraftLifecycleOrder(order) && !ORDER_STATUS_DRAFT.equals(currentStatus)) {
+      throw new ApplicationException(
+              ErrorCode.BUSINESS_INVALID_STATE,
+              "Draft-lifecycle orders can only be deleted in DRAFT")
+          .withDetail("currentStatus", currentStatus)
+          .withDetail("requiredStatus", ORDER_STATUS_DRAFT);
+    }
+    if (isDraftLifecycleOrder(order)) {
+      finishedGoodsService.releaseReservationsForOrder(order.getId());
+      cancelFactoryTasksForOrder(order);
+      transitionOrderStatus(
+          order,
+          ORDER_STATUS_DELETED,
+          "ORDER_DELETED",
+          "Order soft-deleted",
+          currentActorIdentity());
+      salesOrderRepository.save(order);
+      return;
+    }
     assertOrderMutable(order, "delete");
     finishedGoodsService.releaseReservationsForOrder(order.getId());
     cancelFactoryTasksForOrder(order);
@@ -1188,6 +1228,11 @@ public class SalesCoreEngine {
         requiredAmount,
         order.getPaymentMode(),
         order.getId());
+    if (ORDER_STATUS_DRAFT.equals(currentStatus) && isDraftLifecycleOrder(order)) {
+      FinishedGoodsService.InventoryReservationResult reservationResult =
+          finishedGoodsService.reserveForOrder(order);
+      assertDraftLifecycleReservationBacked(order, reservationResult);
+    }
     validateStockAvailabilityForConfirmation(order);
     transitionOrderStatus(
         order,
@@ -1216,11 +1261,12 @@ public class SalesCoreEngine {
 
     String reasonCode = extractCancellationReasonCode(reason);
     if (!StringUtils.hasText(reasonCode)) {
-      throw new ApplicationException(
-              ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD, "Cancellation requires reason code")
-          .withDetail("field", "reasonCode");
+      reasonCode = "ORDER_CANCELLED";
     }
     String reasonDetail = extractCancellationReasonText(reason);
+    if (!StringUtils.hasText(reasonDetail)) {
+      reasonDetail = "Order cancelled";
+    }
 
     if (Set.of(
             ORDER_STATUS_RESERVED,
@@ -1235,7 +1281,7 @@ public class SalesCoreEngine {
       cancelFactoryTasksForOrder(order);
     }
 
-    order.setNotes(reasonDetail);
+    order.setNotes(StringUtils.hasText(reasonDetail) ? reasonDetail : order.getNotes());
     transitionOrderStatus(
         order, ORDER_STATUS_CANCELLED, reasonCode, reasonDetail, currentActorIdentity());
     return toDto(order);
@@ -1348,7 +1394,7 @@ public class SalesCoreEngine {
 
   private SalesOrder requireOrder(Long id) {
     Company company = companyContextService.requireCurrentCompany();
-    return companyEntityLookup.requireSalesOrder(company, id);
+    return salesLookupService.requireSalesOrder(company, id);
   }
 
   private SalesOrder requireOrderForUpdate(Company company, Long id) {
@@ -1357,7 +1403,7 @@ public class SalesCoreEngine {
     if (lockedOrder != null && lockedOrder.isPresent()) {
       return lockedOrder.get();
     }
-    return companyEntityLookup.requireSalesOrder(company, id);
+    return salesLookupService.requireSalesOrder(company, id);
   }
 
   private List<PackagingSlip> findOrderSlips(Company company, Long orderId, boolean forUpdate) {
@@ -1425,6 +1471,7 @@ public class SalesCoreEngine {
     String status = canonicalOrderStatus(order.getStatus());
     if (Set.of(
             ORDER_STATUS_CANCELLED,
+            ORDER_STATUS_DELETED,
             ORDER_STATUS_DISPATCHED,
             ORDER_STATUS_INVOICED,
             ORDER_STATUS_SETTLED,
@@ -1550,7 +1597,7 @@ public class SalesCoreEngine {
           }
           if (cogsJournalEntryId == null) {
             cogsJournalEntryId =
-                resolveCogsMarkerForReconciliation(company, order, singleActiveSlip, null);
+                resolveCogsMarkerForReconciliation(order, singleActiveSlip, null);
           }
           if (invoiceId == null && salesJournalEntryId == null && cogsJournalEntryId == null) {
             // Avoid destructive cleanup when no slip-level anchors are available yet.
@@ -1583,7 +1630,7 @@ public class SalesCoreEngine {
   }
 
   private Long resolveCogsMarkerForReconciliation(
-      Company company, SalesOrder order, PackagingSlip slip, Long resolvedCogsJournalId) {
+      SalesOrder order, PackagingSlip slip, Long resolvedCogsJournalId) {
     Long cogsJournalEntryId = resolvedCogsJournalId;
     if (cogsJournalEntryId != null || slip == null) {
       return cogsJournalEntryId;
@@ -1673,15 +1720,26 @@ public class SalesCoreEngine {
         order.getCurrency(),
         dealerName,
         normalizeOrderPaymentMode(order.getPaymentMode()),
+        normalizePaymentTerms(order.getPaymentTerms()),
         order.getTraceId(),
         order.getCreatedAt(),
         items,
         List.of());
   }
 
+  private List<SalesOrder> filterVisibleOrders(List<SalesOrder> orders) {
+    if (orders == null || orders.isEmpty()) {
+      return List.of();
+    }
+    return orders.stream()
+        .filter(order -> !ORDER_STATUS_DELETED.equals(canonicalOrderStatus(order.getStatus())))
+        .toList();
+  }
+
   private SalesOrderItemDto toItemDto(SalesOrderItem item) {
     return new SalesOrderItemDto(
         item.getId(),
+        item.getFinishedGoodId(),
         item.getProductCode(),
         item.getDescription(),
         item.getQuantity(),
@@ -1727,7 +1785,7 @@ public class SalesCoreEngine {
       GstTreatment gstTreatment,
       BigDecimal orderLevelRate,
       boolean gstInclusive) {
-    order.getItems().clear();
+    order.replaceItems(List.of());
     if (requests == null || requests.isEmpty()) {
       order.setSubtotalAmount(BigDecimal.ZERO);
       order.setGstTotal(BigDecimal.ZERO);
@@ -1744,6 +1802,7 @@ public class SalesCoreEngine {
       SalesOrderItem item = new SalesOrderItem();
       item.setSalesOrder(order);
       item.setProductCode(pricedLine.product().getSkuCode());
+      item.setFinishedGoodId(pricedLine.finishedGoodId());
       item.setDescription(pricedLine.description());
       item.setQuantity(pricedLine.quantity());
       item.setUnitPrice(pricedLine.unitPrice());
@@ -1755,7 +1814,7 @@ public class SalesCoreEngine {
       items.add(item);
       subtotal = subtotal.add(lineSubtotal);
     }
-    order.getItems().addAll(items);
+    order.replaceItems(items);
 
     BigDecimal rawSubtotal = subtotal; // capture original (possibly GST-inclusive) subtotal
     BigDecimal taxTotal = BigDecimal.ZERO;
@@ -1929,31 +1988,50 @@ public class SalesCoreEngine {
     }
     List<PricedOrderLine> resolved = new ArrayList<>();
     for (SalesOrderItemRequest request : requests) {
-      String sku = request.productCode() != null ? request.productCode().trim() : "";
-      if (!StringUtils.hasText(sku)) {
-        throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
-            "SKU is required for each order item");
+      String sku = request.normalizedProductCode();
+      FinishedGood finishedGood;
+      if (request.hasFinishedGoodId()) {
+        finishedGood =
+            finishedGoodRepository
+                .findByCompanyAndId(company, request.finishedGoodId())
+                .orElseThrow(
+                    () ->
+                        com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+                            "Unknown finishedGoodId " + request.finishedGoodId()));
+        sku = finishedGood.getProductCode();
+      } else {
+        if (!StringUtils.hasText(sku)) {
+          throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+              "productCode or finishedGoodId is required for each order item");
+        }
+        finishedGood =
+            finishedGoodRepository
+                .findByCompanyAndProductCode(company, sku)
+                .orElseThrow(
+                    () ->
+                        com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState(
+                            "Finished good not configured for SKU "
+                                + request.normalizedProductCode()));
       }
+      String resolvedSku = sku;
       ProductionProduct product =
           productionProductRepository
-              .findByCompanyAndSkuCode(company, sku)
+              .findByCompanyAndSkuCode(company, resolvedSku)
               .orElseThrow(
                   () ->
                       com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
-                          "Unknown SKU " + sku));
+                          "Unknown SKU " + resolvedSku));
       if (!product.isActive()) {
         throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState(
-            "SKU " + sku + " is inactive");
+            "SKU " + resolvedSku + " is inactive");
       }
-      FinishedGood finishedGood =
-          finishedGoodRepository
-              .findByCompanyAndProductCode(company, sku)
-              .orElseThrow(
-                  () ->
-                      com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState(
-                          "Finished good not configured for SKU " + sku));
+      if (request.hasProductCode()
+          && !request.normalizedProductCode().equalsIgnoreCase(finishedGood.getProductCode())) {
+        throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+            "finishedGoodId and productCode refer to different finished goods");
+      }
       requireRevenueAccount(finishedGood);
-      BigDecimal quantity = normalizePositive(request.quantity(), "quantity", sku);
+      BigDecimal quantity = normalizePositive(request.quantity(), "quantity", resolvedSku);
       BigDecimal unitPrice =
           request.unitPrice() != null ? request.unitPrice() : product.getBasePrice();
       BigDecimal minAllowed = resolveMinAllowedPrice(product);
@@ -1961,7 +2039,7 @@ public class SalesCoreEngine {
         throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
             String.format(
                 "Unit price %.2f for SKU %s is below the minimum allowed %.2f.",
-                unitPrice, sku, minAllowed));
+                unitPrice, resolvedSku, minAllowed));
       }
       String description =
           StringUtils.hasText(request.description())
@@ -1978,9 +2056,16 @@ public class SalesCoreEngine {
       if (requiresTaxAccount(gstTreatment, orderLevelRate, normalizedRate)
           && finishedGood.getTaxAccountId() == null) {
         throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState(
-            "Finished good " + sku + " is missing a GST liability account");
+            "Finished good " + resolvedSku + " is missing a GST liability account");
       }
-      resolved.add(new PricedOrderLine(product, description, quantity, unitPrice, normalizedRate));
+      resolved.add(
+          new PricedOrderLine(
+              product,
+              request.hasFinishedGoodId() ? request.finishedGoodId() : null,
+              description,
+              quantity,
+              unitPrice,
+              normalizedRate));
     }
     return resolved;
   }
@@ -2017,6 +2102,20 @@ public class SalesCoreEngine {
     return salesProformaBoundaryService.normalizePaymentMode(rawMode);
   }
 
+  private String normalizePaymentTerms(String rawPaymentTerms) {
+    if (!StringUtils.hasText(rawPaymentTerms)) {
+      return null;
+    }
+    return rawPaymentTerms.trim();
+  }
+
+  private boolean isDraftLifecycleOrder(SalesOrder order) {
+    if (order == null || order.getItems() == null) {
+      return false;
+    }
+    return order.getItems().stream().anyMatch(item -> item.getFinishedGoodId() != null);
+  }
+
   private String signaturePaymentModeToken(String rawMode, boolean preserveLegacySplitAlias) {
     String normalized = IdempotencyUtils.normalizeUpperToken(rawMode);
     if (normalized.isBlank()) {
@@ -2043,6 +2142,22 @@ public class SalesCoreEngine {
       return null;
     }
     return legacyDefaultPaymentIdempotencyKey;
+  }
+
+  private void failClosedOnRetiredLegacyIdempotencyHeader() {
+    if (!(RequestContextHolder.getRequestAttributes()
+        instanceof ServletRequestAttributes servletRequestAttributes)) {
+      return;
+    }
+    HttpServletRequest request = servletRequestAttributes.getRequest();
+    if (request == null
+        || !StringUtils.hasText(request.getHeader(RETIRED_LEGACY_IDEMPOTENCY_HEADER))
+        || !"POST".equalsIgnoreCase(request.getMethod())
+        || !SALES_ORDER_CREATE_PATH.equals(request.getRequestURI())) {
+      return;
+    }
+    throw IdempotencyHeaderUtils.unsupportedLegacyHeader(
+        RETIRED_LEGACY_IDEMPOTENCY_HEADER, "sales orders", SALES_ORDER_CREATE_PATH);
   }
 
   private String resolveLegacySplitReplayIdempotencyKey(
@@ -2112,6 +2227,7 @@ public class SalesCoreEngine {
 
   private record PricedOrderLine(
       ProductionProduct product,
+      Long finishedGoodId,
       String description,
       BigDecimal quantity,
       BigDecimal unitPrice,
@@ -2196,7 +2312,7 @@ public class SalesCoreEngine {
 
   private Promotion requirePromotion(Long id) {
     Company company = companyContextService.requireCurrentCompany();
-    return companyEntityLookup.requirePromotion(company, id);
+    return salesLookupService.requirePromotion(company, id);
   }
 
   /* Sales Targets */
@@ -2274,7 +2390,7 @@ public class SalesCoreEngine {
 
   private SalesTarget requireTarget(Long id) {
     Company company = companyContextService.requireCurrentCompany();
-    return companyEntityLookup.requireSalesTarget(company, id);
+    return salesLookupService.requireSalesTarget(company, id);
   }
 
   private void requireSalesTargetAdminAuthority() {
@@ -2610,11 +2726,11 @@ public class SalesCoreEngine {
           dealerLedgerService.syncInvoiceLedger(existingInvoice, null);
         }
         boolean slipUpdated = false;
-        if (slip.getInvoiceId() == null && existingInvoiceId != null) {
+        if (slip.getInvoiceId() == null) {
           slip.setInvoiceId(existingInvoiceId);
           slipUpdated = true;
         }
-        if (slip.getJournalEntryId() == null && existingJeId != null) {
+        if (slip.getJournalEntryId() == null) {
           slip.setJournalEntryId(existingJeId);
           slipUpdated = true;
         }
@@ -2626,7 +2742,7 @@ public class SalesCoreEngine {
           packagingSlipRepository.save(slip);
         }
         Long cogsMarkerForReconciliation =
-            resolveCogsMarkerForReconciliation(company, order, slip, existingCogsJournalId);
+            resolveCogsMarkerForReconciliation(order, slip, existingCogsJournalId);
         boolean orderUpdated =
             reconcileOrderLevelDispatchMarkers(
                 order,
@@ -3243,8 +3359,9 @@ public class SalesCoreEngine {
             ? LocalDate.ofInstant(slip.getDispatchedAt(), ZoneId.of(company.getTimezone()))
             : currentDate(company);
 
+    Objects.requireNonNull(company, "Company is required for dispatch confirmation");
     Long cogsJournalId = null;
-    if (postings != null && !postings.isEmpty()) {
+    if (!postings.isEmpty()) {
       Map<String, BigDecimal> cogsCostByPair = new HashMap<>();
       Map<String, Long[]> cogsAccountsByPair = new HashMap<>();
       for (FinishedGoodsService.DispatchPosting posting : postings) {
@@ -3428,13 +3545,14 @@ public class SalesCoreEngine {
       invoice.setNotes("Dispatch " + slipNumber);
       for (InvoiceLine line : invoiceLines) {
         line.setInvoice(invoice);
-        invoice.getLines().add(line);
+        invoice.addLine(line);
       }
     }
     if (arJournalEntryId != null
         && (invoice.getJournalEntry() == null
             || !arJournalEntryId.equals(invoice.getJournalEntry().getId()))) {
-      invoice.setJournalEntry(companyEntityLookup.requireJournalEntry(company, arJournalEntryId));
+      invoice.setJournalEntry(
+          accountingLookupService.requireJournalEntry(company, arJournalEntryId));
     }
     invoice = invoiceRepository.save(invoice);
     dealerLedgerService.syncInvoiceLedger(invoice, null);
@@ -3513,7 +3631,7 @@ public class SalesCoreEngine {
     if (journalEntryId == null || dealer == null || dealer.getReceivableAccount() == null) {
       return;
     }
-    JournalEntry entry = companyEntityLookup.requireJournalEntry(company, journalEntryId);
+    JournalEntry entry = accountingLookupService.requireJournalEntry(company, journalEntryId);
     Long receivableAccountId = dealer.getReceivableAccount().getId();
     if (receivableAccountId == null || entry.getLines() == null || entry.getLines().isEmpty()) {
       return;
@@ -3579,6 +3697,7 @@ public class SalesCoreEngine {
     }
     metadata.put("alreadyDispatched", Boolean.toString(alreadyDispatched));
     metadata.put("dispatchOverridesApplied", Boolean.toString(hasOverrides));
+    metadata.put("resourceType", "INVENTORY");
     if (StringUtils.hasText(overrideReason)) {
       metadata.put("dispatchOverrideReason", overrideReason.trim());
     }
@@ -3768,16 +3887,13 @@ public class SalesCoreEngine {
       return;
     }
     String actor = currentActorIdentity();
-    SalesOrderStatusHistory history = new SalesOrderStatusHistory();
-    history.setCompany(order.getCompany());
-    history.setSalesOrder(order);
-    history.setFromStatus(null);
-    history.setToStatus(canonicalOrderStatus(order.getStatus()));
-    history.setReasonCode("ORDER_CREATED");
-    history.setReason("Order created");
-    history.setChangedBy(actor);
-    history.setChangedAt(companyClock.now(order.getCompany()));
-    salesOrderStatusHistoryRepository.save(history);
+    recordOrderStatusHistory(
+        order,
+        null,
+        canonicalOrderStatus(order.getStatus()),
+        "ORDER_CREATED",
+        "Order created",
+        actor);
   }
 
   private void transitionOrderStatus(
@@ -3825,6 +3941,81 @@ public class SalesCoreEngine {
     history.setChangedBy(StringUtils.hasText(actor) ? actor.trim() : "system");
     history.setChangedAt(companyClock.now(order.getCompany()));
     salesOrderStatusHistoryRepository.save(history);
+    recordOrderStatusBusinessEvent(order, history);
+  }
+
+  private void recordOrderStatusBusinessEvent(SalesOrder order, SalesOrderStatusHistory history) {
+    if (enterpriseAuditTrailService == null
+        || order == null
+        || order.getCompany() == null
+        || order.getId() == null
+        || history == null) {
+      return;
+    }
+    String action =
+        StringUtils.hasText(history.getReasonCode())
+            ? history.getReasonCode()
+            : "ORDER_STATUS_CHANGED";
+    Map<String, String> metadata = new LinkedHashMap<>();
+    if (StringUtils.hasText(history.getFromStatus())) {
+      metadata.put("fromStatus", history.getFromStatus());
+    }
+    if (StringUtils.hasText(history.getToStatus())) {
+      metadata.put("toStatus", history.getToStatus());
+    }
+    if (StringUtils.hasText(history.getReason())) {
+      metadata.put("reason", history.getReason());
+    }
+    if (order.getDealer() != null && order.getDealer().getId() != null) {
+      metadata.put("dealerId", order.getDealer().getId().toString());
+    }
+    UUID correlationId =
+        AuditCorrelationIdResolver.resolveCorrelationId(
+            AuditCorrelationIdResolver.currentRequest(),
+            order.getTraceId(),
+            order.getOrderNumber(),
+            "SALES_ORDER:" + order.getId());
+    AuditActionEventCommand command =
+        new AuditActionEventCommand(
+            order.getCompany(),
+            AuditActionEventSource.BACKEND,
+            "SALES",
+            action,
+            "SALES_ORDER",
+            order.getId().toString(),
+            order.getOrderNumber(),
+            AuditActionEventStatus.SUCCESS,
+            null,
+            order.getTotalAmount(),
+            order.getCurrency(),
+            correlationId,
+            null,
+            null,
+            null,
+            null,
+            null,
+            false,
+            null,
+            metadata,
+            history.getChangedAt());
+    dispatchSalesBusinessEvent(command);
+  }
+
+  private void dispatchSalesBusinessEvent(AuditActionEventCommand command) {
+    if (enterpriseAuditTrailService == null || command == null) {
+      return;
+    }
+    if (TransactionSynchronizationManager.isSynchronizationActive()) {
+      TransactionSynchronizationManager.registerSynchronization(
+          new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+              enterpriseAuditTrailService.recordBusinessEvent(command);
+            }
+          });
+      return;
+    }
+    enterpriseAuditTrailService.recordBusinessEvent(command);
   }
 
   private boolean isValidOrderTransition(String fromStatus, String toStatus) {
@@ -3928,9 +4119,14 @@ public class SalesCoreEngine {
                 "Order cannot be confirmed because production is still required for shortage items")
             .withDetail("productionRequirementSkus", requirementSkus);
       }
+      if (isDraftLifecycleOrder(order)) {
+        throw new ApplicationException(
+                ErrorCode.BUSINESS_INVALID_STATE,
+                "Order cannot be confirmed because no stock is reserved for line items")
+            .withDetail("unreservedSkus", draftLifecycleLineSkus(order));
+      }
       return;
     }
-    boolean hasAnyReserved = false;
     List<String> shortages = new ArrayList<>();
     for (PackagingSlip slip : slips) {
       if (slip == null || slip.getLines() == null || slip.getLines().isEmpty()) {
@@ -3944,31 +4140,81 @@ public class SalesCoreEngine {
             line.getOrderedQuantity() != null ? line.getOrderedQuantity() : line.getQuantity();
         BigDecimal shipped =
             line.getShippedQuantity() != null ? line.getShippedQuantity() : BigDecimal.ZERO;
-        BigDecimal backorder =
-            line.getBackorderQuantity() != null
-                ? line.getBackorderQuantity()
-                : (ordered != null
-                    ? ordered.subtract(shipped).max(BigDecimal.ZERO)
-                    : BigDecimal.ZERO);
-        BigDecimal reservedQty =
-            ordered != null ? ordered.subtract(backorder).max(BigDecimal.ZERO) : BigDecimal.ZERO;
-        if (reservedQty.compareTo(BigDecimal.ZERO) > 0) {
-          hasAnyReserved = true;
-          continue;
+        BigDecimal reservedQty;
+        if (line.getBackorderQuantity() != null) {
+          BigDecimal baseline = ordered != null ? ordered : BigDecimal.ZERO;
+          reservedQty = baseline.subtract(line.getBackorderQuantity()).max(BigDecimal.ZERO);
+        } else if (line.getQuantity() != null) {
+          reservedQty = line.getQuantity().subtract(shipped).max(BigDecimal.ZERO);
+        } else if (ordered != null) {
+          reservedQty = ordered.subtract(shipped).max(BigDecimal.ZERO);
+        } else {
+          reservedQty = BigDecimal.ZERO;
         }
-        String sku =
-            line.getFinishedGoodBatch() != null
-                    && line.getFinishedGoodBatch().getFinishedGood() != null
-                ? line.getFinishedGoodBatch().getFinishedGood().getProductCode()
-                : "UNKNOWN";
-        shortages.add(sku);
+        if (reservedQty.compareTo(BigDecimal.ZERO) <= 0) {
+          String sku =
+              line.getFinishedGoodBatch() != null
+                      && line.getFinishedGoodBatch().getFinishedGood() != null
+                  ? line.getFinishedGoodBatch().getFinishedGood().getProductCode()
+                  : "UNKNOWN";
+          shortages.add(sku);
+        }
       }
     }
-    if (!hasAnyReserved && !shortages.isEmpty()) {
+    if (!shortages.isEmpty()) {
       throw new ApplicationException(
               ErrorCode.BUSINESS_INVALID_STATE,
               "Order cannot be confirmed because no stock is reserved for line items")
           .withDetail("unreservedSkus", shortages);
+    }
+  }
+
+  private List<String> draftLifecycleLineSkus(SalesOrder order) {
+    if (order == null || order.getItems() == null) {
+      return List.of();
+    }
+    List<String> skus =
+        order.getItems().stream()
+            .filter(Objects::nonNull)
+            .filter(item -> item.getFinishedGoodId() != null)
+            .map(
+                item -> {
+                  if (StringUtils.hasText(item.getProductCode())) {
+                    return item.getProductCode().trim();
+                  }
+                  return "FG#" + item.getFinishedGoodId();
+                })
+            .distinct()
+            .toList();
+    return skus.isEmpty() ? List.of("UNKNOWN") : skus;
+  }
+
+  private void assertDraftLifecycleReservationBacked(
+      SalesOrder order, FinishedGoodsService.InventoryReservationResult reservationResult) {
+    if (reservationResult == null) {
+      throw new ApplicationException(
+              ErrorCode.BUSINESS_INVALID_STATE,
+              "Order cannot be confirmed because inventory reservation failed")
+          .withDetail("orderId", order.getId());
+    }
+    if (reservationResult.shortages() != null && !reservationResult.shortages().isEmpty()) {
+      List<String> shortageSkus =
+          reservationResult.shortages().stream()
+              .map(FinishedGoodsService.InventoryShortage::productCode)
+              .filter(StringUtils::hasText)
+              .toList();
+      throw new ApplicationException(
+              ErrorCode.BUSINESS_INVALID_STATE,
+              "Order cannot be confirmed because stock reservation is incomplete")
+          .withDetail("orderId", order.getId())
+          .withDetail("unreservedSkus", shortageSkus)
+          .withDetail("reservationShortages", reservationResult.shortages());
+    }
+    if (reservationResult.packagingSlip() == null) {
+      throw new ApplicationException(
+              ErrorCode.BUSINESS_INVALID_STATE,
+              "Order cannot be confirmed because inventory reservation is missing")
+          .withDetail("orderId", order.getId());
     }
   }
 

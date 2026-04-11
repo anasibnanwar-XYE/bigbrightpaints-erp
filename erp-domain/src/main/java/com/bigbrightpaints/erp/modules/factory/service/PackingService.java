@@ -6,6 +6,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -13,7 +14,6 @@ import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.idempotency.IdempotencyReservationService;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.core.util.MoneyUtils;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalCreationRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
@@ -46,7 +46,7 @@ public class PackingService {
   private final PackingRecordRepository packingRecordRepository;
   private final CompanyClock companyClock;
   private final AccountingFacade accountingFacade;
-  private final CompanyEntityLookup companyEntityLookup;
+  private final CompanyScopedFactoryLookupService factoryLookupService;
   private final PackagingMaterialService packagingMaterialService;
   private final PackingProductSupport packingProductSupport;
   private final PackingAllowedSizeService packingAllowedSizeService;
@@ -61,6 +61,7 @@ public class PackingService {
   private final IdempotencyReservationService idempotencyReservationService =
       new IdempotencyReservationService();
 
+  @Autowired
   public PackingService(
       CompanyContextService companyContextService,
       ProductionLogRepository productionLogRepository,
@@ -68,7 +69,7 @@ public class PackingService {
       ProductionLogService productionLogService,
       CompanyClock companyClock,
       AccountingFacade accountingFacade,
-      CompanyEntityLookup companyEntityLookup,
+      CompanyScopedFactoryLookupService factoryLookupService,
       PackagingMaterialService packagingMaterialService,
       PackingProductSupport packingProductSupport,
       PackingAllowedSizeService packingAllowedSizeService,
@@ -85,7 +86,7 @@ public class PackingService {
     this.productionLogService = productionLogService;
     this.companyClock = companyClock;
     this.accountingFacade = accountingFacade;
-    this.companyEntityLookup = companyEntityLookup;
+    this.factoryLookupService = factoryLookupService;
     this.packagingMaterialService = packagingMaterialService;
     this.packingProductSupport = packingProductSupport;
     this.packingAllowedSizeService = packingAllowedSizeService;
@@ -101,7 +102,7 @@ public class PackingService {
   @Transactional
   public ProductionLogDetailDto recordPacking(PackingRequest request) {
     Company company = companyContextService.requireCurrentCompany();
-    ProductionLog log = companyEntityLookup.lockProductionLog(company, request.productionLogId());
+    ProductionLog log = factoryLookupService.lockProductionLog(company, request.productionLogId());
     validateLogAndRequest(log, request);
 
     LocalDate packedDate =
@@ -265,7 +266,7 @@ public class PackingService {
 
     savedRecord.setFinishedGoodBatch(finishedGoodBatch);
     packingRecordRepository.save(savedRecord);
-    log.getPackingRecords().add(savedRecord);
+    log.addPackingRecord(savedRecord);
 
     return new PackingLineExecution(savedRecord, lineQuantity);
   }
@@ -357,7 +358,7 @@ public class PackingService {
 
   private void updateLogState(Long logId, LocalDate packedDate, boolean closeResidualWastage) {
     Company company = companyContextService.requireCurrentCompany();
-    ProductionLog refreshedLog = companyEntityLookup.requireProductionLog(company, logId);
+    ProductionLog refreshedLog = factoryLookupService.requireProductionLog(company, logId);
     if (closeResidualWastage) {
       closeResidualWastage(refreshedLog, packedDate);
       return;

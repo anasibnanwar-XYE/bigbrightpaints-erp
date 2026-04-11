@@ -15,9 +15,9 @@ import org.junit.jupiter.api.Test;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
+import com.bigbrightpaints.erp.modules.accounting.service.CompanyScopedAccountingLookupService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.hr.domain.AttendanceRepository;
@@ -26,6 +26,7 @@ import com.bigbrightpaints.erp.modules.hr.domain.PayrollRun;
 import com.bigbrightpaints.erp.modules.hr.domain.PayrollRunLine;
 import com.bigbrightpaints.erp.modules.hr.domain.PayrollRunLineRepository;
 import com.bigbrightpaints.erp.modules.hr.domain.PayrollRunRepository;
+import com.bigbrightpaints.erp.modules.hr.service.CompanyScopedHrLookupService;
 import com.bigbrightpaints.erp.modules.hr.service.PayrollService;
 
 @Tag("critical")
@@ -42,7 +43,9 @@ class TS_RuntimePayrollMarkPaidExecutableCoverageTest {
     com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository accountRepository =
         mock(com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository.class);
     CompanyContextService companyContextService = mock(CompanyContextService.class);
-    CompanyEntityLookup companyEntityLookup = mock(CompanyEntityLookup.class);
+    CompanyScopedHrLookupService hrLookupService = mock(CompanyScopedHrLookupService.class);
+    CompanyScopedAccountingLookupService accountingLookupService =
+        mock(CompanyScopedAccountingLookupService.class);
     CompanyClock companyClock = mock(CompanyClock.class);
     com.bigbrightpaints.erp.core.audit.AuditService auditService =
         mock(com.bigbrightpaints.erp.core.audit.AuditService.class);
@@ -56,7 +59,8 @@ class TS_RuntimePayrollMarkPaidExecutableCoverageTest {
             accountingFacade,
             accountRepository,
             companyContextService,
-            companyEntityLookup,
+            hrLookupService,
+            accountingLookupService,
             companyClock,
             auditService);
 
@@ -65,7 +69,7 @@ class TS_RuntimePayrollMarkPaidExecutableCoverageTest {
     run.setStatus(PayrollRun.PayrollStatus.POSTED);
 
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
-    when(companyEntityLookup.lockPayrollRun(company, 77L)).thenReturn(run);
+    when(hrLookupService.lockPayrollRun(company, 77L)).thenReturn(run);
 
     assertThatThrownBy(() -> service.markAsPaid(77L, "ignored"))
         .isInstanceOf(ApplicationException.class)
@@ -82,7 +86,9 @@ class TS_RuntimePayrollMarkPaidExecutableCoverageTest {
     com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository accountRepository =
         mock(com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository.class);
     CompanyContextService companyContextService = mock(CompanyContextService.class);
-    CompanyEntityLookup companyEntityLookup = mock(CompanyEntityLookup.class);
+    CompanyScopedHrLookupService hrLookupService = mock(CompanyScopedHrLookupService.class);
+    CompanyScopedAccountingLookupService accountingLookupService =
+        mock(CompanyScopedAccountingLookupService.class);
     CompanyClock companyClock = mock(CompanyClock.class);
     com.bigbrightpaints.erp.core.audit.AuditService auditService =
         mock(com.bigbrightpaints.erp.core.audit.AuditService.class);
@@ -96,7 +102,8 @@ class TS_RuntimePayrollMarkPaidExecutableCoverageTest {
             accountingFacade,
             accountRepository,
             companyContextService,
-            companyEntityLookup,
+            hrLookupService,
+            accountingLookupService,
             companyClock,
             auditService);
 
@@ -108,8 +115,8 @@ class TS_RuntimePayrollMarkPaidExecutableCoverageTest {
     paymentJournal.setReferenceNumber("   ");
 
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
-    when(companyEntityLookup.lockPayrollRun(company, 77L)).thenReturn(run);
-    when(companyEntityLookup.requireJournalEntry(company, 990L)).thenReturn(paymentJournal);
+    when(hrLookupService.lockPayrollRun(company, 77L)).thenReturn(run);
+    when(accountingLookupService.requireJournalEntry(company, 990L)).thenReturn(paymentJournal);
 
     assertThatThrownBy(() -> service.markAsPaid(77L, "legacy-ref"))
         .isInstanceOf(ApplicationException.class)
@@ -126,7 +133,9 @@ class TS_RuntimePayrollMarkPaidExecutableCoverageTest {
     com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository accountRepository =
         mock(com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository.class);
     CompanyContextService companyContextService = mock(CompanyContextService.class);
-    CompanyEntityLookup companyEntityLookup = mock(CompanyEntityLookup.class);
+    CompanyScopedHrLookupService hrLookupService = mock(CompanyScopedHrLookupService.class);
+    CompanyScopedAccountingLookupService accountingLookupService =
+        mock(CompanyScopedAccountingLookupService.class);
     CompanyClock companyClock = mock(CompanyClock.class);
     com.bigbrightpaints.erp.core.audit.AuditService auditService =
         mock(com.bigbrightpaints.erp.core.audit.AuditService.class);
@@ -140,7 +149,8 @@ class TS_RuntimePayrollMarkPaidExecutableCoverageTest {
             accountingFacade,
             accountRepository,
             companyContextService,
-            companyEntityLookup,
+            hrLookupService,
+            accountingLookupService,
             companyClock,
             auditService);
 
@@ -156,8 +166,8 @@ class TS_RuntimePayrollMarkPaidExecutableCoverageTest {
     paymentJournal.setEntryDate(LocalDate.of(2026, 2, 21));
 
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
-    when(companyEntityLookup.lockPayrollRun(company, 77L)).thenReturn(run);
-    when(companyEntityLookup.requireJournalEntry(company, 991L)).thenReturn(paymentJournal);
+    when(hrLookupService.lockPayrollRun(company, 77L)).thenReturn(run);
+    when(accountingLookupService.requireJournalEntry(company, 991L)).thenReturn(paymentJournal);
     when(payrollRunLineRepository.findByPayrollRun(run)).thenReturn(List.of(line));
     when(payrollRunRepository.save(any(PayrollRun.class))).thenReturn(run);
 
@@ -182,7 +192,9 @@ class TS_RuntimePayrollMarkPaidExecutableCoverageTest {
     com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository accountRepository =
         mock(com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository.class);
     CompanyContextService companyContextService = mock(CompanyContextService.class);
-    CompanyEntityLookup companyEntityLookup = mock(CompanyEntityLookup.class);
+    CompanyScopedHrLookupService hrLookupService = mock(CompanyScopedHrLookupService.class);
+    CompanyScopedAccountingLookupService accountingLookupService =
+        mock(CompanyScopedAccountingLookupService.class);
     CompanyClock companyClock = mock(CompanyClock.class);
     com.bigbrightpaints.erp.core.audit.AuditService auditService =
         mock(com.bigbrightpaints.erp.core.audit.AuditService.class);
@@ -196,7 +208,8 @@ class TS_RuntimePayrollMarkPaidExecutableCoverageTest {
             accountingFacade,
             accountRepository,
             companyContextService,
-            companyEntityLookup,
+            hrLookupService,
+            accountingLookupService,
             companyClock,
             auditService);
 
@@ -211,8 +224,8 @@ class TS_RuntimePayrollMarkPaidExecutableCoverageTest {
     paymentJournal.setReferenceNumber(" PAY-REF-101 ");
 
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
-    when(companyEntityLookup.lockPayrollRun(company, 13L)).thenReturn(run);
-    when(companyEntityLookup.requireJournalEntry(company, 111L)).thenReturn(paymentJournal);
+    when(hrLookupService.lockPayrollRun(company, 13L)).thenReturn(run);
+    when(accountingLookupService.requireJournalEntry(company, 111L)).thenReturn(paymentJournal);
     when(companyClock.today(company)).thenReturn(LocalDate.of(2026, 3, 1));
     when(payrollRunLineRepository.findByPayrollRun(run)).thenReturn(List.of(line));
 

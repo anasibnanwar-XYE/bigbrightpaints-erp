@@ -8,9 +8,9 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.factory.domain.PackingRecord;
@@ -28,19 +28,20 @@ public class PackingReadService {
   private final CompanyContextService companyContextService;
   private final ProductionLogRepository productionLogRepository;
   private final PackingRecordRepository packingRecordRepository;
-  private final CompanyEntityLookup companyEntityLookup;
+  private final CompanyScopedFactoryLookupService factoryLookupService;
   private final PackingAllowedSizeService packingAllowedSizeService;
 
+  @Autowired
   public PackingReadService(
       CompanyContextService companyContextService,
       ProductionLogRepository productionLogRepository,
       PackingRecordRepository packingRecordRepository,
-      CompanyEntityLookup companyEntityLookup,
+      CompanyScopedFactoryLookupService factoryLookupService,
       PackingAllowedSizeService packingAllowedSizeService) {
     this.companyContextService = companyContextService;
     this.productionLogRepository = productionLogRepository;
     this.packingRecordRepository = packingRecordRepository;
-    this.companyEntityLookup = companyEntityLookup;
+    this.factoryLookupService = factoryLookupService;
     this.packingAllowedSizeService = packingAllowedSizeService;
   }
 
@@ -116,7 +117,7 @@ public class PackingReadService {
 
   public List<PackingRecordDto> packingHistory(Long productionLogId) {
     Company company = companyContextService.requireCurrentCompany();
-    ProductionLog log = companyEntityLookup.requireProductionLog(company, productionLogId);
+    ProductionLog log = factoryLookupService.requireProductionLog(company, productionLogId);
     return packingRecordRepository
         .findByCompanyAndProductionLogOrderByPackedDateAscIdAsc(company, log)
         .stream()

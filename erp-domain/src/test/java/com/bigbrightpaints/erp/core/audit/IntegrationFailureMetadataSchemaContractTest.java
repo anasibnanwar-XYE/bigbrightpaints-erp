@@ -4,8 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 import java.lang.reflect.Field;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 
@@ -19,46 +21,24 @@ import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.context.request.ServletWebRequest;
 
-import com.bigbrightpaints.erp.core.config.SystemSettingsService;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.exception.GlobalExceptionHandler;
-import com.bigbrightpaints.erp.core.util.CompanyClock;
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
-import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
-import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
-import com.bigbrightpaints.erp.modules.accounting.domain.JournalReferenceMappingRepository;
-import com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAllocationRepository;
-import com.bigbrightpaints.erp.modules.accounting.event.AccountingEventStore;
-import com.bigbrightpaints.erp.modules.accounting.service.AccountingPeriodService;
-import com.bigbrightpaints.erp.modules.accounting.service.AccountingService;
-import com.bigbrightpaints.erp.modules.accounting.service.DealerLedgerService;
-import com.bigbrightpaints.erp.modules.accounting.service.JournalReferenceResolver;
-import com.bigbrightpaints.erp.modules.accounting.service.ReferenceNumberService;
-import com.bigbrightpaints.erp.modules.accounting.service.SupplierLedgerService;
-import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
-import com.bigbrightpaints.erp.modules.hr.domain.PayrollRunLineRepository;
-import com.bigbrightpaints.erp.modules.hr.domain.PayrollRunRepository;
-import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatchRepository;
-import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatchRepository;
-import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovementRepository;
-import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceRepository;
-import com.bigbrightpaints.erp.modules.invoice.service.InvoiceSettlementPolicy;
-import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchaseRepository;
-import com.bigbrightpaints.erp.modules.purchasing.domain.SupplierRepository;
-import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
-
-import jakarta.persistence.EntityManager;
+import com.bigbrightpaints.erp.modules.accounting.domain.Account;
+import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
+import com.bigbrightpaints.erp.modules.accounting.domain.JournalLine;
+import com.bigbrightpaints.erp.modules.accounting.domain.PartnerType;
+import com.bigbrightpaints.erp.modules.accounting.service.AccountingAuditService;
 
 class IntegrationFailureMetadataSchemaContractTest {
 
   @Test
   void accountingIntegrationFailureMetadataIncludesRequiredSchemaKeys() {
     AuditService auditService = mock(AuditService.class);
-    AccountingService service = buildAccountingService(auditService);
+    AccountingAuditService service = buildAccountingAuditService(auditService);
     ReflectionTestUtils.setField(service, "strictAccountingEventTrail", false);
 
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         service,
         "handleAccountingEventTrailFailure",
         "JOURNAL_ENTRY_POSTED",
@@ -69,6 +49,110 @@ class IntegrationFailureMetadataSchemaContractTest {
     ArgumentCaptor<Map<String, String>> metadataCaptor = ArgumentCaptor.forClass(Map.class);
     verify(auditService).logFailure(eq(AuditEvent.INTEGRATION_FAILURE), metadataCaptor.capture());
     assertRequiredSchema(metadataCaptor.getValue());
+  }
+
+  @Test
+  void accountingPostedEventBestEffortUsesFailureMarkerWhenPayloadValidationFails() {
+    AuditService auditService = mock(AuditService.class);
+    com.bigbrightpaints.erp.modules.accounting.event.AccountingEventStore accountingEventStore =
+        mock(com.bigbrightpaints.erp.modules.accounting.event.AccountingEventStore.class);
+    AccountingAuditService service =
+        new AccountingAuditService(
+            mock(ApplicationEventPublisher.class), auditService, accountingEventStore);
+    ReflectionTestUtils.setField(service, "strictAccountingEventTrail", false);
+
+    JournalEntry journalEntry = new JournalEntry();
+    journalEntry.setReferenceNumber("JRN-OVERSIZE-1");
+    journalEntry.setMemo("x".repeat(600));
+    JournalLine line = new JournalLine();
+    Account account = new Account();
+    account.setCode("4000");
+    line.setAccount(account);
+    line.setDescription("ok");
+    line.setDebit(BigDecimal.ONE);
+    journalEntry.addLine(line);
+
+    boolean recorded =
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "recordJournalEntryPostedEventSafe", journalEntry, Map.of());
+
+    assertThat(recorded).isFalse();
+    verifyNoInteractions(accountingEventStore);
+    @SuppressWarnings("unchecked")
+    ArgumentCaptor<Map<String, String>> metadataCaptor = ArgumentCaptor.forClass(Map.class);
+    verify(auditService).logFailure(eq(AuditEvent.INTEGRATION_FAILURE), metadataCaptor.capture());
+    assertThat(metadataCaptor.getValue())
+        .containsEntry("eventTrailOperation", "JOURNAL_ENTRY_POSTED")
+        .containsEntry("policy", "BEST_EFFORT")
+        .containsEntry(IntegrationFailureMetadataSchema.KEY_ERROR_CATEGORY, "VALIDATION");
+  }
+
+  @Test
+  void dealerReceiptSettlementEventBestEffortUsesFailureMarkerWhenPayloadValidationFails() {
+    AuditService auditService = mock(AuditService.class);
+    com.bigbrightpaints.erp.modules.accounting.event.AccountingEventStore accountingEventStore =
+        mock(com.bigbrightpaints.erp.modules.accounting.event.AccountingEventStore.class);
+    AccountingAuditService service =
+        new AccountingAuditService(
+            mock(ApplicationEventPublisher.class), auditService, accountingEventStore);
+    ReflectionTestUtils.setField(service, "strictAccountingEventTrail", false);
+
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+        service,
+        "recordDealerReceiptPostedEventSafe",
+        oversizedSettlementJournalEntry("SETTLE-OVERSIZE-1"),
+        10L,
+        BigDecimal.ONE,
+        "dealer-idem-1");
+
+    verifyNoInteractions(accountingEventStore);
+    assertBestEffortFailureMetadata(auditService, "DEALER_RECEIPT_POSTED");
+  }
+
+  @Test
+  void supplierPaymentSettlementEventBestEffortUsesFailureMarkerWhenPayloadValidationFails() {
+    AuditService auditService = mock(AuditService.class);
+    com.bigbrightpaints.erp.modules.accounting.event.AccountingEventStore accountingEventStore =
+        mock(com.bigbrightpaints.erp.modules.accounting.event.AccountingEventStore.class);
+    AccountingAuditService service =
+        new AccountingAuditService(
+            mock(ApplicationEventPublisher.class), auditService, accountingEventStore);
+    ReflectionTestUtils.setField(service, "strictAccountingEventTrail", false);
+
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+        service,
+        "recordSupplierPaymentPostedEventSafe",
+        oversizedSettlementJournalEntry("SETTLE-OVERSIZE-2"),
+        20L,
+        BigDecimal.ONE,
+        "supplier-idem-1");
+
+    verifyNoInteractions(accountingEventStore);
+    assertBestEffortFailureMetadata(auditService, "SUPPLIER_PAYMENT_POSTED");
+  }
+
+  @Test
+  void settlementAllocatedEventBestEffortUsesFailureMarkerWhenPayloadValidationFails() {
+    AuditService auditService = mock(AuditService.class);
+    com.bigbrightpaints.erp.modules.accounting.event.AccountingEventStore accountingEventStore =
+        mock(com.bigbrightpaints.erp.modules.accounting.event.AccountingEventStore.class);
+    AccountingAuditService service =
+        new AccountingAuditService(
+            mock(ApplicationEventPublisher.class), auditService, accountingEventStore);
+    ReflectionTestUtils.setField(service, "strictAccountingEventTrail", false);
+
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+        service,
+        "recordSettlementAllocatedEventSafe",
+        oversizedSettlementJournalEntry("SETTLE-OVERSIZE-3"),
+        PartnerType.DEALER,
+        30L,
+        BigDecimal.ONE,
+        1,
+        "alloc-idem-1");
+
+    verifyNoInteractions(accountingEventStore);
+    assertBestEffortFailureMetadata(auditService, "SETTLEMENT_ALLOCATED");
   }
 
   @Test
@@ -84,7 +168,7 @@ class IntegrationFailureMetadataSchemaContractTest {
     HttpMessageNotReadableException malformed =
         new HttpMessageNotReadableException(
             "JSON parse error", new IllegalArgumentException("Unrecognized field"));
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         handler,
         "handleHttpMessageNotReadable",
         malformed,
@@ -160,42 +244,35 @@ class IntegrationFailureMetadataSchemaContractTest {
     assertThat(metadata.get(IntegrationFailureMetadataSchema.KEY_ALERT_ROUTE)).isNotBlank();
   }
 
-  private AccountingService buildAccountingService(AuditService auditService) {
-    return new AccountingService(
-        mock(CompanyContextService.class),
-        mock(AccountRepository.class),
-        mock(JournalEntryRepository.class),
-        mock(DealerLedgerService.class),
-        mock(SupplierLedgerService.class),
-        mock(PayrollRunRepository.class),
-        mock(PayrollRunLineRepository.class),
-        mock(AccountingPeriodService.class),
-        mock(ReferenceNumberService.class),
+  private void assertBestEffortFailureMetadata(AuditService auditService, String operation) {
+    @SuppressWarnings("unchecked")
+    ArgumentCaptor<Map<String, String>> metadataCaptor = ArgumentCaptor.forClass(Map.class);
+    verify(auditService).logFailure(eq(AuditEvent.INTEGRATION_FAILURE), metadataCaptor.capture());
+    assertThat(metadataCaptor.getValue())
+        .containsEntry("eventTrailOperation", operation)
+        .containsEntry("policy", "BEST_EFFORT")
+        .containsEntry(IntegrationFailureMetadataSchema.KEY_ERROR_CATEGORY, "VALIDATION");
+  }
+
+  private JournalEntry oversizedSettlementJournalEntry(String referenceNumber) {
+    JournalEntry journalEntry = new JournalEntry();
+    journalEntry.setReferenceNumber(referenceNumber);
+    journalEntry.setMemo("x".repeat(600));
+    JournalLine line = new JournalLine();
+    Account account = new Account();
+    account.setCode("4000");
+    line.setAccount(account);
+    line.setDescription("ok");
+    line.setDebit(BigDecimal.ONE);
+    journalEntry.addLine(line);
+    return journalEntry;
+  }
+
+  private AccountingAuditService buildAccountingAuditService(AuditService auditService) {
+    return new AccountingAuditService(
         mock(ApplicationEventPublisher.class),
-        mock(CompanyClock.class),
-        mock(CompanyEntityLookup.class),
-        mock(PartnerSettlementAllocationRepository.class),
-        mock(RawMaterialPurchaseRepository.class),
-        mock(InvoiceRepository.class),
-        mock(RawMaterialMovementRepository.class),
-        mock(RawMaterialBatchRepository.class),
-        mock(FinishedGoodBatchRepository.class),
-        mock(DealerRepository.class),
-        mock(SupplierRepository.class),
-        mock(InvoiceSettlementPolicy.class),
-        mock(JournalReferenceResolver.class),
-        mock(JournalReferenceMappingRepository.class),
-        mock(EntityManager.class),
-        mock(SystemSettingsService.class),
         auditService,
-        mock(AccountingEventStore.class),
-        mock(com.bigbrightpaints.erp.modules.accounting.service.JournalEntryService.class),
-        mock(com.bigbrightpaints.erp.modules.accounting.service.DealerReceiptService.class),
-        mock(com.bigbrightpaints.erp.modules.accounting.service.SettlementService.class),
-        mock(com.bigbrightpaints.erp.modules.accounting.service.CreditDebitNoteService.class),
-        mock(com.bigbrightpaints.erp.modules.accounting.service.InventoryAccountingService.class),
-        mock(com.bigbrightpaints.erp.modules.accounting.service.PayrollAccountingService.class),
-        mock(org.springframework.beans.factory.ObjectProvider.class));
+        mock(com.bigbrightpaints.erp.modules.accounting.event.AccountingEventStore.class));
   }
 
   private static void setActiveProfile(GlobalExceptionHandler handler, String value)

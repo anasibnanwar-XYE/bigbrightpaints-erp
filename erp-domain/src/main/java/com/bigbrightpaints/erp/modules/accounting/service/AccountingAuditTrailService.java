@@ -1,40 +1,28 @@
 package com.bigbrightpaints.erp.modules.accounting.service;
 
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalLineRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAllocationRepository;
+import com.bigbrightpaints.erp.modules.accounting.dto.AccountingTransactionAuditDetailDto;
+import com.bigbrightpaints.erp.modules.accounting.dto.AccountingTransactionAuditListItemDto;
 import com.bigbrightpaints.erp.modules.accounting.event.AccountingEventRepository;
-import com.bigbrightpaints.erp.modules.accounting.internal.AccountingAuditTrailServiceCore;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.inventory.domain.PackagingSlipRepository;
 import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceRepository;
 import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchaseRepository;
+import com.bigbrightpaints.erp.shared.dto.PageResponse;
 
 @Service
-public class AccountingAuditTrailService extends AccountingAuditTrailServiceCore {
+public class AccountingAuditTrailService {
 
-  /*
-   * TruthSuite evidence anchors:
-   * int safePage = Math.max(page, 0);
-   * int safeSize = Math.max(1, Math.min(size, 200));
-   * PageRequest.of(safePage, safeSize, Sort.by(Sort.Direction.DESC, "entryDate", "id"))
-   *
-   * item -> item.documentType() + ":" + item.documentId(),
-   * (left, right) -> left))
-   * dedupedLinkedDocuments
-   *
-   * if (totalDebit.compareTo(totalCredit) != 0) {
-   * status = "ERROR";
-   * if ("POSTED".equalsIgnoreCase(entry.getStatus()) && entry.getPostedAt() == null) {
-   * if (likelySettlement && (allocations == null || allocations.isEmpty())) {
-   * Settlement-like reference has no settlement allocation rows.
-   *
-   * if (reference.startsWith("SET") || reference.startsWith("RCPT") || reference.contains("SETTLEMENT")) {
-   * return "SETTLEMENT";
-   * return "ACCOUNTING";
-   */
+  private final AccountingAuditTrailClassifier classifier;
+  private final SettlementAuditMemoDecoder settlementAuditMemoDecoder;
+  private final AccountingAuditTrailReferenceChainService referenceChainService;
+  private final AccountingAuditTrailTransactionQueryService transactionQueryService;
+  private final AccountingAuditTrailTransactionDetailService transactionDetailService;
 
   public AccountingAuditTrailService(
       CompanyContextService companyContextService,
@@ -45,14 +33,48 @@ public class AccountingAuditTrailService extends AccountingAuditTrailServiceCore
       InvoiceRepository invoiceRepository,
       RawMaterialPurchaseRepository rawMaterialPurchaseRepository,
       PackagingSlipRepository packagingSlipRepository) {
-    super(
-        companyContextService,
-        journalEntryRepository,
-        journalLineRepository,
-        accountingEventRepository,
-        settlementAllocationRepository,
-        invoiceRepository,
-        rawMaterialPurchaseRepository,
-        packagingSlipRepository);
+    this.classifier = new AccountingAuditTrailClassifier();
+    this.settlementAuditMemoDecoder = new SettlementAuditMemoDecoder();
+    this.referenceChainService =
+        new AccountingAuditTrailReferenceChainService(
+            invoiceRepository, settlementAllocationRepository, packagingSlipRepository);
+    this.transactionQueryService =
+        new AccountingAuditTrailTransactionQueryService(
+            companyContextService,
+            journalEntryRepository,
+            journalLineRepository,
+            settlementAllocationRepository,
+            invoiceRepository,
+            rawMaterialPurchaseRepository,
+            classifier);
+    this.transactionDetailService =
+        new AccountingAuditTrailTransactionDetailService(
+            companyContextService,
+            journalEntryRepository,
+            accountingEventRepository,
+            settlementAllocationRepository,
+            invoiceRepository,
+            rawMaterialPurchaseRepository,
+            referenceChainService,
+            classifier,
+            settlementAuditMemoDecoder);
+  }
+
+  @Transactional(readOnly = true)
+  public PageResponse<AccountingTransactionAuditListItemDto> listTransactions(
+      java.time.LocalDate from,
+      java.time.LocalDate to,
+      String module,
+      String status,
+      String referenceNumber,
+      int page,
+      int size) {
+    return transactionQueryService.listTransactions(
+        from, to, module, status, referenceNumber, page, size);
+  }
+
+  @Transactional(readOnly = true)
+  public AccountingTransactionAuditDetailDto transactionDetail(Long journalEntryId) {
+    return transactionDetailService.transactionDetail(journalEntryId);
   }
 }

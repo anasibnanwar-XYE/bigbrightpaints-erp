@@ -26,6 +26,7 @@ import java.util.stream.Collectors;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVParser;
 import org.apache.commons.csv.CSVRecord;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
@@ -47,9 +48,10 @@ import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.idempotency.IdempotencyReservationService;
 import com.bigbrightpaints.erp.core.idempotency.IdempotencyUtils;
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.core.util.CostingMethodUtils;
+import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
 import com.bigbrightpaints.erp.modules.accounting.service.CompanyDefaultAccountsService;
+import com.bigbrightpaints.erp.modules.accounting.service.CompanyScopedAccountingLookupService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.factory.domain.PackagingSizeMappingRepository;
@@ -111,6 +113,11 @@ public class ProductionCatalogService {
           "fgRevenueAccountId",
           "fgDiscountAccountId",
           "fgTaxAccountId");
+  private static final Map<String, AccountType> FINISHED_GOOD_OVERRIDE_ACCOUNT_TYPES =
+      Map.of(
+          "fgValuationAccountId", AccountType.ASSET,
+          "fgCogsAccountId", AccountType.COGS,
+          "fgRevenueAccountId", AccountType.REVENUE);
   private static final Map<String, String> ACCOUNT_COLUMN_HINTS =
       Map.of(
           "fgValuationAccountId", "fg_valuation_account_id",
@@ -139,7 +146,8 @@ public class ProductionCatalogService {
   private final PackingRecordRepository packingRecordRepository;
   private final ProductionLogMaterialRepository productionLogMaterialRepository;
   private final SalesOrderItemRepository salesOrderItemRepository;
-  private final CompanyEntityLookup companyEntityLookup;
+  private final CompanyScopedProductionLookupService productionLookupService;
+  private final CompanyScopedAccountingLookupService accountingLookupService;
   private final CompanyDefaultAccountsService companyDefaultAccountsService;
   private final CatalogImportRepository catalogImportRepository;
   private final AuditService auditService;
@@ -149,6 +157,7 @@ public class ProductionCatalogService {
   private final IdempotencyReservationService idempotencyReservationService =
       new IdempotencyReservationService();
 
+  @Autowired
   public ProductionCatalogService(
       CompanyContextService companyContextService,
       ProductionBrandRepository brandRepository,
@@ -167,7 +176,8 @@ public class ProductionCatalogService {
       PackingRecordRepository packingRecordRepository,
       ProductionLogMaterialRepository productionLogMaterialRepository,
       SalesOrderItemRepository salesOrderItemRepository,
-      CompanyEntityLookup companyEntityLookup,
+      CompanyScopedProductionLookupService productionLookupService,
+      CompanyScopedAccountingLookupService accountingLookupService,
       CompanyDefaultAccountsService companyDefaultAccountsService,
       CatalogImportRepository catalogImportRepository,
       AuditService auditService,
@@ -190,7 +200,8 @@ public class ProductionCatalogService {
     this.packingRecordRepository = packingRecordRepository;
     this.productionLogMaterialRepository = productionLogMaterialRepository;
     this.salesOrderItemRepository = salesOrderItemRepository;
-    this.companyEntityLookup = companyEntityLookup;
+    this.productionLookupService = productionLookupService;
+    this.accountingLookupService = accountingLookupService;
     this.companyDefaultAccountsService = companyDefaultAccountsService;
     this.catalogImportRepository = catalogImportRepository;
     this.auditService = auditService;
@@ -359,7 +370,6 @@ public class ProductionCatalogService {
 
   private ProcessOutcome processCatalogRowWithRetry(
       Company company, ImportRow importRow, ImportContext context) {
-    RuntimeException lastError = null;
     for (int attempt = 1; attempt <= 2; attempt++) {
       try {
         ProcessOutcome outcome =
@@ -370,14 +380,14 @@ public class ProductionCatalogService {
         }
         return outcome;
       } catch (RuntimeException ex) {
-        lastError = ex;
         evictRowCache(company, importRow, context);
         if (!isRetryableImportFailure(ex) || attempt == 2) {
           throw ex;
         }
       }
     }
-    throw lastError;
+    throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState(
+        "Catalog import row exhausted retry policy without returning an outcome");
   }
 
   private void evictRowCache(Company company, ImportRow importRow, ImportContext context) {
@@ -582,27 +592,6 @@ public class ProductionCatalogService {
     return cleaned;
   }
 
-  private UUID buildVariantGroupId(
-      Company company,
-      ProductionBrand brand,
-      String productFamilyName,
-      String itemClass,
-      String unitOfMeasure,
-      String hsnCode,
-      List<String> colors,
-      List<String> sizes) {
-    String fingerprint =
-        String.join(
-            "|",
-            String.valueOf(company != null ? company.getId() : null),
-            String.valueOf(brand != null ? brand.getId() : null),
-            sanitizeSegment(productFamilyName),
-            sanitizeSegment(itemClass),
-            sanitizeSegment(unitOfMeasure),
-            sanitizeSegment(hsnCode));
-    return UUID.nameUUIDFromBytes(fingerprint.getBytes(StandardCharsets.UTF_8));
-  }
-
   private String buildDeterministicSku(
       String itemClass, String brandCode, String productFamilyCode, String color, String size) {
     String stockPrefix = itemClassSkuPrefix(itemClass);
@@ -780,7 +769,8 @@ public class ProductionCatalogService {
   @Transactional
   public ProductionProductDto updateCatalogItem(Long productId, CatalogItemUpdateCommand request) {
     Company company = companyContextService.requireCurrentCompany();
-    ProductionProduct product = companyEntityLookup.requireProductionProduct(company, productId);
+    ProductionProduct product =
+        productionLookupService.requireProductionProduct(company, productId);
     String currentItemClass = itemClassForProduct(product);
     if (StringUtils.hasText(request.productName())) {
       product.setProductName(
@@ -933,7 +923,7 @@ public class ProductionCatalogService {
         category,
         sizeLabel,
         created,
-        context.validatedRawMaterialInventoryAccounts());
+        context.validatedFinishedGoodAccounts());
     ProductionProduct saved = productRepository.save(product);
     cacheProduct(context, saved);
     boolean cleanupMirror =
@@ -1032,7 +1022,8 @@ public class ProductionCatalogService {
       }
     }
 
-    return new ImportContext(brandsByName, productsBySku, productsByBrandName, new HashMap<>());
+    return new ImportContext(
+        brandsByName, productsBySku, productsByBrandName, new HashMap<>(), new HashMap<>());
   }
 
   private void cacheBrand(ImportContext context, ProductionBrand brand) {
@@ -1148,7 +1139,7 @@ public class ProductionCatalogService {
   private BrandResolution resolveBrand(
       Company company, Long brandId, String brandName, String providedCode) {
     if (brandId != null) {
-      ProductionBrand brand = companyEntityLookup.requireProductionBrand(company, brandId);
+      ProductionBrand brand = productionLookupService.requireProductionBrand(company, brandId);
       if (StringUtils.hasText(brandName) && !brandName.equalsIgnoreCase(brand.getName())) {
         brand.setName(brandName.trim());
       }
@@ -1231,7 +1222,11 @@ public class ProductionCatalogService {
     if (last.isPresent()) {
       Matcher matcher = SEQUENCE_PATTERN.matcher(last.get().getSkuCode());
       if (matcher.matches()) {
-        nextSeq = Integer.parseInt(matcher.group(1)) + 1;
+        try {
+          nextSeq = Integer.parseInt(matcher.group(1)) + 1;
+        } catch (NumberFormatException ex) {
+          nextSeq = 1;
+        }
       }
     }
     return normalizedPrefix + "-" + String.format("%03d", nextSeq);
@@ -1373,7 +1368,7 @@ public class ProductionCatalogService {
       material.setGstRate(percent(product.getGstRate()));
     }
     com.bigbrightpaints.erp.modules.inventory.domain.MaterialType materialType =
-        resolveRawMaterialMaterialType(product, material, itemClassHint);
+        resolveRawMaterialMaterialType(material, itemClassHint);
     if (materialType != null && material.getMaterialType() != materialType) {
       material.setMaterialType(materialType);
     }
@@ -1434,7 +1429,7 @@ public class ProductionCatalogService {
       }
     }
     try {
-      Long validatedAccountId = companyEntityLookup.requireAccount(company, accountId).getId();
+      Long validatedAccountId = accountingLookupService.requireAccount(company, accountId).getId();
       if (validatedRawMaterialInventoryAccounts != null) {
         validatedRawMaterialInventoryAccounts.put(accountId, validatedAccountId);
       }
@@ -1450,18 +1445,43 @@ public class ProductionCatalogService {
       Long accountId,
       String sku,
       String key,
-      Map<Long, Long> validatedFinishedGoodAccounts) {
+      Map<Long, Long> validatedFinishedGoodAccounts,
+      AccountType expectedType) {
     if (accountId == null || accountId <= 0) {
       return null;
     }
     if (validatedFinishedGoodAccounts != null) {
       Long cachedAccountId = validatedFinishedGoodAccounts.get(accountId);
       if (cachedAccountId != null) {
+        if (expectedType != null) {
+          var cachedAccount = accountingLookupService.requireAccount(company, cachedAccountId);
+          if (cachedAccount.getType() != expectedType) {
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+                "Finished good SKU "
+                    + sku
+                    + " requires "
+                    + key
+                    + " to reference a "
+                    + expectedType
+                    + " account");
+          }
+        }
         return cachedAccountId;
       }
     }
     try {
-      Long validatedAccountId = companyEntityLookup.requireAccount(company, accountId).getId();
+      var account = accountingLookupService.requireAccount(company, accountId);
+      if (expectedType != null && account.getType() != expectedType) {
+        throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+            "Finished good SKU "
+                + sku
+                + " requires "
+                + key
+                + " to reference a "
+                + expectedType
+                + " account");
+      }
+      Long validatedAccountId = account.getId();
       if (validatedFinishedGoodAccounts != null) {
         validatedFinishedGoodAccounts.put(accountId, validatedAccountId);
       }
@@ -1723,7 +1743,7 @@ public class ProductionCatalogService {
 
   private com.bigbrightpaints.erp.modules.inventory.domain.MaterialType
       resolveRawMaterialMaterialType(
-          ProductionProduct product, RawMaterial material, String itemClassHint) {
+          RawMaterial material, String itemClassHint) {
     if (StringUtils.hasText(itemClassHint)) {
       return ITEM_CLASS_PACKAGING_RAW_MATERIAL.equals(normalizeItemClass(itemClassHint))
           ? com.bigbrightpaints.erp.modules.inventory.domain.MaterialType.PACKAGING
@@ -1761,10 +1781,14 @@ public class ProductionCatalogService {
       return value > 0 ? value : null;
     }
     if (candidate instanceof String text && StringUtils.hasText(text)) {
+      String normalized = text.trim();
+      if (!normalized.chars().allMatch(Character::isDigit)) {
+        return null;
+      }
       try {
-        long value = Long.parseLong(text.trim());
+        long value = Long.parseLong(normalized);
         return value > 0 ? value : null;
-      } catch (NumberFormatException ignored) {
+      } catch (NumberFormatException ex) {
         return null;
       }
     }
@@ -1977,13 +2001,13 @@ public class ProductionCatalogService {
             : Optional.ofNullable(companyDefaultAccountsService.getDefaults())
                 .orElse(
                     new CompanyDefaultAccountsService.DefaultAccounts(
-                        null, null, null, null, null));
+                        null, null, null, null, null, null));
 
     Map<String, Long> defaultsMap = new HashMap<>();
     defaultsMap.put("fgValuationAccountId", defaults.inventoryAccountId());
     defaultsMap.put("fgCogsAccountId", defaults.cogsAccountId());
     defaultsMap.put("fgRevenueAccountId", defaults.revenueAccountId());
-    defaultsMap.put("fgDiscountAccountId", defaults.discountAccountId());
+    defaultsMap.put("fgDiscountAccountId", defaults.fgDiscountAccountId());
     defaultsMap.put("fgTaxAccountId", defaults.taxAccountId());
 
     for (String key : FINISHED_GOOD_ACCOUNT_KEYS) {
@@ -2017,8 +2041,10 @@ public class ProductionCatalogService {
       if (accountId == null) {
         continue;
       }
+      AccountType expectedType = FINISHED_GOOD_OVERRIDE_ACCOUNT_TYPES.get(key);
       Long validatedAccountId =
-          requireFinishedGoodAccount(company, accountId, sku, key, validatedFinishedGoodAccounts);
+          requireFinishedGoodAccount(
+              company, accountId, sku, key, validatedFinishedGoodAccounts, expectedType);
       if (!Objects.equals(accountId, validatedAccountId)) {
         working.put(key, validatedAccountId);
       }
@@ -2031,9 +2057,13 @@ public class ProductionCatalogService {
       return number.longValue() > 0;
     }
     if (value instanceof String stringValue && StringUtils.hasText(stringValue)) {
+      String normalized = stringValue.trim();
+      if (!normalized.chars().allMatch(Character::isDigit)) {
+        return false;
+      }
       try {
-        return Long.parseLong(stringValue.trim()) > 0;
-      } catch (NumberFormatException ignored) {
+        return Long.parseLong(normalized) > 0;
+      } catch (NumberFormatException ex) {
         return false;
       }
     }
@@ -2197,7 +2227,8 @@ public class ProductionCatalogService {
       Map<String, ProductionBrand> brandsByName,
       Map<String, ProductionProduct> productsBySku,
       Map<ProductKey, ProductionProduct> productsByBrandName,
-      Map<Long, Long> validatedRawMaterialInventoryAccounts) {}
+      Map<Long, Long> validatedRawMaterialInventoryAccounts,
+      Map<Long, Long> validatedFinishedGoodAccounts) {}
 
   private record ImportRow(
       long recordNumber, CatalogRow row, String sanitizedSku, String brandKey, String productKey) {

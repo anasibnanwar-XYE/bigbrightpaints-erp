@@ -22,24 +22,25 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import com.bigbrightpaints.erp.core.util.CompanyClock;
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriod;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodStatus;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryStatus;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalLineRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.PeriodCloseRequest;
 import com.bigbrightpaints.erp.modules.accounting.domain.PeriodCloseRequestRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.PeriodCloseRequestStatus;
 import com.bigbrightpaints.erp.modules.accounting.domain.ReconciliationDiscrepancyRepository;
-import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodLockRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodReopenRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.PeriodCloseRequestActionRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.PeriodStatusChangeRequest;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingPeriodService;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingPeriodSnapshotService;
+import com.bigbrightpaints.erp.modules.accounting.service.CompanyScopedAccountingLookupService;
 import com.bigbrightpaints.erp.modules.accounting.service.PeriodCloseHook;
 import com.bigbrightpaints.erp.modules.accounting.service.ReconciliationService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
@@ -61,7 +62,7 @@ class TS_RuntimeAccountingPeriodServiceRegressionExecutableCoverageTest {
   @Mock private AccountingPeriodRepository accountingPeriodRepository;
   @Mock private CompanyContextService companyContextService;
   @Mock private JournalEntryRepository journalEntryRepository;
-  @Mock private CompanyEntityLookup companyEntityLookup;
+  @Mock private CompanyScopedAccountingLookupService accountingLookupService;
   @Mock private JournalLineRepository journalLineRepository;
   @Mock private AccountRepository accountRepository;
   @Mock private CompanyClock companyClock;
@@ -94,7 +95,7 @@ class TS_RuntimeAccountingPeriodServiceRegressionExecutableCoverageTest {
     when(accountingPeriodRepository.save(period)).thenReturn(period);
 
     assertThat(
-            service.lockPeriod(13L, new AccountingPeriodLockRequest("  lock for audit  ")).status())
+            service.lockPeriod(13L, new PeriodStatusChangeRequest("  lock for audit  ")).status())
         .isEqualTo("LOCKED");
     assertThat(period.getStatus()).isEqualTo(AccountingPeriodStatus.LOCKED);
     assertThat(period.getLockReason()).isEqualTo("lock for audit");
@@ -159,9 +160,9 @@ class TS_RuntimeAccountingPeriodServiceRegressionExecutableCoverageTest {
     AccountingPeriod period = openPeriod(company, 2026, 2);
 
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
-    when(companyEntityLookup.requireAccountingPeriod(company, 31L)).thenReturn(period);
+    when(accountingLookupService.requireAccountingPeriod(company, 31L)).thenReturn(period);
     when(journalEntryRepository.countByCompanyAndEntryDateBetweenAndStatusIn(
-            company, period.getStartDate(), period.getEndDate(), List.of("DRAFT", "PENDING")))
+            company, period.getStartDate(), period.getEndDate(), List.of(JournalEntryStatus.DRAFT)))
         .thenReturn(0L);
     when(reportService.inventoryReconciliation())
         .thenReturn(
@@ -263,9 +264,9 @@ class TS_RuntimeAccountingPeriodServiceRegressionExecutableCoverageTest {
     AccountingPeriod period = openPeriod(company, 2026, 2);
 
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
-    when(companyEntityLookup.requireAccountingPeriod(company, 32L)).thenReturn(period);
+    when(accountingLookupService.requireAccountingPeriod(company, 32L)).thenReturn(period);
     when(journalEntryRepository.countByCompanyAndEntryDateBetweenAndStatusIn(
-            company, period.getStartDate(), period.getEndDate(), List.of("DRAFT", "PENDING")))
+            company, period.getStartDate(), period.getEndDate(), List.of(JournalEntryStatus.DRAFT)))
         .thenReturn(0L);
     when(reportService.inventoryReconciliation())
         .thenReturn(
@@ -344,30 +345,12 @@ class TS_RuntimeAccountingPeriodServiceRegressionExecutableCoverageTest {
                 PayrollRun.PayrollStatus.APPROVED));
   }
 
-  @Test
-  void isHrPayrollEnabled_requiresCompanyAndEnabledModules() {
-    AccountingPeriodService service = newService();
-    Company company = company(5L, "TRUTH5");
-    company.setEnabledModules(null);
-
-    assertThat(
-            (Boolean)
-                ReflectionTestUtils.invokeMethod(service, "isHrPayrollEnabled", (Company) null))
-        .isFalse();
-    assertThat((Boolean) ReflectionTestUtils.invokeMethod(service, "isHrPayrollEnabled", company))
-        .isFalse();
-
-    company.setEnabledModules(Set.of(CompanyModule.HR_PAYROLL.name()));
-    assertThat((Boolean) ReflectionTestUtils.invokeMethod(service, "isHrPayrollEnabled", company))
-        .isTrue();
-  }
-
   private AccountingPeriodService newService() {
     return new AccountingPeriodService(
         accountingPeriodRepository,
         companyContextService,
         journalEntryRepository,
-        companyEntityLookup,
+        accountingLookupService,
         journalLineRepository,
         accountRepository,
         companyClock,

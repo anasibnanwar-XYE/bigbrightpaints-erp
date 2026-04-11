@@ -35,7 +35,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 
 @ControllerAdvice
-@Order(Ordered.HIGHEST_PRECEDENCE)
+@Order(Ordered.HIGHEST_PRECEDENCE + 10)
 public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
   private static final Logger logger = LoggerFactory.getLogger(GlobalExceptionHandler.class);
   private static final String CATALOG_ITEM_PATH = "/api/v1/catalog/items";
@@ -71,14 +71,45 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
   @ExceptionHandler(ApplicationException.class)
   public ResponseEntity<ApiResponse<Map<String, Object>>> handleApplicationException(
       ApplicationException ex, HttpServletRequest request) {
+    return buildApplicationExceptionResponse(ex, request, determineHttpStatus(ex.getErrorCode()));
+  }
+
+  public ResponseEntity<ApiResponse<Map<String, Object>>> buildApplicationExceptionResponse(
+      ApplicationException ex, HttpServletRequest request, HttpStatus status) {
+    return buildApplicationExceptionResponse(
+        ex, request, status, resolveResponseDetails(ex, request, ex.getDetails()));
+  }
+
+  public ResponseEntity<ApiResponse<Map<String, Object>>> buildApplicationExceptionResponse(
+      ApplicationException ex,
+      HttpServletRequest request,
+      HttpStatus status,
+      Map<String, Object> responseDetails) {
     String traceId = UUID.randomUUID().toString();
     logger.error(
-        "Application error [{}] - Code: {}, Path: {}, User: {}",
+        "Application error [{}] - Code: {}",
         traceId,
         ex.getErrorCode().getCode(),
-        request.getRequestURI(),
-        request.getUserPrincipal() != null ? request.getUserPrincipal().getName() : "anonymous",
         ex);
+    Map<String, Object> data = new HashMap<>();
+    data.put("code", ex.getErrorCode().getCode());
+    data.put("message", ex.getUserMessage());
+    data.put("reason", ex.getUserMessage());
+    data.put("traceId", traceId);
+    data.put("timestamp", LocalDateTime.now());
+    data.put("path", request.getRequestURI());
+    if (responseDetails != null && !responseDetails.isEmpty()) {
+      data.put("details", responseDetails);
+    }
+    auditExceptionRoutingService.routeApplicationException(auditService, request, traceId, ex);
+    return ResponseEntity.status(status).body(ApiResponse.failure(ex.getUserMessage(), data));
+  }
+
+  @ExceptionHandler(CreditLimitExceededException.class)
+  public ResponseEntity<ApiResponse<Map<String, Object>>> handleCreditLimitExceeded(
+      CreditLimitExceededException ex, HttpServletRequest request) {
+    String traceId = UUID.randomUUID().toString();
+    logger.warn("Credit limit exceeded [{}]", traceId);
     Map<String, Object> data = new HashMap<>();
     data.put("code", ex.getErrorCode().getCode());
     data.put("message", ex.getUserMessage());
@@ -91,8 +122,8 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
       data.put("details", details);
     }
     auditExceptionRoutingService.routeApplicationException(auditService, request, traceId, ex);
-    HttpStatus status = determineHttpStatus(ex.getErrorCode());
-    return ResponseEntity.status(status).body(ApiResponse.failure(ex.getUserMessage(), data));
+    return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+        .body(ApiResponse.failure(ex.getUserMessage(), data));
   }
 
   @Override
@@ -102,7 +133,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
       HttpStatusCode status,
       WebRequest request) {
     String traceId = UUID.randomUUID().toString();
-    logger.warn("Validation error [{}] - Path: {}", traceId, request.getDescription(false));
+    logger.warn("Validation error [{}]", traceId);
     Map<String, String> fieldErrors = new LinkedHashMap<>();
     for (FieldError error : ex.getBindingResult().getFieldErrors()) {
       fieldErrors.putIfAbsent(error.getField(), error.getDefaultMessage());
@@ -126,7 +157,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     String traceId = UUID.randomUUID().toString();
     String reason = "Failed to read request";
     String detail = resolveMostSpecificMessage(ex);
-    logger.warn("Malformed request [{}] - Path: {}", traceId, request.getDescription(false));
+    logger.warn("Malformed request [{}]", traceId);
     Map<String, Object> data = new HashMap<>();
     data.put("code", ErrorCode.VALIDATION_INVALID_INPUT.getCode());
     data.put("message", reason);
@@ -148,7 +179,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
   public ResponseEntity<ApiResponse<Map<String, Object>>> handleConstraintViolation(
       ConstraintViolationException ex, HttpServletRequest request) {
     String traceId = UUID.randomUUID().toString();
-    logger.warn("Constraint violation [{}] - Path: {}", traceId, request.getRequestURI(), ex);
+    logger.warn("Constraint violation [{}]", traceId, ex);
     Map<String, String> violations = new LinkedHashMap<>();
     ex.getConstraintViolations()
         .forEach(
@@ -180,11 +211,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
   public ResponseEntity<ApiResponse<Map<String, Object>>> handleIllegalArgument(
       IllegalArgumentException ex, HttpServletRequest request) {
     String traceId = UUID.randomUUID().toString();
-    logger.warn(
-        "Illegal argument [{}] - Path: {}, Message: {}",
-        traceId,
-        request.getRequestURI(),
-        ex.getMessage());
+    logger.warn("Illegal argument [{}]", traceId);
     String reason = resolveIllegalArgumentMessage(ex.getMessage());
     Map<String, Object> data = new HashMap<>();
     data.put("code", ErrorCode.VALIDATION_INVALID_INPUT.getCode());

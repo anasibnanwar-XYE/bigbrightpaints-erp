@@ -7,12 +7,12 @@ import java.util.List;
 import java.util.Objects;
 
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.thymeleaf.TemplateEngine;
 import org.thymeleaf.context.Context;
 
 import com.openhtmltopdf.pdfboxout.PdfRendererBuilder;
 
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.invoice.domain.Invoice;
@@ -24,21 +24,22 @@ import com.bigbrightpaints.erp.modules.sales.domain.SalesOrder;
 public class InvoicePdfService {
 
   private final CompanyContextService companyContextService;
-  private final CompanyEntityLookup companyEntityLookup;
+  private final CompanyScopedInvoiceLookupService invoiceLookupService;
   private final TemplateEngine templateEngine;
 
   public InvoicePdfService(
       CompanyContextService companyContextService,
-      CompanyEntityLookup companyEntityLookup,
+      CompanyScopedInvoiceLookupService invoiceLookupService,
       TemplateEngine templateEngine) {
     this.companyContextService = companyContextService;
-    this.companyEntityLookup = companyEntityLookup;
+    this.invoiceLookupService = invoiceLookupService;
     this.templateEngine = templateEngine;
   }
 
+  @Transactional(readOnly = true)
   public PdfDocument renderInvoicePdf(Long invoiceId) {
     Company company = companyContextService.requireCurrentCompany();
-    Invoice invoice = companyEntityLookup.requireInvoice(company, invoiceId);
+    Invoice invoice = invoiceLookupService.requireInvoicePdf(company, invoiceId);
     Dealer dealer = invoice.getDealer();
     SalesOrder order = invoice.getSalesOrder();
 

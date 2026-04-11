@@ -73,6 +73,7 @@ class AccountingAuditControllerTest {
                 " 2026-03-01 ",
                 "2026-03-31 ",
                 "ACCOUNTING",
+                null,
                 "JOURNAL_ENTRY_POSTED",
                 "SUCCESS",
                 "ops@example.com",
@@ -117,7 +118,13 @@ class AccountingAuditControllerTest {
             0,
             50);
     when(auditAccessService.queryAccountingTransactions(
-            LocalDate.of(2026, 3, 1), LocalDate.of(2026, 3, 31), "ACCOUNTING", "POSTED", "JE-17", 0, 50))
+            LocalDate.of(2026, 3, 1),
+            LocalDate.of(2026, 3, 31),
+            "ACCOUNTING",
+            "POSTED",
+            "JE-17",
+            0,
+            50))
         .thenReturn(expected);
 
     ApiResponse<PageResponse<AccountingTransactionAuditListItemDto>> body =
@@ -129,7 +136,13 @@ class AccountingAuditControllerTest {
     assertThat(body.data()).isEqualTo(expected);
     verify(auditAccessService)
         .queryAccountingTransactions(
-            LocalDate.of(2026, 3, 1), LocalDate.of(2026, 3, 31), "ACCOUNTING", "POSTED", "JE-17", 0, 50);
+            LocalDate.of(2026, 3, 1),
+            LocalDate.of(2026, 3, 31),
+            "ACCOUNTING",
+            "POSTED",
+            "JE-17",
+            0,
+            50);
   }
 
   @Test
@@ -182,5 +195,24 @@ class AccountingAuditControllerTest {
     assertThat(body).isNotNull();
     assertThat(body.data()).isEqualTo(expected);
     verify(auditAccessService).getAccountingTransactionDetail(17L);
+  }
+
+  @Test
+  void listEvents_usesCategoryAsModuleWhenModuleIsOmitted() {
+    AuditAccessService auditAccessService = mock(AuditAccessService.class);
+    AccountingAuditController controller = new AccountingAuditController(auditAccessService);
+    PageResponse<AuditFeedItemDto> expected = PageResponse.of(List.of(), 0, 0, 50);
+    AuditFeedFilter expectedFilter =
+        new AuditFeedFilter(null, null, "INVENTORY", null, null, null, null, null, 0, 50);
+    when(auditAccessService.queryAccountingFeed(expectedFilter)).thenReturn(expected);
+
+    ApiResponse<PageResponse<AuditFeedItemDto>> body =
+        controller
+            .listEvents(null, null, null, "INVENTORY", null, null, null, null, null, 0, 50)
+            .getBody();
+
+    assertThat(body).isNotNull();
+    assertThat(body.data()).isEqualTo(expected);
+    verify(auditAccessService).queryAccountingFeed(expectedFilter);
   }
 }

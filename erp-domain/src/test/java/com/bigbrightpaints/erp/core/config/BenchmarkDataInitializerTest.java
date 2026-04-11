@@ -56,6 +56,24 @@ class BenchmarkDataInitializerTest {
   }
 
   @Test
+  void benchmarkInitializer_isLoadedFromTestClasspath() {
+    String classLocation =
+        BenchmarkDataInitializer.class
+            .getProtectionDomain()
+            .getCodeSource()
+            .getLocation()
+            .toExternalForm();
+    String testClassLocation =
+        BenchmarkDataInitializerTest.class
+            .getProtectionDomain()
+            .getCodeSource()
+            .getLocation()
+            .toExternalForm();
+
+    assertThat(classLocation).isEqualTo(testClassLocation);
+  }
+
+  @Test
   void seedRolesAndUsers_createsScopedBenchmarkAdminWhenMissing() {
     Company company = company("BBP");
     when(passwordEncoder.encode("Temp123!")).thenReturn("encoded-password");
@@ -63,7 +81,7 @@ class BenchmarkDataInitializerTest {
             "benchmark@example.com", "BBP"))
         .thenReturn(Optional.empty());
 
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         initializer,
         "seedRolesAndUsers",
         roleRepository,
@@ -95,7 +113,7 @@ class BenchmarkDataInitializerTest {
             "legacy@example.com", "BBP"))
         .thenReturn(Optional.of(existingAdmin));
 
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         initializer,
         "seedRolesAndUsers",
         roleRepository,
@@ -133,7 +151,7 @@ class BenchmarkDataInitializerTest {
     when(productRepository.save(any(ProductionProduct.class)))
         .thenAnswer(invocation -> invocation.getArgument(0, ProductionProduct.class));
 
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         initializer,
         "seedFinishedGoods",
         company,

@@ -1,0 +1,197 @@
+{
+  "groupId": "jvm-contracts",
+  "testedAt": "2026-04-07T00:01:12.058149+00:00",
+  "credentials": {
+    "account": null,
+    "namespace": null
+  },
+  "toolsUsed": [
+    "maven",
+    "repo-static"
+  ],
+  "assertions": [
+    {
+      "id": "VAL-COA-004",
+      "title": "CatalogItemRequest has explicit cogsAccountId, revenueAccountId, inventoryAccountId fields",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Read /home/realnigga/Desktop/Mission-control/erp-domain/src/main/java/com/bigbrightpaints/erp/modules/production/dto/CatalogItemRequest.java",
+          "expected": "CatalogItemRequest declares optional Long cogsAccountId, Long revenueAccountId, and Long inventoryAccountId fields.",
+          "observed": "CatalogItemRequest lines 29-31 declare Long cogsAccountId, Long revenueAccountId, and Long inventoryAccountId."
+        }
+      ],
+      "evidence": {
+        "commands": [],
+        "repoEvidence": [
+          "CatalogItemRequest.java:29-31 declares Long cogsAccountId, Long revenueAccountId, and Long inventoryAccountId."
+        ],
+        "files": [
+          "/home/realnigga/.factory/missions/cf35a73d-f4bd-4cf3-9488-fee34cf89e18/evidence/M4-chart-of-accounts-journals-periods/jvm-contracts/static-proof.txt"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-COA-007",
+      "title": "Cash/bank account resolution uses explicit configuration, not name matching",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Read CompanyDefaultAccountsService#resolveAutoSettlementCashAccountId and AccountResolutionService#resolveAutoSettlementCashAccountId",
+          "expected": "Auto-settlement cash resolution should use explicit configured account IDs, not CASH/BANK name matching.",
+          "observed": "CompanyDefaultAccountsService resolves requestedCashAccountId or company.getPayrollCashAccount() and validates the selected account; AccountResolutionService delegates directly to CompanyDefaultAccountsService. No CASH/BANK token matching appears in those methods."
+        },
+        {
+          "action": "cd /home/realnigga/Desktop/Mission-control/erp-domain && rtk test env MIGRATION_SET=v2 mvn test -Djacoco.skip=true -Dtest=AccountResolutionServiceTest,AccountingEventStoreMetricsTest,JournalLinePostingServiceTest",
+          "expected": "Targeted JVM proof should pass, including AccountResolutionServiceTest for explicit configuration delegation.",
+          "observed": "Exit code 0. Surefire reports show AccountResolutionServiceTest ran 1 test with 0 failures and 0 errors."
+        }
+      ],
+      "evidence": {
+        "commands": [
+          {
+            "command": "cd /home/realnigga/Desktop/Mission-control/erp-domain && rtk test env MIGRATION_SET=v2 mvn test -Djacoco.skip=true -Dtest=AccountResolutionServiceTest,AccountingEventStoreMetricsTest,JournalLinePostingServiceTest",
+            "exitCode": 0
+          }
+        ],
+        "repoEvidence": [
+          "CompanyDefaultAccountsService.java:127-146 resolves requestedCashAccountId or company.getPayrollCashAccount(); no CASH/BANK string matching is present in CompanyDefaultAccountsService or AccountResolutionService.",
+          "AccountResolutionServiceTest.txt: Tests run 1, Failures 0, Errors 0, Skipped 0."
+        ],
+        "files": [
+          "/home/realnigga/.factory/missions/cf35a73d-f4bd-4cf3-9488-fee34cf89e18/evidence/M4-chart-of-accounts-journals-periods/jvm-contracts/static-proof.txt",
+          "/home/realnigga/.factory/missions/cf35a73d-f4bd-4cf3-9488-fee34cf89e18/evidence/M4-chart-of-accounts-journals-periods/jvm-contracts/targeted-unit-tests.log",
+          "/home/realnigga/.factory/missions/cf35a73d-f4bd-4cf3-9488-fee34cf89e18/evidence/M4-chart-of-accounts-journals-periods/jvm-contracts/surefire-summary.txt"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-JOURNAL-004",
+      "title": "Audit trail on journal create/reverse/void",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Read AccountingEventType.java, AccountingEventStore.java, and AccountingAuditService.java",
+          "expected": "Journal create/post/reverse/void should have concrete event types and live wiring into AccountingEventStore.",
+          "observed": "AccountingEventType declares JOURNAL_ENTRY_CREATED, JOURNAL_ENTRY_POSTED, JOURNAL_ENTRY_REVERSED, and JOURNAL_ENTRY_VOIDED; AccountingEventStore records create/post and exposes reversal/void recorders; AccountingAuditService calls recordJournalEntryPosted, recordJournalEntryReversed, and recordJournalEntryVoided."
+        },
+        {
+          "action": "cd /home/realnigga/Desktop/Mission-control/erp-domain && rtk test env MIGRATION_SET=v2 mvn test -Djacoco.skip=true -Dtest=AccountResolutionServiceTest,AccountingEventStoreMetricsTest,JournalLinePostingServiceTest",
+          "expected": "Targeted JVM proof should confirm create/post event emission behavior.",
+          "observed": "Exit code 0. Surefire reports show AccountingEventStoreMetricsTest ran 1 test with 0 failures and 0 errors, asserting JOURNAL_ENTRY_CREATED and JOURNAL_ENTRY_POSTED are persisted during recordJournalEntryPosted()."
+        }
+      ],
+      "evidence": {
+        "commands": [
+          {
+            "command": "cd /home/realnigga/Desktop/Mission-control/erp-domain && rtk test env MIGRATION_SET=v2 mvn test -Djacoco.skip=true -Dtest=AccountResolutionServiceTest,AccountingEventStoreMetricsTest,JournalLinePostingServiceTest",
+            "exitCode": 0
+          }
+        ],
+        "repoEvidence": [
+          "AccountingEventType.java:8-11 declares JOURNAL_ENTRY_CREATED/JOURNAL_ENTRY_POSTED/JOURNAL_ENTRY_REVERSED/JOURNAL_ENTRY_VOIDED.",
+          "AccountingEventStore.java:81-127 records created + posted events; lines 178-191 route reversal + void through AccountingEventType.JOURNAL_ENTRY_REVERSED/JOURNAL_ENTRY_VOIDED.",
+          "AccountingAuditService.java:84-114 calls recordJournalEntryPosted, recordJournalEntryReversed, and recordJournalEntryVoided.",
+          "AccountingEventStoreMetricsTest.txt: Tests run 1, Failures 0, Errors 0, Skipped 0."
+        ],
+        "files": [
+          "/home/realnigga/.factory/missions/cf35a73d-f4bd-4cf3-9488-fee34cf89e18/evidence/M4-chart-of-accounts-journals-periods/jvm-contracts/static-proof.txt",
+          "/home/realnigga/.factory/missions/cf35a73d-f4bd-4cf3-9488-fee34cf89e18/evidence/M4-chart-of-accounts-journals-periods/jvm-contracts/targeted-unit-tests.log",
+          "/home/realnigga/.factory/missions/cf35a73d-f4bd-4cf3-9488-fee34cf89e18/evidence/M4-chart-of-accounts-journals-periods/jvm-contracts/surefire-summary.txt"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-JOURNAL-005",
+      "title": "Account type validation on journal lines",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Read JournalLinePostingService.java",
+          "expected": "Inactive accounts should be rejected; normal-balance direction conflicts should warn or reject based on policy.",
+          "observed": "JournalLinePostingService rejects inactive accounts with VALIDATION_INVALID_INPUT and validateNormalBalanceDirection() throws on REJECT mode or logs a warning on WARN mode."
+        },
+        {
+          "action": "cd /home/realnigga/Desktop/Mission-control/erp-domain && rtk test env MIGRATION_SET=v2 mvn test -Djacoco.skip=true -Dtest=AccountResolutionServiceTest,AccountingEventStoreMetricsTest,JournalLinePostingServiceTest",
+          "expected": "Targeted JVM proof should pass and cover inactive-account rejection plus warning/reject behavior for normal-balance conflicts.",
+          "observed": "Exit code 0. Surefire reports show JournalLinePostingServiceTest ran 3 tests with 0 failures and 0 errors, including buildPostedLine_rejectsInactiveAccount, buildPostedLine_warnModeAllowsNormalBalanceDirectionConflict, and buildPostedLine_rejectModeBlocksNormalBalanceDirectionConflict."
+        }
+      ],
+      "evidence": {
+        "commands": [
+          {
+            "command": "cd /home/realnigga/Desktop/Mission-control/erp-domain && rtk test env MIGRATION_SET=v2 mvn test -Djacoco.skip=true -Dtest=AccountResolutionServiceTest,AccountingEventStoreMetricsTest,JournalLinePostingServiceTest",
+            "exitCode": 0
+          }
+        ],
+        "repoEvidence": [
+          "JournalLinePostingService.java:52-56 rejects posting to inactive accounts.",
+          "JournalLinePostingService.java:113-143 enforces normal-balance conflict warning/reject behavior.",
+          "JournalLinePostingServiceTest.txt: Tests run 3, Failures 0, Errors 0, Skipped 0."
+        ],
+        "files": [
+          "/home/realnigga/.factory/missions/cf35a73d-f4bd-4cf3-9488-fee34cf89e18/evidence/M4-chart-of-accounts-journals-periods/jvm-contracts/static-proof.txt",
+          "/home/realnigga/.factory/missions/cf35a73d-f4bd-4cf3-9488-fee34cf89e18/evidence/M4-chart-of-accounts-journals-periods/jvm-contracts/targeted-unit-tests.log",
+          "/home/realnigga/.factory/missions/cf35a73d-f4bd-4cf3-9488-fee34cf89e18/evidence/M4-chart-of-accounts-journals-periods/jvm-contracts/surefire-summary.txt"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-PERIOD-004",
+      "title": "Audit trail on period open/close/lock/reopen",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Read AccountingPeriodLifecycleService.java, AccountingPeriodStatusWorkflow.java, and AccountingComplianceAuditServiceTest.java",
+          "expected": "Period lifecycle transitions should wire PERIOD_OPENED, PERIOD_CLOSED, PERIOD_LOCKED, and PERIOD_REOPENED through accountingComplianceAuditService.recordPeriodTransition().",
+          "observed": "AccountingPeriodLifecycleService records PERIOD_OPENED when creating periods; AccountingPeriodStatusWorkflow records PERIOD_CLOSED, PERIOD_LOCKED, and PERIOD_REOPENED; AccountingComplianceAuditServiceTest verifies PERIOD_REOPENED metadata capture."
+        },
+        {
+          "action": "cd /home/realnigga/Desktop/Mission-control/erp-domain && rtk test env MIGRATION_SET=v2 mvn test -Djacoco.skip=true -Dtest=AccountingPeriodServiceTest,AccountingComplianceAuditServiceTest",
+          "expected": "Targeted JVM proof should pass and exercise period lifecycle/audit coverage.",
+          "observed": "Exit code 0. Surefire reports show AccountingPeriodServiceTest ran 55 tests with 0 failures and 0 errors, and AccountingComplianceAuditServiceTest ran 8 tests with 0 failures and 0 errors."
+        }
+      ],
+      "evidence": {
+        "commands": [
+          {
+            "command": "cd /home/realnigga/Desktop/Mission-control/erp-domain && rtk test env MIGRATION_SET=v2 mvn test -Djacoco.skip=true -Dtest=AccountingPeriodServiceTest,AccountingComplianceAuditServiceTest",
+            "exitCode": 0
+          }
+        ],
+        "repoEvidence": [
+          "AccountingPeriodLifecycleService.java:97-103 records PERIOD_OPENED.",
+          "AccountingPeriodStatusWorkflow.java:142-149 records PERIOD_CLOSED; 186-193 records PERIOD_LOCKED; 234-241 records PERIOD_REOPENED.",
+          "AccountingComplianceAuditServiceTest.java:138-141 asserts PERIOD_REOPENED metadata/action wiring.",
+          "AccountingPeriodServiceTest.txt: Tests run 55, Failures 0, Errors 0, Skipped 0.",
+          "AccountingComplianceAuditServiceTest.txt: Tests run 8, Failures 0, Errors 0, Skipped 0."
+        ],
+        "files": [
+          "/home/realnigga/.factory/missions/cf35a73d-f4bd-4cf3-9488-fee34cf89e18/evidence/M4-chart-of-accounts-journals-periods/jvm-contracts/static-proof.txt",
+          "/home/realnigga/.factory/missions/cf35a73d-f4bd-4cf3-9488-fee34cf89e18/evidence/M4-chart-of-accounts-journals-periods/jvm-contracts/period-audit-tests.log",
+          "/home/realnigga/.factory/missions/cf35a73d-f4bd-4cf3-9488-fee34cf89e18/evidence/M4-chart-of-accounts-journals-periods/jvm-contracts/surefire-summary.txt"
+        ]
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "A first Maven attempt launched from the repo root failed because the project expects Maven to run from /erp-domain and looked for .mvn/settings.xml relative to the wrong directory.",
+      "resolved": true,
+      "resolution": "Reran all Maven proof commands from /home/realnigga/Desktop/Mission-control/erp-domain as required by the assignment.",
+      "affectedAssertions": [
+        "VAL-COA-007",
+        "VAL-JOURNAL-004",
+        "VAL-JOURNAL-005",
+        "VAL-PERIOD-004"
+      ]
+    }
+  ],
+  "blockers": [],
+  "summary": "Tested 5 assigned M4 JVM/static assertions: 5 passed. Evidence was saved to static-proof.txt, targeted-unit-tests.log, period-audit-tests.log, and surefire-summary.txt under the mission evidence directory."
+}

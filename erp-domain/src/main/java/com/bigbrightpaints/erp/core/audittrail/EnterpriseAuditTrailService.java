@@ -33,6 +33,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.ReflectionUtils;
 import org.springframework.util.StringUtils;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -72,6 +73,9 @@ public class EnterpriseAuditTrailService {
 
   @Autowired @Lazy private EnterpriseAuditTrailService self;
 
+  @Value("${erp.audit.business.async-enabled:true}")
+  private boolean businessEventAsyncEnabled = true;
+
   @Value("${erp.audit.business.retry.max-attempts:4}")
   private int businessEventRetryMaxAttempts = 4;
 
@@ -100,7 +104,7 @@ public class EnterpriseAuditTrailService {
     this.mlInteractionEventRepository = mlInteractionEventRepository;
     this.companyContextService = companyContextService;
     this.objectMapper = objectMapper;
-    String normalizedAuditPrivateKey = StringUtils.trimWhitespace(auditPrivateKey);
+    String normalizedAuditPrivateKey = auditPrivateKey == null ? null : auditPrivateKey.strip();
     if (!StringUtils.hasText(normalizedAuditPrivateKey)) {
       throw new IllegalStateException("erp.security.audit.private-key must be configured");
     }
@@ -115,12 +119,41 @@ public class EnterpriseAuditTrailService {
                 : resolveCurrentActor().orElse(null))
             : null;
     EnterpriseAuditTrailService dispatcher = self != null ? self : this;
-    dispatcher.recordBusinessEventAsync(command, actorSnapshot);
+    if (businessEventAsyncEnabled) {
+      dispatcher.recordBusinessEventAsync(command, actorSnapshot);
+      return;
+    }
+    dispatcher.recordBusinessEventSync(command, actorSnapshot);
   }
 
   @Async
-  @Transactional(propagation = Propagation.REQUIRES_NEW)
   public void recordBusinessEventAsync(AuditActionEventCommand command, UserAccount actorSnapshot) {
+    persistBusinessEventWithRetry(command, actorSnapshot);
+  }
+
+  public void recordBusinessEventSync(AuditActionEventCommand command, UserAccount actorSnapshot) {
+    if (command == null || command.company() == null) {
+      return;
+    }
+    EnterpriseAuditTrailService dispatcher = self != null ? self : this;
+    try {
+      dispatcher.recordBusinessEventSyncTransactional(command, actorSnapshot);
+    } catch (Exception ex) {
+      enqueueBusinessEventRetry(command, actorSnapshot, 1, ex);
+    }
+  }
+
+  @Transactional(propagation = Propagation.REQUIRES_NEW)
+  public void recordBusinessEventSyncTransactional(
+      AuditActionEventCommand command, UserAccount actorSnapshot) {
+    if (command == null || command.company() == null) {
+      return;
+    }
+    persistBusinessEvent(command, actorSnapshot);
+  }
+
+  private void persistBusinessEventWithRetry(
+      AuditActionEventCommand command, UserAccount actorSnapshot) {
     if (command == null || command.company() == null) {
       return;
     }
@@ -315,7 +348,8 @@ public class EnterpriseAuditTrailService {
     event.setFailureReason(trim(command.failureReason(), 512, null));
     event.setAmount(command.amount());
     event.setCurrency(trim(command.currency(), 16, null));
-    event.setCorrelationId(command.correlationId());
+    event.setCorrelationId(
+        command.correlationId() != null ? command.correlationId() : java.util.UUID.randomUUID());
     event.setRequestId(trim(command.requestId(), 128, null));
     event.setTraceId(trim(command.traceId(), 128, null));
     event.setIpAddress(trim(command.ipAddress(), 64, null));
@@ -350,7 +384,8 @@ public class EnterpriseAuditTrailService {
     event.setFailureReason(trim(payload.failureReason(), 512, null));
     event.setAmount(payload.amount());
     event.setCurrency(trim(payload.currency(), 16, null));
-    event.setCorrelationId(payload.correlationId());
+    event.setCorrelationId(
+        payload.correlationId() != null ? payload.correlationId() : java.util.UUID.randomUUID());
     event.setRequestId(trim(payload.requestId(), 128, null));
     event.setTraceId(trim(payload.traceId(), 128, null));
     event.setIpAddress(trim(payload.ipAddress(), 64, null));
@@ -424,9 +459,7 @@ public class EnterpriseAuditTrailService {
     int maxAttempts = Math.max(1, businessEventRetryMaxAttempts);
     if (failedAttemptCount >= maxAttempts) {
       log.error(
-          "Dropping business audit event after {} failed attempts",
-          failedAttemptCount,
-          exception);
+          "Dropping business audit event after {} failed attempts", failedAttemptCount, exception);
       return;
     }
 
@@ -446,10 +479,7 @@ public class EnterpriseAuditTrailService {
     }
 
     log.warn(
-        "Queued business audit event retry {}/{}",
-        failedAttemptCount + 1,
-        maxAttempts,
-        exception);
+        "Queued business audit event retry {}/{}", failedAttemptCount + 1, maxAttempts, exception);
   }
 
   private boolean persistBusinessEventRetry(
@@ -481,8 +511,7 @@ public class EnterpriseAuditTrailService {
       return true;
     } catch (Exception persistenceEx) {
       log.error(
-          "Failed to persist business audit retry; falling back to in-memory queue",
-          persistenceEx);
+          "Failed to persist business audit retry; falling back to in-memory queue", persistenceEx);
       return false;
     }
   }
@@ -548,13 +577,13 @@ public class EnterpriseAuditTrailService {
       return false;
     }
     for (String methodName : List.of("isAiPersonalizationOptIn", "getAiPersonalizationOptIn")) {
-      try {
-        Object result = UserAccount.class.getMethod(methodName).invoke(actor);
-        if (result instanceof Boolean booleanResult) {
-          return booleanResult;
-        }
-      } catch (ReflectiveOperationException ignored) {
-        // Maintain compatibility across UserAccount contract variants.
+      var method = ReflectionUtils.findMethod(UserAccount.class, methodName);
+      if (method == null) {
+        continue;
+      }
+      Object result = ReflectionUtils.invokeMethod(method, actor);
+      if (result instanceof Boolean booleanResult) {
+        return booleanResult;
       }
     }
     return false;

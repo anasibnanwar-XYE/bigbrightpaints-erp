@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -26,6 +27,9 @@ import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatch;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatchRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodRepository;
+import com.bigbrightpaints.erp.modules.inventory.domain.InventoryPhysicalCount;
+import com.bigbrightpaints.erp.modules.inventory.domain.InventoryPhysicalCountRepository;
+import com.bigbrightpaints.erp.modules.inventory.domain.InventoryPhysicalCountTarget;
 import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
 
 class ReportInventoryParityIT extends AbstractIntegrationTest {
@@ -41,6 +45,8 @@ class ReportInventoryParityIT extends AbstractIntegrationTest {
   @Autowired private FinishedGoodRepository finishedGoodRepository;
 
   @Autowired private FinishedGoodBatchRepository finishedGoodBatchRepository;
+
+  @Autowired private InventoryPhysicalCountRepository inventoryPhysicalCountRepository;
 
   private Company company;
 
@@ -223,6 +229,51 @@ class ReportInventoryParityIT extends AbstractIntegrationTest {
     assertThat(afterLowStock - baselineLowStock).isEqualTo(expectedLowStockDelta);
   }
 
+  @Test
+  void inventoryReconciliation_readsPhysicalQuantityFromIndependentCountInput() {
+    HttpHeaders headers = authHeaders(ACCOUNTING_EMAIL, PASSWORD, COMPANY_CODE);
+    String code = "M14S19-PC-" + shortId();
+
+    seedFinishedGoodWithBatches(
+        code,
+        "FIFO",
+        new BigDecimal("10"),
+        BigDecimal.ZERO,
+        List.of(
+            new BatchSeed(
+                code + "-B1",
+                new BigDecimal("10"),
+                new BigDecimal("10"),
+                new BigDecimal("10"),
+                Instant.parse("2026-01-05T00:00:00Z"))));
+
+    FinishedGood finishedGood =
+        finishedGoodRepository.findByCompanyAndProductCode(company, code).orElseThrow();
+    InventoryPhysicalCount physicalCount = new InventoryPhysicalCount();
+    physicalCount.setCompany(company);
+    physicalCount.setTarget(InventoryPhysicalCountTarget.FINISHED_GOOD);
+    physicalCount.setInventoryItemId(finishedGood.getId());
+    physicalCount.setPhysicalQuantity(new BigDecimal("7"));
+    physicalCount.setCountDate(LocalDate.of(2026, 4, 7));
+    physicalCount.setSourceReference("IT-COUNT-" + code);
+    physicalCount.setCreatedBy("report-inventory-parity-it");
+    inventoryPhysicalCountRepository.saveAndFlush(physicalCount);
+
+    Map<String, Object> report = inventoryReconciliation(headers);
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> items = (List<Map<String, Object>>) report.get("items");
+
+    Map<String, Object> targetItem =
+        items.stream()
+            .filter(item -> code.equals(String.valueOf(item.get("code"))))
+            .findFirst()
+            .orElseThrow();
+
+    assertThat(asDecimal(targetItem.get("systemQty"))).isEqualByComparingTo("10.00");
+    assertThat(asDecimal(targetItem.get("physicalQty"))).isEqualByComparingTo("7.00");
+    assertThat(asDecimal(targetItem.get("variance"))).isEqualByComparingTo("-3.00");
+  }
+
   private void seedFinishedGoodWithBatches(
       String productCode,
       String costingMethod,
@@ -290,6 +341,19 @@ class ReportInventoryParityIT extends AbstractIntegrationTest {
     ResponseEntity<Map> response =
         rest.exchange(
             "/api/v1/reports/inventory-valuation?date=2099-01-01",
+            HttpMethod.GET,
+            new HttpEntity<>(headers),
+            Map.class);
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(response.getBody()).isNotNull();
+    return (Map<String, Object>) response.getBody().get("data");
+  }
+
+  @SuppressWarnings("unchecked")
+  private Map<String, Object> inventoryReconciliation(HttpHeaders headers) {
+    ResponseEntity<Map> response =
+        rest.exchange(
+            "/api/v1/reports/inventory-reconciliation",
             HttpMethod.GET,
             new HttpEntity<>(headers),
             Map.class);

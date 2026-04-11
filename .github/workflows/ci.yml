@@ -114,6 +114,7 @@ jobs:
       run_changed_coverage: ${{ steps.route.outputs.run_changed_coverage }}
       changed_files_count: ${{ steps.route.outputs.changed_files_count }}
       changed_runtime_source_count: ${{ steps.route.outputs.changed_runtime_source_count }}
+      effective_diff_base: ${{ steps.route.outputs.effective_diff_base }}
 
     steps:
       - name: Checkout
@@ -567,7 +568,7 @@ jobs:
 
       - name: Enforce changed-files coverage
         env:
-          DIFF_BASE: ${{ github.event.pull_request.base.sha }}
+          DIFF_BASE: ${{ needs.pr-risk-router.outputs.effective_diff_base }}
           RUN_CHANGED_COVERAGE: ${{ needs.pr-risk-router.outputs.run_changed_coverage }}
           CHANGED_FILES_COUNT: ${{ needs.pr-risk-router.outputs.changed_files_count }}
           CHANGED_RUNTIME_SOURCE_COUNT: ${{ needs.pr-risk-router.outputs.changed_runtime_source_count }}

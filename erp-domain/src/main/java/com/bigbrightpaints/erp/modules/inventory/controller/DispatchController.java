@@ -54,7 +54,7 @@ public class DispatchController {
   public ResponseEntity<ApiResponse<List<PackagingSlipDto>>> getPendingSlips() {
     List<PackagingSlipDto> slips =
         finishedGoodsService.listPackagingSlips().stream()
-            .filter(s -> !"DISPATCHED".equalsIgnoreCase(s.status()))
+            .filter(this::isPendingDispatchSlip)
             .map(this::toPackagingSlipView)
             .toList();
     return ResponseEntity.ok(ApiResponse.success(slips));
@@ -355,5 +355,21 @@ public class DispatchController {
                         || "ROLE_ACCOUNTING".equals(authority.getAuthority())
                         || "ROLE_SALES".equals(authority.getAuthority()));
     return factory && !elevated;
+  }
+
+  private boolean isPendingDispatchSlip(PackagingSlipDto slip) {
+    if (slip == null) {
+      return false;
+    }
+    return !isTerminalDispatchStatus(slip.status());
+  }
+
+  private boolean isTerminalDispatchStatus(String status) {
+    if (!StringUtils.hasText(status)) {
+      return false;
+    }
+    return "DISPATCHED".equalsIgnoreCase(status)
+        || "CANCELLED".equalsIgnoreCase(status)
+        || "CANCELED".equalsIgnoreCase(status);
   }
 }

@@ -142,8 +142,9 @@ class OpeningStockImportServiceTest {
         .thenAnswer(invocation -> readyReadiness(invocation.getArgument(1, String.class)));
     lenient()
         .when(
-            openingStockImportRepository.findFirstByCompanyAndContentFingerprintOrderByCreatedAtAscIdAsc(
-                eq(company), anyString()))
+            openingStockImportRepository
+                .findFirstByCompanyAndContentFingerprintOrderByCreatedAtAscIdAsc(
+                    eq(company), anyString()))
         .thenReturn(Optional.empty());
   }
 
@@ -402,8 +403,7 @@ class OpeningStockImportServiceTest {
             company, openingStockBatchKey))
         .thenReturn(Optional.of(existing));
 
-    assertThatThrownBy(
-            () -> importOpeningStock(unreadableFile, "fresh-key", openingStockBatchKey))
+    assertThatThrownBy(() -> importOpeningStock(unreadableFile, "fresh-key", openingStockBatchKey))
         .isInstanceOfSatisfying(
             ApplicationException.class,
             ex -> {
@@ -588,31 +588,32 @@ class OpeningStockImportServiceTest {
 
     assertThat(
             (String)
-                ReflectionTestUtils.invokeMethod(service, "sanitizeCompanyCode", company.getCode()))
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    service, "sanitizeCompanyCode", company.getCode()))
         .isEqualTo("ACME");
     assertThat(
             (String)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     service, "sanitizeCompanyCode", legacyCompany.getCode()))
         .isEqualTo("ACMEWEST");
     assertThat(
             (String)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     service, "sanitizeCompanyCode", blankCodeCompany.getCode()))
         .isEqualTo("COMPANY");
     assertThat(
             (String)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     service, "resolveImportReference", company, "batch-1"))
         .isEqualTo("OPEN-STOCK-ACME-" + batchOneHash);
     assertThat(
             (String)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     service, "resolveImportReference", legacyCompany, "batch-2"))
         .isEqualTo("OPEN-STOCK-ACMEWEST-" + batchTwoHash);
     assertThat(
             (String)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     service, "resolveImportReference", null, "batch-3"))
         .isEqualTo("OPEN-STOCK-COMPANY-" + batchThreeHash);
   }
@@ -845,6 +846,14 @@ class OpeningStockImportServiceTest {
               assertThat(ex.getMessage())
                   .isEqualTo("Idempotency key is required for opening stock imports");
             });
+    assertThatThrownBy(() -> importOpeningStock(file, null))
+        .isInstanceOfSatisfying(
+            ApplicationException.class,
+            ex -> {
+              assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD);
+              assertThat(ex.getMessage())
+                  .isEqualTo("Idempotency key is required for opening stock imports");
+            });
   }
 
   @Test
@@ -903,7 +912,10 @@ class OpeningStockImportServiceTest {
 
   @Test
   void serializeResults_returnsNullForEmptyAndSerializationFailure() throws Exception {
-    assertThat((Object) ReflectionTestUtils.invokeMethod(service, "serializeResults", List.of()))
+    assertThat(
+            (Object)
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    service, "serializeResults", List.of()))
         .isNull();
 
     ObjectMapper failingObjectMapper = org.mockito.Mockito.mock(ObjectMapper.class);
@@ -932,7 +944,7 @@ class OpeningStockImportServiceTest {
             true);
 
     String serialized =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             failingService,
             "serializeResults",
             List.of(
@@ -1500,13 +1512,12 @@ class OpeningStockImportServiceTest {
 
     when(openingStockImportRepository.findByCompanyAndIdempotencyKey(company, "fresh-key"))
         .thenReturn(Optional.empty());
-    when(
-            openingStockImportRepository.findFirstByCompanyAndContentFingerprintOrderByCreatedAtAscIdAsc(
+    when(openingStockImportRepository
+            .findFirstByCompanyAndContentFingerprintOrderByCreatedAtAscIdAsc(
                 company, fingerprint(csv)))
         .thenReturn(Optional.of(existing));
 
-    assertThatThrownBy(
-            () -> importOpeningStock(file, "fresh-key", "OPEN-STOCK-BATCH-FRESH"))
+    assertThatThrownBy(() -> importOpeningStock(file, "fresh-key", "OPEN-STOCK-BATCH-FRESH"))
         .isInstanceOfSatisfying(
             ApplicationException.class,
             ex -> {
@@ -1517,8 +1528,7 @@ class OpeningStockImportServiceTest {
                   .containsEntry("existingOpeningStockBatchKey", "OPEN-STOCK-BATCH-ORIGINAL")
                   .containsEntry("referenceNumber", "OPEN-STOCK-ACME-ORIGINAL")
                   .containsEntry("attemptedIdempotencyKey", "fresh-key")
-                  .containsEntry(
-                      "attemptedOpeningStockBatchKey", "OPEN-STOCK-BATCH-FRESH");
+                  .containsEntry("attemptedOpeningStockBatchKey", "OPEN-STOCK-BATCH-FRESH");
             });
   }
 
@@ -1537,8 +1547,7 @@ class OpeningStockImportServiceTest {
     existing.setOpeningStockBatchKey("OPEN-STOCK-BATCH-ORIGINAL");
     existing.setReferenceNumber("OPEN-STOCK-ACME-ORIGINAL");
     existing.setJournalEntryId(900L);
-    existing.setContentFingerprint(
-        legacyFingerprint("OPEN-STOCK-BATCH-ORIGINAL", "original-key"));
+    existing.setContentFingerprint(legacyFingerprint("OPEN-STOCK-BATCH-ORIGINAL", "original-key"));
     ReflectionTestUtils.setField(existing, "createdAt", Instant.parse("2026-02-03T12:00:00Z"));
 
     RawMaterial rawMaterial = new RawMaterial();
@@ -1556,25 +1565,22 @@ class OpeningStockImportServiceTest {
     rawMovement.setQuantity(new BigDecimal("10.00"));
     rawMovement.setUnitCost(new BigDecimal("5.00"));
 
-    when(
-            openingStockImportRepository.findFirstByCompanyAndContentFingerprintOrderByCreatedAtAscIdAsc(
+    when(openingStockImportRepository
+            .findFirstByCompanyAndContentFingerprintOrderByCreatedAtAscIdAsc(
                 company, fingerprint(csv)))
         .thenReturn(Optional.empty());
     when(openingStockImportRepository.findByCompanyOrderByCreatedAtAscIdAsc(company))
         .thenReturn(List.of(existing));
-    when(
-            rawMaterialMovementRepository
-                .findByRawMaterial_CompanyAndJournalEntryIdAndReferenceTypeOrderByIdAsc(
-                    company, 900L, InventoryReference.OPENING_STOCK))
+    when(rawMaterialMovementRepository
+            .findByRawMaterial_CompanyAndJournalEntryIdAndReferenceTypeOrderByIdAsc(
+                company, 900L, InventoryReference.OPENING_STOCK))
         .thenReturn(List.of(rawMovement));
-    when(
-            inventoryMovementRepository
-                .findByFinishedGood_CompanyAndJournalEntryIdAndReferenceTypeOrderByIdAsc(
-                    company, 900L, InventoryReference.OPENING_STOCK))
+    when(inventoryMovementRepository
+            .findByFinishedGood_CompanyAndJournalEntryIdAndReferenceTypeOrderByIdAsc(
+                company, 900L, InventoryReference.OPENING_STOCK))
         .thenReturn(List.of());
 
-    assertThatThrownBy(
-            () -> importOpeningStock(file, "fresh-key", "OPEN-STOCK-BATCH-FRESH"))
+    assertThatThrownBy(() -> importOpeningStock(file, "fresh-key", "OPEN-STOCK-BATCH-FRESH"))
         .isInstanceOfSatisfying(
             ApplicationException.class,
             ex -> {
@@ -1589,8 +1595,7 @@ class OpeningStockImportServiceTest {
         .save(
             org.mockito.ArgumentMatchers.argThat(
                 record ->
-                    record != null
-                        && fingerprint(csv).equals(record.getContentFingerprint())));
+                    record != null && fingerprint(csv).equals(record.getContentFingerprint())));
   }
 
   @Test
@@ -1611,15 +1616,16 @@ class OpeningStockImportServiceTest {
     existing.setReferenceNumber("OPEN-STOCK-ACME-ORIGINAL");
     existing.setContentFingerprint(fingerprint(csv));
 
-    when(
-            openingStockImportRepository.findFirstByCompanyAndContentFingerprintOrderByCreatedAtAscIdAsc(
+    when(openingStockImportRepository
+            .findFirstByCompanyAndContentFingerprintOrderByCreatedAtAscIdAsc(
                 company, fingerprint(csv)))
         .thenReturn(Optional.of(existing));
 
     OpeningStockImportResponse response = importOpeningStock(file, "fresh-key", "batch-same");
 
     assertThat(response.rowsProcessed()).isEqualTo(1);
-    ArgumentCaptor<OpeningStockImport> savedRecord = ArgumentCaptor.forClass(OpeningStockImport.class);
+    ArgumentCaptor<OpeningStockImport> savedRecord =
+        ArgumentCaptor.forClass(OpeningStockImport.class);
     verify(openingStockImportRepository).saveAndFlush(savedRecord.capture());
     assertThat(savedRecord.getValue().getContentFingerprint()).isEqualTo(fingerprint(csv));
   }
@@ -1670,12 +1676,13 @@ class OpeningStockImportServiceTest {
         };
     String openingStockBatchKey = "OPEN-STOCK-BATCH-DUPLICATE-REF";
     String importReference =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             service, "resolveImportReference", company, openingStockBatchKey);
 
     when(openingStockImportRepository.findByCompanyAndIdempotencyKey(company, "fresh-key"))
         .thenReturn(Optional.empty());
-    when(openingStockImportRepository.findByCompanyAndOpeningStockBatchKey(company, openingStockBatchKey))
+    when(openingStockImportRepository.findByCompanyAndOpeningStockBatchKey(
+            company, openingStockBatchKey))
         .thenReturn(Optional.empty());
     when(journalEntryRepository.findByCompanyAndReferenceNumber(company, importReference))
         .thenReturn(Optional.of(new JournalEntry()));
@@ -2009,8 +2016,13 @@ class OpeningStockImportServiceTest {
                     + "RAW_MATERIAL,RM-1,Resin,KG,KG,RM-B1,10,5.00,PRODUCTION\r\n")
                 .getBytes(StandardCharsets.UTF_8));
 
-    assertThat((String) ReflectionTestUtils.invokeMethod(service, "fingerprintFile", canonical))
-        .isEqualTo(ReflectionTestUtils.invokeMethod(service, "fingerprintFile", bomAndCrlf));
+    assertThat(
+            (String)
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    service, "fingerprintFile", canonical))
+        .isEqualTo(
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                service, "fingerprintFile", bomAndCrlf));
   }
 
   @Test
@@ -2075,19 +2087,18 @@ class OpeningStockImportServiceTest {
 
     when(openingStockImportRepository.findByCompanyOrderByCreatedAtAscIdAsc(company))
         .thenReturn(List.of(legacy));
-    when(
-            rawMaterialMovementRepository
-                .findByRawMaterial_CompanyAndJournalEntryIdAndReferenceTypeOrderByIdAsc(
-                    company, 901L, InventoryReference.OPENING_STOCK))
+    when(rawMaterialMovementRepository
+            .findByRawMaterial_CompanyAndJournalEntryIdAndReferenceTypeOrderByIdAsc(
+                company, 901L, InventoryReference.OPENING_STOCK))
         .thenReturn(List.of(packagingMovement));
-    when(
-            inventoryMovementRepository
-                .findByFinishedGood_CompanyAndJournalEntryIdAndReferenceTypeOrderByIdAsc(
-                    company, 901L, InventoryReference.OPENING_STOCK))
+    when(inventoryMovementRepository
+            .findByFinishedGood_CompanyAndJournalEntryIdAndReferenceTypeOrderByIdAsc(
+                company, 901L, InventoryReference.OPENING_STOCK))
         .thenReturn(List.of(finishedMovement));
 
     OpeningStockImport replay =
-        ReflectionTestUtils.invokeMethod(service, "findContentReplay", company, expectedFingerprint);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "findContentReplay", company, expectedFingerprint);
 
     assertThat(replay).isSameAs(legacy);
     verify(openingStockImportRepository)
@@ -2146,19 +2157,18 @@ class OpeningStockImportServiceTest {
 
     when(openingStockImportRepository.findByCompanyOrderByCreatedAtAscIdAsc(company))
         .thenReturn(List.of(nonLegacy, missingJournal, differentLegacy));
-    when(
-            rawMaterialMovementRepository
-                .findByRawMaterial_CompanyAndJournalEntryIdAndReferenceTypeOrderByIdAsc(
-                    company, 902L, InventoryReference.OPENING_STOCK))
+    when(rawMaterialMovementRepository
+            .findByRawMaterial_CompanyAndJournalEntryIdAndReferenceTypeOrderByIdAsc(
+                company, 902L, InventoryReference.OPENING_STOCK))
         .thenReturn(List.of(ignoredMovement, validMovement));
-    when(
-            inventoryMovementRepository
-                .findByFinishedGood_CompanyAndJournalEntryIdAndReferenceTypeOrderByIdAsc(
-                    company, 902L, InventoryReference.OPENING_STOCK))
+    when(inventoryMovementRepository
+            .findByFinishedGood_CompanyAndJournalEntryIdAndReferenceTypeOrderByIdAsc(
+                company, 902L, InventoryReference.OPENING_STOCK))
         .thenReturn(null);
 
     OpeningStockImport replay =
-        ReflectionTestUtils.invokeMethod(service, "findContentReplay", company, "missing-target");
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "findContentReplay", company, "missing-target");
 
     assertThat(replay).isNull();
     verify(openingStockImportRepository)
@@ -2180,25 +2190,31 @@ class OpeningStockImportServiceTest {
 
     @SuppressWarnings("unchecked")
     List<String> parsedRows =
-        ReflectionTestUtils.invokeMethod(service, "parseFingerprintRows", normalizedPayload);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "parseFingerprintRows", normalizedPayload);
 
-    assertThat(parsedRows)
-        .containsExactly("FINISHED_GOOD|FG-1|1000|12|2026-02-01|2026-08-01");
+    assertThat(parsedRows).containsExactly("FINISHED_GOOD|FG-1|1000|12|2026-02-01|2026-08-01");
     assertThat(
             (String)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     service,
                     "normalizeFilePayload",
                     "\uFEFFa\r\nb\rc".getBytes(StandardCharsets.UTF_8)))
         .isEqualTo("a\nb\nc");
-    assertThat((String) ReflectionTestUtils.invokeMethod(service, "normalizeDecimal", (Object) null))
+    assertThat(
+            (String)
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    service, "normalizeDecimal", (Object) null))
         .isEmpty();
     assertThat(
             (String)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     service, "normalizeDecimal", new BigDecimal("1000.0")))
         .isEqualTo("1000");
-    assertThat((String) ReflectionTestUtils.invokeMethod(service, "normalizeDate", (Object) null))
+    assertThat(
+            (String)
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    service, "normalizeDate", (Object) null))
         .isEmpty();
   }
 
@@ -2209,7 +2225,7 @@ class OpeningStockImportServiceTest {
 
     assertThat(
             (LocalDate)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     service,
                     "resolveLegacyManufacturedDate",
                     company,
@@ -2218,7 +2234,7 @@ class OpeningStockImportServiceTest {
         .isNull();
     assertThat(
             (LocalDate)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     service,
                     "resolveLegacyManufacturedDate",
                     company,
@@ -2227,7 +2243,7 @@ class OpeningStockImportServiceTest {
         .isEqualTo(LocalDate.of(2026, 2, 1));
     assertThat(
             (LocalDate)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     service, "resolveLegacyManufacturedDate", company, record, (Instant) null))
         .isNull();
   }
@@ -2302,7 +2318,8 @@ class OpeningStockImportServiceTest {
   }
 
   private String fingerprint(String payload) {
-    return ReflectionTestUtils.invokeMethod(service, "fingerprintFile", csvFile(payload));
+    return com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+        service, "fingerprintFile", csvFile(payload));
   }
 
   private String legacyFingerprint(String openingStockBatchKey, String idempotencyKey) {

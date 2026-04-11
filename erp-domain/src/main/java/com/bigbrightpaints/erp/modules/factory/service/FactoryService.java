@@ -5,12 +5,12 @@ import java.math.RoundingMode;
 import java.util.List;
 import java.util.Objects;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.factory.domain.*;
@@ -25,20 +25,21 @@ public class FactoryService {
   private final ProductionPlanRepository planRepository;
   private final ProductionLogRepository productionLogRepository;
   private final FactoryTaskRepository taskRepository;
-  private final CompanyEntityLookup companyEntityLookup;
+  private final CompanyScopedFactoryLookupService factoryLookupService;
   private static final int QUANTITY_SCALE = 2;
 
+  @Autowired
   public FactoryService(
       CompanyContextService companyContextService,
       ProductionPlanRepository planRepository,
       ProductionLogRepository productionLogRepository,
       FactoryTaskRepository taskRepository,
-      CompanyEntityLookup companyEntityLookup) {
+      CompanyScopedFactoryLookupService factoryLookupService) {
     this.companyContextService = companyContextService;
     this.planRepository = planRepository;
     this.productionLogRepository = productionLogRepository;
     this.taskRepository = taskRepository;
-    this.companyEntityLookup = companyEntityLookup;
+    this.factoryLookupService = factoryLookupService;
   }
 
   public List<ProductionPlanDto> listPlans() {
@@ -91,7 +92,7 @@ public class FactoryService {
 
   private ProductionPlan requirePlan(Long id) {
     Company company = companyContextService.requireCurrentCompany();
-    return companyEntityLookup.requireProductionPlan(company, id);
+    return factoryLookupService.requireProductionPlan(company, id);
   }
 
   private ProductionPlanDto toDto(ProductionPlan plan) {
@@ -174,7 +175,7 @@ public class FactoryService {
 
   private FactoryTask requireTask(Long id) {
     Company company = companyContextService.requireCurrentCompany();
-    return companyEntityLookup.requireFactoryTask(company, id);
+    return factoryLookupService.requireFactoryTask(company, id);
   }
 
   /* Dashboard */

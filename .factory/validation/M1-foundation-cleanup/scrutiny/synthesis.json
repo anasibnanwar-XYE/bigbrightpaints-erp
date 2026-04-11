@@ -1,0 +1,89 @@
+{
+  "milestone": "M1-foundation-cleanup",
+  "round": 1,
+  "status": "fail",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "ROOT=$(git rev-parse --show-toplevel) && cd \"$ROOT\" && bash scripts/gate_fast.sh",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "ROOT=$(git rev-parse --show-toplevel) && cd \"$ROOT/erp-domain\" && MIGRATION_SET=v2 mvn -T8 compile -q",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "ROOT=$(git rev-parse --show-toplevel) && cd \"$ROOT\" && bash ci/lint-knowledgebase.sh && bash ci/check-architecture.sh && bash ci/check-enterprise-policy.sh && bash ci/check-orchestrator-layer.sh && python3 scripts/check_flaky_tags.py --tests-root erp-domain/src/test/java --gate gate-fast && bash scripts/guard_openapi_contract_drift.sh",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 11,
+    "passed": 8,
+    "failed": 3,
+    "failedFeatures": [
+      "foundation-broken-script-refs",
+      "foundation-catch-ignored-cleanup",
+      "foundation-deprecated-forremoval-cleanup"
+    ]
+  },
+  "blockingIssues": [
+    {
+      "featureId": "foundation-broken-script-refs",
+      "severity": "blocking",
+      "description": "SecurityMonitoringService now triggers a notification email on every post-threshold suspicious event because `increaseSuspiciousScore()` uses `>= suspiciousActivityThreshold` and `handleSuspiciousActivity()` always notifies. PasswordResetService routes repeated reset abuse through that path, so one noisy identifier can generate unbounded alert-email spam once `security.monitoring.notification-email` is configured."
+    },
+    {
+      "featureId": "foundation-catch-ignored-cleanup",
+      "severity": "blocking",
+      "description": "DashboardWindow now parses `<digits>d` windows with `Integer.parseInt(daysPart)` and no overflow handling. Oversized user-controlled values such as `999999999999d` can throw `NumberFormatException`, and EnterpriseDashboardService forwards the raw `window` query parameter directly, so malformed dashboard requests can now produce HTTP 500s."
+    },
+    {
+      "featureId": "foundation-deprecated-forremoval-cleanup",
+      "severity": "blocking",
+      "description": "SalesController no longer binds `X-Idempotency-Key`, but SalesCoreEngine still proceeds when the canonical idempotency key resolves to null. Legacy callers retrying with only the deprecated header now lose idempotency instead of failing closed with a 4xx, creating a duplicate-order risk on `POST /api/v1/sales/orders`."
+    }
+  ],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "backend-worker skill",
+      "suggestion": "Require script/guard cleanup handoffs to state the chosen safety mode and why, so scrutiny can verify whether the worker followed the intended guard-first or characterization-first procedure without reverse-engineering the transcript.",
+      "evidence": "The `foundation-broken-script-refs` review found that `.factory/skills/backend-worker/SKILL.md` expects the handoff to capture the selected safety mode, but the worker handoff omitted it even though the packet was primarily a script/guard cleanup.",
+      "isSystemic": true
+    },
+    {
+      "target": "AGENTS.md / library idempotency guidance",
+      "suggestion": "Clarify that retiring legacy idempotency headers must fail closed at runtime (filter/interceptor or equivalent), not merely stop binding the old header in controller method signatures.",
+      "evidence": "The `foundation-deprecated-forremoval-cleanup` review found that removing `X-Idempotency-Key` binding from `SalesController` left sales-order creation fail-open because `SalesCoreEngine` still accepts a null canonical key. Current mission/library wording about rejecting stale headers was not concrete enough to prevent that implementation.",
+      "isSystemic": true
+    },
+    {
+      "target": "module guidance / internal frontend handoff docs",
+      "suggestion": "Align payroll-boundary guidance and internal frontend handoff references with the post-cleanup canonical payroll path so future workers and consumers stop following the retired batch payroll endpoint and DTOs.",
+      "evidence": "The `foundation-payroll-dead-code-removal` review passed the code changes, but it found mission/module AGENTS guidance and `.factory/library/frontend-handoff.md` still reference the removed batch payroll surface while runtime now preserves only the canonical single-payment path.",
+      "isSystemic": false
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "Document the scoped Spotless fallback / formatter-only packet handling in shared worker guidance.",
+      "reason": "duplicate: prior scrutiny syntheses already captured the same recommendation (for example `.factory/validation/accounting-core/scrutiny/synthesis.round5.json` and `.factory/validation/support-host-split/scrutiny/synthesis.json`), so this round adds no distinct new remediation beyond repeating the gap."
+    },
+    {
+      "observation": "Add `.factory/services.yaml` commands for scoped Spotless, `-Xlint:all` compile, Flyway guard contract, and narrow sales+HR proof lanes.",
+      "reason": "ambiguous: the reports identify convenience gaps, but they do not establish a single stable command shape worth codifying during a failing validation round, and the existing manifest plus direct script invocations were sufficient to complete scrutiny."
+    },
+    {
+      "observation": "Document `security.monitoring.notification-email` in shared library guidance immediately.",
+      "reason": "ambiguous: the only feature introducing that property failed scrutiny due to alert-spam behavior, so documenting the knob before the runtime semantics are corrected would risk freezing incorrect guidance."
+    },
+    {
+      "observation": "Update shared guidance to advertise benchmark-admin runtime bootstrap and the `erp-domain` working-directory quirk.",
+      "reason": "already-documented-or-low-value: the benchmark-admin note is feature-local docs drift rather than a systemic worker-procedure issue, and the working-directory requirement is already encoded in the shared `.factory/services.yaml` commands used by workers."
+    }
+  ],
+  "previousRound": null
+}

@@ -19,7 +19,6 @@ import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.security.SecurityActorResolver;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
@@ -28,6 +27,7 @@ import com.bigbrightpaints.erp.modules.accounting.dto.JournalCreationRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest.JournalLineRequest;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
+import com.bigbrightpaints.erp.modules.accounting.service.CompanyScopedAccountingLookupService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.hr.domain.Attendance;
@@ -75,9 +75,11 @@ public class PayrollPostingService {
   private final AccountingFacade accountingFacade;
   private final AccountRepository accountRepository;
   private final CompanyContextService companyContextService;
-  private final CompanyEntityLookup companyEntityLookup;
+  private final CompanyScopedHrLookupService hrLookupService;
+  private final CompanyScopedAccountingLookupService accountingLookupService;
   private final CompanyClock companyClock;
   private final AuditService auditService;
+  private final PayrollRunApprovalOperations payrollRunApprovalOperations;
 
   public PayrollPostingService(
       PayrollRunRepository payrollRunRepository,
@@ -87,7 +89,8 @@ public class PayrollPostingService {
       AccountingFacade accountingFacade,
       AccountRepository accountRepository,
       CompanyContextService companyContextService,
-      CompanyEntityLookup companyEntityLookup,
+      CompanyScopedHrLookupService hrLookupService,
+      CompanyScopedAccountingLookupService accountingLookupService,
       CompanyClock companyClock,
       AuditService auditService) {
     this.payrollRunRepository = payrollRunRepository;
@@ -97,48 +100,24 @@ public class PayrollPostingService {
     this.accountingFacade = accountingFacade;
     this.accountRepository = accountRepository;
     this.companyContextService = companyContextService;
-    this.companyEntityLookup = companyEntityLookup;
+    this.hrLookupService = hrLookupService;
+    this.accountingLookupService = accountingLookupService;
     this.companyClock = companyClock;
     this.auditService = auditService;
+    this.payrollRunApprovalOperations =
+        new PayrollRunApprovalOperations(
+            payrollRunRepository, payrollRunLineRepository, companyContextService);
   }
 
   @Transactional
   public PayrollRunDto approvePayroll(Long payrollRunId) {
-    Company company = companyContextService.requireCurrentCompany();
-    PayrollRun run =
-        payrollRunRepository
-            .findByCompanyAndId(company, payrollRunId)
-            .orElseThrow(
-                () ->
-                    com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
-                        "Payroll run not found"));
-
-    if (run.getStatus() != PayrollRun.PayrollStatus.CALCULATED) {
-      throw new ApplicationException(
-              ErrorCode.BUSINESS_INVALID_STATE, "Can only approve payroll in CALCULATED status")
-          .withDetail("payrollRunId", payrollRunId)
-          .withDetail("currentStatus", run.getStatus().name());
-    }
-    if (payrollRunLineRepository.findByPayrollRun(run).isEmpty()) {
-      throw new ApplicationException(
-              ErrorCode.BUSINESS_INVALID_STATE,
-              "Cannot approve payroll run with no calculated lines")
-          .withDetail("payrollRunId", payrollRunId);
-    }
-
-    run.setStatus(PayrollRun.PayrollStatus.APPROVED);
-    run.setApprovedBy(getCurrentUser());
-    run.setApprovedAt(CompanyTime.now(company));
-    run.setProcessedBy(getCurrentUser());
-
-    payrollRunRepository.save(run);
-    return PayrollService.toDto(run);
+    return payrollRunApprovalOperations.approvePayroll(payrollRunId, getCurrentUser());
   }
 
   @Transactional
   public PayrollRunDto postPayrollToAccounting(Long payrollRunId) {
     Company company = companyContextService.requireCurrentCompany();
-    PayrollRun run = companyEntityLookup.lockPayrollRun(company, payrollRunId);
+    PayrollRun run = hrLookupService.lockPayrollRun(company, payrollRunId);
     boolean hasPostingJournalLink = hasPostingJournalLink(run);
     boolean statusPosted = run.getStatus() == PayrollRun.PayrollStatus.POSTED;
 
@@ -298,7 +277,7 @@ public class PayrollPostingService {
       updated = true;
     }
     if (run.getJournalEntry() == null) {
-      run.setJournalEntry(companyEntityLookup.requireJournalEntry(company, journal.id()));
+      run.setJournalEntry(accountingLookupService.requireJournalEntry(company, journal.id()));
       updated = true;
     }
     if (run.getStatus() != PayrollRun.PayrollStatus.POSTED) {
@@ -362,7 +341,7 @@ public class PayrollPostingService {
   @Transactional
   public PayrollRunDto markAsPaid(Long payrollRunId, String paymentReference) {
     Company company = companyContextService.requireCurrentCompany();
-    PayrollRun run = companyEntityLookup.lockPayrollRun(company, payrollRunId);
+    PayrollRun run = hrLookupService.lockPayrollRun(company, payrollRunId);
 
     if (run.getPaymentJournalEntryId() == null) {
       throw new ApplicationException(
@@ -372,7 +351,7 @@ public class PayrollPostingService {
     }
 
     var paymentJournal =
-        companyEntityLookup.requireJournalEntry(company, run.getPaymentJournalEntryId());
+        accountingLookupService.requireJournalEntry(company, run.getPaymentJournalEntryId());
     String canonicalPaymentReference = paymentJournal.getReferenceNumber();
     if (!StringUtils.hasText(canonicalPaymentReference)) {
       throw new ApplicationException(

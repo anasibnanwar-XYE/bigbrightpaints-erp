@@ -427,7 +427,7 @@ public class OpeningStockImportService {
   }
 
   private String normalizeIdempotencyKey(String idempotencyKey) {
-    String resolved = StringUtils.hasText(idempotencyKey) ? idempotencyKey.trim() : null;
+    String resolved = idempotencyKey == null ? null : idempotencyKey.trim();
     if (!StringUtils.hasText(resolved)) {
       throw new ApplicationException(
           ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,
@@ -441,8 +441,7 @@ public class OpeningStockImportService {
   }
 
   private String normalizeOpeningStockBatchKey(String openingStockBatchKey) {
-    String resolved =
-        StringUtils.hasText(openingStockBatchKey) ? openingStockBatchKey.trim() : null;
+    String resolved = openingStockBatchKey == null ? null : openingStockBatchKey.trim();
     if (!StringUtils.hasText(resolved)) {
       throw new ApplicationException(
           ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,
@@ -518,7 +517,8 @@ public class OpeningStockImportService {
     }
     return record
         .getContentFingerprint()
-        .equals(legacyContentFingerprint(record.getOpeningStockBatchKey(), record.getIdempotencyKey()));
+        .equals(
+            legacyContentFingerprint(record.getOpeningStockBatchKey(), record.getIdempotencyKey()));
   }
 
   private String legacyContentFingerprint(String openingStockBatchKey, String idempotencyKey) {
@@ -536,8 +536,9 @@ public class OpeningStockImportService {
     List<String> fingerprintRows = new ArrayList<>();
 
     List<RawMaterialMovement> rawMovements =
-        rawMaterialMovementRepository.findByRawMaterial_CompanyAndJournalEntryIdAndReferenceTypeOrderByIdAsc(
-            company, record.getJournalEntryId(), InventoryReference.OPENING_STOCK);
+        rawMaterialMovementRepository
+            .findByRawMaterial_CompanyAndJournalEntryIdAndReferenceTypeOrderByIdAsc(
+                company, record.getJournalEntryId(), InventoryReference.OPENING_STOCK);
     if (rawMovements != null) {
       for (RawMaterialMovement movement : rawMovements) {
         if (movement.getRawMaterial() == null) {
@@ -908,9 +909,7 @@ public class OpeningStockImportService {
 
   private OpeningMovementResult handleFinishedGood(Company company, OpeningRow row) {
     String sku = requirePreparedSku(row);
-    SkuReadinessDto readiness =
-        requireOpeningStockReady(
-            company, sku, row, SkuReadinessService.ExpectedStockType.FINISHED_GOOD);
+    requireOpeningStockReady(company, sku, row, SkuReadinessService.ExpectedStockType.FINISHED_GOOD);
     FinishedGood finishedGood =
         finishedGoodRepository
             .findByCompanyAndProductCode(company, sku)

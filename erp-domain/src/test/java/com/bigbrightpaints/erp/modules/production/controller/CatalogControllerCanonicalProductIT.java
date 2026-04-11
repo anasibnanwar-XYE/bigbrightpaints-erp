@@ -22,10 +22,9 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 
@@ -34,6 +33,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
+import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialRepository;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionBrand;
@@ -54,6 +54,7 @@ class CatalogControllerCanonicalProductIT extends AbstractIntegrationTest {
   @Autowired private AccountRepository accountRepository;
   @Autowired private CompanyRepository companyRepository;
   @Autowired private ProductionBrandRepository brandRepository;
+  @Autowired private FinishedGoodRepository finishedGoodRepository;
   @Autowired private RawMaterialRepository rawMaterialRepository;
 
   private Company company;
@@ -93,6 +94,76 @@ class CatalogControllerCanonicalProductIT extends AbstractIntegrationTest {
   }
 
   @Test
+  void brandCrudLifecycle_worksViaCatalogEndpoints() {
+    Map<String, Object> createPayload =
+        Map.of(
+            "name", "Endpoint Brand",
+            "logoUrl", "https://cdn.example.com/endpoint-brand.png",
+            "description", "Initial endpoint brand description",
+            "active", true);
+
+    ResponseEntity<Map> createResponse =
+        rest.exchange(
+            "/api/v1/catalog/brands",
+            HttpMethod.POST,
+            new HttpEntity<>(createPayload, adminHeaders),
+            Map.class);
+    assertThat(createResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    Map<String, Object> created = data(createResponse);
+    Long brandId = ((Number) created.get("id")).longValue();
+    assertThat(created.get("name")).isEqualTo("Endpoint Brand");
+    assertThat(created.get("active")).isEqualTo(true);
+
+    ResponseEntity<Map> getResponse =
+        rest.exchange(
+            "/api/v1/catalog/brands/" + brandId,
+            HttpMethod.GET,
+            new HttpEntity<>(adminHeaders),
+            Map.class);
+    assertThat(getResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(data(getResponse).get("id")).isEqualTo(brandId.intValue());
+
+    Map<String, Object> updatePayload =
+        Map.of(
+            "name", "Endpoint Brand Updated",
+            "logoUrl", "https://cdn.example.com/endpoint-brand-updated.png",
+            "description", "Updated endpoint brand description",
+            "active", true);
+    ResponseEntity<Map> updateResponse =
+        rest.exchange(
+            "/api/v1/catalog/brands/" + brandId,
+            HttpMethod.PUT,
+            new HttpEntity<>(updatePayload, adminHeaders),
+            Map.class);
+    assertThat(updateResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(data(updateResponse).get("name")).isEqualTo("Endpoint Brand Updated");
+
+    ResponseEntity<Map> deleteResponse =
+        rest.exchange(
+            "/api/v1/catalog/brands/" + brandId,
+            HttpMethod.DELETE,
+            new HttpEntity<>(adminHeaders),
+            Map.class);
+    assertThat(deleteResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(data(deleteResponse).get("active")).isEqualTo(false);
+
+    ResponseEntity<Map> listInactiveResponse =
+        rest.exchange(
+            "/api/v1/catalog/brands?active=false",
+            HttpMethod.GET,
+            new HttpEntity<>(adminHeaders),
+            Map.class);
+    assertThat(listInactiveResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    List<Map<String, Object>> inactiveBrands = listData(listInactiveResponse);
+    assertThat(inactiveBrands)
+        .anySatisfy(
+            brand -> {
+              assertThat(((Number) brand.get("id")).longValue()).isEqualTo(brandId);
+              assertThat(brand.get("active")).isEqualTo(false);
+            });
+  }
+
+  @Test
   void createItem_persistsFinishedGood_withStableCode_andComputedReadiness() {
     ProductionBrand brand = saveBrand("Premium Paints", true);
 
@@ -115,6 +186,11 @@ class CatalogControllerCanonicalProductIT extends AbstractIntegrationTest {
     assertThat(stringList(stage(item, "salesReady").get("blockers")))
         .contains("NO_FINISHED_GOOD_BATCH_STOCK");
     assertThat(stage(item, "accountingReady").get("ready")).isEqualTo(true);
+    assertMetadataAccountId(
+        metadata(item), "fgValuationAccountId", company.getDefaultInventoryAccountId());
+    assertMetadataAccountId(metadata(item), "fgCogsAccountId", company.getDefaultCogsAccountId());
+    assertMetadataAccountId(
+        metadata(item), "fgRevenueAccountId", company.getDefaultRevenueAccountId());
 
     ResponseEntity<Map> salesDetail =
         getCatalogItem(((Number) item.get("id")).longValue(), true, true, salesHeaders);
@@ -129,6 +205,99 @@ class CatalogControllerCanonicalProductIT extends AbstractIntegrationTest {
             "fgCogsAccountId",
             "fgRevenueAccountId",
             "fgTaxAccountId");
+  }
+
+  @Test
+  void createItem_explicitAccountFieldsOverrideCompanyDefaults() {
+    ProductionBrand brand = saveBrand("Override Accounts Brand", true);
+    Account overrideInventory =
+        ensureAccount("INV-OVR-" + shortId(), "Override Inventory", AccountType.ASSET);
+    Account overrideCogs =
+        ensureAccount("COGS-OVR-" + shortId(), "Override COGS", AccountType.COGS);
+    Account overrideRevenue =
+        ensureAccount("REV-OVR-" + shortId(), "Override Revenue", AccountType.REVENUE);
+
+    Map<String, Object> payload = finishedGoodPayload(brand.getId(), "Override Accounts Product");
+    payload.put("inventoryAccountId", overrideInventory.getId());
+    payload.put("cogsAccountId", overrideCogs.getId());
+    payload.put("revenueAccountId", overrideRevenue.getId());
+
+    ResponseEntity<Map> createResponse = postCatalogItem(payload, adminHeaders);
+    assertThat(createResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    Map<String, Object> item = data(createResponse);
+    String sku = String.valueOf(item.get("code"));
+
+    assertMetadataAccountId(metadata(item), "fgValuationAccountId", overrideInventory.getId());
+    assertMetadataAccountId(metadata(item), "fgCogsAccountId", overrideCogs.getId());
+    assertMetadataAccountId(metadata(item), "fgRevenueAccountId", overrideRevenue.getId());
+
+    var finishedGood =
+        finishedGoodRepository.findByCompanyAndProductCode(company, sku).orElseThrow();
+    assertThat(finishedGood.getValuationAccountId()).isEqualTo(overrideInventory.getId());
+    assertThat(finishedGood.getCogsAccountId()).isEqualTo(overrideCogs.getId());
+    assertThat(finishedGood.getRevenueAccountId()).isEqualTo(overrideRevenue.getId());
+  }
+
+  @Test
+  void createItem_rejectsFinishedGoodOverrideAccountsWithWrongTypes() {
+    ProductionBrand brand = saveBrand("Wrong Type Override Brand", true);
+    Account wrongInventory =
+        ensureAccount("INV-WRONG-" + shortId(), "Wrong Inventory Type", AccountType.COGS);
+    Account wrongCogs =
+        ensureAccount("COGS-WRONG-" + shortId(), "Wrong COGS Type", AccountType.ASSET);
+    Account wrongRevenue =
+        ensureAccount("REV-WRONG-" + shortId(), "Wrong Revenue Type", AccountType.EXPENSE);
+
+    Map<String, Object> wrongInventoryPayload =
+        finishedGoodPayload(brand.getId(), "Wrong Inventory Override");
+    wrongInventoryPayload.put("inventoryAccountId", wrongInventory.getId());
+    ResponseEntity<Map> wrongInventoryResponse =
+        postCatalogItem(wrongInventoryPayload, adminHeaders);
+    assertThat(wrongInventoryResponse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(String.valueOf(errorData(wrongInventoryResponse).get("reason")))
+        .contains("fgValuationAccountId")
+        .contains("ASSET");
+
+    Map<String, Object> wrongCogsPayload =
+        finishedGoodPayload(brand.getId(), "Wrong COGS Override");
+    wrongCogsPayload.put("cogsAccountId", wrongCogs.getId());
+    ResponseEntity<Map> wrongCogsResponse = postCatalogItem(wrongCogsPayload, adminHeaders);
+    assertThat(wrongCogsResponse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(String.valueOf(errorData(wrongCogsResponse).get("reason")))
+        .contains("fgCogsAccountId")
+        .contains("COGS");
+
+    Map<String, Object> wrongRevenuePayload =
+        finishedGoodPayload(brand.getId(), "Wrong Revenue Override");
+    wrongRevenuePayload.put("revenueAccountId", wrongRevenue.getId());
+    ResponseEntity<Map> wrongRevenueResponse = postCatalogItem(wrongRevenuePayload, adminHeaders);
+    assertThat(wrongRevenueResponse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(String.valueOf(errorData(wrongRevenueResponse).get("reason")))
+        .contains("fgRevenueAccountId")
+        .contains("REVENUE");
+  }
+
+  @Test
+  void updateItem_rejectsFinishedGoodOverrideAccountsOutsideCompanyScope() {
+    ProductionBrand brand = saveBrand("Cross Company Override Brand", true);
+    Map<String, Object> created =
+        data(
+            postCatalogItem(
+                finishedGoodPayload(brand.getId(), "Cross Company Override"), adminHeaders));
+    Long itemId = ((Number) created.get("id")).longValue();
+
+    Company foreignCompany =
+        dataSeeder.ensureCompany("CAT-FOREIGN-" + shortId(), "Catalog Foreign Co");
+    Account foreignInventory =
+        ensureAccountFor(
+            foreignCompany, "INV-FOREIGN-" + shortId(), "Foreign Inventory", AccountType.ASSET);
+
+    Map<String, Object> payload = finishedGoodPayload(brand.getId(), "Cross Company Override");
+    payload.put("inventoryAccountId", foreignInventory.getId());
+
+    ResponseEntity<Map> updateResponse = putCatalogItem(itemId, payload, adminHeaders);
+    assertThat(updateResponse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(String.valueOf(errorData(updateResponse).get("reason"))).contains("Account not found");
   }
 
   @Test
@@ -203,14 +372,17 @@ class CatalogControllerCanonicalProductIT extends AbstractIntegrationTest {
   void getItem_includesStockForFactoryRoleWhenRequested() {
     ProductionBrand brand = saveBrand("Factory Stock Brand", true);
     Map<String, Object> created =
-        data(postCatalogItem(finishedGoodPayload(brand.getId(), "Factory Stock Paint"), adminHeaders));
+        data(
+            postCatalogItem(
+                finishedGoodPayload(brand.getId(), "Factory Stock Paint"), adminHeaders));
     Long itemId = ((Number) created.get("id")).longValue();
 
     ResponseEntity<Map> factoryDetail = getCatalogItem(itemId, true, true, factoryHeaders);
 
     assertThat(factoryDetail.getStatusCode()).isEqualTo(HttpStatus.OK);
     assertThat(((Number) stock(data(factoryDetail)).get("onHandQuantity")).doubleValue()).isZero();
-    assertThat(((Number) stock(data(factoryDetail)).get("availableQuantity")).doubleValue()).isZero();
+    assertThat(((Number) stock(data(factoryDetail)).get("availableQuantity")).doubleValue())
+        .isZero();
   }
 
   @Test
@@ -228,14 +400,31 @@ class CatalogControllerCanonicalProductIT extends AbstractIntegrationTest {
             "sales", "n/a", List.of(new SimpleGrantedAuthority("ROLE_SALES")));
     when(authoritiesMissing.getAuthorities()).thenReturn(null);
 
-    assertThat((Boolean) ReflectionTestUtils.invokeMethod(controller, "canViewStock", new Object[] {null}))
+    assertThat(
+            (Boolean)
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    controller, "canViewStock", new Object[] {null}))
         .isFalse();
-    assertThat((Boolean) ReflectionTestUtils.invokeMethod(controller, "canViewStock", authoritiesMissing))
+    assertThat(
+            (Boolean)
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    controller, "canViewStock", authoritiesMissing))
         .isFalse();
-    assertThat((Boolean) ReflectionTestUtils.invokeMethod(controller, "canViewStock", admin)).isTrue();
-    assertThat((Boolean) ReflectionTestUtils.invokeMethod(controller, "canViewStock", accounting))
+    assertThat(
+            (Boolean)
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    controller, "canViewStock", admin))
         .isTrue();
-    assertThat((Boolean) ReflectionTestUtils.invokeMethod(controller, "canViewStock", sales)).isFalse();
+    assertThat(
+            (Boolean)
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    controller, "canViewStock", accounting))
+        .isTrue();
+    assertThat(
+            (Boolean)
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    controller, "canViewStock", sales))
+        .isFalse();
   }
 
   @Test
@@ -313,25 +502,6 @@ class CatalogControllerCanonicalProductIT extends AbstractIntegrationTest {
                     factoryHeaders)
                 .getStatusCode())
         .isEqualTo(HttpStatus.FORBIDDEN);
-  }
-
-  @Test
-  void importCatalog_rejectsLegacyXIdempotencyKeyHeader() {
-    HttpHeaders headers = new HttpHeaders();
-    headers.putAll(adminHeaders);
-    headers.set("X-Idempotency-Key", "legacy-catalog-import-key");
-
-    ResponseEntity<Map> response =
-        importCatalog(
-            "brand,product_name,sku,category,unit_of_measure,hsn_code,gst_rate,base_price,color,size\n"
-                + "Legacy Brand,Legacy"
-                + " Primer,LEGACY-PRIMER-001,FINISHED_GOOD,LITER,320910,18,1200,WHITE,1L\n",
-            "catalog-import-legacy-header.csv",
-            headers);
-
-    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-    assertThat(String.valueOf(errorData(response).get("reason")))
-        .contains("X-Idempotency-Key is not supported for catalog import");
   }
 
   private Map<String, Object> finishedGoodPayload(Long brandId, String name) {
@@ -459,10 +629,22 @@ class CatalogControllerCanonicalProductIT extends AbstractIntegrationTest {
     return (Map<String, Object>) item.get("metadata");
   }
 
+  private void assertMetadataAccountId(
+      Map<String, Object> metadata, String metadataKey, Long expectedAccountId) {
+    assertThat(metadata).containsKey(metadataKey);
+    assertThat(((Number) metadata.get(metadataKey)).longValue()).isEqualTo(expectedAccountId);
+  }
+
   @SuppressWarnings("unchecked")
   private Map<String, Object> data(ResponseEntity<Map> response) {
     assertThat(response.getBody()).isNotNull();
     return (Map<String, Object>) response.getBody().get("data");
+  }
+
+  @SuppressWarnings("unchecked")
+  private List<Map<String, Object>> listData(ResponseEntity<Map> response) {
+    assertThat(response.getBody()).isNotNull();
+    return (List<Map<String, Object>>) response.getBody().get("data");
   }
 
   @SuppressWarnings("unchecked")
@@ -519,6 +701,20 @@ class CatalogControllerCanonicalProductIT extends AbstractIntegrationTest {
             () -> {
               Account account = new Account();
               account.setCompany(company);
+              account.setCode(code);
+              account.setName(name);
+              account.setType(type);
+              return accountRepository.save(account);
+            });
+  }
+
+  private Account ensureAccountFor(Company owner, String code, String name, AccountType type) {
+    return accountRepository
+        .findByCompanyAndCodeIgnoreCase(owner, code)
+        .orElseGet(
+            () -> {
+              Account account = new Account();
+              account.setCompany(owner);
               account.setCode(code);
               account.setName(name);
               account.setType(type);

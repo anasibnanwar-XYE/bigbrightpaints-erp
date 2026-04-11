@@ -2,9 +2,9 @@ package com.bigbrightpaints.erp.orchestrator.scheduler;
 
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.concurrent.ScheduledFuture;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ScheduledFuture;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,7 +28,6 @@ public class SchedulerService {
 
   private final TaskScheduler taskScheduler;
   private final ScheduledJobDefinitionRepository repository;
-  private final Map<String, Runnable> registeredJobs = new ConcurrentHashMap<>();
   private final Map<String, ScheduledFuture<?>> scheduledHandles = new ConcurrentHashMap<>();
 
   public SchedulerService(
@@ -49,7 +48,6 @@ public class SchedulerService {
     definition.setOwner(owner);
     definition.setActive(true);
     repository.save(definition);
-    registeredJobs.put(jobId, jobLogic);
     cancelScheduled(jobId);
     scheduledHandles.put(jobId, schedule(jobId, cronExpression, jobLogic));
     log.info("Registered job {} with cron {}", jobId, cronExpression);
@@ -65,7 +63,6 @@ public class SchedulerService {
               repository.save(definition);
             });
     cancelScheduled(jobId);
-    registeredJobs.remove(jobId);
     log.info("Paused job {}", jobId);
   }
 

@@ -1,6 +1,6 @@
 # Sales / Order-to-Cash Module Packet
 
-Last reviewed: 2026-04-02
+Last reviewed: 2026-04-08
 
 This packet documents the sales module, which owns **commercial lifecycle truth** for the ERP. It covers dealer/customer management, order lifecycle, credit controls, dispatch coordination, dealer self-service, and the canonical order-to-cash path through dispatch and settlement boundaries.
 
@@ -16,7 +16,7 @@ Stock and dispatch execution truth is documented separately in [inventory.md](in
 | Order lifecycle (create → confirm → dispatch → invoice → settle) | `SalesCoreEngine`, `SalesOrderLifecycleService`, `SalesOrderCrudService` |
 | Credit limit enforcement on order creation and confirmation | `SalesCoreEngine` |
 | Durable credit-limit increase requests (dealer self-service and internal) | `CreditLimitRequestService` |
-| Per-dispatch credit-limit override requests | `CreditLimitOverrideService` |
+| Dealer-level temporary credit headroom override requests | `CreditLimitOverrideService` |
 | Dispatch reconciliation: AR/revenue journal, COGS journal, invoice issuance | `SalesCoreEngine.confirmDispatch()` via `SalesDispatchReconciliationService` |
 | Sales fulfillment orchestration | `SalesFulfillmentService` |
 | Sales returns (goods return + reversal journals) | `SalesReturnService` |
@@ -34,12 +34,12 @@ Stock and dispatch execution truth is documented separately in [inventory.md](in
 
 | Route | Method | Roles | Purpose |
 | --- | --- | --- | --- |
-| `/api/v1/sales/orders` | POST | SALES, ADMIN | Create sales order (idempotent) |
+| `/api/v1/sales/orders` | POST | SALES, ADMIN | Create sales order (idempotent; `201 Created` for draft-lifecycle payloads, otherwise `200 OK`) |
 | `/api/v1/sales/orders` | GET | ADMIN, SALES, FACTORY, ACCOUNTING | List orders (paginated) |
 | `/api/v1/sales/orders/search` | GET | ADMIN, SALES, FACTORY, ACCOUNTING | Search orders with filters (`orderNumber` contains match; canonical status filters normalize legacy stored statuses) |
 | `/api/v1/sales/orders/{id}` | PUT | SALES, ADMIN | Update draft order |
 | `/api/v1/sales/orders/{id}` | DELETE | SALES, ADMIN | Delete draft order |
-| `/api/v1/sales/orders/{id}/confirm` | POST | SALES, ADMIN | Confirm order (triggers credit check + stock validation) |
+| `/api/v1/sales/orders/{id}/confirm` | POST | SALES, ADMIN | Confirm order (triggers credit check + stock validation/reservation) |
 | `/api/v1/sales/orders/{id}/cancel` | POST | SALES, ADMIN | Cancel order (requires reason code) |
 | `/api/v1/sales/orders/{id}/status` | PATCH | SALES, ADMIN | Manual status update (ON_HOLD, REJECTED, CLOSED only) |
 | `/api/v1/sales/orders/{id}/timeline` | GET | ADMIN, SALES, FACTORY, ACCOUNTING | Order status history timeline |
@@ -57,11 +57,11 @@ Stock and dispatch execution truth is documented separately in [inventory.md](in
 
 | Route | Method | Roles | Purpose |
 | --- | --- | --- | --- |
-| `/api/v1/dealers` | POST | ADMIN, SALES, ACCOUNTING | Create dealer |
+| `/api/v1/dealers` | POST | ADMIN, SALES, ACCOUNTING | Create dealer (`201 Created`) |
 | `/api/v1/dealers` | GET | ADMIN, SALES, ACCOUNTING | List dealers (default active-only; optional `status`, `page`, `size`) |
 | `/api/v1/dealers/search` | GET | ADMIN, SALES, ACCOUNTING | Search dealers with filters |
 | `/api/v1/dealers/{dealerId}` | PUT | ADMIN, SALES, ACCOUNTING | Update dealer |
-| `/api/v1/dealers/{dealerId}/dunning/hold` | POST | ADMIN, SALES, ACCOUNTING | Evaluate dunning hold |
+| `/api/v1/dealers/{dealerId}/dunning/hold` | POST | ADMIN, SALES, ACCOUNTING | Explicitly place dealer on hold (returns `dealerId`, `dunningHeld`, `status`, `alreadyOnHold`) |
 
 ### Credit Limit Request Routes — `CreditLimitRequestController` (`/api/v1/credit/limit-requests/**`)
 
@@ -76,9 +76,9 @@ Stock and dispatch execution truth is documented separately in [inventory.md](in
 
 | Route | Method | Roles | Purpose |
 | --- | --- | --- | --- |
-| `/api/v1/credit/override-requests` | POST | ADMIN, FACTORY, SALES | Request per-dispatch credit override |
+| `/api/v1/credit/override-requests` | POST | ADMIN, FACTORY, SALES | Create temporary dealer headroom override (`201 Created`) |
 | `/api/v1/credit/override-requests` | GET | ADMIN, ACCOUNTING | List override requests |
-| `/api/v1/credit/override-requests/{id}/approve` | POST | ADMIN, ACCOUNTING | Approve override |
+| `/api/v1/credit/override-requests/{id}/approve` | POST | ADMIN, ACCOUNTING | Approve override (adds effective headroom for credit checks until expiry) |
 | `/api/v1/credit/override-requests/{id}/reject` | POST | ADMIN, ACCOUNTING | Reject override |
 
 ### Dealer Self-Service Portal — `DealerPortalController` (`/api/v1/dealer-portal/**`)
@@ -178,19 +178,21 @@ Durable credit-limit increase requests:
 
 ### `CreditLimitOverrideService`
 
-Per-dispatch credit-limit override requests:
+Temporary credit headroom override requests:
 
-- Created when a dispatch would exceed the dealer's credit limit
-- Linked to a specific packaging slip and/or sales order
-- Calculates headroom gap and validates the override amount
-- Approval allows the dispatch to proceed despite credit limit breach
+- Created when a dealer needs temporary headroom beyond base credit limit
+- Canonical request payload uses `requestedAmount` (legacy `dispatchAmount` remains as an alias)
+- May optionally bind to a specific packaging slip and/or sales order context
+- Calculates required headroom from **outstanding + pending-order exposure + requested amount** vs base credit limit
+- Approval raises effective credit headroom consumed by canonical order credit checks
 - Has expiry behavior (`EXPIRED` status for stale requests)
 
 ### `DunningService`
 
 Overdue payment management:
 
-- `evaluateDealerHold()`: evaluates a single dealer's aging against thresholds and places on `ON_HOLD` if overdue
+- `placeDealerOnHold()`: explicit manual hold action for `POST /api/v1/dealers/{dealerId}/dunning/hold` (no threshold query/body inputs)
+- `evaluateDealerHold()`: evaluates a single dealer's aging against thresholds and places on `ON_HOLD` if overdue (internal/service-level behavior)
 - Scheduled daily automation: evaluates all dealers for the 45+ day aging bucket
 - Sends overdue reminder emails when hold is placed
 
@@ -200,7 +202,12 @@ High-level facade that delegates to `SalesCoreEngine` for order operations and `
 
 ### `SalesDashboardService`
 
-Provides dashboard data: active dealer count, order counts bucketed by status (open, in_progress, dispatched, completed, cancelled), pending credit request count.
+Provides sales dashboard contract fields via `SalesDashboardDto`:
+
+- `recentOrdersCount` (last 30-day order count)
+- `totalRevenue`
+- `totalReceivables`
+- `pendingOrders`
 
 ---
 
@@ -210,12 +217,12 @@ Provides dashboard data: active dealer count, order counts bucketed by status (o
 
 | DTO | Purpose |
 | --- | --- |
-| `SalesOrderRequest` | Order creation/update payload with items, GST treatment, payment mode, idempotency key |
+| `SalesOrderRequest` | Order creation/update payload with items, GST treatment, payment mode, optional `paymentTerms`, idempotency key |
 | `SalesOrderDto` | Order response with status, amounts, GST, payment mode |
-| `SalesOrderItemRequest` | Line item with product code, quantity, unit price, GST rate |
-| `SalesOrderItemDto` | Line item response |
+| `SalesOrderItemRequest` | Line item with product code, quantity, unit price, GST rate, optional `finishedGoodId` |
+| `SalesOrderItemDto` | Line item response (includes optional `finishedGoodId`) |
 | `SalesOrderSearchFilters` | Search parameters (status, dealer, order number, date range, pagination) |
-| `SalesOrderStatusHistoryDto` | Status transition record |
+| `SalesOrderStatusHistoryDto` | Status transition record with alias fields (`status`, `actor`, `timestamp`) mirroring `toStatus`, `changedBy`, `changedAt` |
 | `CancelRequest` | **SalesController inner record** — Cancellation reason code and reason text |
 | `StatusRequest` | **SalesController inner record** — Manual status update target |
 
@@ -224,9 +231,10 @@ Provides dashboard data: active dealer count, order counts bucketed by status (o
 | DTO | Purpose |
 | --- | --- |
 | `CreateDealerRequest` | Dealer creation payload (name, email, phone, GST, credit limit, payment terms, region) |
-| `DealerResponse` | Full dealer response with outstanding balance, receivable account, portal email |
+| `DealerResponse` | Full dealer response including monetary fields (`creditLimit`, `outstandingBalance`) plus receivable account and portal email |
 | `DealerDto` | Simplified dealer view (legacy, used by `SalesCoreEngine`) |
-| `DealerLookupResponse` | Search result with credit status, receivable account info, payment terms |
+| `DealerLookupResponse` | Search result including monetary fields (`creditLimit`, `outstandingBalance`), credit status, receivable account info, and payment terms |
+| `DealerDunningHoldResponse` | Explicit hold-action response (`dealerId`, `dunningHeld`, `status`, `alreadyOnHold`) |
 | `DealerPortalCreditLimitRequestCreateRequest` | Dealer portal credit request payload (amount, reason) |
 
 ### Credit DTOs
@@ -236,7 +244,7 @@ Provides dashboard data: active dealer count, order counts bucketed by status (o
 | `CreditLimitRequestCreateRequest` | Credit limit increase request (dealerId, amount, reason) |
 | `CreditLimitRequestDto` | Credit limit request response with status |
 | `CreditLimitRequestDecisionRequest` | Approval/rejection decision with reason |
-| `CreditLimitOverrideRequestCreateRequest` | Per-dispatch override request (slip/order, override amount, reason) |
+| `CreditLimitOverrideRequestCreateRequest` | Temporary headroom override request (`dealerId`, `requestedAmount`, `reason`; optional `salesOrderId` / `packagingSlipId`) |
 | `CreditLimitOverrideRequestDto` | Override request response |
 | `CreditLimitOverrideDecisionRequest` | Override approval/rejection |
 
@@ -267,7 +275,7 @@ Provides dashboard data: active dealer count, order counts bucketed by status (o
 | `SalesOrderItem` | `sales_order_items` | Line items with product code, quantity, unit price, GST rate. Related to parent `SalesOrder` via `@ManyToOne` FK. |
 | `SalesOrderStatusHistory` | `sales_order_status_histories` | Append-only status transition log |
 | `CreditRequest` | `credit_requests` | Durable credit limit increase requests with requester identity |
-| `CreditLimitOverrideRequest` | `credit_limit_override_requests` | Per-dispatch override requests linked to slip/order |
+| `CreditLimitOverrideRequest` | `credit_limit_override_requests` | Temporary dealer headroom overrides; optional slip/order context remains for backward-compatible correlation |
 | `Promotion` | (promotions) | Sales promotions |
 | `SalesTarget` | (sales targets) | Sales targets |
 
@@ -348,19 +356,21 @@ These are permanent credit-limit increases:
 - **Effect on approval**: dealer credit limit incremented by `amountRequested`
 - **Audit**: approval and rejection decisions are audited with old/new limits
 
-### Credit Limit Overrides (Per-Dispatch)
+### Credit Limit Overrides (Temporary Dealer Headroom)
 
-These are temporary exceptions allowing a single dispatch to exceed the credit limit:
+These are temporary dealer-level headroom exceptions used by canonical order credit checks:
 
 - **Created by**: admin/factory/sales via `/api/v1/credit/override-requests`
-- **Approved by**: admin or accounting
-- **Linked to**: a specific packaging slip and/or sales order
+- **Approved by**: admin or accounting (`/approve`)
+- **Canonical payload**: `dealerId` + `requestedAmount` + `reason` (legacy `dispatchAmount` remains an alias)
+- **Optional context**: `salesOrderId` / `packagingSlipId` for correlation only
 - **Lifecycle**: PENDING → APPROVED / REJECTED / EXPIRED
-- **Effect**: allows the referenced dispatch to proceed despite credit limit breach
+- **Headroom formula**: `requiredHeadroom = max(0, outstandingBalance + pendingOrderExposure + requestedAmount - creditLimit)`
+- **Effect**: approval raises effective dealer headroom consumed by order-create/order-confirm credit posture checks; over-limit orders return `422` only when approved headroom is insufficient
 
 ### Dunning
 
-- Manual evaluation: `POST /api/v1/dealers/{dealerId}/dunning/hold` with configurable overdue days and minimum amount thresholds
+- Manual action: `POST /api/v1/dealers/{dealerId}/dunning/hold` explicitly places the dealer in `ON_HOLD` and returns `dealerId`, `dunningHeld`, `status`, and `alreadyOnHold`
 - Automated daily: `DunningService` scheduled task evaluates all dealers against the 45+ day aging bucket
 - Effect: sets dealer status to `ON_HOLD` and sends overdue reminder email
 

@@ -25,7 +25,7 @@ The ERP exposes finance data through two distinct host families with **strict is
 
 | Host Prefix | Owning Module | Primary Actors | Access Predicate | Data Scope |
 | --- | --- | --- | --- | --- |
-| `/api/v1/invoices/*` | `invoice` | Admin, Sales, Accounting | `ADMIN_SALES_ACCOUNTING` | Tenant-scoped, any dealer |
+| `/api/v1/invoices/*` | `invoice` | Admin, Sales, Accounting | `ADMIN_SALES_ACCOUNTING` | Tenant-scoped, any dealer; list supports optional `orderId` filter |
 | `/api/v1/portal/finance/*` | `portal` | Admin, Accounting | `ADMIN_OR_ACCOUNTING` | By dealerId query param |
 | `/api/v1/dealer-portal/*` | `sales` | Dealer only | `DEALER_ONLY` | Auto-scoped to authenticated dealer |
 
@@ -174,6 +174,11 @@ Invoice list fields include:
 - Total amount, outstanding amount
 - PDF download link (for own invoices only)
 
+Invoice list filtering:
+
+- `GET /api/v1/invoices` returns tenant-scoped invoices
+- `GET /api/v1/invoices?orderId={salesOrderId}` narrows results to invoices linked to a specific sales order
+
 ---
 
 ## Deprecated / Non-Canonical Paths
@@ -204,7 +209,7 @@ All legacy dealer finance aliases have been removed from `openapi.json` and the 
 | `/api/v1/portal/finance/ledger` | `LedgerEntryDto[]` | Read | `ADMIN_OR_ACCOUNTING` |
 | `/api/v1/portal/finance/invoices` | `InvoiceDto[]` | Read | `ADMIN_OR_ACCOUNTING` |
 | `/api/v1/portal/finance/aging` | `AgingDto` | Read | `ADMIN_OR_ACCOUNTING` |
-| `/api/v1/invoices` | `InvoiceDto[]`, `InvoiceDto` | Read | `ADMIN_SALES_ACCOUNTING` |
+| `/api/v1/invoices` | `InvoiceDto[]`, `InvoiceDto` | Read (`orderId` query filter supported) | `ADMIN_SALES_ACCOUNTING` |
 | `/api/v1/invoices/{id}/pdf` | `application/pdf` | Read | `ADMIN_SALES_ACCOUNTING` |
 | `/api/v1/invoices/{id}/email` | — | Write (action) | `ADMIN_SALES_ACCOUNTING` |
 

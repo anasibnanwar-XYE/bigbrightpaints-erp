@@ -1,0 +1,28 @@
+{
+  "featureId": "foundation-deprecated-forremoval-cleanup",
+  "reviewedAt": "2026-04-05T19:50:35Z",
+  "commitId": "9fc7d8d6c688214993cc340ba476cb4b3a566a0d",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "I reviewed the feature metadata, mission/architecture guidance, worker handoff, transcript skeleton, `backend-worker` skill, and commit `9fc7d8d6c688214993cc340ba476cb4b3a566a0d`. The deprecated-method cleanup itself looks complete: current production source has no `@Deprecated` / `forRemoval=false` matches, and the deleted `AccountingFacadeCore` / `HrService` methods are no longer referenced. The cross-cutting idempotency cleanup is not fully correct, though. Removing `X-Idempotency-Key` controller parameters without adding any runtime guard makes the legacy header disappear from application code instead of fail closed. On `POST /api/v1/sales/orders`, the old header is now silently ignored, `applyOrderIdempotencyKey` leaves the request without a canonical key, and `SalesCoreEngine.createOrder` still proceeds with `request.resolveIdempotencyKey()` even when it is null. That turns legacy retries into non-idempotent writes instead of a clear migration error, so I cannot mark the feature as correct for its API-cleanup scope.",
+    "issues": [
+      {
+        "file": "erp-domain/src/main/java/com/bigbrightpaints/erp/modules/sales/controller/SalesController.java",
+        "line": 121,
+        "severity": "blocking",
+        "description": "This cleanup is fail-open for sales-order creation. `createOrder` now binds only `Idempotency-Key`, and `applyOrderIdempotencyKey` delegates to `IdempotencyHeaderUtils.resolveBodyOrHeaderKey(...)`, which has no way to see `X-Idempotency-Key` anymore. Because `SalesCoreEngine.createOrder` still proceeds with `request.resolveIdempotencyKey()` even when it is null (`erp-domain/src/main/java/com/bigbrightpaints/erp/modules/sales/service/SalesCoreEngine.java:617-707`), a legacy caller that retries with only `X-Idempotency-Key` no longer gets the previous explicit 4xx and can create duplicate orders. If the intent was to stop accepting the legacy header, this needs a real fail-closed filter/interceptor or equivalent runtime guard rather than just removing the `@RequestHeader` parameter."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "Shared guidance conflicts on legacy idempotency-header behavior. Mission/library guidance still says to reject stale `X-Idempotency-Key` usage, while this feature description and implementation remove the explicit rejection path and rely on Spring no longer binding the header.",
+      "evidence": "Mission AGENTS says `Idempotency: All write endpoints use Idempotency-Key HTTP header. Reject legacy X-Idempotency-Key` (`/home/realnigga/.factory/missions/cf35a73d-f4bd-4cf3-9488-fee34cf89e18/AGENTS.md:36`), and `.factory/library/architecture.md:66` says `Reject stale headers`. Commit `9fc7d8d6c688214993cc340ba476cb4b3a566a0d` deletes all production handling for `X-Idempotency-Key`, leaving no explicit runtime rejection path."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "FAIL. The deprecated-method removals look clean, but the legacy idempotency-header cleanup is fail-open: `POST /api/v1/sales/orders` now silently ignores `X-Idempotency-Key`, so legacy retries can lose idempotency instead of failing fast. I also noted a shared-state convention conflict about whether stale headers should be rejected or merely unbound."
+}

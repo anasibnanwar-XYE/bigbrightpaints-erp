@@ -13,13 +13,15 @@ import com.bigbrightpaints.erp.truthsuite.support.TruthSuiteFileAssert;
 @Tag("reconciliation")
 class TS_PeriodCloseAtomicSnapshotTest {
 
-  private static final String PERIOD_SERVICE =
-      "src/main/java/com/bigbrightpaints/erp/modules/accounting/service/AccountingPeriodService.java";
+  private static final String LIFECYCLE_SERVICE =
+      "src/main/java/com/bigbrightpaints/erp/modules/accounting/service/AccountingPeriodLifecycleService.java";
+  private static final String STATUS_WORKFLOW =
+      "src/main/java/com/bigbrightpaints/erp/modules/accounting/service/AccountingPeriodStatusWorkflow.java";
 
   @Test
   void closePeriodLocksThenCapturesSnapshotBeforeClosedState() {
     TruthSuiteFileAssert.assertContainsInOrder(
-        PERIOD_SERVICE,
+        STATUS_WORKFLOW,
         "AccountingPeriod period = accountingPeriodRepository.lockByCompanyAndId(company,"
             + " periodId)",
         "periodCloseHook.onPeriodCloseLocked(company, period);",
@@ -29,7 +31,7 @@ class TS_PeriodCloseAtomicSnapshotTest {
 
   @Test
   void repeatCloseOnClosedPeriodReturnsWithoutSnapshotRecapture() {
-    String content = TruthSuiteFileAssert.read(PERIOD_SERVICE);
+    String content = TruthSuiteFileAssert.read(STATUS_WORKFLOW);
     String guard = "if (period.getStatus() == AccountingPeriodStatus.CLOSED) {";
     int start = content.indexOf(guard);
     assertTrue(start >= 0, "Closed-period idempotency guard must exist in closePeriod");
@@ -37,7 +39,7 @@ class TS_PeriodCloseAtomicSnapshotTest {
     assertTrue(end > start, "Closed-period guard block must be syntactically complete");
     String closedBranch = content.substring(start, end + 1);
     assertTrue(
-        closedBranch.contains("return toDto(period);"),
+        closedBranch.contains("return lifecycleService.toDto(period);"),
         "Closed-period guard must short-circuit to DTO return");
     assertFalse(
         closedBranch.contains("snapshotService.captureSnapshot"),
@@ -47,8 +49,8 @@ class TS_PeriodCloseAtomicSnapshotTest {
   @Test
   void closedPeriodRejectsOperationalPostingViaOpenPeriodGuard() {
     TruthSuiteFileAssert.assertContains(
-        PERIOD_SERVICE,
-        "public AccountingPeriod requireOpenPeriod(Company company, LocalDate referenceDate)",
+        LIFECYCLE_SERVICE,
+        "AccountingPeriod requireOpenPeriod(Company company, LocalDate referenceDate)",
         "if (period.getStatus() != AccountingPeriodStatus.OPEN) {",
         "\"Accounting period \" + period.getLabel() + \" is locked/closed\"");
   }
@@ -56,10 +58,10 @@ class TS_PeriodCloseAtomicSnapshotTest {
   @Test
   void reopenUsesCanonicalReverseBoundaryAndDropsSnapshot() {
     TruthSuiteFileAssert.assertContains(
-        PERIOD_SERVICE,
+        STATUS_WORKFLOW,
         "String reason = request.reason().trim();",
         ".ifPresent(closing -> reverseClosingJournalIfNeeded(closing, period, reason));",
         "snapshotService.deleteSnapshotForPeriod(company, period);",
-        "accountingFacade.reverseClosingEntryForPeriodReopen(closing, period, reason);");
+        ".reverseClosingEntryForPeriodReopen(closing, period, reason);");
   }
 }

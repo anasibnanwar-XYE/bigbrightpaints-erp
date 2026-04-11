@@ -1,6 +1,6 @@
 # Sales Portal Frontend Engineer Handoff
 
-Last reviewed: 2026-04-02
+Last reviewed: 2026-04-08
 
 This document is the backend-to-frontend contract for the **Sales Portal**.
 
@@ -144,19 +144,19 @@ Use for header/tenant context.
 
 ```ts
 type SalesDashboardDto = {
-  activeDealers: number
-  totalOrders: number
-  orderStatusBuckets: Record<string, number>
-  pendingCreditRequests: number
+  recentOrdersCount: number
+  totalRevenue: number
+  totalReceivables: number
+  pendingOrders: number
 }
 ```
 
 Recommended FE landing cards:
 
-- active dealers
-- total orders
-- order status distribution
-- pending credit requests
+- recent orders
+- total revenue
+- total receivables
+- pending orders
 
 ---
 
@@ -184,6 +184,7 @@ type DealerResponse = {
   email: string
   phone: string
   address: string | null
+  arAccountId: number | null
   receivableAccountId: number | null
   receivableAccountCode: string | null
   portalEmail: string | null
@@ -192,6 +193,8 @@ type DealerResponse = {
   gstRegistrationType: string
   paymentTerms: string
   region: string | null
+  creditLimit: number
+  outstandingBalance: number
   creditStatus: string
 }
 
@@ -200,12 +203,15 @@ type DealerLookupResponse = {
   publicId: string
   name: string
   code: string
+  arAccountId: number | null
   receivableAccountId: number | null
   receivableAccountCode: string | null
   stateCode: string | null
   gstRegistrationType: string
   paymentTerms: string
   region: string | null
+  creditLimit: number
+  outstandingBalance: number
   creditStatus: string
 }
 
@@ -243,28 +249,35 @@ Important:
 
 Important:
 
-- There is no dedicated `GET /api/v1/dealers/{dealerId}` fetch route today.
-  Dealer detail screens should hydrate from directory/search payloads and the
-  latest update response.
+- `GET /api/v1/dealers/{dealerId}` fetches dealer detail and returns `404` when
+  the dealer id is missing.
 
 ### Create dealer
 
 - `POST /api/v1/dealers`
+- returns `201 Created` with `ApiResponse<DealerResponse>`
 
 ### Update dealer
 
 - `PUT /api/v1/dealers/{dealerId}`
 
+### Dealer detail
+
+- `GET /api/v1/dealers/{dealerId}`
+
 ### Dunning hold action
 
-- `POST /api/v1/dealers/{dealerId}/dunning/hold?overdueDays=45&minAmount=0`
+- `POST /api/v1/dealers/{dealerId}/dunning/hold`
+- explicit action surface (no threshold query/body inputs)
 
 #### Response
 
 ```ts
 type DealerDunningHoldResponse = {
   dealerId: number
-  placedOnHold: boolean
+  dunningHeld: boolean
+  status: 'ON_HOLD'
+  alreadyOnHold: boolean
 }
 ```
 
@@ -283,6 +296,7 @@ Recommended FE screens:
 ```ts
 type SalesOrderItemDto = {
   id: number
+  finishedGoodId: number | null
   productCode: string
   description: string | null
   quantity: number
@@ -297,10 +311,13 @@ type SalesOrderStatusHistoryDto = {
   id: number
   fromStatus: string | null
   toStatus: string
+  status: string
   reasonCode: string | null
   reason: string | null
   changedBy: string | null
+  actor: string | null
   changedAt: string
+  timestamp: string
 }
 
 type SalesOrderDto = {
@@ -318,6 +335,7 @@ type SalesOrderDto = {
   currency: string | null
   dealerName: string | null
   paymentMode: string | null
+  paymentTerms: string | null
   traceId: string | null
   createdAt: string
   items: SalesOrderItemDto[]
@@ -325,7 +343,8 @@ type SalesOrderDto = {
 }
 
 type SalesOrderItemRequest = {
-  productCode: string
+  finishedGoodId?: number | null
+  productCode?: string | null
   description?: string | null
   quantity: number
   unitPrice: number
@@ -343,6 +362,7 @@ type SalesOrderRequest = {
   gstInclusive?: boolean | null
   idempotencyKey?: string | null
   paymentMode?: string | null
+  paymentTerms?: string | null
 }
 ```
 
@@ -372,6 +392,18 @@ Headers:
 
 - preferred: `Idempotency-Key`
 - legacy `X-Idempotency-Key` is rejected in this controller family
+
+Response semantics:
+
+- `201 Created` when the request opts into draft-lifecycle semantics
+  (`paymentTerms` is present and/or any line includes `finishedGoodId`)
+- `200 OK` for legacy create payloads
+
+Draft-lifecycle note:
+
+- for finished-good draft orders, `POST /confirm` performs reservation-backed
+  confirmation and fails closed when reservation is incomplete/missing
+- `POST /cancel` releases reservations tied to the order
 
 ### Update order
 
@@ -415,6 +447,11 @@ type StatusRequest = {
 ### Timeline
 
 `GET /api/v1/sales/orders/{id}/timeline`
+
+Timeline alias contract:
+
+- canonical: `toStatus`, `changedBy`, `changedAt`
+- aliases: `status`, `actor`, `timestamp`
 
 Recommended FE sections:
 
@@ -555,12 +592,17 @@ type CreditLimitOverrideRequestDto = {
   dealerName: string | null
   packagingSlipId: number | null
   salesOrderId: number | null
+  requestedAmount: number
+  // legacy alias; present for compatibility only
   dispatchAmount: number
+  // outstanding ledger balance + pending-order exposure at request evaluation time
   currentExposure: number
   creditLimit: number
+  // max(0, currentExposure + requestedAmount - creditLimit)
   requiredHeadroom: number
   status: string
   reason: string | null
+  // server-populated from authenticated principal
   requestedBy: string | null
   reviewedBy: string | null
   reviewedAt: string | null
@@ -586,6 +628,13 @@ Sales cannot:
 - approve/reject credit override requests
 
 So FE should not render approval buttons in the sales portal.
+
+Runtime credit-check behavior:
+
+- `POST /api/v1/sales/orders` returns `422` only when dealer credit posture is
+  still over limit after applying approved override headroom.
+- Approved override headroom is consumed against the same exposure posture used
+  by order creation (`outstanding + pending-order exposure`).
 
 ---
 

@@ -22,7 +22,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import com.bigbrightpaints.erp.core.util.CompanyClock;
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
@@ -33,6 +32,7 @@ import com.bigbrightpaints.erp.modules.accounting.dto.JournalLineDto;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingService;
 import com.bigbrightpaints.erp.modules.accounting.service.CompanyAccountingSettingsService;
+import com.bigbrightpaints.erp.modules.accounting.service.CompanyScopedAccountingLookupService;
 import com.bigbrightpaints.erp.modules.accounting.service.JournalReferenceResolver;
 import com.bigbrightpaints.erp.modules.accounting.service.ReferenceNumberService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
@@ -42,6 +42,7 @@ import com.bigbrightpaints.erp.modules.purchasing.domain.SupplierRepository;
 import com.bigbrightpaints.erp.modules.purchasing.domain.SupplierStatus;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
+import com.bigbrightpaints.erp.modules.sales.service.CompanyScopedSalesLookupService;
 import com.bigbrightpaints.erp.modules.sales.util.SalesOrderReference;
 
 @ExtendWith(MockitoExtension.class)
@@ -57,7 +58,8 @@ class TS_RuntimeAccountingFacadeExecutableCoverageTest {
   @Mock private DealerRepository dealerRepository;
   @Mock private SupplierRepository supplierRepository;
   @Mock private CompanyClock companyClock;
-  @Mock private CompanyEntityLookup companyEntityLookup;
+  @Mock private CompanyScopedSalesLookupService salesLookupService;
+  @Mock private CompanyScopedAccountingLookupService accountingLookupService;
   @Mock private CompanyAccountingSettingsService companyAccountingSettingsService;
   @Mock private JournalReferenceResolver journalReferenceResolver;
   @Mock private JournalReferenceMappingRepository journalReferenceMappingRepository;
@@ -68,7 +70,7 @@ class TS_RuntimeAccountingFacadeExecutableCoverageTest {
   @BeforeEach
   void setUp() {
     accountingFacade =
-        new AccountingFacade(
+        com.bigbrightpaints.erp.modules.accounting.service.AccountingFacadeTestFactory.create(
             companyContextService,
             accountRepository,
             accountingService,
@@ -77,7 +79,8 @@ class TS_RuntimeAccountingFacadeExecutableCoverageTest {
             dealerRepository,
             supplierRepository,
             companyClock,
-            companyEntityLookup,
+            salesLookupService,
+            accountingLookupService,
             companyAccountingSettingsService,
             journalReferenceResolver,
             journalReferenceMappingRepository);
@@ -100,10 +103,6 @@ class TS_RuntimeAccountingFacadeExecutableCoverageTest {
         .thenReturn(Optional.of(supplier));
 
     Long inventoryAccountId = 201L;
-    Account inventory = new Account();
-    ReflectionTestUtils.setField(inventory, "id", inventoryAccountId);
-    when(companyEntityLookup.requireAccount(eq(company), eq(inventoryAccountId)))
-        .thenReturn(inventory);
 
     String baseReference = "RMP-ACME-SUP-INV100";
     String canonicalReference = baseReference + "-0005";
@@ -150,7 +149,7 @@ class TS_RuntimeAccountingFacadeExecutableCoverageTest {
     JournalEntry saved = new JournalEntry();
     ReflectionTestUtils.setField(saved, "id", 915L);
     saved.setReferenceNumber(canonicalReference);
-    when(companyEntityLookup.requireJournalEntry(eq(company), eq(915L))).thenReturn(saved);
+    when(accountingLookupService.requireJournalEntry(eq(company), eq(915L))).thenReturn(saved);
 
     JournalEntryDto dto =
         accountingFacade.postPurchaseJournal(
@@ -178,7 +177,7 @@ class TS_RuntimeAccountingFacadeExecutableCoverageTest {
     receivable.setName("Accounts Receivable");
     ReflectionTestUtils.setField(receivable, "id", 701L);
     dealer.setReceivableAccount(receivable);
-    when(companyEntityLookup.requireDealer(eq(company), eq(dealerId))).thenReturn(dealer);
+    when(salesLookupService.requireDealer(eq(company), eq(dealerId))).thenReturn(dealer);
 
     String orderNumber = "SO-1001";
     String canonicalReference = SalesOrderReference.invoiceReference(orderNumber);
@@ -219,7 +218,7 @@ class TS_RuntimeAccountingFacadeExecutableCoverageTest {
             null,
             null);
     when(accountingService.createStandardJournal(any())).thenReturn(replay);
-    when(companyEntityLookup.requireJournalEntry(eq(company), eq(777L))).thenReturn(existing);
+    when(accountingLookupService.requireJournalEntry(eq(company), eq(777L))).thenReturn(existing);
 
     JournalEntryDto dto =
         accountingFacade.postSalesJournal(

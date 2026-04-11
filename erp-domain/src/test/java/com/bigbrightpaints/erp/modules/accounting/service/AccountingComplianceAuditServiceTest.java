@@ -6,8 +6,10 @@ import static org.mockito.Mockito.verify;
 import java.lang.reflect.Field;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Map;
 
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -28,6 +30,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.JournalLine;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 
 @ExtendWith(MockitoExtension.class)
+@Tag("critical")
 class AccountingComplianceAuditServiceTest {
 
   @Mock private EnterpriseAuditTrailService enterpriseAuditTrailService;
@@ -96,6 +99,45 @@ class AccountingComplianceAuditServiceTest {
     AuditActionEventCommand command = captureCommand();
     assertThat(command.metadata()).containsEntry("sourceReference", "SRC-ATT-1");
     assertThat(command.metadata()).containsEntry("attachmentReferences", "att-1,att-2");
+  }
+
+  @Test
+  void recordJournalCreation_includesAdditionalFxRoundingMetadataWhenProvided() {
+    Company company = company(85L, "BBP");
+    JournalEntry entry = journalEntry(107L, "JE-FX-1", JournalEntryType.AUTOMATED);
+
+    service.recordJournalCreation(
+        company,
+        entry,
+        Map.of(
+            "adjustedLineId",
+            "9001",
+            "originalAmount",
+            "1200.00",
+            "adjustedAmount",
+            "1200.02",
+            "adjustmentReason",
+            "FX_ROUNDING_CREDIT_ADJUSTMENT"));
+
+    AuditActionEventCommand command = captureCommand();
+    assertThat(command.metadata()).containsEntry("adjustedLineId", "9001");
+    assertThat(command.metadata()).containsEntry("originalAmount", "1200.00");
+    assertThat(command.metadata()).containsEntry("adjustedAmount", "1200.02");
+    assertThat(command.metadata())
+        .containsEntry("adjustmentReason", "FX_ROUNDING_CREDIT_ADJUSTMENT");
+  }
+
+  @Test
+  void recordJournalCreation_allowsNullAdditionalMetadata() {
+    Company company = company(86L, "BBP");
+    JournalEntry entry = journalEntry(108L, "JE-NO-META", JournalEntryType.AUTOMATED);
+
+    service.recordJournalCreation(company, entry, null);
+
+    AuditActionEventCommand command = captureCommand();
+    assertThat(command.referenceNumber()).isEqualTo("JE-NO-META");
+    assertThat(command.metadata()).containsEntry("journalSource", "SYSTEM_GENERATED");
+    assertThat(command.metadata()).containsEntry("sensitiveOperation", "false");
   }
 
   @Test

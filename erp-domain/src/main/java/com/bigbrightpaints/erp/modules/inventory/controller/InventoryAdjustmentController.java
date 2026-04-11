@@ -3,6 +3,7 @@ package com.bigbrightpaints.erp.modules.inventory.controller;
 import java.util.List;
 import java.util.Set;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.util.StringUtils;
@@ -16,7 +17,6 @@ import com.bigbrightpaints.erp.modules.inventory.dto.InventoryAdjustmentRequest;
 import com.bigbrightpaints.erp.modules.inventory.service.InventoryAdjustmentService;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 
-import io.swagger.v3.oas.annotations.Parameter;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
 import jakarta.validation.Validator;
@@ -44,34 +44,28 @@ public class InventoryAdjustmentController {
 
   @PostMapping
   @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
+  @ResponseStatus(HttpStatus.CREATED)
   public ResponseEntity<ApiResponse<InventoryAdjustmentDto>> createAdjustment(
       @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
-      @Parameter(hidden = true) @RequestHeader(value = "X-Idempotency-Key", required = false)
-          String legacyIdempotencyKey,
       @RequestBody InventoryAdjustmentRequest request) {
-    InventoryAdjustmentRequest resolved =
-        applyIdempotencyKey(request, idempotencyKey, legacyIdempotencyKey);
+    InventoryAdjustmentRequest resolved = applyIdempotencyKey(request, idempotencyKey);
     validateRequest(resolved);
-    return ResponseEntity.ok(
-        ApiResponse.success(
-            "Inventory adjustment posted", inventoryAdjustmentService.createAdjustment(resolved)));
+    return ResponseEntity.status(HttpStatus.CREATED)
+        .body(
+            ApiResponse.success(
+                "Inventory adjustment posted",
+                inventoryAdjustmentService.createAdjustment(resolved)));
   }
 
   private InventoryAdjustmentRequest applyIdempotencyKey(
-      InventoryAdjustmentRequest request,
-      String idempotencyKeyHeader,
-      String legacyIdempotencyKeyHeader) {
+      InventoryAdjustmentRequest request, String idempotencyKeyHeader) {
     if (request == null) {
       throw new ApplicationException(
           ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD, "Inventory adjustment request is required");
     }
-    IdempotencyHeaderUtils.rejectLegacyHeader(
-        legacyIdempotencyKeyHeader,
-        "inventory adjustments",
-        CANONICAL_INVENTORY_ADJUSTMENT_PATH);
     String resolvedKey =
         IdempotencyHeaderUtils.resolveBodyOrHeaderKey(
-            request.idempotencyKey(), idempotencyKeyHeader, null);
+            request.idempotencyKey(), idempotencyKeyHeader);
     if (StringUtils.hasText(request.idempotencyKey())) {
       return request;
     }

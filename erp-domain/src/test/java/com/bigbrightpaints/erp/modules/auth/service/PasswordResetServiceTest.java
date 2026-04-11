@@ -9,7 +9,9 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -27,6 +29,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.batch.support.transaction.ResourcelessTransactionManager;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import com.bigbrightpaints.erp.core.audit.AuditLogRepository;
 import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.config.EmailProperties;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
@@ -276,6 +279,53 @@ class PasswordResetServiceTest {
   }
 
   @Test
+  void requestReset_rateLimitedPasswordResetAbuseSendsOnlyOneSecurityAlertEmail() {
+    SecurityMonitoringService monitoringService = new SecurityMonitoringService();
+    ReflectionTestUtils.setField(monitoringService, "auditService", auditService);
+    ReflectionTestUtils.setField(
+        monitoringService, "auditLogRepository", mock(AuditLogRepository.class));
+    ReflectionTestUtils.setField(monitoringService, "tokenBlacklistService", tokenBlacklistService);
+    ReflectionTestUtils.setField(monitoringService, "emailService", emailService);
+    ReflectionTestUtils.setField(monitoringService, "maxRequestsPerMinute", 0);
+    ReflectionTestUtils.setField(monitoringService, "suspiciousActivityThreshold", 3);
+    ReflectionTestUtils.setField(
+        monitoringService, "securityNotificationEmail", "alerts@acme.test");
+    ReflectionTestUtils.setField(monitoringService, "suspiciousActivityAlertWindowMinutes", 60);
+
+    PasswordResetService rateLimitedService =
+        new PasswordResetService(
+            userAccountRepository,
+            tokenRepository,
+            passwordService,
+            emailService,
+            emailProperties,
+            auditService,
+            monitoringService,
+            tokenBlacklistService,
+            refreshTokenService,
+            authScopeService,
+            new ResourcelessTransactionManager());
+
+    for (int attempt = 0; attempt < 3; attempt++) {
+      ApplicationException exception =
+          assertThrows(
+              ApplicationException.class,
+              () -> rateLimitedService.requestReset("user@example.com", "acme"));
+      assertEquals(ErrorCode.SYSTEM_RATE_LIMIT_EXCEEDED, exception.getErrorCode());
+    }
+
+    verify(emailService, times(1))
+        .sendSimpleEmail(
+            eq("alerts@acme.test"),
+            eq("Security alert: Suspicious activity detected"),
+            anyString());
+    verify(emailService, never())
+        .sendPasswordResetEmailRequired(anyString(), anyString(), anyString(), anyString());
+    verify(userAccountRepository, never())
+        .findByEmailIgnoreCaseAndAuthScopeCodeIgnoreCase(anyString(), anyString());
+  }
+
+  @Test
   void requestResetByAdminRejectsNullTargetUser() {
     assertThrows(ApplicationException.class, () -> passwordResetService.requestResetByAdmin(null));
   }
@@ -302,26 +352,26 @@ class PasswordResetServiceTest {
     assertEquals(
         "<empty>",
         (String)
-            ReflectionTestUtils.invokeMethod(
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                 passwordResetService, "sanitizeForPlainTextLog", "   "));
     assertEquals(
         "<unknown>",
         (String)
-            ReflectionTestUtils.invokeMethod(
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                 passwordResetService, "sanitizeExceptionClass", (Object) null));
     org.assertj.core.api.Assertions.assertThat(
             (String)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     passwordResetService, "normalizeEmail", (Object) null))
         .isNull();
     assertEquals(
         "x".repeat(160),
         (String)
-            ReflectionTestUtils.invokeMethod(
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                 passwordResetService, "sanitizeForPlainTextLog", "x".repeat(170)));
     String anonymousClass =
         (String)
-            ReflectionTestUtils.invokeMethod(
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                 passwordResetService, "sanitizeExceptionClass", new RuntimeException("boom") {});
     org.assertj.core.api.Assertions.assertThat(anonymousClass).contains("PasswordResetServiceTest");
   }
@@ -335,27 +385,27 @@ class PasswordResetServiceTest {
     disabledUser.setEnabled(false);
     org.assertj.core.api.Assertions.assertThat(
             (Object)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     passwordResetService, "lockUserForResetIssuance", disabledUser))
         .isNull();
 
     UserAccount unsavedUser = enabledUser("user@example.com", TENANT_SCOPE);
     assertEquals(
         unsavedUser,
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             passwordResetService, "lockUserForResetIssuance", unsavedUser));
 
     assertDoesNotThrow(
         () ->
-            ReflectionTestUtils.invokeMethod(
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                 passwordResetService, "cleanupIssuedResetToken", null, "corr", "masked"));
     assertDoesNotThrow(
         () ->
-            ReflectionTestUtils.invokeMethod(
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                 passwordResetService, "markIssuedResetTokenDelivered", null, "corr", "masked"));
     assertEquals(
         false,
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             passwordResetService, "dispatchResetEmail", null, "corr", "forgot_password"));
   }
 

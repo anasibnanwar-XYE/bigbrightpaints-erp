@@ -30,6 +30,49 @@ merge_jacoco_xml = load_module("merge_jacoco_xml", MERGE_JACOCO_PATH)
 
 
 class CiRiskRouterTest(unittest.TestCase):
+    def test_changed_coverage_baseline_compacts_diff_scope_when_between_base_and_head(self):
+        ancestry_pairs = {
+            ("base", "baseline"),
+            ("baseline", "head"),
+        }
+        effective_base, applied = ci_risk_router.select_effective_diff_base(
+            "base",
+            "head",
+            "baseline",
+            lambda ancestor, descendant: (ancestor, descendant) in ancestry_pairs,
+        )
+
+        self.assertEqual("baseline", effective_base)
+        self.assertTrue(applied)
+
+    def test_changed_coverage_baseline_not_applied_when_not_descendant_of_requested_base(self):
+        ancestry_pairs = {
+            ("baseline", "head"),
+        }
+        effective_base, applied = ci_risk_router.select_effective_diff_base(
+            "base",
+            "head",
+            "baseline",
+            lambda ancestor, descendant: (ancestor, descendant) in ancestry_pairs,
+        )
+
+        self.assertEqual("base", effective_base)
+        self.assertFalse(applied)
+
+    def test_compacted_coverage_scope_does_not_suppress_requested_diff_routing(self):
+        flags = ci_risk_router.compute_flags(
+            [
+                "erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/service/AuthService.java",
+            ],
+            coverage_paths=["docs/SECURITY.md"],
+        )
+
+        self.assertEqual("true", flags["run_auth_tenant"])
+        self.assertEqual("true", flags["run_codered_access"])
+        self.assertEqual("false", flags["run_changed_coverage"])
+        self.assertEqual("1", flags["changed_files_count"])
+        self.assertEqual("0", flags["changed_runtime_source_count"])
+
     def test_pr_fast_profile_remains_defined_for_pr_callers(self):
         pom_text = (REPO_ROOT / "erp-domain" / "pom.xml").read_text(encoding="utf-8")
 
@@ -156,6 +199,9 @@ class ChangedFilesCoverageTest(unittest.TestCase):
     def test_structural_classifier_accepts_java_declarations_and_continuations(self):
         self.assertTrue(changed_files_coverage.is_structural_source_line("public final class Demo {", False))
         self.assertTrue(changed_files_coverage.is_structural_source_line("private Demo() {", False))
+        self.assertTrue(
+            changed_files_coverage.is_structural_source_line("private AuditCorrelationIdResolver() {}", False)
+        )
         self.assertTrue(changed_files_coverage.is_structural_source_line('private static final String MODE = "CREDIT";', False))
         self.assertTrue(changed_files_coverage.is_structural_source_line("private Long invoiceId;", False))
         self.assertTrue(changed_files_coverage.is_structural_source_line('static final String DEFAULT_MODE = "CREDIT";', False))
@@ -182,6 +228,22 @@ class ChangedFilesCoverageTest(unittest.TestCase):
             )
         )
         self.assertTrue(changed_files_coverage.is_structural_source_line("RawMaterialPurchase::getCompany,", False))
+        self.assertTrue(
+            changed_files_coverage.is_structural_source_line(
+                "line ->",
+                False,
+                "        .filter(",
+                "                adjustedAccountId != null",
+            )
+        )
+        self.assertTrue(
+            changed_files_coverage.is_structural_source_line(
+                "() ->",
+                False,
+                "        .orElseGet(",
+                "                savedEntry.getLines().stream()",
+            )
+        )
         self.assertTrue(changed_files_coverage.is_structural_source_line("and upper(trim(o.status)) in :statuses", False))
         self.assertTrue(changed_files_coverage.is_structural_source_line('"Cannot auto-create packing slip"', False))
         self.assertTrue(changed_files_coverage.is_structural_source_line("try {", False))
@@ -326,6 +388,12 @@ class MergeJacocoXmlTest(unittest.TestCase):
 
 
 class RuntimeProbeContractTest(unittest.TestCase):
+    def test_pr_changed_coverage_uses_router_effective_diff_base_output(self):
+        ci_workflow = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+
+        self.assertIn("effective_diff_base: ${{ steps.route.outputs.effective_diff_base }}", ci_workflow)
+        self.assertIn("DIFF_BASE: ${{ needs.pr-risk-router.outputs.effective_diff_base }}", ci_workflow)
+
     def test_pr_ci_parity_skip_summary_matches_ci_contract(self):
         summary = pr_ci_parity.create_changed_coverage_skip_summary(
             diff_base="abc123",
@@ -344,6 +412,36 @@ class RuntimeProbeContractTest(unittest.TestCase):
             },
             summary,
         )
+
+    def test_pr_ci_parity_allows_threshold_only_changed_coverage_failure_in_compat_mode(self):
+        compatible, reason = pr_ci_parity.changed_coverage_failure_is_compatible(
+            {
+                "passes": False,
+                "skipped": False,
+                "missing_coverage": False,
+                "vacuous": False,
+                "coverage_skipped_files": [],
+                "files_with_unmapped_lines": [],
+            }
+        )
+
+        self.assertTrue(compatible)
+        self.assertEqual("threshold-only-compatibility", reason)
+
+    def test_pr_ci_parity_rejects_unmapped_changed_coverage_failure(self):
+        compatible, reason = pr_ci_parity.changed_coverage_failure_is_compatible(
+            {
+                "passes": False,
+                "skipped": False,
+                "missing_coverage": False,
+                "vacuous": False,
+                "coverage_skipped_files": [],
+                "files_with_unmapped_lines": ["erp-domain/src/main/java/com/example/Demo.java"],
+            }
+        )
+
+        self.assertFalse(compatible)
+        self.assertEqual("unmapped-changed-lines", reason)
 
     def test_pr_ci_parity_merge_gate_blocks_failed_jobs(self):
         blocking = pr_ci_parity.evaluate_merge_gate(

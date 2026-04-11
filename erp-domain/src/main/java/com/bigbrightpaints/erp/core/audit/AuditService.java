@@ -143,7 +143,7 @@ public class AuditService {
           metadata.putIfAbsent("authCompanyToken", companyToken.trim());
           metadata.put("authCompanyResolution", "UNRESOLVED");
         }
-        logger.warn("Unable to resolve company token: {}", companyToken);
+        logger.warn("Unable to resolve company token");
       }
 
       if (requestContext != null && !requestContext.isEmpty()) {
@@ -234,9 +234,8 @@ public class AuditService {
             companyRepository.findById(numericToken).map(Company::getId).orElse(null);
         if (idCandidate != null && !byCode.getId().equals(idCandidate)) {
           logger.warn(
-              "Ambiguous numeric company token {} maps to code-id {} and entity-id {}; failing"
+              "Ambiguous numeric company token maps to code-id {} and entity-id {}; failing"
                   + " closed",
-              normalizedToken,
               byCode.getId(),
               idCandidate);
           return null;
@@ -381,9 +380,13 @@ public class AuditService {
     if (value == null || value.isBlank()) {
       return null;
     }
+    String normalized = value.trim();
+    if (!normalized.chars().allMatch(Character::isDigit)) {
+      return null;
+    }
     try {
-      return Long.parseLong(value);
-    } catch (NumberFormatException ignored) {
+      return Long.parseLong(normalized);
+    } catch (NumberFormatException ex) {
       return null;
     }
   }

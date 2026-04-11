@@ -4,11 +4,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -23,6 +26,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 
+import com.bigbrightpaints.erp.core.audittrail.AuditActionEvent;
+import com.bigbrightpaints.erp.core.audittrail.AuditActionEventRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
@@ -64,6 +69,7 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
   @Autowired private JournalEntryRepository journalEntryRepository;
   @Autowired private RawMaterialPurchaseRepository purchaseRepository;
   @Autowired private PartnerSettlementAllocationRepository settlementAllocationRepository;
+  @Autowired private AuditActionEventRepository auditActionEventRepository;
 
   private HttpHeaders headers;
   private Company company;
@@ -107,6 +113,8 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
     BigDecimal totalAmount = quantity.multiply(costPerUnit);
     PurchaseWorkflowIds workflow =
         createPurchaseOrderAndReceipt(supplierId, rawMaterialId, quantity, costPerUnit, entryDate);
+    UUID flowCorrelationId = UUID.randomUUID();
+    HttpHeaders purchaseHeaders = headersWithCorrelationId(headers, flowCorrelationId);
     GoodsReceipt goodsReceipt =
         goodsReceiptRepository.findById(workflow.goodsReceiptId()).orElseThrow();
     int receiptMovementsBefore =
@@ -132,9 +140,9 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
         rest.exchange(
             "/api/v1/purchasing/raw-material-purchases",
             HttpMethod.POST,
-            new HttpEntity<>(purchaseReq, headers),
+            new HttpEntity<>(purchaseReq, purchaseHeaders),
             Map.class);
-    assertThat(purchaseResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(purchaseResp.getStatusCode()).isEqualTo(HttpStatus.CREATED);
     Map<String, Object> purchaseData = (Map<String, Object>) purchaseResp.getBody().get("data");
     Long purchaseId = ((Number) purchaseData.get("id")).longValue();
 
@@ -165,12 +173,14 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
             "appliedAmount", totalAmount);
     String settlementRef = "SET-" + shortSuffix();
     Map<String, Object> settlementReq = new HashMap<>();
-    settlementReq.put("supplierId", supplierId);
+    settlementReq.put("partnerType", "SUPPLIER");
+    settlementReq.put("partnerId", supplierId);
     settlementReq.put("cashAccountId", cash.getId());
     settlementReq.put("settlementDate", entryDate);
     settlementReq.put("referenceNumber", settlementRef);
     settlementReq.put("allocations", List.of(allocation));
-    HttpHeaders settlementHeaders = headersWithIdempotencyKey(settlementRef);
+    HttpHeaders settlementHeaders =
+        headersWithCorrelationId(headersWithIdempotencyKey(settlementRef), flowCorrelationId);
 
     ResponseEntity<Map> settleResp =
         rest.exchange(
@@ -194,6 +204,202 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
     assertThat(
             settlementAllocationRepository.findByCompanyAndIdempotencyKey(company, settlementRef))
         .hasSize(1);
+    assertThat(purchase.getJournalEntry()).isNotNull();
+    JournalEntry settlementJournal =
+        journalEntryRepository
+            .findByCompanyAndReferenceNumber(company, settlementRef)
+            .orElseThrow();
+
+    AuditActionEvent purchaseAudit =
+        awaitBusinessAuditEvent(
+            company.getId(),
+            "ACCOUNTING",
+            "SYSTEM_JOURNAL_CREATED",
+            "JOURNAL_ENTRY",
+            purchase.getJournalEntry().getId().toString());
+    AuditActionEvent settlementAudit =
+        awaitBusinessAuditEvent(
+            company.getId(),
+            "ACCOUNTING",
+            "SETTLEMENT_JOURNAL_CREATED",
+            "JOURNAL_ENTRY",
+            settlementJournal.getId().toString());
+    assertThat(purchaseAudit.getCorrelationId()).isEqualTo(flowCorrelationId);
+    assertThat(settlementAudit.getCorrelationId()).isEqualTo(flowCorrelationId);
+    assertThat(settlementAudit.getCorrelationId()).isEqualTo(purchaseAudit.getCorrelationId());
+
+    List<?> purchaseEventTrail = transactionEventTrail(purchase.getJournalEntry().getId());
+    assertThat(purchaseEventTrail).isNotEmpty();
+    assertThat(purchaseEventTrail)
+        .allSatisfy(
+            row -> {
+              assertThat(row).isInstanceOf(Map.class);
+              assertThat(((Map<?, ?>) row).get("correlationId"))
+                  .isEqualTo(flowCorrelationId.toString());
+            });
+
+    List<?> settlementEventTrail = transactionEventTrail(settlementJournal.getId());
+    assertThat(settlementEventTrail).isNotEmpty();
+    assertThat(settlementEventTrail)
+        .allSatisfy(
+            row -> {
+              assertThat(row).isInstanceOf(Map.class);
+              Map<?, ?> eventTrailRow = (Map<?, ?>) row;
+              assertThat(eventTrailRow.get("correlationId"))
+                  .isEqualTo(flowCorrelationId.toString());
+            });
+    List<?> settlementSpecificRows =
+        settlementEventTrail.stream()
+            .filter(Map.class::isInstance)
+            .map(row -> (Map<?, ?>) row)
+            .filter(
+                row -> {
+                  String eventType = String.valueOf(row.get("eventType"));
+                  return "SUPPLIER_PAYMENT_POSTED".equals(eventType)
+                      || "SETTLEMENT_ALLOCATED".equals(eventType);
+                })
+            .toList();
+    assertThat(settlementSpecificRows).isNotEmpty();
+    assertThat(settlementSpecificRows)
+        .allSatisfy(
+            row -> {
+              assertThat(row).isInstanceOf(Map.class);
+              assertThat(((Map<?, ?>) row).get("correlationId"))
+                  .isEqualTo(flowCorrelationId.toString());
+            });
+  }
+
+  @Test
+  @DisplayName("Goods receipt detail remains readable after linked invoice posting")
+  void goodsReceiptDetailRemainsReadableAfterInvoicePosting() {
+    LocalDate entryDate = TestDateUtils.safeDate(company);
+    Long supplierId = createSupplier("P2P Detail Supplier", "P2P-DETAIL-" + shortSuffix());
+    Long rawMaterialId =
+        createRawMaterial("P2P Detail Material", "RM-DETAIL-" + shortSuffix(), inventory.getId());
+    BigDecimal quantity = new BigDecimal("6");
+    BigDecimal costPerUnit = new BigDecimal("15.00");
+    PurchaseWorkflowIds workflow =
+        createPurchaseOrderAndReceipt(supplierId, rawMaterialId, quantity, costPerUnit, entryDate);
+
+    Map<String, Object> purchaseReq = new HashMap<>();
+    purchaseReq.put("supplierId", supplierId);
+    purchaseReq.put("invoiceNumber", "INV-DETAIL-" + shortSuffix());
+    purchaseReq.put("invoiceDate", entryDate);
+    purchaseReq.put("purchaseOrderId", workflow.purchaseOrderId());
+    purchaseReq.put("goodsReceiptId", workflow.goodsReceiptId());
+    purchaseReq.put(
+        "lines",
+        List.of(
+            Map.of(
+                "rawMaterialId", rawMaterialId, "quantity", quantity, "costPerUnit", costPerUnit)));
+
+    ResponseEntity<Map> purchaseResp =
+        rest.exchange(
+            "/api/v1/purchasing/raw-material-purchases",
+            HttpMethod.POST,
+            new HttpEntity<>(purchaseReq, headers),
+            Map.class);
+    assertThat(purchaseResp.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+    Map<String, Object> purchaseData = (Map<String, Object>) purchaseResp.getBody().get("data");
+    Long purchaseId = ((Number) purchaseData.get("id")).longValue();
+
+    ResponseEntity<Map> goodsReceiptDetailResp =
+        rest.exchange(
+            "/api/v1/purchasing/goods-receipts/" + workflow.goodsReceiptId(),
+            HttpMethod.GET,
+            new HttpEntity<>(headers),
+            Map.class);
+    assertThat(goodsReceiptDetailResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+    Map<String, Object> receiptData =
+        (Map<String, Object>) goodsReceiptDetailResp.getBody().get("data");
+
+    assertThat(((Number) receiptData.get("supplierId")).longValue()).isEqualTo(supplierId);
+    assertThat(((Number) receiptData.get("purchaseOrderId")).longValue())
+        .isEqualTo(workflow.purchaseOrderId());
+    assertThat((List<Map<String, Object>>) receiptData.get("lines"))
+        .isNotEmpty()
+        .anySatisfy(
+            line ->
+                assertThat(((Number) line.get("rawMaterialId")).longValue())
+                    .isEqualTo(rawMaterialId));
+
+    Map<String, Object> lifecycle = (Map<String, Object>) receiptData.get("lifecycle");
+    assertThat(lifecycle.get("workflowStatus")).isEqualTo("INVOICED");
+    assertThat(lifecycle.get("accountingStatus")).isEqualTo("POSTED");
+
+    List<Map<String, Object>> linkedReferences =
+        (List<Map<String, Object>>) receiptData.get("linkedReferences");
+    assertThat(linkedReferences)
+        .extracting(reference -> reference.get("relationType"))
+        .contains("PURCHASE_ORDER", "PURCHASE_INVOICE", "ACCOUNTING_ENTRY", "SELF");
+    assertThat(linkedReferences)
+        .filteredOn(reference -> "PURCHASE_INVOICE".equals(reference.get("relationType")))
+        .singleElement()
+        .satisfies(
+            reference ->
+                assertThat(((Number) reference.get("documentId")).longValue())
+                    .isEqualTo(purchaseId));
+  }
+
+  @Test
+  @DisplayName(
+      "GST-bearing purchase invoice succeeds when fresh tenant and supplier state metadata are"
+          + " missing")
+  void purchaseInvoiceSucceedsWhenStateMetadataMissing() {
+    company.setStateCode(null);
+    companyRepository.saveAndFlush(company);
+
+    LocalDate entryDate = TestDateUtils.safeDate(company);
+    Long supplierId =
+        createSupplierWithoutStateCode(
+            "P2P GST Fallback Supplier", "P2P-GST-FALLBACK-" + shortSuffix(), "27ABCDE1234F1Z5");
+    Long rawMaterialId =
+        createRawMaterial(
+            "P2P GST Fallback Material", "RM-GST-FALLBACK-" + shortSuffix(), inventory.getId());
+
+    PurchaseWorkflowIds workflow =
+        createPurchaseOrderAndReceipt(
+            supplierId, rawMaterialId, new BigDecimal("5"), new BigDecimal("10.00"), entryDate);
+
+    Map<String, Object> line = new HashMap<>();
+    line.put("rawMaterialId", rawMaterialId);
+    line.put("quantity", new BigDecimal("5"));
+    line.put("costPerUnit", new BigDecimal("10.00"));
+
+    Map<String, Object> purchaseReq = new HashMap<>();
+    purchaseReq.put("supplierId", supplierId);
+    purchaseReq.put("invoiceNumber", "INV-GST-FALLBACK-" + shortSuffix());
+    purchaseReq.put("invoiceDate", entryDate);
+    purchaseReq.put("purchaseOrderId", workflow.purchaseOrderId());
+    purchaseReq.put("goodsReceiptId", workflow.goodsReceiptId());
+    purchaseReq.put("lines", List.of(line));
+
+    ResponseEntity<Map> purchaseResp =
+        rest.exchange(
+            "/api/v1/purchasing/raw-material-purchases",
+            HttpMethod.POST,
+            new HttpEntity<>(purchaseReq, headers),
+            Map.class);
+
+    assertThat(purchaseResp.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+    Map<String, Object> purchaseData = (Map<String, Object>) purchaseResp.getBody().get("data");
+    Long purchaseId = ((Number) purchaseData.get("id")).longValue();
+    RawMaterialPurchase persistedPurchase = purchaseRepository.findById(purchaseId).orElseThrow();
+    assertThat(persistedPurchase.getJournalEntry()).isNotNull();
+
+    ResponseEntity<Map> supplierDetailResp =
+        rest.exchange(
+            "/api/v1/suppliers/" + supplierId,
+            HttpMethod.GET,
+            new HttpEntity<>(headers),
+            Map.class);
+    assertThat(supplierDetailResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+    Map<String, Object> supplierData =
+        (Map<String, Object>) supplierDetailResp.getBody().get("data");
+    assertThat(String.valueOf(supplierData.get("stateCode"))).isEqualTo("27");
+
+    Company refreshed = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
+    assertThat(refreshed.getStateCode()).isNull();
   }
 
   @Test
@@ -236,7 +442,7 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
             HttpMethod.POST,
             new HttpEntity<>(purchaseReq, headers),
             Map.class);
-    assertThat(purchaseResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(purchaseResp.getStatusCode()).isEqualTo(HttpStatus.CREATED);
     Map<String, Object> purchaseData = (Map<String, Object>) purchaseResp.getBody().get("data");
     Long purchaseId = ((Number) purchaseData.get("id")).longValue();
 
@@ -285,7 +491,7 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
             HttpMethod.POST,
             new HttpEntity<>(purchaseReq, headers),
             Map.class);
-    assertThat(purchaseResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(purchaseResp.getStatusCode()).isEqualTo(HttpStatus.CREATED);
     Map<String, Object> purchaseData = (Map<String, Object>) purchaseResp.getBody().get("data");
     Long purchaseId = ((Number) purchaseData.get("id")).longValue();
 
@@ -424,7 +630,7 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
             HttpMethod.POST,
             new HttpEntity<>(purchaseReq, headers),
             Map.class);
-    assertThat(purchaseResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(purchaseResp.getStatusCode()).isEqualTo(HttpStatus.CREATED);
     Map<String, Object> purchaseData = (Map<String, Object>) purchaseResp.getBody().get("data");
     Long purchaseId = ((Number) purchaseData.get("id")).longValue();
 
@@ -433,9 +639,11 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
             "purchaseId", purchaseId,
             "appliedAmount", totalAmount);
     Map<String, Object> paymentReq = new HashMap<>();
-    paymentReq.put("supplierId", supplierId);
+    paymentReq.put("partnerType", "SUPPLIER");
+    paymentReq.put("partnerId", supplierId);
     paymentReq.put("cashAccountId", cash.getId());
     paymentReq.put("amount", totalAmount);
+    paymentReq.put("settlementDate", entryDate);
     String paymentRef = "PAY-" + shortSuffix();
     paymentReq.put("referenceNumber", paymentRef);
     paymentReq.put("memo", "Supplier payment allocation");
@@ -488,7 +696,7 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
             HttpMethod.POST,
             new HttpEntity<>(purchaseReq, headers),
             Map.class);
-    assertThat(purchaseResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(purchaseResp.getStatusCode()).isEqualTo(HttpStatus.CREATED);
     Map<String, Object> purchaseData = (Map<String, Object>) purchaseResp.getBody().get("data");
     Long purchaseId = ((Number) purchaseData.get("id")).longValue();
 
@@ -558,7 +766,7 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
             HttpMethod.POST,
             new HttpEntity<>(purchaseReq, headers),
             Map.class);
-    assertThat(purchaseResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(purchaseResp.getStatusCode()).isEqualTo(HttpStatus.CREATED);
     Map<String, Object> purchaseData = (Map<String, Object>) purchaseResp.getBody().get("data");
     Long purchaseId = ((Number) purchaseData.get("id")).longValue();
 
@@ -581,6 +789,111 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
     assertThat(purchase.getOutstandingAmount())
         .isEqualByComparingTo(totalAmount.subtract(debitAmount));
     assertThat(purchase.getStatus()).isEqualTo("PARTIAL");
+
+    ResponseEntity<Map> purchaseDetailResp =
+        rest.exchange(
+            "/api/v1/purchasing/raw-material-purchases/" + purchaseId,
+            HttpMethod.GET,
+            new HttpEntity<>(headers),
+            Map.class);
+    assertThat(purchaseDetailResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+    Map<String, Object> purchaseDetailData =
+        (Map<String, Object>) purchaseDetailResp.getBody().get("data");
+    assertThat(new BigDecimal(purchaseDetailData.get("outstandingAmount").toString()))
+        .isEqualByComparingTo(totalAmount.subtract(debitAmount));
+    assertThat(((Map<String, Object>) purchaseDetailData.get("lifecycle")).get("workflowStatus"))
+        .isEqualTo("PARTIAL");
+    assertThat((List<Map<String, Object>>) purchaseDetailData.get("linkedReferences"))
+        .isNotEmpty()
+        .anySatisfy(reference -> assertThat(reference.get("relationType")).isEqualTo("SELF"));
+
+    ResponseEntity<Map> purchaseListResp =
+        rest.exchange(
+            "/api/v1/purchasing/raw-material-purchases?supplierId=" + supplierId,
+            HttpMethod.GET,
+            new HttpEntity<>(headers),
+            Map.class);
+    assertThat(purchaseListResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+    List<Map<String, Object>> listedPurchases =
+        (List<Map<String, Object>>) purchaseListResp.getBody().get("data");
+    assertThat(listedPurchases)
+        .isNotEmpty()
+        .anySatisfy(
+            listed -> assertThat(((Number) listed.get("id")).longValue()).isEqualTo(purchaseId));
+  }
+
+  @Test
+  @DisplayName("Partial debit note rebalances rounded multi-line reversal journals")
+  void purchasePartialDebitNoteRebalancesRoundedMultiLineJournals() {
+    LocalDate entryDate = TestDateUtils.safeDate(company);
+    Long supplierId = createSupplier("P2P Rebalance Supplier", "DN-RB-" + shortSuffix());
+    Long rawMaterialId =
+        createRawMaterial("Rebalance Material", "RM-DN-RB-" + shortSuffix(), inventory.getId());
+
+    BigDecimal quantity = new BigDecimal("5");
+    BigDecimal costPerUnit = new BigDecimal("99.99");
+    BigDecimal taxRate = new BigDecimal("18.00");
+    PurchaseWorkflowIds workflow =
+        createPurchaseOrderAndReceipt(supplierId, rawMaterialId, quantity, costPerUnit, entryDate);
+
+    Map<String, Object> line = new HashMap<>();
+    line.put("rawMaterialId", rawMaterialId);
+    line.put("quantity", quantity);
+    line.put("costPerUnit", costPerUnit);
+    line.put("taxRate", taxRate);
+    line.put("taxInclusive", false);
+
+    String invoiceNumber = "INV-DN-RB-" + shortSuffix();
+    Map<String, Object> purchaseReq = new HashMap<>();
+    purchaseReq.put("supplierId", supplierId);
+    purchaseReq.put("invoiceNumber", invoiceNumber);
+    purchaseReq.put("invoiceDate", entryDate);
+    purchaseReq.put("purchaseOrderId", workflow.purchaseOrderId());
+    purchaseReq.put("goodsReceiptId", workflow.goodsReceiptId());
+    purchaseReq.put("lines", List.of(line));
+
+    ResponseEntity<Map> purchaseResp =
+        rest.exchange(
+            "/api/v1/purchasing/raw-material-purchases",
+            HttpMethod.POST,
+            new HttpEntity<>(purchaseReq, headers),
+            Map.class);
+    assertThat(purchaseResp.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+    Map<String, Object> purchaseData = (Map<String, Object>) purchaseResp.getBody().get("data");
+    Long purchaseId = ((Number) purchaseData.get("id")).longValue();
+
+    RawMaterialPurchase purchase = purchaseRepository.findById(purchaseId).orElseThrow();
+    BigDecimal sourceAmount = purchase.getOutstandingAmount();
+    BigDecimal taxComponent =
+        purchase.getTaxAmount() != null ? purchase.getTaxAmount() : BigDecimal.ZERO;
+    BigDecimal inventoryComponent = sourceAmount.subtract(taxComponent);
+    BigDecimal debitAmount =
+        findRoundingImbalanceAmount(List.of(inventoryComponent, taxComponent), sourceAmount);
+    assertThat(debitAmount)
+        .as("fixture must include an amount that imbalances naive line rounding")
+        .isNotNull();
+
+    String reference = "DN-RB-" + shortSuffix();
+    Map<String, Object> debitNoteReq = new HashMap<>();
+    debitNoteReq.put("purchaseId", purchaseId);
+    debitNoteReq.put("amount", debitAmount);
+    debitNoteReq.put("referenceNumber", reference);
+    debitNoteReq.put("memo", "Partial debit note rounding rebalance");
+
+    ResponseEntity<Map> debitResp =
+        rest.exchange(
+            "/api/v1/accounting/debit-notes",
+            HttpMethod.POST,
+            new HttpEntity<>(debitNoteReq, headers),
+            Map.class);
+    assertThat(debitResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+    JournalEntry note =
+        journalEntryRepository.findByCompanyAndReferenceNumber(company, reference).orElseThrow();
+    assertThat(sumDebits(note)).isEqualByComparingTo(sumCredits(note));
+
+    RawMaterialPurchase refreshed = purchaseRepository.findById(purchaseId).orElseThrow();
+    assertThat(refreshed.getOutstandingAmount()).isLessThan(sourceAmount);
   }
 
   @Test
@@ -618,7 +931,7 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
             HttpMethod.POST,
             new HttpEntity<>(purchaseReq, headers),
             Map.class);
-    assertThat(purchaseResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(purchaseResp.getStatusCode()).isEqualTo(HttpStatus.CREATED);
     Map<String, Object> purchaseData = (Map<String, Object>) purchaseResp.getBody().get("data");
     Long purchaseId = ((Number) purchaseData.get("id")).longValue();
 
@@ -649,7 +962,8 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
     assertThat(((Number) secondDebitNote.get("id")).longValue()).isEqualTo(firstDebitNoteId);
     assertThat(secondDebitNote.get("referenceNumber")).isEqualTo(reference);
 
-    assertThat(journalEntryRepository.findByCompanyAndReferenceNumber(company, reference)).isPresent();
+    assertThat(journalEntryRepository.findByCompanyAndReferenceNumber(company, reference))
+        .isPresent();
 
     RawMaterialPurchase purchase = purchaseRepository.findById(purchaseId).orElseThrow();
     assertThat(purchase.getOutstandingAmount()).isEqualByComparingTo(BigDecimal.ZERO);
@@ -690,7 +1004,7 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
             HttpMethod.POST,
             new HttpEntity<>(purchaseReq, headers),
             Map.class);
-    assertThat(purchaseResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(purchaseResp.getStatusCode()).isEqualTo(HttpStatus.CREATED);
     Map<String, Object> purchaseData = (Map<String, Object>) purchaseResp.getBody().get("data");
     Long purchaseId = ((Number) purchaseData.get("id")).longValue();
 
@@ -700,7 +1014,8 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
             "appliedAmount", totalAmount);
     String settlementRef = "SET-PAID-" + shortSuffix();
     Map<String, Object> settlementReq = new HashMap<>();
-    settlementReq.put("supplierId", supplierId);
+    settlementReq.put("partnerType", "SUPPLIER");
+    settlementReq.put("partnerId", supplierId);
     settlementReq.put("cashAccountId", cash.getId());
     settlementReq.put("settlementDate", entryDate);
     settlementReq.put("referenceNumber", settlementRef);
@@ -769,7 +1084,7 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
             HttpMethod.POST,
             new HttpEntity<>(purchaseReq, headers),
             Map.class);
-    assertThat(purchaseResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(purchaseResp.getStatusCode()).isEqualTo(HttpStatus.CREATED);
     Map<String, Object> purchaseData = (Map<String, Object>) purchaseResp.getBody().get("data");
     Long purchaseId = ((Number) purchaseData.get("id")).longValue();
 
@@ -793,7 +1108,7 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
             HttpMethod.POST,
             new HttpEntity<>(returnReq, headers),
             Map.class);
-    assertThat(returnResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(returnResp.getStatusCode()).isEqualTo(HttpStatus.CREATED);
 
     RawMaterial afterReturn = rawMaterialRepository.findById(rawMaterialId).orElseThrow();
     assertThat(afterReturn.getCurrentStock()).isEqualByComparingTo(new BigDecimal("6"));
@@ -811,6 +1126,263 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
     assertThat(movement.getMovementType()).isEqualTo("RETURN");
     assertThat(movement.getQuantity()).isEqualByComparingTo(new BigDecimal("4"));
     assertThat(movement.getJournalEntryId()).isNotNull();
+  }
+
+  @Test
+  @DisplayName(
+      "Purchase invoice replay with canonical Idempotency-Key returns original purchase without"
+          + " duplicate posting")
+  void purchaseInvoiceReplayUsesCanonicalIdempotencyHeader() {
+    LocalDate entryDate = TestDateUtils.safeDate(company);
+    Long supplierId = createSupplier("P2P Invoice Replay Supplier", "INV-REPLAY-" + shortSuffix());
+    Long rawMaterialId =
+        createRawMaterial(
+            "Invoice Replay Material", "RM-INV-REPLAY-" + shortSuffix(), inventory.getId());
+    BigDecimal quantity = new BigDecimal("7");
+    BigDecimal unitCost = new BigDecimal("9.00");
+    PurchaseWorkflowIds workflow =
+        createPurchaseOrderAndReceipt(supplierId, rawMaterialId, quantity, unitCost, entryDate);
+    GoodsReceipt goodsReceipt =
+        goodsReceiptRepository.findById(workflow.goodsReceiptId()).orElseThrow();
+    int receiptMovementsBeforeReplay =
+        rawMaterialMovementRepository
+            .findByRawMaterialCompanyAndReferenceTypeAndReferenceId(
+                company, InventoryReference.GOODS_RECEIPT, goodsReceipt.getReceiptNumber())
+            .size();
+
+    Map<String, Object> line = new HashMap<>();
+    line.put("rawMaterialId", rawMaterialId);
+    line.put("quantity", quantity);
+    line.put("costPerUnit", unitCost);
+
+    String invoiceNumber = "INV-REPLAY-" + shortSuffix();
+    Map<String, Object> purchaseReq = new HashMap<>();
+    purchaseReq.put("supplierId", supplierId);
+    purchaseReq.put("invoiceNumber", invoiceNumber);
+    purchaseReq.put("invoiceDate", entryDate);
+    purchaseReq.put("purchaseOrderId", workflow.purchaseOrderId());
+    purchaseReq.put("goodsReceiptId", workflow.goodsReceiptId());
+    purchaseReq.put("lines", List.of(line));
+
+    String idempotencyKey = "purch-invoice-" + shortSuffix();
+    HttpHeaders purchaseHeaders = headersWithIdempotencyKey(idempotencyKey);
+
+    ResponseEntity<Map> firstResponse =
+        rest.exchange(
+            "/api/v1/purchasing/raw-material-purchases",
+            HttpMethod.POST,
+            new HttpEntity<>(purchaseReq, purchaseHeaders),
+            Map.class);
+    ResponseEntity<Map> replayResponse =
+        rest.exchange(
+            "/api/v1/purchasing/raw-material-purchases",
+            HttpMethod.POST,
+            new HttpEntity<>(purchaseReq, purchaseHeaders),
+            Map.class);
+
+    assertThat(firstResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+    assertThat(replayResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+    Long firstPurchaseId =
+        ((Number) ((Map<String, Object>) firstResponse.getBody().get("data")).get("id"))
+            .longValue();
+    Long replayPurchaseId =
+        ((Number) ((Map<String, Object>) replayResponse.getBody().get("data")).get("id"))
+            .longValue();
+    assertThat(replayPurchaseId).isEqualTo(firstPurchaseId);
+    assertThat(purchaseRepository.findByCompanyAndIdempotencyKey(company, idempotencyKey))
+        .isPresent();
+    assertThat(purchaseRepository.findByCompanyAndInvoiceNumberIgnoreCase(company, invoiceNumber))
+        .isPresent();
+
+    int receiptMovementsAfterReplay =
+        rawMaterialMovementRepository
+            .findByRawMaterialCompanyAndReferenceTypeAndReferenceId(
+                company, InventoryReference.GOODS_RECEIPT, goodsReceipt.getReceiptNumber())
+            .size();
+    assertThat(receiptMovementsAfterReplay).isEqualTo(receiptMovementsBeforeReplay);
+  }
+
+  @Test
+  @DisplayName("Purchase invoice rejects X-Idempotency-Key legacy header")
+  void purchaseInvoiceRejectsLegacyIdempotencyHeader() {
+    LocalDate entryDate = TestDateUtils.safeDate(company);
+    Long supplierId = createSupplier("P2P Invoice Legacy Supplier", "INV-LEGACY-" + shortSuffix());
+    Long rawMaterialId =
+        createRawMaterial(
+            "Invoice Legacy Material", "RM-INV-LEGACY-" + shortSuffix(), inventory.getId());
+    BigDecimal quantity = new BigDecimal("4");
+    BigDecimal unitCost = new BigDecimal("11.00");
+    PurchaseWorkflowIds workflow =
+        createPurchaseOrderAndReceipt(supplierId, rawMaterialId, quantity, unitCost, entryDate);
+
+    String invoiceNumber = "INV-LEGACY-" + shortSuffix();
+    Map<String, Object> purchaseReq = new HashMap<>();
+    purchaseReq.put("supplierId", supplierId);
+    purchaseReq.put("invoiceNumber", invoiceNumber);
+    purchaseReq.put("invoiceDate", entryDate);
+    purchaseReq.put("purchaseOrderId", workflow.purchaseOrderId());
+    purchaseReq.put("goodsReceiptId", workflow.goodsReceiptId());
+    purchaseReq.put(
+        "lines",
+        List.of(
+            Map.of("rawMaterialId", rawMaterialId, "quantity", quantity, "costPerUnit", unitCost)));
+
+    HttpHeaders legacyHeaders = headersWithLegacyIdempotencyKey("legacy-invoice-" + shortSuffix());
+    ResponseEntity<Map> response =
+        rest.exchange(
+            "/api/v1/purchasing/raw-material-purchases",
+            HttpMethod.POST,
+            new HttpEntity<>(purchaseReq, legacyHeaders),
+            Map.class);
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    Map<String, Object> data = (Map<String, Object>) response.getBody().get("data");
+    assertThat(data.get("message"))
+        .isEqualTo("X-Idempotency-Key is not supported for purchase invoices; use Idempotency-Key");
+    assertThat(purchaseRepository.findByCompanyAndInvoiceNumberIgnoreCase(company, invoiceNumber))
+        .isEmpty();
+  }
+
+  @Test
+  @DisplayName(
+      "Purchase return replay with canonical Idempotency-Key returns original reversal without"
+          + " duplicate stock effects")
+  void purchaseReturnReplayUsesCanonicalIdempotencyHeader() {
+    LocalDate entryDate = TestDateUtils.safeDate(company);
+    Long supplierId = createSupplier("P2P Return Replay Supplier", "RET-REPLAY-" + shortSuffix());
+    Long rawMaterialId =
+        createRawMaterial(
+            "Return Replay Material", "RM-RET-REPLAY-" + shortSuffix(), inventory.getId());
+    BigDecimal purchaseQty = new BigDecimal("10");
+    BigDecimal unitCost = new BigDecimal("8.00");
+    PurchaseWorkflowIds workflow =
+        createPurchaseOrderAndReceipt(supplierId, rawMaterialId, purchaseQty, unitCost, entryDate);
+
+    Map<String, Object> purchaseReq = new HashMap<>();
+    purchaseReq.put("supplierId", supplierId);
+    purchaseReq.put("invoiceNumber", "INV-RET-REPLAY-" + shortSuffix());
+    purchaseReq.put("invoiceDate", entryDate);
+    purchaseReq.put("purchaseOrderId", workflow.purchaseOrderId());
+    purchaseReq.put("goodsReceiptId", workflow.goodsReceiptId());
+    purchaseReq.put(
+        "lines",
+        List.of(
+            Map.of(
+                "rawMaterialId", rawMaterialId, "quantity", purchaseQty, "costPerUnit", unitCost)));
+
+    ResponseEntity<Map> purchaseResp =
+        rest.exchange(
+            "/api/v1/purchasing/raw-material-purchases",
+            HttpMethod.POST,
+            new HttpEntity<>(purchaseReq, headers),
+            Map.class);
+    assertThat(purchaseResp.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+    Long purchaseId =
+        ((Number) ((Map<String, Object>) purchaseResp.getBody().get("data")).get("id")).longValue();
+
+    String returnIdempotencyKey = "purch-return-" + shortSuffix();
+    HttpHeaders returnHeaders = headersWithIdempotencyKey(returnIdempotencyKey);
+    Map<String, Object> returnReq = new HashMap<>();
+    returnReq.put("supplierId", supplierId);
+    returnReq.put("purchaseId", purchaseId);
+    returnReq.put("rawMaterialId", rawMaterialId);
+    returnReq.put("quantity", new BigDecimal("4"));
+    returnReq.put("unitCost", unitCost);
+    returnReq.put("returnDate", entryDate);
+    returnReq.put("reason", "P2P return replay test");
+
+    ResponseEntity<Map> firstReturnResp =
+        rest.exchange(
+            "/api/v1/purchasing/raw-material-purchases/returns",
+            HttpMethod.POST,
+            new HttpEntity<>(returnReq, returnHeaders),
+            Map.class);
+    ResponseEntity<Map> replayReturnResp =
+        rest.exchange(
+            "/api/v1/purchasing/raw-material-purchases/returns",
+            HttpMethod.POST,
+            new HttpEntity<>(returnReq, returnHeaders),
+            Map.class);
+
+    assertThat(firstReturnResp.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+    assertThat(replayReturnResp.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+    Long firstJournalId =
+        ((Number) ((Map<String, Object>) firstReturnResp.getBody().get("data")).get("id"))
+            .longValue();
+    Long replayJournalId =
+        ((Number) ((Map<String, Object>) replayReturnResp.getBody().get("data")).get("id"))
+            .longValue();
+    assertThat(replayJournalId).isEqualTo(firstJournalId);
+
+    RawMaterial afterReturn = rawMaterialRepository.findById(rawMaterialId).orElseThrow();
+    assertThat(afterReturn.getCurrentStock()).isEqualByComparingTo(new BigDecimal("6"));
+    List<RawMaterialMovement> returnMovements =
+        rawMaterialMovementRepository.findByReferenceTypeAndReferenceId(
+            InventoryReference.PURCHASE_RETURN, returnIdempotencyKey);
+    assertThat(returnMovements).hasSize(1);
+  }
+
+  @Test
+  @DisplayName("Purchase return rejects X-Idempotency-Key legacy header")
+  void purchaseReturnRejectsLegacyIdempotencyHeader() {
+    LocalDate entryDate = TestDateUtils.safeDate(company);
+    Long supplierId = createSupplier("P2P Return Legacy Supplier", "RET-LEGACY-" + shortSuffix());
+    Long rawMaterialId =
+        createRawMaterial(
+            "Return Legacy Material", "RM-RET-LEGACY-" + shortSuffix(), inventory.getId());
+    BigDecimal purchaseQty = new BigDecimal("6");
+    BigDecimal unitCost = new BigDecimal("7.00");
+    PurchaseWorkflowIds workflow =
+        createPurchaseOrderAndReceipt(supplierId, rawMaterialId, purchaseQty, unitCost, entryDate);
+
+    Map<String, Object> purchaseReq = new HashMap<>();
+    purchaseReq.put("supplierId", supplierId);
+    purchaseReq.put("invoiceNumber", "INV-RET-LEGACY-" + shortSuffix());
+    purchaseReq.put("invoiceDate", entryDate);
+    purchaseReq.put("purchaseOrderId", workflow.purchaseOrderId());
+    purchaseReq.put("goodsReceiptId", workflow.goodsReceiptId());
+    purchaseReq.put(
+        "lines",
+        List.of(
+            Map.of(
+                "rawMaterialId", rawMaterialId, "quantity", purchaseQty, "costPerUnit", unitCost)));
+
+    ResponseEntity<Map> purchaseResp =
+        rest.exchange(
+            "/api/v1/purchasing/raw-material-purchases",
+            HttpMethod.POST,
+            new HttpEntity<>(purchaseReq, headers),
+            Map.class);
+    assertThat(purchaseResp.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+    Long purchaseId =
+        ((Number) ((Map<String, Object>) purchaseResp.getBody().get("data")).get("id")).longValue();
+
+    RawMaterial beforeReturn = rawMaterialRepository.findById(rawMaterialId).orElseThrow();
+    HttpHeaders legacyHeaders = headersWithLegacyIdempotencyKey("legacy-return-" + shortSuffix());
+    Map<String, Object> returnReq = new HashMap<>();
+    returnReq.put("supplierId", supplierId);
+    returnReq.put("purchaseId", purchaseId);
+    returnReq.put("rawMaterialId", rawMaterialId);
+    returnReq.put("quantity", BigDecimal.ONE);
+    returnReq.put("unitCost", unitCost);
+    returnReq.put("returnDate", entryDate);
+    returnReq.put("reason", "legacy header should fail");
+
+    ResponseEntity<Map> response =
+        rest.exchange(
+            "/api/v1/purchasing/raw-material-purchases/returns",
+            HttpMethod.POST,
+            new HttpEntity<>(returnReq, legacyHeaders),
+            Map.class);
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    Map<String, Object> data = (Map<String, Object>) response.getBody().get("data");
+    assertThat(data.get("message"))
+        .isEqualTo("X-Idempotency-Key is not supported for purchase returns; use Idempotency-Key");
+
+    RawMaterial afterReturnAttempt = rawMaterialRepository.findById(rawMaterialId).orElseThrow();
+    assertThat(afterReturnAttempt.getCurrentStock())
+        .isEqualByComparingTo(beforeReturn.getCurrentStock());
   }
 
   @Test
@@ -860,7 +1432,7 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
             HttpMethod.POST,
             new HttpEntity<>(purchaseReq, headers),
             Map.class);
-    assertThat(purchaseResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(purchaseResp.getStatusCode()).isEqualTo(HttpStatus.CREATED);
 
     ResponseEntity<Map> afterResp =
         rest.exchange(
@@ -912,7 +1484,7 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
             HttpMethod.POST,
             new HttpEntity<>(purchaseReq, headers),
             Map.class);
-    assertThat(purchaseResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(purchaseResp.getStatusCode()).isEqualTo(HttpStatus.CREATED);
     Map<String, Object> purchaseData = (Map<String, Object>) purchaseResp.getBody().get("data");
     Long purchaseId = ((Number) purchaseData.get("id")).longValue();
 
@@ -935,7 +1507,7 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
             HttpMethod.POST,
             new HttpEntity<>(returnReq, headers),
             Map.class);
-    assertThat(returnResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(returnResp.getStatusCode()).isEqualTo(HttpStatus.CREATED);
 
     BigDecimal afterReturnInput = amount(gstReturn(period), "inputTax");
     assertThat(afterPurchaseInput.subtract(afterReturnInput)).isEqualByComparingTo(taxAmount);
@@ -963,14 +1535,14 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
     gstLine.setAccount(gstOutput);
     gstLine.setDebit(BigDecimal.ZERO);
     gstLine.setCredit(new BigDecimal("12.34"));
-    draft.getLines().add(gstLine);
+    draft.addLine(gstLine);
 
     JournalLine offsetLine = new JournalLine();
     offsetLine.setJournalEntry(draft);
     offsetLine.setAccount(cash);
     offsetLine.setDebit(new BigDecimal("12.34"));
     offsetLine.setCredit(BigDecimal.ZERO);
-    draft.getLines().add(offsetLine);
+    draft.addLine(offsetLine);
     journalEntryRepository.saveAndFlush(draft);
 
     BigDecimal afterOutput = gstOutputTax(period);
@@ -993,7 +1565,52 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
     ResponseEntity<Map> resp =
         rest.exchange(
             "/api/v1/suppliers", HttpMethod.POST, new HttpEntity<>(req, headers), Map.class);
-    assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+    Map<String, Object> data = (Map<String, Object>) resp.getBody().get("data");
+    assertThat(data).containsKey("outstandingBalance");
+    Long supplierId = ((Number) data.get("id")).longValue();
+
+    ResponseEntity<Map> supplierDetailResp =
+        rest.exchange(
+            "/api/v1/suppliers/" + supplierId,
+            HttpMethod.GET,
+            new HttpEntity<>(headers),
+            Map.class);
+    assertThat(supplierDetailResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+    Map<String, Object> supplierDetailData =
+        (Map<String, Object>) supplierDetailResp.getBody().get("data");
+    assertThat(supplierDetailData).containsKey("outstandingBalance");
+
+    ResponseEntity<Map> approveResp =
+        rest.exchange(
+            "/api/v1/suppliers/" + supplierId + "/approve",
+            HttpMethod.POST,
+            new HttpEntity<>(headers),
+            Map.class);
+    assertThat(approveResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+    ResponseEntity<Map> activateResp =
+        rest.exchange(
+            "/api/v1/suppliers/" + supplierId + "/activate",
+            HttpMethod.POST,
+            new HttpEntity<>(headers),
+            Map.class);
+    assertThat(activateResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+    return supplierId;
+  }
+
+  private Long createSupplierWithoutStateCode(String name, String code, String gstNumber) {
+    Map<String, Object> req = new HashMap<>();
+    req.put("name", name);
+    req.put("code", code);
+    req.put("contactEmail", "p2p-" + shortSuffix() + "@bbp.com");
+    req.put("creditLimit", new BigDecimal("25000.00"));
+    req.put("gstNumber", gstNumber);
+    ResponseEntity<Map> resp =
+        rest.exchange(
+            "/api/v1/suppliers", HttpMethod.POST, new HttpEntity<>(req, headers), Map.class);
+    assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.CREATED);
     Map<String, Object> data = (Map<String, Object>) resp.getBody().get("data");
     Long supplierId = ((Number) data.get("id")).longValue();
 
@@ -1068,7 +1685,7 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
             HttpMethod.POST,
             new HttpEntity<>(poReq, headers),
             Map.class);
-    assertThat(poResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(poResp.getStatusCode()).isEqualTo(HttpStatus.CREATED);
     Map<String, Object> poData = (Map<String, Object>) poResp.getBody().get("data");
     Long purchaseOrderId = ((Number) poData.get("id")).longValue();
 
@@ -1079,6 +1696,23 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
             new HttpEntity<>(headers),
             Map.class);
     assertThat(approveResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+    ResponseEntity<Map> timelineResp =
+        rest.exchange(
+            "/api/v1/purchasing/purchase-orders/" + purchaseOrderId + "/timeline",
+            HttpMethod.GET,
+            new HttpEntity<>(headers),
+            Map.class);
+    assertThat(timelineResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+    List<Map<String, Object>> timeline =
+        (List<Map<String, Object>>) timelineResp.getBody().get("data");
+    assertThat(timeline).isNotEmpty();
+    assertThat(timeline)
+        .allSatisfy(
+            event -> {
+              assertThat(event).containsKeys("status", "timestamp", "actor");
+            });
+    assertThat(timeline).anySatisfy(event -> assertThat(event.get("status")).isEqualTo("APPROVED"));
 
     return purchaseOrderId;
   }
@@ -1109,7 +1743,7 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
             HttpMethod.POST,
             new HttpEntity<>(grReq, headers),
             Map.class);
-    assertThat(grResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(grResp.getStatusCode()).isEqualTo(HttpStatus.CREATED);
     Map<String, Object> grData = (Map<String, Object>) grResp.getBody().get("data");
     return ((Number) grData.get("id")).longValue();
   }
@@ -1167,6 +1801,38 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
         .reduce(BigDecimal.ZERO, BigDecimal::add);
   }
 
+  private BigDecimal sumDebits(JournalEntry entry) {
+    if (entry == null || entry.getLines() == null) {
+      return BigDecimal.ZERO;
+    }
+    return entry.getLines().stream()
+        .map(line -> safeAmount(line.getDebit()))
+        .reduce(BigDecimal.ZERO, BigDecimal::add);
+  }
+
+  private BigDecimal findRoundingImbalanceAmount(
+      List<BigDecimal> sourceDebitComponents, BigDecimal sourceAmount) {
+    BigDecimal maxAmount = sourceAmount.setScale(2, RoundingMode.DOWN);
+    long maxCents = maxAmount.movePointRight(2).longValue();
+    for (long cents = 1; cents < maxCents; cents++) {
+      BigDecimal amount = BigDecimal.valueOf(cents, 2);
+      BigDecimal ratio = amount.divide(sourceAmount, 6, RoundingMode.HALF_UP);
+      BigDecimal scaledDebits = sourceAmount.multiply(ratio).setScale(2, RoundingMode.HALF_UP);
+      BigDecimal scaledCredits =
+          sourceDebitComponents.stream()
+              .map(
+                  component ->
+                      safeAmount(component).multiply(ratio).setScale(2, RoundingMode.HALF_UP))
+              .reduce(BigDecimal.ZERO, BigDecimal::add);
+      if (scaledDebits.compareTo(BigDecimal.ZERO) > 0
+          && scaledCredits.compareTo(BigDecimal.ZERO) > 0
+          && scaledDebits.compareTo(scaledCredits) != 0) {
+        return amount;
+      }
+    }
+    return null;
+  }
+
   private BigDecimal safeAmount(BigDecimal value) {
     return value != null ? value : BigDecimal.ZERO;
   }
@@ -1200,6 +1866,23 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
     return amount(gstReturn(period), "outputTax");
   }
 
+  private List<?> transactionEventTrail(Long journalEntryId) {
+    ResponseEntity<Map> response =
+        rest.exchange(
+            "/api/v1/accounting/audit/transactions/" + journalEntryId,
+            HttpMethod.GET,
+            new HttpEntity<>(headers),
+            Map.class);
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+    Object body = response.getBody();
+    assertThat(body).isInstanceOf(Map.class);
+    Object data = ((Map<?, ?>) body).get("data");
+    assertThat(data).isInstanceOf(Map.class);
+    Object eventTrail = ((Map<?, ?>) data).get("eventTrail");
+    assertThat(eventTrail).isInstanceOf(List.class);
+    return (List<?>) eventTrail;
+  }
+
   private HttpHeaders authHeaders() {
     Map<String, Object> req =
         Map.of(
@@ -1223,8 +1906,51 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
     return scoped;
   }
 
+  private HttpHeaders headersWithCorrelationId(HttpHeaders baseHeaders, UUID correlationId) {
+    HttpHeaders scoped = new HttpHeaders();
+    scoped.putAll(baseHeaders);
+    scoped.set("X-Correlation-Id", correlationId.toString());
+    return scoped;
+  }
+
+  private HttpHeaders headersWithLegacyIdempotencyKey(String idempotencyKey) {
+    HttpHeaders scoped = new HttpHeaders();
+    scoped.putAll(headers);
+    scoped.set("X-Idempotency-Key", idempotencyKey);
+    return scoped;
+  }
+
   private String shortSuffix() {
     String token = Long.toString(System.nanoTime());
     return token.length() > 8 ? token.substring(token.length() - 8) : token;
+  }
+
+  private AuditActionEvent awaitBusinessAuditEvent(
+      Long companyId, String module, String action, String entityType, String entityId) {
+    Instant deadline = Instant.now().plus(Duration.ofSeconds(5));
+    while (Instant.now().isBefore(deadline)) {
+      Optional<AuditActionEvent> match =
+          auditActionEventRepository
+              .findTopByCompanyIdAndModuleIgnoreCaseAndActionIgnoreCaseAndEntityTypeIgnoreCaseAndEntityIdOrderByOccurredAtDesc(
+                  companyId, module, action, entityType, entityId);
+      if (match.isPresent()) {
+        return match.get();
+      }
+      try {
+        Thread.sleep(100);
+      } catch (InterruptedException ex) {
+        Thread.currentThread().interrupt();
+        throw new AssertionError("Interrupted while waiting for audit event", ex);
+      }
+    }
+    throw new AssertionError(
+        "Audit event not found: module="
+            + module
+            + ", action="
+            + action
+            + ", entityType="
+            + entityType
+            + ", entityId="
+            + entityId);
   }
 }

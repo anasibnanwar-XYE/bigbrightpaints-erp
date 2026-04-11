@@ -23,7 +23,6 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAllocationRepository;
 import com.bigbrightpaints.erp.modules.accounting.service.DealerLedgerService;
 import com.bigbrightpaints.erp.modules.accounting.service.JournalReferenceResolver;
@@ -37,6 +36,7 @@ import com.bigbrightpaints.erp.modules.invoice.dto.InvoiceDto;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrder;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderRepository;
+import com.bigbrightpaints.erp.modules.sales.service.CompanyScopedSalesLookupService;
 import com.bigbrightpaints.erp.modules.sales.service.SalesDispatchReconciliationService;
 import com.bigbrightpaints.erp.modules.sales.service.SalesOrderCrudService;
 import com.bigbrightpaints.erp.shared.dto.LinkedBusinessReferenceDto;
@@ -51,7 +51,8 @@ class InvoiceServiceTest {
   @Mock private SalesDispatchReconciliationService salesDispatchReconciliationService;
   @Mock private SalesOrderRepository salesOrderRepository;
   @Mock private InvoiceNumberService invoiceNumberService;
-  @Mock private CompanyEntityLookup companyEntityLookup;
+  @Mock private CompanyScopedSalesLookupService salesLookupService;
+  @Mock private CompanyScopedInvoiceLookupService invoiceLookupService;
   @Mock private JournalReferenceResolver journalReferenceResolver;
   @Mock private DealerLedgerService dealerLedgerService;
   @Mock private PackagingSlipRepository packagingSlipRepository;
@@ -69,7 +70,8 @@ class InvoiceServiceTest {
             invoiceRepository,
             salesOrderCrudService,
             salesOrderRepository,
-            companyEntityLookup,
+            salesLookupService,
+            invoiceLookupService,
             packagingSlipRepository,
             settlementAllocationRepository);
     company = new Company();
@@ -521,6 +523,35 @@ class InvoiceServiceTest {
   }
 
   @Test
+  void isSlipLinkedToInvoice_returnsTrueOnlyForMatchingInvoiceId() {
+    PackagingSlip slip = new PackagingSlip();
+    slip.setInvoiceId(91L);
+    Invoice invoice = new Invoice();
+    ReflectionTestUtils.setField(invoice, "id", 91L);
+
+    Boolean linked =
+        ReflectionTestUtils.invokeMethod(invoiceService, "isSlipLinkedToInvoice", slip, invoice);
+
+    assertThat(linked).isTrue();
+  }
+
+  @Test
+  void isSlipLinkedToInvoice_returnsFalseForMissingOrDifferentInvoiceId() {
+    PackagingSlip slip = new PackagingSlip();
+    slip.setInvoiceId(91L);
+    Invoice invoice = new Invoice();
+    ReflectionTestUtils.setField(invoice, "id", 92L);
+
+    Boolean linked =
+        ReflectionTestUtils.invokeMethod(invoiceService, "isSlipLinkedToInvoice", slip, invoice);
+
+    assertThat(linked).isFalse();
+    Boolean missingInvoice =
+        ReflectionTestUtils.invokeMethod(invoiceService, "isSlipLinkedToInvoice", slip, null);
+    assertThat(missingInvoice).isFalse();
+  }
+
+  @Test
   void listInvoices_batchesLinkedReferenceLookupsForPage() {
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
     when(invoiceRepository.findIdsByCompanyOrderByIssueDateDescIdDesc(
@@ -562,17 +593,17 @@ class InvoiceServiceTest {
     firstSlip.setSalesOrder(firstOrder);
     firstSlip.setSlipNumber("PS-201");
     firstSlip.setStatus("DISPATCHED");
+    firstSlip.setInvoiceId(11L);
 
     PackagingSlip secondSlip = new PackagingSlip();
     ReflectionTestUtils.setField(secondSlip, "id", 202L);
     secondSlip.setSalesOrder(secondOrder);
     secondSlip.setSlipNumber("PS-202");
     secondSlip.setStatus("DISPATCHED");
+    secondSlip.setInvoiceId(12L);
 
     when(packagingSlipRepository.findAllByCompanyAndSalesOrderIdIn(company, List.of(101L, 102L)))
         .thenReturn(List.of(firstSlip, secondSlip));
-    when(invoiceRepository.findByCompanyAndSalesOrder_IdIn(company, List.of(101L, 102L)))
-        .thenReturn(List.of(firstInvoice, secondInvoice));
 
     com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAllocation allocation =
         new com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAllocation();
@@ -594,11 +625,12 @@ class InvoiceServiceTest {
         .contains("SOURCE_ORDER", "DISPATCH", "SETTLEMENT");
 
     verify(packagingSlipRepository).findAllByCompanyAndSalesOrderIdIn(company, List.of(101L, 102L));
-    verify(invoiceRepository).findByCompanyAndSalesOrder_IdIn(company, List.of(101L, 102L));
     verify(settlementAllocationRepository)
         .findByCompanyAndInvoice_IdInOrderByCreatedAtDesc(company, List.of(11L, 12L));
     verify(packagingSlipRepository, org.mockito.Mockito.never())
         .findAllByCompanyAndSalesOrderId(any(), anyLong());
+    verify(invoiceRepository, org.mockito.Mockito.never())
+        .findByCompanyAndSalesOrder_IdIn(company, List.of(101L, 102L));
     verify(invoiceRepository, org.mockito.Mockito.never())
         .findAllByCompanyAndSalesOrderId(any(), anyLong());
     verify(settlementAllocationRepository, org.mockito.Mockito.never())
@@ -606,11 +638,61 @@ class InvoiceServiceTest {
   }
 
   @Test
+  void listInvoices_filtersBySalesOrderWhenOrderIdProvided() {
+    when(companyContextService.requireCurrentCompany()).thenReturn(company);
+    when(invoiceRepository.findIdsByCompanyAndSalesOrderIdOrderByIssueDateDescIdDesc(
+            company, 101L, PageRequest.of(0, 20)))
+        .thenReturn(new PageImpl<>(List.of(11L)));
+
+    SalesOrder firstOrder = new SalesOrder();
+    ReflectionTestUtils.setField(firstOrder, "id", 101L);
+    firstOrder.setCompany(company);
+    firstOrder.setOrderNumber("SO-101");
+
+    Invoice firstInvoice = new Invoice();
+    ReflectionTestUtils.setField(firstInvoice, "id", 11L);
+    firstInvoice.setCompany(company);
+    firstInvoice.setInvoiceNumber("INV-11");
+    firstInvoice.setStatus("ISSUED");
+    firstInvoice.setSalesOrder(firstOrder);
+    when(invoiceRepository.findByCompanyAndIdInOrderByIssueDateDescIdDesc(company, List.of(11L)))
+        .thenReturn(List.of(firstInvoice));
+    when(packagingSlipRepository.findAllByCompanyAndSalesOrderIdIn(company, List.of(101L)))
+        .thenReturn(List.of());
+    when(settlementAllocationRepository.findByCompanyAndInvoice_IdInOrderByCreatedAtDesc(
+            company, List.of(11L)))
+        .thenReturn(List.of());
+
+    List<InvoiceDto> invoices = invoiceService.listInvoices(0, 20, 101L);
+
+    assertThat(invoices).singleElement().extracting(InvoiceDto::invoiceNumber).isEqualTo("INV-11");
+    verify(invoiceRepository)
+        .findIdsByCompanyAndSalesOrderIdOrderByIssueDateDescIdDesc(
+            company, 101L, PageRequest.of(0, 20));
+    verify(invoiceRepository, org.mockito.Mockito.never())
+        .findIdsByCompanyOrderByIssueDateDescIdDesc(company, PageRequest.of(0, 20));
+  }
+
+  @Test
+  void listInvoices_returnsEmptyWhenOrderFilterHasNoInvoices() {
+    when(companyContextService.requireCurrentCompany()).thenReturn(company);
+    when(invoiceRepository.findIdsByCompanyAndSalesOrderIdOrderByIssueDateDescIdDesc(
+            company, 202L, PageRequest.of(0, 10)))
+        .thenReturn(new PageImpl<>(List.of()));
+
+    assertThat(invoiceService.listInvoices(0, 10, 202L)).isEmpty();
+
+    verify(invoiceRepository)
+        .findIdsByCompanyAndSalesOrderIdOrderByIssueDateDescIdDesc(
+            company, 202L, PageRequest.of(0, 10));
+  }
+
+  @Test
   void listDealerInvoices_batchesLookupsForDealerPage() {
     Dealer dealer = new Dealer();
     ReflectionTestUtils.setField(dealer, "id", 901L);
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
-    when(companyEntityLookup.requireDealer(company, 901L)).thenReturn(dealer);
+    when(salesLookupService.requireDealer(company, 901L)).thenReturn(dealer);
     when(invoiceRepository.findIdsByCompanyAndDealerOrderByIssueDateDescIdDesc(
             company, dealer, PageRequest.of(0, 25)))
         .thenReturn(new PageImpl<>(List.of(81L)));
@@ -778,7 +860,7 @@ class InvoiceServiceTest {
   }
 
   @Test
-  void getInvoice_keepsSingleLegacyDispatchReferenceWhenLinkageIsUnambiguous() {
+  void getInvoice_omitsLegacyDispatchReferenceWithoutExplicitSlipInvoiceLink() {
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
 
     SalesOrder order = new SalesOrder();
@@ -810,8 +892,7 @@ class InvoiceServiceTest {
 
     assertThat(invoiceService.getInvoice(1812L).linkedReferences())
         .filteredOn(reference -> "DISPATCH".equals(reference.relationType()))
-        .extracting(LinkedBusinessReferenceDto::documentNumber)
-        .containsExactly("PS-1813");
+        .isEmpty();
   }
 
   @Test
@@ -858,7 +939,7 @@ class InvoiceServiceTest {
   }
 
   @Test
-  void getInvoice_keepsSingleLegacyDispatchReferenceWhenHistoricalInvoicesAreNotCurrent() {
+  void getInvoice_omitsLegacyDispatchReferenceWhenOnlyHistoricalFallbackWouldMatch() {
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
 
     SalesOrder order = new SalesOrder();
@@ -886,7 +967,7 @@ class InvoiceServiceTest {
             company, List.of(1832L)))
         .thenReturn(List.of());
 
-    for (String historicalStatus : List.of("DRAFT", "VOID", "REVERSED")) {
+    for (String historicalStatus : List.of("DRAFT", "VOID", "REVERSED", "WRITTEN_OFF")) {
       Invoice historicalInvoice = new Invoice();
       historicalInvoice.setCompany(company);
       historicalInvoice.setSalesOrder(order);
@@ -896,13 +977,12 @@ class InvoiceServiceTest {
 
       assertThat(invoiceService.getInvoice(1832L).linkedReferences())
           .filteredOn(reference -> "DISPATCH".equals(reference.relationType()))
-          .extracting(LinkedBusinessReferenceDto::documentNumber)
-          .containsExactly("PS-1833");
+          .isEmpty();
     }
   }
 
   @Test
-  void getInvoice_keepsLegacyDispatchWhenBatchInvoiceLookupReturnsNullForCurrentInvoice() {
+  void getInvoice_omitsLegacyDispatchWhenBatchInvoiceLookupReturnsNullForCurrentInvoice() {
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
 
     SalesOrder order = new SalesOrder();
@@ -934,8 +1014,7 @@ class InvoiceServiceTest {
 
     assertThat(invoiceService.getInvoice(1842L).linkedReferences())
         .filteredOn(reference -> "DISPATCH".equals(reference.relationType()))
-        .extracting(LinkedBusinessReferenceDto::documentNumber)
-        .containsExactly("PS-1843");
+        .isEmpty();
   }
 
   @Test
@@ -952,7 +1031,7 @@ class InvoiceServiceTest {
     invoice.setCompany(company);
     invoice.setSalesOrder(order);
     invoice.setInvoiceNumber("INV-1852");
-    invoice.setStatus("VOID");
+    invoice.setStatus("WRITTEN_OFF");
 
     PackagingSlip legacySlip = new PackagingSlip();
     ReflectionTestUtils.setField(legacySlip, "id", 1853L);
@@ -986,10 +1065,11 @@ class InvoiceServiceTest {
     @SuppressWarnings("unchecked")
     List<PackagingSlip> slips =
         (List<PackagingSlip>)
-            ReflectionTestUtils.invokeMethod(
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                 invoiceService, "findOrderSlips", company, orderId, true);
     SalesOrder resolved =
-        ReflectionTestUtils.invokeMethod(invoiceService, "requireOrderForUpdate", company, orderId);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            invoiceService, "requireOrderForUpdate", company, orderId);
 
     assertThat(slips).isEmpty();
     assertThat(resolved).isSameAs(lockedOrder);
@@ -1013,28 +1093,29 @@ class InvoiceServiceTest {
         .thenReturn(List.of(existingSlip));
 
     SalesOrder resolved =
-        ReflectionTestUtils.invokeMethod(invoiceService, "requireOrderForUpdate", company, orderId);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            invoiceService, "requireOrderForUpdate", company, orderId);
     @SuppressWarnings("unchecked")
     List<PackagingSlip> slips =
         (List<PackagingSlip>)
-            ReflectionTestUtils.invokeMethod(
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                 invoiceService, "findOrderSlips", company, orderId, true);
 
     assertThat(resolved).isSameAs(fallbackOrder);
     assertThat(slips).containsExactly(existingSlip);
     assertThat(
             (Long)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     invoiceService, "activeSlipCount", List.of(existingSlip)))
         .isZero();
     assertThat(
             (PackagingSlip)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     invoiceService, "findSingleActiveSlip", List.of(existingSlip)))
         .isNull();
     assertThat(
             (Boolean)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     invoiceService, "reconcileOrderInvoiceMarker", fallbackOrder, 1L, false))
         .isFalse();
   }
@@ -1054,7 +1135,7 @@ class InvoiceServiceTest {
     Dealer dealer = new Dealer();
     ReflectionTestUtils.setField(dealer, "id", 902L);
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
-    when(companyEntityLookup.requireDealer(company, 902L)).thenReturn(dealer);
+    when(salesLookupService.requireDealer(company, 902L)).thenReturn(dealer);
     when(invoiceRepository.findIdsByCompanyAndDealerOrderByIssueDateDescIdDesc(
             company, dealer, PageRequest.of(0, 10)))
         .thenReturn(new PageImpl<>(List.of()));
@@ -1062,7 +1143,7 @@ class InvoiceServiceTest {
     assertThat(invoiceService.listDealerInvoices(902L, 0, 10)).isEmpty();
     assertThat(
             (Object)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     invoiceService, "buildLinkedReferenceContext", null, List.of()))
         .isNotNull();
 
@@ -1077,7 +1158,7 @@ class InvoiceServiceTest {
     ReflectionTestUtils.setField(slip, "id", 905L);
     slip.setInvoiceId(904L);
 
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         invoiceService, "linkInvoiceToPackagingSlip", order, invoice, List.of(slip));
 
     verify(packagingSlipRepository, org.mockito.Mockito.never()).save(any());
@@ -1096,18 +1177,18 @@ class InvoiceServiceTest {
 
     assertThat(
             (Boolean)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     invoiceService, "reconcileOrderInvoiceMarker", order, 501L, false))
         .isTrue();
     assertThat(order.getFulfillmentInvoiceId()).isNull();
     assertThat(
             (Boolean)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     invoiceService, "hasSingleActiveSlip", List.of(activeSlip)))
         .isTrue();
     assertThat(
             (PackagingSlip)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     invoiceService, "findSingleActiveSlip", List.of(activeSlip)))
         .isSameAs(activeSlip);
   }
@@ -1121,7 +1202,7 @@ class InvoiceServiceTest {
     company.setName("BigBright 1500");
 
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
-    when(companyEntityLookup.requireDealer(company, 1500L)).thenReturn(dealer);
+    when(salesLookupService.requireDealer(company, 1500L)).thenReturn(dealer);
 
     Invoice invoice = new Invoice();
     ReflectionTestUtils.setField(invoice, "id", 1501L);
@@ -1155,7 +1236,7 @@ class InvoiceServiceTest {
     when(invoiceRepository.findByCompanyAndDealerOrderByIssueDateDesc(company, dealer))
         .thenReturn(List.of(invoice));
     when(invoiceRepository.findByCompanyAndId(company, 1501L)).thenReturn(Optional.empty());
-    when(companyEntityLookup.requireInvoice(company, 1501L)).thenReturn(invoice);
+    when(invoiceLookupService.requireInvoice(company, 1501L)).thenReturn(invoice);
     when(settlementAllocationRepository.findByCompanyAndInvoice_IdInOrderByCreatedAtDesc(
             company, List.of(1501L)))
         .thenReturn(List.of(orphanAllocation));
@@ -1180,7 +1261,10 @@ class InvoiceServiceTest {
     assertThat(invoiceService.getInvoice(1501L).invoiceNumber()).isEqualTo("INV-1501");
     assertThat(invoiceService.getInvoiceWithDealerEmail(1501L).dealerEmail())
         .isEqualTo("dealer1500@example.com");
-    assertThat((Object) ReflectionTestUtils.invokeMethod(invoiceService, "toDtos", company, null))
+    assertThat(
+            (Object)
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    invoiceService, "toDtos", company, null))
         .isEqualTo(List.of());
   }
 
@@ -1294,6 +1378,7 @@ class InvoiceServiceTest {
     slip.setSalesOrder(order);
     slip.setSlipNumber("PS-290");
     slip.setStatus("DISPATCHED");
+    slip.setInvoiceId(invoiceId);
 
     com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAllocation allocation =
         new com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAllocation();
@@ -1355,11 +1440,12 @@ class InvoiceServiceTest {
   void helperMethods_coverNullGuardsAndFilteredLinkedReferenceContext() throws Exception {
     assertThat(
             (Object)
-                ReflectionTestUtils.invokeMethod(invoiceService, "findOrderSlips", null, 1L, false))
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    invoiceService, "findOrderSlips", null, 1L, false))
         .isEqualTo(List.of());
     assertThat(
             (Object)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     invoiceService, "findOrderSlips", company, null, false))
         .isEqualTo(List.of());
 
@@ -1367,7 +1453,7 @@ class InvoiceServiceTest {
     orderWithoutId.setCompany(company);
     Invoice invoiceWithoutId = new Invoice();
     invoiceWithoutId.setCompany(company);
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         invoiceService, "linkInvoiceToPackagingSlip", orderWithoutId, invoiceWithoutId, List.of());
 
     SalesOrder order = new SalesOrder();
@@ -1381,7 +1467,7 @@ class InvoiceServiceTest {
     ReflectionTestUtils.setField(existingSlip, "id", 993L);
     existingSlip.setSalesOrder(order);
     existingSlip.setInvoiceId(992L);
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         invoiceService, "linkInvoiceToPackagingSlip", order, invoice, List.of(existingSlip));
     verify(packagingSlipRepository, org.mockito.Mockito.never()).save(existingSlip);
 
@@ -1394,7 +1480,7 @@ class InvoiceServiceTest {
         .thenReturn(List.of(orphanAllocation));
 
     Object context =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             invoiceService, "buildLinkedReferenceContext", company, List.of(invoice));
     java.lang.reflect.Method packagingMethod =
         context.getClass().getDeclaredMethod("packagingSlipsBySalesOrderId");
@@ -1422,7 +1508,8 @@ class InvoiceServiceTest {
     assertThat(settlementMap).isEmpty();
     assertThat(
             (Long)
-                ReflectionTestUtils.invokeMethod(invoiceService, "activeSlipCount", (Object) null))
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    invoiceService, "activeSlipCount", (Object) null))
         .isZero();
   }
 
@@ -1430,14 +1517,14 @@ class InvoiceServiceTest {
   void helperMethods_coverRemainingGuardAndContextBranches() {
     assertThat(
             (Boolean)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     invoiceService, "reconcileOrderInvoiceMarker", null, 1L, true))
         .isFalse();
 
     SalesOrder orderWithoutCompany = new SalesOrder();
     ReflectionTestUtils.setField(orderWithoutCompany, "id", 1601L);
     Invoice invoiceWithoutId = new Invoice();
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         invoiceService,
         "linkInvoiceToPackagingSlip",
         orderWithoutCompany,
@@ -1448,21 +1535,23 @@ class InvoiceServiceTest {
     orderWithoutId.setCompany(company);
     Invoice invoice = new Invoice();
     ReflectionTestUtils.setField(invoice, "id", 1602L);
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         invoiceService, "linkInvoiceToPackagingSlip", orderWithoutId, invoice, List.of());
 
     when(packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, 1603L)).thenReturn(null);
     assertThat(
             (Object)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     invoiceService, "findOrderSlips", company, 1603L, false))
         .isEqualTo(List.of());
     assertThat(
-            (Object) ReflectionTestUtils.invokeMethod(invoiceService, "toDtos", company, List.of()))
+            (Object)
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    invoiceService, "toDtos", company, List.of()))
         .isEqualTo(List.of());
     assertThat(
             (Object)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     invoiceService, "buildLinkedReferenceContext", company, List.of()))
         .isNotNull();
 
@@ -1488,6 +1577,7 @@ class InvoiceServiceTest {
     cogsSlip.setSalesOrder(order);
     cogsSlip.setSlipNumber("PS-1607");
     cogsSlip.setStatus("DISPATCHED");
+    cogsSlip.setInvoiceId(1605L);
     cogsSlip.setCogsJournalEntryId(1707L);
 
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
@@ -1534,7 +1624,7 @@ class InvoiceServiceTest {
         .thenReturn(List.of(nullSalesOrderSlip, validSlip));
 
     Object context =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             invoiceService, "buildLinkedReferenceContext", company, List.of(invoiceWithoutId));
     java.lang.reflect.Method packagingMethod =
         context.getClass().getDeclaredMethod("packagingSlipsBySalesOrderId");
@@ -1574,17 +1664,17 @@ class InvoiceServiceTest {
 
     assertThat(
             (Integer)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     invoiceService, "defaultCurrentInvoiceCount", currentInvoice))
         .isEqualTo(1);
     assertThat(
             (Integer)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     invoiceService, "defaultCurrentInvoiceCount", historicalInvoice))
         .isZero();
     assertThat(
             (Integer)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     invoiceService, "defaultCurrentInvoiceCount", new Object[] {null}))
         .isZero();
 
@@ -1613,7 +1703,7 @@ class InvoiceServiceTest {
         .thenReturn(List.of());
 
     Object context =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             invoiceService, "buildLinkedReferenceContext", company, List.of(invoice));
     java.lang.reflect.Method countMethod =
         context.getClass().getDeclaredMethod("currentInvoiceCountsBySalesOrderId");
@@ -1661,7 +1751,7 @@ class InvoiceServiceTest {
         .thenReturn(List.of());
 
     Object context =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             invoiceService, "buildLinkedReferenceContext", company, List.of(invoice));
     java.lang.reflect.Method countMethod =
         context.getClass().getDeclaredMethod("currentInvoiceCountsBySalesOrderId");
@@ -1723,7 +1813,7 @@ class InvoiceServiceTest {
         .thenReturn(List.of());
 
     Object context =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             invoiceService, "buildLinkedReferenceContext", company, List.of(invoice));
     java.lang.reflect.Method countMethod =
         context.getClass().getDeclaredMethod("currentInvoiceCountsBySalesOrderId");
@@ -1765,7 +1855,7 @@ class InvoiceServiceTest {
         .thenReturn(List.of());
 
     Object context =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             invoiceService, "buildLinkedReferenceContext", company, List.of(invoice));
     java.lang.reflect.Method countMethod =
         context.getClass().getDeclaredMethod("currentInvoiceCountsBySalesOrderId");
@@ -1823,7 +1913,7 @@ class InvoiceServiceTest {
     ReflectionTestUtils.setField(steadyStateOrder, "id", 1301L);
     assertThat(
             (Boolean)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     invoiceService, "reconcileOrderInvoiceMarker", steadyStateOrder, 1300L, true))
         .isFalse();
 
@@ -1833,7 +1923,7 @@ class InvoiceServiceTest {
         .thenReturn(List.of());
     assertThat(
             (Object)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     invoiceService, "findOrderSlips", company, 1301L, true))
         .isEqualTo(List.of());
 
@@ -1847,7 +1937,7 @@ class InvoiceServiceTest {
     when(packagingSlipRepository.findAllByCompanyAndSalesOrderIdForUpdate(company, 1301L))
         .thenReturn(List.of(staleSlip));
 
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         invoiceService, "linkInvoiceToPackagingSlip", steadyStateOrder, existingInvoice, null);
     verify(packagingSlipRepository).save(staleSlip);
   }

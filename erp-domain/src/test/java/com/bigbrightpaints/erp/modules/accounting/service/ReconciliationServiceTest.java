@@ -18,6 +18,7 @@ import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -29,7 +30,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -46,6 +46,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodStatus;
 import com.bigbrightpaints.erp.modules.accounting.domain.DealerLedgerRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryStatus;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalLine;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalLineRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalLineRepository.AccountLineTotals;
@@ -56,7 +57,6 @@ import com.bigbrightpaints.erp.modules.accounting.domain.ReconciliationDiscrepan
 import com.bigbrightpaints.erp.modules.accounting.domain.ReconciliationDiscrepancyStatus;
 import com.bigbrightpaints.erp.modules.accounting.domain.ReconciliationDiscrepancyType;
 import com.bigbrightpaints.erp.modules.accounting.domain.SupplierLedgerRepository;
-import com.bigbrightpaints.erp.modules.accounting.dto.BankReconciliationRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.DealerBalanceView;
 import com.bigbrightpaints.erp.modules.accounting.dto.GstReconciliationDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalCreationRequest;
@@ -74,6 +74,7 @@ import com.bigbrightpaints.erp.modules.purchasing.domain.SupplierRepository;
 import com.bigbrightpaints.erp.modules.reports.service.ReportService;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
+import com.bigbrightpaints.erp.test.support.ReflectionFieldAccess;
 
 @ExtendWith(MockitoExtension.class)
 @Tag("critical")
@@ -130,7 +131,7 @@ class ReconciliationServiceTest {
     company = new Company();
     company.setCode("ACME");
     company.setTimezone("Asia/Kolkata");
-    ReflectionTestUtils.setField(company, "id", 1L);
+    ReflectionFieldAccess.setField(company, "id", 1L);
     new CompanyTime(companyClock);
     lenient().when(companyClock.today(company)).thenReturn(LocalDate.of(2026, 3, 18));
     lenient().when(companyContextService.requireCurrentCompany()).thenReturn(company);
@@ -144,20 +145,20 @@ class ReconciliationServiceTest {
   @Test
   void reconcileArWithDealerLedger_reportsDiscrepanciesPerDealer() {
     Account receivable = new Account();
-    ReflectionTestUtils.setField(receivable, "id", 10L);
+    ReflectionFieldAccess.setField(receivable, "id", 10L);
     receivable.setType(AccountType.ASSET);
     receivable.setCode("AR-CONTROL");
     receivable.setBalance(new BigDecimal("260.00"));
 
     Dealer firstDealer = new Dealer();
-    ReflectionTestUtils.setField(firstDealer, "id", 1L);
+    ReflectionFieldAccess.setField(firstDealer, "id", 1L);
     firstDealer.setCode("D-1");
     firstDealer.setName("Dealer One");
     firstDealer.setOutstandingBalance(new BigDecimal("120.00"));
     firstDealer.setReceivableAccount(receivable);
 
     Dealer secondDealer = new Dealer();
-    ReflectionTestUtils.setField(secondDealer, "id", 2L);
+    ReflectionFieldAccess.setField(secondDealer, "id", 2L);
     secondDealer.setCode("D-2");
     secondDealer.setName("Dealer Two");
     secondDealer.setOutstandingBalance(new BigDecimal("140.00"));
@@ -185,7 +186,7 @@ class ReconciliationServiceTest {
   @Test
   void reconcileBankAccount_matchesClearedReferencesAndReportsUnclearedVariance() {
     Account bank = new Account();
-    ReflectionTestUtils.setField(bank, "id", 99L);
+    ReflectionFieldAccess.setField(bank, "id", 99L);
     bank.setCode("BANK-MAIN");
     bank.setName("Main Bank");
     bank.setType(AccountType.ASSET);
@@ -196,7 +197,7 @@ class ReconciliationServiceTest {
         .thenReturn(new BigDecimal("1000.00"));
 
     JournalEntry depositEntry = new JournalEntry();
-    ReflectionTestUtils.setField(depositEntry, "id", 501L);
+    ReflectionFieldAccess.setField(depositEntry, "id", 501L);
     depositEntry.setReferenceNumber("DEP-1");
     depositEntry.setEntryDate(LocalDate.of(2026, 2, 5));
     depositEntry.setMemo("Deposit in transit");
@@ -207,7 +208,7 @@ class ReconciliationServiceTest {
     depositLine.setCredit(BigDecimal.ZERO);
 
     JournalEntry checkEntry = new JournalEntry();
-    ReflectionTestUtils.setField(checkEntry, "id", 502L);
+    ReflectionFieldAccess.setField(checkEntry, "id", 502L);
     checkEntry.setReferenceNumber("CHK-1");
     checkEntry.setEntryDate(LocalDate.of(2026, 2, 6));
     checkEntry.setMemo("Outstanding cheque");
@@ -218,7 +219,7 @@ class ReconciliationServiceTest {
     checkLine.setCredit(new BigDecimal("200.00"));
 
     JournalEntry clearedEntry = new JournalEntry();
-    ReflectionTestUtils.setField(clearedEntry, "id", 503L);
+    ReflectionFieldAccess.setField(clearedEntry, "id", 503L);
     clearedEntry.setReferenceNumber("CLR-1");
     clearedEntry.setEntryDate(LocalDate.of(2026, 2, 7));
     clearedEntry.setMemo("Cleared movement");
@@ -232,19 +233,15 @@ class ReconciliationServiceTest {
             company, 99L, LocalDate.of(2026, 2, 1), LocalDate.of(2026, 2, 28)))
         .thenReturn(List.of(depositLine, checkLine, clearedLine));
 
-    BankReconciliationRequest request =
-        new BankReconciliationRequest(
+    var result =
+        reconciliationService.reconcileBankAccount(
             99L,
             LocalDate.of(2026, 2, 28),
             new BigDecimal("900.00"),
             LocalDate.of(2026, 2, 1),
             LocalDate.of(2026, 2, 28),
-            List.of("CLR-1"),
-            null,
-            null,
-            null);
-
-    var result = reconciliationService.reconcileBankAccount(request);
+            Set.of(),
+            Set.of("CLR-1"));
 
     assertThat(result.outstandingDeposits()).isEqualByComparingTo("300.00");
     assertThat(result.outstandingChecks()).isEqualByComparingTo("200.00");
@@ -258,26 +255,26 @@ class ReconciliationServiceTest {
   @Test
   void reconcileSubledgerBalances_includesCombinedVarianceSummary() {
     Account receivable = new Account();
-    ReflectionTestUtils.setField(receivable, "id", 11L);
+    ReflectionFieldAccess.setField(receivable, "id", 11L);
     receivable.setType(AccountType.ASSET);
     receivable.setCode("AR-CONTROL");
     receivable.setBalance(new BigDecimal("500.00"));
 
     Account payable = new Account();
-    ReflectionTestUtils.setField(payable, "id", 12L);
+    ReflectionFieldAccess.setField(payable, "id", 12L);
     payable.setType(AccountType.LIABILITY);
     payable.setCode("AP-CONTROL");
     payable.setBalance(new BigDecimal("-300.00"));
 
     Dealer dealer = new Dealer();
-    ReflectionTestUtils.setField(dealer, "id", 1L);
+    ReflectionFieldAccess.setField(dealer, "id", 1L);
     dealer.setCode("D-1");
     dealer.setName("Dealer");
     dealer.setOutstandingBalance(new BigDecimal("450.00"));
     dealer.setReceivableAccount(receivable);
 
     Supplier supplier = new Supplier();
-    ReflectionTestUtils.setField(supplier, "id", 2L);
+    ReflectionFieldAccess.setField(supplier, "id", 2L);
     supplier.setCode("S-1");
     supplier.setName("Supplier");
     supplier.setPayableAccount(payable);
@@ -287,7 +284,7 @@ class ReconciliationServiceTest {
     company.setGstPayableAccountId(14L);
 
     Account inventory = new Account();
-    ReflectionTestUtils.setField(inventory, "id", 13L);
+    ReflectionFieldAccess.setField(inventory, "id", 13L);
     inventory.setType(AccountType.ASSET);
     inventory.setCode("INV");
     inventory.setBalance(new BigDecimal("500.00"));
@@ -325,7 +322,7 @@ class ReconciliationServiceTest {
             anyCollection(),
             eq(openPeriod.getStartDate()),
             eq(openPeriod.getEndDate()),
-            eq("POSTED")))
+            eq(JournalEntryStatus.POSTED)))
         .thenReturn(List.of(arTotals), List.of(apTotals));
 
     when(reportService.inventoryValuationAsOf(openPeriod.getEndDate()))
@@ -353,14 +350,14 @@ class ReconciliationServiceTest {
             eq(List.of(11L)),
             eq(openPeriod.getStartDate()),
             eq(openPeriod.getEndDate()),
-            eq("POSTED"));
+            eq(JournalEntryStatus.POSTED));
     verify(journalLineRepository)
         .summarizeTotalsByCompanyAndAccountIdsWithin(
             eq(company),
             eq(List.of(12L)),
             eq(openPeriod.getStartDate()),
             eq(openPeriod.getEndDate()),
-            eq("POSTED"));
+            eq(JournalEntryStatus.POSTED));
 
     assertThat(report.dealerReconciliation().variance()).isEqualByComparingTo("70.00");
     assertThat(report.supplierReconciliation().variance()).isEqualByComparingTo("40.00");
@@ -425,7 +422,7 @@ class ReconciliationServiceTest {
             anyCollection(),
             eq(openPeriod.getStartDate()),
             eq(openPeriod.getEndDate()),
-            eq("POSTED")))
+            eq(JournalEntryStatus.POSTED)))
         .thenReturn(List.of(arTotals), List.of(apTotals));
 
     when(reportService.inventoryValuationAsOf(openPeriod.getEndDate()))
@@ -588,7 +585,10 @@ class ReconciliationServiceTest {
         .isInstanceOfSatisfying(
             ApplicationException.class,
             ex -> {
-              assertThat(ex.getErrorCode()).isEqualTo(com.bigbrightpaints.erp.core.exception.ErrorCode.AUTH_INSUFFICIENT_PERMISSIONS);
+              assertThat(ex.getErrorCode())
+                  .isEqualTo(
+                      com.bigbrightpaints.erp.core.exception.ErrorCode
+                          .AUTH_INSUFFICIENT_PERMISSIONS);
               assertThat(ex.getMessage())
                   .isEqualTo("Inter-company reconciliation must include the active company");
               assertThat(ex.getDetails())
@@ -607,6 +607,13 @@ class ReconciliationServiceTest {
     assertThatThrownBy(() -> reconciliationService.interCompanyReconcile(11L, 22L))
         .isInstanceOf(ApplicationException.class)
         .hasMessageContaining("Active company must be persisted");
+  }
+
+  @Test
+  void interCompanyReconcile_requiresAtLeastOneExplicitCompany() {
+    assertThatThrownBy(() -> reconciliationService.interCompanyReconcile(null, null))
+        .isInstanceOf(ApplicationException.class)
+        .hasMessageContaining("companyA or companyB is required for inter-company reconciliation");
   }
 
   @Test
@@ -707,7 +714,7 @@ class ReconciliationServiceTest {
   }
 
   @Test
-  void resolveDiscrepancy_adjustmentJournal_createsJournalAndMarksAdjusted() {
+  void resolveDiscrepancy_adjustmentJournal_createsJournalAndMarksResolved() {
     Account arControl = account(701L, "AR", AccountType.ASSET, new BigDecimal("600.00"));
     Account adjustment = account(702L, "REV-ADJ", AccountType.REVENUE, BigDecimal.ZERO);
     ReconciliationDiscrepancy discrepancy =
@@ -727,7 +734,7 @@ class ReconciliationServiceTest {
         .thenReturn(journalEntryDto(9001L, "RECON-ADJUSTMENT_JOURNAL-202"));
 
     JournalEntry created = new JournalEntry();
-    ReflectionTestUtils.setField(created, "id", 9001L);
+    ReflectionFieldAccess.setField(created, "id", 9001L);
     when(journalEntryRepository.findByCompanyAndId(company, 9001L))
         .thenReturn(Optional.of(created));
     when(reconciliationDiscrepancyRepository.save(discrepancy)).thenReturn(discrepancy);
@@ -738,7 +745,7 @@ class ReconciliationServiceTest {
             new ReconciliationDiscrepancyResolveRequest(
                 ReconciliationDiscrepancyResolution.ADJUSTMENT_JOURNAL, "variance booking", 702L));
 
-    assertThat(resolved.status()).isEqualTo("ADJUSTED");
+    assertThat(resolved.status()).isEqualTo("RESOLVED");
     assertThat(resolved.resolution()).isEqualTo("ADJUSTMENT_JOURNAL");
     assertThat(resolved.resolutionJournalId()).isEqualTo(9001L);
     assertThat(resolved.resolvedBy()).isEqualTo("UNKNOWN_AUTH_ACTOR");
@@ -843,7 +850,7 @@ class ReconciliationServiceTest {
         .thenReturn(journalEntryDto(9002L, "RECON-WRITE_OFF-203"));
 
     JournalEntry created = new JournalEntry();
-    ReflectionTestUtils.setField(created, "id", 9002L);
+    ReflectionFieldAccess.setField(created, "id", 9002L);
     when(journalEntryRepository.findByCompanyAndId(company, 9002L))
         .thenReturn(Optional.of(created));
     when(reconciliationDiscrepancyRepository.save(discrepancy)).thenReturn(discrepancy);
@@ -858,6 +865,37 @@ class ReconciliationServiceTest {
     assertThat(resolved.resolution()).isEqualTo("WRITE_OFF");
     assertThat(resolved.resolutionJournalId()).isEqualTo(9002L);
     verify(accountingFacade).createStandardJournal(any(JournalCreationRequest.class));
+  }
+
+  @Test
+  void resolveDiscrepancy_adjustmentAlias_acceptsExistingResolutionJournal() {
+    ReconciliationDiscrepancy discrepancy =
+        discrepancy(
+            209L,
+            ReconciliationDiscrepancyStatus.OPEN,
+            ReconciliationDiscrepancyType.AR,
+            company,
+            new BigDecimal("5.00"));
+    JournalEntry existingResolutionJournal = new JournalEntry();
+    ReflectionFieldAccess.setField(existingResolutionJournal, "id", 9100L);
+    existingResolutionJournal.setCompany(company);
+
+    when(reconciliationDiscrepancyRepository.findByCompanyAndId(company, 209L))
+        .thenReturn(Optional.of(discrepancy));
+    when(journalEntryRepository.findByCompanyAndId(company, 9100L))
+        .thenReturn(Optional.of(existingResolutionJournal));
+    when(reconciliationDiscrepancyRepository.save(discrepancy)).thenReturn(discrepancy);
+
+    ReconciliationDiscrepancyDto resolved =
+        reconciliationService.resolveDiscrepancy(
+            209L,
+            new ReconciliationDiscrepancyResolveRequest(
+                ReconciliationDiscrepancyResolution.ADJUSTMENT, "linked correction", null, 9100L));
+
+    assertThat(resolved.status()).isEqualTo("RESOLVED");
+    assertThat(resolved.resolution()).isEqualTo("ADJUSTMENT");
+    assertThat(resolved.resolutionJournalId()).isEqualTo(9100L);
+    verify(accountingFacadeProvider, never()).getObject();
   }
 
   @Test
@@ -986,7 +1024,7 @@ class ReconciliationServiceTest {
         .thenReturn(journalEntryDto(9007L, "RECON-WRITE_OFF-207"));
 
     JournalEntry created = new JournalEntry();
-    ReflectionTestUtils.setField(created, "id", 9007L);
+    ReflectionFieldAccess.setField(created, "id", 9007L);
     when(journalEntryRepository.findByCompanyAndId(company, 9007L))
         .thenReturn(Optional.of(created));
     when(reconciliationDiscrepancyRepository.save(discrepancy)).thenReturn(discrepancy);
@@ -1029,7 +1067,7 @@ class ReconciliationServiceTest {
 
   private Company company(Long id, String code, String name) {
     Company value = new Company();
-    ReflectionTestUtils.setField(value, "id", id);
+    ReflectionFieldAccess.setField(value, "id", id);
     value.setCode(code);
     value.setName(name);
     return value;
@@ -1037,7 +1075,7 @@ class ReconciliationServiceTest {
 
   private Dealer dealer(Long id, String code, String name, String outstandingBalance) {
     Dealer value = new Dealer();
-    ReflectionTestUtils.setField(value, "id", id);
+    ReflectionFieldAccess.setField(value, "id", id);
     value.setCode(code);
     value.setName(name);
     value.setOutstandingBalance(new BigDecimal(outstandingBalance));
@@ -1046,7 +1084,7 @@ class ReconciliationServiceTest {
 
   private Supplier supplier(Long id, String code, String name) {
     Supplier value = new Supplier();
-    ReflectionTestUtils.setField(value, "id", id);
+    ReflectionFieldAccess.setField(value, "id", id);
     value.setCode(code);
     value.setName(name);
     return value;
@@ -1054,7 +1092,7 @@ class ReconciliationServiceTest {
 
   private AccountingPeriod openPeriod(Long id, Company scopedCompany, int year, int month) {
     AccountingPeriod period = new AccountingPeriod();
-    ReflectionTestUtils.setField(period, "id", id);
+    ReflectionFieldAccess.setField(period, "id", id);
     period.setCompany(scopedCompany);
     period.setYear(year);
     period.setMonth(month);
@@ -1067,7 +1105,7 @@ class ReconciliationServiceTest {
 
   private Account account(Long id, String code, AccountType type, BigDecimal balance) {
     Account account = new Account();
-    ReflectionTestUtils.setField(account, "id", id);
+    ReflectionFieldAccess.setField(account, "id", id);
     account.setCode(code);
     account.setType(type);
     account.setBalance(balance);
@@ -1081,7 +1119,7 @@ class ReconciliationServiceTest {
       Company scopedCompany,
       BigDecimal variance) {
     ReconciliationDiscrepancy discrepancy = new ReconciliationDiscrepancy();
-    ReflectionTestUtils.setField(discrepancy, "id", id);
+    ReflectionFieldAccess.setField(discrepancy, "id", id);
     discrepancy.setCompany(scopedCompany);
     discrepancy.setStatus(status);
     discrepancy.setType(type);
@@ -1094,8 +1132,8 @@ class ReconciliationServiceTest {
     discrepancy.setActualAmount(new BigDecimal("75.00"));
     discrepancy.setVariance(variance != null ? variance : new BigDecimal("25.00"));
     discrepancy.setResolutionNote("seeded");
-    ReflectionTestUtils.setField(discrepancy, "createdAt", Instant.parse("2026-03-01T00:00:00Z"));
-    ReflectionTestUtils.setField(discrepancy, "updatedAt", Instant.parse("2026-03-01T00:00:00Z"));
+    ReflectionFieldAccess.setField(discrepancy, "createdAt", Instant.parse("2026-03-01T00:00:00Z"));
+    ReflectionFieldAccess.setField(discrepancy, "updatedAt", Instant.parse("2026-03-01T00:00:00Z"));
     return discrepancy;
   }
 

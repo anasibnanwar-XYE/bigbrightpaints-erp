@@ -370,7 +370,7 @@ class AdminApprovalRbacIT extends AbstractIntegrationTest {
             new HttpEntity<>(null, accountingHeaders),
             Map.class);
     assertThat(accountingPost.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-    assertValidationFailure(accountingPost, "Payroll run not found");
+    assertInvalidReferenceFailure(accountingPost, "Payroll run not found");
 
     ResponseEntity<Map> adminPost =
         rest.exchange(
@@ -379,7 +379,7 @@ class AdminApprovalRbacIT extends AbstractIntegrationTest {
             new HttpEntity<>(null, adminHeaders),
             Map.class);
     assertThat(adminPost.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-    assertValidationFailure(adminPost, "Payroll run not found");
+    assertInvalidReferenceFailure(adminPost, "Payroll run not found");
 
     ResponseEntity<Map> accountingMarkPaid =
         rest.exchange(
@@ -388,7 +388,7 @@ class AdminApprovalRbacIT extends AbstractIntegrationTest {
             new HttpEntity<>(markPaidPayload, accountingHeaders),
             Map.class);
     assertThat(accountingMarkPaid.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-    assertValidationFailure(accountingMarkPaid, "Payroll run not found");
+    assertInvalidReferenceFailure(accountingMarkPaid, "Payroll run not found");
 
     ResponseEntity<Map> adminMarkPaid =
         rest.exchange(
@@ -397,7 +397,7 @@ class AdminApprovalRbacIT extends AbstractIntegrationTest {
             new HttpEntity<>(markPaidPayload, adminHeaders),
             Map.class);
     assertThat(adminMarkPaid.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-    assertValidationFailure(adminMarkPaid, "Payroll run not found");
+    assertInvalidReferenceFailure(adminMarkPaid, "Payroll run not found");
   }
 
   @Test
@@ -412,16 +412,33 @@ class AdminApprovalRbacIT extends AbstractIntegrationTest {
 
     ResponseEntity<Map> createResponse =
         rest.exchange(
-            ErpApiRoutes.DEALER_PORTAL_CREDIT_LIMIT_REQUESTS,
+            ErpApiRoutes.CREDIT_LIMIT_REQUESTS,
             HttpMethod.POST,
             new HttpEntity<>(payload, dealerHeaders),
             Map.class);
-    assertThat(createResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(createResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
     Map<?, ?> createBody = createResponse.getBody();
     assertThat(createBody).isNotNull();
     Map<?, ?> createData = (Map<?, ?>) createBody.get("data");
     assertThat(createData).isNotNull();
     long requestId = ((Number) createData.get("id")).longValue();
+
+    ResponseEntity<Map> listResponse =
+        rest.exchange(
+            ErpApiRoutes.CREDIT_LIMIT_REQUESTS,
+            HttpMethod.GET,
+            new HttpEntity<>(adminHeaders),
+            Map.class);
+    assertThat(listResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> pendingRequests =
+        (List<Map<String, Object>>) listResponse.getBody().get("data");
+    assertThat(pendingRequests)
+        .anySatisfy(
+            row -> {
+              assertThat(((Number) row.get("id")).longValue()).isEqualTo(requestId);
+              assertThat(String.valueOf(row.get("status"))).isEqualTo("PENDING");
+            });
 
     ResponseEntity<Map> approvalsResponse =
         rest.exchange(
@@ -567,7 +584,7 @@ class AdminApprovalRbacIT extends AbstractIntegrationTest {
             HttpMethod.POST,
             new HttpEntity<>(payload, headers),
             Map.class);
-    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
     Map<?, ?> body = response.getBody();
     assertThat(body).isNotNull();
     Map<?, ?> data = (Map<?, ?>) body.get("data");
@@ -661,6 +678,16 @@ class AdminApprovalRbacIT extends AbstractIntegrationTest {
     Map<?, ?> data = (Map<?, ?>) body.get("data");
     assertThat(data).isNotNull();
     assertThat(data.get("code")).isEqualTo("VAL_001");
+    assertThat(String.valueOf(data.get("message"))).startsWith(expectedMessage);
+  }
+
+  private void assertInvalidReferenceFailure(ResponseEntity<Map> response, String expectedMessage) {
+    Map<?, ?> body = response.getBody();
+    assertThat(body).isNotNull();
+    assertThat(String.valueOf(body.get("message"))).startsWith(expectedMessage);
+    Map<?, ?> data = (Map<?, ?>) body.get("data");
+    assertThat(data).isNotNull();
+    assertThat(data.get("code")).isEqualTo("VAL_006");
     assertThat(String.valueOf(data.get("message"))).startsWith(expectedMessage);
   }
 

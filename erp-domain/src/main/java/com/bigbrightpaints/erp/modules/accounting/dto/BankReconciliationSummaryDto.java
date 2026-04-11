@@ -4,11 +4,13 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
+
 public record BankReconciliationSummaryDto(
     Long accountId,
     String accountCode,
     String accountName,
-    LocalDate statementDate,
+    @JsonFormat(pattern = "yyyy-MM-dd") LocalDate statementDate,
     BigDecimal ledgerBalance,
     BigDecimal statementEndingBalance,
     BigDecimal outstandingDeposits,
@@ -21,7 +23,7 @@ public record BankReconciliationSummaryDto(
   public record BankReconciliationItemDto(
       Long journalEntryId,
       String referenceNumber,
-      LocalDate entryDate,
+      @JsonFormat(pattern = "yyyy-MM-dd") LocalDate entryDate,
       String memo,
       BigDecimal debit,
       BigDecimal credit,

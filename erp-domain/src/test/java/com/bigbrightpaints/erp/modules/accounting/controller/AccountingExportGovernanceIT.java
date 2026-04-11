@@ -65,7 +65,9 @@ class AccountingExportGovernanceIT extends AbstractIntegrationTest {
     HttpHeaders accountingHeaders = authHeaders(ACCOUNTING_EMAIL);
     ResponseEntity<byte[]> accountingResponse =
         rest.exchange(
-            "/api/v1/accounting/statements/suppliers/" + supplierId + "/pdf?from=2026-01-01&to=2026-01-31",
+            "/api/v1/accounting/statements/suppliers/"
+                + supplierId
+                + "/pdf?from=2026-01-01&to=2026-01-31",
             HttpMethod.GET,
             new HttpEntity<>(accountingHeaders),
             byte[].class);
@@ -74,7 +76,9 @@ class AccountingExportGovernanceIT extends AbstractIntegrationTest {
     HttpHeaders adminHeaders = authHeaders(ADMIN_EMAIL);
     ResponseEntity<byte[]> adminResponse =
         rest.exchange(
-            "/api/v1/accounting/statements/suppliers/" + supplierId + "/pdf?from=2026-01-01&to=2026-01-31",
+            "/api/v1/accounting/statements/suppliers/"
+                + supplierId
+                + "/pdf?from=2026-01-01&to=2026-01-31",
             HttpMethod.GET,
             new HttpEntity<>(adminHeaders),
             byte[].class);
@@ -92,7 +96,9 @@ class AccountingExportGovernanceIT extends AbstractIntegrationTest {
 
     ResponseEntity<byte[]> response =
         rest.exchange(
-            "/api/v1/accounting/statements/suppliers/" + supplierId + "/pdf?from=2026-01-01&to=2026-01-31",
+            "/api/v1/accounting/statements/suppliers/"
+                + supplierId
+                + "/pdf?from=2026-01-01&to=2026-01-31",
             HttpMethod.GET,
             new HttpEntity<>(superAdminHeaders),
             byte[].class);
@@ -102,7 +108,7 @@ class AccountingExportGovernanceIT extends AbstractIntegrationTest {
 
   private void assertMethodIsAdminOnly(String methodName, Class<?>... parameterTypes)
       throws Exception {
-    Method method = AccountingController.class.getMethod(methodName, parameterTypes);
+    Method method = StatementReportController.class.getMethod(methodName, parameterTypes);
     PreAuthorize preAuthorize = method.getAnnotation(PreAuthorize.class);
     assertThat(preAuthorize).isNotNull();
     assertThat(preAuthorize.value()).isEqualTo("hasAuthority('ROLE_ADMIN')");
@@ -135,11 +141,13 @@ class AccountingExportGovernanceIT extends AbstractIntegrationTest {
             "creditLimit", new BigDecimal("10000.00"));
 
     ResponseEntity<Map> createResponse =
-        rest.exchange("/api/v1/suppliers", HttpMethod.POST, new HttpEntity<>(request, headers), Map.class);
-    assertThat(createResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        rest.exchange(
+            "/api/v1/suppliers", HttpMethod.POST, new HttpEntity<>(request, headers), Map.class);
+    assertThat(createResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
     Map<String, Object> createBody = createResponse.getBody();
     assertThat(createBody).isNotNull();
-    Long supplierId = ((Number) ((Map<String, Object>) createBody.get("data")).get("id")).longValue();
+    Long supplierId =
+        ((Number) ((Map<String, Object>) createBody.get("data")).get("id")).longValue();
 
     ResponseEntity<Map> approveResponse =
         rest.exchange(

@@ -7,6 +7,7 @@ com.bigbrightpaints.erp.codered.CR_CatalogImportIdempotencyIT
 com.bigbrightpaints.erp.modules.production.controller.CatalogControllerCanonicalProductIT
 com.bigbrightpaints.erp.modules.production.service.CatalogServiceBrandCrudTest
 com.bigbrightpaints.erp.modules.production.service.CatalogServiceBulkUpsertTest
+com.bigbrightpaints.erp.modules.production.service.ProductionCatalogServiceMetadataParsingTest
 com.bigbrightpaints.erp.modules.production.service.ProductionCatalogServiceBulkVariantRaceTest
 com.bigbrightpaints.erp.core.util.CompanyEntityLookupTest
 com.bigbrightpaints.erp.modules.inventory.service.CompanyScopedInventoryLookupServiceTest
@@ -54,6 +55,7 @@ FinishedGoodsDispatchEngineCoverageTest
 FinishedGoodsReservationEngineTest
 FinishedGoodsServiceTest
 com.bigbrightpaints.erp.modules.inventory.service.InventoryBatchTraceabilityServiceTest
+com.bigbrightpaints.erp.modules.inventory.domain.InventoryMutationHelpersTest
 InventoryValuationServiceTest
 com.bigbrightpaints.erp.modules.inventory.RawMaterialAndProductUpdateIT
 com.bigbrightpaints.erp.modules.inventory.controller.FinishedGoodControllerTest
@@ -73,6 +75,7 @@ PurchaseResponseMapperTest
 PurchaseReturnIdempotencyRegressionIT
 PurchaseReturnServiceTest
 com.bigbrightpaints.erp.modules.purchasing.controller.SupplierControllerRoleVisibilityTest
+com.bigbrightpaints.erp.modules.purchasing.domain.PurchasingMutationHelpersTest
 com.bigbrightpaints.erp.modules.purchasing.service.SupplierServiceTest
 PurchasingServiceGoodsReceiptTest
 PurchasingServiceTest
@@ -80,7 +83,9 @@ RawMaterialPurchaseControllerTest
 RawMaterialServiceReceiptContextTest
 SalesControllerIdempotencyHeaderTest
 SalesControllerIT
+com.bigbrightpaints.erp.modules.production.service.ProductionCatalogServiceRetryPolicyTest
 com.bigbrightpaints.erp.modules.sales.service.OrderNumberServiceTest
+com.bigbrightpaints.erp.modules.sales.service.SalesOrderAutoCloseServiceTest
 SalesCoreEngineCoverageTest
 SalesFulfillmentServiceTest
 SalesOrderDtoContractTest
@@ -111,3 +116,5 @@ com.bigbrightpaints.erp.modules.inventory.service.PackagingSlipServiceTest
 com.bigbrightpaints.erp.shared.dto.TruthRailsSharedDtoContractTest
 com.bigbrightpaints.erp.orchestrator.service.EventPublisherServiceTest
 com.bigbrightpaints.erp.orchestrator.service.IntegrationCoordinatorTest
+com.bigbrightpaints.erp.orchestrator.service.OrderIntegrationCoordinatorTest
+com.bigbrightpaints.erp.orchestrator.service.OrderSupportCoordinatorTest

@@ -1,0 +1,38 @@
+{
+  "featureId": "foundation-broken-script-refs",
+  "reviewedAt": "2026-04-05T19:49:08+00:00",
+  "commitId": "d45f9b3e08b461c2cfe27f37754031198e70cc6b",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "Reviewed the feature object, handoff, transcript skeleton, backend-worker skill, services/library guidance, and commit `d45f9b3e08b461c2cfe27f37754031198e70cc6b`. The script cleanup itself is in scope and the stale `lint-and-fix-hints.sh` / `verify_local.real.sh` references are gone from CI/script surfaces, but the SecurityMonitoringService TODO replacement introduces a reachable alert-spam regression: once an identifier crosses the suspicious-activity threshold, the service now sends an email on every later over-limit event.",
+    "issues": [
+      {
+        "file": "erp-domain/src/main/java/com/bigbrightpaints/erp/core/security/SecurityMonitoringService.java",
+        "line": 237,
+        "severity": "blocking",
+        "description": "With `security.monitoring.notification-email` configured, `increaseSuspiciousScore()` now calls `handleSuspiciousActivity()` on every event after the threshold is crossed (`newScore >= suspiciousActivityThreshold`), and `handleSuspiciousActivity()` always sends an email. `PasswordResetService.enforceResetRateLimit()` routes repeated password-reset abuse through `checkRateLimit()` on every request (`erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/service/PasswordResetService.java:395`), so one noisy client will keep generating alert emails indefinitely instead of emitting a single notification for the threshold crossing or block window. The new tests only cover first-send and missing-recipient paths, so this regression is currently unguarded."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "services",
+      "observation": "The authoritative Flyway guard contract used by this feature is not exposed through `.factory/services.yaml`, so the worker had to invoke the script directly.",
+      "evidence": "The transcript skeleton for worker session `05427b2b-d145-4b43-96fc-e715950083ac` shows `rtk bash \"/home/realnigga/Desktop/Mission-control/scripts/guard_flyway_guard_contract.sh\"`; searching `.factory/services.yaml` for `guard_flyway_guard_contract` returns no matches."
+    },
+    {
+      "area": "skills",
+      "observation": "The backend-worker skill requires the handoff to state which safety mode was used (characterization-first, TDD red/green, or guard-first) and why, but this handoff does not record that even though this was a script/guard cleanup.",
+      "evidence": "`.factory/skills/backend-worker/SKILL.md:37-43` says script/governance work should use the authoritative guard first and that the handoff must record the chosen mode and rationale; the handoff JSON for `foundation-broken-script-refs` summarizes verification but never states the mode."
+    },
+    {
+      "area": "knowledge",
+      "observation": "The packet introduced a new optional runtime property, `security.monitoring.notification-email`, but that setting is not represented in the shared library/environment guidance.",
+      "evidence": "`erp-domain/src/main/java/com/bigbrightpaints/erp/core/security/SecurityMonitoringService.java:57` injects `@Value(\"${security.monitoring.notification-email:}\")`; searching `.factory/library/**` for that property or `security.monitoring` returns no matches."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Fail. The broken script references were removed correctly, but the SecurityMonitoringService change now sends repeated alert emails after the suspicious-activity threshold is exceeded, and PasswordResetService makes that path reachable on every rate-limited reset request."
+}

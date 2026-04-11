@@ -1,67 +1,72 @@
 # R2 Checkpoint
 
-Last reviewed: 2026-04-04
+Last reviewed: 2026-04-09
 
 ## Scope
-- Feature: review branch regression remediation for the orchestrator code-red cleanup packet
-- Branch: external review branch `review-orchestrator-erp-code-red-cleanup` in the local review worktree
-- PR: external review candidate — https://github.com/evilfps/bigbrightpaints-erp/pull/new/review/orchestrator-erp-code-red-cleanup
+- Feature: `refactor-accounting-role-cleanup` integration review
+- Branch: `refactor-accounting-role-cleanup` (base: `894023e51`)
+- PR: pending
 - Review candidate:
-  - restore accounting controller compatibility for matching request-body and `Idempotency-Key` values on receipt and settlement endpoints while continuing to fail closed on legacy `X-Idempotency-Key`
-  - surface tenant control-plane target lookup and tenant lifecycle lookup outages as `503 SYS_002` in `CompanyContextFilter` instead of misclassifying them as `403` authorization failures
-  - expand unit and truth-suite coverage for accounting idempotency resolution plus company control-plane outage handling
-- Why this is R2: the packet modifies executable code under `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/` and `erp-domain/src/main/java/com/bigbrightpaints/erp/core/security/`, both of which are high-risk accounting/company control-plane paths guarded by enterprise policy.
+  - keep the accounting audit visibility narrowing so the accounting audit feed remains `ACCOUNTING`-only at runtime
+  - keep the reconciliation cleanup direction by replacing the inheritance-only `ReconciliationServiceCore` split with `ReconciliationService` plus `ReconciliationOperations`, and by removing the leftover legacy request shim
+  - keep the Tally import observability hardening and the docs/runtime corrections that now match the integrated branch truth
+- Why this is R2: the current diff changes high-risk accounting runtime surfaces under `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/**` and `erp-domain/src/main/java/com/bigbrightpaints/erp/core/auditaccess/**`, so merge confidence still requires explicit evidence and rollback posture.
 
 ## Risk Trigger
 - Triggered by:
-  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/controller/AccountingController.java`
-  - `erp-domain/src/main/java/com/bigbrightpaints/erp/core/security/CompanyContextFilter.java`
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/core/auditaccess/AuditVisibilityPolicy.java`
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/BankReconciliationSessionService.java`
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/ReconciliationService.java`
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/ReconciliationOperations.java`
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/TallyImportService.java`
 - Contract surfaces affected:
-  - accounting receipt/settlement idempotency-key resolution for matching header/body replay keys
-  - super-admin tenant control-plane error classification for target-tenant lookup and lifecycle lookup failures
-  - regression/truth-suite assertions that guard those two runtime contracts
+  - accounting audit read visibility for the accounting audit events feed
+  - reconciliation runtime behavior and bank-reconciliation session flow after removal of the legacy request bridge
+  - Tally import observability on previously silent fallback/error-swallowing paths
+  - branch-level policy and changed-files coverage evidence consumed by `bash ci/check-enterprise-policy.sh` and `bash scripts/gate_fast.sh`
 - Failure mode if wrong:
-  - accounting clients that still send a matching body `idempotencyKey` would start failing with `400`
-  - tenant lookup outages would be misreported as permission denials, suppressing retries and obscuring real platform availability incidents
+  - accounting audit visibility widens again beyond the intended accounting-only scope
+  - reconciliation cleanup leaves dead legacy paths or regresses the current explicit bank-reconciliation flow
+  - Tally import failures remain opaque to operators
+  - reviewers get misleading merge confidence from stale governance evidence
 
 ## Approval Authority
 - Mode: orchestrator
 - Approver: Droid mission orchestrator
 - Canary owner: Droid mission orchestrator
-- Approval status: approved for branch-local remediation
-- Basis: the fixes preserve existing compatibility and narrow failure handling without widening permissions, tenant boundaries, schema, or migrations. The risk is bounded by focused controller/filter tests plus truth-suite coverage.
+- Approval status: branch-local integration candidate pending PR review
+- Basis: the repo is still pre-deployment with no external users, so current-state hard-cut cleanup is acceptable, but this branch still changes accounting runtime and audit visibility and therefore keeps explicit evidence in the same lane.
 
 ## Escalation Decision
 - Human escalation required: no
-- Reason: this remediation is compatibility-preserving and fail-closed. It does not widen privileges, cross-tenant access, or irreversible data behavior, and the rollback path is a straightforward revert of the local fixes.
+- Reason: the lane tightens visibility and removes legacy cleanup debt without widening tenant boundaries or introducing destructive migration work; standard code review remains the merge gate.
 
 ## Rollback Owner
 - Owner: Droid mission orchestrator
 - Rollback method:
-  - before merge: revert the local remediation in the review worktree
-  - after merge: revert the regression-fix commit(s) and rerun the same accounting/security validation slice
+  - before merge: revert the integrated packet stack together if audit, reconciliation, Tally, or docs truth becomes disputed
+  - after merge: revert the packet stack and re-run compile, targeted accounting tests, docs lint, enterprise policy, and gate-fast to confirm rollback parity
 - Rollback trigger:
-  - accounting receipt or settlement endpoints stop accepting matching header/body replay keys that previously worked
-  - tenant control-plane lookup outages stop returning `503 SYS_002`
-  - targeted unit/truth-suite validation regresses after merge
+  - audit visibility no longer stays accounting-only
+  - reconciliation session flow or checklist diagnostics regress after the cleanup extraction
+  - Tally import diagnostics become silent again
+  - enterprise policy or gate-fast fails on the integrated lane
 
 ## Expiry
-- Valid until: 2026-04-18
-- Re-evaluate if: the packet expands beyond the accounting/controller + company/security regression fixes, or if additional auth/RBAC/schema/migration paths are added.
-
-## Test Waiver
-- Not applicable — executable code and tests changed, and targeted validators were run.
+- Valid until: 2026-04-23
+- Re-evaluate if: the lane expands beyond audit, reconciliation, Tally, and docs cleanup or introduces auth/RBAC/company-boundary changes.
 
 ## Verification Evidence
 - Commands run:
-  - `cd /Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/review-orchestrator-erp-code-red-cleanup/erp-domain && MIGRATION_SET=v2 mvn -q spotless:check -DspotlessFiles='src/main/java/com/bigbrightpaints/erp/modules/accounting/controller/AccountingController.java,src/main/java/com/bigbrightpaints/erp/core/security/CompanyContextFilter.java,src/test/java/com/bigbrightpaints/erp/modules/accounting/controller/AccountingControllerIdempotencyHeaderParityTest.java,src/test/java/com/bigbrightpaints/erp/modules/auth/CompanyContextFilterControlPlaneBindingTest.java,src/test/java/com/bigbrightpaints/erp/truthsuite/accounting/TS_AccountingControllerIdempotencyHeaderParityRuntimeCoverageTest.java,src/test/java/com/bigbrightpaints/erp/truthsuite/runtime/TS_RuntimeAccountingReplayConflictExecutableCoverageTest.java'`
-  - `cd /Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/review-orchestrator-erp-code-red-cleanup/erp-domain && MIGRATION_SET=v2 mvn -q -Djacoco.skip=true -Dtest='AccountingControllerIdempotencyHeaderParityTest,CompanyContextFilterControlPlaneBindingTest,TS_AccountingControllerIdempotencyHeaderParityRuntimeCoverageTest,TS_RuntimeAccountingReplayConflictExecutableCoverageTest' test`
-  - `cd /Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/review-orchestrator-erp-code-red-cleanup && bash ci/check-codex-review-guidelines.sh`
-  - `cd /Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/review-orchestrator-erp-code-red-cleanup && bash ci/check-enterprise-policy.sh`
+  - `cd erp-domain && mvn -B -ntp -DskipTests compile`
+  - `cd erp-domain && mvn -B -ntp -Djacoco.skip=true -Dtest='AuditVisibilityPolicyTest,ReconciliationServiceTest,BankReconciliationSessionServiceTest,TallyImportServiceTest,AccountingPeriodServiceTest,TS_AccountingPeriodCloseChecklistSafetyContractTest' test`
+  - `bash ci/lint-knowledgebase.sh`
+  - `bash ci/check-enterprise-policy.sh`
+  - `bash scripts/gate_fast.sh`
 - Result summary:
-  - targeted spotless validation passes for all edited production and test files
-  - targeted controller/filter/truth-suite tests pass after the compatibility and outage-classification fixes
-  - codex review policy and enterprise policy checks are expected to pass once this scope-specific R2 checkpoint update is included in the packet
-- Artifacts/links:
-  - repo checkout: local review worktree for the external orchestrator cleanup branch
-  - review source: user-provided PR creation URL for the external review branch
+  - compile passed on the integrated lane after stacking audit, reconciliation, Tally, and docs packets
+  - targeted audit, reconciliation, checklist, and Tally tests passed for the kept code paths
+  - knowledgebase lint and enterprise-policy-check passed with the integrated docs and governance updates
+  - gate-fast returned OK for the current branch diff, but changed-files coverage finished in compatibility mode because branch coverage was `109/126 = 0.865`, below the strict `0.90` threshold
+- Artifact note:
+  - changed-files coverage evidence is recorded inline in this checkpoint; no local artifact path is required for lint or review

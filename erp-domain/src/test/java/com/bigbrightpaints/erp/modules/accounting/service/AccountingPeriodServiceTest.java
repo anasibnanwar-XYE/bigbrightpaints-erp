@@ -4,12 +4,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.contains;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
@@ -24,11 +27,9 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriod;
@@ -37,19 +38,19 @@ import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodStatus;
 import com.bigbrightpaints.erp.modules.accounting.domain.CostingMethod;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryStatus;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalLineRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.PeriodCloseRequest;
 import com.bigbrightpaints.erp.modules.accounting.domain.PeriodCloseRequestRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.PeriodCloseRequestStatus;
 import com.bigbrightpaints.erp.modules.accounting.domain.ReconciliationDiscrepancyRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.ReconciliationDiscrepancyStatus;
-import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodLockRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodReopenRequest;
-import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodUpdateRequest;
-import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodUpsertRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.MonthEndChecklistUpdateRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.PeriodCloseRequestActionRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.PeriodCloseRequestDto;
+import com.bigbrightpaints.erp.modules.accounting.dto.PeriodStatusChangeRequest;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyModule;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
@@ -63,6 +64,7 @@ import com.bigbrightpaints.erp.modules.purchasing.domain.Supplier;
 import com.bigbrightpaints.erp.modules.reports.dto.TrialBalanceDto;
 import com.bigbrightpaints.erp.modules.reports.service.ReportService;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
+import com.bigbrightpaints.erp.test.support.ReflectionFieldAccess;
 
 @ExtendWith(MockitoExtension.class)
 @Tag("critical")
@@ -71,7 +73,7 @@ class AccountingPeriodServiceTest {
   @Mock private AccountingPeriodRepository accountingPeriodRepository;
   @Mock private CompanyContextService companyContextService;
   @Mock private JournalEntryRepository journalEntryRepository;
-  @Mock private CompanyEntityLookup companyEntityLookup;
+  @Mock private CompanyScopedAccountingLookupService accountingLookupService;
   @Mock private JournalLineRepository journalLineRepository;
   @Mock private AccountRepository accountRepository;
   @Mock private CompanyClock companyClock;
@@ -87,6 +89,7 @@ class AccountingPeriodServiceTest {
   @Mock private PeriodCloseHook periodCloseHook;
   @Mock private AccountingPeriodSnapshotService snapshotService;
   @Mock private ClosedPeriodPostingExceptionService closedPeriodPostingExceptionService;
+  @Mock private AccountingComplianceAuditService accountingComplianceAuditService;
 
   private AccountingPeriodService service;
 
@@ -104,7 +107,7 @@ class AccountingPeriodServiceTest {
             accountingPeriodRepository,
             companyContextService,
             journalEntryRepository,
-            companyEntityLookup,
+            accountingLookupService,
             journalLineRepository,
             accountRepository,
             companyClock,
@@ -119,7 +122,7 @@ class AccountingPeriodServiceTest {
             accountingFacadeProvider,
             periodCloseHook,
             snapshotService);
-    ReflectionTestUtils.setField(
+    ReflectionFieldAccess.setField(
         service, "closedPeriodPostingExceptionService", closedPeriodPostingExceptionService);
   }
 
@@ -150,7 +153,7 @@ class AccountingPeriodServiceTest {
   }
 
   @Test
-  void lockPeriod_requiresReasonWhenRequestMissing() {
+  void lockPeriod_requiresLockActionWhenRequestMissing() {
     Company company = company(1L, "ACME");
     AccountingPeriod period = openPeriod(company, 2026, 2);
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
@@ -158,6 +161,24 @@ class AccountingPeriodServiceTest {
         .thenReturn(Optional.of(period));
 
     assertThatThrownBy(() -> service.lockPeriod(12L, null))
+        .isInstanceOf(ApplicationException.class)
+        .hasMessageContaining("Period status action must be LOCK");
+  }
+
+  @Test
+  void lockPeriod_requiresReasonWhenLockActionProvided() {
+    Company company = company(1L, "ACME");
+    AccountingPeriod period = openPeriod(company, 2026, 2);
+    when(companyContextService.requireCurrentCompany()).thenReturn(company);
+    when(accountingPeriodRepository.lockByCompanyAndId(company, 12L))
+        .thenReturn(Optional.of(period));
+
+    assertThatThrownBy(
+            () ->
+                service.lockPeriod(
+                    12L,
+                    new PeriodStatusChangeRequest(
+                        PeriodStatusChangeRequest.PeriodStatusAction.LOCK, null, "   ")))
         .isInstanceOf(ApplicationException.class)
         .hasMessageContaining("Lock reason is required");
   }
@@ -172,7 +193,7 @@ class AccountingPeriodServiceTest {
     when(accountingPeriodRepository.save(period)).thenReturn(period);
 
     assertThat(
-            service.lockPeriod(13L, new AccountingPeriodLockRequest("  lock for audit  ")).status())
+            service.lockPeriod(13L, new PeriodStatusChangeRequest("  lock for audit  ")).status())
         .isEqualTo("LOCKED");
     assertThat(period.getLockReason()).isEqualTo("lock for audit");
     assertThat(period.getLockedBy()).isEqualTo(SYSTEM_PROCESS_ACTOR);
@@ -320,7 +341,7 @@ class AccountingPeriodServiceTest {
   void approvePeriodClose_closesAndCapturesSnapshotWhenNetIncomeZero() {
     Company company = company(1L, "ACME");
     AccountingPeriod period = openPeriod(company, 2026, 2);
-    ReflectionTestUtils.setField(period, "id", 31L);
+    ReflectionFieldAccess.setField(period, "id", 31L);
     PeriodCloseRequest pending = pendingCloseRequest(company, period, 501L, "maker.user");
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
     when(accountingPeriodRepository.lockByCompanyAndId(company, 31L))
@@ -357,10 +378,53 @@ class AccountingPeriodServiceTest {
   }
 
   @Test
+  void approvePeriodClose_createsNextPeriodWithOpenedAuditEvent() {
+    Company company = company(1L, "ACME");
+    AccountingPeriod period = openPeriod(company, 2026, 2);
+    ReflectionFieldAccess.setField(period, "id", 311L);
+    PeriodCloseRequest pending = pendingCloseRequest(company, period, 511L, "maker.user");
+    when(companyContextService.requireCurrentCompany()).thenReturn(company);
+    when(accountingPeriodRepository.lockByCompanyAndId(company, 311L))
+        .thenReturn(Optional.of(period), Optional.of(period));
+    when(periodCloseRequestRepository.lockByCompanyAndAccountingPeriodAndStatus(
+            company, period, PeriodCloseRequestStatus.PENDING))
+        .thenReturn(Optional.of(pending));
+    when(goodsReceiptRepository.countByCompanyAndReceiptDateBetweenAndStatusNot(
+            company, period.getStartDate(), period.getEndDate(), GoodsReceiptStatus.INVOICED))
+        .thenReturn(0L);
+    when(journalLineRepository.summarizeByAccountType(
+            company, period.getStartDate(), period.getEndDate()))
+        .thenReturn(List.of());
+    when(accountingPeriodRepository.save(any(AccountingPeriod.class)))
+        .thenAnswer(invocation -> invocation.getArgument(0));
+    when(periodCloseRequestRepository.save(pending)).thenReturn(pending);
+    when(accountingPeriodRepository.findByCompanyAndYearAndMonth(company, 2026, 3))
+        .thenReturn(Optional.empty());
+    ReflectionFieldAccess.setField(
+        service, "accountingComplianceAuditService", accountingComplianceAuditService);
+    authenticate("checker.user", "ROLE_ADMIN");
+
+    assertThat(
+            service
+                .approvePeriodClose(
+                    311L, new PeriodCloseRequestActionRequest("close and open next", true))
+                .status())
+        .isEqualTo("CLOSED");
+    verify(accountingComplianceAuditService)
+        .recordPeriodTransition(
+            eq(company),
+            any(AccountingPeriod.class),
+            eq("PERIOD_OPENED"),
+            eq(null),
+            eq("OPEN"),
+            contains("Period opened"));
+  }
+
+  @Test
   void approvePeriodClose_allowsSuperAdminAuthority() {
     Company company = company(1L, "ACME");
     AccountingPeriod period = openPeriod(company, 2026, 2);
-    ReflectionTestUtils.setField(period, "id", 310L);
+    ReflectionFieldAccess.setField(period, "id", 310L);
     PeriodCloseRequest pending = pendingCloseRequest(company, period, 510L, "maker.user");
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
     when(accountingPeriodRepository.lockByCompanyAndId(company, 310L))
@@ -394,7 +458,7 @@ class AccountingPeriodServiceTest {
   void approvePeriodClose_setsClosingJournalEntryIdWhenNetIncomeNonZero() {
     Company company = company(1L, "ACME");
     AccountingPeriod period = openPeriod(company, 2026, 2);
-    ReflectionTestUtils.setField(period, "id", 32L);
+    ReflectionFieldAccess.setField(period, "id", 32L);
     PeriodCloseRequest pending = pendingCloseRequest(company, period, 502L, "maker.user");
     JournalEntry closingEntry = journalEntryWithId(444L);
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
@@ -434,7 +498,7 @@ class AccountingPeriodServiceTest {
   void approvePeriodClose_usesPendingForceWhenRequestForceFlagIsMissing() {
     Company company = company(1L, "ACME");
     AccountingPeriod period = openPeriod(company, 2026, 2);
-    ReflectionTestUtils.setField(period, "id", 321L);
+    ReflectionFieldAccess.setField(period, "id", 321L);
     PeriodCloseRequest pending = pendingCloseRequest(company, period, 521L, "maker.user");
     pending.setForceRequested(true);
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
@@ -468,7 +532,7 @@ class AccountingPeriodServiceTest {
   void approvePeriodClose_uninvoicedReceiptsPreventCloseAndSnapshotCapture() {
     Company company = company(1L, "ACME");
     AccountingPeriod period = openPeriod(company, 2026, 2);
-    ReflectionTestUtils.setField(period, "id", 33L);
+    ReflectionFieldAccess.setField(period, "id", 33L);
     PeriodCloseRequest pending = pendingCloseRequest(company, period, 503L, "maker.user");
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
     when(accountingPeriodRepository.lockByCompanyAndId(company, 33L))
@@ -496,7 +560,7 @@ class AccountingPeriodServiceTest {
     Company company = company(1L, "ACME");
     company.setEnabledModules(new LinkedHashSet<>(List.of(CompanyModule.HR_PAYROLL.name())));
     AccountingPeriod period = openPeriod(company, 2026, 2);
-    ReflectionTestUtils.setField(period, "id", 34L);
+    ReflectionFieldAccess.setField(period, "id", 34L);
     PeriodCloseRequest pending = pendingCloseRequest(company, period, 504L, "maker.user");
     period.setBankReconciled(true);
     period.setInventoryCounted(true);
@@ -511,7 +575,7 @@ class AccountingPeriodServiceTest {
             company, period.getStartDate(), period.getEndDate(), GoodsReceiptStatus.INVOICED))
         .thenReturn(0L);
     when(journalEntryRepository.countByCompanyAndEntryDateBetweenAndStatusIn(
-            company, period.getStartDate(), period.getEndDate(), List.of("DRAFT", "PENDING")))
+            company, period.getStartDate(), period.getEndDate(), List.of(JournalEntryStatus.DRAFT)))
         .thenReturn(0L);
     when(reportService.inventoryReconciliation())
         .thenReturn(
@@ -604,7 +668,7 @@ class AccountingPeriodServiceTest {
   void rejectPeriodClose_marksPendingRequestRejectedAndClearsApprovalNote() {
     Company company = company(1L, "ACME");
     AccountingPeriod period = openPeriod(company, 2026, 2);
-    ReflectionTestUtils.setField(period, "id", 35L);
+    ReflectionFieldAccess.setField(period, "id", 35L);
     PeriodCloseRequest pending = pendingCloseRequest(company, period, 505L, "maker.user");
     pending.setApprovalNote("stale approval");
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
@@ -631,7 +695,7 @@ class AccountingPeriodServiceTest {
   void rejectPeriodClose_requiresNoteWhenRequestPayloadIsMissing() {
     Company company = company(1L, "ACME");
     AccountingPeriod period = openPeriod(company, 2026, 2);
-    ReflectionTestUtils.setField(period, "id", 351L);
+    ReflectionFieldAccess.setField(period, "id", 351L);
     PeriodCloseRequest pending = pendingCloseRequest(company, period, 551L, "maker.user");
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
     when(accountingPeriodRepository.lockByCompanyAndId(company, 351L))
@@ -651,7 +715,7 @@ class AccountingPeriodServiceTest {
     Company company = company(1L, "ACME");
     AccountingPeriod period = openPeriod(company, 2026, 2);
     period.setStatus(AccountingPeriodStatus.CLOSED);
-    when(accountingPeriodRepository.findByCompanyAndYearAndMonth(company, 2026, 2))
+    when(accountingPeriodRepository.lockByCompanyAndYearAndMonth(company, 2026, 2))
         .thenReturn(Optional.of(period));
 
     assertThatThrownBy(
@@ -674,7 +738,8 @@ class AccountingPeriodServiceTest {
     period.setStatus(AccountingPeriodStatus.LOCKED);
     ClosedPeriodPostingExceptionService exceptionService =
         org.mockito.Mockito.mock(ClosedPeriodPostingExceptionService.class);
-    ReflectionTestUtils.setField(service, "closedPeriodPostingExceptionService", exceptionService);
+    ReflectionFieldAccess.setField(
+        service, "closedPeriodPostingExceptionService", exceptionService);
     when(accountingPeriodRepository.lockByCompanyAndYearAndMonth(company, 2026, 2))
         .thenReturn(Optional.of(period));
 
@@ -717,9 +782,9 @@ class AccountingPeriodServiceTest {
     period.setInventoryCounted(true);
 
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
-    when(companyEntityLookup.requireAccountingPeriod(company, 99L)).thenReturn(period);
+    when(accountingLookupService.requireAccountingPeriod(company, 99L)).thenReturn(period);
     when(journalEntryRepository.countByCompanyAndEntryDateBetweenAndStatusIn(
-            company, period.getStartDate(), period.getEndDate(), List.of("DRAFT", "PENDING")))
+            company, period.getStartDate(), period.getEndDate(), List.of(JournalEntryStatus.DRAFT)))
         .thenReturn(0L);
     when(reportService.inventoryReconciliation())
         .thenReturn(
@@ -804,9 +869,9 @@ class AccountingPeriodServiceTest {
     AccountingPeriod period = openPeriod(company, 2026, 2);
 
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
-    when(companyEntityLookup.requireAccountingPeriod(company, 100L)).thenReturn(period);
+    when(accountingLookupService.requireAccountingPeriod(company, 100L)).thenReturn(period);
     when(journalEntryRepository.countByCompanyAndEntryDateBetweenAndStatusIn(
-            company, period.getStartDate(), period.getEndDate(), List.of("DRAFT", "PENDING")))
+            company, period.getStartDate(), period.getEndDate(), List.of(JournalEntryStatus.DRAFT)))
         .thenReturn(0L);
     when(reportService.inventoryReconciliation())
         .thenReturn(
@@ -895,11 +960,34 @@ class AccountingPeriodServiceTest {
   }
 
   @Test
+  void requirePostablePeriod_rejectsMissingPeriodWithoutAutoCreation() {
+    Company company = company(1L, "ACME");
+    when(accountingPeriodRepository.lockByCompanyAndYearAndMonth(company, 2026, 2))
+        .thenReturn(Optional.empty());
+
+    assertThatThrownBy(
+            () ->
+                service.requirePostablePeriod(
+                    company,
+                    LocalDate.of(2026, 2, 12),
+                    "JOURNAL_ENTRY",
+                    "JE-MISSING-PERIOD",
+                    "requires explicit period setup",
+                    false))
+        .isInstanceOf(ApplicationException.class)
+        .hasMessageContaining("not found")
+        .hasMessageContaining("create it first");
+    verify(accountingPeriodRepository, never()).save(any(AccountingPeriod.class));
+    verify(closedPeriodPostingExceptionService, never())
+        .authorize(any(), any(), anyString(), anyString(), anyString());
+  }
+
+  @Test
   void requirePostablePeriod_rejectsOverrideWhenWorkflowNotConfigured() {
     Company company = company(1L, "ACME");
     AccountingPeriod period = openPeriod(company, 2026, 2);
     period.setStatus(AccountingPeriodStatus.CLOSED);
-    ReflectionTestUtils.setField(service, "closedPeriodPostingExceptionService", null);
+    ReflectionFieldAccess.setField(service, "closedPeriodPostingExceptionService", null);
 
     when(accountingPeriodRepository.lockByCompanyAndYearAndMonth(company, 2026, 2))
         .thenReturn(Optional.of(period));
@@ -954,9 +1042,9 @@ class AccountingPeriodServiceTest {
     correctionEntry.setSourceReference(null);
 
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
-    when(companyEntityLookup.requireAccountingPeriod(company, 199L)).thenReturn(period);
+    when(accountingLookupService.requireAccountingPeriod(company, 199L)).thenReturn(period);
     when(journalEntryRepository.countByCompanyAndEntryDateBetweenAndStatusIn(
-            company, period.getStartDate(), period.getEndDate(), List.of("DRAFT", "PENDING")))
+            company, period.getStartDate(), period.getEndDate(), List.of(JournalEntryStatus.DRAFT)))
         .thenReturn(0L);
     when(reportService.inventoryReconciliation())
         .thenReturn(
@@ -1042,29 +1130,24 @@ class AccountingPeriodServiceTest {
   void correctionLinkageHelpers_coverEmptyBlankAndCnReferencePaths() {
     Company company = company(1L, "ACME");
     AccountingPeriod period = openPeriod(company, 2026, 2);
+    AccountingPeriodCorrectionJournalClassifier classifier =
+        new AccountingPeriodCorrectionJournalClassifier();
+    AccountingPeriodChecklistDiagnosticsService diagnosticsService =
+        checklistDiagnosticsService(classifier);
 
     when(journalEntryRepository.findByCompanyAndEntryDateBetweenOrderByEntryDateAsc(
             company, period.getStartDate(), period.getEndDate()))
         .thenReturn(List.of());
 
-    assertThat(
-            (Long)
-                ReflectionTestUtils.invokeMethod(
-                    service, "countCorrectionLinkageGaps", company, period))
-        .isZero();
+    assertThat(diagnosticsService.countCorrectionLinkageGaps(company, period)).isZero();
 
     JournalEntry blankReference = new JournalEntry();
     blankReference.setReferenceNumber("   ");
-    assertThat(
-            (Boolean)
-                ReflectionTestUtils.invokeMethod(service, "isCorrectionJournal", blankReference))
-        .isFalse();
+    assertThat(classifier.isCorrectionJournal(blankReference)).isFalse();
 
     JournalEntry cnReference = new JournalEntry();
     cnReference.setReferenceNumber(" cn-2201 ");
-    assertThat(
-            (Boolean) ReflectionTestUtils.invokeMethod(service, "isCorrectionJournal", cnReference))
-        .isTrue();
+    assertThat(classifier.isCorrectionJournal(cnReference)).isTrue();
 
     JournalEntry missingReason = new JournalEntry();
     missingReason.setCorrectionType(
@@ -1072,41 +1155,27 @@ class AccountingPeriodServiceTest {
     missingReason.setCorrectionReason(" ");
     missingReason.setSourceModule("SALES_RETURN");
     missingReason.setSourceReference("SR-2201");
-    assertThat(
-            (Boolean)
-                ReflectionTestUtils.invokeMethod(
-                    service, "isMissingCorrectionLinkage", missingReason))
-        .isTrue();
+    assertThat(classifier.isMissingCorrectionLinkage(missingReason)).isTrue();
   }
 
   @Test
   void correctionLinkageHelpers_coverNullEntriesReversalFlagsAndCompleteLinkage() {
-    assertThat(
-            (Boolean)
-                ReflectionTestUtils.invokeMethod(
-                    service, "isCorrectionJournal", new Object[] {null}))
-        .isFalse();
+    AccountingPeriodCorrectionJournalClassifier classifier =
+        new AccountingPeriodCorrectionJournalClassifier();
+
+    assertThat(classifier.isCorrectionJournal(null)).isFalse();
 
     JournalEntry reversalLinked = new JournalEntry();
     reversalLinked.setReversalOf(new JournalEntry());
-    assertThat(
-            (Boolean)
-                ReflectionTestUtils.invokeMethod(service, "isCorrectionJournal", reversalLinked))
-        .isTrue();
+    assertThat(classifier.isCorrectionJournal(reversalLinked)).isTrue();
 
     JournalEntry debitNote = new JournalEntry();
     debitNote.setReferenceNumber(" dn-3301 ");
-    assertThat(
-            (Boolean) ReflectionTestUtils.invokeMethod(service, "isCorrectionJournal", debitNote))
-        .isTrue();
+    assertThat(classifier.isCorrectionJournal(debitNote)).isTrue();
 
     JournalEntry purchaseReturnNote = new JournalEntry();
     purchaseReturnNote.setReferenceNumber(" prn-3302 ");
-    assertThat(
-            (Boolean)
-                ReflectionTestUtils.invokeMethod(
-                    service, "isCorrectionJournal", purchaseReturnNote))
-        .isTrue();
+    assertThat(classifier.isCorrectionJournal(purchaseReturnNote)).isTrue();
 
     JournalEntry complete = new JournalEntry();
     complete.setCorrectionType(
@@ -1114,10 +1183,7 @@ class AccountingPeriodServiceTest {
     complete.setCorrectionReason("SALES_RETURN");
     complete.setSourceModule("SALES_RETURN");
     complete.setSourceReference("SR-3301");
-    assertThat(
-            (Boolean)
-                ReflectionTestUtils.invokeMethod(service, "isMissingCorrectionLinkage", complete))
-        .isFalse();
+    assertThat(classifier.isMissingCorrectionLinkage(complete)).isFalse();
 
     JournalEntry missingSourceModule = new JournalEntry();
     missingSourceModule.setCorrectionType(
@@ -1125,11 +1191,7 @@ class AccountingPeriodServiceTest {
     missingSourceModule.setCorrectionReason("SALES_RETURN");
     missingSourceModule.setSourceModule(" ");
     missingSourceModule.setSourceReference("SR-3302");
-    assertThat(
-            (Boolean)
-                ReflectionTestUtils.invokeMethod(
-                    service, "isMissingCorrectionLinkage", missingSourceModule))
-        .isTrue();
+    assertThat(classifier.isMissingCorrectionLinkage(missingSourceModule)).isTrue();
 
     JournalEntry missingSourceReference = new JournalEntry();
     missingSourceReference.setCorrectionType(
@@ -1137,11 +1199,7 @@ class AccountingPeriodServiceTest {
     missingSourceReference.setCorrectionReason("SALES_RETURN");
     missingSourceReference.setSourceModule("SALES_RETURN");
     missingSourceReference.setSourceReference(" ");
-    assertThat(
-            (Boolean)
-                ReflectionTestUtils.invokeMethod(
-                    service, "isMissingCorrectionLinkage", missingSourceReference))
-        .isTrue();
+    assertThat(classifier.isMissingCorrectionLinkage(missingSourceReference)).isTrue();
   }
 
   @Test
@@ -1164,9 +1222,9 @@ class AccountingPeriodServiceTest {
     regularEntry.setReferenceNumber("GEN-2003");
 
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
-    when(companyEntityLookup.requireAccountingPeriod(company, 200L)).thenReturn(period);
+    when(accountingLookupService.requireAccountingPeriod(company, 200L)).thenReturn(period);
     when(journalEntryRepository.countByCompanyAndEntryDateBetweenAndStatusIn(
-            company, period.getStartDate(), period.getEndDate(), List.of("DRAFT", "PENDING")))
+            company, period.getStartDate(), period.getEndDate(), List.of(JournalEntryStatus.DRAFT)))
         .thenReturn(0L);
     when(reportService.inventoryReconciliation())
         .thenReturn(
@@ -1253,7 +1311,7 @@ class AccountingPeriodServiceTest {
     Company company = company(1L, "ACME");
     AccountingPeriod period = openPeriod(company, 2026, 2);
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
-    when(companyEntityLookup.requireAccountingPeriod(company, 40L)).thenReturn(period);
+    when(accountingLookupService.requireAccountingPeriod(company, 40L)).thenReturn(period);
     when(accountingPeriodRepository.save(period)).thenReturn(period);
 
     assertThat(service.confirmBankReconciliation(40L, null, "  bank done  ").bankReconciled())
@@ -1267,7 +1325,7 @@ class AccountingPeriodServiceTest {
     Company company = company(1L, "ACME");
     AccountingPeriod period = openPeriod(company, 2026, 2);
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
-    when(companyEntityLookup.requireAccountingPeriod(company, 41L)).thenReturn(period);
+    when(accountingLookupService.requireAccountingPeriod(company, 41L)).thenReturn(period);
     when(accountingPeriodRepository.save(period)).thenReturn(period);
 
     assertThat(service.confirmInventoryCount(41L, null, "  counted  ").inventoryCounted()).isTrue();
@@ -1280,7 +1338,7 @@ class AccountingPeriodServiceTest {
     Company company = company(1L, "ACME");
     AccountingPeriod period = openPeriod(company, 2026, 2);
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
-    when(companyEntityLookup.requireAccountingPeriod(company, 42L)).thenReturn(period);
+    when(accountingLookupService.requireAccountingPeriod(company, 42L)).thenReturn(period);
     when(accountingPeriodRepository.save(period)).thenReturn(period);
     when(journalEntryRepository.findByCompanyAndEntryDateBetweenOrderByEntryDateAsc(
             company, period.getStartDate(), period.getEndDate()))
@@ -1311,6 +1369,65 @@ class AccountingPeriodServiceTest {
   }
 
   @Test
+  void ensurePeriod_recordsOpenedAuditWhenAutoCreatingMissingPeriod() {
+    Company company = company(1L, "ACME");
+    when(accountingPeriodRepository.findByCompanyAndYearAndMonth(company, 2026, 2))
+        .thenReturn(Optional.empty());
+    when(accountingPeriodRepository.save(any(AccountingPeriod.class)))
+        .thenAnswer(invocation -> invocation.getArgument(0));
+    ReflectionFieldAccess.setField(
+        service, "accountingComplianceAuditService", accountingComplianceAuditService);
+
+    AccountingPeriod created = service.ensurePeriod(company, LocalDate.of(2026, 2, 9));
+
+    assertThat(created.getStatus()).isEqualTo(AccountingPeriodStatus.OPEN);
+    verify(accountingComplianceAuditService)
+        .recordPeriodTransition(
+            eq(company),
+            any(AccountingPeriod.class),
+            eq("PERIOD_OPENED"),
+            eq(null),
+            eq("OPEN"),
+            contains("Period opened"));
+  }
+
+  @Test
+  void listPeriods_recordsOpenedAuditForEachAutoCreatedSurroundingPeriod() {
+    Company company = company(1L, "ACME");
+    LocalDate today = LocalDate.of(2026, 4, 9);
+    List<AccountingPeriod> persisted = new ArrayList<>();
+    when(companyContextService.requireCurrentCompany()).thenReturn(company);
+    when(companyClock.today(company)).thenReturn(today);
+    when(accountingPeriodRepository.findByCompanyAndYearAndMonth(company, 2026, 4))
+        .thenReturn(Optional.empty());
+    when(accountingPeriodRepository.findByCompanyAndYearAndMonth(company, 2026, 3))
+        .thenReturn(Optional.empty());
+    when(accountingPeriodRepository.findByCompanyAndYearAndMonth(company, 2026, 5))
+        .thenReturn(Optional.empty());
+    when(accountingPeriodRepository.save(any(AccountingPeriod.class)))
+        .thenAnswer(
+            invocation -> {
+              AccountingPeriod period = invocation.getArgument(0);
+              persisted.add(period);
+              return period;
+            });
+    when(accountingPeriodRepository.findByCompanyOrderByYearDescMonthDesc(company))
+        .thenAnswer(invocation -> persisted);
+    ReflectionFieldAccess.setField(
+        service, "accountingComplianceAuditService", accountingComplianceAuditService);
+
+    assertThat(service.listPeriods()).hasSize(3);
+    verify(accountingComplianceAuditService, org.mockito.Mockito.times(3))
+        .recordPeriodTransition(
+            eq(company),
+            any(AccountingPeriod.class),
+            eq("PERIOD_OPENED"),
+            eq(null),
+            eq("OPEN"),
+            contains("Period opened"));
+  }
+
+  @Test
   void createOrUpdatePeriod_createsPeriodWithRequestedCostingMethod() {
     Company company = company(1L, "ACME");
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
@@ -1320,12 +1437,36 @@ class AccountingPeriodServiceTest {
         .thenAnswer(invocation -> invocation.getArgument(0));
 
     var dto =
-        service.createOrUpdatePeriod(
-            new AccountingPeriodUpsertRequest(2026, 4, CostingMethod.LIFO));
+        service.createOrUpdatePeriod(new AccountingPeriodRequest(2026, 4, CostingMethod.LIFO));
 
     assertThat(dto.year()).isEqualTo(2026);
     assertThat(dto.month()).isEqualTo(4);
     assertThat(dto.costingMethod()).isEqualTo("LIFO");
+  }
+
+  @Test
+  void createOrUpdatePeriod_recordsOpenedAuditWhenCreatingNewPeriod() {
+    Company company = company(1L, "ACME");
+    when(companyContextService.requireCurrentCompany()).thenReturn(company);
+    when(accountingPeriodRepository.lockByCompanyAndYearAndMonth(company, 2026, 7))
+        .thenReturn(Optional.empty());
+    when(accountingPeriodRepository.save(any(AccountingPeriod.class)))
+        .thenAnswer(invocation -> invocation.getArgument(0));
+    ReflectionFieldAccess.setField(
+        service, "accountingComplianceAuditService", accountingComplianceAuditService);
+
+    var dto =
+        service.createOrUpdatePeriod(new AccountingPeriodRequest(2026, 7, CostingMethod.FIFO));
+
+    assertThat(dto.status()).isEqualTo("OPEN");
+    verify(accountingComplianceAuditService)
+        .recordPeriodTransition(
+            eq(company),
+            any(AccountingPeriod.class),
+            eq("PERIOD_OPENED"),
+            eq(null),
+            eq("OPEN"),
+            contains("Period opened"));
   }
 
   @Test
@@ -1340,7 +1481,7 @@ class AccountingPeriodServiceTest {
     assertThatThrownBy(
             () ->
                 service.createOrUpdatePeriod(
-                    new AccountingPeriodUpsertRequest(2026, 13, CostingMethod.FIFO)))
+                    new AccountingPeriodRequest(2026, 13, CostingMethod.FIFO)))
         .isInstanceOf(ApplicationException.class)
         .hasMessageContaining("month must be between 1 and 12");
   }
@@ -1354,7 +1495,7 @@ class AccountingPeriodServiceTest {
     when(accountingPeriodRepository.save(any(AccountingPeriod.class)))
         .thenAnswer(invocation -> invocation.getArgument(0));
 
-    var dto = service.createOrUpdatePeriod(new AccountingPeriodUpsertRequest(2026, 6, null));
+    var dto = service.createOrUpdatePeriod(new AccountingPeriodRequest(2026, 6, null));
 
     assertThat(dto.costingMethod()).isEqualTo("FIFO");
   }
@@ -1370,8 +1511,7 @@ class AccountingPeriodServiceTest {
     when(accountingPeriodRepository.save(period)).thenReturn(period);
 
     var dto =
-        service.updatePeriod(
-            77L, new AccountingPeriodUpdateRequest(CostingMethod.WEIGHTED_AVERAGE));
+        service.updatePeriod(77L, new AccountingPeriodRequest(CostingMethod.WEIGHTED_AVERAGE));
 
     assertThat(dto.costingMethod()).isEqualTo("WEIGHTED_AVERAGE");
     assertThat(period.getStartDate()).isEqualTo(LocalDate.of(2026, 5, 1));
@@ -1387,7 +1527,7 @@ class AccountingPeriodServiceTest {
 
   @Test
   void updatePeriod_rejectsMissingCostingMethod() {
-    assertThatThrownBy(() -> service.updatePeriod(77L, new AccountingPeriodUpdateRequest(null)))
+    assertThatThrownBy(() -> service.updatePeriod(77L, new AccountingPeriodRequest(null)))
         .isInstanceOf(ApplicationException.class)
         .hasMessageContaining("Costing method is required");
   }
@@ -1399,7 +1539,7 @@ class AccountingPeriodServiceTest {
     when(accountingPeriodRepository.lockByCompanyAndId(company, 77L)).thenReturn(Optional.empty());
 
     assertThatThrownBy(
-            () -> service.updatePeriod(77L, new AccountingPeriodUpdateRequest(CostingMethod.FIFO)))
+            () -> service.updatePeriod(77L, new AccountingPeriodRequest(CostingMethod.FIFO)))
         .isInstanceOf(ApplicationException.class)
         .hasMessageContaining("Accounting period not found");
   }
@@ -1409,7 +1549,7 @@ class AccountingPeriodServiceTest {
     company.setCode(code);
     company.setName(code + " Pvt");
     company.setTimezone("Asia/Kolkata");
-    ReflectionTestUtils.setField(company, "id", id);
+    ReflectionFieldAccess.setField(company, "id", id);
     return company;
   }
 
@@ -1428,7 +1568,7 @@ class AccountingPeriodServiceTest {
 
   private JournalEntry journalEntryWithId(Long id) {
     JournalEntry entry = new JournalEntry();
-    ReflectionTestUtils.setField(entry, "id", id);
+    ReflectionFieldAccess.setField(entry, "id", id);
     return entry;
   }
 
@@ -1437,7 +1577,7 @@ class AccountingPeriodServiceTest {
     dealer.setCompany(company);
     dealer.setCode(code);
     dealer.setName(code + " Dealer");
-    ReflectionTestUtils.setField(dealer, "id", id);
+    ReflectionFieldAccess.setField(dealer, "id", id);
     return dealer;
   }
 
@@ -1446,14 +1586,14 @@ class AccountingPeriodServiceTest {
     supplier.setCompany(company);
     supplier.setCode(code);
     supplier.setName(code + " Supplier");
-    ReflectionTestUtils.setField(supplier, "id", id);
+    ReflectionFieldAccess.setField(supplier, "id", id);
     return supplier;
   }
 
   private PeriodCloseRequest pendingCloseRequest(
       Company company, AccountingPeriod period, Long requestId, String requestedBy) {
     PeriodCloseRequest request = new PeriodCloseRequest();
-    ReflectionTestUtils.setField(request, "id", requestId);
+    ReflectionFieldAccess.setField(request, "id", requestId);
     request.setCompany(company);
     request.setAccountingPeriod(period);
     request.setStatus(PeriodCloseRequestStatus.PENDING);
@@ -1477,7 +1617,7 @@ class AccountingPeriodServiceTest {
     AccountingPeriod period = openPeriod(company, 2026, 2);
     period.setStatus(AccountingPeriodStatus.LOCKED);
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
-    when(companyEntityLookup.requireAccountingPeriod(company, 43L)).thenReturn(period);
+    when(accountingLookupService.requireAccountingPeriod(company, 43L)).thenReturn(period);
 
     assertThatThrownBy(() -> service.confirmBankReconciliation(43L, null, "locked mutation"))
         .isInstanceOf(ApplicationException.class)
@@ -1488,6 +1628,8 @@ class AccountingPeriodServiceTest {
   void countCorrectionLinkageGaps_ignoresLegacyReturnJournalsWhenDealerOrSupplierLinkExists() {
     Company company = company(1L, "ACME");
     AccountingPeriod period = openPeriod(company, 2026, 3);
+    AccountingPeriodChecklistDiagnosticsService diagnosticsService =
+        checklistDiagnosticsService(new AccountingPeriodCorrectionJournalClassifier());
 
     JournalEntry salesReturn = new JournalEntry();
     salesReturn.setCompany(company);
@@ -1517,30 +1659,38 @@ class AccountingPeriodServiceTest {
             company, period.getStartDate(), period.getEndDate()))
         .thenReturn(List.of(salesReturn, purchaseReturn, malformedCorrection));
 
-    long gaps =
-        ReflectionTestUtils.invokeMethod(service, "countCorrectionLinkageGaps", company, period);
+    long gaps = diagnosticsService.countCorrectionLinkageGaps(company, period);
 
     assertThat(gaps).isEqualTo(1L);
   }
 
   @Test
   void isMissingCorrectionLinkage_flagsLegacyReturnJournalsWithoutDealerOrSupplierAssociation() {
+    AccountingPeriodCorrectionJournalClassifier classifier =
+        new AccountingPeriodCorrectionJournalClassifier();
+
     JournalEntry orphanedSalesReturn = new JournalEntry();
     orphanedSalesReturn.setReferenceNumber("CRN-ORPHAN-1");
 
     JournalEntry orphanedPurchaseReturn = new JournalEntry();
     orphanedPurchaseReturn.setReferenceNumber("PRN-ORPHAN-1");
 
-    assertThat(
-            (Boolean)
-                ReflectionTestUtils.invokeMethod(
-                    service, "isMissingCorrectionLinkage", orphanedSalesReturn))
-        .isTrue();
-    assertThat(
-            (Boolean)
-                ReflectionTestUtils.invokeMethod(
-                    service, "isMissingCorrectionLinkage", orphanedPurchaseReturn))
-        .isTrue();
+    assertThat(classifier.isMissingCorrectionLinkage(orphanedSalesReturn)).isTrue();
+    assertThat(classifier.isMissingCorrectionLinkage(orphanedPurchaseReturn)).isTrue();
+  }
+
+  private AccountingPeriodChecklistDiagnosticsService checklistDiagnosticsService(
+      AccountingPeriodCorrectionJournalClassifier classifier) {
+    return new AccountingPeriodChecklistDiagnosticsService(
+        journalEntryRepository,
+        reportService,
+        reconciliationService,
+        invoiceRepository,
+        goodsReceiptRepository,
+        rawMaterialPurchaseRepository,
+        payrollRunRepository,
+        reconciliationDiscrepancyRepository,
+        classifier);
   }
 
   private com.bigbrightpaints.erp.modules.accounting.dto.GstReconciliationDto gstReconciliation(

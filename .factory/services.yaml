@@ -11,6 +11,16 @@ commands:
     ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT/erp-domain" && MIGRATION_SET=v2 mvn spotless:check
   spotless-apply: >-
     ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT/erp-domain" && MIGRATION_SET=v2 mvn spotless:apply
+  test-dev-smoke: >-
+    ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT/erp-domain" && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Pdev-smoke test
+  test-local-guard: >-
+    ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT/erp-domain" && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Plocal-guard test
+  test-pr-ci: >-
+    ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT" && bash scripts/gate_fast.sh
+  test-baseline-core: >-
+    ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT" && bash scripts/gate_core.sh
+  test-release-local: >-
+    ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT" && bash scripts/release_proof.sh
   test: >-
     ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT" && bash scripts/gate_fast.sh
   gate-fast: >-
@@ -32,7 +42,7 @@ commands:
   targeted-orchestrator-dispatch-proof: >-
     ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT/erp-domain" && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='OrchestratorControllerIT,IntegrationCoordinatorTest,CommandDispatcherTest,TS_O2COrchestratorDispatchRemovalRegressionTest,TS_RuntimeOrchestratorExecutableCoverageTest,TS_OrchestratorExactlyOnceOutboxTest' test
   targeted-accounting-proof: >-
-    ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT/erp-domain" && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='JournalEntryE2ETest,AccountingControllerJournalEndpointsTest,AccountingControllerIdempotencyHeaderParityTest,CriticalAccountingAxesIT,TS_RuntimeAccountingReplayConflictExecutableCoverageTest,TS_RuntimeAccountingPayrollPostingExecutableCoverageTest,CR_ManualJournalSafetyTest,CR_DealerReceiptSettlementAuditTrailTest,CR_PayrollIdempotencyConcurrencyTest,CR_PurchasingToApAccountingTest,CR_SalesReturnCreditNoteIdempotencyTest,NumberSequenceServiceIntegrationTest,ReferenceNumberServiceTest,TS_RuntimeReferenceNumberServiceExecutableCoverageTest,OrderNumberServiceTest,InvoiceServiceTest,AccountingServiceTest#dealerReceiptService_routesLiveReceiptFlowThroughJournalEntryService+creditDebitNoteService_routesLiveCreditNoteFlowThroughJournalEntryService+inventoryAccountingService_routesLiveLandedCostFlowThroughJournalEntryService' test
+    ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT/erp-domain" && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='JournalEntryE2ETest,AccountingEndpointContractTest,SettlementControllerIdempotencyHeaderParityTest,CriticalAccountingAxesIT,TS_RuntimeAccountingReplayConflictExecutableCoverageTest,CR_ManualJournalSafetyTest,CR_DealerReceiptSettlementAuditTrailTest,CR_PayrollIdempotencyConcurrencyTest,CR_PurchasingToApAccountingTest,CR_SalesReturnCreditNoteIdempotencyTest,NumberSequenceServiceIntegrationTest,ReferenceNumberServiceTest,TS_RuntimeReferenceNumberServiceExecutableCoverageTest,OrderNumberServiceTest,InvoiceServiceTest,AccountingServiceTest#dealerReceiptService_routesLiveReceiptFlowThroughJournalEntryService+creditDebitNoteService_routesLiveCreditNoteFlowThroughJournalEntryService+inventoryAccountingService_routesLiveLandedCostFlowThroughJournalEntryService' test
   targeted-security-proof: >-
     ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT/erp-domain" && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='CompanyContextFilterControlPlaneBindingTest,AuthTenantAuthorityIT,TenantRuntimeEnforcementAuthIT,TS_RuntimeCompanyContextFilterExecutableCoverageTest,TS_RuntimeTenantRuntimeEnforcementTest,TS_RuntimeTenantControlPlaneEnforcementTest,CompanyControllerIT,OpenApiSnapshotIT' test
   targeted-dependent-proof: >-
@@ -73,6 +83,10 @@ commands:
     ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT" && bash ci/lint-knowledgebase.sh && bash ci/check-architecture.sh && bash ci/check-enterprise-policy.sh && bash ci/check-orchestrator-layer.sh && python3 scripts/check_flaky_tags.py --tests-root erp-domain/src/test/java --gate gate-fast && bash scripts/guard_openapi_contract_drift.sh
   docs-lint: >-
     ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT" && bash ci/lint-knowledgebase.sh
+  audit-trail-ownership-guard: >-
+    ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT" && bash scripts/guard_audit_trail_ownership_contract.sh
+  accounting-frontend-doc-contract-proof: >-
+    ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT/erp-domain" && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='SettlementControllerIdempotencyHeaderParityTest,AccountingEndpointContractTest,AccountingApplicationExceptionAdviceTest,AccountingApplicationExceptionResponsesTest,OpeningStockImportControllerTest,TS_RuntimeGlobalExceptionHandlerExecutableCoverageTest,AdminUserValidationEnvelopeIT,OpenApiSnapshotIT' test
   codex-review-policy: >-
     ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT" && bash scripts/enforce_codex_review_policy.sh
   docs-governance: >-
@@ -119,7 +133,7 @@ services:
 
   backend-compose-v2:
     start: >-
-      ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT" && SPRING_DATASOURCE_URL='jdbc:postgresql://db:5432/erp_domain' SPRING_DATASOURCE_USERNAME='erp' SPRING_DATASOURCE_PASSWORD='erp' JWT_SECRET='validation-jwt-secret-validation-jwt-secret' ERP_SECURITY_ENCRYPTION_KEY='validation-encryption-key-32-bytes!!' ERP_SECURITY_AUDIT_PRIVATE_KEY='validation-audit-private-key-not-for-release' SPRING_PROFILES_ACTIVE='prod,flyway-v2' ERP_CORS_ALLOWED_ORIGINS='https://app.bigbrightpaints.com' ERP_CORS_ALLOW_TAILSCALE_HTTP_ORIGINS='true' DB_PORT=5433 SPRING_MAIL_HOST='mailhog' SPRING_MAIL_PORT='1025' SPRING_MAIL_USERNAME='mailhog-user' SPRING_MAIL_PASSWORD='mailhog-password' SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH='false' SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE='false' SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_REQUIRED='false' docker compose up -d --build app
+      ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT" && SPRING_DATASOURCE_URL='jdbc:postgresql://db:5432/erp_domain' SPRING_DATASOURCE_USERNAME='erp' SPRING_DATASOURCE_PASSWORD='erp' JWT_SECRET='validation-jwt-secret-validation-jwt-secret' ERP_SECURITY_ENCRYPTION_KEY='validation-encryption-key-32-bytes!!' ERP_SECURITY_AUDIT_PRIVATE_KEY='validation-audit-private-key-not-for-release' SPRING_PROFILES_ACTIVE='prod,flyway-v2' ERP_INVENTORY_OPENING_STOCK_ENABLED='true' ERP_CORS_ALLOWED_ORIGINS='https://app.bigbrightpaints.com' ERP_CORS_ALLOW_TAILSCALE_HTTP_ORIGINS='true' ERP_ENVIRONMENT_VALIDATION_HEALTH_INDICATOR_SKIP_WHEN_VALIDATION_DISABLED='true' DB_PORT=5433 SPRING_MAIL_HOST='mailhog' SPRING_MAIL_PORT='1025' SPRING_MAIL_USERNAME='mailhog-user' SPRING_MAIL_PASSWORD='mailhog-password' SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH='false' SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE='false' SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_REQUIRED='false' docker compose up -d --build app
     stop: >-
       ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT" && SPRING_DATASOURCE_URL='jdbc:postgresql://db:5432/erp_domain' SPRING_DATASOURCE_USERNAME='erp' SPRING_DATASOURCE_PASSWORD='erp' JWT_SECRET='validation-jwt-secret-validation-jwt-secret' ERP_SECURITY_ENCRYPTION_KEY='validation-encryption-key-32-bytes!!' ERP_SECURITY_AUDIT_PRIVATE_KEY='validation-audit-private-key-not-for-release' DB_PORT=5433 docker compose stop app
     healthcheck: >-

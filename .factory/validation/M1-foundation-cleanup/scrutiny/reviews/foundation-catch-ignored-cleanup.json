@@ -1,0 +1,28 @@
+{
+  "featureId": "foundation-catch-ignored-cleanup",
+  "reviewedAt": "2026-04-05T19:50:06Z",
+  "commitId": "19d00c149b6885ab1f942dbbec7dfedbd553c767",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "I reviewed the feature metadata, worker handoff, transcript skeleton, `backend-worker` guidance, shared-state files, and commit `19d00c149b6885ab1f942dbbec7dfedbd553c767`. Most of the packet does remove `catch (... ignored)` handlers as intended, but the `DashboardWindow` cleanup introduced a blocking input-handling regression on the enterprise dashboard read path and a second timezone-acceptance regression. Because these are production-path correctness issues inside the reviewed commit, the feature does not pass scrutiny.",
+    "issues": [
+      {
+        "file": "erp-domain/src/main/java/com/bigbrightpaints/erp/core/util/DashboardWindow.java",
+        "line": 80,
+        "severity": "blocking",
+        "description": "The new `DAY_WINDOW_PATTERN` + `Integer.parseInt(daysPart)` flow no longer handles numeric overflow. Inputs such as `999999999999d` still match line 78's regex, then throw `NumberFormatException` at line 80 instead of degrading safely like the previous implementation, which caught parse failures and fell back to the default range. `EnterpriseDashboardService.snapshot` (`erp-domain/src/main/java/com/bigbrightpaints/erp/modules/portal/service/EnterpriseDashboardService.java:94-97`) passes the raw `window` query parameter straight into `DashboardWindow.resolve`, so this turns a malformed but user-controlled dashboard request into a 500."
+      },
+      {
+        "file": "erp-domain/src/main/java/com/bigbrightpaints/erp/core/util/DashboardWindow.java",
+        "line": 96,
+        "severity": "non_blocking",
+        "description": "The new timezone validation now accepts only IDs present in `ZoneId.getAvailableZoneIds()` or the literal `UTC`. That is narrower than Java's actual `ZoneId.of(...)` contract: valid offset IDs such as `+05:30` and `GMT+05:30` resolve successfully in Java but are rejected here, causing `parseZone` to silently fall back to the company/default zone. Because `EnterpriseDashboardService.snapshot` forwards the caller-provided `timezone` value directly, valid offset-based dashboard requests can now be calculated in the wrong zone and return skewed aggregates."
+      }
+    ]
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": null,
+  "summary": "FAIL. The catch-cleanup commit mostly removes ignored catches correctly, but `DashboardWindow` now throws on oversized `window` values and silently rejects valid offset-style timezone IDs, so the feature regresses the enterprise dashboard path."
+}

@@ -67,6 +67,8 @@ class CR_ProductionMonitoringContractTest {
         .contains("http://localhost:8081/api/v1/auth/me")
         .contains("[ \"$auth\" = \"200\" ] || [ \"$auth\" = \"401\" ] || [ \"$auth\" = \"403\" ];")
         .contains("backend-compose-v2:")
+        .contains(
+            "ERP_ENVIRONMENT_VALIDATION_HEALTH_INDICATOR_SKIP_WHEN_VALIDATION_DISABLED='true'")
         .contains("SPRING_MAIL_USERNAME='mailhog-user'")
         .contains("SPRING_MAIL_PASSWORD='mailhog-password'")
         .contains("SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH='false'");
@@ -80,9 +82,14 @@ class CR_ProductionMonitoringContractTest {
     assertThat(composeFile)
         .contains("SERVER_PORT: 8081")
         .contains("MANAGEMENT_SERVER_PORT: 9090")
+        .contains(
+            "ERP_ENVIRONMENT_VALIDATION_HEALTH_INDICATOR_SKIP_WHEN_VALIDATION_DISABLED:"
+                + " ${ERP_ENVIRONMENT_VALIDATION_HEALTH_INDICATOR_SKIP_WHEN_VALIDATION_DISABLED:-false}")
         .contains("SPRING_MAIL_USERNAME: ${SPRING_MAIL_USERNAME:-mailhog-user}")
         .contains("SPRING_MAIL_PASSWORD: ${SPRING_MAIL_PASSWORD:-mailhog-password}")
-        .contains("SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH: ${SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH:-false}");
+        .contains(
+            "SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH:"
+                + " ${SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH:-false}");
   }
 
   @Test
@@ -95,13 +102,16 @@ class CR_ProductionMonitoringContractTest {
         .contains("DB_PORT=\"5433\"")
         .contains("strict_compose up -d db rabbitmq mailhog")
         .contains("strict_compose up -d --build app")
+        .contains(
+            "ERP_ENVIRONMENT_VALIDATION_HEALTH_INDICATOR_SKIP_WHEN_VALIDATION_DISABLED='true'")
         .contains("http://localhost:9090/actuator/health")
         .contains("http://localhost:9090/actuator/health/readiness")
         .contains("http://localhost:8081/api/v1/auth/me")
         .contains(
             "[[ \"$STRICT_HEALTH_STATUS\" == \"200\" && \"$STRICT_READINESS_STATUS\" == \"200\" ]]")
         .contains(
-            "[[ \"$STRICT_AUTH_STATUS\" == \"200\" || \"$STRICT_AUTH_STATUS\" == \"401\" || \"$STRICT_AUTH_STATUS\" == \"403\" ]]")
+            "[[ \"$STRICT_AUTH_STATUS\" == \"200\" || \"$STRICT_AUTH_STATUS\" == \"401\" ||"
+                + " \"$STRICT_AUTH_STATUS\" == \"403\" ]]")
         .contains("bash \"$ROOT_DIR/scripts/gate_release.sh\"");
   }
 
@@ -117,7 +127,9 @@ class CR_ProductionMonitoringContractTest {
             true,
             "smtp-relay.example.com",
             "mailer-user",
-            "secret-password");
+            "secret-password",
+            true,
+            false);
 
     Health health = indicator.health();
 
@@ -133,7 +145,7 @@ class CR_ProductionMonitoringContractTest {
   @DisplayName("Required configuration health indicator fails closed for missing secrets")
   void requiredConfigurationHealthIndicatorFailsClosed() {
     RequiredConfigHealthIndicator indicator =
-        new RequiredConfigHealthIndicator("short", "tiny", true, "", true, "", "", "");
+        new RequiredConfigHealthIndicator("short", "tiny", true, "", true, "", "", "", true, false);
 
     Health health = indicator.health();
 

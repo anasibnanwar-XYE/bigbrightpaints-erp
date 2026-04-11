@@ -4,6 +4,8 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
+
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
 
@@ -14,7 +16,7 @@ import jakarta.validation.constraints.DecimalMin;
  * - Audit trail with reason codes
  */
 public record JournalEntryReversalRequest(
-    LocalDate reversalDate,
+    @JsonFormat(pattern = "yyyy-MM-dd") LocalDate reversalDate,
     boolean voidOnly,
     String reason,
     String memo,
@@ -33,7 +35,11 @@ public record JournalEntryReversalRequest(
     String supportingDocumentRef) {
   // Convenience constructor for simple reversals
   public JournalEntryReversalRequest(
-      LocalDate reversalDate, boolean voidOnly, String reason, String memo, Boolean adminOverride) {
+      @JsonFormat(pattern = "yyyy-MM-dd") LocalDate reversalDate,
+      boolean voidOnly,
+      String reason,
+      String memo,
+      Boolean adminOverride) {
     this(reversalDate, voidOnly, reason, memo, adminOverride, null, false, null, null, null, null);
   }
 
@@ -46,7 +52,10 @@ public record JournalEntryReversalRequest(
   }
 
   private JournalEntryReversalRequest copyWith(
-      String nextReason, String nextMemo, boolean nextCascadeRelatedEntries, List<Long> nextRelatedIds) {
+      String nextReason,
+      String nextMemo,
+      boolean nextCascadeRelatedEntries,
+      List<Long> nextRelatedIds) {
     return new JournalEntryReversalRequest(
         reversalDate,
         voidOnly,

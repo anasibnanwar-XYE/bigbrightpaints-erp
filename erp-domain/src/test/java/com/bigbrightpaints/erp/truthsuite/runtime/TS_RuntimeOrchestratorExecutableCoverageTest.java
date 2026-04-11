@@ -190,7 +190,7 @@ class TS_RuntimeOrchestratorExecutableCoverageTest {
 
     String explicit =
         (String)
-            ReflectionTestUtils.invokeMethod(
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                 OrchestratorController.class,
                 "selectPayloadForIdempotency",
                 " idem-1 ",
@@ -198,7 +198,7 @@ class TS_RuntimeOrchestratorExecutableCoverageTest {
                 normalizedPayload);
     String derived =
         (String)
-            ReflectionTestUtils.invokeMethod(
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                 OrchestratorController.class,
                 "selectPayloadForIdempotency",
                 null,
@@ -442,7 +442,7 @@ class TS_RuntimeOrchestratorExecutableCoverageTest {
     when(idempotencyService.start(eq("ORCH.ORDER.AUTO_APPROVE"), eq("idem-auto"), any(), any()))
         .thenReturn(lease);
     when(integrationCoordinator.autoApproveOrder(
-            "SO-901", new BigDecimal("250.00"), "C1", "trace-auto", "persisted-auto-key"))
+            "SO-901", "C1", "trace-auto", "persisted-auto-key"))
         .thenReturn(new IntegrationCoordinator.AutoApprovalResult("READY_TO_SHIP", false));
 
     String trace =
@@ -463,7 +463,8 @@ class TS_RuntimeOrchestratorExecutableCoverageTest {
   }
 
   @Test
-  void commandDispatcher_retired_dispatch_shortcut_stays_deleted_while_payroll_replay_shortCircuits() {
+  void
+      commandDispatcher_retired_dispatch_shortcut_stays_deleted_while_payroll_replay_shortCircuits() {
     WorkflowService workflowService = mock(WorkflowService.class);
     IntegrationCoordinator integrationCoordinator = mock(IntegrationCoordinator.class);
     EventPublisherService eventPublisherService = mock(EventPublisherService.class);
@@ -525,24 +526,26 @@ class TS_RuntimeOrchestratorExecutableCoverageTest {
     String hashInput = "X".repeat(160);
     String normalizedHashed =
         (String)
-            ReflectionTestUtils.invokeMethod(
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                 dispatcher, "normalizeRequestId", hashInput, "idem-fallback");
     assertThat(normalizedHashed).startsWith("RIDH|");
 
     String normalizedFromRequest =
         (String)
-            ReflectionTestUtils.invokeMethod(
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                 dispatcher, "normalizeRequestId", "  req-1  ", "idem-fallback");
     assertThat(normalizedFromRequest).isEqualTo("req-1");
 
     String normalizedFromFallback =
         (String)
-            ReflectionTestUtils.invokeMethod(
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                 dispatcher, "normalizeRequestId", "   ", "  idem-fallback  ");
     assertThat(normalizedFromFallback).isEqualTo("idem-fallback");
 
     String normalizedNull =
-        (String) ReflectionTestUtils.invokeMethod(dispatcher, "normalizeRequestId", null, "   ");
+        (String)
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                dispatcher, "normalizeRequestId", null, "   ");
     assertThat(normalizedNull).isNull();
 
     OrchestratorCommand commandWithIdempotency =
@@ -551,7 +554,7 @@ class TS_RuntimeOrchestratorExecutableCoverageTest {
         new OrchestratorIdempotencyService.CommandLease("trace-1", commandWithIdempotency, true);
     String canonicalFromLease =
         (String)
-            ReflectionTestUtils.invokeMethod(
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                 dispatcher, "canonicalIdempotencyKey", leaseWithCommandKey, "fallback-key");
     assertThat(canonicalFromLease).isEqualTo("persisted-key");
 
@@ -561,7 +564,7 @@ class TS_RuntimeOrchestratorExecutableCoverageTest {
         new OrchestratorIdempotencyService.CommandLease("trace-2", commandWithoutIdempotency, true);
     String canonicalFromFallback =
         (String)
-            ReflectionTestUtils.invokeMethod(
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                 dispatcher, "canonicalIdempotencyKey", leaseWithoutCommandKey, "  fallback-key  ");
     assertThat(canonicalFromFallback).isEqualTo("fallback-key");
 
@@ -569,7 +572,7 @@ class TS_RuntimeOrchestratorExecutableCoverageTest {
         new OrchestratorIdempotencyService.CommandLease("trace-3", null, true);
     String canonicalFromNullCommand =
         (String)
-            ReflectionTestUtils.invokeMethod(
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                 dispatcher,
                 "canonicalIdempotencyKey",
                 leaseWithNullCommand,
@@ -578,7 +581,8 @@ class TS_RuntimeOrchestratorExecutableCoverageTest {
 
     String canonicalNull =
         (String)
-            ReflectionTestUtils.invokeMethod(dispatcher, "canonicalIdempotencyKey", null, null);
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                dispatcher, "canonicalIdempotencyKey", null, null);
     assertThat(canonicalNull).isNull();
   }
 }

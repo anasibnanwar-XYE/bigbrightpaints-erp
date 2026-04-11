@@ -1,22 +1,20 @@
 package com.bigbrightpaints.erp.modules.sales.service;
 
 import java.util.List;
-import java.util.Locale;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.util.StringUtils;
 
 import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.accounting.service.CompanyAccountingSettingsService;
 import com.bigbrightpaints.erp.modules.accounting.service.CompanyDefaultAccountsService;
+import com.bigbrightpaints.erp.modules.accounting.service.CompanyScopedAccountingLookupService;
 import com.bigbrightpaints.erp.modules.accounting.service.DealerLedgerService;
 import com.bigbrightpaints.erp.modules.accounting.service.GstService;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
@@ -49,7 +47,6 @@ import com.bigbrightpaints.erp.modules.sales.dto.SalesOrderSearchFilters;
 import com.bigbrightpaints.erp.modules.sales.dto.SalesOrderStatusHistoryDto;
 import com.bigbrightpaints.erp.modules.sales.dto.SalesTargetDto;
 import com.bigbrightpaints.erp.modules.sales.dto.SalesTargetRequest;
-import com.bigbrightpaints.erp.modules.sales.util.SalesOrderReference;
 import com.bigbrightpaints.erp.shared.dto.PageResponse;
 
 import io.micrometer.core.instrument.MeterRegistry;
@@ -95,7 +92,8 @@ public class SalesService {
       FinishedGoodRepository finishedGoodRepository,
       FinishedGoodBatchRepository finishedGoodBatchRepository,
       AccountRepository accountRepository,
-      CompanyEntityLookup companyEntityLookup,
+      CompanyScopedSalesLookupService salesLookupService,
+      CompanyScopedAccountingLookupService accountingLookupService,
       PackagingSlipRepository packagingSlipRepository,
       FinishedGoodsService finishedGoodsService,
       AccountingFacade accountingFacade,
@@ -127,7 +125,8 @@ public class SalesService {
             finishedGoodRepository,
             finishedGoodBatchRepository,
             accountRepository,
-            companyEntityLookup,
+            salesLookupService,
+            accountingLookupService,
             packagingSlipRepository,
             finishedGoodsService,
             accountingFacade,
@@ -278,80 +277,5 @@ public class SalesService {
 
   public void deleteTarget(Long id, String reason) {
     salesCoreEngine.deleteTarget(id, reason);
-  }
-
-  @SuppressWarnings("unused")
-  private String resolveDispatchExceptionReasonCode(
-      boolean hasCreditException,
-      boolean hasPriceOverride,
-      boolean hasDiscountOverride,
-      boolean hasTaxOverride,
-      boolean hasAnyLineOverride) {
-    int lineOverrideKinds = 0;
-    if (hasPriceOverride) {
-      lineOverrideKinds++;
-    }
-    if (hasDiscountOverride) {
-      lineOverrideKinds++;
-    }
-    if (hasTaxOverride) {
-      lineOverrideKinds++;
-    }
-    if (!hasCreditException && lineOverrideKinds == 0) {
-      return null;
-    }
-    if (hasCreditException && lineOverrideKinds == 0) {
-      return "CREDIT_LIMIT_EXCEPTION";
-    }
-    if (!hasCreditException && lineOverrideKinds == 1) {
-      if (hasPriceOverride) {
-        return "PRICE_OVERRIDE";
-      }
-      if (hasDiscountOverride) {
-        return "DISCOUNT_OVERRIDE";
-      }
-      return "TAX_OVERRIDE";
-    }
-    if (!hasCreditException && hasAnyLineOverride && lineOverrideKinds == 0) {
-      return "LINE_OVERRIDE";
-    }
-    return "COMPOSITE_OVERRIDE";
-  }
-
-  @SuppressWarnings("unused")
-  private String formatDispatchNotesWithOverrideReason(
-      String dispatchNotes, String overrideReason) {
-    String base = StringUtils.hasText(dispatchNotes) ? dispatchNotes.trim() : "";
-    String reason = StringUtils.hasText(overrideReason) ? overrideReason.trim() : "";
-    if (!StringUtils.hasText(reason)) {
-      return base;
-    }
-    String combined =
-        base.isEmpty() ? "Override reason: " + reason : base + " | Override reason: " + reason;
-    if (combined.length() > 1000) {
-      combined = combined.substring(0, 1000);
-    }
-    return combined;
-  }
-
-  @SuppressWarnings("unused")
-  private String normalizeTraceId(String traceId) {
-    if (!StringUtils.hasText(traceId)) {
-      return null;
-    }
-    return traceId.trim();
-  }
-
-  @SuppressWarnings("unused")
-  private String normalizeStatusToken(String status) {
-    if (!StringUtils.hasText(status)) {
-      return "";
-    }
-    return status.trim().toUpperCase(Locale.ROOT);
-  }
-
-  @SuppressWarnings("unused")
-  private String buildCogsReference(String referenceId) {
-    return SalesOrderReference.cogsReference(referenceId);
   }
 }

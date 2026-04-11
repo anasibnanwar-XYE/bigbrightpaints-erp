@@ -20,10 +20,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import com.bigbrightpaints.erp.core.util.CompanyClock;
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
+import com.bigbrightpaints.erp.modules.accounting.service.CompanyScopedAccountingLookupService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.factory.domain.ProductionLog;
@@ -40,7 +40,7 @@ class CostAllocationServiceTest {
   @Mock private ProductionLogRepository productionLogRepository;
   @Mock private FinishedGoodBatchRepository finishedGoodBatchRepository;
   @Mock private AccountingFacade accountingFacade;
-  @Mock private CompanyEntityLookup companyEntityLookup;
+  @Mock private CompanyScopedAccountingLookupService accountingLookupService;
   @Mock private CompanyClock companyClock;
 
   private CostAllocationService costAllocationService;
@@ -54,7 +54,7 @@ class CostAllocationServiceTest {
             productionLogRepository,
             finishedGoodBatchRepository,
             accountingFacade,
-            companyEntityLookup,
+            accountingLookupService,
             companyClock);
     company = new Company();
     company.setTimezone("UTC");
@@ -74,11 +74,11 @@ class CostAllocationServiceTest {
         .thenReturn(Optional.of("CVAR-PROD-1-202604"));
     when(accountingFacade.findExistingCostVarianceReference("PROD-2", "202604"))
         .thenReturn(Optional.empty());
-    when(companyEntityLookup.requireAccount(company, 11L))
+    when(accountingLookupService.requireAccount(company, 11L))
         .thenReturn(account(11L, "FG", AccountType.ASSET));
-    when(companyEntityLookup.requireAccount(company, 12L))
+    when(accountingLookupService.requireAccount(company, 12L))
         .thenReturn(account(12L, "LAB", AccountType.EXPENSE));
-    when(companyEntityLookup.requireAccount(company, 13L))
+    when(accountingLookupService.requireAccount(company, 13L))
         .thenReturn(account(13L, "OVH", AccountType.EXPENSE));
     when(accountingFacade.postCostVarianceAllocation(
             eq("PROD-2"),
@@ -95,7 +95,13 @@ class CostAllocationServiceTest {
     CostAllocationResponse response =
         costAllocationService.allocateCosts(
             new CostAllocationRequest(
-                2026, 4, new BigDecimal("100.00"), new BigDecimal("50.00"), 11L, 12L, 13L,
+                2026,
+                4,
+                new BigDecimal("100.00"),
+                new BigDecimal("50.00"),
+                11L,
+                12L,
+                13L,
                 "Variance allocation"));
 
     assertThat(response.totalLaborAllocated()).isEqualByComparingTo("60.00");
@@ -118,20 +124,34 @@ class CostAllocationServiceTest {
         .thenReturn(Optional.empty());
     when(accountingFacade.findExistingCostVarianceReference("PROD-4", "202604"))
         .thenReturn(Optional.empty());
-    when(companyEntityLookup.requireAccount(company, 11L))
+    when(accountingLookupService.requireAccount(company, 11L))
         .thenReturn(account(11L, "FG", AccountType.ASSET));
-    when(companyEntityLookup.requireAccount(company, 12L))
+    when(accountingLookupService.requireAccount(company, 12L))
         .thenReturn(account(12L, "LAB", AccountType.EXPENSE));
-    when(companyEntityLookup.requireAccount(company, 13L))
+    when(accountingLookupService.requireAccount(company, 13L))
         .thenReturn(account(13L, "OVH", AccountType.EXPENSE));
     when(accountingFacade.postCostVarianceAllocation(
-            any(), eq("202604"), any(), eq(11L), eq(12L), eq(13L), any(), any(), eq("Variance allocation")))
+            any(),
+            eq("202604"),
+            any(),
+            eq(11L),
+            eq(12L),
+            eq(13L),
+            any(),
+            any(),
+            eq("Variance allocation")))
         .thenReturn(null);
 
     CostAllocationResponse response =
         costAllocationService.allocateCosts(
             new CostAllocationRequest(
-                2026, 4, new BigDecimal("100.00"), new BigDecimal("50.00"), 11L, 12L, 13L,
+                2026,
+                4,
+                new BigDecimal("100.00"),
+                new BigDecimal("50.00"),
+                11L,
+                12L,
+                13L,
                 "Variance allocation"));
 
     assertThat(response.totalLaborAllocated()).isEqualByComparingTo("100.00");

@@ -2,6 +2,7 @@ package com.bigbrightpaints.erp.modules.sales.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -30,6 +31,7 @@ import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderRepository;
 import com.bigbrightpaints.erp.modules.sales.dto.CreditLimitOverrideDecisionRequest;
+import com.bigbrightpaints.erp.modules.sales.dto.CreditLimitOverrideRequestCreateRequest;
 import com.bigbrightpaints.erp.modules.sales.dto.CreditLimitOverrideRequestDto;
 
 @ExtendWith(MockitoExtension.class)
@@ -162,6 +164,41 @@ class CreditLimitOverrideServiceTest {
   }
 
   @Test
+  void createRequest_acceptsCanonicalRequestedAmountWithoutDispatchContext() {
+    Dealer dealer = new Dealer();
+    dealer.setCompany(company);
+    dealer.setName("Dealer One");
+    dealer.setCreditLimit(new BigDecimal("1000.00"));
+    org.springframework.test.util.ReflectionTestUtils.setField(dealer, "id", 42L);
+
+    when(dealerRepository.findByCompanyAndId(company, 42L)).thenReturn(Optional.of(dealer));
+    when(dealerLedgerService.currentBalance(42L)).thenReturn(new BigDecimal("900.00"));
+    when(salesOrderRepository.sumPendingCreditExposureByCompanyAndDealer(
+            company, dealer, SalesOrderCreditExposurePolicy.pendingCreditExposureStatuses(), null))
+        .thenReturn(new BigDecimal("250.00"));
+    when(creditLimitOverrideRequestRepository.save(any(CreditLimitOverrideRequest.class)))
+        .thenAnswer(invocation -> invocation.getArgument(0));
+
+    CreditLimitOverrideRequestDto response =
+        service.createRequest(
+            new CreditLimitOverrideRequestCreateRequest(
+                42L,
+                null,
+                null,
+                new BigDecimal("200.00"),
+                null,
+                "Large order requires temporary headroom",
+                null),
+            "sales@bbp.com");
+
+    assertThat(response.status()).isEqualTo("PENDING");
+    assertThat(response.requestedAmount()).isEqualByComparingTo("200.00");
+    assertThat(response.dispatchAmount()).isEqualByComparingTo("200.00");
+    assertThat(response.currentExposure()).isEqualByComparingTo("1150.00");
+    assertThat(response.requiredHeadroom()).isEqualByComparingTo("350.00");
+  }
+
+  @Test
   void isOverrideApproved_allowsMinorDispatchDriftWithinToleranceWhenHeadroomIsValid() {
     CreditLimitOverrideRequest request = new CreditLimitOverrideRequest();
     request.setCompany(company);
@@ -209,6 +246,35 @@ class CreditLimitOverrideServiceTest {
 
     boolean approved =
         service.isOverrideApproved(22L, company, dealer, null, null, new BigDecimal("120.01"));
+
+    assertThat(approved).isFalse();
+  }
+
+  @Test
+  void isOverrideApproved_rejectsDispatchWhenPendingExposureConsumesHeadroom() {
+    CreditLimitOverrideRequest request = new CreditLimitOverrideRequest();
+    request.setCompany(company);
+    request.setStatus("APPROVED");
+    request.setDispatchAmount(new BigDecimal("120.00"));
+    request.setRequiredHeadroom(new BigDecimal("30.00"));
+    request.setRequestedBy("maker@bbp.com");
+    request.setReviewedBy("checker@bbp.com");
+    request.setReviewedAt(Instant.parse("2026-02-20T00:00:00Z"));
+    request.setReason("[CREDIT_LIMIT_EXCEPTION_APPROVED] Approved for urgent dispatch");
+
+    Dealer dealer = new Dealer();
+    dealer.setCreditLimit(new BigDecimal("200.00"));
+    org.springframework.test.util.ReflectionTestUtils.setField(dealer, "id", 42L);
+
+    when(creditLimitOverrideRequestRepository.findByCompanyAndId(company, 221L))
+        .thenReturn(Optional.of(request));
+    when(dealerLedgerService.currentBalance(42L)).thenReturn(new BigDecimal("100.00"));
+    when(salesOrderRepository.sumPendingCreditExposureByCompanyAndDealer(
+            company, dealer, SalesOrderCreditExposurePolicy.pendingCreditExposureStatuses(), null))
+        .thenReturn(new BigDecimal("15.00"));
+
+    boolean approved =
+        service.isOverrideApproved(221L, company, dealer, null, null, new BigDecimal("120.00"));
 
     assertThat(approved).isFalse();
   }

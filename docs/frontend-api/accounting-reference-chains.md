@@ -1,6 +1,6 @@
 # Accounting Reference Chains
 
-Last reviewed: 2026-04-01
+Last reviewed: 2026-04-06
 
 This file captures the canonical document and reference chains frontend uses across onboarding, stock bootstrap, accounting workflows, and audit/provenance reads.
 
@@ -168,6 +168,8 @@ UI implication:
 - Direct close is not a supported frontend action. Render period close as a
   maker-checker flow with approval state, approver identity, and rejection
   reason tracking.
+- Use `PeriodCloseRequestActionRequest` for request-close, approve-close, and
+  reject-close. Use `AccountingPeriodReopenRequest` only on the reopen route.
 
 ## AR settlement and dealer finance reads
 
@@ -190,6 +192,8 @@ UI implication:
   `GET /api/v1/portal/finance/invoices?dealerId={dealerId}`,
   and `GET /api/v1/portal/finance/aging?dealerId={dealerId}` as one connected
   clearing chain.
+- Dealer settlements now use `PartnerSettlementRequest` with
+  `partnerType=DEALER` and `partnerId=<dealerId>`.
 
 ## AP settlement and supplier finance reads
 
@@ -206,6 +210,8 @@ UI implication:
   `GET /api/v1/accounting/statements/suppliers/{supplierId}`,
   and `GET /api/v1/accounting/aging/suppliers/{supplierId}` as one connected
   AP-clearing chain.
+- Supplier settlements use the same `PartnerSettlementRequest` DTO with
+  `partnerType=SUPPLIER` and `partnerId=<supplierId>`.
 
 ## Purchase debit-note replay lineage
 
@@ -333,15 +339,14 @@ The current canonical audit read surfaces are:
 
 | Surface | Endpoint | Description |
 |---|---|---|
-| Accounting audit trail | `/api/v1/accounting/audit-trail` | Full accounting audit trail with all transaction events (requires ROLE_ADMIN or ROLE_ACCOUNTING) |
+| Accounting audit feed | `/api/v1/accounting/audit/events` | Paginated business-event feed restricted to the accounting module; accepts `module` and `category` query params but enforces accounting-visibility policy so non-accounting values return no rows (requires ROLE_ADMIN or ROLE_ACCOUNTING) |
 | Accounting audit transactions | `/api/v1/accounting/audit/transactions` | Paginated list of accounting transactions with filters (requires ROLE_ADMIN or ROLE_ACCOUNTING) |
 | Accounting audit transactions (detail) | `/api/v1/accounting/audit/transactions/{journalEntryId}` | Single transaction audit detail by journal entry ID (requires ROLE_ADMIN or ROLE_ACCOUNTING) |
-| Business events audit | `/api/v1/audit/business-events` | Business-level audit events across modules (requires ROLE_ADMIN or ROLE_ACCOUNTING) |
-| ML events audit | `/api/v1/audit/ml-events` | Machine learning/analytics audit events (requires ROLE_ADMIN) |
+| Admin audit feed | `/api/v1/admin/audit/events` | Tenant-admin audit-event feed for approval/admin surfaces |
+| Platform audit feed | `/api/v1/superadmin/audit/platform-events` | Super-admin control-plane audit feed |
+| ML events audit | `/api/v1/audit/ml-events` | Machine learning/analytics interaction telemetry — not an accounting surface (requires ROLE_ADMIN) |
 
-> **Deprecated**: `/api/v1/accounting/audit/digest` is deprecated and should not be used for new integrations. Use `/api/v1/accounting/audit/transactions` with filters instead.
-
-> **Note**: The paths `/api/v1/admin/audit/events` and `/api/v1/superadmin/audit/platform-events` do not exist in the current API contract. Use the accounting audit endpoints listed above for audit queries.
+> **Removed**: `/api/v1/accounting/audit/digest` and `/api/v1/accounting/audit-trail` were hard-removed in the audit unification hard-cut. Use `/api/v1/accounting/audit/events` or `/api/v1/accounting/audit/transactions` instead.
 
 For more details on audit-surface ownership, see [core-audit-runtime-settings.md](../modules/core-audit-runtime-settings.md) and [AUDIT_TRAIL_OWNERSHIP.md](../AUDIT_TRAIL_OWNERSHIP.md).
 

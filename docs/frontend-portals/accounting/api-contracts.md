@@ -135,9 +135,13 @@ Request and response rules:
 - Bank-session create requires `bankAccountId`, `statementDate`,
   `statementEndingBalance`, and may also send `startDate`, `endDate`,
   `accountingPeriodId`, and `note`.
-- Session item updates use `addJournalLineIds`, `removeJournalLineIds`, and
-  optional `note`.
+- Session item updates use `addJournalLineIds`, `removeJournalLineIds`,
+  optional `note`, and optional `matches[]`. Each `matches[]` item supports
+  `bankItemId` plus either `journalLineId` or `journalEntryId`.
 - Session completion uses optional `note` and `accountingPeriodId`.
+- Session detail (`GET /reconciliation/bank/sessions/{sessionId}`) returns
+  `matchedItems[]` and `unmatchedItems[]`. `matchedItems[]` carries persisted
+  `bankItemId` linkage for reconciled statement lines.
 - Discrepancy resolution uses `resolution`, optional `note`, and optional
   `adjustmentAccountId`.
 - Discrepancy list filters are `status` and `type`.
@@ -200,12 +204,13 @@ Rules:
 - Dealer receipt requires `dealerId`, `cashAccountId`, `amount`, and
   `allocations`. Hybrid receipt uses `dealerId`, `incomingLines`,
   `referenceNumber`, and `memo`.
-- Dealer settlement requires `dealerId`, `settlementDate`, allocation rows, and
-  optional `payments`, `discountAccountId`, `writeOffAccountId`, FX accounts,
-  and `referenceNumber`.
-- Supplier settlement requires `supplierId`, `settlementDate`, allocation rows,
-  and optional discount, write-off, FX, and reference fields.
-- Auto-settle requests use `amount`, optional `cashAccountId`,
+- Dealer and supplier settlements both use `PartnerSettlementRequest` with
+  `partnerType` (`DEALER` or `SUPPLIER`), `partnerId`, `settlementDate`,
+  `allocations`, and optional `cashAccountId`, `discountAccountId`,
+  `writeOffAccountId`, `fxGainAccountId`, `fxLossAccountId`,
+  `unappliedAmountApplication`, `referenceNumber`, `memo`,
+  `idempotencyKey`, and `adminOverride`.
+- Auto-settle requests use `cashAccountId`, `amount`,
   `referenceNumber`, `memo`, and `idempotencyKey`.
 - Reports and CSV exports stay inside accountant-facing flows.
 - If export approval is required, frontend must surface approval state instead

@@ -68,6 +68,12 @@ public class RawMaterialPurchase extends VersionedEntity {
   @Column(name = "memo")
   private String memo;
 
+  @Column(name = "idempotency_key", length = 128)
+  private String idempotencyKey;
+
+  @Column(name = "idempotency_hash", length = 64)
+  private String idempotencyHash;
+
   @Column(name = "created_at", nullable = false)
   private Instant createdAt;
 
@@ -200,6 +206,22 @@ public class RawMaterialPurchase extends VersionedEntity {
     this.memo = memo;
   }
 
+  public String getIdempotencyKey() {
+    return idempotencyKey;
+  }
+
+  public void setIdempotencyKey(String idempotencyKey) {
+    this.idempotencyKey = idempotencyKey;
+  }
+
+  public String getIdempotencyHash() {
+    return idempotencyHash;
+  }
+
+  public void setIdempotencyHash(String idempotencyHash) {
+    this.idempotencyHash = idempotencyHash;
+  }
+
   public Instant getCreatedAt() {
     return createdAt;
   }
@@ -208,11 +230,19 @@ public class RawMaterialPurchase extends VersionedEntity {
     return updatedAt;
   }
 
+  @SuppressWarnings("java/internal-representation-exposure")
   public List<RawMaterialPurchaseLine> getLines() {
+    // lgtm [java/internal-representation-exposure]
     return lines;
   }
 
   public void setLines(List<RawMaterialPurchaseLine> lines) {
-    this.lines = lines;
+    this.lines = lines == null ? new ArrayList<>() : new ArrayList<>(lines);
+  }
+
+  public void addLine(RawMaterialPurchaseLine line) {
+    if (line != null) {
+      lines.add(line);
+    }
   }
 }

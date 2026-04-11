@@ -20,18 +20,33 @@ The accounting module owns financial posting, corrections, period controls, sett
 
 ## Primary Controllers
 
-- `AccountingController` — journal CRUD, account management, **period lifecycle** (list/create/update/close/lock/reopen/request-close/approve-close/reject-close), GST returns, reconciliation, bank reconciliation sessions, statements, and settlement surfaces.
+- `AccountController` — account CRUD, default-account management, and chart-of-accounts tree reads.
+- `JournalController` — journal CRUD, manual journals, accruals, payroll payment posting seam, credit/debit notes, and bad-debt write-off.
+- `SettlementController` — dealer receipts, dealer/supplier settlements, and auto-settle flows with idempotency handling.
+- `PeriodController` — period lifecycle (list/create/update/close/lock/reopen/request-close/approve-close/reject-close) and month-end controls.
+- `ReconciliationController` — bank reconciliation sessions, discrepancy workflows, and inter-company reconciliation; the legacy `POST /reconciliation/bank` route is retired.
+- `StatementReportController` — statements, aging, temporal/date-context, GST/reporting, and sales-return reporting surfaces.
+- `InventoryAccountingController` — landed cost, revaluation, and WIP accounting adjustments.
 - `OpeningBalanceImportController` — CSV opening balance import.
 - `TallyImportController` — Tally XML import.
 
 ## Key Services/Facades
 
-- `AccountingCoreEngineCore` — centralized journal creation and payroll posting.
-- `AccountingPeriodServiceCore` — period lifecycle management.
-- `AccountingFacade` — cross-module facade for financial side effects.
-- `ReconciliationServiceCore` — reconciliation and discrepancy resolution.
+- `AccountingService` — accounting-host service entrypoint for chart/journal/settlement/note/inventory workflows.
+- `AccountingPeriodService` — public period lifecycle entrypoint that delegates close/reopen ownership to `AccountingPeriodCloseWorkflow` + `AccountingPeriodStatusWorkflow`, and checklist diagnostics to `AccountingPeriodChecklistService` + `AccountingPeriodChecklistDiagnosticsService`.
+- `AccountingAuditTrailService` — public audit-trail read entrypoint that delegates classification/query/detail behavior to `AccountingAuditTrailClassifier`, `AccountingAuditTrailTransactionQueryService`, `AccountingAuditTrailTransactionDetailService`, and `SettlementAuditMemoDecoder`.
+- `AccountingFacade` — cross-module facade for financial side effects, including payroll posting entry and accounting-host payroll payment recording.
+- `PayrollAccountingService` — canonical payroll journal owner invoked directly by `AccountingFacade` for `postPayrollRun` and `recordPayrollPayment`.
+- `ReconciliationService` — reconciliation and discrepancy resolution at the module boundary.
+- Settlement write collaborators:
+  - `SettlementAllocationResolutionService` — resolves explicit/header/replay allocations for dealer/supplier settlement writers.
+  - `SettlementTotalsValidationService` — owns settlement/payment allocation validation, totals, application-type resolution, and override detection.
+  - `SettlementJournalLineDraftService` — drafts dealer/supplier settlement journal lines from resolved totals and account bindings.
+  - `DealerSettlementService`, `SupplierSettlementService`, and `SupplierPaymentService` consume the focused collaborators directly; `SettlementRequestResolutionService` is retired.
 - `OpeningBalanceImportService` — opening balance import processing.
 - `TallyImportService` — Tally XML import processing.
+
+Canonical module-boundary guidance: route new cross-module work through `AccountingFacade`, `AccountingService`, `AccountingPeriodService`, and `ReconciliationService`. Do not treat legacy support or `*Core` classes as public accounting seams.
 
 ## DTO Families
 
@@ -45,7 +60,7 @@ The accounting module owns financial posting, corrections, period controls, sett
 - **Sales → Accounting:** dispatch-linked journals, invoice-linked journals, AR settlements.
 - **Purchasing → Accounting:** GRN-linked journals, purchase return journals, AP settlements.
 - **Factory → Accounting:** WIP/consumption journals, packaging material journals.
-- **HR → Accounting:** payroll posting and payment seams (`PayrollPostingService` → `AccountingFacade`).
+- **HR → Accounting:** payroll posting enters via `PayrollPostingService` → `AccountingFacade.postPayrollRun` → `PayrollAccountingService`, while payroll payment references are recorded through `AccountingFacade.recordPayrollPayment` on the accounting payroll-payment journal seam.
 - **Inventory -.events.→ Accounting:** `InventoryMovementEvent` → `InventoryAccountingEventListener`.
 
 ## Canonical Documentation

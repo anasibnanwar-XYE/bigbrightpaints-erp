@@ -2,6 +2,7 @@ package com.bigbrightpaints.erp.modules.purchasing.controller;
 
 import java.util.List;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.util.StringUtils;
@@ -49,11 +50,13 @@ public class PurchasingWorkflowController {
 
   @PostMapping("/purchase-orders")
   @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
+  @ResponseStatus(HttpStatus.CREATED)
   public ResponseEntity<ApiResponse<PurchaseOrderResponse>> createPurchaseOrder(
       @Valid @RequestBody PurchaseOrderRequest request) {
-    return ResponseEntity.ok(
-        ApiResponse.success(
-            "Purchase order recorded", purchasingService.createPurchaseOrder(request)));
+    return ResponseEntity.status(HttpStatus.CREATED)
+        .body(
+            ApiResponse.success(
+                "Purchase order recorded", purchasingService.createPurchaseOrder(request)));
   }
 
   @PostMapping("/purchase-orders/{id}/approve")
@@ -104,34 +107,26 @@ public class PurchasingWorkflowController {
 
   @PostMapping("/goods-receipts")
   @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
+  @ResponseStatus(HttpStatus.CREATED)
   public ResponseEntity<ApiResponse<GoodsReceiptResponse>> createGoodsReceipt(
       @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
-      @RequestHeader(value = "X-Idempotency-Key", required = false) String legacyIdempotencyKey,
       @Valid @RequestBody GoodsReceiptRequest request) {
-    GoodsReceiptRequest resolved =
-        applyIdempotencyKey(request, idempotencyKey, legacyIdempotencyKey);
-    return ResponseEntity.ok(
-        ApiResponse.success(
-            "Goods receipt recorded", purchasingService.createGoodsReceipt(resolved)));
+    GoodsReceiptRequest resolved = applyIdempotencyKey(request, idempotencyKey);
+    return ResponseEntity.status(HttpStatus.CREATED)
+        .body(
+            ApiResponse.success(
+                "Goods receipt recorded", purchasingService.createGoodsReceipt(resolved)));
   }
 
   private GoodsReceiptRequest applyIdempotencyKey(
-      GoodsReceiptRequest request, String idempotencyKeyHeader, String legacyIdempotencyKeyHeader) {
+      GoodsReceiptRequest request, String idempotencyKeyHeader) {
     if (request == null) {
       throw new ApplicationException(
           ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD, "Goods receipt request is required");
     }
-    if (StringUtils.hasText(legacyIdempotencyKeyHeader)) {
-      throw new ApplicationException(
-              ErrorCode.VALIDATION_INVALID_INPUT,
-              "X-Idempotency-Key is not supported for goods receipts; use Idempotency-Key")
-          .withDetail("legacyHeader", "X-Idempotency-Key")
-          .withDetail("canonicalHeader", "Idempotency-Key")
-          .withDetail("canonicalPath", CANONICAL_GOODS_RECEIPT_PATH);
-    }
     String resolvedKey =
         IdempotencyHeaderUtils.resolveBodyOrHeaderKey(
-            request.idempotencyKey(), idempotencyKeyHeader, null);
+            request.idempotencyKey(), idempotencyKeyHeader);
     if (StringUtils.hasText(request.idempotencyKey())) {
       return request;
     }

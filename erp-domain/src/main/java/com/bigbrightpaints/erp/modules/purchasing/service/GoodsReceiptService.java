@@ -24,8 +24,8 @@ import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.inventory.domain.InventoryReference;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial;
-import com.bigbrightpaints.erp.modules.inventory.service.CompanyScopedInventoryLookupService;
 import com.bigbrightpaints.erp.modules.inventory.dto.RawMaterialBatchRequest;
+import com.bigbrightpaints.erp.modules.inventory.service.CompanyScopedInventoryLookupService;
 import com.bigbrightpaints.erp.modules.inventory.service.RawMaterialService;
 import com.bigbrightpaints.erp.modules.purchasing.domain.GoodsReceipt;
 import com.bigbrightpaints.erp.modules.purchasing.domain.GoodsReceiptLine;
@@ -317,7 +317,7 @@ public class GoodsReceiptService {
       line.setCostPerUnit(costPerUnit);
       line.setLineTotal(lineTotal);
       line.setNotes(clean(lineRequest.notes()));
-      receipt.getLines().add(line);
+      receipt.addLine(line);
     }
 
     for (Map.Entry<Long, PurchaseOrderLine> entry : orderLinesByMaterial.entrySet()) {

@@ -75,6 +75,9 @@ public class SalesOrder extends VersionedEntity {
   @Column(name = "payment_mode", nullable = false, length = 32)
   private String paymentMode = "CREDIT";
 
+  @Column(name = "payment_terms", length = 128)
+  private String paymentTerms;
+
   // Idempotency markers to prevent double posting
   @Column(name = "sales_journal_entry_id")
   private Long salesJournalEntryId;
@@ -249,6 +252,14 @@ public class SalesOrder extends VersionedEntity {
     this.paymentMode = paymentMode;
   }
 
+  public String getPaymentTerms() {
+    return paymentTerms;
+  }
+
+  public void setPaymentTerms(String paymentTerms) {
+    this.paymentTerms = paymentTerms;
+  }
+
   public Instant getCreatedAt() {
     return createdAt;
   }
@@ -257,8 +268,17 @@ public class SalesOrder extends VersionedEntity {
     return updatedAt;
   }
 
+  @SuppressWarnings("java/internal-representation-exposure")
   public List<SalesOrderItem> getItems() {
+    // lgtm [java/internal-representation-exposure]
     return items;
+  }
+
+  public void replaceItems(List<SalesOrderItem> items) {
+    this.items.clear();
+    if (items != null) {
+      this.items.addAll(items);
+    }
   }
 
   public String getIdempotencyKey() {

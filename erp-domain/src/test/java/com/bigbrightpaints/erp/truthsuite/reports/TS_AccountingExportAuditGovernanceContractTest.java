@@ -9,17 +9,21 @@ import com.bigbrightpaints.erp.truthsuite.support.TruthSuiteFileAssert;
 @Tag("security")
 class TS_AccountingExportAuditGovernanceContractTest {
 
-  private static final String ACCOUNTING_CONTROLLER =
-      "src/main/java/com/bigbrightpaints/erp/modules/accounting/controller/AccountingController.java";
+  private static final String STATEMENT_REPORT_CONTROLLER =
+      "src/main/java/com/bigbrightpaints/erp/modules/accounting/controller/StatementReportController.java";
+  private static final String STATEMENT_REPORT_SUPPORT =
+      "src/main/java/com/bigbrightpaints/erp/modules/accounting/controller/StatementReportControllerSupport.java";
 
   @Test
   void supplierPdfExportEndpointsRemainAdminOnly() {
     TruthSuiteFileAssert.assertContainsInOrder(
-        ACCOUNTING_CONTROLLER,
-        "@GetMapping(value = \"/statements/suppliers/{supplierId}/pdf\", produces = \"application/pdf\")",
+        STATEMENT_REPORT_CONTROLLER,
+        "@GetMapping(value = \"/statements/suppliers/{supplierId}/pdf\", produces ="
+            + " \"application/pdf\")",
         "@PreAuthorize(\"hasAuthority('ROLE_ADMIN')\")",
         "public ResponseEntity<byte[]> supplierStatementPdf(",
-        "@GetMapping(value = \"/aging/suppliers/{supplierId}/pdf\", produces = \"application/pdf\")",
+        "@GetMapping(value = \"/aging/suppliers/{supplierId}/pdf\", produces ="
+            + " \"application/pdf\")",
         "@PreAuthorize(\"hasAuthority('ROLE_ADMIN')\")",
         "public ResponseEntity<byte[]> supplierAgingPdf(");
   }
@@ -27,7 +31,7 @@ class TS_AccountingExportAuditGovernanceContractTest {
   @Test
   void csvExportAuditEvidenceStaysDeterministic() {
     TruthSuiteFileAssert.assertContainsInOrder(
-        ACCOUNTING_CONTROLLER,
+        STATEMENT_REPORT_SUPPORT,
         "private void logAccountingExport(String resourceType, Long resourceId, String format)",
         "metadata.put(\"resourceType\", resourceType);",
         "metadata.put(\"resourceId\", resourceId != null ? resourceId.toString() : \"\");",

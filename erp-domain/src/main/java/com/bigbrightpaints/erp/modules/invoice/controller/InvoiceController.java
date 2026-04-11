@@ -49,8 +49,10 @@ public class InvoiceController {
   @GetMapping
   @Timed(value = "erp.invoices.list", description = "List invoices")
   public ResponseEntity<ApiResponse<List<InvoiceDto>>> listInvoices(
-      @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "100") int size) {
-    return ResponseEntity.ok(ApiResponse.success(invoiceService.listInvoices(page, size)));
+      @RequestParam(defaultValue = "0") int page,
+      @RequestParam(defaultValue = "100") int size,
+      @RequestParam(required = false) Long orderId) {
+    return ResponseEntity.ok(ApiResponse.success(invoiceService.listInvoices(page, size, orderId)));
   }
 
   @GetMapping("/{id}")
@@ -67,7 +69,7 @@ public class InvoiceController {
           @Content(
               mediaType = MediaType.APPLICATION_PDF_VALUE,
               schema = @Schema(type = "string", format = "binary")))
-  @PreAuthorize(PortalRoleActionMatrix.ADMIN_ONLY)
+  @PreAuthorize(PortalRoleActionMatrix.ADMIN_OR_ACCOUNTING)
   public ResponseEntity<byte[]> downloadInvoicePdf(@PathVariable Long id) {
     InvoicePdfService.PdfDocument pdf = invoicePdfService.renderInvoicePdf(id);
     logInvoiceExport(id, pdf.fileName(), "pdf");

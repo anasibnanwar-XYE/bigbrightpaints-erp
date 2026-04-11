@@ -1656,8 +1656,7 @@ class SalesReturnServiceTest {
 
     assertThat(result.id()).isEqualTo(1202L);
     verify(journalCorrectionMetadataService)
-        .syncReversalMetadata(
-            company, 1202L, "SALES_RETURN", "SALES_RETURN", "INV-REPLAY-CLEAN");
+        .syncReversalMetadata(company, 1202L, "SALES_RETURN", "SALES_RETURN", "INV-REPLAY-CLEAN");
     verify(inventoryMovementRepository, never()).saveAll(any());
     verify(finishedGoodRepository, never()).save(any(FinishedGood.class));
     verify(finishedGoodBatchRepository, never()).save(any(FinishedGoodBatch.class));
@@ -2684,8 +2683,7 @@ class SalesReturnServiceTest {
         company, journalEntryDto(321L, "JE-321", LocalDate.now(), null), source, "INV-ALIGNED");
 
     verify(journalCorrectionMetadataService)
-        .syncReversalMetadata(
-            company, 321L, "SALES_RETURN", "SALES_RETURN", "INV-ALIGNED");
+        .syncReversalMetadata(company, 321L, "SALES_RETURN", "SALES_RETURN", "INV-ALIGNED");
   }
 
   @Test
@@ -3284,6 +3282,41 @@ class SalesReturnServiceTest {
     assertThat(byLine.get(55L)).isEqualByComparingTo("0.75");
     assertThat(byFinishedGood).containsOnlyKeys(612L);
     assertThat(byFinishedGood.get(612L)).isEqualByComparingTo("2.50");
+  }
+
+  @Test
+  void loadReturnMovements_skipsOverflowingInvoiceLineIds() {
+    FinishedGood fg = new FinishedGood();
+    fg.setCompany(company);
+    fg.setProductCode("FG-RET-OVERFLOW");
+    setField(fg, "id", 6121L);
+
+    InventoryMovement overflowingLine = new InventoryMovement();
+    overflowingLine.setFinishedGood(fg);
+    overflowingLine.setReferenceType("SALES_RETURN");
+    overflowingLine.setReferenceId("INV-HISTORY-OVERFLOW:92233720368547758070");
+    overflowingLine.setQuantity(new BigDecimal("3.00"));
+
+    when(inventoryMovementRepository
+            .findByFinishedGood_CompanyAndReferenceTypeAndReferenceIdOrderByCreatedAtAsc(
+                company, "SALES_RETURN", "INV-HISTORY-OVERFLOW"))
+        .thenReturn(List.of());
+    when(inventoryMovementRepository
+            .findByFinishedGood_CompanyAndReferenceTypeAndReferenceIdStartingWithOrderByCreatedAtAsc(
+                company, "SALES_RETURN", "INV-HISTORY-OVERFLOW:"))
+        .thenReturn(List.of(overflowingLine));
+
+    Object summary = invokeLoadReturnMovements(company, "INV-HISTORY-OVERFLOW");
+
+    @SuppressWarnings("unchecked")
+    Map<Long, BigDecimal> byLine =
+        (Map<Long, BigDecimal>) invokeRecordAccessor(summary, "byInvoiceLineId");
+    @SuppressWarnings("unchecked")
+    Map<Long, BigDecimal> byFinishedGood =
+        (Map<Long, BigDecimal>) invokeRecordAccessor(summary, "byFinishedGoodId");
+
+    assertThat(byLine).isEmpty();
+    assertThat(byFinishedGood).containsEntry(6121L, new BigDecimal("3.00"));
   }
 
   @Test

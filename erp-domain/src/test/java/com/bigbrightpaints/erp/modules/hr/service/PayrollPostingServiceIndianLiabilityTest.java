@@ -23,13 +23,13 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalLineDto;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
+import com.bigbrightpaints.erp.modules.accounting.service.CompanyScopedAccountingLookupService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.hr.domain.AttendanceRepository;
@@ -61,7 +61,9 @@ class PayrollPostingServiceIndianLiabilityTest {
     AccountingFacade accountingFacade = mock(AccountingFacade.class);
     AccountRepository accountRepository = mock(AccountRepository.class);
     CompanyContextService companyContextService = mock(CompanyContextService.class);
-    CompanyEntityLookup companyEntityLookup = mock(CompanyEntityLookup.class);
+    CompanyScopedHrLookupService hrLookupService = mock(CompanyScopedHrLookupService.class);
+    CompanyScopedAccountingLookupService accountingLookupService =
+        mock(CompanyScopedAccountingLookupService.class);
     CompanyClock companyClock = mock(CompanyClock.class);
     AuditService auditService = mock(AuditService.class);
 
@@ -74,7 +76,8 @@ class PayrollPostingServiceIndianLiabilityTest {
             accountingFacade,
             accountRepository,
             companyContextService,
-            companyEntityLookup,
+            hrLookupService,
+            accountingLookupService,
             companyClock,
             auditService);
 
@@ -100,7 +103,7 @@ class PayrollPostingServiceIndianLiabilityTest {
     line.setOtherDeductions(BigDecimal.ZERO);
 
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
-    when(companyEntityLookup.lockPayrollRun(company, 70L)).thenReturn(run);
+    when(hrLookupService.lockPayrollRun(company, 70L)).thenReturn(run);
     when(payrollRunLineRepository.findByPayrollRun(run)).thenReturn(List.of(line));
     when(companyClock.today(company)).thenReturn(LocalDate.of(2026, 2, 28));
 
@@ -151,7 +154,7 @@ class PayrollPostingServiceIndianLiabilityTest {
     when(accountingFacade.postPayrollRun(
             eq("PR-2026-02"), eq(70L), eq(LocalDate.of(2026, 2, 28)), any(), any()))
         .thenReturn(postedJournal);
-    when(companyEntityLookup.requireJournalEntry(company, 1001L))
+    when(accountingLookupService.requireJournalEntry(company, 1001L))
         .thenReturn(new com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry());
     when(payrollRunRepository.save(any(PayrollRun.class)))
         .thenAnswer(invocation -> invocation.getArgument(0));

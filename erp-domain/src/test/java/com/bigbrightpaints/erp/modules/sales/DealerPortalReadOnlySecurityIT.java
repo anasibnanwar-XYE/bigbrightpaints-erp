@@ -75,7 +75,7 @@ class DealerPortalReadOnlySecurityIT extends AbstractIntegrationTest {
                 headers),
             Map.class);
 
-    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
     assertThat(response.getBody()).isNotNull();
     assertThat(response.getBody().get("success")).isEqualTo(Boolean.TRUE);
     assertThat(response.getBody().get("message")).isEqualTo("Credit limit request submitted");
@@ -83,6 +83,31 @@ class DealerPortalReadOnlySecurityIT extends AbstractIntegrationTest {
     assertThat(data).isNotNull();
     assertThat(data.get("status")).isEqualTo("PENDING");
     assertThat(data.get("amountRequested")).isEqualTo(25000.00);
+  }
+
+  @Test
+  void canonicalCreditLimitRequests_areAllowedForMappedDealer() {
+    HttpHeaders headers = authHeaders();
+    headers.setContentType(MediaType.APPLICATION_JSON);
+
+    ResponseEntity<Map> response =
+        rest.exchange(
+            "/api/v1/credit/limit-requests",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of(
+                    "amountRequested", "27500.00",
+                    "reason", "Need temporary headroom"),
+                headers),
+            Map.class);
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+    assertThat(response.getBody()).isNotNull();
+    assertThat(response.getBody().get("success")).isEqualTo(Boolean.TRUE);
+    Map<?, ?> data = (Map<?, ?>) response.getBody().get("data");
+    assertThat(data).isNotNull();
+    assertThat(data.get("status")).isEqualTo("PENDING");
+    assertThat(data.get("amountRequested")).isEqualTo(27500.00);
   }
 
   @Test

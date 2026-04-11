@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,7 +17,6 @@ import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.security.SecurityActorResolver;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.core.validation.ValidationUtils;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
@@ -38,19 +38,20 @@ public class AttendanceService {
   private final CompanyContextService companyContextService;
   private final AttendanceRepository attendanceRepository;
   private final EmployeeRepository employeeRepository;
-  private final CompanyEntityLookup companyEntityLookup;
+  private final CompanyScopedHrLookupService hrLookupService;
   private final CompanyClock companyClock;
 
+  @Autowired
   public AttendanceService(
       CompanyContextService companyContextService,
       AttendanceRepository attendanceRepository,
       EmployeeRepository employeeRepository,
-      CompanyEntityLookup companyEntityLookup,
+      CompanyScopedHrLookupService hrLookupService,
       CompanyClock companyClock) {
     this.companyContextService = companyContextService;
     this.attendanceRepository = attendanceRepository;
     this.employeeRepository = employeeRepository;
-    this.companyEntityLookup = companyEntityLookup;
+    this.hrLookupService = hrLookupService;
     this.companyClock = companyClock;
   }
 
@@ -68,7 +69,7 @@ public class AttendanceService {
     validateDateRange(startDate, endDate);
 
     Company company = companyContextService.requireCurrentCompany();
-    Employee employee = companyEntityLookup.requireEmployee(company, employeeId);
+    Employee employee = hrLookupService.requireEmployee(company, employeeId);
     return attendanceRepository
         .findByCompanyAndEmployeeAndAttendanceDateBetweenOrderByAttendanceDateAsc(
             company, employee, startDate, endDate)
@@ -84,7 +85,7 @@ public class AttendanceService {
           ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD, "Attendance request is required");
     }
     Company company = companyContextService.requireCurrentCompany();
-    Employee employee = companyEntityLookup.requireEmployee(company, employeeId);
+    Employee employee = hrLookupService.requireEmployee(company, employeeId);
     LocalDate date = request.date() != null ? request.date() : companyClock.today(company);
 
     Attendance attendance =

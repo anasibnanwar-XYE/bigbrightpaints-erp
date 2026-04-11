@@ -3,21 +3,29 @@ package com.bigbrightpaints.erp.modules.admin.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.text.PDFTextStripper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import com.bigbrightpaints.erp.core.audittrail.AuditActionEventCommand;
+import com.bigbrightpaints.erp.core.audittrail.EnterpriseAuditTrailService;
 import com.bigbrightpaints.erp.core.config.SystemSettingsService;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
@@ -37,6 +45,7 @@ class ExportApprovalServiceTest {
   @Mock private UserAccountRepository userAccountRepository;
   @Mock private ExportRequestRepository exportRequestRepository;
   @Mock private SystemSettingsService systemSettingsService;
+  @Mock private EnterpriseAuditTrailService enterpriseAuditTrailService;
 
   private ExportApprovalService service;
   private Company company;
@@ -49,7 +58,8 @@ class ExportApprovalServiceTest {
             companyContextService,
             userAccountRepository,
             exportRequestRepository,
-            systemSettingsService);
+            systemSettingsService,
+            enterpriseAuditTrailService);
 
     company = new Company();
     ReflectionTestUtils.setField(company, "id", 1L);
@@ -81,13 +91,20 @@ class ExportApprovalServiceTest {
             });
 
     var response =
-        service.createRequest(new ExportRequestCreateRequest("trial-balance", "periodId=12"));
+        service.createRequest(
+            new ExportRequestCreateRequest("trial-balance", "PDF", "periodId=12"));
 
     assertThat(response.id()).isEqualTo(101L);
     assertThat(response.userId()).isEqualTo(11L);
     assertThat(response.userEmail()).isEqualTo("admin@bbp.com");
     assertThat(response.reportType()).isEqualTo("TRIAL-BALANCE");
     assertThat(response.status()).isEqualTo(ExportApprovalStatus.PENDING);
+
+    ArgumentCaptor<AuditActionEventCommand> commandCaptor =
+        ArgumentCaptor.forClass(AuditActionEventCommand.class);
+    verify(enterpriseAuditTrailService).recordBusinessEvent(commandCaptor.capture());
+    assertThat(commandCaptor.getValue().module()).isEqualTo("EXPORT");
+    assertThat(commandCaptor.getValue().action()).isEqualTo("EXPORT_REQUESTED");
   }
 
   @Test
@@ -163,7 +180,8 @@ class ExportApprovalServiceTest {
     ReflectionTestUtils.setField(pending, "id", 90L);
 
     when(exportRequestRepository.findByCompanyAndId(company, 90L)).thenReturn(Optional.of(pending));
-    when(userAccountRepository.findByEmailIgnoreCaseAndAuthScopeCodeIgnoreCase("admin@bbp.com", "EXP"))
+    when(userAccountRepository.findByEmailIgnoreCaseAndAuthScopeCodeIgnoreCase(
+            "admin@bbp.com", "EXP"))
         .thenReturn(Optional.of(actor));
     when(systemSettingsService.isExportApprovalRequired()).thenReturn(true);
 
@@ -188,15 +206,48 @@ class ExportApprovalServiceTest {
 
     when(exportRequestRepository.findByCompanyAndId(company, 91L))
         .thenReturn(Optional.of(approved));
-    when(userAccountRepository.findByEmailIgnoreCaseAndAuthScopeCodeIgnoreCase("admin@bbp.com", "EXP"))
+    when(userAccountRepository.findByEmailIgnoreCaseAndAuthScopeCodeIgnoreCase(
+            "admin@bbp.com", "EXP"))
         .thenReturn(Optional.of(actor));
     when(systemSettingsService.isExportApprovalRequired()).thenReturn(true);
 
     var response = service.resolveDownload(91L);
 
-    assertThat(response.requestId()).isEqualTo(91L);
-    assertThat(response.status()).isEqualTo(ExportApprovalStatus.APPROVED);
-    assertThat(response.message()).contains("approved");
+    assertThat(response.content()).isNotEmpty();
+    assertThat(response.contentType()).isEqualTo("application/pdf");
+    assertThat(response.fileName()).contains("trial-balance-91");
+    assertThat(extractPdfText(response.content())).contains("TRIAL-BALANCE export");
+    assertThat(extractPdfText(response.content())).contains("Request ID: 91");
+
+    ArgumentCaptor<AuditActionEventCommand> commandCaptor =
+        ArgumentCaptor.forClass(AuditActionEventCommand.class);
+    verify(enterpriseAuditTrailService).recordBusinessEvent(commandCaptor.capture());
+    assertThat(commandCaptor.getValue().module()).isEqualTo("EXPORT");
+    assertThat(commandCaptor.getValue().action()).isEqualTo("EXPORT_DOWNLOADED");
+  }
+
+  @Test
+  void resolveDownload_flattensControlCharactersBeforeRenderingPdfText() {
+    ExportRequest approved = new ExportRequest();
+    approved.setCompany(company);
+    approved.setUserId(11L);
+    approved.setStatus(ExportApprovalStatus.APPROVED);
+    approved.setReportType("TRIAL-BALANCE");
+    approved.setParameters("periodId=12\r\nrequestedBy=ops\tteam");
+    ReflectionTestUtils.setField(approved, "id", 191L);
+
+    when(exportRequestRepository.findByCompanyAndId(company, 191L))
+        .thenReturn(Optional.of(approved));
+    when(userAccountRepository.findByEmailIgnoreCaseAndAuthScopeCodeIgnoreCase(
+            "admin@bbp.com", "EXP"))
+        .thenReturn(Optional.of(actor));
+    when(systemSettingsService.isExportApprovalRequired()).thenReturn(true);
+
+    var response = service.resolveDownload(191L);
+
+    assertThat(response.content()).isNotEmpty();
+    assertThat(extractPdfText(response.content()))
+        .contains("Parameters: periodId=12 requestedBy=ops team");
   }
 
   @Test
@@ -210,7 +261,8 @@ class ExportApprovalServiceTest {
 
     when(exportRequestRepository.findByCompanyAndId(company, 93L))
         .thenReturn(Optional.of(approved));
-    when(userAccountRepository.findByEmailIgnoreCaseAndAuthScopeCodeIgnoreCase("admin@bbp.com", "EXP"))
+    when(userAccountRepository.findByEmailIgnoreCaseAndAuthScopeCodeIgnoreCase(
+            "admin@bbp.com", "EXP"))
         .thenReturn(Optional.of(actor));
 
     assertThatThrownBy(() -> service.resolveDownload(93L))
@@ -233,15 +285,16 @@ class ExportApprovalServiceTest {
 
     when(exportRequestRepository.findByCompanyAndId(company, 92L))
         .thenReturn(Optional.of(rejected));
-    when(userAccountRepository.findByEmailIgnoreCaseAndAuthScopeCodeIgnoreCase("admin@bbp.com", "EXP"))
+    when(userAccountRepository.findByEmailIgnoreCaseAndAuthScopeCodeIgnoreCase(
+            "admin@bbp.com", "EXP"))
         .thenReturn(Optional.of(actor));
     when(systemSettingsService.isExportApprovalRequired()).thenReturn(false);
 
     var response = service.resolveDownload(92L);
 
-    assertThat(response.requestId()).isEqualTo(92L);
-    assertThat(response.status()).isEqualTo(ExportApprovalStatus.REJECTED);
-    assertThat(response.message()).contains("disabled");
+    assertThat(response.content()).isNotEmpty();
+    assertThat(response.contentType()).isEqualTo("application/pdf");
+    assertThat(response.fileName()).contains("trial-balance-92");
   }
 
   @Test
@@ -255,7 +308,8 @@ class ExportApprovalServiceTest {
 
     when(exportRequestRepository.findByCompanyAndId(company, 93L))
         .thenReturn(Optional.of(approved));
-    when(userAccountRepository.findByEmailIgnoreCaseAndAuthScopeCodeIgnoreCase("admin@bbp.com", "EXP"))
+    when(userAccountRepository.findByEmailIgnoreCaseAndAuthScopeCodeIgnoreCase(
+            "admin@bbp.com", "EXP"))
         .thenReturn(Optional.of(actor));
 
     assertThatThrownBy(() -> service.resolveDownload(93L))
@@ -264,8 +318,15 @@ class ExportApprovalServiceTest {
             ex -> {
               ApplicationException appEx = (ApplicationException) ex;
               assertThat(appEx.getErrorCode()).isEqualTo(ErrorCode.AUTH_INSUFFICIENT_PERMISSIONS);
-              assertThat(appEx.getMessage())
-                  .contains("does not belong to the authenticated actor");
+              assertThat(appEx.getMessage()).contains("does not belong to the authenticated actor");
             });
+  }
+
+  private String extractPdfText(byte[] pdf) {
+    try (PDDocument document = PDDocument.load(new ByteArrayInputStream(pdf))) {
+      return new PDFTextStripper().getText(document);
+    } catch (IOException ex) {
+      throw new RuntimeException("Unable to extract text from export PDF", ex);
+    }
   }
 }

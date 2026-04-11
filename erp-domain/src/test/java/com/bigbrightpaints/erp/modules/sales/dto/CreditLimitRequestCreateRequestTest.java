@@ -64,7 +64,7 @@ class CreditLimitRequestCreateRequestTest {
   }
 
   @Test
-  void beanValidation_requiresDealerIdAndAmountRequested() {
+  void beanValidation_requiresAmountRequested_only() {
     CreditLimitRequestCreateRequest request =
         new CreditLimitRequestCreateRequest(null, null, "Need durable increase");
 
@@ -77,8 +77,7 @@ class CreditLimitRequestCreateRequestTest {
                     (left, right) -> left,
                     LinkedHashMap::new));
 
-    assertThat(violations)
-        .containsEntry("dealerId", "must not be null")
-        .containsEntry("amountRequested", "must not be null");
+    assertThat(violations).containsEntry("amountRequested", "must not be null");
+    assertThat(violations).doesNotContainKey("dealerId");
   }
 }

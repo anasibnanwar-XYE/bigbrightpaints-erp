@@ -11,7 +11,6 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
-import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
@@ -26,6 +25,7 @@ import com.bigbrightpaints.erp.modules.reports.dto.ReportSource;
 import com.bigbrightpaints.erp.modules.reports.service.ReportQueryRequestBuilder;
 import com.bigbrightpaints.erp.modules.reports.service.ReportService;
 import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
+import com.bigbrightpaints.erp.test.support.TestDateUtils;
 
 @Tag("critical")
 @Tag("reconciliation")
@@ -46,7 +46,7 @@ class CR_Reports_CashFlow_NotZeroByConstructionIT extends AbstractIntegrationTes
     Company company = dataSeeder.ensureCompany(companyCode, companyCode + " Ltd");
     CompanyContextHolder.setCompanyCode(companyCode);
     try {
-      LocalDate entryDate = CompanyTime.today(company);
+      LocalDate entryDate = TestDateUtils.safeDate(company);
       Account cash = ensureAccount(company, "CASH-CF", "Cash", AccountType.ASSET);
       Account revenue = ensureAccount(company, "REV-CF", "Revenue", AccountType.REVENUE);
 
@@ -72,7 +72,7 @@ class CR_Reports_CashFlow_NotZeroByConstructionIT extends AbstractIntegrationTes
     Company company = dataSeeder.ensureCompany(companyCode, companyCode + " Ltd");
     CompanyContextHolder.setCompanyCode(companyCode);
     try {
-      LocalDate entryDate = CompanyTime.today(company);
+      LocalDate entryDate = TestDateUtils.safeDate(company);
       Account cash = ensureAccount(company, "CASH-SPLIT", "Cash", AccountType.ASSET);
       Account revenue = ensureAccount(company, "REV-SPLIT", "Revenue", AccountType.REVENUE);
       Account expense =
@@ -128,7 +128,7 @@ class CR_Reports_CashFlow_NotZeroByConstructionIT extends AbstractIntegrationTes
     Company company = dataSeeder.ensureCompany(companyCode, companyCode + " Ltd");
     CompanyContextHolder.setCompanyCode(companyCode);
     try {
-      LocalDate entryDate = CompanyTime.today(company);
+      LocalDate entryDate = TestDateUtils.safeDate(company);
       Account cash = ensureAccount(company, "CASH-MIX", "Cash", AccountType.ASSET);
       Account expense = ensureAccount(company, "EXP-MIX", "Operating Expense", AccountType.EXPENSE);
       Account loan = ensureAccount(company, "LOAN-MIX", "Term Loan", AccountType.LIABILITY);

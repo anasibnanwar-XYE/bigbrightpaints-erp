@@ -4,10 +4,12 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
+
 public record AccountingTransactionAuditListItemDto(
     Long journalEntryId,
     String referenceNumber,
-    LocalDate entryDate,
+    @JsonFormat(pattern = "yyyy-MM-dd") LocalDate entryDate,
     String status,
     String module,
     String transactionType,
@@ -22,4 +24,4 @@ public record AccountingTransactionAuditListItemDto(
     Long reversalEntryId,
     String correctionType,
     String consistencyStatus,
-    Instant postedAt) {}
+    @JsonFormat(shape = JsonFormat.Shape.STRING) Instant postedAt) {}

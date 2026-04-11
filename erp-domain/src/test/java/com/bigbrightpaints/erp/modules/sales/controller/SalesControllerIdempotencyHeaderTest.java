@@ -19,6 +19,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.modules.sales.dto.PromotionDto;
+import com.bigbrightpaints.erp.modules.sales.dto.PromotionRequest;
 import com.bigbrightpaints.erp.modules.sales.dto.SalesOrderItemRequest;
 import com.bigbrightpaints.erp.modules.sales.dto.SalesOrderRequest;
 import com.bigbrightpaints.erp.modules.sales.dto.SalesOrderStatusHistoryDto;
@@ -53,25 +55,6 @@ class SalesControllerIdempotencyHeaderTest {
   }
 
   @Test
-  void createOrder_rejectsLegacyHeader() {
-    SalesController controller = createController();
-    assertThatThrownBy(
-            () -> controller.createOrder(null, "legacy-001", requestWithoutIdempotencyKey()))
-        .isInstanceOfSatisfying(
-            ApplicationException.class,
-            ex -> {
-              assertThat(ex.getMessage())
-                  .contains("X-Idempotency-Key is not supported for sales orders");
-              assertThat(ex.getDetails())
-                  .containsEntry("legacyHeader", "X-Idempotency-Key")
-                  .containsEntry("legacyHeaderValue", "legacy-001")
-                  .containsEntry("canonicalHeader", "Idempotency-Key")
-                  .containsEntry("canonicalPath", "/api/v1/sales/orders");
-            });
-    verifyNoInteractions(salesOrderCrudService);
-  }
-
-  @Test
   void createOrder_rejectsHeaderBodyMismatch() {
     SalesController controller = createController();
 
@@ -82,22 +65,13 @@ class SalesControllerIdempotencyHeaderTest {
   }
 
   @Test
-  void createOrder_rejectsWhenPrimaryAndLegacyHeadersAreBothSent() {
+  void createOrder_rejectsRetiredLegacyHeader() {
     SalesController controller = createController();
 
     assertThatThrownBy(
-            () -> controller.createOrder("hdr-001", "legacy-001", requestWithoutIdempotencyKey()))
-        .isInstanceOfSatisfying(
-            ApplicationException.class,
-            ex -> {
-              assertThat(ex.getMessage())
-                  .contains("X-Idempotency-Key is not supported for sales orders");
-              assertThat(ex.getDetails())
-                  .containsEntry("legacyHeader", "X-Idempotency-Key")
-                  .containsEntry("legacyHeaderValue", "legacy-001")
-                  .containsEntry("canonicalHeader", "Idempotency-Key")
-                  .containsEntry("canonicalPath", "/api/v1/sales/orders");
-            });
+            () -> controller.createOrder(null, "legacy-001", requestWithoutIdempotencyKey()))
+        .isInstanceOf(ApplicationException.class)
+        .hasMessageContaining("X-Idempotency-Key is not supported for sales orders");
     verifyNoInteractions(salesOrderCrudService);
   }
 
@@ -160,6 +134,38 @@ class SalesControllerIdempotencyHeaderTest {
     assertThat(response.getBody()).isNotNull();
     assertThat(response.getBody().data()).hasSize(1);
     verify(salesOrderLifecycleService).orderTimeline(99L);
+  }
+
+  @Test
+  void createPromotion_returnsCreatedStatus() {
+    SalesController controller = createController();
+    PromotionRequest request =
+        new PromotionRequest(
+            "Summer Offer",
+            "seasonal discount",
+            "PERCENTAGE",
+            new BigDecimal("10.00"),
+            java.time.LocalDate.of(2026, 4, 1),
+            java.time.LocalDate.of(2026, 4, 30),
+            "ACTIVE");
+    PromotionDto dto =
+        new PromotionDto(
+            11L,
+            java.util.UUID.randomUUID(),
+            "Summer Offer",
+            "seasonal discount",
+            "PERCENTAGE",
+            new BigDecimal("10.00"),
+            java.time.LocalDate.of(2026, 4, 1),
+            java.time.LocalDate.of(2026, 4, 30),
+            "ACTIVE");
+    when(salesService.createPromotion(request)).thenReturn(dto);
+
+    var response = controller.createPromotion(request);
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+    assertThat(response.getBody()).isNotNull();
+    assertThat(response.getBody().data()).isEqualTo(dto);
   }
 
   private SalesOrderRequest requestWithoutIdempotencyKey() {

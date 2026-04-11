@@ -1,6 +1,6 @@
 # Idempotency and Errors
 
-Last reviewed: 2026-04-01
+Last reviewed: 2026-04-07
 
 ## Idempotency rules
 
@@ -10,6 +10,17 @@ Last reviewed: 2026-04-01
 - `POST /api/v1/purchasing/goods-receipts` and
   `POST /api/v1/inventory/raw-materials/adjustments` accept only
   `Idempotency-Key`.
+- `POST /api/v1/purchasing/raw-material-purchases` and
+  `POST /api/v1/purchasing/raw-material-purchases/returns` accept only
+  `Idempotency-Key`. Replaying the same key returns the original purchase
+  invoice or purchase return result without duplicate stock/AP posting.
+- `POST /api/v1/accounting/receipts/dealer`,
+  `POST /api/v1/accounting/receipts/dealer/hybrid`,
+  `POST /api/v1/accounting/settlements/dealers`,
+  `POST /api/v1/accounting/dealers/{dealerId}/auto-settle`,
+  `POST /api/v1/accounting/settlements/suppliers`, and
+  `POST /api/v1/accounting/suppliers/{supplierId}/auto-settle` also accept only
+  `Idempotency-Key`.
 - High-value financial writes must preserve and replay the same idempotency key
   from the originating form state.
 - Journal creation should use a stable client reference number that the backend
@@ -18,8 +29,10 @@ Last reviewed: 2026-04-01
   `referenceNumber`, and `idempotencyKey`. Reusing a correction reference for a
   different purchase or invoice is a new action, not a safe retry.
 - Frontend should send `Idempotency-Key`, not `X-Idempotency-Key`. Legacy
-  headers are not part of the frontend contract even when reject coverage still
-  exists server-side.
+  headers are not part of the frontend contract. Accounting settlement/receipt
+  routes and purchasing invoice/return write routes reject
+  `X-Idempotency-Key` with a `400` validation error and details that point
+  back to the canonical header and path.
 - Reversal requests should never mint a second endpoint for cascade behavior;
   use the canonical reverse path with explicit payload fields.
 
@@ -46,8 +59,9 @@ Recommended client behavior:
 
 ## Error payload expectations
 
-Frontend should expect `ApiResponse.failure(...)` style payloads with explicit
-reason codes or detail maps and preserve:
+Frontend should expect `ApiResponse.failure(...)` style payloads with error
+metadata inside `data` (`data.code`, `data.reason`, `data.path`,
+`data.traceId`, and optional `data.details`) and preserve:
 
 - request trace identifiers
 - field validation hints
@@ -60,12 +74,40 @@ Example error envelope:
 {
   "success": false,
   "message": "Opening stock batch already processed for this openingStockBatchKey",
-  "reason": "VALIDATION_CONFLICT",
-  "details": {
-    "openingStockBatchKey": "FY26-OPENING-STOCK-01",
-    "canonicalPath": "/api/v1/inventory/opening-stock",
-    "traceId": "c41fd8c34b2942f4"
-  }
+  "data": {
+    "code": "VAL_001",
+    "message": "Opening stock batch already processed for this openingStockBatchKey",
+    "reason": "Opening stock batch already processed for this openingStockBatchKey",
+    "path": "/api/v1/inventory/opening-stock",
+    "traceId": "d84e75a7-b1c2-44ee-a84d-4ab5fda403b6",
+    "details": {
+      "openingStockBatchKey": "FY26-OPENING-STOCK-01",
+      "canonicalPath": "/api/v1/inventory/opening-stock"
+    }
+  },
+  "timestamp": "2026-04-06T16:00:00Z"
+}
+```
+
+Legacy-header rejection example:
+
+```json
+{
+  "success": false,
+  "message": "X-Idempotency-Key is not supported for dealer settlements; use Idempotency-Key",
+  "data": {
+    "code": "VAL_001",
+    "message": "X-Idempotency-Key is not supported for dealer settlements; use Idempotency-Key",
+    "reason": "X-Idempotency-Key is not supported for dealer settlements; use Idempotency-Key",
+    "path": "/api/v1/accounting/settlements/dealers",
+    "traceId": "749b4ef0-1aa1-4cc7-b404-5df5bd5d9d50",
+    "details": {
+      "legacyHeader": "X-Idempotency-Key",
+      "canonicalHeader": "Idempotency-Key",
+      "canonicalPath": "/api/v1/accounting/settlements/dealers"
+    }
+  },
+  "timestamp": "2026-04-06T16:00:00Z"
 }
 ```
 

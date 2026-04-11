@@ -276,15 +276,9 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
         "/api/v1/exports/request",
         "post",
         "#/components/schemas/ExportRequestCreateRequest",
-        "200",
+        "201",
         "#/components/schemas/ApiResponseExportRequestDto");
-    assertOperationContract(
-        root,
-        "/api/v1/exports/{requestId}/download",
-        "get",
-        null,
-        "200",
-        "#/components/schemas/ApiResponseExportRequestDownloadResponse");
+    assertBinaryOperationResponse(root, "/api/v1/exports/{requestId}/download", "get", "200");
     assertOperationContract(
         root,
         "/api/v1/superadmin/changelog",
@@ -338,13 +332,42 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
     assertOperationContract(
         root, "/api/v1/admin/users/{id}/mfa/disable", "patch", null, "204", null);
     assertOperationContract(root, "/api/v1/admin/users/{id}", "delete", null, "204", null);
+
+    assertOperationContract(
+        root,
+        "/api/v1/dealer-portal/credit-limit-requests",
+        "post",
+        "#/components/schemas/DealerPortalCreditLimitRequestCreateRequest",
+        "201",
+        "#/components/schemas/ApiResponseCreditLimitRequestDto");
+
+    assertOperationContract(
+        root,
+        "/api/v1/sales/orders",
+        "post",
+        "#/components/schemas/SalesOrderRequest",
+        "200",
+        "#/components/schemas/ApiResponseSalesOrderDto");
+    assertOperationResponse(
+        root,
+        "/api/v1/sales/orders",
+        "post",
+        "201",
+        "#/components/schemas/ApiResponseSalesOrderDto");
+    assertOperationResponse(
+        root,
+        "/api/v1/sales/orders",
+        "post",
+        "422",
+        "#/components/schemas/ApiResponseMapStringObject");
   }
 
   @Test
   void auth_and_tenant_control_docs_match_the_hard_cut_route_story() throws IOException {
     String modulesAuth = readRepoFile("docs/modules/auth.md");
     assertThat(modulesAuth).contains("`GET /api/v1/auth/me`");
-    assertThat(modulesAuth).contains("`/api/v1/superadmin/tenants/{id}/support/admin-password-reset`");
+    assertThat(modulesAuth)
+        .contains("`/api/v1/superadmin/tenants/{id}/support/admin-password-reset`");
     assertThat(modulesAuth)
         .doesNotContain("### UserProfileController — `/api/v1/auth/profile`")
         .doesNotContain("| GET | `/api/v1/auth/profile` |")
@@ -355,7 +378,8 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
     assertThat(flowAuthIdentity).contains("| `/me` | GET | `/api/v1/auth/me` |");
     assertThat(flowAuthIdentity)
         .contains(
-            "| Super-admin support reset | POST | `/api/v1/superadmin/tenants/{id}/support/admin-password-reset` |")
+            "| Super-admin support reset | POST |"
+                + " `/api/v1/superadmin/tenants/{id}/support/admin-password-reset` |")
         .doesNotContain("| Profile read | GET | `/api/v1/auth/profile` |")
         .doesNotContain("| Profile update | PUT | `/api/v1/auth/profile` |")
         .doesNotContain("PUT `/api/v1/auth/profile`")
@@ -403,7 +427,8 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
 
     String runtimeControlPlane = readRepoFile(".factory/library/tenant-runtime-control-plane.md");
     assertThat(runtimeControlPlane)
-        .contains("Canonical control-plane mutation path: `PUT /api/v1/superadmin/tenants/{id}/limits`")
+        .contains(
+            "Canonical control-plane mutation path: `PUT /api/v1/superadmin/tenants/{id}/limits`")
         .doesNotContain("Public mutation path: `PUT /api/v1/companies/{id}/tenant-runtime/policy`");
   }
 
@@ -862,6 +887,44 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
         root, "/api/v1/accounting/settlements/suppliers", "post", "Idempotency-Key");
     assertHeaderParameters(
         root, "/api/v1/accounting/suppliers/{supplierId}/auto-settle", "post", "Idempotency-Key");
+
+    assertOperationContract(
+        root,
+        "/api/v1/accounting/settlements/dealers",
+        "post",
+        "#/components/schemas/PartnerSettlementRequest",
+        "200",
+        "#/components/schemas/ApiResponsePartnerSettlementResponse");
+    assertOperationContract(
+        root,
+        "/api/v1/accounting/settlements/suppliers",
+        "post",
+        "#/components/schemas/PartnerSettlementRequest",
+        "200",
+        "#/components/schemas/ApiResponsePartnerSettlementResponse");
+    assertOperationContract(
+        root,
+        "/api/v1/accounting/periods",
+        "post",
+        "#/components/schemas/AccountingPeriodRequest",
+        "200",
+        "#/components/schemas/ApiResponseAccountingPeriodDto");
+    assertOperationContract(
+        root,
+        "/api/v1/accounting/periods/{periodId}",
+        "put",
+        "#/components/schemas/AccountingPeriodRequest",
+        "200",
+        "#/components/schemas/ApiResponseAccountingPeriodDto");
+
+    assertSchemaPresence(root, "PartnerSettlementRequest", true);
+    assertSchemaPresence(root, "AccountingPeriodRequest", true);
+    assertSchemaPresence(root, "DealerSettlementRequest", false);
+    assertSchemaPresence(root, "SupplierSettlementRequest", false);
+    assertSchemaPresence(root, "AccountingPeriodUpsertRequest", false);
+    assertSchemaPresence(root, "AccountingPeriodUpdateRequest", false);
+    assertSchemaPresence(root, "AccountingPeriodCloseRequest", false);
+    assertSchemaPresence(root, "AccountingPeriodLockRequest", false);
   }
 
   @Test
@@ -873,6 +936,10 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
     assertHeaderParameters(root, "/api/v1/inventory/adjustments", "post", "Idempotency-Key");
     assertHeaderParameters(
         root, "/api/v1/inventory/raw-materials/adjustments", "post", "Idempotency-Key");
+    assertHeaderParameters(
+        root, "/api/v1/purchasing/raw-material-purchases", "post", "Idempotency-Key");
+    assertHeaderParameters(
+        root, "/api/v1/purchasing/raw-material-purchases/returns", "post", "Idempotency-Key");
   }
 
   @Test
@@ -1008,6 +1075,14 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
           }
         });
     assertThat(parameterNames).containsExactly(expectedHeaderNames);
+  }
+
+  private void assertSchemaPresence(JsonNode root, String schemaName, boolean expectedPresence) {
+    assertThat(root.path("components").path("schemas").has(schemaName))
+        .withFailMessage(
+            "Expected schema %s presence=%s in generated OpenAPI spec",
+            schemaName, expectedPresence)
+        .isEqualTo(expectedPresence);
   }
 
   private static List<String> extractOperationSignatures(String spec) throws IOException {
@@ -1226,6 +1301,37 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
             "Unexpected response contract for %s %s %s",
             expectedResponseCode, method.toUpperCase(), path)
         .isEqualTo(expectedResponseRef);
+  }
+
+  private void assertBinaryOperationResponse(
+      JsonNode root, String path, String method, String expectedResponseCode) {
+    JsonNode operation = root.path("paths").path(path).path(method);
+    assertThat(operation.isMissingNode())
+        .withFailMessage("Missing %s %s from generated OpenAPI spec", method.toUpperCase(), path)
+        .isFalse();
+
+    JsonNode responses = operation.path("responses");
+    assertThat(responses.has(expectedResponseCode))
+        .withFailMessage(
+            "Expected %s response for %s %s", expectedResponseCode, method.toUpperCase(), path)
+        .isTrue();
+
+    JsonNode response = responses.path(expectedResponseCode);
+    JsonNode content = response.path("content");
+    JsonNode schema = content.path("application/pdf").path("schema");
+    if (schema.isMissingNode() || schema.isEmpty()) {
+      schema = content.path("*/*").path("schema");
+    }
+    assertThat(schema.path("type").asText())
+        .withFailMessage(
+            "Expected binary response schema type for %s %s %s",
+            expectedResponseCode, method.toUpperCase(), path)
+        .isEqualTo("string");
+    assertThat(schema.path("format").asText())
+        .withFailMessage(
+            "Expected binary response schema format for %s %s %s",
+            expectedResponseCode, method.toUpperCase(), path)
+        .isIn("binary", "byte", "");
   }
 
   private void assertQueryParameter(

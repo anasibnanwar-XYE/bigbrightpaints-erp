@@ -4,10 +4,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
+import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -16,6 +19,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.http.*;
 
+import com.bigbrightpaints.erp.core.audittrail.AuditActionEvent;
+import com.bigbrightpaints.erp.core.audittrail.AuditActionEventRepository;
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
@@ -79,6 +84,7 @@ public class OrderFulfillmentE2ETest extends AbstractIntegrationTest {
   @Autowired private AccountRepository accountRepository;
   @Autowired private ProductionProductRepository productionProductRepository;
   @Autowired private ProductionBrandRepository productionBrandRepository;
+  @Autowired private AuditActionEventRepository auditActionEventRepository;
 
   private String authToken;
   private HttpHeaders headers;
@@ -138,6 +144,13 @@ public class OrderFulfillmentE2ETest extends AbstractIntegrationTest {
     h.setContentType(MediaType.APPLICATION_JSON);
     h.set("X-Company-Code", COMPANY_CODE);
     return h;
+  }
+
+  private HttpHeaders headersWithCorrelationId(HttpHeaders baseHeaders, UUID correlationId) {
+    HttpHeaders scoped = new HttpHeaders();
+    scoped.putAll(baseHeaders);
+    scoped.set("X-Correlation-Id", correlationId.toString());
+    return scoped;
   }
 
   private void ensureTestAccounts() {
@@ -303,8 +316,7 @@ public class OrderFulfillmentE2ETest extends AbstractIntegrationTest {
             new HttpEntity<>(orderReq, headers),
             Map.class);
 
-    assertThat(response.getStatusCode())
-        .isIn(HttpStatus.CONFLICT, HttpStatus.INTERNAL_SERVER_ERROR);
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
     assertThat(response.getBody()).isNotNull();
     Object message = response.getBody().get("message");
     assertThat(message).as("credit limit rejection response").isNotNull();
@@ -511,12 +523,14 @@ public class OrderFulfillmentE2ETest extends AbstractIntegrationTest {
 
     PackagingSlip slip = reserveSlip(company, orderId);
     Map<String, Object> dispatchReq = dispatchRequestForSlip(slip, "dispatch-cogs");
+    UUID flowCorrelationId = UUID.randomUUID();
+    HttpHeaders dispatchHeaders = headersWithCorrelationId(headers, flowCorrelationId);
 
     ResponseEntity<Map> response =
         rest.exchange(
             "/api/v1/dispatch/confirm",
             HttpMethod.POST,
-            new HttpEntity<>(dispatchReq, headers),
+            new HttpEntity<>(dispatchReq, dispatchHeaders),
             Map.class);
 
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -524,6 +538,52 @@ public class OrderFulfillmentE2ETest extends AbstractIntegrationTest {
     PackagingSlip dispatchedSlip = packagingSlipRepository.findById(slip.getId()).orElseThrow();
     assertThat(((Number) data.get("packagingSlipId")).longValue()).isEqualTo(slip.getId());
     assertThat(dispatchedSlip.getInvoiceId()).isNotNull();
+    assertThat(dispatchedSlip.getJournalEntryId()).isNotNull();
+    assertThat(dispatchedSlip.getCogsJournalEntryId()).isNotNull();
+
+    AuditActionEvent dispatchAudit =
+        awaitBusinessAuditEvent(
+            company.getId(), "SALES", "DISPATCH_CONFIRMED", "SALES_ORDER", orderId.toString());
+    assertThat(dispatchAudit.getCorrelationId()).isEqualTo(flowCorrelationId);
+
+    AuditActionEvent arJournalAudit =
+        awaitBusinessAuditEvent(
+            company.getId(),
+            "ACCOUNTING",
+            "SYSTEM_JOURNAL_CREATED",
+            "JOURNAL_ENTRY",
+            dispatchedSlip.getJournalEntryId().toString());
+    AuditActionEvent cogsJournalAudit =
+        awaitBusinessAuditEvent(
+            company.getId(),
+            "ACCOUNTING",
+            "SYSTEM_JOURNAL_CREATED",
+            "JOURNAL_ENTRY",
+            dispatchedSlip.getCogsJournalEntryId().toString());
+    assertThat(arJournalAudit.getCorrelationId()).isEqualTo(flowCorrelationId);
+    assertThat(cogsJournalAudit.getCorrelationId()).isEqualTo(flowCorrelationId);
+    assertThat(arJournalAudit.getCorrelationId()).isEqualTo(dispatchAudit.getCorrelationId());
+    assertThat(cogsJournalAudit.getCorrelationId()).isEqualTo(dispatchAudit.getCorrelationId());
+
+    List<?> arEventTrail = transactionEventTrail(dispatchedSlip.getJournalEntryId());
+    assertThat(arEventTrail).isNotEmpty();
+    assertThat(arEventTrail)
+        .allSatisfy(
+            row -> {
+              assertThat(row).isInstanceOf(Map.class);
+              assertThat(((Map<?, ?>) row).get("correlationId"))
+                  .isEqualTo(flowCorrelationId.toString());
+            });
+
+    List<?> cogsEventTrail = transactionEventTrail(dispatchedSlip.getCogsJournalEntryId());
+    assertThat(cogsEventTrail).isNotEmpty();
+    assertThat(cogsEventTrail)
+        .allSatisfy(
+            row -> {
+              assertThat(row).isInstanceOf(Map.class);
+              assertThat(((Map<?, ?>) row).get("correlationId"))
+                  .isEqualTo(flowCorrelationId.toString());
+            });
   }
 
   @Test
@@ -1398,5 +1458,48 @@ public class OrderFulfillmentE2ETest extends AbstractIntegrationTest {
       return new BigDecimal(str);
     }
     return BigDecimal.ZERO;
+  }
+
+  private List<?> transactionEventTrail(Long journalEntryId) {
+    ResponseEntity<Map> response =
+        rest.exchange(
+            "/api/v1/accounting/audit/transactions/" + journalEntryId,
+            HttpMethod.GET,
+            new HttpEntity<>(headers),
+            Map.class);
+    Map<?, ?> data =
+        requireData(response, "fetch accounting audit transaction detail for " + journalEntryId);
+    Object eventTrail = data.get("eventTrail");
+    assertThat(eventTrail).isInstanceOf(List.class);
+    return (List<?>) eventTrail;
+  }
+
+  private AuditActionEvent awaitBusinessAuditEvent(
+      Long companyId, String module, String action, String entityType, String entityId) {
+    Instant deadline = Instant.now().plus(Duration.ofSeconds(5));
+    while (Instant.now().isBefore(deadline)) {
+      Optional<AuditActionEvent> match =
+          auditActionEventRepository
+              .findTopByCompanyIdAndModuleIgnoreCaseAndActionIgnoreCaseAndEntityTypeIgnoreCaseAndEntityIdOrderByOccurredAtDesc(
+                  companyId, module, action, entityType, entityId);
+      if (match.isPresent()) {
+        return match.get();
+      }
+      try {
+        Thread.sleep(100);
+      } catch (InterruptedException ex) {
+        Thread.currentThread().interrupt();
+        throw new AssertionError("Interrupted while waiting for audit event", ex);
+      }
+    }
+    throw new AssertionError(
+        "Audit event not found: module="
+            + module
+            + ", action="
+            + action
+            + ", entityType="
+            + entityType
+            + ", entityId="
+            + entityId);
   }
 }

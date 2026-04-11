@@ -11,27 +11,31 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import com.bigbrightpaints.erp.core.audittrail.AuditCorrelationIdResolver;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalLine;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
+import com.bigbrightpaints.erp.test.support.ReflectionFieldAccess;
 
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 
 @ExtendWith(MockitoExtension.class)
+@Tag("critical")
 class AccountingEventStoreMetricsTest {
 
   @Mock private AccountingEventRepository eventRepository;
@@ -49,7 +53,7 @@ class AccountingEventStoreMetricsTest {
 
     JournalEntry entry = buildJournalEntry();
 
-    when(eventRepository.getNextSequenceNumber(any(UUID.class))).thenReturn(1L, 1L, 2L);
+    when(eventRepository.getNextSequenceNumber(any(UUID.class))).thenReturn(1L, 2L, 1L, 1L);
     when(eventRepository.save(any(AccountingEvent.class)))
         .thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -71,16 +75,167 @@ class AccountingEventStoreMetricsTest {
     verify(eventPublisher, times(1)).publishEvent(eventCaptor.capture());
     assertThat(eventCaptor.getValue().entryId()).isEqualTo(77L);
 
-    verify(eventRepository, times(3)).save(any(AccountingEvent.class));
+    ArgumentCaptor<AccountingEvent> accountingEventCaptor =
+        ArgumentCaptor.forClass(AccountingEvent.class);
+    verify(eventRepository, times(4)).save(accountingEventCaptor.capture());
+    assertThat(
+            accountingEventCaptor.getAllValues().stream()
+                .map(AccountingEvent::getEventType)
+                .collect(Collectors.toSet()))
+        .contains(
+            AccountingEventType.JOURNAL_ENTRY_CREATED,
+            AccountingEventType.JOURNAL_ENTRY_POSTED,
+            AccountingEventType.ACCOUNT_DEBIT_POSTED,
+            AccountingEventType.ACCOUNT_CREDIT_POSTED);
+  }
+
+  @Test
+  void recordDealerReceiptPosted_persistsDealerReceiptEventType() {
+    AccountingEventStore store =
+        new AccountingEventStore(
+            eventRepository, eventPublisher, new ObjectMapper(), companyClock, null);
+    JournalEntry entry = buildJournalEntry();
+    when(eventRepository.getNextSequenceNumber(any(UUID.class))).thenReturn(3L);
+    when(eventRepository.save(any(AccountingEvent.class)))
+        .thenAnswer(invocation -> invocation.getArgument(0));
+
+    store.recordDealerReceiptPosted(
+        entry, 501L, new BigDecimal("150.00"), "dealer-idempotency-key");
+
+    ArgumentCaptor<AccountingEvent> eventCaptor = ArgumentCaptor.forClass(AccountingEvent.class);
+    verify(eventRepository).save(eventCaptor.capture());
+    AccountingEvent persisted = eventCaptor.getValue();
+    assertThat(persisted.getEventType()).isEqualTo(AccountingEventType.DEALER_RECEIPT_POSTED);
+    assertThat(persisted.getJournalEntryId()).isEqualTo(entry.getId());
+    assertThat(persisted.getPayload())
+        .contains("\"partnerType\":\"DEALER\"")
+        .contains("\"partnerId\":501")
+        .contains("\"idempotencyKey\":\"dealer-idempotency-key\"");
+  }
+
+  @Test
+  void recordSupplierPaymentPosted_persistsSupplierPaymentEventType() {
+    AccountingEventStore store =
+        new AccountingEventStore(
+            eventRepository, eventPublisher, new ObjectMapper(), companyClock, null);
+    JournalEntry entry = buildJournalEntry();
+    when(eventRepository.getNextSequenceNumber(any(UUID.class))).thenReturn(4L);
+    when(eventRepository.save(any(AccountingEvent.class)))
+        .thenAnswer(invocation -> invocation.getArgument(0));
+
+    store.recordSupplierPaymentPosted(
+        entry, 902L, new BigDecimal("80.00"), "supplier-idempotency-key");
+
+    ArgumentCaptor<AccountingEvent> eventCaptor = ArgumentCaptor.forClass(AccountingEvent.class);
+    verify(eventRepository).save(eventCaptor.capture());
+    AccountingEvent persisted = eventCaptor.getValue();
+    assertThat(persisted.getEventType()).isEqualTo(AccountingEventType.SUPPLIER_PAYMENT_POSTED);
+    assertThat(persisted.getJournalEntryId()).isEqualTo(entry.getId());
+    assertThat(persisted.getPayload())
+        .contains("\"partnerType\":\"SUPPLIER\"")
+        .contains("\"partnerId\":902")
+        .contains("\"idempotencyKey\":\"supplier-idempotency-key\"");
+  }
+
+  @Test
+  void recordSettlementAllocated_persistsSettlementAllocatedEventType() {
+    AccountingEventStore store =
+        new AccountingEventStore(
+            eventRepository, eventPublisher, new ObjectMapper(), companyClock, null);
+    JournalEntry entry = buildJournalEntry();
+    when(eventRepository.getNextSequenceNumber(any(UUID.class))).thenReturn(5L);
+    when(eventRepository.save(any(AccountingEvent.class)))
+        .thenAnswer(invocation -> invocation.getArgument(0));
+
+    store.recordSettlementAllocated(
+        entry, "DEALER", 711L, new BigDecimal("245.00"), 3, "dealer-settlement-idempotency-key");
+
+    ArgumentCaptor<AccountingEvent> eventCaptor = ArgumentCaptor.forClass(AccountingEvent.class);
+    verify(eventRepository).save(eventCaptor.capture());
+    AccountingEvent persisted = eventCaptor.getValue();
+    assertThat(persisted.getEventType()).isEqualTo(AccountingEventType.SETTLEMENT_ALLOCATED);
+    assertThat(persisted.getJournalEntryId()).isEqualTo(entry.getId());
+    assertThat(persisted.getPayload())
+        .contains("\"partnerType\":\"DEALER\"")
+        .contains("\"partnerId\":711")
+        .contains("\"allocationCount\":3")
+        .contains("\"idempotencyKey\":\"dealer-settlement-idempotency-key\"");
+  }
+
+  @Test
+  void recordJournalEntryPosted_usesFlowCorrelationFallbackFromSourceFields() {
+    AccountingEventStore store =
+        new AccountingEventStore(
+            eventRepository, eventPublisher, new ObjectMapper(), companyClock, null);
+    JournalEntry entry = buildJournalEntry();
+    entry.setSourceReference("SRC-77");
+    entry.setSourceModule("SALES");
+    when(eventRepository.getNextSequenceNumber(any(UUID.class))).thenReturn(1L, 2L, 1L, 1L);
+    when(eventRepository.save(any(AccountingEvent.class)))
+        .thenAnswer(invocation -> invocation.getArgument(0));
+
+    store.recordJournalEntryPosted(entry, Map.of());
+
+    ArgumentCaptor<AccountingEvent> eventCaptor = ArgumentCaptor.forClass(AccountingEvent.class);
+    verify(eventRepository, times(4)).save(eventCaptor.capture());
+    UUID expectedCorrelation =
+        AuditCorrelationIdResolver.resolveCorrelationId(null, "SRC-77", "SALES");
+    assertThat(eventCaptor.getAllValues())
+        .extracting(AccountingEvent::getCorrelationId)
+        .allMatch(expectedCorrelation::equals);
+  }
+
+  @Test
+  void recordJournalCorrectionApplied_usesOriginalSourceReferenceWhenCorrectionHasNoSourceFields() {
+    AccountingEventStore store =
+        new AccountingEventStore(
+            eventRepository, eventPublisher, new ObjectMapper(), companyClock, null);
+    JournalEntry original = buildJournalEntry();
+    original.setSourceReference("ORIGINAL-SRC");
+    JournalEntry reversal = buildJournalEntry();
+    ReflectionFieldAccess.setField(reversal, "id", 88L);
+    reversal.setSourceReference(null);
+    reversal.setSourceModule(null);
+    reversal.setReferenceNumber("REV-88");
+    when(eventRepository.getNextSequenceNumber(any(UUID.class))).thenReturn(5L);
+    when(eventRepository.save(any(AccountingEvent.class)))
+        .thenAnswer(invocation -> invocation.getArgument(0));
+
+    store.recordJournalEntryReversed(original, reversal, "reversal reason");
+
+    ArgumentCaptor<AccountingEvent> eventCaptor = ArgumentCaptor.forClass(AccountingEvent.class);
+    verify(eventRepository).save(eventCaptor.capture());
+    UUID expectedCorrelation =
+        AuditCorrelationIdResolver.resolveCorrelationId(null, "ORIGINAL-SRC");
+    assertThat(eventCaptor.getValue().getCorrelationId()).isEqualTo(expectedCorrelation);
+  }
+
+  @Test
+  void recordSettlementAllocated_keepsCorrelationNullWhenAllFallbackCandidatesAreBlank() {
+    AccountingEventStore store =
+        new AccountingEventStore(
+            eventRepository, eventPublisher, new ObjectMapper(), companyClock, null);
+    JournalEntry entry = buildJournalEntry();
+    entry.setSourceReference(" ");
+    entry.setSourceModule(null);
+    when(eventRepository.getNextSequenceNumber(any(UUID.class))).thenReturn(6L);
+    when(eventRepository.save(any(AccountingEvent.class)))
+        .thenAnswer(invocation -> invocation.getArgument(0));
+
+    store.recordSettlementAllocated(entry, " ", 701L, new BigDecimal("10.00"), 1, " ");
+
+    ArgumentCaptor<AccountingEvent> eventCaptor = ArgumentCaptor.forClass(AccountingEvent.class);
+    verify(eventRepository).save(eventCaptor.capture());
+    assertThat(eventCaptor.getValue().getCorrelationId()).isNull();
   }
 
   private JournalEntry buildJournalEntry() {
     Company company = new Company();
-    ReflectionTestUtils.setField(company, "id", 10L);
+    ReflectionFieldAccess.setField(company, "id", 10L);
     company.setCode("ACME");
 
     Account debitAccount = new Account();
-    ReflectionTestUtils.setField(debitAccount, "id", 101L);
+    ReflectionFieldAccess.setField(debitAccount, "id", 101L);
     debitAccount.setCompany(company);
     debitAccount.setCode("1000");
     debitAccount.setName("Cash");
@@ -88,7 +243,7 @@ class AccountingEventStoreMetricsTest {
     debitAccount.setBalance(new BigDecimal("1000.00"));
 
     Account creditAccount = new Account();
-    ReflectionTestUtils.setField(creditAccount, "id", 202L);
+    ReflectionFieldAccess.setField(creditAccount, "id", 202L);
     creditAccount.setCompany(company);
     creditAccount.setCode("2000");
     creditAccount.setName("Revenue");
@@ -108,10 +263,10 @@ class AccountingEventStoreMetricsTest {
     creditLine.setDescription("Credit line");
 
     JournalEntry entry = new JournalEntry();
-    ReflectionTestUtils.setField(entry, "id", 77L);
-    ReflectionTestUtils.setField(
+    ReflectionFieldAccess.setField(entry, "id", 77L);
+    ReflectionFieldAccess.setField(
         entry, "publicId", UUID.fromString("11111111-1111-1111-1111-111111111111"));
-    ReflectionTestUtils.setField(entry, "lines", List.of(debitLine, creditLine));
+    ReflectionFieldAccess.setField(entry, "lines", List.of(debitLine, creditLine));
     entry.setCompany(company);
     entry.setReferenceNumber("JRN-77");
     entry.setEntryDate(LocalDate.of(2026, 3, 3));

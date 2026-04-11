@@ -2,7 +2,9 @@ package com.bigbrightpaints.erp.modules.reports.service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -15,13 +17,14 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
@@ -35,27 +38,33 @@ import com.bigbrightpaints.erp.modules.accounting.domain.DealerLedgerEntry;
 import com.bigbrightpaints.erp.modules.accounting.domain.DealerLedgerRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryStatus;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalLine;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalLineRepository;
+import com.bigbrightpaints.erp.modules.accounting.service.CompanyScopedAccountingLookupService;
 import com.bigbrightpaints.erp.modules.accounting.service.DealerLedgerService;
 import com.bigbrightpaints.erp.modules.accounting.service.GstService;
+import com.bigbrightpaints.erp.modules.accounting.service.ReconciliationService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.factory.domain.PackingRecord;
 import com.bigbrightpaints.erp.modules.factory.domain.PackingRecordRepository;
 import com.bigbrightpaints.erp.modules.factory.domain.ProductionLog;
 import com.bigbrightpaints.erp.modules.factory.domain.ProductionLogRepository;
+import com.bigbrightpaints.erp.modules.factory.domain.ProductionLogStatus;
 import com.bigbrightpaints.erp.modules.factory.dto.CostBreakdownDto;
 import com.bigbrightpaints.erp.modules.factory.dto.CostComponentTraceDto;
 import com.bigbrightpaints.erp.modules.factory.dto.MonthlyProductionCostDto;
 import com.bigbrightpaints.erp.modules.factory.dto.PackedBatchTraceDto;
 import com.bigbrightpaints.erp.modules.factory.dto.RawMaterialTraceDto;
 import com.bigbrightpaints.erp.modules.factory.dto.WastageReportDto;
+import com.bigbrightpaints.erp.modules.factory.service.CompanyScopedFactoryLookupService;
 import com.bigbrightpaints.erp.modules.inventory.domain.InventoryMovement;
 import com.bigbrightpaints.erp.modules.inventory.domain.InventoryMovementRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.InventoryReference;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovement;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovementRepository;
+import com.bigbrightpaints.erp.modules.inventory.service.InventoryPhysicalCountService;
 import com.bigbrightpaints.erp.modules.invoice.domain.Invoice;
 import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceLine;
 import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceRepository;
@@ -83,7 +92,8 @@ public class ReportService {
   private final PackingRecordRepository packingRecordRepository;
   private final InventoryMovementRepository inventoryMovementRepository;
   private final RawMaterialMovementRepository rawMaterialMovementRepository;
-  private final CompanyEntityLookup companyEntityLookup;
+  private final CompanyScopedAccountingLookupService accountingLookupService;
+  private final CompanyScopedFactoryLookupService factoryLookupService;
   private final CompanyClock companyClock;
   private final InventoryValuationQueryService inventoryValuationService;
   private final TrialBalanceReportQueryService trialBalanceReportQueryService;
@@ -93,8 +103,13 @@ public class ReportService {
   private final InvoiceRepository invoiceRepository;
   private final RawMaterialPurchaseRepository rawMaterialPurchaseRepository;
   private final GstService gstService;
+  private final InventoryPhysicalCountService inventoryPhysicalCountService;
   private static final BigDecimal BALANCE_TOLERANCE = new BigDecimal("0.01");
 
+  @Autowired(required = false)
+  private ObjectProvider<ReconciliationService> reconciliationServiceProvider;
+
+  @Autowired
   public ReportService(
       CompanyContextService companyContextService,
       AccountRepository accountRepository,
@@ -110,7 +125,8 @@ public class ReportService {
       PackingRecordRepository packingRecordRepository,
       InventoryMovementRepository inventoryMovementRepository,
       RawMaterialMovementRepository rawMaterialMovementRepository,
-      CompanyEntityLookup companyEntityLookup,
+      CompanyScopedAccountingLookupService accountingLookupService,
+      CompanyScopedFactoryLookupService factoryLookupService,
       CompanyClock companyClock,
       InventoryValuationQueryService inventoryValuationService,
       TrialBalanceReportQueryService trialBalanceReportQueryService,
@@ -119,7 +135,8 @@ public class ReportService {
       AgedDebtorsReportQueryService agedDebtorsReportQueryService,
       InvoiceRepository invoiceRepository,
       RawMaterialPurchaseRepository rawMaterialPurchaseRepository,
-      GstService gstService) {
+      GstService gstService,
+      InventoryPhysicalCountService inventoryPhysicalCountService) {
     this.companyContextService = companyContextService;
     this.accountRepository = accountRepository;
     this.accountingPeriodRepository = accountingPeriodRepository;
@@ -134,7 +151,8 @@ public class ReportService {
     this.packingRecordRepository = packingRecordRepository;
     this.inventoryMovementRepository = inventoryMovementRepository;
     this.rawMaterialMovementRepository = rawMaterialMovementRepository;
-    this.companyEntityLookup = companyEntityLookup;
+    this.accountingLookupService = accountingLookupService;
+    this.factoryLookupService = factoryLookupService;
     this.companyClock = companyClock;
     this.inventoryValuationService = inventoryValuationService;
     this.trialBalanceReportQueryService = trialBalanceReportQueryService;
@@ -144,6 +162,7 @@ public class ReportService {
     this.invoiceRepository = invoiceRepository;
     this.rawMaterialPurchaseRepository = rawMaterialPurchaseRepository;
     this.gstService = gstService;
+    this.inventoryPhysicalCountService = inventoryPhysicalCountService;
   }
 
   @Transactional(readOnly = true)
@@ -175,7 +194,7 @@ public class ReportService {
     BigDecimal investing = BigDecimal.ZERO;
     BigDecimal financing = BigDecimal.ZERO;
     for (JournalEntry entry : entries) {
-      if (!"POSTED".equalsIgnoreCase(entry.getStatus())) {
+      if (entry.getStatus() != JournalEntryStatus.POSTED) {
         continue;
       }
       List<JournalLine> lines = entry.getLines();
@@ -632,7 +651,8 @@ public class ReportService {
       return true;
     }
     String normalized = status.trim().toUpperCase(Locale.ROOT);
-    return !normalized.equals("VOID")
+    return !normalized.equals("DRAFT")
+        && !normalized.equals("VOID")
         && !normalized.equals("REVERSED")
         && !normalized.equals("CANCELLED");
   }
@@ -648,6 +668,66 @@ public class ReportService {
 
   private BigDecimal normalizeRate(BigDecimal rate) {
     return roundCurrency(safe(rate));
+  }
+
+  @Transactional(readOnly = true)
+  public AccountStatementReportDto accountStatement(
+      Long accountId, LocalDate fromDate, LocalDate toDate) {
+    Company company = companyContextService.requireCurrentCompany();
+    if (accountId == null) {
+      throw new ApplicationException(
+          ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD, "accountId is required");
+    }
+
+    LocalDate today = companyClock.today(company);
+    LocalDate from = fromDate != null ? fromDate : today.withDayOfMonth(1);
+    LocalDate to = toDate != null ? toDate : today;
+    if (from.isAfter(to)) {
+      throw new ApplicationException(
+              ErrorCode.VALIDATION_INVALID_DATE, "from date must be on or before to date")
+          .withDetail("from", from.toString())
+          .withDetail("to", to.toString());
+    }
+
+    Account account = accountingLookupService.requireAccount(company, accountId);
+    AccountType accountType = account.getType();
+    BigDecimal openingBalance =
+        normalizeNetBalance(
+            journalLineRepository.netBalanceUpTo(company, accountId, from.minusDays(1)),
+            accountType);
+    List<JournalLine> lines =
+        journalLineRepository.findLinesForAccountBetween(company, accountId, from, to);
+
+    BigDecimal runningBalance = openingBalance;
+    List<AccountStatementLineDto> entries = new ArrayList<>();
+    for (JournalLine line : lines) {
+      JournalEntry entry = line.getJournalEntry();
+      BigDecimal debit = safe(line.getDebit());
+      BigDecimal credit = safe(line.getCredit());
+      BigDecimal normalizedDelta = normalizeNetBalance(debit.subtract(credit), accountType);
+      runningBalance = runningBalance.add(normalizedDelta);
+      entries.add(
+          new AccountStatementLineDto(
+              entry != null ? entry.getId() : null,
+              entry != null ? entry.getEntryDate() : null,
+              resolveEntryTimestamp(entry),
+              entry != null ? entry.getReferenceNumber() : null,
+              resolveEntryDescription(entry, line),
+              debit,
+              credit,
+              runningBalance));
+    }
+
+    BigDecimal closingBalance = entries.isEmpty() ? openingBalance : runningBalance;
+    return new AccountStatementReportDto(
+        account.getId(),
+        account.getCode(),
+        account.getName(),
+        from,
+        to,
+        openingBalance,
+        entries,
+        closingBalance);
   }
 
   @Transactional(readOnly = true)
@@ -693,6 +773,26 @@ public class ReportService {
         .toList();
   }
 
+  private Instant resolveEntryTimestamp(JournalEntry entry) {
+    if (entry == null) {
+      return null;
+    }
+    if (entry.getPostedAt() != null) {
+      return entry.getPostedAt();
+    }
+    return entry.getCreatedAt();
+  }
+
+  private String resolveEntryDescription(JournalEntry entry, JournalLine line) {
+    if (line != null && line.getDescription() != null && !line.getDescription().isBlank()) {
+      return line.getDescription();
+    }
+    if (entry != null && entry.getMemo() != null && !entry.getMemo().isBlank()) {
+      return entry.getMemo();
+    }
+    return null;
+  }
+
   @Transactional(readOnly = true)
   public List<AgedDebtorDto> agedDebtors(FinancialReportQueryRequest request) {
     return agedDebtorsReportQueryService.generate(requireFinancialReportRequest(request));
@@ -704,8 +804,110 @@ public class ReportService {
     InventoryValuationQueryService.InventorySnapshot totals =
         inventoryValuationService.currentSnapshot(company);
     BigDecimal ledgerBalance = resolveInventoryLedgerBalance(company);
-    BigDecimal variance = totals.totalValue().subtract(ledgerBalance);
-    return new ReconciliationSummaryDto(totals.totalValue(), ledgerBalance, variance);
+    BigDecimal variance = safe(totals.totalValue()).subtract(ledgerBalance);
+    return new ReconciliationSummaryDto(safe(totals.totalValue()), ledgerBalance, variance);
+  }
+
+  @Transactional(readOnly = true)
+  public InventoryReconciliationReportDto inventoryReconciliationReport() {
+    Company company = companyContextService.requireCurrentCompany();
+    InventoryValuationQueryService.InventorySnapshot totals =
+        inventoryValuationService.currentSnapshot(company);
+    List<InventoryValuationQueryService.InventoryItemSnapshot> snapshotItems =
+        totals.items() == null ? List.of() : totals.items();
+    Map<Long, BigDecimal> latestFinishedGoodCounts =
+        inventoryPhysicalCountService.latestFinishedGoodCounts(
+            company, inventoryReconciliationItemIds(snapshotItems, true));
+    Map<Long, BigDecimal> latestRawMaterialCounts =
+        inventoryPhysicalCountService.latestRawMaterialCounts(
+            company, inventoryReconciliationItemIds(snapshotItems, false));
+
+    List<InventoryReconciliationItemDto> items =
+        snapshotItems.stream()
+            .filter(Objects::nonNull)
+            .map(
+                item -> {
+                  BigDecimal systemQty = safe(item.quantityOnHand());
+                  BigDecimal physicalQty =
+                      resolvePhysicalQuantity(
+                          item, systemQty, latestFinishedGoodCounts, latestRawMaterialCounts);
+                  BigDecimal variance = physicalQty.subtract(systemQty);
+                  return new InventoryReconciliationItemDto(
+                      item.inventoryItemId(),
+                      item.code(),
+                      item.name(),
+                      roundCurrency(systemQty),
+                      roundCurrency(physicalQty),
+                      roundCurrency(variance));
+                })
+            .toList();
+
+    BigDecimal systemQuantityTotal =
+        items.stream()
+            .map(InventoryReconciliationItemDto::systemQty)
+            .map(this::safe)
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
+    BigDecimal physicalQuantityTotal =
+        items.stream()
+            .map(InventoryReconciliationItemDto::physicalQty)
+            .map(this::safe)
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
+    BigDecimal quantityVarianceTotal = physicalQuantityTotal.subtract(systemQuantityTotal);
+
+    BigDecimal physicalInventoryValue =
+        snapshotItems.stream()
+            .filter(Objects::nonNull)
+            .map(
+                item -> {
+                  BigDecimal systemQty = safe(item.quantityOnHand());
+                  BigDecimal physicalQty =
+                      resolvePhysicalQuantity(
+                          item, systemQty, latestFinishedGoodCounts, latestRawMaterialCounts);
+                  return physicalQty.multiply(safe(item.unitCost()));
+                })
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
+    BigDecimal ledgerBalance = resolveInventoryLedgerBalance(company);
+    BigDecimal valueVariance = physicalInventoryValue.subtract(ledgerBalance);
+    return new InventoryReconciliationReportDto(
+        roundCurrency(systemQuantityTotal),
+        roundCurrency(physicalQuantityTotal),
+        roundCurrency(quantityVarianceTotal),
+        roundCurrency(ledgerBalance),
+        roundCurrency(physicalInventoryValue),
+        roundCurrency(valueVariance),
+        items);
+  }
+
+  private List<Long> inventoryReconciliationItemIds(
+      List<InventoryValuationQueryService.InventoryItemSnapshot> snapshotItems,
+      boolean finishedGoods) {
+    InventoryValuationQueryService.InventoryTypeBucket expectedType =
+        finishedGoods
+            ? InventoryValuationQueryService.InventoryTypeBucket.FINISHED_GOOD
+            : InventoryValuationQueryService.InventoryTypeBucket.RAW_MATERIAL;
+    return snapshotItems.stream()
+        .filter(Objects::nonNull)
+        .filter(item -> item.inventoryType() == expectedType)
+        .map(InventoryValuationQueryService.InventoryItemSnapshot::inventoryItemId)
+        .filter(Objects::nonNull)
+        .distinct()
+        .toList();
+  }
+
+  private BigDecimal resolvePhysicalQuantity(
+      InventoryValuationQueryService.InventoryItemSnapshot item,
+      BigDecimal systemQty,
+      Map<Long, BigDecimal> latestFinishedGoodCounts,
+      Map<Long, BigDecimal> latestRawMaterialCounts) {
+    if (item == null || item.inventoryItemId() == null) {
+      return systemQty;
+    }
+    BigDecimal physicalQty =
+        switch (item.inventoryType()) {
+          case FINISHED_GOOD -> latestFinishedGoodCounts.get(item.inventoryItemId());
+          case RAW_MATERIAL -> latestRawMaterialCounts.get(item.inventoryItemId());
+        };
+    return physicalQty == null ? systemQty : safe(physicalQty);
   }
 
   @Transactional(readOnly = true)
@@ -718,24 +920,37 @@ public class ReportService {
       AccountType type = account.getType();
       String reason = null;
       String severity = "INFO";
+      String warningType = null;
+      BigDecimal threshold = BigDecimal.ZERO;
       if (type == AccountType.ASSET && balance.compareTo(BigDecimal.ZERO) < 0) {
         reason = "Asset account has a credit balance";
         severity = "HIGH";
+        warningType = "ASSET_CREDIT_BALANCE";
       } else if (type == AccountType.LIABILITY && balance.compareTo(BigDecimal.ZERO) > 0) {
         reason = "Liability account has a debit balance";
         severity = "HIGH";
+        warningType = "LIABILITY_DEBIT_BALANCE";
       } else if (type == AccountType.REVENUE && balance.compareTo(BigDecimal.ZERO) > 0) {
         reason = "Revenue account shows a debit balance";
         severity = "MEDIUM";
+        warningType = "REVENUE_DEBIT_BALANCE";
       } else if ((type == AccountType.EXPENSE || type == AccountType.COGS)
           && balance.compareTo(BigDecimal.ZERO) < 0) {
         reason = "Expense account shows a credit balance";
         severity = "MEDIUM";
+        warningType = "EXPENSE_CREDIT_BALANCE";
       }
       if (reason != null) {
         warnings.add(
             new BalanceWarningDto(
-                account.getId(), account.getCode(), account.getName(), balance, severity, reason));
+                account.getId(),
+                account.getCode(),
+                account.getName(),
+                balance,
+                warningType,
+                threshold,
+                severity,
+                reason));
       }
     }
     return warnings;
@@ -745,28 +960,115 @@ public class ReportService {
   public ReconciliationDashboardDto reconciliationDashboard(
       Long bankAccountId, BigDecimal statementBalance) {
     Company company = companyContextService.requireCurrentCompany();
-    Account bankAccount = companyEntityLookup.requireAccount(company, bankAccountId);
+    Account bankAccount = resolveBankAccountForDashboard(company, bankAccountId);
     InventoryValuationQueryService.InventorySnapshot totals =
         inventoryValuationService.currentSnapshot(company);
-    BigDecimal ledgerInventoryBalance = resolveInventoryLedgerBalance(company);
-    BigDecimal physicalInventoryValue = totals.totalValue();
-    BigDecimal inventoryVariance = physicalInventoryValue.subtract(ledgerInventoryBalance);
+    BigDecimal ledgerInventoryValue = resolveInventoryLedgerBalance(company);
+    BigDecimal physicalInventoryValue = safe(totals.totalValue());
+    BigDecimal inventoryVariance = physicalInventoryValue.subtract(ledgerInventoryValue);
+
     BigDecimal bankLedgerBalance = safe(bankAccount.getBalance());
     BigDecimal bankStatementBalance =
         statementBalance != null ? statementBalance : bankLedgerBalance;
     BigDecimal bankVariance = bankLedgerBalance.subtract(bankStatementBalance);
+
     boolean inventoryBalanced = inventoryVariance.abs().compareTo(BALANCE_TOLERANCE) <= 0;
     boolean bankBalanced = bankVariance.abs().compareTo(BALANCE_TOLERANCE) <= 0;
+
+    BankReconciliationDashboardDto bankSummary =
+        new BankReconciliationDashboardDto(
+            bankAccount.getId(),
+            bankAccount.getCode(),
+            bankAccount.getName(),
+            roundCurrency(bankLedgerBalance),
+            roundCurrency(bankStatementBalance),
+            roundCurrency(bankVariance),
+            bankBalanced);
+    InventoryReconciliationDashboardDto inventorySummary =
+        new InventoryReconciliationDashboardDto(
+            roundCurrency(ledgerInventoryValue),
+            roundCurrency(physicalInventoryValue),
+            roundCurrency(inventoryVariance),
+            inventoryBalanced);
+
+    SubledgerReconciliationDashboardDto subledgerSummary =
+        resolveSubledgerDashboardSummary(
+            new SubledgerReconciliationDashboardDto.SubledgerControlSummary(
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, true),
+            new SubledgerReconciliationDashboardDto.SubledgerControlSummary(
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, true));
+
     return new ReconciliationDashboardDto(
-        ledgerInventoryBalance,
-        physicalInventoryValue,
-        inventoryVariance,
-        bankLedgerBalance,
-        bankStatementBalance,
-        bankVariance,
-        inventoryBalanced,
-        bankBalanced,
-        balanceWarnings());
+        bankSummary, subledgerSummary, inventorySummary, balanceWarnings());
+  }
+
+  private SubledgerReconciliationDashboardDto resolveSubledgerDashboardSummary(
+      SubledgerReconciliationDashboardDto.SubledgerControlSummary defaultReceivables,
+      SubledgerReconciliationDashboardDto.SubledgerControlSummary defaultPayables) {
+    if (reconciliationServiceProvider == null) {
+      return new SubledgerReconciliationDashboardDto(
+          defaultReceivables, defaultPayables, BigDecimal.ZERO, true);
+    }
+    ReconciliationService reconciliationService = reconciliationServiceProvider.getIfAvailable();
+    if (reconciliationService == null) {
+      return new SubledgerReconciliationDashboardDto(
+          defaultReceivables, defaultPayables, BigDecimal.ZERO, true);
+    }
+
+    ReconciliationService.ReconciliationResult receivable =
+        reconciliationService.reconcileArWithDealerLedger();
+    ReconciliationService.SupplierReconciliationResult payable =
+        reconciliationService.reconcileApWithSupplierLedger();
+
+    SubledgerReconciliationDashboardDto.SubledgerControlSummary receivableSummary =
+        new SubledgerReconciliationDashboardDto.SubledgerControlSummary(
+            roundCurrency(safe(receivable.glArBalance())),
+            roundCurrency(safe(receivable.dealerLedgerTotal())),
+            roundCurrency(safe(receivable.variance())),
+            receivable.isReconciled());
+    SubledgerReconciliationDashboardDto.SubledgerControlSummary payableSummary =
+        new SubledgerReconciliationDashboardDto.SubledgerControlSummary(
+            roundCurrency(safe(payable.glApBalance())),
+            roundCurrency(safe(payable.supplierLedgerTotal())),
+            roundCurrency(safe(payable.variance())),
+            payable.isReconciled());
+
+    BigDecimal totalDifference =
+        safe(receivable.variance()).add(safe(payable.variance())).setScale(2, RoundingMode.HALF_UP);
+    boolean balanced = receivable.isReconciled() && payable.isReconciled();
+    return new SubledgerReconciliationDashboardDto(
+        receivableSummary, payableSummary, totalDifference, balanced);
+  }
+
+  private Account resolveBankAccountForDashboard(Company company, Long bankAccountId) {
+    if (bankAccountId != null) {
+      return accountingLookupService.requireAccount(company, bankAccountId);
+    }
+    List<Account> accounts = accountRepository.findByCompanyOrderByCodeAsc(company);
+    Optional<Account> preferredBankAccount =
+        accounts.stream()
+            .filter(account -> account.getType() == AccountType.ASSET)
+            .filter(
+                account -> {
+                  String label =
+                      ((account.getCode() != null ? account.getCode() : "")
+                              + " "
+                              + (account.getName() != null ? account.getName() : ""))
+                          .toLowerCase(Locale.ROOT);
+                  return label.contains("bank");
+                })
+            .findFirst();
+    if (preferredBankAccount.isPresent()) {
+      return preferredBankAccount.get();
+    }
+    return accounts.stream()
+        .filter(account -> account.getType() == AccountType.ASSET)
+        .findFirst()
+        .orElseThrow(
+            () ->
+                new ApplicationException(
+                    ErrorCode.BUSINESS_ENTITY_NOT_FOUND,
+                    "No asset bank account is available for reconciliation dashboard"));
   }
 
   @Transactional(readOnly = true)
@@ -1201,7 +1503,7 @@ public class ReportService {
   private BigDecimal resolveInventoryLedgerBalance(Company company) {
     Long defaultInventoryAccountId = company.getDefaultInventoryAccountId();
     if (defaultInventoryAccountId != null) {
-      Account account = companyEntityLookup.requireAccount(company, defaultInventoryAccountId);
+      Account account = accountingLookupService.requireAccount(company, defaultInventoryAccountId);
       return safe(account.getBalance());
     }
     return accountRepository.findByCompanyOrderByCodeAsc(company).stream()
@@ -1213,6 +1515,145 @@ public class ReportService {
 
   private BigDecimal safe(BigDecimal value) {
     return value == null ? BigDecimal.ZERO : value;
+  }
+
+  private BigDecimal normalizeNetBalance(BigDecimal netBalance, AccountType accountType) {
+    BigDecimal normalized = safe(netBalance);
+    if (accountType != null && !accountType.isDebitNormalBalance()) {
+      return normalized.negate();
+    }
+    return normalized;
+  }
+
+  @Transactional(readOnly = true)
+  public ProductCostingReportDto productCosting(Long itemId) {
+    Company company = companyContextService.requireCurrentCompany();
+    List<ProductionLog> logs =
+        productionLogRepository.findByCompanyAndProduct_IdAndStatusOrderByProducedAtDesc(
+            company, itemId, ProductionLogStatus.FULLY_PACKED);
+    if (logs.isEmpty()) {
+      return new ProductCostingReportDto(
+          itemId,
+          BigDecimal.ZERO,
+          BigDecimal.ZERO,
+          BigDecimal.ZERO,
+          BigDecimal.ZERO,
+          BigDecimal.ZERO);
+    }
+
+    BigDecimal totalMaterial = BigDecimal.ZERO;
+    BigDecimal totalLabour = BigDecimal.ZERO;
+    BigDecimal totalOverhead = BigDecimal.ZERO;
+    BigDecimal totalPackaging = BigDecimal.ZERO;
+    BigDecimal totalPacked = BigDecimal.ZERO;
+
+    for (ProductionLog log : logs) {
+      totalMaterial = totalMaterial.add(safe(log.getMaterialCostTotal()));
+      totalLabour = totalLabour.add(safe(log.getLaborCostTotal()));
+      totalOverhead = totalOverhead.add(safe(log.getOverheadCostTotal()));
+      totalPackaging = totalPackaging.add(resolvePackagingCost(company, log));
+      totalPacked = totalPacked.add(safe(log.getTotalPackedQuantity()));
+    }
+
+    if (totalPacked.compareTo(BigDecimal.ZERO) <= 0) {
+      totalPacked =
+          logs.stream()
+              .map(ProductionLog::getMixedQuantity)
+              .map(this::safe)
+              .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+    if (totalPacked.compareTo(BigDecimal.ZERO) <= 0) {
+      return new ProductCostingReportDto(
+          itemId,
+          BigDecimal.ZERO,
+          BigDecimal.ZERO,
+          BigDecimal.ZERO,
+          BigDecimal.ZERO,
+          BigDecimal.ZERO);
+    }
+
+    BigDecimal materialPerUnit = totalMaterial.divide(totalPacked, 4, RoundingMode.HALF_UP);
+    BigDecimal packagingPerUnit = totalPackaging.divide(totalPacked, 4, RoundingMode.HALF_UP);
+    BigDecimal labourPerUnit = totalLabour.divide(totalPacked, 4, RoundingMode.HALF_UP);
+    BigDecimal overheadPerUnit = totalOverhead.divide(totalPacked, 4, RoundingMode.HALF_UP);
+    BigDecimal totalUnitCost =
+        materialPerUnit.add(packagingPerUnit).add(labourPerUnit).add(overheadPerUnit);
+
+    return new ProductCostingReportDto(
+        itemId, materialPerUnit, packagingPerUnit, labourPerUnit, overheadPerUnit, totalUnitCost);
+  }
+
+  @Transactional(readOnly = true)
+  public CostAllocationReportDto costAllocationReport() {
+    Company company = companyContextService.requireCurrentCompany();
+    List<CostAllocationBatchDto> amountsPerBatch = new ArrayList<>();
+
+    List<JournalEntry> varianceEntries =
+        journalEntryRepository.findByCompanyAndSourceModuleIgnoreCaseOrderByEntryDateDescIdDesc(
+            company, "FACTORY_COST_VARIANCE");
+    for (JournalEntry entry : varianceEntries) {
+      amountsPerBatch.add(
+          new CostAllocationBatchDto(
+              resolveBatchCode(entry.getReferenceNumber()),
+              resolvePeriodKey(entry.getReferenceNumber()),
+              resolveJournalAmount(entry),
+              entry.getEntryDate(),
+              entry.getId()));
+    }
+
+    List<JournalEntry> directAllocationEntries =
+        journalEntryRepository.findByCompanyAndSourceModuleIgnoreCaseOrderByEntryDateDescIdDesc(
+            company, "FACTORY_COST_ALLOCATION");
+    for (JournalEntry entry : directAllocationEntries) {
+      amountsPerBatch.add(
+          new CostAllocationBatchDto(
+              resolveBatchCode(entry.getReferenceNumber()),
+              resolvePeriodKey(entry.getReferenceNumber()),
+              resolveJournalAmount(entry),
+              entry.getEntryDate(),
+              entry.getId()));
+    }
+
+    amountsPerBatch.sort(Comparator.comparing(CostAllocationBatchDto::entryDate).reversed());
+    BigDecimal totalAllocated =
+        amountsPerBatch.stream()
+            .map(CostAllocationBatchDto::allocatedAmount)
+            .map(this::safe)
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+    return new CostAllocationReportDto(
+        List.of("PERIOD_CLOSE_VARIANCE_BY_PRODUCTION_VOLUME", "DIRECT_BATCH_ALLOCATION"),
+        amountsPerBatch,
+        totalAllocated.setScale(2, RoundingMode.HALF_UP));
+  }
+
+  @Transactional(readOnly = true)
+  public List<MonthlyProductionCostEntryDto> monthlyProductionCosts() {
+    Company company = companyContextService.requireCurrentCompany();
+    ZoneId zone = companyClock.zoneId(company);
+    Map<YearMonth, BigDecimal> totalsByMonth = new LinkedHashMap<>();
+    List<ProductionLog> logs =
+        productionLogRepository.findByCompanyAndStatusOrderByProducedAtAsc(
+            company, ProductionLogStatus.FULLY_PACKED);
+
+    for (ProductionLog log : logs) {
+      YearMonth month = YearMonth.from(log.getProducedAt().atZone(zone));
+      BigDecimal total =
+          safe(log.getMaterialCostTotal())
+              .add(safe(log.getLaborCostTotal()))
+              .add(safe(log.getOverheadCostTotal()))
+              .add(resolvePackagingCost(company, log));
+      totalsByMonth.merge(month, total, BigDecimal::add);
+    }
+
+    return totalsByMonth.entrySet().stream()
+        .sorted(Map.Entry.<YearMonth, BigDecimal>comparingByKey().reversed())
+        .map(
+            entry ->
+                new MonthlyProductionCostEntryDto(
+                    entry.getKey().toString(),
+                    safe(entry.getValue()).setScale(2, RoundingMode.HALF_UP)))
+        .toList();
   }
 
   @Transactional(readOnly = true)
@@ -1257,7 +1698,7 @@ public class ReportService {
   @Transactional(readOnly = true)
   public CostBreakdownDto costBreakdown(Long productionLogId) {
     Company company = companyContextService.requireCurrentCompany();
-    ProductionLog log = companyEntityLookup.requireProductionLog(company, productionLogId);
+    ProductionLog log = factoryLookupService.requireProductionLog(company, productionLogId);
 
     BigDecimal materialCost = safe(log.getMaterialCostTotal());
     BigDecimal laborCost = safe(log.getLaborCostTotal());
@@ -1445,6 +1886,7 @@ public class ReportService {
     BigDecimal totalMaterialCost = BigDecimal.ZERO;
     BigDecimal totalLaborCost = BigDecimal.ZERO;
     BigDecimal totalOverheadCost = BigDecimal.ZERO;
+    BigDecimal totalPackagingCost = BigDecimal.ZERO;
     BigDecimal totalWastage = BigDecimal.ZERO;
 
     for (ProductionLog log : logs) {
@@ -1452,10 +1894,12 @@ public class ReportService {
       totalMaterialCost = totalMaterialCost.add(safe(log.getMaterialCostTotal()));
       totalLaborCost = totalLaborCost.add(safe(log.getLaborCostTotal()));
       totalOverheadCost = totalOverheadCost.add(safe(log.getOverheadCostTotal()));
+      totalPackagingCost = totalPackagingCost.add(resolvePackagingCost(company, log));
       totalWastage = totalWastage.add(safe(log.getWastageQuantity()));
     }
 
-    BigDecimal totalCost = totalMaterialCost.add(totalLaborCost).add(totalOverheadCost);
+    BigDecimal totalCost =
+        totalMaterialCost.add(totalLaborCost).add(totalOverheadCost).add(totalPackagingCost);
     BigDecimal avgCostPerLiter =
         totalLiters.compareTo(BigDecimal.ZERO) > 0
             ? totalCost.divide(totalLiters, 4, java.math.RoundingMode.HALF_UP)
@@ -1480,5 +1924,53 @@ public class ReportService {
         avgCostPerLiter,
         totalWastage,
         wastagePercentage);
+  }
+
+  private BigDecimal resolvePackagingCost(Company company, ProductionLog log) {
+    return packingRecordRepository
+        .findByCompanyAndProductionLogOrderByPackedDateAscIdAsc(company, log)
+        .stream()
+        .map(PackingRecord::getPackagingCost)
+        .map(this::safe)
+        .reduce(BigDecimal.ZERO, BigDecimal::add);
+  }
+
+  private BigDecimal resolveJournalAmount(JournalEntry entry) {
+    if (entry == null || entry.getLines() == null) {
+      return BigDecimal.ZERO;
+    }
+    BigDecimal debitTotal =
+        entry.getLines().stream()
+            .map(JournalLine::getDebit)
+            .map(this::safe)
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
+    return debitTotal.setScale(2, RoundingMode.HALF_UP);
+  }
+
+  private String resolveBatchCode(String referenceNumber) {
+    if (referenceNumber == null || referenceNumber.isBlank()) {
+      return "UNKNOWN";
+    }
+    String normalized = referenceNumber.trim();
+    if (normalized.startsWith("CVAR-")) {
+      String withoutPrefix = normalized.substring("CVAR-".length());
+      int suffixIdx = withoutPrefix.lastIndexOf('-');
+      return suffixIdx > 0 ? withoutPrefix.substring(0, suffixIdx) : withoutPrefix;
+    }
+    if (normalized.startsWith("CAL-")) {
+      return normalized.substring("CAL-".length());
+    }
+    return normalized;
+  }
+
+  private String resolvePeriodKey(String referenceNumber) {
+    if (referenceNumber == null || !referenceNumber.startsWith("CVAR-")) {
+      return null;
+    }
+    int suffixIdx = referenceNumber.lastIndexOf('-');
+    if (suffixIdx < 0 || suffixIdx == referenceNumber.length() - 1) {
+      return null;
+    }
+    return referenceNumber.substring(suffixIdx + 1);
   }
 }

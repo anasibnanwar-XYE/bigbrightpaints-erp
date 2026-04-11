@@ -13,7 +13,10 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.parsers.ParserConfigurationException;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -49,6 +52,8 @@ import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 
 @Service
 public class TallyImportService {
+
+  private static final Logger log = LoggerFactory.getLogger(TallyImportService.class);
 
   private static final Map<String, AccountType> TALLY_GROUP_ACCOUNT_TYPE_MAP =
       Map.ofEntries(
@@ -469,8 +474,11 @@ public class TallyImportService {
       factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
       factory.setFeature("http://xml.org/sax/features/external-general-entities", false);
       factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
-    } catch (Exception ignored) {
-      // best-effort hardening; parser still works if runtime does not support these flags
+    } catch (ParserConfigurationException ex) {
+      log.warn(
+          "XML parser does not support one or more XXE-hardening features; continuing with"
+              + " best-effort configuration",
+          ex);
     }
     try {
       Document document = factory.newDocumentBuilder().parse(new ByteArrayInputStream(payload));
@@ -721,8 +729,14 @@ public class TallyImportService {
     try {
       return IdempotencyUtils.sha256Hex(file.getBytes());
     } catch (Exception ex) {
-      return Integer.toHexString(
-          file.getOriginalFilename() != null ? file.getOriginalFilename().hashCode() : 0);
+      String fallback =
+          Integer.toHexString(
+              file.getOriginalFilename() != null ? file.getOriginalFilename().hashCode() : 0);
+      log.warn(
+          "Failed to compute SHA-256 hash for uploaded Tally file; falling back to weak hash"
+              + " (cause={})",
+          ex.getClass().getSimpleName());
+      return fallback;
     }
   }
 
@@ -749,6 +763,7 @@ public class TallyImportService {
     try {
       return objectMapper.writeValueAsString(values);
     } catch (Exception ex) {
+      log.warn("Failed to serialize string list for Tally import record: {}", ex.toString());
       return null;
     }
   }
@@ -767,6 +782,7 @@ public class TallyImportService {
           .map(String::trim)
           .collect(Collectors.toList());
     } catch (Exception ex) {
+      log.warn("Failed to deserialize string list from Tally import record JSON: {}", ex.toString());
       return List.of();
     }
   }
@@ -778,6 +794,10 @@ public class TallyImportService {
     try {
       return objectMapper.writeValueAsString(errors);
     } catch (Exception ex) {
+      log.warn(
+          "Failed to serialize {} import error(s) for Tally import record: {}",
+          errors.size(),
+          ex.toString());
       return null;
     }
   }
@@ -789,6 +809,8 @@ public class TallyImportService {
     try {
       return objectMapper.readValue(errorsJson, new TypeReference<List<ImportError>>() {});
     } catch (Exception ex) {
+      log.warn(
+          "Failed to deserialize import errors from Tally import record JSON: {}", ex.toString());
       return List.of();
     }
   }

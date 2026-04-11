@@ -6,13 +6,15 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
+
 import com.bigbrightpaints.erp.shared.dto.LinkedBusinessReferenceDto;
 
 public record AccountingTransactionAuditDetailDto(
     Long journalEntryId,
     UUID journalPublicId,
     String referenceNumber,
-    LocalDate entryDate,
+    @JsonFormat(pattern = "yyyy-MM-dd") LocalDate entryDate,
     String status,
     String module,
     String transactionType,
@@ -39,9 +41,9 @@ public record AccountingTransactionAuditDetailDto(
     List<EventTrailItem> eventTrail,
     LinkedBusinessReferenceDto drivingDocument,
     List<LinkedBusinessReferenceDto> linkedReferenceChain,
-    Instant createdAt,
-    Instant updatedAt,
-    Instant postedAt,
+    @JsonFormat(shape = JsonFormat.Shape.STRING) Instant createdAt,
+    @JsonFormat(shape = JsonFormat.Shape.STRING) Instant updatedAt,
+    @JsonFormat(shape = JsonFormat.Shape.STRING) Instant postedAt,
     String createdBy,
     String postedBy,
     String lastModifiedBy) {
@@ -66,8 +68,7 @@ public record AccountingTransactionAuditDetailDto(
       BigDecimal fxDifferenceAmount,
       String applicationType,
       String memo,
-      LocalDate settlementDate
-) {}
+      @JsonFormat(pattern = "yyyy-MM-dd") LocalDate settlementDate) {}
 
   public record EventTrailItem(
       Long eventId,
@@ -75,8 +76,8 @@ public record AccountingTransactionAuditDetailDto(
       String aggregateType,
       UUID aggregateId,
       Long sequenceNumber,
-      Instant eventTimestamp,
-      LocalDate effectiveDate,
+      @JsonFormat(shape = JsonFormat.Shape.STRING) Instant eventTimestamp,
+      @JsonFormat(pattern = "yyyy-MM-dd") LocalDate effectiveDate,
       Long accountId,
       String accountCode,
       BigDecimal debitAmount,

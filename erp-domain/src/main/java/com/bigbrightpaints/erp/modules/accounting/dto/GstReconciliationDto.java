@@ -4,11 +4,19 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.YearMonth;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
+
 public class GstReconciliationDto {
 
+  @JsonFormat(pattern = "yyyy-MM")
   private YearMonth period;
+
+  @JsonFormat(pattern = "yyyy-MM-dd")
   private LocalDate periodStart;
+
+  @JsonFormat(pattern = "yyyy-MM-dd")
   private LocalDate periodEnd;
+
   private GstComponentSummary collected = new GstComponentSummary();
   private GstComponentSummary inputTaxCredit = new GstComponentSummary();
   private GstComponentSummary netLiability = new GstComponentSummary();

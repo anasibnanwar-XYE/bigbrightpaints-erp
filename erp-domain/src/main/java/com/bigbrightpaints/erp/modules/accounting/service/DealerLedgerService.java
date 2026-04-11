@@ -11,7 +11,6 @@ import java.util.Objects;
 
 import org.springframework.stereotype.Service;
 
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.domain.DealerLedgerEntry;
 import com.bigbrightpaints.erp.modules.accounting.domain.DealerLedgerRepository;
 import com.bigbrightpaints.erp.modules.accounting.dto.DealerBalanceView;
@@ -20,6 +19,7 @@ import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.invoice.domain.Invoice;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
+import com.bigbrightpaints.erp.modules.sales.service.CompanyScopedSalesLookupService;
 
 import jakarta.transaction.Transactional;
 
@@ -29,20 +29,21 @@ public class DealerLedgerService extends AbstractPartnerLedgerService<Dealer, De
   private final DealerLedgerRepository dealerLedgerRepository;
   private final CompanyContextService companyContextService;
   private final DealerRepository dealerRepository;
-  private final CompanyEntityLookup companyEntityLookup;
+  private final CompanyScopedSalesLookupService salesLookupService;
 
   public DealerLedgerService(
       DealerLedgerRepository dealerLedgerRepository,
       CompanyContextService companyContextService,
       DealerRepository dealerRepository,
-      CompanyEntityLookup companyEntityLookup) {
+      CompanyScopedSalesLookupService salesLookupService) {
     this.dealerLedgerRepository = dealerLedgerRepository;
     this.companyContextService = companyContextService;
     this.dealerRepository = dealerRepository;
-    this.companyEntityLookup = companyEntityLookup;
+    this.salesLookupService = salesLookupService;
   }
 
   @Transactional
+  @Override
   public void recordLedgerEntry(Dealer dealer, LedgerContext context) {
     super.recordLedgerEntry(dealer, context);
   }
@@ -66,7 +67,7 @@ public class DealerLedgerService extends AbstractPartnerLedgerService<Dealer, De
       return BigDecimal.ZERO;
     }
     Company company = companyContextService.requireCurrentCompany();
-    Dealer dealer = companyEntityLookup.requireDealer(company, dealerId);
+    Dealer dealer = salesLookupService.requireDealer(company, dealerId);
     return dealerLedgerRepository
         .aggregateBalance(company, dealer)
         .map(DealerBalanceView::balance)
@@ -202,6 +203,9 @@ public class DealerLedgerService extends AbstractPartnerLedgerService<Dealer, De
       }
       if ("REVERSED".equalsIgnoreCase(invoice.getStatus())) {
         return "REVERSED";
+      }
+      if ("WRITTEN_OFF".equalsIgnoreCase(invoice.getStatus())) {
+        return "WRITTEN_OFF";
       }
     }
     if (outstanding.compareTo(BigDecimal.ZERO) <= 0) {

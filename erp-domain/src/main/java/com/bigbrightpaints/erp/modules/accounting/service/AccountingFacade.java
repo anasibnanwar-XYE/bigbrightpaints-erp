@@ -3,311 +3,481 @@ package com.bigbrightpaints.erp.modules.accounting.service;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
-import com.bigbrightpaints.erp.core.exception.ApplicationException;
-import com.bigbrightpaints.erp.core.exception.ErrorCode;
-import com.bigbrightpaints.erp.core.util.CompanyClock;
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
-import com.bigbrightpaints.erp.core.validation.ValidationUtils;
-import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
-import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
-import com.bigbrightpaints.erp.modules.accounting.domain.JournalReferenceMappingRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriod;
+import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
+import com.bigbrightpaints.erp.modules.accounting.dto.AutoSettlementRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.DealerReceiptRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.DealerReceiptSplitRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalCreationRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.ManualJournalRequest;
-import com.bigbrightpaints.erp.modules.accounting.dto.PayrollPaymentRequest;
-import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
-import com.bigbrightpaints.erp.modules.purchasing.domain.SupplierRepository;
-import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
+import com.bigbrightpaints.erp.modules.accounting.dto.PartnerSettlementRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.PartnerSettlementResponse;
+import com.bigbrightpaints.erp.modules.accounting.dto.SupplierPaymentRequest;
+import com.bigbrightpaints.erp.modules.accounting.event.AccountCacheInvalidatedEvent;
+import com.bigbrightpaints.erp.modules.hr.dto.PayrollPaymentRequest;
 
 @Service
-public class AccountingFacade extends AccountingFacadeCore {
+public class AccountingFacade {
 
-  public static final String MANUAL_REFERENCE_PREFIX = AccountingFacadeCore.MANUAL_REFERENCE_PREFIX;
+  public static final String MANUAL_REFERENCE_PREFIX = "MANUAL-";
+  private static final Set<String> RESERVED_REFERENCE_PREFIXES =
+      Set.of(
+          "JRN-",
+          "INV-",
+          "SALE-",
+          "COGS-",
+          "RMP-",
+          "PRN-",
+          "PAYROLL-",
+          "RM-",
+          "ADJ-",
+          "OPEN-STOCK-",
+          "CAL-",
+          "INVJ-",
+          "RCPT-",
+          "SUP-",
+          "COST-ALLOC-",
+          "CRN-",
+          "DBN-",
+          "DISPATCH-");
+
   private final AccountingService accountingService;
-  private final CompanyContextService companyContextService;
-  private final CompanyClock companyClock;
+  private final DealerReceiptService dealerReceiptService;
+  private final SalesJournalFacadeOperations salesJournalOperations;
+  private final SalesReturnJournalFacadeOperations salesReturnJournalOperations;
+  private final PurchaseJournalFacadeOperations purchaseJournalOperations;
+  private final FactoryJournalFacadeOperations factoryJournalOperations;
+  private final InventoryAdjustmentFacadeOperations inventoryAdjustmentOperations;
+  private final ManualJournalFacadeOperations manualJournalOperations;
+  private final AccountingFacadeAccountResolver accountResolver;
+  private final PayrollAccountingService payrollAccountingService;
 
   public AccountingFacade(
-      CompanyContextService companyContextService,
-      AccountRepository accountRepository,
       AccountingService accountingService,
-      JournalEntryRepository journalEntryRepository,
-      ReferenceNumberService referenceNumberService,
-      DealerRepository dealerRepository,
-      SupplierRepository supplierRepository,
-      CompanyClock companyClock,
-      CompanyEntityLookup companyEntityLookup,
-      CompanyAccountingSettingsService companyAccountingSettingsService,
-      JournalReferenceResolver journalReferenceResolver,
-      JournalReferenceMappingRepository journalReferenceMappingRepository) {
-    super(
-        companyContextService,
-        accountRepository,
-        accountingService,
-        journalEntryRepository,
-        referenceNumberService,
-        dealerRepository,
-        supplierRepository,
-        companyClock,
-        companyEntityLookup,
-        companyAccountingSettingsService,
-        journalReferenceResolver,
-        journalReferenceMappingRepository);
+      DealerReceiptService dealerReceiptService,
+      SalesJournalFacadeOperations salesJournalOperations,
+      SalesReturnJournalFacadeOperations salesReturnJournalOperations,
+      PurchaseJournalFacadeOperations purchaseJournalOperations,
+      FactoryJournalFacadeOperations factoryJournalOperations,
+      InventoryAdjustmentFacadeOperations inventoryAdjustmentOperations,
+      ManualJournalFacadeOperations manualJournalOperations,
+      AccountingFacadeAccountResolver accountResolver,
+      PayrollAccountingService payrollAccountingService) {
     this.accountingService = accountingService;
-    this.companyContextService = companyContextService;
-    this.companyClock = companyClock;
+    this.dealerReceiptService = dealerReceiptService;
+    this.salesJournalOperations = salesJournalOperations;
+    this.salesReturnJournalOperations = salesReturnJournalOperations;
+    this.purchaseJournalOperations = purchaseJournalOperations;
+    this.factoryJournalOperations = factoryJournalOperations;
+    this.inventoryAdjustmentOperations = inventoryAdjustmentOperations;
+    this.manualJournalOperations = manualJournalOperations;
+    this.accountResolver = accountResolver;
+    this.payrollAccountingService = payrollAccountingService;
   }
 
   public static boolean isReservedReferenceNamespace(String referenceNumber) {
-    return AccountingFacadeCore.isReservedReferenceNamespace(referenceNumber);
+    if (!StringUtils.hasText(referenceNumber)) {
+      return false;
+    }
+    String normalized = referenceNumber.trim().toUpperCase(Locale.ROOT);
+    if (normalized.startsWith(MANUAL_REFERENCE_PREFIX)) {
+      return false;
+    }
+    if (normalized.contains("-INV-")) {
+      return true;
+    }
+    for (String prefix : RESERVED_REFERENCE_PREFIXES) {
+      if (normalized.startsWith(prefix)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  public JournalEntryDto postSalesJournal(
+      Long dealerId,
+      String orderNumber,
+      LocalDate entryDate,
+      String memo,
+      Map<Long, BigDecimal> revenueLines,
+      Map<Long, BigDecimal> taxLines,
+      BigDecimal totalAmount,
+      String referenceNumber) {
+    return salesJournalOperations.postSalesJournal(
+        dealerId,
+        orderNumber,
+        entryDate,
+        memo,
+        revenueLines,
+        taxLines,
+        totalAmount,
+        referenceNumber);
+  }
+
+  public JournalEntryDto postSalesJournal(
+      Long dealerId,
+      String orderNumber,
+      LocalDate entryDate,
+      String memo,
+      Map<Long, BigDecimal> revenueLines,
+      Map<Long, BigDecimal> taxLines,
+      Map<Long, BigDecimal> discountLines,
+      BigDecimal totalAmount,
+      String referenceNumber) {
+    return salesJournalOperations.postSalesJournal(
+        dealerId,
+        orderNumber,
+        entryDate,
+        memo,
+        revenueLines,
+        taxLines,
+        discountLines,
+        totalAmount,
+        referenceNumber);
+  }
+
+  public JournalEntryDto postSalesJournal(
+      Long dealerId,
+      String orderNumber,
+      LocalDate entryDate,
+      String memo,
+      Map<Long, BigDecimal> revenueLines,
+      Map<Long, BigDecimal> taxLines,
+      Map<Long, BigDecimal> discountLines,
+      JournalCreationRequest.GstBreakdown gstBreakdown,
+      BigDecimal totalAmount,
+      String referenceNumber) {
+    return salesJournalOperations.postSalesJournal(
+        dealerId,
+        orderNumber,
+        entryDate,
+        memo,
+        revenueLines,
+        taxLines,
+        discountLines,
+        gstBreakdown,
+        totalAmount,
+        referenceNumber);
+  }
+
+  public JournalEntryDto postPurchaseJournal(
+      Long supplierId,
+      String invoiceNumber,
+      LocalDate invoiceDate,
+      String memo,
+      Map<Long, BigDecimal> inventoryLines,
+      BigDecimal totalAmount) {
+    return purchaseJournalOperations.postPurchaseJournal(
+        supplierId, invoiceNumber, invoiceDate, memo, inventoryLines, totalAmount);
+  }
+
+  public JournalEntryDto postPurchaseJournal(
+      Long supplierId,
+      String invoiceNumber,
+      LocalDate invoiceDate,
+      String memo,
+      Map<Long, BigDecimal> inventoryLines,
+      Map<Long, BigDecimal> taxLines,
+      BigDecimal totalAmount,
+      String referenceNumber) {
+    return purchaseJournalOperations.postPurchaseJournal(
+        supplierId,
+        invoiceNumber,
+        invoiceDate,
+        memo,
+        inventoryLines,
+        taxLines,
+        totalAmount,
+        referenceNumber);
+  }
+
+  public JournalEntryDto postPurchaseJournal(
+      Long supplierId,
+      String invoiceNumber,
+      LocalDate invoiceDate,
+      String memo,
+      Map<Long, BigDecimal> inventoryLines,
+      Map<Long, BigDecimal> taxLines,
+      JournalCreationRequest.GstBreakdown gstBreakdown,
+      BigDecimal totalAmount,
+      String referenceNumber) {
+    return purchaseJournalOperations.postPurchaseJournal(
+        supplierId,
+        invoiceNumber,
+        invoiceDate,
+        memo,
+        inventoryLines,
+        taxLines,
+        gstBreakdown,
+        totalAmount,
+        referenceNumber);
+  }
+
+  public JournalEntryDto postPurchaseReturn(
+      Long supplierId,
+      String referenceNumber,
+      LocalDate returnDate,
+      String memo,
+      Map<Long, BigDecimal> inventoryCredits,
+      BigDecimal totalAmount) {
+    return purchaseJournalOperations.postPurchaseReturn(
+        supplierId, referenceNumber, returnDate, memo, inventoryCredits, totalAmount);
+  }
+
+  public JournalEntryDto postPurchaseReturn(
+      Long supplierId,
+      String referenceNumber,
+      LocalDate returnDate,
+      String memo,
+      Map<Long, BigDecimal> inventoryCredits,
+      Map<Long, BigDecimal> taxCredits,
+      BigDecimal totalAmount) {
+    return purchaseJournalOperations.postPurchaseReturn(
+        supplierId, referenceNumber, returnDate, memo, inventoryCredits, taxCredits, totalAmount);
+  }
+
+  public JournalEntryDto postPurchaseReturn(
+      Long supplierId,
+      String referenceNumber,
+      LocalDate returnDate,
+      String memo,
+      Map<Long, BigDecimal> inventoryCredits,
+      Map<Long, BigDecimal> taxCredits,
+      JournalCreationRequest.GstBreakdown gstBreakdown,
+      BigDecimal totalAmount) {
+    return purchaseJournalOperations.postPurchaseReturn(
+        supplierId,
+        referenceNumber,
+        returnDate,
+        memo,
+        inventoryCredits,
+        taxCredits,
+        gstBreakdown,
+        totalAmount);
+  }
+
+  public JournalEntryDto postPackingJournal(
+      String reference,
+      LocalDate entryDate,
+      String memo,
+      List<JournalEntryRequest.JournalLineRequest> lines) {
+    return factoryJournalOperations.postPackingJournal(reference, entryDate, memo, lines);
+  }
+
+  public JournalEntryDto postCostAllocation(
+      String batchCode,
+      Long finishedGoodsAcctId,
+      Long laborExpenseAcctId,
+      Long overheadExpenseAcctId,
+      BigDecimal laborCost,
+      BigDecimal overheadCost,
+      String notes) {
+    return factoryJournalOperations.postCostAllocation(
+        batchCode,
+        finishedGoodsAcctId,
+        laborExpenseAcctId,
+        overheadExpenseAcctId,
+        laborCost,
+        overheadCost,
+        notes);
+  }
+
+  public JournalEntryDto postCOGS(
+      String referenceId,
+      Long dealerId,
+      Long cogsAccountId,
+      Long inventoryAcctId,
+      BigDecimal cost,
+      String memo) {
+    return factoryJournalOperations.postCOGS(
+        referenceId, dealerId, cogsAccountId, inventoryAcctId, cost, memo);
+  }
+
+  public JournalEntryDto postCOGS(
+      String referenceId, Long cogsAccountId, Long inventoryAcctId, BigDecimal cost, String memo) {
+    return factoryJournalOperations.postCOGS(
+        referenceId, cogsAccountId, inventoryAcctId, cost, memo);
+  }
+
+  public JournalEntryDto postCogsJournal(
+      String referenceId,
+      Long dealerId,
+      LocalDate entryDate,
+      String memo,
+      List<JournalEntryRequest.JournalLineRequest> lines) {
+    return factoryJournalOperations.postCogsJournal(referenceId, dealerId, entryDate, memo, lines);
+  }
+
+  public JournalEntryDto postCostVarianceAllocation(
+      String batchCode,
+      String periodKey,
+      LocalDate entryDate,
+      Long finishedGoodsAcctId,
+      Long laborExpenseAcctId,
+      Long overheadExpenseAcctId,
+      BigDecimal laborVariance,
+      BigDecimal overheadVariance,
+      String notes) {
+    return factoryJournalOperations.postCostVarianceAllocation(
+        batchCode,
+        periodKey,
+        entryDate,
+        finishedGoodsAcctId,
+        laborExpenseAcctId,
+        overheadExpenseAcctId,
+        laborVariance,
+        overheadVariance,
+        notes);
+  }
+
+  public Optional<String> findExistingCostVarianceReference(String batchCode, String periodKey) {
+    return factoryJournalOperations.findExistingCostVarianceReference(batchCode, periodKey);
+  }
+
+  public boolean hasCogsJournalFor(String referenceId) {
+    return factoryJournalOperations.hasCogsJournalFor(referenceId);
+  }
+
+  public JournalEntryDto postSalesReturn(
+      Long dealerId,
+      String invoiceNumber,
+      Map<Long, BigDecimal> returnLines,
+      BigDecimal totalAmount,
+      String reason) {
+    return salesReturnJournalOperations.postSalesReturn(
+        dealerId, invoiceNumber, returnLines, totalAmount, reason);
+  }
+
+  public JournalEntryDto postInventoryAdjustment(
+      String adjustmentType,
+      String referenceId,
+      Long inventoryAcctId,
+      Long varianceAcctId,
+      BigDecimal amount,
+      String memo) {
+    return inventoryAdjustmentOperations.postInventoryAdjustment(
+        adjustmentType, referenceId, inventoryAcctId, varianceAcctId, amount, memo);
+  }
+
+  public JournalEntryDto postInventoryAdjustment(
+      String adjustmentType,
+      String referenceId,
+      Long varianceAcctId,
+      Map<Long, BigDecimal> inventoryLines,
+      boolean increaseInventory,
+      boolean adminOverride,
+      String memo) {
+    return inventoryAdjustmentOperations.postInventoryAdjustment(
+        adjustmentType,
+        referenceId,
+        varianceAcctId,
+        inventoryLines,
+        increaseInventory,
+        adminOverride,
+        memo);
+  }
+
+  public JournalEntryDto postInventoryAdjustment(
+      String adjustmentType,
+      String referenceId,
+      Long varianceAcctId,
+      Map<Long, BigDecimal> inventoryLines,
+      boolean increaseInventory,
+      boolean adminOverride,
+      String memo,
+      LocalDate entryDate) {
+    return inventoryAdjustmentOperations.postInventoryAdjustment(
+        adjustmentType,
+        referenceId,
+        varianceAcctId,
+        inventoryLines,
+        increaseInventory,
+        adminOverride,
+        memo,
+        entryDate);
+  }
+
+  public JournalEntryDto createStandardJournal(JournalCreationRequest request) {
+    return accountingService.createStandardJournal(request);
+  }
+
+  public JournalEntryDto postPayrollRun(
+      String runNumber,
+      Long runId,
+      LocalDate postingDate,
+      String memo,
+      List<JournalEntryRequest.JournalLineRequest> lines) {
+    return payrollAccountingService.postPayrollRun(runNumber, runId, postingDate, memo, lines);
+  }
+
+  public JournalEntryDto recordDealerReceipt(DealerReceiptRequest request) {
+    return dealerReceiptService.recordDealerReceipt(request);
+  }
+
+  public JournalEntryDto recordDealerReceiptSplit(DealerReceiptSplitRequest request) {
+    return dealerReceiptService.recordDealerReceiptSplit(request);
+  }
+
+  public JournalEntryDto recordSupplierPayment(SupplierPaymentRequest request) {
+    return accountingService.recordSupplierPayment(request);
+  }
+
+  public PartnerSettlementResponse settleDealerInvoices(PartnerSettlementRequest request) {
+    return accountingService.settleDealerInvoices(request);
+  }
+
+  public PartnerSettlementResponse autoSettleDealer(Long dealerId, AutoSettlementRequest request) {
+    return accountingService.autoSettleDealer(dealerId, request);
+  }
+
+  public PartnerSettlementResponse settleSupplierInvoices(PartnerSettlementRequest request) {
+    return accountingService.settleSupplierInvoices(request);
+  }
+
+  public PartnerSettlementResponse autoSettleSupplier(
+      Long supplierId, AutoSettlementRequest request) {
+    return accountingService.autoSettleSupplier(supplierId, request);
+  }
+
+  public JournalEntryDto reverseClosingEntryForPeriodReopen(
+      JournalEntry entry, AccountingPeriod period, String reason) {
+    return accountingService.reverseClosingEntryForPeriodReopen(entry, period, reason);
   }
 
   public JournalEntryDto createManualJournal(ManualJournalRequest request) {
-    if (request == null) {
-      throw validationMissingField("Manual journal request is required");
-    }
-    if (request.lines() == null || request.lines().isEmpty()) {
-      throw validationInvalidInput("Manual journal requires at least one line");
-    }
-
-    BigDecimal totalDebit = BigDecimal.ZERO;
-    BigDecimal totalCredit = BigDecimal.ZERO;
-    List<JournalCreationRequest.LineRequest> lines = new java.util.ArrayList<>();
-    for (ManualJournalRequest.LineRequest line : request.lines()) {
-      if (line == null || line.accountId() == null) {
-        throw validationMissingField("Account is required for manual journal lines");
-      }
-      if (line.entryType() == null) {
-        throw validationMissingField("Entry type is required for manual journal lines");
-      }
-      BigDecimal amount = requirePositive(line.amount(), "amount");
-      String lineNarration =
-          StringUtils.hasText(line.narration())
-              ? line.narration().trim()
-              : (StringUtils.hasText(request.narration())
-                  ? request.narration().trim()
-                  : "Manual journal line");
-      BigDecimal debit =
-          line.entryType() == ManualJournalRequest.EntryType.DEBIT ? amount : BigDecimal.ZERO;
-      BigDecimal credit =
-          line.entryType() == ManualJournalRequest.EntryType.CREDIT ? amount : BigDecimal.ZERO;
-      totalDebit = totalDebit.add(debit);
-      totalCredit = totalCredit.add(credit);
-      lines.add(
-          new JournalCreationRequest.LineRequest(line.accountId(), debit, credit, lineNarration));
-    }
-
-    if (totalDebit.subtract(totalCredit).abs().compareTo(BigDecimal.ZERO) > 0) {
-      throw validationInvalidInput("Manual journal entry must balance")
-          .withDetail("totalDebit", totalDebit)
-          .withDetail("totalCredit", totalCredit);
-    }
-
-    LocalDate entryDate = resolveManualEntryDate(request.entryDate());
-    if (!StringUtils.hasText(request.narration())) {
-      throw validationMissingField("Manual journal reason is required");
-    }
-    String narration = request.narration().trim();
-    String idempotencyKey =
-        StringUtils.hasText(request.idempotencyKey()) ? request.idempotencyKey().trim() : null;
-    String sourceReference =
-        StringUtils.hasText(idempotencyKey)
-            ? idempotencyKey
-            : generatedManualSourceReference(entryDate);
-
-    JournalCreationRequest journalRequest =
-        new JournalCreationRequest(
-            totalDebit,
-            firstDebitAccountFromCreationLines(lines),
-            firstCreditAccountFromCreationLines(lines),
-            narration,
-            "MANUAL",
-            sourceReference,
-            null,
-            lines,
-            entryDate,
-            null,
-            null,
-            Boolean.TRUE.equals(request.adminOverride()),
-            request.attachmentReferences());
-
-    return createStandardJournal(journalRequest);
+    return manualJournalOperations.createManualJournal(request);
   }
 
   public JournalEntryDto createManualJournalEntry(
       JournalEntryRequest request, String idempotencyKey) {
-    if (request == null) {
-      throw validationMissingField("Journal entry request is required");
-    }
-
-    String resolvedIdempotencyKey =
-        StringUtils.hasText(idempotencyKey) ? idempotencyKey.trim() : null;
-    if (!StringUtils.hasText(request.memo())) {
-      throw validationMissingField("Manual journal reason is required");
-    }
-    LocalDate entryDate = resolveManualEntryDate(request.entryDate());
-    String sourceReference =
-        StringUtils.hasText(request.sourceReference())
-            ? request.sourceReference().trim()
-            : (StringUtils.hasText(resolvedIdempotencyKey)
-                ? resolvedIdempotencyKey
-                : generatedManualSourceReference(entryDate));
-
-    BigDecimal amount = resolveManualAmount(request.lines());
-    JournalCreationRequest journalRequest =
-        new JournalCreationRequest(
-            amount,
-            firstDebitAccountFromEntryLines(request.lines()),
-            firstCreditAccountFromEntryLines(request.lines()),
-            request.memo().trim(),
-            "MANUAL",
-            sourceReference,
-            null,
-            toCreationLines(request.lines(), request.memo()),
-            entryDate,
-            request.dealerId(),
-            request.supplierId(),
-            Boolean.TRUE.equals(request.adminOverride()),
-            request.attachmentReferences());
-
-    return createStandardJournal(journalRequest);
+    return manualJournalOperations.createManualJournalEntry(request, idempotencyKey);
   }
 
-  @Override
   public JournalEntryDto recordPayrollPayment(PayrollPaymentRequest request) {
-    return accountingService.recordPayrollPayment(request);
+    return payrollAccountingService.recordPayrollPayment(request);
   }
 
-  private static java.util.List<JournalCreationRequest.LineRequest> toCreationLines(
-      java.util.List<JournalEntryRequest.JournalLineRequest> lines, String fallbackNarration) {
-    if (lines == null || lines.isEmpty()) {
-      return java.util.List.of();
-    }
-    String resolvedNarration =
-        StringUtils.hasText(fallbackNarration) ? fallbackNarration.trim() : "Manual journal line";
-    return lines.stream()
-        .map(
-            line ->
-                new JournalCreationRequest.LineRequest(
-                    line.accountId(),
-                    line.debit(),
-                    line.credit(),
-                    StringUtils.hasText(line.description())
-                        ? line.description().trim()
-                        : resolvedNarration))
-        .toList();
+  public void clearAccountCache() {
+    accountResolver.clearAccountCache();
   }
 
-  private static BigDecimal resolveManualAmount(
-      java.util.List<JournalEntryRequest.JournalLineRequest> lines) {
-    BigDecimal debitTotal = totalDebit(lines);
-    BigDecimal creditTotal = totalCredit(lines);
-    if (debitTotal.compareTo(BigDecimal.ZERO) <= 0 || creditTotal.compareTo(BigDecimal.ZERO) <= 0) {
-      throw validationInvalidInput("Journal lines must include at least one debit and one credit");
-    }
-    if (debitTotal.subtract(creditTotal).abs().compareTo(BigDecimal.ZERO) > 0) {
-      throw validationInvalidInput("Manual journal entry must balance")
-          .withDetail("totalDebit", debitTotal)
-          .withDetail("totalCredit", creditTotal);
-    }
-    return debitTotal;
+  public void clearAccountCache(Long companyId) {
+    accountResolver.clearAccountCache(companyId);
   }
 
-  private static BigDecimal totalDebit(
-      java.util.List<JournalEntryRequest.JournalLineRequest> lines) {
-    if (lines == null) {
-      return BigDecimal.ZERO;
-    }
-    return lines.stream()
-        .map(line -> line.debit() == null ? BigDecimal.ZERO : line.debit())
-        .reduce(BigDecimal.ZERO, BigDecimal::add);
-  }
-
-  private static BigDecimal totalCredit(
-      java.util.List<JournalEntryRequest.JournalLineRequest> lines) {
-    if (lines == null) {
-      return BigDecimal.ZERO;
-    }
-    return lines.stream()
-        .map(line -> line.credit() == null ? BigDecimal.ZERO : line.credit())
-        .reduce(BigDecimal.ZERO, BigDecimal::add);
-  }
-
-  private static Long firstDebitAccountFromCreationLines(
-      java.util.List<JournalCreationRequest.LineRequest> lines) {
-    return lines.stream()
-        .filter(line -> line.debit() != null && line.debit().compareTo(BigDecimal.ZERO) > 0)
-        .map(JournalCreationRequest.LineRequest::accountId)
-        .findFirst()
-        .orElseThrow(
-            () ->
-                validationInvalidInput(
-                    "Journal lines must include at least one debit and one credit"));
-  }
-
-  private static Long firstCreditAccountFromCreationLines(
-      java.util.List<JournalCreationRequest.LineRequest> lines) {
-    return lines.stream()
-        .filter(line -> line.credit() != null && line.credit().compareTo(BigDecimal.ZERO) > 0)
-        .map(JournalCreationRequest.LineRequest::accountId)
-        .findFirst()
-        .orElseThrow(
-            () ->
-                validationInvalidInput(
-                    "Journal lines must include at least one debit and one credit"));
-  }
-
-  private static Long firstDebitAccountFromEntryLines(
-      java.util.List<JournalEntryRequest.JournalLineRequest> lines) {
-    return lines.stream()
-        .filter(line -> line.debit() != null && line.debit().compareTo(BigDecimal.ZERO) > 0)
-        .map(JournalEntryRequest.JournalLineRequest::accountId)
-        .findFirst()
-        .orElseThrow(
-            () ->
-                validationInvalidInput(
-                    "Journal lines must include at least one debit and one credit"));
-  }
-
-  private static Long firstCreditAccountFromEntryLines(
-      java.util.List<JournalEntryRequest.JournalLineRequest> lines) {
-    return lines.stream()
-        .filter(line -> line.credit() != null && line.credit().compareTo(BigDecimal.ZERO) > 0)
-        .map(JournalEntryRequest.JournalLineRequest::accountId)
-        .findFirst()
-        .orElseThrow(
-            () ->
-                validationInvalidInput(
-                    "Journal lines must include at least one debit and one credit"));
-  }
-
-  private static BigDecimal requirePositive(BigDecimal value, String field) {
-    return ValidationUtils.requirePositive(value, field);
-  }
-
-  private static ApplicationException validationMissingField(String message) {
-    return new ApplicationException(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD, message);
-  }
-
-  private static ApplicationException validationInvalidInput(String message) {
-    return new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, message);
-  }
-
-  private LocalDate resolveManualEntryDate(LocalDate requestedEntryDate) {
-    if (requestedEntryDate != null) {
-      return requestedEntryDate;
-    }
-    return companyClock.today(companyContextService.requireCurrentCompany());
-  }
-
-  private String generatedManualSourceReference(LocalDate entryDate) {
-    LocalDate resolvedEntryDate = entryDate != null ? entryDate : resolveManualEntryDate(null);
-    String nonce = java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 12);
-    return "MANUAL-" + resolvedEntryDate + "-" + nonce;
+  @EventListener
+  public void handleAccountCacheInvalidated(AccountCacheInvalidatedEvent event) {
+    clearAccountCache(event.companyId());
   }
 }

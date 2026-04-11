@@ -13,7 +13,6 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.mock.web.MockHttpServletRequest;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
@@ -106,11 +105,17 @@ class AccountingApplicationExceptionResponsesTest {
   }
 
   @Test
-  void determineHttpStatus_defaultsToInternalServerErrorWhenErrorCodeIsNull() {
-    HttpStatus status =
-        ReflectionTestUtils.invokeMethod(
-            AccountingApplicationExceptionResponses.class, "determineHttpStatus", (Object) null);
+  void mappedStatus_defaultsToInternalServerErrorForUnknownErrorCode() {
+    MockHttpServletRequest request = new MockHttpServletRequest();
+    request.setRequestURI("/api/v1/accounting/journal-entries");
+    ApplicationException ex = new ApplicationException(ErrorCode.UNKNOWN_ERROR, "boom");
 
-    assertThat(status).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+    ResponseEntity<ApiResponse<Map<String, Object>>> response =
+        AccountingApplicationExceptionResponses.mappedStatus(ex, request);
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+    assertThat(response.getBody()).isNotNull();
+    assertThat(response.getBody().data())
+        .containsEntry("path", "/api/v1/accounting/journal-entries");
   }
 }

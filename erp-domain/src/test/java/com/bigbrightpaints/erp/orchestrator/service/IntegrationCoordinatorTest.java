@@ -12,6 +12,7 @@ import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.lang.reflect.Method;
@@ -32,7 +33,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.slf4j.LoggerFactory;
-import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.AbstractPlatformTransactionManager;
 import org.springframework.transaction.support.DefaultTransactionStatus;
@@ -42,7 +42,6 @@ import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountDto;
-import com.bigbrightpaints.erp.modules.accounting.dto.PayrollPaymentRequest;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
@@ -51,6 +50,7 @@ import com.bigbrightpaints.erp.modules.factory.dto.ProductionPlanRequest;
 import com.bigbrightpaints.erp.modules.factory.service.FactoryService;
 import com.bigbrightpaints.erp.modules.hr.dto.EmployeeDto;
 import com.bigbrightpaints.erp.modules.hr.dto.LeaveRequestDto;
+import com.bigbrightpaints.erp.modules.hr.dto.PayrollPaymentRequest;
 import com.bigbrightpaints.erp.modules.hr.service.HrService;
 import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService;
 import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService.InventoryReservationResult;
@@ -139,8 +139,7 @@ class IntegrationCoordinatorTest {
     when(finishedGoodsService.reserveForOrder(order)).thenReturn(reservation);
 
     IntegrationCoordinator.AutoApprovalResult result =
-        integrationCoordinator.autoApproveOrder(
-            String.valueOf(ORDER_ID), new BigDecimal("1500"), COMPANY_ID);
+        integrationCoordinator.autoApproveOrder(String.valueOf(ORDER_ID), COMPANY_ID);
 
     assertThat(result.orderStatus()).isEqualTo("READY_TO_SHIP");
     assertThat(result.awaitingProduction()).isFalse();
@@ -174,11 +173,7 @@ class IntegrationCoordinatorTest {
     CompanyContextHolder.setCompanyCode("AMBIENT-COMPANY");
 
     integrationCoordinator.autoApproveOrder(
-        String.valueOf(ORDER_ID),
-        new BigDecimal("1500"),
-        "  " + COMPANY_ID + "  ",
-        "trace-auto-42",
-        null);
+        String.valueOf(ORDER_ID), "  " + COMPANY_ID + "  ", "trace-auto-42", null);
 
     assertThat(contextsDuringAttach).isNotEmpty();
     assertThat(contextsDuringAttach).allMatch(COMPANY_ID::equals);
@@ -334,7 +329,7 @@ class IntegrationCoordinatorTest {
     state.markOrderStatusUpdated();
 
     IntegrationCoordinator.AutoApprovalResult result =
-        integrationCoordinator.autoApproveOrder(String.valueOf(ORDER_ID), null, COMPANY_ID);
+        integrationCoordinator.autoApproveOrder(String.valueOf(ORDER_ID), COMPANY_ID);
 
     assertThat(result.orderStatus()).isEqualTo("READY_TO_SHIP");
     assertThat(result.awaitingProduction()).isFalse();
@@ -356,7 +351,7 @@ class IntegrationCoordinatorTest {
     state.markCompleted();
 
     IntegrationCoordinator.AutoApprovalResult result =
-        integrationCoordinator.autoApproveOrder(String.valueOf(ORDER_ID), null, COMPANY_ID);
+        integrationCoordinator.autoApproveOrder(String.valueOf(ORDER_ID), COMPANY_ID);
 
     assertThat(result.orderStatus()).isEqualTo("READY_TO_SHIP");
     assertThat(result.awaitingProduction()).isFalse();
@@ -368,7 +363,7 @@ class IntegrationCoordinatorTest {
   void autoApproveOrderRetrySkipsReservationAfterPartialProgress() {
     state.markInventoryReserved();
     IntegrationCoordinator.AutoApprovalResult result =
-        integrationCoordinator.autoApproveOrder(String.valueOf(ORDER_ID), null, COMPANY_ID);
+        integrationCoordinator.autoApproveOrder(String.valueOf(ORDER_ID), COMPANY_ID);
 
     assertThat(result.orderStatus()).isEqualTo("READY_TO_SHIP");
     assertThat(result.awaitingProduction()).isFalse();
@@ -383,8 +378,7 @@ class IntegrationCoordinatorTest {
     when(salesService.getOrderWithItems(ORDER_ID)).thenReturn(order);
     when(finishedGoodsService.reserveForOrder(order)).thenReturn(reservation);
 
-    integrationCoordinator.autoApproveOrder(
-        String.valueOf(ORDER_ID), new BigDecimal("1500"), COMPANY_ID);
+    integrationCoordinator.autoApproveOrder(String.valueOf(ORDER_ID), COMPANY_ID);
 
     verify(salesService, never()).confirmDispatch(any());
   }
@@ -396,10 +390,29 @@ class IntegrationCoordinatorTest {
     when(salesService.getOrderWithItems(ORDER_ID)).thenReturn(order);
     when(finishedGoodsService.reserveForOrder(order)).thenReturn(reservation);
 
-    integrationCoordinator.autoApproveOrder(
-        String.valueOf(ORDER_ID), new BigDecimal("1500"), COMPANY_ID);
+    integrationCoordinator.autoApproveOrder(String.valueOf(ORDER_ID), COMPANY_ID);
 
     verify(salesService, never()).confirmDispatch(any());
+  }
+
+  @Test
+  void autoApproveOrderReturnsPendingProductionWhenCompanyContextMissingAndAmountPresent() {
+    IntegrationCoordinator.AutoApprovalResult result =
+        integrationCoordinator.autoApproveOrder(String.valueOf(ORDER_ID), " ");
+
+    assertThat(result.orderStatus()).isEqualTo("PENDING_PRODUCTION");
+    assertThat(result.awaitingProduction()).isTrue();
+    verifyNoInteractions(salesService, finishedGoodsService, factoryService);
+  }
+
+  @Test
+  void autoApproveOrderReturnsPendingProductionWhenCompanyContextMissingAndAmountAbsent() {
+    IntegrationCoordinator.AutoApprovalResult result =
+        integrationCoordinator.autoApproveOrder(String.valueOf(ORDER_ID), null);
+
+    assertThat(result.orderStatus()).isEqualTo("PENDING_PRODUCTION");
+    assertThat(result.awaitingProduction()).isTrue();
+    verifyNoInteractions(salesService, finishedGoodsService, factoryService);
   }
 
   @Test
@@ -472,24 +485,24 @@ class IntegrationCoordinatorTest {
 
     assertThat(
             (Boolean)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     integrationCoordinator, "isHrPayrollEnabled", (Company) null))
         .isFalse();
     assertThat(
             (Boolean)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     integrationCoordinator, "isHrPayrollEnabled", modulesMissing))
         .isFalse();
     assertThat(
             (Boolean)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     integrationCoordinator, "isHrPayrollEnabled", company))
         .isFalse();
 
     company.setEnabledModules(Set.of("HR_PAYROLL"));
     assertThat(
             (Boolean)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     integrationCoordinator, "isHrPayrollEnabled", company))
         .isTrue();
   }
@@ -647,7 +660,31 @@ class IntegrationCoordinatorTest {
     assertThrows(
         ApplicationException.class,
         () -> disabled.generatePayroll(LocalDate.now(), new BigDecimal("1000"), COMPANY_ID));
-    verify(hrService, never()).createPayrollRun(any());
+    verifyNoInteractions(hrService);
+  }
+
+  @Test
+  void generatePayrollReturnsDeprecatedErrorWithNormalizedContextDetails() {
+    ApplicationException ex =
+        assertThrows(
+            ApplicationException.class,
+            () ->
+                integrationCoordinator.generatePayroll(
+                    LocalDate.of(2026, 4, 10),
+                    new BigDecimal("1000.50"),
+                    "  " + COMPANY_ID + "  ",
+                    "trace-payroll-42",
+                    "idem-payroll-42"));
+
+    assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.BUSINESS_CONSTRAINT_VIOLATION);
+    assertThat(ex.getDetails())
+        .containsEntry("canonicalPath", "/api/v1/payroll/runs")
+        .containsEntry("payrollDate", LocalDate.of(2026, 4, 10))
+        .containsEntry("totalAmount", new BigDecimal("1000.50"))
+        .containsEntry("companyId", COMPANY_ID)
+        .containsEntry("traceId", "trace-payroll-42")
+        .containsEntry("idempotencyKey", "idem-payroll-42");
+    verifyNoInteractions(hrService);
   }
 
   @Test

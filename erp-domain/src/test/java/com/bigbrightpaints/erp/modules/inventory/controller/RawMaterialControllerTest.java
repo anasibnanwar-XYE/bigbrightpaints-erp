@@ -10,7 +10,6 @@ import static org.mockito.Mockito.when;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
-import java.util.UUID;
 
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -22,7 +21,7 @@ import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.modules.inventory.dto.InventoryExpiringBatchDto;
 import com.bigbrightpaints.erp.modules.inventory.dto.RawMaterialAdjustmentRequest;
-import com.bigbrightpaints.erp.modules.inventory.dto.StockSummaryDto;
+import com.bigbrightpaints.erp.modules.inventory.dto.RawMaterialStockEntryDto;
 import com.bigbrightpaints.erp.modules.inventory.service.InventoryBatchQueryService;
 import com.bigbrightpaints.erp.modules.inventory.service.RawMaterialService;
 
@@ -43,7 +42,7 @@ class RawMaterialControllerTest {
     RawMaterialController controller = controller();
     RawMaterialAdjustmentRequest request = adjustmentRequest(null);
 
-    controller.adjustRawMaterials("header-key", null, request);
+    controller.adjustRawMaterials("header-key", request);
 
     verify(rawMaterialService)
         .adjustStock(
@@ -63,7 +62,7 @@ class RawMaterialControllerTest {
     RawMaterialController controller = controller();
 
     RawMaterialAdjustmentRequest request = adjustmentRequest("body-key");
-    assertThatThrownBy(() -> controller.adjustRawMaterials("header-key", null, request))
+    assertThatThrownBy(() -> controller.adjustRawMaterials("header-key", request))
         .isInstanceOfSatisfying(
             ApplicationException.class,
             ex -> {
@@ -80,7 +79,7 @@ class RawMaterialControllerTest {
     RawMaterialController controller = controller();
 
     RawMaterialAdjustmentRequest request = adjustmentRequest(null);
-    assertThatThrownBy(() -> controller.adjustRawMaterials(null, null, request))
+    assertThatThrownBy(() -> controller.adjustRawMaterials(null, request))
         .isInstanceOfSatisfying(
             ApplicationException.class,
             ex -> {
@@ -105,53 +104,8 @@ class RawMaterialControllerTest {
             null,
             List.of(new RawMaterialAdjustmentRequest.LineRequest(null, null, null, "note")));
 
-    assertThatThrownBy(() -> controller.adjustRawMaterials("header-key", null, invalid))
+    assertThatThrownBy(() -> controller.adjustRawMaterials("header-key", invalid))
         .isInstanceOf(ConstraintViolationException.class);
-
-    verifyNoInteractions(rawMaterialService);
-  }
-
-  @Test
-  void adjustRawMaterials_rejectsLegacyHeaderWhenPrimaryMissing() {
-    RawMaterialController controller = controller();
-
-    assertThatThrownBy(
-            () -> controller.adjustRawMaterials(null, "legacy-key", adjustmentRequest(null)))
-        .isInstanceOfSatisfying(
-            ApplicationException.class,
-            ex -> {
-              assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_INVALID_INPUT);
-              assertThat(ex.getMessage())
-                  .contains("X-Idempotency-Key is not supported for raw material adjustments");
-              assertThat(ex.getDetails())
-                  .containsEntry("legacyHeader", "X-Idempotency-Key")
-                  .containsEntry("legacyHeaderValue", "legacy-key")
-                  .containsEntry("canonicalHeader", "Idempotency-Key")
-                  .containsEntry("canonicalPath", "/api/v1/inventory/raw-materials/adjustments");
-            });
-
-    verifyNoInteractions(rawMaterialService);
-  }
-
-  @Test
-  void adjustRawMaterials_rejectsLegacyHeaderWhenPrimaryAlsoPresent() {
-    RawMaterialController controller = controller();
-
-    assertThatThrownBy(
-            () ->
-                controller.adjustRawMaterials("header-key", "legacy-key", adjustmentRequest(null)))
-        .isInstanceOfSatisfying(
-            ApplicationException.class,
-            ex -> {
-              assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_INVALID_INPUT);
-              assertThat(ex.getMessage())
-                  .contains("X-Idempotency-Key is not supported for raw material adjustments");
-              assertThat(ex.getDetails())
-                  .containsEntry("legacyHeader", "X-Idempotency-Key")
-                  .containsEntry("legacyHeaderValue", "legacy-key")
-                  .containsEntry("canonicalHeader", "Idempotency-Key")
-                  .containsEntry("canonicalPath", "/api/v1/inventory/raw-materials/adjustments");
-            });
 
     verifyNoInteractions(rawMaterialService);
   }
@@ -166,27 +120,16 @@ class RawMaterialControllerTest {
   }
 
   @Test
-  void stockSummary_delegatesToRawMaterialService() {
+  void stock_delegatesToRawMaterialService() {
     RawMaterialController controller = controller();
-    StockSummaryDto summary =
-        new StockSummaryDto(
-            11L,
-            UUID.randomUUID(),
-            "RM-SUMMARY",
-            "Summary",
-            new BigDecimal("12.00"),
-            BigDecimal.ONE,
-            new BigDecimal("11.00"),
-            new BigDecimal("120.00"),
-            10L,
-            2L,
-            1L,
-            5L);
-    when(rawMaterialService.summarizeStock()).thenReturn(summary);
+    List<RawMaterialStockEntryDto> stockEntries =
+        List.of(
+            new RawMaterialStockEntryDto(11L, "RM-SUMMARY", "Summary", new BigDecimal("12.00")));
+    when(rawMaterialService.listStockEntries()).thenReturn(stockEntries);
 
-    assertThat(controller.stockSummary().getBody()).isNotNull();
+    assertThat(controller.stock().getBody()).isNotNull();
 
-    verify(rawMaterialService).summarizeStock();
+    verify(rawMaterialService).listStockEntries();
   }
 
   @Test

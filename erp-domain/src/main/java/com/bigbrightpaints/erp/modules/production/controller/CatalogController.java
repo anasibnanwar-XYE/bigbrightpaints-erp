@@ -6,7 +6,6 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
-import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -20,8 +19,6 @@ import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
-import com.bigbrightpaints.erp.core.exception.ApplicationException;
-import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.modules.production.dto.CatalogBrandDto;
 import com.bigbrightpaints.erp.modules.production.dto.CatalogBrandRequest;
 import com.bigbrightpaints.erp.modules.production.dto.CatalogImportResponse;
@@ -32,7 +29,6 @@ import com.bigbrightpaints.erp.modules.production.service.ProductionCatalogServi
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 import com.bigbrightpaints.erp.shared.dto.PageResponse;
 
-import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 
 @RestController
@@ -84,9 +80,7 @@ public class CatalogController {
   @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
   public ResponseEntity<ApiResponse<CatalogImportResponse>> importCatalog(
       @RequestPart("file") MultipartFile file,
-      @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
-      HttpServletRequest request) {
-    rejectLegacyIdempotencyHeader(request.getHeader("X-Idempotency-Key"));
+      @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey) {
     return ResponseEntity.ok(
         ApiResponse.success(
             "Catalog import processed",
@@ -157,9 +151,11 @@ public class CatalogController {
     }
     return authentication.getAuthorities().stream()
         .map(grantedAuthority -> grantedAuthority.getAuthority())
-        .anyMatch(authority -> "ROLE_ADMIN".equals(authority)
-            || "ROLE_ACCOUNTING".equals(authority)
-            || "ROLE_FACTORY".equals(authority));
+        .anyMatch(
+            authority ->
+                "ROLE_ADMIN".equals(authority)
+                    || "ROLE_ACCOUNTING".equals(authority)
+                    || "ROLE_FACTORY".equals(authority));
   }
 
   private boolean canViewAccountingMetadata(Authentication authentication) {
@@ -170,17 +166,5 @@ public class CatalogController {
         .map(grantedAuthority -> grantedAuthority.getAuthority())
         .anyMatch(
             authority -> "ROLE_ADMIN".equals(authority) || "ROLE_ACCOUNTING".equals(authority));
-  }
-
-  private void rejectLegacyIdempotencyHeader(String legacyIdempotencyKey) {
-    if (!StringUtils.hasText(legacyIdempotencyKey)) {
-      return;
-    }
-    throw new ApplicationException(
-            ErrorCode.VALIDATION_INVALID_INPUT,
-            "X-Idempotency-Key is not supported for catalog import; use Idempotency-Key")
-        .withDetail("legacyHeader", "X-Idempotency-Key")
-        .withDetail("canonicalHeader", "Idempotency-Key")
-        .withDetail("canonicalPath", "/api/v1/catalog/import");
   }
 }

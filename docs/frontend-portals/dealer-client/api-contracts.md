@@ -13,24 +13,26 @@ the dealer portal namespace.
 
 ## Orders
 
-- dealer order list and detail endpoints under `/api/v1/dealer-portal/**`
+- `GET /api/v1/dealer-portal/orders`
 
 Rules:
 
-- Orders are read-first in this portal.
-- If dealer self-service order creation is enabled, it must still remain within
-  dealer-safe constraints and never expose internal pricing or approval tools
-  beyond backend policy.
+- Orders are read-only in this portal.
+- Order creation and mutation are handled internally via sales or admin portals;
+  the dealer portal does not expose order write actions.
 
 ## Invoices
 
-- dealer invoice list and detail endpoints under `/api/v1/dealer-portal/**`
+- `GET /api/v1/dealer-portal/invoices`
+- `GET /api/v1/dealer-portal/invoices/{invoiceId}/pdf`
 
 Rules:
 
 - Invoice status is visible here after internal dispatch and posting complete.
 - Dealer portal must not offer finance correction or manual settlement actions.
-- Dealer portal owns the external invoice list, detail, and PDF/download flow.
+- Dealer portal owns the external invoice list and PDF/download flow.
+- Do not assume a separate dealer invoice-detail REST endpoint unless runtime adds
+  one.
 - Internal sales may read invoice state for a current order, but that does not
   create shared ownership of the dealer invoice inbox.
 
@@ -47,13 +49,18 @@ Rules:
 
 ## Support And Credit Request
 
-- dealer support endpoints under `/api/v1/dealer-portal/**`
-- dealer credit request endpoints under `/api/v1/dealer-portal/**`
+- `GET /api/v1/dealer-portal/support/tickets`
+- `POST /api/v1/dealer-portal/support/tickets`
+- `GET /api/v1/dealer-portal/support/tickets/{ticketId}`
+- `POST /api/v1/dealer-portal/credit-limit-requests`
 
 Rules:
 
 - Support requests are dealer-originated but resolved outside this portal.
 - Credit requests are self-service submissions only.
+- Dealer identity is always resolved from the authenticated dealer principal on
+  `/api/v1/dealer-portal/**`; dealer-client must not send a `dealerId` in
+  dealer-portal credit-request payloads.
 - Approval, override, and final finance correction stay in internal portals.
 
 ## Forbidden From Dealer Portal

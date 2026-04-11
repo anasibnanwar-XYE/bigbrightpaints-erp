@@ -27,10 +27,11 @@ import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAllocationRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.PartnerType;
 import com.bigbrightpaints.erp.modules.accounting.dto.DealerReceiptRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.DealerReceiptSplitRequest;
-import com.bigbrightpaints.erp.modules.accounting.dto.DealerSettlementRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
+import com.bigbrightpaints.erp.modules.accounting.dto.PartnerSettlementRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.PartnerSettlementResponse;
 import com.bigbrightpaints.erp.modules.accounting.dto.SettlementAllocationApplication;
 import com.bigbrightpaints.erp.modules.accounting.dto.SettlementAllocationRequest;
@@ -82,6 +83,94 @@ class CR_DealerReceiptSettlementAuditTrailTest extends AbstractIntegrationTest {
   @AfterEach
   void clearCompanyContext() {
     CompanyContextHolder.clear();
+  }
+
+  @Test
+  void dealerReceipt_fullSettlement_autoClosesInvoicedOrder() {
+    String companyCode = "CR-AUTOCLOSE-" + shortId();
+    Company company = bootstrapCompany(companyCode, "UTC");
+    Map<String, Account> accounts = ensureCoreAccounts(company);
+    Dealer dealer = ensureDealer(company, accounts.get("AR"));
+
+    FinishedGood fg =
+        ensureFinishedGoodWithCatalog(company, accounts, "FG-" + shortId(), BigDecimal.ZERO);
+    CompanyContextHolder.setCompanyCode(companyCode);
+    registerFinishedGoodBatchForTest(
+        new FinishedGoodBatchRequest(
+            fg.getId(),
+            "BATCH-AUTO",
+            new BigDecimal("20"),
+            new BigDecimal("10.00"),
+            Instant.now(),
+            null));
+    CompanyContextHolder.clear();
+
+    SalesOrder order =
+        createOrder(
+            company, dealer, fg.getProductCode(), new BigDecimal("5"), new BigDecimal("15.50"));
+    order.setStatus("INVOICED");
+    salesOrderRepository.saveAndFlush(order);
+
+    Invoice invoice = issueInvoiceForOrder(company, dealer, order);
+    BigDecimal outstanding = invoice.getOutstandingAmount();
+    DealerReceiptRequest receiptRequest =
+        new DealerReceiptRequest(
+            dealer.getId(),
+            accounts.get("BANK").getId(),
+            outstanding,
+            "DR-AUTO-" + UUID.randomUUID(),
+            "Auto-close receipt",
+            "DR-AUTO-IDEMP-" + UUID.randomUUID(),
+            List.of(
+                new SettlementAllocationRequest(
+                    invoice.getId(),
+                    null,
+                    outstanding,
+                    BigDecimal.ZERO,
+                    BigDecimal.ZERO,
+                    null,
+                    "Apply to invoice")));
+
+    CompanyContextHolder.setCompanyCode(companyCode);
+    try {
+      accountingService.recordDealerReceipt(receiptRequest);
+    } finally {
+      CompanyContextHolder.clear();
+    }
+
+    SalesOrder refreshedOrder =
+        salesOrderRepository.findByCompanyAndId(company, order.getId()).orElseThrow();
+    assertThat(refreshedOrder.getStatus()).isEqualTo("CLOSED");
+    Integer autoCloseEvents =
+        jdbcTemplate.queryForObject(
+            """
+            select count(*)
+            from sales_order_status_history
+            where company_id = ?
+              and sales_order_id = ?
+              and reason_code = 'ORDER_CLOSED_AUTO'
+            """,
+            Integer.class,
+            company.getId(),
+            order.getId());
+    assertThat(autoCloseEvents).isNotNull();
+    assertThat(autoCloseEvents).isGreaterThan(0);
+    Integer salesAuditEvents =
+        jdbcTemplate.queryForObject(
+            """
+            select count(*)
+            from audit_action_events
+            where company_id = ?
+              and module = 'SALES'
+              and action = 'ORDER_CLOSED_AUTO'
+              and entity_type = 'SALES_ORDER'
+              and entity_id = ?
+            """,
+            Integer.class,
+            company.getId(),
+            order.getId().toString());
+    assertThat(salesAuditEvents).isNotNull();
+    assertThat(salesAuditEvents).isGreaterThan(0);
   }
 
   @Test
@@ -261,8 +350,9 @@ class CR_DealerReceiptSettlementAuditTrailTest extends AbstractIntegrationTest {
     String referenceNumber = "DS-" + UUID.randomUUID();
     String idempotencyKey = "DS-IDEMP-" + UUID.randomUUID();
 
-    DealerSettlementRequest settlementRequest =
-        new DealerSettlementRequest(
+    PartnerSettlementRequest settlementRequest =
+        new PartnerSettlementRequest(
+            PartnerType.DEALER,
             dealer.getId(),
             accounts.get("BANK").getId(),
             null,
@@ -282,8 +372,7 @@ class CR_DealerReceiptSettlementAuditTrailTest extends AbstractIntegrationTest {
                     BigDecimal.ZERO,
                     BigDecimal.ZERO,
                     null,
-                    "Apply to invoice")),
-            null);
+                    "Apply to invoice")));
 
     CoderedConcurrencyHarness.RunResult<PartnerSettlementResponse> result =
         CoderedConcurrencyHarness.run(
@@ -345,8 +434,9 @@ class CR_DealerReceiptSettlementAuditTrailTest extends AbstractIntegrationTest {
           .isEqualTo(journalId);
       BigDecimal halfOutstanding =
           outstanding.divide(new BigDecimal("2"), 2, java.math.RoundingMode.HALF_UP);
-      DealerSettlementRequest conflictRequest =
-          new DealerSettlementRequest(
+      PartnerSettlementRequest conflictRequest =
+          new PartnerSettlementRequest(
+              PartnerType.DEALER,
               dealer.getId(),
               accounts.get("BANK").getId(),
               null,
@@ -366,8 +456,7 @@ class CR_DealerReceiptSettlementAuditTrailTest extends AbstractIntegrationTest {
                       BigDecimal.ZERO,
                       BigDecimal.ZERO,
                       null,
-                      "Apply to invoice")),
-              null);
+                      "Apply to invoice")));
       org.assertj.core.api.Assertions.assertThatThrownBy(
               () -> accountingService.settleDealerInvoices(conflictRequest))
           .isInstanceOf(com.bigbrightpaints.erp.core.exception.ApplicationException.class)
@@ -410,8 +499,9 @@ class CR_DealerReceiptSettlementAuditTrailTest extends AbstractIntegrationTest {
     BigDecimal outstanding = invoice.getOutstandingAmount();
     String idempotencyKey = "DS-NOREF-IDEMP-" + UUID.randomUUID();
 
-    DealerSettlementRequest settlementRequest =
-        new DealerSettlementRequest(
+    PartnerSettlementRequest settlementRequest =
+        new PartnerSettlementRequest(
+            PartnerType.DEALER,
             dealer.getId(),
             accounts.get("BANK").getId(),
             null,
@@ -431,8 +521,7 @@ class CR_DealerReceiptSettlementAuditTrailTest extends AbstractIntegrationTest {
                     BigDecimal.ZERO,
                     BigDecimal.ZERO,
                     null,
-                    "Apply to invoice")),
-            null);
+                    "Apply to invoice")));
 
     CoderedConcurrencyHarness.RunResult<PartnerSettlementResponse> result =
         CoderedConcurrencyHarness.run(
@@ -493,8 +582,9 @@ class CR_DealerReceiptSettlementAuditTrailTest extends AbstractIntegrationTest {
     String referenceNumber = "DS-HDR-FUT-" + UUID.randomUUID();
     String idempotencyKey = "DS-HDR-FUT-IDEMP-" + UUID.randomUUID();
 
-    DealerSettlementRequest settlementRequest =
-        new DealerSettlementRequest(
+    PartnerSettlementRequest settlementRequest =
+        new PartnerSettlementRequest(
+            PartnerType.DEALER,
             dealer.getId(),
             accounts.get("BANK").getId(),
             null,
@@ -508,7 +598,6 @@ class CR_DealerReceiptSettlementAuditTrailTest extends AbstractIntegrationTest {
             "CODE-RED header settlement",
             idempotencyKey,
             Boolean.FALSE,
-            null,
             null);
 
     CompanyContextHolder.setCompanyCode(companyCode);
@@ -568,8 +657,9 @@ class CR_DealerReceiptSettlementAuditTrailTest extends AbstractIntegrationTest {
     BigDecimal outstanding = invoice.getOutstandingAmount();
     String referenceNumber = "DS-REF-REUSE-" + UUID.randomUUID();
 
-    DealerSettlementRequest firstRequest =
-        new DealerSettlementRequest(
+    PartnerSettlementRequest firstRequest =
+        new PartnerSettlementRequest(
+            PartnerType.DEALER,
             dealer.getId(),
             accounts.get("BANK").getId(),
             null,
@@ -589,11 +679,11 @@ class CR_DealerReceiptSettlementAuditTrailTest extends AbstractIntegrationTest {
                     BigDecimal.ZERO,
                     BigDecimal.ZERO,
                     null,
-                    "Apply to invoice")),
-            null);
+                    "Apply to invoice")));
 
-    DealerSettlementRequest secondRequest =
-        new DealerSettlementRequest(
+    PartnerSettlementRequest secondRequest =
+        new PartnerSettlementRequest(
+            PartnerType.DEALER,
             dealer.getId(),
             accounts.get("BANK").getId(),
             null,
@@ -613,8 +703,7 @@ class CR_DealerReceiptSettlementAuditTrailTest extends AbstractIntegrationTest {
                     BigDecimal.ZERO,
                     BigDecimal.ZERO,
                     null,
-                    "Apply to invoice")),
-            null);
+                    "Apply to invoice")));
 
     CompanyContextHolder.setCompanyCode(companyCode);
     try {
@@ -677,7 +766,8 @@ class CR_DealerReceiptSettlementAuditTrailTest extends AbstractIntegrationTest {
         new DealerReceiptSplitRequest(
             dealer.getId(),
             List.of(
-                new DealerReceiptSplitRequest.IncomingLine(accounts.get("BANK").getId(), bankAmount),
+                new DealerReceiptSplitRequest.IncomingLine(
+                    accounts.get("BANK").getId(), bankAmount),
                 new DealerReceiptSplitRequest.IncomingLine(cash.getId(), cashAmount)),
             referenceNumber,
             "CODE-RED split receipt",
@@ -755,6 +845,52 @@ class CR_DealerReceiptSettlementAuditTrailTest extends AbstractIntegrationTest {
     } finally {
       CompanyContextHolder.clear();
     }
+  }
+
+  @Test
+  void dealerReceiptSplit_zeroAllocationReplay_returnsOriginalJournal() {
+    String companyCode = "CR-DRS-ZERO-" + shortId();
+    Company company = bootstrapCompany(companyCode, "UTC");
+    Map<String, Account> accounts = ensureCoreAccounts(company);
+    Account cash = ensureAccount(company, "CASH", "Cash", AccountType.ASSET);
+    Dealer dealer = ensureDealer(company, accounts.get("AR"));
+    String referenceNumber = "DRS-ZERO-" + UUID.randomUUID();
+    String idempotencyKey = "DRS-ZERO-IDEMP-" + UUID.randomUUID();
+
+    DealerReceiptSplitRequest request =
+        new DealerReceiptSplitRequest(
+            dealer.getId(),
+            List.of(
+                new DealerReceiptSplitRequest.IncomingLine(
+                    accounts.get("BANK").getId(), new BigDecimal("90.00")),
+                new DealerReceiptSplitRequest.IncomingLine(cash.getId(), new BigDecimal("10.00"))),
+            referenceNumber,
+            "CODE-RED zero-allocation split receipt",
+            idempotencyKey);
+
+    Long journalId;
+    CompanyContextHolder.setCompanyCode(companyCode);
+    try {
+      JournalEntryDto first = accountingService.recordDealerReceiptSplit(request);
+      JournalEntryDto replay = accountingService.recordDealerReceiptSplit(request);
+      journalId = first.id();
+      assertThat(replay.id())
+          .as("replay keeps original split receipt journal")
+          .isEqualTo(journalId);
+    } finally {
+      CompanyContextHolder.clear();
+    }
+
+    assertThat(
+            settlementAllocationRepository.findByCompanyAndIdempotencyKey(company, referenceNumber))
+        .as("reference number never persists as idempotency key")
+        .isEmpty();
+    assertThat(
+            settlementAllocationRepository.findByCompanyAndIdempotencyKey(company, idempotencyKey))
+        .as("zero-allocation split receipt does not create allocation rows")
+        .isEmpty();
+    CoderedDbAssertions.assertBalancedJournal(journalEntryRepository, journalId);
+    CoderedDbAssertions.assertAuditLogRecordedForJournal(jdbcTemplate, journalId);
   }
 
   @Test

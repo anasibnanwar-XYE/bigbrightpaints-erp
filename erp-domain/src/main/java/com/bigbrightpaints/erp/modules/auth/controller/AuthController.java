@@ -1,6 +1,7 @@
 package com.bigbrightpaints.erp.modules.auth.controller;
 
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 import org.springframework.http.HttpStatus;
@@ -17,6 +18,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.bigbrightpaints.erp.core.audit.AuditEvent;
+import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
 import com.bigbrightpaints.erp.modules.auth.domain.UserPrincipal;
 import com.bigbrightpaints.erp.modules.auth.service.AuthService;
@@ -40,14 +43,17 @@ public class AuthController {
   private final AuthService authService;
   private final PasswordService passwordService;
   private final PasswordResetService passwordResetService;
+  private final AuditService auditService;
 
   public AuthController(
       AuthService authService,
       PasswordService passwordService,
-      PasswordResetService passwordResetService) {
+      PasswordResetService passwordResetService,
+      AuditService auditService) {
     this.authService = authService;
     this.passwordService = passwordService;
     this.passwordResetService = passwordResetService;
+    this.auditService = auditService;
   }
 
   @PostMapping("/login")
@@ -117,6 +123,18 @@ public class AuthController {
       return ResponseEntity.status(401).body(ApiResponse.failure("Unauthenticated"));
     }
     passwordService.changePassword(principal.getUser(), request);
+    String companyCode =
+        StringUtils.hasText(CompanyContextHolder.getCompanyCode())
+            ? CompanyContextHolder.getCompanyCode()
+            : principal.getUser().getAuthScopeCode();
+    Map<String, String> metadata = new java.util.LinkedHashMap<>();
+    metadata.put("operation", "password_change");
+    if (StringUtils.hasText(companyCode)) {
+      metadata.put("companyCode", companyCode);
+    }
+    metadata.put("outcome", "password_updated");
+    auditService.logAuthSuccess(
+        AuditEvent.PASSWORD_CHANGED, principal.getUsername(), companyCode, metadata);
     return ResponseEntity.ok(ApiResponse.success("Password changed successfully", "OK"));
   }
 

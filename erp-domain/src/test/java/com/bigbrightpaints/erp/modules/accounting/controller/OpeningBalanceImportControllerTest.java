@@ -25,7 +25,8 @@ class OpeningBalanceImportControllerTest {
     OpeningBalanceImportController controller =
         new OpeningBalanceImportController(openingBalanceImportService);
     MockMultipartFile file = csvFile();
-    OpeningBalanceImportResponse response = new OpeningBalanceImportResponse(2, 1, List.of());
+    OpeningBalanceImportResponse response =
+        OpeningBalanceImportResponse.fromSuccessfulRows(2, 1, List.of());
     when(openingBalanceImportService.importOpeningBalances(file)).thenReturn(response);
 
     controller.importOpeningBalances(file);

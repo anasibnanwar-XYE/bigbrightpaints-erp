@@ -150,7 +150,7 @@ public class PurchaseOrderService {
       line.setCostPerUnit(costPerUnit);
       line.setLineTotal(lineTotal);
       line.setNotes(clean(lineRequest.notes()));
-      purchaseOrder.getLines().add(line);
+      purchaseOrder.addLine(line);
     }
 
     PurchaseOrder saved = purchaseOrderRepository.save(purchaseOrder);
@@ -336,14 +336,19 @@ public class PurchaseOrderService {
     if (history == null) {
       return null;
     }
+    String toStatus = history.getToStatus();
+    String canonicalStatus = canonicalStatusValue(toStatus);
     return new PurchaseOrderStatusHistoryResponse(
         history.getId(),
         history.getFromStatus(),
-        history.getToStatus(),
+        toStatus,
         history.getReasonCode(),
         history.getReason(),
         history.getChangedBy(),
-        history.getChangedAt());
+        history.getChangedAt(),
+        canonicalStatus,
+        history.getChangedAt(),
+        history.getChangedBy());
   }
 
   private PurchaseOrder requirePurchaseOrderForUpdate(Company company, Long id) {
@@ -382,5 +387,12 @@ public class PurchaseOrderService {
 
   private String currentActorIdentity() {
     return SecurityActorResolver.resolveActorWithSystemProcessFallback();
+  }
+
+  private String canonicalStatusValue(String status) {
+    if ("VOID".equalsIgnoreCase(status)) {
+      return "VOIDED";
+    }
+    return status;
   }
 }

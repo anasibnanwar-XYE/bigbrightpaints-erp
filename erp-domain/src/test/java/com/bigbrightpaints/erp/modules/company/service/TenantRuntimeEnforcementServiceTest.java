@@ -13,6 +13,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.HashMap;
@@ -20,8 +21,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -153,6 +154,14 @@ class TenantRuntimeEnforcementServiceTest {
     assertThat(admission.companyCode()).isNull();
     assertThat(admission.auditChainId()).isNull();
     verifyNoInteractions(companyRepository, auditService, userAccountRepository);
+  }
+
+  @Test
+  void parsePositiveInt_returnsFallbackWhenValueOverflowsInteger() {
+    Integer parsed =
+        ReflectionTestUtils.invokeMethod(service, "parsePositiveInt", "2147483648", 3);
+
+    assertThat(parsed).isEqualTo(3);
   }
 
   @Test
@@ -324,8 +333,7 @@ class TenantRuntimeEnforcementServiceTest {
   @Test
   void enforceAuthOperationAllowed_failClosedWhenCompanyLookupUnavailableAfterPolicyWarmup() {
     TenantRuntimeEnforcementService.TenantRuntimeSnapshot warmed = service.snapshot("ACME");
-    assertThat(warmed.state())
-        .isEqualTo(TenantRuntimeEnforcementService.TenantRuntimeState.ACTIVE);
+    assertThat(warmed.state()).isEqualTo(TenantRuntimeEnforcementService.TenantRuntimeState.ACTIVE);
     when(companyRepository.findByCodeIgnoreCase(eq("ACME")))
         .thenThrow(new RuntimeException("company-lookup-unavailable"));
 
@@ -386,8 +394,7 @@ class TenantRuntimeEnforcementServiceTest {
   @Test
   void enforceAuthOperationAllowed_cachedPolicyStillTreatsMissingTenantAsNotFound() {
     TenantRuntimeEnforcementService.TenantRuntimeSnapshot warmed = service.snapshot("ACME");
-    assertThat(warmed.state())
-        .isEqualTo(TenantRuntimeEnforcementService.TenantRuntimeState.ACTIVE);
+    assertThat(warmed.state()).isEqualTo(TenantRuntimeEnforcementService.TenantRuntimeState.ACTIVE);
     companiesByCode.remove("ACME");
 
     assertThatThrownBy(
@@ -516,8 +523,7 @@ class TenantRuntimeEnforcementServiceTest {
   @Test
   void snapshot_translatesCompanyLookupFailureOnCachedPolicyToControlledServiceUnavailable() {
     TenantRuntimeEnforcementService.TenantRuntimeSnapshot warmed = service.snapshot("ACME");
-    assertThat(warmed.state())
-        .isEqualTo(TenantRuntimeEnforcementService.TenantRuntimeState.ACTIVE);
+    assertThat(warmed.state()).isEqualTo(TenantRuntimeEnforcementService.TenantRuntimeState.ACTIVE);
 
     when(companyRepository.findByCodeIgnoreCase(eq("ACME")))
         .thenThrow(new RuntimeException("company-lookup-unavailable"));
@@ -644,8 +650,7 @@ class TenantRuntimeEnforcementServiceTest {
   @Test
   void snapshot_waitsForPolicyMutationToFinishBeforeRefreshingExpiredPolicy() throws Exception {
     TenantRuntimeEnforcementService.TenantRuntimeSnapshot warmed = service.snapshot("ACME");
-    assertThat(warmed.state())
-        .isEqualTo(TenantRuntimeEnforcementService.TenantRuntimeState.ACTIVE);
+    assertThat(warmed.state()).isEqualTo(TenantRuntimeEnforcementService.TenantRuntimeState.ACTIVE);
     expireCachedPolicyRefreshDeadline("ACME");
 
     CountDownLatch firstPersistedWrite = new CountDownLatch(1);
@@ -990,7 +995,8 @@ class TenantRuntimeEnforcementServiceTest {
 
     TenantRuntimeEnforcementService.TenantRuntimeSnapshot restored = service.snapshot("ACME");
 
-    assertThat(restored.state()).isEqualTo(TenantRuntimeEnforcementService.TenantRuntimeState.ACTIVE);
+    assertThat(restored.state())
+        .isEqualTo(TenantRuntimeEnforcementService.TenantRuntimeState.ACTIVE);
     assertThat(restored.reasonCode()).isEqualTo("RATCHET");
     assertThat(restored.maxConcurrentRequests()).isEqualTo(13);
     assertThat(restored.maxRequestsPerMinute()).isEqualTo(15);
@@ -1011,7 +1017,8 @@ class TenantRuntimeEnforcementServiceTest {
 
     TenantRuntimeEnforcementService.TenantRuntimeSnapshot resumed =
         service.resumeTenant("ACME", "ops@bbp.com");
-    assertThat(resumed.state()).isEqualTo(TenantRuntimeEnforcementService.TenantRuntimeState.ACTIVE);
+    assertThat(resumed.state())
+        .isEqualTo(TenantRuntimeEnforcementService.TenantRuntimeState.ACTIVE);
 
     org.mockito.Mockito.doThrow(new RuntimeException("audit-write-failed"))
         .when(auditService)
@@ -1307,7 +1314,9 @@ class TenantRuntimeEnforcementServiceTest {
     when(mockedPolicies.get("ACME")).thenReturn(stalePolicy, freshPolicy);
     ReflectionTestUtils.setField(service, "policies", mockedPolicies);
 
-    Object resolved = ReflectionTestUtils.invokeMethod(service, "policyFor", "ACME");
+    Object resolved =
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "policyFor", "ACME");
 
     assertThat(resolved).isSameAs(freshPolicy);
     verifyNoInteractions(systemSettingsRepository);
@@ -1397,7 +1406,9 @@ class TenantRuntimeEnforcementServiceTest {
     assertThat(invokeParsePositiveInt("bad", 5)).isEqualTo(5);
 
     assertThat(invokeParseInstantOrNull("bad-instant")).isNull();
-    Object missingPolicy = ReflectionTestUtils.invokeMethod(service, "loadPersistedPolicy", "   ");
+    Object missingPolicy =
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "loadPersistedPolicy", "   ");
     assertThat(missingPolicy).isNull();
   }
 
@@ -1617,7 +1628,8 @@ class TenantRuntimeEnforcementServiceTest {
         tenantRuntimeAdmissionFailure(rejection, new IllegalStateException("policy backend down"));
 
     ApplicationException ex =
-        ReflectionTestUtils.invokeMethod(service, "toManagedOperationException", "ACME", failure);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "toManagedOperationException", "ACME", failure);
 
     assertThat(ex).isNotNull();
     assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.SYSTEM_SERVICE_UNAVAILABLE);
@@ -1632,15 +1644,94 @@ class TenantRuntimeEnforcementServiceTest {
   }
 
   @Test
-  void policyPersistedStateHelpers_applyFallbacksAndReturnEmptyWhenInputsMissing() throws Exception {
+  void auditPolicyChange_defaultsMissingTenantStateWithoutNullDereference() throws Exception {
+    Object policy =
+        tenantRuntimePolicy(
+            null, "POLICY_ACTIVE", 3, 5, 7, "CHAIN-700", Instant.parse("2026-01-07T00:00:00Z"), 0L);
+
+    @SuppressWarnings("unchecked")
+    var metadataCaptor =
+        org.mockito.ArgumentCaptor.forClass((Class<Map<String, String>>) (Class<?>) Map.class);
+
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+        service,
+        "auditPolicyChange",
+        "UPDATE_TENANT_RUNTIME_POLICY",
+        "ACME",
+        "OPS@BBP.COM",
+        "POLICY_ACTIVE",
+        "CHAIN-699",
+        "CHAIN-700",
+        policy);
+
+    verify(auditService)
+        .logAuthSuccess(
+            eq(AuditEvent.CONFIGURATION_CHANGED),
+            eq("OPS@BBP.COM"),
+            eq("ACME"),
+            metadataCaptor.capture());
+    assertThat(metadataCaptor.getValue())
+        .containsEntry("tenantState", "ACTIVE")
+        .containsEntry("auditChainId", "CHAIN-700")
+        .containsEntry("previousAuditChainId", "CHAIN-699");
+  }
+
+  @Test
+  void auditRejection_defaultsMissingTenantStateWithoutNullDereference() throws Exception {
+    Object rejection =
+        tenantRuntimeRejection(
+            "ACME",
+            null,
+            "POLICY_ACTIVE",
+            "CHAIN-701",
+            HttpStatus.SERVICE_UNAVAILABLE,
+            "TENANT_RUNTIME_POLICY_UNAVAILABLE",
+            "Tenant runtime policy is unavailable",
+            null,
+            null,
+            null);
+
+    @SuppressWarnings("unchecked")
+    var metadataCaptor =
+        org.mockito.ArgumentCaptor.forClass((Class<Map<String, String>>) (Class<?>) Map.class);
+
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+        service, "auditRejection", rejection, "ops@bbp.com", "/api/v1/private", "GET");
+
+    verify(auditService)
+        .logAuthFailure(
+            eq(AuditEvent.ACCESS_DENIED), eq("OPS@BBP.COM"), eq("ACME"), metadataCaptor.capture());
+    assertThat(metadataCaptor.getValue())
+        .containsEntry("tenantState", "BLOCKED")
+        .containsEntry("reasonCode", "TENANT_RUNTIME_POLICY_UNAVAILABLE")
+        .containsEntry("requestMethod", "GET");
+  }
+
+  @Test
+  void tenantRuntimeAdmissionFailure_declaresSerialVersionUid() throws Exception {
+    Class<?> failureClass =
+        Class.forName(
+            TenantRuntimeEnforcementService.class.getName() + "$TenantRuntimeAdmissionFailure");
+
+    Field serialVersionUid = failureClass.getDeclaredField("serialVersionUID");
+    serialVersionUid.setAccessible(true);
+
+    assertThat(serialVersionUid.getType()).isEqualTo(long.class);
+    assertThat(serialVersionUid.getLong(null)).isEqualTo(1L);
+  }
+
+  @Test
+  void policyPersistedStateHelpers_applyFallbacksAndReturnEmptyWhenInputsMissing()
+      throws Exception {
     @SuppressWarnings("unchecked")
     Map<String, String> emptyPersistedState =
-        ReflectionTestUtils.invokeMethod(service, "policyToPersistedState", null, null);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "policyToPersistedState", null, null);
     assertThat(emptyPersistedState).isEmpty();
 
     @SuppressWarnings("unchecked")
     Map<String, String> persistedState =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             service,
             "policyToPersistedState",
             1L,
@@ -1653,23 +1744,26 @@ class TenantRuntimeEnforcementServiceTest {
                 null,
                 null,
                 0L));
-    Object noPolicy = ReflectionTestUtils.invokeMethod(service, "policyFromPersistedState", 1L, Map.of());
+    Object noPolicy =
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "policyFromPersistedState", 1L, Map.of());
     Object resolvedPolicy =
-        ReflectionTestUtils.invokeMethod(service, "policyFromPersistedState", 1L, persistedState);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "policyFromPersistedState", 1L, persistedState);
 
     assertThat(noPolicy).isNull();
     assertThat(ReflectionTestUtils.getField(resolvedPolicy, "reasonCode")).isEqualTo("MAINTENANCE");
-    assertThat(ReflectionTestUtils.getField(resolvedPolicy, "auditChainId"))
-        .isEqualTo("bootstrap");
+    assertThat(ReflectionTestUtils.getField(resolvedPolicy, "auditChainId")).isEqualTo("bootstrap");
   }
 
   @Test
   void readPersistedPolicySetting_wrapsRepositoryFailuresAsManagedOperationFailures() {
-    when(systemSettingsRepository.findById(keyHoldState(1L))).thenThrow(new RuntimeException("boom"));
+    when(systemSettingsRepository.findById(keyHoldState(1L)))
+        .thenThrow(new RuntimeException("boom"));
 
     assertThatThrownBy(
             () ->
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     service, "readPersistedPolicySetting", "ACME", keyHoldState(1L)))
         .isInstanceOf(ApplicationException.class)
         .hasMessageContaining("Tenant runtime policy is unavailable");
@@ -1694,7 +1788,7 @@ class TenantRuntimeEnforcementServiceTest {
         .when(systemSettingsRepository)
         .deleteById(keyHoldState(1L));
 
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         service,
         "restorePersistedPolicyState",
         company(1L, "ACME"),
@@ -1711,11 +1805,17 @@ class TenantRuntimeEnforcementServiceTest {
   void resolveActiveUsers_returnsZeroForUnknownTenantAndWrapsLookupFailures() {
     companiesByCode.remove("ACME");
 
-    Long activeUsers = ReflectionTestUtils.invokeMethod(service, "resolveActiveUsers", "ACME");
+    Long activeUsers =
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "resolveActiveUsers", "ACME");
 
     assertThat(activeUsers).isZero();
-    when(companyRepository.findByCodeIgnoreCase("FAIL")).thenThrow(new RuntimeException("lookup down"));
-    assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(service, "resolveActiveUsers", "FAIL"))
+    when(companyRepository.findByCodeIgnoreCase("FAIL"))
+        .thenThrow(new RuntimeException("lookup down"));
+    assertThatThrownBy(
+            () ->
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    service, "resolveActiveUsers", "FAIL"))
         .isInstanceOf(ApplicationException.class)
         .hasMessageContaining("Tenant company lookup is unavailable");
   }
@@ -1866,7 +1966,8 @@ class TenantRuntimeEnforcementServiceTest {
 
   private boolean invokeShouldUsePersistedPolicy(Object current, Object persisted) {
     Boolean result =
-        ReflectionTestUtils.invokeMethod(service, "shouldUsePersistedPolicy", current, persisted);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "shouldUsePersistedPolicy", current, persisted);
     assertThat(result).isNotNull();
     return result;
   }
@@ -1874,7 +1975,7 @@ class TenantRuntimeEnforcementServiceTest {
   private boolean invokeIsPolicyControlRequest(
       String requestPath, String requestMethod, boolean privilegedActor) {
     Boolean result =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             service,
             "isTenantRuntimePolicyControlRequest",
             requestPath,
@@ -1885,24 +1986,28 @@ class TenantRuntimeEnforcementServiceTest {
   }
 
   private Object invokeLoadPersistedPolicy(String companyCode) {
-    return ReflectionTestUtils.invokeMethod(service, "loadPersistedPolicy", companyCode);
+    return com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+        service, "loadPersistedPolicy", companyCode);
   }
 
   private TenantRuntimeEnforcementService.TenantRuntimeState invokeNormalizeState(String rawState) {
     TenantRuntimeEnforcementService.TenantRuntimeState state =
-        ReflectionTestUtils.invokeMethod(service, "normalizeState", rawState);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "normalizeState", rawState);
     assertThat(state).isNotNull();
     return state;
   }
 
   private int invokeParsePositiveInt(String rawValue, int fallback) {
     Integer value =
-        ReflectionTestUtils.invokeMethod(service, "parsePositiveInt", rawValue, fallback);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "parsePositiveInt", rawValue, fallback);
     assertThat(value).isNotNull();
     return value;
   }
 
   private Instant invokeParseInstantOrNull(String rawValue) {
-    return ReflectionTestUtils.invokeMethod(service, "parseInstantOrNull", rawValue);
+    return com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+        service, "parseInstantOrNull", rawValue);
   }
 }

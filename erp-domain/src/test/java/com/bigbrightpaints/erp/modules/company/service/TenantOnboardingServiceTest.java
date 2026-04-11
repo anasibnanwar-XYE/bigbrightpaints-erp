@@ -17,7 +17,9 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.stream.Collectors;
 
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -62,7 +64,9 @@ class TenantOnboardingServiceTest {
     TenantOnboardingService service = newService();
     when(systemSettingsRepository.existsById(anyString())).thenReturn(false);
 
-    Boolean changed = ReflectionTestUtils.invokeMethod(service, "initializeDefaultSystemSettings");
+    Boolean changed =
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "initializeDefaultSystemSettings");
 
     assertThat(changed).isTrue();
     verify(systemSettingsRepository, times(2)).save(any());
@@ -249,7 +253,8 @@ class TenantOnboardingServiceTest {
     template.setCode("GENERIC");
     template.setActive(true);
     when(coATemplateService.requireActiveTemplate("GENERIC")).thenReturn(template);
-    when(companyRepository.findByCodeIgnoreCase("DEFAULTED")).thenReturn(java.util.Optional.empty());
+    when(companyRepository.findByCodeIgnoreCase("DEFAULTED"))
+        .thenReturn(java.util.Optional.empty());
     when(authScopeService.isPlatformScope("DEFAULTED")).thenReturn(false);
     when(userAccountRepository.existsByEmailIgnoreCaseAndAuthScopeCodeIgnoreCase(
             "admin@defaulted.com", "DEFAULTED"))
@@ -290,7 +295,8 @@ class TenantOnboardingServiceTest {
     assertThat(savedCompanyCaptor.getAllValues())
         .anyMatch(
             company ->
-                company != null && company.getDefaultGstRate().compareTo(BigDecimal.valueOf(18)) == 0);
+                company != null
+                    && company.getDefaultGstRate().compareTo(BigDecimal.valueOf(18)) == 0);
     verify(tenantRuntimeEnforcementService)
         .updatePolicy(
             eq("DEFAULTED"),
@@ -326,7 +332,9 @@ class TenantOnboardingServiceTest {
     company.setCode("ACME");
 
     assertThatThrownBy(
-            () -> ReflectionTestUtils.invokeMethod(service, "initializeTenantRuntimePolicy", company))
+            () ->
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    service, "initializeTenantRuntimePolicy", company))
         .hasMessageContaining("Tenant runtime enforcement service unavailable");
   }
 
@@ -336,7 +344,8 @@ class TenantOnboardingServiceTest {
     Company blankCode = new Company();
     blankCode.setCode("   ");
 
-    ReflectionTestUtils.invokeMethod(service, "initializeTenantRuntimePolicy", blankCode);
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+        service, "initializeTenantRuntimePolicy", blankCode);
 
     verifyNoInteractions(tenantRuntimeEnforcementService);
 
@@ -346,7 +355,8 @@ class TenantOnboardingServiceTest {
     company.setQuotaMaxApiRequests((long) Integer.MAX_VALUE + 10L);
     company.setQuotaMaxActiveUsers(5L);
 
-    ReflectionTestUtils.invokeMethod(service, "initializeTenantRuntimePolicy", company);
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+        service, "initializeTenantRuntimePolicy", company);
 
     verify(tenantRuntimeEnforcementService)
         .updatePolicy(
@@ -419,18 +429,68 @@ class TenantOnboardingServiceTest {
 
     service.onboardTenant(request);
 
-    Account cogs =
+    Map<String, Account> accountsByCode =
         createdAccounts.stream()
-            .filter(account -> "COGS".equals(account.getCode()))
-            .findFirst()
-            .orElseThrow();
-    Account openingBalance =
-        createdAccounts.stream()
-            .filter(account -> "OPEN-BAL".equals(account.getCode()))
-            .findFirst()
-            .orElseThrow();
-    assertThat(cogs.getType()).isEqualTo(AccountType.COGS);
-    assertThat(openingBalance.getType()).isEqualTo(AccountType.EQUITY);
+            .collect(Collectors.toMap(Account::getCode, account -> account, (left, right) -> left));
+
+    assertThat(accountsByCode)
+        .containsKeys(
+            "AST",
+            "LIAB",
+            "EQ",
+            "REV",
+            "COGS",
+            "EXP",
+            "AST-CUR",
+            "AST-FIX",
+            "CASH",
+            "BANK-CURRENT",
+            "AR",
+            "INV",
+            "LIAB-CUR",
+            "AP",
+            "OWN-EQ",
+            "RET-EARN",
+            "SALES-REV",
+            "FG-COGS",
+            "OPEX");
+
+    assertThat(accountsByCode.get("AST").getParent()).isNull();
+    assertThat(accountsByCode.get("LIAB").getParent()).isNull();
+    assertThat(accountsByCode.get("EQ").getParent()).isNull();
+    assertThat(accountsByCode.get("REV").getParent()).isNull();
+    assertThat(accountsByCode.get("COGS").getParent()).isNull();
+    assertThat(accountsByCode.get("EXP").getParent()).isNull();
+
+    assertThat(accountsByCode.get("AST-CUR").getParent()).isEqualTo(accountsByCode.get("AST"));
+    assertThat(accountsByCode.get("AST-FIX").getParent()).isEqualTo(accountsByCode.get("AST"));
+    assertThat(accountsByCode.get("CASH").getParent()).isEqualTo(accountsByCode.get("AST-CUR"));
+    assertThat(accountsByCode.get("BANK-CURRENT").getParent())
+        .isEqualTo(accountsByCode.get("AST-CUR"));
+    assertThat(accountsByCode.get("AR").getParent()).isEqualTo(accountsByCode.get("AST-CUR"));
+    assertThat(accountsByCode.get("INV").getParent()).isEqualTo(accountsByCode.get("AST-CUR"));
+    assertThat(accountsByCode.get("LIAB-CUR").getParent()).isEqualTo(accountsByCode.get("LIAB"));
+    assertThat(accountsByCode.get("AP").getParent()).isEqualTo(accountsByCode.get("LIAB-CUR"));
+    assertThat(accountsByCode.get("OWN-EQ").getParent()).isEqualTo(accountsByCode.get("EQ"));
+    assertThat(accountsByCode.get("RET-EARN").getParent()).isEqualTo(accountsByCode.get("EQ"));
+    assertThat(accountsByCode.get("SALES-REV").getParent()).isEqualTo(accountsByCode.get("REV"));
+    assertThat(accountsByCode.get("FG-COGS").getParent()).isEqualTo(accountsByCode.get("COGS"));
+    assertThat(accountsByCode.get("OPEX").getParent()).isEqualTo(accountsByCode.get("EXP"));
+
+    assertThat(accountsByCode.get("COGS").getType()).isEqualTo(AccountType.COGS);
+    assertThat(accountsByCode.get("OPEN-BAL").getType()).isEqualTo(AccountType.EQUITY);
+    assertThat(accountsByCode.get("AP").getHierarchyLevel())
+        .isGreaterThan(accountsByCode.get("LIAB-CUR").getHierarchyLevel());
+
+    ArgumentCaptor<Company> savedCompanies = ArgumentCaptor.forClass(Company.class);
+    verify(companyRepository, times(3)).save(savedCompanies.capture());
+    Company savedCompany =
+        savedCompanies.getAllValues().get(savedCompanies.getAllValues().size() - 1);
+    assertThat(savedCompany.getDefaultInventoryAccountId()).isNotNull();
+    assertThat(savedCompany.getDefaultCogsAccountId()).isNotNull();
+    assertThat(savedCompany.getDefaultRevenueAccountId()).isNotNull();
+    assertThat(savedCompany.getDefaultDiscountAccountId()).isNotNull();
+    assertThat(savedCompany.getDefaultTaxAccountId()).isNotNull();
   }
 
   @Test
@@ -513,23 +573,34 @@ class TenantOnboardingServiceTest {
         .thenReturn(true);
 
     assertThatThrownBy(
-            () -> ReflectionTestUtils.invokeMethod(service, "normalizeCompanyCode", "   "))
+            () ->
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    service, "normalizeCompanyCode", "   "))
         .hasMessageContaining("Company code is required");
-    assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(service, "normalizeEmail", " "))
+    assertThatThrownBy(
+            () ->
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    service, "normalizeEmail", " "))
         .hasMessageContaining("firstAdminEmail is required");
     assertThatThrownBy(
-            () -> ReflectionTestUtils.invokeMethod(service, "ensureCompanyCodeAvailable", "MOCK"))
+            () ->
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    service, "ensureCompanyCodeAvailable", "MOCK"))
         .hasMessageContaining("Company code already exists");
     assertThatThrownBy(
             () ->
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     service, "ensureAdminEmailAvailable", "admin@mock.com", "MOCK"))
         .hasMessageContaining("First admin email already exists in company scope");
     assertThatThrownBy(
-            () -> ReflectionTestUtils.invokeMethod(service, "validateTemplateSize", "GENERIC", 49))
+            () ->
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    service, "validateTemplateSize", "GENERIC", 49))
         .hasMessageContaining("must generate 50-100 accounts");
     assertThatThrownBy(
-            () -> ReflectionTestUtils.invokeMethod(service, "resolveTemplateBlueprints", "UNKNOWN"))
+            () ->
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    service, "resolveTemplateBlueprints", "UNKNOWN"))
         .hasMessageContaining("Unsupported CoA template");
   }
 
@@ -541,16 +612,17 @@ class TenantOnboardingServiceTest {
     @SuppressWarnings("unchecked")
     List<Object> indian =
         (List<Object>)
-            ReflectionTestUtils.invokeMethod(
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                 service, "resolveTemplateBlueprints", "indian_standard");
     @SuppressWarnings("unchecked")
     List<Object> manufacturing =
         (List<Object>)
-            ReflectionTestUtils.invokeMethod(service, "resolveTemplateBlueprints", "manufacturing");
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                service, "resolveTemplateBlueprints", "manufacturing");
     assertThat(indian).hasSizeGreaterThan(50);
     assertThat(manufacturing).hasSizeGreaterThan(indian.size());
 
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         service, "applyCompanyDefaultAccounts", company, new HashMap<String, Account>());
 
     assertThat(company.getDefaultInventoryAccountId()).isNull();
@@ -569,10 +641,10 @@ class TenantOnboardingServiceTest {
     TenantOnboardingService service = newService();
 
     Boolean noAccountsSeeded =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             service, "seededChartOfAccounts", new HashMap<String, Account>(), 55);
     Boolean zeroSeedCount =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             service, "seededChartOfAccounts", new HashMap<String, Account>(), 0);
     assertFalse(Boolean.TRUE.equals(noAccountsSeeded));
     assertFalse(Boolean.TRUE.equals(zeroSeedCount));
@@ -580,33 +652,38 @@ class TenantOnboardingServiceTest {
     HashMap<String, Account> createdAccounts = new HashMap<>();
     createdAccounts.put("INV", new Account());
     Boolean singleAccountSeeded =
-        ReflectionTestUtils.invokeMethod(service, "seededChartOfAccounts", createdAccounts, 1);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "seededChartOfAccounts", createdAccounts, 1);
     Boolean overstatedSeedCount =
-        ReflectionTestUtils.invokeMethod(service, "seededChartOfAccounts", createdAccounts, 2);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "seededChartOfAccounts", createdAccounts, 2);
     assertTrue(Boolean.TRUE.equals(singleAccountSeeded));
     assertFalse(Boolean.TRUE.equals(overstatedSeedCount));
 
     Boolean noPeriodCreated =
-        ReflectionTestUtils.invokeMethod(service, "defaultAccountingPeriodCreated", (Object) null);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "defaultAccountingPeriodCreated", (Object) null);
     assertFalse(Boolean.TRUE.equals(noPeriodCreated));
     AccountingPeriod periodWithoutId = new AccountingPeriod();
     Boolean transientPeriod =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             service, "defaultAccountingPeriodCreated", periodWithoutId);
     assertFalse(Boolean.TRUE.equals(transientPeriod));
     AccountingPeriod createdPeriod = new AccountingPeriod();
     ReflectionTestUtils.setField(createdPeriod, "id", 801L);
     Boolean persistedPeriod =
-        ReflectionTestUtils.invokeMethod(service, "defaultAccountingPeriodCreated", createdPeriod);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "defaultAccountingPeriodCreated", createdPeriod);
     assertTrue(Boolean.TRUE.equals(persistedPeriod));
 
     Boolean missingTenantAdmin =
-        ReflectionTestUtils.invokeMethod(service, "tenantAdminProvisioned", null, "admin@mock.com");
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "tenantAdminProvisioned", null, "admin@mock.com");
     Boolean mismatchedTenantAdmin =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             service, "tenantAdminProvisioned", "other@mock.com", "admin@mock.com");
     Boolean normalizedTenantAdmin =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             service, "tenantAdminProvisioned", " Admin@Mock.com ", "admin@mock.com");
     assertFalse(Boolean.TRUE.equals(missingTenantAdmin));
     assertFalse(Boolean.TRUE.equals(mismatchedTenantAdmin));
@@ -618,7 +695,9 @@ class TenantOnboardingServiceTest {
     TenantOnboardingService service = newService();
     when(systemSettingsRepository.existsById(anyString())).thenReturn(true);
 
-    Boolean changed = ReflectionTestUtils.invokeMethod(service, "initializeDefaultSystemSettings");
+    Boolean changed =
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "initializeDefaultSystemSettings");
 
     assertThat(changed).isFalse();
     verify(systemSettingsRepository, never()).save(any());

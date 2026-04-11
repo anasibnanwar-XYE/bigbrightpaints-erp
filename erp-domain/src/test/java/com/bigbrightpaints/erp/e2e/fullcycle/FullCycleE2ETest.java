@@ -183,7 +183,8 @@ public class FullCycleE2ETest extends AbstractIntegrationTest {
             : null; // simplistic, in real test query properly
     Map<String, Object> settleReq =
         Map.of(
-            "dealerId", dealer.getId(),
+            "partnerType", "DEALER",
+            "partnerId", dealer.getId(),
             "cashAccountId",
                 accountRepository.findByCompanyAndCodeIgnoreCase(company, "CASH").get().getId(),
             "allocations",
@@ -234,7 +235,7 @@ public class FullCycleE2ETest extends AbstractIntegrationTest {
             HttpMethod.POST,
             new HttpEntity<>(purchaseReq, headers),
             Map.class);
-    assertThat(purchaseResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(purchaseResp.getStatusCode()).isEqualTo(HttpStatus.CREATED);
 
     // 3. Verify RM stock increased and AP journal
     assertThat(rm.getCurrentStock()).isGreaterThan(BigDecimal.ZERO);
@@ -244,7 +245,8 @@ public class FullCycleE2ETest extends AbstractIntegrationTest {
     String settlementKey = "SET-" + shortSuffix();
     Map<String, Object> settleReq =
         Map.of(
-            "supplierId", supplier.getId(),
+            "partnerType", "SUPPLIER",
+            "partnerId", supplier.getId(),
             "cashAccountId",
                 accountRepository.findByCompanyAndCodeIgnoreCase(company, "CASH").get().getId(),
             "idempotencyKey", settlementKey,
@@ -309,7 +311,7 @@ public class FullCycleE2ETest extends AbstractIntegrationTest {
             HttpMethod.POST,
             new HttpEntity<>(poReq, headers),
             Map.class);
-    assertThat(poResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(poResp.getStatusCode()).isEqualTo(HttpStatus.CREATED);
     Long purchaseOrderId = ((Number) requireData(poResp, "purchase order").get("id")).longValue();
 
     Map<String, Object> grLine =
@@ -337,7 +339,7 @@ public class FullCycleE2ETest extends AbstractIntegrationTest {
             HttpMethod.POST,
             new HttpEntity<>(grReq, headers),
             Map.class);
-    assertThat(grResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(grResp.getStatusCode()).isEqualTo(HttpStatus.CREATED);
     Long goodsReceiptId = ((Number) requireData(grResp, "goods receipt").get("id")).longValue();
 
     return new PurchaseWorkflowIds(purchaseOrderId, goodsReceiptId);

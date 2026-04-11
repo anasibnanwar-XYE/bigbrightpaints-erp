@@ -77,7 +77,7 @@ class TS_RuntimeOrchestratorCorrelationCoverageTest {
         new OrchestratorController(mock(CommandDispatcher.class), mock(TraceService.class));
 
     String direct =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             controller,
             "resolveIdempotencyKey",
             null,
@@ -86,7 +86,7 @@ class TS_RuntimeOrchestratorCorrelationCoverageTest {
             "COMP",
             "payload");
     String hashed =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             controller,
             "resolveIdempotencyKey",
             null,
@@ -164,7 +164,7 @@ class TS_RuntimeOrchestratorCorrelationCoverageTest {
   @Test
   void correlationIdentifierSanitizer_invalid_identifier_handles_null_value_path() {
     ApplicationException ex =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             CorrelationIdentifierSanitizer.class,
             "invalidIdentifier",
             "traceId",
@@ -221,16 +221,17 @@ class TS_RuntimeOrchestratorCorrelationCoverageTest {
         coordinator(mock(SalesService.class), new OrchestratorFeatureFlags(true, true));
 
     String memoWithCorrelation =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             coordinator, "correlationMemo", "dispatch memo", " trace-200 ", " idem-200 ");
     String memoWithoutCorrelation =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             coordinator, "correlationMemo", "dispatch memo", "   ", null);
     String suffixWithCorrelation =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             coordinator, "correlationSuffix", " trace-201 ", " idem-201 ");
     String suffixWithoutCorrelation =
-        ReflectionTestUtils.invokeMethod(coordinator, "correlationSuffix", null, "   ");
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            coordinator, "correlationSuffix", null, "   ");
 
     assertThat(memoWithCorrelation).contains("[trace=trace-200]").contains("[idem=idem-200]");
     assertThat(memoWithoutCorrelation).isEqualTo("dispatch memo");
@@ -244,10 +245,12 @@ class TS_RuntimeOrchestratorCorrelationCoverageTest {
     IntegrationCoordinator coordinator =
         coordinator(salesService, new OrchestratorFeatureFlags(true, true));
 
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         coordinator, "attachOrderTrace", (Long) null, "trace-null-order");
-    ReflectionTestUtils.invokeMethod(coordinator, "attachOrderTrace", 77L, "   ");
-    ReflectionTestUtils.invokeMethod(coordinator, "attachOrderTrace", 78L, " trace-78 ");
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+        coordinator, "attachOrderTrace", 77L, "   ");
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+        coordinator, "attachOrderTrace", 78L, " trace-78 ");
 
     verify(salesService, never()).attachTraceId(eq(77L), any());
     verify(salesService).attachTraceId(78L, "trace-78");
@@ -291,7 +294,7 @@ class TS_RuntimeOrchestratorCorrelationCoverageTest {
 
     Map<String, Object> payload = Map.of("orderId", "SO-901", "total", "100.00");
     String requestHash =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             service, "hashRequest", 901L, "ORCH.ORDER.APPROVE", payload);
 
     when(commandRepository.reserveScope(

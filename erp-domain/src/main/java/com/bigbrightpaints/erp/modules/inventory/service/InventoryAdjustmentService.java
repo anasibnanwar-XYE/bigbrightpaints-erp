@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.retry.annotation.Backoff;
@@ -18,6 +19,8 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.StringUtils;
 
+import com.bigbrightpaints.erp.core.audit.AuditEvent;
+import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.idempotency.IdempotencyReservationService;
@@ -58,6 +61,7 @@ public class InventoryAdjustmentService {
   private final InventoryMovementRepository inventoryMovementRepository;
   private final FinishedGoodBatchRepository finishedGoodBatchRepository;
   private final AccountingFacade accountingFacade;
+  private final AuditService auditService;
   private final ReferenceNumberService referenceNumberService;
   private final CompanyClock companyClock;
   private final FinishedGoodsService finishedGoodsService;
@@ -66,6 +70,9 @@ public class InventoryAdjustmentService {
       new IdempotencyReservationService();
   private final TransactionTemplate transactionTemplate;
 
+  @Autowired(required = false)
+  private InventoryPhysicalCountService inventoryPhysicalCountService;
+
   public InventoryAdjustmentService(
       CompanyContextService companyContextService,
       FinishedGoodRepository finishedGoodRepository,
@@ -73,6 +80,7 @@ public class InventoryAdjustmentService {
       InventoryMovementRepository inventoryMovementRepository,
       FinishedGoodBatchRepository finishedGoodBatchRepository,
       AccountingFacade accountingFacade,
+      AuditService auditService,
       ReferenceNumberService referenceNumberService,
       CompanyClock companyClock,
       FinishedGoodsService finishedGoodsService,
@@ -84,6 +92,7 @@ public class InventoryAdjustmentService {
     this.inventoryMovementRepository = inventoryMovementRepository;
     this.finishedGoodBatchRepository = finishedGoodBatchRepository;
     this.accountingFacade = accountingFacade;
+    this.auditService = auditService;
     this.referenceNumberService = referenceNumberService;
     this.companyClock = companyClock;
     this.finishedGoodsService = finishedGoodsService;
@@ -276,6 +285,7 @@ public class InventoryAdjustmentService {
     movements.forEach(movement -> movement.setJournalEntryId(journalEntry.id()));
     inventoryMovementRepository.saveAll(movements);
     InventoryAdjustment posted = adjustmentRepository.save(savedDraft);
+    logInventoryAdjustmentAuditEvent(posted, increaseInventory);
     return toDto(posted);
   }
 
@@ -302,7 +312,7 @@ public class InventoryAdjustmentService {
     line.setUnitCost(lineRequest.unitCost());
     line.setAmount(BigDecimal.ZERO);
     line.setNote(lineRequest.note());
-    adjustment.getLines().add(line);
+    adjustment.addLine(line);
     return line;
   }
 
@@ -319,13 +329,15 @@ public class InventoryAdjustmentService {
                     finishedGood.getCurrentStock() == null
                         ? BigDecimal.ZERO
                         : finishedGood.getCurrentStock();
-                finishedGood.setCurrentStock(currentStock.add(line.getQuantity()));
+                BigDecimal physicalQuantity = currentStock.add(line.getQuantity());
+                finishedGood.setCurrentStock(physicalQuantity);
 
                 BigDecimal lineUnitCost = safeQuantity(line.getUnitCost());
                 BigDecimal lineAmount =
                     line.getQuantity().multiply(lineUnitCost).setScale(4, RoundingMode.HALF_UP);
                 line.setAmount(lineAmount);
                 line.setUnitCost(lineUnitCost);
+                recordFinishedGoodPhysicalCount(adjustment, line, physicalQuantity);
 
                 FinishedGoodBatch adjustmentBatch = new FinishedGoodBatch();
                 adjustmentBatch.setFinishedGood(finishedGood);
@@ -358,7 +370,8 @@ public class InventoryAdjustmentService {
                   finishedGood.getCurrentStock() == null
                       ? BigDecimal.ZERO
                       : finishedGood.getCurrentStock();
-              finishedGood.setCurrentStock(currentStock.subtract(line.getQuantity()));
+              BigDecimal physicalQuantity = currentStock.subtract(line.getQuantity());
+              finishedGood.setCurrentStock(physicalQuantity);
               ConsumedBatchCost consumedCost =
                   adjustBatchQuantities(
                       finishedGood, line.getQuantity(), adjustment.getAdjustmentDate());
@@ -366,6 +379,7 @@ public class InventoryAdjustmentService {
 
               line.setAmount(consumedCost.totalCost());
               line.setUnitCost(consumedCost.unitCost());
+              recordFinishedGoodPhysicalCount(adjustment, line, physicalQuantity);
 
               InventoryMovement movement = new InventoryMovement();
               movement.setFinishedGood(finishedGood);
@@ -485,6 +499,25 @@ public class InventoryAdjustmentService {
     return value != null ? value : BigDecimal.ZERO;
   }
 
+  private void recordFinishedGoodPhysicalCount(
+      InventoryAdjustment adjustment, InventoryAdjustmentLine line, BigDecimal physicalQuantity) {
+    if (inventoryPhysicalCountService == null
+        || adjustment == null
+        || adjustment.getCompany() == null
+        || line == null
+        || line.getFinishedGood() == null
+        || line.getFinishedGood().getId() == null) {
+      return;
+    }
+    inventoryPhysicalCountService.recordFinishedGoodCount(
+        adjustment.getCompany(),
+        line.getFinishedGood().getId(),
+        safeQuantity(physicalQuantity),
+        adjustment.getAdjustmentDate(),
+        adjustment.getReferenceNumber(),
+        line.getNote());
+  }
+
   private String normalizeIdempotencyKey(String raw) {
     return idempotencyReservationService.normalizeKey(raw);
   }
@@ -554,5 +587,34 @@ public class InventoryAdjustmentService {
 
   private String resolveCurrentUser() {
     return SecurityActorResolver.resolveActorWithSystemProcessFallback();
+  }
+
+  private void logInventoryAdjustmentAuditEvent(
+      InventoryAdjustment adjustment, boolean increaseInventory) {
+    if (adjustment == null
+        || adjustment.getCompany() == null
+        || adjustment.getCompany().getId() == null) {
+      return;
+    }
+    Map<String, String> metadata = new HashMap<>();
+    metadata.put("resourceType", "INVENTORY");
+    metadata.put("referenceType", "INVENTORY_ADJUSTMENT");
+    metadata.put("adjustmentDirection", increaseInventory ? "INCREASE" : "DECREASE");
+    if (adjustment.getReferenceNumber() != null) {
+      metadata.put("referenceNumber", adjustment.getReferenceNumber());
+    }
+    if (adjustment.getId() != null) {
+      metadata.put("adjustmentId", adjustment.getId().toString());
+    }
+    if (adjustment.getJournalEntryId() != null) {
+      metadata.put("journalEntryId", adjustment.getJournalEntryId().toString());
+    }
+    if (adjustment.getTotalAmount() != null) {
+      metadata.put("totalAmount", adjustment.getTotalAmount().toPlainString());
+    }
+    if (adjustment.getLines() != null) {
+      metadata.put("lineCount", Integer.toString(adjustment.getLines().size()));
+    }
+    auditService.logSuccess(AuditEvent.INVENTORY_ADJUSTMENT, metadata);
   }
 }

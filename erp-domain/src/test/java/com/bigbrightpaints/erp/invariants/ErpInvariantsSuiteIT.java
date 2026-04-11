@@ -376,19 +376,15 @@ public class ErpInvariantsSuiteIT extends AbstractIntegrationTest {
         .hasSize(movementIds.size());
     List<Long> repeatMovementIds = repeatMovements.stream().map(InventoryMovement::getId).toList();
     assertThat(repeatMovementIds).containsExactlyElementsOf(movementIds);
-    long arReferenceCount =
-        journalEntryRepository.findAll().stream()
-            .filter(entry -> entry.getCompany().getId().equals(company.getId()))
-            .filter(entry -> arReference.equals(entry.getReferenceNumber()))
-            .count();
-    assertThat(arReferenceCount)
+    assertThat(journalEntryRepository.findByCompanyAndReferenceNumber(company, arReference))
         .as("AR journal reference should be unique for dispatch")
-        .isEqualTo(1);
+        .isPresent();
 
     Map<String, Object> allocation =
         Map.of("invoiceId", invoiceId, "appliedAmount", invoice.getTotalAmount());
     Map<String, Object> settlementReq = new HashMap<>();
-    settlementReq.put("dealerId", o2c.dealer().getId());
+    settlementReq.put("partnerType", "DEALER");
+    settlementReq.put("partnerId", o2c.dealer().getId());
     settlementReq.put("cashAccountId", o2c.requireAccount("CASH").getId());
     settlementReq.put("settlementDate", entryDate);
     settlementReq.put("referenceNumber", "O2C-SETTLE-001");
@@ -633,7 +629,7 @@ public class ErpInvariantsSuiteIT extends AbstractIntegrationTest {
       throw new AssertionError("Invoice journal missing for credit note flow");
     }
 
-    String reference = "CN-O2C-" + invoice.getInvoiceNumber();
+    String reference = "CRN-O2C-" + invoice.getInvoiceNumber();
     Map<String, Object> creditReq = new HashMap<>();
     creditReq.put("invoiceId", invoiceId);
     creditReq.put("referenceNumber", reference);
@@ -770,7 +766,8 @@ public class ErpInvariantsSuiteIT extends AbstractIntegrationTest {
     Map<String, Object> allocation =
         Map.of("purchaseId", purchaseId, "appliedAmount", purchase.getTotalAmount());
     Map<String, Object> settlementReq = new HashMap<>();
-    settlementReq.put("supplierId", p2p.supplier().getId());
+    settlementReq.put("partnerType", "SUPPLIER");
+    settlementReq.put("partnerId", p2p.supplier().getId());
     settlementReq.put("cashAccountId", p2p.requireAccount("CASH").getId());
     settlementReq.put("settlementDate", entryDate);
     settlementReq.put("referenceNumber", "P2P-SETTLE-001");
@@ -1725,7 +1722,8 @@ public class ErpInvariantsSuiteIT extends AbstractIntegrationTest {
     Map<String, Object> allocation =
         Map.of("invoiceId", invoiceId, "appliedAmount", invoice.getTotalAmount());
     Map<String, Object> settlementReq = new HashMap<>();
-    settlementReq.put("dealerId", dealer.getId());
+    settlementReq.put("partnerType", "DEALER");
+    settlementReq.put("partnerId", dealer.getId());
     settlementReq.put("cashAccountId", requireAccountId(tenantCompany, "CASH"));
     settlementReq.put("settlementDate", entryDate);
     settlementReq.put("referenceNumber", settlementRef);

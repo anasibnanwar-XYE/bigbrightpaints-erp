@@ -1,0 +1,21 @@
+{
+  "featureId": "foundation-date-serialization-fix",
+  "reviewedAt": "2026-04-05T19:48:28Z",
+  "commitId": "ddefe4226ec165e358451ff4ec55168bcb3a1f69",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The feature implementation matches the requested scope and contract. Commit `ddefe4226ec165e358451ff4ec55168bcb3a1f69` explicitly disables `SerializationFeature.WRITE_DATES_AS_TIMESTAMPS` in `erp-domain/src/main/java/com/bigbrightpaints/erp/core/config/JacksonConfig.java`, which is the shared Jackson boundary for API serialization, and the diff then adds `@JsonFormat` coverage across every accounting DTO `LocalDate`, `Instant`, and `YearMonth` field found under `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/dto`. The added regression tests (`JacksonConfigDateSerializationTest` and `AccountingDtoDateFormatContractTest`) directly lock the mapper behavior and recursively enforce the DTO annotation contract. I did not find a high-confidence correctness regression or feature gap in the reviewed commit, current source state, or transcript skeleton.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "services",
+      "observation": "The shared command manifest still exposes only repo-wide Spotless commands, so workers have to hand-roll scoped `-DspotlessFiles=...` invocations when unrelated formatting drift exists elsewhere in the tree.",
+      "evidence": ".factory/services.yaml:10-12 defines only `spotless-check` and `spotless-apply`; the feature handoff at /home/realnigga/.factory/missions/cf35a73d-f4bd-4cf3-9488-fee34cf89e18/handoffs/2026-04-05T17-07-00-566Z__foundation-date-serialization-fix__05ce3330-79de-4369-9814-269b2d30f162.json:26,73,83,87,92 shows the worker had to use `mvn -DspotlessFiles='...' spotless:check` and marked the procedure as not fully followed because that fallback is not captured in shared guidance."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "PASS. The reviewed commit cleanly enforces ISO-8601 date serialization at the shared Jackson layer and across the accounting DTO surface, and the added regression tests cover both the mapper setting and the DTO annotation contract. No high-confidence defects were found in scope."
+}

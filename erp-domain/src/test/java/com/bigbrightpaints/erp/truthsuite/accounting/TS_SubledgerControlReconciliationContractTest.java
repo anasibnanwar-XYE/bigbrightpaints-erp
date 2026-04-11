@@ -9,8 +9,10 @@ import com.bigbrightpaints.erp.truthsuite.support.TruthSuiteFileAssert;
 @Tag("reconciliation")
 class TS_SubledgerControlReconciliationContractTest {
 
-  private static final String ACCOUNTING_SERVICE =
-      "src/main/java/com/bigbrightpaints/erp/modules/accounting/service/AccountingService.java";
+  private static final String ACCOUNTING_MUTATION_SERVICE =
+      "src/main/java/com/bigbrightpaints/erp/modules/accounting/service/JournalEntryMutationService.java";
+  private static final String ACCOUNTING_CONTEXT_SERVICE =
+      "src/main/java/com/bigbrightpaints/erp/modules/accounting/service/JournalPartnerContextService.java";
   private static final String REPORT_SERVICE =
       "src/main/java/com/bigbrightpaints/erp/modules/reports/service/ReportService.java";
   private static final String SCAN_SQL = "../scripts/db_predeploy_scans.sql";
@@ -18,9 +20,11 @@ class TS_SubledgerControlReconciliationContractTest {
   @Test
   void accountingServiceRequiresPartnerContextOnArApControlAccounts() {
     TruthSuiteFileAssert.assertContains(
-        ACCOUNTING_SERVICE,
+        ACCOUNTING_MUTATION_SERVICE,
         "\"Posting to AR requires a dealer context\"",
-        "\"Posting to AP requires a supplier context\"",
+        "\"Posting to AP requires a supplier context\"");
+    TruthSuiteFileAssert.assertContains(
+        ACCOUNTING_CONTEXT_SERVICE,
         "\"Dealer receivable account \"",
         "\"Supplier payable account \"");
   }

@@ -24,7 +24,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.util.AopTestUtils;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
@@ -181,7 +180,7 @@ class ProductionCatalogRawMaterialInvariantIT extends AbstractIntegrationTest {
             "RM-TIO2-MANUAL", alternateInventoryAccount.getId(), inventoryAccount.getId());
     product.setGstRate(new BigDecimal("12.00"));
     ProductionCatalogService targetService = AopTestUtils.getTargetObject(productionCatalogService);
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         targetService, "syncRawMaterial", company, product, new HashMap<Long, Long>(), false);
 
     RawMaterial replayed =
@@ -302,7 +301,7 @@ class ProductionCatalogRawMaterialInvariantIT extends AbstractIntegrationTest {
             "RM-CAT-IDEMP-05");
 
     assertThat(response.errors()).hasSize(1);
-    assertThat(response.errors().getFirst().message()).contains("invalid inventory account id");
+    assertThat(response.errors().getFirst().message()).contains("Account not found");
     assertThat(rawMaterialRepository.findByCompanyAndSku(company, "RM-TIO2-OUTSIDE")).isEmpty();
   }
 
@@ -336,9 +335,7 @@ class ProductionCatalogRawMaterialInvariantIT extends AbstractIntegrationTest {
 
     assertThat(response.errors()).hasSize(1);
     assertThat(replay.errors()).hasSize(1);
-    assertThat(response.errors().getFirst().message())
-        .contains("invalid account id")
-        .contains("fgValuationAccountId");
+    assertThat(response.errors().getFirst().message()).contains("Account not found");
     assertThat(replay.errors().getFirst().message())
         .isEqualTo(response.errors().getFirst().message());
     assertThat(replayImportRecord.getId()).isEqualTo(firstImportRecord.getId());

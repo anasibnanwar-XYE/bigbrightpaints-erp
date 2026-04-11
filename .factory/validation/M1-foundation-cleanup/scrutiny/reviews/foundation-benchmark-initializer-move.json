@@ -1,0 +1,26 @@
+{
+  "featureId": "foundation-benchmark-initializer-move",
+  "reviewedAt": "2026-04-05T19:48:16Z",
+  "commitId": "f2a7c8c68f34aa6606181a39e2e7502623bf9296",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "I reviewed the feature metadata, worker handoff, transcript skeleton, `backend-worker` guidance, commit `f2a7c8c68f34aa6606181a39e2e7502623bf9296`, and the current `BenchmarkDataInitializer`/test state. The implementation is narrowly scoped: it renames `erp-domain/src/main/java/com/bigbrightpaints/erp/core/config/BenchmarkDataInitializer.java` into the matching `src/test/java` package and adds a regression assertion in `erp-domain/src/test/java/com/bigbrightpaints/erp/core/config/BenchmarkDataInitializerTest.java:58-72` proving the initializer now loads from the test output location. Current repo state shows the initializer only under `src/test/java`, with remaining references confined to `BenchmarkDataInitializerTest` and `DataInitializerSecurityTest`; I did not find a high-confidence correctness, regression, or contract-adherence defect within the feature's requested scope.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "knowledge",
+      "observation": "Shared guidance still describes benchmark-admin bootstrap as a runtime startup knob even though the only remaining implementation now lives under test sources. That can mislead future workers/operators into expecting benchmark-admin seeding from the packaged app.",
+      "evidence": "`erp-domain/src/test/java/com/bigbrightpaints/erp/core/config/BenchmarkDataInitializer.java:76-95` is now the only implementation path, while `docs/platform/config-feature-toggles.md:370-371` still says `erp.seed.benchmark-admin.email/password` create a benchmark-admin user at startup and `docs/code-review/ops-deployment-runtime.md:63` still treats `application-benchmark.yml` as a live benchmark runtime lane."
+    },
+    {
+      "area": "skills",
+      "observation": "This repo's Maven setup depends on running from `erp-domain` because `.mvn/settings.xml` is referenced relatively. That quirk is not captured clearly enough in shared worker guidance, and it cost the worker extra discovery time.",
+      "evidence": "`erp-domain/.mvn/maven.config` contains `--settings=.mvn/settings.xml`; the transcript skeleton shows `rtk mvn -f ...` / `mvn -f ...` attempts before the worker switched to `cd erp-domain && mvn ...`, and the handoff `skillFeedback.suggestedChanges` explicitly calls out documenting this."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "PASS. The reviewed commit cleanly moves `BenchmarkDataInitializer` off the main classpath into `src/test/java`, adds a focused classpath regression assertion, and leaves no high-confidence feature-scope defects. I noted two shared-state gaps: benchmark runtime/bootstrap guidance is now out of sync with the code, and repo-specific Maven invocation constraints are not documented clearly enough."
+}

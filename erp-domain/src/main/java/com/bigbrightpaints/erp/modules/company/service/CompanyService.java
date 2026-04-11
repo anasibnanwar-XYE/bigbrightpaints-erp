@@ -12,6 +12,8 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.function.LongSupplier;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
@@ -47,6 +49,8 @@ import com.bigbrightpaints.erp.modules.company.dto.CompanyTenantMetricsDto;
 
 @Service
 public class CompanyService {
+
+  private static final Logger log = LoggerFactory.getLogger(CompanyService.class);
 
   private static final String LIFECYCLE_STATE_METADATA_KEY = "companyLifecycleState";
   private static final String LIFECYCLE_PREVIOUS_STATE_METADATA_KEY =
@@ -186,6 +190,9 @@ public class CompanyService {
   @Transactional
   public CompanyDto update(Long id, CompanyRequest request, Set<Company> allowedCompanies) {
     requireSuperAdminForTenantConfigurationUpdate();
+    if (log.isTraceEnabled() && allowedCompanies != null) {
+      log.trace("Tenant update request carried {} allowed companies", allowedCompanies.size());
+    }
     Company company =
         repository
             .findById(id)
@@ -228,7 +235,9 @@ public class CompanyService {
       company.setEnabledModules(validateAndNormalizeEnabledModules(request.enabledModules()));
     }
     synchronizeRuntimePolicyEnvelope(
-        company, SecurityContextHolder.getContext().getAuthentication(), TENANT_RUNTIME_POLICY_SYNC_REASON);
+        company,
+        SecurityContextHolder.getContext().getAuthentication(),
+        TENANT_RUNTIME_POLICY_SYNC_REASON);
     return toDto(company);
   }
 
@@ -599,9 +608,12 @@ public class CompanyService {
       metadata.put("targetCompanyCode", company.getCode());
       metadata.put("targetCompanyId", String.valueOf(company.getId()));
       metadata.put("resetEmail", resetEmail);
+      String normalizedSupportReason = supportReason == null ? null : supportReason.trim();
       metadata.put(
           "supportReason",
-          StringUtils.hasText(supportReason) ? supportReason.trim() : "support-reset-requested");
+          StringUtils.hasText(normalizedSupportReason)
+              ? normalizedSupportReason
+              : "support-reset-requested");
       auditService.logSuccess(AuditEvent.ACCESS_GRANTED, metadata);
     } else {
       auditAuthorityDecision(
@@ -822,19 +834,18 @@ public class CompanyService {
       CompanyLifecycleState requestedState,
       String lifecycleReason,
       Authentication authentication) {
-    if (company == null
-        || requestedState == null
-        || !StringUtils.hasText(company.getCode())) {
+    if (company == null || requestedState == null || !StringUtils.hasText(company.getCode())) {
       return;
     }
-    requireTenantRuntimeEnforcementService().updatePolicy(
-        company.getCode(),
-        mapLifecycleToRuntimeState(requestedState),
-        lifecycleReason,
-        safeRuntimeLimit(company.getQuotaMaxConcurrentRequests()),
-        safeRuntimeLimit(company.getQuotaMaxApiRequests()),
-        safeRuntimeLimit(company.getQuotaMaxActiveUsers()),
-        resolveActor(authentication));
+    requireTenantRuntimeEnforcementService()
+        .updatePolicy(
+            company.getCode(),
+            mapLifecycleToRuntimeState(requestedState),
+            lifecycleReason,
+            safeRuntimeLimit(company.getQuotaMaxConcurrentRequests()),
+            safeRuntimeLimit(company.getQuotaMaxApiRequests()),
+            safeRuntimeLimit(company.getQuotaMaxActiveUsers()),
+            resolveActor(authentication));
   }
 
   private void synchronizeRuntimePolicyEnvelope(
@@ -844,19 +855,22 @@ public class CompanyService {
     }
     TenantRuntimeEnforcementService.TenantRuntimeState runtimeState =
         mapLifecycleToRuntimeState(
-            company.getLifecycleState() == null ? CompanyLifecycleState.ACTIVE : company.getLifecycleState());
+            company.getLifecycleState() == null
+                ? CompanyLifecycleState.ACTIVE
+                : company.getLifecycleState());
     String effectiveReason =
         StringUtils.hasText(company.getLifecycleReason())
             ? company.getLifecycleReason()
             : reasonCode;
-    requireTenantRuntimeEnforcementService().updatePolicy(
-        company.getCode(),
-        runtimeState,
-        effectiveReason,
-        TenantBootstrapDefaults.failClosedRuntimeLimit(company.getQuotaMaxConcurrentRequests()),
-        TenantBootstrapDefaults.failClosedRuntimeLimit(company.getQuotaMaxApiRequests()),
-        TenantBootstrapDefaults.failClosedRuntimeLimit(company.getQuotaMaxActiveUsers()),
-        resolveActor(authentication));
+    requireTenantRuntimeEnforcementService()
+        .updatePolicy(
+            company.getCode(),
+            runtimeState,
+            effectiveReason,
+            TenantBootstrapDefaults.failClosedRuntimeLimit(company.getQuotaMaxConcurrentRequests()),
+            TenantBootstrapDefaults.failClosedRuntimeLimit(company.getQuotaMaxApiRequests()),
+            TenantBootstrapDefaults.failClosedRuntimeLimit(company.getQuotaMaxActiveUsers()),
+            resolveActor(authentication));
   }
 
   private TenantRuntimeEnforcementService.TenantRuntimeState mapLifecycleToRuntimeState(
@@ -1073,17 +1087,21 @@ public class CompanyService {
     metadata.put("actor", resolveActor(authentication));
     metadata.put("reason", LIFECYCLE_SUPER_ADMIN_REQUIRED_REASON);
     metadata.put("tenantScope", resolveTenantScope(authentication));
+    String normalizedTargetCompanyCode = targetCompanyCode == null ? null : targetCompanyCode.trim();
     if (companyId != null) {
       metadata.put("targetCompanyId", String.valueOf(companyId));
     }
-    if (StringUtils.hasText(targetCompanyCode)) {
-      metadata.put("targetCompanyCode", targetCompanyCode.trim());
+    if (StringUtils.hasText(normalizedTargetCompanyCode)) {
+      metadata.put("targetCompanyCode", normalizedTargetCompanyCode);
     }
     metadata.put(LIFECYCLE_STATE_METADATA_KEY, requestedState.name());
     metadata.put(LIFECYCLE_REASON_METADATA_KEY, lifecycleReason);
     metadata.put(LIFECYCLE_EVIDENCE_METADATA_KEY, LIFECYCLE_EVIDENCE_VALUE);
     auditService.logAuthFailure(
-        AuditEvent.ACCESS_DENIED, resolveActor(authentication), targetCompanyCode, metadata);
+        AuditEvent.ACCESS_DENIED,
+        resolveActor(authentication),
+        normalizedTargetCompanyCode,
+        metadata);
   }
 
   private void auditAuthorityDecision(
@@ -1270,8 +1288,11 @@ public class CompanyService {
     if (tenantRuntimeEnforcementService != null && StringUtils.hasText(companyCode)) {
       try {
         return tenantRuntimeEnforcementService.snapshot(companyCode).metrics().inFlightRequests();
-      } catch (RuntimeException ignored) {
-        // Fall back to the best available telemetry path when runtime snapshot resolution fails.
+      } catch (RuntimeException ex) {
+        log.debug(
+            "Falling back to session-based concurrent request telemetry for company {}",
+            companyCode,
+            ex);
       }
     }
     return countDistinctSessionActivity(companyId);

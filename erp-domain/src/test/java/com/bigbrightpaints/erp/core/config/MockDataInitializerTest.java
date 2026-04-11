@@ -72,6 +72,24 @@ class MockDataInitializerTest {
   }
 
   @Test
+  void mockInitializer_isLoadedFromTestClasspath() {
+    String classLocation =
+        MockDataInitializer.class
+            .getProtectionDomain()
+            .getCodeSource()
+            .getLocation()
+            .toExternalForm();
+    String testClassLocation =
+        MockDataInitializerTest.class
+            .getProtectionDomain()
+            .getCodeSource()
+            .getLocation()
+            .toExternalForm();
+
+    assertThat(classLocation).isEqualTo(testClassLocation);
+  }
+
+  @Test
   void seedRolesAndUsers_createsScopedMockAdminWhenMissing() {
     Company company = company("MOCK");
     when(passwordEncoder.encode("Temp123!")).thenReturn("encoded-password");
@@ -79,7 +97,7 @@ class MockDataInitializerTest {
             "mock-admin@example.com", "MOCK"))
         .thenReturn(Optional.empty());
 
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         initializer,
         "seedRolesAndUsers",
         roleRepository,
@@ -111,7 +129,7 @@ class MockDataInitializerTest {
             "legacy-mock@example.com", "MOCK"))
         .thenReturn(Optional.of(existingAdmin));
 
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         initializer,
         "seedRolesAndUsers",
         roleRepository,
@@ -139,7 +157,7 @@ class MockDataInitializerTest {
     ReflectionTestUtils.setField(adminUser, "id", 42L);
     when(companyRepository.findById(1L)).thenReturn(Optional.of(refreshedCompany));
 
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         initializer, "attachMainAdmin", companyRepository, staleCompany, adminUser);
 
     verify(companyRepository).save(refreshedCompany);
@@ -155,7 +173,9 @@ class MockDataInitializerTest {
     when(companyRepository.save(any(Company.class)))
         .thenAnswer(invocation -> invocation.getArgument(0, Company.class));
 
-    Company company = ReflectionTestUtils.invokeMethod(initializer, "createCompany", companyRepository);
+    Company company =
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            initializer, "createCompany", companyRepository);
 
     assertThat(company.getCode()).isEqualTo("MOCK");
     assertThat(company.getStateCode()).isEqualTo("MH");
@@ -168,7 +188,9 @@ class MockDataInitializerTest {
     when(companyRepository.save(any(Company.class)))
         .thenAnswer(invocation -> invocation.getArgument(0, Company.class));
 
-    Company company = ReflectionTestUtils.invokeMethod(initializer, "createCompany", companyRepository);
+    Company company =
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            initializer, "createCompany", companyRepository);
 
     assertThat(company.getStateCode()).isEqualTo("MH");
   }
@@ -199,7 +221,7 @@ class MockDataInitializerTest {
                 List.of(),
                 List.of()));
 
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         initializer,
         "seedReadyToConfirmOrder",
         salesOrderCrudService,
@@ -216,7 +238,8 @@ class MockDataInitializerTest {
     Account wipAccount = account(1180L, "WIP_PACK");
     Map<String, Account> accounts = fixtureAccounts();
 
-    when(finishedGoodRepository.findByCompanyAndProductCode(company, E2eFixtureCatalog.ORDER_PRIMARY_SKU))
+    when(finishedGoodRepository.findByCompanyAndProductCode(
+            company, E2eFixtureCatalog.ORDER_PRIMARY_SKU))
         .thenReturn(Optional.empty());
     when(finishedGoodRepository.save(any(FinishedGood.class)))
         .thenAnswer(
@@ -236,7 +259,7 @@ class MockDataInitializerTest {
         .thenAnswer(invocation -> invocation.getArgument(0, ProductionProduct.class));
 
     FinishedGood seeded =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             initializer,
             "seedFinishedGood",
             company,
@@ -254,11 +277,13 @@ class MockDataInitializerTest {
     assertThat(seeded.getProductCode()).isEqualTo(E2eFixtureCatalog.ORDER_PRIMARY_SKU);
     assertThat(seeded.getName()).isEqualTo(E2eFixtureCatalog.ORDER_PRIMARY_NAME);
 
-    ArgumentCaptor<ProductionProduct> productCaptor = ArgumentCaptor.forClass(ProductionProduct.class);
+    ArgumentCaptor<ProductionProduct> productCaptor =
+        ArgumentCaptor.forClass(ProductionProduct.class);
     verify(productRepository).save(productCaptor.capture());
     ProductionProduct product = productCaptor.getValue();
     assertThat(product.getProductName()).isEqualTo(E2eFixtureCatalog.ORDER_PRIMARY_NAME);
-    assertThat(product.getBasePrice()).isEqualByComparingTo(E2eFixtureCatalog.ORDER_PRIMARY_BASE_PRICE);
+    assertThat(product.getBasePrice())
+        .isEqualByComparingTo(E2eFixtureCatalog.ORDER_PRIMARY_BASE_PRICE);
     assertThat(product.getGstRate()).isEqualByComparingTo(E2eFixtureCatalog.ORDER_PRIMARY_GST_RATE);
     assertThat(product.getMetadata())
         .containsEntry("wipAccountId", wipAccount.getId())
@@ -286,7 +311,8 @@ class MockDataInitializerTest {
             12L, fgLifo,
             13L, fgKit,
             14L, fgE2ePrimary);
-    when(batchRepository.existsByFinishedGoodAndBatchCodeIgnoreCase(any(FinishedGood.class), anyString()))
+    when(batchRepository.existsByFinishedGoodAndBatchCodeIgnoreCase(
+            any(FinishedGood.class), anyString()))
         .thenReturn(false);
     when(batchRepository.save(any(FinishedGoodBatch.class)))
         .thenAnswer(invocation -> invocation.getArgument(0, FinishedGoodBatch.class));
@@ -297,7 +323,7 @@ class MockDataInitializerTest {
     when(finishedGoodRepository.save(any(FinishedGood.class)))
         .thenAnswer(invocation -> invocation.getArgument(0, FinishedGood.class));
 
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         initializer,
         "seedBatches",
         company,
@@ -308,13 +334,15 @@ class MockDataInitializerTest {
         fgKit,
         fgE2ePrimary);
 
-    ArgumentCaptor<FinishedGoodBatch> batchCaptor = ArgumentCaptor.forClass(FinishedGoodBatch.class);
+    ArgumentCaptor<FinishedGoodBatch> batchCaptor =
+        ArgumentCaptor.forClass(FinishedGoodBatch.class);
     verify(batchRepository, org.mockito.Mockito.times(6)).save(batchCaptor.capture());
     assertThat(batchCaptor.getAllValues())
         .anySatisfy(
             batch -> {
               assertThat(batch.getFinishedGood()).isEqualTo(fgE2ePrimary);
-              assertThat(batch.getBatchCode()).isEqualTo(E2eFixtureCatalog.ORDER_PRIMARY_BATCH_CODE);
+              assertThat(batch.getBatchCode())
+                  .isEqualTo(E2eFixtureCatalog.ORDER_PRIMARY_BATCH_CODE);
               assertThat(batch.getQuantityTotal())
                   .isEqualByComparingTo(E2eFixtureCatalog.ORDER_PRIMARY_STOCK_QUANTITY);
               assertThat(batch.getUnitCost())
@@ -332,7 +360,7 @@ class MockDataInitializerTest {
             finishedGood, E2eFixtureCatalog.ORDER_PRIMARY_BATCH_CODE))
         .thenReturn(true);
 
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         initializer,
         "createBatch",
         batchRepository,

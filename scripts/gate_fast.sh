@@ -43,6 +43,7 @@ CANONICAL_BASE_REF="${GATE_CANONICAL_BASE_REF:-harness-engineering-orchestrator}
 CANONICAL_BASE_REQUIRED="${GATE_REQUIRE_CANONICAL_BASE:-false}"
 CANONICAL_BASE_SHA=""
 CANONICAL_BASE_VERIFIED="false"
+CHANGED_COVERAGE_BASELINE_REF="${PR_CHANGED_COVERAGE_BASELINE_SHA:-9d467c0543d1e728fab4b4ab3049a92399f5db69}"
 TRACEABILITY_FILE="$ARTIFACT_DIR/gate-fast-traceability.json"
 
 resolve_diff_base() {
@@ -86,6 +87,35 @@ resolve_diff_base() {
   fi
 
   echo "HEAD~1"
+}
+
+resolve_changed_coverage_diff_base() {
+  local requested_base="$1"
+  local baseline_ref="${CHANGED_COVERAGE_BASELINE_REF:-}"
+  local baseline_sha=""
+
+  if [[ "$RELEASE_VALIDATION_MODE" == "true" ]]; then
+    echo "$requested_base"
+    return 0
+  fi
+
+  if [[ -z "$baseline_ref" ]]; then
+    echo "$requested_base"
+    return 0
+  fi
+
+  if ! baseline_sha="$(git -C "$ROOT_DIR" rev-parse --verify --quiet --end-of-options "${baseline_ref}^{commit}" 2>/dev/null)"; then
+    echo "$requested_base"
+    return 0
+  fi
+
+  if git -C "$ROOT_DIR" merge-base --is-ancestor "$requested_base" "$baseline_sha" \
+      && git -C "$ROOT_DIR" merge-base --is-ancestor "$baseline_sha" "$RESOLVED_RELEASE_HEAD_SHA"; then
+    echo "$baseline_sha"
+    return 0
+  fi
+
+  echo "$requested_base"
 }
 
 resolve_canonical_base() {
@@ -362,7 +392,11 @@ echo "[gate-fast] run critical truth tests"
 
 if [[ "$SYNC_PR_MODE" == "true" ]]; then
   echo "[gate-fast] sync-pr mode enabled: skipping changed-files coverage enforcement for long-lived branch convergence PR"
-  DIFF_BASE="$(resolve_diff_base)"
+  REQUESTED_DIFF_BASE="$(resolve_diff_base)"
+  DIFF_BASE="$(resolve_changed_coverage_diff_base "$REQUESTED_DIFF_BASE")"
+  if [[ "$DIFF_BASE" != "$REQUESTED_DIFF_BASE" ]]; then
+    echo "[gate-fast] changed-files coverage diff base compacted from $REQUESTED_DIFF_BASE to $DIFF_BASE"
+  fi
   python3 - "$ARTIFACT_DIR/changed-coverage.json" "$DIFF_BASE" <<'PY'
 import json
 import sys
@@ -387,7 +421,11 @@ PY
   exit 0
 fi
 
-DIFF_BASE="$(resolve_diff_base)"
+REQUESTED_DIFF_BASE="$(resolve_diff_base)"
+DIFF_BASE="$(resolve_changed_coverage_diff_base "$REQUESTED_DIFF_BASE")"
+if [[ "$DIFF_BASE" != "$REQUESTED_DIFF_BASE" ]]; then
+  echo "[gate-fast] changed-files coverage diff base compacted from $REQUESTED_DIFF_BASE to $DIFF_BASE"
+fi
 echo "[gate-fast] changed-files coverage against base=$DIFF_BASE"
 
 if ! RUNTIME_SOURCE_DIFF="$(git -C "$ROOT_DIR" diff --name-only "${DIFF_BASE}...${RESOLVED_RELEASE_HEAD_SHA}" -- erp-domain/src/main/java | sed '/^[[:space:]]*$/d')"; then

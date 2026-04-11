@@ -100,12 +100,14 @@ class ValidationSeedDataInitializerTest {
         .when(creditRequestRepository.save(any(CreditRequest.class)))
         .thenAnswer(invocation -> invocation.getArgument(0));
     lenient()
-        .when(exportRequestRepository.findByCompanyAndStatusOrderByCreatedAtAsc(
-            any(Company.class), any(ExportApprovalStatus.class)))
+        .when(
+            exportRequestRepository.findByCompanyAndStatusOrderByCreatedAtAsc(
+                any(Company.class), any(ExportApprovalStatus.class)))
         .thenReturn(List.of());
     lenient()
-        .when(supportTicketRepository.findByCompanyAndUserIdOrderByCreatedAtDesc(
-            any(Company.class), any()))
+        .when(
+            supportTicketRepository.findByCompanyAndUserIdOrderByCreatedAtDesc(
+                any(Company.class), any()))
         .thenReturn(List.of());
     lenient()
         .when(creditRequestRepository.findPendingByCompanyOrderByCreatedAtDesc(any(Company.class)))
@@ -116,6 +118,24 @@ class ValidationSeedDataInitializerTest {
     lenient()
         .when(cryptoService.encrypt(anyString()))
         .thenAnswer(invocation -> "encrypted:" + invocation.getArgument(0, String.class));
+  }
+
+  @Test
+  void validationSeedInitializer_isLoadedFromTestClasspath() {
+    String classLocation =
+        ValidationSeedDataInitializer.class
+            .getProtectionDomain()
+            .getCodeSource()
+            .getLocation()
+            .toExternalForm();
+    String testClassLocation =
+        ValidationSeedDataInitializerTest.class
+            .getProtectionDomain()
+            .getCodeSource()
+            .getLocation()
+            .toExternalForm();
+
+    assertThat(classLocation).isEqualTo(testClassLocation);
   }
 
   @Test
@@ -339,7 +359,7 @@ class ValidationSeedDataInitializerTest {
     company.setCode("HOLD");
     ReflectionTestUtils.setField(company, "id", 41L);
 
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         initializer,
         "ensureRuntimePolicy",
         systemSettingsRepository,

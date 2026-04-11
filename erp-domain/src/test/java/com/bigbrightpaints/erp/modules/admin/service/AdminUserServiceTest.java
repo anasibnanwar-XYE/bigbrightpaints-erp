@@ -574,7 +574,8 @@ class AdminUserServiceTest {
         .thenReturn(Optional.empty());
 
     var response =
-        service.updateUser(402L, new UpdateUserRequest("Updated User", List.of("ROLE_SALES"), null));
+        service.updateUser(
+            402L, new UpdateUserRequest("Updated User", List.of("ROLE_SALES"), null));
 
     assertThat(response.displayName()).isEqualTo("Updated User");
     assertThat(response.roles()).containsExactly("ROLE_SALES");
@@ -727,7 +728,8 @@ class AdminUserServiceTest {
     when(dealerRepository.findByCompanyAndCodeIgnoreCase(any(Company.class), anyString()))
         .thenReturn(Optional.empty());
 
-    ReflectionTestUtils.invokeMethod(service, "createDealerForUser", user, tenant);
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+        service, "createDealerForUser", user, tenant);
 
     verify(dealerRepository, times(2)).save(any(Dealer.class));
     verify(accountRepository).save(any(Account.class));
@@ -744,13 +746,13 @@ class AdminUserServiceTest {
 
     assertThat(
             (Object)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     service, "resolveActorScopedTargetCompanies", user, (Company) null))
         .isEqualTo(List.of());
 
     assertThat(
             (Object)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     service, "resolveActorScopedTargetCompanies", null, company))
         .isEqualTo(List.of(company));
 
@@ -762,7 +764,7 @@ class AdminUserServiceTest {
 
     assertThatThrownBy(
             () ->
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     service, "assertNotProtectedMainAdmin", user, company, "disable"))
         .hasMessageContaining("Replace the tenant main admin");
   }
@@ -772,7 +774,8 @@ class AdminUserServiceTest {
     UserAccount user = new UserAccount("user@example.com", "TEST", "hash", "User");
     when(roleService.isSystemRole("ROLE_ADMIN")).thenReturn(true);
 
-    ReflectionTestUtils.invokeMethod(service, "attachRoles", user, List.of(" ", "admin"));
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+        service, "attachRoles", user, List.of(" ", "admin"));
 
     assertThat(user.getRoles()).extracting(Role::getName).containsExactly("ROLE_ADMIN");
   }
@@ -781,7 +784,7 @@ class AdminUserServiceTest {
   void helper_lastLoginLookups_failClosedWhenInputsAreMissing() {
     assertThat(
             (Object)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     service, "resolveLastLoginByEmail", null, List.of(new UserAccount())))
         .isEqualTo(Map.of());
 
@@ -789,7 +792,8 @@ class AdminUserServiceTest {
     blankEmailUser.setEmail(" ");
     assertThat(
             (Object)
-                ReflectionTestUtils.invokeMethod(service, "resolveLastLoginAt", blankEmailUser))
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    service, "resolveLastLoginAt", blankEmailUser))
         .isNull();
   }
 }

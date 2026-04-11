@@ -34,7 +34,6 @@ import org.springframework.test.util.ReflectionTestUtils;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalCreationRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
@@ -64,7 +63,7 @@ class PackingServiceTest {
   @Mock private PackingRecordRepository packingRecordRepository;
   @Mock private AccountingFacade accountingFacade;
   @Mock private CompanyClock companyClock;
-  @Mock private CompanyEntityLookup companyEntityLookup;
+  @Mock private CompanyScopedFactoryLookupService factoryLookupService;
   @Mock private PackagingMaterialService packagingMaterialService;
   @Mock private ProductionLogService productionLogService;
   @Mock private PackingProductSupport packingProductSupport;
@@ -90,7 +89,7 @@ class PackingServiceTest {
             productionLogService,
             companyClock,
             accountingFacade,
-            companyEntityLookup,
+            factoryLookupService,
             packagingMaterialService,
             packingProductSupport,
             packingAllowedSizeService,
@@ -136,8 +135,8 @@ class PackingServiceTest {
     ReflectionTestUtils.setField(sizeVariant, "id", 41L);
     sizeVariant.setSizeLabel("500ML");
 
-    when(companyEntityLookup.lockProductionLog(company, 1L)).thenReturn(log);
-    when(companyEntityLookup.requireProductionLog(company, 1L)).thenReturn(log);
+    when(factoryLookupService.lockProductionLog(company, 1L)).thenReturn(log);
+    when(factoryLookupService.requireProductionLog(company, 1L)).thenReturn(log);
     when(packingLineResolver.normalizePackagingSize("500ML", 1)).thenReturn("500ML");
     when(packingAllowedSizeService.resolveAllowedSellableSizeTargets(company, log))
         .thenReturn(List.of(allowedTarget(product, targetFinishedGood, sizeVariant)));
@@ -283,8 +282,8 @@ class PackingServiceTest {
     ReflectionTestUtils.setField(sizeVariant, "id", 41L);
     sizeVariant.setSizeLabel("500ML");
 
-    when(companyEntityLookup.lockProductionLog(company, 1L)).thenReturn(lockedLog);
-    when(companyEntityLookup.requireProductionLog(company, 1L)).thenReturn(refreshedLog);
+    when(factoryLookupService.lockProductionLog(company, 1L)).thenReturn(lockedLog);
+    when(factoryLookupService.requireProductionLog(company, 1L)).thenReturn(refreshedLog);
     when(packingLineResolver.normalizePackagingSize("500ML", 1)).thenReturn("500ML");
     when(packingAllowedSizeService.resolveAllowedSellableSizeTargets(company, lockedLog))
         .thenReturn(List.of(allowedTarget(product, targetFinishedGood, sizeVariant)));
@@ -404,8 +403,8 @@ class PackingServiceTest {
     refreshedLog.setStatus(ProductionLogStatus.PARTIAL_PACKED);
     refreshedLog.setUnitCost(new BigDecimal("12.50"));
 
-    when(companyEntityLookup.lockProductionLog(company, 1L)).thenReturn(lockedLog);
-    when(companyEntityLookup.requireProductionLog(company, 1L)).thenReturn(refreshedLog);
+    when(factoryLookupService.lockProductionLog(company, 1L)).thenReturn(lockedLog);
+    when(factoryLookupService.requireProductionLog(company, 1L)).thenReturn(refreshedLog);
     when(productionLogRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
     when(accountingFacade.createStandardJournal(any(JournalCreationRequest.class)))
         .thenReturn(stubEntry(91L));
@@ -478,7 +477,7 @@ class PackingServiceTest {
 
     when(productionLogRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         packingService, "closeResidualWastage", log, LocalDate.of(2024, 1, 3));
 
     verify(packingInventoryService).consumeSemiFinishedWastage(log, BigDecimal.ZERO);
@@ -510,7 +509,7 @@ class PackingServiceTest {
     when(packingProductSupport.requireWipAccountId(product)).thenReturn(811L);
     when(packingProductSupport.metadataLong(product, "wastageAccountId")).thenReturn(902L);
 
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         packingService, "closeResidualWastage", log, LocalDate.of(2024, 1, 4));
 
     ArgumentCaptor<JournalCreationRequest> requestCaptor =
@@ -540,7 +539,7 @@ class PackingServiceTest {
 
     assertThatThrownBy(
             () ->
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     packingService, "closeResidualWastage", log, LocalDate.of(2024, 1, 5)))
         .isInstanceOf(ApplicationException.class)
         .hasMessage("Product Primer missing wastageAccountId metadata");
@@ -557,7 +556,7 @@ class PackingServiceTest {
 
     assertThatThrownBy(
             () ->
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     packingService, "applyPackedQuantity", log, new BigDecimal("2.0")))
         .isInstanceOf(ApplicationException.class)
         .hasMessage("Packed quantity would exceed mixed quantity for PROD-OVERFLOW");
@@ -569,7 +568,8 @@ class PackingServiceTest {
     log.setMixedQuantity(new BigDecimal("10.0"));
     log.setStatus(ProductionLogStatus.PARTIAL_PACKED);
 
-    ReflectionTestUtils.invokeMethod(packingService, "updateStatus", log, BigDecimal.ZERO);
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+        packingService, "updateStatus", log, BigDecimal.ZERO);
 
     assertThat(log.getStatus()).isEqualTo(ProductionLogStatus.READY_TO_PACK);
   }
@@ -588,7 +588,7 @@ class PackingServiceTest {
     log.setMaterialCostTotal(new BigDecimal("25.0"));
     log.setUnitCost(BigDecimal.ZERO);
 
-    ReflectionTestUtils.invokeMethod(
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         packingService,
         "postResidualWastageJournal",
         log,
@@ -601,7 +601,8 @@ class PackingServiceTest {
   @Test
   void safeQuantity_returnsZeroForNull() {
     BigDecimal safeQuantity =
-        ReflectionTestUtils.invokeMethod(packingService, "safeQuantity", (Object) null);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            packingService, "safeQuantity", (Object) null);
 
     assertThat(safeQuantity).isEqualByComparingTo(BigDecimal.ZERO);
   }
@@ -609,10 +610,10 @@ class PackingServiceTest {
   @Test
   void calculateUnitCost_returnsZeroWhenInputsAreMissing() {
     BigDecimal missingTotal =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             packingService, "calculateUnitCost", null, new BigDecimal("10.0"));
     BigDecimal missingQuantity =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             packingService, "calculateUnitCost", new BigDecimal("10.0"), null);
 
     assertThat(missingTotal).isEqualByComparingTo(BigDecimal.ZERO);
@@ -626,7 +627,7 @@ class PackingServiceTest {
     log.setCompany(company);
     log.setProductionCode("PROD-001");
     log.setStatus(ProductionLogStatus.READY_TO_PACK);
-    when(companyEntityLookup.lockProductionLog(company, 1L)).thenReturn(log);
+    when(factoryLookupService.lockProductionLog(company, 1L)).thenReturn(log);
 
     PackingRequest request =
         new PackingRequest(1L, LocalDate.of(2024, 1, 2), "packer", "empty-1", List.of(), false);
@@ -667,7 +668,7 @@ class PackingServiceTest {
     ReflectionTestUtils.setField(sizeVariant, "id", 41L);
     sizeVariant.setSizeLabel("500ML");
 
-    when(companyEntityLookup.lockProductionLog(company, 1L)).thenReturn(log);
+    when(factoryLookupService.lockProductionLog(company, 1L)).thenReturn(log);
     when(packingLineResolver.normalizePackagingSize("500ML", 1)).thenReturn("500ML");
     when(packingAllowedSizeService.resolveAllowedSellableSizeTargets(company, log))
         .thenReturn(List.of(allowedTarget(product, targetFinishedGood, sizeVariant)));
@@ -723,7 +724,7 @@ class PackingServiceTest {
   @Test
   void recordPacking_idempotentReplayDoesNotConsumeOrPostAgain() {
     ProductionLog log = new ProductionLog();
-    when(companyEntityLookup.lockProductionLog(company, 1L)).thenReturn(log);
+    when(factoryLookupService.lockProductionLog(company, 1L)).thenReturn(log);
 
     ProductionLogDetailDto detailDto =
         new ProductionLogDetailDto(
@@ -781,7 +782,7 @@ class PackingServiceTest {
   @Test
   void recordPacking_idempotencyMismatchConflicts() {
     ProductionLog log = new ProductionLog();
-    when(companyEntityLookup.lockProductionLog(company, 1L)).thenReturn(log);
+    when(factoryLookupService.lockProductionLog(company, 1L)).thenReturn(log);
 
     when(packingIdempotencyService.reserveIdempotencyRecord(
             eq(company), eq(1L), eq("pack-mismatch"), anyString()))
@@ -843,8 +844,8 @@ class PackingServiceTest {
     secondRecord.setCompany(company);
     secondRecord.setProductionLog(log);
 
-    when(companyEntityLookup.lockProductionLog(company, 1L)).thenReturn(log);
-    when(companyEntityLookup.requireProductionLog(company, 1L)).thenReturn(log);
+    when(factoryLookupService.lockProductionLog(company, 1L)).thenReturn(log);
+    when(factoryLookupService.requireProductionLog(company, 1L)).thenReturn(log);
     when(packingAllowedSizeService.resolveAllowedSellableSizeTargets(company, log))
         .thenReturn(allowedTargets);
     when(packingLineResolver.normalizePackagingSize("500ML", 1)).thenReturn("500ML");

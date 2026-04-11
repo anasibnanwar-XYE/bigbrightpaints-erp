@@ -968,15 +968,16 @@ public class SalesReturnService {
       int delimiter = lineRemainder.indexOf(SALES_RETURN_LINE_SEPARATOR);
       String lineIdText =
           delimiter >= 0 ? lineRemainder.substring(0, delimiter).trim() : lineRemainder;
-      if (lineIdText.isEmpty()) {
+      if (lineIdText.isEmpty() || !lineIdText.chars().allMatch(Character::isDigit)) {
         continue;
       }
+      Long lineId;
       try {
-        Long lineId = Long.parseLong(lineIdText);
-        totalsByLine.merge(lineId, quantity, BigDecimal::add);
-      } catch (NumberFormatException ignored) {
-        // ignore invalid line ids
+        lineId = Long.parseLong(lineIdText);
+      } catch (NumberFormatException ex) {
+        continue;
       }
+      totalsByLine.merge(lineId, quantity, BigDecimal::add);
     }
     return new ReturnMovementSummary(totalsByLine, totalsByFinishedGood);
   }
@@ -1038,7 +1039,11 @@ public class SalesReturnService {
         dispatchMovements.getOrDefault(finishedGood.getId(), java.util.List.of());
     if (movements.isEmpty()) {
       throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
-          "Return requires dispatch cost layers for " + finishedGood.getProductCode());
+          "Return requires dispatch cost layers for "
+              + finishedGood.getProductCode()
+              + (invoiceLine != null && invoiceLine.getId() != null
+                  ? " on invoice line " + invoiceLine.getId()
+                  : ""));
     }
     BigDecimal remaining = quantity;
     BigDecimal costTotal = BigDecimal.ZERO;

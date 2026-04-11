@@ -4,11 +4,13 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
+
 public record ReconciliationDiscrepancyDto(
     Long id,
     Long accountingPeriodId,
-    LocalDate periodStart,
-    LocalDate periodEnd,
+    @JsonFormat(pattern = "yyyy-MM-dd") LocalDate periodStart,
+    @JsonFormat(pattern = "yyyy-MM-dd") LocalDate periodEnd,
     String type,
     String partnerType,
     Long partnerId,
@@ -22,6 +24,6 @@ public record ReconciliationDiscrepancyDto(
     String resolutionNote,
     Long resolutionJournalId,
     String resolvedBy,
-    Instant resolvedAt,
-    Instant createdAt,
-    Instant updatedAt) {}
+    @JsonFormat(shape = JsonFormat.Shape.STRING) Instant resolvedAt,
+    @JsonFormat(shape = JsonFormat.Shape.STRING) Instant createdAt,
+    @JsonFormat(shape = JsonFormat.Shape.STRING) Instant updatedAt) {}

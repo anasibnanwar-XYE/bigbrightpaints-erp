@@ -1,6 +1,6 @@
 # DTO Examples
 
-Last reviewed: 2026-04-02
+Last reviewed: 2026-04-07
 
 ## Overview
 
@@ -87,10 +87,11 @@ POST /api/v1/admin/users
 {
   "email": "newuser@example.com",
   "displayName": "New User",
-  "password": "TempPassword123!",
   "roles": ["ROLE_SALES"]
 }
 ```
+
+`CreateUserRequest` accepts only `email`, `displayName`, and `roles`.
 
 ## Dealers
 
@@ -151,7 +152,272 @@ GET /api/v1/dealers?status=ALL&page=0&size=50
 >   still stays `data: DealerResponse[]` without `content`, `totalPages`, or
 >   `totalElements`.
 
-> **Note**: There is no `GET /api/v1/dealers/{dealerId}` endpoint for fetching a single dealer by ID. Dealer details are available through the list endpoint with filters, or via search endpoints.
+### Dealer detail
+
+```json
+GET /api/v1/dealers/101
+{
+  "success": true,
+  "message": "Dealer detail",
+  "data": {
+    "id": 101,
+    "publicId": "11111111-2222-3333-4444-555555555555",
+    "code": "ACME01",
+    "name": "Acme Corporation",
+    "companyName": "Acme Corporation Pvt Ltd",
+    "email": "ops@acme.example",
+    "creditLimit": 1000000.0,
+    "outstandingBalance": 120000.0,
+    "creditStatus": "WITHIN_LIMIT"
+  }
+}
+```
+
+For missing dealers, `GET /api/v1/dealers/{dealerId}` returns `404 Not Found`.
+
+## Sales orders (draft lifecycle contract)
+
+### Create order (`201 Created` when draft-lifecycle fields are present)
+
+```json
+POST /api/v1/sales/orders
+→ 201 Created
+{
+  "dealerId": 101,
+  "paymentMode": "CREDIT",
+  "paymentTerms": "NET_30",
+  "gstTreatment": "INTRA_STATE",
+  "items": [
+    {
+      "productCode": "FG-PRM-WHT-20L",
+      "finishedGoodId": 501,
+      "quantity": 10,
+      "unitPrice": 1850.0,
+      "gstRate": 18.0
+    }
+  ]
+}
+```
+
+`POST /api/v1/sales/orders` remains `200 OK` for legacy payloads that do not use
+`paymentTerms` and `finishedGoodId`.
+
+### Order timeline (canonical + alias fields)
+
+```json
+GET /api/v1/sales/orders/1201/timeline
+{
+  "success": true,
+  "data": [
+    {
+      "id": 77,
+      "fromStatus": "DRAFT",
+      "toStatus": "CONFIRMED",
+      "status": "CONFIRMED",
+      "changedBy": "sales.lead@acme.test",
+      "actor": "sales.lead@acme.test",
+      "changedAt": "2026-04-07T10:25:18Z",
+      "timestamp": "2026-04-07T10:25:18Z",
+      "reasonCode": "MANUAL_CONFIRM",
+      "reason": "Sales confirmation after stock reservation"
+    }
+  ]
+}
+```
+
+## Inventory and purchasing (M6 contract refresh)
+
+### Finished goods list (paginated)
+
+```json
+GET /api/v1/finished-goods?page=0&size=20
+{
+  "success": true,
+  "data": {
+    "content": [
+      {
+        "id": 501,
+        "name": "Premium White 20L",
+        "productCode": "FG-PRM-WHT-20L"
+      }
+    ],
+    "page": 0,
+    "size": 20,
+    "totalElements": 1,
+    "totalPages": 1
+  }
+}
+```
+
+### Raw material stock list
+
+```json
+GET /api/v1/raw-materials/stock
+{
+  "success": true,
+  "data": [
+    {
+      "materialId": 1001,
+      "sku": "RM-TIO2-25KG",
+      "name": "Titanium Dioxide",
+      "quantity": 245.5
+    }
+  ]
+}
+```
+
+### Finished-goods stock summary and batches
+
+```json
+GET /api/v1/finished-goods/stock-summary
+{
+  "success": true,
+  "data": [
+    {
+      "finishedGoodId": 501,
+      "productCode": "FG-PRM-WHT-20L",
+      "name": "Premium White 20L",
+      "totalStock": 120,
+      "reservedStock": 15,
+      "availableStock": 105,
+      "weightedAverageCost": 832.45
+    }
+  ]
+}
+```
+
+```json
+GET /api/v1/finished-goods/501/batches
+{
+  "success": true,
+  "data": [
+    {
+      "batchId": 9001,
+      "batchCode": "FG-501-20260401-A",
+      "expiryDate": "2027-04-01",
+      "quantity": 80
+    }
+  ]
+}
+```
+
+### Inventory batch movement history
+
+```json
+GET /api/v1/inventory/batches/9001/movements
+{
+  "success": true,
+  "data": [
+    {
+      "movementType": "IN",
+      "quantity": 80,
+      "timestamp": "2026-04-01T09:30:00Z"
+    }
+  ]
+}
+```
+
+### Inventory adjustment create (`201 Created`)
+
+```json
+POST /api/v1/inventory/adjustments
+→ 201 Created
+{
+  "success": true,
+  "message": "Inventory adjustment posted",
+  "data": {
+    "id": 701,
+    "adjustmentDate": "2026-04-07",
+    "reason": "Cycle count correction",
+    "status": "POSTED",
+    "referenceNumber": "INV-ADJ-2026-00701"
+  }
+}
+```
+
+### Opening stock import response (`importedCount`)
+
+```json
+POST /api/v1/inventory/opening-stock
+{
+  "success": true,
+  "data": {
+    "openingStockBatchKey": "FY26-OPENING-STOCK-01",
+    "rowsProcessed": 24,
+    "importedCount": 24,
+    "finishedGoodBatchesCreated": 8,
+    "rawMaterialBatchesCreated": 16,
+    "errors": []
+  }
+}
+```
+
+### Supplier create (`201 Created`) and supplier detail
+
+```json
+POST /api/v1/suppliers
+→ 201 Created
+{
+  "success": true,
+  "message": "Supplier created",
+  "data": {
+    "id": 301,
+    "name": "ABC Chemicals",
+    "status": "PENDING",
+    "outstandingBalance": 0
+  }
+}
+```
+
+```json
+GET /api/v1/suppliers/301
+{
+  "success": true,
+  "data": {
+    "id": 301,
+    "name": "ABC Chemicals",
+    "status": "APPROVED",
+    "outstandingBalance": 45250.0
+  }
+}
+```
+
+### Purchase order create (`201 Created`) and timeline
+
+```json
+POST /api/v1/purchasing/purchase-orders
+→ 201 Created
+{
+  "success": true,
+  "message": "Purchase order recorded",
+  "data": {
+    "id": 8801,
+    "status": "DRAFT",
+    "supplierId": 301
+  }
+}
+```
+
+```json
+GET /api/v1/purchasing/purchase-orders/8801/timeline
+{
+  "success": true,
+  "data": [
+    {
+      "id": 1,
+      "fromStatus": "DRAFT",
+      "toStatus": "APPROVED",
+      "status": "APPROVED",
+      "changedAt": "2026-04-07T09:45:10Z",
+      "timestamp": "2026-04-07T09:45:10Z",
+      "actor": "controller@acme.test",
+      "changedBy": "controller@acme.test",
+      "reasonCode": "MANUAL_APPROVAL",
+      "reason": "Approved after review"
+    }
+  ]
+}
+```
 
 ## Invoices
 
@@ -162,6 +428,12 @@ GET /api/v1/dealers?status=ALL&page=0&size=50
 ```json
 GET /api/v1/invoices
 ```
+
+```json
+GET /api/v1/invoices?orderId=1201
+```
+
+Use `orderId` to scope the list to invoices linked to a specific sales order.
 
 ### Invoice Response
 
@@ -349,6 +621,7 @@ metadata.
     "cogsAccountId": 5101,
     "revenueAccountId": 4101,
     "discountAccountId": 4102,
+    "fgDiscountAccountId": 4102,
     "taxAccountId": 2105
   }
 }
@@ -361,6 +634,16 @@ Finished goods may also rely on explicit item metadata fields:
 - `fgRevenueAccountId`
 - `fgDiscountAccountId`
 - `fgTaxAccountId`
+
+`POST /api/v1/catalog/items` also accepts explicit account override fields in
+`CatalogItemRequest`:
+
+- `inventoryAccountId`
+- `cogsAccountId`
+- `revenueAccountId`
+
+`GET /api/v1/accounting/accounts/tree` returns recursive nodes where each
+`AccountNode` includes `children`.
 
 ## Journal create request
 
@@ -387,6 +670,145 @@ Finished goods may also rely on explicit item metadata fields:
 Public route:
 
 - `POST /api/v1/accounting/journal-entries`
+
+## Dealer receipt request
+
+`POST /api/v1/accounting/receipts/dealer` now supports true on-account receipts
+without forcing invoice allocations.
+
+### Unallocated on-account receipt (no allocations)
+
+```json
+{
+  "dealerId": 101,
+  "cashAccountId": 1101,
+  "amount": 1250.00,
+  "referenceNumber": "DR-ON-2026-0042",
+  "memo": "On-account receipt"
+}
+```
+
+### Explicit unapplied carry row
+
+```json
+{
+  "dealerId": 101,
+  "cashAccountId": 1101,
+  "amount": 1250.00,
+  "referenceNumber": "DR-ON-2026-0043",
+  "memo": "On-account receipt",
+  "allocations": [
+    {
+      "appliedAmount": 1250.00,
+      "applicationType": "ON_ACCOUNT",
+      "memo": "Carry on account"
+    }
+  ]
+}
+```
+
+Rules:
+
+- `allocations` is optional for dealer receipts.
+- If `allocations` is provided, `appliedAmount` totals must equal `amount`.
+- Unapplied rows must not include `invoiceId`; use `applicationType` values
+  `ON_ACCOUNT` or `FUTURE_APPLICATION`.
+
+## Partner settlement request
+
+Dealer and supplier settlement routes now share the same request body.
+
+```json
+POST /api/v1/accounting/settlements/dealers
+{
+  "partnerType": "DEALER",
+  "partnerId": 101,
+  "cashAccountId": 1101,
+  "amount": 1650.00,
+  "unappliedAmountApplication": "ON_ACCOUNT",
+  "settlementDate": "2026-03-31",
+  "referenceNumber": "RCPT-2026-0042",
+  "memo": "Invoice settlement",
+  "allocations": [
+    {
+      "invoiceId": 1001,
+      "appliedAmount": 1650.00,
+      "discountAmount": 0,
+      "fxAdjustment": 0,
+      "writeOffAmount": 0,
+      "applicationType": "DOCUMENT",
+      "memo": "Full settlement"
+    }
+  ]
+}
+```
+
+Use the same DTO on:
+
+- `POST /api/v1/accounting/settlements/dealers`
+- `POST /api/v1/accounting/settlements/suppliers`
+
+Change `partnerType`, `partnerId`, and allocation document identifiers to match
+the partner flow. Do not send retired `DealerSettlementRequest` or
+`SupplierSettlementRequest` payloads.
+Do not send a separate `payments` array; settlement cash modeling uses
+`cashAccountId` + `amount` within `PartnerSettlementRequest`.
+
+`unappliedAmountApplication` behavior depends on request mode:
+
+- **With explicit `allocations` present**: allocation rows are canonical, and
+  `allocations[].applicationType` drives behavior (`DOCUMENT` for
+  invoice/purchase rows, unapplied modes only for rows without a document id).
+  Header-level `unappliedAmountApplication` is ignored for those explicit rows.
+- **Without `allocations` (header/FIFO settlement mode)**: the backend derives
+  document allocations automatically and uses header-level
+  `unappliedAmountApplication` only for any remaining unapplied balance. In this
+  mode, use `ON_ACCOUNT` or `FUTURE_APPLICATION`; `DOCUMENT` is rejected.
+
+## Accounting period create or update request
+
+```json
+POST /api/v1/accounting/periods
+{
+  "year": 2026,
+  "month": 4,
+  "costingMethod": "FIFO"
+}
+```
+
+```json
+PUT /api/v1/accounting/periods/12
+{
+  "costingMethod": "WEIGHTED_AVERAGE"
+}
+```
+
+Both routes use the same `AccountingPeriodRequest` DTO.
+
+## Period close action request
+
+```json
+POST /api/v1/accounting/periods/12/request-close
+{
+  "note": "Bank reconciliation and checklist completed",
+  "force": true
+}
+```
+
+The same `PeriodCloseRequestActionRequest` body applies to:
+
+- `POST /api/v1/accounting/periods/{periodId}/request-close`
+- `POST /api/v1/accounting/periods/{periodId}/approve-close`
+- `POST /api/v1/accounting/periods/{periodId}/reject-close`
+
+## Period reopen request
+
+```json
+POST /api/v1/accounting/periods/12/reopen
+{
+  "reason": "Late audit adjustment"
+}
+```
 
 ## Journal reversal request
 
@@ -449,17 +871,26 @@ always `GET /api/v1/admin/approvals`.
 }
 ```
 
-## Error Response Example
+## Error Response Example (`POST /api/v1/admin/users` validation)
+
+For `@Valid` request-body failures, field-level hints are returned under
+`data.errors`.
 
 ```json
 {
   "success": false,
-  "message": "Validation failed",
-  "errorCode": "VALIDATION_ERROR",
-  "errors": [
-    { "field": "email", "message": "Invalid email format" },
-    { "field": "password", "message": "Password must be at least 8 characters" }
-  ],
+  "message": "Validation failed: email must be a well-formed email address; displayName must not be blank; roles must not be empty",
+  "data": {
+    "code": "VAL_001",
+    "message": "Validation failed: email must be a well-formed email address; displayName must not be blank; roles must not be empty",
+    "reason": "Validation failed: email must be a well-formed email address; displayName must not be blank; roles must not be empty",
+    "traceId": "c2608f47-b9bb-4ec8-b725-c8caf7302af5",
+    "errors": {
+      "email": "must be a well-formed email address",
+      "displayName": "must not be blank",
+      "roles": "must not be empty"
+    }
+  },
   "timestamp": "2026-03-31T10:00:00Z"
 }
 ```

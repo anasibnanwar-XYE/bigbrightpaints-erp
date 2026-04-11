@@ -26,7 +26,6 @@ import org.springframework.test.util.ReflectionTestUtils;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.hr.domain.Attendance;
@@ -45,7 +44,7 @@ class AttendanceServiceTest {
   @Mock private CompanyContextService companyContextService;
   @Mock private AttendanceRepository attendanceRepository;
   @Mock private EmployeeRepository employeeRepository;
-  @Mock private CompanyEntityLookup companyEntityLookup;
+  @Mock private CompanyScopedHrLookupService hrLookupService;
   @Mock private CompanyClock companyClock;
 
   private AttendanceService attendanceService;
@@ -61,7 +60,7 @@ class AttendanceServiceTest {
             companyContextService,
             attendanceRepository,
             employeeRepository,
-            companyEntityLookup,
+            hrLookupService,
             companyClock);
 
     company = new Company();
@@ -224,7 +223,7 @@ class AttendanceServiceTest {
   @Test
   void markAttendance_invalidStatusRejected() {
     when(companyClock.today(company)).thenReturn(LocalDate.of(2026, 2, 1));
-    when(companyEntityLookup.requireEmployee(company, 1L)).thenReturn(emp1);
+    when(hrLookupService.requireEmployee(company, 1L)).thenReturn(emp1);
     when(attendanceRepository.findByCompanyAndEmployeeAndAttendanceDate(
             company, emp1, LocalDate.of(2026, 2, 1)))
         .thenReturn(Optional.empty());

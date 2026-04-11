@@ -81,6 +81,12 @@ class InventoryValuationServiceTest {
     assertThat(service.resolveDispatchUnitCost(null, null)).isEqualByComparingTo(BigDecimal.ZERO);
   }
 
+  @Test
+  void normalizeStateCode_trimsAndUppercasesNonBlankValues() {
+    assertThat(service.normalizeStateCode("  mh  ")).isEqualTo("MH");
+    assertThat(service.normalizeStateCode("   ")).isNull();
+  }
+
   private static void setId(FinishedGood finishedGood, Long id) {
     try {
       java.lang.reflect.Field field = FinishedGood.class.getDeclaredField("id");

@@ -26,7 +26,6 @@ import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -120,8 +119,7 @@ class TS_RuntimeTenantRuntimeEnforcementTest {
   }
 
   @Test
-  void rejectsReadRequestWhenTenantLifecycleIsSuspended_beforeRuntimeAdmission()
-      throws Exception {
+  void rejectsReadRequestWhenTenantLifecycleIsSuspended_beforeRuntimeAdmission() throws Exception {
     authenticateForCompany("actor@bbp.com", "ACME", "ROLE_ADMIN");
     when(companyService.resolveLifecycleStateByCode("ACME"))
         .thenReturn(CompanyLifecycleState.SUSPENDED);
@@ -167,11 +165,7 @@ class TS_RuntimeTenantRuntimeEnforcementTest {
         TenantRuntimeEnforcementService.TenantRequestAdmission.admittedPolicyControl(
             "ACME", "chain-1");
     when(tenantRuntimeRequestAdmissionService.beginRequest(
-            "ACME",
-            "/api/v1/superadmin/tenants/42/limits",
-            "PUT",
-            "super-admin@bbp.com",
-            true))
+            "ACME", "/api/v1/superadmin/tenants/42/limits", "PUT", "super-admin@bbp.com", true))
         .thenReturn(admission);
 
     MockHttpServletRequest request =
@@ -188,11 +182,7 @@ class TS_RuntimeTenantRuntimeEnforcementTest {
     assertThat(companyInChain.get()).isEqualTo("ACME");
     verify(tenantRuntimeRequestAdmissionService)
         .beginRequest(
-            "ACME",
-            "/api/v1/superadmin/tenants/42/limits",
-            "PUT",
-            "super-admin@bbp.com",
-            true);
+            "ACME", "/api/v1/superadmin/tenants/42/limits", "PUT", "super-admin@bbp.com", true);
     verify(tenantRuntimeRequestAdmissionService).completeRequest(admission, 200);
   }
 
@@ -238,7 +228,7 @@ class TS_RuntimeTenantRuntimeEnforcementTest {
   void privateHelperMethods_coverCanonicalControlRequestBranches() {
     assertThat(
             (Boolean)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     filter,
                     "isLifecycleControlRequest",
                     "/api/v1/superadmin/tenants/7/limits",
@@ -246,7 +236,7 @@ class TS_RuntimeTenantRuntimeEnforcementTest {
         .isTrue();
     assertThat(
             (Boolean)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     filter,
                     "isLifecycleControlRequest",
                     "/api/v1/superadmin/tenants/7/admins/3/email-change/confirm",
@@ -254,7 +244,7 @@ class TS_RuntimeTenantRuntimeEnforcementTest {
         .isTrue();
     assertThat(
             (Boolean)
-                ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     filter,
                     "isLifecycleControlRequest",
                     "/api/v1/superadmin/tenants/7/limits",

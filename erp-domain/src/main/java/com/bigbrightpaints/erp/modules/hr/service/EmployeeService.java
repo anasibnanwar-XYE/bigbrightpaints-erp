@@ -5,6 +5,7 @@ import java.time.LocalDate;
 import java.util.Arrays;
 import java.util.List;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -13,7 +14,6 @@ import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.idempotency.IdempotencyUtils;
 import com.bigbrightpaints.erp.core.security.CryptoService;
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.core.validation.ValidationUtils;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
@@ -29,19 +29,20 @@ public class EmployeeService {
 
   private final CompanyContextService companyContextService;
   private final EmployeeRepository employeeRepository;
-  private final CompanyEntityLookup companyEntityLookup;
+  private final CompanyScopedHrLookupService hrLookupService;
   private final SalaryStructureTemplateRepository salaryStructureTemplateRepository;
   private final CryptoService cryptoService;
 
+  @Autowired
   public EmployeeService(
       CompanyContextService companyContextService,
       EmployeeRepository employeeRepository,
-      CompanyEntityLookup companyEntityLookup,
+      CompanyScopedHrLookupService hrLookupService,
       SalaryStructureTemplateRepository salaryStructureTemplateRepository,
       CryptoService cryptoService) {
     this.companyContextService = companyContextService;
     this.employeeRepository = employeeRepository;
-    this.companyEntityLookup = companyEntityLookup;
+    this.hrLookupService = hrLookupService;
     this.salaryStructureTemplateRepository = salaryStructureTemplateRepository;
     this.cryptoService = cryptoService;
   }
@@ -90,7 +91,7 @@ public class EmployeeService {
   @Transactional
   public void deleteEmployee(Long id) {
     Company company = companyContextService.requireCurrentCompany();
-    Employee employee = companyEntityLookup.requireEmployee(company, id);
+    Employee employee = hrLookupService.requireEmployee(company, id);
     employeeRepository.delete(employee);
   }
 

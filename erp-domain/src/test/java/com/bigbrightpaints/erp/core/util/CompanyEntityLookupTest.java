@@ -30,7 +30,6 @@ import com.bigbrightpaints.erp.modules.production.domain.ProductionProductReposi
 import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchase;
 import com.bigbrightpaints.erp.modules.purchasing.domain.Supplier;
 import com.bigbrightpaints.erp.modules.purchasing.service.CompanyScopedPurchasingLookupService;
-import com.bigbrightpaints.erp.modules.sales.domain.CreditRequestRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.PromotionRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderRepository;
@@ -50,7 +49,6 @@ class CompanyEntityLookupTest {
   @Mock private ProductionLogRepository productionLogRepository;
   @Mock private PromotionRepository promotionRepository;
   @Mock private SalesTargetRepository salesTargetRepository;
-  @Mock private CreditRequestRepository creditRequestRepository;
   @Mock private AccountRepository accountRepository;
   @Mock private JournalEntryRepository journalEntryRepository;
   @Mock private AccountingPeriodRepository accountingPeriodRepository;
@@ -77,7 +75,6 @@ class CompanyEntityLookupTest {
             productionLogRepository,
             promotionRepository,
             salesTargetRepository,
-            creditRequestRepository,
             accountRepository,
             journalEntryRepository,
             accountingPeriodRepository,

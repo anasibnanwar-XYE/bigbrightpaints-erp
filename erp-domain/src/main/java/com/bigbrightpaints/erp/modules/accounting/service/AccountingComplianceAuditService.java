@@ -17,6 +17,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.bigbrightpaints.erp.core.audittrail.AuditActionEventCommand;
 import com.bigbrightpaints.erp.core.audittrail.AuditActionEventSource;
 import com.bigbrightpaints.erp.core.audittrail.AuditActionEventStatus;
+import com.bigbrightpaints.erp.core.audittrail.AuditCorrelationIdResolver;
 import com.bigbrightpaints.erp.core.audittrail.EnterpriseAuditTrailService;
 import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
@@ -53,6 +54,11 @@ public class AccountingComplianceAuditService {
   }
 
   public void recordJournalCreation(Company company, JournalEntry entry) {
+    recordJournalCreation(company, entry, Map.of());
+  }
+
+  public void recordJournalCreation(
+      Company company, JournalEntry entry, Map<String, String> additionalMetadata) {
     if (company == null || entry == null) {
       return;
     }
@@ -94,6 +100,7 @@ public class AccountingComplianceAuditService {
     if (StringUtils.hasText(entry.getAttachmentReferences())) {
       metadata.put("attachmentReferences", entry.getAttachmentReferences().trim());
     }
+    mergeAdditionalMetadata(metadata, additionalMetadata);
 
     record(
         company,
@@ -375,6 +382,15 @@ public class AccountingComplianceAuditService {
       String currency,
       Map<String, String> metadata) {
     HttpServletRequest request = currentRequest();
+    Map<String, String> safeMetadata = metadata != null ? metadata : Map.of();
+    UUID correlationId =
+        AuditCorrelationIdResolver.resolveCorrelationId(
+            request,
+            referenceNumber,
+            safeMetadata.get("sourceReference"),
+            safeMetadata.get("journalSource"),
+            entityType,
+            entityId);
     enterpriseAuditTrailService.recordBusinessEvent(
         new AuditActionEventCommand(
             company,
@@ -388,7 +404,7 @@ public class AccountingComplianceAuditService {
             null,
             amount,
             currency,
-            parseUuid(header(request, "X-Correlation-Id")),
+            correlationId,
             header(request, "X-Request-Id"),
             resolveTraceId(request),
             resolveClientIp(request),
@@ -396,7 +412,7 @@ public class AccountingComplianceAuditService {
             null,
             false,
             null,
-            metadata,
+            safeMetadata,
             CompanyTime.now(company)));
   }
 
@@ -461,6 +477,20 @@ public class AccountingComplianceAuditService {
     return id != null ? id.toString() : null;
   }
 
+  private void mergeAdditionalMetadata(
+      Map<String, String> metadata, Map<String, String> additionalMetadata) {
+    if (metadata == null || additionalMetadata == null || additionalMetadata.isEmpty()) {
+      return;
+    }
+    additionalMetadata.forEach(
+        (key, value) -> {
+          if (!StringUtils.hasText(key) || value == null) {
+            return;
+          }
+          metadata.put(key.trim(), value.trim());
+        });
+  }
+
   private HttpServletRequest currentRequest() {
     if (!(RequestContextHolder.getRequestAttributes()
         instanceof ServletRequestAttributes servletRequestAttributes)) {
@@ -496,17 +526,6 @@ public class AccountingComplianceAuditService {
 
   private String header(HttpServletRequest request, String name) {
     return request == null ? null : trimToNull(request.getHeader(name));
-  }
-
-  private UUID parseUuid(String value) {
-    if (!StringUtils.hasText(value)) {
-      return null;
-    }
-    try {
-      return UUID.fromString(value.trim());
-    } catch (IllegalArgumentException ex) {
-      return null;
-    }
   }
 
   private String trimToNull(String value) {

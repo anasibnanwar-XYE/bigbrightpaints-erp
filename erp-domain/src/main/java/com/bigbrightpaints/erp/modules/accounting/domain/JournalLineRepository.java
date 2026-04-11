@@ -27,7 +27,7 @@ public interface JournalLineRepository extends JpaRepository<JournalLine, Long> 
       join fetch line.journalEntry entry
       where entry.company = :company
         and line.account.id = :accountId
-        and entry.status = 'POSTED'
+        and entry.status = com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryStatus.POSTED
         and entry.entryDate between :start and :end
       order by entry.entryDate asc, entry.referenceNumber asc, line.id asc
       """)
@@ -39,11 +39,26 @@ public interface JournalLineRepository extends JpaRepository<JournalLine, Long> 
 
   @Query(
       """
+      select line from JournalLine line
+      join fetch line.journalEntry entry
+      where entry.company = :company
+        and entry.id in :journalEntryIds
+        and line.account.id = :accountId
+        and entry.status = com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryStatus.POSTED
+      order by entry.entryDate asc, line.id asc
+      """)
+  List<JournalLine> findPostedLinesForAccountByJournalEntryIds(
+      @Param("company") Company company,
+      @Param("journalEntryIds") Collection<Long> journalEntryIds,
+      @Param("accountId") Long accountId);
+
+  @Query(
+      """
       select line.account.type, sum(line.debit), sum(line.credit)
       from JournalLine line
       join line.journalEntry entry
       where entry.company = :company
-        and entry.status = 'POSTED'
+        and entry.status = com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryStatus.POSTED
         and entry.entryDate between :start and :end
       group by line.account.type
       """)
@@ -58,7 +73,7 @@ public interface JournalLineRepository extends JpaRepository<JournalLine, Long> 
       from JournalLine line
       join line.journalEntry entry
       where entry.company = :company
-        and entry.status = 'POSTED'
+        and entry.status = com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryStatus.POSTED
         and entry.entryDate between :start and :end
       group by line.account.id
       """)
@@ -73,7 +88,7 @@ public interface JournalLineRepository extends JpaRepository<JournalLine, Long> 
       from JournalLine line
       join line.journalEntry entry
       where entry.company = :company
-        and entry.status = 'POSTED'
+        and entry.status = com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryStatus.POSTED
         and entry.entryDate between :start and :end
         and entry.sourceModule = 'ACCOUNTING_PERIOD'
         and entry.referenceNumber like 'PERIOD-CLOSE-%'
@@ -91,7 +106,7 @@ public interface JournalLineRepository extends JpaRepository<JournalLine, Long> 
       from JournalLine line
       join line.journalEntry entry
       where entry.company = :company
-        and entry.status = 'POSTED'
+        and entry.status = com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryStatus.POSTED
         and entry.entryDate <= :end
       group by line.account.id
       """)
@@ -104,7 +119,7 @@ public interface JournalLineRepository extends JpaRepository<JournalLine, Long> 
       from JournalLine line
       join line.journalEntry entry
       where entry.company = :company
-        and entry.status = 'POSTED'
+        and entry.status = com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryStatus.POSTED
         and line.account.id = :accountId
         and entry.entryDate <= :end
       """)
@@ -139,7 +154,7 @@ public interface JournalLineRepository extends JpaRepository<JournalLine, Long> 
       @Param("accountIds") Collection<Long> accountIds,
       @Param("start") LocalDate start,
       @Param("end") LocalDate end,
-      @Param("status") String status);
+      @Param("status") JournalEntryStatus status);
 
   @Query(
       """

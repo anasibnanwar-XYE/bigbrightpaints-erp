@@ -2,10 +2,10 @@
 
 > ⚠️ **REFERENCE ONLY**: This inventory is retained for review and governance cross-reference, but it is not the canonical API truth. Use repo-root `openapi.json`, [docs/frontend-api/README.md](frontend-api/README.md), and the module/flow packets linked from [docs/INDEX.md](INDEX.md) as the primary contract surfaces.
 
-Last reviewed: 2026-04-03
+Last reviewed: 2026-04-08
 
 Source: `openapi.json`
-Updated: 2026-04-03
+Updated: 2026-04-08
 
 Related behavior contract:
 - `docs/ACCOUNTING_PORTAL_SCOPE_GUARDRAIL.md`
@@ -19,9 +19,9 @@ Portal scope guardrail:
 ## Canonical API contract gate
 
 - Canonical machine contract source: repo-root `openapi.json`.
-- OpenAPI snapshot: `openapi.json` (sha256 `2c2bceecea0630cbcafbf436cc71e142414f6bc3cc64b2fe28a5d086e53b95ea`)
-- OpenAPI total paths: `271`
-- OpenAPI total operations: `322`
+- OpenAPI snapshot: `openapi.json` (sha256 `1981c782950a34c2b63cde5f6de1fca12e8fb0dacf49605c3c5b3511fa1f3a3c`)
+- OpenAPI total paths: `273`
+- OpenAPI total operations: `325`
 - Guard remediation flow: if parity drifts, regenerate this inventory from canonical `openapi.json`, then rerun `bash scripts/guard_openapi_contract_drift.sh` and `bash scripts/guard_accounting_portal_scope_contract.sh`.
 - Hard-cut contract reminder: retired surfaces such as `/api/v1/auth/profile`, `/api/v1/accounting/journals/manual`, `/api/v1/accounting/journals/{entryId}/reverse`, and direct `/api/v1/accounting/periods/{periodId}/close` are intentionally absent from this inventory and must not be reintroduced in frontend or review docs.
 
@@ -29,7 +29,7 @@ Portal scope guardrail:
 
 | Module | Path count | Examples |
 |---|---:|---|
-| `accounting` | 57 | /api/v1/accounting/accounts, /api/v1/accounting/accounts/tree, /api/v1/accounting/audit/events |
+| `accounting` | 55 | /api/v1/accounting/accounts, /api/v1/accounting/accounts/tree, /api/v1/accounting/audit/events |
 | `admin` | 15 | /api/v1/admin/approvals, /api/v1/admin/audit/events, /api/v1/admin/exports/{requestId}/approve |
 | `audit` | 1 | /api/v1/audit/ml-events |
 | `auth` | 11 | /api/v1/auth/login, /api/v1/auth/logout, /api/v1/auth/me |
@@ -38,7 +38,7 @@ Portal scope guardrail:
 | `companies` | 2 | /api/v1/companies, /api/v1/companies/{id} |
 | `credit` | 6 | /api/v1/credit/limit-requests, /api/v1/credit/limit-requests/{id}/approve, /api/v1/credit/override-requests |
 | `dealer-portal` | 7 | /api/v1/dealer-portal/aging, /api/v1/dealer-portal/credit-limit-requests, /api/v1/dealer-portal/dashboard |
-| `dealers` | 4 | /api/v1/dealers, /api/v1/dealers/search, /api/v1/dealers/{dealerId} |
+| `dealers` | 5 | /api/v1/dealers, /api/v1/dealers/import, /api/v1/dealers/search |
 | `demo` | 1 | /api/v1/demo/ping |
 | `dispatch` | 8 | /api/v1/dispatch/confirm, /api/v1/dispatch/order/{orderId}, /api/v1/dispatch/slip/{slipId}/status |
 | `exports` | 2 | /api/v1/exports/request, /api/v1/exports/{requestId}/download |
@@ -54,10 +54,10 @@ Portal scope guardrail:
 | `portal` | 6 | /api/v1/portal/dashboard, /api/v1/portal/finance/aging, /api/v1/portal/finance/ledger |
 | `purchasing` | 12 | /api/v1/purchasing/goods-receipts, /api/v1/purchasing/goods-receipts/{id}, /api/v1/purchasing/purchase-orders |
 | `raw-materials` | 3 | /api/v1/raw-materials/stock, /api/v1/raw-materials/stock/inventory, /api/v1/raw-materials/stock/low-stock |
-| `reports` | 17 | /api/v1/reports/account-statement, /api/v1/reports/aged-debtors, /api/v1/reports/aging/receivables |
+| `reports` | 19 | /api/v1/reports/account-statement, /api/v1/reports/aged-debtors, /api/v1/reports/aging/receivables |
 | `sales` | 16 | /api/v1/sales/dashboard, /api/v1/sales/dealers, /api/v1/sales/dealers/search |
 | `superadmin` | 18 | /api/v1/superadmin/audit/platform-events, /api/v1/superadmin/changelog, /api/v1/superadmin/dashboard |
-| `suppliers` | 5 | /api/v1/suppliers, /api/v1/suppliers/{id}, /api/v1/suppliers/{id}/activate |
+| `suppliers` | 6 | /api/v1/suppliers, /api/v1/suppliers/import, /api/v1/suppliers/{id} |
 | `support` | 4 | /api/v1/portal/support/tickets, /api/v1/dealer-portal/support/tickets, /api/v1/portal/support/tickets/{ticketId} |
 
 ## `accounting`
@@ -93,7 +93,6 @@ Portal scope guardrail:
 - `POST` `/api/v1/accounting/month-end/checklist/{periodId}`
 - `POST` `/api/v1/accounting/opening-balances`
 - `POST` `/api/v1/accounting/payroll/payments`
-- `POST` `/api/v1/accounting/payroll/payments/batch`
 - `GET, POST` `/api/v1/accounting/periods`
 - `PUT` `/api/v1/accounting/periods/{periodId}`
 - `POST` `/api/v1/accounting/periods/{periodId}/approve-close`
@@ -102,7 +101,6 @@ Portal scope guardrail:
 - `POST` `/api/v1/accounting/periods/{periodId}/request-close`
 - `POST` `/api/v1/accounting/receipts/dealer`
 - `POST` `/api/v1/accounting/receipts/dealer/hybrid`
-- `POST` `/api/v1/accounting/reconciliation/bank`
 - `GET, POST` `/api/v1/accounting/reconciliation/bank/sessions`
 - `GET` `/api/v1/accounting/reconciliation/bank/sessions/{sessionId}`
 - `POST` `/api/v1/accounting/reconciliation/bank/sessions/{sessionId}/complete`
@@ -195,8 +193,9 @@ Portal scope guardrail:
 ## `dealers`
 
 - `GET, POST` `/api/v1/dealers`
+- `POST` `/api/v1/dealers/import`
 - `GET` `/api/v1/dealers/search`
-- `PUT` `/api/v1/dealers/{dealerId}`
+- `GET, PUT` `/api/v1/dealers/{dealerId}`
 - `POST` `/api/v1/dealers/{dealerId}/dunning/hold`
 
 ## `demo`
@@ -360,6 +359,7 @@ Bulk operator note: `/api/v1/factory/bulk-batches/{finishedGoodId}` and `/api/v1
 - `GET` `/api/v1/reports/balance-sheet/hierarchy`
 - `GET` `/api/v1/reports/balance-warnings`
 - `GET` `/api/v1/reports/cash-flow`
+- `GET` `/api/v1/reports/cost-allocation`
 - `GET` `/api/v1/reports/gst-return`
 - `GET` `/api/v1/reports/income-statement/hierarchy`
 - `GET` `/api/v1/reports/inventory-reconciliation`
@@ -367,6 +367,7 @@ Bulk operator note: `/api/v1/factory/bulk-batches/{finishedGoodId}` and `/api/v1
 - `GET` `/api/v1/reports/monthly-production-costs`
 - `GET` `/api/v1/reports/production-logs/{id}/cost-breakdown`
 - `GET` `/api/v1/reports/profit-loss`
+- `GET` `/api/v1/reports/product-costing`
 - `GET` `/api/v1/reports/reconciliation-dashboard`
 - `GET` `/api/v1/reports/trial-balance`
 - `GET` `/api/v1/reports/wastage`
@@ -413,6 +414,7 @@ Bulk operator note: `/api/v1/factory/bulk-batches/{finishedGoodId}` and `/api/v1
 ## `suppliers`
 
 - `GET, POST` `/api/v1/suppliers`
+- `POST` `/api/v1/suppliers/import`
 - `GET, PUT` `/api/v1/suppliers/{id}`
 - `POST` `/api/v1/suppliers/{id}/activate`
 - `POST` `/api/v1/suppliers/{id}/approve`

@@ -15,7 +15,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import com.bigbrightpaints.erp.core.util.CompanyClock;
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodSnapshotRepository;
@@ -23,6 +22,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodTrialBa
 import com.bigbrightpaints.erp.modules.accounting.domain.DealerLedgerRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalLineRepository;
+import com.bigbrightpaints.erp.modules.accounting.service.CompanyScopedAccountingLookupService;
 import com.bigbrightpaints.erp.modules.accounting.service.DealerLedgerService;
 import com.bigbrightpaints.erp.modules.accounting.service.GstService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
@@ -33,6 +33,7 @@ import com.bigbrightpaints.erp.modules.factory.domain.ProductionLog;
 import com.bigbrightpaints.erp.modules.factory.domain.ProductionLogRepository;
 import com.bigbrightpaints.erp.modules.factory.domain.SizeVariant;
 import com.bigbrightpaints.erp.modules.factory.dto.CostBreakdownDto;
+import com.bigbrightpaints.erp.modules.factory.service.CompanyScopedFactoryLookupService;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatch;
 import com.bigbrightpaints.erp.modules.inventory.domain.InventoryMovement;
@@ -42,6 +43,7 @@ import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatch;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovement;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovementRepository;
+import com.bigbrightpaints.erp.modules.inventory.service.InventoryPhysicalCountService;
 import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceRepository;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionProduct;
 import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchaseRepository;
@@ -64,7 +66,8 @@ class ReportServiceCostBreakdownTest {
   @Mock private PackingRecordRepository packingRecordRepository;
   @Mock private InventoryMovementRepository inventoryMovementRepository;
   @Mock private RawMaterialMovementRepository rawMaterialMovementRepository;
-  @Mock private CompanyEntityLookup companyEntityLookup;
+  @Mock private CompanyScopedAccountingLookupService accountingLookupService;
+  @Mock private CompanyScopedFactoryLookupService factoryLookupService;
   @Mock private CompanyClock companyClock;
   @Mock private InventoryValuationQueryService inventoryValuationService;
   @Mock private TrialBalanceReportQueryService trialBalanceReportQueryService;
@@ -73,6 +76,7 @@ class ReportServiceCostBreakdownTest {
   @Mock private AgedDebtorsReportQueryService agedDebtorsReportQueryService;
   @Mock private InvoiceRepository invoiceRepository;
   @Mock private RawMaterialPurchaseRepository rawMaterialPurchaseRepository;
+  @Mock private InventoryPhysicalCountService inventoryPhysicalCountService;
 
   private final GstService gstService = new GstService();
   private ReportService reportService;
@@ -96,7 +100,8 @@ class ReportServiceCostBreakdownTest {
             packingRecordRepository,
             inventoryMovementRepository,
             rawMaterialMovementRepository,
-            companyEntityLookup,
+            accountingLookupService,
+            factoryLookupService,
             companyClock,
             inventoryValuationService,
             trialBalanceReportQueryService,
@@ -105,7 +110,8 @@ class ReportServiceCostBreakdownTest {
             agedDebtorsReportQueryService,
             invoiceRepository,
             rawMaterialPurchaseRepository,
-            gstService);
+            gstService,
+            inventoryPhysicalCountService);
     company = new Company();
     ReflectionTestUtils.setField(company, "id", 700L);
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
@@ -128,7 +134,7 @@ class ReportServiceCostBreakdownTest {
     product.setProductName("Primer Blue");
     log.setProduct(product);
 
-    when(companyEntityLookup.requireProductionLog(company, 88L)).thenReturn(log);
+    when(factoryLookupService.requireProductionLog(company, 88L)).thenReturn(log);
 
     CostBreakdownDto dto = reportService.costBreakdown(88L);
 
@@ -220,7 +226,7 @@ class ReportServiceCostBreakdownTest {
     fgMovement.setUnitCost(new BigDecimal("14.5000"));
     fgMovement.setJournalEntryId(901L);
 
-    when(companyEntityLookup.requireProductionLog(company, 77L)).thenReturn(log);
+    when(factoryLookupService.requireProductionLog(company, 77L)).thenReturn(log);
     when(packingRecordRepository.findByCompanyAndProductionLogOrderByPackedDateAscIdAsc(
             company, log))
         .thenReturn(List.of(packingRecord));
@@ -271,7 +277,7 @@ class ReportServiceCostBreakdownTest {
     log.setProducedAt(Instant.parse("2026-02-13T01:00:00Z"));
     log.setProduct(null);
 
-    when(companyEntityLookup.requireProductionLog(company, 99L)).thenReturn(log);
+    when(factoryLookupService.requireProductionLog(company, 99L)).thenReturn(log);
 
     CostBreakdownDto dto = reportService.costBreakdown(99L);
 

@@ -21,6 +21,7 @@ public interface RawMaterialPurchaseRepository extends JpaRepository<RawMaterial
 
   @EntityGraph(
       attributePaths = {
+        "company",
         "supplier",
         "journalEntry",
         "purchaseOrder",
@@ -36,6 +37,7 @@ public interface RawMaterialPurchaseRepository extends JpaRepository<RawMaterial
 
   @EntityGraph(
       attributePaths = {
+        "company",
         "supplier",
         "journalEntry",
         "purchaseOrder",
@@ -56,11 +58,40 @@ public interface RawMaterialPurchaseRepository extends JpaRepository<RawMaterial
   List<RawMaterialPurchase> findByCompanyAndInvoiceDateBetweenOrderByInvoiceDateAsc(
       Company company, LocalDate start, LocalDate end);
 
+  @EntityGraph(
+      attributePaths = {
+        "company",
+        "supplier",
+        "journalEntry",
+        "purchaseOrder",
+        "goodsReceipt",
+        "lines",
+        "lines.rawMaterial",
+        "lines.rawMaterialBatch"
+      })
   Optional<RawMaterialPurchase> findByCompanyAndId(Company company, Long id);
 
   Optional<RawMaterialPurchase> findByCompanyAndInvoiceNumberIgnoreCase(
       Company company, String invoiceNumber);
 
+  Optional<RawMaterialPurchase> findByCompanyAndIdempotencyKey(
+      Company company, String idempotencyKey);
+
+  @EntityGraph(
+      attributePaths = {
+        "company",
+        "supplier",
+        "journalEntry",
+        "purchaseOrder",
+        "goodsReceipt",
+        "lines",
+        "lines.rawMaterial",
+        "lines.rawMaterialBatch"
+      })
+  Optional<RawMaterialPurchase> findWithLinesByCompanyAndIdempotencyKey(
+      Company company, String idempotencyKey);
+
+  @EntityGraph(attributePaths = {"supplier", "journalEntry", "purchaseOrder", "goodsReceipt"})
   Optional<RawMaterialPurchase> findByCompanyAndGoodsReceipt(
       Company company, GoodsReceipt goodsReceipt);
 

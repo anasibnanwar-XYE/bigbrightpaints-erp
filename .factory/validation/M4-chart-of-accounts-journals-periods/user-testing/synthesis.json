@@ -1,0 +1,53 @@
+{
+  "milestone": "M4-chart-of-accounts-journals-periods",
+  "round": 1,
+  "status": "fail",
+  "assertionsSummary": {
+    "total": 22,
+    "passed": 20,
+    "failed": 1,
+    "blocked": 1
+  },
+  "passedAssertions": [
+    "VAL-COA-001",
+    "VAL-COA-002",
+    "VAL-COA-003",
+    "VAL-COA-004",
+    "VAL-COA-005",
+    "VAL-COA-006",
+    "VAL-COA-007",
+    "VAL-JOURNAL-001",
+    "VAL-JOURNAL-002",
+    "VAL-JOURNAL-003",
+    "VAL-JOURNAL-004",
+    "VAL-JOURNAL-005",
+    "VAL-PERIOD-001",
+    "VAL-PERIOD-002",
+    "VAL-PERIOD-004",
+    "VAL-ONBOARD-001",
+    "VAL-ONBOARD-002",
+    "VAL-ONBOARD-003",
+    "VAL-ONBOARD-005",
+    "VAL-ONBOARD-006"
+  ],
+  "failedAssertions": [
+    {
+      "id": "VAL-PERIOD-003",
+      "reason": "Both month-end checklist endpoints returned HTTP 400 Invalid option 'PENDING' on a fresh tenant instead of returning/updating MonthEndChecklistDto data."
+    }
+  ],
+  "blockedAssertions": [
+    {
+      "id": "VAL-ONBOARD-004",
+      "blockedBy": "POST /api/v1/inventory/opening-stock returned HTTP 409 because opening stock import is disabled in the compose runtime and docker-compose.yml does not pass the enabling toggle through to the app service."
+    }
+  ],
+  "appliedUpdates": [
+    {
+      "target": "user-testing.md",
+      "description": "Documented the reset-runtime manual user seeding workaround, maker-checker two-actor period-close flow, tenant-scoped super-admin reopen requirement, and the reproducible month-end checklist PENDING error.",
+      "source": "setup"
+    }
+  ],
+  "previousRound": null
+}

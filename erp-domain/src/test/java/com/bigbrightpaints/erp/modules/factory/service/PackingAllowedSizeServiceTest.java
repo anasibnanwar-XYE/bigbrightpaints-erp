@@ -213,7 +213,8 @@ class PackingAllowedSizeServiceTest {
 
     @SuppressWarnings("unchecked")
     List<ProductionProduct> familyProducts =
-        ReflectionTestUtils.invokeMethod(service, "resolveFamilyProducts", company, base);
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "resolveFamilyProducts", company, base);
 
     assertThat(familyProducts).containsExactly(base);
   }
@@ -228,7 +229,7 @@ class PackingAllowedSizeServiceTest {
 
     @SuppressWarnings("unchecked")
     Map<String, FinishedGood> finishedGoodsBySku =
-        ReflectionTestUtils.invokeMethod(
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             service, "loadFinishedGoodsBySku", company, List.of(" ", "\t"));
 
     assertThat(finishedGoodsBySku).isEmpty();
