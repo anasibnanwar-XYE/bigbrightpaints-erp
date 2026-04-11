@@ -100,7 +100,57 @@ class JournalQueryServiceSourceFilterTest {
   void normalizeSourceModule_mapsKnownAliases() {
     assertThat(journalQueryService.normalizeSourceModule("PACKING")).isEqualTo("FACTORY_PACKING");
     assertThat(journalQueryService.normalizeSourceModule("cost_allocation"))
-        .isEqualTo("FACTORY_COST_VARIANCE");
+        .isEqualTo("FACTORY_COST_ALLOCATION");
+  }
+
+  @Test
+  void listJournalEntries_mapsCostAllocationAliasToFactoryCostAllocationSource() {
+    when(companyContextService.requireCurrentCompany()).thenReturn(company);
+    JournalEntry entry = new JournalEntry();
+    entry.setSourceModule("FACTORY_COST_ALLOCATION");
+    entry.setReferenceNumber("ALLOC-001");
+    entry.setEntryDate(LocalDate.of(2026, 4, 4));
+    when(journalEntryRepository.findByCompanyAndSourceModuleIgnoreCaseOrderByEntryDateDescIdDesc(
+            eq(company), eq("FACTORY_COST_ALLOCATION"), any()))
+        .thenReturn(new PageImpl<>(List.of(entry)));
+    when(accountingDtoMapperService.resolveDisplayReferenceNumber(company, entry))
+        .thenReturn("ALLOC-001");
+    JournalEntryDto dto =
+        new JournalEntryDto(
+            4L,
+            null,
+            "ALLOC-001",
+            LocalDate.of(2026, 4, 4),
+            "memo",
+            "POSTED",
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            List.of(),
+            null,
+            null,
+            null,
+            null,
+            null,
+            null);
+    when(accountingDtoMapperService.toJournalEntryDto(entry, "ALLOC-001")).thenReturn(dto);
+
+    List<JournalEntryDto> result =
+        journalQueryService.listJournalEntries(null, null, 0, 20, "COST_ALLOCATION");
+
+    assertThat(result).containsExactly(dto);
+    verify(journalEntryRepository)
+        .findByCompanyAndSourceModuleIgnoreCaseOrderByEntryDateDescIdDesc(
+            eq(company), eq("FACTORY_COST_ALLOCATION"), any());
   }
 
   @Test

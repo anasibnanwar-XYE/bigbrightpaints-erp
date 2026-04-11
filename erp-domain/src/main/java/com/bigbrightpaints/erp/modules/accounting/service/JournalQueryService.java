@@ -28,7 +28,7 @@ class JournalQueryService {
   private static final Map<String, String> SOURCE_ALIASES =
       Map.of(
           "PACKING", "FACTORY_PACKING",
-          "COST_ALLOCATION", "FACTORY_COST_VARIANCE");
+          "COST_ALLOCATION", "FACTORY_COST_ALLOCATION");
 
   private final CompanyContextService companyContextService;
   private final JournalEntryRepository journalEntryRepository;
