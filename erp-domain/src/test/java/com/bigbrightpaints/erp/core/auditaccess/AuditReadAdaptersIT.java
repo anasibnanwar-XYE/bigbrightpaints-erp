@@ -315,6 +315,33 @@ class AuditReadAdaptersIT extends AbstractIntegrationTest {
   }
 
   @Test
+  void auditLogAdapter_exposesSubjectPublicIdInFeedSubjectIdentifier() {
+    Company company = dataSeeder.ensureCompany("ARDSUB", "Audit Subject Mapping");
+    LocalDate day = LocalDate.of(2035, 3, 11);
+    String subjectPublicId = "550e8400-e29b-41d4-a716-446655440000";
+    AuditLog resetRequested =
+        saveAuditLog(
+            company.getId(),
+            AuditEvent.PASSWORD_RESET_REQUESTED,
+            day.atTime(9, 0),
+            log -> {
+              log.setRequestPath("/api/v1/auth/password/forgot");
+              log.setMetadata(
+                  Map.of(
+                      "operation", "forgot_password",
+                      "subjectPublicId", subjectPublicId));
+            });
+
+    AuditFeedSlice slice = queryTenantLogs(company, day, day, "AUTH", null, null, null, null, null);
+
+    assertThat(sourceIds(slice)).contains(resetRequested.getId());
+    assertThat(slice.items())
+        .filteredOn(item -> item.sourceId().equals(resetRequested.getId()))
+        .singleElement()
+        .satisfies(item -> assertThat(item.subjectIdentifier()).isEqualTo(subjectPublicId));
+  }
+
+  @Test
   void businessAuditAdapter_filtersTenantAndAccountingFeeds() {
     Company company = dataSeeder.ensureCompany("ARDBIZ", "Audit Read Business");
     LocalDate dayOne = LocalDate.of(2035, 4, 1);

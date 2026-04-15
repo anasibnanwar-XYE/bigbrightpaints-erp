@@ -166,4 +166,10 @@ class AuditEventClassifierTest {
     assertThat(classifier.subjectIdentifier(null)).isNull();
     assertThat(classifier.subjectIdentifier(Map.of("subjectEmail", " "))).isNull();
   }
+
+  @Test
+  void subjectIdentifier_supportsSubjectPublicIdFallback() {
+    assertThat(classifier.subjectIdentifier(Map.of("subjectPublicId", "550e8400-e29b-41d4-a716-446655440000")))
+        .isEqualTo("550e8400-e29b-41d4-a716-446655440000");
+  }
 }
