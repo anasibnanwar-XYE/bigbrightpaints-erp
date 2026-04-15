@@ -7,15 +7,14 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.bigbrightpaints.erp.core.notification.EmailService;
-import com.bigbrightpaints.erp.core.security.PortalRoleActionMatrix;
 import com.bigbrightpaints.erp.modules.admin.dto.AdminNotifyRequest;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 
 import jakarta.validation.Valid;
 
 @RestController
-@RequestMapping("/api/v1/admin")
-@PreAuthorize(PortalRoleActionMatrix.TENANT_ADMIN_ONLY)
+@RequestMapping("/api/v1/superadmin")
+@PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN')")
 public class AdminUtilityController {
 
   private final EmailService emailService;

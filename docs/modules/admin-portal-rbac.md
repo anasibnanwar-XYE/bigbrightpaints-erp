@@ -16,7 +16,7 @@ This packet is the canonical backend ownership map for tenant-admin, portal, and
 
 | Module | Owns |
 | --- | --- |
-| `admin` | Tenant-admin dashboard, users, approval inbox/decisions, tenant-admin audit feed, admin support host, self-settings, utility notify, tenant changelog reads |
+| `admin` | Tenant-admin dashboard, users, approval inbox/decisions, tenant-admin audit feed, admin support host, self-settings, tenant changelog reads |
 | `portal` | Shared internal read models (`/api/v1/portal/**`), including legacy admin insights reads plus accounting-owned internal support host |
 | `rbac` | Platform role catalog APIs and role synchronization (`/api/v1/admin/roles/**`) |
 | `company` | Tenant lifecycle, module gating, limits, support recovery, platform dashboard (`/api/v1/superadmin/**`) |
@@ -44,6 +44,7 @@ Boundary rules:
 - `GET /api/v1/admin/dashboard`
 - Auth: `ROLE_ADMIN`
 - Returns tenant-scoped dashboard read model: recent activity, approval summary, user summary, support summary, runtime usage, session/security summary.
+- User/activity summaries apply privileged-identity masking (`ROLE_ADMIN`, `ROLE_SUPER_ADMIN`) for tenant-admin callers.
 
 ### AdminUserController
 
@@ -118,9 +119,9 @@ Notes:
 
 ### AdminUtilityController
 
-- `POST /api/v1/admin/notify`
-- Auth: `ROLE_ADMIN`
-- Utility surface split out of settings controller.
+- `POST /api/v1/superadmin/notify`
+- Auth: `ROLE_SUPER_ADMIN`
+- Control-plane utility surface split out of settings controller (not part of tenant-admin product).
 
 ### Changelog
 

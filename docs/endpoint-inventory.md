@@ -30,7 +30,7 @@ Portal scope guardrail:
 | Module | Path count | Examples |
 |---|---:|---|
 | `accounting` | 55 | /api/v1/accounting/accounts, /api/v1/accounting/accounts/tree, /api/v1/accounting/accounts/tree/{type} |
-| `admin` | 18 | /api/v1/admin/approvals, /api/v1/admin/approvals/{originType}/{id}/decisions, /api/v1/admin/audit/events |
+| `admin` | 17 | /api/v1/admin/approvals, /api/v1/admin/approvals/{originType}/{id}/decisions, /api/v1/admin/audit/events |
 | `audit` | 1 | /api/v1/audit/ml-events |
 | `auth` | 10 | /api/v1/auth/login, /api/v1/auth/logout, /api/v1/auth/me |
 | `catalog` | 5 | /api/v1/catalog/brands, /api/v1/catalog/brands/{brandId}, /api/v1/catalog/import |
@@ -56,7 +56,7 @@ Portal scope guardrail:
 | `raw-materials` | 3 | /api/v1/raw-materials/stock, /api/v1/raw-materials/stock/inventory, /api/v1/raw-materials/stock/low-stock |
 | `reports` | 19 | /api/v1/reports/account-statement, /api/v1/reports/aged-debtors, /api/v1/reports/aging/receivables |
 | `sales` | 15 | /api/v1/sales/dashboard, /api/v1/sales/dealers, /api/v1/sales/dealers/search |
-| `superadmin` | 18 | /api/v1/superadmin/audit/platform-events, /api/v1/superadmin/changelog, /api/v1/superadmin/changelog/{id} |
+| `superadmin` | 19 | /api/v1/superadmin/audit/platform-events, /api/v1/superadmin/changelog, /api/v1/superadmin/changelog/{id} |
 | `suppliers` | 6 | /api/v1/suppliers, /api/v1/suppliers/import, /api/v1/suppliers/{id} |
 
 ## `accounting`
@@ -123,7 +123,6 @@ Portal scope guardrail:
 - `POST` `/api/v1/admin/approvals/{originType}/{id}/decisions`
 - `GET` `/api/v1/admin/audit/events`
 - `GET` `/api/v1/admin/dashboard`
-- `POST` `/api/v1/admin/notify`
 - `GET, POST` `/api/v1/admin/roles`
 - `GET` `/api/v1/admin/roles/{roleKey}`
 - `GET` `/api/v1/admin/self/settings`
@@ -398,6 +397,7 @@ Portal scope guardrail:
 - `POST` `/api/v1/superadmin/changelog`
 - `PUT, DELETE` `/api/v1/superadmin/changelog/{id}`
 - `GET` `/api/v1/superadmin/dashboard`
+- `POST` `/api/v1/superadmin/notify`
 - `GET` `/api/v1/superadmin/tenants`
 - `GET` `/api/v1/superadmin/tenants/coa-templates`
 - `POST` `/api/v1/superadmin/tenants/onboard`

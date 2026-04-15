@@ -31,7 +31,6 @@ Last reviewed: 2026-04-15
 | Internal support create | `POST /api/v1/admin/support/tickets` | `SupportTicketCreateRequest` | `ApiResponse<SupportTicketResponse>` | `ROLE_ADMIN` |
 | Internal support detail | `GET /api/v1/admin/support/tickets/{ticketId}` | — | `ApiResponse<SupportTicketResponse>` | `ROLE_ADMIN` |
 | Self settings | `GET /api/v1/admin/self/settings` | — | `ApiResponse<AdminSelfSettingsDto>` | `ROLE_ADMIN` |
-| Utility notify | `POST /api/v1/admin/notify` | `AdminNotifyRequest` | `ApiResponse<String>` | `ROLE_ADMIN` |
 
 ## DTOs used by tenant-admin UI
 
@@ -46,4 +45,5 @@ Last reviewed: 2026-04-15
 
 - `/api/v1/admin/roles/**` (RBAC catalog host)
 - `/api/v1/admin/settings` and `PUT /api/v1/admin/settings` (governance/system settings host)
+- `/api/v1/superadmin/notify` (control-plane utility host)
 - `/api/v1/superadmin/**` (control-plane ownership)

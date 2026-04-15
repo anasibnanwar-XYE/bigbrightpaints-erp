@@ -81,6 +81,39 @@ class AdminDashboardSecurityIT extends AbstractIntegrationTest {
     assertThat(superAdminResponse.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
   }
 
+  @Test
+  void dashboard_hides_privileged_identity_counts_and_activity() {
+    // Seed a same-tenant privileged actor event that must stay hidden from tenant-admin dashboard.
+    headersFor(SUPER_ADMIN_EMAIL);
+
+    ResponseEntity<Map> adminResponse =
+        rest.exchange(
+            ErpApiRoutes.ADMIN_DASHBOARD,
+            HttpMethod.GET,
+            new HttpEntity<>(headersFor(ADMIN_EMAIL)),
+            Map.class);
+    assertThat(adminResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(adminResponse.getBody()).isNotNull();
+
+    @SuppressWarnings("unchecked")
+    Map<String, Object> data = (Map<String, Object>) adminResponse.getBody().get("data");
+    assertThat(data).isNotNull();
+
+    @SuppressWarnings("unchecked")
+    Map<String, Object> userSummary = (Map<String, Object>) data.get("userSummary");
+    assertThat(userSummary).isNotNull();
+    assertThat(((Number) userSummary.get("totalUsers")).longValue()).isEqualTo(1L);
+    assertThat(((Number) userSummary.get("enabledUsers")).longValue()).isEqualTo(1L);
+    assertThat(((Number) userSummary.get("disabledUsers")).longValue()).isEqualTo(0L);
+
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> recentActivity = (List<Map<String, Object>>) data.get("recentActivity");
+    assertThat(recentActivity).isNotNull();
+    assertThat(recentActivity)
+        .extracting(item -> String.valueOf(item.get("actor")).trim().toLowerCase())
+        .doesNotContain(SUPER_ADMIN_EMAIL.toLowerCase());
+  }
+
   private HttpHeaders headersFor(String email) {
     ResponseEntity<Map> loginResponse =
         rest.postForEntity(

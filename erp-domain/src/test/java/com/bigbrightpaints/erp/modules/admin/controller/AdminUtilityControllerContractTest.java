@@ -9,21 +9,20 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.RequestMapping;
 
 import com.bigbrightpaints.erp.core.notification.EmailService;
-import com.bigbrightpaints.erp.core.security.PortalRoleActionMatrix;
 import com.bigbrightpaints.erp.modules.admin.dto.AdminNotifyRequest;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 
 class AdminUtilityControllerContractTest {
 
   @Test
-  void classLevelMapping_and_authority_are_tenant_admin_only() {
+  void classLevelMapping_and_authority_are_superadmin_only() {
     RequestMapping mapping = AdminUtilityController.class.getAnnotation(RequestMapping.class);
     PreAuthorize preAuthorize = AdminUtilityController.class.getAnnotation(PreAuthorize.class);
 
     assertThat(mapping).isNotNull();
-    assertThat(mapping.value()).containsExactly("/api/v1/admin");
+    assertThat(mapping.value()).containsExactly("/api/v1/superadmin");
     assertThat(preAuthorize).isNotNull();
-    assertThat(preAuthorize.value()).isEqualTo(PortalRoleActionMatrix.TENANT_ADMIN_ONLY);
+    assertThat(preAuthorize.value()).isEqualTo("hasAuthority('ROLE_SUPER_ADMIN')");
   }
 
   @Test

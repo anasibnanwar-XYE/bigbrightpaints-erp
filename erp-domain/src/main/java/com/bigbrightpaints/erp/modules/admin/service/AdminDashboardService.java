@@ -2,6 +2,10 @@ package com.bigbrightpaints.erp.modules.admin.service;
 
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Locale;
+import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -15,12 +19,18 @@ import com.bigbrightpaints.erp.modules.admin.dto.AdminApprovalInboxResponse;
 import com.bigbrightpaints.erp.modules.admin.dto.AdminApprovalItemDto;
 import com.bigbrightpaints.erp.modules.admin.dto.AdminDashboardDto;
 import com.bigbrightpaints.erp.modules.admin.dto.TenantRuntimeMetricsDto;
+import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
+import com.bigbrightpaints.erp.modules.rbac.domain.Role;
+import com.bigbrightpaints.erp.modules.rbac.domain.SystemRole;
 
 @Service
 public class AdminDashboardService {
+
+  private static final Set<String> TENANT_ADMIN_HIDDEN_ROLES =
+      Set.of(SystemRole.ADMIN.getRoleName(), SystemRole.SUPER_ADMIN.getRoleName());
 
   private final CompanyContextService companyContextService;
   private final AdminApprovalService adminApprovalService;
@@ -61,9 +71,20 @@ public class AdminDashboardService {
             countByOrigin(approvals, AdminApprovalItemDto.OriginType.PERIOD_CLOSE_REQUEST),
             countByOrigin(approvals, AdminApprovalItemDto.OriginType.EXPORT_REQUEST));
 
-    long totalUsers = userAccountRepository.countByCompany_Id(companyId);
-    long enabledUsers = userAccountRepository.countByCompany_IdAndEnabledTrue(companyId);
-    long mfaEnabledUsers = userAccountRepository.countByCompany_IdAndMfaEnabledTrue(companyId);
+    List<UserAccount> companyUsers = userAccountRepository.findByCompany_Id(companyId);
+    List<UserAccount> visibleUsers =
+        companyUsers.stream().filter(this::isTenantAdminVisibleUser).toList();
+    Set<String> hiddenActorKeys =
+        companyUsers.stream()
+            .filter(this::isTenantAdminProtectedUser)
+            .map(UserAccount::getEmail)
+            .map(this::normalizeActorKey)
+            .filter(StringUtils::hasText)
+            .collect(Collectors.toSet());
+
+    long totalUsers = visibleUsers.size();
+    long enabledUsers = visibleUsers.stream().filter(UserAccount::isEnabled).count();
+    long mfaEnabledUsers = visibleUsers.stream().filter(UserAccount::isMfaEnabled).count();
 
     AdminDashboardDto.UserSummary userSummary =
         new AdminDashboardDto.UserSummary(
@@ -85,6 +106,7 @@ public class AdminDashboardService {
 
     List<AdminDashboardDto.ActivityItem> recentActivity =
         auditLogRepository.findTop50ByCompanyIdOrderByTimestampDesc(companyId).stream()
+            .filter(auditLog -> !isProtectedActorActivity(auditLog, hiddenActorKeys))
             .limit(12)
             .map(this::toActivityItem)
             .toList();
@@ -111,5 +133,45 @@ public class AdminDashboardService {
         auditLog.getEventType() != null ? auditLog.getEventType().name() : "UNKNOWN",
         auditLog.getUsername(),
         details);
+  }
+
+  private boolean isTenantAdminVisibleUser(UserAccount user) {
+    return !isTenantAdminProtectedUser(user);
+  }
+
+  private boolean isTenantAdminProtectedUser(UserAccount user) {
+    if (user == null || user.getRoles() == null || user.getRoles().isEmpty()) {
+      return false;
+    }
+    return user.getRoles().stream()
+        .filter(Objects::nonNull)
+        .map(Role::getName)
+        .map(this::normalizeRoleNameForComparison)
+        .anyMatch(TENANT_ADMIN_HIDDEN_ROLES::contains);
+  }
+
+  private boolean isProtectedActorActivity(AuditLog auditLog, Set<String> hiddenActorKeys) {
+    if (auditLog == null || hiddenActorKeys == null || hiddenActorKeys.isEmpty()) {
+      return false;
+    }
+    return hiddenActorKeys.contains(normalizeActorKey(auditLog.getUsername()));
+  }
+
+  private String normalizeRoleNameForComparison(String roleName) {
+    if (!StringUtils.hasText(roleName)) {
+      return null;
+    }
+    String normalized = roleName.trim().toUpperCase(Locale.ROOT);
+    if (normalized.startsWith("ROLE_")) {
+      return normalized;
+    }
+    return "ROLE_" + normalized;
+  }
+
+  private String normalizeActorKey(String actor) {
+    if (!StringUtils.hasText(actor)) {
+      return null;
+    }
+    return actor.trim().toLowerCase(Locale.ROOT);
   }
 }

@@ -38,6 +38,11 @@ Top-level fields:
 - `tenantRuntime`
 - `securitySummary`
 
+Visibility boundary:
+
+- `userSummary` excludes privileged identities (`ROLE_ADMIN`, `ROLE_SUPER_ADMIN`) from tenant-admin-visible counts.
+- `recentActivity` filters privileged-actor rows so hidden identities are not exposed via dashboard activity feed.
+
 ## User management: `/api/v1/admin/users/**`
 
 ### `GET /api/v1/admin/users`
@@ -242,12 +247,6 @@ Response (`AdminSelfSettingsDto`):
 - `roles`
 - `tenantRuntime`
 - `activeSessionEstimate`
-
-## Utility
-
-### `POST /api/v1/admin/notify`
-
-Admin utility endpoint for explicit notify actions.
 
 ## Tenant changelog (read-only)
 

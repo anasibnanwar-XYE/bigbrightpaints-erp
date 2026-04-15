@@ -50,6 +50,7 @@ All control-plane behavior stays under `/api/v1/superadmin/**`.
 - `POST /api/v1/superadmin/tenants/{id}/support/warnings`
 - `PUT /api/v1/superadmin/tenants/{id}/support/context`
 - `POST /api/v1/superadmin/changelog`
+- `POST /api/v1/superadmin/notify`
 
 ### Tenant-admin product entrypoints
 
@@ -67,7 +68,6 @@ All control-plane behavior stays under `/api/v1/superadmin/**`.
 | Audit feed | `GET /api/v1/admin/audit/events` |
 | Internal support | `POST, GET /api/v1/admin/support/tickets`, `GET /api/v1/admin/support/tickets/{ticketId}` |
 | Self settings | `GET /api/v1/admin/self/settings` |
-| Utility notify | `POST /api/v1/admin/notify` |
 | Tenant changelog | `GET /api/v1/changelog`, `GET /api/v1/changelog/latest-highlighted` |
 
 ## Preconditions
@@ -208,6 +208,7 @@ This is the canonical implementation order and status for the tenant-admin hard-
 
 - Canonical dashboard endpoint: `GET /api/v1/admin/dashboard`.
 - Aggregates approval, user, support, runtime, security, and recent activity summaries.
+- User-summary and activity rows now follow tenant-admin visibility masking for privileged identities (`ROLE_ADMIN`, `ROLE_SUPER_ADMIN`).
 - No quota/runtime mutation behavior is exposed from dashboard.
 
 ### Slice 5: Support rewrite (complete)
@@ -220,7 +221,7 @@ This is the canonical implementation order and status for the tenant-admin hard-
 
 - Canonical tenant-admin settings payload: `GET /api/v1/admin/self/settings`.
 - Self security and password/MFA flows remain auth-owned (`/api/v1/auth/**`).
-- Utility notify action moved to `AdminUtilityController` (`POST /api/v1/admin/notify`).
+- Utility notify action moved to superadmin control-plane host (`POST /api/v1/superadmin/notify`).
 
 ### Slice 7: Documentation realignment (complete)
 
