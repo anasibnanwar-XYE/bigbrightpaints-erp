@@ -469,6 +469,7 @@ class CompanyContextFilterControlPlaneBindingTest {
     assertThat(isTenantBusinessRequestBlockedForSuperAdmin("/api/v1/support")).isFalse();
     assertThat(isTenantBusinessRequestBlockedForSuperAdmin("/api/v1/support/tickets")).isFalse();
     assertThat(isTenantBusinessRequestBlockedForSuperAdmin("/api/v1/admin/dashboard")).isTrue();
+    assertThat(isTenantBusinessRequestBlockedForSuperAdmin("/api/v1/admin/self/settings")).isTrue();
     assertThat(isTenantBusinessRequestBlockedForSuperAdmin("/api/v1/admin/support/tickets"))
         .isTrue();
     assertThat(isTenantBusinessRequestBlockedForSuperAdmin("/api/v1/portal/support/tickets"))

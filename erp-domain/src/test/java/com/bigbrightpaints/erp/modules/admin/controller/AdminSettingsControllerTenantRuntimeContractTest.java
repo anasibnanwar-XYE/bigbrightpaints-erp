@@ -16,8 +16,6 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import com.bigbrightpaints.erp.core.audit.AuditEvent;
 import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.config.SystemSettingsService;
-import com.bigbrightpaints.erp.core.notification.EmailService;
-import com.bigbrightpaints.erp.modules.admin.dto.AdminNotifyRequest;
 import com.bigbrightpaints.erp.modules.admin.dto.SystemSettingsDto;
 import com.bigbrightpaints.erp.modules.admin.dto.SystemSettingsUpdateRequest;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
@@ -68,7 +66,7 @@ class AdminSettingsControllerTenantRuntimeContractTest {
     when(systemSettingsService.snapshot()).thenReturn(snapshot);
 
     AdminSettingsController controller =
-        new AdminSettingsController(systemSettingsService, mock(EmailService.class), null);
+        new AdminSettingsController(systemSettingsService, null);
 
     ApiResponse<SystemSettingsDto> response = controller.getSettings();
 
@@ -108,7 +106,7 @@ class AdminSettingsControllerTenantRuntimeContractTest {
     when(systemSettingsService.update(request)).thenReturn(updated);
 
     AdminSettingsController controller =
-        new AdminSettingsController(systemSettingsService, mock(EmailService.class), null);
+        new AdminSettingsController(systemSettingsService, null);
 
     ApiResponse<SystemSettingsDto> response = controller.updateSettings(request);
 
@@ -162,7 +160,7 @@ class AdminSettingsControllerTenantRuntimeContractTest {
     when(systemSettingsService.update(request)).thenReturn(after);
 
     AdminSettingsController controller =
-        new AdminSettingsController(systemSettingsService, mock(EmailService.class), auditService);
+        new AdminSettingsController(systemSettingsService, auditService);
 
     controller.updateSettings(request);
 
@@ -181,26 +179,4 @@ class AdminSettingsControllerTenantRuntimeContractTest {
     assertThat(metadata.get("requestedPlatformAuthCode")).isEqualTo("<redacted>");
   }
 
-  @Test
-  void notifyUser_dispatchesEmailAndReturnsSuccessContract() {
-    EmailService emailService = mock(EmailService.class);
-    AdminSettingsController controller =
-        new AdminSettingsController(mock(SystemSettingsService.class), emailService, null);
-    AdminNotifyRequest request =
-        new AdminNotifyRequest(
-            "admin.user@bigbrightpaints.com",
-            "Tenant runtime maintenance",
-            "Maintenance window starts at 23:00 UTC");
-
-    ApiResponse<String> response = controller.notifyUser(request);
-
-    assertThat(response.success()).isTrue();
-    assertThat(response.message()).isEqualTo("Notification sent");
-    assertThat(response.data()).isEqualTo("Email dispatched");
-    verify(emailService)
-        .sendSimpleEmail(
-            "admin.user@bigbrightpaints.com",
-            "Tenant runtime maintenance",
-            "Maintenance window starts at 23:00 UTC");
-  }
 }

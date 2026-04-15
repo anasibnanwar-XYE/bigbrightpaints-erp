@@ -5,7 +5,6 @@ import java.util.Map;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -14,10 +13,8 @@ import org.springframework.web.bind.annotation.RestController;
 import com.bigbrightpaints.erp.core.audit.AuditEvent;
 import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.config.SystemSettingsService;
-import com.bigbrightpaints.erp.core.notification.EmailService;
 import com.bigbrightpaints.erp.core.security.PortalRoleActionMatrix;
 import com.bigbrightpaints.erp.core.security.SecurityActorResolver;
-import com.bigbrightpaints.erp.modules.admin.dto.AdminNotifyRequest;
 import com.bigbrightpaints.erp.modules.admin.dto.SystemSettingsDto;
 import com.bigbrightpaints.erp.modules.admin.dto.SystemSettingsUpdateRequest;
 import com.bigbrightpaints.erp.modules.admin.service.ExportApprovalService;
@@ -39,23 +36,18 @@ public class AdminSettingsController {
   private static final String AUDIT_REDACTED = "<redacted>";
 
   private final SystemSettingsService systemSettingsService;
-  private final EmailService emailService;
   private final AuditService auditService;
 
   @Autowired
-  public AdminSettingsController(
-      SystemSettingsService systemSettingsService,
-      EmailService emailService,
-      AuditService auditService) {
+  public AdminSettingsController(SystemSettingsService systemSettingsService, AuditService auditService) {
     this.systemSettingsService = systemSettingsService;
-    this.emailService = emailService;
     this.auditService = auditService;
   }
 
   // Backward-compatible constructor shape retained for existing test scaffolds.
   public AdminSettingsController(
       SystemSettingsService systemSettingsService,
-      EmailService emailService,
+      com.bigbrightpaints.erp.core.notification.EmailService emailService,
       CompanyContextService companyContextService,
       TenantRuntimePolicyService tenantRuntimePolicyService,
       ExportApprovalService exportApprovalService,
@@ -63,13 +55,13 @@ public class AdminSettingsController {
       CreditLimitOverrideRequestRepository creditLimitOverrideRequestRepository,
       PayrollRunRepository payrollRunRepository,
       ModuleGatingService moduleGatingService) {
-    this(systemSettingsService, emailService, null);
+    this(systemSettingsService, null);
   }
 
   // Backward-compatible constructor shape retained for existing test scaffolds.
   public AdminSettingsController(
       SystemSettingsService systemSettingsService,
-      EmailService emailService,
+      com.bigbrightpaints.erp.core.notification.EmailService emailService,
       CompanyContextService companyContextService,
       TenantRuntimePolicyService tenantRuntimePolicyService,
       ExportApprovalService exportApprovalService,
@@ -80,7 +72,7 @@ public class AdminSettingsController {
       PayrollRunRepository payrollRunRepository,
       AuditService auditService,
       ModuleGatingService moduleGatingService) {
-    this(systemSettingsService, emailService, auditService);
+    this(systemSettingsService, auditService);
   }
 
   @GetMapping("/settings")
@@ -98,13 +90,6 @@ public class AdminSettingsController {
     SystemSettingsDto dto = systemSettingsService.update(request);
     recordSettingsUpdateAudit(before, request, dto);
     return ApiResponse.success("Settings updated", dto);
-  }
-
-  @PostMapping("/notify")
-  @PreAuthorize(PortalRoleActionMatrix.ADMIN_ONLY)
-  public ApiResponse<String> notifyUser(@Valid @RequestBody AdminNotifyRequest request) {
-    emailService.sendSimpleEmail(request.to(), request.subject(), request.body());
-    return ApiResponse.success("Notification sent", "Email dispatched");
   }
 
   private void requireSuperAdminForPeriodLockEnforcedChange(

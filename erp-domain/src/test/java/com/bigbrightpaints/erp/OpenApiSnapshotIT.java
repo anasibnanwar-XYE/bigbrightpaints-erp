@@ -127,6 +127,13 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
         null,
         "200",
         "#/components/schemas/ApiResponseAdminDashboardDto");
+    assertOperationContract(
+        root,
+        "/api/v1/admin/self/settings",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseAdminSelfSettingsDto");
     assertOperationMissing(root, "/api/v1/admin/exports/pending", "get");
     assertOperationContract(
         root,
