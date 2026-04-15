@@ -21,13 +21,16 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.inventory.domain.PackagingSlip;
+import com.bigbrightpaints.erp.modules.inventory.domain.PackagingSlipLine;
 import com.bigbrightpaints.erp.modules.inventory.domain.PackagingSlipRepository;
+import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatch;
 import com.bigbrightpaints.erp.modules.inventory.dto.PackagingSlipDto;
 import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService;
 import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService.InventoryReservationResult;
 import com.bigbrightpaints.erp.modules.invoice.dto.InvoiceDto;
 import com.bigbrightpaints.erp.modules.invoice.service.InvoiceService;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrder;
+import com.bigbrightpaints.erp.modules.sales.dto.DispatchConfirmRequest;
 import com.bigbrightpaints.erp.modules.sales.dto.DispatchConfirmResponse;
 
 @ExtendWith(MockitoExtension.class)
@@ -291,13 +294,30 @@ class SalesFulfillmentServiceTest {
             new DispatchConfirmResponse(88L, 8L, 18L, 28L, List.of(), true, List.of(), null));
     PackagingSlip slip = new PackagingSlip();
     slip.setCompany(company);
+    setField(slip, "id", 88L);
+    slip.setStatus("RESERVED");
     slip.setCogsJournalEntryId(128L);
+    PackagingSlipLine slipLine = new PackagingSlipLine();
+    setField(slipLine, "id", 801L);
+    slipLine.setPackagingSlip(slip);
+    slipLine.setFinishedGoodBatch(new FinishedGoodBatch());
+    slipLine.setQuantity(new BigDecimal("4"));
+    slip.getLines().add(slipLine);
+    when(packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, 8L)).thenReturn(List.of(slip));
     when(packagingSlipRepository.findByIdAndCompany(88L, company)).thenReturn(Optional.of(slip));
 
     var result = fulfillmentService.dispatchOrder(8L);
+    var captor = org.mockito.ArgumentCaptor.forClass(DispatchConfirmRequest.class);
+    verify(salesService).confirmDispatch(captor.capture());
 
     org.junit.jupiter.api.Assertions.assertEquals(List.of(128L), result.cogsJournalIds());
     org.junit.jupiter.api.Assertions.assertEquals(BigDecimal.ZERO, result.totalCogs());
+    org.junit.jupiter.api.Assertions.assertEquals(88L, captor.getValue().packingSlipId());
+    org.junit.jupiter.api.Assertions.assertNull(captor.getValue().orderId());
+    org.junit.jupiter.api.Assertions.assertEquals(1, captor.getValue().lines().size());
+    org.junit.jupiter.api.Assertions.assertEquals(801L, captor.getValue().lines().get(0).lineId());
+    org.junit.jupiter.api.Assertions.assertEquals(
+        new BigDecimal("4"), captor.getValue().lines().get(0).shipQty());
   }
 
   @Test
@@ -337,7 +357,14 @@ class SalesFulfillmentServiceTest {
                 77L, order.getId(), null, 501L, List.of(), true, List.of(), null));
     PackagingSlip slip = new PackagingSlip();
     slip.setCompany(company);
+    setField(slip, "id", 77L);
     slip.setCogsJournalEntryId(909L);
+    PackagingSlipLine slipLine = new PackagingSlipLine();
+    setField(slipLine, "id", 901L);
+    slipLine.setPackagingSlip(slip);
+    slipLine.setFinishedGoodBatch(new FinishedGoodBatch());
+    slipLine.setQuantity(new BigDecimal("6"));
+    slip.getLines().add(slipLine);
     when(packagingSlipRepository.findByIdAndCompany(77L, company)).thenReturn(Optional.of(slip));
 
     var result = fulfillmentService.fulfillOrder(9L);
@@ -348,6 +375,10 @@ class SalesFulfillmentServiceTest {
     verify(salesService).confirmDispatch(captor.capture());
     org.junit.jupiter.api.Assertions.assertEquals(77L, captor.getValue().packingSlipId());
     org.junit.jupiter.api.Assertions.assertNull(captor.getValue().orderId());
+    org.junit.jupiter.api.Assertions.assertEquals(1, captor.getValue().lines().size());
+    org.junit.jupiter.api.Assertions.assertEquals(901L, captor.getValue().lines().get(0).lineId());
+    org.junit.jupiter.api.Assertions.assertEquals(
+        new BigDecimal("6"), captor.getValue().lines().get(0).shipQty());
     org.junit.jupiter.api.Assertions.assertNull(result.invoiceId());
     org.junit.jupiter.api.Assertions.assertEquals(List.of(909L), result.cogsJournalIds());
   }
