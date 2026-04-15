@@ -257,7 +257,7 @@ Primary files:
 sequenceDiagram
     participant PSTC as PortalSupportTicketController
     participant DSTC as DealerPortalSupportTicketController
-    participant PTS as PortalSupportTicketService
+    participant PTS as AdminSupportService
     participant DTS as DealerPortalSupportTicketService
     participant GHS as SupportTicketGitHubSyncService
     participant GHC as GitHubIssueClient
@@ -280,7 +280,7 @@ sequenceDiagram
 Evidence and invariants:
 
 - Internal support lives only on `/api/v1/portal/support/tickets/**` for `ROLE_ADMIN`/`ROLE_ACCOUNTING`, dealer support lives only on `/api/v1/dealer-portal/support/tickets/**` for `ROLE_DEALER`, and the shared `/api/v1/support/**` surface is retired.
-- Portal support reads are tenant-scoped while dealer support reads are self-scoped, so peer-dealer and cross-host lookups fail closed (`PortalSupportTicketService`, `DealerPortalSupportTicketService`).
+- Portal and admin support reads are tenant-scoped while dealer support reads are self-scoped, so peer-dealer and cross-host lookups fail closed (`AdminSupportService`, `DealerPortalSupportTicketService`).
 - GitHub issue submission executes asynchronously after transaction commit and degrades gracefully when integration is disabled (`SupportTicketAccessSupport.createTicket`, `SupportTicketGitHubSyncService.submitGitHubIssueAsync`).
 - Category-to-label mapping is explicit (BUG/FEATURE_REQUEST/SUPPORT -> bug/enhancement/support) and passed in payload (`SupportTicketGitHubSyncService.labelsForCategory`, `GitHubIssueClient.createIssue`).
 - Scheduled status sync transitions local status and dispatches resolved email notification (`SupportTicketGitHubSyncService.syncGitHubIssueStatuses`, `notifyResolved`).
@@ -289,7 +289,7 @@ Primary files:
 
 - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/portal/controller/PortalSupportTicketController.java`
 - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/sales/controller/DealerPortalSupportTicketController.java`
-- `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/admin/service/PortalSupportTicketService.java`
+- `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/admin/service/AdminSupportService.java`
 - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/admin/service/DealerPortalSupportTicketService.java`
 - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/admin/service/SupportTicketAccessSupport.java`
 - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/admin/service/SupportTicketGitHubSyncService.java`
