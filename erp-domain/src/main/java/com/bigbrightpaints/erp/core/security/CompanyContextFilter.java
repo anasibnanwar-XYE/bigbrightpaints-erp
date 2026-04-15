@@ -94,7 +94,9 @@ public class CompanyContextFilter extends OncePerRequestFilter {
           "/api/v1/dispatch");
   private static final Set<String> SUPER_ADMIN_TENANT_ADMIN_WORKFLOW_PREFIXES =
       Set.of(
+          "/api/v1/admin/dashboard",
           "/api/v1/admin/approvals",
+          "/api/v1/admin/support",
           "/api/v1/admin/exports",
           "/api/v1/admin/notify",
           "/api/v1/admin/users");

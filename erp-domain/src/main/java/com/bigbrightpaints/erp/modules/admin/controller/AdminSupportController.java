@@ -1,4 +1,4 @@
-package com.bigbrightpaints.erp.modules.portal.controller;
+package com.bigbrightpaints.erp.modules.admin.controller;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -19,13 +19,13 @@ import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 import jakarta.validation.Valid;
 
 @RestController
-@RequestMapping("/api/v1/portal/support/tickets")
-@PreAuthorize("hasAuthority('ROLE_ACCOUNTING')")
-public class PortalSupportTicketController {
+@RequestMapping("/api/v1/admin/support/tickets")
+@PreAuthorize(PortalRoleActionMatrix.TENANT_ADMIN_ONLY)
+public class AdminSupportController {
 
   private final AdminSupportService adminSupportService;
 
-  public PortalSupportTicketController(AdminSupportService adminSupportService) {
+  public AdminSupportController(AdminSupportService adminSupportService) {
     this.adminSupportService = adminSupportService;
   }
 

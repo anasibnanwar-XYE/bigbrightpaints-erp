@@ -95,7 +95,7 @@ class SuperAdminTenantWorkflowIsolationIT extends AbstractIntegrationTest {
 
     ResponseEntity<Map> adminResponse =
         rest.exchange(
-            "/api/v1/portal/support/tickets",
+            "/api/v1/admin/support/tickets",
             HttpMethod.GET,
             new HttpEntity<>(jsonHeaders(adminToken, TENANT_A)),
             Map.class);
@@ -103,7 +103,7 @@ class SuperAdminTenantWorkflowIsolationIT extends AbstractIntegrationTest {
 
     ResponseEntity<Map> deniedListResponse =
         rest.exchange(
-            "/api/v1/portal/support/tickets",
+            "/api/v1/admin/support/tickets",
             HttpMethod.GET,
             new HttpEntity<>(jsonHeaders(superAdminToken, TENANT_A)),
             Map.class);
@@ -112,7 +112,7 @@ class SuperAdminTenantWorkflowIsolationIT extends AbstractIntegrationTest {
 
     ResponseEntity<Map> deniedDetailResponse =
         rest.exchange(
-            "/api/v1/portal/support/tickets/" + ticketId,
+            "/api/v1/admin/support/tickets/" + ticketId,
             HttpMethod.GET,
             new HttpEntity<>(jsonHeaders(superAdminToken, TENANT_A)),
             Map.class);

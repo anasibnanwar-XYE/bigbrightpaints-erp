@@ -44,6 +44,8 @@ public interface UserAccountRepository extends JpaRepository<UserAccount, Long> 
 
   long countByCompany_IdAndEnabledTrue(Long companyId);
 
+  long countByCompany_IdAndMfaEnabledTrue(Long companyId);
+
   Optional<UserAccount> findByIdAndCompany_Id(Long id, Long companyId);
 
   @Lock(LockModeType.PESSIMISTIC_WRITE)

@@ -468,6 +468,9 @@ class CompanyContextFilterControlPlaneBindingTest {
   void retiredSharedSupportPrefix_isNotClassifiedAsTenantBusinessKnowledge() {
     assertThat(isTenantBusinessRequestBlockedForSuperAdmin("/api/v1/support")).isFalse();
     assertThat(isTenantBusinessRequestBlockedForSuperAdmin("/api/v1/support/tickets")).isFalse();
+    assertThat(isTenantBusinessRequestBlockedForSuperAdmin("/api/v1/admin/dashboard")).isTrue();
+    assertThat(isTenantBusinessRequestBlockedForSuperAdmin("/api/v1/admin/support/tickets"))
+        .isTrue();
     assertThat(isTenantBusinessRequestBlockedForSuperAdmin("/api/v1/portal/support/tickets"))
         .isTrue();
     assertThat(isTenantBusinessRequestBlockedForSuperAdmin("/api/v1/dealer-portal/support/tickets"))

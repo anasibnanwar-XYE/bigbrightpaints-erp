@@ -120,6 +120,13 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
         "#/components/schemas/AdminApprovalDecisionRequest",
         "200",
         "#/components/schemas/ApiResponseAdminApprovalItemDto");
+    assertOperationContract(
+        root,
+        "/api/v1/admin/dashboard",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseAdminDashboardDto");
     assertOperationMissing(root, "/api/v1/admin/exports/pending", "get");
     assertOperationContract(
         root,
@@ -693,6 +700,28 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
   @Test
   void support_ticket_contract_paths_expose_only_split_hosts() throws IOException {
     JsonNode root = fetchCurrentSpecNode();
+
+    assertOperationContract(
+        root,
+        "/api/v1/admin/support/tickets",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseSupportTicketListResponse");
+    assertOperationContract(
+        root,
+        "/api/v1/admin/support/tickets",
+        "post",
+        "#/components/schemas/SupportTicketCreateRequest",
+        "200",
+        "#/components/schemas/ApiResponseSupportTicketResponse");
+    assertOperationContract(
+        root,
+        "/api/v1/admin/support/tickets/{ticketId}",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseSupportTicketResponse");
 
     assertOperationContract(
         root,
