@@ -22,6 +22,7 @@ import org.springframework.http.ResponseEntity;
 import com.bigbrightpaints.erp.core.audit.AuditEvent;
 import com.bigbrightpaints.erp.core.audit.AuditLog;
 import com.bigbrightpaints.erp.core.audit.AuditLogRepository;
+import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
 import com.bigbrightpaints.erp.test.support.ErpApiRoutes;
@@ -40,6 +41,7 @@ class AdminDashboardSecurityIT extends AbstractIntegrationTest {
   @Autowired private TestRestTemplate rest;
   @Autowired private CompanyRepository companyRepository;
   @Autowired private AuditLogRepository auditLogRepository;
+  @Autowired private UserAccountRepository userAccountRepository;
 
   @BeforeEach
   void setUpUsers() {
@@ -212,6 +214,43 @@ class AdminDashboardSecurityIT extends AbstractIntegrationTest {
         .extracting(item -> String.valueOf(item.get("actor")).trim().toLowerCase())
         .contains(ACCOUNTING_EMAIL.toLowerCase())
         .doesNotContain(ROOT_SUPER_ADMIN_EMAIL.toLowerCase());
+  }
+
+  @Test
+  void dashboard_keeps_non_privileged_superadmin_path_attempt_visible() {
+    Long companyId = tenantCompanyId();
+    String accountingUserId =
+        userAccountRepository
+            .findByEmailIgnoreCaseAndAuthScopeCodeIgnoreCase(ACCOUNTING_EMAIL, COMPANY_CODE)
+            .orElseThrow()
+            .getPublicId()
+            .toString();
+
+    writeAuditLog(
+        companyId,
+        ACCOUNTING_EMAIL,
+        accountingUserId,
+        "/api/v1/superadmin/tenants/" + companyId + "/limits",
+        LocalDateTime.now().plusHours(8));
+
+    ResponseEntity<Map> adminResponse =
+        rest.exchange(
+            ErpApiRoutes.ADMIN_DASHBOARD,
+            HttpMethod.GET,
+            new HttpEntity<>(headersFor(ADMIN_EMAIL)),
+            Map.class);
+    assertThat(adminResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(adminResponse.getBody()).isNotNull();
+
+    @SuppressWarnings("unchecked")
+    Map<String, Object> data = (Map<String, Object>) adminResponse.getBody().get("data");
+    assertThat(data).isNotNull();
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> recentActivity = (List<Map<String, Object>>) data.get("recentActivity");
+    assertThat(recentActivity).isNotNull();
+    assertThat(recentActivity)
+        .extracting(item -> String.valueOf(item.get("actor")).trim().toLowerCase())
+        .contains(ACCOUNTING_EMAIL.toLowerCase());
   }
 
   private HttpHeaders headersFor(String email) {

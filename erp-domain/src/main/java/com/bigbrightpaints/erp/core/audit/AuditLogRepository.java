@@ -35,7 +35,6 @@ public interface AuditLogRepository
    */
   List<AuditLog> findByCompanyIdOrderByTimestampDesc(Long companyId);
 
-  @EntityGraph(attributePaths = "metadata")
   Page<AuditLog> findByCompanyIdOrderByTimestampDesc(Long companyId, Pageable pageable);
 
   @EntityGraph(attributePaths = "metadata")

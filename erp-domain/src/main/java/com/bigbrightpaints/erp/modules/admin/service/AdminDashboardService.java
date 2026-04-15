@@ -84,7 +84,8 @@ public class AdminDashboardService {
     List<UserAccount> companyUsers = userAccountRepository.findByCompany_Id(companyId);
     List<UserAccount> visibleUsers =
         companyUsers.stream().filter(this::isTenantAdminVisibleUser).toList();
-    Set<String> protectedActorKeys = resolveProtectedActorKeys();
+    Map<String, Boolean> tenantActorProtection =
+        buildTenantActorProtectionByEmail(companyUsers);
 
     long totalUsers = visibleUsers.size();
     long enabledUsers = visibleUsers.stream().filter(UserAccount::isEnabled).count();
@@ -109,7 +110,7 @@ public class AdminDashboardService {
         new AdminDashboardDto.SecuritySummary(distinctSessions, apiActivity, apiFailures);
 
     List<AdminDashboardDto.ActivityItem> recentActivity =
-        loadRecentActivity(companyId, protectedActorKeys);
+        loadRecentActivity(companyId, tenantActorProtection);
 
     TenantRuntimeMetricsDto runtime = tenantRuntimePolicyService.metrics();
 
@@ -117,22 +118,25 @@ public class AdminDashboardService {
         recentActivity, approvalSummary, userSummary, supportSummary, runtime, securitySummary);
   }
 
-  private Set<String> resolveProtectedActorKeys() {
-    Set<String> actorKeys =
-        userAccountRepository.findDistinctNormalizedEmailsByRoleNames(TENANT_ADMIN_HIDDEN_ROLES);
-    if (actorKeys == null || actorKeys.isEmpty()) {
-      return Set.of();
+  private Map<String, Boolean> buildTenantActorProtectionByEmail(List<UserAccount> companyUsers) {
+    if (companyUsers == null || companyUsers.isEmpty()) {
+      return Map.of();
     }
-    return actorKeys.stream()
-        .map(this::normalizeActorKey)
-        .filter(StringUtils::hasText)
-        .collect(Collectors.toCollection(HashSet::new));
+    Map<String, Boolean> protectionByActor = new HashMap<>();
+    for (UserAccount user : companyUsers) {
+      String actorKey = normalizeActorKey(user != null ? user.getEmail() : null);
+      if (!StringUtils.hasText(actorKey)) {
+        continue;
+      }
+      protectionByActor.put(actorKey, isTenantAdminProtectedUser(user));
+    }
+    return protectionByActor;
   }
 
   private List<AdminDashboardDto.ActivityItem> loadRecentActivity(
-      Long companyId, Set<String> protectedActorKeys) {
+      Long companyId, Map<String, Boolean> tenantActorProtectionByEmail) {
     List<AdminDashboardDto.ActivityItem> recentActivity = new ArrayList<>(RECENT_ACTIVITY_LIMIT);
-    Map<UUID, Boolean> protectedActorsByPublicIdCache = new HashMap<>();
+    Map<UUID, ActorProtectionState> actorProtectionByPublicIdCache = new HashMap<>();
 
     for (int pageIndex = 0;
         pageIndex < MAX_RECENT_ACTIVITY_SCAN_PAGES && recentActivity.size() < RECENT_ACTIVITY_LIMIT;
@@ -144,11 +148,11 @@ public class AdminDashboardService {
         break;
       }
 
-      primeProtectedActorCache(page.getContent(), protectedActorsByPublicIdCache);
+      primeProtectedActorCache(page.getContent(), actorProtectionByPublicIdCache);
 
       for (AuditLog auditLog : page.getContent()) {
         if (!isProtectedActorActivity(
-            auditLog, protectedActorKeys, protectedActorsByPublicIdCache)) {
+            auditLog, tenantActorProtectionByEmail, actorProtectionByPublicIdCache)) {
           recentActivity.add(toActivityItem(auditLog));
           if (recentActivity.size() >= RECENT_ACTIVITY_LIMIT) {
             break;
@@ -165,7 +169,7 @@ public class AdminDashboardService {
   }
 
   private void primeProtectedActorCache(
-      List<AuditLog> auditLogs, Map<UUID, Boolean> protectedActorsByPublicIdCache) {
+      List<AuditLog> auditLogs, Map<UUID, ActorProtectionState> actorProtectionByPublicIdCache) {
     if (auditLogs == null || auditLogs.isEmpty()) {
       return;
     }
@@ -174,7 +178,7 @@ public class AdminDashboardService {
             .map(AuditLog::getUserId)
             .map(this::parsePublicId)
             .filter(Objects::nonNull)
-            .filter(publicId -> !protectedActorsByPublicIdCache.containsKey(publicId))
+            .filter(publicId -> !actorProtectionByPublicIdCache.containsKey(publicId))
             .collect(Collectors.toCollection(HashSet::new));
     if (missingPublicIds.isEmpty()) {
       return;
@@ -187,12 +191,16 @@ public class AdminDashboardService {
         continue;
       }
       UUID publicId = actor.getPublicId();
-      protectedActorsByPublicIdCache.put(publicId, isTenantAdminProtectedUser(actor));
+      actorProtectionByPublicIdCache.put(
+          publicId,
+          isTenantAdminProtectedUser(actor)
+              ? ActorProtectionState.PROTECTED
+              : ActorProtectionState.NOT_PROTECTED);
       resolvedIds.add(publicId);
     }
     for (UUID unresolvedPublicId : missingPublicIds) {
       if (!resolvedIds.contains(unresolvedPublicId)) {
-        protectedActorsByPublicIdCache.put(unresolvedPublicId, false);
+        actorProtectionByPublicIdCache.put(unresolvedPublicId, ActorProtectionState.UNKNOWN);
       }
     }
   }
@@ -232,31 +240,41 @@ public class AdminDashboardService {
 
   private boolean isProtectedActorActivity(
       AuditLog auditLog,
-      Set<String> protectedActorKeys,
-      Map<UUID, Boolean> protectedActorsByPublicIdCache) {
+      Map<String, Boolean> tenantActorProtectionByEmail,
+      Map<UUID, ActorProtectionState> actorProtectionByPublicIdCache) {
     if (auditLog == null) {
       return false;
     }
-    if (isSuperAdminControlPlanePath(auditLog.getRequestPath())) {
+    ActorProtectionState actorProtectionState =
+        resolveActorProtectionState(
+            auditLog, tenantActorProtectionByEmail, actorProtectionByPublicIdCache);
+    if (actorProtectionState == ActorProtectionState.PROTECTED) {
       return true;
     }
-    if (isProtectedActorByPublicId(auditLog.getUserId(), protectedActorsByPublicIdCache)) {
+    if (actorProtectionState == ActorProtectionState.UNKNOWN
+        && isSuperAdminControlPlanePath(auditLog.getRequestPath())) {
       return true;
     }
-    if (protectedActorKeys == null || protectedActorKeys.isEmpty()) {
-      return false;
-    }
-    String actorKey = normalizeActorKey(auditLog.getUsername());
-    return StringUtils.hasText(actorKey) && protectedActorKeys.contains(actorKey);
+    return false;
   }
 
-  private boolean isProtectedActorByPublicId(
-      String actorUserId, Map<UUID, Boolean> protectedActorsByPublicIdCache) {
-    UUID actorPublicId = parsePublicId(actorUserId);
-    if (actorPublicId == null) {
-      return false;
+  private ActorProtectionState resolveActorProtectionState(
+      AuditLog auditLog,
+      Map<String, Boolean> tenantActorProtectionByEmail,
+      Map<UUID, ActorProtectionState> actorProtectionByPublicIdCache) {
+    UUID actorPublicId = parsePublicId(auditLog.getUserId());
+    if (actorPublicId != null && actorProtectionByPublicIdCache.containsKey(actorPublicId)) {
+      return actorProtectionByPublicIdCache.get(actorPublicId);
     }
-    return Boolean.TRUE.equals(protectedActorsByPublicIdCache.get(actorPublicId));
+    String actorKey = normalizeActorKey(auditLog.getUsername());
+    if (StringUtils.hasText(actorKey)
+        && tenantActorProtectionByEmail != null
+        && tenantActorProtectionByEmail.containsKey(actorKey)) {
+      return Boolean.TRUE.equals(tenantActorProtectionByEmail.get(actorKey))
+          ? ActorProtectionState.PROTECTED
+          : ActorProtectionState.NOT_PROTECTED;
+    }
+    return ActorProtectionState.UNKNOWN;
   }
 
   private boolean isSuperAdminControlPlanePath(String requestPath) {
@@ -294,5 +312,11 @@ public class AdminDashboardService {
       return null;
     }
     return actor.trim().toLowerCase(Locale.ROOT);
+  }
+
+  private enum ActorProtectionState {
+    PROTECTED,
+    NOT_PROTECTED,
+    UNKNOWN
   }
 }
