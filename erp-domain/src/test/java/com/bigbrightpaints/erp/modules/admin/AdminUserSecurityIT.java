@@ -139,6 +139,75 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
   }
 
   @Test
+  void admin_user_update_rejects_privileged_role_escalation() {
+    UserAccount tenantSalesUser =
+        dataSeeder.ensureUser(
+            "tenant-sales-update-guard@bbp.com",
+            "Sales123!",
+            "Tenant Sales Guard",
+            COMPANY,
+            List.of("ROLE_SALES"));
+
+    String token = login(ADMIN_EMAIL, ADMIN_PASSWORD, COMPANY);
+    HttpHeaders headers = new HttpHeaders();
+    headers.setBearerAuth(token);
+    headers.setContentType(MediaType.APPLICATION_JSON);
+
+    Map<String, Object> payload =
+        Map.of("displayName", "Tenant Sales Guard Updated", "roles", List.of("ROLE_ADMIN"));
+
+    ResponseEntity<Map> response =
+        rest.exchange(
+            "/api/v1/admin/users/" + tenantSalesUser.getId(),
+            HttpMethod.PUT,
+            new HttpEntity<>(payload, headers),
+            Map.class);
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+    assertThat(response.getBody()).isNotNull();
+    assertThat(response.getBody().get("message")).isEqualTo("Access denied");
+    @SuppressWarnings("unchecked")
+    Map<String, Object> error = (Map<String, Object>) response.getBody().get("data");
+    assertThat(error).isNotNull();
+    assertThat(error.get("code")).isEqualTo("AUTH_004");
+  }
+
+  @Test
+  void admin_user_update_rejects_unknown_custom_role() {
+    UserAccount tenantSalesUser =
+        dataSeeder.ensureUser(
+            "tenant-custom-update-guard@bbp.com",
+            "Sales123!",
+            "Tenant Custom Guard",
+            COMPANY,
+            List.of("ROLE_SALES"));
+
+    String token = login(ADMIN_EMAIL, ADMIN_PASSWORD, COMPANY);
+    HttpHeaders headers = new HttpHeaders();
+    headers.setBearerAuth(token);
+    headers.setContentType(MediaType.APPLICATION_JSON);
+
+    Map<String, Object> payload =
+        Map.of("displayName", "Tenant Custom Guard Updated", "roles", List.of("ROLE_CUSTOM"));
+
+    ResponseEntity<Map> response =
+        rest.exchange(
+            "/api/v1/admin/users/" + tenantSalesUser.getId(),
+            HttpMethod.PUT,
+            new HttpEntity<>(payload, headers),
+            Map.class);
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(response.getBody()).isNotNull();
+    assertThat(String.valueOf(response.getBody().get("message")))
+        .contains("Unsupported role for tenant-admin user management: ROLE_CUSTOM")
+        .contains("ROLE_ACCOUNTING")
+        .contains("ROLE_FACTORY")
+        .contains("ROLE_SALES")
+        .contains("ROLE_DEALER");
+  }
+
+  @Test
   void admin_user_status_update_masks_cross_company_target_as_missing() {
     String token = login(ADMIN_EMAIL, ADMIN_PASSWORD, COMPANY);
     long missingUserId = otherCompanyUser.getId() + 10_000L;
@@ -392,6 +461,49 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
   }
 
   @Test
+  void admin_user_detail_blocks_cross_company_access() {
+    String token = login(ADMIN_EMAIL, ADMIN_PASSWORD, COMPANY);
+    HttpHeaders headers = new HttpHeaders();
+    headers.setBearerAuth(token);
+
+    ResponseEntity<Map> response =
+        rest.exchange(
+            "/api/v1/admin/users/" + otherCompanyUser.getId(),
+            HttpMethod.GET,
+            new HttpEntity<>(headers),
+            Map.class);
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+  }
+
+  @Test
+  void admin_user_detail_masks_missing_target_as_out_of_scope() {
+    String token = login(ADMIN_EMAIL, ADMIN_PASSWORD, COMPANY);
+    long missingUserId = otherCompanyUser.getId() + 10_000L;
+    HttpHeaders headers = new HttpHeaders();
+    headers.setBearerAuth(token);
+
+    ResponseEntity<Map> foreignResponse =
+        rest.exchange(
+            "/api/v1/admin/users/" + otherCompanyUser.getId(),
+            HttpMethod.GET,
+            new HttpEntity<>(headers),
+            Map.class);
+    ResponseEntity<Map> missingResponse =
+        rest.exchange(
+            "/api/v1/admin/users/" + missingUserId,
+            HttpMethod.GET,
+            new HttpEntity<>(headers),
+            Map.class);
+
+    Map<String, Object> foreignError = assertAccessDeniedEnvelopeAndReturn(foreignResponse);
+    Map<String, Object> missingError = assertAccessDeniedEnvelopeAndReturn(missingResponse);
+    assertThat(foreignError.get("code")).isEqualTo(missingError.get("code"));
+    assertThat(foreignError.get("message")).isEqualTo(missingError.get("message"));
+    assertThat(foreignError.get("reason")).isEqualTo(missingError.get("reason"));
+  }
+
+  @Test
   void admin_users_list_includes_last_login_field_in_payload() {
     String token = login(ADMIN_EMAIL, ADMIN_PASSWORD, COMPANY);
     HttpHeaders headers = new HttpHeaders();
@@ -574,6 +686,22 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
 
   @SuppressWarnings("unchecked")
   private void assertPlatformOnlyAccessDenied(ResponseEntity<Map> response) {
+    assertPlatformOnlyAccessDeniedAndReturn(response);
+  }
+
+  @SuppressWarnings("unchecked")
+  private Map<String, Object> assertAccessDeniedEnvelopeAndReturn(ResponseEntity<Map> response) {
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+    assertThat(response.getBody()).isNotNull();
+    assertThat(response.getBody().get("success")).isEqualTo(Boolean.FALSE);
+    assertThat(response.getBody().get("message")).isEqualTo("Access denied");
+    Object errorBody = response.getBody().get("data");
+    assertThat(errorBody).isInstanceOf(Map.class);
+    return (Map<String, Object>) errorBody;
+  }
+
+  @SuppressWarnings("unchecked")
+  private Map<String, Object> assertPlatformOnlyAccessDeniedAndReturn(ResponseEntity<Map> response) {
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
     assertThat(response.getBody()).isNotNull();
     assertThat(response.getBody().get("success")).isEqualTo(Boolean.FALSE);
@@ -586,6 +714,7 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
         .isEqualTo(
             "Super Admin is limited to platform control-plane operations and cannot execute tenant"
                 + " business workflows");
+    return error;
   }
 
   private ResponseEntity<Map> executeWithTimeout(

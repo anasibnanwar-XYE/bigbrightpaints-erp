@@ -43,6 +43,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.admin.dto.CreateUserRequest;
 import com.bigbrightpaints.erp.modules.admin.dto.UpdateUserRequest;
+import com.bigbrightpaints.erp.modules.admin.dto.UserDto;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.auth.service.PasswordResetService;
@@ -403,6 +404,68 @@ class AdminUserServiceTest {
   }
 
   @Test
+  void getUser_returnsScopedUserWithLastLoginAt() {
+    UserAccount user = new UserAccount("detail-user@example.com", "hash", "Detail User");
+    ReflectionTestUtils.setField(user, "id", 304L);
+    user.setCompany(company);
+    Role role = new Role();
+    role.setName("ROLE_SALES");
+    user.addRole(role);
+
+    AuditLog latestLogin = new AuditLog();
+    latestLogin.setEventType(AuditEvent.LOGIN_SUCCESS);
+    latestLogin.setUsername("detail-user@example.com");
+    latestLogin.setTimestamp(LocalDateTime.of(2026, 2, 7, 8, 45, 0));
+
+    when(userRepository.findById(304L)).thenReturn(Optional.of(user));
+    when(auditLogRepository
+            .findFirstByEventTypeAndCompanyIdAndUsernameIgnoreCaseOrderByTimestampDesc(
+                AuditEvent.LOGIN_SUCCESS, company.getId(), "detail-user@example.com"))
+        .thenReturn(Optional.of(latestLogin));
+
+    UserDto result = service.getUser(304L);
+
+    assertThat(result.id()).isEqualTo(304L);
+    assertThat(result.roles()).containsExactly("ROLE_SALES");
+    assertThat(result.lastLoginAt())
+        .isEqualTo(LocalDateTime.of(2026, 2, 7, 8, 45, 0).atZone(ZoneOffset.UTC).toInstant());
+  }
+
+  @Test
+  void getUser_rejectsCrossTenantTargetForTenantAdmin() {
+    Company foreignCompany = new Company();
+    ReflectionTestUtils.setField(foreignCompany, "id", 21L);
+    foreignCompany.setCode("FOREIGN");
+
+    UserAccount foreignUser = new UserAccount("foreign-detail@example.com", "hash", "Foreign User");
+    ReflectionTestUtils.setField(foreignUser, "id", 305L);
+    foreignUser.setCompany(foreignCompany);
+
+    when(userRepository.findById(305L)).thenReturn(Optional.of(foreignUser));
+
+    assertThatThrownBy(() -> service.getUser(305L))
+        .isInstanceOf(AccessDeniedException.class)
+        .hasMessageContaining("Target user is out of scope for this operation");
+
+    verify(auditService)
+        .logAuthFailure(
+            eq(AuditEvent.ACCESS_DENIED), eq("UNKNOWN_AUTH_ACTOR"), eq("TEST"), any(Map.class));
+  }
+
+  @Test
+  void getUser_missingTargetForTenantAdmin_isAccessDeniedToAvoidEnumeration() {
+    when(userRepository.findById(999L)).thenReturn(Optional.empty());
+
+    assertThatThrownBy(() -> service.getUser(999L))
+        .isInstanceOf(AccessDeniedException.class)
+        .hasMessageContaining("Target user is out of scope for this operation");
+
+    verify(auditService)
+        .logAuthFailure(
+            eq(AuditEvent.ACCESS_DENIED), eq("UNKNOWN_AUTH_ACTOR"), eq("TEST"), any(Map.class));
+  }
+
+  @Test
   void updateUserStatus_disablingUserRevokesTokensSendsNotificationAndAudits() {
     UserAccount user = new UserAccount("status-user@example.com", "hash", "Status User");
     ReflectionTestUtils.setField(user, "id", 302L);
@@ -552,8 +615,6 @@ class AdminUserServiceTest {
                 "n/a",
                 List.of(new SimpleGrantedAuthority("ROLE_SUPER_ADMIN"))));
     when(userRepository.findById(305L)).thenReturn(Optional.of(foreignUser));
-    when(userRepository.save(any(UserAccount.class)))
-        .thenAnswer(invocation -> invocation.getArgument(0));
     when(auditLogRepository
             .findFirstByEventTypeAndCompanyIdAndUsernameIgnoreCaseOrderByTimestampDesc(
                 AuditEvent.LOGIN_SUCCESS, foreignCompany.getId(), "foreign-user@example.com"))
@@ -561,7 +622,7 @@ class AdminUserServiceTest {
 
     try {
       var response =
-          service.updateUser(305L, new UpdateUserRequest("Foreign User Updated", null, true));
+          service.updateUser(305L, new UpdateUserRequest("Foreign User Updated", null));
       assertThat(response.displayName()).isEqualTo("Foreign User Updated");
     } finally {
       SecurityContextHolder.clearContext();
@@ -572,11 +633,10 @@ class AdminUserServiceTest {
   }
 
   @Test
-  void updateUser_sameEnabledStateDoesNotTriggerReauthRevocation() {
+  void updateUser_withoutRoleChangeDoesNotTriggerReauthRevocation() {
     UserAccount user = new UserAccount("same-enabled@example.com", "hash", "Same Enabled");
     ReflectionTestUtils.setField(user, "id", 401L);
     user.setCompany(company);
-    user.setEnabled(true);
     Role role = new Role();
     role.setName("ROLE_SALES");
     user.addRole(role);
@@ -588,9 +648,9 @@ class AdminUserServiceTest {
         .thenReturn(Optional.empty());
 
     var response =
-        service.updateUser(401L, new UpdateUserRequest("Same Enabled Updated", null, true));
+        service.updateUser(401L, new UpdateUserRequest("Same Enabled Updated", null));
 
-    assertThat(response.enabled()).isTrue();
+    assertThat(response.displayName()).isEqualTo("Same Enabled Updated");
     verify(tokenBlacklistService, never()).revokeAllUserTokens(user.getPublicId().toString());
     verify(refreshTokenService, never()).revokeAllForUser(user.getPublicId());
     verify(tenantRuntimePolicyService, never())
@@ -613,8 +673,7 @@ class AdminUserServiceTest {
         .thenReturn(Optional.empty());
 
     var response =
-        service.updateUser(
-            402L, new UpdateUserRequest("Updated User", List.of("ROLE_SALES"), null));
+        service.updateUser(402L, new UpdateUserRequest("Updated User", List.of("ROLE_SALES")));
 
     assertThat(response.displayName()).isEqualTo("Updated User");
     assertThat(response.roles()).containsExactly("ROLE_SALES");
@@ -641,7 +700,7 @@ class AdminUserServiceTest {
 
     var response =
         service.updateUser(
-            409L, new UpdateUserRequest("Updated User", List.of("sales", "ROLE_SALES"), null));
+            409L, new UpdateUserRequest("Updated User", List.of("sales", "ROLE_SALES")));
 
     assertThat(response.displayName()).isEqualTo("Updated User");
     assertThat(response.roles()).containsExactly("ROLE_SALES");
@@ -666,12 +725,10 @@ class AdminUserServiceTest {
             () ->
                 service.updateUser(
                     403L,
-                    new UpdateUserRequest(
-                        "Updated User", List.of("ROLE_SUPER_ADMIN"), false)))
+                    new UpdateUserRequest("Updated User", List.of("ROLE_SUPER_ADMIN"))))
         .isInstanceOf(AccessDeniedException.class)
         .hasMessageContaining("SUPER_ADMIN authority required for role: ROLE_SUPER_ADMIN");
 
-    assertThat(user.isEnabled()).isTrue();
     assertThat(user.getRoles()).extracting(Role::getName).containsExactly("ROLE_DEALER");
     verify(userRepository, never()).save(any(UserAccount.class));
     verify(emailService, never()).sendUserSuspendedEmail(anyString(), anyString());
@@ -893,7 +950,7 @@ class AdminUserServiceTest {
 
     assertThat(user.getRoles())
         .extracting(Role::getName)
-        .containsExactly("ROLE_SALES", "ROLE_FACTORY");
+        .containsExactlyInAnyOrder("ROLE_SALES", "ROLE_FACTORY");
   }
 
   @Test

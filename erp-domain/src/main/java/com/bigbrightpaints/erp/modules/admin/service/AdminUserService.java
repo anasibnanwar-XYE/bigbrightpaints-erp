@@ -7,6 +7,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -110,6 +111,18 @@ public class AdminUserService {
         .toList();
   }
 
+  public UserDto getUser(Long id) {
+    Company company = companyContextService.requireCurrentCompany();
+    UserAccount user =
+        resolveScopedUserForAdminAction(
+            id,
+            company,
+            "admin-read-user-out-of-scope",
+            false,
+            OutOfScopeResponseMode.ACCESS_DENIED);
+    return toDto(user, resolveLastLoginAt(user));
+  }
+
   @Transactional
   public UserDto createUser(CreateUserRequest request) {
     Company company = companyContextService.requireCurrentCompany();
@@ -199,20 +212,14 @@ public class AdminUserService {
         roleUpdateRequested ? new LinkedHashSet<>(normalizedRoleUpdates) : Set.of();
     Set<String> existingRoleSet = roleUpdateRequested ? normalizePersistedRoleSet(user) : Set.of();
     boolean roleAssignmentChanged = roleUpdateRequested && !existingRoleSet.equals(requestedRoleSet);
+    boolean displayNameChanged = !Objects.equals(user.getDisplayName(), request.displayName());
     user.setDisplayName(request.displayName());
-    boolean requiresReauth = false;
-    if (request.enabled() != null) {
-      boolean enabledChanged = user.isEnabled() != request.enabled();
-      updateUserStatusInternal(user, request.enabled(), company, "ADMIN_USER_UPDATE");
-      requiresReauth = enabledChanged;
-    }
     if (roleAssignmentChanged) {
       user.getRoles().clear();
       attachRoles(user, normalizedRoleUpdates);
-      requiresReauth = true; // Roles changed
     }
     // Revoke tokens if permissions changed to force re-authentication
-    if (requiresReauth) {
+    if (roleAssignmentChanged) {
       tokenBlacklistService.revokeAllUserTokens(user.getPublicId().toString());
       refreshTokenService.revokeAllForUser(user.getPublicId());
     }
@@ -221,7 +228,10 @@ public class AdminUserService {
         user,
         company,
         "admin_user_update",
-        Map.of("displayName", user.getDisplayName()));
+        Map.of(
+            "displayNameChanged", Boolean.toString(displayNameChanged),
+            "rolesChanged", Boolean.toString(roleAssignmentChanged),
+            "displayName", user.getDisplayName()));
     return toDto(user, resolveLastLoginAt(user));
   }
 
@@ -343,6 +353,15 @@ public class AdminUserService {
             : userRepository.findById(userId);
     UserAccount user = candidate.orElse(null);
     if (user == null) {
+      if (!superAdmin && outOfScopeResponseMode == OutOfScopeResponseMode.ACCESS_DENIED) {
+        auditPrivilegedUserActionDenied(
+            null,
+            activeCompany,
+            denialReason,
+            Map.of(
+                "targetUserId", String.valueOf(userId), "targetResolution", "MISSING_OR_OUT_OF_SCOPE"));
+        throw new AccessDeniedException(OUT_OF_SCOPE_MESSAGE);
+      }
       if (!superAdmin && lockTarget) {
         return userRepository
             .findById(userId)

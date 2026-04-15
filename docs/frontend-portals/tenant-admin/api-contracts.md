@@ -46,6 +46,15 @@ Response row fields:
 
 Use `enabled` for status pills. There is no separate suspended enum in the response; suspended users come back as disabled.
 
+### `GET /api/v1/admin/users/{id}`
+
+Response is `UserDto` for the selected tenant-scoped user.
+
+Frontend rules:
+
+- Use this endpoint for detail/edit screen hydration.
+- Treat `403 Access denied` as a masked "out of scope or not available" outcome.
+
 ### `POST /api/v1/admin/users`
 
 Request body:
@@ -66,9 +75,8 @@ Request body:
 |---|---|---|---|
 | `displayName` | string | yes | required |
 | `roles` | string[] | no | send the full desired role set |
-| `enabled` | boolean | no | use only when editing from the detail form |
 
-Use one edit form for display name and roles. Keep status toggles as separate actions when possible for clearer audit UX. Company scope is not editable from this surface.
+Use one edit form for display name and roles only. Keep status toggles on `PUT /api/v1/admin/users/{userId}/status` for explicit lifecycle actions and clearer audit UX. Company scope is not editable from this surface.
 
 ### `PUT /api/v1/admin/users/{userId}/status`
 

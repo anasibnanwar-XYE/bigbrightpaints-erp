@@ -331,6 +331,15 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
     assertOperationContract(root, "/api/v1/admin/users/{id}/unsuspend", "patch", null, "204", null);
     assertOperationContract(
         root, "/api/v1/admin/users/{id}/mfa/disable", "patch", null, "204", null);
+    assertOperationContract(
+        root, "/api/v1/admin/users/{id}", "get", null, "200", "#/components/schemas/ApiResponseUserDto");
+    assertOperationContract(
+        root,
+        "/api/v1/admin/users/{id}",
+        "put",
+        "#/components/schemas/UpdateUserRequest",
+        "200",
+        "#/components/schemas/ApiResponseUserDto");
     assertOperationContract(root, "/api/v1/admin/users/{id}", "delete", null, "204", null);
 
     assertOperationContract(
