@@ -53,6 +53,8 @@ public class AdminUserService {
           SystemRole.DEALER.getRoleName());
   private static final Set<String> TENANT_ASSIGNABLE_ROLES =
       Set.copyOf(TENANT_ASSIGNABLE_ROLE_ORDER);
+  private static final Set<String> TENANT_ADMIN_PROTECTED_TARGET_ROLES =
+      Set.of(SystemRole.ADMIN.getRoleName(), SUPER_ADMIN_ROLE);
   private static final String TENANT_ASSIGNABLE_ROLES_SUMMARY =
       String.join(", ", TENANT_ASSIGNABLE_ROLE_ORDER);
   private static final String OUT_OF_SCOPE_MESSAGE =
@@ -105,8 +107,12 @@ public class AdminUserService {
   public List<UserDto> listUsers() {
     Company company = companyContextService.requireCurrentCompany();
     List<UserAccount> users = userRepository.findByCompany_Id(company.getId());
-    Map<String, Instant> lastLoginByEmail = resolveLastLoginByEmail(company.getId(), users);
-    return users.stream()
+    List<UserAccount> visibleUsers =
+        hasSuperAdminAuthority()
+            ? users
+            : users.stream().filter(user -> !isTenantAdminProtectedTarget(user)).toList();
+    Map<String, Instant> lastLoginByEmail = resolveLastLoginByEmail(company.getId(), visibleUsers);
+    return visibleUsers.stream()
         .map(user -> toDto(user, lastLoginByEmail.get(normalizeEmailKey(user.getEmail()))))
         .toList();
   }
@@ -381,6 +387,14 @@ public class AdminUserService {
       return user;
     }
     if (isUserWithinCompanyScope(user, activeCompany)) {
+      if (isTenantAdminProtectedTarget(user)) {
+        return handleOutOfScopeAdminAction(
+            user,
+            activeCompany,
+            denialReason,
+            outOfScopeResponseMode,
+            Map.of("targetResolution", "PROTECTED_ROLE_TARGET"));
+      }
       return user;
     }
     return handleOutOfScopeAdminAction(user, activeCompany, denialReason, outOfScopeResponseMode);
@@ -399,7 +413,17 @@ public class AdminUserService {
       Company activeCompany,
       String denialReason,
       OutOfScopeResponseMode outOfScopeResponseMode) {
-    auditPrivilegedUserActionDenied(user, activeCompany, denialReason);
+    return handleOutOfScopeAdminAction(
+        user, activeCompany, denialReason, outOfScopeResponseMode, Map.of());
+  }
+
+  private UserAccount handleOutOfScopeAdminAction(
+      UserAccount user,
+      Company activeCompany,
+      String denialReason,
+      OutOfScopeResponseMode outOfScopeResponseMode,
+      Map<String, String> extraMetadata) {
+    auditPrivilegedUserActionDenied(user, activeCompany, denialReason, extraMetadata);
     if (outOfScopeResponseMode == OutOfScopeResponseMode.MASK_AS_MISSING) {
       throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
           USER_NOT_FOUND_MESSAGE);
@@ -613,6 +637,29 @@ public class AdminUserService {
       return false;
     }
     return activeCompany.getId().equals(user.getCompany().getId());
+  }
+
+  private boolean isTenantAdminProtectedTarget(UserAccount user) {
+    if (user == null || user.getRoles() == null || user.getRoles().isEmpty()) {
+      return false;
+    }
+    return user.getRoles().stream()
+        .filter(Objects::nonNull)
+        .map(Role::getName)
+        .map(this::normalizeRoleNameForComparison)
+        .filter(StringUtils::hasText)
+        .anyMatch(TENANT_ADMIN_PROTECTED_TARGET_ROLES::contains);
+  }
+
+  private String normalizeRoleNameForComparison(String roleName) {
+    if (!StringUtils.hasText(roleName)) {
+      return null;
+    }
+    String normalized = roleName.trim().toUpperCase(Locale.ROOT);
+    if (normalized.startsWith("ROLE_")) {
+      return normalized;
+    }
+    return "ROLE_" + normalized;
   }
 
   private void assertNotProtectedMainAdmin(UserAccount user, Company actorCompany, String action) {

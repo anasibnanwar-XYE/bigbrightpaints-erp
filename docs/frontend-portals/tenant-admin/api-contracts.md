@@ -44,9 +44,17 @@ Top-level fields:
 
 Returns `ApiResponse<List<UserDto>>`.
 
+Visibility boundary:
+
+- Tenant-admin user-management list excludes identities holding `ROLE_ADMIN` or `ROLE_SUPER_ADMIN`.
+
 ### `GET /api/v1/admin/users/{id}`
 
 Returns `ApiResponse<UserDto>`.
+
+Scope boundary:
+
+- Identities holding `ROLE_ADMIN` or `ROLE_SUPER_ADMIN` are out of scope for tenant-admin user-management reads.
 
 ### `POST /api/v1/admin/users`
 
@@ -98,6 +106,10 @@ Returns updated `UserDto`.
 - `DELETE /api/v1/admin/users/{id}`
 
 Frontend rule: re-fetch list/detail after these actions.
+
+Mutation scope boundary:
+
+- Tenant-admin user-management mutations (`status`, `suspend`, `unsuspend`, `mfa disable`, `delete`, `force-reset-password`) do not operate on `ROLE_ADMIN` or `ROLE_SUPER_ADMIN` targets.
 
 ### `POST /api/v1/admin/users/{userId}/force-reset-password`
 

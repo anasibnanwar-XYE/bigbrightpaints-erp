@@ -336,7 +336,7 @@ class AdminUserServiceTest {
     ReflectionTestUtils.setField(user, "id", 301L);
     user.setCompany(company);
     Role role = new Role();
-    role.setName("ROLE_ADMIN");
+    role.setName("ROLE_SALES");
     user.addRole(role);
 
     AuditLog latestLogin = new AuditLog();
@@ -382,7 +382,7 @@ class AdminUserServiceTest {
     user.setCompany(company);
 
     Role validRole = new Role();
-    validRole.setName("ROLE_ADMIN");
+    validRole.setName("ROLE_SALES");
     Role blankRole = new Role();
     blankRole.setName("   ");
     user.addRole(validRole);
@@ -400,7 +400,46 @@ class AdminUserServiceTest {
 
     assertThat(results).hasSize(1);
     assertThat(results.getFirst().companyCode()).isEqualTo("TEST");
-    assertThat(results.getFirst().roles()).containsExactly("ROLE_ADMIN");
+    assertThat(results.getFirst().roles()).containsExactly("ROLE_SALES");
+  }
+
+  @Test
+  void listUsers_filtersTenantAdminProtectedTargets() {
+    UserAccount tenantAdmin = new UserAccount("tenant-admin@example.com", "hash", "Tenant Admin");
+    ReflectionTestUtils.setField(tenantAdmin, "id", 910L);
+    tenantAdmin.setCompany(company);
+    Role tenantAdminRole = new Role();
+    tenantAdminRole.setName("ROLE_ADMIN");
+    tenantAdmin.addRole(tenantAdminRole);
+
+    UserAccount tenantSuperAdmin =
+        new UserAccount("tenant-superadmin@example.com", "hash", "Tenant Super Admin");
+    ReflectionTestUtils.setField(tenantSuperAdmin, "id", 911L);
+    tenantSuperAdmin.setCompany(company);
+    Role tenantSuperAdminRole = new Role();
+    tenantSuperAdminRole.setName("ROLE_SUPER_ADMIN");
+    tenantSuperAdmin.addRole(tenantSuperAdminRole);
+
+    UserAccount tenantSales = new UserAccount("tenant-sales@example.com", "hash", "Tenant Sales");
+    ReflectionTestUtils.setField(tenantSales, "id", 912L);
+    tenantSales.setCompany(company);
+    Role tenantSalesRole = new Role();
+    tenantSalesRole.setName("ROLE_SALES");
+    tenantSales.addRole(tenantSalesRole);
+
+    when(userRepository.findByCompany_Id(company.getId()))
+        .thenReturn(List.of(tenantAdmin, tenantSuperAdmin, tenantSales));
+    when(auditLogRepository.findLatestTimestampByEventTypeAndCompanyIdAndUsernameIn(
+            AuditEvent.LOGIN_SUCCESS,
+            company.getId(),
+            java.util.Set.of("tenant-sales@example.com")))
+        .thenReturn(List.of());
+
+    var results = service.listUsers();
+
+    assertThat(results).hasSize(1);
+    assertThat(results.getFirst().email()).isEqualTo("tenant-sales@example.com");
+    assertThat(results.getFirst().roles()).containsExactly("ROLE_SALES");
   }
 
   @Test
@@ -453,6 +492,27 @@ class AdminUserServiceTest {
   }
 
   @Test
+  void getUser_rejectsSameTenantProtectedRoleTargetForTenantAdmin() {
+    UserAccount tenantSuperAdmin =
+        new UserAccount("tenant-superadmin-detail@example.com", "hash", "Tenant Super Admin");
+    ReflectionTestUtils.setField(tenantSuperAdmin, "id", 399L);
+    tenantSuperAdmin.setCompany(company);
+    Role superAdminRole = new Role();
+    superAdminRole.setName("ROLE_SUPER_ADMIN");
+    tenantSuperAdmin.addRole(superAdminRole);
+
+    when(userRepository.findById(399L)).thenReturn(Optional.of(tenantSuperAdmin));
+
+    assertThatThrownBy(() -> service.getUser(399L))
+        .isInstanceOf(AccessDeniedException.class)
+        .hasMessageContaining("Target user is out of scope for this operation");
+
+    verify(auditService)
+        .logAuthFailure(
+            eq(AuditEvent.ACCESS_DENIED), eq("UNKNOWN_AUTH_ACTOR"), eq("TEST"), any(Map.class));
+  }
+
+  @Test
   void getUser_missingTargetForTenantAdmin_isAccessDeniedToAvoidEnumeration() {
     when(userRepository.findById(999L)).thenReturn(Optional.empty());
 
@@ -471,7 +531,7 @@ class AdminUserServiceTest {
     ReflectionTestUtils.setField(user, "id", 302L);
     user.setCompany(company);
     Role role = new Role();
-    role.setName("ROLE_ADMIN");
+    role.setName("ROLE_SALES");
     user.addRole(role);
 
     when(userRepository.findById(302L)).thenReturn(Optional.of(user));
@@ -500,7 +560,7 @@ class AdminUserServiceTest {
     user.setEnabled(false);
     user.setCompany(company);
     Role role = new Role();
-    role.setName("ROLE_ADMIN");
+    role.setName("ROLE_SALES");
     user.addRole(role);
 
     when(userRepository.findById(303L)).thenReturn(Optional.of(user));
@@ -529,7 +589,7 @@ class AdminUserServiceTest {
     ReflectionTestUtils.setField(user, "id", 304L);
     user.setCompany(company);
     Role role = new Role();
-    role.setName("ROLE_ADMIN");
+    role.setName("ROLE_SALES");
     user.addRole(role);
 
     when(userRepository.findById(304L)).thenReturn(Optional.of(user));
@@ -564,6 +624,31 @@ class AdminUserServiceTest {
     verify(userRepository).findById(311L);
     verify(userRepository, never()).lockById(311L);
     verify(userRepository, never()).lockByIdAndCompanyId(311L, 1L);
+    verify(passwordResetService, never()).requestResetByAdmin(any(UserAccount.class));
+    verify(auditService)
+        .logAuthFailure(
+            eq(AuditEvent.ACCESS_DENIED), eq("UNKNOWN_AUTH_ACTOR"), eq("TEST"), any(Map.class));
+  }
+
+  @Test
+  void forceResetPassword_sameTenantProtectedRole_forTenantAdmin_masksTargetAsMissingWithoutLocking() {
+    UserAccount protectedUser =
+        new UserAccount("tenant-admin-protected@example.com", "hash", "Tenant Admin");
+    ReflectionTestUtils.setField(protectedUser, "id", 313L);
+    protectedUser.setCompany(company);
+    Role protectedRole = new Role();
+    protectedRole.setName("ROLE_ADMIN");
+    protectedUser.addRole(protectedRole);
+
+    when(userRepository.findById(313L)).thenReturn(Optional.of(protectedUser));
+
+    assertThatThrownBy(() -> service.forceResetPassword(313L))
+        .isInstanceOf(ApplicationException.class)
+        .hasMessageContaining("User not found");
+
+    verify(userRepository).findById(313L);
+    verify(userRepository, never()).lockById(313L);
+    verify(userRepository, never()).lockByIdAndCompanyId(313L, 1L);
     verify(passwordResetService, never()).requestResetByAdmin(any(UserAccount.class));
     verify(auditService)
         .logAuthFailure(

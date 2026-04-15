@@ -51,13 +51,15 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
 
   @Autowired private DataSource dataSource;
 
+  private UserAccount tenantSuperAdminUser;
   private UserAccount otherCompanyUser;
 
   @BeforeEach
   void setUp() {
     dataSeeder.ensureUser(
         ADMIN_EMAIL, ADMIN_PASSWORD, "Security Admin", COMPANY, List.of("ROLE_ADMIN"));
-    dataSeeder.ensureUser(
+    tenantSuperAdminUser =
+        dataSeeder.ensureUser(
         SUPER_ADMIN_EMAIL,
         SUPER_ADMIN_PASSWORD,
         "Security Super Admin",
@@ -522,6 +524,76 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
     List<Map<String, Object>> users = (List<Map<String, Object>>) dataObj;
     assertThat(users).isNotEmpty();
     assertThat(users.getFirst()).containsKey("lastLoginAt");
+  }
+
+  @Test
+  void admin_users_list_excludes_same_tenant_admin_and_super_admin_accounts() {
+    String token = login(ADMIN_EMAIL, ADMIN_PASSWORD, COMPANY);
+    HttpHeaders headers = new HttpHeaders();
+    headers.setBearerAuth(token);
+
+    ResponseEntity<Map> response =
+        rest.exchange("/api/v1/admin/users", HttpMethod.GET, new HttpEntity<>(headers), Map.class);
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(response.getBody()).isNotNull();
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> users = (List<Map<String, Object>>) response.getBody().get("data");
+    assertThat(users).isNotEmpty();
+    assertThat(users).noneMatch(row -> ADMIN_EMAIL.equalsIgnoreCase(String.valueOf(row.get("email"))));
+    assertThat(users)
+        .noneMatch(row -> SUPER_ADMIN_EMAIL.equalsIgnoreCase(String.valueOf(row.get("email"))));
+    assertThat(users).anyMatch(row -> DEALER_EMAIL.equalsIgnoreCase(String.valueOf(row.get("email"))));
+  }
+
+  @Test
+  void admin_user_detail_blocks_same_tenant_super_admin_target() {
+    String token = login(ADMIN_EMAIL, ADMIN_PASSWORD, COMPANY);
+    long missingUserId = tenantSuperAdminUser.getId() + 10_000L;
+    HttpHeaders headers = new HttpHeaders();
+    headers.setBearerAuth(token);
+
+    ResponseEntity<Map> privilegedResponse =
+        rest.exchange(
+            "/api/v1/admin/users/" + tenantSuperAdminUser.getId(),
+            HttpMethod.GET,
+            new HttpEntity<>(headers),
+            Map.class);
+    ResponseEntity<Map> missingResponse =
+        rest.exchange(
+            "/api/v1/admin/users/" + missingUserId,
+            HttpMethod.GET,
+            new HttpEntity<>(headers),
+            Map.class);
+
+    Map<String, Object> privilegedError = assertAccessDeniedEnvelopeAndReturn(privilegedResponse);
+    Map<String, Object> missingError = assertAccessDeniedEnvelopeAndReturn(missingResponse);
+    assertThat(privilegedError.get("code")).isEqualTo(missingError.get("code"));
+    assertThat(privilegedError.get("message")).isEqualTo(missingError.get("message"));
+    assertThat(privilegedError.get("reason")).isEqualTo(missingError.get("reason"));
+  }
+
+  @Test
+  void tenant_admin_force_reset_masks_same_tenant_super_admin_target_as_missing() {
+    String token = login(ADMIN_EMAIL, ADMIN_PASSWORD, COMPANY);
+    long missingUserId = tenantSuperAdminUser.getId() + 10_000L;
+    HttpHeaders headers = new HttpHeaders();
+    headers.setBearerAuth(token);
+
+    ResponseEntity<Map> privilegedResponse =
+        rest.exchange(
+            "/api/v1/admin/users/" + tenantSuperAdminUser.getId() + "/force-reset-password",
+            HttpMethod.POST,
+            new HttpEntity<>(headers),
+            Map.class);
+    ResponseEntity<Map> missingResponse =
+        rest.exchange(
+            "/api/v1/admin/users/" + missingUserId + "/force-reset-password",
+            HttpMethod.POST,
+            new HttpEntity<>(headers),
+            Map.class);
+
+    assertMaskedMissingUserContractPair(privilegedResponse, missingResponse);
   }
 
   @Test

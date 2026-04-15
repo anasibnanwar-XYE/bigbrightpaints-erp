@@ -30,6 +30,11 @@ Must reject:
 - `ROLE_SUPER_ADMIN`
 - unknown/custom roles
 
+Tenant-admin user-management scope also excludes acting on users that currently hold:
+
+- `ROLE_ADMIN`
+- `ROLE_SUPER_ADMIN`
+
 ## Support ownership boundaries
 
 - Tenant-admin internal support host: `/api/v1/admin/support/tickets/**`.
