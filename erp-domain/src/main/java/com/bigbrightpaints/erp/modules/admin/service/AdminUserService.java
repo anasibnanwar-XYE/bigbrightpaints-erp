@@ -53,8 +53,6 @@ public class AdminUserService {
           SystemRole.DEALER.getRoleName());
   private static final Set<String> TENANT_ASSIGNABLE_ROLES =
       Set.copyOf(TENANT_ASSIGNABLE_ROLE_ORDER);
-  private static final Set<String> TENANT_ADMIN_PROTECTED_TARGET_ROLES =
-      Set.of(SystemRole.ADMIN.getRoleName(), SUPER_ADMIN_ROLE);
   private static final String TENANT_ASSIGNABLE_ROLES_SUMMARY =
       String.join(", ", TENANT_ASSIGNABLE_ROLE_ORDER);
   private static final String OUT_OF_SCOPE_MESSAGE =
@@ -517,8 +515,7 @@ public class AdminUserService {
   }
 
   private boolean requiresSuperAdminRoleAssignment(String normalizedRoleName) {
-    return "ROLE_ADMIN".equalsIgnoreCase(normalizedRoleName)
-        || SUPER_ADMIN_ROLE.equalsIgnoreCase(normalizedRoleName);
+    return isTenantAdminProtectedRole(normalizedRoleName);
   }
 
   private void validateTenantAssignableRole(String normalizedRoleName) {
@@ -646,9 +643,15 @@ public class AdminUserService {
     return user.getRoles().stream()
         .filter(Objects::nonNull)
         .map(Role::getName)
-        .map(this::normalizeRoleNameForComparison)
-        .filter(StringUtils::hasText)
-        .anyMatch(TENANT_ADMIN_PROTECTED_TARGET_ROLES::contains);
+        .anyMatch(this::isTenantAdminProtectedRole);
+  }
+
+  private boolean isTenantAdminProtectedRole(String roleName) {
+    String normalized = normalizeRoleNameForComparison(roleName);
+    if (!StringUtils.hasText(normalized)) {
+      return false;
+    }
+    return SystemRole.ADMIN.getRoleName().equals(normalized) || SUPER_ADMIN_ROLE.equals(normalized);
   }
 
   private String normalizeRoleNameForComparison(String roleName) {
