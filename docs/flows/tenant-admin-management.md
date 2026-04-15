@@ -177,6 +177,76 @@ Flow is complete when:
 5. User role assignment remains fixed-list and escalation-proof.
 6. Tenant-admin self-settings use `/api/v1/admin/self/settings` + auth-owned self-service flows.
 
+## Implementation Plan (Executed Slices)
+
+This is the canonical implementation order and status for the tenant-admin hard-cut refactor.
+
+### Slice 1: Contract inventory + hard-cut removals (complete)
+
+- Tenant-admin product ownership moved to canonical `/api/v1/admin/**` surfaces.
+- Tenant-admin role creation/custom-role dependency removed from product contract.
+- Portal-hosted tenant-admin support ownership retired in favor of admin host.
+- Legacy and canonical boundaries aligned in endpoint inventory + portal docs.
+
+### Slice 2: User management rewrite (complete)
+
+- `AdminUserController` + `AdminUserService` now enforce fixed assignable roles only.
+- Tenant-admin user list/detail/mutations mask privileged identities (`ROLE_ADMIN`, `ROLE_SUPER_ADMIN`) as not found.
+- User lifecycle actions remain tenant-scoped and audit-emitting.
+
+### Slice 3: Approval system rewrite (complete)
+
+- Canonical approval inbox contract: `GET /api/v1/admin/approvals`.
+- Canonical generic decision contract: `POST /api/v1/admin/approvals/{originType}/{id}/decisions`.
+- Origin-specific decision constraints enforced in admin orchestration:
+  - credit and credit-override require nonblank reason
+  - payroll reject blocked (approve-only)
+  - period-close force posture preserved
+
+### Slice 4: Dashboard read model (complete)
+
+- Canonical dashboard endpoint: `GET /api/v1/admin/dashboard`.
+- Aggregates approval, user, support, runtime, security, and recent activity summaries.
+- No quota/runtime mutation behavior is exposed from dashboard.
+
+### Slice 5: Support rewrite (complete)
+
+- Tenant-admin internal support is owned by `/api/v1/admin/support/tickets/**`.
+- Portal support host remains accounting-owned and out of tenant-admin ownership.
+- Sync state visibility remains scoped to support DTOs only.
+
+### Slice 6: Settings/self-service rewrite (complete)
+
+- Canonical tenant-admin settings payload: `GET /api/v1/admin/self/settings`.
+- Self security and password/MFA flows remain auth-owned (`/api/v1/auth/**`).
+- Utility notify action moved to `AdminUtilityController` (`POST /api/v1/admin/notify`).
+
+### Slice 7: Documentation realignment (complete)
+
+- Updated docs:
+  - `docs/modules/admin-portal-rbac.md`
+  - `docs/flows/tenant-admin-management.md`
+  - `docs/frontend-portals/tenant-admin/api-contracts.md`
+  - `docs/frontend-portals/tenant-admin/routes.md`
+  - `docs/frontend-portals/tenant-admin/role-boundaries.md`
+  - `docs/frontend-api/admin-role.md`
+  - `docs/frontend-api/auth-and-company-scope.md`
+  - `docs/endpoint-inventory.md`
+
+## Verification Contract
+
+Run these in `bigbrightpaints-erp_worktrees/tenant-admin-hardcut-s1`:
+
+- `bash scripts/guard_openapi_contract_drift.sh`
+- `bash scripts/guard_accounting_portal_scope_contract.sh`
+- `bash ci/lint-knowledgebase.sh`
+- `cd erp-domain && MIGRATION_SET=v2 mvn -q -Dtest=AdminUserServiceTest,AdminApprovalServiceTest,AdminApprovalControllerContractTest test`
+- Colima + curl contract checks:
+  - tenant-admin user list excludes privileged targets
+  - privileged-target and missing-target user mutations return the same masked not-found contract
+  - credit-override generic decision rejects blank reason
+  - payroll generic decision rejects `REJECT`
+
 ## Related Docs
 
 - [docs/modules/admin-portal-rbac.md](../modules/admin-portal-rbac.md)
