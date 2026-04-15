@@ -184,8 +184,6 @@ class AdminUserServiceTest {
 
   @Test
   void createUser_nonSuperAdminCannotAssignAdminRoleWithoutPrefix() {
-    when(roleService.isSystemRole("ROLE_ADMIN")).thenReturn(true);
-
     assertThatThrownBy(
             () ->
                 service.createUser(
@@ -208,7 +206,31 @@ class AdminUserServiceTest {
   }
 
   @Test
-  void createUser_superAdminCanAssignSuperAdminRole() {
+  void createUser_superAdminStillCannotAssignUnsupportedTenantAdminRoles() {
+    SecurityContextHolder.getContext()
+        .setAuthentication(
+            new UsernamePasswordAuthenticationToken(
+                "super-admin@bbp.com",
+                "n/a",
+                List.of(new SimpleGrantedAuthority("ROLE_SUPER_ADMIN"))));
+    try {
+      assertThatThrownBy(
+              () ->
+                  service.createUser(
+                      new CreateUserRequest(
+                          "platform-owner@example.com",
+                          "Platform Owner",
+                          List.of("ROLE_SUPER_ADMIN"))))
+          .isInstanceOf(ApplicationException.class)
+          .hasMessageContaining("Unsupported role for tenant-admin user management")
+          .hasMessageContaining("ROLE_SUPER_ADMIN");
+    } finally {
+      SecurityContextHolder.clearContext();
+    }
+  }
+
+  @Test
+  void createUser_superAdminCanAssignAllowlistedTenantRole() {
     SecurityContextHolder.getContext()
         .setAuthentication(
             new UsernamePasswordAuthenticationToken(
@@ -218,7 +240,7 @@ class AdminUserServiceTest {
     try {
       service.createUser(
           new CreateUserRequest(
-              "platform-owner@example.com", "Platform Owner", List.of("ROLE_SUPER_ADMIN")));
+              "platform-sales@example.com", "Platform Sales", List.of("sales")));
       verify(userRepository).save(any(UserAccount.class));
     } finally {
       SecurityContextHolder.clearContext();
@@ -288,6 +310,23 @@ class AdminUserServiceTest {
 
     verify(dealerRepository, times(1)).save(any(Dealer.class));
     verify(accountRepository, never()).save(any(Account.class));
+  }
+
+  @Test
+  void createUser_normalizedDealerRoleStillTriggersDealerProvisioning() {
+    when(dealerRepository.findByCompanyAndPortalUserEmail(company, "dealer-normalized@example.com"))
+        .thenReturn(Optional.empty());
+    when(dealerRepository.findByCompanyAndEmailIgnoreCase(company, "dealer-normalized@example.com"))
+        .thenReturn(Optional.empty());
+    when(dealerRepository.findByCompanyAndCodeIgnoreCase(any(Company.class), anyString()))
+        .thenReturn(Optional.empty());
+
+    service.createUser(
+        new CreateUserRequest(
+            "dealer-normalized@example.com", "Dealer Normalized", List.of(" dealer ")));
+
+    verify(dealerRepository, times(2)).save(any(Dealer.class));
+    verify(accountRepository).save(any(Account.class));
   }
 
   @Test
@@ -585,6 +624,62 @@ class AdminUserServiceTest {
   }
 
   @Test
+  void updateUser_equivalentRoleSetDoesNotTriggerReauthRevocation() {
+    UserAccount user = new UserAccount("update-same-role@example.com", "hash", "Update User");
+    ReflectionTestUtils.setField(user, "id", 409L);
+    user.setCompany(company);
+    user.setEnabled(true);
+    Role existingRole = new Role();
+    existingRole.setName("ROLE_SALES");
+    user.addRole(existingRole);
+
+    when(userRepository.findById(409L)).thenReturn(Optional.of(user));
+    when(auditLogRepository
+            .findFirstByEventTypeAndCompanyIdAndUsernameIgnoreCaseOrderByTimestampDesc(
+                AuditEvent.LOGIN_SUCCESS, company.getId(), "update-same-role@example.com"))
+        .thenReturn(Optional.empty());
+
+    var response =
+        service.updateUser(
+            409L, new UpdateUserRequest("Updated User", List.of("sales", "ROLE_SALES"), null));
+
+    assertThat(response.displayName()).isEqualTo("Updated User");
+    assertThat(response.roles()).containsExactly("ROLE_SALES");
+    verify(roleService, never()).ensureRoleExists(anyString());
+    verify(tokenBlacklistService, never()).revokeAllUserTokens(anyString());
+    verify(refreshTokenService, never()).revokeAllForUser(any());
+  }
+
+  @Test
+  void updateUser_rejectsUnsupportedRoleBeforeMutatingAssignedRoles() {
+    UserAccount user = new UserAccount("update-invalid-role@example.com", "hash", "Update User");
+    ReflectionTestUtils.setField(user, "id", 403L);
+    user.setCompany(company);
+    user.setEnabled(true);
+    Role existingRole = new Role();
+    existingRole.setName("ROLE_DEALER");
+    user.addRole(existingRole);
+
+    when(userRepository.findById(403L)).thenReturn(Optional.of(user));
+
+    assertThatThrownBy(
+            () ->
+                service.updateUser(
+                    403L,
+                    new UpdateUserRequest(
+                        "Updated User", List.of("ROLE_SUPER_ADMIN"), false)))
+        .isInstanceOf(AccessDeniedException.class)
+        .hasMessageContaining("SUPER_ADMIN authority required for role: ROLE_SUPER_ADMIN");
+
+    assertThat(user.isEnabled()).isTrue();
+    assertThat(user.getRoles()).extracting(Role::getName).containsExactly("ROLE_DEALER");
+    verify(userRepository, never()).save(any(UserAccount.class));
+    verify(emailService, never()).sendUserSuspendedEmail(anyString(), anyString());
+    verify(tokenBlacklistService, never()).revokeAllUserTokens(anyString());
+    verify(refreshTokenService, never()).revokeAllForUser(any());
+  }
+
+  @Test
   void suspend_crossTenantUser_forTenantAdmin_usesScopedLockAndMasksTargetAsMissing() {
     Company foreignCompany = new Company();
     ReflectionTestUtils.setField(foreignCompany, "id", 21L);
@@ -770,14 +865,35 @@ class AdminUserServiceTest {
   }
 
   @Test
-  void helper_attachRoles_skipsBlankAndNormalizesSystemRolePrefix() {
+  void helper_validateAndNormalizeAssignableRoles_rejectsInvalidAndNormalizesAllowedRoles() {
     UserAccount user = new UserAccount("user@example.com", "TEST", "hash", "User");
-    when(roleService.isSystemRole("ROLE_ADMIN")).thenReturn(true);
+    assertThatThrownBy(
+            () ->
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    service, "validateAndNormalizeAssignableRoles", List.of(" "), company))
+        .hasMessageContaining("Role entries cannot be blank");
+
+    assertThatThrownBy(
+            () ->
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    service, "validateAndNormalizeAssignableRoles", List.of("admin"), company))
+        .hasMessageContaining("SUPER_ADMIN authority required for role: ROLE_ADMIN");
+
+    @SuppressWarnings("unchecked")
+    List<String> normalizedRoles =
+        (List<String>)
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                service,
+                "validateAndNormalizeAssignableRoles",
+                List.of("sales", "ROLE_SALES", "ROLE_FACTORY"),
+                company);
 
     com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-        service, "attachRoles", user, List.of(" ", "admin"));
+        service, "attachRoles", user, normalizedRoles);
 
-    assertThat(user.getRoles()).extracting(Role::getName).containsExactly("ROLE_ADMIN");
+    assertThat(user.getRoles())
+        .extracting(Role::getName)
+        .containsExactly("ROLE_SALES", "ROLE_FACTORY");
   }
 
   @Test

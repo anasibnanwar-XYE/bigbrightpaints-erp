@@ -35,6 +35,7 @@ import com.bigbrightpaints.erp.modules.auth.service.ScopedAccountBootstrapServic
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.rbac.domain.Role;
+import com.bigbrightpaints.erp.modules.rbac.domain.SystemRole;
 import com.bigbrightpaints.erp.modules.rbac.service.RoleService;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
@@ -42,7 +43,17 @@ import com.bigbrightpaints.erp.modules.sales.util.DealerProvisioningSupport;
 
 @Service
 public class AdminUserService {
-  private static final String SUPER_ADMIN_ROLE = "ROLE_SUPER_ADMIN";
+  private static final String SUPER_ADMIN_ROLE = SystemRole.SUPER_ADMIN.getRoleName();
+  private static final List<String> TENANT_ASSIGNABLE_ROLE_ORDER =
+      List.of(
+          SystemRole.ACCOUNTING.getRoleName(),
+          SystemRole.FACTORY.getRoleName(),
+          SystemRole.SALES.getRoleName(),
+          SystemRole.DEALER.getRoleName());
+  private static final Set<String> TENANT_ASSIGNABLE_ROLES =
+      Set.copyOf(TENANT_ASSIGNABLE_ROLE_ORDER);
+  private static final String TENANT_ASSIGNABLE_ROLES_SUMMARY =
+      String.join(", ", TENANT_ASSIGNABLE_ROLE_ORDER);
   private static final String OUT_OF_SCOPE_MESSAGE =
       "Target user is out of scope for this operation";
   private static final String USER_NOT_FOUND_MESSAGE = "User not found";
@@ -102,18 +113,17 @@ public class AdminUserService {
   @Transactional
   public UserDto createUser(CreateUserRequest request) {
     Company company = companyContextService.requireCurrentCompany();
-    assertActorCanAssignRoles(request.roles(), company);
+    List<String> normalizedRoles = validateAndNormalizeAssignableRoles(request.roles(), company);
     tenantRuntimePolicyService.assertCanAddEnabledUser(company, "ADMIN_USER_CREATE");
     UserAccount user = new UserAccount();
-    attachRoles(user, request.roles());
+    attachRoles(user, normalizedRoles);
     UserAccount saved =
         scopedAccountBootstrapService.provisionTenantAccount(
             company, request.email(), request.displayName(), user.getRoles());
 
     // Auto-create Dealer entity if user has ROLE_DEALER
     boolean isDealerUser =
-        request.roles().stream()
-            .anyMatch(r -> r.equalsIgnoreCase("ROLE_DEALER") || r.equalsIgnoreCase("DEALER"));
+        normalizedRoles.stream().anyMatch(roleName -> "ROLE_DEALER".equalsIgnoreCase(roleName));
     if (isDealerUser) {
       createDealerForUser(saved, company);
     }
@@ -180,6 +190,15 @@ public class AdminUserService {
             "admin-update-user-out-of-scope",
             false,
             OutOfScopeResponseMode.ACCESS_DENIED);
+    List<String> normalizedRoleUpdates =
+        request.roles() == null || request.roles().isEmpty()
+            ? List.of()
+            : validateAndNormalizeAssignableRoles(request.roles(), company);
+    boolean roleUpdateRequested = !normalizedRoleUpdates.isEmpty();
+    Set<String> requestedRoleSet =
+        roleUpdateRequested ? new LinkedHashSet<>(normalizedRoleUpdates) : Set.of();
+    Set<String> existingRoleSet = roleUpdateRequested ? normalizePersistedRoleSet(user) : Set.of();
+    boolean roleAssignmentChanged = roleUpdateRequested && !existingRoleSet.equals(requestedRoleSet);
     user.setDisplayName(request.displayName());
     boolean requiresReauth = false;
     if (request.enabled() != null) {
@@ -187,9 +206,9 @@ public class AdminUserService {
       updateUserStatusInternal(user, request.enabled(), company, "ADMIN_USER_UPDATE");
       requiresReauth = enabledChanged;
     }
-    if (request.roles() != null && !request.roles().isEmpty()) {
+    if (roleAssignmentChanged) {
       user.getRoles().clear();
-      attachRoles(user, request.roles());
+      attachRoles(user, normalizedRoleUpdates);
       requiresReauth = true; // Roles changed
     }
     // Revoke tokens if permissions changed to force re-authentication
@@ -416,43 +435,42 @@ public class AdminUserService {
         .anyMatch(authority -> SUPER_ADMIN_ROLE.equalsIgnoreCase(authority.getAuthority()));
   }
 
-  private void assertActorCanAssignRoles(List<String> roles, Company actorCompany) {
-    if (roles == null || roles.isEmpty() || hasSuperAdminAuthority()) {
-      return;
+  private List<String> validateAndNormalizeAssignableRoles(List<String> roles, Company actorCompany) {
+    if (roles == null || roles.isEmpty()) {
+      return List.of();
     }
-    String actor = resolveAuditActor();
-    String tenantScope =
-        actorCompany != null && StringUtils.hasText(actorCompany.getCode())
-            ? actorCompany.getCode().trim()
-            : null;
+    boolean actorIsSuperAdmin = hasSuperAdminAuthority();
+    Set<String> normalizedRoles = new LinkedHashSet<>(roles.size());
     for (String roleName : roles) {
       String normalizedRoleName = normalizeRequestedRoleName(roleName);
-      if (!requiresSuperAdminRoleAssignment(normalizedRoleName)) {
-        continue;
+      if (requiresSuperAdminRoleAssignment(normalizedRoleName)) {
+        if (actorIsSuperAdmin) {
+          throw unsupportedRoleForTenantAdmin(normalizedRoleName);
+        }
+        auditPrivilegedUserActionDenied(
+            null,
+            actorCompany,
+            "tenant-admin-role-management-requires-super-admin",
+            Map.of("targetRole", normalizedRoleName));
+        throw new AccessDeniedException(
+            "SUPER_ADMIN authority required for role: " + normalizedRoleName);
       }
-      Map<String, String> metadata = new LinkedHashMap<>();
-      metadata.put("actor", actor);
-      metadata.put("reason", "tenant-admin-role-management-requires-super-admin");
-      metadata.put("tenantScope", StringUtils.hasText(tenantScope) ? tenantScope : "none");
-      metadata.put("targetRole", normalizedRoleName);
-      auditService.logAuthFailure(AuditEvent.ACCESS_DENIED, actor, tenantScope, metadata);
-      throw new AccessDeniedException(
-          "SUPER_ADMIN authority required for role: " + normalizedRoleName);
+      validateTenantAssignableRole(normalizedRoleName);
+      normalizedRoles.add(normalizedRoleName);
     }
+    return List.copyOf(normalizedRoles);
   }
 
   private String normalizeRequestedRoleName(String roleName) {
     if (!StringUtils.hasText(roleName)) {
-      return null;
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          "Role entries cannot be blank");
     }
     String normalized = roleName.trim().toUpperCase(Locale.ROOT);
-    if (!normalized.startsWith("ROLE_")) {
-      String withPrefix = "ROLE_" + normalized;
-      if (roleService.isSystemRole(withPrefix)) {
-        normalized = withPrefix;
-      }
+    if (normalized.startsWith("ROLE_")) {
+      return normalized;
     }
-    return normalized;
+    return "ROLE_" + normalized;
   }
 
   private boolean requiresSuperAdminRoleAssignment(String normalizedRoleName) {
@@ -460,29 +478,38 @@ public class AdminUserService {
         || SUPER_ADMIN_ROLE.equalsIgnoreCase(normalizedRoleName);
   }
 
-  private void attachRoles(UserAccount user, List<String> roles) {
-    roles.forEach(
-        roleName -> {
-          if (!StringUtils.hasText(roleName)) {
-            return;
-          }
-          String trimmed = roleName.trim();
-          String normalized = trimmed.toUpperCase(Locale.ROOT);
-          // If caller omitted prefix but matches a system role, add prefix
-          if (!normalized.startsWith("ROLE_")) {
-            String withPrefix = "ROLE_" + normalized;
-            if (roleService.isSystemRole(withPrefix)) {
-              normalized = withPrefix;
-            }
-          }
-          if (SUPER_ADMIN_ROLE.equalsIgnoreCase(normalized) && !hasSuperAdminAuthority()) {
-            throw new org.springframework.security.access.AccessDeniedException(
-                "SUPER_ADMIN authority required to assign role: " + normalized);
-          }
-          // Allow both system roles and custom roles
-          Role role = roleService.ensureRoleExists(normalized);
+  private void validateTenantAssignableRole(String normalizedRoleName) {
+    if (!TENANT_ASSIGNABLE_ROLES.contains(normalizedRoleName)) {
+      throw unsupportedRoleForTenantAdmin(normalizedRoleName);
+    }
+  }
+
+  private com.bigbrightpaints.erp.core.exception.ApplicationException unsupportedRoleForTenantAdmin(
+      String normalizedRoleName) {
+    return com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+        "Unsupported role for tenant-admin user management: "
+            + normalizedRoleName
+            + ". Allowed roles: "
+            + TENANT_ASSIGNABLE_ROLES_SUMMARY);
+  }
+
+  private void attachRoles(UserAccount user, List<String> normalizedRoleNames) {
+    normalizedRoleNames.forEach(
+        normalizedRoleName -> {
+          Role role = roleService.ensureRoleExists(normalizedRoleName);
           user.addRole(role);
         });
+  }
+
+  private Set<String> normalizePersistedRoleSet(UserAccount user) {
+    if (user == null || user.getRoles() == null || user.getRoles().isEmpty()) {
+      return Set.of();
+    }
+    return user.getRoles().stream()
+        .map(Role::getName)
+        .filter(StringUtils::hasText)
+        .map(this::normalizeRequestedRoleName)
+        .collect(Collectors.toCollection(LinkedHashSet::new));
   }
 
   private Map<String, Instant> resolveLastLoginByEmail(Long companyId, List<UserAccount> users) {
@@ -585,11 +612,22 @@ public class AdminUserService {
 
   private void auditPrivilegedUserActionDenied(
       UserAccount targetUser, Company actorCompany, String denialReason) {
+    auditPrivilegedUserActionDenied(targetUser, actorCompany, denialReason, Map.of());
+  }
+
+  private void auditPrivilegedUserActionDenied(
+      UserAccount targetUser,
+      Company actorCompany,
+      String denialReason,
+      Map<String, String> extraMetadata) {
     Map<String, String> metadata = new LinkedHashMap<>();
     String actor = resolveAuditActor();
     metadata.put("actor", actor);
     metadata.put("reason", denialReason);
     metadata.put("tenantScope", actorCompany != null ? actorCompany.getCode() : "GLOBAL");
+    if (extraMetadata != null && !extraMetadata.isEmpty()) {
+      metadata.putAll(extraMetadata);
+    }
     if (targetUser != null) {
       if (targetUser.getId() != null) {
         metadata.put("targetUserId", String.valueOf(targetUser.getId()));

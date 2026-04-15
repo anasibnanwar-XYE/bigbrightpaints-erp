@@ -1,72 +1,66 @@
 # R2 Checkpoint
 
-Last reviewed: 2026-04-09
+Last reviewed: 2026-04-15
 
 ## Scope
-- Feature: `refactor-accounting-role-cleanup` integration review
-- Branch: `refactor-accounting-role-cleanup` (base: `894023e51`)
+- Feature: `tenant-admin-backend-hard-cut` slice 1 (role-assignment boundary hardening)
+- Branch: codex/tenant-admin-hardcut-s1 (base: `fc3266800`)
 - PR: pending
 - Review candidate:
-  - keep the accounting audit visibility narrowing so the accounting audit feed remains `ACCOUNTING`-only at runtime
-  - keep the reconciliation cleanup direction by replacing the inheritance-only `ReconciliationServiceCore` split with `ReconciliationService` plus `ReconciliationOperations`, and by removing the leftover legacy request shim
-  - keep the Tally import observability hardening and the docs/runtime corrections that now match the integrated branch truth
-- Why this is R2: the current diff changes high-risk accounting runtime surfaces under `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/**` and `erp-domain/src/main/java/com/bigbrightpaints/erp/core/auditaccess/**`, so merge confidence still requires explicit evidence and rollback posture.
+  - keep tenant-admin user assignment constrained to `ROLE_ACCOUNTING`, `ROLE_FACTORY`, `ROLE_SALES`, `ROLE_DEALER`
+  - keep tenant-admin `ROLE_ADMIN` / `ROLE_SUPER_ADMIN` assignment denied with explicit access-denied auditing
+  - keep tenant-admin custom/unknown role creation removed from the admin users workflow surface
+- Why this is R2: this packet changes high-risk auth/RBAC runtime behavior under `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/admin/service/AdminUserService.java`.
 
 ## Risk Trigger
 - Triggered by:
-  - `erp-domain/src/main/java/com/bigbrightpaints/erp/core/auditaccess/AuditVisibilityPolicy.java`
-  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/BankReconciliationSessionService.java`
-  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/ReconciliationService.java`
-  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/ReconciliationOperations.java`
-  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/TallyImportService.java`
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/admin/service/AdminUserService.java`
 - Contract surfaces affected:
-  - accounting audit read visibility for the accounting audit events feed
-  - reconciliation runtime behavior and bank-reconciliation session flow after removal of the legacy request bridge
-  - Tally import observability on previously silent fallback/error-swallowing paths
-  - branch-level policy and changed-files coverage evidence consumed by `bash ci/check-enterprise-policy.sh` and `bash scripts/gate_fast.sh`
+  - tenant-admin create/update user role validation and assignment behavior
+  - role-escalation denial semantics for tenant-admin actors
+  - audit failure metadata for blocked privileged role attempts
 - Failure mode if wrong:
-  - accounting audit visibility widens again beyond the intended accounting-only scope
-  - reconciliation cleanup leaves dead legacy paths or regresses the current explicit bank-reconciliation flow
-  - Tally import failures remain opaque to operators
-  - reviewers get misleading merge confidence from stale governance evidence
+  - tenant-admin could assign privileged or unknown roles
+  - tenant-admin user updates could silently accept unsupported roles
+  - audit trail for blocked role escalation could become inconsistent
 
 ## Approval Authority
 - Mode: orchestrator
 - Approver: Droid mission orchestrator
 - Canary owner: Droid mission orchestrator
 - Approval status: branch-local integration candidate pending PR review
-- Basis: the repo is still pre-deployment with no external users, so current-state hard-cut cleanup is acceptable, but this branch still changes accounting runtime and audit visibility and therefore keeps explicit evidence in the same lane.
+- Basis: this is a hard-cut tenant-admin RBAC tightening with no compatibility bridge; rollout remains pre-deployment but still requires explicit R2 evidence because auth/RBAC semantics changed.
 
 ## Escalation Decision
 - Human escalation required: no
-- Reason: the lane tightens visibility and removes legacy cleanup debt without widening tenant boundaries or introducing destructive migration work; standard code review remains the merge gate.
+- Reason: this packet narrows tenant-admin privileges and rejects unsupported roles; it does not widen tenant boundaries or introduce destructive migration behavior.
 
 ## Rollback Owner
 - Owner: Droid mission orchestrator
 - Rollback method:
-  - before merge: revert the integrated packet stack together if audit, reconciliation, Tally, or docs truth becomes disputed
-  - after merge: revert the packet stack and re-run compile, targeted accounting tests, docs lint, enterprise policy, and gate-fast to confirm rollback parity
+  - before merge: revert the packet if tenant-admin role assignment contracts regress
+  - after merge: revert packet and rerun focused user-management tests plus policy gate
 - Rollback trigger:
-  - audit visibility no longer stays accounting-only
-  - reconciliation session flow or checklist diagnostics regress after the cleanup extraction
-  - Tally import diagnostics become silent again
-  - enterprise policy or gate-fast fails on the integrated lane
+  - any non-allowlisted role can be assigned from the admin users API surface
+  - tenant-admin privileged role denial/audit behavior diverges from the contract
+  - policy gate fails after integrating this packet
 
 ## Expiry
-- Valid until: 2026-04-23
-- Re-evaluate if: the lane expands beyond audit, reconciliation, Tally, and docs cleanup or introduces auth/RBAC/company-boundary changes.
+- Valid until: 2026-04-22
+- Re-evaluate if: scope expands into broader auth, company-control-plane, or migration-path changes.
 
 ## Verification Evidence
 - Commands run:
-  - `cd erp-domain && mvn -B -ntp -DskipTests compile`
-  - `cd erp-domain && mvn -B -ntp -Djacoco.skip=true -Dtest='AuditVisibilityPolicyTest,ReconciliationServiceTest,BankReconciliationSessionServiceTest,TallyImportServiceTest,AccountingPeriodServiceTest,TS_AccountingPeriodCloseChecklistSafetyContractTest' test`
-  - `bash ci/lint-knowledgebase.sh`
-  - `bash ci/check-enterprise-policy.sh`
-  - `bash scripts/gate_fast.sh`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -q spotless:check`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -q -Dtest=AdminUserServiceTest test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -q -Dtest=AuthTenantAuthorityIT#admin_cannot_create_tenant_admin_user+tenant_admin_can_still_create_non_privileged_user test`
+  - curl validation harness (Colima + Postgres container + local app boot + seeded tenant-admin principal):
+    - login `POST /api/v1/auth/login` with tenant-admin credentials
+    - role escalation probe against the admin users create endpoint with `roles=[ROLE_ADMIN]` => `403`
+    - unknown-role probe against the admin users create endpoint with `roles=[ROLE_CUSTOM]` => `400`
 - Result summary:
-  - compile passed on the integrated lane after stacking audit, reconciliation, Tally, and docs packets
-  - targeted audit, reconciliation, checklist, and Tally tests passed for the kept code paths
-  - knowledgebase lint and enterprise-policy-check passed with the integrated docs and governance updates
-  - gate-fast returned OK for the current branch diff, but changed-files coverage finished in compatibility mode because branch coverage was `109/126 = 0.865`, below the strict `0.90` threshold
+  - formatting and focused unit/integration tests passed for this slice
+  - curl probes confirmed privileged-role assignment remains denied and custom-role assignment is fail-fast validation
+  - enterprise policy gate required this checkpoint update before final pass
 - Artifact note:
-  - changed-files coverage evidence is recorded inline in this checkpoint; no local artifact path is required for lint or review
+  - runtime curl responses captured in shell output for this lane; no additional artifact file required.
