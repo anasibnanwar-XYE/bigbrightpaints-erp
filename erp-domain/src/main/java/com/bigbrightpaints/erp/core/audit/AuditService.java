@@ -59,6 +59,7 @@ public class AuditService {
       AuditEvent event, String username, String companyCode, Map<String, String> metadata) {
     Map<String, String> authMetadata = metadata != null ? new HashMap<>(metadata) : new HashMap<>();
     String usernameOverride = normalizeAuthUsernameOverride(username, authMetadata);
+    enrichAuthMetadataWithAuthenticatedActorPublicId(authMetadata, usernameOverride);
     String companyCodeOverride = normalizeAuthCompanyOverride(companyCode, authMetadata);
     Map<String, String> requestContext = captureRequestContextMetadata();
     self.logEventAsync(
@@ -74,6 +75,7 @@ public class AuditService {
       AuditEvent event, String username, String companyCode, Map<String, String> metadata) {
     Map<String, String> authMetadata = metadata != null ? new HashMap<>(metadata) : new HashMap<>();
     String usernameOverride = normalizeAuthUsernameOverride(username, authMetadata);
+    enrichAuthMetadataWithAuthenticatedActorPublicId(authMetadata, usernameOverride);
     String companyCodeOverride = normalizeAuthCompanyOverride(companyCode, authMetadata);
     Map<String, String> requestContext = captureRequestContextMetadata();
     self.logEventAsync(
@@ -211,7 +213,7 @@ public class AuditService {
 
   private String normalizeUuidToken(String token) {
     String normalized = normalizeToken(token);
-    if (!StringUtils.hasText(normalized)) {
+    if (!StringUtils.hasText(normalized) || !looksLikeUuid(normalized)) {
       return null;
     }
     try {
@@ -226,6 +228,45 @@ public class AuditService {
       return null;
     }
     return token.trim();
+  }
+
+  private boolean looksLikeUuid(String token) {
+    if (!StringUtils.hasText(token) || token.length() != 36) {
+      return false;
+    }
+    return token.charAt(8) == '-'
+        && token.charAt(13) == '-'
+        && token.charAt(18) == '-'
+        && token.charAt(23) == '-';
+  }
+
+  private boolean shouldUseAuthenticatedIdentityForOverride(
+      String resolvedUsername, Authentication authentication) {
+    if (authentication == null) {
+      return false;
+    }
+    String normalizedOverride = normalizeToken(resolvedUsername);
+    String authName = normalizeToken(authentication.getName());
+    return StringUtils.hasText(normalizedOverride)
+        && StringUtils.hasText(authName)
+        && authName.equalsIgnoreCase(normalizedOverride);
+  }
+
+  private void enrichAuthMetadataWithAuthenticatedActorPublicId(
+      Map<String, String> metadata, String usernameOverride) {
+    if (metadata == null || StringUtils.hasText(extractMetadataActorPublicId(metadata))) {
+      return;
+    }
+    Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+    if (auth == null
+        || !auth.isAuthenticated()
+        || !shouldUseAuthenticatedIdentityForOverride(usernameOverride, auth)) {
+      return;
+    }
+    String actorPublicId = resolveAuthenticatedPublicId(auth);
+    if (StringUtils.hasText(actorPublicId)) {
+      metadata.put("actorPublicId", actorPublicId);
+    }
   }
 
   private Map<String, String> captureRequestContextMetadata() {
