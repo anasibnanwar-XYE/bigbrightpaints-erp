@@ -82,8 +82,10 @@ Decision body (`AdminApprovalDecisionRequest`):
 Origin-specific rules:
 
 - `PAYROLL_RUN` only supports `APPROVE`; reject fails validation.
+- `PAYROLL_RUN` inbox items are approve-only (`rejectEndpoint = null`).
 - `CREDIT_REQUEST` requires nonblank `reason` for approve/reject.
 - `CREDIT_LIMIT_OVERRIDE_REQUEST` requires nonblank `reason`.
+- `PERIOD_CLOSE_REQUEST` generic decisions preserve the pending request force posture (`forceRequested`) instead of forcing `false`.
 
 ### AdminSupportController
 

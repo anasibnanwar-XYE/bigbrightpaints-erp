@@ -167,8 +167,9 @@ public class AdminApprovalService {
 
   private CreditLimitOverrideRequestDto decideCreditOverride(
       Long id, boolean approve, AdminApprovalDecisionRequest request) {
+    String decisionReason = requireReason(request.reason(), approve ? "approve" : "reject");
     CreditLimitOverrideDecisionRequest delegateRequest =
-        new CreditLimitOverrideDecisionRequest(request.reason(), request.expiresAt());
+        new CreditLimitOverrideDecisionRequest(decisionReason, request.expiresAt());
     String actor = com.bigbrightpaints.erp.core.security.SecurityActorResolver.resolveActorOrUnknown();
     return approve
         ? creditLimitOverrideService.approveRequest(id, delegateRequest, actor)
@@ -184,7 +185,7 @@ public class AdminApprovalService {
   }
 
   private AdminApprovalItemDto decidePeriodCloseItem(Long id, boolean approve, String reason) {
-    PeriodCloseRequestActionRequest action = new PeriodCloseRequestActionRequest(reason, Boolean.FALSE);
+    PeriodCloseRequestActionRequest action = new PeriodCloseRequestActionRequest(reason, null);
     if (approve) {
       accountingPeriodService.approvePeriodClose(id, action);
     } else {
@@ -440,6 +441,7 @@ public class AdminApprovalService {
       String requesterEmail,
       Instant createdAt) {
     String endpoint = decisionEndpoint(originType, id);
+    String rejectEndpoint = supportsRejectAction(originType) ? endpoint : null;
     return new AdminApprovalItemDto(
         originType,
         ownerType,
@@ -455,8 +457,12 @@ public class AdminApprovalService {
         "APPROVAL_DECISION",
         "Review approval",
         endpoint,
-        endpoint,
+        rejectEndpoint,
         createdAt);
+  }
+
+  private boolean supportsRejectAction(AdminApprovalItemDto.OriginType originType) {
+    return originType != AdminApprovalItemDto.OriginType.PAYROLL_RUN;
   }
 
   private String decisionEndpoint(AdminApprovalItemDto.OriginType originType, Long id) {
