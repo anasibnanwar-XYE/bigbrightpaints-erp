@@ -2553,11 +2553,11 @@ public class SalesCoreEngine {
     }
     SalesOrder order = requireOrderForUpdate(company, salesOrderId);
     List<PackagingSlip> orderSlips = findOrderSlips(company, salesOrderId, true);
+    FinishedGoodsService.InventoryReservationResult reservationResult = null;
     if (orderSlips.isEmpty() && referencedSlip != null) {
       orderSlips = List.of(referencedSlip);
     }
     if (orderSlips.isEmpty()) {
-      FinishedGoodsService.InventoryReservationResult reservationResult = null;
       if (requestedSlipId == null) {
         assertDispatchAutoReservationAllowed(order);
         reservationResult = finishedGoodsService.reserveForOrder(order);
@@ -2619,14 +2619,18 @@ public class SalesCoreEngine {
     }
 
     boolean alreadyDispatched = "DISPATCHED".equalsIgnoreCase(slip.getStatus());
+    List<DispatchConfirmRequest.DispatchLine> normalizedRequestLines = request.lines();
     if (!alreadyDispatched) {
-      validatePendingDispatchLineCoverage(request.lines(), slip);
+      normalizedRequestLines =
+          normalizePendingDispatchLines(
+              request.lines(), slip, requestedSlipId, reservationResult, order.getId());
+      validatePendingDispatchLineCoverage(normalizedRequestLines, slip);
     }
 
     // Map request lines by slip line id for pricing/qty overrides
     Map<Long, DispatchConfirmRequest.DispatchLine> lineOverrides = new HashMap<>();
-    if (request.lines() != null) {
-      for (DispatchConfirmRequest.DispatchLine line : request.lines()) {
+    if (normalizedRequestLines != null) {
+      for (DispatchConfirmRequest.DispatchLine line : normalizedRequestLines) {
         if (line.lineId() != null) {
           DispatchConfirmRequest.DispatchLine previous = lineOverrides.put(line.lineId(), line);
           if (previous != null) {
@@ -3828,6 +3832,62 @@ public class SalesCoreEngine {
         .withDetail("packingSlipId", slip != null ? slip.getId() : null)
         .withDetail("missingLineIds", missingLineIds)
         .withDetail("unexpectedLineIds", unexpectedLineIds);
+  }
+
+  private List<DispatchConfirmRequest.DispatchLine> normalizePendingDispatchLines(
+      List<DispatchConfirmRequest.DispatchLine> requestLines,
+      PackagingSlip slip,
+      Long requestedSlipId,
+      FinishedGoodsService.InventoryReservationResult reservationResult,
+      Long salesOrderId) {
+    if (requestLines != null && !requestLines.isEmpty()) {
+      return requestLines;
+    }
+    if (requestedSlipId != null || reservationResult == null) {
+      return requestLines;
+    }
+    List<DispatchConfirmRequest.DispatchLine> fullSlipLines = buildFullDispatchLines(slip);
+    if (!fullSlipLines.isEmpty()) {
+      log.info(
+          "Synthesized full dispatch confirmations for auto-reserved order {} and slip {}",
+          salesOrderId,
+          slip != null ? slip.getId() : null);
+    }
+    return fullSlipLines;
+  }
+
+  private List<DispatchConfirmRequest.DispatchLine> buildFullDispatchLines(PackagingSlip slip) {
+    if (slip == null || slip.getLines() == null) {
+      return List.of();
+    }
+    return slip.getLines().stream()
+        .filter(Objects::nonNull)
+        .filter(line -> line.getId() != null)
+        .map(
+            line ->
+                new DispatchConfirmRequest.DispatchLine(
+                    line.getId(),
+                    line.getFinishedGoodBatch() != null ? line.getFinishedGoodBatch().getId() : null,
+                    resolveDispatchLineQuantity(line),
+                    null,
+                    null,
+                    null,
+                    null,
+                    null))
+        .toList();
+  }
+
+  private BigDecimal resolveDispatchLineQuantity(PackagingSlipLine line) {
+    if (line == null) {
+      return BigDecimal.ZERO;
+    }
+    if (line.getQuantity() != null) {
+      return line.getQuantity();
+    }
+    if (line.getOrderedQuantity() != null) {
+      return line.getOrderedQuantity();
+    }
+    return BigDecimal.ZERO;
   }
 
   private boolean isDispatchOverrideApplied(DispatchConfirmRequest.DispatchLine line) {

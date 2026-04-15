@@ -10,6 +10,7 @@ import static org.mockito.Mockito.*;
 import java.lang.reflect.Field;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -63,6 +64,7 @@ import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.PackagingSlip;
 import com.bigbrightpaints.erp.modules.inventory.domain.PackagingSlipLine;
 import com.bigbrightpaints.erp.modules.inventory.domain.PackagingSlipRepository;
+import com.bigbrightpaints.erp.modules.inventory.dto.PackagingSlipDto;
 import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService;
 import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService.InventoryReservationResult;
 import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService.InventoryShortage;
@@ -1370,6 +1372,125 @@ class SalesServiceTest {
 
     assertTrue(ex.getMessage().contains("Duplicate dispatch confirmation for line 204"));
     verify(finishedGoodsService, never()).confirmDispatch(any(), any());
+  }
+
+  @Test
+  void confirmDispatchAllowsOrderScopedAutoReservationWithoutExplicitLines() {
+    Dealer dealer = dealerWithCreditLimit(142L, BigDecimal.valueOf(1000));
+    Account receivable = new Account();
+    receivable.setName("AR");
+    setField(receivable, "id", 1042L);
+    dealer.setReceivableAccount(receivable);
+
+    SalesOrder order = new SalesOrder();
+    setField(order, "id", 10L);
+    order.setCompany(company);
+    order.setDealer(dealer);
+    order.setOrderNumber("SO-AUTO-10");
+    order.setStatus("READY_TO_SHIP");
+    order.setTotalAmount(BigDecimal.valueOf(100));
+
+    SalesOrderItem item = new SalesOrderItem();
+    setField(item, "id", 401L);
+    item.setSalesOrder(order);
+    item.setProductCode("SKU-AUTO");
+    item.setDescription("Auto-reserved line");
+    item.setQuantity(BigDecimal.ONE);
+    item.setUnitPrice(BigDecimal.valueOf(100));
+    item.setGstRate(BigDecimal.ZERO);
+    order.getItems().add(item);
+
+    FinishedGood finishedGood = buildFinishedGood("SKU-AUTO");
+    finishedGood.setCurrentStock(BigDecimal.ONE);
+    finishedGood.setRevenueAccountId(3L);
+    finishedGood.setDiscountAccountId(4L);
+    finishedGood.setValuationAccountId(11L);
+    finishedGood.setCogsAccountId(12L);
+
+    FinishedGoodBatch batch = new FinishedGoodBatch();
+    setField(batch, "id", 740L);
+    batch.setFinishedGood(finishedGood);
+    batch.setBatchCode("B-AUTO");
+    batch.setQuantityTotal(BigDecimal.ONE);
+    batch.setQuantityAvailable(BigDecimal.ONE);
+    batch.setUnitCost(BigDecimal.ZERO);
+
+    PackagingSlip slip = new PackagingSlip();
+    setField(slip, "id", 70L);
+    slip.setCompany(company);
+    slip.setSalesOrder(order);
+    slip.setSlipNumber("PS-AUTO-70");
+    slip.setStatus("RESERVED");
+
+    PackagingSlipLine slipLine = new PackagingSlipLine();
+    setField(slipLine, "id", 205L);
+    slipLine.setPackagingSlip(slip);
+    slipLine.setFinishedGoodBatch(batch);
+    slipLine.setQuantity(BigDecimal.ONE);
+    slipLine.setOrderedQuantity(BigDecimal.ONE);
+    slipLine.setUnitCost(BigDecimal.ZERO);
+    slip.getLines().add(slipLine);
+
+    PackagingSlipDto reservedSlip =
+        new PackagingSlipDto(
+            70L,
+            UUID.randomUUID(),
+            order.getId(),
+            order.getOrderNumber(),
+            "Dealer Auto",
+            "PS-AUTO-70",
+            "RESERVED",
+            Instant.now(),
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            List.of());
+
+    when(salesLookupService.requireSalesOrder(company, 10L)).thenReturn(order);
+    when(packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, 10L))
+        .thenReturn(List.of(), List.of(slip));
+    when(finishedGoodsService.reserveForOrder(order))
+        .thenReturn(new FinishedGoodsService.InventoryReservationResult(reservedSlip, List.of()));
+    when(dealerRepository.lockByCompanyAndId(company, dealer.getId()))
+        .thenReturn(Optional.of(dealer));
+    when(dealerLedgerService.currentBalance(dealer.getId())).thenReturn(BigDecimal.ZERO);
+    when(invoiceNumberService.nextInvoiceNumber(company)).thenReturn("INV-AUTO-70");
+    when(invoiceRepository.save(ArgumentMatchers.any(Invoice.class)))
+        .thenAnswer(
+            invocation -> {
+              Invoice invoice = invocation.getArgument(0);
+              setField(invoice, "id", 880L);
+              return invoice;
+            });
+    when(salesOrderRepository.save(ArgumentMatchers.any(SalesOrder.class)))
+        .thenAnswer(invocation -> invocation.getArgument(0));
+    when(packagingSlipRepository.save(ArgumentMatchers.any(PackagingSlip.class)))
+        .thenAnswer(invocation -> invocation.getArgument(0));
+    when(accountRepository.findById(ArgumentMatchers.anyLong())).thenReturn(Optional.empty());
+
+    DispatchConfirmResponse response =
+        salesService.confirmDispatch(
+            new DispatchConfirmRequest(
+                null, 10L, null, null, "admin", Boolean.FALSE, null, null));
+
+    assertEquals(70L, response.packingSlipId());
+    assertEquals(10L, response.salesOrderId());
+    assertEquals(880L, response.finalInvoiceId());
+    verify(finishedGoodsService).reserveForOrder(order);
+    ArgumentCaptor<com.bigbrightpaints.erp.modules.inventory.dto.DispatchConfirmationRequest>
+        dispatchCaptor =
+            ArgumentCaptor.forClass(
+                com.bigbrightpaints.erp.modules.inventory.dto.DispatchConfirmationRequest.class);
+    verify(finishedGoodsService).confirmDispatch(dispatchCaptor.capture(), eq("admin"));
+    assertEquals(70L, dispatchCaptor.getValue().packagingSlipId());
+    assertEquals(1, dispatchCaptor.getValue().lines().size());
+    assertEquals(205L, dispatchCaptor.getValue().lines().get(0).lineId());
+    assertEquals(
+        0,
+        BigDecimal.ONE.compareTo(dispatchCaptor.getValue().lines().get(0).shippedQuantity()));
   }
 
   @Test
