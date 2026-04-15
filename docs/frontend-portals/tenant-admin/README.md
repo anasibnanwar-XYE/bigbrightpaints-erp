@@ -16,6 +16,12 @@ It owns:
 - self settings (`/api/v1/admin/self/settings` + auth self-service)
 - read-only changelog (`/api/v1/changelog`)
 
+Still-live legacy admin insight reads:
+
+- `/api/v1/portal/dashboard`
+- `/api/v1/portal/operations`
+- `/api/v1/portal/workforce`
+
 ## Users
 
 - Primary actor: `ROLE_ADMIN`

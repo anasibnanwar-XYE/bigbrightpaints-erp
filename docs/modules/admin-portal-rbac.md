@@ -17,7 +17,7 @@ This packet is the canonical backend ownership map for tenant-admin, portal, and
 | Module | Owns |
 | --- | --- |
 | `admin` | Tenant-admin dashboard, users, approval inbox/decisions, tenant-admin audit feed, admin support host, self-settings, utility notify, tenant changelog reads |
-| `portal` | Shared internal read models (`/api/v1/portal/**`) and accounting-owned internal support host |
+| `portal` | Shared internal read models (`/api/v1/portal/**`), including legacy admin insights reads plus accounting-owned internal support host |
 | `rbac` | Platform role catalog APIs and role synchronization (`/api/v1/admin/roles/**`) |
 | `company` | Tenant lifecycle, module gating, limits, support recovery, platform dashboard (`/api/v1/superadmin/**`) |
 
@@ -76,8 +76,14 @@ Supported `originType` values:
 Decision body (`AdminApprovalDecisionRequest`):
 
 - `decision`: `APPROVE` or `REJECT` (required)
-- `reason`: optional
-- `expiresAt`: optional (used by credit override flows)
+- `reason`: required for credit and credit-override decisions; optional for export/period-close
+- `expiresAt`: optional (used by credit override approval windows)
+
+Origin-specific rules:
+
+- `PAYROLL_RUN` only supports `APPROVE`; reject fails validation.
+- `CREDIT_REQUEST` requires nonblank `reason` for approve/reject.
+- `CREDIT_LIMIT_OVERRIDE_REQUEST` requires nonblank `reason`.
 
 ### AdminSupportController
 
@@ -126,15 +132,17 @@ Publishing remains superadmin-only:
 - `PUT /api/v1/superadmin/changelog/{id}`
 - `DELETE /api/v1/superadmin/changelog/{id}`
 
-## Portal and RBAC Surfaces That Are Not Tenant-Admin Product
+## Portal and RBAC Surfaces Outside Canonical Tenant-Admin Product
 
 ### Portal host
 
-- `/api/v1/portal/dashboard`
-- `/api/v1/portal/operations`
-- `/api/v1/portal/workforce`
-- `/api/v1/portal/finance/**`
-- `/api/v1/portal/support/tickets/**` (accounting-only host)
+- Legacy admin insight reads still live for `ROLE_ADMIN`:
+  - `/api/v1/portal/dashboard`
+  - `/api/v1/portal/operations`
+  - `/api/v1/portal/workforce`
+- Accounting-owned portal surfaces:
+  - `/api/v1/portal/finance/**`
+  - `/api/v1/portal/support/tickets/**` (accounting-only host)
 
 ### RBAC host
 

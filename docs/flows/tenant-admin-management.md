@@ -99,6 +99,10 @@ All control-plane behavior stays under `/api/v1/superadmin/**`.
    - `PAYROLL_RUN`
    - `PERIOD_CLOSE_REQUEST`
 3. Decision request must include `decision=APPROVE|REJECT`.
+4. Decision semantics are origin-specific:
+   - `CREDIT_REQUEST`: reason is required for approve/reject.
+   - `CREDIT_LIMIT_OVERRIDE_REQUEST`: reason is required; `expiresAt` may be required by workflow policy.
+   - `PAYROLL_RUN`: only approve is supported; reject fails validation.
 
 ## Lifecycle Flows
 
@@ -131,7 +135,7 @@ Force reset link -> scoped target checks -> password reset token + mail dispatch
 GET /api/v1/admin/approvals
   -> normalized item list + pendingCount
 POST /api/v1/admin/approvals/{originType}/{id}/decisions
-  -> domain-delegated approve/reject
+  -> domain-delegated decision with origin-specific validation rules
   -> returns normalized updated item
 ```
 
@@ -166,8 +170,9 @@ GET /api/v1/admin/self/settings
 Flow is complete when:
 
 1. Superadmin control-plane actions remain isolated to `/api/v1/superadmin/**`.
-2. Tenant-admin shell runs only on canonical admin product surfaces.
-3. Tenant-admin approval actions happen only through generic admin decisions endpoint.
+2. Tenant-admin primary screens run on canonical admin product surfaces (`/api/v1/admin/**`).
+3. Legacy portal insights reads (`/api/v1/portal/dashboard|operations|workforce`) remain live `ROLE_ADMIN` read surfaces until backend retirement.
+4. Tenant-admin approval actions happen only through generic admin decisions endpoint with origin-specific decision constraints.
 4. Tenant-admin support runs on admin host, not portal host.
 5. User role assignment remains fixed-list and escalation-proof.
 6. Tenant-admin self-settings use `/api/v1/admin/self/settings` + auth-owned self-service flows.

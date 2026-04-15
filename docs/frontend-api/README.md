@@ -31,7 +31,7 @@ This folder defines canonical frontend contracts for:
 ### Portal Placement
 
 - **superadmin:** platform control-plane only (`/api/v1/superadmin/**`).
-- **tenant-admin:** `/api/v1/admin/dashboard`, `/api/v1/admin/users/**`, `/api/v1/admin/approvals`, `POST /api/v1/admin/approvals/{originType}/{id}/decisions`, `/api/v1/admin/support/tickets/**`, `/api/v1/admin/self/settings`, `/api/v1/admin/audit/events`, `/api/v1/changelog`.
+- **tenant-admin:** canonical `/api/v1/admin/**` product surfaces (`dashboard`, `users`, `approvals`, `support`, `self-settings`, `audit`) plus `/api/v1/changelog`; legacy admin insight reads `/api/v1/portal/dashboard|operations|workforce` are still live until backend retirement.
 - **accounting:** COA, journals, reconciliation, period close, reports.
 - **sales:** dealer master, sales orders, commercial credit escalation.
 - **factory:** production, packing, dispatch confirmation.

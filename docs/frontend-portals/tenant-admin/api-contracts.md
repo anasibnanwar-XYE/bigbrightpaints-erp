@@ -155,12 +155,20 @@ Request body (`AdminApprovalDecisionRequest`):
 ```json
 {
   "decision": "APPROVE",
-  "reason": "optional",
+  "reason": "context-dependent",
   "expiresAt": "2026-04-15T10:30:00Z"
 }
 ```
 
 `decision` is required and must be `APPROVE` or `REJECT`.
+
+Origin-specific decision constraints:
+
+- `EXPORT_REQUEST`: `APPROVE` or `REJECT`; `reason` optional.
+- `CREDIT_REQUEST`: `APPROVE` or `REJECT`; `reason` required (nonblank) for both.
+- `CREDIT_LIMIT_OVERRIDE_REQUEST`: `APPROVE` or `REJECT`; `reason` required; `expiresAt` is used for override approval windows.
+- `PAYROLL_RUN`: only `APPROVE` is supported; `REJECT` fails validation.
+- `PERIOD_CLOSE_REQUEST`: `APPROVE` or `REJECT`; include `reason` on reject for audit clarity.
 
 Response: `ApiResponse<AdminApprovalItemDto>` for the decided row.
 
