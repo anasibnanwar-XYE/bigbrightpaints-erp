@@ -38,7 +38,7 @@ GET	/api/v1/accounting/statements/suppliers/{supplierId}	com.bigbrightpaints.erp
 GET	/api/v1/accounting/statements/suppliers/{supplierId}/pdf	com.bigbrightpaints.erp.modules.accounting.controller.AccountingController#supplierStatementPdf	src/main/java/com/bigbrightpaints/erp/modules/accounting/controller/AccountingController.java
 GET	/api/v1/admin/approvals	com.bigbrightpaints.erp.modules.admin.controller.AdminSettingsController#approvals	src/main/java/com/bigbrightpaints/erp/modules/admin/controller/AdminSettingsController.java
 GET	/api/v1/admin/audit/events	com.bigbrightpaints.erp.modules.admin.controller.AdminAuditController#listEvents	src/main/java/com/bigbrightpaints/erp/modules/admin/controller/AdminAuditController.java
-POST	/api/v1/admin/notify	com.bigbrightpaints.erp.modules.admin.controller.AdminSettingsController#notifyUser	src/main/java/com/bigbrightpaints/erp/modules/admin/controller/AdminSettingsController.java
+POST	/api/v1/superadmin/notify	com.bigbrightpaints.erp.modules.admin.controller.AdminUtilityController#notifyUser	src/main/java/com/bigbrightpaints/erp/modules/admin/controller/AdminUtilityController.java
 GET	/api/v1/admin/roles/{roleKey}	com.bigbrightpaints.erp.modules.rbac.controller.RoleController#getRoleByKey	src/main/java/com/bigbrightpaints/erp/modules/rbac/controller/RoleController.java
 GET	/api/v1/admin/settings	com.bigbrightpaints.erp.modules.admin.controller.AdminSettingsController#getSettings	src/main/java/com/bigbrightpaints/erp/modules/admin/controller/AdminSettingsController.java
 PUT	/api/v1/admin/settings	com.bigbrightpaints.erp.modules.admin.controller.AdminSettingsController#updateSettings	src/main/java/com/bigbrightpaints/erp/modules/admin/controller/AdminSettingsController.java

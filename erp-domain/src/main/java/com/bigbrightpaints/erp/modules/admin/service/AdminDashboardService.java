@@ -1,12 +1,19 @@
 package com.bigbrightpaints.erp.modules.admin.service;
 
 import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -31,6 +38,9 @@ public class AdminDashboardService {
 
   private static final Set<String> TENANT_ADMIN_HIDDEN_ROLES =
       Set.of(SystemRole.ADMIN.getRoleName(), SystemRole.SUPER_ADMIN.getRoleName());
+  private static final int RECENT_ACTIVITY_LIMIT = 12;
+  private static final int RECENT_ACTIVITY_PAGE_SIZE = 50;
+  private static final int MAX_RECENT_ACTIVITY_SCAN_PAGES = 8;
 
   private final CompanyContextService companyContextService;
   private final AdminApprovalService adminApprovalService;
@@ -74,13 +84,7 @@ public class AdminDashboardService {
     List<UserAccount> companyUsers = userAccountRepository.findByCompany_Id(companyId);
     List<UserAccount> visibleUsers =
         companyUsers.stream().filter(this::isTenantAdminVisibleUser).toList();
-    Set<String> hiddenActorKeys =
-        companyUsers.stream()
-            .filter(this::isTenantAdminProtectedUser)
-            .map(UserAccount::getEmail)
-            .map(this::normalizeActorKey)
-            .filter(StringUtils::hasText)
-            .collect(Collectors.toSet());
+    Set<String> protectedActorKeys = resolveProtectedActorKeys();
 
     long totalUsers = visibleUsers.size();
     long enabledUsers = visibleUsers.stream().filter(UserAccount::isEnabled).count();
@@ -105,16 +109,92 @@ public class AdminDashboardService {
         new AdminDashboardDto.SecuritySummary(distinctSessions, apiActivity, apiFailures);
 
     List<AdminDashboardDto.ActivityItem> recentActivity =
-        auditLogRepository.findTop50ByCompanyIdOrderByTimestampDesc(companyId).stream()
-            .filter(auditLog -> !isProtectedActorActivity(auditLog, hiddenActorKeys))
-            .limit(12)
-            .map(this::toActivityItem)
-            .toList();
+        loadRecentActivity(companyId, protectedActorKeys);
 
     TenantRuntimeMetricsDto runtime = tenantRuntimePolicyService.metrics();
 
     return new AdminDashboardDto(
         recentActivity, approvalSummary, userSummary, supportSummary, runtime, securitySummary);
+  }
+
+  private Set<String> resolveProtectedActorKeys() {
+    Set<String> actorKeys =
+        userAccountRepository.findDistinctNormalizedEmailsByRoleNames(TENANT_ADMIN_HIDDEN_ROLES);
+    if (actorKeys == null || actorKeys.isEmpty()) {
+      return Set.of();
+    }
+    return actorKeys.stream()
+        .map(this::normalizeActorKey)
+        .filter(StringUtils::hasText)
+        .collect(Collectors.toCollection(HashSet::new));
+  }
+
+  private List<AdminDashboardDto.ActivityItem> loadRecentActivity(
+      Long companyId, Set<String> protectedActorKeys) {
+    List<AdminDashboardDto.ActivityItem> recentActivity = new ArrayList<>(RECENT_ACTIVITY_LIMIT);
+    Map<UUID, Boolean> protectedActorsByPublicIdCache = new HashMap<>();
+
+    for (int pageIndex = 0;
+        pageIndex < MAX_RECENT_ACTIVITY_SCAN_PAGES && recentActivity.size() < RECENT_ACTIVITY_LIMIT;
+        pageIndex++) {
+      Page<AuditLog> page =
+          auditLogRepository.findByCompanyIdOrderByTimestampDesc(
+              companyId, PageRequest.of(pageIndex, RECENT_ACTIVITY_PAGE_SIZE));
+      if (page.isEmpty()) {
+        break;
+      }
+
+      primeProtectedActorCache(page.getContent(), protectedActorsByPublicIdCache);
+
+      for (AuditLog auditLog : page.getContent()) {
+        if (!isProtectedActorActivity(
+            auditLog, protectedActorKeys, protectedActorsByPublicIdCache)) {
+          recentActivity.add(toActivityItem(auditLog));
+          if (recentActivity.size() >= RECENT_ACTIVITY_LIMIT) {
+            break;
+          }
+        }
+      }
+
+      if (!page.hasNext()) {
+        break;
+      }
+    }
+
+    return recentActivity;
+  }
+
+  private void primeProtectedActorCache(
+      List<AuditLog> auditLogs, Map<UUID, Boolean> protectedActorsByPublicIdCache) {
+    if (auditLogs == null || auditLogs.isEmpty()) {
+      return;
+    }
+    Set<UUID> missingPublicIds =
+        auditLogs.stream()
+            .map(AuditLog::getUserId)
+            .map(this::parsePublicId)
+            .filter(Objects::nonNull)
+            .filter(publicId -> !protectedActorsByPublicIdCache.containsKey(publicId))
+            .collect(Collectors.toCollection(HashSet::new));
+    if (missingPublicIds.isEmpty()) {
+      return;
+    }
+
+    List<UserAccount> actors = userAccountRepository.findByPublicIdIn(missingPublicIds);
+    Set<UUID> resolvedIds = new HashSet<>();
+    for (UserAccount actor : actors) {
+      if (actor == null || actor.getPublicId() == null) {
+        continue;
+      }
+      UUID publicId = actor.getPublicId();
+      protectedActorsByPublicIdCache.put(publicId, isTenantAdminProtectedUser(actor));
+      resolvedIds.add(publicId);
+    }
+    for (UUID unresolvedPublicId : missingPublicIds) {
+      if (!resolvedIds.contains(unresolvedPublicId)) {
+        protectedActorsByPublicIdCache.put(unresolvedPublicId, false);
+      }
+    }
   }
 
   private long countByOrigin(List<AdminApprovalItemDto> items, AdminApprovalItemDto.OriginType type) {
@@ -150,11 +230,52 @@ public class AdminDashboardService {
         .anyMatch(TENANT_ADMIN_HIDDEN_ROLES::contains);
   }
 
-  private boolean isProtectedActorActivity(AuditLog auditLog, Set<String> hiddenActorKeys) {
-    if (auditLog == null || hiddenActorKeys == null || hiddenActorKeys.isEmpty()) {
+  private boolean isProtectedActorActivity(
+      AuditLog auditLog,
+      Set<String> protectedActorKeys,
+      Map<UUID, Boolean> protectedActorsByPublicIdCache) {
+    if (auditLog == null) {
       return false;
     }
-    return hiddenActorKeys.contains(normalizeActorKey(auditLog.getUsername()));
+    if (isSuperAdminControlPlanePath(auditLog.getRequestPath())) {
+      return true;
+    }
+    if (isProtectedActorByPublicId(auditLog.getUserId(), protectedActorsByPublicIdCache)) {
+      return true;
+    }
+    if (protectedActorKeys == null || protectedActorKeys.isEmpty()) {
+      return false;
+    }
+    String actorKey = normalizeActorKey(auditLog.getUsername());
+    return StringUtils.hasText(actorKey) && protectedActorKeys.contains(actorKey);
+  }
+
+  private boolean isProtectedActorByPublicId(
+      String actorUserId, Map<UUID, Boolean> protectedActorsByPublicIdCache) {
+    UUID actorPublicId = parsePublicId(actorUserId);
+    if (actorPublicId == null) {
+      return false;
+    }
+    return Boolean.TRUE.equals(protectedActorsByPublicIdCache.get(actorPublicId));
+  }
+
+  private boolean isSuperAdminControlPlanePath(String requestPath) {
+    if (!StringUtils.hasText(requestPath)) {
+      return false;
+    }
+    String normalizedPath = requestPath.trim().toLowerCase(Locale.ROOT);
+    return normalizedPath.contains("/api/v1/superadmin");
+  }
+
+  private UUID parsePublicId(String actorUserId) {
+    if (!StringUtils.hasText(actorUserId)) {
+      return null;
+    }
+    try {
+      return UUID.fromString(actorUserId.trim());
+    } catch (IllegalArgumentException ex) {
+      return null;
+    }
   }
 
   private String normalizeRoleNameForComparison(String roleName) {

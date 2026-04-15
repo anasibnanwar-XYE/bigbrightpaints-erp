@@ -2,6 +2,7 @@ package com.bigbrightpaints.erp.modules.auth.domain;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -23,6 +24,17 @@ public interface UserAccountRepository extends JpaRepository<UserAccount, Long> 
       String email, String authScopeCode, Long id);
 
   List<UserAccount> findAllByAuthScopeCodeIgnoreCase(String authScopeCode);
+
+  List<UserAccount> findByPublicIdIn(Iterable<UUID> publicIds);
+
+  @Query(
+      """
+      select distinct lower(u.email)
+      from UserAccount u
+      join u.roles r
+      where upper(r.name) in :roleNames
+      """)
+  Set<String> findDistinctNormalizedEmailsByRoleNames(@Param("roleNames") Set<String> roleNames);
 
   @Lock(LockModeType.PESSIMISTIC_WRITE)
   @Query("select u from UserAccount u where u.id = :id")

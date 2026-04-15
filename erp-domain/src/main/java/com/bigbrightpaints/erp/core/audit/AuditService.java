@@ -15,10 +15,12 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
+import com.bigbrightpaints.erp.modules.auth.domain.UserPrincipal;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 
@@ -108,18 +110,30 @@ public class AuditService {
           new AuditLog.Builder().eventType(event).status(status).timestamp(LocalDateTime.now());
 
       // Add user context
-      if (usernameOverride != null && !usernameOverride.isBlank()) {
-        builder.username(usernameOverride);
-        builder.userId(usernameOverride);
-      } else {
+      boolean hasUsernameOverride = StringUtils.hasText(usernameOverride);
+      String resolvedUsername = normalizeToken(usernameOverride);
+      String resolvedUserId = extractMetadataActorPublicId(metadata);
+      if (!hasUsernameOverride) {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth != null && auth.isAuthenticated()) {
-          builder.username(auth.getName());
-          if (auth.getPrincipal() != null) {
-            // Extract user ID if available
-            builder.userId(auth.getName());
+          if (!StringUtils.hasText(resolvedUsername)) {
+            resolvedUsername = normalizeToken(auth.getName());
+          }
+          if (!StringUtils.hasText(resolvedUserId)) {
+            resolvedUserId = resolveAuthenticatedPublicId(auth);
+          }
+          if (!StringUtils.hasText(resolvedUserId)) {
+            resolvedUserId = normalizeToken(auth.getName());
           }
         }
+      } else if (!StringUtils.hasText(resolvedUserId)) {
+        resolvedUserId = resolvedUsername;
+      }
+      if (StringUtils.hasText(resolvedUsername)) {
+        builder.username(resolvedUsername);
+      }
+      if (StringUtils.hasText(resolvedUserId)) {
+        builder.userId(resolvedUserId);
       }
 
       // Add company context
@@ -173,6 +187,45 @@ public class AuditService {
       // Don't let audit logging failures impact the main application
       logger.error("Failed to log audit event: {} - Status: {}", event, status, e);
     }
+  }
+
+  private String resolveAuthenticatedPublicId(Authentication authentication) {
+    if (authentication == null) {
+      return null;
+    }
+    Object principal = authentication.getPrincipal();
+    if (principal instanceof UserPrincipal userPrincipal
+        && userPrincipal.getUser() != null
+        && userPrincipal.getUser().getPublicId() != null) {
+      return userPrincipal.getUser().getPublicId().toString();
+    }
+    return normalizeUuidToken(authentication.getName());
+  }
+
+  private String extractMetadataActorPublicId(Map<String, String> metadata) {
+    if (metadata == null) {
+      return null;
+    }
+    return normalizeUuidToken(metadata.get("actorPublicId"));
+  }
+
+  private String normalizeUuidToken(String token) {
+    String normalized = normalizeToken(token);
+    if (!StringUtils.hasText(normalized)) {
+      return null;
+    }
+    try {
+      return UUID.fromString(normalized).toString();
+    } catch (IllegalArgumentException ex) {
+      return null;
+    }
+  }
+
+  private String normalizeToken(String token) {
+    if (!StringUtils.hasText(token)) {
+      return null;
+    }
+    return token.trim();
   }
 
   private Map<String, String> captureRequestContextMetadata() {
