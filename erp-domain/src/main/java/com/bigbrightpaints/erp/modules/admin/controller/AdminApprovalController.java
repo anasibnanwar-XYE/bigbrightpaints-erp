@@ -16,6 +16,8 @@ import com.bigbrightpaints.erp.modules.admin.dto.AdminApprovalItemDto;
 import com.bigbrightpaints.erp.modules.admin.service.AdminApprovalService;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import jakarta.validation.Valid;
 
 @RestController
@@ -36,8 +38,18 @@ public class AdminApprovalController {
   }
 
   @PostMapping("/{originType}/{id}/decisions")
+  @Operation(
+      summary = "Apply tenant-admin approval decision",
+      description =
+          "Origin-specific rules: CREDIT_REQUEST, CREDIT_LIMIT_OVERRIDE_REQUEST, and "
+              + "PERIOD_CLOSE_REQUEST require a nonblank reason. PAYROLL_RUN supports only "
+              + "APPROVE.")
   public ResponseEntity<ApiResponse<AdminApprovalItemDto>> decide(
-      @PathVariable String originType,
+      @Parameter(
+              description =
+                  "Approval origin type: EXPORT_REQUEST, CREDIT_REQUEST, CREDIT_LIMIT_OVERRIDE_REQUEST, PAYROLL_RUN, PERIOD_CLOSE_REQUEST")
+          @PathVariable
+          String originType,
       @PathVariable Long id,
       @Valid @RequestBody AdminApprovalDecisionRequest request) {
     return ResponseEntity.ok(

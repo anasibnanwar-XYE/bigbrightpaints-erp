@@ -120,6 +120,11 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
         "#/components/schemas/AdminApprovalDecisionRequest",
         "200",
         "#/components/schemas/ApiResponseAdminApprovalItemDto");
+    JsonNode approvalDecisionOperation =
+        root.path("paths").path("/api/v1/admin/approvals/{originType}/{id}/decisions").path("post");
+    assertThat(approvalDecisionOperation.path("description").asText(""))
+        .contains("PERIOD_CLOSE_REQUEST")
+        .contains("require");
     assertOperationContract(
         root,
         "/api/v1/admin/dashboard",
