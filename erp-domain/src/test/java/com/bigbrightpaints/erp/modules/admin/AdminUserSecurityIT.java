@@ -598,17 +598,41 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
 
   @Test
   void admin_user_create_is_blocked_when_active_user_quota_reached() {
-    String token = login(ADMIN_EMAIL, ADMIN_PASSWORD, COMPANY);
-    String superAdminToken = login(SUPER_ADMIN_EMAIL, SUPER_ADMIN_PASSWORD, COMPANY);
-    Long companyId = companyRepository.findByCodeIgnoreCase(COMPANY).orElseThrow().getId();
+    String quotaCompanyCode = "SECADMIN_QUOTA";
+    String quotaAdminEmail = "quota-admin@bbp.com";
+    String quotaSuperAdminEmail = "quota-super-admin@bbp.com";
+    String quotaAdminPassword = "QuotaAdmin123!";
+    String quotaSuperAdminPassword = "QuotaSuper123!";
+    dataSeeder.ensureUser(
+        quotaAdminEmail,
+        quotaAdminPassword,
+        "Quota Admin",
+        quotaCompanyCode,
+        List.of("ROLE_ADMIN"));
+    dataSeeder.ensureUser(
+        quotaSuperAdminEmail,
+        quotaSuperAdminPassword,
+        "Quota Super Admin",
+        quotaCompanyCode,
+        List.of("ROLE_SUPER_ADMIN"));
+    dataSeeder.ensureUser(
+        "quota-dealer@bbp.com",
+        "QuotaDealer123!",
+        "Quota Dealer",
+        quotaCompanyCode,
+        List.of("ROLE_DEALER"));
+
+    String token = login(quotaAdminEmail, quotaAdminPassword, quotaCompanyCode);
+    String superAdminToken = login(quotaSuperAdminEmail, quotaSuperAdminPassword, quotaCompanyCode);
+    Long companyId = companyRepository.findByCodeIgnoreCase(quotaCompanyCode).orElseThrow().getId();
     HttpHeaders headers = new HttpHeaders();
     headers.setBearerAuth(token);
     headers.setContentType(MediaType.APPLICATION_JSON);
-    headers.set("X-Company-Code", COMPANY);
+    headers.set("X-Company-Code", quotaCompanyCode);
     HttpHeaders superAdminHeaders = new HttpHeaders();
     superAdminHeaders.setBearerAuth(superAdminToken);
     superAdminHeaders.setContentType(MediaType.APPLICATION_JSON);
-    superAdminHeaders.set("X-Company-Code", COMPANY);
+    superAdminHeaders.set("X-Company-Code", quotaCompanyCode);
 
     ResponseEntity<Map> policyResponse =
         rest.exchange(
