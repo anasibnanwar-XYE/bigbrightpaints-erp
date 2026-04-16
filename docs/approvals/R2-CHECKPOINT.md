@@ -74,6 +74,8 @@ Last reviewed: 2026-04-16
   - focused security/auth tests passed for this slice (`RequestBodyCachingFilterTest`, `CompanyContextFilterControlPlaneBindingTest`, `AuthTenantAuthorityIT` targeted method)
   - tenant-scoped superadmin deny contract now explicitly covered on canonical notify POST call
   - policy gates (`check-codex-review-guidelines`, `check-enterprise-policy`) passed
-  - prior role-assignment hard-cut tests and curl probes remained valid from slice 1
 - Artifact note:
-  - runtime curl responses and Maven/guard outputs captured in shell output for this lane; no additional artifact file required.
+  - test evidence: `erp-domain/target/surefire-reports/com.bigbrightpaints.erp.core.security.RequestBodyCachingFilterTest.txt`
+  - test evidence: `erp-domain/target/surefire-reports/com.bigbrightpaints.erp.modules.auth.CompanyContextFilterControlPlaneBindingTest.txt`
+  - test evidence: `erp-domain/target/surefire-reports/com.bigbrightpaints.erp.modules.auth.AuthTenantAuthorityIT.txt`
+  - runtime probe evidence: `.review/security-redteam-probes-2026-04-16.log`
