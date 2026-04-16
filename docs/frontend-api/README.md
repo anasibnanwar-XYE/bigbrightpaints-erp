@@ -2,7 +2,7 @@
 
 `docs/frontend-api/` documents shared API rules across all frontend portal shells.
 
-Last reviewed: 2026-04-15
+Last reviewed: 2026-04-16
 
 ## Purpose
 
@@ -30,7 +30,7 @@ This folder defines canonical frontend contracts for:
 
 ### Portal Placement
 
-- **superadmin:** platform control-plane only (`/api/v1/superadmin/**`).
+- **superadmin:** platform control-plane only (`/api/v1/superadmin/**`) with platform auth scope; tenant-scoped superadmin sessions are denied on platform-only hosts.
 - **tenant-admin:** canonical `/api/v1/admin/**` product surfaces (`dashboard`, `users`, `approvals`, `support`, `self-settings`, `audit`) plus `/api/v1/changelog`; legacy admin insight reads `/api/v1/portal/dashboard|operations|workforce` are still live until backend retirement.
 - **accounting:** COA, journals, reconciliation, period close, reports.
 - **sales:** dealer master, sales orders, commercial credit escalation.

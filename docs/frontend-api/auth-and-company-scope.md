@@ -1,6 +1,6 @@
 # Auth and Company Scope
 
-Last reviewed: 2026-04-15
+Last reviewed: 2026-04-16
 
 ## Canonical Auth Routes
 
@@ -22,6 +22,8 @@ Last reviewed: 2026-04-15
 - `X-Company-Id` is retired and must not be sent.
 - Do not build tenant switching around alternate company identifiers.
 - Superadmin shell is separate and must not be mounted inside tenant-admin routes.
+- Superadmin control-plane APIs require the platform auth scope code; tenant-scoped
+  superadmin sessions are denied on platform-only hosts.
 
 ## Bootstrap Contract
 
@@ -78,7 +80,7 @@ Do not use `/api/v1/auth/profile`; it is non-canonical for frontend identity boo
 
 | Role | Portal shell | Canonical route ownership |
 | --- | --- | --- |
-| `ROLE_SUPER_ADMIN` | superadmin | `/api/v1/superadmin/**` |
+| `ROLE_SUPER_ADMIN` | superadmin | `/api/v1/superadmin/**` with platform auth scope |
 | `ROLE_ADMIN` | tenant-admin | tenant-scoped `/api/v1/admin/**` workflows |
 | `ROLE_ACCOUNTING` | accounting | `/api/v1/accounting/**`, accounting portal workflows |
 | `ROLE_SALES` | sales | `/api/v1/sales/**`, sales portal workflows |
@@ -89,3 +91,5 @@ Boundary notes:
 
 - A `ROLE_SUPER_ADMIN` user must not be routed into tenant-admin shell routes.
 - Tenant-admin workflows are tenant-scoped; control-plane actions remain superadmin-only.
+- Tenant-scoped superadmin sessions are explicitly denied on `/api/v1/superadmin/settings`,
+  `/api/v1/superadmin/roles`, and `/api/v1/superadmin/notify`.
