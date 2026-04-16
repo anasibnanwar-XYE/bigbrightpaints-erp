@@ -19,7 +19,7 @@ public interface CreditRequestRepository extends JpaRepository<CreditRequest, Lo
       select count(request)
       from CreditRequest request
       where request.company = :company
-        and request.status = 'PENDING'
+        and upper(trim(request.status)) = 'PENDING'
       """)
   long countPendingByCompany(@Param("company") Company company);
 
@@ -39,7 +39,7 @@ public interface CreditRequestRepository extends JpaRepository<CreditRequest, Lo
       select request
       from CreditRequest request
       where request.company = :company
-        and request.status = 'PENDING'
+        and upper(trim(request.status)) = 'PENDING'
       order by request.createdAt desc
       """)
   List<CreditRequest> findPendingByCompanyOrderByCreatedAtDesc(@Param("company") Company company);
