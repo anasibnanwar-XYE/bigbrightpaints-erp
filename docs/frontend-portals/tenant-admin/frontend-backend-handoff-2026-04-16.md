@@ -2,10 +2,10 @@
 
 ## Scope and branch
 
-- Branch: `codex/tenant-admin-hardcut-s1`
+- Branch: `refactor-admin`
 - Base comparison: `origin/main`
-- Current head at handoff write time: `f0dea5685`
-- This handoff covers tenant-admin backend hard-cut slices plus post-review fixes.
+- Current head at handoff write time: `dd1ea49f6`
+- This handoff covers tenant-admin backend hard-cut slices plus PR #192 review-fix updates.
 
 ## What changed overall in this branch
 
@@ -21,6 +21,15 @@
 8. Dashboard approval-summary performance optimization (counts-only path).
 9. Regression fix to align pending count semantics with inbox (`upper(trim(status))='PENDING'`).
 10. Database index hardening for normalized pending-status lookups (`V183`) to keep dashboard/inbox queries performant.
+
+### PR #192 review-fix slice (latest)
+
+1. `AdminApprovalService`: removed unused payroll `reason` parameter and hardened null-safe status normalization.
+2. `AdminDashboardService`: hardened null-safe actor-key normalization.
+3. `CoreFallbackExceptionHandler`: removed unused `java.io.IOException` import.
+4. `CompanyContextFilter`: added explicit audit logging for `SUPER_ADMIN_PLATFORM_ONLY` 403 denials before filter exit.
+5. `UpdateUserRequest`: made optional `roles` intent explicit (`@Nullable` + schema metadata) while preserving non-empty validation when roles are provided.
+6. `api-contracts.md`: clarified omission semantics for update roles (`omit => keep existing assignments`).
 
 ### Security/control-plane posture already enforced
 
@@ -64,7 +73,8 @@
 - `UpdateUserRequest`:
   - `enabled` removed.
   - `displayName` required.
-  - `roles` remains the full desired set and now enforces non-empty list.
+  - `roles` is optional; when provided it is treated as the full desired set and must be non-empty.
+  - Omitting `roles` keeps existing role assignments unchanged.
 - Status toggle moved to dedicated endpoint:
   - `PUT /api/v1/admin/users/{userId}/status`
   - request body: `{ "enabled": true|false }` (`UpdateUserStatusRequest`).
@@ -126,9 +136,10 @@
 ## Verification approach used on backend branch
 
 - Slice-focused Java verification was run incrementally after changes (targeted service/security/integration tests).
-- Latest regression-fix slice validation:
-  - `cd erp-domain && MIGRATION_SET=v2 mvn -q -Dtest=AdminApprovalServiceTest,AdminDashboardSecurityIT test`
+- Latest PR #192 review-fix slice validation:
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -q -Dtest=AdminApprovalServiceTest,CompanyContextFilterControlPlaneBindingTest,CoreFallbackExceptionHandlerTest,AdminUserServiceTest test`
   - Result: pass (exit 0).
+- Note: `AdminUserSecurityIT` currently fails to bootstrap due a pre-existing test application bean-name conflict (`reportsInventoryValuationService`) unrelated to this slice.
 - Policy and governance gates for high-risk/migration surfaces:
   - `bash ci/check-codex-review-guidelines.sh` -> pass
   - `bash ci/check-enterprise-policy.sh` -> pass
