@@ -94,10 +94,8 @@ class AdminApprovalServiceTest {
     lenient().when(periodCloseRequestRepository.findPendingByCompanyOrderByRequestedAtDesc(company)).thenReturn(List.of());
     lenient().when(exportApprovalService.listPending()).thenReturn(List.of());
     lenient().when(moduleGatingService.isEnabled(company, CompanyModule.HR_PAYROLL)).thenReturn(false);
-    lenient().when(creditRequestRepository.countByCompanyAndStatusIgnoreCase(company, "PENDING")).thenReturn(0L);
-    lenient()
-        .when(creditLimitOverrideRequestRepository.countByCompanyAndStatusIgnoreCase(company, "PENDING"))
-        .thenReturn(0L);
+    lenient().when(creditRequestRepository.countPendingByCompany(company)).thenReturn(0L);
+    lenient().when(creditLimitOverrideRequestRepository.countPendingByCompany(company)).thenReturn(0L);
     lenient()
         .when(periodCloseRequestRepository.countByCompanyAndStatus(
             company, PeriodCloseRequestStatus.PENDING))
@@ -111,9 +109,8 @@ class AdminApprovalServiceTest {
   @Test
   void pendingCounts_usesRepositoryCountsWithPayrollGateEnabled() {
     when(moduleGatingService.isEnabled(company, CompanyModule.HR_PAYROLL)).thenReturn(true);
-    when(creditRequestRepository.countByCompanyAndStatusIgnoreCase(company, "PENDING")).thenReturn(3L);
-    when(creditLimitOverrideRequestRepository.countByCompanyAndStatusIgnoreCase(company, "PENDING"))
-        .thenReturn(4L);
+    when(creditRequestRepository.countPendingByCompany(company)).thenReturn(3L);
+    when(creditLimitOverrideRequestRepository.countPendingByCompany(company)).thenReturn(4L);
     when(payrollRunRepository.countByCompanyAndStatus(company, PayrollRun.PayrollStatus.CALCULATED))
         .thenReturn(2L);
     when(
@@ -135,9 +132,8 @@ class AdminApprovalServiceTest {
   @Test
   void pendingCounts_skipsPayrollWhenModuleDisabled() {
     when(moduleGatingService.isEnabled(company, CompanyModule.HR_PAYROLL)).thenReturn(false);
-    when(creditRequestRepository.countByCompanyAndStatusIgnoreCase(company, "PENDING")).thenReturn(1L);
-    when(creditLimitOverrideRequestRepository.countByCompanyAndStatusIgnoreCase(company, "PENDING"))
-        .thenReturn(1L);
+    when(creditRequestRepository.countPendingByCompany(company)).thenReturn(1L);
+    when(creditLimitOverrideRequestRepository.countPendingByCompany(company)).thenReturn(1L);
     when(
             periodCloseRequestRepository.countByCompanyAndStatus(
                 company, PeriodCloseRequestStatus.PENDING))

@@ -132,9 +132,8 @@ public class AdminApprovalService {
   @Transactional(readOnly = true)
   public PendingCounts getPendingCounts() {
     Company company = companyContextService.requireCurrentCompany();
-    long creditPending = creditRequestRepository.countByCompanyAndStatusIgnoreCase(company, "PENDING");
-    long creditOverridePending =
-        creditLimitOverrideRequestRepository.countByCompanyAndStatusIgnoreCase(company, "PENDING");
+    long creditPending = creditRequestRepository.countPendingByCompany(company);
+    long creditOverridePending = creditLimitOverrideRequestRepository.countPendingByCompany(company);
     long payrollPending =
         isHrPayrollEnabled(company)
             ? payrollRunRepository.countByCompanyAndStatus(
