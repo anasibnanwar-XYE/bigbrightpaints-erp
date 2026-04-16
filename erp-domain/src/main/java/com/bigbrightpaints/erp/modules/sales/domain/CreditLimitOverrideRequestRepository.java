@@ -22,7 +22,7 @@ public interface CreditLimitOverrideRequestRepository
       select count(request)
       from CreditLimitOverrideRequest request
       where request.company = :company
-        and upper(trim(request.status)) = 'PENDING'
+        and request.status = 'PENDING'
       """)
   long countPendingByCompany(@Param("company") Company company);
 
@@ -31,7 +31,7 @@ public interface CreditLimitOverrideRequestRepository
       select request
       from CreditLimitOverrideRequest request
       where request.company = :company
-        and upper(trim(request.status)) = 'PENDING'
+        and request.status = 'PENDING'
       order by request.createdAt desc
       """)
   List<CreditLimitOverrideRequest> findPendingByCompanyOrderByCreatedAtDesc(
