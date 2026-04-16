@@ -71,7 +71,7 @@ None.
 1. Run the feature's required proof commands from `verificationSteps` and `.factory/services.yaml`.
 2. If an initial validator fails solely because of the exact in-scope contract drift or parity artifact your feature explicitly owns (for example stale `openapi.json` / `docs/endpoint-inventory.md` metadata for the contract you are updating), remediate that owned drift and then rerun the full validator stack instead of treating the baseline failure as an automatic stop condition.
 3. If Java code changed, run compilation check: `cd erp-domain && mvn compile -q`
-4. If Java code changed or the feature explicitly requires it, run the baseline repo PR lane: `cd /home/realnigga/Desktop/Mission-control && bash scripts/gate_fast.sh`
+4. If Java code changed or the feature explicitly requires it, run the baseline repo PR lane directly from the current repository root without `rtk` or other path-rewriting wrappers: `ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT" && bash scripts/gate_fast.sh`
 5. When you also need a narrower targeted Maven proof, name it explicitly as the Maven `-Pgate-fast` profile (for example `cd erp-domain && mvn test -Pgate-fast -Djacoco.skip=true`) rather than calling it the full gate-fast lane.
 6. For broader validation when useful (optional, takes ~2.5min): `cd erp-domain && mvn test -Djacoco.skip=true '-Dtest=!*IT,!*ITCase,!*codered*' -pl .`
 7. Manually verify key behaviors using the approach appropriate for the feature:
