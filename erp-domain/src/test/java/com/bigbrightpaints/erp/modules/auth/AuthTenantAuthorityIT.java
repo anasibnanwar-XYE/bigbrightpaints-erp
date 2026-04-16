@@ -873,8 +873,13 @@ class AuthTenantAuthorityIT extends AbstractIntegrationTest {
     ResponseEntity<Map> notifyResponse =
         rest.exchange(
             "/api/v1/superadmin/notify",
-            HttpMethod.GET,
-            new HttpEntity<>(jsonHeaders(tenantScopedSuperAdminToken, TENANT_A)),
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of(
+                    "to", "security-check@bbp.com",
+                    "subject", "scope-guard",
+                    "body", "deny"),
+                jsonHeaders(tenantScopedSuperAdminToken, TENANT_A)),
             Map.class);
     assertControlledAccessDenied(
         notifyResponse,
