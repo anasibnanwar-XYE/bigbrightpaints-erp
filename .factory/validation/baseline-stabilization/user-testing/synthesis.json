@@ -12,5 +12,17 @@
   "failedAssertions": [],
   "blockedAssertions": [],
   "appliedUpdates": [],
-  "previousRound": null
+  "previousRound": null,
+  "override": {
+    "applied": true,
+    "reason": "Orchestrator override: baseline-stabilization has zero user-testing assertions because its only completed implementation feature (`baseline-gate-fast-stabilization`) fulfills nothing. The validator proved runtime health and synthesized a 0-assertion pass; partial status was caused only by unrelated pre-existing untracked files outside mission scope.",
+    "deferredAssertions": [],
+    "evidence": [
+      "features.json: baseline-gate-fast-stabilization fulfills []",
+      "features.json: user-testing-validator-baseline-stabilization marked completed by orchestrator override",
+      "assertionsSummary.total = 0, passed = 0, failed = 0, blocked = 0",
+      "Mission AGENTS Known Pre-Existing Issues documents the unrelated untracked files that prevented a clean-tree validator success handoff"
+    ]
+  },
+  "notes": "No milestone assertions were mapped to this validator run. Override applied so the sealed baseline milestone can progress without re-running a zero-assertion user-testing pass blocked only by unrelated pre-existing working-tree dirtiness."
 }
