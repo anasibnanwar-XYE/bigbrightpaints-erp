@@ -61,21 +61,17 @@ Last reviewed: 2026-04-16
 ## Verification Evidence
 - Commands run:
   - `cd erp-domain && MIGRATION_SET=v2 mvn -q -Dtest=RequestBodyCachingFilterTest,CompanyContextFilterControlPlaneBindingTest,AuthTenantAuthorityIT#tenant_scoped_super_admin_cannot_access_platform_only_superadmin_hosts test`
-  - `cd erp-domain && MIGRATION_SET=v2 mvn -q -Dtest=AuthTenantAuthorityIT#tenant_scoped_super_admin_cannot_access_platform_only_superadmin_hosts test`
   - `bash ci/check-codex-review-guidelines.sh`
   - `bash ci/check-enterprise-policy.sh`
-  - `cd erp-domain && MIGRATION_SET=v2 mvn -q -Dtest=AdminUserServiceTest test`
-  - `cd erp-domain && MIGRATION_SET=v2 mvn -q -Dtest=AuthTenantAuthorityIT#admin_cannot_create_tenant_admin_user+tenant_admin_can_still_create_non_privileged_user test`
-  - curl validation harness (Colima + Postgres container + local app boot + seeded tenant-admin principal):
-    - login `POST /api/v1/auth/login` with tenant-admin credentials
-    - role escalation probe against the admin users create endpoint with `roles=[ROLE_ADMIN]` => `403`
-    - unknown-role probe against the admin users create endpoint with `roles=[ROLE_CUSTOM]` => `400`
 - Result summary:
   - focused security/auth tests passed for this slice (`RequestBodyCachingFilterTest`, `CompanyContextFilterControlPlaneBindingTest`, `AuthTenantAuthorityIT` targeted method)
   - tenant-scoped superadmin deny contract now explicitly covered on canonical notify POST call
   - policy gates (`check-codex-review-guidelines`, `check-enterprise-policy`) passed
 - Artifact note:
-  - test evidence: `erp-domain/target/surefire-reports/com.bigbrightpaints.erp.core.security.RequestBodyCachingFilterTest.txt`
-  - test evidence: `erp-domain/target/surefire-reports/com.bigbrightpaints.erp.modules.auth.CompanyContextFilterControlPlaneBindingTest.txt`
-  - test evidence: `erp-domain/target/surefire-reports/com.bigbrightpaints.erp.modules.auth.AuthTenantAuthorityIT.txt`
-  - runtime probe evidence: `.review/security-redteam-probes-2026-04-16.log`
+  - evidence bundle index: `docs/approvals/evidence/2026-04-16-r2-slice2/README.md`
+  - test evidence: `docs/approvals/evidence/2026-04-16-r2-slice2/com.bigbrightpaints.erp.core.security.RequestBodyCachingFilterTest.txt`
+  - test evidence: `docs/approvals/evidence/2026-04-16-r2-slice2/com.bigbrightpaints.erp.modules.auth.CompanyContextFilterControlPlaneBindingTest.txt`
+  - test evidence: `docs/approvals/evidence/2026-04-16-r2-slice2/com.bigbrightpaints.erp.modules.auth.AuthTenantAuthorityIT.txt`
+  - testcase anchor: `docs/approvals/evidence/2026-04-16-r2-slice2/TEST-com.bigbrightpaints.erp.modules.auth.AuthTenantAuthorityIT.xml`
+  - policy evidence: `docs/approvals/evidence/2026-04-16-r2-slice2/check-enterprise-policy.txt`
+  - policy evidence: `docs/approvals/evidence/2026-04-16-r2-slice2/check-codex-review-guidelines.txt`
