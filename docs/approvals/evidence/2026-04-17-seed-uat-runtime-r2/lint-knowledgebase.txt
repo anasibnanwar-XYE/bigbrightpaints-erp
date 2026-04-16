@@ -1,0 +1,2 @@
+[ticket-parity] OK: no ticket.yaml present; skipping parity check
+[knowledgebase-lint] OK
