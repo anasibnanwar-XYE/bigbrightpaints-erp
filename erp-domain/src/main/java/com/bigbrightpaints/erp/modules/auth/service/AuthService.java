@@ -337,6 +337,9 @@ public class AuthService {
   }
 
   private void resetLock(UserAccount user) {
+    if (user.getFailedLoginAttempts() == 0 && user.getLockedUntil() == null) {
+      return;
+    }
     user.setFailedLoginAttempts(0);
     user.setLockedUntil(null);
     userAccountRepository.save(user);

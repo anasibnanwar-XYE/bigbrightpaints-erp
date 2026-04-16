@@ -130,9 +130,13 @@ public class TenantAdminProvisioningService {
   }
 
   private Role requireAdminRole() {
-    roleService.ensureRoleExists("ROLE_ADMIN");
     return roleRepository
         .findByName("ROLE_ADMIN")
+        .or(
+            () -> {
+              roleService.synchronizeSystemRoles();
+              return roleRepository.findByName("ROLE_ADMIN");
+            })
         .orElseThrow(
             () ->
                 com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState(

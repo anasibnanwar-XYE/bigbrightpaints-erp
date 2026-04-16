@@ -65,10 +65,34 @@ class TenantAdminProvisioningServiceTest {
     assertThat(company.getMainAdminUserId()).isEqualTo(provisioned.getId());
     assertThat(company.getOnboardingAdminEmail()).isEqualTo("new-admin@ske.com");
     assertThat(company.getOnboardingAdminUserId()).isEqualTo(provisioned.getId());
-    verify(roleService).ensureRoleExists("ROLE_ADMIN");
     verify(scopedAccountBootstrapService)
         .provisionTenantAccount(
             company, "new-admin@ske.com", "New Admin", java.util.List.of(adminRole));
+  }
+
+  @Test
+  void provisionInitialAdmin_synchronizesSystemRolesWhenAdminRoleIsMissing() {
+    TenantAdminProvisioningService service = newService();
+    Company company = company(10L, "SKE", "SKE");
+    Role adminRole = role("ROLE_ADMIN");
+    UserAccount provisioned = new UserAccount("new-admin@ske.com", "SKE", "hash", "New Admin");
+
+    when(userAccountRepository.existsByEmailIgnoreCaseAndAuthScopeCodeIgnoreCase(
+            "new-admin@ske.com", "SKE"))
+        .thenReturn(false);
+    when(roleRepository.findByName("ROLE_ADMIN"))
+        .thenReturn(Optional.empty())
+        .thenReturn(Optional.of(adminRole));
+    when(scopedAccountBootstrapService.provisionTenantAccount(
+            eq(company),
+            eq("new-admin@ske.com"),
+            eq("New Admin"),
+            eq(java.util.List.of(adminRole))))
+        .thenReturn(provisioned);
+
+    service.provisionInitialAdmin(company, "new-admin@ske.com", "New Admin");
+
+    verify(roleService).synchronizeSystemRoles();
   }
 
   @Test

@@ -1,0 +1,21 @@
+erp:
+  uat-seed:
+    enabled: ${ERP_UAT_SEED_ENABLED:true}
+    platform-admin:
+      email: ${ERP_UAT_SEED_PLATFORM_ADMIN_EMAIL:platform.admin@local.test}
+      password: ${ERP_UAT_SEED_PLATFORM_ADMIN_PASSWORD:SuperPass!2026}
+      scope-code: ${ERP_UAT_SEED_PLATFORM_SCOPE_CODE:PLATFORM}
+    tenant:
+      code: ${ERP_UAT_SEED_TENANT_CODE:UAT01}
+      name: ${ERP_UAT_SEED_TENANT_NAME:Local UAT Tenant}
+      timezone: ${ERP_UAT_SEED_TENANT_TIMEZONE:Asia/Kolkata}
+      user-password: ${ERP_UAT_SEED_TENANT_USER_PASSWORD:UatPass!2026}
+      max-active-users: ${ERP_UAT_SEED_MAX_ACTIVE_USERS:500}
+      max-api-requests: ${ERP_UAT_SEED_MAX_API_REQUESTS:5000}
+      max-concurrent-requests: ${ERP_UAT_SEED_MAX_CONCURRENT_REQUESTS:200}
+      users:
+        admin-email: ${ERP_UAT_SEED_ADMIN_EMAIL:tenant.admin@local.test}
+        accounting-email: ${ERP_UAT_SEED_ACCOUNTING_EMAIL:accounting.user@local.test}
+        sales-email: ${ERP_UAT_SEED_SALES_EMAIL:sales.user@local.test}
+        factory-email: ${ERP_UAT_SEED_FACTORY_EMAIL:factory.user@local.test}
+        dealer-email: ${ERP_UAT_SEED_DEALER_EMAIL:dealer.user@local.test}

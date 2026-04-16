@@ -867,9 +867,9 @@ public class CompanyService {
             company.getCode(),
             runtimeState,
             effectiveReason,
-            TenantBootstrapDefaults.failClosedRuntimeLimit(company.getQuotaMaxConcurrentRequests()),
-            TenantBootstrapDefaults.failClosedRuntimeLimit(company.getQuotaMaxApiRequests()),
-            TenantBootstrapDefaults.failClosedRuntimeLimit(company.getQuotaMaxActiveUsers()),
+            TenantBootstrapDefaults.runtimeLimitOrNull(company.getQuotaMaxConcurrentRequests()),
+            TenantBootstrapDefaults.runtimeLimitOrNull(company.getQuotaMaxApiRequests()),
+            TenantBootstrapDefaults.runtimeLimitOrNull(company.getQuotaMaxActiveUsers()),
             resolveActor(authentication));
   }
 

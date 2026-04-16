@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -231,7 +232,7 @@ class TenantOnboardingServiceTest {
   }
 
   @Test
-  void onboardTenant_defaultsGstRateAndSeedsFailClosedRuntimeLimitsWhenQuotasOmitted() {
+  void onboardTenant_defaultsGstRateAndUsesRuntimeDefaultsWhenQuotasOmitted() {
     TenantOnboardingService service = newService();
     TenantOnboardingRequest request =
         new TenantOnboardingRequest(
@@ -302,9 +303,9 @@ class TenantOnboardingServiceTest {
             eq("DEFAULTED"),
             eq(TenantRuntimeEnforcementService.TenantRuntimeState.ACTIVE),
             eq("TENANT_ONBOARDING_BOOTSTRAP"),
-            eq(1),
-            eq(1),
-            eq(1),
+            isNull(),
+            isNull(),
+            isNull(),
             eq("UNKNOWN_AUTH_ACTOR"));
   }
 
@@ -339,7 +340,7 @@ class TenantOnboardingServiceTest {
   }
 
   @Test
-  void initializeTenantRuntimePolicy_skipsBlankCodeAndCapsOverflowingLimits() {
+  void initializeTenantRuntimePolicy_skipsBlankCodeAndUsesRuntimeDefaultsForOmittedLimits() {
     TenantOnboardingService service = newService();
     Company blankCode = new Company();
     blankCode.setCode("   ");
@@ -363,7 +364,7 @@ class TenantOnboardingServiceTest {
             eq("BOOT"),
             eq(TenantRuntimeEnforcementService.TenantRuntimeState.ACTIVE),
             eq("TENANT_ONBOARDING_BOOTSTRAP"),
-            eq(1),
+            isNull(),
             eq(Integer.MAX_VALUE),
             eq(5),
             eq("UNKNOWN_AUTH_ACTOR"));

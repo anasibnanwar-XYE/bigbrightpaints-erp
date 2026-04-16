@@ -212,6 +212,34 @@ class AuthServiceAuditAttributionTest {
   }
 
   @Test
+  void loginSuccess_doesNotPersistLockStateWhenAlreadyClear() {
+    LoginRequest request = new LoginRequest("user@example.com", "Passw0rd!", "ACME", null, null);
+    UserAccount user = userWithCompany("user@example.com", "ACME");
+    user.setFailedLoginAttempts(0);
+    user.setLockedUntil(null);
+
+    when(authScopeService.requireScopeCode("ACME")).thenReturn("ACME");
+    when(authScopeService.isPlatformScope("ACME")).thenReturn(false);
+    when(userAccountRepository.findByEmailIgnoreCaseAndAuthScopeCodeIgnoreCase(
+            "user@example.com", "ACME"))
+        .thenReturn(Optional.of(user));
+    when(passwordEncoder.matches("Passw0rd!", "hash")).thenReturn(true);
+    when(tokenService.generateAccessToken(
+            eq(user.getPublicId().toString()), eq("ACME"), any(Map.class), any(Instant.class)))
+        .thenReturn("access-new");
+    when(refreshTokenService.issue(
+            eq(user.getPublicId()), eq("ACME"), any(Instant.class), any(Instant.class)))
+        .thenReturn("refresh-new");
+    when(properties.getRefreshTokenTtlSeconds()).thenReturn(3600L);
+    when(properties.getAccessTokenTtlSeconds()).thenReturn(900L);
+
+    var response = authService.login(request);
+
+    assertThat(response.accessToken()).isEqualTo("access-new");
+    verify(userAccountRepository, never()).save(any(UserAccount.class));
+  }
+
+  @Test
   void loginRejectsTenantUserWithoutCompanyMembership() {
     LoginRequest request =
         new LoginRequest("tenant-user@example.com", "Passw0rd!", "TARGET", null, null);

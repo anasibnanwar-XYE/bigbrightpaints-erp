@@ -296,9 +296,9 @@ public class TenantOnboardingService {
             company.getCode(),
             TenantRuntimeEnforcementService.TenantRuntimeState.ACTIVE,
             "TENANT_ONBOARDING_BOOTSTRAP",
-            TenantBootstrapDefaults.failClosedRuntimeLimit(company.getQuotaMaxConcurrentRequests()),
-            TenantBootstrapDefaults.failClosedRuntimeLimit(company.getQuotaMaxApiRequests()),
-            TenantBootstrapDefaults.failClosedRuntimeLimit(company.getQuotaMaxActiveUsers()),
+            TenantBootstrapDefaults.runtimeLimitOrNull(company.getQuotaMaxConcurrentRequests()),
+            TenantBootstrapDefaults.runtimeLimitOrNull(company.getQuotaMaxApiRequests()),
+            TenantBootstrapDefaults.runtimeLimitOrNull(company.getQuotaMaxActiveUsers()),
             SecurityActorResolver.resolveActorOrUnknown());
   }
 

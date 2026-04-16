@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -202,10 +203,10 @@ class CompanyServiceTest {
   }
 
   @Test
-  void failClosedRuntimeLimit_defaultsZeroAndCapsOverflow() {
-    assertThat(TenantBootstrapDefaults.failClosedRuntimeLimit(0L)).isEqualTo(1);
-    assertThat(TenantBootstrapDefaults.failClosedRuntimeLimit(7L)).isEqualTo(7);
-    assertThat(TenantBootstrapDefaults.failClosedRuntimeLimit((long) Integer.MAX_VALUE + 10L))
+  void runtimeLimitOrNull_returnsNullForOmittedLimitsAndCapsOverflow() {
+    assertThat(TenantBootstrapDefaults.runtimeLimitOrNull(0L)).isNull();
+    assertThat(TenantBootstrapDefaults.runtimeLimitOrNull(7L)).isEqualTo(7);
+    assertThat(TenantBootstrapDefaults.runtimeLimitOrNull((long) Integer.MAX_VALUE + 10L))
         .isEqualTo(Integer.MAX_VALUE);
   }
 
@@ -232,7 +233,7 @@ class CompanyServiceTest {
             "ACME",
             TenantRuntimeEnforcementService.TenantRuntimeState.ACTIVE,
             "fallback-sync",
-            1,
+            null,
             77,
             Integer.MAX_VALUE,
             "tester@bbp.com");
@@ -679,7 +680,7 @@ class CompanyServiceTest {
   }
 
   @Test
-  void create_initializesRuntimePolicyWithFailClosedMinimumsWhenQuotasAreUnset() {
+  void create_initializesRuntimePolicyWithRuntimeDefaultsWhenQuotasAreUnset() {
     authenticateAs("ROLE_SUPER_ADMIN");
     CompanyRequest request = new CompanyRequest("Acme", "ACME", "UTC", null);
     when(authScopeService.isPlatformScope("ACME")).thenReturn(false);
@@ -700,9 +701,9 @@ class CompanyServiceTest {
             "ACME",
             TenantRuntimeEnforcementService.TenantRuntimeState.ACTIVE,
             "tenant-runtime-policy-sync",
-            1,
-            1,
-            1,
+            null,
+            null,
+            null,
             "tester@bbp.com");
   }
 
