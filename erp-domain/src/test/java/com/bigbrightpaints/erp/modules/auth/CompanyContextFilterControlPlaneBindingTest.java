@@ -385,6 +385,13 @@ class CompanyContextFilterControlPlaneBindingTest {
     assertThat(
             (Boolean)
                 com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    filter,
+                    "isSuperadminPlatformScopeOnlyHostPath",
+                    "/api/v1/superadmin/notify"))
+        .isTrue();
+    assertThat(
+            (Boolean)
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     filter, "isPlatformScopedRequestAllowed", "/api/v1/companies"))
         .isTrue();
     assertThat(

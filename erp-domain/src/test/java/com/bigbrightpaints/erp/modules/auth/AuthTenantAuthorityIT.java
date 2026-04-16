@@ -870,6 +870,18 @@ class AuthTenantAuthorityIT extends AbstractIntegrationTest {
         "Super Admin is limited to platform control-plane operations and cannot execute tenant"
             + " business workflows");
 
+    ResponseEntity<Map> notifyResponse =
+        rest.exchange(
+            "/api/v1/superadmin/notify",
+            HttpMethod.GET,
+            new HttpEntity<>(jsonHeaders(tenantScopedSuperAdminToken, TENANT_A)),
+            Map.class);
+    assertControlledAccessDenied(
+        notifyResponse,
+        "SUPER_ADMIN_PLATFORM_ONLY",
+        "Super Admin is limited to platform control-plane operations and cannot execute tenant"
+            + " business workflows");
+
     ResponseEntity<Map> roleMutationResponse =
         rest.exchange(
             "/api/v1/superadmin/roles",

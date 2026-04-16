@@ -45,7 +45,9 @@ class RequestBodyCachingFilterTest {
     request.setRequestURI("/api/v1/superadmin/roles");
     request.setContent(oversizedPayload.getBytes(StandardCharsets.UTF_8));
 
-    assertThat(RequestBodyCachingFilter.resolveBoundedRequestBody(request)).isEmpty();
+    HttpServletRequest wrappedRequest = wrapAndDrain(request);
+
+    assertThat(RequestBodyCachingFilter.resolveBoundedRequestBody(wrappedRequest)).isEmpty();
   }
 
   @Test
@@ -55,7 +57,9 @@ class RequestBodyCachingFilterTest {
     request.setRequestURI("/api/v1/superadmin/roles");
     request.setContent(payload.getBytes(StandardCharsets.UTF_8));
 
-    assertThat(RequestBodyCachingFilter.resolveBoundedRequestBody(request))
+    HttpServletRequest wrappedRequest = wrapAndDrain(request);
+
+    assertThat(RequestBodyCachingFilter.resolveBoundedRequestBody(wrappedRequest))
         .isPresent()
         .contains(payload.getBytes(StandardCharsets.UTF_8));
   }
@@ -82,5 +86,28 @@ class RequestBodyCachingFilterTest {
         });
 
     assertThat(resolvedRole.get()).isEmpty();
+  }
+
+  @Test
+  void resolveBoundedRequestBody_returnsEmptyWhenRequestWasNotCached() throws Exception {
+    String payload = "{\"name\":\"ROLE_FACTORY\"}";
+    MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/superadmin/roles");
+    request.setRequestURI("/api/v1/superadmin/roles");
+    request.setContent(payload.getBytes(StandardCharsets.UTF_8));
+
+    assertThat(RequestBodyCachingFilter.resolveBoundedRequestBody(request)).isEmpty();
+  }
+
+  private HttpServletRequest wrapAndDrain(MockHttpServletRequest request) throws Exception {
+    RequestBodyCachingFilter filter = new RequestBodyCachingFilter();
+    AtomicReference<HttpServletRequest> wrappedRequestRef = new AtomicReference<>();
+    filter.doFilter(
+        request,
+        new MockHttpServletResponse(),
+        (wrappedRequest, ignoredResponse) -> {
+          wrappedRequestRef.set((HttpServletRequest) wrappedRequest);
+          wrappedRequest.getInputStream().readAllBytes();
+        });
+    return wrappedRequestRef.get();
   }
 }

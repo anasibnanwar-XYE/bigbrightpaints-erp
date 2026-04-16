@@ -70,13 +70,8 @@ public class RequestBodyCachingFilter extends OncePerRequestFilter {
         return Optional.of(Arrays.copyOf(cachedBody, cachedBody.length));
       }
     }
-
-    byte[] boundedBody =
-        request.getInputStream().readNBytes(ROLE_MUTATION_REQUEST_BODY_LIMIT_BYTES + 1);
-    if (boundedBody.length == 0 || boundedBody.length > ROLE_MUTATION_REQUEST_BODY_LIMIT_BYTES) {
-      return Optional.empty();
-    }
-    return Optional.of(boundedBody);
+    // Fail closed on uncached requests to avoid raw-stream reads during denied-path auditing.
+    return Optional.empty();
   }
 
   public static Optional<String> resolveRequestedRole(

@@ -660,7 +660,9 @@ public class CompanyContextFilter extends OncePerRequestFilter {
     return normalizedPath.equals("/api/v1/superadmin/settings")
         || normalizedPath.startsWith("/api/v1/superadmin/settings/")
         || normalizedPath.equals("/api/v1/superadmin/roles")
-        || normalizedPath.startsWith("/api/v1/superadmin/roles/");
+        || normalizedPath.startsWith("/api/v1/superadmin/roles/")
+        || normalizedPath.equals("/api/v1/superadmin/notify")
+        || normalizedPath.startsWith("/api/v1/superadmin/notify/");
   }
 
   private String normalizeMethod(String method) {
