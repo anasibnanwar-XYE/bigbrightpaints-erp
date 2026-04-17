@@ -86,6 +86,7 @@ Response row shape:
 - `quotaMaxConcurrentRequests`
 - `enabledModules`
 - `mainAdmin`
+- `billingPlan` (`planCode`, `planName`, `currency`, `monthlyRate`, `annualRate`, `seats`, `updatedAt`, `updatedBy`)
 - `lastActivityAt`
 
 Use list rows for table display only. Load tenant detail before rendering recovery or support actions.
@@ -105,6 +106,14 @@ Important nested objects:
 - `onboarding.completedAt`
 - `limits.*`
 - `usage.*`
+- `billingPlan.planCode`
+- `billingPlan.planName`
+- `billingPlan.currency`
+- `billingPlan.monthlyRate`
+- `billingPlan.annualRate`
+- `billingPlan.seats`
+- `billingPlan.updatedAt`
+- `billingPlan.updatedBy`
 - `supportContext.supportNotes`
 - `supportContext.supportTags`
 - `supportTimeline[]`
@@ -156,6 +165,28 @@ Request body:
 ```
 
 Treat module selection as full-state replacement, not patch semantics.
+
+## `PUT /api/v1/superadmin/tenants/{id}/billing-plan`
+
+Request fields (all optional individually, but payload cannot be empty):
+
+- `planCode` (max 64)
+- `planName` (max 255)
+- `currency` (max 16)
+- `monthlyRate` (decimal, `>= 0`)
+- `annualRate` (decimal, `>= 0`)
+- `seats` (long, `>= 0`)
+
+Response body is the persisted `billingPlan` subtree:
+
+- `planCode`
+- `planName`
+- `currency`
+- `monthlyRate`
+- `annualRate`
+- `seats`
+- `updatedAt`
+- `updatedBy`
 
 ## Support and recovery endpoints
 

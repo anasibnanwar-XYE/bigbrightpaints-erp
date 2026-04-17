@@ -58,6 +58,8 @@ class SuperAdminControllerTest {
                 400,
                 1,
                 4,
+                new CompanySuperAdminDashboardDto.BillingSummary(
+                    new java.math.BigDecimal("199.99"), new java.math.BigDecimal("2399.88"), 1),
                 List.of(
                     new CompanySuperAdminDashboardDto.TenantOverview(
                         7L, "ACME", "Acme", "KA", "ACTIVE", null, 2, 10, 200, 400, 1, 4, 40, 2000,
@@ -82,6 +84,15 @@ class SuperAdminControllerTest {
                     8,
                     Set.of("ACCOUNTING"),
                     new MainAdminSummaryDto(91L, "admin@acme.com", "Main Admin", true, true),
+                    new SuperAdminTenantSummaryDto.BillingPlanSummary(
+                        "GROWTH",
+                        "Growth Plan",
+                        "INR",
+                        new java.math.BigDecimal("199.99"),
+                        new java.math.BigDecimal("2399.88"),
+                        25,
+                        Instant.parse("2026-03-26T10:30:00Z"),
+                        "super-admin@bbp.com"),
                     Instant.parse("2026-03-26T11:00:00Z"))));
     SuperAdminTenantDetailDto detail =
         new SuperAdminTenantDetailDto(
@@ -105,6 +116,15 @@ class SuperAdminControllerTest {
             new SuperAdminTenantDetailDto.Limits(10, 20, 30, 4, true, false),
             new SuperAdminTenantDetailDto.Usage(
                 2, 40, 1, 250, 200, 1, Instant.parse("2026-03-26T11:00:00Z")),
+            new SuperAdminTenantDetailDto.BillingPlan(
+                "GROWTH",
+                "Growth Plan",
+                "INR",
+                new java.math.BigDecimal("199.99"),
+                new java.math.BigDecimal("2399.88"),
+                25,
+                Instant.parse("2026-03-26T10:30:00Z"),
+                "super-admin@bbp.com"),
             new SuperAdminTenantDetailDto.SupportContext("note", Set.of("URGENT")),
             List.of(
                 new SuperAdminTenantDetailDto.SupportTimelineEvent(
@@ -125,6 +145,24 @@ class SuperAdminControllerTest {
         .thenReturn(new SuperAdminTenantLimitsDto(7L, "ACME", 10, 20, 30, 4, true, false));
     when(controlPlaneService.updateModules(7L, Set.of("ACCOUNTING", "SALES")))
         .thenReturn(new CompanyEnabledModulesDto(7L, "ACME", Set.of("ACCOUNTING", "SALES")));
+    when(controlPlaneService.updateBillingPlan(
+            7L,
+            "GROWTH",
+            "Growth Plan",
+            "INR",
+            new java.math.BigDecimal("199.99"),
+            new java.math.BigDecimal("2399.88"),
+            25L))
+        .thenReturn(
+            new SuperAdminTenantDetailDto.BillingPlan(
+                "GROWTH",
+                "Growth Plan",
+                "INR",
+                new java.math.BigDecimal("199.99"),
+                new java.math.BigDecimal("2399.88"),
+                25,
+                Instant.parse("2026-03-26T10:30:00Z"),
+                "super-admin@bbp.com"));
     when(controlPlaneService.issueSupportWarning(7L, "OPS", "Check", "SUSPENDED", 24))
         .thenReturn(
             new CompanySupportWarningDto(
@@ -199,6 +237,19 @@ class SuperAdminControllerTest {
                 new SuperAdminController.TenantModulesUpdateRequest(Set.of("ACCOUNTING", "SALES")))
             .getBody(),
         "Tenant modules updated");
+    assertSuccess(
+        controller
+            .updateTenantBillingPlan(
+                7L,
+                new com.bigbrightpaints.erp.modules.company.dto.TenantBillingPlanUpdateRequest(
+                    "GROWTH",
+                    "Growth Plan",
+                    "INR",
+                    new java.math.BigDecimal("199.99"),
+                    new java.math.BigDecimal("2399.88"),
+                    25L))
+            .getBody(),
+        "Tenant billing plan updated");
     assertSuccess(
         controller
             .issueSupportWarning(

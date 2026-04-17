@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.company.service;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
@@ -226,6 +227,58 @@ public class SuperAdminTenantControlPlaneService {
   }
 
   @Transactional
+  public SuperAdminTenantDetailDto.BillingPlan updateBillingPlan(
+      Long companyId,
+      String planCode,
+      String planName,
+      String currency,
+      BigDecimal monthlyRate,
+      BigDecimal annualRate,
+      Long seats) {
+    Company company = requireCompany(companyId);
+    if (planCode == null
+        && planName == null
+        && currency == null
+        && monthlyRate == null
+        && annualRate == null
+        && seats == null) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          "Tenant billing plan payload is required");
+    }
+    if (planCode != null) {
+      company.setBillingPlanCode(planCode);
+    }
+    if (planName != null) {
+      company.setBillingPlanName(planName);
+    }
+    if (currency != null) {
+      company.setBillingPlanCurrency(currency);
+    }
+    if (monthlyRate != null) {
+      company.setBillingPlanMonthlyRate(monthlyRate);
+    }
+    if (annualRate != null) {
+      company.setBillingPlanAnnualRate(annualRate);
+    }
+    if (seats != null) {
+      company.setBillingPlanSeats(seats);
+    }
+    company.setBillingPlanUpdatedAt(CompanyTime.now(company));
+    company.setBillingPlanUpdatedBy(currentActor());
+    companyRepository.save(company);
+    logAuditSuccess(
+        company,
+        "tenant-billing-plan-updated",
+        Map.of(
+            "billingPlanCode", nullableMetadataValue(company.getBillingPlanCode()),
+            "billingPlanCurrency", nullableMetadataValue(company.getBillingPlanCurrency()),
+            "billingPlanMonthlyRate", String.valueOf(company.getBillingPlanMonthlyRate()),
+            "billingPlanAnnualRate", String.valueOf(company.getBillingPlanAnnualRate()),
+            "billingPlanSeats", String.valueOf(company.getBillingPlanSeats())));
+    return toBillingPlan(company);
+  }
+
+  @Transactional
   public SuperAdminTenantSupportContextDto updateSupportContext(
       Long companyId, String supportNotes, Set<String> supportTags) {
     Company company = requireCompany(companyId);
@@ -422,6 +475,7 @@ public class SuperAdminTenantControlPlaneService {
         metrics.quotaMaxConcurrentRequests(),
         company.getEnabledModules(),
         toMainAdminSummary(company, resolveMainAdmin(company)),
+        toBillingPlanSummary(company),
         resolveLastActivityAt(company.getId()));
   }
 
@@ -461,6 +515,7 @@ public class SuperAdminTenantControlPlaneService {
             metrics.auditStorageBytes(),
             metrics.currentConcurrentRequests(),
             resolveLastActivityAt(company.getId())),
+        toBillingPlan(company),
         new SuperAdminTenantDetailDto.SupportContext(
             company.getSupportNotes(), company.getSupportTags()),
         buildSupportTimeline(company),
@@ -470,6 +525,30 @@ public class SuperAdminTenantControlPlaneService {
 
   private CompanyTenantMetricsDto buildMetrics(Company company) {
     return companyService.getTenantMetricsForSuperAdmin(company.getId());
+  }
+
+  private SuperAdminTenantSummaryDto.BillingPlanSummary toBillingPlanSummary(Company company) {
+    return new SuperAdminTenantSummaryDto.BillingPlanSummary(
+        company.getBillingPlanCode(),
+        company.getBillingPlanName(),
+        company.getBillingPlanCurrency(),
+        company.getBillingPlanMonthlyRate(),
+        company.getBillingPlanAnnualRate(),
+        company.getBillingPlanSeats(),
+        company.getBillingPlanUpdatedAt(),
+        company.getBillingPlanUpdatedBy());
+  }
+
+  private SuperAdminTenantDetailDto.BillingPlan toBillingPlan(Company company) {
+    return new SuperAdminTenantDetailDto.BillingPlan(
+        company.getBillingPlanCode(),
+        company.getBillingPlanName(),
+        company.getBillingPlanCurrency(),
+        company.getBillingPlanMonthlyRate(),
+        company.getBillingPlanAnnualRate(),
+        company.getBillingPlanSeats(),
+        company.getBillingPlanUpdatedAt(),
+        company.getBillingPlanUpdatedBy());
   }
 
   private List<SuperAdminTenantDetailDto.SupportTimelineEvent> buildSupportTimeline(
@@ -647,6 +726,13 @@ public class SuperAdminTenantControlPlaneService {
       return Integer.MAX_VALUE;
     }
     return value < 0L ? 0 : (int) value;
+  }
+
+  private String nullableMetadataValue(String value) {
+    if (!StringUtils.hasText(value)) {
+      return "NONE";
+    }
+    return value.trim();
   }
 
   private void assertTenantExclusiveUsers(

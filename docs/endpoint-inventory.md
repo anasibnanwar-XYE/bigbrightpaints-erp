@@ -19,9 +19,9 @@ Portal scope guardrail:
 ## Canonical API contract gate
 
 - Canonical machine contract source: repo-root `openapi.json`.
-- OpenAPI snapshot: `openapi.json` (sha256 `a859f0fa6104cc92b42805adc6071042d5705c93324cbdb0227d51d7ad3cbfcb`)
-- OpenAPI total paths: `276`
-- OpenAPI total operations: `330`
+- OpenAPI snapshot: `openapi.json` (sha256 `309bea4095440ba9518ba5ed1198e318febc170f741eae2146e87e343c6f8e4e`)
+- OpenAPI total paths: `277`
+- OpenAPI total operations: `331`
 - Guard remediation flow: if parity drifts, regenerate this inventory from canonical `openapi.json`, then rerun `bash scripts/guard_openapi_contract_drift.sh` and `bash scripts/guard_accounting_portal_scope_contract.sh`.
 - Hard-cut contract reminder: retired surfaces such as `/api/v1/auth/profile`, `/api/v1/accounting/journals/manual`, `/api/v1/accounting/journals/{entryId}/reverse`, and direct `/api/v1/accounting/periods/{periodId}/close` are intentionally absent from this inventory and must not be reintroduced in frontend or review docs.
 
@@ -56,7 +56,7 @@ Portal scope guardrail:
 | `raw-materials` | 3 | /api/v1/raw-materials/stock, /api/v1/raw-materials/stock/inventory, /api/v1/raw-materials/stock/low-stock |
 | `reports` | 19 | /api/v1/reports/account-statement, /api/v1/reports/aged-debtors, /api/v1/reports/aging/receivables |
 | `sales` | 15 | /api/v1/sales/dashboard, /api/v1/sales/dealers, /api/v1/sales/dealers/search |
-| `superadmin` | 19 | /api/v1/superadmin/audit/platform-events, /api/v1/superadmin/changelog, /api/v1/superadmin/changelog/{id} |
+| `superadmin` | 20 | /api/v1/superadmin/audit/platform-events, /api/v1/superadmin/changelog, /api/v1/superadmin/changelog/{id} |
 | `suppliers` | 6 | /api/v1/suppliers, /api/v1/suppliers/import, /api/v1/suppliers/{id} |
 
 ## `accounting`
@@ -406,6 +406,7 @@ Portal scope guardrail:
 - `POST` `/api/v1/superadmin/tenants/{id}/admins/{adminId}/email-change/confirm`
 - `POST` `/api/v1/superadmin/tenants/{id}/admins/{adminId}/email-change/request`
 - `POST` `/api/v1/superadmin/tenants/{id}/force-logout`
+- `PUT` `/api/v1/superadmin/tenants/{id}/billing-plan`
 - `PUT` `/api/v1/superadmin/tenants/{id}/lifecycle`
 - `PUT` `/api/v1/superadmin/tenants/{id}/limits`
 - `PUT` `/api/v1/superadmin/tenants/{id}/modules`

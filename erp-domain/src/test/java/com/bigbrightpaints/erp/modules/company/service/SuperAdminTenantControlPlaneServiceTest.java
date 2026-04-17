@@ -8,6 +8,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.Optional;
@@ -163,6 +164,10 @@ class SuperAdminTenantControlPlaneServiceTest {
     assertThat(all)
         .extracting(SuperAdminTenantSummaryDto::companyCode)
         .containsExactly("alpha", "Beta");
+    assertThat(filtered.get(0).billingPlan()).isNotNull();
+    assertThat(filtered.get(0).billingPlan().currency()).isEqualTo("INR");
+    assertThat(filtered.get(0).billingPlan().monthlyRate()).isEqualByComparingTo("0.00");
+    assertThat(filtered.get(0).billingPlan().annualRate()).isEqualByComparingTo("0.00");
   }
 
   @Test
@@ -190,6 +195,14 @@ class SuperAdminTenantControlPlaneServiceTest {
     Instant completedAt = Instant.parse("2026-03-25T12:00:00Z");
     company.setOnboardingCredentialsEmailedAt(emailedAt);
     company.setOnboardingCompletedAt(completedAt);
+    company.setBillingPlanCode(" growth ");
+    company.setBillingPlanName(" Growth Plan ");
+    company.setBillingPlanCurrency(" inr ");
+    company.setBillingPlanMonthlyRate(new BigDecimal("199.99"));
+    company.setBillingPlanAnnualRate(new BigDecimal("2399.88"));
+    company.setBillingPlanSeats(25L);
+    company.setBillingPlanUpdatedAt(Instant.parse("2026-03-26T08:30:00Z"));
+    company.setBillingPlanUpdatedBy("super-admin@bbp.com");
     when(companyRepository.findById(7L)).thenReturn(Optional.of(company));
     when(companyService.getTenantMetricsForSuperAdmin(7L))
         .thenReturn(
@@ -258,6 +271,13 @@ class SuperAdminTenantControlPlaneServiceTest {
     assertThat(detail.supportContext().supportNotes()).isEqualTo("needs follow-up");
     assertThat(detail.supportContext().supportTags())
         .containsExactlyInAnyOrder("URGENT", "FINANCE");
+    assertThat(detail.billingPlan().planCode()).isEqualTo("GROWTH");
+    assertThat(detail.billingPlan().planName()).isEqualTo("Growth Plan");
+    assertThat(detail.billingPlan().currency()).isEqualTo("INR");
+    assertThat(detail.billingPlan().monthlyRate()).isEqualByComparingTo("199.99");
+    assertThat(detail.billingPlan().annualRate()).isEqualByComparingTo("2399.88");
+    assertThat(detail.billingPlan().seats()).isEqualTo(25L);
+    assertThat(detail.billingPlan().updatedBy()).isEqualTo("super-admin@bbp.com");
     assertThat(detail.supportTimeline()).hasSize(3);
     assertThat(detail.supportTimeline().get(0).category()).isEqualTo("AUDIT");
     assertThat(detail.supportTimeline().get(0).message()).isEqualTo("tenant-force-logout");
@@ -309,6 +329,41 @@ class SuperAdminTenantControlPlaneServiceTest {
         .hasMessageContaining("gracePeriodHours must be between 1 and 720");
     assertThatThrownBy(() -> service.issueSupportWarning(7L, "OPS", "hello", "DEACTIVATED", 721))
         .hasMessageContaining("gracePeriodHours must be between 1 and 720");
+  }
+
+  @Test
+  void updateBillingPlan_requiresPayloadAndPersistsNormalizedFields() {
+    Company company = company(7L, "ACME");
+    when(companyRepository.findById(7L)).thenReturn(Optional.of(company));
+    when(companyRepository.save(company)).thenReturn(company);
+
+    SuperAdminTenantDetailDto.BillingPlan response =
+        service.updateBillingPlan(
+            7L,
+            " growth ",
+            "  Growth Plan  ",
+            " usd ",
+            new BigDecimal("99.9"),
+            new BigDecimal("1198.8"),
+            42L);
+
+    assertThat(response.planCode()).isEqualTo("GROWTH");
+    assertThat(response.planName()).isEqualTo("Growth Plan");
+    assertThat(response.currency()).isEqualTo("USD");
+    assertThat(response.monthlyRate()).isEqualByComparingTo("99.90");
+    assertThat(response.annualRate()).isEqualByComparingTo("1198.80");
+    assertThat(response.seats()).isEqualTo(42L);
+    assertThat(response.updatedAt()).isNotNull();
+    assertThat(response.updatedBy()).isEqualTo("super-admin@bbp.com");
+  }
+
+  @Test
+  void updateBillingPlan_rejectsEmptyPayload() {
+    Company company = company(7L, "ACME");
+    when(companyRepository.findById(7L)).thenReturn(Optional.of(company));
+
+    assertThatThrownBy(() -> service.updateBillingPlan(7L, null, null, null, null, null, null))
+        .hasMessageContaining("Tenant billing plan payload is required");
   }
 
   @Test

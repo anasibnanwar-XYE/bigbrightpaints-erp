@@ -180,6 +180,42 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
         null,
         "200",
         "#/components/schemas/ApiResponseCompanySuperAdminDashboardDto");
+    assertThat(
+            root.path("components")
+                .path("schemas")
+                .path("CompanySuperAdminDashboardDto")
+                .path("properties")
+                .path("billingSummary")
+                .path("$ref")
+                .asText())
+        .isEqualTo("#/components/schemas/BillingSummary");
+    assertThat(
+            root.path("components")
+                .path("schemas")
+                .path("BillingSummary")
+                .path("properties")
+                .path("totalMonthlyRecurringRevenue")
+                .path("type")
+                .asText())
+        .isEqualTo("number");
+    assertThat(
+            root.path("components")
+                .path("schemas")
+                .path("BillingSummary")
+                .path("properties")
+                .path("totalAnnualRecurringRevenue")
+                .path("type")
+                .asText())
+        .isEqualTo("number");
+    assertThat(
+            root.path("components")
+                .path("schemas")
+                .path("BillingSummary")
+                .path("properties")
+                .path("billedTenantCount")
+                .path("type")
+                .asText())
+        .isEqualTo("integer");
     assertOperationContract(
         root,
         "/api/v1/superadmin/tenants",
@@ -216,6 +252,49 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
         "#/components/schemas/TenantModulesUpdateRequest",
         "200",
         "#/components/schemas/ApiResponseCompanyEnabledModulesDto");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/tenants/{id}/billing-plan",
+        "put",
+        "#/components/schemas/TenantBillingPlanUpdateRequest",
+        "200",
+        "#/components/schemas/ApiResponseBillingPlan");
+    assertThat(
+            root.path("components")
+                .path("schemas")
+                .path("SuperAdminTenantDetailDto")
+                .path("properties")
+                .path("billingPlan")
+                .path("$ref")
+                .asText())
+        .isEqualTo("#/components/schemas/BillingPlan");
+    assertThat(
+            root.path("components")
+                .path("schemas")
+                .path("SuperAdminTenantSummaryDto")
+                .path("properties")
+                .path("billingPlan")
+                .path("$ref")
+                .asText())
+        .isEqualTo("#/components/schemas/BillingPlanSummary");
+    assertThat(
+            root.path("components")
+                .path("schemas")
+                .path("TenantBillingPlanUpdateRequest")
+                .path("properties")
+                .path("planCode")
+                .path("maxLength")
+                .asInt())
+        .isEqualTo(64);
+    assertThat(
+            root.path("components")
+                .path("schemas")
+                .path("TenantBillingPlanUpdateRequest")
+                .path("properties")
+                .path("monthlyRate")
+                .path("minimum")
+                .asDouble())
+        .isEqualTo(0.0d);
     assertOperationContract(
         root,
         "/api/v1/superadmin/tenants/{id}/support/warnings",

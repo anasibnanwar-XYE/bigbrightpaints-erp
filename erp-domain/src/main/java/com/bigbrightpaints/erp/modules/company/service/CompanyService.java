@@ -436,8 +436,9 @@ public class CompanyService {
 
   public CompanySuperAdminDashboardDto getSuperAdminDashboard() {
     Authentication authentication = requireSuperAdminForTenantMetrics(null);
+    List<Company> companies = repository.findAll();
     List<CompanySuperAdminDashboardDto.TenantOverview> tenantOverview =
-        repository.findAll().stream()
+        companies.stream()
             .sorted(Comparator.comparing(Company::getCode, String.CASE_INSENSITIVE_ORDER))
             .map(this::buildTenantOverview)
             .toList();
@@ -479,6 +480,15 @@ public class CompanyService {
         tenantOverview.stream()
             .mapToLong(CompanySuperAdminDashboardDto.TenantOverview::concurrentRequestQuota)
             .sum();
+    BigDecimal totalMonthlyRecurringRevenue =
+        companies.stream()
+            .map(Company::getBillingPlanMonthlyRate)
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
+    BigDecimal totalAnnualRecurringRevenue =
+        companies.stream()
+            .map(Company::getBillingPlanAnnualRate)
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
+    long billedTenantCount = companies.stream().filter(this::hasBillingPlanData).count();
     auditAuthorityDecision(true, SUPERADMIN_DASHBOARD_READ_REASON, null, authentication);
 
     return new CompanySuperAdminDashboardDto(
@@ -492,6 +502,8 @@ public class CompanyService {
         totalStorageQuotaBytes,
         totalCurrentConcurrentRequests,
         totalConcurrentRequestQuota,
+        new CompanySuperAdminDashboardDto.BillingSummary(
+            totalMonthlyRecurringRevenue, totalAnnualRecurringRevenue, billedTenantCount),
         tenantOverview);
   }
 
@@ -1183,6 +1195,17 @@ public class CompanyService {
     }
     long boundedErrorCount = Math.min(apiErrorCount, apiActivityCount);
     return (boundedErrorCount * ERROR_RATE_BASIS_POINTS_SCALE) / apiActivityCount;
+  }
+
+  private boolean hasBillingPlanData(Company company) {
+    if (company == null) {
+      return false;
+    }
+    return StringUtils.hasText(company.getBillingPlanCode())
+        || StringUtils.hasText(company.getBillingPlanName())
+        || company.getBillingPlanMonthlyRate().compareTo(BigDecimal.ZERO) > 0
+        || company.getBillingPlanAnnualRate().compareTo(BigDecimal.ZERO) > 0
+        || company.getBillingPlanSeats() > 0L;
   }
 
   private long calculateUtilizationInBasisPoints(long used, long quota) {

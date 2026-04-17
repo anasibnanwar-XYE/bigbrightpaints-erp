@@ -1,6 +1,7 @@
 package com.bigbrightpaints.erp.modules.company.domain;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Instant;
 import java.util.LinkedHashSet;
 import java.util.Objects;
@@ -138,6 +139,30 @@ public class Company extends VersionedEntity {
   @Column(name = "onboarding_credentials_emailed_at")
   private Instant onboardingCredentialsEmailedAt;
 
+  @Column(name = "billing_plan_code")
+  private String billingPlanCode;
+
+  @Column(name = "billing_plan_name")
+  private String billingPlanName;
+
+  @Column(name = "billing_plan_currency", nullable = false)
+  private String billingPlanCurrency = "INR";
+
+  @Column(name = "billing_plan_monthly_rate", precision = 19, scale = 2, nullable = false)
+  private BigDecimal billingPlanMonthlyRate = BigDecimal.ZERO;
+
+  @Column(name = "billing_plan_annual_rate", precision = 19, scale = 2, nullable = false)
+  private BigDecimal billingPlanAnnualRate = BigDecimal.ZERO;
+
+  @Column(name = "billing_plan_seats", nullable = false)
+  private Long billingPlanSeats = 0L;
+
+  @Column(name = "billing_plan_updated_at")
+  private Instant billingPlanUpdatedAt;
+
+  @Column(name = "billing_plan_updated_by")
+  private String billingPlanUpdatedBy;
+
   @PrePersist
   public void prePersist() {
     if (publicId == null) {
@@ -155,6 +180,7 @@ public class Company extends VersionedEntity {
     enabledModules = CompanyModule.normalizeEnabledGatableModuleNames(enabledModules);
     supportTags = normalizeSupportTags(supportTags);
     initializeQuotaDefaults();
+    initializeBillingPlanDefaults();
   }
 
   @PreUpdate
@@ -162,6 +188,7 @@ public class Company extends VersionedEntity {
     enabledModules = CompanyModule.normalizeEnabledGatableModuleNames(enabledModules);
     supportTags = normalizeSupportTags(supportTags);
     initializeQuotaDefaults();
+    initializeBillingPlanDefaults();
   }
 
   public Long getId() {
@@ -457,6 +484,86 @@ public class Company extends VersionedEntity {
     this.onboardingCredentialsEmailedAt = onboardingCredentialsEmailedAt;
   }
 
+  public String getBillingPlanCode() {
+    return billingPlanCode;
+  }
+
+  public void setBillingPlanCode(String billingPlanCode) {
+    if (billingPlanCode == null || billingPlanCode.isBlank()) {
+      this.billingPlanCode = null;
+      return;
+    }
+    this.billingPlanCode = billingPlanCode.trim().toUpperCase();
+  }
+
+  public String getBillingPlanName() {
+    return billingPlanName;
+  }
+
+  public void setBillingPlanName(String billingPlanName) {
+    if (billingPlanName == null || billingPlanName.isBlank()) {
+      this.billingPlanName = null;
+      return;
+    }
+    this.billingPlanName = billingPlanName.trim();
+  }
+
+  public String getBillingPlanCurrency() {
+    return billingPlanCurrency;
+  }
+
+  public void setBillingPlanCurrency(String billingPlanCurrency) {
+    if (billingPlanCurrency == null || billingPlanCurrency.isBlank()) {
+      this.billingPlanCurrency = "INR";
+      return;
+    }
+    this.billingPlanCurrency = billingPlanCurrency.trim().toUpperCase();
+  }
+
+  public BigDecimal getBillingPlanMonthlyRate() {
+    return sanitizeBillingRate(billingPlanMonthlyRate);
+  }
+
+  public void setBillingPlanMonthlyRate(BigDecimal billingPlanMonthlyRate) {
+    this.billingPlanMonthlyRate = sanitizeBillingRate(billingPlanMonthlyRate);
+  }
+
+  public BigDecimal getBillingPlanAnnualRate() {
+    return sanitizeBillingRate(billingPlanAnnualRate);
+  }
+
+  public void setBillingPlanAnnualRate(BigDecimal billingPlanAnnualRate) {
+    this.billingPlanAnnualRate = sanitizeBillingRate(billingPlanAnnualRate);
+  }
+
+  public long getBillingPlanSeats() {
+    return sanitizeQuota(billingPlanSeats);
+  }
+
+  public void setBillingPlanSeats(Long billingPlanSeats) {
+    this.billingPlanSeats = sanitizeQuota(billingPlanSeats);
+  }
+
+  public Instant getBillingPlanUpdatedAt() {
+    return billingPlanUpdatedAt;
+  }
+
+  public void setBillingPlanUpdatedAt(Instant billingPlanUpdatedAt) {
+    this.billingPlanUpdatedAt = billingPlanUpdatedAt;
+  }
+
+  public String getBillingPlanUpdatedBy() {
+    return billingPlanUpdatedBy;
+  }
+
+  public void setBillingPlanUpdatedBy(String billingPlanUpdatedBy) {
+    if (billingPlanUpdatedBy == null || billingPlanUpdatedBy.isBlank()) {
+      this.billingPlanUpdatedBy = null;
+      return;
+    }
+    this.billingPlanUpdatedBy = billingPlanUpdatedBy.trim();
+  }
+
   public boolean isQuotaSoftLimitEnabled() {
     return Boolean.TRUE.equals(quotaSoftLimitEnabled);
   }
@@ -502,6 +609,23 @@ public class Company extends VersionedEntity {
       quotaHardLimitEnabled = true;
     }
     enforceFailClosedQuotaPolicy();
+  }
+
+  private void initializeBillingPlanDefaults() {
+    setBillingPlanCurrency(billingPlanCurrency);
+    setBillingPlanMonthlyRate(billingPlanMonthlyRate);
+    setBillingPlanAnnualRate(billingPlanAnnualRate);
+    billingPlanSeats = sanitizeQuota(billingPlanSeats);
+    setBillingPlanCode(billingPlanCode);
+    setBillingPlanName(billingPlanName);
+    setBillingPlanUpdatedBy(billingPlanUpdatedBy);
+  }
+
+  private BigDecimal sanitizeBillingRate(BigDecimal requestedRate) {
+    if (requestedRate == null || requestedRate.compareTo(BigDecimal.ZERO) < 0) {
+      return BigDecimal.ZERO;
+    }
+    return requestedRate.setScale(2, RoundingMode.HALF_UP);
   }
 
   private void enforceFailClosedQuotaPolicy() {

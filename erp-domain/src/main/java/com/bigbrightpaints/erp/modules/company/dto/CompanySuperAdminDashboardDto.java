@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.company.dto;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 public record CompanySuperAdminDashboardDto(
@@ -13,7 +14,14 @@ public record CompanySuperAdminDashboardDto(
     long totalStorageQuotaBytes,
     long totalCurrentConcurrentRequests,
     long totalConcurrentRequestQuota,
+    BillingSummary billingSummary,
     List<TenantOverview> tenants) {
+
+  public record BillingSummary(
+      BigDecimal totalMonthlyRecurringRevenue,
+      BigDecimal totalAnnualRecurringRevenue,
+      long billedTenantCount) {}
+
   public record TenantOverview(
       Long companyId,
       String companyCode,

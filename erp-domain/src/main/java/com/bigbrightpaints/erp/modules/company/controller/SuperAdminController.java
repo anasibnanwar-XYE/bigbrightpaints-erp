@@ -90,6 +90,23 @@ public class SuperAdminController {
             controlPlaneService.updateModules(tenantId, request.enabledModules())));
   }
 
+  @PutMapping("/tenants/{id}/billing-plan")
+  public ResponseEntity<ApiResponse<SuperAdminTenantDetailDto.BillingPlan>> updateTenantBillingPlan(
+      @PathVariable("id") Long tenantId,
+      @Valid @RequestBody TenantBillingPlanUpdateRequest request) {
+    return ResponseEntity.ok(
+        ApiResponse.success(
+            "Tenant billing plan updated",
+            controlPlaneService.updateBillingPlan(
+                tenantId,
+                request.planCode(),
+                request.planName(),
+                request.currency(),
+                request.monthlyRate(),
+                request.annualRate(),
+                request.seats())));
+  }
+
   @PostMapping("/tenants/{id}/support/warnings")
   public ResponseEntity<ApiResponse<CompanySupportWarningDto>> issueSupportWarning(
       @PathVariable("id") Long tenantId, @Valid @RequestBody TenantSupportWarningRequest request) {

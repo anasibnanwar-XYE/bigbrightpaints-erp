@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.company.dto;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.Set;
 
@@ -20,4 +21,16 @@ public record SuperAdminTenantSummaryDto(
     long quotaMaxConcurrentRequests,
     Set<String> enabledModules,
     MainAdminSummaryDto mainAdmin,
-    Instant lastActivityAt) {}
+    BillingPlanSummary billingPlan,
+    Instant lastActivityAt) {
+
+  public record BillingPlanSummary(
+      String planCode,
+      String planName,
+      String currency,
+      BigDecimal monthlyRate,
+      BigDecimal annualRate,
+      long seats,
+      Instant updatedAt,
+      String updatedBy) {}
+}

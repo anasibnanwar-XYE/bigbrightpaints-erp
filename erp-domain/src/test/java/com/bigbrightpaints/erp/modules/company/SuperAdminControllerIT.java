@@ -80,6 +80,18 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
     assertThat(allowed.getStatusCode()).isEqualTo(HttpStatus.OK);
     assertThat(allowed.getBody()).isNotNull();
     assertThat(allowed.getBody()).containsKey("data");
+    @SuppressWarnings("unchecked")
+    Map<String, Object> dashboardData = (Map<String, Object>) allowed.getBody().get("data");
+    assertThat(dashboardData).containsKey("billingSummary");
+    assertThat(dashboardData)
+        .doesNotContainKeys(
+            "orders",
+            "invoices",
+            "journalEntries",
+            "dealerLedgers",
+            "catalogInventory",
+            "payrollRecords",
+            "manufacturingRecords");
   }
 
   @Test
@@ -191,6 +203,23 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
     assertThat(tenants)
         .extracting(row -> row.get("companyCode").toString().toUpperCase(Locale.ROOT))
         .contains(COMPANY_CODE);
+    Map<String, Object> matchedTenant =
+        tenants.stream()
+            .filter(
+                row ->
+                    COMPANY_CODE.equalsIgnoreCase(String.valueOf(row.get("companyCode"))))
+            .findFirst()
+            .orElseThrow();
+    assertThat(matchedTenant).containsKeys("billingPlan", "mainAdmin", "enabledModules");
+    assertThat(matchedTenant)
+        .doesNotContainKeys(
+            "orders",
+            "invoices",
+            "journalEntries",
+            "dealerLedgers",
+            "catalogInventory",
+            "payrollRecords",
+            "manufacturingRecords");
 
     ResponseEntity<Map> detailResponse =
         rest.exchange(
@@ -253,10 +282,24 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
   }
 
   @Test
-  void superAdmin_canConfigureTenantModules_andLimits() {
+  void superAdmin_canConfigureTenantModules_limits_andBillingPlan() {
     Company tenant = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
     String superAdminToken = loginToken(SUPER_ADMIN_EMAIL, ROOT_COMPANY_CODE);
     HttpHeaders superAdminHeaders = headers(superAdminToken, ROOT_COMPANY_CODE);
+
+    ResponseEntity<Map> baselineDashboardResponse =
+        rest.exchange(
+            "/api/v1/superadmin/dashboard",
+            HttpMethod.GET,
+            new HttpEntity<>(superAdminHeaders),
+            Map.class);
+    assertThat(baselineDashboardResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    @SuppressWarnings("unchecked")
+    Map<String, Object> baselineDashboardData =
+        (Map<String, Object>) baselineDashboardResponse.getBody().get("data");
+    @SuppressWarnings("unchecked")
+    Map<String, Object> baselineBillingSummary =
+        (Map<String, Object>) baselineDashboardData.get("billingSummary");
 
     ResponseEntity<Map> modulesResponse =
         rest.exchange(
@@ -286,6 +329,104 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
     @SuppressWarnings("unchecked")
     Map<String, Object> limits = (Map<String, Object>) limitsResponse.getBody().get("data");
     assertThat(limits.get("quotaMaxConcurrentRequests")).isEqualTo(7);
+
+    ResponseEntity<Map> billingPlanResponse =
+        rest.exchange(
+            "/api/v1/superadmin/tenants/" + tenant.getId() + "/billing-plan",
+            HttpMethod.PUT,
+            new HttpEntity<>(
+                Map.of(
+                    "planCode", "GROWTH",
+                    "planName", "Growth Plan",
+                    "currency", "USD",
+                    "monthlyRate", 149.99,
+                    "annualRate", 1799.88,
+                    "seats", 35),
+                superAdminHeaders),
+            Map.class);
+    assertThat(billingPlanResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    @SuppressWarnings("unchecked")
+    Map<String, Object> billingPlan =
+        (Map<String, Object>) billingPlanResponse.getBody().get("data");
+    assertThat(billingPlan.get("planCode")).isEqualTo("GROWTH");
+    assertThat(billingPlan.get("currency")).isEqualTo("USD");
+    assertThat(billingPlan.get("monthlyRate")).isEqualTo(149.99);
+    assertThat(billingPlan.get("annualRate")).isEqualTo(1799.88);
+    assertThat(billingPlan.get("seats")).isEqualTo(35);
+
+    ResponseEntity<Map> detailResponse =
+        rest.exchange(
+            "/api/v1/superadmin/tenants/" + tenant.getId(),
+            HttpMethod.GET,
+            new HttpEntity<>(superAdminHeaders),
+            Map.class);
+    assertThat(detailResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    @SuppressWarnings("unchecked")
+    Map<String, Object> detailData = (Map<String, Object>) detailResponse.getBody().get("data");
+    @SuppressWarnings("unchecked")
+    Map<String, Object> detailBillingPlan = (Map<String, Object>) detailData.get("billingPlan");
+    assertThat(detailBillingPlan).isNotNull();
+    assertThat(detailBillingPlan.get("planCode")).isEqualTo("GROWTH");
+    assertThat(detailBillingPlan.get("planName")).isEqualTo("Growth Plan");
+    assertThat(detailBillingPlan.get("currency")).isEqualTo("USD");
+    assertThat(detailBillingPlan.get("monthlyRate")).isEqualTo(149.99);
+    assertThat(detailBillingPlan.get("annualRate")).isEqualTo(1799.88);
+    assertThat(detailBillingPlan.get("seats")).isEqualTo(35);
+    assertThat(detailBillingPlan.get("updatedBy")).isEqualTo(SUPER_ADMIN_EMAIL);
+    assertThat(detailData)
+        .doesNotContainKeys(
+            "orders",
+            "invoices",
+            "journalEntries",
+            "dealerLedgers",
+            "catalogInventory",
+            "payrollRecords",
+            "manufacturingRecords");
+
+    ResponseEntity<Map> postDashboardResponse =
+        rest.exchange(
+            "/api/v1/superadmin/dashboard",
+            HttpMethod.GET,
+            new HttpEntity<>(superAdminHeaders),
+            Map.class);
+    assertThat(postDashboardResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    @SuppressWarnings("unchecked")
+    Map<String, Object> postDashboardData =
+        (Map<String, Object>) postDashboardResponse.getBody().get("data");
+    @SuppressWarnings("unchecked")
+    Map<String, Object> postBillingSummary =
+        (Map<String, Object>) postDashboardData.get("billingSummary");
+    assertThat(postBillingSummary).isNotNull();
+    assertThat(postDashboardData)
+        .doesNotContainKeys(
+            "orders",
+            "invoices",
+            "journalEntries",
+            "dealerLedgers",
+            "catalogInventory",
+            "payrollRecords",
+            "manufacturingRecords");
+    assertThat(postBillingSummary)
+        .containsKeys(
+            "totalMonthlyRecurringRevenue", "totalAnnualRecurringRevenue", "billedTenantCount");
+
+    double baselineMonthly =
+        baselineBillingSummary == null
+            ? 0.0
+            : ((Number) baselineBillingSummary.get("totalMonthlyRecurringRevenue")).doubleValue();
+    double baselineAnnual =
+        baselineBillingSummary == null
+            ? 0.0
+            : ((Number) baselineBillingSummary.get("totalAnnualRecurringRevenue")).doubleValue();
+    double postMonthly =
+        ((Number) postBillingSummary.get("totalMonthlyRecurringRevenue")).doubleValue();
+    double postAnnual =
+        ((Number) postBillingSummary.get("totalAnnualRecurringRevenue")).doubleValue();
+
+    assertThat(postMonthly).isGreaterThanOrEqualTo(149.99);
+    assertThat(postAnnual).isGreaterThanOrEqualTo(1799.88);
+    assertThat(postMonthly).isGreaterThanOrEqualTo(baselineMonthly);
+    assertThat(postAnnual).isGreaterThanOrEqualTo(baselineAnnual);
   }
 
   private HttpHeaders headers(String token, String companyCode) {

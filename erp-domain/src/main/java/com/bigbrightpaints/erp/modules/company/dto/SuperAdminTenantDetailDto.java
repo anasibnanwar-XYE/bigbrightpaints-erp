@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.company.dto;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.Set;
@@ -17,6 +18,7 @@ public record SuperAdminTenantDetailDto(
     MainAdminSummaryDto mainAdmin,
     Limits limits,
     Usage usage,
+    BillingPlan billingPlan,
     SupportContext supportContext,
     List<SupportTimelineEvent> supportTimeline,
     AvailableActions availableActions) {
@@ -46,6 +48,16 @@ public record SuperAdminTenantDetailDto(
       long auditStorageBytes,
       long currentConcurrentRequests,
       Instant lastActivityAt) {}
+
+  public record BillingPlan(
+      String planCode,
+      String planName,
+      String currency,
+      BigDecimal monthlyRate,
+      BigDecimal annualRate,
+      long seats,
+      Instant updatedAt,
+      String updatedBy) {}
 
   public record SupportContext(String supportNotes, Set<String> supportTags) {}
 

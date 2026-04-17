@@ -26,12 +26,19 @@
 4. Submit `PUT /api/v1/superadmin/tenants/{id}/lifecycle`.
 5. Re-fetch tenant detail and append the change to the support timeline view.
 
-## Limits and modules management
+## Limits, modules, and billing management
 
-1. Load current `limits` and `enabledModules` from tenant detail.
-2. Edit quota values or module set in separate forms.
+1. Load current `limits`, `enabledModules`, and `billingPlan` from tenant detail.
+2. Edit quota values, module set, or billing plan in separate forms.
 3. Submit one mutation at a time.
 4. Re-fetch tenant detail after each mutation and discard stale form state.
+
+Billing-plan payload and behavior:
+
+- Mutate billing truth through `PUT /api/v1/superadmin/tenants/{id}/billing-plan`.
+- Request fields: `planCode`, `planName`, `currency`, `monthlyRate`, `annualRate`, `seats`.
+- Empty payload fails; at least one field must be present.
+- The same values appear under tenant detail `billingPlan.*` after save and roll into dashboard `billingSummary.*` totals.
 
 ## Support recovery
 

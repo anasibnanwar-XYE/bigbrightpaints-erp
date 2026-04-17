@@ -1548,12 +1548,20 @@ class CompanyServiceTest {
     alpha.setQuotaMaxConcurrentRequests(5L);
     alpha.setQuotaMaxApiRequests(100L);
     alpha.setLifecycleState(CompanyLifecycleState.ACTIVE);
+    alpha.setBillingPlanCode("starter");
+    alpha.setBillingPlanName("Starter Plan");
+    alpha.setBillingPlanMonthlyRate(new BigDecimal("99.95"));
+    alpha.setBillingPlanAnnualRate(new BigDecimal("1199.40"));
+    alpha.setBillingPlanSeats(20L);
     Company beta = company(11L, "BETA");
     beta.setQuotaMaxActiveUsers(30L);
     beta.setQuotaMaxStorageBytes(900L);
     beta.setQuotaMaxConcurrentRequests(7L);
     beta.setQuotaMaxApiRequests(200L);
     beta.setLifecycleState(CompanyLifecycleState.SUSPENDED);
+    beta.setBillingPlanCurrency("usd");
+    beta.setBillingPlanMonthlyRate(new BigDecimal("149.99"));
+    beta.setBillingPlanAnnualRate(new BigDecimal("1799.88"));
     when(repository.findAll()).thenReturn(List.of(alpha, beta));
     when(userAccountRepository.countByCompany_IdAndEnabledTrue(10L)).thenReturn(8L);
     when(userAccountRepository.countByCompany_IdAndEnabledTrue(11L)).thenReturn(12L);
@@ -1574,6 +1582,12 @@ class CompanyServiceTest {
     assertThat(dashboard.totalActiveUsers()).isEqualTo(20L);
     assertThat(dashboard.totalAuditStorageBytes()).isEqualTo(420L);
     assertThat(dashboard.totalCurrentConcurrentRequests()).isEqualTo(6L);
+    assertThat(dashboard.billingSummary()).isNotNull();
+    assertThat(dashboard.billingSummary().totalMonthlyRecurringRevenue())
+        .isEqualByComparingTo("249.94");
+    assertThat(dashboard.billingSummary().totalAnnualRecurringRevenue())
+        .isEqualByComparingTo("2999.28");
+    assertThat(dashboard.billingSummary().billedTenantCount()).isEqualTo(2L);
     assertThat(dashboard.tenants()).hasSize(2);
   }
 
