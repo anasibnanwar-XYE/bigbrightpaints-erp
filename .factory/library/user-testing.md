@@ -98,6 +98,8 @@ Rationale:
 - Reuse one platform-scoped superadmin session for `auth/login -> auth/me -> /api/v1/superadmin/**` continuity checks, and keep denied-route probes to non-destructive reads from tenant-admin, tenant business, portal, dealer-portal, sales, accounting, or factory route families.
 - Do not modify tenant lifecycle, limits, modules, billing plans, or onboarding state in this lane; this milestone only needs auth continuity and privacy-wall denial proof.
 - Evidence should capture the exact auth scope used for each actor (`PLATFORM`, tenant code, or other scope) so failed/denied results can be tied back to the intended boundary.
+- Local privacy-wall validation may find seeded actors in the database without discoverable plaintext passwords in `.env`; before mutating anything else, stabilize only the dedicated local validation actors/fixtures you need for the lane and record which identities were reset or inserted.
+- MailHog reset emails in this runtime can mask the reset token inside the HTML link. Treat MailHog as the primary evidence artifact, but if token-level setup is required for local-only validation recovery, document the runtime-state inspection path you used instead of guessing credentials or inventing tokens.
 
 ## Known Constraints
 
