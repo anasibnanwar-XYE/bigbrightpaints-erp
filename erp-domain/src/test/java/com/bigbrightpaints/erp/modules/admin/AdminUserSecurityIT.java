@@ -610,7 +610,7 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
   void admin_user_create_is_blocked_when_active_user_quota_reached() {
     String quotaCompanyCode = "SECADMIN_QUOTA";
     String quotaAdminEmail = "quota-admin@bbp.com";
-    String quotaSuperAdminEmail = "quota-super-admin@bbp.com";
+    String quotaSuperAdminEmail = "quota-platform-super-admin@bbp.com";
     String quotaAdminPassword = "QuotaAdmin123!";
     String quotaSuperAdminPassword = "QuotaSuper123!";
     dataSeeder.ensureUser(
@@ -622,18 +622,18 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
     dataSeeder.ensureUser(
         quotaSuperAdminEmail,
         quotaSuperAdminPassword,
-        "Quota Super Admin",
-        quotaCompanyCode,
+        "Quota Platform Super Admin",
+        PLATFORM_SCOPE,
         List.of("ROLE_SUPER_ADMIN"));
     dataSeeder.ensureUser(
-        "quota-dealer@bbp.com",
-        "QuotaDealer123!",
-        "Quota Dealer",
+        "quota-sales-existing@bbp.com",
+        "QuotaSales123!",
+        "Quota Existing Sales",
         quotaCompanyCode,
-        List.of("ROLE_DEALER"));
+        List.of("ROLE_SALES"));
 
     String token = login(quotaAdminEmail, quotaAdminPassword, quotaCompanyCode);
-    String superAdminToken = login(quotaSuperAdminEmail, quotaSuperAdminPassword, quotaCompanyCode);
+    String superAdminToken = login(quotaSuperAdminEmail, quotaSuperAdminPassword, PLATFORM_SCOPE);
     Long companyId = companyRepository.findByCodeIgnoreCase(quotaCompanyCode).orElseThrow().getId();
     HttpHeaders headers = new HttpHeaders();
     headers.setBearerAuth(token);
@@ -642,7 +642,7 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
     HttpHeaders superAdminHeaders = new HttpHeaders();
     superAdminHeaders.setBearerAuth(superAdminToken);
     superAdminHeaders.setContentType(MediaType.APPLICATION_JSON);
-    superAdminHeaders.set("X-Company-Code", quotaCompanyCode);
+    superAdminHeaders.set("X-Company-Code", PLATFORM_SCOPE);
 
     ResponseEntity<Map> policyResponse =
         rest.exchange(
@@ -650,7 +650,7 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
             HttpMethod.PUT,
             new HttpEntity<>(
                 Map.of(
-                    "quotaMaxActiveUsers", 3,
+                    "quotaMaxActiveUsers", 1,
                     "quotaMaxConcurrentRequests", 10,
                     "quotaMaxApiRequests", 120,
                     "quotaSoftLimitEnabled", true,

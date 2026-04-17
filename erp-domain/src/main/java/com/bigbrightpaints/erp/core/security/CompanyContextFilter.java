@@ -70,6 +70,7 @@ public class CompanyContextFilter extends OncePerRequestFilter {
               false));
   private static final String CONTROL_PLANE_AUTH_DENIED_MESSAGE =
       "Access denied to company control request";
+  private static final String ROOT_SUPER_ADMIN_SCOPE_CODE = "ROOT";
   private static final String SUPER_ADMIN_PLATFORM_ONLY_MESSAGE =
       "Super Admin is limited to platform control-plane operations and cannot execute tenant"
           + " business workflows";
@@ -213,9 +214,12 @@ public class CompanyContextFilter extends OncePerRequestFilter {
       String companyCode = normalizeCompanyCode(requestedCompany);
       boolean superAdminPlatformScope =
           hasSuperAdminAuthority && authScopeService.isPlatformScope(companyCode);
+      boolean superAdminControlPlaneScope =
+          hasSuperAdminAuthority
+              && (superAdminPlatformScope || isRootSuperAdminScope(companyCode));
       if (hasSuperAdminAuthority
           && isSuperadminPlatformScopeOnlyHostPath(runtimePath)
-          && !superAdminPlatformScope) {
+          && !superAdminControlPlaneScope) {
         auditSuperAdminPlatformOnlyDenied(request, runtimePath);
         writeAccessDenied(
             response, "SUPER_ADMIN_PLATFORM_ONLY", SUPER_ADMIN_PLATFORM_ONLY_MESSAGE);
@@ -392,6 +396,13 @@ public class CompanyContextFilter extends OncePerRequestFilter {
     Authentication auth = SecurityContextHolder.getContext().getAuthentication();
     return auth.getAuthorities().stream()
         .anyMatch(granted -> "ROLE_SUPER_ADMIN".equalsIgnoreCase(granted.getAuthority()));
+  }
+
+  private boolean isRootSuperAdminScope(String companyCode) {
+    if (!StringUtils.hasText(companyCode)) {
+      return false;
+    }
+    return ROOT_SUPER_ADMIN_SCOPE_CODE.equalsIgnoreCase(companyCode.trim());
   }
 
   private boolean isTenantBusinessRequestBlockedForSuperAdmin(String requestPath) {
@@ -671,9 +682,6 @@ public class CompanyContextFilter extends OncePerRequestFilter {
     if (!StringUtils.hasText(normalizedPath)) {
       return false;
     }
-    if (normalizedPath.equals("/api/v1/companies")) {
-      return true;
-    }
     if (isRetiredAdminHostPath(normalizedPath)) {
       // Let retired admin hosts fall through to dispatcher 404 uniformly.
       return true;
@@ -698,7 +706,10 @@ public class CompanyContextFilter extends OncePerRequestFilter {
         || normalizedPath.equals("/api/v1/superadmin/roles")
         || normalizedPath.startsWith("/api/v1/superadmin/roles/")
         || normalizedPath.equals("/api/v1/superadmin/notify")
-        || normalizedPath.startsWith("/api/v1/superadmin/notify/");
+        || normalizedPath.startsWith("/api/v1/superadmin/notify/")
+        || normalizedPath.equals("/api/v1/superadmin/dashboard")
+        || normalizedPath.equals("/api/v1/superadmin/tenants")
+        || normalizedPath.startsWith("/api/v1/superadmin/tenants/");
   }
 
   private String normalizeMethod(String method) {

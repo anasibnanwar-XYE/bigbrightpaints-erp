@@ -393,8 +393,55 @@ class CompanyContextFilterControlPlaneBindingTest {
     assertThat(
             (Boolean)
                 com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-                    filter, "isPlatformScopedRequestAllowed", "/api/v1/companies"))
+                    filter,
+                    "isSuperadminPlatformScopeOnlyHostPath",
+                    "/api/v1/superadmin/dashboard"))
         .isTrue();
+    assertThat(
+            (Boolean)
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    filter,
+                    "isSuperadminPlatformScopeOnlyHostPath",
+                    "/api/v1/superadmin/tenants"))
+        .isTrue();
+    assertThat(
+            (Boolean)
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    filter,
+                    "isSuperadminPlatformScopeOnlyHostPath",
+                    "/api/v1/superadmin/tenants/42"))
+        .isTrue();
+    assertThat(
+            (Boolean)
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    filter, "isPlatformScopedRequestAllowed", "/api/v1/companies"))
+        .isFalse();
+    assertThat(
+            (Boolean)
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    filter,
+                    "isPlatformScopedRequestAllowed",
+                    "/api/v1/companies/superadmin/dashboard"))
+        .isTrue();
+    assertThat(
+            (Boolean)
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    filter,
+                    "isPlatformScopedRequestAllowed",
+                    "/api/v1/companies/42/tenant-runtime/policy"))
+        .isTrue();
+    assertThat(
+            (Boolean)
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    filter, "isRootSuperAdminScope", "ROOT"))
+        .isTrue();
+    assertThat(
+            (Boolean)
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    filter,
+                    "isRootSuperAdminScope",
+                    AuthScopeService.DEFAULT_PLATFORM_AUTH_CODE))
+        .isFalse();
     assertThat(
             (Boolean)
                 com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(

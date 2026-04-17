@@ -625,7 +625,7 @@ class AuthTenantAuthorityIT extends AbstractIntegrationTest {
   }
 
   @Test
-  void tenant_metrics_endpoint_is_super_admin_only() {
+  void tenant_metrics_endpoint_is_platform_scoped_super_admin_only() {
     Long tenantAId =
         companyRepository.findByCodeIgnoreCase(TENANT_A).map(Company::getId).orElseThrow();
 
@@ -637,6 +637,19 @@ class AuthTenantAuthorityIT extends AbstractIntegrationTest {
             new HttpEntity<>(jsonHeaders(adminToken, TENANT_A)),
             Map.class);
     assertThat(adminResponse.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+
+    String tenantScopedSuperAdminToken = login(SUPER_ADMIN_EMAIL, TENANT_A);
+    ResponseEntity<Map> tenantScopedSuperAdminResponse =
+        rest.exchange(
+            "/api/v1/superadmin/tenants/" + tenantAId,
+            HttpMethod.GET,
+            new HttpEntity<>(jsonHeaders(tenantScopedSuperAdminToken, TENANT_A)),
+            Map.class);
+    assertControlledAccessDenied(
+        tenantScopedSuperAdminResponse,
+        "SUPER_ADMIN_PLATFORM_ONLY",
+        "Super Admin is limited to platform control-plane operations and cannot execute tenant"
+            + " business workflows");
 
     String superAdminToken = login(SUPER_ADMIN_EMAIL, PLATFORM_SCOPE);
     ResponseEntity<Map> superAdminResponse =

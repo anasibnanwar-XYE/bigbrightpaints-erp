@@ -17,6 +17,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 
+import com.bigbrightpaints.erp.core.security.AuthScopeService;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyLifecycleState;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
@@ -135,6 +136,38 @@ class CompanyControllerIT extends AbstractIntegrationTest {
   }
 
   @Test
+  void list_companies_is_denied_for_platform_scoped_super_admin() {
+    String platformOnlySuperAdminEmail = "platform-list-super-admin@bbp.com";
+    dataSeeder.ensureUser(
+        platformOnlySuperAdminEmail,
+        ADMIN_PASSWORD,
+        "Platform List Super Admin",
+        AuthScopeService.DEFAULT_PLATFORM_AUTH_CODE,
+        List.of("ROLE_SUPER_ADMIN"));
+
+    ResponseEntity<Map> listResp =
+        rest.exchange(
+            "/api/v1/companies",
+            HttpMethod.GET,
+            new HttpEntity<>(
+                jsonHeaders(
+                    loginToken(platformOnlySuperAdminEmail, AuthScopeService.DEFAULT_PLATFORM_AUTH_CODE),
+                    AuthScopeService.DEFAULT_PLATFORM_AUTH_CODE)),
+            Map.class);
+
+    assertThat(listResp.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+    assertThat(listResp.getBody()).isNotNull();
+    @SuppressWarnings("unchecked")
+    Map<String, Object> error = (Map<String, Object>) listResp.getBody().get("data");
+    assertThat(error).isNotNull();
+    assertThat(error.get("reason")).isEqualTo("SUPER_ADMIN_PLATFORM_ONLY");
+    assertThat(error.get("reasonDetail"))
+        .isEqualTo(
+            "Super Admin is limited to platform control-plane operations and cannot execute tenant"
+                + " business workflows");
+  }
+
+  @Test
   void delete_company_endpoint_is_not_exposed() {
     Long companyId = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow().getId();
 
@@ -153,6 +186,52 @@ class CompanyControllerIT extends AbstractIntegrationTest {
     Long companyId = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow().getId();
     HttpHeaders headers =
         jsonHeaders(loginToken(SUPER_ADMIN_EMAIL, ROOT_COMPANY_CODE), ROOT_COMPANY_CODE);
+
+    ResponseEntity<Map> dashboardResponse =
+        rest.exchange(
+            "/api/v1/companies/superadmin/dashboard",
+            HttpMethod.GET,
+            new HttpEntity<>(headers),
+            Map.class);
+    ResponseEntity<Map> supportResetResponse =
+        rest.exchange(
+            "/api/v1/companies/" + companyId + "/support/admin-password-reset",
+            HttpMethod.POST,
+            new HttpEntity<>(Map.of("adminEmail", ADMIN_EMAIL), headers),
+            Map.class);
+    ResponseEntity<Map> metricsResponse =
+        rest.exchange(
+            "/api/v1/companies/" + companyId + "/tenant-metrics",
+            HttpMethod.GET,
+            new HttpEntity<>(headers),
+            Map.class);
+    ResponseEntity<Map> limitsResponse =
+        rest.exchange(
+            "/api/v1/companies/" + companyId + "/tenant-runtime/policy",
+            HttpMethod.PUT,
+            new HttpEntity<>(Map.of("maxActiveUsers", 1), headers),
+            Map.class);
+
+    assertThat(dashboardResponse.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    assertThat(supportResetResponse.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    assertThat(metricsResponse.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    assertThat(limitsResponse.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+  }
+
+  @Test
+  void retired_company_control_plane_aliases_fail_closed_for_platform_scoped_super_admin() {
+    String platformOnlySuperAdminEmail = "platform-alias-probe-super-admin@bbp.com";
+    dataSeeder.ensureUser(
+        platformOnlySuperAdminEmail,
+        ADMIN_PASSWORD,
+        "Platform Alias Probe Super Admin",
+        AuthScopeService.DEFAULT_PLATFORM_AUTH_CODE,
+        List.of("ROLE_SUPER_ADMIN"));
+    Long companyId = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow().getId();
+    HttpHeaders headers =
+        jsonHeaders(
+            loginToken(platformOnlySuperAdminEmail, AuthScopeService.DEFAULT_PLATFORM_AUTH_CODE),
+            AuthScopeService.DEFAULT_PLATFORM_AUTH_CODE);
 
     ResponseEntity<Map> dashboardResponse =
         rest.exchange(

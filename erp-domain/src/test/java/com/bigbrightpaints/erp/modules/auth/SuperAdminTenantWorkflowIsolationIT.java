@@ -16,6 +16,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 
+import com.bigbrightpaints.erp.core.security.AuthScopeService;
 import com.bigbrightpaints.erp.modules.admin.domain.SupportTicket;
 import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketCategory;
 import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketRepository;
@@ -30,6 +31,7 @@ class SuperAdminTenantWorkflowIsolationIT extends AbstractIntegrationTest {
 
   private static final String TENANT_A = "AUDIT-TENANT-A";
   private static final String ROOT_TENANT = "AUDIT-ROOT";
+  private static final String PLATFORM_SCOPE = AuthScopeService.DEFAULT_PLATFORM_AUTH_CODE;
   private static final String ADMIN_EMAIL = "audit-admin@bbp.com";
   private static final String SUPER_ADMIN_EMAIL = "audit-super-admin@bbp.com";
   private static final String PASSWORD = "Passw0rd!";
@@ -55,10 +57,17 @@ class SuperAdminTenantWorkflowIsolationIT extends AbstractIntegrationTest {
         SUPER_ADMIN_EMAIL,
         PASSWORD,
         "Audit Super Admin",
+        PLATFORM_SCOPE,
+        List.of("ROLE_SUPER_ADMIN", "ROLE_ADMIN"));
+    dataSeeder.ensureUser(
+        SUPER_ADMIN_EMAIL,
+        PASSWORD,
+        "Audit Super Admin",
         TENANT_A,
         List.of("ROLE_SUPER_ADMIN", "ROLE_ADMIN"));
     resetSeededUserState(ADMIN_EMAIL, TENANT_A);
     resetSeededUserState(SUPER_ADMIN_EMAIL, ROOT_TENANT);
+    resetSeededUserState(SUPER_ADMIN_EMAIL, PLATFORM_SCOPE);
     resetSeededUserState(SUPER_ADMIN_EMAIL, TENANT_A);
     resetTenantLifecycle(TENANT_A);
     resetTenantLifecycle(ROOT_TENANT);
@@ -167,16 +176,16 @@ class SuperAdminTenantWorkflowIsolationIT extends AbstractIntegrationTest {
   }
 
   @Test
-  void rootSuperAdminRetainsPlatformOnlyControlPlaneAccess() {
+  void platformScopedSuperAdminRetainsPlatformOnlyControlPlaneAccess() {
     Long tenantAId =
         companyRepository.findByCodeIgnoreCase(TENANT_A).map(Company::getId).orElseThrow();
-    String rootToken = login(SUPER_ADMIN_EMAIL, ROOT_TENANT);
+    String platformToken = login(SUPER_ADMIN_EMAIL, PLATFORM_SCOPE);
 
     ResponseEntity<Map> metricsResponse =
         rest.exchange(
             "/api/v1/superadmin/tenants/" + tenantAId,
             HttpMethod.GET,
-            new HttpEntity<>(jsonHeaders(rootToken, ROOT_TENANT)),
+            new HttpEntity<>(jsonHeaders(platformToken, PLATFORM_SCOPE)),
             Map.class);
 
     assertThat(metricsResponse.getStatusCode()).isEqualTo(HttpStatus.OK);

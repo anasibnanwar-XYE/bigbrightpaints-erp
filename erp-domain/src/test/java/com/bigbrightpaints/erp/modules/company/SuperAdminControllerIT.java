@@ -18,6 +18,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
 
+import com.bigbrightpaints.erp.core.security.AuthScopeService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyLifecycleState;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
@@ -79,6 +80,86 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
     assertThat(allowed.getStatusCode()).isEqualTo(HttpStatus.OK);
     assertThat(allowed.getBody()).isNotNull();
     assertThat(allowed.getBody()).containsKey("data");
+  }
+
+  @Test
+  void dashboard_and_tenant_inventory_are_denied_for_tenant_scoped_super_admin() {
+    dataSeeder.ensureUser(
+        SUPER_ADMIN_EMAIL,
+        PASSWORD,
+        "Tenant Scoped Super Admin",
+        COMPANY_CODE,
+        List.of("ROLE_SUPER_ADMIN"));
+
+    String tenantScopedSuperAdminToken = loginToken(SUPER_ADMIN_EMAIL, COMPANY_CODE);
+
+    ResponseEntity<Map> dashboardDenied =
+        rest.exchange(
+            "/api/v1/superadmin/dashboard",
+            HttpMethod.GET,
+            new HttpEntity<>(headers(tenantScopedSuperAdminToken, COMPANY_CODE)),
+            Map.class);
+    assertThat(dashboardDenied.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+    assertPlatformOnlyDenial(dashboardDenied);
+
+    ResponseEntity<Map> listDenied =
+        rest.exchange(
+            "/api/v1/superadmin/tenants",
+            HttpMethod.GET,
+            new HttpEntity<>(headers(tenantScopedSuperAdminToken, COMPANY_CODE)),
+            Map.class);
+    assertThat(listDenied.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+    assertPlatformOnlyDenial(listDenied);
+
+    Long tenantId = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow().getId();
+    ResponseEntity<Map> detailDenied =
+        rest.exchange(
+            "/api/v1/superadmin/tenants/" + tenantId,
+            HttpMethod.GET,
+            new HttpEntity<>(headers(tenantScopedSuperAdminToken, COMPANY_CODE)),
+            Map.class);
+    assertThat(detailDenied.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+    assertPlatformOnlyDenial(detailDenied);
+  }
+
+  @Test
+  void login_me_dashboard_tenants_flow_works_for_platform_scoped_super_admin() {
+    String platformOnlySuperAdminEmail = "platform-flow-super-admin@bbp.com";
+    dataSeeder.ensureUser(
+        platformOnlySuperAdminEmail,
+        PASSWORD,
+        "Platform Flow Super Admin",
+        AuthScopeService.DEFAULT_PLATFORM_AUTH_CODE,
+        List.of("ROLE_SUPER_ADMIN"));
+
+    String token =
+        loginToken(platformOnlySuperAdminEmail, AuthScopeService.DEFAULT_PLATFORM_AUTH_CODE);
+    HttpHeaders authHeaders = headers(token, AuthScopeService.DEFAULT_PLATFORM_AUTH_CODE);
+
+    ResponseEntity<Map> meResponse =
+        rest.exchange("/api/v1/auth/me", HttpMethod.GET, new HttpEntity<>(authHeaders), Map.class);
+    assertThat(meResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(meResponse.getBody()).isNotNull();
+    @SuppressWarnings("unchecked")
+    Map<String, Object> meData = (Map<String, Object>) meResponse.getBody().get("data");
+    assertThat(meData).isNotNull();
+    assertThat(meData.get("companyCode")).isEqualTo(AuthScopeService.DEFAULT_PLATFORM_AUTH_CODE);
+
+    ResponseEntity<Map> dashboardResponse =
+        rest.exchange(
+            "/api/v1/superadmin/dashboard",
+            HttpMethod.GET,
+            new HttpEntity<>(authHeaders),
+            Map.class);
+    assertThat(dashboardResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+    ResponseEntity<Map> tenantsResponse =
+        rest.exchange(
+            "/api/v1/superadmin/tenants",
+            HttpMethod.GET,
+            new HttpEntity<>(authHeaders),
+            Map.class);
+    assertThat(tenantsResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
   }
 
   @Test
@@ -223,6 +304,20 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
             "companyCode", companyCode);
     ResponseEntity<Map> response = rest.postForEntity("/api/v1/auth/login", request, Map.class);
     return (String) response.getBody().get("accessToken");
+  }
+
+  @SuppressWarnings("unchecked")
+  private void assertPlatformOnlyDenial(ResponseEntity<Map> response) {
+    assertThat(response.getBody()).isNotNull();
+    assertThat(response.getBody().get("success")).isEqualTo(Boolean.FALSE);
+    Map<String, Object> error = (Map<String, Object>) response.getBody().get("data");
+    assertThat(error).isNotNull();
+    assertThat(error.get("code")).isEqualTo("AUTH_004");
+    assertThat(error.get("reason")).isEqualTo("SUPER_ADMIN_PLATFORM_ONLY");
+    assertThat(error.get("reasonDetail"))
+        .isEqualTo(
+            "Super Admin is limited to platform control-plane operations and cannot execute tenant"
+                + " business workflows");
   }
 
   private String readLifecycleState(Long companyId) {
