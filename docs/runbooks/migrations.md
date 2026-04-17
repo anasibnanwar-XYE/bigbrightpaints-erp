@@ -1,6 +1,20 @@
 # Migration Runbook
 
-Last reviewed: 2026-04-16
+Last reviewed: 2026-04-17
+
+## 2026-04-17 — `erp-domain/src/main/resources/db/migration_v2/V184__company_billing_plan_control_plane_fields.sql`
+
+- **Purpose:** add canonical control-plane billing-plan storage on `companies` so the platform dashboard/list/detail read model and `PUT /api/v1/superadmin/tenants/{id}/billing-plan` can persist manual billing truth without reusing tenant accounting ledgers.
+- **Release-guard posture:** this is a compatibility-preserving control-plane schema extension for the platform dashboard + tenant inventory milestone. It intentionally normalizes blank/null currency to `INR`, clamps null/negative rates and seat counts to `0`, and enforces non-negative constraints so the runtime can stay fail-closed on manual billing-plan inputs.
+- **Forward plan:** apply `V184__company_billing_plan_control_plane_fields.sql` with the platform dashboard/inventory packet, then keep the canonical superadmin billing-plan write surface and billing-summary read models live together so tenant detail/list/dashboard all read the same persisted control-plane billing state.
+- **Dry-run commands:**
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='SuperAdminControllerIT,SuperAdminControllerTest,SuperAdminAuditControllerTest,TenantOnboardingControllerTest,SuperAdminTenantControlPlaneServiceTest,AuthPlatformScopeCodeIT,SuperAdminTenantWorkflowIsolationIT,CompanyContextFilterControlPlaneBindingTest' test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='OpenApiSnapshotIT' test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest=OpenApiSnapshotIT -Derp.openapi.snapshot.verify=true -Derp.openapi.snapshot.refresh=true test`
+  - `bash scripts/guard_openapi_contract_drift.sh && bash scripts/guard_workflow_canonical_paths.sh && bash scripts/guard_dispatch_frontend_handoff_contract.sh`
+  - `bash scripts/gate_fast.sh`
+  - `bash ci/check-enterprise-policy.sh`
+- **Rollback strategy:** prefer snapshot/PITR restore if the packet must be abandoned after `V184` executes. If a coordinated packet rollback is required before merge, redeploy the previous backend build first, then remove the billing-plan constraints/columns only in the same maintenance window after confirming no surviving runtime path depends on them; do not leave mixed state where the superadmin billing-plan surface is rolled back but partially populated billing-plan columns remain authoritative.
 
 ## 2026-04-16 — `erp-domain/src/main/resources/db/migration_v2/V183__credit_pending_status_norm_indexes.sql`
 

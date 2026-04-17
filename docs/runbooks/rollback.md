@@ -1,6 +1,28 @@
 # Rollback Runbook
 
-Last reviewed: 2026-04-16
+Last reviewed: 2026-04-17
+
+## 2026-04-17 — `platform-dashboard.billing-plan-control-plane`
+
+- **Scope:** revert `erp-domain/src/main/resources/db/migration_v2/V184__company_billing_plan_control_plane_fields.sql` together with the platform dashboard + tenant inventory packet that now persists manual billing-plan state and exposes the canonical `PUT /api/v1/superadmin/tenants/{id}/billing-plan` surface.
+- **Application rollback:** prefer reverting the full billing-plan control-plane packet as a unit. Redeploy the previous backend build before dropping any of the new `companies.billing_plan_*` columns so runtime code stops reading/writing the control-plane billing-plan subtree first.
+- **Database rollback:** preferred path is snapshot/PITR restore to a point before `V184`. If a coordinated pre-merge rollback must remove only this migration after the previous backend is live, execute:
+  - `ALTER TABLE companies DROP CONSTRAINT IF EXISTS chk_companies_billing_plan_monthly_rate_non_negative;`
+  - `ALTER TABLE companies DROP CONSTRAINT IF EXISTS chk_companies_billing_plan_annual_rate_non_negative;`
+  - `ALTER TABLE companies DROP CONSTRAINT IF EXISTS chk_companies_billing_plan_seats_non_negative;`
+  - `ALTER TABLE companies DROP COLUMN IF EXISTS billing_plan_updated_by;`
+  - `ALTER TABLE companies DROP COLUMN IF EXISTS billing_plan_updated_at;`
+  - `ALTER TABLE companies DROP COLUMN IF EXISTS billing_plan_seats;`
+  - `ALTER TABLE companies DROP COLUMN IF EXISTS billing_plan_annual_rate;`
+  - `ALTER TABLE companies DROP COLUMN IF EXISTS billing_plan_monthly_rate;`
+  - `ALTER TABLE companies DROP COLUMN IF EXISTS billing_plan_currency;`
+  - `ALTER TABLE companies DROP COLUMN IF EXISTS billing_plan_name;`
+  - `ALTER TABLE companies DROP COLUMN IF EXISTS billing_plan_code;`
+- **Verification:** after restore or coordinated packet revert, rerun:
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='SuperAdminControllerIT,SuperAdminControllerTest,SuperAdminAuditControllerTest,TenantOnboardingControllerTest,SuperAdminTenantControlPlaneServiceTest,AuthPlatformScopeCodeIT,SuperAdminTenantWorkflowIsolationIT,CompanyContextFilterControlPlaneBindingTest' test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='OpenApiSnapshotIT' test`
+  - `bash scripts/gate_fast.sh`
+  - `bash ci/check-enterprise-policy.sh`
 
 ## 2026-04-16 — `tenant-admin.pending-status-normalized-index-hardening`
 
