@@ -4,11 +4,11 @@ commands:
   install: >-
     ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT/erp-domain" && mvn -q -DskipTests dependency:go-offline
   compile: >-
-    ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT/erp-domain" && MIGRATION_SET=v2 mvn -T5 compile -q
+    ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT/erp-domain" && MIGRATION_SET=v2 mvn -T2 compile -q
   typecheck: >-
-    ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT/erp-domain" && MIGRATION_SET=v2 mvn -T5 compile -q
+    ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT/erp-domain" && MIGRATION_SET=v2 mvn -T2 compile -q
   build: >-
-    ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT/erp-domain" && MIGRATION_SET=v2 mvn -T5 package -DskipTests
+    ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT/erp-domain" && MIGRATION_SET=v2 mvn -T2 package -DskipTests
   test: >-
     ROOT=$(git rev-parse --show-toplevel) && cd "$ROOT" && bash scripts/gate_fast.sh
   lint: >-

@@ -8,6 +8,8 @@ This file is internal worker guidance for the current mission infrastructure, no
 
 **Important:** this is the high-level architectural summary. `validation-contract.md` remains the route-complete definition of done for milestone validation.
 
+**Current execution scope note:** this file still mentions adjacent sales/dealer boundaries where they matter to platform privacy-wall and route-ownership context, but the active mission queue is now limited to superadmin/platform/shared-self-service implementation only. Workers must not pick up sales or user-owned accounting refactor work unless the orchestrator explicitly reopens that scope.
+
 ---
 
 ## System Shape
@@ -148,7 +150,7 @@ High-value end-to-end flow spine for this mission:
 2. onboarding -> MailHog credential capture -> tenant login -> `auth/me`
 3. control-plane mutation -> tenant runtime effect -> platform recovery action
 4. tenant support ticket creation -> platform support workspace visibility -> tenant business routes still denied
-5. dealer create -> sales dashboard/credit flows -> tenant-admin approval decision
+5. shared self-service profile/password/reset/MFA flows stay intact across platform, tenant, and dealer scopes while role-specific business boundaries remain enforced
 
 ## Cleanup Posture
 

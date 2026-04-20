@@ -20,13 +20,12 @@ Representative journeys:
 - tenant onboarding -> MailHog credential capture -> tenant login -> `GET /api/v1/auth/me`
 - shared self-service profile/password/reset/MFA flows
 - platform support workspace and admin-recovery exception flows
-- sales dealer/dashboard/promotions/order/credit flows
 
 ### 2. Targeted JVM proof packs
 - **Type:** Maven unit/integration/truthsuite coverage for risky refactors and contracts
 - **Working directory:** `erp-domain/`
 - **Tools:** `mvn`, manifest commands from `.factory/services.yaml`
-- **Use when:** a feature changes auth/security, company control plane, sales credit flows, or public contract DTO/controller behavior
+- **Use when:** a feature changes auth/security, company control plane, onboarding, shared self-service, platform support/recovery, or public contract DTO/controller behavior
 
 ### 3. Repo-static contract/governance validation
 - **Type:** read-only repo inspection
@@ -35,13 +34,13 @@ Representative journeys:
 
 ## Validation Concurrency
 
-- **api-runtime:** max concurrent validators **3**
+- **api-runtime:** max concurrent validators **1**
 - **jvm-proof:** max concurrent validators **1**
 - **repo-static:** max concurrent validators **2**
 
 Rationale:
-- the dry run already showed the compose-backed runtime is workable and API validators are lightweight enough for three concurrent curl-driven flows on this machine
-- MailHog and tenant onboarding are shared resources, so validators should isolate by tenant code and actor identity
+- the dry run showed the compose-backed runtime is workable, but the user explicitly requested low-resource overnight execution on the current machine
+- MailHog, onboarding, and shared runtime state are all easier to keep deterministic when API validation is serialized
 - Maven proof packs share the same checkout and `target/` tree; serialize them
 - repo-static checks are read-only and can safely run in small parallel batches
 
@@ -73,10 +72,6 @@ Rationale:
 - `onboarding-proof`
 - `self-service-proof`
 
-### Sales
-- `sales-dealers-proof`
-- `sales-credit-proof`
-
 ### Contract cleanup
 - `cleanup-contract-proof`
 - `contract-guards`
@@ -88,7 +83,7 @@ Rationale:
 - For target-state routes introduced by this mission, do not fall back to retired aliases just because they still exist in pre-hard-cut code before the relevant milestone lands.
 - Pair privacy-wall exception proofs with denied platform-owner calls to unrelated tenant business APIs.
 - Pair canonical-route success proof with retired-route absence or fail-closed proof whenever a milestone retires an alias.
-- Use the canonical tenant-admin approval decision route for credit decisions; direct module-specific decision routes belong only in cleanup-retirement checks.
+- Keep overnight validation low-resource: reuse the existing healthy runtime, serialize runtime-heavy checks, and prefer the narrowest proof pack that still satisfies the assertion.
 
 ## Flow Validator Guidance: api-runtime
 
