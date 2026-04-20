@@ -1,199 +1,75 @@
 # Architecture
 
-High-level system map for the `orchestrator-erp` cleanup mission.
+Worker-facing architecture guidance for the accounting hard-cut mission.
 
-This file is internal worker guidance for the mission infrastructure, not a public canonical docs entrypoint.
-
-**What belongs here:** system shape, module relationships, canonical write/read boundaries, deployment-proof surfaces, and the architectural seams workers must preserve while simplifying the repo.
+This file is not a public docs entrypoint. It exists to keep workers aligned on the mission's actual truth boundary and the constraints that cannot drift during cleanup.
 
 ---
 
-## System Shape
+## Mission Truth
 
-Current code package root remains `com.bigbrightpaints.erp`, but the current product identity for touched canonical docs is `orchestrator-erp`.
+- **Accounting is the top-level truth boundary.** Sales, inventory, invoice, purchasing, and reporting may initiate or consume business flows, but accounting owns journals, ledgers, settlements, period state, reconciliation, and financial disclosure policy.
+- **There must be one financial owner per flow.** Do not leave duplicate posting paths, shadow ledgers, or report-side financial truth reconstruction behind.
+- **Docs are deliverables in this mission.** Architecture guidance, backend contract docs, and worker-facing library docs are part of done, not follow-up polish.
 
-The backend is a modular monolith:
+## Scope Boundaries
 
-- `core/` — security, config, exception handling, audit, idempotency, health, utilities
-- `modules/` — business domains (`accounting`, `admin`, `auth`, `company`, `factory`, `inventory`, `invoice`, `portal`, `production`, `purchasing`, `rbac`, `reports`, `sales`, plus currently paused `hr`)
-- `orchestrator/` — background coordination, outbox/event publishing, command dispatch, schedulers, health surfaces
-- `shared/dto/` — shared API envelopes and cross-cutting DTOs
+- In scope: accounting plus direct financial seams in inventory, invoice, purchasing, sales, and reports.
+- Out of scope: HR/payroll feature work unless a shared guard, test, or doc surface must stay consistent.
+- Preserve frontend-usable API contract shapes where they matter, but do **not** preserve bad internal architecture for its own sake.
 
-The codebase already has strong infrastructure patterns (idempotency, outbox/event delivery, RBAC, multi-tenancy, audits), but important business flows still cross module boundaries through large services, listeners, helpers, and duplicated contract surfaces.
+## Implementation Mode
 
-## Mission Cleanup Posture
+- This mission is **characterization-first and contract-preserving at public edges**. Workers may hard-cut internals aggressively, but named public surfaces must keep their documented behavior unless the packet deliberately updates docs/contracts in the same change.
+- Treat the validation contract as the authoritative checklist for worker-visible accounting/reporting/workflow behavior. If a refactor changes a path, role rule, response-shape expectation, or workflow step named there, the packet is incomplete until the contract-facing docs and proofs move with it.
+- Prefer consolidation into one accounting owner per flow over compatibility wrappers. Delete duplicate or shadow financial paths once characterization coverage and replacement ownership are in place.
 
-This mission is not preserving dead compatibility.
+## Non-Negotiable Invariants
 
-- No legacy data compatibility is required.
-- No active frontend consumers need protecting.
-- No new fallbacks, aliases, dual-write paths, or duplicate helper seams should be introduced.
-- Prefer deletion, extraction, and reuse of the surviving canonical path.
-- Accounting refactors must preserve dependent-module correctness and remove duplicates rather than relocate them.
-- HR/payroll feature work is out of scope unless a shared guard/test/doc surface must stay consistent.
+- **RLS rollout applies to all accounting tables.** This is not optional and not partial.
+- **Tenant isolation must hold at both service and database layers.** Missing or wrong tenant context must fail closed.
+- **Sensitive financial disclosures require approval gates.** Full ledgers, transaction-heavy reports, cashflow-style disclosures, and similar high-sensitivity outputs cannot become open reads by accident.
+- **Anomaly/review is a paid feature.** Rollout order is manual superadmin toggle first, default off, warn-only. It may surface guidance or queue review, but it must not hard-block accounting writes.
+- **Accounting auditability must remain explicit.** Financial events need traceable workflow linkage and reviewable reasoning.
 
-## Runtime Boundary
+## Canonical Accounting Seams
 
-The approved runtime boundary for this mission is fixed:
+Workers should assume these are the main hard-cut seams:
 
-- Postgres: `5433`
-- RabbitMQ: `5672`
-- MailHog UI: `8025`
-- App HTTP: `8081`
-- Actuator/management: `9090`
+- journal creation, numbering, reversal, and posting ownership
+- chart of accounts and default-account readiness
+- dealer/supplier settlements and ledger truth
+- period close, reopen, and reconciliation flows
+- inventory-accounting and invoice/purchasing-accounting bridges
+- reporting reads that expose accounting truth
 
-Workers must not use host Postgres `5432` or introduce new services outside this boundary without returning to the orchestrator.
+Worker-facing expectations on those seams:
 
-## Canonical Public Contract Surfaces
+- **Period close is maker-checker, not a convenience toggle.** The canonical close path is request-close → approve-close, with distinct actors and explicit notes/reasoning; do not reintroduce a direct close shortcut.
+- **Draft support is opt-in and side-effect free until promotion.** If a workflow is declared draft-capable, save/resume must preserve a stable draft artifact and must not post journals, settle balances, or mutate period state before explicit submit/post.
+- **Partner truth must stay filterable and reconcilable.** Dealer/supplier journal, statement, settlement, and aging surfaces must remain aligned so workers do not split partner truth across disconnected implementations.
+- **Reports are read models over accounting truth, not alternate ledgers.** Closed/open branching, snapshot usage, export approval, requester-owned downloads, and statement/PDF exceptions must live at the reporting/read boundary without creating a second accounting owner.
 
-These are the highest-value public surfaces that must stay singular and aligned across code, OpenAPI, docs, tests, and worker guidance:
+## Cross-Module Dependency Map
 
-- Auth bootstrap: `GET /api/v1/auth/me`
-- Public password reset corridor: `POST /api/v1/auth/password/forgot|reset`
-- Dispatch write boundary: `POST /api/v1/dispatch/confirm`
-- Accounting manual journal boundary: `POST /api/v1/accounting/journal-entries`
-- Canonical superadmin tenant-runtime mutation paths:
-  - `PUT /api/v1/superadmin/tenants/{id}/lifecycle`
-  - `PUT /api/v1/superadmin/tenants/{id}/limits`
+The expected dependency direction is:
 
-Retired routes should be absent or explicitly fail closed. Do not leave a second public writer behind.
+- `sales -> accounting` for receivables, revenue, credits, and settlement truth
+- `inventory -> accounting` for valuation, opening stock, adjustments, and stock-linked financial effects
+- `invoice -> accounting` for invoice posting and downstream ledger impacts
+- `purchasing -> accounting` for payables, supplier settlement, and purchase-return truth
+- `reports -> accounting` for financial read models and disclosure policy
+- `admin/company/auth -> accounting` only for access control, company binding, approvals, and runtime admission
 
-## Core Architectural Invariants
+If a cleanup changes accounting ownership, workers must re-check the dependent module flow in the same packet.
 
-- **Tenant scoping is mandatory.** Company-scoped data and request admission depend on company context and must fail closed.
-- **`ApplicationException` + `ErrorCode` remain the business error contract.**
-- **Accounting is the financial truth boundary.** Other modules may initiate business flows, but accounting owns journals, settlements, period control, and reconciliation truth.
-- **Idempotency is mandatory on write surfaces.** Reject stale headers and parallel fallback replay schemes.
-- **Cross-request audit correlation is explicit.** When one business flow spans multiple HTTP requests and must remain traceable as one flow, the caller/test harness must propagate a shared `X-Correlation-Id`; validators should prove related audit rows reuse that exact value.
-- **Role/host boundaries are part of the contract.** Admin/control-plane, operational/factory, sales/commercial, and dealer/self-service surfaces must stay explicit.
-- **Docs/OpenAPI/tests/CI are part of the architecture.** A cleanup is incomplete if these still teach contradictory truths.
+## Worker Implications
 
-## Highest-Risk Cleanup Seams
-
-### 1. Accounting core
-
-Primary hotspots:
-
-- `modules/accounting/service/{SettlementAllocationResolutionService,SettlementTotalsValidationService,SettlementJournalLineDraftService}`
-- `modules/accounting/service/JournalPostingService`
-- `modules/accounting/service/AccountingFacade`
-
-Supporting sprawl:
-
-- `modules/accounting/service/AccountingPeriodService`
-- `modules/accounting/service/AccountingAuditTrailService`
-- `modules/accounting/service/ReconciliationService`
-- focused accounting controllers under `modules/accounting/controller/`, especially:
-  - `AccountController`
-  - `JournalController`
-  - `SettlementController`
-  - `PeriodController`
-  - `ReconciliationController`
-  - `StatementReportController`
-  - `InventoryAccountingController`
-
-Cleanup direction:
-
-- Treat retired `internal/AccountingCoreEngineCore`, `AccountingFacadeCore`, and `SettlementSupportService` references as stale history, not live ownership.
-- Split by business flow, not by more wrapper layers
-- Keep one canonical write path per operation
-- Remove duplicate helper logic while preserving downstream module behavior
-- Continue shrinking settlement write-path helpers until no single service centralizes allocation resolution, totals, validation, and line drafting above the mission size cap
-
-### 2. Dispatch truth
-
-Dispatch is a cross-module seam. The public write host, downstream financial ownership, docs, OpenAPI, tests, and validator guidance must all converge on the same truth.
-
-Workers must answer both questions whenever dispatch is touched:
-
-1. Which public controller/host owns dispatch today?
-2. Which service path owns the authoritative downstream business and financial effects?
-
-### 3. Security/runtime admission
-
-Primary hotspots:
-
-- `core/security/CompanyContextFilter`
-- `modules/company/service/TenantRuntimeEnforcementService`
-- `modules/company/service/TenantRuntimeRequestAdmissionService`
-- `core/security/TenantRuntimeAccessService`
-- module-scoped `CompanyScoped*LookupService` implementations
-
-Cleanup direction:
-
-- Keep tenant binding fail-closed
-- Keep canonical control-plane paths singular
-- Remove shadow runtime owners
-- Keep the retired `CompanyEntityLookup` gravity well out of live production ownership and favor narrower module-scoped resolution
-
-### 4. Deployment-proof and CI truth
-
-The deployability story is split across:
-
-- strict compose runtime
-- gate scripts
-- workflow files
-- runbooks/docs
-- generated artifacts and old mission-specific guidance
-
-Cleanup direction:
-
-- one real strict smoke story
-- one real release-proof story
-- docs-only governance stays narrow
-- stale generated artifacts do not masquerade as current proof
-
-## Canonical Dependency Map
-
-These edges are the main blast-radius map for refactors:
-
-- `sales -> inventory` for dispatch, stock execution, and reservation-facing behavior
-- `sales -> accounting` for AR/revenue/COGS and settlement truth
-- `factory -> inventory` for production, packing, and finished-goods registration
-- `factory -> accounting` for manufacturing/packing side effects
-- `purchasing -> inventory` for GRN/opening stock/returns/stock intake
-- `purchasing -> accounting` for AP, supplier settlement, and purchase-return truth
-- `invoice -> accounting` for posting, settlement, and reference behavior
-- `reports -> accounting/inventory/sales` for downstream truth consumption
-- `auth/company/admin -> every tenant business surface` for company binding, control-plane, and runtime enforcement
-- `orchestrator -> sales/factory/accounting/inventory` for background coordination and fail-closed retirement checks
-
-Accounting cleanup must explicitly re-verify dependent module flows across sales, inventory, purchasing, invoice, and reporting.
-
-## Canonical Flow Spine
-
-For the current mission, the highest-value operator flow is:
-
-`tenant onboarding -> company defaults -> brand/item setup -> readiness review -> opening stock -> production log -> packing record -> dispatch confirm`
-
-This flow spans control-plane, production/catalog, inventory, factory, dispatch, and accounting/reporting consumers. Cleanup work must not reopen aliases or second owners inside this spine.
-
-## Validation Model
-
-This mission’s validation model is:
-
-- **strict `prod,flyway-v2` compose smoke** for deployment/runtime proof
-- **targeted Maven suites** for business-flow proof
-
-Treat these as complementary:
-
-- compose smoke proves the runtime boots and exposes the expected health/app boundary
-- targeted suites prove business-critical invariants for dispatch, accounting, runtime admission, and dependent-module flows
-
-## Canonical Evidence Sources
-
-When workers need truth, prefer this order:
-
-1. controller annotations + `openapi.json` for route/payload truth
-2. service/facade/engine code for lifecycle and side-effect truth
-3. focused tests for executed behavior and retirement proof
-4. canonical docs for operator/developer-facing explanation
-5. library/validator guidance only after it has been aligned to the canonical contract
-
-## Worker Design Implications
-
-- Do not split a god class into several duplicate god helpers.
-- Do not leave a deprecated route or helper alive “just in case.”
-- If a path is no longer canonical, remove it or retire it explicitly.
-- If a refactor touches accounting, verify dependent modules in the same packet or return a tracked issue immediately.
-- If a feature changes a canonical contract surface, update OpenAPI/docs/tests/guidance in the same packet.
+- Prefer deletion and consolidation over new wrapper layers.
+- Do not let reports become an alternate accounting owner.
+- Do not weaken approval gates just to simplify a read path.
+- Keep export/report approvals on the canonical admin approval surfaces, and preserve requester-owned export downloads even after approval.
+- Do not accidentally route statement/aging PDF downloads through the export-approval gate; those are separate audited surfaces.
+- Preserve role boundaries at public edges: accounting/report surfaces stay on the documented admin/accounting policies, with audit/approval exceptions only where the contract says so.
+- Do not treat anomaly/review as a blocking control path; it is warning/review assistance only, behind a superadmin-controlled entitlement gate, default off.
+- If a packet changes financial truth, RLS behavior, sensitive-disclosure access, or a named workflow shortcut, docs/tests/contracts must move with it because mission docs are a shipped output.
