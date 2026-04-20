@@ -128,6 +128,30 @@ class CompanyContextFilterControlPlaneBindingTest {
   }
 
   @Test
+  void canonicalBillingPlanRequest_bindsPathTargetCompany_andBypassesRuntimeAdmission()
+      throws ServletException, IOException {
+    authenticate("root-superadmin@bbp.com", Set.of("ROLE_SUPER_ADMIN"), Set.of("ROOT"));
+    when(companyService.resolveCompanyCodeById(42L)).thenReturn("TENANT-A");
+    when(companyService.resolveLifecycleStateByCode("TENANT-A"))
+        .thenReturn(CompanyLifecycleState.ACTIVE);
+
+    MockHttpServletRequest request = request("PUT", "/api/v1/superadmin/tenants/42/billing-plan");
+    request.setAttribute("jwtClaims", claimsFor("ROOT"));
+    MockHttpServletResponse response = new MockHttpServletResponse();
+
+    filter.doFilter(
+        request,
+        response,
+        (req, res) -> assertThat(CompanyContextHolder.getCompanyCode()).isEqualTo("TENANT-A"));
+
+    assertThat(response.getStatus()).isEqualTo(200);
+    verify(companyService).resolveCompanyCodeById(42L);
+    verify(companyService).resolveLifecycleStateByCode("TENANT-A");
+    verify(tenantRuntimeRequestAdmissionService, never())
+        .beginRequest(anyString(), anyString(), anyString(), anyString(), anyBoolean());
+  }
+
+  @Test
   void canonicalLimitsRequest_tracksPrivilegedRuntimeAdmissionForSuperAdmin()
       throws ServletException, IOException {
     authenticate("root-superadmin@bbp.com", Set.of("ROLE_SUPER_ADMIN"), Set.of("ROOT"));
@@ -163,6 +187,27 @@ class CompanyContextFilterControlPlaneBindingTest {
             "root-superadmin@bbp.com",
             true);
     verify(tenantRuntimeRequestAdmissionService).completeRequest(admission, 200);
+  }
+
+  @Test
+  void canonicalBillingPlanRequest_rejectsTenantScopedSuperAdmin() throws ServletException, IOException {
+    authenticate("tenant-superadmin@bbp.com", Set.of("ROLE_SUPER_ADMIN"), Set.of("TENANT-A"));
+    when(authScopeService.isPlatformScope("TENANT-A")).thenReturn(false);
+
+    MockHttpServletRequest request = request("PUT", "/api/v1/superadmin/tenants/42/billing-plan");
+    request.setAttribute("jwtClaims", claimsFor("TENANT-A"));
+    request.addHeader("X-Company-Code", "TENANT-A");
+    MockHttpServletResponse response = new MockHttpServletResponse();
+
+    filter.doFilter(request, response, filterChain);
+
+    assertThat(response.getStatus()).isEqualTo(403);
+    assertThat(response.getContentAsString()).contains("SUPER_ADMIN_PLATFORM_ONLY");
+    verify(authScopeService).isPlatformScope("TENANT-A");
+    verifyNoInteractions(companyService);
+    verify(tenantRuntimeRequestAdmissionService, never())
+        .beginRequest(anyString(), anyString(), anyString(), anyString(), anyBoolean());
+    verify(filterChain, never()).doFilter(request, response);
   }
 
   @Test
