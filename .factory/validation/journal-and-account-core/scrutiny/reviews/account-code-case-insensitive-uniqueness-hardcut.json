@@ -1,0 +1,26 @@
+{
+  "featureId": "account-code-case-insensitive-uniqueness-hardcut",
+  "reviewedAt": "2026-04-21T13:40:12.306122Z",
+  "commitId": "c93f142ce29acd7dea53e081058f45b320fffc44",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The fix closes the original blocker. The original hard-cut still centralizes the chart/default-account corridor behind `AccountResolutionOwnerService`, and the follow-up migration now enforces company-scoped uniqueness on `lower(code)` so `cash`/`CASH` can no longer persist as separate accounts. `AccountCatalogService` still preflights ignore-case duplicates, now maps `uq_accounts_company_code_ci` violations back to `BUSINESS_DUPLICATE_ENTRY`, and the surviving accounting exception advice still maps that business error to HTTP 409. Added regressions cover both serial API duplicate rejection and concurrent DB-level fail-closed behavior with a single surviving row, so the prior race/ambiguity is adequately closed without regressing the duplicate-code contract.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The accounting module guidance still does not name `AccountResolutionOwnerService` as the controller-facing canonical owner for the chart/default-account corridor, even though the original hard-cut now routes every `AccountController` account/default-account/tree action through it.",
+      "evidence": "`erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/AGENTS.md:23-49` still describes `AccountingService` as the accounting-host entrypoint/canonical boundary guidance, while `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/controller/AccountController.java:43-94` routes accounts, default accounts, create-account, and tree reads through `AccountResolutionOwnerService`, whose owner class lives at `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/AccountResolutionOwnerService.java:18-63`."
+    },
+    {
+      "area": "skills",
+      "observation": "The `accounting-hardcut-worker` skill still frames runtime/API changes as requiring compose-backed curl proof, but this narrowly scoped fix was accepted as procedure-following based on deterministic integration regressions that covered the serial API contract and concurrent persistence guarantee instead.",
+      "evidence": "The skill says `If runtime/API behavior changed ... run the approved compose-backed proof and document the exact curl probes` at `.factory/skills/accounting-hardcut-worker/SKILL.md:79-87`, while the fix handoff records targeted Maven proof plus `AccountCodeCaseInsensitiveUniquenessIT` coverage and explicitly suggests allowing deterministic integration regressions for manual serial/concurrency proof at `/Users/anas/.factory/missions/b3885fb3-3080-480f-9f59-1eba48c5f565/handoffs/2026-04-21T12-54-28-929Z__account-code-case-insensitive-uniqueness-hardcut__691f390f-6d57-4066-a0df-6d56b033c2c2.json:10-33,80-83`."
+    }
+  ],
+  "addressesFailureFrom": "/Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/accounting-centralization-20260420/.factory/validation/journal-and-account-core/scrutiny/reviews/chart-of-accounts-and-default-account-hardcut.json",
+  "summary": "Pass. Reviewing both the original hard-cut commit `103def52fc0d135cc725f3d5e437fbf269218204` and the fix commit `c93f142ce29acd7dea53e081058f45b320fffc44`, the new case-insensitive unique index plus updated duplicate-error mapping and regression coverage eliminate the previously reported `cash`/`CASH` race while preserving the documented 409/BUSINESS_DUPLICATE_ENTRY behavior. No remaining blocking or non-blocking code defects were found in this fix scope."
+}
