@@ -69,6 +69,28 @@ The mission is intentionally ordered. Validators should respect that:
 - Treat runtime proof as not-ready until the reset harness has verified seeded actors and fixture presence, including the validation super-admin's required auth scope, rather than merely printing guidance.
 - Treat RLS proof as incomplete until live app datasource sessions demonstrate the tenant/company context binding that the PostgreSQL policy depends on.
 
+## Validation Concurrency
+
+- **api-and-db:** max concurrent validators = 1
+- Reasoning: this milestone uses one shared compose-backed runtime, seeded tenants that can be mutated by validation probes, direct DB inspection against the same Postgres instance, and JVM-heavy regression suites in the shared checkout. Keep this surface serialized to avoid cross-validator interference and noisy state races.
+- Current machine assessment (2026-04-21): 25 GiB RAM with an active local VM and multiple `droid` processes already consuming meaningful memory/CPU. Treat serialized validation as the safe ceiling even though the runtime itself is healthy.
+
+## Flow Validator Guidance: api-and-db
+
+- Stay on the approved local boundary only: app `http://localhost:18081`, actuator `http://localhost:19090/actuator/health`, Postgres `127.0.0.1:5433`, MailHog `http://localhost:18025`.
+- Use the seeded validation runtime created by `scripts/reset_final_validation_runtime.sh`; do not restart services from the subagent.
+- If the delegated `user-testing-flow-validator` Task helper exits without producing a report, fall back to direct in-session validation, record the Task failure as a tooling friction, and continue with the same isolation guidance rather than burning the round.
+- Allowed seeded actors for this milestone group are:
+  - `validation.admin@example.com` / `QaFixture!2026` / company `MOCK`
+  - `validation.rival.admin@example.com` / `QaFixture!2026` / company `RIVAL`
+  - `validation.superadmin@example.com` / `QaFixture!2026` / platform scope only when a control-plane comparison is explicitly needed
+- Use `X-Company-Code` headers that match the login scope on every authenticated API probe.
+- Prefer read probes first. Only use write probes when they are fail-closed by construction and do not require cleanup (for example, foreign-tenant ids that should be rejected before mutation).
+- For `VAL-CROSS-023`, capture representative cross-tenant evidence across dealer master, catalog/stock visibility, accounting journals, and dealer-finance statement/aging/ledger surfaces. The goal is to prove the authenticated tenant cannot read or mutate rival-tenant truth.
+- For `VAL-CROSS-027`, pair repo-static evidence (the canonical accounting RLS table list and policies) with live DB/app-session evidence showing `app.current_company_id` binding, zero visibility without valid context, own-tenant visibility with valid context, and blocked foreign-tenant writes.
+- DB inspection may use `docker exec -i erp_db psql ...` against the local compose database only. Do not alter schema, disable RLS, or grant broader privileges.
+- Keep all outputs inside `.factory/validation/accounting-boundary-and-tenant-safety/user-testing/flows/` and the mission evidence directory assigned by the parent validator.
+
 ## Worker Reminder
 
 Validation is not complete if tests pass but the shared-state docs still teach the wrong accounting boundary, dealer/shared-master model, runtime ports, approval model, or catalog sequencing.
