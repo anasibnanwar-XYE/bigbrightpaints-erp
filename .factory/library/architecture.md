@@ -2,74 +2,91 @@
 
 Worker-facing architecture guidance for the accounting hard-cut mission.
 
-This file is not a public docs entrypoint. It exists to keep workers aligned on the mission's actual truth boundary and the constraints that cannot drift during cleanup.
+This file exists to keep workers aligned on the surviving business truth, ownership boundaries, and deletion intent during the hard-cut.
 
 ---
 
 ## Mission Truth
 
-- **Accounting is the top-level truth boundary.** Sales, inventory, invoice, purchasing, and reporting may initiate or consume business flows, but accounting owns journals, ledgers, settlements, period state, reconciliation, and financial disclosure policy.
-- **There must be one financial owner per flow.** Do not leave duplicate posting paths, shadow ledgers, or report-side financial truth reconstruction behind.
-- **Docs are deliverables in this mission.** Architecture guidance, backend contract docs, and worker-facing library docs are part of done, not follow-up polish.
+- **Accounting is the financial truth boundary.** Sales, purchasing, inventory, factory, dealer master, and reports may initiate or consume flows, but accounting owns journal truth, settlement truth, period state, reconciliation truth, and sensitive financial disclosure policy.
+- **`AccountingFacade` stays.** The mission does not remove the facade as the external accounting boundary; it hard-cuts the internals behind it.
+- **Flows must be explainable as business flows.** The target state is not “random posting paths that happen to balance”; it is a connected ERP flow model that accountants and non-accountants can follow.
+- **Delete duplicate owners.** If a packet lands a canonical owner, remove wrapper/delegate/side-channel/report-reconstruction paths that would leave two truths alive.
 
-## Scope Boundaries
+## Surviving Internal Layer Model
 
-- In scope: accounting plus direct financial seams in inventory, invoice, purchasing, sales, and reports.
-- Out of scope: HR/payroll feature work unless a shared guard, test, or doc surface must stay consistent.
-- Preserve frontend-usable API contract shapes where they matter, but do **not** preserve bad internal architecture for its own sake.
+The target internal layering behind `AccountingFacade` is:
+1. **Policy layer** — validation, role/policy checks, tenant/period/disclosure rules
+2. **Orchestration layer** — connected business-flow coordination across party, inventory, purchasing, dispatch, period, and report corridors
+3. **Posting layer** — canonical journal creation, reversal, numbering, and replay-safe ledger mutation
+4. **Account-resolution layer** — COA, default accounts, readiness, and semantic account-role resolution
+5. **Reporting layer** — read models over centralized accounting truth, approval-gated disclosures, and operator guidance
 
-## Implementation Mode
+Workers should use these layers to decide what survives and what gets deleted.
 
-- This mission is **characterization-first and contract-preserving at public edges**. Workers may hard-cut internals aggressively, but named public surfaces must keep their documented behavior unless the packet deliberately updates docs/contracts in the same change.
-- Treat the validation contract as the authoritative checklist for worker-visible accounting/reporting/workflow behavior. If a refactor changes a path, role rule, response-shape expectation, or workflow step named there, the packet is incomplete until the contract-facing docs and proofs move with it.
-- Prefer consolidation into one accounting owner per flow over compatibility wrappers. Delete duplicate or shadow financial paths once characterization coverage and replacement ownership are in place.
+## Party / Payment Truth
+
+- **Party-first, payment-first, allocation-next, accounting-derived** is the target model for receipts and settlements.
+- Persist a distinct payment truth first.
+- Keep allocation rows explicit and separate from both payment truth and journal lines.
+- Derive balances and summaries from invoice/purchase, payment, and allocation truth.
+- Keep current public receipt/payment/settlement routes stable while internal ownership is unified.
+
+## Shared Dealer Master
+
+- Dealer identity is one shared ERP truth across admin, sales, accounting, portal-finance, and dealer self-service.
+- Dealer creation from tenant-admin role assignment or sales onboarding must converge to one preserved dealer master.
+- Dealer accounting wiring must exist on the surviving dealer truth; accounting should not need a second hidden dealer/account record.
+- Dealers are never hard-deleted in this mission. Hold/suspend/block states may exist, but finance visibility and history remain.
+
+## Central Stock / Catalog Master
+
+- The catalog/master-data track is the **second track** after accounting truth is stable.
+- The target model is tenant-scoped **Brand -> Parent Product -> Variant**, with variant/SKU as the stock truth.
+- Raw materials and packaging stock items also belong to the central master.
+- Catalog readiness may succeed before full accounting readiness, but accounting-owned actions must fail closed until valuation/COGS/revenue/tax/default-account blockers are cleared.
+- The central master remains ERP-native. Do not create a second public catalog system.
 
 ## Non-Negotiable Invariants
 
-- **RLS rollout applies to all accounting tables.** This is not optional and not partial.
-- **Tenant isolation must hold at both service and database layers.** Missing or wrong tenant context must fail closed.
-- **Sensitive financial disclosures require approval gates.** Full ledgers, transaction-heavy reports, cashflow-style disclosures, and similar high-sensitivity outputs cannot become open reads by accident.
-- **Anomaly/review is a paid feature.** Rollout order is manual superadmin toggle first, default off, warn-only. It may surface guidance or queue review, but it must not hard-block accounting writes.
-- **Accounting auditability must remain explicit.** Financial events need traceable workflow linkage and reviewable reasoning.
+- **All accounting truth tables get database-enforced tenant isolation.**
+- **Application-surface tenant isolation must also fail closed.** Dealer-master, catalog, journal, settlement, statement, aging, report, and pricing reads must stay tenant-scoped.
+- **Sensitive disclosures stay approval-gated.**
+- **Anomaly/review stays default-off, superadmin-controlled, warn-only.**
+- **Accounting auditability stays explicit.** Financial events need workflow linkage and reviewable reasoning.
+- **Money math must reconcile exactly under the system’s rounding/scale rules.**
 
-## Canonical Accounting Seams
+## Canonical Hard-Cut Seams
 
-Workers should assume these are the main hard-cut seams:
+Workers should assume these are the main seams:
+- journal posting, reversal, numbering, and audit visibility
+- chart of accounts, default accounts, and readiness/config health
+- payment-event, allocation, receipt, and settlement orchestration
+- dealer shared-master preservation and accounting-facing party visibility
+- period-close, reopen, month-end checklist, and reconciliation ownership
+- inventory/opening-stock/costing/event bridges into accounting truth
+- dispatch / invoice / purchase / return / note accounting linkage
+- report read models, disclosure gates, workflow shortcuts, and review toggle surfaces
+- catalog central master, bulk variant generation, and canonical SKU reuse
 
-- journal creation, numbering, reversal, and posting ownership
-- chart of accounts and default-account readiness
-- dealer/supplier settlements and ledger truth
-- period close, reopen, and reconciliation flows
-- inventory-accounting and invoice/purchasing-accounting bridges
-- reporting reads that expose accounting truth
+## Dependency Direction
 
-Worker-facing expectations on those seams:
+Expected dependency direction is:
+- `sales -> accounting`
+- `purchasing -> accounting`
+- `inventory/factory -> accounting`
+- `dealer master -> accounting` for finance visibility and account wiring
+- `reports -> accounting`
+- `catalog central master -> accounting readiness` (after accounting core is stable)
+- `admin/company/auth -> accounting` only for access control, approvals, and tenant binding
 
-- **Period close is maker-checker, not a convenience toggle.** The canonical close path is request-close → approve-close, with distinct actors and explicit notes/reasoning; do not reintroduce a direct close shortcut.
-- **Draft support is opt-in and side-effect free until promotion.** If a workflow is declared draft-capable, save/resume must preserve a stable draft artifact and must not post journals, settle balances, or mutate period state before explicit submit/post.
-- **Partner truth must stay filterable and reconcilable.** Dealer/supplier journal, statement, settlement, and aging surfaces must remain aligned so workers do not split partner truth across disconnected implementations.
-- **Reports are read models over accounting truth, not alternate ledgers.** Closed/open branching, snapshot usage, export approval, requester-owned downloads, and statement/PDF exceptions must live at the reporting/read boundary without creating a second accounting owner.
-
-## Cross-Module Dependency Map
-
-The expected dependency direction is:
-
-- `sales -> accounting` for receivables, revenue, credits, and settlement truth
-- `inventory -> accounting` for valuation, opening stock, adjustments, and stock-linked financial effects
-- `invoice -> accounting` for invoice posting and downstream ledger impacts
-- `purchasing -> accounting` for payables, supplier settlement, and purchase-return truth
-- `reports -> accounting` for financial read models and disclosure policy
-- `admin/company/auth -> accounting` only for access control, company binding, approvals, and runtime admission
-
-If a cleanup changes accounting ownership, workers must re-check the dependent module flow in the same packet.
+If a packet changes one of these seams, re-check the downstream corridors in the same packet.
 
 ## Worker Implications
 
-- Prefer deletion and consolidation over new wrapper layers.
-- Do not let reports become an alternate accounting owner.
-- Do not weaken approval gates just to simplify a read path.
-- Keep export/report approvals on the canonical admin approval surfaces, and preserve requester-owned export downloads even after approval.
-- Do not accidentally route statement/aging PDF downloads through the export-approval gate; those are separate audited surfaces.
-- Preserve role boundaries at public edges: accounting/report surfaces stay on the documented admin/accounting policies, with audit/approval exceptions only where the contract says so.
-- Do not treat anomaly/review as a blocking control path; it is warning/review assistance only, behind a superadmin-controlled entitlement gate, default off.
-- If a packet changes financial truth, RLS behavior, sensitive-disclosure access, or a named workflow shortcut, docs/tests/contracts must move with it because mission docs are a shipped output.
+- Prefer consolidation and deletion over wrappers.
+- Do not reintroduce a second public accounting or catalog host.
+- Do not let reports or portal reads become alternate truth owners.
+- Do not hide dealer/accounting convergence behind manual sync assumptions.
+- Do not preserve obsolete shadow records just because multiple modules currently disagree.
+- When a packet changes truth, tenant isolation, or public route expectations, update the shared-state docs and contract-facing artifacts with it.
