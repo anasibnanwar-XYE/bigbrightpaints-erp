@@ -1,0 +1,72 @@
+{
+  "milestone": "journal-and-account-core",
+  "round": 1,
+  "status": "fail",
+  "scopeNote": "Ran the configured milestone validators and reviewed all completed implementation features in the journal-and-account-core milestone. The scoped test suite, compile/typecheck, and Spotless lint check all passed, but scrutiny found two blocking feature-level issues, so the milestone cannot advance to user testing yet.",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "cd erp-domain && MIGRATION_SET=v2 mvn -q -Djacoco.skip=true -Dtest='CriticalAccountingAxesIT,AccountingEndpointContractTest,SettlementControllerIdempotencyHeaderParityTest,ReconciliationControlsIT' test",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "cd erp-domain && MIGRATION_SET=v2 mvn -q -DskipTests compile",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "cd erp-domain && MIGRATION_SET=v2 mvn spotless:check",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 3,
+    "passed": 1,
+    "failed": 2,
+    "failedFeatures": [
+      "chart-of-accounts-and-default-account-hardcut",
+      "journal-posting-and-core-read-model-hardcut"
+    ]
+  },
+  "blockingIssues": [
+    {
+      "featureId": "chart-of-accounts-and-default-account-hardcut",
+      "severity": "blocking",
+      "description": "AccountCatalogService trims account codes but still persists original case while relying on a case-sensitive unique key, so concurrent requests can create case-variant duplicates such as 'cash' and 'CASH'. That breaks the promised company-scoped duplicate-code conflict behavior and leaves downstream ignore-case account resolution ambiguous. See .factory/validation/journal-and-account-core/scrutiny/reviews/chart-of-accounts-and-default-account-hardcut.json."
+    },
+    {
+      "featureId": "journal-posting-and-core-read-model-hardcut",
+      "severity": "blocking",
+      "description": "A live competing GST truth owner remains at /api/v1/reports/gst-return because ReportService.gstReturn() still rebuilds GST totals from invoice and purchase tables instead of consuming the canonical accounting owner introduced by the feature. That leaves report-side GST math active in the corridor that was meant to be hard-cut. See .factory/validation/journal-and-account-core/scrutiny/reviews/journal-posting-and-core-read-model-hardcut.json."
+    }
+  ],
+  "appliedUpdates": [
+    {
+      "target": ".factory/services.yaml",
+      "description": "Added `targeted-gl-core-proof` so future GL-core workers and validators can run the narrow chart/default-account ownership and duplicate-handling proof suite from the shared service catalog instead of relying on ad hoc Maven selectors.",
+      "sourceFeature": "chart-of-accounts-and-default-account-hardcut"
+    },
+    {
+      "target": ".factory/validation/journal-and-account-core/scrutiny/synthesis.json",
+      "description": "Recorded the first-round scrutiny synthesis for the journal-and-account-core milestone, including validator results, per-feature review outcomes, and blocking findings.",
+      "sourceFeature": "scrutiny-validator-journal-and-account-core"
+    }
+  ],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/AGENTS.md",
+      "suggestion": "Update the accounting module guidance to document AccountResolutionOwnerService as the controller-facing canonical owner for chart-of-accounts and default-account API resolution, instead of implying AccountingService alone owns that boundary.",
+      "evidence": "The passing implementation introduced AccountResolutionOwnerService as the explicit owner used by AccountController, but the module guidance still routes workers toward AccountingService as the only accounting-host entrypoint for this corridor. The discrepancy was noted in the review for chart-of-accounts-and-default-account-hardcut.",
+      "isSystemic": false
+    },
+    {
+      "target": "accounting-hardcut-worker skill / mission handoff contract",
+      "suggestion": "Require workers to include the skillFeedback object consistently in final handoffs so scrutiny can verify whether any feature intentionally deviated from the worker skill procedure.",
+      "evidence": "The review for journal-posting-and-core-read-model-hardcut found that its handoff omitted skillFeedback entirely, unlike adjacent accounting hard-cut handoffs, making it harder to verify whether the surviving legacy /reports/gst-return path reflected an intentional scoped exception or a missed retirement step.",
+      "isSystemic": false
+    }
+  ],
+  "rejectedObservations": [],
+  "previousRound": null
+}
