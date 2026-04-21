@@ -81,7 +81,7 @@ ensure_secret_if_missing() {
   fi
 }
 
-ensure_value "SPRING_PROFILES_ACTIVE" "prod,flyway-v2"
+ensure_value "SPRING_PROFILES_ACTIVE" "prod,flyway-v2,mock,validation-seed"
 ensure_value "SPRING_DATASOURCE_URL" "jdbc:postgresql://db:5432/erp_domain"
 ensure_value "SPRING_DATASOURCE_USERNAME" "erp"
 ensure_value "DB_PORT" "5433"
@@ -93,7 +93,7 @@ ensure_value "RABBIT_PORT" "15673"
 ensure_value "RABBIT_MANAGEMENT_PORT" "15674"
 ensure_value "ERP_ENVIRONMENT_VALIDATION_ENABLED" "false"
 ensure_value "ERP_ENVIRONMENT_VALIDATION_HEALTH_INDICATOR_SKIP_WHEN_VALIDATION_DISABLED" "true"
-ensure_value "ERP_VALIDATION_SEED_ENABLED" "false"
+ensure_value "ERP_VALIDATION_SEED_ENABLED" "true"
 ensure_value "ERP_INVENTORY_OPENING_STOCK_ENABLED" "true"
 ensure_value "ERP_CORS_ALLOWED_ORIGINS" "https://app.bigbrightpaints.com"
 ensure_value "ERP_CORS_ALLOW_TAILSCALE_HTTP_ORIGINS" "true"
@@ -111,8 +111,8 @@ ensure_secret_if_missing "SPRING_DATASOURCE_PASSWORD" "" generate_token
 ensure_secret_if_missing "JWT_SECRET" "YOUR_JWT_SECRET_HERE" generate_token
 ensure_secret_if_missing "ERP_SECURITY_ENCRYPTION_KEY" "YOUR_ENCRYPTION_KEY_HERE" generate_hex_key
 
-# Compose validation does not require validation seed actors by default, but keeping safe
-# local placeholders avoids follow-on failures if a validator opts in manually.
+# Compose validation requires deterministic mock + validation seed actors by default.
+# Keep placeholders safe and deterministic for local validation runtime resets.
 if [ -z "$(current_env_value "ERP_VALIDATION_SEED_PASSWORD")" ]; then
   ensure_value "ERP_VALIDATION_SEED_PASSWORD" "Validation1!AccountingMission"
 fi
