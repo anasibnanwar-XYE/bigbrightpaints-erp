@@ -50,6 +50,7 @@ Workers should use these layers to decide what survives and what gets deleted.
 ## Non-Negotiable Invariants
 
 - **All accounting truth tables get database-enforced tenant isolation.**
+- **Accounting-table RLS is only mission-complete when ordinary app datasource sessions project tenant context into PostgreSQL session state.** The canonical runtime contract is `CompanyContextHolder -> TenantSessionBindingDataSourceConfig -> app.current_company_id`; proofs that call `set_config(...)` directly are useful diagnostics but are not sufficient runtime evidence on their own.
 - **Application-surface tenant isolation must also fail closed.** Dealer-master, catalog, journal, settlement, statement, aging, report, and pricing reads must stay tenant-scoped.
 - **Sensitive disclosures stay approval-gated.**
 - **Anomaly/review stays default-off, superadmin-controlled, warn-only.**

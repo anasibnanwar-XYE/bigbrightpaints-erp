@@ -35,6 +35,8 @@ commands:
     cd erp-domain && MIGRATION_SET=v2 mvn -q -Djacoco.skip=true -Dtest='OrderFulfillmentE2ETest,ProcureToPayE2ETest,InventoryAccountingEventListenerIT,CreditDebitNoteIT,ReconciliationControlsIT,TS_PeriodCloseBoundaryCoverageTest,TS_PeriodCloseAtomicSnapshotTest' test
   targeted-security-proof: >-
     cd erp-domain && MIGRATION_SET=v2 mvn -q -Djacoco.skip=true -Dtest='AdminApprovalRbacIT,ReportControllerSecurityIT,ReportControllerRouteContractIT,PortalFinanceControllerIT,StatementAgingIT,DealerLedgerIT,CompanyContextFilterControlPlaneBindingTest,SuperAdminTenantWorkflowIsolationIT,TenantRuntimeEnforcementAuthIT,OpenApiSnapshotIT' test
+  accounting-rls-proof: >-
+    cd erp-domain && MIGRATION_SET=v2 mvn -q -Djacoco.skip=true -Dtest='AccountingTenantIsolationRlsIT' test
   openapi-refresh: >-
     cd erp-domain && MIGRATION_SET=v2 mvn -q -Djacoco.skip=true -Derp.openapi.snapshot.verify=true -Derp.openapi.snapshot.refresh=true -Dtest=OpenApiSnapshotIT test
   gate-fast: >-

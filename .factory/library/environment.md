@@ -35,7 +35,8 @@ Use these ports for mission runtime proof. Host Postgres `5432` is off-limits.
 - `ERP_SECURITY_ENCRYPTION_KEY`
 - `ERP_SECURITY_AUDIT_PRIVATE_KEY`
 - `SPRING_MAIL_HOST` / `SPRING_MAIL_PORT` / `SPRING_MAIL_USERNAME` / `SPRING_MAIL_PASSWORD`
-- `SPRING_PROFILES_ACTIVE=prod,flyway-v2` for compose-backed runtime proof
+- `SPRING_PROFILES_ACTIVE=prod,flyway-v2,mock,validation-seed` for the init-managed compose-backed validation runtime
+- `ERP_VALIDATION_SEED_ENABLED=true` so compose-backed runtime proof boots the seeded validation fixtures
 - `MIGRATION_SET=v2` for Maven-side validation
 
 ## Mission Constraints
