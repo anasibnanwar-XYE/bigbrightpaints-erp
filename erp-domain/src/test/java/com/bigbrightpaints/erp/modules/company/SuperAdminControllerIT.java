@@ -31,6 +31,15 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
   private static final String ADMIN_EMAIL = "admin@bbp.com";
   private static final String SUPER_ADMIN_EMAIL = "super-admin@bbp.com";
   private static final String PASSWORD = "admin123";
+  private static final List<String> TENANT_BUSINESS_DATASET_KEYS =
+      List.of(
+          "orders",
+          "invoices",
+          "journalEntries",
+          "dealerLedgers",
+          "catalogInventory",
+          "payrollRecords",
+          "manufacturingRecords");
 
   @Autowired private TestRestTemplate rest;
 
@@ -83,15 +92,7 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
     @SuppressWarnings("unchecked")
     Map<String, Object> dashboardData = (Map<String, Object>) allowed.getBody().get("data");
     assertThat(dashboardData).containsKey("billingSummary");
-    assertThat(dashboardData)
-        .doesNotContainKeys(
-            "orders",
-            "invoices",
-            "journalEntries",
-            "dealerLedgers",
-            "catalogInventory",
-            "payrollRecords",
-            "manufacturingRecords");
+    assertContainsOnlyControlPlaneDashboardFields(dashboardData);
   }
 
   @Test
@@ -210,16 +211,7 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
                     COMPANY_CODE.equalsIgnoreCase(String.valueOf(row.get("companyCode"))))
             .findFirst()
             .orElseThrow();
-    assertThat(matchedTenant).containsKeys("billingPlan", "mainAdmin", "enabledModules");
-    assertThat(matchedTenant)
-        .doesNotContainKeys(
-            "orders",
-            "invoices",
-            "journalEntries",
-            "dealerLedgers",
-            "catalogInventory",
-            "payrollRecords",
-            "manufacturingRecords");
+    assertContainsOnlyControlPlaneTenantSummaryFields(matchedTenant);
 
     ResponseEntity<Map> detailResponse =
         rest.exchange(
@@ -279,6 +271,48 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
 
     assertThat(blockedResponse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
     assertThat(readLifecycleState(tenant.getId())).isEqualTo("ACTIVE");
+  }
+
+  @Test
+  void superAdmin_dashboard_list_and_detail_payloads_stay_control_plane_only() {
+    Company tenant = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
+    String superAdminToken = loginToken(SUPER_ADMIN_EMAIL, ROOT_COMPANY_CODE);
+    HttpHeaders superAdminHeaders = headers(superAdminToken, ROOT_COMPANY_CODE);
+
+    ResponseEntity<Map> dashboardResponse =
+        rest.exchange(
+            "/api/v1/superadmin/dashboard",
+            HttpMethod.GET,
+            new HttpEntity<>(superAdminHeaders),
+            Map.class);
+    assertThat(dashboardResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    @SuppressWarnings("unchecked")
+    Map<String, Object> dashboardData = (Map<String, Object>) dashboardResponse.getBody().get("data");
+    assertContainsOnlyControlPlaneDashboardFields(dashboardData);
+
+    ResponseEntity<Map> tenantsResponse =
+        rest.exchange(
+            "/api/v1/superadmin/tenants?status=ACTIVE",
+            HttpMethod.GET,
+            new HttpEntity<>(superAdminHeaders),
+            Map.class);
+    assertThat(tenantsResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> tenantRows =
+        (List<Map<String, Object>>) tenantsResponse.getBody().get("data");
+    assertThat(tenantRows).isNotEmpty();
+    tenantRows.forEach(this::assertContainsOnlyControlPlaneTenantSummaryFields);
+
+    ResponseEntity<Map> detailResponse =
+        rest.exchange(
+            "/api/v1/superadmin/tenants/" + tenant.getId(),
+            HttpMethod.GET,
+            new HttpEntity<>(superAdminHeaders),
+            Map.class);
+    assertThat(detailResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    @SuppressWarnings("unchecked")
+    Map<String, Object> detailData = (Map<String, Object>) detailResponse.getBody().get("data");
+    assertContainsOnlyControlPlaneTenantDetailFields(detailData);
   }
 
   @Test
@@ -373,15 +407,7 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
     assertThat(detailBillingPlan.get("annualRate")).isEqualTo(1799.88);
     assertThat(detailBillingPlan.get("seats")).isEqualTo(35);
     assertThat(detailBillingPlan.get("updatedBy")).isEqualTo(SUPER_ADMIN_EMAIL);
-    assertThat(detailData)
-        .doesNotContainKeys(
-            "orders",
-            "invoices",
-            "journalEntries",
-            "dealerLedgers",
-            "catalogInventory",
-            "payrollRecords",
-            "manufacturingRecords");
+    assertContainsOnlyControlPlaneTenantDetailFields(detailData);
 
     ResponseEntity<Map> postDashboardResponse =
         rest.exchange(
@@ -397,15 +423,7 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
     Map<String, Object> postBillingSummary =
         (Map<String, Object>) postDashboardData.get("billingSummary");
     assertThat(postBillingSummary).isNotNull();
-    assertThat(postDashboardData)
-        .doesNotContainKeys(
-            "orders",
-            "invoices",
-            "journalEntries",
-            "dealerLedgers",
-            "catalogInventory",
-            "payrollRecords",
-            "manufacturingRecords");
+    assertContainsOnlyControlPlaneDashboardFields(postDashboardData);
     assertThat(postBillingSummary)
         .containsKeys(
             "totalMonthlyRecurringRevenue", "totalAnnualRecurringRevenue", "billedTenantCount");
@@ -445,6 +463,106 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
             "companyCode", companyCode);
     ResponseEntity<Map> response = rest.postForEntity("/api/v1/auth/login", request, Map.class);
     return (String) response.getBody().get("accessToken");
+  }
+
+  private void assertContainsOnlyControlPlaneDashboardFields(Map<String, Object> dashboardData) {
+    assertThat(dashboardData).isNotNull();
+    assertThat(dashboardData)
+        .containsKeys(
+            "totalTenants",
+            "activeTenants",
+            "suspendedTenants",
+            "deactivatedTenants",
+            "totalActiveUsers",
+            "totalActiveUserQuota",
+            "totalAuditStorageBytes",
+            "totalStorageQuotaBytes",
+            "totalCurrentConcurrentRequests",
+            "totalConcurrentRequestQuota",
+            "billingSummary",
+            "tenants")
+        .doesNotContainKeys(TENANT_BUSINESS_DATASET_KEYS.toArray(String[]::new));
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> dashboardTenants =
+        (List<Map<String, Object>>) dashboardData.get("tenants");
+    assertThat(dashboardTenants).isNotNull();
+    dashboardTenants.forEach(this::assertContainsOnlyControlPlaneTenantOverviewFields);
+  }
+
+  private void assertContainsOnlyControlPlaneTenantOverviewFields(
+      Map<String, Object> tenantOverview) {
+    assertThat(tenantOverview)
+        .containsKeys(
+            "companyId",
+            "companyCode",
+            "companyName",
+            "region",
+            "lifecycleState",
+            "lifecycleReason",
+            "activeUsers",
+            "activeUserQuota",
+            "auditStorageBytes",
+            "storageQuotaBytes",
+            "currentConcurrentRequests",
+            "concurrentRequestQuota",
+            "apiActivityCount",
+            "apiRequestQuota",
+            "apiErrorCount",
+            "apiErrorRateInBasisPoints",
+            "quotaSoftLimitEnabled",
+            "quotaHardLimitEnabled",
+            "activeUserUtilizationInBasisPoints",
+            "auditStorageUtilizationInBasisPoints",
+            "concurrentRequestUtilizationInBasisPoints")
+        .doesNotContainKeys(TENANT_BUSINESS_DATASET_KEYS.toArray(String[]::new));
+  }
+
+  private void assertContainsOnlyControlPlaneTenantSummaryFields(
+      Map<String, Object> tenantSummary) {
+    assertThat(tenantSummary)
+        .containsKeys(
+            "companyId",
+            "companyCode",
+            "companyName",
+            "timezone",
+            "lifecycleState",
+            "lifecycleReason",
+            "activeUserCount",
+            "quotaMaxActiveUsers",
+            "apiActivityCount",
+            "quotaMaxApiRequests",
+            "auditStorageBytes",
+            "quotaMaxStorageBytes",
+            "currentConcurrentRequests",
+            "quotaMaxConcurrentRequests",
+            "enabledModules",
+            "mainAdmin",
+            "billingPlan",
+            "lastActivityAt")
+        .doesNotContainKeys(TENANT_BUSINESS_DATASET_KEYS.toArray(String[]::new));
+  }
+
+  private void assertContainsOnlyControlPlaneTenantDetailFields(
+      Map<String, Object> tenantDetail) {
+    assertThat(tenantDetail)
+        .containsKeys(
+            "companyId",
+            "companyCode",
+            "companyName",
+            "timezone",
+            "stateCode",
+            "lifecycleState",
+            "lifecycleReason",
+            "enabledModules",
+            "onboarding",
+            "mainAdmin",
+            "limits",
+            "usage",
+            "billingPlan",
+            "supportContext",
+            "supportTimeline",
+            "availableActions")
+        .doesNotContainKeys(TENANT_BUSINESS_DATASET_KEYS.toArray(String[]::new));
   }
 
   @SuppressWarnings("unchecked")
