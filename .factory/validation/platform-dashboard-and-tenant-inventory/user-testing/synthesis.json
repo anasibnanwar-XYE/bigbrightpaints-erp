@@ -1,0 +1,38 @@
+{
+  "milestone": "platform-dashboard-and-tenant-inventory",
+  "round": 1,
+  "status": "pass",
+  "assertionsSummary": {
+    "total": 7,
+    "passed": 7,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-PLATFORM-002",
+    "VAL-PLATFORM-003",
+    "VAL-PLATFORM-004",
+    "VAL-PLATFORM-005",
+    "VAL-PLATFORM-006",
+    "VAL-OPS-006",
+    "VAL-OPS-007"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [
+    {
+      "target": "user-testing.md",
+      "description": "Documented mission-required compose port overrides, DD_API_KEY local fallback, and readiness-vs-aggregate-health guidance for targeted runtime validation.",
+      "source": "setup"
+    }
+  ],
+  "previousRound": null,
+  "environmentConstraints": [
+    "The delegated `user-testing-flow-validator` helper failed twice without returning output, so this round used the documented direct in-session validation fallback.",
+    "The checked-out `.env` overrides compose ports away from the approved mission boundary unless explicit APP_PORT/MANAGEMENT_PORT/MAILHOG/RabbitMQ overrides are provided.",
+    "The compose-backed runtime returned aggregate actuator health 503 while readiness stayed 200 and the target auth/control-plane APIs remained functional; validation readiness was therefore judged from readiness plus endpoint probes."
+  ],
+  "flowReports": [
+    "/Users/anas/Documents/Factory/.factory/validation/platform-dashboard-and-tenant-inventory/user-testing/flows/platform-inventory-runtime.json"
+  ]
+}

@@ -48,10 +48,13 @@ Rationale:
 
 1. Run `.factory/init.sh`.
 2. Start the approved compose boundary from `.factory/services.yaml` if it is not already healthy.
+   - Local validator note: the checked-out `.env` may override compose ports to `18081/19090/18025/15673/15674`; for mission validation, explicitly export `APP_PORT=8081`, `MANAGEMENT_PORT=9090`, `MAILHOG_SMTP_PORT=1025`, `MAILHOG_UI_PORT=8025`, `RABBIT_PORT=5672`, and `RABBIT_MANAGEMENT_PORT=15672` when invoking `docker compose` so the runtime matches the approved boundary.
+   - If `DD_API_KEY` interpolation blocks compose startup, set `DD_API_KEY=local-dev-dd-api-key` for the local validation command rather than hunting for a real secret.
 3. Verify:
    - `http://localhost:9090/actuator/health`
    - `http://localhost:9090/actuator/health/readiness`
    - `GET http://localhost:8081/api/v1/auth/me` returning `200`, `401`, or `403`
+   - Readiness plus `auth/me` is sufficient to proceed with targeted runtime validation when the aggregate health endpoint is temporarily `503` because an optional side service such as MailHog is not bound yet.
 4. For onboarding or reset flows, use MailHog to capture the actual email artifact instead of inventing credentials or reset tokens.
 5. Create isolated tenant codes per validator run when mutating shared runtime state.
 6. For cleanup/doc assertions, skip runtime startup and inspect repo state directly.
@@ -88,6 +91,7 @@ Rationale:
 ## Flow Validator Guidance: api-runtime
 
 - Use only the approved compose-backed runtime on `localhost:8081`, `localhost:9090`, and `localhost:8025`; do not start alternate app ports or sidecar runtimes.
+- If the delegated `user-testing-flow-validator` helper fails to launch or returns no output, fall back to direct in-session validation, write the flow report and synthesis artifacts explicitly, and record the helper failure as environment/tooling friction rather than silently skipping assertions.
 - For `platform-truth-rails-and-privacy-wall`, keep the auth/privacy-wall assertions in a single validator lane because they share the same login identities, MailHog inbox, and tenant-scoped authorization surface.
 - Prefer read-only discovery of live actors (existing credentials, MailHog artifacts, or targeted read-only DB/container inspection) before attempting any mutation. If password-reset flows are required to regain access to an existing seeded actor, use the supported API + MailHog path and record which identity was changed.
 - Reuse one platform-scoped superadmin session for `auth/login -> auth/me -> /api/v1/superadmin/**` continuity checks, and keep denied-route probes to non-destructive reads from tenant-admin, tenant business, portal, dealer-portal, sales, accounting, or factory route families.

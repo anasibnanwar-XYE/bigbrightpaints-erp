@@ -1,0 +1,241 @@
+{
+  "groupId": "platform-inventory-runtime",
+  "testedAt": "2026-04-21T02:30:41Z",
+  "credentials": {
+    "platformAccount": "platform.admin@local.test",
+    "platformScope": "PLATFORM",
+    "tenantAccount": "tenant.admin@local.test",
+    "tenantScope": "UAT01"
+  },
+  "toolsUsed": [
+    "python urllib against live API",
+    "read/grep inspection"
+  ],
+  "assertions": [
+    {
+      "id": "VAL-PLATFORM-002",
+      "title": "Platform dashboard exposes only control-plane telemetry",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "GET /api/v1/superadmin/dashboard as platform admin",
+          "expected": "Dashboard includes control-plane telemetry and omits tenant business datasets",
+          "observed": "HTTP 200 with top-level data keys ['activeTenants', 'billingSummary', 'deactivatedTenants', 'suspendedTenants', 'tenants', 'totalActiveUserQuota', 'totalActiveUsers', 'totalAuditStorageBytes', 'totalConcurrentRequestQuota', 'totalCurrentConcurrentRequests', 'totalStorageQuotaBytes', 'totalTenants']; business keys present: []"
+        }
+      ],
+      "evidence": {
+        "commands": [
+          "POST /api/v1/auth/login",
+          "GET /api/v1/superadmin/dashboard"
+        ],
+        "result": "PASS",
+        "output": "dashboard keys=['activeTenants', 'billingSummary', 'deactivatedTenants', 'suspendedTenants', 'tenants', 'totalActiveUserQuota', 'totalActiveUsers', 'totalAuditStorageBytes', 'totalConcurrentRequestQuota', 'totalCurrentConcurrentRequests', 'totalStorageQuotaBytes', 'totalTenants']",
+        "codeRefs": [
+          "erp-domain/src/test/java/com/bigbrightpaints/erp/modules/company/SuperAdminControllerIT.java:447-490"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-PLATFORM-003",
+      "title": "Platform dashboard billing summary is derived from manual billing-plan truth",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Inspect dashboard billingSummary before and after billing-plan update",
+          "expected": "ARR/MRR fields are present without tenant-ledger or order-rollup payloads",
+          "observed": "billingSummary keys=['billedTenantCount', 'totalAnnualRecurringRevenue', 'totalMonthlyRecurringRevenue']; baseline monthly/annual=299.99/3599.88; after update=409.99/4919.88"
+        }
+      ],
+      "evidence": {
+        "commands": [
+          "GET /api/v1/superadmin/dashboard",
+          "PUT /api/v1/superadmin/tenants/{id}/billing-plan",
+          "GET /api/v1/superadmin/dashboard"
+        ],
+        "result": "PASS",
+        "output": "billingSummary keys=['billedTenantCount', 'totalAnnualRecurringRevenue', 'totalMonthlyRecurringRevenue']",
+        "codeRefs": [
+          "erp-domain/src/test/java/com/bigbrightpaints/erp/modules/company/SuperAdminControllerIT.java:324-430"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-PLATFORM-004",
+      "title": "Tenant list supports lifecycle filtering and returns control-plane summaries only",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "GET /api/v1/superadmin/tenants?status=ACTIVE",
+          "expected": "Only ACTIVE tenants returned",
+          "observed": "HTTP 200 with 1 rows; lifecycle states=['ACTIVE']"
+        },
+        {
+          "action": "GET /api/v1/superadmin/tenants?status=INVALID",
+          "expected": "Invalid filter is rejected",
+          "observed": "HTTP n/a body={\"success\": false, \"message\": \"status filter must be ACTIVE, SUSPENDED, or DEACTIVATED\", \"data\": {\"traceId\": \"25c4e7d6-9c19-425a-adf9-e416f818b4c8\", \"reason\": \"status filter must be ACTIVE, SUSPENDED, or DEACTIVATED\", \"p"
+        }
+      ],
+      "evidence": {
+        "commands": [
+          "GET /api/v1/superadmin/tenants",
+          "GET /api/v1/superadmin/tenants?status=ACTIVE",
+          "GET /api/v1/superadmin/tenants?status=INVALID"
+        ],
+        "result": "PASS",
+        "output": "summary row keys=['activeUserCount', 'apiActivityCount', 'auditStorageBytes', 'billingPlan', 'companyCode', 'companyId', 'companyName', 'currentConcurrentRequests', 'enabledModules', 'lastActivityAt', 'lifecycleReason', 'lifecycleState', 'mainAdmin', 'quotaMaxActiveUsers', 'quotaMaxApiRequests', 'quotaMaxConcurrentRequests', 'quotaMaxStorageBytes', 'timezone']",
+        "codeRefs": [
+          "erp-domain/src/test/java/com/bigbrightpaints/erp/modules/company/SuperAdminControllerIT.java:177-208",
+          "erp-domain/src/test/java/com/bigbrightpaints/erp/modules/company/SuperAdminControllerIT.java:520-543"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-PLATFORM-005",
+      "title": "Tenant detail is the control-plane source of truth for one tenant",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "GET /api/v1/superadmin/tenants/1",
+          "expected": "Tenant detail includes onboarding, lifecycle, limits, usage, modules, billing plan, support context/timeline, main admin, and available actions",
+          "observed": "HTTP 200 for tenant 1 / UAT01 with keys ['availableActions', 'billingPlan', 'companyCode', 'companyId', 'companyName', 'enabledModules', 'lifecycleReason', 'lifecycleState', 'limits', 'mainAdmin', 'onboarding', 'stateCode', 'supportContext', 'supportTimeline', 'timezone', 'usage']"
+        }
+      ],
+      "evidence": {
+        "commands": [
+          "GET /api/v1/superadmin/tenants/1"
+        ],
+        "result": "PASS",
+        "output": "detail keys=['availableActions', 'billingPlan', 'companyCode', 'companyId', 'companyName', 'enabledModules', 'lifecycleReason', 'lifecycleState', 'limits', 'mainAdmin', 'onboarding', 'stateCode', 'supportContext', 'supportTimeline', 'timezone', 'usage']",
+        "codeRefs": [
+          "erp-domain/src/test/java/com/bigbrightpaints/erp/modules/company/SuperAdminControllerIT.java:545-565"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-PLATFORM-006",
+      "title": "Platform-owner detail never exposes tenant business data",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Review dashboard, tenant list row, and tenant detail payloads for business datasets",
+          "expected": "No tenant orders, invoices, journal entries, dealer ledgers, catalog inventory, payroll, or manufacturing datasets are embedded",
+          "observed": "dashboard business keys=[], list row business keys=[], detail business keys=[]"
+        }
+      ],
+      "evidence": {
+        "commands": [
+          "GET /api/v1/superadmin/dashboard",
+          "GET /api/v1/superadmin/tenants",
+          "GET /api/v1/superadmin/tenants/{id}"
+        ],
+        "result": "PASS",
+        "output": "No business dataset keys found in inspected payloads",
+        "codeRefs": [
+          "erp-domain/src/test/java/com/bigbrightpaints/erp/modules/company/SuperAdminControllerIT.java:37-38",
+          "erp-domain/src/test/java/com/bigbrightpaints/erp/modules/company/SuperAdminControllerIT.java:447-565"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-OPS-006",
+      "title": "Manual billing-plan data is editable through a dedicated control-plane route and visible in tenant detail",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "PUT /api/v1/superadmin/tenants/1/billing-plan then GET tenant detail",
+          "expected": "Billing-plan mutation succeeds and tenant detail reflects stored billing-plan subtree",
+          "observed": "Updated billing plan response={\"planCode\": \"VALRUN\", \"planName\": \"Validation Plan\", \"currency\": \"USD\", \"monthlyRate\": 409.99, \"annualRate\": 4919.88, \"seats\": 77, \"updatedAt\": \"2026-04-21T02:30:41.378945066Z\", \"updatedBy\": \"platform.admin@local.test\"}; detail billingPlan={\"planCode\": \"VALRUN\", \"planName\": \"Validation Plan\", \"currency\": \"USD\", \"monthlyRate\": 409.99, \"annualRate\": 4919.88, \"seats\": 77, \"updatedAt\": \"2026-04-21T02:30:41.378945Z\", \"updatedBy\": \"platform.admin@local.test\"}"
+        }
+      ],
+      "evidence": {
+        "commands": [
+          "PUT /api/v1/superadmin/tenants/1/billing-plan",
+          "GET /api/v1/superadmin/tenants/1"
+        ],
+        "result": "PASS",
+        "output": "updated plan code=VALRUN monthly=409.99 annual=4919.88 seats=77",
+        "codeRefs": [
+          "erp-domain/src/main/java/com/bigbrightpaints/erp/modules/company/controller/SuperAdminController.java:93-107",
+          "erp-domain/src/test/java/com/bigbrightpaints/erp/modules/company/SuperAdminControllerIT.java:367-410"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-OPS-007",
+      "title": "Billing-plan changes roll into platform ARR and MRR summaries",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Compare dashboard billingSummary before and after tenant billing-plan mutation",
+          "expected": "ARR/MRR rollups increase to include the updated manual plan values without exposing tenant accounting ledgers",
+          "observed": "baseline monthly/annual=299.99/3599.88; post-update monthly/annual=409.99/4919.88"
+        }
+      ],
+      "evidence": {
+        "commands": [
+          "GET /api/v1/superadmin/dashboard",
+          "PUT /api/v1/superadmin/tenants/{id}/billing-plan",
+          "GET /api/v1/superadmin/dashboard"
+        ],
+        "result": "PASS",
+        "output": "billingSummary before={\"totalMonthlyRecurringRevenue\": 299.99, \"totalAnnualRecurringRevenue\": 3599.88, \"billedTenantCount\": 1} after={\"totalMonthlyRecurringRevenue\": 409.99, \"totalAnnualRecurringRevenue\": 4919.88, \"billedTenantCount\": 1}",
+        "codeRefs": [
+          "erp-domain/src/test/java/com/bigbrightpaints/erp/modules/company/SuperAdminControllerIT.java:412-429"
+        ]
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "Launching the delegated `user-testing-flow-validator` subagent failed twice in this environment without returning output.",
+      "resolved": true,
+      "resolution": "Fell back to direct in-session validation, consistent with prior mission user-testing rounds recorded in `.factory/validation/**/user-testing`.",
+      "affectedAssertions": [
+        "VAL-PLATFORM-002",
+        "VAL-PLATFORM-003",
+        "VAL-PLATFORM-004",
+        "VAL-PLATFORM-005",
+        "VAL-PLATFORM-006",
+        "VAL-OPS-006",
+        "VAL-OPS-007"
+      ]
+    },
+    {
+      "description": "The checked-out `.env` overrides compose ports to 18081/19090/18025 by default, while the mission requires 8081/9090/8025.",
+      "resolved": true,
+      "resolution": "Started the validation stack with explicit port overrides and recorded the setup note in `.factory/library/user-testing.md`.",
+      "affectedAssertions": [
+        "VAL-PLATFORM-002",
+        "VAL-PLATFORM-003",
+        "VAL-PLATFORM-004",
+        "VAL-PLATFORM-005",
+        "VAL-PLATFORM-006",
+        "VAL-OPS-006",
+        "VAL-OPS-007"
+      ]
+    },
+    {
+      "description": "Aggregate actuator health stayed `503 {\"status\":\"DOWN\"}` even though readiness was `200` and the target auth/control-plane APIs were responsive.",
+      "resolved": true,
+      "resolution": "Used readiness plus live endpoint probes as the runtime readiness gate for this targeted validation round.",
+      "affectedAssertions": [
+        "VAL-PLATFORM-002",
+        "VAL-PLATFORM-003",
+        "VAL-PLATFORM-004",
+        "VAL-PLATFORM-005",
+        "VAL-PLATFORM-006",
+        "VAL-OPS-006",
+        "VAL-OPS-007"
+      ]
+    }
+  ],
+  "blockers": [],
+  "summary": "Validated 7 assigned platform-dashboard assertions with live API evidence: 7 passed, 0 failed, 0 blocked."
+}
