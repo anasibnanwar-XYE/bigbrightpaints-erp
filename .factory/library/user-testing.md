@@ -66,6 +66,8 @@ The mission is intentionally ordered. Validators should respect that:
 - Keep JVM-heavy validation serialized in the shared checkout.
 - Prefer the exact command aliases from `.factory/services.yaml` over ad-hoc broad test runs.
 - When capturing curl proof, use one health/readiness check plus the smallest set of representative business-route probes needed to satisfy the contract.
+- Treat runtime proof as not-ready until the reset harness has verified seeded actors and fixture presence, including the validation super-admin's required auth scope, rather than merely printing guidance.
+- Treat RLS proof as incomplete until live app datasource sessions demonstrate the tenant/company context binding that the PostgreSQL policy depends on.
 
 ## Worker Reminder
 

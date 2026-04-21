@@ -67,6 +67,7 @@ None.
    - do not widen data visibility through joins, caches, helper lookups, or report readers
    - preserve or strengthen company-scoped access and approval-gated sensitive reporting
    - if you touch accounting tables or tenant filters, re-check both application-level scoping and database/RLS assumptions
+   - for RLS or tenant-isolation packets, prove how live application datasource sessions bind tenant/company context onto PostgreSQL sessions; synthetic `set_config(...)`-only proof is insufficient if the production datasource path does not execute the same binding
 6. Preserve money precision and no-drift guarantees:
    - reuse canonical amount/rounding behavior already present in the codebase
    - keep journal totals balanced and replay-safe
@@ -85,7 +86,7 @@ None.
 4. If runtime/API behavior changed or the packet claims live corridor safety, run the approved compose-backed proof and document the exact `curl` probes and observations.
 5. Use `commands.strict-runtime-smoke-check` when the packet needs live boundary evidence.
 6. If public endpoint shapes changed, run `commands.openapi-refresh` and the relevant contract proof such as `commands.accounting-frontend-doc-contract-proof`, then inspect the touched paths in `openapi.json` directly.
-7. For final PR-readiness, run `commands.gate-fast` unless the orchestrator explicitly scoped the packet to a narrower temporary validation loop.
+7. For final PR-readiness, run `commands.gate-fast` unless the orchestrator explicitly scoped the packet to a narrower temporary validation loop. When the feature description or mission guidance explicitly scopes validation to stronger targeted commands, follow that narrower contract and record the scoped exception clearly in the handoff instead of treating it as a shortcut.
 8. Re-read the diff before handoff and confirm there is no stale duplicate owner, no stale test preserving retired behavior, and no unproven money math assumption.
 
 ### Step 5: Produce a stronger accounting handoff
