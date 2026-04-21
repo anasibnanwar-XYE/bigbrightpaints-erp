@@ -1,8 +1,8 @@
 {
   "milestone": "journal-and-account-core",
-  "round": 2,
-  "status": "fail",
-  "scopeNote": "Re-ran the configured milestone validators after the case-insensitive duplicate-account fix and GST report-owner convergence fix, then re-reviewed only the two fix features tied to the round-1 blocking findings. The scoped test suite, compile/typecheck, and Spotless lint check all passed. The duplicate-account fix passed scrutiny, but the GST convergence fix still regresses the public GST report payload by dropping rate-bucket/detail output, so the milestone remains blocked from user testing.",
+  "round": 3,
+  "status": "pass",
+  "scopeNote": "Re-ran the configured milestone validators after the GST source-semantics convergence fix, then re-reviewed only that scoped fix against the prior blocked GST report-owner finding. The targeted test suite, compile/typecheck, and Spotless lint check all passed, and the GST fix review confirms non-zero seeded periods now converge across the three GST endpoints without regressing report detail payloads.",
   "validatorsRun": {
     "test": {
       "passed": true,
@@ -21,51 +21,37 @@
     }
   },
   "reviewsSummary": {
-    "total": 2,
+    "total": 1,
     "passed": 1,
-    "failed": 1,
-    "failedFeatures": [
-      "gst-report-owner-convergence-hardcut"
-    ]
+    "failed": 0,
+    "failedFeatures": []
   },
-  "blockingIssues": [
-    {
-      "featureId": "gst-report-owner-convergence-hardcut",
-      "severity": "blocking",
-      "description": "The fix removes the legacy report-side GST math owner, but `/api/v1/reports/gst-return` now hardcodes empty `rateSummaries` and `transactionDetails` in `ReportService.gstReturn()`, regressing the public GST report contract that still requires rate-bucket output and usable detail data. See `.factory/validation/journal-and-account-core/scrutiny/reviews/gst-report-owner-convergence-hardcut.json`."
-    }
-  ],
+  "blockingIssues": [],
   "appliedUpdates": [
     {
-      "target": ".factory/validation/journal-and-account-core/scrutiny/synthesis.round1.json",
-      "description": "Archived the prior round-1 scrutiny synthesis before recording the rerun outcome.",
+      "target": ".factory/validation/journal-and-account-core/scrutiny/synthesis.round2.json",
+      "description": "Archived the prior round-2 scrutiny synthesis before recording the rerun outcome.",
       "sourceFeature": "scrutiny-validator-journal-and-account-core"
     },
     {
       "target": ".factory/validation/journal-and-account-core/scrutiny/synthesis.json",
-      "description": "Recorded the round-2 scrutiny synthesis for the journal-and-account-core rerun, including rerun validator results and fix-feature review outcomes.",
+      "description": "Recorded the round-3 scrutiny synthesis for the journal-and-account-core rerun after the GST source-semantics convergence fix.",
       "sourceFeature": "scrutiny-validator-journal-and-account-core"
     }
   ],
   "suggestedGuidanceUpdates": [
     {
-      "target": "erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/AGENTS.md",
-      "suggestion": "Update the accounting module guidance to name `AccountResolutionOwnerService` as the controller-facing canonical owner for chart-of-accounts and default-account API resolution instead of implying `AccountingService` alone owns that corridor.",
-      "evidence": "The round-2 passing review for `account-code-case-insensitive-uniqueness-hardcut` again found `AccountController` routing account/default-account/tree actions through `AccountResolutionOwnerService` while the module guidance still points workers only at `AccountingService`.",
-      "isSystemic": false
-    },
-    {
-      "target": "accounting-hardcut-worker skill",
-      "suggestion": "Clarify that narrowly scoped runtime/API fixes can satisfy proof requirements with deterministic integration regressions when those tests fully exercise the public contract and concurrency/persistence guarantee, instead of always requiring compose-backed curl proof.",
-      "evidence": "The round-2 review for `account-code-case-insensitive-uniqueness-hardcut` accepted the fix based on serial API duplicate rejection plus concurrent DB-level fail-closed regression coverage and flagged the current skill wording as too rigid for that fix class.",
+      "target": "validation-contract.md",
+      "suggestion": "Clarify the GST convergence contract for persisted companies: `/api/v1/accounting/gst/return` now uses document aggregation semantics and ignores journal-only GST entries without source documents, so parity expectations should be expressed against the document-owned accounting/report path rather than raw journal-line totals alone.",
+      "evidence": "The pass review for `gst-source-semantics-convergence-hardcut` found `TaxService.generateGstReturn()` now branches to document aggregation for persisted companies (`TaxService.java:74-90`), and updated tests in `CriticalAccountingAxesIT` / `TaxServiceTest` lock in the rule that journal-only GST entries without source documents do not drive return totals even while reconciliation/report parity is preserved.",
       "isSystemic": false
     }
   ],
   "rejectedObservations": [
     {
-      "observation": "The GST report validation contract/test mismatch around `rateSummaries` and `transactionDetails` coverage.",
-      "reason": "Rejected as a shared-state update candidate because the defect is already captured as the current blocking feature issue in `gst-report-owner-convergence-hardcut` and does not yet justify a separate services/library/AGENTS/skill update."
+      "observation": "Add a reusable GST three-endpoint runtime parity command to `.factory/services.yaml` right now.",
+      "reason": "Rejected for this round because the reviewed handoffs prove the need but still describe bespoke period-specific probes against seeded runtime data; I was not yet confident enough in one stable, non-overfit command contract to codify it automatically without risking a misleading shared command."
     }
   ],
-  "previousRound": ".factory/validation/journal-and-account-core/scrutiny/synthesis.round1.json"
+  "previousRound": ".factory/validation/journal-and-account-core/scrutiny/synthesis.round2.json"
 }
