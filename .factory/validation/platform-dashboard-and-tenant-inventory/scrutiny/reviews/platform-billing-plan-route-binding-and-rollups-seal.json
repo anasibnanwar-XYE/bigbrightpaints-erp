@@ -1,0 +1,26 @@
+{
+  "featureId": "platform-billing-plan-route-binding-and-rollups-seal",
+  "reviewedAt": "2026-04-21T02:07:39Z",
+  "commitId": "436faaae7abc472c1871515295c8f077d883eb21",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "This fix directly addresses the prior scrutiny failure. `CompanyContextFilter.COMPANY_BOUND_CONTROL_ROUTES` now includes `PUT /api/v1/superadmin/tenants/{id}/billing-plan`, so billing-plan writes resolve the path-target tenant through the same control-plane binding lane as the other canonical superadmin tenant routes. The added regression coverage proves both the positive root/platform binding path and the negative tenant-scoped superadmin authorization case, while the original feature's controller/integration coverage still verifies persistence into tenant detail plus dashboard ARR/MRR rollups without exposing tenant business or ledger payloads.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "services",
+      "observation": "The local service manifest still does not cover the environment-specific compose startup constraints this mission repeatedly hits, so the worker had to bypass the manifest with explicit `docker compose` commands and manual container cleanup to finish required runtime proof.",
+      "evidence": "Fix handoff `skillFeedback.deviations` says Phase 1.7 used explicit compose commands because manifest-equivalent startup failed on Datadog env interpolation and stale named-container conflicts. `.factory/services.yaml` `services.backend-compose-v2.start` does not set a safe `DD_API_KEY` fallback even though the mission AGENTS notes this as a known local-validation workaround."
+    },
+    {
+      "area": "skills",
+      "observation": "The backend-worker skill tells workers to read `.factory/library/user-testing.md` whenever runtime/API proof is needed, but that file is absent from this repository guidance, so the procedure points at shared knowledge that does not exist.",
+      "evidence": "`.factory/skills/backend-worker/SKILL.md` Step 1.5 says to read `.factory/library/user-testing.md` before runtime/API proof planning. A repo search under `/Users/anas/Documents/Factory/.factory/library` found no such file."
+    }
+  ],
+  "addressesFailureFrom": "/Users/anas/Documents/Factory/.factory/validation/platform-dashboard-and-tenant-inventory/scrutiny/reviews/platform-dashboard-and-tenant-inventory-read-model.json",
+  "summary": "Pass. The fix closes the exact scrutiny gap from the original billing-plan packet by registering the canonical billing-plan write route in the company-context control-plane route registry and by adding route-specific regression tests for target-tenant binding and platform-only authorization. The original packet's DTO/runtime coverage still supplies the rollup and privacy-wall evidence, so the combined feature lineage now satisfies the billing-plan route-binding requirements."
+}

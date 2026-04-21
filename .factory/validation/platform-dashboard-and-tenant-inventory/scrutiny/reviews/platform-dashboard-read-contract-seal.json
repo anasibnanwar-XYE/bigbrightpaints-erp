@@ -1,0 +1,21 @@
+{
+  "featureId": "platform-dashboard-read-contract-seal",
+  "reviewedAt": "2026-04-21T02:08:17Z",
+  "commitId": "917604a10e47728103b86cbaf11e808ecff585b4",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Pass. The original scrutiny failure was that `PUT /api/v1/superadmin/tenants/{id}/billing-plan` was not registered in `CompanyContextFilter.COMPANY_BOUND_CONTROL_ROUTES`, so billing-plan writes could bypass target-tenant control-plane binding. In the current feature lineage that route is now registered in `erp-domain/src/main/java/com/bigbrightpaints/erp/core/security/CompanyContextFilter.java:57`, and binding/authorization coverage now proves both root/platform binding and tenant-scoped superadmin denial in `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/auth/CompanyContextFilterControlPlaneBindingTest.java:138` and `:197`. The rerun commit itself then seals the remaining dashboard/list/detail read contract by adding explicit control-plane-only assertions and a dedicated end-to-end read-contract test in `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/company/SuperAdminControllerIT.java:277`, `:468`, `:520`, and `:545`, so together the fix adequately addresses the prior failure and closes the read-surface regression gap.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "services",
+      "observation": "The service manifest still omits the local `DD_API_KEY` placeholder and explicit canonical runtime port exports on the compose start commands, so workers had to manually override env vars to keep runtime proof on the approved mission boundary.",
+      "evidence": "Fix handoff `skillFeedback.deviations` says runtime startup required explicit `DD_API_KEY=local-dev-dd-api-key` plus canonical port overrides. In `.factory/services.yaml`, `rabbitmq`, `mailhog`, and `backend-compose-v2` start commands at lines 50-72 set `DB_PORT=5433` but do not export `DD_API_KEY`, `APP_PORT`, `ACTUATOR_PORT`, `MAILHOG_SMTP_PORT`, or `MAILHOG_UI_PORT`."
+    }
+  ],
+  "addressesFailureFrom": "/Users/anas/Documents/Factory/.factory/validation/platform-dashboard-and-tenant-inventory/scrutiny/reviews/platform-dashboard-and-tenant-inventory-read-model.json",
+  "summary": "Pass. The prior blocking issue is fixed in the current lineage because the billing-plan route is now company-bound in `CompanyContextFilter` and covered by dedicated binding/authorization tests, and this rerun commit successfully seals the remaining dashboard/list/detail control-plane read contract with explicit payload-shape assertions."
+}

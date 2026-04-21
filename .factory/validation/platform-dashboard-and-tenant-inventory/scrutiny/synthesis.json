@@ -1,7 +1,7 @@
 {
   "milestone": "platform-dashboard-and-tenant-inventory",
-  "round": 1,
-  "status": "fail",
+  "round": 2,
+  "status": "pass",
   "validatorsRun": {
     "test": {
       "passed": true,
@@ -10,7 +10,7 @@
     },
     "typecheck": {
       "passed": true,
-      "command": "cd /Users/anas/Documents/Factory/erp-domain && MIGRATION_SET=v2 mvn -T5 compile -q",
+      "command": "cd /Users/anas/Documents/Factory/erp-domain && MIGRATION_SET=v2 mvn -T2 compile -q",
       "exitCode": 0
     },
     "lint": {
@@ -20,27 +20,23 @@
     }
   },
   "reviewsSummary": {
-    "total": 1,
-    "passed": 0,
-    "failed": 1,
-    "failedFeatures": [
-      "platform-dashboard-and-tenant-inventory-read-model"
-    ]
+    "total": 2,
+    "passed": 2,
+    "failed": 0,
+    "failedFeatures": []
   },
-  "blockingIssues": [
-    {
-      "featureId": "platform-dashboard-and-tenant-inventory-read-model",
-      "severity": "blocking",
-      "description": "`CompanyContextFilter` does not include `PUT /api/v1/superadmin/tenants/{id}/billing-plan` in `COMPANY_BOUND_CONTROL_ROUTES`, so root/platform superadmin billing-plan writes bypass target-tenant binding and can be evaluated against the caller scope instead of the requested tenant."
-    }
-  ],
+  "blockingIssues": [],
   "appliedUpdates": [],
   "suggestedGuidanceUpdates": [],
   "rejectedObservations": [
     {
-      "observation": "The manifest does not provide a supported command for hot-deploying the rebuilt app JAR into the existing validation container, so the worker used an ad-hoc `docker cp ... && docker restart erp_domain_app` workaround for runtime proof.",
-      "reason": "ambiguous — the review did not establish a canonical command name or whether hot-reload, compose rebuild, or restart-only should be the supported runtime proof path, so this should not be applied automatically."
+      "observation": "The manifest does not provide a supported command for hot-deploying the rebuilt app JAR into the existing validation container, so workers fell back to ad-hoc `docker cp ... && docker restart erp_domain_app` or explicit compose commands during runtime proof.",
+      "reason": "ambiguous and already partly documented — the reviews do not establish a single canonical replacement command, and mission AGENTS already records the `DD_API_KEY=local-dev-dd-api-key` workaround plus compose-conflict caution for local validation."
+    },
+    {
+      "observation": "The backend-worker skill points workers at a missing `.factory/library/user-testing.md` file before runtime/API proof planning.",
+      "reason": "wrong — `.factory/library/user-testing.md` exists in this repository, so no guidance fix is needed from this milestone."
     }
   ],
-  "previousRound": null
+  "previousRound": ".factory/validation/platform-dashboard-and-tenant-inventory/scrutiny/synthesis.round1.json"
 }
