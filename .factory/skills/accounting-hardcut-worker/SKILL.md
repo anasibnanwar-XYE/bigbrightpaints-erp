@@ -36,6 +36,8 @@ None.
    - ledger/journal/reference linkage
    - period lock/close/reopen rules
    - idempotent replay behavior
+   - keyless fallback identity behavior when `referenceNumber` / `idempotencyKey` are omitted
+   - degraded replay states where canonical allocation rows or linkage records are missing
    - tenant/company/RLS visibility constraints
 5. Trace all dependent consumers before editing. If accounting truth changes, inspect the downstream sales, inventory, invoice, purchasing, and reports callers that depend on it.
 6. If the feature would widen into HR/payroll feature work, require two competing accounting owners to survive, or force a public-contract redesign outside the assigned packet, return to orchestrator.
@@ -53,7 +55,9 @@ None.
    - `commands.targeted-security-proof`
    - `commands.gate-reconciliation` when period-close or reconciliation truth changes
 5. If the flow starts outside accounting but ends in accounting truth, add or update at least one proof that demonstrates the originating business action still lands in the correct journal/settlement/report outcome.
-6. Record in the handoff whether the packet was characterization-first or TDD-first, and why that choice matched the feature.
+6. For dealer/shared-master packets, explicitly prove both the sales onboarding path and tenant-admin `ROLE_DEALER` assignment path preserve an existing non-active dealer status, and prove non-active dealer login access is finance read-only only.
+7. For supplier auto-settle packets, explicitly prove due-date-first ordering when available, then invoice date, then ID.
+8. Record in the handoff whether the packet was characterization-first or TDD-first, and why that choice matched the feature.
 
 ### Step 3: Implement the hard cut, not a facade shuffle
 1. Make the smallest set of changes that leaves accounting as the singular financial truth owner for the touched corridor.
@@ -84,10 +88,11 @@ None.
    - `commands.targeted-security-proof` for tenant binding, RLS, approval gates, or visibility changes
    - `commands.gate-reconciliation` for period-close/reconciliation semantics
 4. If runtime/API behavior changed or the packet claims live corridor safety, run the approved compose-backed proof and document the exact `curl` probes and observations.
-5. Use `commands.strict-runtime-smoke-check` when the packet needs live boundary evidence.
-6. If public endpoint shapes changed, run `commands.openapi-refresh` and the relevant contract proof such as `commands.accounting-frontend-doc-contract-proof`, then inspect the touched paths in `openapi.json` directly.
-7. For final PR-readiness, run `commands.gate-fast` unless the orchestrator explicitly scoped the packet to a narrower temporary validation loop. When the feature description or mission guidance explicitly scopes validation to stronger targeted commands, follow that narrower contract and record the scoped exception clearly in the handoff instead of treating it as a shortcut.
-8. Re-read the diff before handoff and confirm there is no stale duplicate owner, no stale test preserving retired behavior, and no unproven money math assumption.
+5. When payment-event or settlement behavior changed, runtime proof must cover both explicit-key and keyless fallback identity paths, plus at least one degraded replay state where canonical allocation rows are missing or incomplete.
+6. Use `commands.strict-runtime-smoke-check` when the packet needs live boundary evidence.
+7. If public endpoint shapes changed, run `commands.openapi-refresh` and the relevant contract proof such as `commands.accounting-frontend-doc-contract-proof`, then inspect the touched paths in `openapi.json` directly.
+8. For final PR-readiness, run `commands.gate-fast` unless the orchestrator explicitly scoped the packet to a narrower temporary validation loop. When the feature description or mission guidance explicitly scopes validation to stronger targeted commands, follow that narrower contract and record the scoped exception clearly in the handoff instead of treating it as a shortcut.
+9. Re-read the diff before handoff and confirm there is no stale duplicate owner, no stale test preserving retired behavior, and no unproven money math assumption.
 
 ### Step 5: Produce a stronger accounting handoff
 Your handoff must explicitly include:

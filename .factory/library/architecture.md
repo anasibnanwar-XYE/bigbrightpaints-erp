@@ -31,6 +31,8 @@ Workers should use these layers to decide what survives and what gets deleted.
 - Keep allocation rows explicit and separate from both payment truth and journal lines.
 - Derive balances and summaries from invoice/purchase, payment, and allocation truth.
 - Keep current public receipt/payment/settlement routes stable while internal ownership is unified.
+- Derive implicit replay/reference identity for keyless receipt, settlement, and auto-settle requests from the resolved allocation set rather than pre-allocation header values.
+- Supplier auto-settle ordering must use due date when available, then invoice date, then ID once due-date support is introduced into the purchasing model.
 
 ## Shared Dealer Master
 
@@ -38,6 +40,8 @@ Workers should use these layers to decide what survives and what gets deleted.
 - Dealer creation from tenant-admin role assignment or sales onboarding must converge to one preserved dealer master.
 - Dealer accounting wiring must exist on the surviving dealer truth; accounting should not need a second hidden dealer/account record.
 - Dealers are never hard-deleted in this mission. Hold/suspend/block states may exist, but finance visibility and history remain.
+- Re-onboarding an existing non-active dealer through sales onboarding or tenant-admin role assignment must preserve the current status unless an explicit reactivation action is taken.
+- Non-active dealer login access is finance read-only only; broader dealer-portal access is not part of the preserved-state contract.
 
 ## Central Stock / Catalog Master
 

@@ -40,7 +40,10 @@ Prioritize proofs that answer these questions:
 - Do allocation rows remain explicit and distinct from payment truth and journal lines?
 - Do party summaries reconcile to document/payment/allocation truth?
 - Does dealer creation converge to one shared dealer master across admin, sales, accounting, and dealer-facing finance reads?
-- Do hold/suspend flows preserve dealer visibility and accounting history without a hard-delete path?
+- Do hold/suspend/block flows preserve dealer visibility and accounting history without a hard-delete path?
+- Does re-onboarding a non-active dealer through both the sales path and tenant-admin `ROLE_DEALER` assignment preserve the existing status while limiting login access to finance read-only surfaces?
+- Do keyless receipt/settlement/auto-settle flows derive fallback identity from the resolved allocation set, and do degraded replays fail or repair when allocation rows are missing?
+- Does supplier auto-settle order oldest-open purchases by due date when available, then invoice date, then ID?
 - Do tenant isolation and approval gates stay fail-closed at both DB and application surfaces?
 - After the catalog milestone, do tenant-scoped brand/product/variant reads and canonical SKU reuse stay ERP-native and cross-module consistent?
 
@@ -55,8 +58,10 @@ The mission is intentionally ordered. Validators should respect that:
 ## Minimum Evidence Rules
 
 - **Accounting truth changed:** run characterization or targeted integration proof plus compile.
-- **Dealer/shared-master truth changed:** prove admin/sales/accounting/dealer-facing reads resolve the same dealer identity.
+- **Dealer/shared-master truth changed:** prove admin/sales/accounting/dealer-facing reads resolve the same dealer identity, that re-onboarding preserves any existing non-active dealer status, and that non-active dealer login access stays finance read-only only.
+- **Payment-event or settlement truth changed:** prove explicit-key and keyless fallback identity behavior plus degraded replay behavior when canonical allocation rows are missing.
 - **Tenant isolation or disclosure policy changed:** add targeted security proof and curl or DB evidence per the contract.
+- **Supplier auto-settle ordering changed:** prove due-date-first ordering when available, then invoice date, then ID, on both targeted tests and representative runtime probes.
 - **Catalog central master changed:** prove tenant scoping, readiness blockers, and canonical SKU reuse where applicable.
 - **Docs-only packet in approved docs lanes or `.factory/library/**`:** run `bash ci/lint-knowledgebase.sh` only unless the feature explicitly requires stronger contract proof.
 
