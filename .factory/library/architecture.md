@@ -42,6 +42,7 @@ Workers should use these layers to decide what survives and what gets deleted.
 - Dealers are never hard-deleted in this mission. Hold/suspend/block states may exist, but finance visibility and history remain.
 - Re-onboarding an existing non-active dealer through sales onboarding or tenant-admin role assignment must preserve the current status unless an explicit reactivation action is taken.
 - Non-active dealer login access is finance read-only only; broader dealer-portal access is not part of the preserved-state contract.
+- Dealer-capable routes are **not guaranteed** to live only under `/api/v1/dealer-portal/**`; finance-read-only proofs must inventory any dealer-role or dealer-resolved routes outside that prefix too (for example, `/api/v1/credit/limit-requests`).
 
 ## Central Stock / Catalog Master
 

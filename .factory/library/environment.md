@@ -51,3 +51,4 @@ Use these ports for mission runtime proof. Host Postgres `5432` is off-limits.
 
 - Older generic repo guidance may still mention different host ports; for this mission, the validated dry-run host boundary above is the worker-facing truth.
 - Docs are deliverables here, so environment guidance must stay aligned with the mission proposal and validation contract when runtime assumptions change.
+- Maven invocations are intentionally **cwd-sensitive** in this repo because `erp-domain/.mvn/settings.xml` is resolved relative to `erp-domain/`. Run Maven from `erp-domain/` (or `cd` there first) instead of relying on `mvn -f erp-domain/pom.xml ...` from the repo root.
