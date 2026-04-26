@@ -41,10 +41,7 @@ import jakarta.persistence.UniqueConstraint;
           name = "idx_partner_payment_events_journal_entry",
           columnList = "company_id, journal_entry_id")
     },
-    uniqueConstraints = {
-      @UniqueConstraint(columnNames = {"public_id"}),
-      @UniqueConstraint(columnNames = {"company_id", "payment_flow", "reference_number"})
-    })
+    uniqueConstraints = @UniqueConstraint(columnNames = {"public_id"}))
 public class PartnerPaymentEvent extends VersionedEntity {
 
   @Id

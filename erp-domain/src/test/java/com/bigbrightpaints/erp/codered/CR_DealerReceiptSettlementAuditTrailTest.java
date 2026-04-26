@@ -1315,6 +1315,56 @@ class CR_DealerReceiptSettlementAuditTrailTest extends AbstractIntegrationTest {
   }
 
   @Test
+  void partnerPaymentEvents_rejectCaseVariantReferenceWithinSameFlow() {
+    String companyCode = "CR-PAYMENT-EVENT-CI-" + shortId();
+    Company company = bootstrapCompany(companyCode, "UTC");
+    Map<String, Account> accounts = ensureCoreAccounts(company);
+    Dealer dealer = ensureDealer(company, accounts.get("AR"));
+    String referenceNumber = "DR-CASE-" + UUID.randomUUID();
+    String insertPaymentEvent =
+        """
+        insert into partner_payment_events (
+            public_id,
+            company_id,
+            partner_type,
+            dealer_id,
+            payment_flow,
+            source_route,
+            reference_number,
+            idempotency_key,
+            payment_date,
+            amount,
+            currency
+        ) values (?, ?, 'DEALER', ?, 'DEALER_RECEIPT',
+            '/api/v1/accounting/receipts/dealer', ?, ?, current_date, 125.00, 'INR')
+        """;
+
+    CompanyContextHolder.setCompanyCode(companyCode);
+    try {
+      jdbcTemplate.update(
+          insertPaymentEvent,
+          UUID.randomUUID(),
+          company.getId(),
+          dealer.getId(),
+          referenceNumber,
+          "DR-CASE-IDEMP-1-" + UUID.randomUUID());
+
+      org.assertj.core.api.Assertions.assertThatThrownBy(
+              () ->
+                  jdbcTemplate.update(
+                      insertPaymentEvent,
+                      UUID.randomUUID(),
+                      company.getId(),
+                      dealer.getId(),
+                      referenceNumber.toLowerCase(java.util.Locale.ROOT),
+                      "DR-CASE-IDEMP-2-" + UUID.randomUUID()))
+          .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+    } finally {
+      CompanyContextHolder.clear();
+    }
+  }
+
+  @Test
   void dealerReceipt_replayFailsClosed_whenAllocationRowsAreMissing() {
     String companyCode = "CR-DR-MISSING-ALLOC-" + shortId();
     Company company = bootstrapCompany(companyCode, "UTC");
