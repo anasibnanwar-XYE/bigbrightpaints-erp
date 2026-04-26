@@ -72,6 +72,8 @@ if [[ -z "$changed_shell_files" ]]; then
 fi
 
 echo "[ci-config-check] shellcheck changed shell scripts"
-printf '%s\n' "$changed_shell_files" | xargs shellcheck --severity=error
+while IFS= read -r shell_file; do
+  shellcheck --severity=error -- "$shell_file"
+done <<<"$changed_shell_files"
 
 echo "[ci-config-check] OK"

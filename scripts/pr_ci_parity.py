@@ -329,6 +329,11 @@ def skipped_job(name: str, reason: str) -> JobResult:
     return JobResult(name=name, result="skipped", command="", reason=reason)
 
 
+def failed_job(name: str, reason: str) -> JobResult:
+    print(f"[{name}] FAILURE ({reason})")
+    return JobResult(name=name, result="failure", command="", reason=reason)
+
+
 def main() -> int:
     args = parse_args()
     artifacts_dir = Path(args.artifacts_dir).resolve()
@@ -391,9 +396,9 @@ def main() -> int:
     for job_name in BASELINE_JOBS:
         if job_name == "ci-config-check":
             if shutil.which("actionlint") is None or shutil.which("shellcheck") is None:
-                results[job_name] = skipped_job(
+                results[job_name] = failed_job(
                     job_name,
-                    "actionlint_or_shellcheck_not_installed; GitHub Actions CI Config Check remains authoritative",
+                    "missing_actionlint_or_shellcheck",
                 )
                 continue
             results[job_name] = execute_job(
@@ -408,9 +413,9 @@ def main() -> int:
         if job_name == "secrets-scan":
             report_path = artifacts_dir / "gitleaks-report.json"
             if shutil.which("gitleaks") is None:
-                results[job_name] = skipped_job(
+                results[job_name] = failed_job(
                     job_name,
-                    "gitleaks_not_installed; GitHub Actions Secrets Scan remains authoritative",
+                    "missing_gitleaks",
                 )
                 continue
             results[job_name] = execute_job(

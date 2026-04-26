@@ -53,12 +53,14 @@
         "python3 scripts/pr_ci_parity.py --base origin/main --head HEAD"
       ],
       "required_scripts": [
+        "ci/lint-knowledgebase.sh",
+        "ci/check-architecture.sh",
+        "ci/check-ci-config.sh",
+        "ci/check-high-risk-changes.sh",
         "scripts/ci_risk_router.py",
         "scripts/run_test_manifest.sh",
         "scripts/changed_files_coverage.py",
-        "scripts/pr_ci_parity.py",
-        "ci/check-ci-config.sh",
-        "ci/check-high-risk-changes.sh"
+        "scripts/pr_ci_parity.py"
       ],
       "disallowed_proof": [
         "manual reruns replacing CI evidence",
