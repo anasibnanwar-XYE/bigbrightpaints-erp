@@ -26,4 +26,3 @@
   "addressesFailureFrom": null,
   "summary": "Fail. The accounting-facing endpoints were centralized as intended, but a live /api/v1/reports/gst-return path still rebuilds GST from report-side invoice and purchase reads, so the feature did not actually remove the competing GST/report math owner. Report written for commit 90835746b3cddc7acdcbf3fbd8eb140122167fd3."
 }
-
