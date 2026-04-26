@@ -1,0 +1,28 @@
+{
+  "featureId": "journal-posting-and-core-read-model-hardcut",
+  "reviewedAt": "2026-04-21T12:18:20Z",
+  "commitId": "90835746b3cddc7acdcbf3fbd8eb140122167fd3",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The packet does reroute the accounting-facing journal, configuration-health, date-context, balance/activity, GST, and trial-balance endpoints through AccountingService, and it fixes the runtime LazyInitialization regression on /api/v1/accounting/journals. However, the hard-cut is still incomplete because a live legacy GST report path remains outside the new owner: /api/v1/reports/gst-return still delegates to ReportService.gstReturn(), which reconstructs GST totals directly from invoice and raw-material-purchase tables instead of reading the surviving accounting truth. That leaves a second competing GST/report math owner in exactly the corridor this feature was meant to retire.",
+    "issues": [
+      {
+        "file": "erp-domain/src/main/java/com/bigbrightpaints/erp/modules/reports/service/ReportService.java",
+        "line": 234,
+        "severity": "blocking",
+        "description": "ReportService.gstReturn() is still a live second GST truth owner. The route at erp-domain/src/main/java/com/bigbrightpaints/erp/modules/reports/controller/ReportController.java:130 still exposes /api/v1/reports/gst-return, and this method computes GST from invoiceRepository.findByCompanyAndIssueDateBetweenOrderByIssueDateAsc(...) plus rawMaterialPurchaseRepository.findByCompanyAndInvoiceDateBetweenOrderByInvoiceDateAsc(...) with resolveInvoiceTaxBreakdown()/resolvePurchaseTaxBreakdown() instead of consuming the canonical accounting owner introduced by this feature. Existing tests also keep that path alive, including erp-domain/src/test/java/com/bigbrightpaints/erp/modules/reports/controller/ReportControllerFinancialEndpointsIT.java:141 and erp-domain/src/test/java/com/bigbrightpaints/erp/modules/reports/service/ReportServiceInventoryAndGstTest.java:567. Because the feature explicitly required removing report-side shortcuts and reconciling GST/report math to surviving accounting truth, leaving this endpoint and implementation in place means the hard-cut is not complete."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "This feature handoff omitted handoff.skillFeedback, so scrutiny cannot verify whether the worker intentionally deviated from the accounting-hardcut skill or simply missed a scoped exception while leaving the legacy /reports/gst-return owner alive.",
+      "evidence": "The reviewed handoff /Users/anas/.factory/missions/b3885fb3-3080-480f-9f59-1eba48c5f565/handoffs/2026-04-21T11-01-35-075Z__journal-posting-and-core-read-model-hardcut__3318d3dd-0701-4983-b43e-83e42ede80f5.json ends at lines 74-76 with discoveredIssues and contains no skillFeedback key, while the adjacent handoff /Users/anas/.factory/missions/b3885fb3-3080-480f-9f59-1eba48c5f565/handoffs/2026-04-21T11-52-44-262Z__journal-reversal-and-audit-hardcut__e7ad9592-e0a7-4aad-a6b6-32449bcd7267.json includes skillFeedback at lines 97-99."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Fail. The accounting-facing endpoints were centralized as intended, but a live /api/v1/reports/gst-return path still rebuilds GST from report-side invoice and purchase reads, so the feature did not actually remove the competing GST/report math owner. Report written for commit 90835746b3cddc7acdcbf3fbd8eb140122167fd3."
+}

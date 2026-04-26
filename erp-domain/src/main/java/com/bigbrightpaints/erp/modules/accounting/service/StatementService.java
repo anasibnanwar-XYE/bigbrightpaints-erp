@@ -165,21 +165,43 @@ public class StatementService {
   }
 
   public AgingSummaryResponse dealerAging(Dealer dealer, LocalDate asOf, String bucketParam) {
+    return dealerAgingInternal(dealer, asOf, bucketParam, null, null, false);
+  }
+
+  public AgingSummaryResponse dealerAgingWithinEntryWindow(
+      Dealer dealer, LocalDate asOf, String bucketParam, LocalDate startDate, LocalDate endDate) {
+    if (startDate == null || endDate == null) {
+      return dealerAging(dealer, asOf, bucketParam);
+    }
+    validateStatementRange(startDate, endDate);
+    return dealerAgingInternal(dealer, asOf, bucketParam, startDate, endDate, true);
+  }
+
+  private AgingSummaryResponse dealerAgingInternal(
+      Dealer dealer,
+      LocalDate asOf,
+      String bucketParam,
+      LocalDate entryDateStart,
+      LocalDate entryDateEnd,
+      boolean restrictToEntryWindow) {
     Company company = companyContextService.requireCurrentCompany();
     LocalDate ref = asOf == null ? companyClock.today(company) : asOf;
     List<int[]> buckets = parseBuckets(bucketParam);
+    if (restrictToEntryWindow) {
+      return dealerAgingWithinEntryWindowFromAsOfTruth(
+          dealer, ref, buckets, entryDateStart, entryDateEnd);
+    }
     List<DealerLedgerEntry> entries =
         dealerLedgerRepository
             .findByCompanyAndDealerAndEntryDateLessThanEqualOrderByEntryDateAscIdAsc(
                 company, dealer, ref);
     BigDecimal balance = BigDecimal.ZERO;
-    BigDecimal[] bucketTotals = new BigDecimal[buckets.size()];
-    for (int i = 0; i < bucketTotals.length; i++) bucketTotals[i] = BigDecimal.ZERO;
+    BigDecimal[] bucketTotals = initializeBucketTotals(buckets.size());
 
     List<AgingLine> openInvoices = new ArrayList<>();
     BigDecimal creditPool = BigDecimal.ZERO;
     for (DealerLedgerEntry e : entries) {
-      if (e.getEntryDate().isAfter(ref)) {
+      if (e.getEntryDate() == null || e.getEntryDate().isAfter(ref)) {
         continue;
       }
       BigDecimal delta = safe(e.getDebit()).subtract(safe(e.getCredit()));
@@ -220,14 +242,98 @@ public class StatementService {
       }
     }
     BigDecimal residualCredit = applyResidualCreditToCurrentBucket(bucketTotals, creditPool);
-    List<AgingBucketDto> bucketDtos = new ArrayList<>();
-    for (int i = 0; i < buckets.size(); i++) {
-      int[] b = buckets.get(i);
-      String label = b[0] + (b.length > 1 ? "-" + b[1] : "+") + " days";
-      bucketDtos.add(new AgingBucketDto(label, b[0], b.length > 1 ? b[1] : null, bucketTotals[i]));
-    }
+    List<AgingBucketDto> bucketDtos = buildBucketDtos(buckets, bucketTotals);
     appendResidualCreditBucket(bucketDtos, residualCredit);
     return new AgingSummaryResponse(dealer.getId(), dealer.getName(), balance, bucketDtos);
+  }
+
+  private AgingSummaryResponse dealerAgingWithinEntryWindowFromAsOfTruth(
+      Dealer dealer,
+      LocalDate ref,
+      List<int[]> buckets,
+      LocalDate entryDateStart,
+      LocalDate entryDateEnd) {
+    BigDecimal[] bucketTotals = initializeBucketTotals(buckets.size());
+    BigDecimal totalOutstanding = BigDecimal.ZERO;
+    List<DealerOverdueInvoiceLine> invoiceLines =
+        buildDealerInvoiceLinesFromAsOfLedgerTruth(dealer, ref);
+    for (DealerOverdueInvoiceLine line : invoiceLines) {
+      if (!withinWindow(line.issueDate(), entryDateStart, entryDateEnd)
+          || line.outstandingAmount().compareTo(BigDecimal.ZERO) <= 0) {
+        continue;
+      }
+      totalOutstanding = totalOutstanding.add(line.outstandingAmount());
+      long age = java.time.temporal.ChronoUnit.DAYS.between(line.agingDate(), ref);
+      if (age < 0) {
+        age = 0;
+      }
+      for (int i = 0; i < buckets.size(); i++) {
+        int[] b = buckets.get(i);
+        int from = b[0];
+        Integer to = b.length > 1 ? b[1] : null;
+        boolean inBucket = age >= from && (to == null || age <= to);
+        if (inBucket) {
+          bucketTotals[i] = bucketTotals[i].add(line.outstandingAmount());
+          break;
+        }
+      }
+    }
+    return new AgingSummaryResponse(
+        dealer.getId(), dealer.getName(), totalOutstanding, buildBucketDtos(buckets, bucketTotals));
+  }
+
+  private List<DealerOverdueInvoiceLine> buildDealerInvoiceLinesFromAsOfLedgerTruth(
+      Dealer dealer, LocalDate ref) {
+    Company company = companyContextService.requireCurrentCompany();
+    List<DealerLedgerEntry> entries =
+        dealerLedgerRepository
+            .findByCompanyAndDealerAndEntryDateLessThanEqualOrderByEntryDateAscIdAsc(
+                company, dealer, ref);
+    List<DealerOverdueInvoiceLine> invoiceLines = new ArrayList<>();
+    BigDecimal creditPool = BigDecimal.ZERO;
+    long sequence = 0L;
+    for (DealerLedgerEntry entry : entries) {
+      long entrySequence = sequence++;
+      LocalDate entryDate = entry.getEntryDate();
+      if (entryDate == null || entryDate.isAfter(ref)) {
+        continue;
+      }
+      BigDecimal delta = safe(entry.getDebit()).subtract(safe(entry.getCredit()));
+      if (delta.compareTo(BigDecimal.ZERO) < 0) {
+        creditPool = creditPool.add(delta.abs());
+        continue;
+      }
+      if (!StringUtils.hasText(entry.getInvoiceNumber()) || delta.compareTo(BigDecimal.ZERO) <= 0) {
+        continue;
+      }
+      LocalDate dueDate = entry.getDueDate();
+      boolean overdue = dueDate != null && ref.isAfter(dueDate);
+      long daysOverdue = overdue ? java.time.temporal.ChronoUnit.DAYS.between(dueDate, ref) : 0L;
+      invoiceLines.add(
+          new DealerOverdueInvoiceLine(
+              entry.getInvoiceNumber(),
+              entryDate,
+              dueDate,
+              resolveAgingDate(entry),
+              daysOverdue,
+              overdue,
+              delta,
+              entrySequence));
+    }
+    if (creditPool.compareTo(BigDecimal.ZERO) > 0) {
+      invoiceLines.sort(
+          Comparator.comparing(
+                  DealerOverdueInvoiceLine::agingDate,
+                  Comparator.nullsLast(Comparator.naturalOrder()))
+              .thenComparing(DealerOverdueInvoiceLine::sequence));
+      for (int i = 0; i < invoiceLines.size() && creditPool.compareTo(BigDecimal.ZERO) > 0; i++) {
+        DealerOverdueInvoiceLine line = invoiceLines.get(i);
+        BigDecimal applied = creditPool.min(line.outstandingAmount());
+        invoiceLines.set(i, line.withOutstandingAmount(line.outstandingAmount().subtract(applied)));
+        creditPool = creditPool.subtract(applied);
+      }
+    }
+    return invoiceLines;
   }
 
   public List<OverdueInvoiceDto> dealerOverdueInvoices(Dealer dealer, LocalDate asOf) {
@@ -540,6 +646,13 @@ public class StatementService {
     }
   }
 
+  private boolean withinWindow(LocalDate date, LocalDate startDate, LocalDate endDate) {
+    if (date == null || startDate == null || endDate == null) {
+      return false;
+    }
+    return !date.isBefore(startDate) && !date.isAfter(endDate);
+  }
+
   private LocalDate resolveAgingDate(DealerLedgerEntry entry) {
     if (entry == null) {
       Company company = companyContextService.requireCurrentCompany();
@@ -567,6 +680,24 @@ public class StatementService {
       return;
     }
     bucketDtos.add(new AgingBucketDto("Credit Balance", 0, 0, residualCredit.negate()));
+  }
+
+  private BigDecimal[] initializeBucketTotals(int bucketCount) {
+    BigDecimal[] bucketTotals = new BigDecimal[bucketCount];
+    for (int i = 0; i < bucketTotals.length; i++) {
+      bucketTotals[i] = BigDecimal.ZERO;
+    }
+    return bucketTotals;
+  }
+
+  private List<AgingBucketDto> buildBucketDtos(List<int[]> buckets, BigDecimal[] bucketTotals) {
+    List<AgingBucketDto> bucketDtos = new ArrayList<>();
+    for (int i = 0; i < buckets.size(); i++) {
+      int[] b = buckets.get(i);
+      String label = b[0] + (b.length > 1 ? "-" + b[1] : "+") + " days";
+      bucketDtos.add(new AgingBucketDto(label, b[0], b.length > 1 ? b[1] : null, bucketTotals[i]));
+    }
+    return bucketDtos;
   }
 
   private record AgingLine(LocalDate date, BigDecimal amount) {}

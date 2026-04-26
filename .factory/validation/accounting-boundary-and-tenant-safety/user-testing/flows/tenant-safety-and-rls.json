@@ -1,0 +1,113 @@
+{
+  "groupId": "tenant-safety-and-rls",
+  "surface": "api-and-db",
+  "appUrl": "http://localhost:18081",
+  "testedAt": "2026-04-21T09:35:36Z",
+  "credentials": {
+    "account": "validation.admin@example.com / validation.rival.admin@example.com",
+    "namespace": "tenant_safety_rls_v1"
+  },
+  "toolsUsed": [
+    "python urllib runtime probes",
+    "docker exec psql",
+    "mvn test targeted suites",
+    "read/grep inspection"
+  ],
+  "assertions": [
+    {
+      "id": "VAL-CROSS-023",
+      "title": "Tenant isolation across all cross-module and shared-master surfaces",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Log in as seeded MOCK and RIVAL tenant admins and list dealer directories on `/api/v1/dealers`",
+          "expected": "Each tenant sees only its own dealer-master data with no foreign dealer leakage",
+          "observed": "`validation.admin@example.com` (`MOCK`) received 200 with only `GST-DEALER` and `VALID-DEALER`; `validation.rival.admin@example.com` (`RIVAL`) received 200 with only `RIVAL-DEALER`. No rival dealer code appeared in the MOCK directory response."
+        },
+        {
+          "action": "Probe cross-tenant dealer-master reads and writes from the MOCK tenant using RIVAL dealer id `2`",
+          "expected": "Foreign-tenant dealer detail and mutation attempts fail closed before any mutation",
+          "observed": "`GET /api/v1/dealers/2` from MOCK returned 404 `Dealer not found` (`BUS_003`); `POST /api/v1/dealers/2/dunning/hold` returned 400 `Dealer not found` (`VAL_001`)."
+        },
+        {
+          "action": "Probe dealer-finance reads on `/api/v1/portal/finance/aging` for own and foreign dealer ids",
+          "expected": "Own dealer finance read succeeds; foreign dealer finance read is denied or masked",
+          "observed": "`GET /api/v1/portal/finance/aging?dealerId=1` from MOCK returned 200 for `Validation Dealer`; the same tenant calling `dealerId=2` returned 404 `Dealer not found`. The focused `PortalFinanceControllerIT`, `DealerLedgerIT`, and `StatementAgingIT` suites also passed with zero failures."
+        },
+        {
+          "action": "Probe representative accounting, stock/catalog, and report surfaces under each tenant",
+          "expected": "Each tenant sees only its own company-scoped data on exposed surfaces",
+          "observed": "MOCK returned 15 accounts, 14 journal entries, 4 finished goods, and 4 catalog items (`Mock Brand` / `E2E-PAINT-001`, `FG-GST`, `FG-KIT`, `FG-LIFO`); RIVAL returned only its own AR account and empty journal/finished-good/catalog lists. `GET /api/v1/reports/aged-debtors` returned 200 for both tenants with no cross-tenant rows."
+        },
+        {
+          "action": "Attempt a fail-closed cross-tenant accounting write from MOCK using foreign account id `2` in `/api/v1/accounting/journal-entries`",
+          "expected": "The request is rejected because the foreign account is outside the authenticated tenant scope",
+          "observed": "The manual journal POST returned 400 `Account not found` (`VAL_006`), confirming the MOCK tenant could not reference the RIVAL AR account in a write path."
+        }
+      ],
+      "evidence": {
+        "runtime": "Mission evidence saved in `evidence/accounting-boundary-and-tenant-safety/tenant-safety-and-rls/api-probes.json`.",
+        "tests": "Passing targeted suite summaries saved in `evidence/accounting-boundary-and-tenant-safety/tenant-safety-and-rls/suite-summaries.json` for `PortalFinanceControllerIT`, `DealerLedgerIT`, `StatementAgingIT`, `ReportControllerSecurityIT`, `ReportControllerRouteContractIT`, `SuperAdminTenantWorkflowIsolationIT`, `CompanyContextFilterControlPlaneBindingTest`, `TenantRuntimeEnforcementAuthIT`, `AdminApprovalRbacIT`, and `OpenApiSnapshotIT`."
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CROSS-027",
+      "title": "Database-level RLS enforces tenant isolation across accounting tables",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Review the canonical accounting RLS table list and policy contract from `AccountingTenantIsolationRlsIT`, then inspect the local compose database flags in `pg_class` / `pg_policies`",
+          "expected": "Every named accounting truth table has row security enabled, forced row security enabled, and at least one policy",
+          "observed": "The compose DB inspection showed all 18 named accounting tables with `relrowsecurity=t`, `relforcerowsecurity=t`, and `policy_count=1`, including `accounts`, `journal_entries`, `journal_lines`, `dealer_ledger_entries`, `partner_settlement_allocations`, reconciliation tables, and period-close tables."
+        },
+        {
+          "action": "Use a local probe role on the compose database with no tenant context and with malformed tenant context",
+          "expected": "Accounting rows are invisible and writes fail closed when tenant context is absent or malformed",
+          "observed": "`without_context_journal_entries|0` and `bad_context_journal_entries|0` were returned after `SET ROLE erp_rls_probe`; no accounting rows were visible without a valid tenant binding."
+        },
+        {
+          "action": "Bind MOCK tenant context through `set_config('app.current_company_id', 'MOCK', false)` under the probe role and inspect accounting rows",
+          "expected": "The probe sees only MOCK accounting rows and cannot update foreign-tenant rows",
+          "observed": "The compose DB probe returned `bound_context|MOCK`, `mock_visible_own_journal_entries|14`, `mock_visible_foreign_journal_entries|0`, `mock_visible_foreign_journal_lines|0`, `mock_visible_foreign_dealer_ledger_rows|0`, `mock_own_update_rows|14`, `mock_foreign_update_rows|0`, and `mock_foreign_ledger_update_rows|0`."
+        },
+        {
+          "action": "Bind RIVAL tenant context through the same probe role",
+          "expected": "The probe remains scoped to RIVAL and sees no MOCK rows",
+          "observed": "The compose DB probe returned `rival_bound_context|RIVAL`, `rival_visible_own_journal_entries|0`, and `rival_visible_foreign_journal_entries|0`; the RIVAL context stayed isolated and did not expose MOCK journals."
+        },
+        {
+          "action": "Run the focused app-datasource binding and RLS integration coverage",
+          "expected": "The canonical suite proves CompanyContextHolder binding plus blocked foreign reads/writes on the application datasource",
+          "observed": "`AccountingTenantIsolationRlsIT` passed all 3 tests, including the `appDatasourceBinding_appliesCompanyContextHolderAndFailsClosedWhenContextIsMissingOrBad` path that uses `SET ROLE erp_rls_probe`, `current_setting('app.current_company_id', true)`, and blocked foreign write assertions. Related auth-binding suites (`CompanyContextFilterControlPlaneBindingTest`, `TenantRuntimeEnforcementAuthIT`) also passed."
+        }
+      ],
+      "evidence": {
+        "dbInspect": "Compose DB outputs saved in `evidence/accounting-boundary-and-tenant-safety/tenant-safety-and-rls/db-rls-schema.txt` and `.../db-compose-rls-probes.txt`.",
+        "tests": "`AccountingTenantIsolationRlsIT` summary recorded in `evidence/accounting-boundary-and-tenant-safety/tenant-safety-and-rls/suite-summaries.json` with `Tests run: 3, Failures: 0, Errors: 0`."
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "The delegated `user-testing-flow-validator` Task helper exited immediately with no captured assistant output and no JSON report.",
+      "resolved": true,
+      "resolution": "Fell back to direct in-session validation on the same seeded runtime and documented the fallback in `.factory/library/user-testing.md`.",
+      "affectedAssertions": [
+        "VAL-CROSS-023",
+        "VAL-CROSS-027"
+      ]
+    },
+    {
+      "description": "The seeded runtime does not currently include rival-tenant catalog stock rows beyond dealer/account/accounting fixtures, so catalog/stock proof had to rely on the live tenant-scoped `/api/v1/catalog/items` and `/api/v1/finished-goods` responses plus DB inventory showing only MOCK finished-good rows.",
+      "resolved": true,
+      "resolution": "Used the existing live catalog and finished-goods surfaces to prove the MOCK tenant saw only MOCK item identities while the RIVAL tenant saw empty scoped lists, and paired that with stronger dealer/accounting/finance cross-tenant proofs.",
+      "affectedAssertions": [
+        "VAL-CROSS-023"
+      ]
+    }
+  ],
+  "blockers": [],
+  "summary": "Tested 2 assertions directly in-session after the delegated flow-validator helper failed to emit a report. `VAL-CROSS-023` passed with live tenant-scoped dealer, finance, accounting, report, and stock/catalog probes that masked or rejected foreign-tenant access. `VAL-CROSS-027` passed with compose DB RLS inspection plus the focused `AccountingTenantIsolationRlsIT` app-datasource binding suite proving fail-closed tenant isolation across the named accounting tables."
+}

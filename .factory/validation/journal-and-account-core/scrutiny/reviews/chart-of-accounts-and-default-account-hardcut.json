@@ -1,0 +1,33 @@
+{
+  "featureId": "chart-of-accounts-and-default-account-hardcut",
+  "reviewedAt": "2026-04-21T12:11:37.298146Z",
+  "commitId": "103def52fc0d135cc725f3d5e437fbf269218204",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The hard-cut does centralize the controller/default-account corridor behind AccountResolutionOwnerService and improves duplicate-code error mapping, but the new duplicate guard is still not safe for concurrent case-variant account codes. Because the persisted code is only trimmed, while the database uniqueness remains case-sensitive, two concurrent requests such as 'cash' and 'CASH' can both pass the ignore-case pre-check and commit distinct rows, breaking the feature's promised duplicate-code handling and leaving downstream ignore-case account resolution ambiguous.",
+    "issues": [
+      {
+        "file": "erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/AccountCatalogService.java",
+        "line": 54,
+        "severity": "blocking",
+        "description": "createAccount() trims account codes but does not canonicalize case before persisting them, while its race fallback only relies on the existing case-sensitive (company_id, code) unique key in Account.java. That means two concurrent requests using case variants of the same code can both pass ensureCodeAvailable() and persist separate rows (for example 'cash' and 'CASH'), even though the API now promises company-scoped duplicate-code conflicts. Downstream accounting flows resolve accounts with findByCompanyAndCodeIgnoreCase(...) in multiple places, so allowing those duplicates makes later account resolution ambiguous instead of fail-closed."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The accounting module guidance was not updated to document AccountResolutionOwnerService as the controller-facing canonical owner for chart/default-account API resolution, so shared-state still tells workers to route boundary work through AccountingService only.",
+      "evidence": "erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/AGENTS.md:23 describes AccountController, and lines 35 and 49 still describe AccountingService as the accounting-host entrypoint / canonical boundary guidance, while the reviewed feature introduced erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/AccountResolutionOwnerService.java:18 as the new explicit owner used by AccountController."
+    },
+    {
+      "area": "services",
+      "observation": "The shared command catalog still lacks a narrow GL-core proof alias for this corridor, which pushed the worker toward ad-hoc Maven/runtime proof commands outside the canonical services.yaml surface.",
+      "evidence": ".factory/services.yaml:20-33 only exposes the broad test-accounting-proof / targeted-accounting-proof packs, and the worker handoff explicitly records this gap at /Users/anas/.factory/missions/b3885fb3-3080-480f-9f59-1eba48c5f565/handoffs/2026-04-21T10-19-40-732Z__chart-of-accounts-and-default-account-hardcut__9a4c1342-83cd-4aa0-8611-9e83259aa844.json:114 ('Consider adding a dedicated command alias for GL core endpoint contract tests ...')."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Fail. The feature mostly consolidates the chart/default-account API path as intended, but its duplicate-code hardening is not actually safe for concurrent case-variant account codes, so the promised company-scoped duplicate conflict behavior is still not guaranteed. Report written for commit 103def52fc0d135cc725f3d5e437fbf269218204."
+}

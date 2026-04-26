@@ -1,0 +1,26 @@
+{
+  "featureId": "gst-source-semantics-convergence-hardcut",
+  "reviewedAt": "2026-04-21T15:27:58Z",
+  "commitId": "b241115404f410e79cfa918d2ab24618d60c3a54",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Pass. The original failed GST report-owner diff (`bf826d35cdd76e621bb588ddb2376374cb705ea3`) hardcoded `/api/v1/reports/gst-return` detail arrays to empty lists, but the follow-up report-owner rerun (`0a28f7c1ccb87b35ed7a0865afacfd9ac933f935`) restored `rateSummaries` and `transactionDetails` through accounting-owned `TaxService.generateGstReportBreakdown()`. The reviewed fix commit (`b241115404f410e79cfa918d2ab24618d60c3a54`) then moves `TaxService.generateGstReturn()` onto the same document aggregation semantics for persisted companies and adds regression coverage proving a non-zero period now keeps `/api/v1/accounting/gst/return`, `/api/v1/accounting/gst/reconciliation`, and `/api/v1/reports/gst-return` aligned while the report detail payload remains populated. I did not find a remaining blocking or non-blocking code defect in the reviewed implementation.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "knowledge",
+      "observation": "The mission validation contract still describes GST return parity in journal-line terms, but this fix intentionally changes runtime `generateGstReturn()` semantics to ignore journal-only GST entries and prefer document aggregation for persisted companies. That new rule is now encoded in tests, so the contract/shared state should spell it out to avoid future confusion about which source is canonical.",
+      "evidence": "`/Users/anas/.factory/missions/b3885fb3-3080-480f-9f59-1eba48c5f565/validation-contract.md`:1122-1124 says GST figures match tax-related journal lines; `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/TaxService.java`:74-90 now returns document-aggregation totals whenever `company.getId() != null`; `erp-domain/src/test/java/com/bigbrightpaints/erp/e2e/accounting/CriticalAccountingAxesIT.java`:317 and `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/accounting/service/TaxServiceTest.java`:141 lock in the new \"ignore journal-only tax entries without source documents\" behavior."
+    },
+    {
+      "area": "services",
+      "observation": "GST convergence proof now depends on a repeated three-endpoint runtime parity probe, but `.factory/services.yaml` still has no reusable command for it. Both the original GST report-owner packet and this fix packet had to describe bespoke runtime probes in their handoffs instead of reusing a shared service command.",
+      "evidence": "`/Users/anas/.factory/missions/b3885fb3-3080-480f-9f59-1eba48c5f565/handoffs/2026-04-21T14-19-49-341Z__gst-report-owner-convergence-hardcut__f9f0f91e-fde6-4e01-b0d1-ec44a23cdd0b.json` records a custom \"period-scan curl probe\" across the three GST endpoints; `/Users/anas/.factory/missions/b3885fb3-3080-480f-9f59-1eba48c5f565/handoffs/2026-04-21T15-17-04-689Z__gst-source-semantics-convergence-hardcut__281d2df0-4b26-4ea2-91ed-8c8fc50964b5.json` records a custom manual parity script against the same endpoints; `/Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/accounting-centralization-20260420/.factory/services.yaml` contains generic runtime smoke commands but no GST endpoint-parity command."
+    }
+  ],
+  "addressesFailureFrom": "/Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/accounting-centralization-20260420/.factory/validation/journal-and-account-core/scrutiny/reviews/gst-report-owner-convergence-hardcut.json",
+  "summary": "Pass. I reviewed the fix feature transcript skeleton, the original failed GST report-owner diff, the report-owner rerun that restored the detail contract, and the current fix diff. The original blocking regression (empty `rateSummaries`/`transactionDetails`) is no longer present, and the reviewed change now aligns GST return totals with reconciliation/report semantics on non-zero periods without dropping the public report detail payload."
+}

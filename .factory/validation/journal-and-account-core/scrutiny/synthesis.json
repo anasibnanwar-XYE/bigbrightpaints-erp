@@ -1,0 +1,57 @@
+{
+  "milestone": "journal-and-account-core",
+  "round": 3,
+  "status": "pass",
+  "scopeNote": "Re-ran the configured milestone validators after the GST source-semantics convergence fix, then re-reviewed only that scoped fix against the prior blocked GST report-owner finding. The targeted test suite, compile/typecheck, and Spotless lint check all passed, and the GST fix review confirms non-zero seeded periods now converge across the three GST endpoints without regressing report detail payloads.",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "cd erp-domain && MIGRATION_SET=v2 mvn -q -Djacoco.skip=true -Dtest='CriticalAccountingAxesIT,AccountingEndpointContractTest,SettlementControllerIdempotencyHeaderParityTest,ReconciliationControlsIT' test",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "cd erp-domain && MIGRATION_SET=v2 mvn -q -DskipTests compile",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "cd erp-domain && MIGRATION_SET=v2 mvn spotless:check",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 1,
+    "passed": 1,
+    "failed": 0,
+    "failedFeatures": []
+  },
+  "blockingIssues": [],
+  "appliedUpdates": [
+    {
+      "target": ".factory/validation/journal-and-account-core/scrutiny/synthesis.round2.json",
+      "description": "Archived the prior round-2 scrutiny synthesis before recording the rerun outcome.",
+      "sourceFeature": "scrutiny-validator-journal-and-account-core"
+    },
+    {
+      "target": ".factory/validation/journal-and-account-core/scrutiny/synthesis.json",
+      "description": "Recorded the round-3 scrutiny synthesis for the journal-and-account-core rerun after the GST source-semantics convergence fix.",
+      "sourceFeature": "scrutiny-validator-journal-and-account-core"
+    }
+  ],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "validation-contract.md",
+      "suggestion": "Clarify the GST convergence contract for persisted companies: `/api/v1/accounting/gst/return` now uses document aggregation semantics and ignores journal-only GST entries without source documents, so parity expectations should be expressed against the document-owned accounting/report path rather than raw journal-line totals alone.",
+      "evidence": "The pass review for `gst-source-semantics-convergence-hardcut` found `TaxService.generateGstReturn()` now branches to document aggregation for persisted companies (`TaxService.java:74-90`), and updated tests in `CriticalAccountingAxesIT` / `TaxServiceTest` lock in the rule that journal-only GST entries without source documents do not drive return totals even while reconciliation/report parity is preserved.",
+      "isSystemic": false
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "Add a reusable GST three-endpoint runtime parity command to `.factory/services.yaml` right now.",
+      "reason": "Rejected for this round because the reviewed handoffs prove the need but still describe bespoke period-specific probes against seeded runtime data; I was not yet confident enough in one stable, non-overfit command contract to codify it automatically without risking a misleading shared command."
+    }
+  ],
+  "previousRound": ".factory/validation/journal-and-account-core/scrutiny/synthesis.round2.json"
+}

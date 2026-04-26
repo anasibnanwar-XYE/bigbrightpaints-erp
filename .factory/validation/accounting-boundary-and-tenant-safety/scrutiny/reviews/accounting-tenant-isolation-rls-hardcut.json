@@ -1,0 +1,26 @@
+{
+  "featureId": "accounting-tenant-isolation-rls-hardcut",
+  "reviewedAt": "2026-04-21T09:00:58Z",
+  "commitId": "12caace3044323524c46debdc216604ba1680e7c",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The rerun resolves the prior fail-open gap. The live Spring `dataSource` bean is now wrapped by `TenantSessionBindingDataSourceConfig`, which binds or clears `app.current_company_id` on every borrowed PostgreSQL connection from `CompanyContextHolder`, and migration `V185` changes the RLS helpers to deny access when session context is missing, malformed, or unmapped. The updated integration proof exercises the wrapped datasource path with `CompanyContextHolder` and shows missing or malformed context yields zero visible accounting rows plus blocked writes, while valid tenant context only sees and mutates its own accounting rows.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "services",
+      "observation": "The canonical `targeted-security-proof` command still omits `AccountingTenantIsolationRlsIT`, so workers had to run the dedicated accounting RLS proof as an ad hoc Maven command outside `.factory/services.yaml` even though this mission treats accounting-table tenant isolation as a critical invariant.",
+      "evidence": "`.factory/services.yaml:36-37` defines `targeted-security-proof` without `AccountingTenantIsolationRlsIT`; the rerun handoff for session `45ade891-0a59-4a0f-a045-cfaa5197592f` separately records `cd erp-domain && MIGRATION_SET=v2 mvn -q -Djacoco.skip=true -Dtest='AccountingTenantIsolationRlsIT' test` to prove the fix."
+    },
+    {
+      "area": "knowledge",
+      "observation": "Shared-state library guidance states that accounting isolation must fail closed, but it still does not document the concrete runtime contract that ordinary PostgreSQL sessions rely on `CompanyContextHolder` being projected into `app.current_company_id` by the wrapped Spring `dataSource`.",
+      "evidence": "`.factory/library/architecture.md:52-53,81` requires database-enforced tenant isolation and notes `admin/company/auth -> accounting` handles tenant binding, but a search across `.factory/library/**` found no mention of `app.current_company_id`, `TenantSessionBindingDataSourceConfig`, or datasource-level PostgreSQL session binding."
+    }
+  ],
+  "addressesFailureFrom": "/Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/accounting-centralization-20260420/.factory/validation/accounting-boundary-and-tenant-safety/scrutiny/reviews/accounting-tenant-isolation-rls-hardcut.round-1.json",
+  "summary": "Scrutiny pass. The repaired feature now binds tenant context on the live Spring datasource path, the RLS predicate fails closed when session context is absent or malformed, and the updated proof covers the wrapped runtime connection path rather than only synthetic `set_config(...)` setup. No remaining blocking correctness gap was found in scope."
+}

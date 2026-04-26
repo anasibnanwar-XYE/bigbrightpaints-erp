@@ -1,0 +1,15 @@
+{
+  "featureId": "journal-reversal-and-audit-hardcut",
+  "reviewedAt": "2026-04-21T12:28:53.740377Z",
+  "commitId": "be06ceb1252e08fddc6b86f77ef64823bcc070fb",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Reviewed the feature metadata, worker handoff, transcript skeleton, skill procedure, and commit be06ceb1252e08fddc6b86f77ef64823bcc070fb. The change correctly centralizes the journal reversal route onto the canonical accounting host path via AccountingService, tightens closed-period override authorization so an explicit override request also requires actual override authority, preserves locked-period rejection and reopen-driven reversal behavior on the surviving journal engine, and leaves audit transaction list/detail visibility on the canonical AuditAccessService path. Added controller and E2E coverage matches the touched behavior and the reopen workflow still delegates through the same canonical reversal boundary.",
+    "issues": []
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": null,
+  "summary": "Pass. The feature’s shipped code aligns with the stated reversal and audit-visibility requirements, and I did not find blocking bugs in the controller ownership move, override/period semantics, duplicate-reversal guards, or canonical audit transaction visibility path."
+}

@@ -1,50 +1,54 @@
 # Environment
 
-Environment variables, external dependencies, and setup notes.
+Mission-specific environment guidance for the accounting hard-cut worktree.
 
-**What belongs here:** required env vars, external dependencies, setup quirks, and runtime caveats.
-**What does NOT belong here:** service ports/commands (use `.factory/services.yaml`).
+Keep this file focused on what workers actually need to boot, test, and reason about the mission safely.
 
 ---
 
-## Required Environment Variables
+## Runtime Policy
+
+- **Default state is runtime off.** Start backend/runtime services only when testing is required.
+- Valid reasons to start runtime are limited to:
+  - DB-backed characterization capture
+  - integration tests that need live dependencies
+  - curl runtime proof for the validation contract
+- Pure code cleanup or docs-only work should not leave compose/Spring processes running.
+
+## Validated Dry-Run Host Boundary
+
+These are the host ports already validated for this mission's dry-run runtime:
+
+- Postgres: `5433`
+- App HTTP: `18081`
+- Actuator/management: `19090`
+- MailHog UI/API: `18025`
+- RabbitMQ AMQP: `15673`
+- RabbitMQ management: `15674`
+
+Use these ports for mission runtime proof. Host Postgres `5432` is off-limits.
+
+## Required Runtime Inputs
 
 - `SPRING_DATASOURCE_URL` / `SPRING_DATASOURCE_USERNAME` / `SPRING_DATASOURCE_PASSWORD`
-- `JWT_SECRET` - minimum 32 bytes for JWT signing
-- `ERP_SECURITY_ENCRYPTION_KEY` - minimum 32 bytes for encryption
-- `ERP_SECURITY_AUDIT_PRIVATE_KEY` - required audit signing key for strict runtime
+- `JWT_SECRET`
+- `ERP_SECURITY_ENCRYPTION_KEY`
+- `ERP_SECURITY_AUDIT_PRIVATE_KEY`
 - `SPRING_MAIL_HOST` / `SPRING_MAIL_PORT` / `SPRING_MAIL_USERNAME` / `SPRING_MAIL_PASSWORD`
-- `ERP_ENVIRONMENT_VALIDATION_ENABLED` / `erp.environment.validation.health-indicator.enabled` when strict readiness proof needs required-config health enabled
-- `ERP_ENVIRONMENT_VALIDATION_HEALTH_INDICATOR_SKIP_WHEN_VALIDATION_DISABLED` is the explicit local validation escape hatch for compose/release proof surfaces that still boot with `erp.environment.validation.enabled=false`; leave it unset in strict runtimes unless you intentionally want required-config/configuration health contributors to report `checksSkipped` instead of running real checks
-- `ERP_LICENSE_ENFORCE` when license enforcement is part of the strict readiness proof
-- `ERP_DISPATCH_DEBIT_ACCOUNT_ID` / `ERP_DISPATCH_CREDIT_ACCOUNT_ID` when dispatch/accounting proofs require explicit mapping
+- `SPRING_PROFILES_ACTIVE=prod,flyway-v2,mock,validation-seed` for the init-managed compose-backed validation runtime
+- `ERP_VALIDATION_SEED_ENABLED=true` so compose-backed runtime proof boots the seeded validation fixtures
+- `MIGRATION_SET=v2` for Maven-side validation
 
-## Profiles
+## Mission Constraints
 
-- `prod,flyway-v2` - canonical strict runtime profile for this mission
-- `mock,validation-seed` - optional helper profile only if a later cleanup feature explicitly adds deterministic auth/bootstrap proof
+- Flyway v2 only.
+- Run Maven from `erp-domain/`.
+- Accounting-table RLS rollout is part of the environment assumption for this mission; do not validate accounting behavior on a setup that bypasses tenant isolation.
+- Sensitive financial disclosure paths must stay approval-gated in validation fixtures too; do not create convenience shortcuts that erase the gate.
+- Anomaly/review remains default-off until manually enabled by superadmin because it is a paid feature and currently warn-only.
 
-## Java / Maven
+## Worker Notes
 
-- Java 21
-- Maven 3.8+
-- Spotless / Google Java Format is enforced through the Maven build
-
-## Runtime Notes
-
-- Use Flyway v2 only for this mission.
-- The approved repo-owned compose boundary is `5433` / `5672` / `8025` / `8081` / `9090`.
-- Host Postgres `5432` is off-limits for mission runtime work.
-- Run Maven from `erp-domain/` so `.mvn/settings.xml` and `.mvn/maven.config` resolve correctly.
-- Direct `docker compose up` for dependency services still parses the app service, so datasource, JWT, encryption, and audit-key env vars must be present even when only starting `db`, `rabbitmq`, or `mailhog`.
-- The plain strict compose runtime is a smoke surface, not a complete authenticated business-flow proof surface; use targeted Maven suites for business-flow validation unless a later mission feature adds a clean bootstrap/auth fixture path.
-- Existing Docker volumes or stopped containers can carry stale validation state; if strict smoke fails for environmental reasons, reset the compose stack before assuming an application regression.
-
-## Mission Validation Notes
-
-- Canonical validation contract for this mission:
-  - strict `prod,flyway-v2` compose smoke
-  - targeted Maven suites for business-critical flow proof
-- Do not rely on legacy seeded actors or old mission-specific reset flows unless a current feature explicitly re-establishes them as canonical proof.
-- Docs-only packets in this mission do not require runtime or code validators.
-- Cleanup packets that touch runtime/config/schema/tests must use the normal validation path before handoff.
+- Older generic repo guidance may still mention different host ports; for this mission, the validated dry-run host boundary above is the worker-facing truth.
+- Docs are deliverables here, so environment guidance must stay aligned with the mission proposal and validation contract when runtime assumptions change.
+- Maven invocations are intentionally **cwd-sensitive** in this repo because `erp-domain/.mvn/settings.xml` is resolved relative to `erp-domain/`. Run Maven from `erp-domain/` (or `cd` there first) instead of relying on `mvn -f erp-domain/pom.xml ...` from the repo root.

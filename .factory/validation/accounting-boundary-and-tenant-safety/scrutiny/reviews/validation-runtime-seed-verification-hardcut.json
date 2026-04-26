@@ -1,0 +1,21 @@
+{
+  "featureId": "validation-runtime-seed-verification-hardcut",
+  "reviewedAt": "2026-04-21T08:58:12.232183Z",
+  "commitId": "5a58a85ada29393feffab45b03015c86a83441f3",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Re-review passed. The fix commit updates `expected_users` so `validation.superadmin@example.com` is now validated against the canonical platform scope from `auth.platform.code` with a `PLATFORM` fallback (`scripts/reset_final_validation_runtime.sh:195`), and the existing `scope_mismatch_users` failure path now covers that actor (`scripts/reset_final_validation_runtime.sh:212-237`, `scripts/reset_final_validation_runtime.sh:468`). Because the script only prints the success banner after that SQL error union returns no rows (`scripts/reset_final_validation_runtime.sh:551`), the reset harness can no longer report successful seed verification when the super-admin exists only with the wrong scope. This matches the seed contract in `erp-domain/src/main/java/com/bigbrightpaints/erp/core/config/ValidationSeedDataInitializer.java:331-336`, the corresponding test assertion in `erp-domain/src/test/java/com/bigbrightpaints/erp/core/config/ValidationSeedDataInitializerTest.java:286-289`, and the platform-scope normalization contract in `erp-domain/src/main/java/com/bigbrightpaints/erp/core/security/AuthScopeService.java:19-43`. No remaining blocking correctness gaps were found in this feature re-review.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "services",
+      "observation": "The mission command catalog still lacks a dedicated seed-presence probe, so diagnosing missing or malformed validation fixtures continues to depend on ad-hoc database inspection or a full runtime reset.",
+      "evidence": "`.factory/services.yaml` exposes `runtime-reset-validation` and `strict-runtime-smoke-check`, while the original handoff `2026-04-21T07-25-52-614Z__validation-runtime-seed-verification-hardcut__5904bff5-3be6-49f0-8d00-a52e96f798ec.json` records `skillFeedback.suggestedChanges` asking for a dedicated manifest seed-presence probe."
+    }
+  ],
+  "addressesFailureFrom": "/Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/accounting-centralization-20260420/.factory/validation/accounting-boundary-and-tenant-safety/scrutiny/reviews/validation-runtime-seed-verification-hardcut.round-1.json",
+  "summary": "Scrutiny pass. The prior blocking issue is resolved: the reset harness now verifies `validation.superadmin@example.com` against the required platform auth scope and fail-closes before reporting seed verification success if that actor is seeded with the wrong scope. No remaining blocking correctness gaps were found."
+}

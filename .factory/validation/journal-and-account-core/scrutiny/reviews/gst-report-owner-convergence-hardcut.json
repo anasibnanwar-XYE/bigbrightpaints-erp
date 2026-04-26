@@ -1,0 +1,34 @@
+{
+  "featureId": "gst-report-owner-convergence-hardcut",
+  "reviewedAt": "2026-04-21T13:41:43Z",
+  "commitId": "bf826d35cdd76e621bb588ddb2376374cb705ea3",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The fix does address the original blocking duplicate owner: `/api/v1/reports/gst-return` no longer reconstructs GST directly inside `ReportService` from invoice/purchase tables, and the route now delegates into accounting-owned GST logic. But the packet still fails review because the rewritten report implementation now returns empty `rateSummaries` and `transactionDetails` for every GST report response, which regresses the public report contract/mission expectation that the GST return surface remain usable and expose rate-bucket output. The route therefore removes the specific prior duplicate owner, but it does not fully satisfy the milestone contract for the report surface.",
+    "issues": [
+      {
+        "file": "erp-domain/src/main/java/com/bigbrightpaints/erp/modules/reports/service/ReportService.java",
+        "line": 257,
+        "severity": "blocking",
+        "description": "The new `gstReturn()` implementation hardcodes `rateSummaries` and `transactionDetails` to `List.of()` when constructing `GstReturnReportDto` (lines 257-266), so `/api/v1/reports/gst-return` no longer returns any rate-bucket or transaction-detail breakdown even though that DTO/OpenAPI surface still exposes both fields and the mission contract still says the report returns GST \"by rate bucket\" (`validation-contract.md`:936-940). The previous implementation produced those buckets/details, and the updated tests now explicitly lock in the regression by asserting empty lists (`erp-domain/src/test/java/com/bigbrightpaints/erp/modules/reports/service/ReportServiceInventoryAndGstTest.java`:535-536, 586-587). Because the feature promised the public report GST surface would remain usable while converging onto the accounting owner, removing the detailed report output is a blocking regression."
+      },
+      {
+        "file": "erp-domain/src/main/java/com/bigbrightpaints/erp/modules/reports/service/ReportService.java",
+        "line": 98,
+        "severity": "non_blocking",
+        "description": "The report fix now injects `TaxService` directly (`ReportService` lines 98, 129, and 227) instead of reusing the published accounting boundary that the original packet established through `AccountingService`/`ReconciliationService`. That still removes the report-side owner, but it bypasses the documented cross-module seam (`erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/AGENTS.md`:49), making future GST ownership changes easier to drift across accounting and reports again."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "knowledge",
+      "observation": "The mission validation contract still describes `/api/v1/reports/gst-return` as a rate-bucket report, but the fix packet's updated tests only prove top-level total parity and explicitly accept empty `rateSummaries`/`transactionDetails`. That mismatch makes it easy for future packets to miss GST-report contract drift.",
+      "evidence": "`/Users/anas/.factory/missions/b3885fb3-3080-480f-9f59-1eba48c5f565/validation-contract.md`:936-940 requires GST output by rate bucket, while `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/reports/service/ReportServiceInventoryAndGstTest.java`:535-536 and 586-587 assert empty detail arrays, and `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/reports/controller/ReportControllerFinancialEndpointsIT.java`:141-160 now checks only total parity across the three GST endpoints."
+    }
+  ],
+  "addressesFailureFrom": "/Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/accounting-centralization-20260420/.factory/validation/journal-and-account-core/scrutiny/reviews/journal-posting-and-core-read-model-hardcut.json",
+  "summary": "Fail. The fix removes the specific report-side GST owner flagged in the prior review, but it replaces it with a GST report implementation that always drops rate-bucket/detail output and only preserves top-level totals. `/api/v1/reports/gst-return` is therefore closer to the accounting-owned path but still not fully compliant with the milestone/public-contract expectations."
+}

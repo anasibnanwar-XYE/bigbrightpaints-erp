@@ -1,0 +1,38 @@
+{
+  "milestone": "accounting-boundary-and-tenant-safety",
+  "round": 1,
+  "status": "pass",
+  "generatedAt": "2026-04-21T09:35:36Z",
+  "assertionsSummary": {
+    "total": 2,
+    "passed": 2,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-CROSS-023",
+    "VAL-CROSS-027"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [
+    {
+      "target": "user-testing.md",
+      "description": "Added serialized `api-and-db` validation concurrency guidance plus concrete tenant-safety/RLS isolation instructions for the approved local boundary and seeded validation actors.",
+      "source": "setup"
+    },
+    {
+      "target": "user-testing.md",
+      "description": "Documented the fallback procedure when the delegated `user-testing-flow-validator` Task helper exits without emitting a report so future rounds continue directly in-session.",
+      "source": "flow-report"
+    }
+  ],
+  "previousRound": null,
+  "flowReports": [
+    ".factory/validation/accounting-boundary-and-tenant-safety/user-testing/flows/tenant-safety-and-rls.json"
+  ],
+  "environmentConstraints": [
+    "The delegated `user-testing-flow-validator` Task helper exited with no captured assistant output, so this round completed directly in-session using the same seeded runtime and evidence paths.",
+    "The seeded runtime currently provides stronger cross-tenant dealer/accounting fixtures than rival stock/catalog fixtures; catalog/stock proof therefore used live tenant-scoped `/api/v1/catalog/items` and `/api/v1/finished-goods` responses plus DB row inventory rather than rival catalog master writes."
+  ]
+}
