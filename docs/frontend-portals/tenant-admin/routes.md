@@ -6,9 +6,8 @@ Last reviewed: 2026-04-15
 | --- | --- | --- | --- | --- |
 | `/tenant` | shell landing | `GET /api/v1/auth/me`, `GET /api/v1/admin/dashboard`, optional `GET /api/v1/changelog/latest-highlighted` | route to dashboard/users/approvals | tenant-admin session |
 | `/tenant/dashboard` | dashboard | `GET /api/v1/admin/dashboard` | view activity/approval/user/support/runtime summary | tenant-admin session |
-| `/tenant/users` | user list | `GET /api/v1/admin/users` | create, edit, status, suspend/unsuspend, reset, MFA disable, delete | tenant-admin session |
-| `/tenant/users/new` | create user | none beyond shell bootstrap | `POST /api/v1/admin/users` | tenant-admin session |
-| `/tenant/users/:userId` | user detail/edit | `GET /api/v1/admin/users/{id}` | `PUT /api/v1/admin/users/{id}`, status/reset/MFA/delete actions | tenant-admin session |
+| `/tenant/users` | user list | `GET /api/v1/admin/users` | create, edit, status, lock/unlock, reset, MFA disable, revoke sessions | tenant-admin session |
+| `/tenant/users/:userId` | user detail/edit | `GET /api/v1/admin/users/{id}` | `PUT /api/v1/admin/users/{id}`, status/reset/MFA/lock/session actions | tenant-admin session |
 | `/tenant/approvals` | approval inbox | `GET /api/v1/admin/approvals` | open normalized approval detail | tenant-admin session |
 | `/tenant/approvals/:originType/:id` | approval detail | `GET /api/v1/admin/approvals` | `POST /api/v1/admin/approvals/{originType}/{id}/decisions` | tenant-admin session |
 | `/tenant/audit` | tenant audit feed | `GET /api/v1/admin/audit/events` | filter/search tenant audit history | tenant-admin session |

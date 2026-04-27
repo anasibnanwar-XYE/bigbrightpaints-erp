@@ -108,8 +108,16 @@ public class MfaController {
       return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
           .body(ApiResponse.failure("Unauthenticated"));
     }
-    return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED)
-        .body(ApiResponse.failure("MFA recovery-code regeneration is not implemented"));
+    var recoveryCodes = mfaService.regenerateRecoveryCodes(principal.getUser());
+    auditService.logAuthSuccess(
+        AuditEvent.MFA_RECOVERY_CODE_USED,
+        principal.getUsername(),
+        resolveCompanyCode(principal),
+        auditMetadata("mfa_recovery_codes_regenerated"));
+    return ResponseEntity.ok(
+        ApiResponse.success(
+            "MFA recovery codes regenerated",
+            Map.of("enabled", true, "recoveryCodes", recoveryCodes)));
   }
 
   private String resolveCompanyCode(UserPrincipal principal) {

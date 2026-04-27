@@ -777,7 +777,7 @@ Allow administrators to provision user accounts, assign roles, and manage the fu
 ### E. Trigger
 - **User-initiated**: Admin/Super Admin creates a new user via Admin portal (`POST /api/v1/admin/users`)
 - **User-initiated**: Admin/Super Admin updates user details, roles, status (`PUT /api/v1/admin/users/{id}`)
-- **User-initiated**: Admin/Super Admin suspends/unsuspends/deletes user (`PATCH/DELETE /api/v1/admin/users/{id}`)
+- **User-initiated**: Tenant admin updates status, locks/unlocks accounts, resets MFA, revokes sessions, or sends reset links through canonical `/api/v1/admin/users/**` controls
 - **System-initiated**: Tenant onboarding auto-provisions initial admin via `TenantAdminProvisioningService.provisionInitialAdmin()`
 - **System-initiated**: Role synchronization at startup via `RoleService.synchronizeSystemRoles()`
 
@@ -853,36 +853,22 @@ Allow administrators to provision user accounts, assign roles, and manage the fu
    g. If any permission-affecting change: revokes all JWT tokens and refresh tokens (forces re-authentication)
    h. Logs `USER_UPDATED` audit event
 
-#### User Suspension (Canonical Path)
+#### User Status, Lock, and Session Controls (Canonical Path)
 
-1. Admin calls `PATCH /api/v1/admin/users/{id}/suspend`
-2. `AdminUserService.suspend()`:
-   a. Resolves user with pessimistic lock (`lockById` or `lockByIdAndCompanyId`)
-   b. Validates user is within company scope (non-SUPER_ADMIN)
-   c. Checks user is not the protected main admin (`assertNotProtectedMainAdmin()`)
-   d. Sets `enabled=false`, revokes all tokens
-   e. Sends suspension email
-   f. Logs `USER_DEACTIVATED` audit event
+1. Admin calls `PUT /api/v1/admin/users/{userId}/status` with `enabled=true|false`
+2. `AdminUserService.updateUserStatus()`:
+   a. Resolves user within tenant scope
+   b. Checks the target is not the protected main admin before disable
+   c. Checks tenant user quota before enabling
+   d. Updates `enabled`, revokes tokens on disable, and logs `USER_ACTIVATED` or `USER_DEACTIVATED`
+3. Admin calls `POST /api/v1/admin/users/{userId}/lock` or `POST /api/v1/admin/users/{userId}/unlock`
+4. `AdminUserService.lockUser()` / `unlockUser()`:
+   a. Resolves the user with tenant-scoped pessimistic lock
+   b. Sets or clears lock state, revoking sessions on lock
+   c. Logs `USER_LOCKED` or `USER_UNLOCKED`
+5. Admin calls `DELETE /api/v1/admin/users/{userId}/sessions` to revoke active sessions without deleting the user
 
-#### User Unsuspension (Canonical Path)
-
-1. Admin calls `PATCH /api/v1/admin/users/{id}/unsuspend`
-2. `AdminUserService.unsuspend()`:
-   a. Resolves user with pessimistic lock
-   b. Checks tenant user quota allows additional enabled users
-   c. Sets `enabled=true`
-   d. Logs `USER_ACTIVATED` audit event
-
-#### User Deletion (Canonical Path)
-
-1. Admin calls `DELETE /api/v1/admin/users/{id}`
-2. `AdminUserService.deleteUser()`:
-   a. Resolves user with pessimistic lock
-   b. Checks user is not the protected main admin
-   c. Revokes all JWT and refresh tokens
-   d. Deletes user from `app_users`
-   e. Sends deletion email
-   f. Logs `USER_DELETED` audit event
+Retired `suspend`, `unsuspend`, and hard-delete aliases are absent/non-mutating.
 
 #### Role Synchronization (System Path)
 
@@ -1090,11 +1076,11 @@ All endpoints require `ROLE_ADMIN` tenant-admin authority and explicitly block `
 | `POST` | `/api/v1/admin/users` | ADMIN (tenant-admin only) | Create new user |
 | `PUT` | `/api/v1/admin/users/{id}` | ADMIN (tenant-admin only) | Update user (name, company, roles, enabled) |
 | `PUT` | `/api/v1/admin/users/{id}/status` | ADMIN (tenant-admin only) | Enable/disable user |
-| `PATCH` | `/api/v1/admin/users/{id}/suspend` | ADMIN (tenant-admin only) | Suspend user |
-| `PATCH` | `/api/v1/admin/users/{id}/unsuspend` | ADMIN (tenant-admin only) | Unsuspend user |
+| `POST` | `/api/v1/admin/users/{userId}/lock` | ADMIN (tenant-admin only) | Lock user |
+| `POST` | `/api/v1/admin/users/{userId}/unlock` | ADMIN (tenant-admin only) | Unlock user |
 | `PATCH` | `/api/v1/admin/users/{id}/mfa/disable` | ADMIN (tenant-admin only) | Disable MFA for user |
 | `POST` | `/api/v1/admin/users/{id}/force-reset-password` | ADMIN (tenant-admin only) | Force password reset |
-| `DELETE` | `/api/v1/admin/users/{id}` | ADMIN (tenant-admin only) | Delete user permanently |
+| `DELETE` | `/api/v1/admin/users/{userId}/sessions` | ADMIN (tenant-admin only) | Revoke user sessions |
 
 ##### RoleController (`/api/v1/superadmin/roles`)
 All endpoints require `ROLE_SUPER_ADMIN`.

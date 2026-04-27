@@ -105,16 +105,16 @@ Returns updated `UserDto`.
 
 ### Mutations returning `204 No Content`
 
-- `PATCH /api/v1/admin/users/{id}/suspend`
-- `PATCH /api/v1/admin/users/{id}/unsuspend`
+- `POST /api/v1/admin/users/{userId}/lock`
+- `POST /api/v1/admin/users/{userId}/unlock`
 - `PATCH /api/v1/admin/users/{id}/mfa/disable`
-- `DELETE /api/v1/admin/users/{id}`
+- `DELETE /api/v1/admin/users/{userId}/sessions`
 
 Frontend rule: re-fetch list/detail after these actions.
 
 Mutation scope boundary:
 
-- Tenant-admin user-management mutations (`status`, `suspend`, `unsuspend`, `mfa disable`, `delete`, `force-reset-password`) do not operate on `ROLE_ADMIN` or `ROLE_SUPER_ADMIN` targets.
+- Tenant-admin user-management mutations (`status`, `lock`, `unlock`, `mfa disable`, `sessions revoke`, `force-reset-password`) do not operate on `ROLE_ADMIN` or `ROLE_SUPER_ADMIN` targets.
 
 ### `POST /api/v1/admin/users/{userId}/force-reset-password`
 

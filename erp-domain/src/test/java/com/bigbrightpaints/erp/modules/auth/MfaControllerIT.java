@@ -166,6 +166,38 @@ public class MfaControllerIT extends AbstractIntegrationTest {
     assertThat(afterDisable.getMfaRecoveryCodeHashes()).isEmpty();
   }
 
+  @Test
+  void recovery_code_regeneration_returns_new_codes_and_replaces_old_verifiers() {
+    String token = obtainAccessToken(null, null);
+    SetupPayload setup = startEnrollment(token);
+    String activationCode = TotpTestUtils.generateCurrentCode(setup.secret());
+    assertThat(
+            postWithBearer("/api/v1/auth/mfa/activate", Map.of("code", activationCode), token)
+                .getStatusCode())
+        .isEqualTo(HttpStatus.OK);
+
+    ResponseEntity<Map> regenerate =
+        postWithBearer("/api/v1/auth/mfa/recovery-codes/regenerate", Map.of(), token);
+    assertThat(regenerate.getStatusCode()).isEqualTo(HttpStatus.OK);
+    Map<String, Object> regenerateData = apiData(regenerate);
+    assertThat(regenerateData.get("enabled")).isEqualTo(Boolean.TRUE);
+    @SuppressWarnings("unchecked")
+    List<String> regeneratedCodes =
+        ((List<Object>) regenerateData.get("recoveryCodes"))
+            .stream().map(Object::toString).toList();
+    assertThat(regeneratedCodes).hasSize(setup.recoveryCodes().size());
+    assertThat(regeneratedCodes).doesNotContainAnyElementsOf(setup.recoveryCodes());
+    assertThat(scopedUser().getMfaRecoveryCodeHashes())
+        .doesNotContainAnyElementsOf(regeneratedCodes)
+        .hasSize(regeneratedCodes.size());
+
+    ResponseEntity<Map> oldRecoveryCodeLogin = login(null, setup.recoveryCodes().getFirst());
+    assertThat(oldRecoveryCodeLogin.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+
+    ResponseEntity<Map> regeneratedRecoveryCodeLogin = login(null, regeneratedCodes.getFirst());
+    assertThat(regeneratedRecoveryCodeLogin.getStatusCode()).isEqualTo(HttpStatus.OK);
+  }
+
   private SetupPayload startEnrollment(String token) {
     ResponseEntity<Map> setupResp = postWithBearer("/api/v1/auth/mfa/setup", null, token);
     assertThat(setupResp.getStatusCode()).isEqualTo(HttpStatus.OK);

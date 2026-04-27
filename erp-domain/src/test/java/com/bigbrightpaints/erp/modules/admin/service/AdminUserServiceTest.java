@@ -937,7 +937,7 @@ class AdminUserServiceTest {
   }
 
   @Test
-  void suspend_crossTenantUser_forTenantAdmin_usesScopedLockAndMasksTargetAsMissing() {
+  void lockUser_crossTenantUser_forTenantAdmin_usesScopedLockAndMasksTargetAsMissing() {
     Company foreignCompany = new Company();
     ReflectionTestUtils.setField(foreignCompany, "id", 21L);
     foreignCompany.setCode("FOREIGN");
@@ -949,7 +949,7 @@ class AdminUserServiceTest {
     when(userRepository.lockByIdAndCompanyId(306L, 1L)).thenReturn(Optional.empty());
     when(userRepository.findById(306L)).thenReturn(Optional.of(foreignUser));
 
-    assertThatThrownBy(() -> service.suspend(306L))
+    assertThatThrownBy(() -> service.lockUser(306L))
         .isInstanceOf(ApplicationException.class)
         .hasMessageContaining("User not found");
 
@@ -962,7 +962,7 @@ class AdminUserServiceTest {
   }
 
   @Test
-  void unsuspend_crossTenantUser_forTenantAdmin_usesScopedLockAndMasksTargetAsMissing() {
+  void unlockUser_crossTenantUser_forTenantAdmin_usesScopedLockAndMasksTargetAsMissing() {
     Company foreignCompany = new Company();
     ReflectionTestUtils.setField(foreignCompany, "id", 21L);
     foreignCompany.setCode("FOREIGN");
@@ -974,7 +974,7 @@ class AdminUserServiceTest {
     when(userRepository.lockByIdAndCompanyId(308L, 1L)).thenReturn(Optional.empty());
     when(userRepository.findById(308L)).thenReturn(Optional.of(foreignUser));
 
-    assertThatThrownBy(() -> service.unsuspend(308L))
+    assertThatThrownBy(() -> service.unlockUser(308L))
         .isInstanceOf(ApplicationException.class)
         .hasMessageContaining("User not found");
 
@@ -987,7 +987,7 @@ class AdminUserServiceTest {
   }
 
   @Test
-  void deleteUser_crossTenantUser_forTenantAdmin_usesScopedLockAndMasksTargetAsMissing() {
+  void revokeUserSessions_crossTenantUser_forTenantAdmin_usesScopedLockAndMasksTargetAsMissing() {
     Company foreignCompany = new Company();
     ReflectionTestUtils.setField(foreignCompany, "id", 21L);
     foreignCompany.setCode("FOREIGN");
@@ -999,7 +999,7 @@ class AdminUserServiceTest {
     when(userRepository.lockByIdAndCompanyId(309L, 1L)).thenReturn(Optional.empty());
     when(userRepository.findById(309L)).thenReturn(Optional.of(foreignUser));
 
-    assertThatThrownBy(() -> service.deleteUser(309L))
+    assertThatThrownBy(() -> service.revokeUserSessions(309L))
         .isInstanceOf(ApplicationException.class)
         .hasMessageContaining("User not found");
 
@@ -1008,7 +1008,8 @@ class AdminUserServiceTest {
     verify(auditService)
         .logAuthFailure(
             eq(AuditEvent.ACCESS_DENIED), eq("UNKNOWN_AUTH_ACTOR"), eq("TEST"), any(Map.class));
-    verify(userRepository, never()).delete(any(UserAccount.class));
+    verify(tokenBlacklistService, never()).revokeAllUserTokens(anyString());
+    verify(refreshTokenService, never()).revokeAllForUser(any());
   }
 
   @Test
@@ -1037,7 +1038,7 @@ class AdminUserServiceTest {
   }
 
   @Test
-  void suspend_allowsSuperAdminToTargetForeignTenantUser() {
+  void lockUser_allowsSuperAdminToTargetForeignTenantUser() {
     Company foreignCompany = new Company();
     ReflectionTestUtils.setField(foreignCompany, "id", 21L);
     foreignCompany.setCode("FOREIGN");
@@ -1057,12 +1058,12 @@ class AdminUserServiceTest {
         .thenAnswer(invocation -> invocation.getArgument(0));
 
     try {
-      service.suspend(307L);
+      service.lockUser(307L);
     } finally {
       SecurityContextHolder.clearContext();
     }
 
-    assertThat(foreignUser.isEnabled()).isFalse();
+    assertThat(foreignUser.getLockedUntil()).isNotNull();
     verify(tokenBlacklistService).revokeAllUserTokens(foreignUser.getPublicId().toString());
     verify(refreshTokenService).revokeAllForUser(foreignUser.getPublicId());
   }

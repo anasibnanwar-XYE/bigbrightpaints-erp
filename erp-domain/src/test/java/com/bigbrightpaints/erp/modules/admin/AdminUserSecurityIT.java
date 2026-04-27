@@ -31,6 +31,7 @@ import org.springframework.http.ResponseEntity;
 
 import com.bigbrightpaints.erp.core.security.AuthScopeService;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
+import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
 
@@ -50,6 +51,8 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
   @Autowired private TestRestTemplate rest;
 
   @Autowired private CompanyRepository companyRepository;
+
+  @Autowired private UserAccountRepository userAccountRepository;
 
   @Autowired private DataSource dataSource;
 
@@ -450,7 +453,7 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
                     new HttpEntity<>(headers),
                     Map.class)
                 .getStatusCode())
-        .isIn(HttpStatus.NOT_FOUND, HttpStatus.METHOD_NOT_ALLOWED, HttpStatus.FORBIDDEN);
+        .isIn(HttpStatus.NOT_FOUND, HttpStatus.METHOD_NOT_ALLOWED);
 
     assertThat(
             rest.exchange(
@@ -459,7 +462,7 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
                     new HttpEntity<>(headers),
                     Map.class)
                 .getStatusCode())
-        .isIn(HttpStatus.NOT_FOUND, HttpStatus.METHOD_NOT_ALLOWED, HttpStatus.FORBIDDEN);
+        .isIn(HttpStatus.NOT_FOUND, HttpStatus.METHOD_NOT_ALLOWED);
 
     assertPlatformOnlyAccessDenied(
         rest.exchange(
@@ -489,7 +492,41 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
                     new HttpEntity<>(headers),
                     Map.class)
                 .getStatusCode())
-        .isIn(HttpStatus.NOT_FOUND, HttpStatus.METHOD_NOT_ALLOWED, HttpStatus.FORBIDDEN);
+        .isIn(HttpStatus.NOT_FOUND, HttpStatus.METHOD_NOT_ALLOWED);
+  }
+
+  @Test
+  void retired_admin_user_aliases_are_absent_and_non_mutating_for_every_actor_role() {
+    UserAccount mustChangeUser =
+        dataSeeder.ensureUser(
+            "must-change-retired-admin@bbp.com",
+            "MustChange123!",
+            "Must Change Retired",
+            COMPANY,
+            List.of("ROLE_SALES"));
+    mustChangeUser.setMustChangePassword(true);
+    userAccountRepository.save(mustChangeUser);
+
+    List<HttpHeaders> actorHeaders =
+        List.of(
+            new HttpHeaders(),
+            bearerHeaders(login(DEALER_EMAIL, DEALER_PASSWORD, COMPANY)),
+            bearerHeaders(login(ADMIN_EMAIL, ADMIN_PASSWORD, COMPANY)),
+            bearerHeaders(login(SUPER_ADMIN_EMAIL, SUPER_ADMIN_PASSWORD, COMPANY)),
+            bearerHeaders(login("must-change-retired-admin@bbp.com", "MustChange123!", COMPANY)));
+
+    for (HttpHeaders headers : actorHeaders) {
+      assertRetiredAdminAliasAbsentAndNonMutating(
+          "/api/v1/admin/users/" + otherCompanyUser.getId() + "/suspend",
+          HttpMethod.PATCH,
+          headers);
+      assertRetiredAdminAliasAbsentAndNonMutating(
+          "/api/v1/admin/users/" + otherCompanyUser.getId() + "/unsuspend",
+          HttpMethod.PATCH,
+          headers);
+      assertRetiredAdminAliasAbsentAndNonMutating(
+          "/api/v1/admin/users/" + otherCompanyUser.getId(), HttpMethod.DELETE, headers);
+    }
   }
 
   @Test
@@ -815,6 +852,25 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
     String token = payload.get("accessToken").toString();
     assertThat(token).isNotBlank();
     return token;
+  }
+
+  private HttpHeaders bearerHeaders(String token) {
+    HttpHeaders headers = new HttpHeaders();
+    headers.setBearerAuth(token);
+    return headers;
+  }
+
+  private void assertRetiredAdminAliasAbsentAndNonMutating(
+      String path, HttpMethod method, HttpHeaders headers) {
+    boolean enabledBefore =
+        userAccountRepository.findById(otherCompanyUser.getId()).orElseThrow().isEnabled();
+    ResponseEntity<Map> response =
+        rest.exchange(path, method, new HttpEntity<>(headers), Map.class);
+    assertThat(response.getStatusCode())
+        .as("%s %s returned body %s", method, path, response.getBody())
+        .isIn(HttpStatus.NOT_FOUND, HttpStatus.METHOD_NOT_ALLOWED);
+    assertThat(userAccountRepository.findById(otherCompanyUser.getId()))
+        .hasValueSatisfying(user -> assertThat(user.isEnabled()).isEqualTo(enabledBefore));
   }
 
   private void assertRoutePresent(String path, HttpMethod method, HttpEntity<?> entity) {

@@ -143,7 +143,7 @@ public class CompanyContextFilter extends OncePerRequestFilter {
         TenantRuntimeEnforcementService.TenantRequestAdmission.notTracked();
     try {
       String runtimePath = normalizePath(resolveApplicationPath(request));
-      if (isRetiredAdminHostPath(runtimePath)) {
+      if (isRetiredAdminHostPath(request, runtimePath)) {
         // Retired host paths are intentionally unresolved by handlers and should return 404
         // consistently, independent of auth/company-context binding.
         filterChain.doFilter(request, response);
@@ -675,7 +675,7 @@ public class CompanyContextFilter extends OncePerRequestFilter {
     if (normalizedPath.equals("/api/v1/companies")) {
       return true;
     }
-    if (isRetiredAdminHostPath(normalizedPath)) {
+    if (RetiredTenantAdminHostPaths.matchesNormalizedPath(normalizedPath)) {
       // Let retired admin hosts fall through to dispatcher 404 uniformly.
       return true;
     }
@@ -685,8 +685,9 @@ public class CompanyContextFilter extends OncePerRequestFilter {
         || normalizedPath.startsWith("/api/v1/superadmin/");
   }
 
-  private boolean isRetiredAdminHostPath(String normalizedPath) {
-    return RetiredTenantAdminHostPaths.matchesNormalizedPath(normalizedPath);
+  private boolean isRetiredAdminHostPath(HttpServletRequest request, String normalizedPath) {
+    return RetiredTenantAdminHostPaths.matchesNormalizedPath(
+        normalizedPath, request == null ? null : request.getMethod());
   }
 
   private boolean isSuperadminPlatformScopeOnlyHostPath(String path) {

@@ -120,6 +120,19 @@ public class MfaService {
   }
 
   @Transactional
+  public List<String> regenerateRecoveryCodes(UserAccount user) {
+    if (user == null || !user.isMfaEnabled()) {
+      throw new ApplicationException(
+          ErrorCode.VALIDATION_INVALID_INPUT, "MFA must be enabled to regenerate recovery codes");
+    }
+    requireActiveSecret(user);
+    List<String> recoveryCodes = generateRecoveryCodes();
+    user.setMfaRecoveryCodeHashes(recoveryCodes.stream().map(passwordEncoder::encode).toList());
+    userAccountRepository.save(user);
+    return recoveryCodes;
+  }
+
+  @Transactional
   public void verifyDuringLogin(UserAccount user, String totpCode, String recoveryCode) {
     if (!user.isMfaEnabled()) {
       return;
