@@ -83,7 +83,7 @@ Last reviewed: 2026-04-26
   - `cd erp-domain && MIGRATION_SET=v2 mvn -q -DskipTests compile`
   - `cd erp-domain && MIGRATION_SET=v2 mvn -q spotless:check -DspotlessFiles='src/main/java/com/bigbrightpaints/erp/modules/accounting/dto/CompanyDefaultAccountsRequest.java,src/main/java/com/bigbrightpaints/erp/modules/accounting/controller/AccountController.java,src/main/java/com/bigbrightpaints/erp/modules/accounting/service/AccountResolutionOwnerService.java,src/main/java/com/bigbrightpaints/erp/modules/accounting/service/CompanyDefaultAccountsService.java,src/main/java/com/bigbrightpaints/erp/modules/accounting/service/AccountingComplianceAuditService.java,src/main/java/com/bigbrightpaints/erp/core/config/ValidationSeedDataInitializer.java,src/test/java/com/bigbrightpaints/erp/modules/accounting/controller/AccountControllerTest.java,src/test/java/com/bigbrightpaints/erp/modules/accounting/service/CompanyDefaultAccountsServiceTest.java'`
   - `bash ci/check-high-risk-changes.sh`
-  - `python3 scripts/pr_ci_parity.py --base` default branch `--head HEAD`
+  - `python3 scripts/pr_ci_parity.py --base origin/main --head HEAD`
   - `git diff --check`
 - Result summary:
   - focused default-account/controller/validation-seed tests passed
