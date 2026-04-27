@@ -1,5 +1,9 @@
 package com.bigbrightpaints.erp.modules.inventory;
 
+import static com.bigbrightpaints.erp.test.support.JsonResponseAssertions.mapList;
+import static com.bigbrightpaints.erp.test.support.JsonResponseAssertions.responseDataMap;
+import static com.bigbrightpaints.erp.test.support.JsonResponseAssertions.responseDataMapList;
+import static com.bigbrightpaints.erp.test.support.JsonResponseAssertions.responseMapType;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.math.BigDecimal;
@@ -70,22 +74,25 @@ class InventoryPathConsolidationIT extends AbstractIntegrationTest {
   void rawMaterialEndpoints_areMappedUnderApiV1AndAccessibleToAccounting() {
     HttpHeaders headers = authHeaders();
 
-    ResponseEntity<Map> stockResponse =
+    ResponseEntity<Map<String, Object>> stockResponse =
         rest.exchange(
-            "/api/v1/raw-materials/stock", HttpMethod.GET, new HttpEntity<>(headers), Map.class);
+            "/api/v1/raw-materials/stock",
+            HttpMethod.GET,
+            new HttpEntity<>(headers),
+            responseMapType());
     assertThat(stockResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
-    List<Map<String, Object>> stockRows = responseDataList(stockResponse);
+    List<Map<String, Object>> stockRows = responseDataMapList(stockResponse);
     assertThat(stockRows).isNotEmpty();
     assertThat(stockRows.getFirst()).containsKeys("materialId", "quantity");
 
-    ResponseEntity<Map> inventoryResponse =
+    ResponseEntity<Map<String, Object>> inventoryResponse =
         rest.exchange(
             "/api/v1/raw-materials/stock/inventory",
             HttpMethod.GET,
             new HttpEntity<>(headers),
-            Map.class);
+            responseMapType());
     assertThat(inventoryResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
-    List<Map<String, Object>> inventoryRows = responseDataList(inventoryResponse);
+    List<Map<String, Object>> inventoryRows = responseDataMapList(inventoryResponse);
     assertThat(inventoryRows).isNotEmpty();
     assertThat(inventoryRows.getFirst()).containsKeys("materialId", "quantity", "status");
   }
@@ -94,66 +101,66 @@ class InventoryPathConsolidationIT extends AbstractIntegrationTest {
   void finishedGoodsEndpoints_areMappedAndAccessibleToAccounting() {
     HttpHeaders headers = authHeaders();
 
-    ResponseEntity<Map> listResponse =
+    ResponseEntity<Map<String, Object>> listResponse =
         rest.exchange(
             "/api/v1/finished-goods?page=0&size=10",
             HttpMethod.GET,
             new HttpEntity<>(headers),
-            Map.class);
+            responseMapType());
     assertThat(listResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
     Map<String, Object> page = responseDataMap(listResponse);
     assertThat(page).containsKeys("content", "totalElements", "totalPages", "page", "size");
-    List<Map<String, Object>> content = castList(page.get("content"));
+    List<Map<String, Object>> content = mapList(page.get("content"));
     assertThat(content).isNotEmpty();
     assertThat(content.getFirst()).containsKeys("id", "name", "productCode");
 
-    ResponseEntity<Map> summaryResponse =
+    ResponseEntity<Map<String, Object>> summaryResponse =
         rest.exchange(
             "/api/v1/finished-goods/stock-summary",
             HttpMethod.GET,
             new HttpEntity<>(headers),
-            Map.class);
+            responseMapType());
     assertThat(summaryResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
-    List<Map<String, Object>> summaryRows = responseDataList(summaryResponse);
+    List<Map<String, Object>> summaryRows = responseDataMapList(summaryResponse);
     assertThat(summaryRows).isNotEmpty();
     assertThat(summaryRows.getFirst())
         .containsKeys("finishedGoodId", "totalStock", "reservedStock");
 
-    ResponseEntity<Map> batchesResponse =
+    ResponseEntity<Map<String, Object>> batchesResponse =
         rest.exchange(
             "/api/v1/finished-goods/" + finishedGoodId + "/batches",
             HttpMethod.GET,
             new HttpEntity<>(headers),
-            Map.class);
+            responseMapType());
     assertThat(batchesResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
-    List<Map<String, Object>> batches = responseDataList(batchesResponse);
+    List<Map<String, Object>> batches = responseDataMapList(batchesResponse);
     assertThat(batches).isNotEmpty();
     assertThat(batches.getFirst()).containsKeys("batchId", "quantity", "expiryDate");
 
-    ResponseEntity<Map> lowStockResponse =
+    ResponseEntity<Map<String, Object>> lowStockResponse =
         rest.exchange(
             "/api/v1/finished-goods/low-stock?threshold=1000",
             HttpMethod.GET,
             new HttpEntity<>(headers),
-            Map.class);
+            responseMapType());
     assertThat(lowStockResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
-    assertThat(responseDataList(lowStockResponse)).isNotEmpty();
+    assertThat(responseDataMapList(lowStockResponse)).isNotEmpty();
 
-    ResponseEntity<Map> thresholdGetResponse =
+    ResponseEntity<Map<String, Object>> thresholdGetResponse =
         rest.exchange(
             "/api/v1/finished-goods/" + finishedGoodId + "/low-stock-threshold",
             HttpMethod.GET,
             new HttpEntity<>(headers),
-            Map.class);
+            responseMapType());
     assertThat(thresholdGetResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
     assertThat(responseDataMap(thresholdGetResponse)).containsKey("threshold");
 
-    ResponseEntity<Map> thresholdPutResponse =
+    ResponseEntity<Map<String, Object>> thresholdPutResponse =
         rest.exchange(
             "/api/v1/finished-goods/" + finishedGoodId + "/low-stock-threshold",
             HttpMethod.PUT,
             new HttpEntity<>(Map.of("threshold", new BigDecimal("42.00")), jsonHeaders()),
-            Map.class);
+            responseMapType());
     assertThat(thresholdPutResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
     assertThat(responseDataMap(thresholdPutResponse).get("threshold")).isEqualTo(42.0);
   }
@@ -162,42 +169,45 @@ class InventoryPathConsolidationIT extends AbstractIntegrationTest {
   void inventoryBatchRoutes_andAdjustmentsRoute_areMappedForAccounting() {
     HttpHeaders headers = authHeaders();
 
-    ResponseEntity<Map> expiringResponse =
+    ResponseEntity<Map<String, Object>> expiringResponse =
         rest.exchange(
             "/api/v1/inventory/batches/expiring-soon?days=30",
             HttpMethod.GET,
             new HttpEntity<>(headers),
-            Map.class);
+            responseMapType());
     assertThat(expiringResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
-    List<Map<String, Object>> expiringRows = responseDataList(expiringResponse);
+    List<Map<String, Object>> expiringRows = responseDataMapList(expiringResponse);
     assertThat(expiringRows).isNotEmpty();
     assertThat(expiringRows.getFirst()).containsKeys("batchId", "expiryDate");
 
-    ResponseEntity<Map> movementResponse =
+    ResponseEntity<Map<String, Object>> movementResponse =
         rest.exchange(
             "/api/v1/inventory/batches/" + finishedGoodBatchId + "/movements",
             HttpMethod.GET,
             new HttpEntity<>(headers),
-            Map.class);
+            responseMapType());
     assertThat(movementResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
-    List<Map<String, Object>> movementRows = responseDataList(movementResponse);
+    List<Map<String, Object>> movementRows = responseDataMapList(movementResponse);
     assertThat(movementRows).isNotEmpty();
     assertThat(movementRows.getFirst()).containsKeys("movementType", "quantity", "timestamp");
 
-    ResponseEntity<Map> adjustmentsResponse =
+    ResponseEntity<Map<String, Object>> adjustmentsResponse =
         rest.exchange(
-            "/api/v1/inventory/adjustments", HttpMethod.GET, new HttpEntity<>(headers), Map.class);
+            "/api/v1/inventory/adjustments",
+            HttpMethod.GET,
+            new HttpEntity<>(headers),
+            responseMapType());
     assertThat(adjustmentsResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
   }
 
   @Test
   void inventoryAdjustmentsHistory_remainsReadableAfterCreate() {
-    ResponseEntity<Map> beforeCreateResponse =
+    ResponseEntity<Map<String, Object>> beforeCreateResponse =
         rest.exchange(
             "/api/v1/inventory/adjustments",
             HttpMethod.GET,
             new HttpEntity<>(authHeaders()),
-            Map.class);
+            responseMapType());
     assertThat(beforeCreateResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
 
     Company company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
@@ -233,31 +243,31 @@ class InventoryPathConsolidationIT extends AbstractIntegrationTest {
                     "Regression proof row")));
     HttpHeaders createHeaders = jsonHeaders();
     createHeaders.set("Idempotency-Key", idempotencyKey);
-    ResponseEntity<Map> createResponse =
+    ResponseEntity<Map<String, Object>> createResponse =
         rest.exchange(
             "/api/v1/inventory/adjustments",
             HttpMethod.POST,
             new HttpEntity<>(createRequest, createHeaders),
-            Map.class);
+            responseMapType());
     assertThat(createResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
     Map<String, Object> createdAdjustment = responseDataMap(createResponse);
     assertThat(createdAdjustment).containsKeys("referenceNumber", "lines");
 
-    ResponseEntity<Map> afterCreateResponse =
+    ResponseEntity<Map<String, Object>> afterCreateResponse =
         rest.exchange(
             "/api/v1/inventory/adjustments",
             HttpMethod.GET,
             new HttpEntity<>(authHeaders()),
-            Map.class);
+            responseMapType());
     assertThat(afterCreateResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
 
-    List<Map<String, Object>> rows = responseDataList(afterCreateResponse);
+    List<Map<String, Object>> rows = responseDataMapList(afterCreateResponse);
     assertThat(rows)
         .anySatisfy(
             row -> {
               assertThat(row.get("referenceNumber"))
                   .isEqualTo(createdAdjustment.get("referenceNumber"));
-              List<Map<String, Object>> lines = castList(row.get("lines"));
+              List<Map<String, Object>> lines = mapList(row.get("lines"));
               assertThat(lines).isNotEmpty();
               assertThat(lines.getFirst())
                   .containsKeys(
@@ -358,14 +368,16 @@ class InventoryPathConsolidationIT extends AbstractIntegrationTest {
   }
 
   private HttpHeaders authHeaders() {
-    ResponseEntity<Map> login =
-        rest.postForEntity(
+    ResponseEntity<Map<String, Object>> login =
+        rest.exchange(
             "/api/v1/auth/login",
-            Map.of(
-                "email", ACCOUNTING_EMAIL,
-                "password", PASSWORD,
-                "companyCode", COMPANY_CODE),
-            Map.class);
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of(
+                    "email", ACCOUNTING_EMAIL,
+                    "password", PASSWORD,
+                    "companyCode", COMPANY_CODE)),
+            responseMapType());
     assertThat(login.getStatusCode()).isEqualTo(HttpStatus.OK);
     assertThat(login.getBody()).isNotNull();
 
@@ -379,22 +391,5 @@ class InventoryPathConsolidationIT extends AbstractIntegrationTest {
     HttpHeaders headers = authHeaders();
     headers.setContentType(MediaType.APPLICATION_JSON);
     return headers;
-  }
-
-  @SuppressWarnings("unchecked")
-  private Map<String, Object> responseDataMap(ResponseEntity<Map> response) {
-    assertThat(response.getBody()).isNotNull();
-    return (Map<String, Object>) response.getBody().get("data");
-  }
-
-  @SuppressWarnings("unchecked")
-  private List<Map<String, Object>> responseDataList(ResponseEntity<Map> response) {
-    assertThat(response.getBody()).isNotNull();
-    return castList(response.getBody().get("data"));
-  }
-
-  @SuppressWarnings("unchecked")
-  private List<Map<String, Object>> castList(Object value) {
-    return (List<Map<String, Object>>) value;
   }
 }

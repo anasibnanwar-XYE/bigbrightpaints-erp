@@ -30,12 +30,12 @@ import com.bigbrightpaints.erp.modules.accounting.domain.GstRegistrationType;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingService;
+import com.bigbrightpaints.erp.modules.admin.domain.ExportApprovalStatus;
 import com.bigbrightpaints.erp.modules.admin.domain.ExportRequest;
 import com.bigbrightpaints.erp.modules.admin.domain.ExportRequestRepository;
 import com.bigbrightpaints.erp.modules.admin.domain.SupportTicket;
 import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketCategory;
 import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketRepository;
-import com.bigbrightpaints.erp.modules.admin.dto.ExportApprovalStatus;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
@@ -973,8 +973,7 @@ public class MockDataInitializer {
       String batchCode,
       BigDecimal qty,
       BigDecimal cost) {
-    if (rawMaterial.getId() != null
-        && batchRepository.existsByRawMaterialAndBatchCode(rawMaterial, batchCode)) {
+    if (batchRepository.existsByRawMaterialAndBatchCode(rawMaterial, batchCode)) {
       return;
     }
     RawMaterialBatch batch = new RawMaterialBatch();

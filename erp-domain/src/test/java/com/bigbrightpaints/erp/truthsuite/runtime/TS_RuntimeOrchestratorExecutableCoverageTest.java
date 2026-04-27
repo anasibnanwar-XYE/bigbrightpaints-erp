@@ -20,7 +20,6 @@ import java.util.Optional;
 
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
-import org.springframework.security.access.AccessDeniedException;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
@@ -44,7 +43,6 @@ import com.bigbrightpaints.erp.orchestrator.dto.ApproveOrderRequest;
 import com.bigbrightpaints.erp.orchestrator.dto.OrderFulfillmentRequest;
 import com.bigbrightpaints.erp.orchestrator.dto.PayrollRunRequest;
 import com.bigbrightpaints.erp.orchestrator.exception.OrchestratorFeatureDisabledException;
-import com.bigbrightpaints.erp.orchestrator.policy.PolicyEnforcer;
 import com.bigbrightpaints.erp.orchestrator.repository.OrchestratorCommand;
 import com.bigbrightpaints.erp.orchestrator.service.CommandDispatcher;
 import com.bigbrightpaints.erp.orchestrator.service.EventPublisherService;
@@ -59,43 +57,11 @@ import com.bigbrightpaints.erp.orchestrator.workflow.WorkflowService;
 class TS_RuntimeOrchestratorExecutableCoverageTest {
 
   @Test
-  void policyEnforcer_rejects_missing_user_or_company_context() {
-    PolicyEnforcer enforcer = new PolicyEnforcer();
-
-    assertThatThrownBy(() -> enforcer.checkOrderApprovalPermissions(null, "C1"))
-        .isInstanceOf(AccessDeniedException.class)
-        .hasMessageContaining("Missing user or company context");
-    assertThatThrownBy(() -> enforcer.checkOrderApprovalPermissions("u1", null))
-        .isInstanceOf(AccessDeniedException.class)
-        .hasMessageContaining("Missing user or company context");
-    assertThatThrownBy(() -> enforcer.checkDispatchPermissions("u1", null))
-        .isInstanceOf(AccessDeniedException.class)
-        .hasMessageContaining("Missing user or company context");
-    assertThatThrownBy(() -> enforcer.checkDispatchPermissions(null, "C1"))
-        .isInstanceOf(AccessDeniedException.class)
-        .hasMessageContaining("Missing user or company context");
-    assertThatThrownBy(() -> enforcer.checkPayrollPermissions(null, null))
-        .isInstanceOf(AccessDeniedException.class)
-        .hasMessageContaining("Missing user or company context");
-    assertThatThrownBy(() -> enforcer.checkPayrollPermissions("u1", null))
-        .isInstanceOf(AccessDeniedException.class)
-        .hasMessageContaining("Missing user or company context");
-    assertThatThrownBy(() -> enforcer.checkPayrollPermissions(null, "C1"))
-        .isInstanceOf(AccessDeniedException.class)
-        .hasMessageContaining("Missing user or company context");
-
-    enforcer.checkOrderApprovalPermissions("u1", "C1");
-    enforcer.checkDispatchPermissions("u1", "C1");
-    enforcer.checkPayrollPermissions("u1", "C1");
-  }
-
-  @Test
   void commandDispatcher_covers_success_replay_and_feature_gated_paths() {
     WorkflowService workflowService = mock(WorkflowService.class);
     IntegrationCoordinator integrationCoordinator = mock(IntegrationCoordinator.class);
     EventPublisherService eventPublisherService = mock(EventPublisherService.class);
     TraceService traceService = mock(TraceService.class);
-    PolicyEnforcer policyEnforcer = new PolicyEnforcer();
     OrchestratorIdempotencyService idempotencyService = mock(OrchestratorIdempotencyService.class);
     OrchestratorFeatureFlags featureFlags = mock(OrchestratorFeatureFlags.class);
 
@@ -105,7 +71,6 @@ class TS_RuntimeOrchestratorExecutableCoverageTest {
             integrationCoordinator,
             eventPublisherService,
             traceService,
-            policyEnforcer,
             idempotencyService,
             featureFlags);
 
@@ -315,7 +280,6 @@ class TS_RuntimeOrchestratorExecutableCoverageTest {
     IntegrationCoordinator integrationCoordinator = mock(IntegrationCoordinator.class);
     EventPublisherService eventPublisherService = mock(EventPublisherService.class);
     TraceService traceService = mock(TraceService.class);
-    PolicyEnforcer policyEnforcer = new PolicyEnforcer();
     OrchestratorIdempotencyService idempotencyService = mock(OrchestratorIdempotencyService.class);
     OrchestratorFeatureFlags featureFlags = mock(OrchestratorFeatureFlags.class);
     CommandDispatcher dispatcher =
@@ -324,7 +288,6 @@ class TS_RuntimeOrchestratorExecutableCoverageTest {
             integrationCoordinator,
             eventPublisherService,
             traceService,
-            policyEnforcer,
             idempotencyService,
             featureFlags);
 
@@ -361,7 +324,6 @@ class TS_RuntimeOrchestratorExecutableCoverageTest {
     IntegrationCoordinator integrationCoordinator = mock(IntegrationCoordinator.class);
     EventPublisherService eventPublisherService = mock(EventPublisherService.class);
     TraceService traceService = mock(TraceService.class);
-    PolicyEnforcer policyEnforcer = new PolicyEnforcer();
     OrchestratorIdempotencyService idempotencyService = mock(OrchestratorIdempotencyService.class);
     OrchestratorFeatureFlags featureFlags = mock(OrchestratorFeatureFlags.class);
 
@@ -371,7 +333,6 @@ class TS_RuntimeOrchestratorExecutableCoverageTest {
             integrationCoordinator,
             eventPublisherService,
             traceService,
-            policyEnforcer,
             idempotencyService,
             featureFlags);
 
@@ -420,7 +381,6 @@ class TS_RuntimeOrchestratorExecutableCoverageTest {
     IntegrationCoordinator integrationCoordinator = mock(IntegrationCoordinator.class);
     EventPublisherService eventPublisherService = mock(EventPublisherService.class);
     TraceService traceService = mock(TraceService.class);
-    PolicyEnforcer policyEnforcer = new PolicyEnforcer();
     OrchestratorIdempotencyService idempotencyService = mock(OrchestratorIdempotencyService.class);
     OrchestratorFeatureFlags featureFlags = mock(OrchestratorFeatureFlags.class);
 
@@ -430,7 +390,6 @@ class TS_RuntimeOrchestratorExecutableCoverageTest {
             integrationCoordinator,
             eventPublisherService,
             traceService,
-            policyEnforcer,
             idempotencyService,
             featureFlags);
 
@@ -469,7 +428,6 @@ class TS_RuntimeOrchestratorExecutableCoverageTest {
     IntegrationCoordinator integrationCoordinator = mock(IntegrationCoordinator.class);
     EventPublisherService eventPublisherService = mock(EventPublisherService.class);
     TraceService traceService = mock(TraceService.class);
-    PolicyEnforcer policyEnforcer = new PolicyEnforcer();
     OrchestratorIdempotencyService idempotencyService = mock(OrchestratorIdempotencyService.class);
     OrchestratorFeatureFlags featureFlags = mock(OrchestratorFeatureFlags.class);
 
@@ -479,7 +437,6 @@ class TS_RuntimeOrchestratorExecutableCoverageTest {
             integrationCoordinator,
             eventPublisherService,
             traceService,
-            policyEnforcer,
             idempotencyService,
             featureFlags);
 
@@ -519,7 +476,6 @@ class TS_RuntimeOrchestratorExecutableCoverageTest {
             mock(IntegrationCoordinator.class),
             mock(EventPublisherService.class),
             mock(TraceService.class),
-            new PolicyEnforcer(),
             mock(OrchestratorIdempotencyService.class),
             mock(OrchestratorFeatureFlags.class));
 

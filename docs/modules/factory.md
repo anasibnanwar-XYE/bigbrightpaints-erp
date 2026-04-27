@@ -18,7 +18,7 @@ Catalog/setup truth (brands, items, SKU readiness) is documented separately in [
 | Supporting services | `PackingIdempotencyService`, `PackingLineResolver`, `PackingProductSupport`, `PackingInventoryService`, `PackingJournalBuilder`, `PackingJournalLinkHelper`, `PackingReadService`, `PackagingSizeParser` |
 | Domain entities | `ProductionPlan`, `ProductionBatch`, `ProductionLog`, `ProductionLogMaterial`, `ProductionLogStatus` (enum), `PackingRecord`, `PackingRequestRecord`, `PackagingSizeMapping`, `SizeVariant`, `FactoryTask` |
 | DTO families | Production plan DTOs, production log DTOs, packing DTOs, packaging mapping DTOs, cost allocation DTOs, wastage report DTOs, factory task DTOs, bulk batch DTOs |
-| Events | `PackagingSlipEvent` (Spring ApplicationEvent, consumed by `FactorySlipEventListener`) |
+| Events | `PackagingSlipEvent` (Spring ApplicationEvent) |
 | Repositories | `ProductionPlanRepository`, `ProductionBatchRepository`, `ProductionLogRepository`, `ProductionLogMaterialRepository`, `PackingRecordRepository`, `PackingRequestRecordRepository`, `PackagingSizeMappingRepository`, `SizeVariantRepository`, `FactoryTaskRepository` |
 
 ---
@@ -277,12 +277,6 @@ Dispatch is a shared boundary where controller ownership and financial ownership
 
 Factory-role users can view pending slips and previews. Dispatch confirmation is accessible to factory users with transport metadata validation enforced. For full dispatch documentation, see [inventory.md](inventory.md).
 
-### 9.3 FactorySlipEventListener
-
-`FactorySlipEventListener` listens to `PackagingSlipEvent` (Spring ApplicationEvent) published when packaging slips change state. **Currently only logs the event.** No operational side effects are triggered. Designed as a placeholder for future queue/notification integration.
-
----
-
 ## 10. Terminology Warning: Packaging Slip vs Packing Record
 
 | Term | Entity | Module | Purpose |
@@ -320,7 +314,6 @@ Despite similar names, these are separate entities in separate modules with sepa
 | **Factory → Accounting** | Outbound (facade) | Production log and packing post journals via `AccountingFacade`; cost allocation posts variance journals |
 | **Factory → Production** | Read | `PackingAllowedSizeService` reads `ProductionProduct` and `ProductionBrand` for size resolution; production log reads catalog for SKU resolution |
 | **Factory → Sales** | Read-only | Production log optionally links to `SalesOrder`; dispatch is a two-layer seam (see inventory module) |
-| **Inventory → Factory** | Inbound (event) | `FactorySlipEventListener` listens to `PackagingSlipEvent` (currently no-op) |
 | **Production → Factory** | Read | `SkuReadinessService` reads `PackagingSizeMappingRepository` for packing readiness |
 
 ---
@@ -350,15 +343,11 @@ These are **not** compatibility aliases — they are explicitly rejected to prev
 
 The `ProductionBatch` entity exists in the factory domain but is **not actively used** in current controllers or service flows. Production execution happens through `ProductionLog`, not `ProductionBatch`. This entity may represent planned functionality that was superseded or deferred. **No replacement** — the canonical execution path is `ProductionPlan` (planning) → `ProductionLog` (execution).
 
-### 14.3 FactorySlipEventListener (No-Op)
-
-`FactorySlipEventListener` listens to `PackagingSlipEvent` but **currently only logs the event**. No operational side effects are triggered. Operators should not expect any automated factory response to dispatch events. **No replacement** — this is a placeholder for future extension.
-
-### 14.4 No Approval Workflow for Factory Operations
+### 14.3 No Approval Workflow for Factory Operations
 
 There are **no** dedicated approval workflows in the factory/production module. Production and packing operations execute directly by users with `ROLE_FACTORY` or `ROLE_ADMIN` without an approval gate. This differs from commercial flows (sales orders, dispatch) where approvals and credit checks exist.
 
-### 14.5 Production Plan Status Is Manual
+### 14.4 Production Plan Status Is Manual
 
 Production plan status transitions (`PLANNED` → `COMPLETED`) are **manually triggered** via `PATCH /api/v1/factory/production-plans/{id}/status`. There is no automated status progression, no workflow guard, and no validation that the production has actually occurred before marking a plan as completed.
 

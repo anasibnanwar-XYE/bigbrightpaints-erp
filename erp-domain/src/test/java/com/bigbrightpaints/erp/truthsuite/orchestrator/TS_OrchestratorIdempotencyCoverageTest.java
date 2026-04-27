@@ -12,8 +12,8 @@ class TS_OrchestratorIdempotencyCoverageTest {
 
   private static final String COMMAND_DISPATCHER =
       "src/main/java/com/bigbrightpaints/erp/orchestrator/service/CommandDispatcher.java";
-  private static final String INTEGRATION_COORDINATOR =
-      "src/main/java/com/bigbrightpaints/erp/orchestrator/service/IntegrationCoordinator.java";
+  private static final String ORDER_INTEGRATION_COORDINATOR =
+      "src/main/java/com/bigbrightpaints/erp/orchestrator/service/OrderIntegrationCoordinator.java";
   private static final String FINISHED_GOODS_SERVICE =
       "src/main/java/com/bigbrightpaints/erp/modules/inventory/service/FinishedGoodsService.java";
 
@@ -29,12 +29,12 @@ class TS_OrchestratorIdempotencyCoverageTest {
   }
 
   @Test
-  void integrationCoordinator_propagates_trace_and_idempotency_into_inventory_leg() {
+  void orderIntegrationCoordinator_propagates_trace_and_idempotency_into_inventory_leg() {
     TruthSuiteFileAssert.assertContains(
-        INTEGRATION_COORDINATOR,
-        "attachOrderTrace(id, traceId);",
+        ORDER_INTEGRATION_COORDINATOR,
+        "orderSupportCoordinator.attachOrderTrace(id, traceId);",
         "InventoryReservationResult reservation = finishedGoodsService.reserveForOrder(order);",
-        "scheduleUrgentProduction(order, reservation.shortages(), traceId, idempotencyKey);",
+        "orderSupportCoordinator.scheduleUrgentProduction(",
         "salesService.updateOrchestratorWorkflowStatus(id, \"RESERVED\");");
   }
 

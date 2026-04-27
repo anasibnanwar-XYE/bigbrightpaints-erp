@@ -5,9 +5,7 @@
 - `modules/accounting/controller`
   Purpose: HTTP transport for journals, receipts, settlements, period close, reconciliation, statements, audit, setup, payroll, and imports.
 - `modules/accounting/service`
-  Purpose: public service layer; mixes canonical wrappers with legacy fan-out services.
-- `modules/accounting/internal`
-  Purpose: canonical business engines.
+  Purpose: public service layer and focused posting services for journals, receipts, settlements, notes, reconciliation, imports, and reporting.
 - `modules/accounting/domain`
   Purpose: journal, period, subledger, discrepancy, and import persistence truth.
 - `modules/accounting/dto`
@@ -15,32 +13,27 @@
 - `modules/accounting/event`
   Purpose: accounting event persistence plus the inventory-to-accounting listener boundary.
 
-## Canonical Engines
+## Canonical Service Owners
 
-- `AccountingCoreEngineCore`
-  Purpose: canonical GL writer for journal creation, reversal, receipts, settlements, payroll, and inventory adjustments.
-- `AccountingFacadeCore`
-  Purpose: canonical request-shaping and reference-policy layer over the engine.
-- `AccountingPeriodServiceCore`
+- `AccountingFacade`
+  Purpose: canonical cross-module accounting seam for journal posting.
+- `JournalEntryService`
+  Purpose: canonical journal creation and reversal service.
+- `JournalReplayService`
+  Purpose: idempotency-reference mapping, replay lookup, and allocation waits.
+- `AccountingPeriodService`
   Purpose: canonical period-close and reopen state machine.
-- `ReconciliationServiceCore`
-  Purpose: canonical reconciliation and discrepancy engine.
-- `AccountingAuditTrailServiceCore`
-  Purpose: canonical transaction-audit read model.
+- `ReconciliationService`
+  Purpose: canonical reconciliation and discrepancy service.
+- `AccountingAuditService`
+  Purpose: accounting audit-event publishing and integration-failure metadata.
 
-## Wrapper Layers
+## Service Shells
 
-- thin wrappers:
-  - `AccountingCoreEngine`
-  - `AccountingCoreLogic`
-  - `AccountingCoreService`
-  - `AccountingFacade`
-  - `AccountingPeriodService`
-  - `ReconciliationService`
-  - `AccountingAuditTrailService`
-  - `AccountingIdempotencyService`
-- broad fan-out shell:
-  - `AccountingService`
+- `AccountingService`
+  Purpose: public facade used by controllers for core accounting operations.
+- Focused posting services
+  Purpose: dealer receipts, settlements, correction notes, inventory valuation, payroll, and factory journal posting.
 
 ## Major Workflows
 
@@ -49,8 +42,7 @@
 ```text
 AccountingController
   -> AccountingService / JournalEntryService / AccountingFacade
-  -> AccountingFacadeCore
-  -> AccountingCoreEngineCore.createJournalEntry(...)
+  -> JournalEntryService.createStandardJournal(...) / AccountingFacade.createManualJournal(...)
   -> JournalEntry + JournalLine + account balances + event trail
 ```
 
@@ -58,14 +50,12 @@ Key methods:
 - `AccountingFacade.createManualJournal`
 - `JournalEntryService.createStandardJournal`
 - `JournalEntryService.createManualJournalEntry`
-- `AccountingCoreEngineCore.createJournalEntry`
 
 ### Reversal
 
 ```text
 AccountingController.reverse / cascadeReverse
   -> JournalEntryService.reverseJournalEntry(...)
-  -> AccountingCoreEngineCore.reverseJournalEntry(...)
   -> AccountingComplianceAuditService.recordJournalReversal(...)
 ```
 
@@ -74,8 +64,7 @@ AccountingController.reverse / cascadeReverse
 ```text
 AccountingController
   -> DealerReceiptService / SettlementService
-  -> AccountingIdempotencyService
-  -> AccountingCoreEngineCore.recordDealerReceipt / settle* / recordSupplierPayment
+  -> JournalReplayService + focused posting services
   -> PartnerSettlementAllocation + subledger sync + invoice/purchase state update
 ```
 
@@ -85,34 +74,33 @@ AccountingController
 AccountingAuditController / AdminAuditController / SuperAdminAuditController
   -> AuditAccessService
   -> AuditLogReadAdapter + BusinessAuditReadAdapter
-  -> AccountingAuditTrailServiceCore
 
-AccountingCoreEngineCore
+AccountingFacade / JournalEntryService
   -> AccountingEventStore
   -> strict event persistence when enabled
 ```
 
 ## What Works
 
-- one real canonical posting engine exists
-- period close and reconciliation each have one real canonical core
+- one canonical accounting facade plus focused posting services own journal-backed writes
+- period close and reconciliation each have one canonical service
 - audit trail has a canonical transaction-detail read model
 - reports and portals already depend mostly on accounting read models, not on their own duplicated persistence
 
 ## Duplicates and Bad Paths
 
-- `AccountingCoreEngine` / `AccountingCoreLogic` / `AccountingCoreService` are wrapper-only layers
-- `AccountingService` duplicates the public API of specialized services
-- `BankReconciliationSessionService.reconcileLegacy(...)` is an explicit old/new bridge
+- `AccountingService` is still a broad controller-facing shell over specialized services
+- `BankReconciliationSessionService.reconcileLegacy(...)` is a remaining legacy-named method that should be reviewed before future reconciliation work
 - retired digest and legacy audit-trail endpoints are hard-cut; canonical reads now live on `AccountingAuditController`, `AdminAuditController`, and `SuperAdminAuditController`
 - `JournalReferenceResolver` still walks direct -> legacy -> canonical mappings
 
 ## Review Hotspots
 
-- `AccountingCoreEngineCore`
-- `AccountingFacadeCore`
-- `AccountingPeriodServiceCore`
-- `ReconciliationServiceCore`
-- `AccountingAuditTrailServiceCore`
+- `AccountingFacade`
+- `JournalEntryService`
+- `JournalReplayService`
+- `AccountingPeriodService`
+- `ReconciliationService`
+- `AccountingAuditService`
 - `AccountingService` override block
 - `InventoryAccountingEventListener`

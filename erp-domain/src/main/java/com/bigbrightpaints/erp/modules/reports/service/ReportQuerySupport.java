@@ -166,6 +166,16 @@ public class ReportQuerySupport {
         window.exportOptions().requestedFormat());
   }
 
+  boolean usesClosedSnapshot(FinancialQueryWindow window) {
+    if (window.source() != ReportSource.SNAPSHOT
+        || window.snapshot() == null
+        || window.period() == null) {
+      return false;
+    }
+    return window.startDate().equals(window.period().getStartDate())
+        && window.endDate().equals(window.period().getEndDate());
+  }
+
   public Company resolveCompany(Long requestedCompanyId) {
     Company company = companyContextService.requireCurrentCompany();
     if (requestedCompanyId != null && !requestedCompanyId.equals(company.getId())) {

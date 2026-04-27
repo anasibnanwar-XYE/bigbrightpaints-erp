@@ -258,7 +258,7 @@ class MergeJacocoXmlTest(unittest.TestCase):
         merged = merge_jacoco_xml.merge_line((0, 1, 2, 0), (0, 1, 0, 2))
         self.assertEqual((0, 1, 0, 2), merged)
 
-    def test_package_declaration_fallback_maps_misplaced_source_file(self):
+    def test_package_declaration_maps_misplaced_source_file(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             repo_dir = Path(tmp_dir)
             java_file = repo_dir / "erp-domain/src/main/java/com/example/internal/Demo.java"
@@ -413,36 +413,6 @@ class RuntimeProbeContractTest(unittest.TestCase):
             summary,
         )
 
-    def test_pr_ci_parity_allows_threshold_only_changed_coverage_failure_in_compat_mode(self):
-        compatible, reason = pr_ci_parity.changed_coverage_failure_is_compatible(
-            {
-                "passes": False,
-                "skipped": False,
-                "missing_coverage": False,
-                "vacuous": False,
-                "coverage_skipped_files": [],
-                "files_with_unmapped_lines": [],
-            }
-        )
-
-        self.assertTrue(compatible)
-        self.assertEqual("threshold-only-compatibility", reason)
-
-    def test_pr_ci_parity_rejects_unmapped_changed_coverage_failure(self):
-        compatible, reason = pr_ci_parity.changed_coverage_failure_is_compatible(
-            {
-                "passes": False,
-                "skipped": False,
-                "missing_coverage": False,
-                "vacuous": False,
-                "coverage_skipped_files": [],
-                "files_with_unmapped_lines": ["erp-domain/src/main/java/com/example/Demo.java"],
-            }
-        )
-
-        self.assertFalse(compatible)
-        self.assertEqual("unmapped-changed-lines", reason)
-
     def test_pr_ci_parity_merge_gate_blocks_failed_jobs(self):
         blocking = pr_ci_parity.evaluate_merge_gate(
             {
@@ -586,15 +556,21 @@ class RuntimeProbeContractTest(unittest.TestCase):
         origin_main_index = gate_fast.index('if git rev-parse --verify --quiet origin/main >/dev/null; then')
         canonical_index = gate_fast.index('if [[ -n "${CANONICAL_BASE_SHA:-}" ]] && git merge-base --is-ancestor "$CANONICAL_BASE_SHA" HEAD; then')
         self.assertLess(origin_main_index, canonical_index)
+        self.assertIn("--fail-on-vacuous", gate_fast)
+        self.assertIn("[gate-fast] FAIL: changed-files coverage gate did not meet thresholds", gate_fast)
+        self.assertIn('blocking_findings.append(("files_with_unmapped_lines", files_with_unmapped))', gate_fast)
+        self.assertNotIn("continuing in compatibility mode", gate_fast)
 
-    def test_gate_release_and_core_allow_mainline_canonical_base_fallback(self):
+    def test_gate_release_and_core_require_requested_canonical_base(self):
         gate_release = (REPO_ROOT / "scripts" / "gate_release.sh").read_text(encoding="utf-8")
         gate_core = (REPO_ROOT / "scripts" / "gate_core.sh").read_text(encoding="utf-8")
         schema_drift_scan = (REPO_ROOT / "scripts" / "schema_drift_scan.sh").read_text(encoding="utf-8")
         time_api_scan = (REPO_ROOT / "scripts" / "time_api_scan.sh").read_text(encoding="utf-8")
 
-        self.assertIn("for fallback_ref in main origin/main; do", gate_release)
-        self.assertIn("for fallback_ref in main origin/main; do", gate_core)
+        self.assertNotIn("for fallback_ref in main origin/main; do", gate_release)
+        self.assertNotIn("for fallback_ref in main origin/main; do", gate_core)
+        self.assertIn("canonical base ref '$requested_ref' was not found", gate_release)
+        self.assertIn("canonical base ref '$requested_ref' was not found", gate_core)
         self.assertNotIn("VERIFY_LOCAL_SKIP_MVN_VERIFY=true", gate_release)
         self.assertIn("VERIFY_LOCAL_SKIP_TESTS=true", gate_release)
         self.assertIn("--diff-base <ref>", schema_drift_scan)

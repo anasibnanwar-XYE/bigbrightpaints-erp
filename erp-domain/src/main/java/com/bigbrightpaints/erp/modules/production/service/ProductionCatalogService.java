@@ -82,6 +82,7 @@ import com.bigbrightpaints.erp.modules.purchasing.domain.GoodsReceiptRepository;
 import com.bigbrightpaints.erp.modules.purchasing.domain.PurchaseOrderRepository;
 import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchaseRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderItemRepository;
+import com.bigbrightpaints.erp.shared.dto.ImportRowErrorDto;
 
 import jakarta.persistence.OptimisticLockException;
 import jakarta.transaction.Transactional;
@@ -295,7 +296,7 @@ public class ProductionCatalogService {
     AtomicInteger productsCreated = new AtomicInteger();
     AtomicInteger productsUpdated = new AtomicInteger();
     AtomicInteger rawMaterialsSeeded = new AtomicInteger();
-    List<CatalogImportResponse.ImportError> errors = new ArrayList<>();
+    List<ImportRowErrorDto> errors = new ArrayList<>();
     List<ImportRow> importRows = new ArrayList<>();
 
     try (BufferedReader reader =
@@ -315,9 +316,8 @@ public class ProductionCatalogService {
         CatalogRow row;
         try {
           row = CatalogRow.from(record);
-        } catch (IllegalArgumentException ex) {
-          errors.add(
-              new CatalogImportResponse.ImportError(record.getRecordNumber(), ex.getMessage()));
+        } catch (ApplicationException | IllegalArgumentException ex) {
+          errors.add(new ImportRowErrorDto(record.getRecordNumber(), ex.getMessage()));
           continue;
         }
         if (row == null) {
@@ -325,9 +325,8 @@ public class ProductionCatalogService {
         }
         try {
           importRows.add(ImportRow.from(record, row));
-        } catch (IllegalArgumentException ex) {
-          errors.add(
-              new CatalogImportResponse.ImportError(record.getRecordNumber(), ex.getMessage()));
+        } catch (ApplicationException | IllegalArgumentException ex) {
+          errors.add(new ImportRowErrorDto(record.getRecordNumber(), ex.getMessage()));
         }
       }
 
@@ -348,11 +347,10 @@ public class ProductionCatalogService {
             rawMaterialsSeeded.incrementAndGet();
           }
         } catch (IllegalArgumentException ex) {
-          errors.add(
-              new CatalogImportResponse.ImportError(importRow.recordNumber(), ex.getMessage()));
+          errors.add(new ImportRowErrorDto(importRow.recordNumber(), ex.getMessage()));
         } catch (Exception ex) {
           errors.add(
-              new CatalogImportResponse.ImportError(
+              new ImportRowErrorDto(
                   importRow.recordNumber(), "Unexpected error: " + ex.getMessage()));
         }
       }
@@ -2403,7 +2401,7 @@ public class ProductionCatalogService {
   }
 
   private CatalogImportResponse toResponse(CatalogImport record) {
-    List<CatalogImportResponse.ImportError> errors = deserializeErrors(record.getErrorsJson());
+    List<ImportRowErrorDto> errors = deserializeErrors(record.getErrorsJson());
     return new CatalogImportResponse(
         record.getRowsProcessed(),
         record.getBrandsCreated(),
@@ -2413,26 +2411,27 @@ public class ProductionCatalogService {
         errors);
   }
 
-  private String serializeErrors(List<CatalogImportResponse.ImportError> errors) {
+  private String serializeErrors(List<ImportRowErrorDto> errors) {
     if (errors == null || errors.isEmpty()) {
       return null;
     }
     try {
       return OBJECT_MAPPER.writeValueAsString(errors);
-    } catch (Exception ex) {
-      return null;
+    } catch (JsonProcessingException ex) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState(
+          "Failed to serialize catalog import errors", ex);
     }
   }
 
-  private List<CatalogImportResponse.ImportError> deserializeErrors(String errorsJson) {
+  private List<ImportRowErrorDto> deserializeErrors(String errorsJson) {
     if (!StringUtils.hasText(errorsJson)) {
       return List.of();
     }
     try {
-      return OBJECT_MAPPER.readValue(
-          errorsJson, new TypeReference<List<CatalogImportResponse.ImportError>>() {});
-    } catch (Exception ex) {
-      return List.of();
+      return OBJECT_MAPPER.readValue(errorsJson, new TypeReference<List<ImportRowErrorDto>>() {});
+    } catch (JsonProcessingException ex) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState(
+          "Invalid catalog import errors JSON", ex);
     }
   }
 

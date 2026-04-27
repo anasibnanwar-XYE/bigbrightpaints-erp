@@ -23,6 +23,7 @@ import com.bigbrightpaints.erp.modules.sales.service.DealerImportService;
 import com.bigbrightpaints.erp.modules.sales.service.DealerService;
 import com.bigbrightpaints.erp.modules.sales.service.DunningService;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
+import com.bigbrightpaints.erp.shared.dto.ImportRowErrorDto;
 
 @ExtendWith(MockitoExtension.class)
 @Tag("critical")
@@ -59,8 +60,7 @@ class DealerControllerTest {
             "name,email,creditLimit,region,paymentTerms\nDealer,dealer@example.com,1000,NORTH,NET_30\n"
                 .getBytes(StandardCharsets.UTF_8));
     DealerImportResponse payload =
-        new DealerImportResponse(
-            1, 0, List.of(new DealerImportResponse.ImportError(0L, "placeholder")));
+        new DealerImportResponse(1, 0, List.of(new ImportRowErrorDto(0L, "placeholder")));
     when(dealerImportService.importDealers(file)).thenReturn(payload);
 
     ResponseEntity<ApiResponse<DealerImportResponse>> response = controller.importDealers(file);

@@ -93,16 +93,16 @@ def main() -> int:
             "discovered_tagged_tests": len(discovered),
             "discovered_test_paths": discovered,
             "errors": [],
-            "passes": True,
+            "passes": False,
         }
-        print("[validate_test_catalog] WARN: catalog file missing; running in compatibility mode")
+        print(f"[validate_test_catalog] FAIL: catalog file missing: {args.catalog}", file=sys.stderr)
         print("[validate_test_catalog] summary:")
         print(json.dumps(summary, indent=2))
         if args.output:
             os.makedirs(os.path.dirname(args.output), exist_ok=True)
             with open(args.output, "w", encoding="utf-8") as fh:
                 json.dump(summary, fh, indent=2)
-        return 0
+        return 1
 
     catalog = read_json(args.catalog)
     tests = catalog.get("tests", [])

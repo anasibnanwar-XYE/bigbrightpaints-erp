@@ -22,6 +22,7 @@ import com.bigbrightpaints.erp.codered.support.CoderedConcurrencyHarness;
 import com.bigbrightpaints.erp.codered.support.CoderedDbAssertions;
 import com.bigbrightpaints.erp.codered.support.CoderedRetry;
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
+import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
@@ -36,6 +37,7 @@ import com.bigbrightpaints.erp.modules.accounting.dto.PartnerSettlementRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.PartnerSettlementResponse;
 import com.bigbrightpaints.erp.modules.accounting.dto.SettlementAllocationApplication;
 import com.bigbrightpaints.erp.modules.accounting.dto.SettlementAllocationRequest;
+import com.bigbrightpaints.erp.modules.accounting.service.AccountingPeriodService;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingService;
 import com.bigbrightpaints.erp.modules.accounting.service.ReconciliationService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
@@ -76,10 +78,12 @@ class CR_DealerReceiptSettlementAuditTrailTest extends AbstractIntegrationTest {
   @Autowired private SalesOrderRepository salesOrderRepository;
   @Autowired private InvoiceRepository invoiceRepository;
   @Autowired private AccountingService accountingService;
+  @Autowired private AccountingPeriodService accountingPeriodService;
   @Autowired private JournalEntryRepository journalEntryRepository;
   @Autowired private PartnerSettlementAllocationRepository settlementAllocationRepository;
   @Autowired private ReconciliationService reconciliationService;
   @Autowired private JdbcTemplate jdbcTemplate;
+  @Autowired private CompanyClock companyClock;
 
   @AfterEach
   void clearCompanyContext() {
@@ -1974,7 +1978,8 @@ class CR_DealerReceiptSettlementAuditTrailTest extends AbstractIntegrationTest {
     Company company = companyRepository.findByCodeIgnoreCase(companyCode).orElseThrow();
     company.setTimezone(timezone);
     company.setBaseCurrency("INR");
-    companyRepository.save(company);
+    company = companyRepository.save(company);
+    accountingPeriodService.ensurePeriod(company, companyClock.today(company));
     return company;
   }
 

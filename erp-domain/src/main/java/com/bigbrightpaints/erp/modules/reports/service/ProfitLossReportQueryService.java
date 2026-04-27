@@ -75,21 +75,22 @@ public class ProfitLossReportQueryService {
     mergeAccountTypeTotals(naturalBalances, periodCloseRows, BigDecimal.valueOf(-1));
 
     BigDecimal revenue =
-        safe(naturalBalances.get(AccountType.REVENUE))
-            .add(safe(naturalBalances.get(AccountType.OTHER_INCOME)));
-    BigDecimal cogs = safe(naturalBalances.get(AccountType.COGS));
+        ReportAmountSupport.zeroIfNull(naturalBalances.get(AccountType.REVENUE))
+            .add(ReportAmountSupport.zeroIfNull(naturalBalances.get(AccountType.OTHER_INCOME)));
+    BigDecimal cogs = ReportAmountSupport.zeroIfNull(naturalBalances.get(AccountType.COGS));
     BigDecimal grossProfit = revenue.subtract(cogs);
 
     BigDecimal operatingExpenses =
-        safe(naturalBalances.get(AccountType.EXPENSE))
-            .add(safe(naturalBalances.get(AccountType.OTHER_EXPENSE)));
+        ReportAmountSupport.zeroIfNull(naturalBalances.get(AccountType.EXPENSE))
+            .add(ReportAmountSupport.zeroIfNull(naturalBalances.get(AccountType.OTHER_EXPENSE)));
     List<ProfitLossDto.ExpenseCategory> expenseCategories = new ArrayList<>();
     expenseCategories.add(
         new ProfitLossDto.ExpenseCategory(
-            "OPERATING", safe(naturalBalances.get(AccountType.EXPENSE))));
+            "OPERATING", ReportAmountSupport.zeroIfNull(naturalBalances.get(AccountType.EXPENSE))));
     expenseCategories.add(
         new ProfitLossDto.ExpenseCategory(
-            "OTHER", safe(naturalBalances.get(AccountType.OTHER_EXPENSE))));
+            "OTHER",
+            ReportAmountSupport.zeroIfNull(naturalBalances.get(AccountType.OTHER_EXPENSE))));
 
     BigDecimal netIncome = grossProfit.subtract(operatingExpenses);
     return new ProfitLossSnapshot(

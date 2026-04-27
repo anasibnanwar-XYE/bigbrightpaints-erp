@@ -38,8 +38,6 @@ Deprecated, dead, or incomplete orchestration seams are disclosed explicitly rat
 | `DashboardAggregationService` | Thin wrapper around `IntegrationCoordinator` dashboard methods |
 | `SchedulerService` | Dynamic cron-based job registration, pause, and execution tracking |
 | `CorrelationIdentifierSanitizer` | Input sanitization for trace IDs, request IDs, and idempotency keys |
-| `PolicyEnforcer` | Access-control checks for orchestrator command permissions |
-| `ExternalSyncService` | Retryable external sync stubs (costing snapshots, accounting data export) |
 
 ### Key Entities
 
@@ -155,7 +153,6 @@ The orchestrator participates in two kinds of event bridges: internal Spring eve
 | --- | --- | --- | --- | --- |
 | `InventoryMovementEvent` | `InventoryAccountingEventListener` | `AFTER_COMMIT` (`REQUIRES_NEW` tx) | Accounting journal entries | `erp.inventory.accounting.events.enabled` (default: `true`) |
 | `InventoryValuationChangedEvent` | `InventoryAccountingEventListener` | `AFTER_COMMIT` (`REQUIRES_NEW` tx) | Accounting journal entries | `erp.inventory.accounting.events.enabled` (default: `true`) |
-| `PackagingSlipEvent` | `FactorySlipEventListener` | `@EventListener` (synchronous) | Log only | None |
 | `SalesOrderCreatedEvent` | `OrderAutoApprovalListener` | `AFTER_COMMIT` | Orchestrator auto-approval | `SystemSettingsService.isAutoApprovalEnabled()` |
 | `JournalEntryPostedEvent` | `JournalEntryPostedAuditListener` | `AFTER_COMMIT` (`fallbackExecution = true`) | Core audit marker | None |
 
@@ -226,21 +223,9 @@ The canonical public write remains `POST /api/v1/dispatch/confirm`: inventory ow
 
 **Action:** Do not call `runPayroll` through the orchestrator. The response is a business error redirecting to `/api/v1/payroll/runs`.
 
-### No-Op / Stub: ExternalSyncService
-
-`ExternalSyncService` contains two `@Retryable` methods (`sendCostingSnapshot`, `exportAccountingData`) that log only and perform no meaningful work. These appear to be placeholder stubs for future external integrations rather than active integrations. They should not be treated as production-ready behavior.
-
 ### No-Op: WorkflowService State Machine Definitions
 
 `WorkflowService` maintains an in-memory `ConcurrentHashMap` of named workflow step definitions (`order-approval`, `order-auto-approval`, `order-fulfillment`, `dispatch`, `payroll`). These are used to generate trace IDs and validate workflow names but do **not actually execute workflow steps**. The `startWorkflow` method generates a UUID but does not orchestrate a multi-step sequence. The step definitions are informational only.
-
-### No-Op: PolicyEnforcer
-
-`PolicyEnforcer` contains basic null checks for `userId` and `companyId` for order approval, dispatch, and payroll permissions. It does not perform actual RBAC enforcement — the real enforcement happens at the controller `@PreAuthorize` annotations and the module-level RBAC infrastructure. `PolicyEnforcer` is a placeholder for future policy expansion.
-
-### Weak: FactorySlipEventListener
-
-`FactorySlipEventListener` listens to `PackagingSlipEvent` via `@EventListener` (synchronous, within the originating transaction). It only logs the event details. There is no downstream processing, no queue integration, and no side effects. It is a lightweight observer that may be removed or replaced by a more meaningful integration in the future.
 
 ### Configuration-Guarded Safety Risks
 

@@ -27,6 +27,7 @@ import com.bigbrightpaints.erp.modules.production.domain.ProductionProductReposi
 import com.bigbrightpaints.erp.modules.production.dto.CatalogImportResponse;
 import com.bigbrightpaints.erp.modules.production.dto.CatalogItemCreateCommand;
 import com.bigbrightpaints.erp.modules.production.service.ProductionCatalogService;
+import com.bigbrightpaints.erp.shared.dto.ImportRowErrorDto;
 import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
 
 @Tag("critical")
@@ -137,7 +138,7 @@ class CR_CatalogImportDeterminismIT extends AbstractIntegrationTest {
 
     assertThat(response.rowsProcessed()).isEqualTo(1);
     assertThat(response.errors()).hasSize(1);
-    CatalogImportResponse.ImportError error = response.errors().getFirst();
+    ImportRowErrorDto error = response.errors().getFirst();
     assertThat(error.rowNumber()).isEqualTo(2L);
     assertThat(error.message()).contains("requires fgCogsAccountId to reference a COGS account");
     assertThat(productRepository.findByCompanyAndSkuCode(company, finishedSku)).isEmpty();

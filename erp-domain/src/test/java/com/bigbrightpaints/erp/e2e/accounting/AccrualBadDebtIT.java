@@ -27,6 +27,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
+import com.bigbrightpaints.erp.modules.accounting.service.AccountingPeriodService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.modules.invoice.domain.Invoice;
@@ -48,6 +49,7 @@ public class AccrualBadDebtIT extends AbstractIntegrationTest {
   @Autowired private DealerRepository dealerRepository;
   @Autowired private InvoiceRepository invoiceRepository;
   @Autowired private JournalEntryRepository journalEntryRepository;
+  @Autowired private AccountingPeriodService accountingPeriodService;
 
   private HttpHeaders headers;
   private Company company;
@@ -69,6 +71,8 @@ public class AccrualBadDebtIT extends AbstractIntegrationTest {
         COMPANY_CODE,
         List.of("ROLE_ADMIN", "ROLE_ACCOUNTING"));
     company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
+    accountingPeriodService.ensurePeriod(company, LocalDate.now());
+    accountingPeriodService.ensurePeriod(company, LocalDate.now().minusDays(1));
     accrualExp = ensureAccount("ACCR-EXP", "Accrued Expense", AccountType.EXPENSE);
     accrualLiab = ensureAccount("ACCR-LIAB", "Accrual Liability", AccountType.LIABILITY);
     badDebtExp = ensureAccount("BDE", "Bad Debt Expense", AccountType.EXPENSE);
@@ -169,7 +173,7 @@ public class AccrualBadDebtIT extends AbstractIntegrationTest {
     Map<String, Object> revLine =
         Map.of(
             "accountId",
-            accrualLiab.getId(), // placeholder to keep balanced; not used for assertions
+            accrualLiab.getId(),
             "debit",
             BigDecimal.ZERO,
             "credit",
@@ -198,15 +202,23 @@ public class AccrualBadDebtIT extends AbstractIntegrationTest {
   @Test
   @DisplayName("Accrual posts and auto-reverses on specified date")
   void accrual_AutoReversal() {
+    LocalDate entryDate = LocalDate.now().minusDays(1);
     Map<String, Object> payload =
         Map.of(
-            "debitAccountId", accrualExp.getId(),
-            "creditAccountId", accrualLiab.getId(),
-            "amount", new BigDecimal("250.00"),
-            "entryDate", LocalDate.now(),
-            "autoReverseDate", LocalDate.now().plusDays(30),
-            "referenceNumber", "ACCR-" + System.currentTimeMillis(),
-            "adminOverride", true);
+            "debitAccountId",
+            accrualExp.getId(),
+            "creditAccountId",
+            accrualLiab.getId(),
+            "amount",
+            new BigDecimal("250.00"),
+            "entryDate",
+            entryDate,
+            "autoReverseDate",
+            entryDate,
+            "referenceNumber",
+            "ACCR-" + System.currentTimeMillis(),
+            "adminOverride",
+            false);
 
     ResponseEntity<Map> resp =
         rest.exchange(

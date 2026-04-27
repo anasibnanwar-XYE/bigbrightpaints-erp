@@ -30,6 +30,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalReferenceMappingRepository;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest;
+import com.bigbrightpaints.erp.modules.accounting.service.AccountingPeriodService;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
@@ -41,6 +42,7 @@ class CR_ManualJournalSafetyTest extends AbstractIntegrationTest {
   @Autowired private CompanyRepository companyRepository;
   @Autowired private AccountRepository accountRepository;
   @Autowired private AccountingService accountingService;
+  @Autowired private AccountingPeriodService accountingPeriodService;
   @Autowired private JournalEntryRepository journalEntryRepository;
   @Autowired private JournalReferenceMappingRepository journalReferenceMappingRepository;
   @Autowired private JdbcTemplate jdbcTemplate;
@@ -77,6 +79,7 @@ class CR_ManualJournalSafetyTest extends AbstractIntegrationTest {
 
     String idempotencyKey = "MANUAL-" + UUID.randomUUID();
     LocalDate entryDate = TestDateUtils.safeDate(company);
+    accountingPeriodService.ensurePeriod(company, entryDate);
     JournalEntryRequest sanitized =
         new JournalEntryRequest(
             null,
@@ -151,6 +154,7 @@ class CR_ManualJournalSafetyTest extends AbstractIntegrationTest {
 
     String idempotencyKey = "MANUAL-" + UUID.randomUUID();
     LocalDate entryDate = TestDateUtils.safeDate(company);
+    accountingPeriodService.ensurePeriod(company, entryDate);
 
     JournalEntryRequest invalidUnbalanced =
         new JournalEntryRequest(

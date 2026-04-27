@@ -148,6 +148,7 @@ public class FactoryPackagingCostingIT extends AbstractIntegrationTest {
   void endToEndPackagingAndDispatchCosting() {
     ProductionBrand brand = createBrand("WE-BRAND");
     ProductionProduct product = createProduct("WE-PROD-20L", "White Emulsion", brand);
+    LocalDate operationDate = LocalDate.now().minusDays(1);
 
     RawMaterial base = createRawMaterial("RM-BASE", "Base", rmInventory, new BigDecimal("200"));
     addBatch(base, new BigDecimal("100"), new BigDecimal("100")); // cost per unit 100, qty 100
@@ -168,7 +169,7 @@ public class FactoryPackagingCostingIT extends AbstractIntegrationTest {
                 new BigDecimal("100"),
                 "L",
                 new BigDecimal("100"),
-                LocalDate.now().toString(),
+                operationDate.toString(),
                 "WE-2025-0001",
                 "Supervisor",
                 null,
@@ -183,7 +184,7 @@ public class FactoryPackagingCostingIT extends AbstractIntegrationTest {
     packingService.recordPacking(
         new PackingRequest(
             log.id(),
-            LocalDate.now(),
+            operationDate,
             "Packer",
             List.of(
                 new PackingLineRequest(
@@ -215,10 +216,24 @@ public class FactoryPackagingCostingIT extends AbstractIntegrationTest {
         createOrder(dealer, product.getSkuCode(), new BigDecimal("40"), new BigDecimal("1500"));
     PackagingSlip slip = createSlip(order, fgBatch, new BigDecimal("40"), fgBatch.getUnitCost());
     createReservation(refreshedFinishedGood, fgBatch, order.getId(), new BigDecimal("40"));
+    List<PackagingSlipLine> dispatchLines =
+        packagingSlipLineRepository.findByPackagingSlipId(slip.getId());
 
     salesService.confirmDispatch(
         new DispatchConfirmRequest(
-            slip.getId(), order.getId(), null, null, null, false, null, null));
+            slip.getId(),
+            order.getId(),
+            dispatchLines.stream()
+                .map(
+                    line ->
+                        new DispatchConfirmRequest.DispatchLine(
+                            line.getId(), null, line.getQuantity(), null, null, null, null, null))
+                .toList(),
+            null,
+            null,
+            false,
+            null,
+            null));
 
     // Inventory assertions
     assertThat(rawMaterialRepository.findById(base.getId()).orElseThrow().getCurrentStock())

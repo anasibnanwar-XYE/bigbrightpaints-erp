@@ -32,13 +32,21 @@ public class AccountingApplicationExceptionAdvice {
   public ResponseEntity<ApiResponse<Map<String, Object>>> handleApplicationException(
       ApplicationException ex, HttpServletRequest request) {
     ErrorCode errorCode = ex != null ? ex.getErrorCode() : null;
-    HttpStatus status =
-        errorCode == ErrorCode.BUSINESS_ENTITY_NOT_FOUND || errorCode == ErrorCode.FILE_NOT_FOUND
-            ? HttpStatus.NOT_FOUND
-            : shouldUseMappedStatus(errorCode)
-                ? AccountingApplicationExceptionResponses.determineHttpStatus(errorCode)
-                : HttpStatus.BAD_REQUEST;
+    HttpStatus status = determineStatus(errorCode);
     return globalExceptionHandler.buildApplicationExceptionResponse(ex, request, status);
+  }
+
+  private HttpStatus determineStatus(ErrorCode errorCode) {
+    if (errorCode == ErrorCode.MODULE_DISABLED) {
+      return HttpStatus.FORBIDDEN;
+    }
+    if (errorCode == ErrorCode.BUSINESS_ENTITY_NOT_FOUND || errorCode == ErrorCode.FILE_NOT_FOUND) {
+      return HttpStatus.NOT_FOUND;
+    }
+    if (shouldUseMappedStatus(errorCode)) {
+      return AccountingApplicationExceptionResponses.determineHttpStatus(errorCode);
+    }
+    return HttpStatus.BAD_REQUEST;
   }
 
   private boolean shouldUseMappedStatus(ErrorCode errorCode) {

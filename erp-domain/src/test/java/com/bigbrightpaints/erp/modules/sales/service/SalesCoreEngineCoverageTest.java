@@ -12,6 +12,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -457,15 +458,10 @@ class SalesCoreEngineCoverageTest {
   }
 
   @Test
-  void resolveExistingOrder_backfillsMissingPaymentModeWhenSignatureMatches() throws Exception {
+  void resolveExistingOrder_returnsExistingOrderWhenCanonicalSignatureMatches() throws Exception {
     Method method =
         SalesCoreEngine.class.getDeclaredMethod(
-            "resolveExistingOrder",
-            SalesOrder.class,
-            String.class,
-            String.class,
-            String.class,
-            String.class);
+            "resolveExistingOrder", SalesOrder.class, String.class, String.class);
     method.setAccessible(true);
 
     SalesOrder order = new SalesOrder();
@@ -480,112 +476,65 @@ class SalesCoreEngineCoverageTest {
     order.setNotes("notes");
     order.setTotalAmount(new BigDecimal("10.00"));
 
-    Object dto = method.invoke(engine, order, "idem-55", "sig-55", "legacy-55", " cash ");
+    Object dto = method.invoke(engine, order, "idem-55", "sig-55");
 
-    assertThat(order.getPaymentMode()).isEqualTo("CASH");
     assertThat(dto).isNotNull();
-    verify(salesOrderRepository).save(order);
+    verify(salesOrderRepository, never()).save(order);
   }
 
   @Test
-  void buildSalesOrderSignature_usesOrderPaymentModeWhenRequestPaymentModeIsMissing()
+  void resolveIdempotentOrderInternal_returnsExistingOrderWhenRepositoryFindsMatch()
       throws Exception {
     Method method =
         SalesCoreEngine.class.getDeclaredMethod(
-            "buildSalesOrderSignature", SalesOrder.class, String.class, boolean.class);
+            "resolveIdempotentOrderInternal",
+            Company.class,
+            String.class,
+            String.class,
+            String.class,
+            org.springframework.dao.DataIntegrityViolationException.class);
     method.setAccessible(true);
 
+    Company company = new Company();
     SalesOrder order = new SalesOrder();
-    order.setPaymentMode("HYBRID");
+    ReflectionTestUtils.setField(order, "id", 77L);
+    order.setStatus("DRAFT");
+    order.setOrderNumber("SO-77");
+    order.setIdempotencyHash("sig-77");
+    ReflectionTestUtils.setField(order, "paymentMode", null);
     order.setCurrency("INR");
     order.setGstTreatment("NONE");
     order.setGstInclusive(false);
-    order.setNotes("notes");
-    order.setTotalAmount(new BigDecimal("12.00"));
+    order.setTotalAmount(new BigDecimal("25.00"));
 
-    String fromOrderPaymentMode = (String) method.invoke(engine, order, null, false);
-    String explicitHybrid = (String) method.invoke(engine, order, "HYBRID", false);
+    when(salesOrderRepository.findByCompanyAndIdempotencyKey(company, "idem-77"))
+        .thenReturn(Optional.of(order));
 
-    assertThat(fromOrderPaymentMode).isEqualTo(explicitHybrid);
+    Object dto =
+        method.invoke(
+            engine,
+            company,
+            "idem-77",
+            "sig-77",
+            "CREDIT",
+            new org.springframework.dao.DataIntegrityViolationException("duplicate"));
+
+    assertThat(dto).isNotNull();
   }
 
   @Test
-  void resolveLegacySplitReplayRequestSignature_returnsNullWhenCanonicalAlreadyUsesLegacyShape()
-      throws Exception {
-    Method legacySignatureMethod =
-        SalesCoreEngine.class.getDeclaredMethod(
-            "resolveLegacySplitReplayRequestSignature",
-            com.bigbrightpaints.erp.modules.sales.dto.SalesOrderRequest.class,
-            String.class);
-    legacySignatureMethod.setAccessible(true);
-    Method buildSignatureMethod =
-        SalesCoreEngine.class.getDeclaredMethod(
-            "buildSalesOrderSignature",
-            com.bigbrightpaints.erp.modules.sales.dto.SalesOrderRequest.class,
-            boolean.class,
-            boolean.class);
-    buildSignatureMethod.setAccessible(true);
-
-    com.bigbrightpaints.erp.modules.sales.dto.SalesOrderRequest request =
-        new com.bigbrightpaints.erp.modules.sales.dto.SalesOrderRequest(
-            101L,
-            new BigDecimal("100.00"),
-            "INR",
-            "notes",
-            List.of(
-                new com.bigbrightpaints.erp.modules.sales.dto.SalesOrderItemRequest(
-                    "SKU-1", "Primer", BigDecimal.ONE, new BigDecimal("100.00"), BigDecimal.ZERO)),
-            "NONE",
-            BigDecimal.ZERO,
-            Boolean.FALSE,
-            null,
-            "SPLIT");
-
-    String canonicalLegacyShape =
-        (String) buildSignatureMethod.invoke(engine, request, false, true);
-
-    assertThat(legacySignatureMethod.invoke(engine, request, canonicalLegacyShape)).isNull();
-  }
-
-  @Test
-  void acceptedRequestSignatures_ignoresBlankEntries_and_deduplicates() throws Exception {
+  void signaturePaymentModeToken_defaultsBlank_andRejectsUnsupportedModes() throws Exception {
     Method method =
-        SalesCoreEngine.class.getDeclaredMethod("acceptedRequestSignatures", String[].class);
+        SalesCoreEngine.class.getDeclaredMethod("signaturePaymentModeToken", String.class);
     method.setAccessible(true);
 
-    @SuppressWarnings("unchecked")
-    List<String> accepted =
-        (List<String>)
-            method.invoke(engine, (Object) new String[] {"sig-1", " ", "sig-1", null, "sig-2"});
-
-    assertThat(accepted).containsExactly("sig-1", "sig-2");
-  }
-
-  @Test
-  void signaturePaymentModeToken_defaultsBlank_and_preservesLegacySplitAlias() throws Exception {
-    Method method =
-        SalesCoreEngine.class.getDeclaredMethod(
-            "signaturePaymentModeToken", String.class, boolean.class);
-    method.setAccessible(true);
-
-    assertThat(method.invoke(engine, "   ", false)).isEqualTo("CREDIT");
-    assertThat(method.invoke(engine, "split", true)).isEqualTo("SPLIT");
-  }
-
-  @Test
-  void resolveLegacySplitReplayIdempotencyKey_returnsDistinctReplayKeyOnly() throws Exception {
-    Method method =
-        SalesCoreEngine.class.getDeclaredMethod(
-            "resolveLegacySplitReplayIdempotencyKey", SalesOrderRequest.class, String.class);
-    method.setAccessible(true);
-
-    SalesOrderRequest request = salesOrderRequest("SPLIT", null);
-    String canonicalKey = request.resolveIdempotencyKey();
-
-    assertThat(method.invoke(engine, request, canonicalKey))
-        .isEqualTo(request.resolveLegacySplitReplayIdempotencyKey());
-    assertThat(method.invoke(engine, request, request.resolveLegacySplitReplayIdempotencyKey()))
-        .isNull();
+    assertThat(method.invoke(engine, "   ")).isEqualTo("CREDIT");
+    assertThatThrownBy(() -> method.invoke(engine, "split"))
+        .satisfies(
+            thrown ->
+                assertThat(thrown.getCause())
+                    .isInstanceOf(ApplicationException.class)
+                    .hasMessageContaining("Unsupported sales order payment mode: SPLIT"));
   }
 
   @Test
@@ -605,31 +554,6 @@ class SalesCoreEngineCoverageTest {
     } finally {
       RequestContextHolder.resetRequestAttributes();
     }
-  }
-
-  @Test
-  void
-      resolveLegacySplitReplayRequestSignature_returnsDistinctReplaySignature_forLegacySplitRequest()
-          throws Exception {
-    Method replaySignatureMethod =
-        SalesCoreEngine.class.getDeclaredMethod(
-            "resolveLegacySplitReplayRequestSignature", SalesOrderRequest.class, String.class);
-    replaySignatureMethod.setAccessible(true);
-    Method buildSignatureMethod =
-        SalesCoreEngine.class.getDeclaredMethod(
-            "buildSalesOrderSignature", SalesOrderRequest.class, boolean.class, boolean.class);
-    buildSignatureMethod.setAccessible(true);
-
-    SalesOrderRequest request = salesOrderRequest("SPLIT", null);
-    String canonicalSignature = (String) buildSignatureMethod.invoke(engine, request, false, false);
-    String replaySignature =
-        (String) replaySignatureMethod.invoke(engine, request, canonicalSignature);
-
-    assertThat(replaySignature).isNotNull().isNotEqualTo(canonicalSignature);
-    assertThat(
-            replaySignatureMethod.invoke(
-                engine, salesOrderRequest("CREDIT", null), canonicalSignature))
-        .isNull();
   }
 
   @Test

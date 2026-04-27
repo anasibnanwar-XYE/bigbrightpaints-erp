@@ -75,7 +75,7 @@ class TS_truthsuite_o2c_Override_RuntimeTest {
   }
 
   @Test
-  void legacyApprovedRecordsRemainValidWhenMakerCheckerMetadataIsComplete() {
+  void approvedRecordsWithoutReasonCodeFailClosed() {
     CreditLimitOverrideRequest request = new CreditLimitOverrideRequest();
     request.setCompany(company);
     request.setStatus("APPROVED");
@@ -92,12 +92,11 @@ class TS_truthsuite_o2c_Override_RuntimeTest {
 
     when(creditLimitOverrideRequestRepository.findByCompanyAndId(company, 1001L))
         .thenReturn(Optional.of(request));
-    when(dealerLedgerService.currentBalance(42L)).thenReturn(new BigDecimal("100.00"));
 
     boolean approved =
         service.isOverrideApproved(1001L, company, dealer, null, null, new BigDecimal("120.00"));
 
-    assertThat(approved).isTrue();
+    assertThat(approved).isFalse();
   }
 
   @Test
@@ -126,7 +125,7 @@ class TS_truthsuite_o2c_Override_RuntimeTest {
   }
 
   @Test
-  void approveUsesLegacyDecisionFallbackWhenReasonMissing() {
+  void approveRequiresDecisionReason() {
     CreditLimitOverrideRequest request = new CreditLimitOverrideRequest();
     request.setCompany(company);
     request.setStatus("PENDING");
@@ -136,17 +135,19 @@ class TS_truthsuite_o2c_Override_RuntimeTest {
     when(creditLimitOverrideRequestRepository.findByCompanyAndId(company, 1003L))
         .thenReturn(Optional.of(request));
 
-    CreditLimitOverrideRequestDto response =
-        service.approveRequest(
-            1003L, new CreditLimitOverrideDecisionRequest(null, null), "checker@bbp.com");
+    ApplicationException ex =
+        assertThrows(
+            ApplicationException.class,
+            () ->
+                service.approveRequest(
+                    1003L, new CreditLimitOverrideDecisionRequest(null, null), "checker@bbp.com"));
 
-    assertThat(response.status()).isEqualTo("APPROVED");
-    assertThat(request.getReason()).contains("[CREDIT_LIMIT_EXCEPTION_APPROVED]");
-    assertThat(request.getReason()).contains("Need urgent dispatch headroom");
+    assertEquals(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD, ex.getErrorCode());
+    assertThat(ex.getMessage()).contains("Credit override request approve requires reason");
   }
 
   @Test
-  void approveUsesDefaultDecisionFallbackWhenNoLegacyReasonExists() {
+  void approveRejectsMissingDecisionReasonWhenRequestReasonIsBlank() {
     CreditLimitOverrideRequest request = new CreditLimitOverrideRequest();
     request.setCompany(company);
     request.setStatus("PENDING");
@@ -156,17 +157,19 @@ class TS_truthsuite_o2c_Override_RuntimeTest {
     when(creditLimitOverrideRequestRepository.findByCompanyAndId(company, 1010L))
         .thenReturn(Optional.of(request));
 
-    CreditLimitOverrideRequestDto response =
-        service.approveRequest(
-            1010L, new CreditLimitOverrideDecisionRequest(null, null), "checker@bbp.com");
+    ApplicationException ex =
+        assertThrows(
+            ApplicationException.class,
+            () ->
+                service.approveRequest(
+                    1010L, new CreditLimitOverrideDecisionRequest(null, null), "checker@bbp.com"));
 
-    assertThat(response.status()).isEqualTo("APPROVED");
-    assertThat(request.getReason()).contains("[CREDIT_LIMIT_EXCEPTION_APPROVED]");
-    assertThat(request.getReason()).contains("Approved via legacy decision payload");
+    assertEquals(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD, ex.getErrorCode());
+    assertThat(ex.getMessage()).contains("Credit override request approve requires reason");
   }
 
   @Test
-  void rejectUsesDefaultDecisionFallbackWhenLegacyPayloadOmitsReason() {
+  void rejectRequiresDecisionReason() {
     CreditLimitOverrideRequest request = new CreditLimitOverrideRequest();
     request.setCompany(company);
     request.setStatus("PENDING");
@@ -175,13 +178,15 @@ class TS_truthsuite_o2c_Override_RuntimeTest {
     when(creditLimitOverrideRequestRepository.findByCompanyAndId(company, 1004L))
         .thenReturn(Optional.of(request));
 
-    CreditLimitOverrideRequestDto response =
-        service.rejectRequest(
-            1004L, new CreditLimitOverrideDecisionRequest(null, null), "checker@bbp.com");
+    ApplicationException ex =
+        assertThrows(
+            ApplicationException.class,
+            () ->
+                service.rejectRequest(
+                    1004L, new CreditLimitOverrideDecisionRequest(null, null), "checker@bbp.com"));
 
-    assertThat(response.status()).isEqualTo("REJECTED");
-    assertThat(request.getReason()).contains("[CREDIT_LIMIT_EXCEPTION_REJECTED]");
-    assertThat(request.getReason()).contains("Rejected via legacy decision payload");
+    assertEquals(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD, ex.getErrorCode());
+    assertThat(ex.getMessage()).contains("Credit override request reject requires reason");
   }
 
   @Test
@@ -244,7 +249,7 @@ class TS_truthsuite_o2c_Override_RuntimeTest {
     assertEquals("42", metadata.get("dealerId"));
     assertEquals("55", metadata.get("packagingSlipId"));
     assertEquals("71", metadata.get("salesOrderId"));
-    assertEquals("50.00", metadata.get("dispatchAmount"));
+    assertEquals("50.00", metadata.get("requestedAmount"));
     assertEquals("120.00", metadata.get("currentExposure"));
     assertEquals("200.00", metadata.get("creditLimit"));
     assertEquals("0", metadata.get("requiredHeadroom"));
@@ -311,7 +316,7 @@ class TS_truthsuite_o2c_Override_RuntimeTest {
     request.setCompany(company);
     request.setStatus("PENDING");
     request.setRequestedBy("maker@bbp.com");
-    request.setReviewedBy("legacy-reviewer@bbp.com");
+    request.setReviewedBy("existing-reviewer@bbp.com");
     when(creditLimitOverrideRequestRepository.findByCompanyAndId(company, 1006L))
         .thenReturn(Optional.of(request));
 
@@ -381,7 +386,7 @@ class TS_truthsuite_o2c_Override_RuntimeTest {
     request.setCompany(company);
     request.setStatus("PENDING");
     request.setRequestedBy("maker@bbp.com");
-    request.setReviewedBy("legacy-reviewer@bbp.com");
+    request.setReviewedBy("existing-reviewer@bbp.com");
     request.setReviewedAt(null);
     when(creditLimitOverrideRequestRepository.findByCompanyAndId(company, 1012L))
         .thenReturn(Optional.of(request));
@@ -446,13 +451,13 @@ class TS_truthsuite_o2c_Override_RuntimeTest {
   }
 
   @Test
-  void helperMethodsNormalizeLegacyReasonMarkersForBackwardCompatibility() {
+  void helperMethodsNormalizeReasonMarkersAndApprovalMetadata() {
     String normalizedReason =
         com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             service,
             "reasonWithCode",
             "CREDIT_LIMIT_EXCEPTION_APPROVED",
-            "[LEGACY_APPROVAL] reviewed by finance");
+            "[OLD_APPROVAL] reviewed by finance");
     assertThat(normalizedReason).isEqualTo("[CREDIT_LIMIT_EXCEPTION_APPROVED] reviewed by finance");
 
     String malformedCode =
@@ -464,16 +469,6 @@ class TS_truthsuite_o2c_Override_RuntimeTest {
         com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             service, "extractReasonCode", new Object[] {null});
     assertThat(emptyCode).isEmpty();
-
-    String strippedReason =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-            service, "stripReasonCodePrefix", "[CREDIT_LIMIT_EXCEPTION_APPROVED]");
-    assertThat(strippedReason).isEmpty();
-
-    String legacyReason =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-            service, "stripReasonCodePrefix", "legacy reason only");
-    assertThat(legacyReason).isEqualTo("legacy reason only");
 
     CreditLimitOverrideRequest incompleteMetadata = new CreditLimitOverrideRequest();
     incompleteMetadata.setRequestedBy("maker@bbp.com");
@@ -489,29 +484,21 @@ class TS_truthsuite_o2c_Override_RuntimeTest {
 
     String normalizedWithoutClosingBracket =
         com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-            service, "reasonWithCode", "CREDIT_LIMIT_EXCEPTION_APPROVED", "[legacy reason");
-    assertThat(normalizedWithoutClosingBracket).contains("[legacy reason");
+            service, "reasonWithCode", "CREDIT_LIMIT_EXCEPTION_APPROVED", "[malformed reason");
+    assertThat(normalizedWithoutClosingBracket).contains("[malformed reason");
 
     String unresolvedCode =
         com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-            service, "extractReasonCode", "[legacy_reason");
+            service, "extractReasonCode", "[malformed_reason");
     assertThat(unresolvedCode).isEmpty();
 
-    CreditLimitOverrideRequest withIncomingDecision = new CreditLimitOverrideRequest();
-    withIncomingDecision.setReason("[CREDIT_LIMIT_EXCEPTION_REQUESTED] fallback");
     String incomingDecision =
         com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             service,
             "resolveDecisionReason",
-            withIncomingDecision,
             new CreditLimitOverrideDecisionRequest("explicit reviewer reason", null),
             "approve");
     assertThat(incomingDecision).isEqualTo("explicit reviewer reason");
-
-    String nonBracketPrefix =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-            service, "stripReasonCodePrefix", "[legacy_reason");
-    assertThat(nonBracketPrefix).isEqualTo("[legacy_reason");
 
     CreditLimitOverrideRequest missingRequestedBy = new CreditLimitOverrideRequest();
     missingRequestedBy.setRequestedBy("  ");
@@ -616,7 +603,7 @@ class TS_truthsuite_o2c_Override_RuntimeTest {
             "dealerId",
             "packagingSlipId",
             "salesOrderId",
-            "dispatchAmount",
+            "requestedAmount",
             "currentExposure",
             "creditLimit",
             "requiredHeadroom",

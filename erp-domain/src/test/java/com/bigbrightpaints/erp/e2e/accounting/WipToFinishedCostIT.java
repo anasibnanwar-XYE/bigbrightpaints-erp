@@ -280,7 +280,7 @@ public class WipToFinishedCostIT extends AbstractIntegrationTest {
               fg.setValuationAccountId(inv);
               fg.setCogsAccountId(cogsId);
               fg.setRevenueAccountId(revId);
-              fg.setTaxAccountId(revId); // placeholder non-null
+              fg.setTaxAccountId(revId);
               return finishedGoodRepository.save(fg);
             });
   }

@@ -36,6 +36,7 @@ import com.bigbrightpaints.erp.modules.factory.domain.ProductionBatch;
 import com.bigbrightpaints.erp.modules.factory.domain.ProductionBatchRepository;
 import com.bigbrightpaints.erp.modules.factory.domain.ProductionPlan;
 import com.bigbrightpaints.erp.modules.factory.domain.ProductionPlanRepository;
+import com.bigbrightpaints.erp.modules.hr.domain.AttendanceRepository;
 import com.bigbrightpaints.erp.modules.hr.domain.Employee;
 import com.bigbrightpaints.erp.modules.hr.domain.EmployeeRepository;
 import com.bigbrightpaints.erp.modules.hr.domain.LeaveRequest;
@@ -75,6 +76,7 @@ public class PortalInsightsControllerIT extends AbstractIntegrationTest {
   @Autowired private FactoryTaskRepository factoryTaskRepository;
   @Autowired private RawMaterialRepository rawMaterialRepository;
   @Autowired private FinishedGoodRepository finishedGoodRepository;
+  @Autowired private AttendanceRepository attendanceRepository;
   @Autowired private LeaveRequestRepository leaveRequestRepository;
   @Autowired private PayrollRunRepository payrollRunRepository;
   @Autowired private AccountRepository accountRepository;
@@ -271,6 +273,9 @@ public class PortalInsightsControllerIT extends AbstractIntegrationTest {
   @Test
   @SuppressWarnings("unchecked")
   void dashboardUsesEmptyStateDetailsWhenWorkforceAndFulfilmentInputsAreMissing() {
+    attendanceRepository.deleteAll();
+    leaveRequestRepository.deleteAll();
+    payrollRunRepository.deleteAll();
     employeeRepository.deleteAll();
     packagingSlipRepository.deleteAll();
     saveDealer("DETAIL-" + Long.toUnsignedString(System.nanoTime()));

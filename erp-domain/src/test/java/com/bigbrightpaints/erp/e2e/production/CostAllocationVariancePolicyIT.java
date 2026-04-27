@@ -21,6 +21,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
+import com.bigbrightpaints.erp.modules.accounting.service.AccountingPeriodService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.modules.factory.domain.PackagingSizeMapping;
@@ -74,6 +75,7 @@ public class CostAllocationVariancePolicyIT extends AbstractIntegrationTest {
   @Autowired private FinishedGoodBatchRepository finishedGoodBatchRepository;
   @Autowired private JournalEntryRepository journalEntryRepository;
   @Autowired private ProductionLogRepository productionLogRepository;
+  @Autowired private AccountingPeriodService accountingPeriodService;
 
   private Company company;
   private String companyCode;
@@ -125,6 +127,7 @@ public class CostAllocationVariancePolicyIT extends AbstractIntegrationTest {
     FinishedGood packTarget = ensurePackTarget(product, "5L");
 
     LocalDate periodDate = resolveClosedPeriodDate();
+    accountingPeriodService.ensurePeriod(company, periodDate);
 
     ProductionLogDetailDto log =
         productionLogService.createLog(
@@ -202,6 +205,7 @@ public class CostAllocationVariancePolicyIT extends AbstractIntegrationTest {
     FinishedGood packTarget = ensurePackTarget(product, "5L");
 
     LocalDate periodDate = resolveClosedPeriodDate();
+    accountingPeriodService.ensurePeriod(company, periodDate);
 
     ProductionLogDetailDto log =
         productionLogService.createLog(

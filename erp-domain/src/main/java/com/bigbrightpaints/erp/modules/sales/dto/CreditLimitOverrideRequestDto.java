@@ -16,10 +16,6 @@ public record CreditLimitOverrideRequestDto(
     @Schema(description = "Canonical requested amount approved for temporary headroom")
         BigDecimal requestedAmount,
     @Schema(
-            description = "Legacy alias of requestedAmount maintained for compatibility",
-            deprecated = true)
-        BigDecimal dispatchAmount,
-    @Schema(
             description =
                 "Dealer credit exposure snapshot at request time (outstanding ledger balance +"
                     + " pending-order exposure)")

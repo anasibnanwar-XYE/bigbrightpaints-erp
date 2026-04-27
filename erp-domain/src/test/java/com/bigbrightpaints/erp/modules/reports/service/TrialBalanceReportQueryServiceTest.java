@@ -1,5 +1,7 @@
 package com.bigbrightpaints.erp.modules.reports.service;
 
+import static com.bigbrightpaints.erp.modules.reports.service.ReportFixtures.account;
+import static com.bigbrightpaints.erp.modules.reports.service.ReportFixtures.row;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
 
@@ -17,6 +19,8 @@ import org.springframework.test.util.ReflectionTestUtils;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
+import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodSnapshot;
+import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodTrialBalanceLine;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodTrialBalanceLineRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalLineRepository;
 import com.bigbrightpaints.erp.modules.reports.dto.ReportMetadata;
@@ -80,6 +84,64 @@ class TrialBalanceReportQueryServiceTest {
     assertThat(report.metadata().requestedExportFormat()).isEqualTo("PDF");
     assertThat(report.metadata().pdfReady()).isTrue();
     assertThat(report.metadata().csvReady()).isTrue();
+  }
+
+  @Test
+  void generate_usesClosedSnapshotRowsWhenWindowTargetsClosedPeriod() {
+    TrialBalanceReportQueryService service =
+        new TrialBalanceReportQueryService(
+            reportQuerySupport, snapshotLineRepository, accountRepository, journalLineRepository);
+
+    ReportQuerySupport.FinancialQueryWindow window =
+        ReportFixtures.window(
+            LocalDate.of(2026, 3, 1), LocalDate.of(2026, 3, 31), LocalDate.of(2026, 3, 31));
+    AccountingPeriodSnapshot snapshot = new AccountingPeriodSnapshot();
+    window =
+        new ReportQuerySupport.FinancialQueryWindow(
+            window.company(),
+            window.startDate(),
+            window.endDate(),
+            window.asOfDate(),
+            window.period(),
+            snapshot,
+            ReportSource.SNAPSHOT,
+            window.exportOptions());
+    FinancialReportQueryRequest request =
+        new FinancialReportQueryRequest(
+            null, window.startDate(), window.endDate(), null, null, null, null, null, "CSV");
+
+    AccountingPeriodTrialBalanceLine line = new AccountingPeriodTrialBalanceLine();
+    line.setAccountId(41L);
+    line.setAccountCode("CASH");
+    line.setAccountName("Cash");
+    line.setAccountType(AccountType.ASSET);
+    line.setDebit(new BigDecimal("50.00"));
+    line.setCredit(BigDecimal.ZERO);
+
+    when(reportQuerySupport.resolveWindow(request)).thenReturn(window);
+    when(reportQuerySupport.resolveComparison(request)).thenReturn(null);
+    when(reportQuerySupport.usesClosedSnapshot(window)).thenReturn(true);
+    when(snapshotLineRepository.findBySnapshotOrderByAccountCodeAsc(snapshot))
+        .thenReturn(List.of(line));
+    when(reportQuerySupport.metadata(window))
+        .thenReturn(
+            new ReportMetadata(
+                window.asOfDate(),
+                window.startDate(),
+                window.endDate(),
+                ReportSource.SNAPSHOT,
+                null,
+                null,
+                null,
+                true,
+                true,
+                "CSV"));
+
+    TrialBalanceDto report = service.generate(request);
+
+    assertThat(report.rows()).hasSize(1);
+    assertThat(report.totalDebit()).isEqualByComparingTo("50.00");
+    assertThat(report.totalCredit()).isZero();
   }
 
   @Test
@@ -332,18 +394,5 @@ class TrialBalanceReportQueryServiceTest {
     assertThat(report.totalCredit()).isEqualByComparingTo("40.00");
     assertThat(report.rows()).hasSize(1);
     assertThat(report.rows().getFirst().net()).isEqualByComparingTo("30.00");
-  }
-
-  private Account account(Long id, String code, String name, AccountType type) {
-    Account account = new Account();
-    ReflectionTestUtils.setField(account, "id", id);
-    account.setCode(code);
-    account.setName(name);
-    account.setType(type);
-    return account;
-  }
-
-  private Object[] row(Long accountId, String debit, String credit) {
-    return new Object[] {accountId, new BigDecimal(debit), new BigDecimal(credit)};
   }
 }

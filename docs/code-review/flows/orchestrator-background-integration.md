@@ -12,7 +12,6 @@ Primary evidence:
 - `erp-domain/src/main/java/com/bigbrightpaints/erp/orchestrator/scheduler/{OutboxPublisherJob,SchedulerService}.java`
 - `erp-domain/src/main/java/com/bigbrightpaints/erp/orchestrator/config/{OrchestratorFeatureFlags,DispatchMappingHealthIndicator,SchedulerConfig,ShedLockConfig}.java`
 - `erp-domain/src/main/java/com/bigbrightpaints/erp/orchestrator/workflow/WorkflowService.java`
-- `erp-domain/src/main/java/com/bigbrightpaints/erp/orchestrator/integration/ExternalSyncService.java`
 - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/sales/{event/SalesOrderCreatedEvent.java,service/SalesCoreEngine.java}`
 - `erp-domain/src/main/java/com/bigbrightpaints/erp/core/{exception/AuditExceptionRoutingService.java,audit/{IntegrationFailureAlertRoutingPolicy,IntegrationFailureMetadataSchema,IntegrationFailureAlertRoute}.java,audittrail/EnterpriseAuditTrailService.java}`
 - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/admin/service/SupportTicketGitHubSyncService.java`
@@ -172,8 +171,6 @@ The orchestrator flow does not live in isolation. Several adjacent background se
 - `EnterpriseAuditTrailService` records business events asynchronously, retries them every 30 seconds, keeps both an in-memory queue and a persisted retry table, and drops retries after the configured max attempts. This improves latency for front-door transactions but accepts eventual audit gaps during prolonged failures.
 - `SupportTicketGitHubSyncService` creates GitHub issues asynchronously and polls issue status every five minutes. Status sync retries on the next schedule, but initial issue-creation failures are only written to `githubLastError`; there is no scheduler that automatically re-submits unsynced tickets.
 - `DunningService` performs a daily dealer hold/reminder sweep at `03:15`.
-- `ExternalSyncService` advertises retryable outbound integrations (`sendCostingSnapshot`, `exportAccountingData`) with Spring Retry, but there are no call sites in this branch.
-
 These jobs share an operational smell: only the outbox publisher uses ShedLock. The enterprise audit retry job, GitHub sync, and dunning sweep all rely on plain `@Scheduled` execution. In a multi-instance deployment, they will duplicate unless deployment topology guarantees a single scheduler instance.
 
 ## Retries, failures, and failure routing
@@ -266,7 +263,6 @@ That means recovery today is evidence-rich but tool-poor: the system records wha
 | medium | operator-surface drift | `GET /api/v1/admin/operations/status` currently returns `404`, so the expected operator-status surface is absent on the live backend. | live backend probe on `GET /api/v1/admin/operations/status`, operator/admin route survey during review | Ops dashboards or frontend operator tooling can assume there is a dedicated status endpoint and only discover at runtime that the backend exposes no live handler. |
 | medium | test-confidence gap | `DevRabbitConfig` turns broker publishes into no-op debug logs in `dev`/`openapi` profiles. | `DevRabbitConfig.NoOpRabbitTemplate` | Non-prod validation can mark outbox rows as published without proving real broker routing or downstream consumer behavior. |
 | low | schema consistency | Orchestrator trace ids allow 128 characters, but `sales_orders.trace_id` is only 64 characters and `SalesCoreEngine.attachTraceId(...)` does not enforce the lower bound. | `CorrelationIdentifierSanitizer`, `V6__orchestrator.sql`, `SalesOrder`, `V3__sales_invoice.sql`, `SalesCoreEngine.attachTraceId(...)` | A future trace format expansion could fail when writing back into sales orders even though orchestrator tables accept it. |
-| low | design completeness | `ExternalSyncService` defines retryable outbound sync methods, but there are no call sites in the branch and no health surface mentions them. | `ExternalSyncService`, repo-wide call-site search | The integration story appears broader than the actually wired runtime surface. |
 
 ## Security, privacy, protocol, performance, and observability notes
 

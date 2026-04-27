@@ -16,6 +16,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest;
+import com.bigbrightpaints.erp.modules.accounting.service.AccountingPeriodService;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.reports.dto.ReportSource;
@@ -29,6 +30,7 @@ import com.bigbrightpaints.erp.test.support.TestDateUtils;
 class CR_Reports_AsOfBalancesStable_AfterLatePostingIT extends AbstractIntegrationTest {
 
   @Autowired private AccountingService accountingService;
+  @Autowired private AccountingPeriodService accountingPeriodService;
   @Autowired private ReportService reportService;
   @Autowired private AccountRepository accountRepository;
 
@@ -44,6 +46,8 @@ class CR_Reports_AsOfBalancesStable_AfterLatePostingIT extends AbstractIntegrati
     CompanyContextHolder.setCompanyCode(companyCode);
     try {
       LocalDate asOfDate = TestDateUtils.safeDate(company);
+      accountingPeriodService.ensurePeriod(company, asOfDate);
+      accountingPeriodService.ensurePeriod(company, asOfDate.plusDays(1));
       Account cash = ensureAccount(company, "CASH-ASOF", "Cash", AccountType.ASSET);
       Account revenue = ensureAccount(company, "REV-ASOF", "Revenue", AccountType.REVENUE);
 

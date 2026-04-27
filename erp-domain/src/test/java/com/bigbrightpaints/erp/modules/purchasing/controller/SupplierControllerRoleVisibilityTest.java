@@ -23,6 +23,7 @@ import com.bigbrightpaints.erp.modules.purchasing.dto.SupplierRequest;
 import com.bigbrightpaints.erp.modules.purchasing.dto.SupplierResponse;
 import com.bigbrightpaints.erp.modules.purchasing.service.SupplierImportService;
 import com.bigbrightpaints.erp.modules.purchasing.service.SupplierService;
+import com.bigbrightpaints.erp.shared.dto.ImportRowErrorDto;
 
 @Tag("critical")
 class SupplierControllerRoleVisibilityTest {
@@ -110,8 +111,7 @@ class SupplierControllerRoleVisibilityTest {
             "name,email,creditLimit,paymentTerms\nSupplier,supplier@example.com,1000,NET_30\n"
                 .getBytes(StandardCharsets.UTF_8));
     SupplierImportResponse payload =
-        new SupplierImportResponse(
-            1, 0, List.of(new SupplierImportResponse.ImportError(0L, "placeholder")));
+        new SupplierImportResponse(1, 0, List.of(new ImportRowErrorDto(0L, "placeholder")));
     when(supplierImportService.importSuppliers(file)).thenReturn(payload);
 
     var response = controller.importSuppliers(file);

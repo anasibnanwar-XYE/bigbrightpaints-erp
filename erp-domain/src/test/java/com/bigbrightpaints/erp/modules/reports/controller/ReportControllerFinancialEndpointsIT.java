@@ -1,5 +1,8 @@
 package com.bigbrightpaints.erp.modules.reports.controller;
 
+import static com.bigbrightpaints.erp.test.support.JsonResponseAssertions.mapList;
+import static com.bigbrightpaints.erp.test.support.JsonResponseAssertions.mapValue;
+import static com.bigbrightpaints.erp.test.support.JsonResponseAssertions.responseMapType;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.math.BigDecimal;
@@ -102,7 +105,7 @@ class ReportControllerFinancialEndpointsIT extends AbstractIntegrationTest {
     BigDecimal totalDebit = decimal(trialBalanceData.get("totalDebit"));
     BigDecimal totalCredit = decimal(trialBalanceData.get("totalCredit"));
     assertThat(totalDebit).isEqualByComparingTo(totalCredit);
-    assertThat((List<?>) trialBalanceData.get("rows")).isNotEmpty();
+    assertThat(mapList(trialBalanceData.get("rows"))).isNotEmpty();
 
     Map<String, Object> profitLossData =
         fetchDataMap(
@@ -122,7 +125,7 @@ class ReportControllerFinancialEndpointsIT extends AbstractIntegrationTest {
     Map<String, Object> balanceSheetHierarchy =
         fetchDataMap("/api/v1/reports/balance-sheet/hierarchy");
     assertThat(balanceSheetHierarchy).containsKeys("assets", "liabilities", "equity");
-    List<Map<String, Object>> assets = castListOfMap(balanceSheetHierarchy.get("assets"));
+    List<Map<String, Object>> assets = mapList(balanceSheetHierarchy.get("assets"));
     if (!assets.isEmpty()) {
       assertThat(assets.getFirst()).containsKey("children");
     }
@@ -130,7 +133,7 @@ class ReportControllerFinancialEndpointsIT extends AbstractIntegrationTest {
     Map<String, Object> incomeStatementHierarchy =
         fetchDataMap("/api/v1/reports/income-statement/hierarchy");
     assertThat(incomeStatementHierarchy).containsKeys("revenue", "expenses");
-    List<Map<String, Object>> revenue = castListOfMap(incomeStatementHierarchy.get("revenue"));
+    List<Map<String, Object>> revenue = mapList(incomeStatementHierarchy.get("revenue"));
     if (!revenue.isEmpty()) {
       assertThat(revenue.getFirst()).containsKey("children");
     }
@@ -166,17 +169,17 @@ class ReportControllerFinancialEndpointsIT extends AbstractIntegrationTest {
   @Test
   void agingEndpoints_returnNonEmptyDataWithOutstandingDealerBuckets() {
     List<Map<String, Object>> agedDebtorsData =
-        castListOfMap(fetchDataObject("/api/v1/reports/aged-debtors"));
+        mapList(fetchDataObject("/api/v1/reports/aged-debtors"));
     assertThat(agedDebtorsData).isNotEmpty();
     assertThat(agedDebtorsData.getFirst())
         .containsKeys("dealerId", "dealerName", "current", "oneToThirtyDays", "totalOutstanding");
 
     Map<String, Object> agedReceivablesData =
-        castMap(fetchDataObject("/api/v1/reports/aging/receivables"));
+        mapValue(fetchDataObject("/api/v1/reports/aging/receivables"));
     assertThat(agedReceivablesData).containsKeys("dealers", "totalBuckets", "grandTotal");
-    List<Map<String, Object>> dealers = castListOfMap(agedReceivablesData.get("dealers"));
+    List<Map<String, Object>> dealers = mapList(agedReceivablesData.get("dealers"));
     assertThat(dealers).isNotEmpty();
-    Map<String, Object> buckets = castMap(dealers.getFirst().get("buckets"));
+    Map<String, Object> buckets = mapValue(dealers.getFirst().get("buckets"));
     assertThat(buckets).containsKeys("current", "days1to30", "days31to60", "days61to90");
   }
 
@@ -298,12 +301,12 @@ class ReportControllerFinancialEndpointsIT extends AbstractIntegrationTest {
   }
 
   private void postJournal(LocalDate entryDate, String memo, List<Map<String, Object>> lines) {
-    ResponseEntity<Map> response =
+    ResponseEntity<Map<String, Object>> response =
         rest.exchange(
             "/api/v1/accounting/journal-entries",
             HttpMethod.POST,
             new HttpEntity<>(Map.of("entryDate", entryDate, "memo", memo, "lines", lines), headers),
-            Map.class);
+            responseMapType());
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
   }
 
@@ -315,27 +318,16 @@ class ReportControllerFinancialEndpointsIT extends AbstractIntegrationTest {
         "credit", credit);
   }
 
-  @SuppressWarnings("unchecked")
   private Map<String, Object> fetchDataMap(String path) {
-    return castMap(fetchDataObject(path));
+    return mapValue(fetchDataObject(path));
   }
 
   private Object fetchDataObject(String path) {
-    ResponseEntity<Map> response =
-        rest.exchange(path, HttpMethod.GET, new HttpEntity<>(headers), Map.class);
+    ResponseEntity<Map<String, Object>> response =
+        rest.exchange(path, HttpMethod.GET, new HttpEntity<>(headers), responseMapType());
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
     assertThat(response.getBody()).isNotNull();
     return response.getBody().get("data");
-  }
-
-  @SuppressWarnings("unchecked")
-  private List<Map<String, Object>> castListOfMap(Object value) {
-    return (List<Map<String, Object>>) value;
-  }
-
-  @SuppressWarnings("unchecked")
-  private Map<String, Object> castMap(Object value) {
-    return (Map<String, Object>) value;
   }
 
   private BigDecimal decimal(Object value) {
@@ -343,7 +335,7 @@ class ReportControllerFinancialEndpointsIT extends AbstractIntegrationTest {
   }
 
   private BigDecimal componentTotal(Object value) {
-    return decimal(castMap(value).get("total"));
+    return decimal(mapValue(value).get("total"));
   }
 
   private HttpHeaders authHeaders() {
@@ -352,8 +344,9 @@ class ReportControllerFinancialEndpointsIT extends AbstractIntegrationTest {
             "email", ACCOUNTING_EMAIL,
             "password", PASSWORD,
             "companyCode", COMPANY_CODE);
-    ResponseEntity<Map> loginResponse =
-        rest.postForEntity("/api/v1/auth/login", payload, Map.class);
+    ResponseEntity<Map<String, Object>> loginResponse =
+        rest.exchange(
+            "/api/v1/auth/login", HttpMethod.POST, new HttpEntity<>(payload), responseMapType());
     assertThat(loginResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
 
     HttpHeaders authHeaders = new HttpHeaders();

@@ -72,16 +72,6 @@ All catalog/setup endpoints live under a single host prefix:
 | `description` | String | Brand description |
 | `active` | boolean | Whether brand is active |
 
-**ProductionBrandDto** (extended brand listing with product count):
-
-| Field | Type | Notes |
-| --- | --- | --- |
-| `id` | Long | Internal ID |
-| `publicId` | UUID | External-facing ID |
-| `name` | String | Brand name |
-| `code` | String | Auto-generated brand code |
-| `productCount` | long | Number of products under this brand |
-
 ### 3.2 Item Payloads
 
 **CatalogItemRequest** (create/update item — external API DTO):
@@ -139,37 +129,7 @@ All catalog/setup endpoints live under a single host prefix:
 | `availableQuantity` | BigDecimal | Available = onHand − reserved |
 | `unitOfMeasure` | String | Stock unit |
 
-### 3.3 Bulk Variant Payloads
-
-**BulkVariantRequest** (generate multiple color×size variants in one call):
-
-| Field | Type | Notes |
-| --- | --- | --- |
-| `brandId` | Long (optional) | Existing brand ID |
-| `brandName` | String (optional) | Brand name (resolved or created) |
-| `brandCode` | String (optional) | Brand code hint |
-| `baseProductName` | String (required) | Base product family name |
-| `category` | String (required) | Item class/category |
-| `colors` | List\<String\> | Color tokens |
-| `sizes` | List\<String\> | Size tokens |
-| `colorSizeMatrix` | List\<ColorSizeMatrixEntry\> | Per-color size overrides |
-| `unitOfMeasure` | String (optional) | Default unit |
-| `skuPrefix` | String (optional) | SKU prefix override |
-| `basePrice` / `gstRate` / `minDiscountPercent` / `minSellingPrice` | BigDecimal | Pricing defaults |
-| `metadata` | Map\<String, Object\> | Shared metadata |
-
-**BulkVariantResponse** (variant generation result):
-
-| Field | Type | Notes |
-| --- | --- | --- |
-| `generated` | List\<VariantItem\> | All generated SKU plans |
-| `conflicts` | List\<VariantItem\> | Conflicting SKUs (duplicate in request or already existing) |
-| `wouldCreate` | List\<VariantItem\> | SKUs that would be created if committed |
-| `created` | List\<VariantItem\> | Actually created SKUs |
-
-Each `VariantItem` contains: `sku`, `reason`, `productName`, `color`, `size`. Reasons include `GENERATED`, `WOULD_CREATE`, `CREATED`, `SKU_ALREADY_EXISTS`, `DUPLICATE_IN_REQUEST`, and `CONCURRENT_SKU_CONFLICT`.
-
-### 3.4 Import Payloads
+### 3.3 Import Payloads
 
 **Import request:** multipart form with `file` (CSV) plus optional `Idempotency-Key` or `X-Idempotency-Key` header.
 

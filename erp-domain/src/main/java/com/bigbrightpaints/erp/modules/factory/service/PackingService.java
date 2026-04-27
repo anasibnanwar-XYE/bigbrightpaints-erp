@@ -158,12 +158,6 @@ public class PackingService {
     if (idempotencyKey == null) {
       return null;
     }
-    // Truthsuite evidence anchor retained in service after extraction:
-    // IdempotencyReservation reservation = reserveIdempotencyRecord(
-    // findByCompanyAndIdempotencyKey(company, idempotencyKey);
-    // catch (DataIntegrityViolationException ex) {
-    // "Idempotency payload mismatch for packing request"
-    // "Idempotency key already used for a different production log"
     return packingIdempotencyService.reserveIdempotencyRecord(
         company, productionLogId, idempotencyKey, idempotencyHash);
   }
@@ -338,9 +332,6 @@ public class PackingService {
 
     JournalEntryDto entry = accountingFacade.postPackingJournal(reference, packedDate, memo, lines);
     if (entry != null) {
-      // Truthsuite evidence anchor retained in service after extraction:
-      // movement.setJournalEntryId(entry.id());
-      // inventoryMovementRepository.save(movement);
       packingJournalLinkHelper.linkPackagingMovementsToJournal(
           log.getCompany(), referenceId, entry.id());
     }

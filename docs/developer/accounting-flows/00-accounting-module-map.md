@@ -1,6 +1,6 @@
 # Accounting Module Map
 
-This map is a code-grounded accounting inventory for the current ERP-38 branch state. It is not a product brief. It is a dependency and ownership map for cleanup planning.
+This map is a code-grounded accounting inventory for current `main`. It is not a product brief. It is a dependency and ownership map for cleanup planning.
 
 ## 1. Canonical dependency graph
 
@@ -25,7 +25,7 @@ flowchart LR
     FACT --> IAS
     SALES --> AS
     AS --> AFS["AccountingFacade"]
-    AFS --> ACE["AccountingCoreEngineCore"]
+    AFS --> POST["focused posting services"]
 ```
 
 ## 2. Ownership map
@@ -45,16 +45,18 @@ flowchart LR
 - `PackingController`
   Purpose: canonical pack mutation on `POST /api/v1/factory/packing-records`.
 
-### 2.2 Internal canonical engines
+### 2.2 Canonical service owners
 
-- `AccountingCoreEngineCore`
-  Purpose: canonical posting engine for journal creation, reversal, receipts, settlements, payroll posting, inventory adjustments, and dispatch-side accounting mutation.
-- `AccountingFacadeCore`
-  Purpose: request shaping into the core posting engine.
-- `AccountingPeriodServiceCore`
-  Purpose: canonical period lifecycle engine.
-- `ReconciliationServiceCore`
-  Purpose: canonical reconciliation engine.
+- `AccountingFacade`
+  Purpose: canonical accounting seam for cross-module journal posting.
+- `JournalEntryService`
+  Purpose: canonical journal creation and reversal service.
+- `AccountingPeriodService`
+  Purpose: canonical period lifecycle service.
+- `ReconciliationService`
+  Purpose: canonical reconciliation service.
+- Focused posting services
+  Purpose: dealer receipts, settlements, notes, inventory valuation, payroll, and factory journal posting.
 
 ### 2.3 Service clusters
 
@@ -62,7 +64,7 @@ flowchart LR
   - `AccountingService`
   - `JournalEntryService`
   - `AccountingFacade`
-  - `AccountingIdempotencyService`
+  - `JournalReplayService`
   - `DealerReceiptService`
   - `SettlementService`
   - `CreditDebitNoteService`

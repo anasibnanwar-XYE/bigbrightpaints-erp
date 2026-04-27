@@ -16,12 +16,12 @@ Primary evidence:
 - `scripts/{gate_fast.sh,gate_core.sh,gate_release.sh,gate_reconciliation.sh,gate_quality.sh,verify_local.sh,validate_test_catalog.py,check_flaky_tags.py,changed_files_coverage.py,module_coverage_gate.py,pit_mutation_summary.py,flake_rate_gate.py,guard_openapi_contract_drift.sh}`
 - `erp-domain/src/test/java/com/bigbrightpaints/erp/**`
 
-Session evidence gathered for this review:
+Historical session evidence gathered for this review:
 
 - `cd /home/realnigga/Desktop/Mission-control/erp-domain && mvn test -Pgate-fast -Djacoco.skip=true` passed with `394` tests run, `0` failures, `0` errors.
-- `cd /home/realnigga/Desktop/Mission-control && python3 scripts/validate_test_catalog.py --tests-root erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite --gate gate-fast` passed in compatibility mode because `docs/CODE-RED/confidence-suite/TEST_CATALOG.json` is missing; it discovered `85` tagged truthsuite tests anyway.
+- `cd /home/realnigga/Desktop/Mission-control && python3 scripts/validate_test_catalog.py --tests-root erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite --gate gate-fast` previously passed when the catalog was absent. Current `scripts/validate_test_catalog.py` fails closed if `docs/CODE-RED/confidence-suite/TEST_CATALOG.json` is missing.
 - `cd /home/realnigga/Desktop/Mission-control && python3 scripts/check_flaky_tags.py --tests-root erp-domain/src/test/java --gate gate-fast` passed with `0` quarantine entries and `0` flaky-tag lane violations.
-- `cd /home/realnigga/Desktop/Mission-control && bash scripts/guard_openapi_contract_drift.sh` exited successfully only because `docs/endpoint-inventory.md` is missing and the guard explicitly falls back to compatibility mode.
+- `cd /home/realnigga/Desktop/Mission-control && bash scripts/guard_openapi_contract_drift.sh` previously exited successfully when `docs/endpoint-inventory.md` was missing. Current `scripts/guard_openapi_contract_drift.sh` requires both `openapi.json` and `docs/endpoint-inventory.md`.
 - `curl -i http://localhost:9090/actuator/health` returned HTTP `503` with `{"status":"DOWN","groups":["liveness","readiness"]}` during this session, so live runtime evidence remains weaker than the repo-side CI evidence.
 
 ## Test inventory
@@ -82,8 +82,8 @@ Several suites exist but are not part of the normal CI hard gates:
 | `knowledgebase-lint` | PR, `main`, manual | `ci/lint-knowledgebase.sh` | Hard | Hard. |
 | `architecture-check` | PR, `main` | import-edge allowlist and architecture doc presence | Hard | Hard on obvious failures, but import-edge enforcement relaxes when `agents/catalog.yaml` is absent. |
 | `high-risk-change-control` | PR, `main`, release-related runs | R2 approval workflow checks for high-risk paths | Hard | Hard and path-scoped. |
-| `gate-fast` | PR or manual with `diff_base` | truthsuite critical lane + several contract guards + changed-files coverage summary | Hard | Mixed: the job fails on script/test crashes, but catalog validation, OpenAPI inventory, and changed-files coverage all degrade to compatibility or warning-only behavior in common cases. |
-| `gate-core` | `main` | wider truthsuite lane + fixture matrix + module coverage gate | Hard | Stronger than `gate-fast`; module coverage is a real hard fail. Some documentation-based guards still allow compatibility mode. |
+| `gate-fast` | PR or manual with `diff_base` | truthsuite critical lane + several contract guards + changed-files coverage summary | Hard | Hard: catalog validation, OpenAPI inventory, and changed-files coverage fail closed when required inputs or coverage are missing. |
+| `gate-core` | `main` | wider truthsuite lane + fixture matrix + module coverage gate | Hard | Hard: includes the same required-input guards plus module coverage. |
 | `gate-release` | tags, manual release validation | release-grade truth lane, `verify_local.sh`, migration matrix, Flyway guards | Hard | Strongest hard gate, but only on tag/manual paths, not on every PR. |
 | `gate-reconciliation` | tags, manual release validation | reconciliation-only truthsuite lane + surefire summary | Hard | Hard when invoked, but not part of PR/main feedback. |
 | `gate-quality` | nightly schedule or manual opt-in | PIT mutation lane + 20-run flake window | Hard when run | **Advisory by frequency** because it is not part of normal PR or `main` branch gating. |
@@ -94,10 +94,10 @@ Several suites exist but are not part of the normal CI hard gates:
 
 | Surface | Evidence | Classification | Why |
 | --- | --- | --- | --- |
-| Test catalog validation | `scripts/validate_test_catalog.py` | Advisory in practice | Missing `docs/CODE-RED/confidence-suite/TEST_CATALOG.json` causes a successful compatibility-mode exit instead of a failure. |
+| Test catalog validation | `scripts/validate_test_catalog.py` | Hard | Missing `docs/CODE-RED/confidence-suite/TEST_CATALOG.json` fails the gate. |
 | Flaky quarantine contract | `scripts/check_flaky_tags.py`, `scripts/test_quarantine.txt` | Hard, but underused | The script enforces metadata and lane exclusions, but there are currently `0` quarantine entries, so it is governance scaffolding more than an active control. |
-| OpenAPI drift guard | `scripts/guard_openapi_contract_drift.sh` | Advisory in practice | Missing `docs/endpoint-inventory.md` produces a warning and success (`fail-open compatibility mode`). |
-| Changed-files coverage | `scripts/gate_fast.sh`, `scripts/changed_files_coverage.py` | Advisory on PRs | `gate_fast.sh` explicitly warns and continues when changed-files coverage misses thresholds; it only tightens in release-validation mode. |
+| OpenAPI drift guard | `scripts/guard_openapi_contract_drift.sh` | Hard | Missing `docs/endpoint-inventory.md` fails the gate. |
+| Changed-files coverage | `scripts/gate_fast.sh`, `scripts/changed_files_coverage.py` | Hard | `gate_fast.sh` fails when changed-files coverage misses thresholds, becomes vacuous, skips changed files, or leaves changed lines unmapped. |
 | Module coverage gate | `scripts/gate_core.sh`, `scripts/module_coverage_gate.py` | Hard | Below-threshold module/class coverage fails `gate-core`. |
 | Mutation testing | `scripts/gate_quality.sh`, `scripts/pit_mutation_summary.py` | Hard but off the critical path | Thresholds are strict when run, but the lane is schedule/manual only. |
 | Flake-rate gate | `scripts/gate_quality.sh`, `scripts/flake_rate_gate.py` | Hard but off the critical path | The repo has a real 20-run flake gate, but only in scheduled/manual quality runs. |
@@ -136,9 +136,9 @@ Several suites exist but are not part of the normal CI hard gates:
 3. **No hard CI lane executes the strongest cross-module invariant suite.** `ErpInvariantsSuiteIT` is manually valuable and operationally omitted.
 4. **E2E coverage is not governable today.** The tree contains `28` E2E files, but they are not gated, and `FullCycleE2ETest` is disabled because setup is incomplete.
 5. **Static-analysis governance is weak.** Checkstyle is warning-only, Qodana is configured but not run, and there is no “new violations only” baseline enforcement.
-6. **The test-catalog contract is fail-open right now.** Missing `docs/CODE-RED/confidence-suite/TEST_CATALOG.json` means the gate does not prove ownership/lane metadata consistency.
-7. **The OpenAPI guard is fail-open right now.** Missing `docs/endpoint-inventory.md` means the drift guard cannot actually block API/documentation divergence.
-8. **Changed-files coverage does not block PRs.** The script warns and continues, so it is reporting rather than governing.
+6. **CODE-RED is routed only when the PR risk router selects it.** The strongest access and finance risk tests are no longer globally absent from CI, but they still depend on changed-file routing.
+7. **OpenAPI drift is only as fresh as the inventory artifact.** The guard now fails when the inventory is missing or stale; the remaining risk is keeping `docs/endpoint-inventory.md` updated with every intentional OpenAPI change.
+8. **Changed-files coverage is strict but scoped.** The gate now fails closed on missing, vacuous, skipped, or unmapped changed coverage; it still only measures Java runtime lines under `erp-domain/src/main/java`.
 9. **Flake governance is too far from the PR path.** A 20-run flake lane exists, but only on nightly/manual quality runs.
 10. **Performance governance is observational, not contractual.** There is no hard budget gate in CI for query plans, latency, or throughput.
 
@@ -146,4 +146,4 @@ Several suites exist but are not part of the normal CI hard gates:
 
 The current pipeline is **better at policy drift and targeted truth assertions than at broad release confidence**. The repository has many test categories, but the effective hard-gated surface is narrow: mostly truthsuite plus a set of shell guards. That narrowness keeps `gate-fast` and `gate-core` relatively quick and deterministic, but it leaves major blind spots around CODE-RED, smoke, E2E, cross-module invariants, performance, and static analysis.
 
-The most important governance gap is not a lack of tests; it is that the **highest-risk suites are present but optional**, while several “hard” controls quietly degrade to compatibility mode. In other words, the repo has more quality machinery than it is currently enforcing.
+The most important remaining governance gap is not a lack of tests; it is that some high-risk suites are still routed by change impact instead of always-on execution. The core PR lane now enforces catalog, OpenAPI inventory, changed-code coverage, secrets, and high-risk approval state as hard checks.

@@ -5,12 +5,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -24,25 +21,15 @@ import org.springframework.test.util.ReflectionTestUtils;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
-import com.bigbrightpaints.erp.core.util.CompanyClock;
-import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
-import com.bigbrightpaints.erp.modules.accounting.service.AccountingService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
-import com.bigbrightpaints.erp.modules.factory.service.FactoryService;
-import com.bigbrightpaints.erp.modules.hr.service.HrService;
-import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService;
-import com.bigbrightpaints.erp.modules.reports.service.ReportService;
-import com.bigbrightpaints.erp.modules.sales.service.SalesService;
 import com.bigbrightpaints.erp.orchestrator.config.OrchestratorFeatureFlags;
 import com.bigbrightpaints.erp.orchestrator.controller.OrchestratorController;
-import com.bigbrightpaints.erp.orchestrator.policy.PolicyEnforcer;
 import com.bigbrightpaints.erp.orchestrator.repository.AuditRecord;
 import com.bigbrightpaints.erp.orchestrator.repository.AuditRepository;
 import com.bigbrightpaints.erp.orchestrator.repository.OrchestratorCommand;
 import com.bigbrightpaints.erp.orchestrator.repository.OrchestratorCommandRepository;
-import com.bigbrightpaints.erp.orchestrator.repository.OrderAutoApprovalStateRepository;
 import com.bigbrightpaints.erp.orchestrator.service.CommandDispatcher;
 import com.bigbrightpaints.erp.orchestrator.service.CorrelationIdentifierSanitizer;
 import com.bigbrightpaints.erp.orchestrator.service.EventPublisherService;
@@ -113,7 +100,6 @@ class TS_RuntimeOrchestratorCorrelationCoverageTest {
             mock(IntegrationCoordinator.class),
             mock(EventPublisherService.class),
             traceService,
-            new PolicyEnforcer(),
             mock(OrchestratorIdempotencyService.class),
             new OrchestratorFeatureFlags(true, true));
 
@@ -178,85 +164,6 @@ class TS_RuntimeOrchestratorCorrelationCoverageTest {
         .containsEntry("fingerprint", "000000000000");
   }
 
-  @Test
-  void integrationCoordinator_generatePayroll_includes_optional_details_only_when_present() {
-    IntegrationCoordinator coordinator =
-        coordinator(mock(SalesService.class), new OrchestratorFeatureFlags(true, true));
-
-    assertThatThrownBy(
-            () ->
-                coordinator.generatePayroll(
-                    LocalDate.of(2026, 2, 1),
-                    new BigDecimal("1000"),
-                    "COMP",
-                    " trace-100 ",
-                    " idem-100 "))
-        .isInstanceOf(ApplicationException.class)
-        .satisfies(
-            ex -> {
-              ApplicationException appEx = (ApplicationException) ex;
-              assertThat(appEx.getDetails())
-                  .containsEntry("canonicalPath", "/api/v1/payroll/runs")
-                  .containsEntry("traceId", "trace-100")
-                  .containsEntry("idempotencyKey", "idem-100");
-            });
-
-    assertThatThrownBy(
-            () ->
-                coordinator.generatePayroll(
-                    LocalDate.of(2026, 2, 1), new BigDecimal("1000"), "COMP", "   ", null))
-        .isInstanceOf(ApplicationException.class)
-        .satisfies(
-            ex -> {
-              ApplicationException appEx = (ApplicationException) ex;
-              assertThat(appEx.getDetails())
-                  .containsEntry("canonicalPath", "/api/v1/payroll/runs")
-                  .doesNotContainKeys("traceId", "idempotencyKey");
-            });
-  }
-
-  @Test
-  void integrationCoordinator_correlation_helpers_cover_append_and_skip_branches() {
-    IntegrationCoordinator coordinator =
-        coordinator(mock(SalesService.class), new OrchestratorFeatureFlags(true, true));
-
-    String memoWithCorrelation =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-            coordinator, "correlationMemo", "dispatch memo", " trace-200 ", " idem-200 ");
-    String memoWithoutCorrelation =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-            coordinator, "correlationMemo", "dispatch memo", "   ", null);
-    String suffixWithCorrelation =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-            coordinator, "correlationSuffix", " trace-201 ", " idem-201 ");
-    String suffixWithoutCorrelation =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-            coordinator, "correlationSuffix", null, "   ");
-
-    assertThat(memoWithCorrelation).contains("[trace=trace-200]").contains("[idem=idem-200]");
-    assertThat(memoWithoutCorrelation).isEqualTo("dispatch memo");
-    assertThat(suffixWithCorrelation).contains("[trace=trace-201").contains("[idem=idem-201");
-    assertThat(suffixWithoutCorrelation).isEmpty();
-  }
-
-  @Test
-  void integrationCoordinator_attachOrderTrace_skips_invalid_inputs_and_sanitizes_valid_trace() {
-    SalesService salesService = mock(SalesService.class);
-    IntegrationCoordinator coordinator =
-        coordinator(salesService, new OrchestratorFeatureFlags(true, true));
-
-    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-        coordinator, "attachOrderTrace", (Long) null, "trace-null-order");
-    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-        coordinator, "attachOrderTrace", 77L, "   ");
-    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-        coordinator, "attachOrderTrace", 78L, " trace-78 ");
-
-    verify(salesService, never()).attachTraceId(eq(77L), any());
-    verify(salesService).attachTraceId(78L, "trace-78");
-  }
-
-  @Test
   void traceService_getTrace_sanitizes_and_scopes_by_company() {
     AuditRepository auditRepository = mock(AuditRepository.class);
     CompanyContextService companyContextService = mock(CompanyContextService.class);
@@ -321,23 +228,6 @@ class TS_RuntimeOrchestratorCorrelationCoverageTest {
             eq(requestHash),
             traceCaptor.capture());
     assertThat(traceCaptor.getValue()).isNotBlank();
-  }
-
-  private IntegrationCoordinator coordinator(
-      SalesService salesService, OrchestratorFeatureFlags featureFlags) {
-    return new IntegrationCoordinator(
-        salesService,
-        mock(FactoryService.class),
-        mock(FinishedGoodsService.class),
-        mock(AccountingService.class),
-        mock(HrService.class),
-        mock(ReportService.class),
-        mock(OrderAutoApprovalStateRepository.class),
-        mock(AccountingFacade.class),
-        mock(CompanyRepository.class),
-        mock(CompanyClock.class),
-        featureFlags,
-        new ResourcelessTransactionManager());
   }
 
   private Company company(Long id) {

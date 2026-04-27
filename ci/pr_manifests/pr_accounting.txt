@@ -70,7 +70,9 @@ com.bigbrightpaints.erp.modules.reports.ReportExportApprovalIT
 com.bigbrightpaints.erp.modules.reports.controller.ReportControllerContractTest
 com.bigbrightpaints.erp.modules.reports.controller.ReportControllerRouteContractIT
 com.bigbrightpaints.erp.modules.reports.service.BalanceSheetReportQueryServiceTest
+com.bigbrightpaints.erp.modules.reports.service.InventoryValuationQueryServiceTest
 com.bigbrightpaints.erp.modules.reports.service.ProfitLossReportQueryServiceTest
+com.bigbrightpaints.erp.modules.reports.service.ReportQuerySupportTest
 com.bigbrightpaints.erp.modules.reports.service.ReportServiceInventoryAndGstTest
 com.bigbrightpaints.erp.modules.reports.ReportInventoryParityIT
 com.bigbrightpaints.erp.modules.reports.service.TrialBalanceReportQueryServiceTest
@@ -93,6 +95,5 @@ com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsReservationEngine
 com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsServiceTest
 com.bigbrightpaints.erp.modules.inventory.controller.OpeningStockImportControllerTest
 com.bigbrightpaints.erp.modules.inventory.service.OpeningStockImportServiceTest
-com.bigbrightpaints.erp.modules.production.service.ProductionCatalogServiceBulkVariantRaceTest
 com.bigbrightpaints.erp.modules.production.service.SkuReadinessServiceTest
 com.bigbrightpaints.erp.modules.inventory.InventoryPathConsolidationIT

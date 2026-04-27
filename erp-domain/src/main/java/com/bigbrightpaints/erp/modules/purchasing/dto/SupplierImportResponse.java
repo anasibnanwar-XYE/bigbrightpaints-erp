@@ -2,7 +2,10 @@ package com.bigbrightpaints.erp.modules.purchasing.dto;
 
 import java.util.List;
 
-public record SupplierImportResponse(int successCount, int failureCount, List<ImportError> errors) {
+import com.bigbrightpaints.erp.shared.dto.ImportRowErrorDto;
+
+public record SupplierImportResponse(
+    int successCount, int failureCount, List<ImportRowErrorDto> errors) {
 
   public SupplierImportResponse {
     errors = errors == null ? List.of() : List.copyOf(errors);
@@ -11,6 +14,4 @@ public record SupplierImportResponse(int successCount, int failureCount, List<Im
   public int rowsProcessed() {
     return successCount + failureCount;
   }
-
-  public record ImportError(long rowNumber, String message) {}
 }

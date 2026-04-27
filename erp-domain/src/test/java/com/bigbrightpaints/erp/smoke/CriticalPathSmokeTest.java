@@ -92,7 +92,7 @@ public class CriticalPathSmokeTest extends AbstractIntegrationTest {
     ensureAccount(company, "REV-SALES", "Sales Revenue", AccountType.REVENUE);
     ensureAccount(company, "ASSET-AR", "Accounts Receivable", AccountType.ASSET);
     ensureAccount(company, "ASSET-INV", "Inventory", AccountType.ASSET);
-    ensureAccount(company, "EXP-COGS", "Cost of Goods Sold", AccountType.EXPENSE);
+    ensureAccount(company, "EXP-COGS", "Cost of Goods Sold", AccountType.COGS);
     ensureAccount(company, "EXP-LABOR", "Direct Labor Applied", AccountType.EXPENSE);
     ensureAccount(company, "EXP-OVERHEAD", "Overhead Applied", AccountType.EXPENSE);
     ensureAccount(company, "LIAB-GST", "GST Liability", AccountType.LIABILITY);

@@ -40,6 +40,25 @@ class AccountingApplicationExceptionAdviceTest {
       "Idempotency key already used for another partner type";
 
   @Test
+  void handleApplicationException_appliesAccountingSpecificStatusOverrides() {
+    AccountingApplicationExceptionAdvice advice = advice();
+    MockHttpServletRequest request = new MockHttpServletRequest();
+
+    assertThat(
+            advice
+                .handleApplicationException(
+                    new ApplicationException(ErrorCode.MODULE_DISABLED, "module disabled"), request)
+                .getStatusCode())
+        .isEqualTo(HttpStatus.FORBIDDEN);
+    assertThat(
+            advice
+                .handleApplicationException(
+                    new ApplicationException(ErrorCode.FILE_NOT_FOUND, "file missing"), request)
+                .getStatusCode())
+        .isEqualTo(HttpStatus.NOT_FOUND);
+  }
+
+  @Test
   void handleApplicationException_returnsStructuredReasonPayload() {
     AccountingApplicationExceptionAdvice advice = advice();
     ApplicationException ex =

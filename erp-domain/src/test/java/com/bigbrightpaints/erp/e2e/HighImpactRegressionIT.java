@@ -878,19 +878,14 @@ class HighImpactRegressionIT extends AbstractIntegrationTest {
             "email", ADMIN_EMAIL,
             "password", ADMIN_PASSWORD,
             "companyCode", COMPANY_CODE_A);
-    try {
-      ResponseEntity<Map> loginResp = rest.postForEntity("/api/v1/auth/login", req, Map.class);
-      if (loginResp.getBody() != null && loginResp.getBody().containsKey("accessToken")) {
-        String token = (String) loginResp.getBody().get("accessToken");
-        HttpHeaders h = new HttpHeaders();
-        h.setBearerAuth(token);
-        h.setContentType(MediaType.APPLICATION_JSON);
-        h.set("X-Company-Code", COMPANY_CODE_A);
-        return h;
-      }
-    } catch (Exception ignored) {
-    }
+    ResponseEntity<Map> loginResp = rest.postForEntity("/api/v1/auth/login", req, Map.class);
+    assertThat(loginResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(loginResp.getBody()).containsKey("accessToken");
+    String token = (String) loginResp.getBody().get("accessToken");
+    assertThat(token).isNotBlank();
+
     HttpHeaders h = new HttpHeaders();
+    h.setBearerAuth(token);
     h.setContentType(MediaType.APPLICATION_JSON);
     h.set("X-Company-Code", COMPANY_CODE_A);
     return h;

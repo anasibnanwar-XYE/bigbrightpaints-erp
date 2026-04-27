@@ -17,7 +17,6 @@ import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodTrialBa
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodTrialBalanceLineRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalLineRepository;
 import com.bigbrightpaints.erp.modules.reports.dto.BalanceSheetDto;
-import com.bigbrightpaints.erp.modules.reports.dto.ReportSource;
 
 @Service
 @Transactional(readOnly = true)
@@ -83,8 +82,9 @@ public class BalanceSheetReportQueryService {
   }
 
   private BalanceSheetSnapshot summarize(ReportQuerySupport.FinancialQueryWindow window) {
+    boolean closedSnapshot = reportQuerySupport.usesClosedSnapshot(window);
     List<BalanceLine> lines =
-        usesClosedSnapshot(window) ? fromClosedSnapshot(window) : fromJournalSummary(window);
+        closedSnapshot ? fromClosedSnapshot(window) : fromJournalSummary(window);
 
     List<BalanceSheetDto.SectionLine> currentAssets = new ArrayList<>();
     List<BalanceSheetDto.SectionLine> fixedAssets = new ArrayList<>();
@@ -120,7 +120,7 @@ public class BalanceSheetReportQueryService {
       }
     }
 
-    if (!usesClosedSnapshot(window)) {
+    if (!closedSnapshot) {
       BigDecimal currentEarnings = currentPeriodEarnings(window);
       if (currentEarnings.compareTo(BigDecimal.ZERO) != 0) {
         totalEquity = totalEquity.add(currentEarnings);
@@ -146,16 +146,6 @@ public class BalanceSheetReportQueryService {
         equityLines);
   }
 
-  private boolean usesClosedSnapshot(ReportQuerySupport.FinancialQueryWindow window) {
-    if (window.source() != ReportSource.SNAPSHOT
-        || window.snapshot() == null
-        || window.period() == null) {
-      return false;
-    }
-    return window.startDate().equals(window.period().getStartDate())
-        && window.endDate().equals(window.period().getEndDate());
-  }
-
   private List<BalanceLine> fromClosedSnapshot(ReportQuerySupport.FinancialQueryWindow window) {
     List<AccountingPeriodTrialBalanceLine> lines =
         snapshotLineRepository.findBySnapshotOrderByAccountCodeAsc(window.snapshot());
@@ -168,8 +158,8 @@ public class BalanceSheetReportQueryService {
                     line.getAccountCode(),
                     line.getAccountName(),
                     line.getAccountType(),
-                    toNatural(
-                        line.getAccountType(), safe(line.getDebit()), safe(line.getCredit()))))
+                    ReportAmountSupport.naturalBalance(
+                        line.getAccountType(), line.getDebit(), line.getCredit())))
         .toList();
   }
 
@@ -202,7 +192,7 @@ public class BalanceSheetReportQueryService {
               account.getCode(),
               account.getName(),
               account.getType(),
-              toNatural(account.getType(), debit, credit)));
+              ReportAmountSupport.naturalBalance(account.getType(), debit, credit)));
     }
     return lines;
   }
@@ -217,14 +207,14 @@ public class BalanceSheetReportQueryService {
     }
     BigDecimal multiplier = subtract ? BigDecimal.valueOf(-1) : BigDecimal.ONE;
     for (Object[] row : rows) {
-      if (row == null || row.length < 3 || row[0] == null) {
+      if (!ReportAmountSupport.hasSummaryKey(row)) {
         continue;
       }
       Long accountId = (Long) row[0];
       debitByAccount.merge(
-          accountId, safe((BigDecimal) row[1]).multiply(multiplier), BigDecimal::add);
+          accountId, ReportAmountSupport.debit(row).multiply(multiplier), BigDecimal::add);
       creditByAccount.merge(
-          accountId, safe((BigDecimal) row[2]).multiply(multiplier), BigDecimal::add);
+          accountId, ReportAmountSupport.credit(row).multiply(multiplier), BigDecimal::add);
     }
   }
 
@@ -236,11 +226,13 @@ public class BalanceSheetReportQueryService {
     BigDecimal revenue = BigDecimal.ZERO;
     BigDecimal expenses = BigDecimal.ZERO;
     for (Object[] row : summarized) {
-      if (row == null || row.length < 3 || row[0] == null) {
+      if (!ReportAmountSupport.hasSummaryKey(row)) {
         continue;
       }
       AccountType type = (AccountType) row[0];
-      BigDecimal natural = toNatural(type, safe((BigDecimal) row[1]), safe((BigDecimal) row[2]));
+      BigDecimal natural =
+          ReportAmountSupport.naturalBalance(
+              type, ReportAmountSupport.debit(row), ReportAmountSupport.credit(row));
       if (type == AccountType.REVENUE || type == AccountType.OTHER_INCOME) {
         revenue = revenue.add(natural);
       } else if (type == AccountType.EXPENSE
@@ -254,13 +246,6 @@ public class BalanceSheetReportQueryService {
 
   private boolean isBalanceSheetType(AccountType type) {
     return type == AccountType.ASSET || type == AccountType.LIABILITY || type == AccountType.EQUITY;
-  }
-
-  private BigDecimal toNatural(AccountType type, BigDecimal debit, BigDecimal credit) {
-    if (type == null || type.isDebitNormalBalance()) {
-      return safe(debit).subtract(safe(credit));
-    }
-    return safe(credit).subtract(safe(debit));
   }
 
   private boolean isCurrentAsset(String code, String name) {
@@ -286,10 +271,6 @@ public class BalanceSheetReportQueryService {
     String safeCode = code == null ? "" : code;
     String safeName = name == null ? "" : name;
     return (safeCode + " " + safeName).toUpperCase(Locale.ROOT);
-  }
-
-  private BigDecimal safe(BigDecimal value) {
-    return value == null ? BigDecimal.ZERO : value;
   }
 
   private record BalanceLine(

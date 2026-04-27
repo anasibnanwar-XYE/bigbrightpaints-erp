@@ -479,15 +479,13 @@ coverage_args=(
   --src-root erp-domain/src/main/java
   --threshold-line 0.95
   --threshold-branch 0.90
+  --fail-on-vacuous
   --output "$ARTIFACT_DIR/changed-coverage.json"
 )
 
-if [[ "$RELEASE_VALIDATION_MODE" == "true" ]]; then
-  coverage_args+=(--fail-on-vacuous)
-fi
-
 if ! python3 "$ROOT_DIR/scripts/changed_files_coverage.py" "${coverage_args[@]}"; then
-  echo "[gate-fast] WARN: changed-files coverage gate did not meet thresholds; continuing in compatibility mode"
+  echo "[gate-fast] FAIL: changed-files coverage gate did not meet thresholds"
+  exit 1
 fi
 
 python3 - "$ARTIFACT_DIR/changed-coverage.json" "$RELEASE_VALIDATION_MODE" <<'PY'
@@ -513,7 +511,7 @@ files_with_unmapped = summary.get("files_with_unmapped_lines") or []
 if coverage_skipped:
   blocking_findings.append(("coverage_skipped_files", coverage_skipped))
 if files_with_unmapped:
-  warnings.append(("files_with_unmapped_lines", files_with_unmapped))
+  blocking_findings.append(("files_with_unmapped_lines", files_with_unmapped))
 
 for label, items in blocking_findings:
   print(f"[gate-fast] FAIL: {label}:")
@@ -525,8 +523,8 @@ for label, items in warnings:
   for item in items:
     print(f"  - {item}")
 
-if release_mode and blocking_findings:
-  print("[gate-fast] FAIL: release validation mode requires coverage for all changed files/lines.", file=sys.stderr)
+if blocking_findings:
+  print("[gate-fast] FAIL: changed-files coverage requires coverage for all changed files/lines.", file=sys.stderr)
   sys.exit(1)
 PY
 

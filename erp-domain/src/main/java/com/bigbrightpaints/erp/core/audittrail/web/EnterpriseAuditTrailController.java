@@ -15,6 +15,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.bigbrightpaints.erp.core.audittrail.AuditActionEventStatus;
 import com.bigbrightpaints.erp.core.audittrail.EnterpriseAuditTrailService;
+import com.bigbrightpaints.erp.core.audittrail.MlAuditIngestResponse;
+import com.bigbrightpaints.erp.core.audittrail.MlInteractionEventResponse;
 import com.bigbrightpaints.erp.modules.auth.domain.UserPrincipal;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 import com.bigbrightpaints.erp.shared.dto.PageResponse;

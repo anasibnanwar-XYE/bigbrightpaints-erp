@@ -16,14 +16,19 @@ class TS_PackingIdempotencyAndFacadeBoundaryTest {
       "src/main/java/com/bigbrightpaints/erp/modules/factory/controller/PackingController.java";
   private static final String PACKING_SERVICE =
       "src/main/java/com/bigbrightpaints/erp/modules/factory/service/PackingService.java";
+  private static final String PACKING_IDEMPOTENCY_SERVICE =
+      "src/main/java/com/bigbrightpaints/erp/modules/factory/service/PackingIdempotencyService.java";
+  private static final String PACKING_JOURNAL_LINK_HELPER =
+      "src/main/java/com/bigbrightpaints/erp/modules/factory/service/PackingJournalLinkHelper.java";
   private static final String FG_SERVICE =
       "src/main/java/com/bigbrightpaints/erp/modules/inventory/service/FinishedGoodsService.java";
 
   @Test
   void packingRequestUsesReserveFirstIdempotencyWithMismatchFailClosed() {
     TruthSuiteFileAssert.assertContains(
-        PACKING_SERVICE,
-        "IdempotencyReservation reservation = reserveIdempotencyRecord(",
+        PACKING_SERVICE, "packingIdempotencyService.reserveIdempotencyRecord(");
+    TruthSuiteFileAssert.assertContains(
+        PACKING_IDEMPOTENCY_SERVICE,
         "findByCompanyAndIdempotencyKey(company, idempotencyKey);",
         "catch (DataIntegrityViolationException ex) {",
         "\"Idempotency payload mismatch for packing request\"",
@@ -50,8 +55,11 @@ class TS_PackingIdempotencyAndFacadeBoundaryTest {
         PACKING_SERVICE,
         "JournalEntryDto entry = accountingFacade.postPackingJournal(reference, packedDate, memo,"
             + " lines);",
-        "movement.setJournalEntryId(entry.id());",
-        "inventoryMovementRepository.save(movement);");
+        "packingJournalLinkHelper.linkPackagingMovementsToJournal(");
+    TruthSuiteFileAssert.assertContains(
+        PACKING_JOURNAL_LINK_HELPER,
+        "movement.setJournalEntryId(journalEntryId);",
+        "inventoryMovementRepository.saveAll(toUpdate);");
   }
 
   @Test

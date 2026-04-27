@@ -1,10 +1,8 @@
-package com.bigbrightpaints.erp.core.audittrail.web;
+package com.bigbrightpaints.erp.core.audittrail;
 
 import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
-
-import com.bigbrightpaints.erp.core.audittrail.AuditActionEventStatus;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;

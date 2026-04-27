@@ -20,20 +20,5 @@ public record CreditLimitOverrideRequestCreateRequest(
                     + " computed against outstanding + pending-order exposure")
         @Positive
         BigDecimal requestedAmount,
-    @Schema(
-            description = "Legacy alias of requestedAmount; retained for compatibility",
-            deprecated = true)
-        @Positive
-        BigDecimal dispatchAmount,
     String reason,
-    Instant expiresAt) {
-  public CreditLimitOverrideRequestCreateRequest(
-      Long dealerId,
-      Long packagingSlipId,
-      Long salesOrderId,
-      BigDecimal dispatchAmount,
-      String reason,
-      Instant expiresAt) {
-    this(dealerId, packagingSlipId, salesOrderId, null, dispatchAmount, reason, expiresAt);
-  }
-}
+    Instant expiresAt) {}

@@ -8,7 +8,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
-import com.bigbrightpaints.erp.modules.accounting.dto.SupplierBalanceView;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.purchasing.domain.Supplier;
 
@@ -18,14 +17,16 @@ public interface SupplierLedgerRepository extends JpaRepository<SupplierLedgerEn
       Company company, Supplier supplier);
 
   @Query(
-      "select new com.bigbrightpaints.erp.modules.accounting.dto.SupplierBalanceView(e.supplier.id,"
+      "select new"
+          + " com.bigbrightpaints.erp.modules.accounting.domain.SupplierBalanceView(e.supplier.id,"
           + " coalesce(sum(e.credit - e.debit), 0)) from SupplierLedgerEntry e where e.company ="
           + " :company and e.supplier.id in :supplierIds group by e.supplier.id")
   List<SupplierBalanceView> aggregateBalances(
       @Param("company") Company company, @Param("supplierIds") Collection<Long> supplierIds);
 
   @Query(
-      "select new com.bigbrightpaints.erp.modules.accounting.dto.SupplierBalanceView(e.supplier.id,"
+      "select new"
+          + " com.bigbrightpaints.erp.modules.accounting.domain.SupplierBalanceView(e.supplier.id,"
           + " coalesce(sum(e.credit - e.debit), 0)) from SupplierLedgerEntry e where e.company ="
           + " :company and e.supplier.id in :supplierIds and e.entryDate between :start and :end"
           + " group by e.supplier.id")
@@ -36,7 +37,8 @@ public interface SupplierLedgerRepository extends JpaRepository<SupplierLedgerEn
       @Param("end") java.time.LocalDate end);
 
   @Query(
-      "select new com.bigbrightpaints.erp.modules.accounting.dto.SupplierBalanceView(e.supplier.id,"
+      "select new"
+          + " com.bigbrightpaints.erp.modules.accounting.domain.SupplierBalanceView(e.supplier.id,"
           + " coalesce(sum(e.credit - e.debit), 0)) from SupplierLedgerEntry e where e.company ="
           + " :company and e.supplier.id in :supplierIds and e.entryDate <= :end group by"
           + " e.supplier.id")
@@ -46,14 +48,16 @@ public interface SupplierLedgerRepository extends JpaRepository<SupplierLedgerEn
       @Param("end") java.time.LocalDate end);
 
   @Query(
-      "select new com.bigbrightpaints.erp.modules.accounting.dto.SupplierBalanceView(e.supplier.id,"
+      "select new"
+          + " com.bigbrightpaints.erp.modules.accounting.domain.SupplierBalanceView(e.supplier.id,"
           + " coalesce(sum(e.credit - e.debit), 0)) from SupplierLedgerEntry e where e.company ="
           + " :company and e.supplier = :supplier group by e.supplier.id")
   Optional<SupplierBalanceView> aggregateBalance(
       @Param("company") Company company, @Param("supplier") Supplier supplier);
 
   @Query(
-      "select new com.bigbrightpaints.erp.modules.accounting.dto.SupplierBalanceView(e.supplier.id,"
+      "select new"
+          + " com.bigbrightpaints.erp.modules.accounting.domain.SupplierBalanceView(e.supplier.id,"
           + " coalesce(sum(e.credit - e.debit), 0)) from SupplierLedgerEntry e where e.company ="
           + " :company and e.supplier = :supplier and e.entryDate < :before group by e.supplier.id")
   Optional<SupplierBalanceView> aggregateBalanceBefore(
