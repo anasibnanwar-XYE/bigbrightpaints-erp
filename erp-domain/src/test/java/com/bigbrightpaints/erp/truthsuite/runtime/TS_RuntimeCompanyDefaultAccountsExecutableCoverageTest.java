@@ -3,11 +3,14 @@ package com.bigbrightpaints.erp.truthsuite.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.util.Arrays;
 
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -16,6 +19,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
+import com.bigbrightpaints.erp.modules.accounting.service.AccountingComplianceAuditService;
 import com.bigbrightpaints.erp.modules.accounting.service.CompanyDefaultAccountsService;
 import com.bigbrightpaints.erp.modules.accounting.service.CompanyScopedAccountingLookupService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
@@ -206,6 +210,106 @@ class TS_RuntimeCompanyDefaultAccountsExecutableCoverageTest {
     assertThatThrownBy(() -> service.updateDefaults(null, null, null, 41L, 42L, null))
         .isInstanceOf(ApplicationException.class)
         .hasMessageContaining("must match");
+  }
+
+  @Test
+  void update_defaults_covers_clear_slots_conflicts_and_audit_recording() {
+    Company company = company(450L, "DEF-CLEAR");
+    company.setDefaultInventoryAccountId(10L);
+    company.setDefaultCogsAccountId(20L);
+    company.setDefaultRevenueAccountId(30L);
+    company.setDefaultDiscountAccountId(40L);
+    company.setDefaultTaxAccountId(50L);
+    company.setGstOutputTaxAccountId(50L);
+    company.setGstPayableAccountId(50L);
+
+    CompanyContextService companyContextService = mock(CompanyContextService.class);
+    CompanyScopedAccountingLookupService accountingLookupService =
+        mock(CompanyScopedAccountingLookupService.class);
+    CompanyRepository companyRepository = mock(CompanyRepository.class);
+    AccountingComplianceAuditService auditService = mock(AccountingComplianceAuditService.class);
+
+    when(companyContextService.requireCurrentCompany()).thenReturn(company);
+    when(companyRepository.save(any(Company.class)))
+        .thenAnswer(invocation -> invocation.getArgument(0));
+
+    CompanyDefaultAccountsService service =
+        new CompanyDefaultAccountsService(
+            companyContextService, accountingLookupService, companyRepository);
+    ReflectionTestUtils.invokeMethod(service, "setAccountingComplianceAuditService", auditService);
+
+    CompanyDefaultAccountsService.DefaultAccounts after =
+        service.updateDefaults(
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            Arrays.asList(
+                "fg_valuation_account_id",
+                "fg-cogs-account-id",
+                "fgRevenueAccountId",
+                "fgDiscountAccountId",
+                "fgTaxAccountId",
+                null,
+                " "));
+
+    assertThat(after.inventoryAccountId()).isNull();
+    assertThat(after.cogsAccountId()).isNull();
+    assertThat(after.revenueAccountId()).isNull();
+    assertThat(after.discountAccountId()).isNull();
+    assertThat(after.taxAccountId()).isNull();
+    assertThat(company.getGstOutputTaxAccountId()).isNull();
+    assertThat(company.getGstPayableAccountId()).isNull();
+    verify(auditService)
+        .recordDefaultAccountsChange(
+            eq(company),
+            any(CompanyDefaultAccountsService.DefaultAccounts.class),
+            eq(after),
+            any());
+
+    assertThatThrownBy(
+            () ->
+                service.updateDefaults(
+                    10L, null, null, null, null, null, java.util.List.of("inventory")))
+        .isInstanceOf(ApplicationException.class)
+        .hasMessageContaining("inventoryAccountId cannot be set and cleared");
+    assertThatThrownBy(
+            () ->
+                service.updateDefaults(
+                    null, 20L, null, null, null, null, java.util.List.of("cogs")))
+        .isInstanceOf(ApplicationException.class)
+        .hasMessageContaining("cogsAccountId cannot be set and cleared");
+    assertThatThrownBy(
+            () ->
+                service.updateDefaults(
+                    null, null, 30L, null, null, null, java.util.List.of("revenue")))
+        .isInstanceOf(ApplicationException.class)
+        .hasMessageContaining("revenueAccountId cannot be set and cleared");
+    assertThatThrownBy(
+            () ->
+                service.updateDefaults(
+                    null, null, null, 40L, null, null, java.util.List.of("discount")))
+        .isInstanceOf(ApplicationException.class)
+        .hasMessageContaining("discountAccountId cannot be set and cleared");
+    assertThatThrownBy(
+            () ->
+                service.updateDefaults(
+                    null, null, null, null, 40L, null, java.util.List.of("discount")))
+        .isInstanceOf(ApplicationException.class)
+        .hasMessageContaining("discountAccountId cannot be set and cleared");
+    assertThatThrownBy(
+            () ->
+                service.updateDefaults(null, null, null, null, null, 50L, java.util.List.of("tax")))
+        .isInstanceOf(ApplicationException.class)
+        .hasMessageContaining("taxAccountId cannot be set and cleared");
+    assertThatThrownBy(
+            () ->
+                service.updateDefaults(
+                    null, null, null, null, null, null, java.util.List.of("unknown")))
+        .isInstanceOf(ApplicationException.class)
+        .hasMessageContaining("Unsupported default account clear field");
   }
 
   @Test
