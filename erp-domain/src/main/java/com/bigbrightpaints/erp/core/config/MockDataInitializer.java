@@ -38,6 +38,7 @@ import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketRepository;
 import com.bigbrightpaints.erp.modules.admin.dto.ExportApprovalStatus;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
+import com.bigbrightpaints.erp.modules.auth.service.IamCanonicalStorageService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
@@ -107,6 +108,7 @@ public class MockDataInitializer {
       CompanyRepository companyRepository,
       RoleRepository roleRepository,
       UserAccountRepository userRepository,
+      IamCanonicalStorageService iamCanonicalStorageService,
       PasswordEncoder passwordEncoder,
       AccountRepository accountRepository,
       DealerRepository dealerRepository,
@@ -144,6 +146,7 @@ public class MockDataInitializer {
           seedRolesAndUsers(
               roleRepository,
               userRepository,
+              iamCanonicalStorageService,
               passwordEncoder,
               company,
               mockAdminEmail,
@@ -358,6 +361,7 @@ public class MockDataInitializer {
   private UserAccount seedRolesAndUsers(
       RoleRepository roleRepository,
       UserAccountRepository userRepository,
+      IamCanonicalStorageService iamCanonicalStorageService,
       PasswordEncoder encoder,
       Company company,
       String adminEmail,
@@ -419,14 +423,18 @@ public class MockDataInitializer {
       user.addRole(admin);
       user.addRole(accounting);
       user.addRole(sales);
-      return userRepository.save(user);
+      UserAccount saved = userRepository.save(user);
+      iamCanonicalStorageService.syncUser(saved);
+      return saved;
     }
     existingAdmin.setAuthScopeCode(company.getCode());
     existingAdmin.setCompany(company);
     existingAdmin.addRole(admin);
     existingAdmin.addRole(accounting);
     existingAdmin.addRole(sales);
-    return userRepository.save(existingAdmin);
+    UserAccount saved = userRepository.save(existingAdmin);
+    iamCanonicalStorageService.syncUser(saved);
+    return saved;
   }
 
   private void attachMainAdmin(

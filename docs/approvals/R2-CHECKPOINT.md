@@ -2,7 +2,84 @@
 
 Last reviewed: 2026-04-28
 
-## Current Packet Evidence — iam-core-schema-and-model-hard-cut
+## Current Packet Evidence — schema-core-active-storage-hard-cut-remediation-round2
+
+## Scope
+- Feature: `schema-core-active-storage-hard-cut-remediation-round2`
+- Branch: codex/identity-account-hardcut-20260427 (base: origin/main)
+- PR: pending
+- Review candidate:
+  - sync canonical IAM rows from `SuperAdminTenantControlPlaneService.confirmAdminEmailChange` immediately after confirmed tenant-admin email mutation
+  - keep `iam_accounts.email` and `iam_account_contacts.primary_email` current in the same transaction as the supported super-admin email-change confirmation
+  - sync canonical IAM rows for `ValidationSeedDataInitializer` and `MockDataInitializer` user saves after Flyway-created IAM tables exist
+  - add focused regression coverage for super-admin email-change canonical storage and seed/mock initializer canonical sync hooks
+- Why this is R2: this packet touches high-risk identity/account storage and the super-admin tenant control-plane email-change path, where stale canonical IAM email/contact rows would break the schema-core hard cut.
+
+## Risk Trigger
+- Triggered by:
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/company/service/SuperAdminTenantControlPlaneService.java`
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/core/config/ValidationSeedDataInitializer.java`
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/core/config/MockDataInitializer.java`
+  - focused schema/control-plane/initializer tests under `erp-domain/src/test/java`
+- Contract surfaces affected:
+  - `VAL-CROSS-005`
+  - schema-core active-storage expectation that supported runtime identity/contact mutations keep canonical `iam_*` tables current
+- Failure mode if wrong:
+  - confirmed tenant-admin email changes could update `app_users.email` while leaving `iam_accounts.email` or `iam_account_contacts.primary_email` stale
+  - validation/mock seeded `UserAccount` rows could exist without current canonical account/profile/contact/credential/MFA rows
+  - token/session revocation behavior after confirmed admin email change could regress
+
+## Approval Authority
+- Mode: orchestrator
+- Approver: Droid mission orchestrator
+- Canary owner: Droid mission orchestrator
+- Approval status: branch-local integration candidate pending PR review
+- Basis: this is a narrow remediation required by schema-core scrutiny round 2; it synchronizes canonical storage after existing supported mutations without widening privileges, changing tenant boundaries, changing public routes, or introducing destructive migration behavior.
+
+## Escalation Decision
+- Human escalation required: no
+- Reason: the packet tightens canonical storage consistency for already-authorized mutation paths and seed initializers; it does not add new authority, expose secrets, or change external API shapes.
+
+## Rollback Owner
+- Owner: Droid mission orchestrator
+- Rollback method:
+  - before merge: revert this packet and rerun test-compile, focused schema/control-plane/initializer tests, High-Risk Change Control, Spotless, and OpenAPI guard
+  - after merge: revert through a new remediation packet and rerun the same schema-core active-storage proof
+- Rollback trigger:
+  - `iam_accounts.email` or `iam_account_contacts.primary_email` remain stale after confirmed tenant-admin email change
+  - validation/mock seed user saves no longer sync canonical IAM account/profile/contact/credential/MFA rows
+  - existing token blacklist or refresh-token revocation behavior after email confirmation regresses
+  - focused compile/tests, High-Risk Change Control, Spotless, or OpenAPI guard fail
+
+## Expiry
+- Valid until: 2026-05-05
+- Re-evaluate if: scope expands into public API route/envelope changes, broader tenant-control-plane policy, credential verifier semantics, destructive migrations, or RBAC/tenant-boundary behavior.
+
+## Verification Evidence
+- Scope-to-evidence mapping:
+  - Super-admin email-change proof: `SuperAdminTenantControlPlaneServiceTest` verifies canonical sync is invoked on successful confirmation and not invoked on conflicting requested-email failure.
+  - Runtime canonical-row proof: `IamCoreSchemaAndModelHardCutMigrationIT.superAdminTenantAdminEmailChangeKeepsCanonicalIamEmailAndContactCurrent` confirms `iam_accounts.email` and `iam_account_contacts.primary_email` update after the supported confirmation path, while old refresh/session state is revoked.
+  - Seed proof: `ValidationSeedDataInitializerTest`, `MockDataInitializerTest`, and `DataInitializerSecurityTest` verify saved validation/mock admin users call canonical sync while existing seed password/security behavior remains intact.
+- Commands run:
+  - `mission init.sh`
+  - `cd /Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/identity-account-hardcut-20260427 && bash scripts/guard_openapi_contract_drift.sh && cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='AuthPasswordResetPublicContractIT,AdminUserSecurityIT,AuthControllerIT,AuthTenantAuthorityIT,TenantRuntimeEnforcementAuthIT,AuthDisabledUserTokenIT,MfaControllerIT' test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -q -DskipTests test-compile`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='IamCoreSchemaAndModelHardCutMigrationIT,SuperAdminTenantControlPlaneServiceTest' test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='ValidationSeedDataInitializerTest,MockDataInitializerTest,DataInitializerSecurityTest' test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn spotless:check`
+  - `bash ci/check-high-risk-changes.sh`
+  - `bash scripts/guard_openapi_contract_drift.sh`
+- Result summary:
+  - baseline IAM mission test lane passed with 89 tests plus OpenAPI guard before code changes
+  - test-compile passed after implementation
+  - focused schema/control-plane regression tests passed with 32 tests
+  - focused seed/mock initializer regression tests passed with 30 tests
+  - Spotless, High-Risk Change Control, and OpenAPI guard passed
+  - no raw JWTs, refresh tokens, reset tokens, MFA secrets, recovery codes, or password hashes were recorded in this checkpoint
+
+---
+
+## Previous Packet Evidence — iam-core-schema-and-model-hard-cut
 
 ## Scope
 - Feature: `iam-core-schema-and-model-hard-cut`

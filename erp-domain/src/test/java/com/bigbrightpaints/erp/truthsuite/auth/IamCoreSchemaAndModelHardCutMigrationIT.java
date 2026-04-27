@@ -18,9 +18,14 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 import com.bigbrightpaints.erp.core.idempotency.IdempotencyUtils;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
+import com.bigbrightpaints.erp.modules.company.domain.TenantAdminEmailChangeRequest;
+import com.bigbrightpaints.erp.modules.company.domain.TenantAdminEmailChangeRequestRepository;
+import com.bigbrightpaints.erp.modules.company.service.SuperAdminTenantControlPlaneService;
 import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
 import com.bigbrightpaints.erp.test.support.TotpTestUtils;
 
@@ -30,6 +35,8 @@ class IamCoreSchemaAndModelHardCutMigrationIT extends AbstractIntegrationTest {
   @Autowired private JdbcTemplate jdbcTemplate;
   @Autowired private TestRestTemplate rest;
   @Autowired private UserAccountRepository userAccountRepository;
+  @Autowired private SuperAdminTenantControlPlaneService superAdminTenantControlPlaneService;
+  @Autowired private TenantAdminEmailChangeRequestRepository emailChangeRequestRepository;
 
   @Test
   void canonicalIamTablesExistAfterFlywayV2Migration() {
@@ -241,6 +248,68 @@ class IamCoreSchemaAndModelHardCutMigrationIT extends AbstractIntegrationTest {
     assertThat(
             singleInteger("select count(*) from iam_mfa_factors where account_id = ?", accountId))
         .isZero();
+  }
+
+  @Test
+  void superAdminTenantAdminEmailChangeKeepsCanonicalIamEmailAndContactCurrent() {
+    String suffix = UUID.randomUUID().toString().substring(0, 8);
+    String scope = "ADM" + suffix.substring(0, 4).toUpperCase();
+    String email = "tenant-admin-" + suffix + "@bbp.com";
+    String requestedEmail = "tenant-admin-new-" + suffix + "@bbp.com";
+    String password = "AdminChange123!";
+    dataSeeder.ensureUser(email, password, "Tenant Email Admin", scope, List.of("ROLE_ADMIN"));
+
+    LoginTokens tokens = login(email, password, scope);
+    Long accountId = accountId(email, scope);
+    assertThat(singleString("select email from iam_accounts where id = ?", accountId))
+        .isEqualTo(email);
+    assertThat(
+            singleString(
+                "select primary_email from iam_account_contacts where account_id = ?", accountId))
+        .isEqualTo(email);
+
+    var company = companyRepository.findByCodeIgnoreCase(scope).orElseThrow();
+    var admin =
+        userAccountRepository
+            .findByEmailIgnoreCaseAndAuthScopeCodeIgnoreCase(email, scope)
+            .orElseThrow();
+    TenantAdminEmailChangeRequest request = new TenantAdminEmailChangeRequest();
+    request.setCompanyId(company.getId());
+    request.setAdminUserId(admin.getId());
+    request.setRequestedBy("super-admin@bbp.com");
+    request.setCurrentEmail(email);
+    request.setRequestedEmail(requestedEmail);
+    request.setVerificationToken("verify-" + suffix);
+    request.setVerificationSentAt(java.time.Instant.now());
+    request.setExpiresAt(java.time.Instant.now().plusSeconds(600));
+    TenantAdminEmailChangeRequest savedRequest = emailChangeRequestRepository.save(request);
+
+    SecurityContextHolder.getContext()
+        .setAuthentication(new UsernamePasswordAuthenticationToken("super-admin@bbp.com", "n/a"));
+    try {
+      var response =
+          superAdminTenantControlPlaneService.confirmAdminEmailChange(
+              company.getId(),
+              admin.getId(),
+              savedRequest.getId(),
+              savedRequest.getVerificationToken());
+
+      assertThat(response.updatedEmail()).isEqualTo(requestedEmail);
+    } finally {
+      SecurityContextHolder.clearContext();
+    }
+
+    assertThat(singleString("select email from iam_accounts where id = ?", accountId))
+        .isEqualTo(requestedEmail);
+    assertThat(
+            singleString(
+                "select primary_email from iam_account_contacts where account_id = ?", accountId))
+        .isEqualTo(requestedEmail);
+    assertThat(
+            singleInstantPresent(
+                "select revoked_at from iam_sessions where refresh_token_digest = ?",
+                refreshTokenDigest(tokens.refreshToken())))
+        .isTrue();
   }
 
   private List<String> existingTables() {

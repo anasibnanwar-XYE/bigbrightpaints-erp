@@ -32,6 +32,7 @@ import com.bigbrightpaints.erp.core.notification.EmailService;
 import com.bigbrightpaints.erp.core.security.TokenBlacklistService;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
+import com.bigbrightpaints.erp.modules.auth.service.IamCanonicalStorageService;
 import com.bigbrightpaints.erp.modules.auth.service.RefreshTokenService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyLifecycleState;
@@ -68,6 +69,7 @@ class SuperAdminTenantControlPlaneServiceTest {
   @Mock private TenantRuntimeEnforcementService tenantRuntimeEnforcementService;
   @Mock private TenantReviewIntelligenceToggleService tenantReviewIntelligenceToggleService;
   @Mock private CompanyService companyService;
+  @Mock private IamCanonicalStorageService iamCanonicalStorageService;
 
   private SuperAdminTenantControlPlaneService service;
 
@@ -86,7 +88,8 @@ class SuperAdminTenantControlPlaneServiceTest {
             tenantAdminEmailChangeRequestRepository,
             tenantRuntimeEnforcementService,
             tenantReviewIntelligenceToggleService,
-            companyService);
+            companyService,
+            iamCanonicalStorageService);
     SecurityContextHolder.getContext()
         .setAuthentication(new UsernamePasswordAuthenticationToken("super-admin@bbp.com", "n/a"));
   }
@@ -521,6 +524,7 @@ class SuperAdminTenantControlPlaneServiceTest {
     assertThat(request.isConsumed()).isTrue();
     assertThat(request.getVerifiedAt()).isNotNull();
     assertThat(request.getConfirmedAt()).isNotNull();
+    verify(iamCanonicalStorageService).syncUser(admin);
     verify(tokenBlacklistService).revokeAllUserTokens(admin.getPublicId().toString());
     verify(refreshTokenService).revokeAllForUser(admin.getPublicId());
   }
@@ -630,6 +634,7 @@ class SuperAdminTenantControlPlaneServiceTest {
         .hasMessageContaining("Email already exists: new-admin@acme.com");
 
     verify(userAccountRepository, never()).save(admin);
+    verify(iamCanonicalStorageService, never()).syncUser(any(UserAccount.class));
     verify(tenantAdminEmailChangeRequestRepository, never())
         .save(any(TenantAdminEmailChangeRequest.class));
   }
@@ -663,6 +668,7 @@ class SuperAdminTenantControlPlaneServiceTest {
 
     assertThat(response.updatedEmail()).isEqualTo("new-admin@acme.com");
     verify(userAccountRepository).save(admin);
+    verify(iamCanonicalStorageService).syncUser(admin);
     verify(tenantAdminEmailChangeRequestRepository).save(request);
   }
 

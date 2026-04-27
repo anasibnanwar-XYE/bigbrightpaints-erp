@@ -29,6 +29,7 @@ import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserPrincipal;
+import com.bigbrightpaints.erp.modules.auth.service.IamCanonicalStorageService;
 import com.bigbrightpaints.erp.modules.auth.service.RefreshTokenService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyLifecycleState;
@@ -57,6 +58,7 @@ public class SuperAdminTenantControlPlaneService {
   private final TenantRuntimeEnforcementService tenantRuntimeEnforcementService;
   private final TenantReviewIntelligenceToggleService tenantReviewIntelligenceToggleService;
   private final CompanyService companyService;
+  private final IamCanonicalStorageService iamCanonicalStorageService;
 
   public SuperAdminTenantControlPlaneService(
       CompanyRepository companyRepository,
@@ -70,7 +72,8 @@ public class SuperAdminTenantControlPlaneService {
       TenantAdminEmailChangeRequestRepository tenantAdminEmailChangeRequestRepository,
       TenantRuntimeEnforcementService tenantRuntimeEnforcementService,
       TenantReviewIntelligenceToggleService tenantReviewIntelligenceToggleService,
-      CompanyService companyService) {
+      CompanyService companyService,
+      IamCanonicalStorageService iamCanonicalStorageService) {
     this.companyRepository = companyRepository;
     this.userAccountRepository = userAccountRepository;
     this.auditLogRepository = auditLogRepository;
@@ -83,6 +86,7 @@ public class SuperAdminTenantControlPlaneService {
     this.tenantRuntimeEnforcementService = tenantRuntimeEnforcementService;
     this.tenantReviewIntelligenceToggleService = tenantReviewIntelligenceToggleService;
     this.companyService = companyService;
+    this.iamCanonicalStorageService = iamCanonicalStorageService;
   }
 
   @Transactional(readOnly = true)
@@ -410,23 +414,24 @@ public class SuperAdminTenantControlPlaneService {
     changeRequest.setConfirmedAt(now);
     changeRequest.setConsumed(true);
     adminUser.setEmail(changeRequest.getRequestedEmail());
-    userAccountRepository.save(adminUser);
+    UserAccount savedAdmin = userAccountRepository.save(adminUser);
+    iamCanonicalStorageService.syncUser(savedAdmin);
     tenantAdminEmailChangeRequestRepository.save(changeRequest);
-    tokenBlacklistService.revokeAllUserTokens(adminUser.getPublicId().toString());
-    refreshTokenService.revokeAllForUser(adminUser.getPublicId());
+    tokenBlacklistService.revokeAllUserTokens(savedAdmin.getPublicId().toString());
+    refreshTokenService.revokeAllForUser(savedAdmin.getPublicId());
     logAuditSuccess(
         company,
         "tenant-admin-email-change-confirmed",
         Map.of(
             "requestId", String.valueOf(changeRequest.getId()),
-            "adminUserId", String.valueOf(adminUser.getId()),
-            "updatedEmail", adminUser.getEmail()));
+            "adminUserId", String.valueOf(savedAdmin.getId()),
+            "updatedEmail", savedAdmin.getEmail()));
     return new SuperAdminTenantAdminEmailChangeConfirmationDto(
         changeRequest.getId(),
         company.getId(),
         company.getCode(),
-        adminUser.getId(),
-        adminUser.getEmail(),
+        savedAdmin.getId(),
+        savedAdmin.getEmail(),
         changeRequest.getVerifiedAt(),
         changeRequest.getConfirmedAt());
   }

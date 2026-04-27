@@ -32,6 +32,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
+import com.bigbrightpaints.erp.modules.auth.service.IamCanonicalStorageService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
@@ -57,6 +58,7 @@ class MockDataInitializerTest {
 
   @Mock private RoleRepository roleRepository;
   @Mock private UserAccountRepository userRepository;
+  @Mock private IamCanonicalStorageService iamCanonicalStorageService;
   @Mock private PasswordEncoder passwordEncoder;
   @Mock private CompanyRepository companyRepository;
   @Mock private SalesOrderCrudService salesOrderCrudService;
@@ -94,6 +96,7 @@ class MockDataInitializerTest {
         "seedRolesAndUsers",
         roleRepository,
         userRepository,
+        iamCanonicalStorageService,
         passwordEncoder,
         company,
         " Mock-Admin@Example.com ",
@@ -110,6 +113,7 @@ class MockDataInitializerTest {
     assertThat(saved.getRoles())
         .extracting(Role::getName)
         .containsExactlyInAnyOrder("ROLE_ADMIN", "ROLE_ACCOUNTING", "ROLE_SALES");
+    verify(iamCanonicalStorageService).syncUser(saved);
   }
 
   @Test
@@ -126,12 +130,14 @@ class MockDataInitializerTest {
         "seedRolesAndUsers",
         roleRepository,
         userRepository,
+        iamCanonicalStorageService,
         passwordEncoder,
         company,
         " legacy-mock@example.com ",
         "");
 
     verify(userRepository).save(existingAdmin);
+    verify(iamCanonicalStorageService).syncUser(existingAdmin);
     assertThat(existingAdmin.getAuthScopeCode()).isEqualTo("MOCK");
     assertThat(existingAdmin.getCompany()).isEqualTo(company);
     assertThat(existingAdmin.getRoles())
@@ -204,6 +210,7 @@ class MockDataInitializerTest {
             companyRepository,
             roleRepository,
             userRepository,
+            iamCanonicalStorageService,
             passwordEncoder,
             accountRepository,
             null,

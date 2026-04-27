@@ -35,6 +35,7 @@ import com.bigbrightpaints.erp.modules.auth.domain.MfaRecoveryCode;
 import com.bigbrightpaints.erp.modules.auth.domain.MfaRecoveryCodeRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
+import com.bigbrightpaints.erp.modules.auth.service.IamCanonicalStorageService;
 import com.bigbrightpaints.erp.modules.auth.service.PasswordPolicy;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
@@ -94,6 +95,7 @@ public class ValidationSeedDataInitializer {
       CryptoService cryptoService,
       PasswordPolicy passwordPolicy,
       AuthScopeService authScopeService,
+      IamCanonicalStorageService iamCanonicalStorageService,
       Environment environment,
       @Value("${erp.validation-seed.enabled:false}") boolean validationSeedEnabled,
       @Value("${erp.validation-seed.password:}") String defaultPassword) {
@@ -163,6 +165,7 @@ public class ValidationSeedDataInitializer {
               mfaRecoveryCodeRepository,
               passwordEncoder,
               cryptoService,
+              iamCanonicalStorageService,
               "validation.admin@example.com",
               "Validation Admin",
               validatedPassword,
@@ -174,6 +177,7 @@ public class ValidationSeedDataInitializer {
           mfaRecoveryCodeRepository,
           passwordEncoder,
           cryptoService,
+          iamCanonicalStorageService,
           "validation.mustchange.admin@example.com",
           "Validation Must Change Admin",
           validatedPassword,
@@ -190,6 +194,7 @@ public class ValidationSeedDataInitializer {
           mfaRecoveryCodeRepository,
           passwordEncoder,
           cryptoService,
+          iamCanonicalStorageService,
           "validation.locked.admin@example.com",
           "Validation Locked Admin",
           validatedPassword,
@@ -206,6 +211,7 @@ public class ValidationSeedDataInitializer {
           mfaRecoveryCodeRepository,
           passwordEncoder,
           cryptoService,
+          iamCanonicalStorageService,
           "validation.accounting@example.com",
           "Validation Accounting",
           validatedPassword,
@@ -217,6 +223,7 @@ public class ValidationSeedDataInitializer {
           mfaRecoveryCodeRepository,
           passwordEncoder,
           cryptoService,
+          iamCanonicalStorageService,
           "validation.sales@example.com",
           "Validation Sales",
           validatedPassword,
@@ -228,6 +235,7 @@ public class ValidationSeedDataInitializer {
           mfaRecoveryCodeRepository,
           passwordEncoder,
           cryptoService,
+          iamCanonicalStorageService,
           "validation.factory@example.com",
           "Validation Factory",
           validatedPassword,
@@ -239,6 +247,7 @@ public class ValidationSeedDataInitializer {
           mfaRecoveryCodeRepository,
           passwordEncoder,
           cryptoService,
+          iamCanonicalStorageService,
           "validation.mfa.admin@example.com",
           "Validation MFA Admin",
           validatedPassword,
@@ -257,6 +266,7 @@ public class ValidationSeedDataInitializer {
               mfaRecoveryCodeRepository,
               passwordEncoder,
               cryptoService,
+              iamCanonicalStorageService,
               "validation.dealer@example.com",
               "Validation Dealer",
               validatedPassword,
@@ -278,6 +288,7 @@ public class ValidationSeedDataInitializer {
               mfaRecoveryCodeRepository,
               passwordEncoder,
               cryptoService,
+              iamCanonicalStorageService,
               "validation.rival.dealer@example.com",
               "Rival Validation Dealer",
               validatedPassword,
@@ -304,6 +315,7 @@ public class ValidationSeedDataInitializer {
               mfaRecoveryCodeRepository,
               passwordEncoder,
               cryptoService,
+              iamCanonicalStorageService,
               "validation.rival.admin@example.com",
               "Rival Validation Admin",
               validatedPassword,
@@ -316,6 +328,7 @@ public class ValidationSeedDataInitializer {
               mfaRecoveryCodeRepository,
               passwordEncoder,
               cryptoService,
+              iamCanonicalStorageService,
               "validation.hold.admin@example.com",
               "Validation Hold Admin",
               validatedPassword,
@@ -328,6 +341,7 @@ public class ValidationSeedDataInitializer {
               mfaRecoveryCodeRepository,
               passwordEncoder,
               cryptoService,
+              iamCanonicalStorageService,
               "validation.blocked.admin@example.com",
               "Validation Blocked Admin",
               validatedPassword,
@@ -340,6 +354,7 @@ public class ValidationSeedDataInitializer {
               mfaRecoveryCodeRepository,
               passwordEncoder,
               cryptoService,
+              iamCanonicalStorageService,
               "validation.quota.alpha@example.com",
               "Validation Quota Alpha",
               validatedPassword,
@@ -351,6 +366,7 @@ public class ValidationSeedDataInitializer {
           mfaRecoveryCodeRepository,
           passwordEncoder,
           cryptoService,
+          iamCanonicalStorageService,
           "validation.quota.beta@example.com",
           "Validation Quota Beta",
           validatedPassword,
@@ -363,6 +379,7 @@ public class ValidationSeedDataInitializer {
               mfaRecoveryCodeRepository,
               passwordEncoder,
               cryptoService,
+              iamCanonicalStorageService,
               "validation.tenant.superadmin@example.com",
               "Validation Tenant Super Admin",
               validatedPassword,
@@ -375,6 +392,7 @@ public class ValidationSeedDataInitializer {
               mfaRecoveryCodeRepository,
               passwordEncoder,
               cryptoService,
+              iamCanonicalStorageService,
               "validation.superadmin@example.com",
               "Validation Super Admin",
               validatedPassword,
@@ -535,6 +553,7 @@ public class ValidationSeedDataInitializer {
       MfaRecoveryCodeRepository mfaRecoveryCodeRepository,
       PasswordEncoder passwordEncoder,
       CryptoService cryptoService,
+      IamCanonicalStorageService iamCanonicalStorageService,
       String email,
       String displayName,
       String password,
@@ -546,6 +565,7 @@ public class ValidationSeedDataInitializer {
         mfaRecoveryCodeRepository,
         passwordEncoder,
         cryptoService,
+        iamCanonicalStorageService,
         email,
         displayName,
         password,
@@ -564,6 +584,7 @@ public class ValidationSeedDataInitializer {
       MfaRecoveryCodeRepository mfaRecoveryCodeRepository,
       PasswordEncoder passwordEncoder,
       CryptoService cryptoService,
+      IamCanonicalStorageService iamCanonicalStorageService,
       String email,
       String displayName,
       String password,
@@ -603,6 +624,7 @@ public class ValidationSeedDataInitializer {
     normalizeRoleMemberships(user, roles);
     UserAccount saved = userAccountRepository.save(user);
     seedRecoveryCodes(mfaRecoveryCodeRepository, passwordEncoder, saved, mfaEnabled, recoveryCodes);
+    iamCanonicalStorageService.syncUser(saved);
     return saved;
   }
 

@@ -40,6 +40,7 @@ import com.bigbrightpaints.erp.modules.auth.domain.MfaRecoveryCode;
 import com.bigbrightpaints.erp.modules.auth.domain.MfaRecoveryCodeRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
+import com.bigbrightpaints.erp.modules.auth.service.IamCanonicalStorageService;
 import com.bigbrightpaints.erp.modules.auth.service.PasswordPolicy;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
@@ -69,6 +70,7 @@ class ValidationSeedDataInitializerTest {
   @Mock private PasswordEncoder passwordEncoder;
   @Mock private CryptoService cryptoService;
   @Mock private AuthScopeService authScopeService;
+  @Mock private IamCanonicalStorageService iamCanonicalStorageService;
 
   private ValidationSeedDataInitializer initializer;
   private PasswordPolicy passwordPolicy;
@@ -142,6 +144,7 @@ class ValidationSeedDataInitializerTest {
             cryptoService,
             passwordPolicy,
             authScopeService,
+            iamCanonicalStorageService,
             activeProfiles("mock", "validation-seed"),
             false,
             "ValidationSeed1!");
@@ -162,6 +165,7 @@ class ValidationSeedDataInitializerTest {
         systemSettingsRepository,
         passwordEncoder,
         authScopeService);
+    verifyNoInteractions(iamCanonicalStorageService);
   }
 
   @Test
@@ -183,6 +187,7 @@ class ValidationSeedDataInitializerTest {
             cryptoService,
             passwordPolicy,
             authScopeService,
+            iamCanonicalStorageService,
             activeProfiles("validation-seed"),
             true,
             "ValidationSeed1!");
@@ -224,6 +229,7 @@ class ValidationSeedDataInitializerTest {
             cryptoService,
             passwordPolicy,
             authScopeService,
+            iamCanonicalStorageService,
             activeProfiles("mock", "validation-seed"),
             true,
             "changeme");
@@ -262,6 +268,7 @@ class ValidationSeedDataInitializerTest {
             cryptoService,
             passwordPolicy,
             authScopeService,
+            iamCanonicalStorageService,
             activeProfiles("mock", "validation-seed"),
             true,
             "ValidationSeed1!");
@@ -270,6 +277,7 @@ class ValidationSeedDataInitializerTest {
 
     ArgumentCaptor<UserAccount> users = ArgumentCaptor.forClass(UserAccount.class);
     verify(userAccountRepository, times(16)).save(users.capture());
+    users.getAllValues().forEach(user -> verify(iamCanonicalStorageService).syncUser(user));
 
     assertThat(users.getAllValues())
         .extracting(UserAccount::getEmail)
