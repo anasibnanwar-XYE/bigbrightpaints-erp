@@ -4,7 +4,7 @@ Last reviewed: 2026-04-28
 
 ## Scope
 - Feature: `canonical-route-disposition-and-contract-tests`
-- Branch: `codex/identity-account-hardcut-20260427` (base: `origin/main`)
+- Branch: codex/identity-account-hardcut-20260427 (base: origin/main)
 - PR: pending
 - Review candidate:
   - enforce `VAL-ROUTE-001` canonical identity route disposition for auth, My Account, MFA, sessions, and Users & Access admin route inventory
@@ -12,7 +12,7 @@ Last reviewed: 2026-04-28
   - add narrow canonical route gaps for self profile/contact/security/session and admin lock/unlock/session/security-event/assignable-role surfaces
   - retire duplicate admin suspend/unsuspend and hard-delete user aliases from OpenAPI/runtime mutation paths
   - update route-disposition tests to normalize method + concrete URI behavior rather than treating OpenAPI parameter names such as `{id}` and `{userId}` as distinct runtime routes
-- Why this is R2: this packet changes high-risk auth/admin route exposure and tenant-admin user-control behavior in `modules/auth` and `modules/admin`, including route retirement for formerly mutating admin aliases.
+- Why this is R2: this packet changes high-risk auth/admin route exposure and tenant-admin user-control behavior in modules/auth and modules/admin, including route retirement for formerly mutating admin aliases.
 
 ## Risk Trigger
 - Triggered by:
@@ -25,7 +25,7 @@ Last reviewed: 2026-04-28
 - Contract surfaces affected:
   - `/api/v1/auth/**` canonical auth, self, MFA, and session route inventory
   - `/api/v1/admin/users/**` canonical Users & Access route inventory
-  - retired `/api/v1/auth/profile`, `/api/v1/auth/password/forgot/superadmin`, `/api/v1/admin/users/{userId}/suspend`, `/api/v1/admin/users/{userId}/unsuspend`, and `DELETE /api/v1/admin/users/{userId}` aliases
+  - retired /api/v1/auth/profile, /api/v1/auth/password/forgot/superadmin, /api/v1/admin/users/{userId}/suspend, /api/v1/admin/users/{userId}/unsuspend, and DELETE /api/v1/admin/users/{userId} aliases
 - Failure mode if wrong:
   - duplicate retired aliases could continue mutating identity state
   - frontend/OpenAPI route inventory could drift from `VAL-ROUTE-001`
@@ -66,7 +66,7 @@ Last reviewed: 2026-04-28
   - OpenAPI parity: `OpenApiSnapshotIT` refreshed `openapi.json` and asserts request/response shapes for changed auth/admin routes.
   - Tenant/authz proof: focused admin security tests rechecked tenant-admin-only access, cross-company masking, protected targets, and superadmin tenant-workflow denial.
 - Commands run:
-  - `/Users/anas/.factory/missions/7ef22e70-61c7-4cdf-b7a7-1c48f4127853/init.sh`
+  - /Users/anas/.factory/missions/7ef22e70-61c7-4cdf-b7a7-1c48f4127853/init.sh
   - `cd /Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/identity-account-hardcut-20260427 && bash scripts/guard_openapi_contract_drift.sh && cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='AuthPasswordResetPublicContractIT,AdminUserSecurityIT,AuthControllerIT,AuthTenantAuthorityIT,TenantRuntimeEnforcementAuthIT,AuthDisabledUserTokenIT,MfaControllerIT' test`
   - `cd erp-domain && MIGRATION_SET=v2 mvn -q -DskipTests compile`
   - `cd erp-domain && MIGRATION_SET=v2 mvn spotless:apply`
