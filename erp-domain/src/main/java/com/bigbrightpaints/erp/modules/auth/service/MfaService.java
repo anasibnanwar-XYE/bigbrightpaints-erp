@@ -54,6 +54,7 @@ public class MfaService {
   private final CryptoService cryptoService;
   private final TokenBlacklistService tokenBlacklistService;
   private final RefreshTokenService refreshTokenService;
+  private final IamCanonicalStorageService iamCanonicalStorageService;
   private final SecureRandom secureRandom = new SecureRandom();
   private final Clock clock;
   private final String issuer;
@@ -66,6 +67,7 @@ public class MfaService {
       CryptoService cryptoService,
       TokenBlacklistService tokenBlacklistService,
       RefreshTokenService refreshTokenService,
+      IamCanonicalStorageService iamCanonicalStorageService,
       @Value("${security.mfa.issuer:BigBright ERP}") String issuer) {
     this(
         userAccountRepository,
@@ -74,6 +76,7 @@ public class MfaService {
         cryptoService,
         tokenBlacklistService,
         refreshTokenService,
+        iamCanonicalStorageService,
         issuer,
         Clock.systemUTC());
   }
@@ -85,6 +88,7 @@ public class MfaService {
       CryptoService cryptoService,
       TokenBlacklistService tokenBlacklistService,
       RefreshTokenService refreshTokenService,
+      IamCanonicalStorageService iamCanonicalStorageService,
       String issuer,
       Clock clock) {
     this.userAccountRepository = userAccountRepository;
@@ -93,6 +97,7 @@ public class MfaService {
     this.cryptoService = cryptoService;
     this.tokenBlacklistService = tokenBlacklistService;
     this.refreshTokenService = refreshTokenService;
+    this.iamCanonicalStorageService = iamCanonicalStorageService;
     this.issuer = issuer;
     this.clock = clock;
   }
@@ -106,6 +111,7 @@ public class MfaService {
     user.setMfaEnabled(false);
     userAccountRepository.save(user);
     replaceRecoveryCodes(user, recoveryCodes);
+    iamCanonicalStorageService.syncUser(user);
     return new MfaEnrollment(secret, buildOtpAuthUri(user, secret), recoveryCodes);
   }
 
@@ -118,6 +124,7 @@ public class MfaService {
     }
     user.setMfaEnabled(true);
     userAccountRepository.save(user);
+    iamCanonicalStorageService.syncUser(user);
   }
 
   @Transactional
@@ -138,6 +145,7 @@ public class MfaService {
     }
     clearMfa(user);
     userAccountRepository.save(user);
+    iamCanonicalStorageService.syncUser(user);
   }
 
   @Transactional
@@ -163,6 +171,7 @@ public class MfaService {
     List<String> recoveryCodes = generateRecoveryCodes();
     replaceRecoveryCodes(user, recoveryCodes);
     userAccountRepository.save(user);
+    iamCanonicalStorageService.syncUser(user);
     revokeActiveSessions(user);
     return recoveryCodes;
   }

@@ -29,16 +29,19 @@ public class ScopedAccountBootstrapService {
   private final PasswordEncoder passwordEncoder;
   private final EmailService emailService;
   private final AuthScopeService authScopeService;
+  private final IamCanonicalStorageService iamCanonicalStorageService;
 
   public ScopedAccountBootstrapService(
       UserAccountRepository userAccountRepository,
       PasswordEncoder passwordEncoder,
       EmailService emailService,
-      AuthScopeService authScopeService) {
+      AuthScopeService authScopeService,
+      IamCanonicalStorageService iamCanonicalStorageService) {
     this.userAccountRepository = userAccountRepository;
     this.passwordEncoder = passwordEncoder;
     this.emailService = emailService;
     this.authScopeService = authScopeService;
+    this.iamCanonicalStorageService = iamCanonicalStorageService;
   }
 
   public boolean isCredentialProvisioningReady() {
@@ -59,6 +62,7 @@ public class ScopedAccountBootstrapService {
         createScopedAccount(scopeCode, email, displayName, roles, temporaryPassword);
     account.setCompany(company);
     UserAccount saved = userAccountRepository.save(account);
+    iamCanonicalStorageService.syncUser(saved);
     scheduleCredentialEmailDelivery(saved, temporaryPassword, scopeCode);
     return saved;
   }

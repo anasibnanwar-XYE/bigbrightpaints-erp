@@ -19,9 +19,13 @@ public class RefreshTokenService {
   private static final Logger logger = LoggerFactory.getLogger(RefreshTokenService.class);
 
   private final RefreshTokenRepository refreshTokenRepository;
+  private final IamCanonicalStorageService iamCanonicalStorageService;
 
-  public RefreshTokenService(RefreshTokenRepository refreshTokenRepository) {
+  public RefreshTokenService(
+      RefreshTokenRepository refreshTokenRepository,
+      IamCanonicalStorageService iamCanonicalStorageService) {
     this.refreshTokenRepository = refreshTokenRepository;
+    this.iamCanonicalStorageService = iamCanonicalStorageService;
   }
 
   @Transactional
@@ -40,7 +44,8 @@ public class RefreshTokenService {
             authScopeCode,
             issuedAt,
             expiresAt);
-    refreshTokenRepository.save(record);
+    RefreshToken saved = refreshTokenRepository.save(record);
+    iamCanonicalStorageService.recordSessionIssued(saved);
     return token;
   }
 
@@ -57,8 +62,10 @@ public class RefreshTokenService {
     RefreshToken stored = record.get();
     if (stored.isExpired(Instant.now())) {
       refreshTokenRepository.delete(stored);
+      iamCanonicalStorageService.markSessionRevoked(tokenDigest, "expired");
       return Optional.empty();
     }
+    iamCanonicalStorageService.markSessionConsumed(tokenDigest);
     refreshTokenRepository.delete(stored);
     return Optional.of(
         new TokenRecord(
@@ -74,6 +81,7 @@ public class RefreshTokenService {
       return;
     }
     String tokenDigest = AuthTokenDigests.refreshTokenDigest(refreshToken);
+    iamCanonicalStorageService.markSessionRevoked(tokenDigest, "revoked");
     refreshTokenRepository.deleteByTokenDigest(tokenDigest);
   }
 
@@ -82,6 +90,7 @@ public class RefreshTokenService {
     if (userPublicId == null) {
       return;
     }
+    iamCanonicalStorageService.markAllSessionsRevoked(userPublicId, "revoked_all");
     refreshTokenRepository.deleteByUserPublicId(userPublicId);
   }
 

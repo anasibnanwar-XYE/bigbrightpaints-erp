@@ -1,6 +1,11 @@
 package com.bigbrightpaints.erp.modules.auth.domain;
 
 import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 
@@ -36,8 +41,9 @@ public class IamSecurityEvent {
 
   @Column private String reason;
 
+  @JdbcTypeCode(SqlTypes.JSON)
   @Column(nullable = false, columnDefinition = "jsonb")
-  private String metadata = "{}";
+  private Map<String, String> metadata = new LinkedHashMap<>();
 
   @Column(name = "occurred_at", nullable = false)
   private Instant occurredAt = Instant.now();
@@ -76,7 +82,7 @@ public class IamSecurityEvent {
     return reason;
   }
 
-  public String getMetadata() {
+  public Map<String, String> getMetadata() {
     return metadata;
   }
 

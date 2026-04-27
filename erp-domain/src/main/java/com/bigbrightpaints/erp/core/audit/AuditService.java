@@ -21,6 +21,7 @@ import org.springframework.web.context.request.ServletRequestAttributes;
 
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
 import com.bigbrightpaints.erp.modules.auth.domain.UserPrincipal;
+import com.bigbrightpaints.erp.modules.auth.service.IamCanonicalStorageService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 
@@ -39,6 +40,7 @@ public class AuditService {
 
   @Autowired private AuditLogRepository auditLogRepository;
   @Autowired private CompanyRepository companyRepository;
+  @Autowired private IamCanonicalStorageService iamCanonicalStorageService;
 
   /**
    * Self-reference to ensure @Async/@Transactional proxies apply even when calling from within this class.
@@ -182,6 +184,14 @@ public class AuditService {
 
       AuditLog auditLog = builder.build();
       auditLogRepository.save(auditLog);
+      iamCanonicalStorageService.recordSecurityEvent(
+          event.name(),
+          iamOutcome(status),
+          metadata,
+          resolvedUserId,
+          resolvedUsername,
+          companyId,
+          companyToken);
 
       logger.debug("Audit event logged: {} - Status: {}", event, status);
 
@@ -228,6 +238,17 @@ public class AuditService {
       return null;
     }
     return token.trim();
+  }
+
+  private String iamOutcome(AuditStatus status) {
+    if (status == null) {
+      return "SUCCESS";
+    }
+    return switch (status) {
+      case SUCCESS, INFO -> "SUCCESS";
+      case FAILURE -> "FAILURE";
+      case WARNING -> "DENIED";
+    };
   }
 
   private boolean looksLikeUuid(String token) {

@@ -55,6 +55,7 @@ public class AuthService {
   private final TenantRuntimeRequestAdmissionService tenantRuntimeRequestAdmissionService;
   private final PasswordEncoder passwordEncoder;
   private final AuthScopeService authScopeService;
+  private final IamCanonicalStorageService iamCanonicalStorageService;
 
   public AuthService(
       JwtTokenService tokenService,
@@ -67,7 +68,8 @@ public class AuthService {
       AuditService auditService,
       TenantRuntimeRequestAdmissionService tenantRuntimeRequestAdmissionService,
       PasswordEncoder passwordEncoder,
-      AuthScopeService authScopeService) {
+      AuthScopeService authScopeService,
+      IamCanonicalStorageService iamCanonicalStorageService) {
     this.tokenService = tokenService;
     this.refreshTokenService = refreshTokenService;
     this.userAccountRepository = userAccountRepository;
@@ -79,6 +81,7 @@ public class AuthService {
     this.tenantRuntimeRequestAdmissionService = tenantRuntimeRequestAdmissionService;
     this.passwordEncoder = passwordEncoder;
     this.authScopeService = authScopeService;
+    this.iamCanonicalStorageService = iamCanonicalStorageService;
   }
 
   public AuthResponse login(LoginRequest request) {
@@ -269,6 +272,7 @@ public class AuthService {
     String accountKey = userPublicId.toString();
     tokenBlacklistService.revokeAllUserTokens(accountKey);
     refreshTokenService.revokeAllForUser(userPublicId);
+    iamCanonicalStorageService.markAllSessionsRevoked(userPublicId, "logout");
   }
 
   private Claims parseLogoutClaims(String accessToken) {
@@ -340,6 +344,7 @@ public class AuthService {
     user.setFailedLoginAttempts(0);
     user.setLockedUntil(null);
     userAccountRepository.save(user);
+    iamCanonicalStorageService.syncUser(user);
   }
 
   private void registerFailure(UserAccount user) {
@@ -350,6 +355,7 @@ public class AuthService {
       user.setLockedUntil(Instant.now().plus(LOCKOUT_DURATION));
     }
     userAccountRepository.save(user);
+    iamCanonicalStorageService.syncUser(user);
     if (locked) {
       revokeActiveSessions(user.getPublicId());
     }

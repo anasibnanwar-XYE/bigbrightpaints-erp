@@ -26,6 +26,7 @@ public class PasswordService {
   private final PasswordPolicy passwordPolicy;
   private final TokenBlacklistService tokenBlacklistService;
   private final RefreshTokenService refreshTokenService;
+  private final IamCanonicalStorageService iamCanonicalStorageService;
 
   public PasswordService(
       UserAccountRepository userAccountRepository,
@@ -33,13 +34,15 @@ public class PasswordService {
       PasswordEncoder passwordEncoder,
       PasswordPolicy passwordPolicy,
       TokenBlacklistService tokenBlacklistService,
-      RefreshTokenService refreshTokenService) {
+      RefreshTokenService refreshTokenService,
+      IamCanonicalStorageService iamCanonicalStorageService) {
     this.userAccountRepository = userAccountRepository;
     this.passwordHistoryRepository = passwordHistoryRepository;
     this.passwordEncoder = passwordEncoder;
     this.passwordPolicy = passwordPolicy;
     this.tokenBlacklistService = tokenBlacklistService;
     this.refreshTokenService = refreshTokenService;
+    this.iamCanonicalStorageService = iamCanonicalStorageService;
   }
 
   @Transactional
@@ -82,6 +85,7 @@ public class PasswordService {
     user.setPasswordHash(passwordEncoder.encode(newPassword));
     user.setMustChangePassword(false);
     userAccountRepository.save(user);
+    iamCanonicalStorageService.syncUser(user);
     revokeExistingSessions(user);
   }
 

@@ -27,6 +27,7 @@ import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserPrincipal;
 import com.bigbrightpaints.erp.modules.auth.service.AuthService;
+import com.bigbrightpaints.erp.modules.auth.service.IamCanonicalStorageService;
 import com.bigbrightpaints.erp.modules.auth.service.PasswordResetService;
 import com.bigbrightpaints.erp.modules.auth.service.PasswordService;
 import com.bigbrightpaints.erp.modules.auth.web.AuthResponse;
@@ -50,18 +51,21 @@ public class AuthController {
   private final PasswordResetService passwordResetService;
   private final AuditService auditService;
   private final UserAccountRepository userAccountRepository;
+  private final IamCanonicalStorageService iamCanonicalStorageService;
 
   public AuthController(
       AuthService authService,
       PasswordService passwordService,
       PasswordResetService passwordResetService,
       AuditService auditService,
-      UserAccountRepository userAccountRepository) {
+      UserAccountRepository userAccountRepository,
+      IamCanonicalStorageService iamCanonicalStorageService) {
     this.authService = authService;
     this.passwordService = passwordService;
     this.passwordResetService = passwordResetService;
     this.auditService = auditService;
     this.userAccountRepository = userAccountRepository;
+    this.iamCanonicalStorageService = iamCanonicalStorageService;
   }
 
   @PostMapping("/login")
@@ -140,6 +144,7 @@ public class AuthController {
       user.setPreferredName(trimToNull(request.preferredName()));
       user.setProfilePictureUrl(trimToNull(request.profilePictureUrl()));
       userAccountRepository.save(user);
+      iamCanonicalStorageService.syncUser(user);
     }
     return ResponseEntity.ok(ApiResponse.success(toProfileResponse(user)));
   }
@@ -157,6 +162,7 @@ public class AuthController {
       user.setSecondaryEmail(trimToNull(request.secondaryEmail()));
       user.setPhoneSecondary(trimToNull(request.phoneSecondary()));
       userAccountRepository.save(user);
+      iamCanonicalStorageService.syncUser(user);
     }
     return ResponseEntity.ok(ApiResponse.success(toContactResponse(user)));
   }

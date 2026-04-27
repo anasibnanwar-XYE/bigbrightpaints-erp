@@ -33,6 +33,7 @@ import com.bigbrightpaints.erp.modules.admin.dto.UserDto;
 import com.bigbrightpaints.erp.modules.auth.domain.MfaRecoveryCodeRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
+import com.bigbrightpaints.erp.modules.auth.service.IamCanonicalStorageService;
 import com.bigbrightpaints.erp.modules.auth.service.PasswordResetService;
 import com.bigbrightpaints.erp.modules.auth.service.RefreshTokenService;
 import com.bigbrightpaints.erp.modules.auth.service.ScopedAccountBootstrapService;
@@ -77,6 +78,7 @@ public class AdminUserService {
   private final DealerRepository dealerRepository;
   private final AccountRepository accountRepository;
   private final TenantRuntimePolicyService tenantRuntimePolicyService;
+  private final IamCanonicalStorageService iamCanonicalStorageService;
 
   public AdminUserService(
       UserAccountRepository userRepository,
@@ -92,7 +94,8 @@ public class AdminUserService {
       AuditLogRepository auditLogRepository,
       DealerRepository dealerRepository,
       AccountRepository accountRepository,
-      TenantRuntimePolicyService tenantRuntimePolicyService) {
+      TenantRuntimePolicyService tenantRuntimePolicyService,
+      IamCanonicalStorageService iamCanonicalStorageService) {
     this.userRepository = userRepository;
     this.companyContextService = companyContextService;
     this.roleService = roleService;
@@ -107,6 +110,7 @@ public class AdminUserService {
     this.dealerRepository = dealerRepository;
     this.accountRepository = accountRepository;
     this.tenantRuntimePolicyService = tenantRuntimePolicyService;
+    this.iamCanonicalStorageService = iamCanonicalStorageService;
   }
 
   public List<UserDto> listUsers() {
@@ -285,6 +289,7 @@ public class AdminUserService {
       tokenBlacklistService.revokeAllUserTokens(user.getPublicId().toString());
       refreshTokenService.revokeAllForUser(user.getPublicId());
     }
+    iamCanonicalStorageService.syncUser(user);
     auditUserAccountAction(
         AuditEvent.USER_UPDATED,
         user,
@@ -341,6 +346,7 @@ public class AdminUserService {
             OutOfScopeResponseMode.MASK_AS_MISSING);
     user.setLockedUntil(Instant.now().plus(Duration.ofDays(36500)));
     userRepository.save(user);
+    iamCanonicalStorageService.syncUser(user);
     tokenBlacklistService.revokeAllUserTokens(user.getPublicId().toString());
     refreshTokenService.revokeAllForUser(user.getPublicId());
     auditUserAccountAction(
@@ -364,6 +370,7 @@ public class AdminUserService {
     user.setLockedUntil(null);
     user.setFailedLoginAttempts(0);
     userRepository.save(user);
+    iamCanonicalStorageService.syncUser(user);
     auditUserAccountAction(
         AuditEvent.USER_UNLOCKED,
         user,
@@ -386,6 +393,7 @@ public class AdminUserService {
     user.setMfaSecret(null);
     mfaRecoveryCodeRepository.deleteAllByUser(user);
     userRepository.save(user);
+    iamCanonicalStorageService.syncUser(user);
     tokenBlacklistService.revokeAllUserTokens(user.getPublicId().toString());
     refreshTokenService.revokeAllForUser(user.getPublicId());
     auditUserAccountAction(
@@ -523,6 +531,7 @@ public class AdminUserService {
     }
     user.setEnabled(enabled);
     userRepository.save(user);
+    iamCanonicalStorageService.syncUser(user);
 
     if (!enabled) {
       tokenBlacklistService.revokeAllUserTokens(user.getPublicId().toString());

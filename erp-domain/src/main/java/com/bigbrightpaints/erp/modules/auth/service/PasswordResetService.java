@@ -68,6 +68,7 @@ public class PasswordResetService {
   private final AuthScopeService authScopeService;
   private final TransactionTemplate tokenLifecycleTransactionTemplate;
   private final TransactionTemplate tokenCleanupTransactionTemplate;
+  private final IamCanonicalStorageService iamCanonicalStorageService;
   private final SecureRandom secureRandom = new SecureRandom();
 
   private record IssuedResetToken(Long id, String rawToken) {}
@@ -83,6 +84,7 @@ public class PasswordResetService {
       TokenBlacklistService tokenBlacklistService,
       RefreshTokenService refreshTokenService,
       AuthScopeService authScopeService,
+      IamCanonicalStorageService iamCanonicalStorageService,
       PlatformTransactionManager transactionManager) {
     this.userAccountRepository = userAccountRepository;
     this.tokenRepository = tokenRepository;
@@ -94,6 +96,7 @@ public class PasswordResetService {
     this.tokenBlacklistService = tokenBlacklistService;
     this.refreshTokenService = refreshTokenService;
     this.authScopeService = authScopeService;
+    this.iamCanonicalStorageService = iamCanonicalStorageService;
     this.tokenLifecycleTransactionTemplate = new TransactionTemplate(transactionManager);
     this.tokenLifecycleTransactionTemplate.setPropagationBehavior(
         TransactionDefinition.PROPAGATION_REQUIRES_NEW);
@@ -185,6 +188,7 @@ public class PasswordResetService {
     user.setFailedLoginAttempts(0);
     user.setLockedUntil(null);
     userAccountRepository.save(user);
+    iamCanonicalStorageService.syncUser(user);
     revokeActiveSessions(user);
     token.markUsed();
     tokenRepository.save(token);
