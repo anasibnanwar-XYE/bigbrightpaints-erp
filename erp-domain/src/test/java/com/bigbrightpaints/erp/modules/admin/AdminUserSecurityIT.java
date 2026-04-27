@@ -103,6 +103,33 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
   }
 
   @Test
+  void current_admin_identity_expansion_routes_are_absent_before_hard_cut() {
+    String token = login(ADMIN_EMAIL, ADMIN_PASSWORD, COMPANY);
+    HttpHeaders headers = new HttpHeaders();
+    headers.setBearerAuth(token);
+
+    long targetUserId = otherCompanyUser.getId();
+    assertRouteAbsent(
+        "/api/v1/admin/users/" + targetUserId + "/lock",
+        HttpMethod.POST,
+        new HttpEntity<>(headers));
+    assertRouteAbsent(
+        "/api/v1/admin/users/" + targetUserId + "/unlock",
+        HttpMethod.POST,
+        new HttpEntity<>(headers));
+    assertRouteAbsent(
+        "/api/v1/admin/users/" + targetUserId + "/sessions",
+        HttpMethod.DELETE,
+        new HttpEntity<>(headers));
+    assertRouteAbsent(
+        "/api/v1/admin/users/" + targetUserId + "/security-events",
+        HttpMethod.GET,
+        new HttpEntity<>(headers));
+    assertRouteAbsent(
+        "/api/v1/admin/users/assignable-roles", HttpMethod.GET, new HttpEntity<>(headers));
+  }
+
+  @Test
   void super_admin_tenant_context_cannot_force_reset_password_via_admin_user_management_surface() {
     String token = login(SUPER_ADMIN_EMAIL, SUPER_ADMIN_PASSWORD, COMPANY);
     HttpHeaders headers = new HttpHeaders();
@@ -762,6 +789,12 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
     String token = payload.get("accessToken").toString();
     assertThat(token).isNotBlank();
     return token;
+  }
+
+  private void assertRouteAbsent(String path, HttpMethod method, HttpEntity<?> entity) {
+    ResponseEntity<Map> response = rest.exchange(path, method, entity, Map.class);
+    assertThat(response.getStatusCode())
+        .isIn(HttpStatus.NOT_FOUND, HttpStatus.METHOD_NOT_ALLOWED, HttpStatus.BAD_REQUEST);
   }
 
   private void assertMaskedMissingUserContractPair(

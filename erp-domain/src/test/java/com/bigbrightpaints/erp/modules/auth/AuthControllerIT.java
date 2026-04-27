@@ -182,6 +182,35 @@ public class AuthControllerIT extends AbstractIntegrationTest {
   }
 
   @Test
+  void current_self_profile_session_and_security_expansion_routes_are_absent_before_hard_cut() {
+    String accessToken = login(ADMIN_EMAIL, ADMIN_PASSWORD).get("accessToken").toString();
+
+    assertRouteAbsent(
+        "/api/v1/auth/me/profile",
+        HttpMethod.PATCH,
+        new HttpEntity<>(Map.of("preferredName", "Admin"), bearerJson(accessToken)));
+    assertRouteAbsent(
+        "/api/v1/auth/me/contact",
+        HttpMethod.PATCH,
+        new HttpEntity<>(Map.of("secondaryEmail", "secondary@bbp.com"), bearerJson(accessToken)));
+    assertRouteAbsent(
+        "/api/v1/auth/me/security", HttpMethod.GET, new HttpEntity<>(bearer(accessToken)));
+    assertRouteAbsent(
+        "/api/v1/auth/me/security-events", HttpMethod.GET, new HttpEntity<>(bearer(accessToken)));
+    assertRouteAbsent("/api/v1/auth/mfa", HttpMethod.GET, new HttpEntity<>(bearer(accessToken)));
+    assertRouteAbsent(
+        "/api/v1/auth/mfa/recovery-codes/regenerate",
+        HttpMethod.POST,
+        new HttpEntity<>(Map.of("code", "000000"), bearerJson(accessToken)));
+    assertRouteAbsent(
+        "/api/v1/auth/sessions", HttpMethod.GET, new HttpEntity<>(bearer(accessToken)));
+    assertRouteAbsent(
+        "/api/v1/auth/sessions/current", HttpMethod.DELETE, new HttpEntity<>(bearer(accessToken)));
+    assertRouteAbsent(
+        "/api/v1/auth/sessions", HttpMethod.DELETE, new HttpEntity<>(bearer(accessToken)));
+  }
+
+  @Test
   void password_change_revokes_existing_access_and_refresh_tokens() {
     Map<String, Object> loginPayload = login(ADMIN_EMAIL, ADMIN_PASSWORD);
     String accessToken = loginPayload.get("accessToken").toString();
@@ -441,6 +470,11 @@ public class AuthControllerIT extends AbstractIntegrationTest {
     assertThat(loginResp.getStatusCode()).isEqualTo(HttpStatus.OK);
     assertThat(loginResp.getBody()).isNotNull();
     return loginResp.getBody();
+  }
+
+  private void assertRouteAbsent(String path, HttpMethod method, HttpEntity<?> entity) {
+    ResponseEntity<Map> response = rest.exchange(path, method, entity, Map.class);
+    assertThat(response.getStatusCode()).isIn(HttpStatus.NOT_FOUND, HttpStatus.METHOD_NOT_ALLOWED);
   }
 
   private ResponseEntity<Map> me(String accessToken) {

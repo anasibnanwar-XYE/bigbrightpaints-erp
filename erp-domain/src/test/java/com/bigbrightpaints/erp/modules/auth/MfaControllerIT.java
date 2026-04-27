@@ -102,6 +102,70 @@ public class MfaControllerIT extends AbstractIntegrationTest {
     assertThat(secondLogin.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
   }
 
+  @Test
+  void setup_is_inactive_until_valid_activation_and_invalid_activation_preserves_state() {
+    String token = obtainAccessToken(null, null);
+    SetupPayload setup = startEnrollment(token);
+
+    UserAccount afterSetup = scopedUser();
+    assertThat(afterSetup.isMfaEnabled()).isFalse();
+    assertThat(afterSetup.getMfaSecret()).isNotBlank();
+    assertThat(afterSetup.getMfaSecret()).isNotEqualTo(setup.secret());
+    assertThat(afterSetup.getMfaRecoveryCodeHashes()).hasSize(setup.recoveryCodes().size());
+    assertThat(afterSetup.getMfaRecoveryCodeHashes())
+        .doesNotContainAnyElementsOf(setup.recoveryCodes());
+
+    ResponseEntity<Map> invalidActivate =
+        postWithBearer("/api/v1/auth/mfa/activate", Map.of("code", "abc123"), token);
+    assertThat(invalidActivate.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(scopedUser().isMfaEnabled()).isFalse();
+
+    ResponseEntity<Map> passwordOnlyLoginWhileInactive = login(null, null);
+    assertThat(passwordOnlyLoginWhileInactive.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(passwordOnlyLoginWhileInactive.getBody()).isNotNull();
+    assertThat(passwordOnlyLoginWhileInactive.getBody().get("accessToken")).isNotNull();
+
+    String activationCode = TotpTestUtils.generateCurrentCode(setup.secret());
+    ResponseEntity<Map> validActivate =
+        postWithBearer("/api/v1/auth/mfa/activate", Map.of("code", activationCode), token);
+    assertThat(validActivate.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(scopedUser().isMfaEnabled()).isTrue();
+  }
+
+  @Test
+  void disable_requires_valid_self_verifier_and_clears_current_mfa_material() {
+    String token = obtainAccessToken(null, null);
+    SetupPayload setup = startEnrollment(token);
+    String activationCode = TotpTestUtils.generateCurrentCode(setup.secret());
+    assertThat(
+            postWithBearer("/api/v1/auth/mfa/activate", Map.of("code", activationCode), token)
+                .getStatusCode())
+        .isEqualTo(HttpStatus.OK);
+
+    ResponseEntity<Map> missingVerifier =
+        postWithBearer("/api/v1/auth/mfa/disable", Map.of(), token);
+    assertThat(missingVerifier.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(scopedUser().isMfaEnabled()).isTrue();
+
+    ResponseEntity<Map> invalidVerifier =
+        postWithBearer("/api/v1/auth/mfa/disable", Map.of("code", "abc123"), token);
+    assertThat(invalidVerifier.getStatusCode())
+        .isIn(HttpStatus.BAD_REQUEST, HttpStatus.UNAUTHORIZED);
+    assertThat(scopedUser().isMfaEnabled()).isTrue();
+
+    String disableCode = TotpTestUtils.generateCurrentCode(setup.secret());
+    ResponseEntity<Map> disable =
+        postWithBearer("/api/v1/auth/mfa/disable", Map.of("code", disableCode), token);
+    assertThat(disable.getStatusCode()).isEqualTo(HttpStatus.OK);
+    Map<String, Object> disableData = apiData(disable);
+    assertThat(disableData.get("enabled")).isEqualTo(Boolean.FALSE);
+
+    UserAccount afterDisable = scopedUser();
+    assertThat(afterDisable.isMfaEnabled()).isFalse();
+    assertThat(afterDisable.getMfaSecret()).isNull();
+    assertThat(afterDisable.getMfaRecoveryCodeHashes()).isEmpty();
+  }
+
   private SetupPayload startEnrollment(String token) {
     ResponseEntity<Map> setupResp = postWithBearer("/api/v1/auth/mfa/setup", null, token);
     assertThat(setupResp.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -143,6 +207,12 @@ public class MfaControllerIT extends AbstractIntegrationTest {
     headers.setContentType(MediaType.APPLICATION_JSON);
     HttpEntity<Map<String, ?>> entity = new HttpEntity<>(body, headers);
     return rest.exchange(path, HttpMethod.POST, entity, Map.class);
+  }
+
+  private UserAccount scopedUser() {
+    return userAccountRepository
+        .findByEmailIgnoreCaseAndAuthScopeCodeIgnoreCase(USER_EMAIL, COMPANY_CODE)
+        .orElseThrow();
   }
 
   @SuppressWarnings("unchecked")
