@@ -44,6 +44,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.admin.dto.CreateUserRequest;
 import com.bigbrightpaints.erp.modules.admin.dto.UpdateUserRequest;
 import com.bigbrightpaints.erp.modules.admin.dto.UserDto;
+import com.bigbrightpaints.erp.modules.auth.domain.MfaRecoveryCodeRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.auth.service.PasswordResetService;
@@ -68,6 +69,7 @@ class AdminUserServiceTest {
   @Mock private TokenBlacklistService tokenBlacklistService;
   @Mock private RefreshTokenService refreshTokenService;
   @Mock private PasswordResetService passwordResetService;
+  @Mock private MfaRecoveryCodeRepository mfaRecoveryCodeRepository;
   @Mock private AuditService auditService;
   @Mock private AuditLogRepository auditLogRepository;
   @Mock private DealerRepository dealerRepository;
@@ -93,6 +95,7 @@ class AdminUserServiceTest {
             refreshTokenService,
             passwordResetService,
             scopedAccountBootstrapService,
+            mfaRecoveryCodeRepository,
             auditService,
             auditLogRepository,
             dealerRepository,

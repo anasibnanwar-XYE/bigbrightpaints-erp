@@ -2,6 +2,18 @@
 
 Last reviewed: 2026-04-16
 
+## 2026-04-28 — `iam-core-schema-and-model-hard-cut`
+
+- **Scope:** revert the IAM schema-core backend packet together with `erp-domain/src/main/resources/db/migration_v2/V190__iam_core_schema_and_model_hard_cut.sql`.
+- **Application rollback:** do not redeploy a pre-IAM-core backend against a database where `V190` has already run. Keep the compatible backend live unless the database is restored to a pre-`V190` point.
+- **Database rollback:** preferred path is snapshot/PITR restore to a point before `V190`. Ad hoc reverse SQL is intentionally unsupported because `V190` removes raw token columns and legacy delimited MFA recovery-code storage while introducing canonical IAM account/profile/contact/credential/MFA/session/security-event tables that downstream runtime packets will depend on.
+- **Guard note:** do not hand-add `refresh_tokens.token`, `password_reset_tokens.token`, or `app_users.mfa_recovery_codes` as a rollback shortcut; those columns are explicitly retired secret-bearing storage. If rollback is abandoned and deployment stays forward, rerun High-Risk Change Control and the focused IAM schema/runtime tests.
+- **Verification:** after restore or coordinated rollback, rerun:
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -q -DskipTests compile`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='TS_IamCoreSchemaAndModelHardCutMigrationContractTest,IamCoreSchemaAndModelHardCutMigrationIT,MfaServiceTest,RefreshTokenServiceTest' test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='MfaControllerIT,AuthPasswordResetPublicContractIT,AdminUserSecurityIT' test`
+  - `bash ci/check-high-risk-changes.sh`
+
 ## 2026-04-26 — `accounting-centralization-v2-schema-hard-cut`
 
 - **Scope:** revert the accounting centralization backend packet together with `erp-domain/src/main/resources/db/migration_v2/V184__accounting_truth_rls_hard_cut.sql` through `V189__reconciliation_discrepancy_resolution_alignment.sql`.

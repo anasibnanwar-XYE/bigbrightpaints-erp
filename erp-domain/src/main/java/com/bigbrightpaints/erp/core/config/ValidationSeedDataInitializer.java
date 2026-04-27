@@ -31,6 +31,8 @@ import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketCategory;
 import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketRepository;
 import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketStatus;
 import com.bigbrightpaints.erp.modules.admin.dto.ExportApprovalStatus;
+import com.bigbrightpaints.erp.modules.auth.domain.MfaRecoveryCode;
+import com.bigbrightpaints.erp.modules.auth.domain.MfaRecoveryCodeRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.auth.service.PasswordPolicy;
@@ -80,6 +82,7 @@ public class ValidationSeedDataInitializer {
       CompanyRepository companyRepository,
       RoleRepository roleRepository,
       UserAccountRepository userAccountRepository,
+      MfaRecoveryCodeRepository mfaRecoveryCodeRepository,
       DealerRepository dealerRepository,
       AccountRepository accountRepository,
       InvoiceRepository invoiceRepository,
@@ -157,6 +160,7 @@ public class ValidationSeedDataInitializer {
       UserAccount mockAdmin =
           ensureUser(
               userAccountRepository,
+              mfaRecoveryCodeRepository,
               passwordEncoder,
               cryptoService,
               "validation.admin@example.com",
@@ -167,6 +171,7 @@ public class ValidationSeedDataInitializer {
               List.of(admin, accounting, sales));
       ensureUser(
           userAccountRepository,
+          mfaRecoveryCodeRepository,
           passwordEncoder,
           cryptoService,
           "validation.mustchange.admin@example.com",
@@ -182,6 +187,7 @@ public class ValidationSeedDataInitializer {
           List.of());
       ensureUser(
           userAccountRepository,
+          mfaRecoveryCodeRepository,
           passwordEncoder,
           cryptoService,
           "validation.locked.admin@example.com",
@@ -197,6 +203,7 @@ public class ValidationSeedDataInitializer {
           List.of());
       ensureUser(
           userAccountRepository,
+          mfaRecoveryCodeRepository,
           passwordEncoder,
           cryptoService,
           "validation.accounting@example.com",
@@ -207,6 +214,7 @@ public class ValidationSeedDataInitializer {
           List.of(accounting));
       ensureUser(
           userAccountRepository,
+          mfaRecoveryCodeRepository,
           passwordEncoder,
           cryptoService,
           "validation.sales@example.com",
@@ -217,6 +225,7 @@ public class ValidationSeedDataInitializer {
           List.of(sales));
       ensureUser(
           userAccountRepository,
+          mfaRecoveryCodeRepository,
           passwordEncoder,
           cryptoService,
           "validation.factory@example.com",
@@ -227,6 +236,7 @@ public class ValidationSeedDataInitializer {
           List.of(factory));
       ensureUser(
           userAccountRepository,
+          mfaRecoveryCodeRepository,
           passwordEncoder,
           cryptoService,
           "validation.mfa.admin@example.com",
@@ -244,6 +254,7 @@ public class ValidationSeedDataInitializer {
       UserAccount dealerUser =
           ensureUser(
               userAccountRepository,
+              mfaRecoveryCodeRepository,
               passwordEncoder,
               cryptoService,
               "validation.dealer@example.com",
@@ -264,6 +275,7 @@ public class ValidationSeedDataInitializer {
       UserAccount rivalDealerUser =
           ensureUser(
               userAccountRepository,
+              mfaRecoveryCodeRepository,
               passwordEncoder,
               cryptoService,
               "validation.rival.dealer@example.com",
@@ -289,6 +301,7 @@ public class ValidationSeedDataInitializer {
       UserAccount rivalAdmin =
           ensureUser(
               userAccountRepository,
+              mfaRecoveryCodeRepository,
               passwordEncoder,
               cryptoService,
               "validation.rival.admin@example.com",
@@ -300,6 +313,7 @@ public class ValidationSeedDataInitializer {
       UserAccount holdAdmin =
           ensureUser(
               userAccountRepository,
+              mfaRecoveryCodeRepository,
               passwordEncoder,
               cryptoService,
               "validation.hold.admin@example.com",
@@ -311,6 +325,7 @@ public class ValidationSeedDataInitializer {
       UserAccount blockedAdmin =
           ensureUser(
               userAccountRepository,
+              mfaRecoveryCodeRepository,
               passwordEncoder,
               cryptoService,
               "validation.blocked.admin@example.com",
@@ -322,6 +337,7 @@ public class ValidationSeedDataInitializer {
       UserAccount quotaAlpha =
           ensureUser(
               userAccountRepository,
+              mfaRecoveryCodeRepository,
               passwordEncoder,
               cryptoService,
               "validation.quota.alpha@example.com",
@@ -332,6 +348,7 @@ public class ValidationSeedDataInitializer {
               List.of(admin));
       ensureUser(
           userAccountRepository,
+          mfaRecoveryCodeRepository,
           passwordEncoder,
           cryptoService,
           "validation.quota.beta@example.com",
@@ -343,6 +360,7 @@ public class ValidationSeedDataInitializer {
       UserAccount tenantReopenSuperAdmin =
           ensureUser(
               userAccountRepository,
+              mfaRecoveryCodeRepository,
               passwordEncoder,
               cryptoService,
               "validation.tenant.superadmin@example.com",
@@ -354,6 +372,7 @@ public class ValidationSeedDataInitializer {
       UserAccount superAdminUser =
           ensureUser(
               userAccountRepository,
+              mfaRecoveryCodeRepository,
               passwordEncoder,
               cryptoService,
               "validation.superadmin@example.com",
@@ -513,6 +532,7 @@ public class ValidationSeedDataInitializer {
 
   private UserAccount ensureUser(
       UserAccountRepository userAccountRepository,
+      MfaRecoveryCodeRepository mfaRecoveryCodeRepository,
       PasswordEncoder passwordEncoder,
       CryptoService cryptoService,
       String email,
@@ -523,6 +543,7 @@ public class ValidationSeedDataInitializer {
       List<Role> roles) {
     return ensureUser(
         userAccountRepository,
+        mfaRecoveryCodeRepository,
         passwordEncoder,
         cryptoService,
         email,
@@ -540,6 +561,7 @@ public class ValidationSeedDataInitializer {
 
   private UserAccount ensureUser(
       UserAccountRepository userAccountRepository,
+      MfaRecoveryCodeRepository mfaRecoveryCodeRepository,
       PasswordEncoder passwordEncoder,
       CryptoService cryptoService,
       String email,
@@ -574,17 +596,30 @@ public class ValidationSeedDataInitializer {
     user.setMfaEnabled(mfaEnabled);
     if (mfaEnabled) {
       user.setMfaSecret(cryptoService.encrypt(mfaSecret));
-      user.setMfaRecoveryCodeHashes(
-          recoveryCodes == null
-              ? List.of()
-              : recoveryCodes.stream().map(passwordEncoder::encode).toList());
     } else {
       user.setMfaSecret(null);
-      user.setMfaRecoveryCodeHashes(List.of());
     }
     normalizeCompanyMemberships(user, companies);
     normalizeRoleMemberships(user, roles);
-    return userAccountRepository.save(user);
+    UserAccount saved = userAccountRepository.save(user);
+    seedRecoveryCodes(mfaRecoveryCodeRepository, passwordEncoder, saved, mfaEnabled, recoveryCodes);
+    return saved;
+  }
+
+  private void seedRecoveryCodes(
+      MfaRecoveryCodeRepository mfaRecoveryCodeRepository,
+      PasswordEncoder passwordEncoder,
+      UserAccount user,
+      boolean mfaEnabled,
+      List<String> recoveryCodes) {
+    mfaRecoveryCodeRepository.deleteAllByUser(user);
+    if (!mfaEnabled || recoveryCodes == null || recoveryCodes.isEmpty()) {
+      return;
+    }
+    mfaRecoveryCodeRepository.saveAll(
+        recoveryCodes.stream()
+            .map(code -> new MfaRecoveryCode(user, passwordEncoder.encode(code)))
+            .toList());
   }
 
   private void ensureRuntimePolicy(

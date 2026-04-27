@@ -30,6 +30,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.admin.dto.CreateUserRequest;
 import com.bigbrightpaints.erp.modules.admin.dto.UpdateUserRequest;
 import com.bigbrightpaints.erp.modules.admin.dto.UserDto;
+import com.bigbrightpaints.erp.modules.auth.domain.MfaRecoveryCodeRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.auth.service.PasswordResetService;
@@ -70,6 +71,7 @@ public class AdminUserService {
   private final RefreshTokenService refreshTokenService;
   private final PasswordResetService passwordResetService;
   private final ScopedAccountBootstrapService scopedAccountBootstrapService;
+  private final MfaRecoveryCodeRepository mfaRecoveryCodeRepository;
   private final AuditService auditService;
   private final AuditLogRepository auditLogRepository;
   private final DealerRepository dealerRepository;
@@ -85,6 +87,7 @@ public class AdminUserService {
       RefreshTokenService refreshTokenService,
       PasswordResetService passwordResetService,
       ScopedAccountBootstrapService scopedAccountBootstrapService,
+      MfaRecoveryCodeRepository mfaRecoveryCodeRepository,
       AuditService auditService,
       AuditLogRepository auditLogRepository,
       DealerRepository dealerRepository,
@@ -98,6 +101,7 @@ public class AdminUserService {
     this.refreshTokenService = refreshTokenService;
     this.passwordResetService = passwordResetService;
     this.scopedAccountBootstrapService = scopedAccountBootstrapService;
+    this.mfaRecoveryCodeRepository = mfaRecoveryCodeRepository;
     this.auditService = auditService;
     this.auditLogRepository = auditLogRepository;
     this.dealerRepository = dealerRepository;
@@ -380,7 +384,7 @@ public class AdminUserService {
             OutOfScopeResponseMode.MASK_AS_MISSING);
     user.setMfaEnabled(false);
     user.setMfaSecret(null);
-    user.setMfaRecoveryCodeHashes(List.of());
+    mfaRecoveryCodeRepository.deleteAllByUser(user);
     userRepository.save(user);
     tokenBlacklistService.revokeAllUserTokens(user.getPublicId().toString());
     refreshTokenService.revokeAllForUser(user.getPublicId());

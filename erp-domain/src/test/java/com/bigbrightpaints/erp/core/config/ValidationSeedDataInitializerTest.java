@@ -36,6 +36,8 @@ import com.bigbrightpaints.erp.modules.admin.domain.ExportRequestRepository;
 import com.bigbrightpaints.erp.modules.admin.domain.SupportTicket;
 import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketRepository;
 import com.bigbrightpaints.erp.modules.admin.dto.ExportApprovalStatus;
+import com.bigbrightpaints.erp.modules.auth.domain.MfaRecoveryCode;
+import com.bigbrightpaints.erp.modules.auth.domain.MfaRecoveryCodeRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.auth.service.PasswordPolicy;
@@ -56,6 +58,7 @@ class ValidationSeedDataInitializerTest {
   @Mock private CompanyRepository companyRepository;
   @Mock private RoleRepository roleRepository;
   @Mock private UserAccountRepository userAccountRepository;
+  @Mock private MfaRecoveryCodeRepository mfaRecoveryCodeRepository;
   @Mock private DealerRepository dealerRepository;
   @Mock private AccountRepository accountRepository;
   @Mock private InvoiceRepository invoiceRepository;
@@ -127,6 +130,7 @@ class ValidationSeedDataInitializerTest {
             companyRepository,
             roleRepository,
             userAccountRepository,
+            mfaRecoveryCodeRepository,
             dealerRepository,
             accountRepository,
             invoiceRepository,
@@ -148,6 +152,7 @@ class ValidationSeedDataInitializerTest {
         companyRepository,
         roleRepository,
         userAccountRepository,
+        mfaRecoveryCodeRepository,
         dealerRepository,
         accountRepository,
         invoiceRepository,
@@ -166,6 +171,7 @@ class ValidationSeedDataInitializerTest {
             companyRepository,
             roleRepository,
             userAccountRepository,
+            mfaRecoveryCodeRepository,
             dealerRepository,
             accountRepository,
             invoiceRepository,
@@ -189,6 +195,7 @@ class ValidationSeedDataInitializerTest {
         companyRepository,
         roleRepository,
         userAccountRepository,
+        mfaRecoveryCodeRepository,
         dealerRepository,
         accountRepository,
         exportRequestRepository,
@@ -205,6 +212,7 @@ class ValidationSeedDataInitializerTest {
             companyRepository,
             roleRepository,
             userAccountRepository,
+            mfaRecoveryCodeRepository,
             dealerRepository,
             accountRepository,
             invoiceRepository,
@@ -242,6 +250,7 @@ class ValidationSeedDataInitializerTest {
             companyRepository,
             roleRepository,
             userAccountRepository,
+            mfaRecoveryCodeRepository,
             dealerRepository,
             accountRepository,
             invoiceRepository,
@@ -333,7 +342,12 @@ class ValidationSeedDataInitializerTest {
             .orElseThrow();
     assertThat(mfaAdmin.isMfaEnabled()).isTrue();
     assertThat(mfaAdmin.getMfaSecret()).isEqualTo("encrypted:JBSWY3DPEHPK3PXP");
-    assertThat(mfaAdmin.getMfaRecoveryCodeHashes())
+    @SuppressWarnings("unchecked")
+    ArgumentCaptor<List<MfaRecoveryCode>> recoveryCodes = ArgumentCaptor.forClass(List.class);
+    verify(mfaRecoveryCodeRepository, times(16)).deleteAllByUser(any(UserAccount.class));
+    verify(mfaRecoveryCodeRepository).saveAll(recoveryCodes.capture());
+    assertThat(recoveryCodes.getValue())
+        .extracting(MfaRecoveryCode::getCodeHash)
         .containsExactly("encoded:VALMFA0001", "encoded:VALMFA0002", "encoded:VALMFA0003");
 
     assertThat(users.getAllValues())

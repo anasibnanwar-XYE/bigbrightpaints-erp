@@ -15,6 +15,9 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.security.CryptoService;
+import com.bigbrightpaints.erp.core.security.TokenBlacklistService;
+import com.bigbrightpaints.erp.modules.auth.domain.MfaRecoveryCode;
+import com.bigbrightpaints.erp.modules.auth.domain.MfaRecoveryCodeRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.auth.exception.InvalidMfaException;
@@ -24,20 +27,35 @@ import com.bigbrightpaints.erp.test.support.TotpTestUtils;
 class MfaServiceTest {
 
   private UserAccountRepository repository;
+  private MfaRecoveryCodeRepository mfaRecoveryCodeRepository;
   private PasswordEncoder passwordEncoder;
   private Clock clock;
   private CryptoService cryptoService;
+  private TokenBlacklistService tokenBlacklistService;
+  private RefreshTokenService refreshTokenService;
   private MfaService mfaService;
 
   @BeforeEach
   void setUp() {
     repository = mock(UserAccountRepository.class);
+    mfaRecoveryCodeRepository = mock(MfaRecoveryCodeRepository.class);
     passwordEncoder = mock(PasswordEncoder.class);
     cryptoService = mock(CryptoService.class);
+    tokenBlacklistService = mock(TokenBlacklistService.class);
+    refreshTokenService = mock(RefreshTokenService.class);
     clock = Clock.fixed(Instant.parse("2024-01-01T00:00:00Z"), ZoneOffset.UTC);
     when(cryptoService.encrypt(anyString())).thenAnswer(invocation -> invocation.getArgument(0));
     when(cryptoService.decrypt(anyString())).thenAnswer(invocation -> invocation.getArgument(0));
-    mfaService = new MfaService(repository, passwordEncoder, cryptoService, "BigBright ERP", clock);
+    mfaService =
+        new MfaService(
+            repository,
+            mfaRecoveryCodeRepository,
+            passwordEncoder,
+            cryptoService,
+            tokenBlacklistService,
+            refreshTokenService,
+            "BigBright ERP",
+            clock);
   }
 
   @Test
@@ -77,27 +95,30 @@ class MfaServiceTest {
   @Test
   void disable_acceptsRecoveryCodeAndClearsEnrollment() {
     UserAccount user = userWithSecret();
-    user.setMfaRecoveryCodeHashes(java.util.List.of("hash-1"));
+    MfaRecoveryCode code = new MfaRecoveryCode(user, "hash-1");
+    when(mfaRecoveryCodeRepository.findUnusedByUser(user)).thenReturn(java.util.List.of(code));
     when(passwordEncoder.matches("RECOVERY1", "hash-1")).thenReturn(true);
 
     mfaService.disable(user, null, "RECOVERY1");
 
     assertThat(user.isMfaEnabled()).isFalse();
     assertThat(user.getMfaSecret()).isNull();
-    assertThat(user.getMfaRecoveryCodeHashes()).isEmpty();
+    verify(mfaRecoveryCodeRepository).deleteAllByUser(user);
     verify(repository).save(user);
   }
 
   @Test
   void verifyDuringLogin_acceptsRecoveryCodeAndPersistsConsumption() {
     UserAccount user = userWithSecret();
-    user.setMfaRecoveryCodeHashes(java.util.List.of("hash-1"));
+    MfaRecoveryCode code = new MfaRecoveryCode(user, "hash-1");
+    when(mfaRecoveryCodeRepository.findUnusedByUser(user)).thenReturn(java.util.List.of(code));
     when(passwordEncoder.matches("RECOVERY1", "hash-1")).thenReturn(true);
 
     assertDoesNotThrow(() -> mfaService.verifyDuringLogin(user, null, " RECOVERY1 "));
 
     verify(repository).save(user);
-    assertThat(user.getMfaRecoveryCodeHashes()).isEmpty();
+    verify(mfaRecoveryCodeRepository).save(code);
+    assertThat(code.isUsed()).isTrue();
   }
 
   @Test

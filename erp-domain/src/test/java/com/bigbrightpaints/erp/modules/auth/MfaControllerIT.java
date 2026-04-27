@@ -17,6 +17,7 @@ import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.http.*;
 import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
 
+import com.bigbrightpaints.erp.modules.auth.domain.MfaRecoveryCodeRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
@@ -31,6 +32,7 @@ public class MfaControllerIT extends AbstractIntegrationTest {
   @Autowired private TestRestTemplate rest;
 
   @Autowired private UserAccountRepository userAccountRepository;
+  @Autowired private MfaRecoveryCodeRepository mfaRecoveryCodeRepository;
 
   @BeforeEach
   void seedUser() {
@@ -40,8 +42,8 @@ public class MfaControllerIT extends AbstractIntegrationTest {
             USER_EMAIL, USER_PASSWORD, "MFA User", COMPANY_CODE, List.of("ROLE_ADMIN"));
     user.setMfaEnabled(false);
     user.setMfaSecret(null);
-    user.setMfaRecoveryCodeHashes(List.of());
-    userAccountRepository.save(user);
+    UserAccount saved = userAccountRepository.save(user);
+    mfaRecoveryCodeRepository.deleteAllByUser(saved);
   }
 
   private void configureRestTemplate() {
@@ -111,9 +113,8 @@ public class MfaControllerIT extends AbstractIntegrationTest {
     assertThat(afterSetup.isMfaEnabled()).isFalse();
     assertThat(afterSetup.getMfaSecret()).isNotBlank();
     assertThat(afterSetup.getMfaSecret()).isNotEqualTo(setup.secret());
-    assertThat(afterSetup.getMfaRecoveryCodeHashes()).hasSize(setup.recoveryCodes().size());
-    assertThat(afterSetup.getMfaRecoveryCodeHashes())
-        .doesNotContainAnyElementsOf(setup.recoveryCodes());
+    assertThat(unusedRecoveryHashes(afterSetup)).hasSize(setup.recoveryCodes().size());
+    assertThat(unusedRecoveryHashes(afterSetup)).doesNotContainAnyElementsOf(setup.recoveryCodes());
 
     ResponseEntity<Map> invalidActivate =
         postWithBearer("/api/v1/auth/mfa/activate", Map.of("code", "abc123"), token);
@@ -163,7 +164,7 @@ public class MfaControllerIT extends AbstractIntegrationTest {
     UserAccount afterDisable = scopedUser();
     assertThat(afterDisable.isMfaEnabled()).isFalse();
     assertThat(afterDisable.getMfaSecret()).isNull();
-    assertThat(afterDisable.getMfaRecoveryCodeHashes()).isEmpty();
+    assertThat(unusedRecoveryHashes(afterDisable)).isEmpty();
   }
 
   @Test
@@ -176,18 +177,18 @@ public class MfaControllerIT extends AbstractIntegrationTest {
                 .getStatusCode())
         .isEqualTo(HttpStatus.OK);
 
-    List<String> originalHashes = scopedUser().getMfaRecoveryCodeHashes();
+    List<String> originalHashes = unusedRecoveryHashes(scopedUser());
     ResponseEntity<Map> missingProof =
         postWithBearer("/api/v1/auth/mfa/recovery-codes/regenerate", Map.of(), token);
     assertThat(missingProof.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-    assertThat(scopedUser().getMfaRecoveryCodeHashes()).isEqualTo(originalHashes);
+    assertThat(unusedRecoveryHashes(scopedUser())).isEqualTo(originalHashes);
     assertThat(String.valueOf(missingProof.getBody())).doesNotContain("recoveryCodes");
 
     ResponseEntity<Map> invalidProof =
         postWithBearer(
             "/api/v1/auth/mfa/recovery-codes/regenerate", Map.of("code", "abc123"), token);
     assertThat(invalidProof.getStatusCode()).isIn(HttpStatus.BAD_REQUEST, HttpStatus.UNAUTHORIZED);
-    assertThat(scopedUser().getMfaRecoveryCodeHashes()).isEqualTo(originalHashes);
+    assertThat(unusedRecoveryHashes(scopedUser())).isEqualTo(originalHashes);
     assertThat(String.valueOf(invalidProof.getBody())).doesNotContain("recoveryCodes");
 
     ResponseEntity<Map> regenerate =
@@ -202,7 +203,7 @@ public class MfaControllerIT extends AbstractIntegrationTest {
             .stream().map(Object::toString).toList();
     assertThat(regeneratedCodes).hasSize(setup.recoveryCodes().size());
     assertThat(regeneratedCodes).doesNotContainAnyElementsOf(setup.recoveryCodes());
-    assertThat(scopedUser().getMfaRecoveryCodeHashes())
+    assertThat(unusedRecoveryHashes(scopedUser()))
         .doesNotContainAnyElementsOf(regeneratedCodes)
         .hasSize(regeneratedCodes.size());
 
@@ -323,6 +324,12 @@ public class MfaControllerIT extends AbstractIntegrationTest {
     return userAccountRepository
         .findByEmailIgnoreCaseAndAuthScopeCodeIgnoreCase(USER_EMAIL, COMPANY_CODE)
         .orElseThrow();
+  }
+
+  private List<String> unusedRecoveryHashes(UserAccount user) {
+    return mfaRecoveryCodeRepository.findUnusedByUser(user).stream()
+        .map(code -> code.getCodeHash())
+        .toList();
   }
 
   @SuppressWarnings("unchecked")

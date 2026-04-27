@@ -30,7 +30,6 @@ class RefreshTokenServiceTest extends AbstractIntegrationTest {
     String token = refreshTokenService.issue(userPublicId, "ACME", expiresAt);
 
     RefreshToken stored = refreshTokenRepository.findAll().getFirst();
-    assertThat(stored.getToken()).isNull();
     assertThat(stored.getTokenDigest()).isNotNull();
     assertThat(stored.getUserPublicId()).isEqualTo(userPublicId);
     assertThat(stored.getAuthScopeCode()).isEqualTo("ACME");

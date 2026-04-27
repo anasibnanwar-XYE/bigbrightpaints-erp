@@ -3,11 +3,9 @@ package com.bigbrightpaints.erp.modules.auth.domain;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Instant;
-import java.util.List;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 
@@ -53,21 +51,11 @@ class UserAccountTest {
   }
 
   @Test
-  void recoveryCodeHelpers_handleEmptyAndPresentValues() {
+  void setAuthScopeCode_normalizesWhitespaceAndCase() {
     UserAccount user = new UserAccount("user@example.com", "MOCK", "hash", "User");
 
-    assertThat(user.getMfaRecoveryCodeHashes()).isEmpty();
+    user.setAuthScopeCode(" acme ");
 
-    user.setMfaRecoveryCodeHashes(List.of("hash-1", "hash-2"));
-    assertThat(user.getMfaRecoveryCodeHashes()).containsExactly("hash-1", "hash-2");
-
-    user.removeRecoveryCodeHash("hash-1");
-    assertThat(user.getMfaRecoveryCodeHashes()).containsExactly("hash-2");
-
-    user.removeRecoveryCodeHash("missing");
-    assertThat(user.getMfaRecoveryCodeHashes()).containsExactly("hash-2");
-
-    user.setMfaRecoveryCodeHashes(List.of());
-    assertThat(ReflectionTestUtils.getField(user, "mfaRecoveryCodes")).isNull();
+    assertThat(user.getAuthScopeCode()).isEqualTo("ACME");
   }
 }

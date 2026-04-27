@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Repository for MFA recovery code operations.
@@ -35,6 +36,7 @@ public interface MfaRecoveryCodeRepository extends JpaRepository<MfaRecoveryCode
    * Delete all recovery codes for a user (used when disabling MFA).
    */
   @Modifying
+  @Transactional
   @Query("DELETE FROM MfaRecoveryCode rc WHERE rc.user = :user")
   void deleteAllByUser(@Param("user") UserAccount user);
 
@@ -48,6 +50,7 @@ public interface MfaRecoveryCodeRepository extends JpaRepository<MfaRecoveryCode
    * Clean up old used recovery codes (for maintenance).
    */
   @Modifying
+  @Transactional
   @Query("DELETE FROM MfaRecoveryCode rc WHERE rc.usedAt IS NOT NULL AND rc.usedAt < :cutoffDate")
   int deleteUsedCodesBefore(@Param("cutoffDate") LocalDateTime cutoffDate);
 }

@@ -236,21 +236,22 @@ class AuthPasswordResetPublicContractIT extends AbstractIntegrationTest {
   }
 
   @Test
-  void resetEndpoint_rejectsLegacyRawTokenStoredRows() {
-    String targetEmail = "legacy.reset.user@bbp.com";
-    UserAccount user =
-        dataSeeder.ensureUser(
-            targetEmail,
-            "Admin@12345",
-            "Legacy Reset User",
-            PRIMARY_COMPANY,
-            List.of("ROLE_SUPER_ADMIN"));
+  void resetEndpoint_hasNoLegacyRawTokenColumnAndRejectsRawOnlyCandidates() {
     String rawLegacyToken = "legacy-raw-reset-token";
-    passwordResetTokenRepository.saveAndFlush(
-        new PasswordResetToken(user, rawLegacyToken, Instant.now().plusSeconds(600)));
+    Integer rawTokenColumnCount =
+        jdbcTemplate.queryForObject(
+            """
+            select count(*)
+              from information_schema.columns
+             where table_schema = 'public'
+               and table_name = 'password_reset_tokens'
+               and column_name = 'token'
+            """,
+            Integer.class);
 
     ResponseEntity<Map> resetResponse = postReset(rawLegacyToken, "NewPass123!");
 
+    assertThat(rawTokenColumnCount).isZero();
     assertThat(resetResponse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
     assertThat(resetResponse.getBody()).isNotNull();
     assertThat(resetResponse.getBody().get("message")).isEqualTo("Invalid or expired token");
@@ -285,17 +286,20 @@ class AuthPasswordResetPublicContractIT extends AbstractIntegrationTest {
     String digest = passwordResetDigest(resetToken);
     Integer digestRowCount =
         jdbcTemplate.queryForObject(
-            "select count(*) from password_reset_tokens where user_id = ? and token_digest = ? and"
-                + " token is null",
+            "select count(*) from password_reset_tokens where user_id = ? and token_digest = ?",
             Integer.class,
             user.getId(),
             digest);
     Integer rawTokenRowCount =
         jdbcTemplate.queryForObject(
-            "select count(*) from password_reset_tokens where user_id = ? and token = ?",
-            Integer.class,
-            user.getId(),
-            resetToken);
+            """
+            select count(*)
+              from information_schema.columns
+             where table_schema = 'public'
+               and table_name = 'password_reset_tokens'
+               and column_name = 'token'
+            """,
+            Integer.class);
     assertThat(digestRowCount).isEqualTo(1);
     assertThat(rawTokenRowCount).isEqualTo(0);
 

@@ -8,7 +8,6 @@ import java.security.SecureRandom;
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 
@@ -26,6 +25,8 @@ import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.security.CryptoService;
 import com.bigbrightpaints.erp.core.security.TokenBlacklistService;
+import com.bigbrightpaints.erp.modules.auth.domain.MfaRecoveryCode;
+import com.bigbrightpaints.erp.modules.auth.domain.MfaRecoveryCodeRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.auth.exception.InvalidMfaException;
@@ -48,6 +49,7 @@ public class MfaService {
   private static final int[] BASE32_LOOKUP = buildLookup();
 
   private final UserAccountRepository userAccountRepository;
+  private final MfaRecoveryCodeRepository mfaRecoveryCodeRepository;
   private final PasswordEncoder passwordEncoder;
   private final CryptoService cryptoService;
   private final TokenBlacklistService tokenBlacklistService;
@@ -59,6 +61,7 @@ public class MfaService {
   @Autowired
   public MfaService(
       UserAccountRepository userAccountRepository,
+      MfaRecoveryCodeRepository mfaRecoveryCodeRepository,
       PasswordEncoder passwordEncoder,
       CryptoService cryptoService,
       TokenBlacklistService tokenBlacklistService,
@@ -66,6 +69,7 @@ public class MfaService {
       @Value("${security.mfa.issuer:BigBright ERP}") String issuer) {
     this(
         userAccountRepository,
+        mfaRecoveryCodeRepository,
         passwordEncoder,
         cryptoService,
         tokenBlacklistService,
@@ -76,6 +80,7 @@ public class MfaService {
 
   MfaService(
       UserAccountRepository userAccountRepository,
+      MfaRecoveryCodeRepository mfaRecoveryCodeRepository,
       PasswordEncoder passwordEncoder,
       CryptoService cryptoService,
       TokenBlacklistService tokenBlacklistService,
@@ -83,6 +88,7 @@ public class MfaService {
       String issuer,
       Clock clock) {
     this.userAccountRepository = userAccountRepository;
+    this.mfaRecoveryCodeRepository = mfaRecoveryCodeRepository;
     this.passwordEncoder = passwordEncoder;
     this.cryptoService = cryptoService;
     this.tokenBlacklistService = tokenBlacklistService;
@@ -95,12 +101,11 @@ public class MfaService {
   public MfaEnrollment beginEnrollment(UserAccount user) {
     String secret = generateSecret();
     List<String> recoveryCodes = generateRecoveryCodes();
-    List<String> hashed = recoveryCodes.stream().map(passwordEncoder::encode).toList();
     // Encrypt the MFA secret before storing
     user.setMfaSecret(cryptoService.encrypt(secret));
     user.setMfaEnabled(false);
-    user.setMfaRecoveryCodeHashes(hashed);
     userAccountRepository.save(user);
+    replaceRecoveryCodes(user, recoveryCodes);
     return new MfaEnrollment(secret, buildOtpAuthUri(user, secret), recoveryCodes);
   }
 
@@ -156,7 +161,7 @@ public class MfaService {
       throw new ApplicationException(ErrorCode.AUTH_MFA_INVALID, "Invalid MFA verification data");
     }
     List<String> recoveryCodes = generateRecoveryCodes();
-    user.setMfaRecoveryCodeHashes(recoveryCodes.stream().map(passwordEncoder::encode).toList());
+    replaceRecoveryCodes(user, recoveryCodes);
     userAccountRepository.save(user);
     revokeActiveSessions(user);
     return recoveryCodes;
@@ -226,17 +231,27 @@ public class MfaService {
     if (!StringUtils.hasText(candidate)) {
       return false;
     }
-    List<String> hashes = new ArrayList<>(user.getMfaRecoveryCodeHashes());
-    Iterator<String> iterator = hashes.iterator();
-    while (iterator.hasNext()) {
-      String hash = iterator.next();
-      if (passwordEncoder.matches(candidate, hash)) {
-        iterator.remove();
-        user.setMfaRecoveryCodeHashes(hashes);
+    List<MfaRecoveryCode> codes = mfaRecoveryCodeRepository.findUnusedByUser(user);
+    for (MfaRecoveryCode code : codes) {
+      if (passwordEncoder.matches(candidate, code.getCodeHash())) {
+        code.markAsUsed();
+        mfaRecoveryCodeRepository.save(code);
         return true;
       }
     }
     return false;
+  }
+
+  private void replaceRecoveryCodes(UserAccount user, List<String> recoveryCodes) {
+    mfaRecoveryCodeRepository.deleteAllByUser(user);
+    if (recoveryCodes == null || recoveryCodes.isEmpty()) {
+      return;
+    }
+    List<MfaRecoveryCode> hashedCodes =
+        recoveryCodes.stream()
+            .map(code -> new MfaRecoveryCode(user, passwordEncoder.encode(code)))
+            .toList();
+    mfaRecoveryCodeRepository.saveAll(hashedCodes);
   }
 
   private void revokeActiveSessions(UserAccount user) {
@@ -310,7 +325,7 @@ public class MfaService {
   private void clearMfa(UserAccount user) {
     user.setMfaEnabled(false);
     user.setMfaSecret(null);
-    user.setMfaRecoveryCodeHashes(List.of());
+    mfaRecoveryCodeRepository.deleteAllByUser(user);
   }
 
   public record MfaEnrollment(String secret, String qrUri, List<String> recoveryCodes) {}

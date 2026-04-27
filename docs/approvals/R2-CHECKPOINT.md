@@ -2,6 +2,86 @@
 
 Last reviewed: 2026-04-28
 
+## Current Packet Evidence — iam-core-schema-and-model-hard-cut
+
+## Scope
+- Feature: `iam-core-schema-and-model-hard-cut`
+- Branch: codex/identity-account-hardcut-20260427 (base: origin/main)
+- PR: pending
+- Review candidate:
+  - add forward-only Flyway v2 migration `V190__iam_core_schema_and_model_hard_cut.sql` for canonical IAM account, profile/contact, credential, MFA-factor, session/device, and security-event tables
+  - add JPA entities/repositories for the IAM core model
+  - remove raw refresh/reset token columns from active v2 schema and keep digest/verifier columns mandatory
+  - move MFA recovery-code runtime storage off `app_users.mfa_recovery_codes` into the canonical verifier table
+  - keep old v2 migration files unchanged; only a new v2 migration is added
+- Why this is R2: this packet changes high-risk identity schema, credential verifier storage, MFA verifier storage, and auth/session model foundations.
+
+## Risk Trigger
+- Triggered by:
+  - `erp-domain/src/main/resources/db/migration_v2/V190__iam_core_schema_and_model_hard_cut.sql`
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/domain/**`
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/service/MfaService.java`
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/admin/service/AdminUserService.java`
+  - IAM schema/model and migration tests under `erp-domain/src/test/java`
+- Contract surfaces affected:
+  - `VAL-MIG-001`, `VAL-CROSS-005`, `VAL-OWN-001`, `VAL-SESS-016`
+  - Flyway v2 migration lane and verifier-only refresh/reset/MFA storage
+- Failure mode if wrong:
+  - clean v2 migration could fail or rewrite applied migrations
+  - raw refresh/reset tokens or delimited MFA recovery-code storage could remain active
+  - identity ownership boundaries could remain overloaded in one table
+  - downstream auth/session/MFA features could bind to the wrong canonical storage model
+
+## Approval Authority
+- Mode: orchestrator
+- Approver: Droid mission orchestrator
+- Canary owner: Droid mission orchestrator
+- Approval status: branch-local integration candidate pending PR review
+- Basis: the packet implements the accepted schema-core hard cut with a new migration only, digest/verifier-only storage constraints, and focused schema/runtime regression tests without widening tenant or privilege boundaries.
+
+## Escalation Decision
+- Human escalation required: no
+- Reason: this is the explicitly planned forward-only schema/model packet, old migrations are not edited, and the runtime changes remove secret-bearing storage rather than adding privileges or destructive tenant-boundary behavior.
+
+## Rollback Owner
+- Owner: Droid mission orchestrator
+- Rollback method:
+  - before merge: revert this packet and rerun compile, migration/schema tests, focused IAM tests, High-Risk Change Control, and OpenAPI guard
+  - after merge: revert through a new remediation packet and rerun the same v2 migration/contract gates
+- Rollback trigger:
+  - Flyway v2 migration fails on a clean database
+  - any older v2 migration file is checksum-changed
+  - raw refresh/reset token columns remain active or are reintroduced
+  - `app_users.mfa_recovery_codes` remains active or recovery-code login/regeneration stops consuming verifier rows
+  - IAM ownership/schema contract tests fail
+
+## Expiry
+- Valid until: 2026-05-05
+- Re-evaluate if: scope expands into public route shape changes, broader credential reset semantics, first-class session API behavior, MFA factor API changes, RBAC policy, or tenant boundary changes.
+
+## Verification Evidence
+- Scope-to-evidence mapping:
+  - Forward-only migration: `V190__iam_core_schema_and_model_hard_cut.sql` is the only v2 migration added; old migration files are unchanged.
+  - Migration/schema proof: `TS_IamCoreSchemaAndModelHardCutMigrationContractTest` and `IamCoreSchemaAndModelHardCutMigrationIT` assert canonical IAM tables, ownership split, and verifier-only storage.
+  - Runtime verifier proof: `RefreshTokenServiceTest`, `AuthPasswordResetPublicContractIT`, and `MfaControllerIT` verify digest-only refresh/reset behavior and canonical MFA recovery-code verifier consumption/regeneration.
+  - Model proof: new `Iam*` entities/repositories map the account/profile/contact/credentials/MFA/session/security-event schema.
+- Commands run:
+  - `mission init.sh`
+  - `cd /Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/identity-account-hardcut-20260427 && bash scripts/guard_openapi_contract_drift.sh && cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='AuthPasswordResetPublicContractIT,AdminUserSecurityIT,AuthControllerIT,AuthTenantAuthorityIT,TenantRuntimeEnforcementAuthIT,AuthDisabledUserTokenIT,MfaControllerIT' test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -q -DskipTests test-compile`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='TS_IamCoreSchemaAndModelHardCutMigrationContractTest,IamCoreSchemaAndModelHardCutMigrationIT,MfaServiceTest,RefreshTokenServiceTest' test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='MfaControllerIT,AuthPasswordResetPublicContractIT,AdminUserSecurityIT' test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn spotless:apply`
+- Result summary:
+  - baseline IAM characterization passed before changes
+  - clean Flyway v2 startup reached version `v190` during integration tests
+  - focused schema/model tests passed with 18 tests
+  - focused MFA/password reset/admin security regression tests passed with 42 tests
+  - no raw JWTs, refresh tokens, reset tokens, MFA secrets, recovery codes, or hashes were recorded in this checkpoint
+
+---
+
+
 ## Scope
 - Feature: `contract-routing-scrutiny-remediation-round2`
 - Branch: codex/identity-account-hardcut-20260427 (base: origin/main)
@@ -78,7 +158,7 @@ Last reviewed: 2026-04-28
   - Session invalidation proof: `MfaControllerIT` now verifies two pre-change sessions can call `GET /api/v1/auth/me` before regeneration, then both old bearer tokens and both old refresh tokens fail after successful regeneration.
   - Stale admin lifecycle cleanup: `docs/ERP-DOD-BIBLE.md`, `docs/code-review/flows/admin-governance.md`, frontend update docs, and repo/mission library guidance now point to canonical status, lock/unlock, session-revoke, force-reset, and MFA-disable routes rather than retired `suspend`, `unsuspend`, and `DELETE /api/v1/admin/users/{userId}` aliases.
 - Commands run:
-  - /Users/anas/.factory/missions/7ef22e70-61c7-4cdf-b7a7-1c48f4127853/init.sh
+  - mission init.sh
   - `cd /Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/identity-account-hardcut-20260427 && bash scripts/guard_openapi_contract_drift.sh && cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='AuthPasswordResetPublicContractIT,AdminUserSecurityIT,AuthControllerIT,AuthTenantAuthorityIT,TenantRuntimeEnforcementAuthIT,AuthDisabledUserTokenIT,MfaControllerIT' test`
   - `cd erp-domain && MIGRATION_SET=v2 mvn -q -DskipTests compile`
   - `cd erp-domain && MIGRATION_SET=v2 mvn spotless:apply`

@@ -2,6 +2,18 @@
 
 Last reviewed: 2026-04-16
 
+## 2026-04-28 — `V190__iam_core_schema_and_model_hard_cut.sql`
+
+- **Purpose:** add the forward-only Flyway v2 IAM core schema/model hard cut. `V190` creates canonical IAM account, profile/contact, credential, MFA-factor, session/device, and security-event tables; backfills them from the existing scoped auth model; removes raw refresh/reset token columns; and removes the legacy delimited `app_users.mfa_recovery_codes` storage after copying verifier hashes into the canonical recovery-code table.
+- **Release-guard posture:** this is a high-risk identity/security schema cut on the active Flyway v2 track. Runtime code and schema must move together; downstream auth/MFA/session packets should use the canonical IAM model and must not reintroduce raw token or plaintext recovery-code storage.
+- **Forward plan:** apply `V190__iam_core_schema_and_model_hard_cut.sql` with the schema-core IAM packet, keep old v2 migrations unchanged, then verify clean Flyway v2 migration, digest-only refresh/reset persistence, canonical MFA recovery-code verifier consumption, and the IAM ownership split across account/profile/contact/credential/MFA/session/security-event tables.
+- **Dry-run commands:**
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -q -DskipTests compile`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='TS_IamCoreSchemaAndModelHardCutMigrationContractTest,IamCoreSchemaAndModelHardCutMigrationIT,MfaServiceTest,RefreshTokenServiceTest' test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='MfaControllerIT,AuthPasswordResetPublicContractIT,AdminUserSecurityIT' test`
+  - `bash ci/check-high-risk-changes.sh`
+- **Rollback strategy:** treat `V190` as a coordinated app-and-schema cut. If rollout must be abandoned after execution, keep an IAM-core-compatible backend live or restore the database from a pre-`V190` snapshot/PITR before reverting application code. Do not hand-add raw token columns or `app_users.mfa_recovery_codes`; that would reintroduce secret-bearing storage the hard cut intentionally removes.
+
 ## 2026-04-26 — `accounting-centralization-v2-schema-hard-cut`
 
 - **Purpose:** add the Flyway v2 schema contract for the accounting centralization hard cut:
