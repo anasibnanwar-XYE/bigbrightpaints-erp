@@ -149,7 +149,6 @@ All other endpoints require authentication. Swagger/OpenAPI access is further re
 | Method | Path | Access |
 | --- | --- | --- |
 | GET/HEAD | `/api/v1/auth/me` | Read-only |
-| GET/HEAD | `/api/v1/auth/profile` | Read-only |
 | POST | `/api/v1/auth/password/change` | Mutation |
 | POST | `/api/v1/auth/logout` | Mutation |
 | POST | `/api/v1/auth/refresh-token` | Mutation |

@@ -10,11 +10,11 @@ Last reviewed: 2026-04-28
   - enforce `VAL-ROUTE-001` canonical identity route disposition for auth, My Account, MFA, sessions, and Users & Access admin route inventory
   - preserve current canonical login/refresh/logout/me/password/MFA/admin-user envelopes where kept
   - add narrow canonical route gaps for self profile/contact/security/session and admin lock/unlock/session/security-event/assignable-role surfaces
-  - retire duplicate admin suspend/unsuspend and hard-delete user aliases from OpenAPI/runtime mutation paths
+  - retire duplicate admin `suspend`, `unsuspend`, and `DELETE /api/v1/admin/users/{userId}` aliases from OpenAPI/runtime mutation paths
   - update route-disposition tests to normalize method + concrete URI behavior rather than treating OpenAPI parameter names such as `{id}` and `{userId}` as distinct runtime routes
   - require fresh TOTP or unused recovery-code proof before `POST /api/v1/auth/mfa/recovery-codes/regenerate` rotates recovery codes
   - revoke affected access-session markers and refresh tokens after successful recovery-code regeneration
-  - remove stale retired admin suspend/unsuspend/hard-delete lifecycle guidance from the scoped docs/library surfaces
+  - remove stale retired admin `suspend`, `unsuspend`, and `DELETE /api/v1/admin/users/{userId}` lifecycle guidance from the scoped docs/library surfaces
 - Why this is R2: this packet changes high-risk auth/admin route exposure, MFA verifier behavior, session/token revocation behavior, and tenant-admin user-control documentation in modules/auth and route-contract docs.
 
 ## Risk Trigger
@@ -76,7 +76,7 @@ Last reviewed: 2026-04-28
   - Tenant/authz proof: focused admin security tests rechecked tenant-admin-only access, cross-company masking, protected targets, and superadmin tenant-workflow denial.
   - MFA regeneration proof: `MfaControllerIT` now verifies missing and invalid proof do not rotate or expose recovery codes, valid TOTP proof returns a replacement set, old codes fail, and new codes work once.
   - Session invalidation proof: `MfaControllerIT` now verifies two pre-change sessions can call `GET /api/v1/auth/me` before regeneration, then both old bearer tokens and both old refresh tokens fail after successful regeneration.
-  - Stale admin lifecycle cleanup: `docs/ERP-DOD-BIBLE.md`, `docs/code-review/flows/admin-governance.md`, frontend update docs, and repo/mission library guidance now point to canonical status, lock/unlock, session-revoke, force-reset, and MFA-disable routes rather than retired suspend/unsuspend/hard-delete aliases.
+  - Stale admin lifecycle cleanup: `docs/ERP-DOD-BIBLE.md`, `docs/code-review/flows/admin-governance.md`, frontend update docs, and repo/mission library guidance now point to canonical status, lock/unlock, session-revoke, force-reset, and MFA-disable routes rather than retired `suspend`, `unsuspend`, and `DELETE /api/v1/admin/users/{userId}` aliases.
 - Commands run:
   - /Users/anas/.factory/missions/7ef22e70-61c7-4cdf-b7a7-1c48f4127853/init.sh
   - `cd /Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/identity-account-hardcut-20260427 && bash scripts/guard_openapi_contract_drift.sh && cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='AuthPasswordResetPublicContractIT,AdminUserSecurityIT,AuthControllerIT,AuthTenantAuthorityIT,TenantRuntimeEnforcementAuthIT,AuthDisabledUserTokenIT,MfaControllerIT' test`

@@ -22,7 +22,7 @@ This portal is the platform-owner control plane. It is the only frontend shell t
 ## What does not belong here
 
 - Tenant approval inbox
-- Tenant user CRUD
+- Tenant Users & Access lifecycle controls
 - Any accounting, sales, factory, or dealer workflow
 - Any route under `/api/v1/admin/**`, `/api/v1/accounting/**`, `/api/v1/factory/**`, or `/api/v1/dealer-portal/**`
 

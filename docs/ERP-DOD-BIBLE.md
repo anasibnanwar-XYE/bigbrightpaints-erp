@@ -377,7 +377,7 @@ A login/tenant selection flow is considered complete when:
 
 #### Must-Change-Password Corridor
 - **Scenario**: Admin provisions user with `mustChangePassword=true`
-- **Behavior**: `MustChangePasswordCorridorFilter` restricts access to: `/auth/me`, `/auth/profile`, `/auth/password/change`, `/auth/logout`, `/auth/refresh-token`.
+- **Behavior**: `MustChangePasswordCorridorFilter` restricts access to: `/auth/me`, `/auth/password/change`, `/auth/logout`, `/auth/refresh-token`.
 - **All other endpoints**: Return 403 with `PASSWORD_CHANGE_REQUIRED`.
 
 #### Tenant Lifecycle Transition During Active Session
@@ -433,8 +433,6 @@ A login/tenant selection flow is considered complete when:
 | `/api/v1/auth/mfa/setup` | POST | Authenticated | `MfaController` |
 | `/api/v1/auth/mfa/activate` | POST | Authenticated | `MfaController` |
 | `/api/v1/auth/mfa/disable` | POST | Authenticated | `MfaController` |
-| `/api/v1/auth/profile` | GET | Authenticated | `UserProfileController` |
-| `/api/v1/auth/profile` | PUT | Authenticated | `UserProfileController` |
 | `/api/v1/companies` | GET | `ROLE_SUPER_ADMIN` or `ROLE_ADMIN` or `ROLE_ACCOUNTING` or `ROLE_SALES` | `CompanyController` |
 | `/api/v1/companies/{id}` | DELETE | `ROLE_ADMIN` (always denied) | `CompanyController` |
 | `/api/v1/superadmin/**` | Various | `ROLE_SUPER_ADMIN` | `SuperAdminController` |
@@ -644,7 +642,7 @@ rbac ──→ core/security (CompanyContextHolder — ThreadLocal read)
 
 #### Shared Entity Risks
 
-- **`UserAccount`**: Mutated by auth (login, lockout, password), admin (user CRUD), company (tenant provisioning). No single module owner.
+- **`UserAccount`**: Mutated by auth (login, lockout, password), admin Users & Access controls (list/read/detail/create/update allowed identity fields, status disable/reactivate, lock/unlock, force password reset, MFA reset/disable, session revocation, role assignment, and security-event review), and company (tenant provisioning). No single module owner.
 - **`Company`**: Mutated by company (lifecycle, limits, modules), auth (during onboarding). Company module is primary owner.
 - **`Role`/`Permission`**: Mutated by rbac (synchronization), read by auth (every login). RBAC module is primary owner.
 
@@ -757,8 +755,8 @@ Allow administrators to provision user accounts, assign roles, and manage the fu
 
 | Actor | Role | Portal | Capability in This Flow |
 |-------|------|--------|------------------------|
-| Super Admin | `ROLE_SUPER_ADMIN` | Platform control plane | Full user CRUD across all tenants; can assign any role including ROLE_ADMIN and ROLE_SUPER_ADMIN; can transfer users between companies |
-| Admin | `ROLE_ADMIN` | Admin portal | User CRUD within own tenant only; cannot assign ROLE_ADMIN or ROLE_SUPER_ADMIN; cannot transfer users to other companies |
+| Super Admin | `ROLE_SUPER_ADMIN` | Platform control plane | Tenant onboarding/lifecycle/limits/modules/support through `/api/v1/superadmin/**`; not a tenant Users & Access actor on `/api/v1/admin/users/**` |
+| Admin | `ROLE_ADMIN` | Admin portal | Canonical Users & Access within own tenant: list/read/detail/create/update allowed identity fields, status disable/reactivate, lock/unlock, force password reset, MFA reset/disable, session revocation, role assignment, and security-event review under actor/tenant policy; cannot assign protected roles or transfer users to other companies |
 | Accounting | `ROLE_ACCOUNTING` | Admin portal | No user management capability (read-only viewer of own profile) |
 | Factory | `ROLE_FACTORY` | Admin portal | No user management capability |
 | Sales | `ROLE_SALES` | Admin portal | No user management capability |
@@ -866,9 +864,9 @@ Allow administrators to provision user accounts, assign roles, and manage the fu
    a. Resolves the user with tenant-scoped pessimistic lock
    b. Sets or clears lock state, revoking sessions on lock
    c. Logs `USER_LOCKED` or `USER_UNLOCKED`
-5. Admin calls `DELETE /api/v1/admin/users/{userId}/sessions` to revoke active sessions without deleting the user
+5. Admin calls `DELETE /api/v1/admin/users/{userId}/sessions` to revoke active sessions without changing the user's lifecycle status
 
-Retired `suspend`, `unsuspend`, and hard-delete aliases are absent/non-mutating.
+Retired `suspend`, `unsuspend`, and `DELETE /api/v1/admin/users/{userId}` aliases are absent/non-mutating.
 
 #### Role Synchronization (System Path)
 
@@ -921,7 +919,7 @@ Retired `suspend`, `unsuspend`, and hard-delete aliases are absent/non-mutating.
                               └──────────┘
 ```
 
-**Irreversible transitions**: Must-Change-Password → Active (password change cannot be undone), Not Exists → Must-Change-Password (creation). Retired suspend, unsuspend, and hard-delete user aliases are not part of the canonical lifecycle.
+**Irreversible transitions**: Must-Change-Password → Active (password change cannot be undone), Not Exists → Must-Change-Password (creation). Retired `suspend`, `unsuspend`, and `DELETE /api/v1/admin/users/{userId}` aliases are not part of the canonical lifecycle.
 
 #### Role Assignment States
 
@@ -1039,7 +1037,7 @@ All user management operations produce audit events via `AuditService`:
 | **Role deletion with assigned users**: Role removed from user set | Not a "delete role" — roles are just detached from user; `Role` entity persists |
 | **Duplicate email across tenants**: Same email in different companies | Allowed — uniqueness is per `(email, auth_scope_code)` pair |
 | **Concurrent permission changes**: Two admins update same user | Pessimistic locking (`lockById`/`lockByIdAndCompanyId`) serializes updates |
-| **User creation during HOLD state**: Tenant on hold | Hold state only gates specific paths (portal, reports, demo); user CRUD still allowed |
+| **User creation during HOLD state**: Tenant on hold | Hold state only gates specific paths (portal, reports, demo); canonical Users & Access controls remain allowed under tenant-admin policy |
 | **Assign ROLE_DEALER to existing user**: User already exists as non-dealer | `createDealerForUser()` checks for existing Dealer by email; creates if missing, links if found |
 | **Transfer user to company at quota**: Target company has max users | `assertCanAddEnabledUser()` rejects transfer if quota would be exceeded |
 | **Main admin retirement**: Attempt to disable the main admin | `assertNotProtectedMainAdmin()` blocks with "Replace the tenant main admin first" |
@@ -1089,7 +1087,7 @@ All endpoints require `ROLE_SUPER_ADMIN`.
 
 | Service | Module | Responsibility |
 |---------|--------|---------------|
-| `AdminUserService` | admin | User lifecycle CRUD, role assignment, scope enforcement, token revocation |
+| `AdminUserService` | admin | Canonical Users & Access lifecycle controls, role assignment, scope enforcement, token revocation |
 | `ScopedAccountBootstrapService` | auth | Low-level account provisioning with email delivery |
 | `TenantAdminProvisioningService` | auth | Initial admin provisioning during tenant onboarding |
 | `RoleService` | rbac | Role CRUD, permission synchronization, system role management |

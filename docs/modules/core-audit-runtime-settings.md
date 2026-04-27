@@ -419,7 +419,7 @@ Listens for `AccountingEventStore.JournalEntryPostedEvent` (Spring application e
 
 3. **Platform audit has no persistent retry:** If `AuditService` fails to write (e.g., database contention under load), the audit event is lost. The enterprise audit trail has persistent retry, but the platform audit does not.
 
-4. **Profile audit gap:** User profile changes (via `/api/v1/auth/profile` endpoints) do not emit audit events. This is a compliance risk and is classified as a **Bug to Fix Now** in the [Authoritative Recommendations Register](../RECOMMENDATIONS.md). See [`RECOMMENDATIONS.md`](../RECOMMENDATIONS.md) — Auth and Identity section for the full classification and rationale.
+4. **Self-profile audit gap:** Self-profile mutations must stay on canonical My Account identity controls and emit audit evidence. Missing audit coverage remains a compliance risk and is classified as a **Bug to Fix Now** in the [Authoritative Recommendations Register](../RECOMMENDATIONS.md). See [`RECOMMENDATIONS.md`](../RECOMMENDATIONS.md) — Auth and Identity section for the full classification and rationale.
 
 5. **Settings table has no schema-level scope isolation:** Global and tenant-scoped settings share the `system_settings` table with only key naming conventions to distinguish them. See section 3.2 for the risk analysis.
 
