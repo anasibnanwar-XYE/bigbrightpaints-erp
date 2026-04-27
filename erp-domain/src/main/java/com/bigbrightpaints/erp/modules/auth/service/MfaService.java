@@ -25,6 +25,7 @@ import org.springframework.web.util.UriUtils;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.security.CryptoService;
+import com.bigbrightpaints.erp.core.security.TokenBlacklistService;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.auth.exception.InvalidMfaException;
@@ -49,6 +50,8 @@ public class MfaService {
   private final UserAccountRepository userAccountRepository;
   private final PasswordEncoder passwordEncoder;
   private final CryptoService cryptoService;
+  private final TokenBlacklistService tokenBlacklistService;
+  private final RefreshTokenService refreshTokenService;
   private final SecureRandom secureRandom = new SecureRandom();
   private final Clock clock;
   private final String issuer;
@@ -58,19 +61,32 @@ public class MfaService {
       UserAccountRepository userAccountRepository,
       PasswordEncoder passwordEncoder,
       CryptoService cryptoService,
+      TokenBlacklistService tokenBlacklistService,
+      RefreshTokenService refreshTokenService,
       @Value("${security.mfa.issuer:BigBright ERP}") String issuer) {
-    this(userAccountRepository, passwordEncoder, cryptoService, issuer, Clock.systemUTC());
+    this(
+        userAccountRepository,
+        passwordEncoder,
+        cryptoService,
+        tokenBlacklistService,
+        refreshTokenService,
+        issuer,
+        Clock.systemUTC());
   }
 
   MfaService(
       UserAccountRepository userAccountRepository,
       PasswordEncoder passwordEncoder,
       CryptoService cryptoService,
+      TokenBlacklistService tokenBlacklistService,
+      RefreshTokenService refreshTokenService,
       String issuer,
       Clock clock) {
     this.userAccountRepository = userAccountRepository;
     this.passwordEncoder = passwordEncoder;
     this.cryptoService = cryptoService;
+    this.tokenBlacklistService = tokenBlacklistService;
+    this.refreshTokenService = refreshTokenService;
     this.issuer = issuer;
     this.clock = clock;
   }
@@ -120,15 +136,29 @@ public class MfaService {
   }
 
   @Transactional
-  public List<String> regenerateRecoveryCodes(UserAccount user) {
+  public List<String> regenerateRecoveryCodes(
+      UserAccount user, String totpCode, String recoveryCode) {
     if (user == null || !user.isMfaEnabled()) {
       throw new ApplicationException(
           ErrorCode.VALIDATION_INVALID_INPUT, "MFA must be enabled to regenerate recovery codes");
     }
-    requireActiveSecret(user);
+    String decryptedSecret = requireActiveSecret(user);
+    boolean verified = false;
+    String normalizedTotp = normalizeCode(totpCode);
+    String normalizedRecovery = normalizeCode(recoveryCode);
+    if (StringUtils.hasText(normalizedTotp) && isValidTotp(decryptedSecret, normalizedTotp)) {
+      verified = true;
+    } else if (StringUtils.hasText(normalizedRecovery)
+        && consumeRecoveryCode(user, normalizedRecovery)) {
+      verified = true;
+    }
+    if (!verified) {
+      throw new ApplicationException(ErrorCode.AUTH_MFA_INVALID, "Invalid MFA verification data");
+    }
     List<String> recoveryCodes = generateRecoveryCodes();
     user.setMfaRecoveryCodeHashes(recoveryCodes.stream().map(passwordEncoder::encode).toList());
     userAccountRepository.save(user);
+    revokeActiveSessions(user);
     return recoveryCodes;
   }
 
@@ -207,6 +237,14 @@ public class MfaService {
       }
     }
     return false;
+  }
+
+  private void revokeActiveSessions(UserAccount user) {
+    if (user == null || user.getPublicId() == null) {
+      return;
+    }
+    tokenBlacklistService.revokeAllUserTokens(user.getPublicId().toString());
+    refreshTokenService.revokeAllForUser(user.getPublicId());
   }
 
   private boolean isValidTotp(String secret, String code) {

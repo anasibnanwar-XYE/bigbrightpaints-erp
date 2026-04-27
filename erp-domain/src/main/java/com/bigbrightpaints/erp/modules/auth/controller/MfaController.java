@@ -103,12 +103,17 @@ public class MfaController {
 
   @PostMapping("/recovery-codes/regenerate")
   public ResponseEntity<ApiResponse<Map<String, Object>>> regenerateRecoveryCodes(
-      @AuthenticationPrincipal UserPrincipal principal) {
+      @AuthenticationPrincipal UserPrincipal principal,
+      @Valid @RequestBody MfaDisableRequest request) {
     if (principal == null) {
       return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
           .body(ApiResponse.failure("Unauthenticated"));
     }
-    var recoveryCodes = mfaService.regenerateRecoveryCodes(principal.getUser());
+    var recoveryCodes =
+        mfaService.regenerateRecoveryCodes(
+            principal.getUser(),
+            request == null ? null : request.code(),
+            request == null ? null : request.recoveryCode());
     auditService.logAuthSuccess(
         AuditEvent.MFA_RECOVERY_CODE_USED,
         principal.getUsername(),

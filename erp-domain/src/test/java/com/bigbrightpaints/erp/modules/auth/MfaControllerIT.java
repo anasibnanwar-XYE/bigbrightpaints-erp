@@ -176,8 +176,23 @@ public class MfaControllerIT extends AbstractIntegrationTest {
                 .getStatusCode())
         .isEqualTo(HttpStatus.OK);
 
-    ResponseEntity<Map> regenerate =
+    List<String> originalHashes = scopedUser().getMfaRecoveryCodeHashes();
+    ResponseEntity<Map> missingProof =
         postWithBearer("/api/v1/auth/mfa/recovery-codes/regenerate", Map.of(), token);
+    assertThat(missingProof.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(scopedUser().getMfaRecoveryCodeHashes()).isEqualTo(originalHashes);
+    assertThat(String.valueOf(missingProof.getBody())).doesNotContain("recoveryCodes");
+
+    ResponseEntity<Map> invalidProof =
+        postWithBearer(
+            "/api/v1/auth/mfa/recovery-codes/regenerate", Map.of("code", "abc123"), token);
+    assertThat(invalidProof.getStatusCode()).isIn(HttpStatus.BAD_REQUEST, HttpStatus.UNAUTHORIZED);
+    assertThat(scopedUser().getMfaRecoveryCodeHashes()).isEqualTo(originalHashes);
+    assertThat(String.valueOf(invalidProof.getBody())).doesNotContain("recoveryCodes");
+
+    ResponseEntity<Map> regenerate =
+        postWithBearer(
+            "/api/v1/auth/mfa/recovery-codes/regenerate", Map.of("code", activationCode), token);
     assertThat(regenerate.getStatusCode()).isEqualTo(HttpStatus.OK);
     Map<String, Object> regenerateData = apiData(regenerate);
     assertThat(regenerateData.get("enabled")).isEqualTo(Boolean.TRUE);
@@ -198,6 +213,39 @@ public class MfaControllerIT extends AbstractIntegrationTest {
     assertThat(regeneratedRecoveryCodeLogin.getStatusCode()).isEqualTo(HttpStatus.OK);
   }
 
+  @Test
+  void recovery_code_regeneration_revokes_pre_change_access_and_refresh_tokens() {
+    String token = obtainAccessToken(null, null);
+    SetupPayload setup = startEnrollment(token);
+    String activationCode = TotpTestUtils.generateCurrentCode(setup.secret());
+    assertThat(
+            postWithBearer("/api/v1/auth/mfa/activate", Map.of("code", activationCode), token)
+                .getStatusCode())
+        .isEqualTo(HttpStatus.OK);
+
+    LoginTokens firstSession =
+        obtainTokens(TotpTestUtils.generateCurrentCode(setup.secret()), null);
+    LoginTokens secondSession =
+        obtainTokens(TotpTestUtils.generateCurrentCode(setup.secret()), null);
+    assertThat(getWithBearer("/api/v1/auth/me", firstSession.accessToken()).getStatusCode())
+        .isEqualTo(HttpStatus.OK);
+    assertThat(getWithBearer("/api/v1/auth/me", secondSession.accessToken()).getStatusCode())
+        .isEqualTo(HttpStatus.OK);
+
+    ResponseEntity<Map> regenerate =
+        postWithBearer(
+            "/api/v1/auth/mfa/recovery-codes/regenerate",
+            Map.of("code", TotpTestUtils.generateCurrentCode(setup.secret())),
+            firstSession.accessToken());
+    assertThat(regenerate.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(apiData(regenerate).get("recoveryCodes")).isNotNull();
+
+    assertAuthenticatedTokenDenied(getWithBearer("/api/v1/auth/me", firstSession.accessToken()));
+    assertAuthenticatedTokenDenied(getWithBearer("/api/v1/auth/me", secondSession.accessToken()));
+    assertRefreshDenied(refresh(firstSession.refreshToken()));
+    assertRefreshDenied(refresh(secondSession.refreshToken()));
+  }
+
   private SetupPayload startEnrollment(String token) {
     ResponseEntity<Map> setupResp = postWithBearer("/api/v1/auth/mfa/setup", null, token);
     assertThat(setupResp.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -211,12 +259,18 @@ public class MfaControllerIT extends AbstractIntegrationTest {
   }
 
   private String obtainAccessToken(String mfaCode, String recoveryCode) {
+    return obtainTokens(mfaCode, recoveryCode).accessToken();
+  }
+
+  private LoginTokens obtainTokens(String mfaCode, String recoveryCode) {
     ResponseEntity<Map> response = login(mfaCode, recoveryCode);
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
     assertThat(response.getBody()).isNotNull();
     String token = (String) response.getBody().get("accessToken");
     assertThat(token).isNotBlank();
-    return token;
+    String refreshToken = (String) response.getBody().get("refreshToken");
+    assertThat(refreshToken).isNotBlank();
+    return new LoginTokens(token, refreshToken);
   }
 
   private ResponseEntity<Map> login(String mfaCode, String recoveryCode) {
@@ -239,6 +293,30 @@ public class MfaControllerIT extends AbstractIntegrationTest {
     headers.setContentType(MediaType.APPLICATION_JSON);
     HttpEntity<Map<String, ?>> entity = new HttpEntity<>(body, headers);
     return rest.exchange(path, HttpMethod.POST, entity, Map.class);
+  }
+
+  private ResponseEntity<Map> getWithBearer(String path, String token) {
+    HttpHeaders headers = new HttpHeaders();
+    headers.setBearerAuth(token);
+    return rest.exchange(path, HttpMethod.GET, new HttpEntity<>(headers), Map.class);
+  }
+
+  private ResponseEntity<Map> refresh(String refreshToken) {
+    return rest.postForEntity(
+        "/api/v1/auth/refresh-token",
+        Map.of("refreshToken", refreshToken, "companyCode", COMPANY_CODE),
+        Map.class);
+  }
+
+  private void assertAuthenticatedTokenDenied(ResponseEntity<Map> response) {
+    assertThat(response.getStatusCode()).isIn(HttpStatus.UNAUTHORIZED, HttpStatus.FORBIDDEN);
+    assertThat(String.valueOf(response.getBody())).doesNotContain("accessToken", "refreshToken");
+  }
+
+  private void assertRefreshDenied(ResponseEntity<Map> response) {
+    assertThat(response.getStatusCode())
+        .isIn(HttpStatus.BAD_REQUEST, HttpStatus.UNAUTHORIZED, HttpStatus.FORBIDDEN);
+    assertThat(String.valueOf(response.getBody())).doesNotContain("accessToken", "refreshToken");
   }
 
   private UserAccount scopedUser() {
@@ -265,4 +343,6 @@ public class MfaControllerIT extends AbstractIntegrationTest {
   }
 
   private record SetupPayload(String secret, String qrUri, List<String> recoveryCodes) {}
+
+  private record LoginTokens(String accessToken, String refreshToken) {}
 }

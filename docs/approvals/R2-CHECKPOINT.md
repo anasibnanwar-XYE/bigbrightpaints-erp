@@ -3,7 +3,7 @@
 Last reviewed: 2026-04-28
 
 ## Scope
-- Feature: `canonical-route-disposition-and-contract-tests`
+- Feature: `contract-routing-scrutiny-remediation-round2`
 - Branch: codex/identity-account-hardcut-20260427 (base: origin/main)
 - PR: pending
 - Review candidate:
@@ -12,18 +12,23 @@ Last reviewed: 2026-04-28
   - add narrow canonical route gaps for self profile/contact/security/session and admin lock/unlock/session/security-event/assignable-role surfaces
   - retire duplicate admin suspend/unsuspend and hard-delete user aliases from OpenAPI/runtime mutation paths
   - update route-disposition tests to normalize method + concrete URI behavior rather than treating OpenAPI parameter names such as `{id}` and `{userId}` as distinct runtime routes
-- Why this is R2: this packet changes high-risk auth/admin route exposure and tenant-admin user-control behavior in modules/auth and modules/admin, including route retirement for formerly mutating admin aliases.
+  - require fresh TOTP or unused recovery-code proof before `POST /api/v1/auth/mfa/recovery-codes/regenerate` rotates recovery codes
+  - revoke affected access-session markers and refresh tokens after successful recovery-code regeneration
+  - remove stale retired admin suspend/unsuspend/hard-delete lifecycle guidance from the scoped docs/library surfaces
+- Why this is R2: this packet changes high-risk auth/admin route exposure, MFA verifier behavior, session/token revocation behavior, and tenant-admin user-control documentation in modules/auth and route-contract docs.
 
 ## Risk Trigger
 - Triggered by:
   - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/controller/AuthController.java`
   - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/controller/MfaController.java`
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/service/MfaService.java`
   - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/admin/controller/AdminUserController.java`
   - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/admin/service/AdminUserService.java`
   - `openapi.json`
   - route/OpenAPI contract tests under `erp-domain/src/test/java`
 - Contract surfaces affected:
   - `/api/v1/auth/**` canonical auth, self, MFA, and session route inventory
+  - `POST /api/v1/auth/mfa/recovery-codes/regenerate` request proof and post-success session invalidation
   - `/api/v1/admin/users/**` canonical Users & Access route inventory
   - retired /api/v1/auth/profile, /api/v1/auth/password/forgot/superadmin, /api/v1/admin/users/{userId}/suspend, /api/v1/admin/users/{userId}/unsuspend, and DELETE /api/v1/admin/users/{userId} aliases
 - Failure mode if wrong:
@@ -31,17 +36,19 @@ Last reviewed: 2026-04-28
   - frontend/OpenAPI route inventory could drift from `VAL-ROUTE-001`
   - tenant-admin route changes could widen protected-target, cross-tenant, or superadmin tenant-workflow access
   - route tests could produce false positives by counting path parameter variable names as separate HTTP routes
+  - missing/invalid MFA proof could rotate or expose recovery codes
+  - successful recovery-code regeneration could leave pre-change bearer or refresh tokens usable
 
 ## Approval Authority
 - Mode: orchestrator
 - Approver: Droid mission orchestrator
 - Canary owner: Droid mission orchestrator
 - Approval status: branch-local integration candidate pending PR review
-- Basis: this is a hard-cut route-disposition packet required by the accepted mission contract; it removes duplicate mutating aliases and does not intentionally widen tenant, platform, protected-target, credential, or secret exposure boundaries.
+- Basis: this is a hard-cut route-disposition and MFA recovery-code remediation packet required by the accepted mission contract; it removes duplicate mutating aliases, adds verifier proof before code rotation, revokes affected sessions on success, and does not intentionally widen tenant, platform, protected-target, credential, or secret exposure boundaries.
 
 ## Escalation Decision
 - Human escalation required: no
-- Reason: route decisions are explicitly covered by `VAL-ROUTE-001`; the packet retires duplicate aliases and adds canonical route inventory without destructive migrations or new external dependencies.
+- Reason: route decisions are explicitly covered by `VAL-ROUTE-001`, and MFA proof/session semantics are covered by `VAL-MFA-009`, `VAL-MFA-014`, and `VAL-MFA-015`; the packet tightens verifier and revocation behavior without destructive migrations or new external dependencies.
 
 ## Rollback Owner
 - Owner: Droid mission orchestrator
@@ -50,6 +57,8 @@ Last reviewed: 2026-04-28
   - after merge: revert the packet and rerun OpenAPI guard/snapshot, focused route/auth/admin tests, compile, spotless, and High-Risk Change Control
 - Rollback trigger:
   - any retired route still mutates identity/admin state
+  - recovery-code regeneration succeeds without fresh TOTP or unused recovery-code proof
+  - old recovery codes, bearer sessions, or refresh tokens remain usable after successful regeneration
   - any canonical kept route is removed, renamed, or changes envelope unexpectedly
   - OpenAPI snapshot drifts from runtime route inventory
   - tenant-admin or superadmin boundaries regress for Users & Access routes
@@ -57,7 +66,7 @@ Last reviewed: 2026-04-28
 
 ## Expiry
 - Valid until: 2026-05-05
-- Re-evaluate if: scope expands beyond route disposition into schema migrations, credential storage semantics, MFA verifier storage, first-class session storage, or broader RBAC/tenant policy changes.
+- Re-evaluate if: scope expands beyond route disposition and recovery-code regeneration proof/revocation into schema migrations, credential storage semantics, MFA verifier storage, first-class session storage, or broader RBAC/tenant policy changes.
 
 ## Verification Evidence
 - Scope-to-evidence mapping:
@@ -65,6 +74,9 @@ Last reviewed: 2026-04-28
   - Runtime route behavior: `AuthControllerIT` and `AdminUserSecurityIT` exercise canonical route availability, logout query-token rejection, and retired alias non-mutation/absence behavior.
   - OpenAPI parity: `OpenApiSnapshotIT` refreshed `openapi.json` and asserts request/response shapes for changed auth/admin routes.
   - Tenant/authz proof: focused admin security tests rechecked tenant-admin-only access, cross-company masking, protected targets, and superadmin tenant-workflow denial.
+  - MFA regeneration proof: `MfaControllerIT` now verifies missing and invalid proof do not rotate or expose recovery codes, valid TOTP proof returns a replacement set, old codes fail, and new codes work once.
+  - Session invalidation proof: `MfaControllerIT` now verifies two pre-change sessions can call `GET /api/v1/auth/me` before regeneration, then both old bearer tokens and both old refresh tokens fail after successful regeneration.
+  - Stale admin lifecycle cleanup: `docs/ERP-DOD-BIBLE.md`, `docs/code-review/flows/admin-governance.md`, frontend update docs, and repo/mission library guidance now point to canonical status, lock/unlock, session-revoke, force-reset, and MFA-disable routes rather than retired suspend/unsuspend/hard-delete aliases.
 - Commands run:
   - /Users/anas/.factory/missions/7ef22e70-61c7-4cdf-b7a7-1c48f4127853/init.sh
   - `cd /Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/identity-account-hardcut-20260427 && bash scripts/guard_openapi_contract_drift.sh && cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='AuthPasswordResetPublicContractIT,AdminUserSecurityIT,AuthControllerIT,AuthTenantAuthorityIT,TenantRuntimeEnforcementAuthIT,AuthDisabledUserTokenIT,MfaControllerIT' test`
@@ -76,6 +88,9 @@ Last reviewed: 2026-04-28
   - `cd erp-domain && MIGRATION_SET=v2 mvn -q -DskipTests compile`
   - `bash ci/check-high-risk-changes.sh`
   - `bash scripts/guard_openapi_contract_drift.sh && cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='AuthPasswordResetPublicContractIT,AdminUserSecurityIT,AuthControllerIT,AuthTenantAuthorityIT,TenantRuntimeEnforcementAuthIT,AuthDisabledUserTokenIT,MfaControllerIT' test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='MfaControllerIT,AuthControllerIT,AdminUserSecurityIT,IdentityRouteInventoryContractTest,OpenApiSnapshotIT' test`
+  - `OPENAPI_CONTRACT_DRIFT_MODE=report bash scripts/guard_openapi_contract_drift.sh`
+  - `bash ci/lint-knowledgebase.sh && bash ci/check-architecture.sh && bash ci/check-high-risk-changes.sh`
 - Result summary:
   - mission init completed and baseline route/auth/admin characterization passed with 86 tests plus OpenAPI guard
   - compile passed after route changes
@@ -83,6 +98,7 @@ Last reviewed: 2026-04-28
   - focused route/auth/admin tests passed with 38 tests after updating runtime route-disposition assertions
   - final OpenAPI guard, compile, spotless check, High-Risk Change Control, OpenAPI snapshot verification, focused route tests, and 86-test IAM mission baseline all passed
   - no raw JWTs, refresh tokens, reset tokens, MFA secrets, or recovery codes were recorded in this checkpoint
+  - round 2 MFA recovery-code regeneration proof and session invalidation tests passed, OpenAPI guard was refreshed for the request body, and docs/library stale alias guidance was cleaned
 - Artifacts/links:
   - `openapi.json` updated in-repo
   - focused test reports under `erp-domain/target/surefire-reports/`

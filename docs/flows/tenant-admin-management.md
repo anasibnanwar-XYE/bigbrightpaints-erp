@@ -127,7 +127,7 @@ GET /api/v1/admin/dashboard
 ```text
 Create -> validate fixed role set -> provision scoped account -> optional dealer provisioning for ROLE_DEALER
 Update -> validate fixed role set -> apply display/role changes -> revoke tokens when role set changes
-Disable/Suspend/Delete/MFA disable -> scoped target checks -> revoke sessions/tokens where required -> audit
+Status disable, lock/unlock, session revoke, and MFA disable -> scoped target checks -> revoke sessions/tokens where required -> audit
 Force reset link -> scoped target checks -> password reset token + mail dispatch -> audit
 ```
 

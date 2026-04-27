@@ -126,7 +126,7 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
         root,
         "/api/v1/auth/mfa/recovery-codes/regenerate",
         "post",
-        null,
+        "#/components/schemas/MfaDisableRequest",
         "200",
         "#/components/schemas/ApiResponseMapStringObject");
     assertOperationContract(
