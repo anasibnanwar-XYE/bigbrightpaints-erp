@@ -161,11 +161,21 @@ public class AuthControllerIT extends AbstractIntegrationTest {
     HttpHeaders headers = new HttpHeaders();
     headers.setBearerAuth(refreshedAccessToken);
     headers.set("X-Company-Code", COMPANY_CODE);
-    ResponseEntity<Void> logoutResp =
+    headers.setContentType(MediaType.APPLICATION_JSON);
+    ResponseEntity<Void> queryLogoutResp =
         rest.exchange(
             "/api/v1/auth/logout?refreshToken=" + refreshedRefreshToken,
             HttpMethod.POST,
             new HttpEntity<>(headers),
+            Void.class);
+    assertThat(queryLogoutResp.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(me(refreshedAccessToken).getStatusCode()).isEqualTo(HttpStatus.OK);
+
+    ResponseEntity<Void> logoutResp =
+        rest.exchange(
+            "/api/v1/auth/logout",
+            HttpMethod.POST,
+            new HttpEntity<>(Map.of("refreshToken", refreshedRefreshToken), headers),
             Void.class);
     assertThat(logoutResp.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
 
@@ -182,32 +192,58 @@ public class AuthControllerIT extends AbstractIntegrationTest {
   }
 
   @Test
-  void current_self_profile_session_and_security_expansion_routes_are_absent_before_hard_cut() {
+  void canonical_self_profile_session_and_security_routes_are_routable_after_hard_cut() {
     String accessToken = login(ADMIN_EMAIL, ADMIN_PASSWORD).get("accessToken").toString();
 
-    assertRouteAbsent(
-        "/api/v1/auth/me/profile",
-        HttpMethod.PATCH,
-        new HttpEntity<>(Map.of("preferredName", "Admin"), bearerJson(accessToken)));
-    assertRouteAbsent(
-        "/api/v1/auth/me/contact",
-        HttpMethod.PATCH,
-        new HttpEntity<>(Map.of("secondaryEmail", "secondary@bbp.com"), bearerJson(accessToken)));
-    assertRouteAbsent(
+    ResponseEntity<Map> profileResponse =
+        rest.exchange(
+            "/api/v1/auth/me/profile",
+            HttpMethod.PATCH,
+            new HttpEntity<>(Map.of("preferredName", "Admin"), bearerJson(accessToken)),
+            Map.class);
+    assertThat(profileResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+    ResponseEntity<Map> contactResponse =
+        rest.exchange(
+            "/api/v1/auth/me/contact",
+            HttpMethod.PATCH,
+            new HttpEntity<>(
+                Map.of("secondaryEmail", "secondary@bbp.com"), bearerJson(accessToken)),
+            Map.class);
+    assertThat(contactResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+    assertRoutePresent(
         "/api/v1/auth/me/security", HttpMethod.GET, new HttpEntity<>(bearer(accessToken)));
-    assertRouteAbsent(
+    assertRoutePresent(
         "/api/v1/auth/me/security-events", HttpMethod.GET, new HttpEntity<>(bearer(accessToken)));
-    assertRouteAbsent("/api/v1/auth/mfa", HttpMethod.GET, new HttpEntity<>(bearer(accessToken)));
-    assertRouteAbsent(
+    assertRoutePresent("/api/v1/auth/mfa", HttpMethod.GET, new HttpEntity<>(bearer(accessToken)));
+    assertRoutePresent(
         "/api/v1/auth/mfa/recovery-codes/regenerate",
         HttpMethod.POST,
         new HttpEntity<>(Map.of("code", "000000"), bearerJson(accessToken)));
-    assertRouteAbsent(
+    assertRoutePresent(
         "/api/v1/auth/sessions", HttpMethod.GET, new HttpEntity<>(bearer(accessToken)));
+    assertRoutePresent(
+        "/api/v1/auth/sessions/probe-session-id",
+        HttpMethod.DELETE,
+        new HttpEntity<>(bearer(accessToken)));
+    assertRoutePresent(
+        "/api/v1/auth/sessions/current",
+        HttpMethod.DELETE,
+        new HttpEntity<>(bearer(login(ADMIN_EMAIL, ADMIN_PASSWORD).get("accessToken").toString())));
+    assertRoutePresent(
+        "/api/v1/auth/sessions",
+        HttpMethod.DELETE,
+        new HttpEntity<>(bearer(login(ADMIN_EMAIL, ADMIN_PASSWORD).get("accessToken").toString())));
+
     assertRouteAbsent(
-        "/api/v1/auth/sessions/current", HttpMethod.DELETE, new HttpEntity<>(bearer(accessToken)));
+        "/api/v1/auth/profile",
+        HttpMethod.GET,
+        new HttpEntity<>(bearer(login(ADMIN_EMAIL, ADMIN_PASSWORD).get("accessToken").toString())));
     assertRouteAbsent(
-        "/api/v1/auth/sessions", HttpMethod.DELETE, new HttpEntity<>(bearer(accessToken)));
+        "/api/v1/auth/password/forgot/superadmin",
+        HttpMethod.POST,
+        new HttpEntity<>(Map.of("email", ADMIN_EMAIL, "companyCode", COMPANY_CODE), jsonHeaders()));
   }
 
   @Test
@@ -474,7 +510,14 @@ public class AuthControllerIT extends AbstractIntegrationTest {
 
   private void assertRouteAbsent(String path, HttpMethod method, HttpEntity<?> entity) {
     ResponseEntity<Map> response = rest.exchange(path, method, entity, Map.class);
-    assertThat(response.getStatusCode()).isIn(HttpStatus.NOT_FOUND, HttpStatus.METHOD_NOT_ALLOWED);
+    assertThat(response.getStatusCode())
+        .isIn(HttpStatus.NOT_FOUND, HttpStatus.METHOD_NOT_ALLOWED, HttpStatus.FORBIDDEN);
+  }
+
+  private void assertRoutePresent(String path, HttpMethod method, HttpEntity<?> entity) {
+    ResponseEntity<Map> response = rest.exchange(path, method, entity, Map.class);
+    assertThat(response.getStatusCode())
+        .isNotIn(HttpStatus.NOT_FOUND, HttpStatus.METHOD_NOT_ALLOWED);
   }
 
   private ResponseEntity<Map> me(String accessToken) {

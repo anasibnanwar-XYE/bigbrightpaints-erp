@@ -103,30 +103,36 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
   }
 
   @Test
-  void current_admin_identity_expansion_routes_are_absent_before_hard_cut() {
+  void canonical_admin_identity_expansion_routes_are_routable_after_hard_cut() {
     String token = login(ADMIN_EMAIL, ADMIN_PASSWORD, COMPANY);
     HttpHeaders headers = new HttpHeaders();
     headers.setBearerAuth(token);
 
     long targetUserId = otherCompanyUser.getId();
-    assertRouteAbsent(
+    assertRoutePresent(
         "/api/v1/admin/users/" + targetUserId + "/lock",
         HttpMethod.POST,
         new HttpEntity<>(headers));
-    assertRouteAbsent(
+    assertRoutePresent(
         "/api/v1/admin/users/" + targetUserId + "/unlock",
         HttpMethod.POST,
         new HttpEntity<>(headers));
-    assertRouteAbsent(
+    assertRoutePresent(
         "/api/v1/admin/users/" + targetUserId + "/sessions",
         HttpMethod.DELETE,
         new HttpEntity<>(headers));
-    assertRouteAbsent(
+    assertRoutePresent(
         "/api/v1/admin/users/" + targetUserId + "/security-events",
         HttpMethod.GET,
         new HttpEntity<>(headers));
-    assertRouteAbsent(
-        "/api/v1/admin/users/assignable-roles", HttpMethod.GET, new HttpEntity<>(headers));
+
+    ResponseEntity<Map> assignableRoles =
+        rest.exchange(
+            "/api/v1/admin/users/assignable-roles",
+            HttpMethod.GET,
+            new HttpEntity<>(headers),
+            Map.class);
+    assertThat(assignableRoles.getStatusCode()).isEqualTo(HttpStatus.OK);
   }
 
   @Test
@@ -290,33 +296,33 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
             Map.class);
     assertMaskedMissingUserContractPair(foreignForceReset, missingForceReset);
 
-    ResponseEntity<Map> foreignSuspend =
+    ResponseEntity<Map> foreignLock =
         rest.exchange(
-            "/api/v1/admin/users/" + otherCompanyUser.getId() + "/suspend",
-            HttpMethod.PATCH,
+            "/api/v1/admin/users/" + otherCompanyUser.getId() + "/lock",
+            HttpMethod.POST,
             new HttpEntity<>(headers),
             Map.class);
-    ResponseEntity<Map> missingSuspend =
+    ResponseEntity<Map> missingLock =
         rest.exchange(
-            "/api/v1/admin/users/" + missingUserId + "/suspend",
-            HttpMethod.PATCH,
+            "/api/v1/admin/users/" + missingUserId + "/lock",
+            HttpMethod.POST,
             new HttpEntity<>(headers),
             Map.class);
-    assertMaskedMissingUserContractPair(foreignSuspend, missingSuspend);
+    assertMaskedMissingUserContractPair(foreignLock, missingLock);
 
-    ResponseEntity<Map> foreignUnsuspend =
+    ResponseEntity<Map> foreignUnlock =
         rest.exchange(
-            "/api/v1/admin/users/" + otherCompanyUser.getId() + "/unsuspend",
-            HttpMethod.PATCH,
+            "/api/v1/admin/users/" + otherCompanyUser.getId() + "/unlock",
+            HttpMethod.POST,
             new HttpEntity<>(headers),
             Map.class);
-    ResponseEntity<Map> missingUnsuspend =
+    ResponseEntity<Map> missingUnlock =
         rest.exchange(
-            "/api/v1/admin/users/" + missingUserId + "/unsuspend",
-            HttpMethod.PATCH,
+            "/api/v1/admin/users/" + missingUserId + "/unlock",
+            HttpMethod.POST,
             new HttpEntity<>(headers),
             Map.class);
-    assertMaskedMissingUserContractPair(foreignUnsuspend, missingUnsuspend);
+    assertMaskedMissingUserContractPair(foreignUnlock, missingUnlock);
 
     ResponseEntity<Map> foreignDisableMfa =
         rest.exchange(
@@ -332,19 +338,19 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
             Map.class);
     assertMaskedMissingUserContractPair(foreignDisableMfa, missingDisableMfa);
 
-    ResponseEntity<Map> foreignDelete =
+    ResponseEntity<Map> foreignRevokeSessions =
         rest.exchange(
-            "/api/v1/admin/users/" + otherCompanyUser.getId(),
+            "/api/v1/admin/users/" + otherCompanyUser.getId() + "/sessions",
             HttpMethod.DELETE,
             new HttpEntity<>(headers),
             Map.class);
-    ResponseEntity<Map> missingDelete =
+    ResponseEntity<Map> missingRevokeSessions =
         rest.exchange(
-            "/api/v1/admin/users/" + missingUserId,
+            "/api/v1/admin/users/" + missingUserId + "/sessions",
             HttpMethod.DELETE,
             new HttpEntity<>(headers),
             Map.class);
-    assertMaskedMissingUserContractPair(foreignDelete, missingDelete);
+    assertMaskedMissingUserContractPair(foreignRevokeSessions, missingRevokeSessions);
 
     ResponseEntity<Map> foreignStatus =
         rest.exchange(
@@ -373,8 +379,8 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
           executeWithTimeout(
               () ->
                   rest.exchange(
-                      "/api/v1/admin/users/" + otherCompanyUser.getId() + "/suspend",
-                      HttpMethod.PATCH,
+                      "/api/v1/admin/users/" + otherCompanyUser.getId() + "/lock",
+                      HttpMethod.POST,
                       new HttpEntity<>(headers),
                       Map.class),
               Duration.ofSeconds(2)));
@@ -383,8 +389,8 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
           executeWithTimeout(
               () ->
                   rest.exchange(
-                      "/api/v1/admin/users/" + otherCompanyUser.getId() + "/unsuspend",
-                      HttpMethod.PATCH,
+                      "/api/v1/admin/users/" + otherCompanyUser.getId() + "/unlock",
+                      HttpMethod.POST,
                       new HttpEntity<>(headers),
                       Map.class),
               Duration.ofSeconds(2)));
@@ -403,7 +409,7 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
           executeWithTimeout(
               () ->
                   rest.exchange(
-                      "/api/v1/admin/users/" + otherCompanyUser.getId(),
+                      "/api/v1/admin/users/" + otherCompanyUser.getId() + "/sessions",
                       HttpMethod.DELETE,
                       new HttpEntity<>(headers),
                       Map.class),
@@ -437,17 +443,35 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
     HttpHeaders headers = new HttpHeaders();
     headers.setBearerAuth(token);
 
+    assertThat(
+            rest.exchange(
+                    "/api/v1/admin/users/" + otherCompanyUser.getId() + "/suspend",
+                    HttpMethod.PATCH,
+                    new HttpEntity<>(headers),
+                    Map.class)
+                .getStatusCode())
+        .isIn(HttpStatus.NOT_FOUND, HttpStatus.METHOD_NOT_ALLOWED, HttpStatus.FORBIDDEN);
+
+    assertThat(
+            rest.exchange(
+                    "/api/v1/admin/users/" + otherCompanyUser.getId() + "/unsuspend",
+                    HttpMethod.PATCH,
+                    new HttpEntity<>(headers),
+                    Map.class)
+                .getStatusCode())
+        .isIn(HttpStatus.NOT_FOUND, HttpStatus.METHOD_NOT_ALLOWED, HttpStatus.FORBIDDEN);
+
     assertPlatformOnlyAccessDenied(
         rest.exchange(
-            "/api/v1/admin/users/" + otherCompanyUser.getId() + "/suspend",
-            HttpMethod.PATCH,
+            "/api/v1/admin/users/" + otherCompanyUser.getId() + "/lock",
+            HttpMethod.POST,
             new HttpEntity<>(headers),
             Map.class));
 
     assertPlatformOnlyAccessDenied(
         rest.exchange(
-            "/api/v1/admin/users/" + otherCompanyUser.getId() + "/unsuspend",
-            HttpMethod.PATCH,
+            "/api/v1/admin/users/" + otherCompanyUser.getId() + "/unlock",
+            HttpMethod.POST,
             new HttpEntity<>(headers),
             Map.class));
 
@@ -458,12 +482,14 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
             new HttpEntity<>(headers),
             Map.class));
 
-    assertPlatformOnlyAccessDenied(
-        rest.exchange(
-            "/api/v1/admin/users/" + otherCompanyUser.getId(),
-            HttpMethod.DELETE,
-            new HttpEntity<>(headers),
-            Map.class));
+    assertThat(
+            rest.exchange(
+                    "/api/v1/admin/users/" + otherCompanyUser.getId(),
+                    HttpMethod.DELETE,
+                    new HttpEntity<>(headers),
+                    Map.class)
+                .getStatusCode())
+        .isIn(HttpStatus.NOT_FOUND, HttpStatus.METHOD_NOT_ALLOWED, HttpStatus.FORBIDDEN);
   }
 
   @Test
@@ -791,10 +817,10 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
     return token;
   }
 
-  private void assertRouteAbsent(String path, HttpMethod method, HttpEntity<?> entity) {
+  private void assertRoutePresent(String path, HttpMethod method, HttpEntity<?> entity) {
     ResponseEntity<Map> response = rest.exchange(path, method, entity, Map.class);
     assertThat(response.getStatusCode())
-        .isIn(HttpStatus.NOT_FOUND, HttpStatus.METHOD_NOT_ALLOWED, HttpStatus.BAD_REQUEST);
+        .isNotIn(HttpStatus.NOT_FOUND, HttpStatus.METHOD_NOT_ALLOWED);
   }
 
   private void assertMaskedMissingUserContractPair(

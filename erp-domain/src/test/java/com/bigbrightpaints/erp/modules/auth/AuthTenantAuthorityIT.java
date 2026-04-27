@@ -1250,29 +1250,29 @@ class AuthTenantAuthorityIT extends AbstractIntegrationTest {
 
     assertMaskedPrivilegedUserActionPair(
         rest.exchange(
-            "/api/v1/admin/users/" + foreignUserId + "/suspend",
-            HttpMethod.PATCH,
+            "/api/v1/admin/users/" + foreignUserId + "/lock",
+            HttpMethod.POST,
             new HttpEntity<>(jsonHeaders(token, TENANT_A)),
             Map.class),
         rest.exchange(
-            "/api/v1/admin/users/" + missingUserId + "/suspend",
-            HttpMethod.PATCH,
+            "/api/v1/admin/users/" + missingUserId + "/lock",
+            HttpMethod.POST,
             new HttpEntity<>(jsonHeaders(token, TENANT_A)),
             Map.class));
-    awaitPrivilegedUserDeniedAudit(ADMIN_EMAIL, foreignUserId, "admin-suspend-user-out-of-scope");
+    awaitPrivilegedUserDeniedAudit(ADMIN_EMAIL, foreignUserId, "admin-lock-user-out-of-scope");
 
     assertMaskedPrivilegedUserActionPair(
         rest.exchange(
-            "/api/v1/admin/users/" + foreignUserId + "/unsuspend",
-            HttpMethod.PATCH,
+            "/api/v1/admin/users/" + foreignUserId + "/unlock",
+            HttpMethod.POST,
             new HttpEntity<>(jsonHeaders(token, TENANT_A)),
             Map.class),
         rest.exchange(
-            "/api/v1/admin/users/" + missingUserId + "/unsuspend",
-            HttpMethod.PATCH,
+            "/api/v1/admin/users/" + missingUserId + "/unlock",
+            HttpMethod.POST,
             new HttpEntity<>(jsonHeaders(token, TENANT_A)),
             Map.class));
-    awaitPrivilegedUserDeniedAudit(ADMIN_EMAIL, foreignUserId, "admin-unsuspend-user-out-of-scope");
+    awaitPrivilegedUserDeniedAudit(ADMIN_EMAIL, foreignUserId, "admin-unlock-user-out-of-scope");
 
     assertMaskedPrivilegedUserActionPair(
         rest.exchange(
@@ -1289,16 +1289,17 @@ class AuthTenantAuthorityIT extends AbstractIntegrationTest {
 
     assertMaskedPrivilegedUserActionPair(
         rest.exchange(
-            "/api/v1/admin/users/" + foreignUserId,
+            "/api/v1/admin/users/" + foreignUserId + "/sessions",
             HttpMethod.DELETE,
             new HttpEntity<>(jsonHeaders(token, TENANT_A)),
             Map.class),
         rest.exchange(
-            "/api/v1/admin/users/" + missingUserId,
+            "/api/v1/admin/users/" + missingUserId + "/sessions",
             HttpMethod.DELETE,
             new HttpEntity<>(jsonHeaders(token, TENANT_A)),
             Map.class));
-    awaitPrivilegedUserDeniedAudit(ADMIN_EMAIL, foreignUserId, "admin-delete-user-out-of-scope");
+    awaitPrivilegedUserDeniedAudit(
+        ADMIN_EMAIL, foreignUserId, "admin-revoke-sessions-out-of-scope");
   }
 
   @Test
@@ -1322,26 +1323,26 @@ class AuthTenantAuthorityIT extends AbstractIntegrationTest {
         "Super Admin is limited to platform control-plane operations and cannot execute tenant"
             + " business workflows");
 
-    ResponseEntity<Map> suspendResponse =
+    ResponseEntity<Map> lockResponse =
         rest.exchange(
-            "/api/v1/admin/users/" + foreignUserId + "/suspend",
-            HttpMethod.PATCH,
+            "/api/v1/admin/users/" + foreignUserId + "/lock",
+            HttpMethod.POST,
             new HttpEntity<>(jsonHeaders(token, TENANT_A)),
             Map.class);
     assertControlledAccessDenied(
-        suspendResponse,
+        lockResponse,
         "SUPER_ADMIN_PLATFORM_ONLY",
         "Super Admin is limited to platform control-plane operations and cannot execute tenant"
             + " business workflows");
 
-    ResponseEntity<Map> unsuspendResponse =
+    ResponseEntity<Map> unlockResponse =
         rest.exchange(
-            "/api/v1/admin/users/" + foreignUserId + "/unsuspend",
-            HttpMethod.PATCH,
+            "/api/v1/admin/users/" + foreignUserId + "/unlock",
+            HttpMethod.POST,
             new HttpEntity<>(jsonHeaders(token, TENANT_A)),
             Map.class);
     assertControlledAccessDenied(
-        unsuspendResponse,
+        unlockResponse,
         "SUPER_ADMIN_PLATFORM_ONLY",
         "Super Admin is limited to platform control-plane operations and cannot execute tenant"
             + " business workflows");
@@ -1382,14 +1383,14 @@ class AuthTenantAuthorityIT extends AbstractIntegrationTest {
         "Super Admin is limited to platform control-plane operations and cannot execute tenant"
             + " business workflows");
 
-    ResponseEntity<Map> deleteResponse =
+    ResponseEntity<Map> revokeSessionsResponse =
         rest.exchange(
-            "/api/v1/admin/users/" + foreignUserId,
+            "/api/v1/admin/users/" + foreignUserId + "/sessions",
             HttpMethod.DELETE,
             new HttpEntity<>(jsonHeaders(token, TENANT_A)),
             Map.class);
     assertControlledAccessDenied(
-        deleteResponse,
+        revokeSessionsResponse,
         "SUPER_ADMIN_PLATFORM_ONLY",
         "Super Admin is limited to platform control-plane operations and cannot execute tenant"
             + " business workflows");

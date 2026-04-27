@@ -2,10 +2,10 @@
 
 > ⚠️ **REFERENCE ONLY**: This inventory is retained for review and governance cross-reference, but it is not the canonical API truth. Use repo-root `openapi.json`, [docs/frontend-api/README.md](frontend-api/README.md), and the module/flow packets linked from [docs/INDEX.md](INDEX.md) as the primary contract surfaces.
 
-Last reviewed: 2026-04-16
+Last reviewed: 2026-04-28
 
 Source: `openapi.json`
-Updated: 2026-04-26
+Updated: 2026-04-28
 
 Related behavior contract:
 - `docs/ACCOUNTING_PORTAL_SCOPE_GUARDRAIL.md`
@@ -19,9 +19,9 @@ Portal scope guardrail:
 ## Canonical API contract gate
 
 - Canonical machine contract source: repo-root `openapi.json`.
-- OpenAPI snapshot: `openapi.json` (sha256 `ea55bb6f4f23603bd49c2e48e2911e0fc9a89780eb83460c16aefcd522bdee1d`)
-- OpenAPI total paths: `280`
-- OpenAPI total operations: `335`
+- OpenAPI snapshot: `openapi.json` (sha256 `df50db5d8b54e5492b7c7e39a09896c3f8649aed69273a4cf55390105f3a2198`)
+- OpenAPI total paths: `292`
+- OpenAPI total operations: `347`
 - Guard remediation flow: if parity drifts, regenerate this inventory from canonical `openapi.json`, then rerun `bash scripts/guard_openapi_contract_drift.sh` and `bash scripts/guard_accounting_portal_scope_contract.sh`.
 - Hard-cut contract reminder: retired surfaces such as `/api/v1/auth/profile`, `/api/v1/accounting/journals/manual`, `/api/v1/accounting/journals/{entryId}/reverse`, and direct `/api/v1/accounting/periods/{periodId}/close` are intentionally absent from this inventory and must not be reintroduced in frontend or review docs.
 
@@ -30,9 +30,9 @@ Portal scope guardrail:
 | Module | Path count | Examples |
 |---|---:|---|
 | `accounting` | 55 | /api/v1/accounting/accounts, /api/v1/accounting/accounts/tree, /api/v1/accounting/accounts/tree/{type} |
-| `admin` | 17 | /api/v1/admin/approvals, /api/v1/admin/approvals/{originType}/{id}/decisions, /api/v1/admin/audit/events |
+| `admin` | 20 | /api/v1/admin/approvals, /api/v1/admin/approvals/{originType}/{id}/decisions, /api/v1/admin/audit/events |
 | `audit` | 1 | /api/v1/audit/ml-events |
-| `auth` | 10 | /api/v1/auth/login, /api/v1/auth/logout, /api/v1/auth/me |
+| `auth` | 19 | /api/v1/auth/login, /api/v1/auth/logout, /api/v1/auth/me |
 | `catalog` | 6 | /api/v1/catalog/brands, /api/v1/catalog/brands/{brandId}, /api/v1/catalog/import |
 | `changelog` | 2 | /api/v1/changelog, /api/v1/changelog/latest-highlighted |
 | `companies` | 1 | /api/v1/companies |
@@ -130,12 +130,15 @@ Portal scope guardrail:
 - `GET, POST` `/api/v1/admin/support/tickets`
 - `GET` `/api/v1/admin/support/tickets/{ticketId}`
 - `GET, POST` `/api/v1/admin/users`
-- `GET, PUT, DELETE` `/api/v1/admin/users/{id}`
+- `GET` `/api/v1/admin/users/assignable-roles`
+- `GET, PUT` `/api/v1/admin/users/{id}`
 - `PATCH` `/api/v1/admin/users/{id}/mfa/disable`
-- `PATCH` `/api/v1/admin/users/{id}/suspend`
-- `PATCH` `/api/v1/admin/users/{id}/unsuspend`
 - `POST` `/api/v1/admin/users/{userId}/force-reset-password`
+- `POST` `/api/v1/admin/users/{userId}/lock`
+- `GET` `/api/v1/admin/users/{userId}/security-events`
+- `DELETE` `/api/v1/admin/users/{userId}/sessions`
 - `PUT` `/api/v1/admin/users/{userId}/status`
+- `POST` `/api/v1/admin/users/{userId}/unlock`
 
 ## `audit`
 
@@ -146,13 +149,22 @@ Portal scope guardrail:
 - `POST` `/api/v1/auth/login`
 - `POST` `/api/v1/auth/logout`
 - `GET` `/api/v1/auth/me`
+- `PATCH` `/api/v1/auth/me/contact`
+- `PATCH` `/api/v1/auth/me/profile`
+- `GET` `/api/v1/auth/me/security`
+- `GET` `/api/v1/auth/me/security-events`
+- `GET` `/api/v1/auth/mfa`
 - `POST` `/api/v1/auth/mfa/activate`
 - `POST` `/api/v1/auth/mfa/disable`
+- `POST` `/api/v1/auth/mfa/recovery-codes/regenerate`
 - `POST` `/api/v1/auth/mfa/setup`
 - `POST` `/api/v1/auth/password/change`
 - `POST` `/api/v1/auth/password/forgot`
 - `POST` `/api/v1/auth/password/reset`
 - `POST` `/api/v1/auth/refresh-token`
+- `GET, DELETE` `/api/v1/auth/sessions`
+- `DELETE` `/api/v1/auth/sessions/current`
+- `DELETE` `/api/v1/auth/sessions/{sessionId}`
 
 ## `catalog`
 

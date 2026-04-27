@@ -6,8 +6,10 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 import org.junit.jupiter.api.Test;
 
@@ -19,8 +21,7 @@ class IdentityRouteInventoryContractTest {
   private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
   @Test
-  void current_openapi_identity_inventory_captures_kept_routes_and_pre_hard_cut_gaps()
-      throws IOException {
+  void val_route_001_openapi_identity_inventory_exposes_canonical_routes() throws IOException {
     JsonNode root = readSnapshot();
 
     assertOperations(
@@ -30,44 +31,40 @@ class IdentityRouteInventoryContractTest {
             op("POST", "/api/v1/auth/refresh-token"),
             op("POST", "/api/v1/auth/logout"),
             op("GET", "/api/v1/auth/me"),
-            op("POST", "/api/v1/auth/password/change"),
-            op("POST", "/api/v1/auth/password/forgot"),
-            op("POST", "/api/v1/auth/password/reset"),
-            op("POST", "/api/v1/auth/mfa/setup"),
-            op("POST", "/api/v1/auth/mfa/activate"),
-            op("POST", "/api/v1/auth/mfa/disable"),
-            op("GET", "/api/v1/admin/users"),
-            op("POST", "/api/v1/admin/users"),
-            op("GET", "/api/v1/admin/users/{id}"),
-            op("PUT", "/api/v1/admin/users/{id}"),
-            op("PUT", "/api/v1/admin/users/{userId}/status"),
-            op("POST", "/api/v1/admin/users/{userId}/force-reset-password"),
-            op("PATCH", "/api/v1/admin/users/{id}/mfa/disable"),
-            op("PUT", "/api/v1/superadmin/tenants/{id}/lifecycle"),
-            op("PUT", "/api/v1/superadmin/tenants/{id}/limits")));
-
-    assertMissingOperations(
-        root,
-        List.of(
             op("PATCH", "/api/v1/auth/me/profile"),
             op("PATCH", "/api/v1/auth/me/contact"),
             op("GET", "/api/v1/auth/me/security"),
             op("GET", "/api/v1/auth/me/security-events"),
+            op("POST", "/api/v1/auth/password/change"),
+            op("POST", "/api/v1/auth/password/forgot"),
+            op("POST", "/api/v1/auth/password/reset"),
             op("GET", "/api/v1/auth/mfa"),
+            op("POST", "/api/v1/auth/mfa/setup"),
+            op("POST", "/api/v1/auth/mfa/activate"),
+            op("POST", "/api/v1/auth/mfa/disable"),
             op("POST", "/api/v1/auth/mfa/recovery-codes/regenerate"),
             op("GET", "/api/v1/auth/sessions"),
             op("DELETE", "/api/v1/auth/sessions/{sessionId}"),
             op("DELETE", "/api/v1/auth/sessions/current"),
             op("DELETE", "/api/v1/auth/sessions"),
+            op("GET", "/api/v1/admin/users"),
+            op("POST", "/api/v1/admin/users"),
+            op("GET", "/api/v1/admin/users/{userId}"),
+            op("PUT", "/api/v1/admin/users/{userId}"),
+            op("PUT", "/api/v1/admin/users/{userId}/status"),
             op("POST", "/api/v1/admin/users/{userId}/lock"),
             op("POST", "/api/v1/admin/users/{userId}/unlock"),
+            op("POST", "/api/v1/admin/users/{userId}/force-reset-password"),
+            op("PATCH", "/api/v1/admin/users/{id}/mfa/disable"),
             op("DELETE", "/api/v1/admin/users/{userId}/sessions"),
             op("GET", "/api/v1/admin/users/{userId}/security-events"),
-            op("GET", "/api/v1/admin/users/assignable-roles")));
+            op("GET", "/api/v1/admin/users/assignable-roles"),
+            op("PUT", "/api/v1/superadmin/tenants/{id}/lifecycle"),
+            op("PUT", "/api/v1/superadmin/tenants/{id}/limits")));
   }
 
   @Test
-  void retired_duplicate_identity_routes_are_absent_from_current_openapi_inventory()
+  void val_route_001_retired_duplicate_identity_routes_are_absent_from_openapi_inventory()
       throws IOException {
     JsonNode root = readSnapshot();
 
@@ -81,14 +78,8 @@ class IdentityRouteInventoryContractTest {
             op("DELETE", "/api/v1/auth/profile"),
             op("POST", "/api/v1/auth/password/forgot/superadmin"),
             op("PATCH", "/api/v1/admin/users/{userId}/suspend"),
-            op("PATCH", "/api/v1/admin/users/{userId}/unsuspend")));
-
-    assertOperations(
-        root,
-        List.of(
-            op("PATCH", "/api/v1/admin/users/{id}/suspend"),
-            op("PATCH", "/api/v1/admin/users/{id}/unsuspend"),
-            op("DELETE", "/api/v1/admin/users/{id}")));
+            op("PATCH", "/api/v1/admin/users/{userId}/unsuspend"),
+            op("DELETE", "/api/v1/admin/users/{userId}")));
   }
 
   @Test
@@ -147,7 +138,7 @@ class IdentityRouteInventoryContractTest {
   private static void assertOperations(JsonNode root, List<Operation> expectedOperations) {
     List<String> missing = new ArrayList<>();
     for (Operation operation : expectedOperations) {
-      if (root.path("paths").path(operation.path()).path(operation.method()).isMissingNode()) {
+      if (!hasOperation(root, operation)) {
         missing.add(operation.method().toUpperCase(Locale.ROOT) + " " + operation.path());
       }
     }
@@ -157,11 +148,28 @@ class IdentityRouteInventoryContractTest {
   private static void assertMissingOperations(JsonNode root, List<Operation> expectedMissing) {
     List<String> present = new ArrayList<>();
     for (Operation operation : expectedMissing) {
-      if (!root.path("paths").path(operation.path()).path(operation.method()).isMissingNode()) {
+      if (hasOperation(root, operation)) {
         present.add(operation.method().toUpperCase(Locale.ROOT) + " " + operation.path());
       }
     }
     assertThat(present).as("expected absent identity route inventory").isEmpty();
+  }
+
+  private static boolean hasOperation(JsonNode root, Operation operation) {
+    String expectedPath = normalizePathTemplate(operation.path());
+    Iterator<Map.Entry<String, JsonNode>> paths = root.path("paths").fields();
+    while (paths.hasNext()) {
+      Map.Entry<String, JsonNode> path = paths.next();
+      if (expectedPath.equals(normalizePathTemplate(path.getKey()))
+          && !path.getValue().path(operation.method()).isMissingNode()) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private static String normalizePathTemplate(String path) {
+    return path.replaceAll("\\{[^/}]+}", "{}");
   }
 
   private static void assertSchemaPropertiesExcludeSecrets(

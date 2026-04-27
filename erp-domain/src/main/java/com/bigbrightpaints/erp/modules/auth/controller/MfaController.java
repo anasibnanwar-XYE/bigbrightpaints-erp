@@ -6,6 +6,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -55,6 +56,17 @@ public class MfaController {
     return ResponseEntity.ok(ApiResponse.success("MFA enrollment started", payload));
   }
 
+  @GetMapping
+  public ResponseEntity<ApiResponse<Map<String, Object>>> status(
+      @AuthenticationPrincipal UserPrincipal principal) {
+    if (principal == null) {
+      return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+          .body(ApiResponse.failure("Unauthenticated"));
+    }
+    return ResponseEntity.ok(
+        ApiResponse.success(Map.of("enabled", principal.getUser().isMfaEnabled())));
+  }
+
   @PostMapping("/activate")
   public ResponseEntity<ApiResponse<Map<String, Object>>> activate(
       @AuthenticationPrincipal UserPrincipal principal,
@@ -87,6 +99,17 @@ public class MfaController {
         resolveCompanyCode(principal),
         auditMetadata("mfa_disabled"));
     return ResponseEntity.ok(ApiResponse.success("MFA disabled", Map.of("enabled", false)));
+  }
+
+  @PostMapping("/recovery-codes/regenerate")
+  public ResponseEntity<ApiResponse<Map<String, Object>>> regenerateRecoveryCodes(
+      @AuthenticationPrincipal UserPrincipal principal) {
+    if (principal == null) {
+      return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+          .body(ApiResponse.failure("Unauthenticated"));
+    }
+    return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED)
+        .body(ApiResponse.failure("MFA recovery-code regeneration is not implemented"));
   }
 
   private String resolveCompanyCode(UserPrincipal principal) {

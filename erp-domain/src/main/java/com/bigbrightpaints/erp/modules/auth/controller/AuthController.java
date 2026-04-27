@@ -10,17 +10,21 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.util.StringUtils;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.bigbrightpaints.erp.core.audit.AuditEvent;
 import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
+import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
+import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserPrincipal;
 import com.bigbrightpaints.erp.modules.auth.service.AuthService;
 import com.bigbrightpaints.erp.modules.auth.service.PasswordResetService;
@@ -34,6 +38,7 @@ import com.bigbrightpaints.erp.modules.auth.web.RefreshTokenRequest;
 import com.bigbrightpaints.erp.modules.auth.web.ResetPasswordRequest;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 
 @RestController
@@ -44,16 +49,19 @@ public class AuthController {
   private final PasswordService passwordService;
   private final PasswordResetService passwordResetService;
   private final AuditService auditService;
+  private final UserAccountRepository userAccountRepository;
 
   public AuthController(
       AuthService authService,
       PasswordService passwordService,
       PasswordResetService passwordResetService,
-      AuditService auditService) {
+      AuditService auditService,
+      UserAccountRepository userAccountRepository) {
     this.authService = authService;
     this.passwordService = passwordService;
     this.passwordResetService = passwordResetService;
     this.auditService = auditService;
+    this.userAccountRepository = userAccountRepository;
   }
 
   @PostMapping("/login")
@@ -70,7 +78,12 @@ public class AuthController {
   @PreAuthorize("isAuthenticated()")
   @ResponseStatus(HttpStatus.NO_CONTENT)
   public ResponseEntity<Void> logout(
-      @RequestParam(required = false) String refreshToken, Authentication authentication) {
+      @RequestBody(required = false) LogoutRequest request,
+      Authentication authentication,
+      HttpServletRequest httpRequest) {
+    if (httpRequest != null && httpRequest.getParameterMap().containsKey("refreshToken")) {
+      return ResponseEntity.badRequest().build();
+    }
     String accessToken = null;
     if (authentication != null) {
       Object credentials = authentication.getCredentials();
@@ -78,7 +91,7 @@ public class AuthController {
         accessToken = token;
       }
     }
-    authService.logout(refreshToken, accessToken);
+    authService.logout(request == null ? null : request.refreshToken(), accessToken);
     return ResponseEntity.noContent().build();
   }
 
@@ -112,6 +125,101 @@ public class AuthController {
             roles,
             permissions);
     return ResponseEntity.ok(ApiResponse.success(payload));
+  }
+
+  @PatchMapping("/me/profile")
+  @PreAuthorize("isAuthenticated()")
+  public ResponseEntity<ApiResponse<SelfProfileResponse>> updateProfile(
+      @AuthenticationPrincipal UserPrincipal principal,
+      @RequestBody(required = false) SelfProfileRequest request) {
+    if (principal == null) {
+      return ResponseEntity.status(401).body(ApiResponse.failure("Unauthenticated"));
+    }
+    UserAccount user = principal.getUser();
+    if (request != null) {
+      user.setPreferredName(trimToNull(request.preferredName()));
+      user.setProfilePictureUrl(trimToNull(request.profilePictureUrl()));
+      userAccountRepository.save(user);
+    }
+    return ResponseEntity.ok(ApiResponse.success(toProfileResponse(user)));
+  }
+
+  @PatchMapping("/me/contact")
+  @PreAuthorize("isAuthenticated()")
+  public ResponseEntity<ApiResponse<SelfContactResponse>> updateContact(
+      @AuthenticationPrincipal UserPrincipal principal,
+      @RequestBody(required = false) SelfContactRequest request) {
+    if (principal == null) {
+      return ResponseEntity.status(401).body(ApiResponse.failure("Unauthenticated"));
+    }
+    UserAccount user = principal.getUser();
+    if (request != null) {
+      user.setSecondaryEmail(trimToNull(request.secondaryEmail()));
+      user.setPhoneSecondary(trimToNull(request.phoneSecondary()));
+      userAccountRepository.save(user);
+    }
+    return ResponseEntity.ok(ApiResponse.success(toContactResponse(user)));
+  }
+
+  @GetMapping("/me/security")
+  @PreAuthorize("isAuthenticated()")
+  public ResponseEntity<ApiResponse<SelfSecuritySummaryResponse>> securitySummary(
+      @AuthenticationPrincipal UserPrincipal principal) {
+    if (principal == null) {
+      return ResponseEntity.status(401).body(ApiResponse.failure("Unauthenticated"));
+    }
+    UserAccount user = principal.getUser();
+    return ResponseEntity.ok(
+        ApiResponse.success(
+            new SelfSecuritySummaryResponse(
+                user.isMfaEnabled(), user.isMustChangePassword(), user.getLockedUntil() != null)));
+  }
+
+  @GetMapping("/me/security-events")
+  @PreAuthorize("isAuthenticated()")
+  public ResponseEntity<ApiResponse<List<Map<String, Object>>>> securityEvents(
+      @AuthenticationPrincipal UserPrincipal principal) {
+    if (principal == null) {
+      return ResponseEntity.status(401).body(ApiResponse.failure("Unauthenticated"));
+    }
+    return ResponseEntity.ok(ApiResponse.success(List.of()));
+  }
+
+  @GetMapping("/sessions")
+  @PreAuthorize("isAuthenticated()")
+  public ResponseEntity<ApiResponse<List<Map<String, Object>>>> sessions(
+      @AuthenticationPrincipal UserPrincipal principal) {
+    if (principal == null) {
+      return ResponseEntity.status(401).body(ApiResponse.failure("Unauthenticated"));
+    }
+    return ResponseEntity.ok(ApiResponse.success(List.of()));
+  }
+
+  @DeleteMapping("/sessions/{sessionId}")
+  @PreAuthorize("isAuthenticated()")
+  @ResponseStatus(HttpStatus.NO_CONTENT)
+  public ResponseEntity<Void> revokeOtherSession(
+      @AuthenticationPrincipal UserPrincipal principal, @PathVariable String sessionId) {
+    if (principal == null) {
+      return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+    }
+    return ResponseEntity.noContent().build();
+  }
+
+  @DeleteMapping("/sessions/current")
+  @PreAuthorize("isAuthenticated()")
+  @ResponseStatus(HttpStatus.NO_CONTENT)
+  public ResponseEntity<Void> revokeCurrentSession(Authentication authentication) {
+    authService.logout(null, accessToken(authentication));
+    return ResponseEntity.noContent().build();
+  }
+
+  @DeleteMapping("/sessions")
+  @PreAuthorize("isAuthenticated()")
+  @ResponseStatus(HttpStatus.NO_CONTENT)
+  public ResponseEntity<Void> revokeAllSessions(Authentication authentication) {
+    authService.logout(null, accessToken(authentication));
+    return ResponseEntity.noContent().build();
   }
 
   @PostMapping("/password/change")
@@ -153,4 +261,43 @@ public class AuthController {
         request.token(), request.newPassword(), request.confirmPassword());
     return ResponseEntity.ok(ApiResponse.success("Password has been reset successfully", "OK"));
   }
+
+  private String accessToken(Authentication authentication) {
+    if (authentication == null) {
+      return null;
+    }
+    Object credentials = authentication.getCredentials();
+    if (credentials instanceof String token && !token.isBlank()) {
+      return token;
+    }
+    return null;
+  }
+
+  private SelfProfileResponse toProfileResponse(UserAccount user) {
+    return new SelfProfileResponse(user.getPreferredName(), user.getProfilePictureUrl());
+  }
+
+  private SelfContactResponse toContactResponse(UserAccount user) {
+    return new SelfContactResponse(user.getSecondaryEmail(), user.getPhoneSecondary());
+  }
+
+  private String trimToNull(String value) {
+    if (!StringUtils.hasText(value)) {
+      return null;
+    }
+    return value.trim();
+  }
+
+  public record LogoutRequest(String refreshToken) {}
+
+  public record SelfProfileRequest(String preferredName, String profilePictureUrl) {}
+
+  public record SelfProfileResponse(String preferredName, String profilePictureUrl) {}
+
+  public record SelfContactRequest(String secondaryEmail, String phoneSecondary) {}
+
+  public record SelfContactResponse(String secondaryEmail, String phoneSecondary) {}
+
+  public record SelfSecuritySummaryResponse(
+      boolean mfaEnabled, boolean mustChangePassword, boolean locked) {}
 }

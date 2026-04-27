@@ -1,6 +1,96 @@
 # R2 Checkpoint
 
-Last reviewed: 2026-04-26
+Last reviewed: 2026-04-28
+
+## Scope
+- Feature: `canonical-route-disposition-and-contract-tests`
+- Branch: `codex/identity-account-hardcut-20260427` (base: `origin/main`)
+- PR: pending
+- Review candidate:
+  - enforce `VAL-ROUTE-001` canonical identity route disposition for auth, My Account, MFA, sessions, and Users & Access admin route inventory
+  - preserve current canonical login/refresh/logout/me/password/MFA/admin-user envelopes where kept
+  - add narrow canonical route gaps for self profile/contact/security/session and admin lock/unlock/session/security-event/assignable-role surfaces
+  - retire duplicate admin suspend/unsuspend and hard-delete user aliases from OpenAPI/runtime mutation paths
+  - update route-disposition tests to normalize method + concrete URI behavior rather than treating OpenAPI parameter names such as `{id}` and `{userId}` as distinct runtime routes
+- Why this is R2: this packet changes high-risk auth/admin route exposure and tenant-admin user-control behavior in `modules/auth` and `modules/admin`, including route retirement for formerly mutating admin aliases.
+
+## Risk Trigger
+- Triggered by:
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/controller/AuthController.java`
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/controller/MfaController.java`
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/admin/controller/AdminUserController.java`
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/admin/service/AdminUserService.java`
+  - `openapi.json`
+  - route/OpenAPI contract tests under `erp-domain/src/test/java`
+- Contract surfaces affected:
+  - `/api/v1/auth/**` canonical auth, self, MFA, and session route inventory
+  - `/api/v1/admin/users/**` canonical Users & Access route inventory
+  - retired `/api/v1/auth/profile`, `/api/v1/auth/password/forgot/superadmin`, `/api/v1/admin/users/{userId}/suspend`, `/api/v1/admin/users/{userId}/unsuspend`, and `DELETE /api/v1/admin/users/{userId}` aliases
+- Failure mode if wrong:
+  - duplicate retired aliases could continue mutating identity state
+  - frontend/OpenAPI route inventory could drift from `VAL-ROUTE-001`
+  - tenant-admin route changes could widen protected-target, cross-tenant, or superadmin tenant-workflow access
+  - route tests could produce false positives by counting path parameter variable names as separate HTTP routes
+
+## Approval Authority
+- Mode: orchestrator
+- Approver: Droid mission orchestrator
+- Canary owner: Droid mission orchestrator
+- Approval status: branch-local integration candidate pending PR review
+- Basis: this is a hard-cut route-disposition packet required by the accepted mission contract; it removes duplicate mutating aliases and does not intentionally widen tenant, platform, protected-target, credential, or secret exposure boundaries.
+
+## Escalation Decision
+- Human escalation required: no
+- Reason: route decisions are explicitly covered by `VAL-ROUTE-001`; the packet retires duplicate aliases and adds canonical route inventory without destructive migrations or new external dependencies.
+
+## Rollback Owner
+- Owner: Droid mission orchestrator
+- Rollback method:
+  - before merge: revert this packet if route inventory, OpenAPI guard, or focused auth/admin tests regress
+  - after merge: revert the packet and rerun OpenAPI guard/snapshot, focused route/auth/admin tests, compile, spotless, and High-Risk Change Control
+- Rollback trigger:
+  - any retired route still mutates identity/admin state
+  - any canonical kept route is removed, renamed, or changes envelope unexpectedly
+  - OpenAPI snapshot drifts from runtime route inventory
+  - tenant-admin or superadmin boundaries regress for Users & Access routes
+  - route-disposition tests stop normalizing concrete method + URI behavior
+
+## Expiry
+- Valid until: 2026-05-05
+- Re-evaluate if: scope expands beyond route disposition into schema migrations, credential storage semantics, MFA verifier storage, first-class session storage, or broader RBAC/tenant policy changes.
+
+## Verification Evidence
+- Scope-to-evidence mapping:
+  - Route disposition: `IdentityRouteInventoryContractTest` asserts canonical and retired OpenAPI operations with normalized path-template variables.
+  - Runtime route behavior: `AuthControllerIT` and `AdminUserSecurityIT` exercise canonical route availability, logout query-token rejection, and retired alias non-mutation/absence behavior.
+  - OpenAPI parity: `OpenApiSnapshotIT` refreshed `openapi.json` and asserts request/response shapes for changed auth/admin routes.
+  - Tenant/authz proof: focused admin security tests rechecked tenant-admin-only access, cross-company masking, protected targets, and superadmin tenant-workflow denial.
+- Commands run:
+  - `/Users/anas/.factory/missions/7ef22e70-61c7-4cdf-b7a7-1c48f4127853/init.sh`
+  - `cd /Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/identity-account-hardcut-20260427 && bash scripts/guard_openapi_contract_drift.sh && cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='AuthPasswordResetPublicContractIT,AdminUserSecurityIT,AuthControllerIT,AuthTenantAuthorityIT,TenantRuntimeEnforcementAuthIT,AuthDisabledUserTokenIT,MfaControllerIT' test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -q -DskipTests compile`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn spotless:apply`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest=OpenApiSnapshotIT -Derp.openapi.snapshot.verify=true -Derp.openapi.snapshot.refresh=true test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='IdentityRouteInventoryContractTest,AuthControllerIT,AdminUserSecurityIT' test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn spotless:check`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -q -DskipTests compile`
+  - `bash ci/check-high-risk-changes.sh`
+  - `bash scripts/guard_openapi_contract_drift.sh && cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='AuthPasswordResetPublicContractIT,AdminUserSecurityIT,AuthControllerIT,AuthTenantAuthorityIT,TenantRuntimeEnforcementAuthIT,AuthDisabledUserTokenIT,MfaControllerIT' test`
+- Result summary:
+  - mission init completed and baseline route/auth/admin characterization passed with 86 tests plus OpenAPI guard
+  - compile passed after route changes
+  - OpenAPI snapshot refresh passed with 13 tests and updated auth/admin route inventory
+  - focused route/auth/admin tests passed with 38 tests after updating runtime route-disposition assertions
+  - final OpenAPI guard, compile, spotless check, High-Risk Change Control, OpenAPI snapshot verification, focused route tests, and 86-test IAM mission baseline all passed
+  - no raw JWTs, refresh tokens, reset tokens, MFA secrets, or recovery codes were recorded in this checkpoint
+- Artifacts/links:
+  - `openapi.json` updated in-repo
+  - focused test reports under `erp-domain/target/surefire-reports/`
+  - this checkpoint section is the branch-local R2 evidence artifact for the scoped route-disposition packet
+
+---
+
+## Prior Packet Evidence (Historical)
 
 ## Scope
 - Feature: `default-account-clear-semantics-followup-hardcut`

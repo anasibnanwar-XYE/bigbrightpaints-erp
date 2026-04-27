@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.admin.service;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.LinkedHashMap;
@@ -127,6 +128,14 @@ public class AdminUserService {
             false,
             OutOfScopeResponseMode.ACCESS_DENIED);
     return toDto(user, resolveLastLoginAt(user));
+  }
+
+  public void assertReadableUser(Long id) {
+    getUser(id);
+  }
+
+  public List<String> assignableRoles() {
+    return TENANT_ASSIGNABLE_ROLE_ORDER;
   }
 
   @Transactional
@@ -317,51 +326,45 @@ public class AdminUserService {
   }
 
   @Transactional
-  public void suspend(Long id) {
+  public void lockUser(Long userId) {
     Company company = companyContextService.requireCurrentCompany();
     UserAccount user =
         resolveScopedUserForAdminAction(
-            id,
+            userId,
             company,
-            "admin-suspend-user-out-of-scope",
+            "admin-lock-user-out-of-scope",
             true,
             OutOfScopeResponseMode.MASK_AS_MISSING);
-    updateUserStatusInternal(user, false, company, "ADMIN_USER_SUSPEND");
-  }
-
-  @Transactional
-  public void unsuspend(Long id) {
-    Company company = companyContextService.requireCurrentCompany();
-    UserAccount user =
-        resolveScopedUserForAdminAction(
-            id,
-            company,
-            "admin-unsuspend-user-out-of-scope",
-            true,
-            OutOfScopeResponseMode.MASK_AS_MISSING);
-    updateUserStatusInternal(user, true, company, "ADMIN_USER_UNSUSPEND");
-  }
-
-  @Transactional
-  public void deleteUser(Long id) {
-    Company company = companyContextService.requireCurrentCompany();
-    UserAccount user =
-        resolveScopedUserForAdminAction(
-            id,
-            company,
-            "admin-delete-user-out-of-scope",
-            true,
-            OutOfScopeResponseMode.MASK_AS_MISSING);
-    assertNotProtectedMainAdmin(user, company, "delete");
+    user.setLockedUntil(Instant.now().plus(Duration.ofDays(36500)));
+    userRepository.save(user);
     tokenBlacklistService.revokeAllUserTokens(user.getPublicId().toString());
     refreshTokenService.revokeAllForUser(user.getPublicId());
-    userRepository.delete(user);
-    emailService.sendUserDeletedEmail(user.getEmail(), user.getDisplayName());
     auditUserAccountAction(
-        AuditEvent.USER_DELETED,
+        AuditEvent.USER_LOCKED,
         user,
         company,
-        "admin_user_delete",
+        "admin_lock_user",
+        Map.of("targetUserId", String.valueOf(user.getId())));
+  }
+
+  @Transactional
+  public void unlockUser(Long userId) {
+    Company company = companyContextService.requireCurrentCompany();
+    UserAccount user =
+        resolveScopedUserForAdminAction(
+            userId,
+            company,
+            "admin-unlock-user-out-of-scope",
+            true,
+            OutOfScopeResponseMode.MASK_AS_MISSING);
+    user.setLockedUntil(null);
+    user.setFailedLoginAttempts(0);
+    userRepository.save(user);
+    auditUserAccountAction(
+        AuditEvent.USER_UNLOCKED,
+        user,
+        company,
+        "admin_unlock_user",
         Map.of("targetUserId", String.valueOf(user.getId())));
   }
 
@@ -386,6 +389,26 @@ public class AdminUserService {
         user,
         company,
         "admin_disable_mfa",
+        Map.of("targetUserId", String.valueOf(user.getId())));
+  }
+
+  @Transactional
+  public void revokeUserSessions(Long userId) {
+    Company company = companyContextService.requireCurrentCompany();
+    UserAccount user =
+        resolveScopedUserForAdminAction(
+            userId,
+            company,
+            "admin-revoke-sessions-out-of-scope",
+            true,
+            OutOfScopeResponseMode.MASK_AS_MISSING);
+    tokenBlacklistService.revokeAllUserTokens(user.getPublicId().toString());
+    refreshTokenService.revokeAllForUser(user.getPublicId());
+    auditUserAccountAction(
+        AuditEvent.TOKEN_REVOKED,
+        user,
+        company,
+        "admin_revoke_user_sessions",
         Map.of("targetUserId", String.valueOf(user.getId())));
   }
 
