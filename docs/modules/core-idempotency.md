@@ -20,7 +20,7 @@ This packet documents the **shared idempotency infrastructure** and the **module
 | Payroll run idempotency | `modules/hr/service/PayrollRunService` | Period+type keyed, signature checks, metadata repair |
 | Inventory adjustment idempotency | `modules/inventory/service/InventoryAdjustmentService` + `RawMaterialService` | Adjustment-key normalization, payload hash, reservation + race reconciliation |
 | Opening stock import idempotency | `modules/inventory/service/OpeningStockImportService` | Batch-key + idempotency-key dual-key replay protection |
-| Accounting idempotency | `modules/accounting/service/AccountingIdempotencyService` | Extends `AccountingCoreEngine`; facade-aware journal/receipt/settlement delegation plus correction-note reference reservation |
+| Accounting idempotency | `modules/accounting/service/{AccountingService,AccountingFacade,JournalReplayService}` | Canonical journal facade plus journal-reference replay mapping for manual journals, receipts, settlements, and correction notes |
 | Orchestrator command idempotency | `orchestrator/service/OrchestratorIdempotencyService` | Lease-based exactly-once command scope with rollback-aware status tracking |
 
 ---
@@ -86,10 +86,11 @@ Segments are joined with `|` delimiters. Each segment is normalized via the corr
 
 | Method | Purpose |
 | --- | --- |
-| `resolveHeaderKey(idempotencyKeyHeader, legacyIdempotencyKeyHeader)` | Resolves the effective key from `Idempotency-Key` and `X-Idempotency-Key` headers. Rejects if both are present with different values |
-| `resolveBodyOrHeaderKey(bodyKey, idempotencyKeyHeader, legacyIdempotencyKeyHeader)` | Resolves from body field first, then headers. Rejects if body and header disagree |
+| `resolveHeaderKey(idempotencyKeyHeader)` | Resolves the effective key from the canonical `Idempotency-Key` header |
+| `resolveBodyOrHeaderKey(bodyKey, idempotencyKeyHeader)` | Resolves from body field first, then the canonical header. Rejects if body and header disagree |
+| `unsupportedLegacyHeader(legacyHeader, resourceDescription, canonicalPath)` | Builds the fail-closed response used by endpoints that still receive `X-Idempotency-Key` |
 
-**Header precedence:** `Idempotency-Key` is the canonical header. `X-Idempotency-Key` is a legacy header that some endpoints still accept for backward compatibility. When both are present with different values, the platform rejects the request with `VALIDATION_INVALID_INPUT`.
+**Header contract:** `Idempotency-Key` is the canonical header. `X-Idempotency-Key` is rejected with `VALIDATION_INVALID_INPUT`; clients must retry with the canonical header.
 
 ---
 
@@ -107,16 +108,16 @@ Every module that protects write paths with idempotency layers its own domain-sp
 
 **Pattern:**
 
-1. Controller resolves the idempotency key from `Idempotency-Key`, `X-Idempotency-Key`, or the request body field, rejecting mismatches.
+1. Controller rejects `X-Idempotency-Key`, then resolves the idempotency key from `Idempotency-Key` or the request body field, rejecting header/body mismatches.
 2. `SalesCoreEngine` normalizes the key via `IdempotencyUtils.normalizeKey()`.
 3. Looks up existing order by `(company, idempotencyKey)`.
 4. If found: compares stored `idempotencyHash` against the computed request signature. Returns the existing order on match; throws `CONCURRENCY_CONFLICT` on mismatch.
 5. If not found: creates the order, catches `DataIntegrityViolationException`, re-looks up, and asserts signature match.
 6. On fresh creates where the hash is not yet persisted, `assertAndRepairSignature` writes the hash.
 
-**Legacy support:** The controller accepts both `Idempotency-Key` and `X-Idempotency-Key` headers. The order request DTO also carries an `idempotencyKey` body field. If both header and body provide a key, they must match.
+**Header contract:** The controller accepts only `Idempotency-Key`. The order request DTO also carries an `idempotencyKey` body field. If both header and body provide a key, they must match.
 
-**Test evidence:** `SalesControllerIdempotencyHeaderTest` proves header parity, legacy support, and mismatch rejection.
+**Test evidence:** `SalesControllerIT` and `OpenApiSnapshotIT` prove canonical header exposure, legacy-header rejection, and mismatch rejection.
 
 ### 2.2 Goods Receipt (GRN) Creation
 
@@ -128,14 +129,14 @@ Every module that protects write paths with idempotency layers its own domain-sp
 
 **Pattern:**
 
-1. Controller rejects `X-Idempotency-Key` explicitly, then resolves the key from `Idempotency-Key` header or the request body's `idempotencyKey` field via `IdempotencyHeaderUtils.resolveBodyOrHeaderKey()`. A key from either source is required — this is stricter than sales order creation, which also accepts `X-Idempotency-Key`.
+1. Controller rejects `X-Idempotency-Key` explicitly, then resolves the key from `Idempotency-Key` header or the request body's `idempotencyKey` field via `IdempotencyHeaderUtils.resolveBodyOrHeaderKey()`. A key from either source is required.
 2. Service normalizes the key, computes a request signature hash.
 3. Looks up existing GRN by `(company, idempotencyKey)` with eager line loading.
 4. If found: asserts stored signature matches the incoming signature. Returns existing on match.
 5. If not found: attempts insert, catches `DataIntegrityViolationException`, re-looks up, and asserts match.
 6. `IdempotencyReservationService` is used for race reconciliation.
 
-**Key difference from sales:** GRN explicitly rejects `X-Idempotency-Key` (unlike sales, which accepts it as legacy). The idempotency key is resolved from the `Idempotency-Key` header or the request body's `idempotencyKey` field via `IdempotencyHeaderUtils.resolveBodyOrHeaderKey()`, and a key from either source is required.
+**Key difference from sales:** GRN requires an idempotency key, while sales order creation still permits a missing key. Both paths reject `X-Idempotency-Key`.
 
 **Test evidence:** `TS_P2PGoodsReceiptIdempotencyTest`, `PurchasingWorkflowControllerTest`.
 
@@ -191,7 +192,7 @@ Every module that protects write paths with idempotency layers its own domain-sp
 
 **Pattern:**
 
-1. Controllers accept `Idempotency-Key` header. Some also accept `X-Idempotency-Key` as legacy.
+1. Controllers resolve from the canonical `Idempotency-Key` header and/or the request body's `idempotencyKey` field.
 2. Services require the key via `IdempotencyReservationService.requireKey()`.
 3. Reserve-first with race reconciliation using the shared `reserve()` pattern.
 4. On match: return existing adjustment. On mismatch: throw `CONCURRENCY_CONFLICT`.
@@ -217,11 +218,11 @@ Every module that protects write paths with idempotency layers its own domain-sp
 
 ### 2.7 Accounting Journal and Settlement Operations
 
-**Service:** `AccountingIdempotencyService` (extends `AccountingCoreEngine`)
+**Services:** `AccountingService` → `AccountingFacade`, with `JournalReplayService` and posting services for replay mapping
 
 **Pattern:**
 
-`AccountingIdempotencyService` is a thin layer that extends `AccountingCoreEngine` and adds facade-aware delegation for manual journal entries. The actual idempotency enforcement for accounting operations lives in `AccountingCoreEngine` and `AccountingFacade`, which use the shared `IdempotencyReservationService` for key normalization and signature checks on journal entries, settlements, receipts, and payments.
+Accounting idempotency is owned by the canonical accounting facade and focused posting services. `JournalReplayService` owns idempotency-key normalization, journal-reference mapping, replay lookup, and allocation waits for journal-backed writes.
 
 Most accounting operations resolve replay directly at the `JournalEntry` layer. Correction-note flows (`CREDIT_NOTE` / `DEBIT_NOTE`) add one more guard: they reserve a `JournalReferenceMapping` for the normalized caller idempotency key plus canonical reference before the journal is posted, then use that mapping for leader election and replay lookup.
 
@@ -267,7 +268,7 @@ For correction notes, replay validation is provenance-aware:
 | --- | --- | --- |
 | **Key normalization** | `IdempotencyReservationService.normalizeKey()` / `IdempotencyUtils.normalizeKey()` | All modules delegate to shared |
 | **Key validation** | `IdempotencyReservationService.requireKey()` | Most modules delegate; some validate inline |
-| **Header resolution** | `IdempotencyHeaderUtils` | Controllers call shared; some reject legacy headers |
+| **Header resolution** | `IdempotencyHeaderUtils` | Controllers resolve canonical headers and reject legacy headers explicitly |
 | **Payload hashing** | `IdempotencySignatureBuilder` + `IdempotencyUtils.sha256Hex()` | Modules build their own signatures using the shared builder |
 | **Reservation pattern** | `IdempotencyReservationService.reserve()` | Some modules use shared `reserve()`, others implement their own |
 | **Race reconciliation** | `IdempotencyReservationService.isDataIntegrityViolation()` | All modules use shared for `DataIntegrityViolationException` detection |
@@ -281,22 +282,22 @@ For correction notes, replay validation is provenance-aware:
 
 The following inconsistencies exist in the current idempotency contract. They are documented here explicitly so that readers are not surprised by them, and so that future normalization work has a clear starting point.
 
-### 4.1 Inconsistent Legacy Header Support
+### 4.1 Canonical Header Policy
 
 | Module | `Idempotency-Key` | `X-Idempotency-Key` | Body Field | Behavior |
 | --- | --- | --- | --- | --- |
-| Sales order creation | ✅ Accepted | ✅ Accepted (legacy) | ✅ Accepted | Mismatch between any two sources → rejection |
+| Sales order creation | ✅ Accepted | ❌ Explicitly rejected | ✅ Accepted | Header/body mismatch → rejection |
 | Goods receipt creation | ✅ Required | ❌ Explicitly rejected | ✅ Accepted | `X-Idempotency-Key` → immediate 400 |
 | Packing | ✅ Required | ❌ Explicitly rejected | Not used | `X-Idempotency-Key` → immediate 400 (same strict stance as GRN) |
-| Inventory adjustments | ✅ Accepted | ✅ Accepted (legacy) | ✅ Accepted | Same as sales |
-| Raw material intake | ✅ Required | ✅ Accepted (legacy) | Not used | Both headers accepted |
-| Raw material adjustments | ✅ Required | ✅ Accepted (legacy) | ✅ Accepted | Both headers + body accepted |
+| Inventory adjustments | ✅ Required | Not exposed | ✅ Accepted | Header/body mismatch → rejection |
+| Raw material intake | ✅ Required | Not exposed | Not used | Canonical header only |
+| Raw material adjustments | ✅ Required | Not exposed | ✅ Accepted | Header/body mismatch → rejection |
 | Payroll run | Not used | Not used | Server-derived | Key built from `runType + periodStart + periodEnd`; no client-supplied key |
-| Orchestrator commands | ✅ Accepted | Not used | Not used | Key derived from `Idempotency-Key`, `X-Request-Id`, or trace-ID via `CorrelationIdentifierSanitizer` |
+| Orchestrator commands | ✅ Accepted | Not used | Not used | Key derived from `Idempotency-Key`, request ID, or trace ID via `CorrelationIdentifierSanitizer` |
 | Opening stock import | ✅ Required | Not used | Not used | Plus `openingStockBatchKey` query param |
-| Catalog import | ✅ Accepted | ✅ Accepted (legacy) | Not used | `resolveHeaderKey()` resolves between both headers; mismatch → rejection |
+| Catalog import | ✅ Accepted | Not exposed | Not used | Optional canonical header |
 
-**Impact:** Frontend clients must know which header/body combination each endpoint expects. There is no single universal rule. A caller who assumes `X-Idempotency-Key` works everywhere will get 400 errors on GRN creation.
+**Impact:** Frontend clients should send `Idempotency-Key` only. Endpoints differ on whether the key is required and whether a body field is accepted, but `X-Idempotency-Key` is not part of the current contract.
 
 ### 4.2 Inconsistent Key-Requirement Enforcement
 
@@ -339,25 +340,21 @@ public SalesOrderDto createOrderWithIdempotency(SalesOrderRequest request) {
 
 The actual idempotency logic lives in `SalesCoreEngine`, not in the nominal idempotency service. This creates a naming inconsistency: the service named "IdempotencyService" does not own idempotency enforcement.
 
-### 4.5 AccountingIdempotencyService Inverts the Delegation Pattern
-
-`AccountingIdempotencyService` extends `AccountingCoreEngine` rather than delegating to it. When an `AccountingFacade` bean is available, it delegates to the facade; otherwise it falls back to the parent engine. This means the "idempotency service" is actually a routing layer for the accounting engine, not a dedicated idempotency service in the same sense as `PackingIdempotencyService` or `OrchestratorIdempotencyService`.
-
-### 4.6 Purchase Order Creation Has No Idempotency Key
+### 4.5 Purchase Order Creation Has No Idempotency Key
 
 `createPurchaseOrder(...)` uses order-number uniqueness as its duplicate guard, not a caller-supplied `Idempotency-Key`. This means PO creation cannot be safely retried by the client with a stable key — the caller must generate a unique order number each time or handle the `DATA_001` duplicate error.
 
-### 4.7 Mixed bodyKey/headerKey Resolution Across Endpoints
+### 4.6 Mixed bodyKey/headerKey Resolution Across Endpoints
 
 Some endpoints accept an idempotency key in the request body alongside the header, while others accept only the header. When both are present and disagree, the behavior is to reject — but the set of endpoints that accept body keys is not uniform. `IdempotencyHeaderUtils.resolveBodyOrHeaderKey()` provides the shared resolution logic, but not all controllers use it.
 
-### 4.8 Payroll Run Uses a Server-Derived Key
+### 4.7 Payroll Run Uses a Server-Derived Key
 
 `PayrollRunService` is the only write path where the idempotency key is **not client-supplied** at all. The service derives the key from `runType + periodStart + periodEnd` via `buildIdempotencyKey()`, meaning the caller has no way to control or override it. This is a different model from every other idempotency-protected endpoint in the system. While it eliminates the risk of missing keys, it also means the caller cannot supply a stable key across retry attempts if the period parameters change between calls.
 
-### 4.9 Catalog Import Idempotency Is Optional
+### 4.8 Catalog Import Idempotency Is Optional
 
-The catalog import endpoint (`POST /api/v1/catalog/import`) accepts `Idempotency-Key` and `X-Idempotency-Key` headers via `resolveHeaderKey()`, but the key is **not required**. If no key is provided, the import proceeds without idempotency protection. This is the same optional-key stance as sales order creation.
+The catalog import endpoint (`POST /api/v1/catalog/import`) accepts an optional `Idempotency-Key` header via `resolveHeaderKey()`, but the key is **not required**. If no key is provided, the import proceeds without idempotency protection. This is the same optional-key stance as sales order creation.
 
 ---
 
@@ -420,7 +417,7 @@ Incoming Request
 
 These recommendations are **not part of the current documentation scope** but are recorded here so that future work has a clear starting point. No code changes are implied by this section.
 
-1. **Standardize header policy:** Decide whether `X-Idempotency-Key` should be accepted, rejected, or ignored across all endpoints. Current inconsistency (accepted on some, rejected on GRN) makes frontend integration harder.
+1. **Keep the canonical header policy strict:** New endpoints should expose only `Idempotency-Key`; any received `X-Idempotency-Key` should fail closed with a clear recovery message.
 
 2. **Require idempotency keys on all write paths:** Sales order creation is the only major write path where the client-supplied key is optional. Payroll derives its key server-side from request fields, so it does not need a client key. Making sales order creation require a client-supplied key would close a replay-safety gap.
 

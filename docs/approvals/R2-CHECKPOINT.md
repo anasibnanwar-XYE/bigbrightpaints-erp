@@ -83,7 +83,7 @@ Last reviewed: 2026-04-26
   - `cd erp-domain && MIGRATION_SET=v2 mvn -q -DskipTests compile`
   - `cd erp-domain && MIGRATION_SET=v2 mvn -q spotless:check -DspotlessFiles='src/main/java/com/bigbrightpaints/erp/modules/accounting/dto/CompanyDefaultAccountsRequest.java,src/main/java/com/bigbrightpaints/erp/modules/accounting/controller/AccountController.java,src/main/java/com/bigbrightpaints/erp/modules/accounting/service/AccountResolutionOwnerService.java,src/main/java/com/bigbrightpaints/erp/modules/accounting/service/CompanyDefaultAccountsService.java,src/main/java/com/bigbrightpaints/erp/modules/accounting/service/AccountingComplianceAuditService.java,src/main/java/com/bigbrightpaints/erp/core/config/ValidationSeedDataInitializer.java,src/test/java/com/bigbrightpaints/erp/modules/accounting/controller/AccountControllerTest.java,src/test/java/com/bigbrightpaints/erp/modules/accounting/service/CompanyDefaultAccountsServiceTest.java'`
   - `bash ci/check-high-risk-changes.sh`
-  - `python3 scripts/pr_ci_parity.py --base origin/main --head HEAD`
+  - `python3 scripts/pr_ci_parity.py --base` default branch `--head HEAD`
   - `git diff --check`
 - Result summary:
   - focused default-account/controller/validation-seed tests passed
@@ -94,3 +94,17 @@ Last reviewed: 2026-04-26
   - targeted accounting proof, baseline test pack, compile, scoped spotless check, and diff whitespace check passed
 - Artifact note:
   - inline evidence in this checkpoint records the Maven proof, runtime reset, curl clear/restore, audit inspection, and OpenAPI observations for the scoped default-account clear semantics packet.
+
+## Cleanup Sweep Addendum
+- Feature: factory-hardcut-cleanup-20260427
+- Branch: codex/factory-hardcut-cleanup-20260427 rebased on the remote default branch
+- Review candidate:
+  - remove unused DTOs, stale docs references, fallback branches, and test/code scaffolding that no longer has a current canonical caller
+  - keep refreshed remote-default behavior for default-account clear semantics, period-close financial reporting, and live bulk-variant production catalog APIs
+  - preserve hard-cut fail-fast behavior for opening-stock import replay JSON and credit override decision reasons
+- Why this remains R2: the cleanup touches accounting, HR, reports, inventory, and sales surfaces. The branch is development-only and carries one canonical current-state implementation with no compatibility bridge for deleted local-only states.
+- Verification required after rebase:
+  - `git diff --check`
+  - `bash ci/check-high-risk-changes.sh`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -q -DskipTests compile`
+  - focused tests around the conflicted accounting, reports, inventory, admin, and sales files

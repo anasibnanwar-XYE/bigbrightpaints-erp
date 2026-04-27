@@ -99,7 +99,7 @@ The payroll run follows a strict workflow with status progression:
 ## Cross-Module Boundaries
 
 ### HR → Accounting (Payroll Posting Seam)
-The HR module posts payroll journal entries to accounting via the **`AccountingFacade`** interface. This is the canonical accounting seam — do not reference `AccountingCoreEngineCore` directly.
+The HR module posts payroll journal entries to accounting via the **`AccountingFacade`** interface. This is the canonical accounting seam; HR must not call lower-level accounting posting services directly.
 
 ```
 PayrollPostingService.postPayrollToAccounting()

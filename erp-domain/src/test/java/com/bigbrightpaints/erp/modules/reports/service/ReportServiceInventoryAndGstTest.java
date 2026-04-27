@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.reports.service;
 
+import static com.bigbrightpaints.erp.modules.reports.service.ReportFixtures.account;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;

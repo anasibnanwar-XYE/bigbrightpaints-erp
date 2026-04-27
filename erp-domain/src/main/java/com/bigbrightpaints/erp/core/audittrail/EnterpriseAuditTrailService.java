@@ -39,9 +39,6 @@ import org.springframework.util.StringUtils;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import com.bigbrightpaints.erp.core.audittrail.web.AuditEventIngestItemRequest;
-import com.bigbrightpaints.erp.core.audittrail.web.MlAuditIngestResponse;
-import com.bigbrightpaints.erp.core.audittrail.web.MlInteractionEventResponse;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyTime;

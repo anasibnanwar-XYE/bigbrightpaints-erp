@@ -1,6 +1,7 @@
 package com.bigbrightpaints.erp.modules.reports.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
@@ -22,6 +23,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriod;
@@ -157,6 +159,33 @@ class InventoryValuationQueryServiceTest {
     assertThat(snapshot.totalValue()).isEqualByComparingTo("200.00");
     assertThat(snapshot.lowStockItems()).isZero();
     assertThat(snapshot.items()).hasSize(1);
+  }
+
+  @Test
+  void currentSnapshot_rejectsUnknownFinishedGoodCostingMethod() {
+    Company company = new Company();
+    company.setCode("CR-UNKNOWN-COST");
+    company.setName("CR Unknown Cost");
+    company.setTimezone("UTC");
+
+    FinishedGood finishedGood = new FinishedGood();
+    finishedGood.setCompany(company);
+    finishedGood.setProductCode("FG-UNKNOWN-COST");
+    finishedGood.setName("FG Unknown Cost");
+    finishedGood.setCostingMethod("CUSTOM_METHOD");
+    finishedGood.setCurrentStock(BigDecimal.ONE);
+
+    when(rawMaterialRepository.findByCompanyOrderByNameAsc(company)).thenReturn(List.of());
+    when(finishedGoodRepository.findByCompanyOrderByProductCodeAsc(company))
+        .thenReturn(List.of(finishedGood));
+    when(productionProductRepository.findByCompanyOrderByProductNameAsc(company))
+        .thenReturn(List.of());
+    when(accountingPeriodRepository.findByCompanyAndYearAndMonth(company, 2026, 3))
+        .thenReturn(java.util.Optional.empty());
+
+    assertThatThrownBy(() -> inventoryValuationService.currentSnapshot(company))
+        .isInstanceOf(ApplicationException.class)
+        .hasMessageContaining("Unknown costing method: CUSTOM_METHOD");
   }
 
   @Test

@@ -70,6 +70,84 @@ class ReportQuerySupportTest {
     assertThat(window.startDate()).isEqualTo(period.getStartDate());
     assertThat(window.endDate()).isEqualTo(period.getEndDate());
     assertThat(window.exportOptions().requestedFormat()).isEqualTo("PDF");
+    assertThat(support.usesClosedSnapshot(window)).isTrue();
+  }
+
+  @Test
+  void usesClosedSnapshot_requiresSnapshotPeriodAndExactPeriodRange() {
+    ReportQuerySupport support =
+        new ReportQuerySupport(
+            companyContextService, accountingPeriodRepository, snapshotRepository, companyClock);
+    ReportQuerySupport.FinancialQueryWindow base =
+        ReportFixtures.window(
+            LocalDate.of(2026, 6, 1), LocalDate.of(2026, 6, 30), LocalDate.of(2026, 6, 30));
+    AccountingPeriod period = new AccountingPeriod();
+    period.setStartDate(base.startDate());
+    period.setEndDate(base.endDate());
+    period.setStatus(AccountingPeriodStatus.CLOSED);
+    AccountingPeriodSnapshot snapshot = new AccountingPeriodSnapshot();
+
+    assertThat(support.usesClosedSnapshot(base)).isFalse();
+    assertThat(
+            support.usesClosedSnapshot(
+                new ReportQuerySupport.FinancialQueryWindow(
+                    base.company(),
+                    base.startDate(),
+                    base.endDate(),
+                    base.asOfDate(),
+                    period,
+                    null,
+                    ReportSource.SNAPSHOT,
+                    base.exportOptions())))
+        .isFalse();
+    assertThat(
+            support.usesClosedSnapshot(
+                new ReportQuerySupport.FinancialQueryWindow(
+                    base.company(),
+                    base.startDate(),
+                    base.endDate(),
+                    base.asOfDate(),
+                    null,
+                    snapshot,
+                    ReportSource.SNAPSHOT,
+                    base.exportOptions())))
+        .isFalse();
+    assertThat(
+            support.usesClosedSnapshot(
+                new ReportQuerySupport.FinancialQueryWindow(
+                    base.company(),
+                    base.startDate().minusDays(1),
+                    base.endDate(),
+                    base.asOfDate(),
+                    period,
+                    snapshot,
+                    ReportSource.SNAPSHOT,
+                    base.exportOptions())))
+        .isFalse();
+    assertThat(
+            support.usesClosedSnapshot(
+                new ReportQuerySupport.FinancialQueryWindow(
+                    base.company(),
+                    base.startDate(),
+                    base.endDate().minusDays(1),
+                    base.asOfDate(),
+                    period,
+                    snapshot,
+                    ReportSource.SNAPSHOT,
+                    base.exportOptions())))
+        .isFalse();
+    assertThat(
+            support.usesClosedSnapshot(
+                new ReportQuerySupport.FinancialQueryWindow(
+                    base.company(),
+                    base.startDate(),
+                    base.endDate(),
+                    base.asOfDate(),
+                    period,
+                    snapshot,
+                    ReportSource.SNAPSHOT,
+                    base.exportOptions())))
+        .isTrue();
   }
 
   @Test

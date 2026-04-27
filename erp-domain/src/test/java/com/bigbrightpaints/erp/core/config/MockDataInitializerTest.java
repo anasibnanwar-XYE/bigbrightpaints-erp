@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -195,7 +196,8 @@ class MockDataInitializerTest {
     when(accountRepository.findByCompanyAndCodeIgnoreCase(any(Company.class), anyString()))
         .thenAnswer(
             invocation -> {
-              assertThat(CompanyContextHolder.getCompanyCode()).isEqualTo("MOCK");
+              Company companyArgument = invocation.getArgument(0, Company.class);
+              assertThat(companyArgument.getCode()).isEqualTo("MOCK");
               throw new IllegalStateException("stop after account context assertion");
             });
 
@@ -419,7 +421,8 @@ class MockDataInitializerTest {
   void seedRawBatch_skipsWhenMatchingBatchAlreadyExists() {
     RawMaterial rawMaterial = rawMaterial(company("MOCK"), 77L, "RM-RESIN");
     rawMaterial.setCurrentStock(new BigDecimal("25"));
-    when(rawMaterialBatchRepository.existsByRawMaterialAndBatchCode(rawMaterial, "RM-RESIN-B1"))
+    when(rawMaterialBatchRepository.existsByRawMaterialAndBatchCode(
+            any(RawMaterial.class), eq("RM-RESIN-B1")))
         .thenReturn(true);
 
     com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(

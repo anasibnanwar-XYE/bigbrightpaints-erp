@@ -22,6 +22,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
+import com.bigbrightpaints.erp.modules.accounting.service.AccountingPeriodService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.modules.factory.domain.ProductionLog;
@@ -50,6 +51,7 @@ class CR_MfgProducedAtTimezoneTest extends AbstractIntegrationTest {
   @Autowired private RawMaterialRepository rawMaterialRepository;
   @Autowired private RawMaterialBatchRepository rawMaterialBatchRepository;
   @Autowired private JournalEntryRepository journalEntryRepository;
+  @Autowired private AccountingPeriodService accountingPeriodService;
   @Autowired private CompanyClock companyClock;
 
   @AfterEach
@@ -68,6 +70,7 @@ class CR_MfgProducedAtTimezoneTest extends AbstractIntegrationTest {
     ensureRawMaterialBatch(material, new BigDecimal("100"), new BigDecimal("5.00"));
 
     LocalDate today = companyClock.today(company);
+    accountingPeriodService.ensurePeriod(company, today);
     String localDate = today.format(DateTimeFormatter.ofPattern("dd-MM-yyyy"));
 
     CompanyContextHolder.setCompanyCode(companyCode);

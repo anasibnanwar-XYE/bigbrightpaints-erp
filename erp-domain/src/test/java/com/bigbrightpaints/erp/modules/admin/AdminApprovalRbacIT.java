@@ -20,9 +20,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 
+import com.bigbrightpaints.erp.modules.admin.domain.ExportApprovalStatus;
 import com.bigbrightpaints.erp.modules.admin.domain.ExportRequest;
 import com.bigbrightpaints.erp.modules.admin.domain.ExportRequestRepository;
-import com.bigbrightpaints.erp.modules.admin.dto.ExportApprovalStatus;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.company.domain.Company;

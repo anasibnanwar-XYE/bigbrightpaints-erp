@@ -1,8 +1,8 @@
 package com.bigbrightpaints.erp.core.util;
 
+import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.util.function.Supplier;
 
 import org.springframework.stereotype.Component;
 
@@ -16,44 +16,44 @@ import com.bigbrightpaints.erp.modules.company.domain.Company;
 public class CompanyTime {
 
   private static volatile CompanyClock companyClock;
+  private static final CompanyClock SYSTEM_CLOCK = new CompanyClock((Clock) null);
 
   public CompanyTime(CompanyClock companyClock) {
     CompanyTime.companyClock = companyClock;
   }
 
   public static Instant now(Company company) {
-    return firstNonNull(() -> requireClock().now(company), () -> fallbackClock().now(company));
+    Instant now = requireClock().now(company);
+    return now != null ? now : SYSTEM_CLOCK.now(company);
   }
 
   public static Instant now() {
-    return firstNonNull(() -> requireClock().now(null), () -> fallbackClock().now(null));
+    Instant now = requireClock().now(null);
+    return now != null ? now : SYSTEM_CLOCK.now(null);
   }
 
   public static LocalDate today(Company company) {
-    return firstNonNull(() -> requireClock().today(company), () -> fallbackClock().today(company));
+    LocalDate today = requireClock().today(company);
+    return today != null ? today : SYSTEM_CLOCK.today(company);
   }
 
   public static LocalDate today() {
-    return firstNonNull(() -> requireClock().today(null), () -> fallbackClock().today(null));
+    LocalDate today = requireClock().today(null);
+    return today != null ? today : SYSTEM_CLOCK.today(null);
   }
 
   private static CompanyClock requireClock() {
     if (companyClock == null) {
       synchronized (CompanyTime.class) {
         if (companyClock == null) {
-          companyClock = fallbackClock();
+          companyClock = defaultClock();
         }
       }
     }
     return companyClock;
   }
 
-  private static CompanyClock fallbackClock() {
-    return new CompanyClock((java.time.Clock) null);
-  }
-
-  private static <T> T firstNonNull(Supplier<T> primary, Supplier<T> fallback) {
-    T value = primary.get();
-    return value != null ? value : fallback.get();
+  private static CompanyClock defaultClock() {
+    return SYSTEM_CLOCK;
   }
 }

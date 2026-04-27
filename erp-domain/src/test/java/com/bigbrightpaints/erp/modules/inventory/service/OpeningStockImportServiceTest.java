@@ -1104,7 +1104,7 @@ class OpeningStockImportServiceTest {
   }
 
   @Test
-  void serializeResults_returnsNullForEmptyAndSerializationFailure() throws Exception {
+  void serializeResults_returnsNullForEmptyAndFailsFastOnSerializationFailure() throws Exception {
     assertThat(
             (Object)
                 com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
@@ -1112,7 +1112,8 @@ class OpeningStockImportServiceTest {
         .isNull();
 
     ObjectMapper failingObjectMapper = org.mockito.Mockito.mock(ObjectMapper.class);
-    when(failingObjectMapper.writeValueAsString(any())).thenThrow(new RuntimeException("boom"));
+    when(failingObjectMapper.writeValueAsString(any()))
+        .thenThrow(new com.fasterxml.jackson.core.JsonProcessingException("boom") {});
 
     OpeningStockImportService failingService =
         new OpeningStockImportService(
@@ -1136,24 +1137,93 @@ class OpeningStockImportServiceTest {
             new ResourcelessTransactionManager(),
             true);
 
-    String serialized =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-            failingService,
-            "serializeResults",
-            List.of(
-                new OpeningStockImportResponse.ImportRowResult(
-                    1L,
-                    "FG-1",
-                    "FINISHED_GOOD",
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    readyReadiness("FG-1"))));
+    assertThatThrownBy(
+            () ->
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    failingService,
+                    "serializeResults",
+                    List.of(
+                        new OpeningStockImportResponse.ImportRowResult(
+                            1L,
+                            "FG-1",
+                            "FINISHED_GOOD",
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            readyReadiness("FG-1")))))
+        .isInstanceOfSatisfying(
+            ApplicationException.class,
+            ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_INVALID_STATE))
+        .hasMessageContaining("Failed to serialize opening stock import results");
+  }
 
-    assertThat(serialized).isNull();
+  @Test
+  void serializeErrors_failsFastOnSerializationFailure() throws Exception {
+    ObjectMapper failingObjectMapper = org.mockito.Mockito.mock(ObjectMapper.class);
+    when(failingObjectMapper.writeValueAsString(any()))
+        .thenThrow(new com.fasterxml.jackson.core.JsonProcessingException("boom") {});
+
+    OpeningStockImportService failingService =
+        new OpeningStockImportService(
+            companyContextService,
+            rawMaterialRepository,
+            rawMaterialBatchRepository,
+            rawMaterialMovementRepository,
+            finishedGoodRepository,
+            finishedGoodBatchRepository,
+            inventoryMovementRepository,
+            skuReadinessService,
+            batchNumberService,
+            accountingFacade,
+            accountRepository,
+            journalEntryRepository,
+            openingStockImportRepository,
+            auditService,
+            failingObjectMapper,
+            companyClock,
+            environment,
+            new ResourcelessTransactionManager(),
+            true);
+
+    assertThatThrownBy(
+            () ->
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    failingService,
+                    "serializeErrors",
+                    List.of(
+                        new OpeningStockImportResponse.ImportError(
+                            1L, "RM-1", "RAW_MATERIAL", "invalid", null))))
+        .isInstanceOfSatisfying(
+            ApplicationException.class,
+            ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_INVALID_STATE))
+        .hasMessageContaining("Failed to serialize opening stock import errors");
+  }
+
+  @Test
+  void deserializeErrors_failsFastWhenPersistedJsonIsInvalid() {
+    assertThatThrownBy(
+            () ->
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    service, "deserializeErrors", "{"))
+        .isInstanceOfSatisfying(
+            ApplicationException.class,
+            ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_INVALID_STATE))
+        .hasMessageContaining("Invalid opening stock import errors JSON");
+  }
+
+  @Test
+  void deserializeResults_failsFastWhenPersistedJsonIsInvalid() {
+    assertThatThrownBy(
+            () ->
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    service, "deserializeResults", "{"))
+        .isInstanceOfSatisfying(
+            ApplicationException.class,
+            ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_INVALID_STATE))
+        .hasMessageContaining("Invalid opening stock import results JSON");
   }
 
   @Test
@@ -1919,7 +1989,7 @@ class OpeningStockImportServiceTest {
   }
 
   @Test
-  void importOpeningStock_replaysInvalidResultsJsonAsEmptyList() throws Exception {
+  void importOpeningStock_failsFastWhenReplayResultsJsonIsInvalid() throws Exception {
     String csv =
         String.join(
             "\n",
@@ -1939,10 +2009,11 @@ class OpeningStockImportServiceTest {
     when(openingStockImportRepository.findByCompanyAndIdempotencyKey(company, "same-key"))
         .thenReturn(Optional.of(existing));
 
-    OpeningStockImportResponse replay = importOpeningStock(file, "same-key");
-
-    assertThat(replay.results()).isEmpty();
-    assertThat(replay.errors()).isEmpty();
+    assertThatThrownBy(() -> importOpeningStock(file, "same-key"))
+        .isInstanceOfSatisfying(
+            ApplicationException.class,
+            ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_INVALID_STATE))
+        .hasMessageContaining("Invalid opening stock import results JSON");
   }
 
   @Test

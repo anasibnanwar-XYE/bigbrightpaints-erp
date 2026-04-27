@@ -33,6 +33,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -718,8 +719,8 @@ public class OpeningStockImportService {
     }
     try {
       return objectMapper.writeValueAsString(errors);
-    } catch (Exception ex) {
-      return null;
+    } catch (JsonProcessingException ex) {
+      throw ValidationUtils.invalidState("Failed to serialize opening stock import errors", ex);
     }
   }
 
@@ -729,8 +730,8 @@ public class OpeningStockImportService {
     }
     try {
       return objectMapper.writeValueAsString(results);
-    } catch (Exception ex) {
-      return null;
+    } catch (JsonProcessingException ex) {
+      throw ValidationUtils.invalidState("Failed to serialize opening stock import results", ex);
     }
   }
 
@@ -740,8 +741,8 @@ public class OpeningStockImportService {
     }
     try {
       return objectMapper.readValue(resultsJson, new TypeReference<List<ImportRowResult>>() {});
-    } catch (Exception ex) {
-      return List.of();
+    } catch (JsonProcessingException ex) {
+      throw ValidationUtils.invalidState("Invalid opening stock import results JSON", ex);
     }
   }
 
@@ -751,8 +752,8 @@ public class OpeningStockImportService {
     }
     try {
       return objectMapper.readValue(errorsJson, new TypeReference<List<ImportError>>() {});
-    } catch (Exception ex) {
-      return List.of();
+    } catch (JsonProcessingException ex) {
+      throw ValidationUtils.invalidState("Invalid opening stock import errors JSON", ex);
     }
   }
 

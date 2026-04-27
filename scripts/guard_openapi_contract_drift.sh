@@ -14,11 +14,7 @@ fail() {
 }
 
 [[ -f "$OPENAPI_SPEC" ]] || fail "missing required file: $OPENAPI_SPEC"
-if [[ ! -f "$ENDPOINT_INVENTORY_DOC" ]]; then
-  echo "[guard_openapi_contract_drift] WARN: missing optional endpoint inventory doc: $ENDPOINT_INVENTORY_DOC"
-  echo "[guard_openapi_contract_drift] WARN: continuing with fail-open compatibility mode"
-  exit 0
-fi
+[[ -f "$ENDPOINT_INVENTORY_DOC" ]] || fail "missing required endpoint inventory doc: $ENDPOINT_INVENTORY_DOC"
 
 case "$MODE" in
   verify|report)

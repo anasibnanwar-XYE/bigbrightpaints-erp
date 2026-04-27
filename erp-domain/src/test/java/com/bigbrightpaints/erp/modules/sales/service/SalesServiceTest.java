@@ -3978,329 +3978,46 @@ class SalesServiceTest {
   }
 
   @Test
-  void createOrderIdempotentRetry_missingStoredSignatureUsesRequestPaymentMode() {
-    setupProduct("SKU3-IDEMP", BigDecimal.valueOf(100), BigDecimal.ZERO);
-    FinishedGood finishedGood = buildFinishedGood("SKU3-IDEMP");
-    finishedGood.setRevenueAccountId(5L);
-    when(finishedGoodRepository.findByCompanyAndProductCode(company, "SKU3-IDEMP"))
-        .thenReturn(Optional.of(finishedGood));
-    when(orderNumberService.nextOrderNumber(company)).thenReturn("SO-IDEMP-CASH");
-    when(salesOrderRepository.save(ArgumentMatchers.any(SalesOrder.class)))
-        .thenAnswer(invocation -> invocation.getArgument(0));
-
-    SalesOrder existing = new SalesOrder();
-    setField(existing, "id", 9901L);
-    existing.setCompany(company);
-    existing.setOrderNumber("SO-IDEMP-CASH");
-    existing.setStatus("RESERVED");
-    existing.setCurrency("INR");
-    existing.setGstTreatment("NONE");
-    existing.setGstInclusive(false);
-    existing.setGstRate(BigDecimal.ZERO);
-    existing.setSubtotalAmount(BigDecimal.valueOf(100));
-    existing.setGstTotal(BigDecimal.ZERO);
-    existing.setGstRoundingAdjustment(BigDecimal.ZERO);
-    existing.setTotalAmount(BigDecimal.valueOf(100));
-    existing.setIdempotencyHash(null);
-    SalesOrderItem existingItem = new SalesOrderItem();
-    setField(existingItem, "id", 9902L);
-    existingItem.setSalesOrder(existing);
-    existingItem.setProductCode("SKU3-IDEMP");
-    existingItem.setDescription("Desc");
-    existingItem.setQuantity(BigDecimal.ONE);
-    existingItem.setUnitPrice(BigDecimal.valueOf(100));
-    existingItem.setLineSubtotal(BigDecimal.valueOf(100));
-    existingItem.setGstRate(BigDecimal.ZERO);
-    existingItem.setGstAmount(BigDecimal.ZERO);
-    existingItem.setLineTotal(BigDecimal.valueOf(100));
-    existing.getItems().add(existingItem);
-
-    when(salesOrderRepository.findByCompanyAndIdempotencyKey(company, "SO-IDEMP-CASH-KEY"))
-        .thenReturn(Optional.of(existing));
-
-    SalesOrderRequest request =
-        new SalesOrderRequest(
-            null,
-            BigDecimal.valueOf(100),
-            "INR",
-            null,
-            List.of(
-                new SalesOrderItemRequest(
-                    "SKU3-IDEMP", "Desc", BigDecimal.ONE, BigDecimal.valueOf(100), null)),
-            "NONE",
-            null,
-            null,
-            "SO-IDEMP-CASH-KEY",
-            "CASH");
-
-    SalesOrderDto dto = salesService.createOrder(request);
-
-    assertEquals(existing.getId(), dto.id());
-    verify(salesOrderRepository).save(existing);
-    assertEquals(
-        DigestUtils.sha256Hex("null|100|INR|NONE|false|0||CASH|SKU3-IDEMP:1:100:0"),
-        existing.getIdempotencyHash());
-  }
-
-  @Test
-  void createOrderIdempotentRetry_acceptsStoredSignatureWithDefaultPaymentModeSegment() {
-    setupProduct("SKU3-IDEMP", BigDecimal.valueOf(100), BigDecimal.ZERO);
-    FinishedGood finishedGood = buildFinishedGood("SKU3-IDEMP");
-    finishedGood.setRevenueAccountId(5L);
-    when(finishedGoodRepository.findByCompanyAndProductCode(company, "SKU3-IDEMP"))
-        .thenReturn(Optional.of(finishedGood));
-    when(orderNumberService.nextOrderNumber(company)).thenReturn("SO-IDEMP-1");
-    when(salesOrderRepository.save(ArgumentMatchers.any(SalesOrder.class)))
-        .thenAnswer(invocation -> invocation.getArgument(0));
-
-    SalesOrder existing = new SalesOrder();
-    setField(existing, "id", 901L);
-    existing.setCompany(company);
-    existing.setOrderNumber("SO-IDEMP-1");
-    existing.setStatus("RESERVED");
-    existing.setCurrency("INR");
-    existing.setGstTreatment("NONE");
-    existing.setGstInclusive(false);
-    existing.setGstRate(BigDecimal.ZERO);
-    existing.setSubtotalAmount(BigDecimal.valueOf(100));
-    existing.setGstTotal(BigDecimal.ZERO);
-    existing.setGstRoundingAdjustment(BigDecimal.ZERO);
-    existing.setTotalAmount(BigDecimal.valueOf(100));
-    existing.setIdempotencyHash(
-        DigestUtils.sha256Hex("null|100|INR|NONE|false|0||CREDIT|SKU3-IDEMP:1:100:0"));
-    SalesOrderItem existingItem = new SalesOrderItem();
-    setField(existingItem, "id", 911L);
-    existingItem.setSalesOrder(existing);
-    existingItem.setProductCode("SKU3-IDEMP");
-    existingItem.setDescription("Desc");
-    existingItem.setQuantity(BigDecimal.ONE);
-    existingItem.setUnitPrice(BigDecimal.valueOf(100));
-    existingItem.setLineSubtotal(BigDecimal.valueOf(100));
-    existingItem.setGstRate(BigDecimal.ZERO);
-    existingItem.setGstAmount(BigDecimal.ZERO);
-    existingItem.setLineTotal(BigDecimal.valueOf(100));
-    existing.getItems().add(existingItem);
-
+  void createOrderIdempotentRetry_rejectsMissingStoredSignature() {
+    SalesOrder existing = salesOrderForIdempotencyReplay(null);
     when(salesOrderRepository.findByCompanyAndIdempotencyKey(company, "SO-IDEMP-KEY"))
         .thenReturn(Optional.of(existing));
 
-    SalesOrderRequest request =
-        new SalesOrderRequest(
-            null,
-            BigDecimal.valueOf(100),
-            "INR",
-            null,
-            List.of(
-                new SalesOrderItemRequest(
-                    "SKU3-IDEMP", "Desc", BigDecimal.ONE, BigDecimal.valueOf(100), null)),
-            "NONE",
-            null,
-            null,
-            "SO-IDEMP-KEY",
-            "CREDIT");
+    SalesOrderRequest request = idempotentSalesOrderRequest("SO-IDEMP-KEY", "CASH");
 
-    SalesOrderDto dto = salesService.createOrder(request);
+    ApplicationException ex =
+        assertThrows(ApplicationException.class, () -> salesService.createOrder(request));
 
-    assertEquals(existing.getId(), dto.id());
-    assertEquals("SO-IDEMP-1", dto.orderNumber());
-    verify(salesOrderRepository).save(existing);
-    assertEquals(
-        DigestUtils.sha256Hex("null|100|INR|NONE|false|0||SKU3-IDEMP:1:100:0"),
-        existing.getIdempotencyHash());
+    assertEquals(ErrorCode.CONCURRENCY_CONFLICT, ex.getErrorCode());
+    verify(salesOrderRepository, never()).save(existing);
   }
 
   @Test
-  void createOrderIdempotentRetry_acceptsStoredLegacySplitSignature() {
-    setupProduct("SKU3-IDEMP", BigDecimal.valueOf(100), BigDecimal.ZERO);
-    FinishedGood finishedGood = buildFinishedGood("SKU3-IDEMP");
-    finishedGood.setRevenueAccountId(5L);
-    when(finishedGoodRepository.findByCompanyAndProductCode(company, "SKU3-IDEMP"))
-        .thenReturn(Optional.of(finishedGood));
-    when(orderNumberService.nextOrderNumber(company)).thenReturn("SO-IDEMP-SPLIT");
-    when(salesOrderRepository.save(ArgumentMatchers.any(SalesOrder.class)))
-        .thenAnswer(invocation -> invocation.getArgument(0));
-
-    SalesOrder existing = new SalesOrder();
-    setField(existing, "id", 903L);
-    existing.setCompany(company);
-    existing.setOrderNumber("SO-IDEMP-SPLIT");
-    existing.setStatus("RESERVED");
-    existing.setCurrency("INR");
-    existing.setGstTreatment("NONE");
-    existing.setGstInclusive(false);
-    existing.setGstRate(BigDecimal.ZERO);
-    existing.setSubtotalAmount(BigDecimal.valueOf(100));
-    existing.setGstTotal(BigDecimal.ZERO);
-    existing.setGstRoundingAdjustment(BigDecimal.ZERO);
-    existing.setTotalAmount(BigDecimal.valueOf(100));
-    existing.setPaymentMode("HYBRID");
-    existing.setIdempotencyHash(
-        DigestUtils.sha256Hex("null|100|INR|NONE|false|0||SPLIT|SKU3-IDEMP:1:100:0"));
-    SalesOrderItem existingItem = new SalesOrderItem();
-    setField(existingItem, "id", 913L);
-    existingItem.setSalesOrder(existing);
-    existingItem.setProductCode("SKU3-IDEMP");
-    existingItem.setDescription("Desc");
-    existingItem.setQuantity(BigDecimal.ONE);
-    existingItem.setUnitPrice(BigDecimal.valueOf(100));
-    existingItem.setLineSubtotal(BigDecimal.valueOf(100));
-    existingItem.setGstRate(BigDecimal.ZERO);
-    existingItem.setGstAmount(BigDecimal.ZERO);
-    existingItem.setLineTotal(BigDecimal.valueOf(100));
-    existing.getItems().add(existingItem);
-
-    when(salesOrderRepository.findByCompanyAndIdempotencyKey(company, "SO-IDEMP-SPLIT-KEY"))
+  void createOrderIdempotentRetry_rejectsStoredDefaultPaymentModeSegment() {
+    SalesOrder existing =
+        salesOrderForIdempotencyReplay(
+            DigestUtils.sha256Hex("null|100|INR|NONE|false|0||CREDIT|SKU3-IDEMP:1:100:0"));
+    when(salesOrderRepository.findByCompanyAndIdempotencyKey(company, "SO-IDEMP-KEY"))
         .thenReturn(Optional.of(existing));
 
-    SalesOrderRequest request =
-        new SalesOrderRequest(
-            null,
-            BigDecimal.valueOf(100),
-            "INR",
-            null,
-            List.of(
-                new SalesOrderItemRequest(
-                    "SKU3-IDEMP", "Desc", BigDecimal.ONE, BigDecimal.valueOf(100), null)),
-            "NONE",
-            null,
-            null,
-            "SO-IDEMP-SPLIT-KEY",
-            "SPLIT");
+    SalesOrderRequest request = idempotentSalesOrderRequest("SO-IDEMP-KEY", "CREDIT");
 
-    SalesOrderDto dto = salesService.createOrder(request);
+    ApplicationException ex =
+        assertThrows(ApplicationException.class, () -> salesService.createOrder(request));
 
-    assertEquals(existing.getId(), dto.id());
-    verify(salesOrderRepository).save(existing);
-    assertEquals(
-        DigestUtils.sha256Hex("null|100|INR|NONE|false|0||HYBRID|SKU3-IDEMP:1:100:0"),
-        existing.getIdempotencyHash());
+    assertEquals(ErrorCode.CONCURRENCY_CONFLICT, ex.getErrorCode());
+    verify(salesOrderRepository, never()).save(existing);
   }
 
   @Test
-  void createOrderAutoIdempotencyRetry_acceptsLegacyDefaultCreditKeyShape() {
-    SalesOrderItemRequest requestItem =
-        new SalesOrderItemRequest(
-            "SKU3-IDEMP", "Desc", BigDecimal.ONE, BigDecimal.valueOf(100), null);
-    SalesOrderRequest request =
-        new SalesOrderRequest(
-            null,
-            BigDecimal.valueOf(100),
-            "INR",
-            null,
-            List.of(requestItem),
-            "NONE",
-            null,
-            null,
-            null,
-            "CREDIT");
-    String canonicalKey = request.resolveIdempotencyKey();
-    String legacyDefaultKey = request.resolveIdempotencyKeyIncludingDefaultPaymentMode();
-    assertTrue(!canonicalKey.equals(legacyDefaultKey));
+  void createOrderRejectsSplitPaymentMode() {
+    SalesOrderRequest request = idempotentSalesOrderRequest(null, "SPLIT");
 
-    SalesOrder existing = new SalesOrder();
-    setField(existing, "id", 902L);
-    existing.setCompany(company);
-    existing.setOrderNumber("SO-IDEMP-AUTO");
-    existing.setStatus("RESERVED");
-    existing.setCurrency("INR");
-    existing.setGstTreatment("NONE");
-    existing.setGstInclusive(false);
-    existing.setGstRate(BigDecimal.ZERO);
-    existing.setSubtotalAmount(BigDecimal.valueOf(100));
-    existing.setGstTotal(BigDecimal.ZERO);
-    existing.setGstRoundingAdjustment(BigDecimal.ZERO);
-    existing.setTotalAmount(BigDecimal.valueOf(100));
-    existing.setIdempotencyHash(
-        DigestUtils.sha256Hex("null|100|INR|NONE|false|0||CREDIT|SKU3-IDEMP:1:100:0"));
-    SalesOrderItem existingItem = new SalesOrderItem();
-    setField(existingItem, "id", 912L);
-    existingItem.setSalesOrder(existing);
-    existingItem.setProductCode("SKU3-IDEMP");
-    existingItem.setDescription("Desc");
-    existingItem.setQuantity(BigDecimal.ONE);
-    existingItem.setUnitPrice(BigDecimal.valueOf(100));
-    existingItem.setLineSubtotal(BigDecimal.valueOf(100));
-    existingItem.setGstRate(BigDecimal.ZERO);
-    existingItem.setGstAmount(BigDecimal.ZERO);
-    existingItem.setLineTotal(BigDecimal.valueOf(100));
-    existing.getItems().add(existingItem);
+    ApplicationException ex =
+        assertThrows(ApplicationException.class, () -> salesService.createOrder(request));
 
-    when(salesOrderRepository.findByCompanyAndIdempotencyKey(company, legacyDefaultKey))
-        .thenReturn(Optional.of(existing));
-    when(salesOrderRepository.save(ArgumentMatchers.any(SalesOrder.class)))
-        .thenAnswer(invocation -> invocation.getArgument(0));
-
-    SalesOrderDto dto = salesService.createOrder(request);
-
-    assertEquals(existing.getId(), dto.id());
-    verify(salesOrderRepository, never()).findByCompanyAndIdempotencyKey(company, canonicalKey);
-    assertEquals(
-        DigestUtils.sha256Hex("null|100|INR|NONE|false|0||SKU3-IDEMP:1:100:0"),
-        existing.getIdempotencyHash());
-  }
-
-  @Test
-  void createOrderAutoIdempotencyRetry_acceptsLegacySplitKeyShape() {
-    SalesOrderItemRequest requestItem =
-        new SalesOrderItemRequest(
-            "SKU3-IDEMP", "Desc", BigDecimal.ONE, BigDecimal.valueOf(100), null);
-    SalesOrderRequest request =
-        new SalesOrderRequest(
-            null,
-            BigDecimal.valueOf(100),
-            "INR",
-            null,
-            List.of(requestItem),
-            "NONE",
-            null,
-            null,
-            null,
-            "SPLIT");
-    String canonicalKey = request.resolveIdempotencyKey();
-    String legacySplitKey = request.resolveLegacySplitReplayIdempotencyKey();
-    assertTrue(!canonicalKey.equals(legacySplitKey));
-
-    SalesOrder existing = new SalesOrder();
-    setField(existing, "id", 904L);
-    existing.setCompany(company);
-    existing.setOrderNumber("SO-IDEMP-AUTO-SPLIT");
-    existing.setStatus("RESERVED");
-    existing.setCurrency("INR");
-    existing.setGstTreatment("NONE");
-    existing.setGstInclusive(false);
-    existing.setGstRate(BigDecimal.ZERO);
-    existing.setSubtotalAmount(BigDecimal.valueOf(100));
-    existing.setGstTotal(BigDecimal.ZERO);
-    existing.setGstRoundingAdjustment(BigDecimal.ZERO);
-    existing.setTotalAmount(BigDecimal.valueOf(100));
-    existing.setPaymentMode("HYBRID");
-    existing.setIdempotencyHash(
-        DigestUtils.sha256Hex("null|100|INR|NONE|false|0||SPLIT|SKU3-IDEMP:1:100:0"));
-    SalesOrderItem existingItem = new SalesOrderItem();
-    setField(existingItem, "id", 914L);
-    existingItem.setSalesOrder(existing);
-    existingItem.setProductCode("SKU3-IDEMP");
-    existingItem.setDescription("Desc");
-    existingItem.setQuantity(BigDecimal.ONE);
-    existingItem.setUnitPrice(BigDecimal.valueOf(100));
-    existingItem.setLineSubtotal(BigDecimal.valueOf(100));
-    existingItem.setGstRate(BigDecimal.ZERO);
-    existingItem.setGstAmount(BigDecimal.ZERO);
-    existingItem.setLineTotal(BigDecimal.valueOf(100));
-    existing.getItems().add(existingItem);
-
-    when(salesOrderRepository.findByCompanyAndIdempotencyKey(company, legacySplitKey))
-        .thenReturn(Optional.of(existing));
-    when(salesOrderRepository.save(ArgumentMatchers.any(SalesOrder.class)))
-        .thenAnswer(invocation -> invocation.getArgument(0));
-
-    SalesOrderDto dto = salesService.createOrder(request);
-
-    assertEquals(existing.getId(), dto.id());
-    verify(salesOrderRepository, never()).findByCompanyAndIdempotencyKey(company, canonicalKey);
-    assertEquals(
-        DigestUtils.sha256Hex("null|100|INR|NONE|false|0||HYBRID|SKU3-IDEMP:1:100:0"),
-        existing.getIdempotencyHash());
+    assertEquals(ErrorCode.VALIDATION_INVALID_INPUT, ex.getErrorCode());
+    assertEquals("SPLIT", ex.getDetails().get("paymentMode"));
   }
 
   @Test
@@ -5093,6 +4810,52 @@ class SalesServiceTest {
             null);
 
     assertThrows(CreditLimitExceededException.class, () -> salesService.createOrder(request));
+  }
+
+  private SalesOrderRequest idempotentSalesOrderRequest(String idempotencyKey, String paymentMode) {
+    return new SalesOrderRequest(
+        null,
+        BigDecimal.valueOf(100),
+        "INR",
+        null,
+        List.of(
+            new SalesOrderItemRequest(
+                "SKU3-IDEMP", "Desc", BigDecimal.ONE, BigDecimal.valueOf(100), null)),
+        "NONE",
+        null,
+        null,
+        idempotencyKey,
+        paymentMode);
+  }
+
+  private SalesOrder salesOrderForIdempotencyReplay(String idempotencyHash) {
+    SalesOrder existing = new SalesOrder();
+    setField(existing, "id", 902L);
+    existing.setCompany(company);
+    existing.setOrderNumber("SO-IDEMP");
+    existing.setStatus("RESERVED");
+    existing.setCurrency("INR");
+    existing.setGstTreatment("NONE");
+    existing.setGstInclusive(false);
+    existing.setGstRate(BigDecimal.ZERO);
+    existing.setSubtotalAmount(BigDecimal.valueOf(100));
+    existing.setGstTotal(BigDecimal.ZERO);
+    existing.setGstRoundingAdjustment(BigDecimal.ZERO);
+    existing.setTotalAmount(BigDecimal.valueOf(100));
+    existing.setIdempotencyHash(idempotencyHash);
+    SalesOrderItem existingItem = new SalesOrderItem();
+    setField(existingItem, "id", 912L);
+    existingItem.setSalesOrder(existing);
+    existingItem.setProductCode("SKU3-IDEMP");
+    existingItem.setDescription("Desc");
+    existingItem.setQuantity(BigDecimal.ONE);
+    existingItem.setUnitPrice(BigDecimal.valueOf(100));
+    existingItem.setLineSubtotal(BigDecimal.valueOf(100));
+    existingItem.setGstRate(BigDecimal.ZERO);
+    existingItem.setGstAmount(BigDecimal.ZERO);
+    existingItem.setLineTotal(BigDecimal.valueOf(100));
+    existing.getItems().add(existingItem);
+    return existing;
   }
 
   private void setupProduct(String sku, BigDecimal price, BigDecimal gstRate) {

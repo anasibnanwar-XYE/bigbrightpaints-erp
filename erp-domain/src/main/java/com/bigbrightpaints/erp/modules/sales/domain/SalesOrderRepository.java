@@ -17,7 +17,6 @@ import org.springframework.data.jpa.repository.QueryHints;
 import org.springframework.data.repository.query.Param;
 
 import com.bigbrightpaints.erp.modules.company.domain.Company;
-import com.bigbrightpaints.erp.modules.sales.dto.DealerCreditExposureView;
 
 import jakarta.persistence.LockModeType;
 import jakarta.persistence.QueryHint;
@@ -148,7 +147,7 @@ where o.company = :company
 
   @Query(
       """
-select new com.bigbrightpaints.erp.modules.sales.dto.DealerCreditExposureView(o.dealer.id, coalesce(sum(o.totalAmount), 0))
+select new com.bigbrightpaints.erp.modules.sales.domain.DealerCreditExposureView(o.dealer.id, coalesce(sum(o.totalAmount), 0))
 from SalesOrder o
 where o.company = :company
   and o.dealer.id in :dealerIds

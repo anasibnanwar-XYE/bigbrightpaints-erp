@@ -3,6 +3,7 @@ package com.bigbrightpaints.erp.codered;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.IOException;
+import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
@@ -178,16 +179,13 @@ class CR_ProductionMonitoringContractTest {
   }
 
   private String readResource(String relativePath) {
+    var resource = getClass().getResource("/" + relativePath);
+    assertThat(resource).as("classpath resource %s", relativePath).isNotNull();
     try {
-      Path classpathFile = Path.of(getClass().getResource("/" + relativePath).toURI());
+      Path classpathFile = Path.of(resource.toURI());
       return Files.readString(classpathFile);
-    } catch (Exception ignored) {
-      Path fallback = Path.of("src/main/resources", relativePath);
-      try {
-        return Files.readString(fallback);
-      } catch (IOException ex) {
-        throw new IllegalStateException("Unable to read resource " + relativePath, ex);
-      }
+    } catch (IOException | URISyntaxException ex) {
+      throw new IllegalStateException("Unable to read classpath resource " + relativePath, ex);
     }
   }
 

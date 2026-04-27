@@ -25,8 +25,8 @@ import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.validation.ValidationUtils;
 import com.bigbrightpaints.erp.modules.purchasing.domain.SupplierPaymentTerms;
 import com.bigbrightpaints.erp.modules.purchasing.dto.SupplierImportResponse;
-import com.bigbrightpaints.erp.modules.purchasing.dto.SupplierImportResponse.ImportError;
 import com.bigbrightpaints.erp.modules.purchasing.dto.SupplierRequest;
+import com.bigbrightpaints.erp.shared.dto.ImportRowErrorDto;
 
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Validator;
@@ -51,7 +51,7 @@ public class SupplierImportService {
     }
 
     int successCount = 0;
-    List<ImportError> errors = new ArrayList<>();
+    List<ImportRowErrorDto> errors = new ArrayList<>();
 
     try (BufferedReader reader =
             new BufferedReader(
@@ -77,7 +77,7 @@ public class SupplierImportService {
           supplierService.createSupplier(request);
           successCount++;
         } catch (RuntimeException ex) {
-          errors.add(new ImportError(record.getRecordNumber(), resolveErrorMessage(ex)));
+          errors.add(new ImportRowErrorDto(record.getRecordNumber(), resolveErrorMessage(ex)));
         }
       }
     } catch (IOException ex) {

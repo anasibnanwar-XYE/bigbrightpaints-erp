@@ -169,7 +169,7 @@ public class AccrualBadDebtIT extends AbstractIntegrationTest {
     Map<String, Object> revLine =
         Map.of(
             "accountId",
-            accrualLiab.getId(), // placeholder to keep balanced; not used for assertions
+            accrualLiab.getId(),
             "debit",
             BigDecimal.ZERO,
             "credit",
@@ -198,15 +198,23 @@ public class AccrualBadDebtIT extends AbstractIntegrationTest {
   @Test
   @DisplayName("Accrual posts and auto-reverses on specified date")
   void accrual_AutoReversal() {
+    LocalDate entryDate = LocalDate.now().minusDays(1);
     Map<String, Object> payload =
         Map.of(
-            "debitAccountId", accrualExp.getId(),
-            "creditAccountId", accrualLiab.getId(),
-            "amount", new BigDecimal("250.00"),
-            "entryDate", LocalDate.now(),
-            "autoReverseDate", LocalDate.now().plusDays(30),
-            "referenceNumber", "ACCR-" + System.currentTimeMillis(),
-            "adminOverride", true);
+            "debitAccountId",
+            accrualExp.getId(),
+            "creditAccountId",
+            accrualLiab.getId(),
+            "amount",
+            new BigDecimal("250.00"),
+            "entryDate",
+            entryDate,
+            "autoReverseDate",
+            entryDate,
+            "referenceNumber",
+            "ACCR-" + System.currentTimeMillis(),
+            "adminOverride",
+            false);
 
     ResponseEntity<Map> resp =
         rest.exchange(

@@ -2,6 +2,8 @@ package com.bigbrightpaints.erp.modules.admin.dto;
 
 import java.time.Instant;
 
+import com.bigbrightpaints.erp.modules.admin.domain.ExportApprovalStatus;
+
 public record ExportRequestDto(
     Long id,
     Long userId,

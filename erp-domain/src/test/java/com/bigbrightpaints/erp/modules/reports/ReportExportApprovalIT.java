@@ -22,9 +22,9 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 
 import com.bigbrightpaints.erp.core.security.AuthScopeService;
+import com.bigbrightpaints.erp.modules.admin.domain.ExportApprovalStatus;
 import com.bigbrightpaints.erp.modules.admin.domain.ExportRequest;
 import com.bigbrightpaints.erp.modules.admin.domain.ExportRequestRepository;
-import com.bigbrightpaints.erp.modules.admin.dto.ExportApprovalStatus;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;

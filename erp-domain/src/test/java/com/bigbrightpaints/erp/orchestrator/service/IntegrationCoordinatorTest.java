@@ -95,20 +95,7 @@ class IntegrationCoordinatorTest {
 
   @BeforeEach
   void setUp() {
-    integrationCoordinator =
-        new IntegrationCoordinator(
-            salesService,
-            factoryService,
-            finishedGoodsService,
-            accountingService,
-            hrService,
-            reportService,
-            orderAutoApprovalStateRepository,
-            accountingFacade,
-            companyRepository,
-            companyClock,
-            new OrchestratorFeatureFlags(true, true),
-            new NoOpTransactionManager());
+    integrationCoordinator = coordinator(new OrchestratorFeatureFlags(true, true));
 
     company = new Company();
     company.setCode(COMPANY_ID);
@@ -479,50 +466,8 @@ class IntegrationCoordinatorTest {
   }
 
   @Test
-  void isHrPayrollEnabled_requiresCompanyAndEnabledModules() {
-    Company modulesMissing = new Company();
-    modulesMissing.setEnabledModules(null);
-
-    assertThat(
-            (Boolean)
-                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-                    integrationCoordinator, "isHrPayrollEnabled", (Company) null))
-        .isFalse();
-    assertThat(
-            (Boolean)
-                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-                    integrationCoordinator, "isHrPayrollEnabled", modulesMissing))
-        .isFalse();
-    assertThat(
-            (Boolean)
-                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-                    integrationCoordinator, "isHrPayrollEnabled", company))
-        .isFalse();
-
-    company.setEnabledModules(Set.of("HR_PAYROLL"));
-    assertThat(
-            (Boolean)
-                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-                    integrationCoordinator, "isHrPayrollEnabled", company))
-        .isTrue();
-  }
-
-  @Test
   void updateProductionStatusFailsClosedWhenFactoryDispatchDisabled() {
-    IntegrationCoordinator disabled =
-        new IntegrationCoordinator(
-            salesService,
-            factoryService,
-            finishedGoodsService,
-            accountingService,
-            hrService,
-            reportService,
-            orderAutoApprovalStateRepository,
-            accountingFacade,
-            companyRepository,
-            companyClock,
-            new OrchestratorFeatureFlags(true, false),
-            new NoOpTransactionManager());
+    IntegrationCoordinator disabled = coordinator(new OrchestratorFeatureFlags(true, false));
 
     assertThrows(
         ApplicationException.class, () -> disabled.updateProductionStatus("101", COMPANY_ID));
@@ -642,20 +587,7 @@ class IntegrationCoordinatorTest {
 
   @Test
   void generatePayrollFailsClosedWhenPayrollDisabled() {
-    IntegrationCoordinator disabled =
-        new IntegrationCoordinator(
-            salesService,
-            factoryService,
-            finishedGoodsService,
-            accountingService,
-            hrService,
-            reportService,
-            orderAutoApprovalStateRepository,
-            accountingFacade,
-            companyRepository,
-            companyClock,
-            new OrchestratorFeatureFlags(false, true),
-            new NoOpTransactionManager());
+    IntegrationCoordinator disabled = coordinator(new OrchestratorFeatureFlags(false, true));
 
     assertThrows(
         ApplicationException.class,
@@ -689,20 +621,7 @@ class IntegrationCoordinatorTest {
 
   @Test
   void recordPayrollPaymentFailsClosedWhenPayrollDisabled() {
-    IntegrationCoordinator disabled =
-        new IntegrationCoordinator(
-            salesService,
-            factoryService,
-            finishedGoodsService,
-            accountingService,
-            hrService,
-            reportService,
-            orderAutoApprovalStateRepository,
-            accountingFacade,
-            companyRepository,
-            companyClock,
-            new OrchestratorFeatureFlags(false, true),
-            new NoOpTransactionManager());
+    IntegrationCoordinator disabled = coordinator(new OrchestratorFeatureFlags(false, true));
 
     assertThrows(
         ApplicationException.class,
@@ -744,7 +663,8 @@ class IntegrationCoordinatorTest {
   void integrationCoordinatorNoLongerExposesLegacyReleaseInventoryCaller() {
     assertThat(
             Arrays.stream(IntegrationCoordinator.class.getDeclaredMethods()).map(Method::getName))
-        .doesNotContain("releaseInventory");
+        .doesNotContain(
+            "releaseInventory", "attachOrderTrace", "correlationMemo", "correlationSuffix");
   }
 
   @Test
@@ -808,6 +728,36 @@ class IntegrationCoordinatorTest {
     protected void doRollback(DefaultTransactionStatus status) {
       // no-op
     }
+  }
+
+  private IntegrationCoordinator coordinator(OrchestratorFeatureFlags featureFlags) {
+    IntegrationCoordinatorSupportService supportService =
+        new IntegrationCoordinatorSupportService(companyRepository);
+    OrderSupportCoordinator orderSupportCoordinator =
+        new OrderSupportCoordinator(
+            salesService,
+            factoryService,
+            orderAutoApprovalStateRepository,
+            companyClock,
+            featureFlags,
+            supportService,
+            new NoOpTransactionManager());
+    return new IntegrationCoordinator(
+        new OrderIntegrationCoordinator(
+            salesService,
+            factoryService,
+            finishedGoodsService,
+            orderSupportCoordinator,
+            supportService),
+        new PayrollIntegrationCoordinator(
+            hrService, accountingFacade, featureFlags, supportService),
+        new DashboardIntegrationCoordinator(
+            salesService,
+            factoryService,
+            accountingService,
+            hrService,
+            reportService,
+            supportService));
   }
 
   private EmployeeDto employee(String status) {

@@ -559,13 +559,11 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
     assertOperationMissing(root, "/api/v1/catalog/products", "get");
     assertOperationMissing(root, "/api/v1/catalog/products", "post");
     assertOperationMissing(root, "/api/v1/catalog/products/single", "post");
-    assertOperationMissing(root, "/api/v1/catalog/products/bulk-variants", "post");
 
     assertOperationMissing(root, "/api/v1/accounting/catalog/import", "post");
     assertOperationMissing(root, "/api/v1/accounting/catalog/products", "get");
     assertOperationMissing(root, "/api/v1/accounting/catalog/products", "post");
     assertOperationMissing(root, "/api/v1/accounting/catalog/products/{id}", "put");
-    assertOperationMissing(root, "/api/v1/accounting/catalog/products/bulk-variants", "post");
     assertOperationMissing(root, "/api/v1/production/brands", "get");
     assertOperationMissing(root, "/api/v1/production/brands/{brandId}/products", "get");
   }

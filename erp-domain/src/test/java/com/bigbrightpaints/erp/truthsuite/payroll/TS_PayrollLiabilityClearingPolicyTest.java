@@ -97,7 +97,7 @@ class TS_PayrollLiabilityClearingPolicyTest {
   void markAsPaidUsesCanonicalPaymentJournalReference() {
     TruthSuiteFileAssert.assertContains(
         PAYROLL_SERVICE,
-        "var paymentJournal = companyEntityLookup.requireJournalEntry(company,"
+        "var paymentJournal = accountingLookupService.requireJournalEntry(company,"
             + " run.getPaymentJournalEntryId());",
         "String canonicalPaymentReference = paymentJournal.getReferenceNumber();",
         "line.setPaymentReference(canonicalPaymentReference);");

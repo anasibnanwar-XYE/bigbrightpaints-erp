@@ -17,6 +17,7 @@ import org.springframework.stereotype.Service;
 
 import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.core.util.CostingMethodUtils;
+import com.bigbrightpaints.erp.core.validation.ValidationUtils;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriod;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.CostingMethod;
@@ -467,7 +468,7 @@ public class InventoryValuationQueryService {
       case "FIFO" -> "FIFO";
       case "LIFO" -> "LIFO";
       case "WAC", "WEIGHTED_AVERAGE", "WEIGHTED-AVERAGE" -> "WEIGHTED_AVERAGE";
-      default -> "FIFO";
+      default -> throw ValidationUtils.invalidState("Unknown costing method: " + itemMethod);
     };
   }
 

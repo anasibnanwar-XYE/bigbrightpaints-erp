@@ -8,7 +8,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
-import com.bigbrightpaints.erp.modules.accounting.dto.DealerBalanceView;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 
@@ -17,14 +16,14 @@ public interface DealerLedgerRepository extends JpaRepository<DealerLedgerEntry,
   List<DealerLedgerEntry> findByCompanyAndDealerOrderByEntryDateAsc(Company company, Dealer dealer);
 
   @Query(
-      "select new com.bigbrightpaints.erp.modules.accounting.dto.DealerBalanceView(e.dealer.id,"
+      "select new com.bigbrightpaints.erp.modules.accounting.domain.DealerBalanceView(e.dealer.id,"
           + " coalesce(sum(e.debit - e.credit), 0)) from DealerLedgerEntry e where e.company ="
           + " :company and e.dealer.id in :dealerIds group by e.dealer.id")
   List<DealerBalanceView> aggregateBalances(
       @Param("company") Company company, @Param("dealerIds") Collection<Long> dealerIds);
 
   @Query(
-      "select new com.bigbrightpaints.erp.modules.accounting.dto.DealerBalanceView(e.dealer.id,"
+      "select new com.bigbrightpaints.erp.modules.accounting.domain.DealerBalanceView(e.dealer.id,"
           + " coalesce(sum(e.debit - e.credit), 0)) from DealerLedgerEntry e where e.company ="
           + " :company and e.dealer.id in :dealerIds and e.entryDate between :start and :end group"
           + " by e.dealer.id")
@@ -35,7 +34,7 @@ public interface DealerLedgerRepository extends JpaRepository<DealerLedgerEntry,
       @Param("end") java.time.LocalDate end);
 
   @Query(
-      "select new com.bigbrightpaints.erp.modules.accounting.dto.DealerBalanceView(e.dealer.id,"
+      "select new com.bigbrightpaints.erp.modules.accounting.domain.DealerBalanceView(e.dealer.id,"
           + " coalesce(sum(e.debit - e.credit), 0)) from DealerLedgerEntry e where e.company ="
           + " :company and e.dealer.id in :dealerIds and e.entryDate <= :end group by e.dealer.id")
   List<DealerBalanceView> aggregateBalancesUpTo(
@@ -44,14 +43,14 @@ public interface DealerLedgerRepository extends JpaRepository<DealerLedgerEntry,
       @Param("end") java.time.LocalDate end);
 
   @Query(
-      "select new com.bigbrightpaints.erp.modules.accounting.dto.DealerBalanceView(e.dealer.id,"
+      "select new com.bigbrightpaints.erp.modules.accounting.domain.DealerBalanceView(e.dealer.id,"
           + " coalesce(sum(e.debit - e.credit), 0)) from DealerLedgerEntry e where e.company ="
           + " :company and e.dealer = :dealer group by e.dealer.id")
   Optional<DealerBalanceView> aggregateBalance(
       @Param("company") Company company, @Param("dealer") Dealer dealer);
 
   @Query(
-      "select new com.bigbrightpaints.erp.modules.accounting.dto.DealerBalanceView(e.dealer.id,"
+      "select new com.bigbrightpaints.erp.modules.accounting.domain.DealerBalanceView(e.dealer.id,"
           + " coalesce(sum(e.debit - e.credit), 0)) from DealerLedgerEntry e where e.company ="
           + " :company and e.dealer = :dealer and e.entryDate < :before group by e.dealer.id")
   Optional<DealerBalanceView> aggregateBalanceBefore(

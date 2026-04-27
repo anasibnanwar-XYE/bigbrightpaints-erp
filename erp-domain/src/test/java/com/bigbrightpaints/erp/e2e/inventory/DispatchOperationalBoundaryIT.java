@@ -335,6 +335,7 @@ class DispatchOperationalBoundaryIT extends AbstractIntegrationTest {
     addRawMaterialBatch(bucket, new BigDecimal("20.00"), new BigDecimal("4.00"));
     mapPackagingSize("10L", bucket);
 
+    LocalDate operationDate = LocalDate.now().minusDays(1);
     ProductionLogDetailDto log =
         productionLogService.createLog(
             new ProductionLogRequest(
@@ -344,7 +345,7 @@ class DispatchOperationalBoundaryIT extends AbstractIntegrationTest {
                 new BigDecimal("100.00"),
                 "L",
                 new BigDecimal("100.00"),
-                LocalDate.now().toString(),
+                operationDate.toString(),
                 "pack-before-dispatch",
                 "Factory Ops",
                 null,
@@ -394,7 +395,7 @@ class DispatchOperationalBoundaryIT extends AbstractIntegrationTest {
                         null,
                         null)))
         .isInstanceOf(ApplicationException.class)
-        .hasMessageContaining("No shippable quantity available for dispatch");
+        .hasMessageContaining("Packing slip has no dispatchable lines");
 
     PackagingSlip pendingSlip =
         packagingSlipRepository.findByCompanyAndSalesOrderId(company, orderId).orElseThrow();
@@ -406,7 +407,7 @@ class DispatchOperationalBoundaryIT extends AbstractIntegrationTest {
     packingService.recordPacking(
         new PackingRequest(
             log.id(),
-            LocalDate.now(),
+            operationDate,
             "Packer",
             "PACK-DISPATCH-" + suffix,
             List.of(
@@ -430,7 +431,12 @@ class DispatchOperationalBoundaryIT extends AbstractIntegrationTest {
             new DispatchConfirmRequest(
                 afterPack.packagingSlip().id(),
                 orderId,
-                List.of(),
+                afterPack.packagingSlip().lines().stream()
+                    .map(
+                        line ->
+                            new DispatchConfirmRequest.DispatchLine(
+                                line.id(), null, line.quantity(), null, null, null, null, null))
+                    .toList(),
                 "Dispatch after pack",
                 "factory-user",
                 false,

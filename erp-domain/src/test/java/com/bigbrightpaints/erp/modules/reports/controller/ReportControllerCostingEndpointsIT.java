@@ -1,5 +1,8 @@
 package com.bigbrightpaints.erp.modules.reports.controller;
 
+import static com.bigbrightpaints.erp.test.support.JsonResponseAssertions.mapList;
+import static com.bigbrightpaints.erp.test.support.JsonResponseAssertions.mapValue;
+import static com.bigbrightpaints.erp.test.support.JsonResponseAssertions.responseMapType;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.math.BigDecimal;
@@ -87,15 +90,15 @@ class ReportControllerCostingEndpointsIT extends AbstractIntegrationTest {
             "materialCost", "packagingCost", "labourCost", "overheadCost", "totalUnitCost");
 
     List<Map<String, Object>> packingJournals =
-        castListOfMap(fetchDataObject("/api/v1/accounting/journal-entries?source=PACKING"));
+        mapList(fetchDataObject("/api/v1/accounting/journal-entries?source=PACKING"));
     assertThat(packingJournals).isNotEmpty();
-    List<Map<String, Object>> lines = castListOfMap(packingJournals.getFirst().get("lines"));
+    List<Map<String, Object>> lines = mapList(packingJournals.getFirst().get("lines"));
     assertThat(lines)
         .anySatisfy(line -> assertThat(line.get("accountCode")).isEqualTo(packagingInventoryCode));
 
     Map<String, Object> costAllocation = fetchDataMap("/api/v1/reports/cost-allocation");
     assertThat(costAllocation).containsKeys("allocationRules", "amountsPerBatch", "totalAllocated");
-    assertThat(castListOfMap(costAllocation.get("amountsPerBatch"))).isNotEmpty();
+    assertThat(mapList(costAllocation.get("amountsPerBatch"))).isNotEmpty();
 
     Map<String, Object> costBreakdown =
         fetchDataMap("/api/v1/reports/production-logs/" + productionLogId + "/cost-breakdown");
@@ -103,12 +106,11 @@ class ReportControllerCostingEndpointsIT extends AbstractIntegrationTest {
         .containsKeys("materialCost", "labourCost", "overheadCost", "totalCost");
 
     List<Map<String, Object>> monthlyEntries =
-        castListOfMap(fetchDataObject("/api/v1/reports/monthly-production-costs"));
+        mapList(fetchDataObject("/api/v1/reports/monthly-production-costs"));
     assertThat(monthlyEntries).isNotEmpty();
     assertThat(monthlyEntries.getFirst()).containsKeys("month", "totalCost");
 
-    List<Map<String, Object>> wastageEntries =
-        castListOfMap(fetchDataObject("/api/v1/reports/wastage"));
+    List<Map<String, Object>> wastageEntries = mapList(fetchDataObject("/api/v1/reports/wastage"));
     assertThat(wastageEntries).isNotEmpty();
   }
 
@@ -241,22 +243,16 @@ class ReportControllerCostingEndpointsIT extends AbstractIntegrationTest {
     return line;
   }
 
-  @SuppressWarnings("unchecked")
   private Map<String, Object> fetchDataMap(String path) {
-    return (Map<String, Object>) fetchDataObject(path);
+    return mapValue(fetchDataObject(path));
   }
 
   private Object fetchDataObject(String path) {
-    ResponseEntity<Map> response =
-        rest.exchange(path, HttpMethod.GET, new HttpEntity<>(headers), Map.class);
+    ResponseEntity<Map<String, Object>> response =
+        rest.exchange(path, HttpMethod.GET, new HttpEntity<>(headers), responseMapType());
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
     assertThat(response.getBody()).isNotNull();
     return response.getBody().get("data");
-  }
-
-  @SuppressWarnings("unchecked")
-  private List<Map<String, Object>> castListOfMap(Object value) {
-    return (List<Map<String, Object>>) value;
   }
 
   private HttpHeaders authHeaders() {
@@ -265,8 +261,9 @@ class ReportControllerCostingEndpointsIT extends AbstractIntegrationTest {
             "email", ACCOUNTING_EMAIL,
             "password", PASSWORD,
             "companyCode", COMPANY_CODE);
-    ResponseEntity<Map> loginResponse =
-        rest.postForEntity("/api/v1/auth/login", payload, Map.class);
+    ResponseEntity<Map<String, Object>> loginResponse =
+        rest.exchange(
+            "/api/v1/auth/login", HttpMethod.POST, new HttpEntity<>(payload), responseMapType());
     assertThat(loginResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
 
     HttpHeaders authHeaders = new HttpHeaders();

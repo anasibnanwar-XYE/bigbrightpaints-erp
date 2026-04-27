@@ -273,17 +273,6 @@ class AccountingCatalogControllerSecurityIT extends AbstractIntegrationTest {
   }
 
   @Test
-  void retiredSingleAndBulkVariantRoutes_areUnavailableForAuthenticatedCallers() {
-    ProductionBrand activeBrand = saveBrand("Retired Route Brand " + shortId(), true);
-    assertRetiredWriteRouteUnavailable(
-        "/api/v1/catalog/products/single",
-        singleProductPayload(activeBrand.getId(), "CAT-SINGLE-" + shortId()));
-    assertRetiredWriteRouteUnavailable(
-        "/api/v1/catalog/products/bulk-variants?dryRun=true",
-        bulkVariantPayload("Dry Run Brand " + shortId(), "N" + shortId().substring(0, 5)));
-  }
-
-  @Test
   void catalogReadiness_masksAccountingSpecificBlockersForNonAccountingReaders() {
     ProductionBrand brand = saveBrand("Readiness Mask " + shortId(), true);
 
@@ -518,12 +507,6 @@ class AccountingCatalogControllerSecurityIT extends AbstractIntegrationTest {
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
   }
 
-  private void assertRetiredWriteRouteUnavailable(String path, Object body) {
-    ResponseEntity<Map> response =
-        rest.exchange(path, HttpMethod.POST, new HttpEntity<>(body, headers), Map.class);
-    assertThat(response.getStatusCode()).isIn(HttpStatus.NOT_FOUND, HttpStatus.METHOD_NOT_ALLOWED);
-  }
-
   private Account ensureAccount(String code, String name, AccountType type) {
     return accountRepository
         .findByCompanyAndCodeIgnoreCase(company, code)
@@ -614,50 +597,6 @@ class AccountingCatalogControllerSecurityIT extends AbstractIntegrationTest {
     payload.put("minDiscountPercent", new BigDecimal("5.00"));
     payload.put("minSellingPrice", new BigDecimal("1140.00"));
     payload.put("metadata", metadata);
-    return payload;
-  }
-
-  private Map<String, Object> singleProductPayload(Long brandId, String customSkuCode) {
-    Map<String, Object> metadata = new LinkedHashMap<>();
-    metadata.put("wipAccountId", wipAccount.getId());
-    metadata.put("productType", "decorative");
-
-    Map<String, Object> payload = new LinkedHashMap<>();
-    payload.put("brandId", brandId);
-    payload.put("productName", "Single Route Primer " + shortId());
-    payload.put("category", "FINISHED_GOOD");
-    payload.put("defaultColour", "WHITE");
-    payload.put("sizeLabel", "1L");
-    payload.put("unitOfMeasure", "LITER");
-    payload.put("hsnCode", "320910");
-    payload.put("customSkuCode", customSkuCode);
-    payload.put("basePrice", new BigDecimal("1200.00"));
-    payload.put("gstRate", new BigDecimal("18.00"));
-    payload.put("minDiscountPercent", new BigDecimal("5.00"));
-    payload.put("minSellingPrice", new BigDecimal("1140.00"));
-    payload.put("metadata", metadata);
-    return payload;
-  }
-
-  private Map<String, Object> bulkVariantPayload(String brandName, String brandCode) {
-    Map<String, Object> payload = new LinkedHashMap<>();
-    payload.put("brandName", brandName);
-    payload.put("brandCode", brandCode);
-    payload.put("baseProductName", "Dry Run Primer");
-    payload.put("category", "FINISHED_GOOD");
-    payload.put("colors", List.of("WHITE", "BLUE"));
-    payload.put(
-        "colorSizeMatrix",
-        List.of(
-            Map.of("color", "WHITE", "sizes", List.of("1L", "4L")),
-            Map.of("color", "BLUE", "sizes", List.of("10L"))));
-    payload.put("unitOfMeasure", "LITER");
-    payload.put("skuPrefix", "DRYRUN");
-    payload.put("basePrice", new BigDecimal("1500.00"));
-    payload.put("gstRate", new BigDecimal("18.00"));
-    payload.put("minDiscountPercent", new BigDecimal("4.00"));
-    payload.put("minSellingPrice", new BigDecimal("1380.00"));
-    payload.put("metadata", Map.of("productType", "decorative"));
     return payload;
   }
 

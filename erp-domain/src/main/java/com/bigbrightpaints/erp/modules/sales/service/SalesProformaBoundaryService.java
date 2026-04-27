@@ -35,7 +35,6 @@ final class SalesProformaBoundaryService {
   static final String DEFAULT_PAYMENT_MODE = "CREDIT";
   private static final String CASH_PAYMENT_MODE = "CASH";
   private static final String HYBRID_PAYMENT_MODE = "HYBRID";
-  private static final String LEGACY_HYBRID_PAYMENT_MODE = "SPLIT";
   private static final Set<String> VALID_PAYMENT_MODES =
       Set.of(CASH_PAYMENT_MODE, DEFAULT_PAYMENT_MODE, HYBRID_PAYMENT_MODE);
   private static final String REQUIREMENT_TITLE_PREFIX = "Production requirement: ";
@@ -74,16 +73,12 @@ final class SalesProformaBoundaryService {
         StringUtils.hasText(rawMode)
             ? rawMode.trim().toUpperCase(Locale.ROOT)
             : DEFAULT_PAYMENT_MODE;
-    if (LEGACY_HYBRID_PAYMENT_MODE.equals(normalized)) {
-      return HYBRID_PAYMENT_MODE;
-    }
     if (!VALID_PAYMENT_MODES.contains(normalized)) {
       throw new ApplicationException(
               ErrorCode.VALIDATION_INVALID_INPUT,
               "Unsupported sales order payment mode: " + normalized)
           .withDetail("paymentMode", normalized)
-          .withDetail("allowedPaymentModes", VALID_PAYMENT_MODES)
-          .withDetail("legacyAliases", Map.of(LEGACY_HYBRID_PAYMENT_MODE, HYBRID_PAYMENT_MODE));
+          .withDetail("allowedPaymentModes", VALID_PAYMENT_MODES);
     }
     return normalized;
   }

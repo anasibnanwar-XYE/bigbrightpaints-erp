@@ -19,10 +19,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.mock.web.MockMultipartFile;
 
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
+import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
+import com.bigbrightpaints.erp.modules.accounting.service.AccountingPeriodService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.InventoryMovement;
@@ -72,6 +74,8 @@ class OpeningStockPostingRegressionIT extends AbstractIntegrationTest {
   @Autowired private JournalEntryRepository journalEntryRepository;
 
   @Autowired private ReportService reportService;
+  @Autowired private AccountingPeriodService accountingPeriodService;
+  @Autowired private CompanyClock companyClock;
 
   private Company company;
   private Account inventoryAccount;
@@ -117,6 +121,7 @@ class OpeningStockPostingRegressionIT extends AbstractIntegrationTest {
             .orElseThrow()
             .getId());
     companyRepository.save(company);
+    accountingPeriodService.ensurePeriod(company, companyClock.today(company));
 
     CompanyContextHolder.setCompanyCode(COMPANY_CODE);
   }

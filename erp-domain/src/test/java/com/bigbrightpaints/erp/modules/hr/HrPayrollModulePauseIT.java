@@ -2,6 +2,7 @@ package com.bigbrightpaints.erp.modules.hr;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 
@@ -57,7 +58,19 @@ class HrPayrollModulePauseIT extends AbstractIntegrationTest {
         rest.exchange(
             "/api/v1/accounting/payroll/payments",
             HttpMethod.POST,
-            new HttpEntity<>(Map.of(), tenantHeaders),
+            new HttpEntity<>(
+                Map.of(
+                    "payrollRunId",
+                    1L,
+                    "cashAccountId",
+                    1L,
+                    "expenseAccountId",
+                    2L,
+                    "amount",
+                    new BigDecimal("1.00"),
+                    "referenceNumber",
+                    "PAY-PAUSE-BLOCKED"),
+                tenantHeaders),
             Map.class);
     assertThat(payrollPayment.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
 

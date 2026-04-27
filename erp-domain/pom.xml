@@ -408,7 +408,6 @@
                         <param>com.bigbrightpaints.erp.modules.accounting.service.CompanyDefaultAccountsService</param>
                         <param>com.bigbrightpaints.erp.modules.inventory.service.BatchNumberService</param>
                         <param>com.bigbrightpaints.erp.modules.invoice.service.InvoiceSettlementPolicy</param>
-                        <param>com.bigbrightpaints.erp.orchestrator.policy.PolicyEnforcer</param>
                         <param>com.bigbrightpaints.erp.orchestrator.service.TraceService</param>
                         <param>com.bigbrightpaints.erp.orchestrator.service.OrchestratorIdempotencyService</param>
                     </targetClasses>

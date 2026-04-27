@@ -85,9 +85,9 @@ class SalesProformaBoundaryServiceTest {
   }
 
   @Test
-  void normalizePaymentMode_mapsLegacyHybridAndRejectsUnsupportedValues() {
+  void normalizePaymentMode_acceptsCanonicalModesAndRejectsUnsupportedValues() {
     assertThat(service.normalizePaymentMode(null)).isEqualTo("CREDIT");
-    assertThat(service.normalizePaymentMode(" split ")).isEqualTo("HYBRID");
+    assertThat(service.normalizePaymentMode(" hybrid ")).isEqualTo("HYBRID");
     assertThat(service.requiresCreditCheck("CASH")).isTrue();
     assertThat(service.requiresCreditCheck("HYBRID")).isTrue();
 
@@ -98,9 +98,8 @@ class SalesProformaBoundaryServiceTest {
         .satisfies(
             details ->
                 assertThat(details)
-                    .containsEntry("paymentMode", "WIRE")
-                    .containsKey("allowedPaymentModes")
-                    .containsKey("legacyAliases"));
+                    .containsOnlyKeys("paymentMode", "allowedPaymentModes")
+                    .containsEntry("paymentMode", "WIRE"));
   }
 
   @Test

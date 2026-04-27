@@ -37,6 +37,14 @@ class TruthRailsSharedDtoContractTest {
   }
 
   @Test
+  void sharedImportRowErrorExposesCanonicalRowErrorFields() {
+    ImportRowErrorDto error = new ImportRowErrorDto(7L, "Missing required SKU");
+
+    assertThat(error.rowNumber()).isEqualTo(7L);
+    assertThat(error.message()).isEqualTo("Missing required SKU");
+  }
+
+  @Test
   void canonicalConstructorsExposeLifecycleAndLinkedReferenceFields() {
     InvoiceDto invoiceDto =
         new InvoiceDto(

@@ -8,6 +8,7 @@ import java.util.function.BooleanSupplier;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -19,7 +20,6 @@ import com.bigbrightpaints.erp.orchestrator.dto.OrderFulfillmentRequest;
 import com.bigbrightpaints.erp.orchestrator.dto.PayrollRunRequest;
 import com.bigbrightpaints.erp.orchestrator.event.DomainEvent;
 import com.bigbrightpaints.erp.orchestrator.exception.OrchestratorFeatureDisabledException;
-import com.bigbrightpaints.erp.orchestrator.policy.PolicyEnforcer;
 import com.bigbrightpaints.erp.orchestrator.repository.OrchestratorCommand;
 import com.bigbrightpaints.erp.orchestrator.workflow.WorkflowService;
 
@@ -31,7 +31,6 @@ public class CommandDispatcher {
   private final IntegrationCoordinator integrationCoordinator;
   private final EventPublisherService eventPublisherService;
   private final TraceService traceService;
-  private final PolicyEnforcer policyEnforcer;
   private final OrchestratorIdempotencyService idempotencyService;
   private final OrchestratorFeatureFlags featureFlags;
 
@@ -40,14 +39,12 @@ public class CommandDispatcher {
       IntegrationCoordinator integrationCoordinator,
       EventPublisherService eventPublisherService,
       TraceService traceService,
-      PolicyEnforcer policyEnforcer,
       OrchestratorIdempotencyService idempotencyService,
       OrchestratorFeatureFlags featureFlags) {
     this.workflowService = workflowService;
     this.integrationCoordinator = integrationCoordinator;
     this.eventPublisherService = eventPublisherService;
     this.traceService = traceService;
-    this.policyEnforcer = policyEnforcer;
     this.idempotencyService = idempotencyService;
     this.featureFlags = featureFlags;
   }
@@ -59,7 +56,7 @@ public class CommandDispatcher {
       String requestId,
       String companyId,
       String userId) {
-    policyEnforcer.checkOrderApprovalPermissions(userId, companyId);
+    requireCommandContext(userId, companyId);
     LeaseEnvelope leaseEnvelope =
         startLease("ORCH.ORDER.APPROVE", idempotencyKey, request, "order-approval", requestId);
     OrchestratorIdempotencyService.CommandLease lease = leaseEnvelope.lease();
@@ -174,7 +171,7 @@ public class CommandDispatcher {
       String requestId,
       String companyId,
       String userId) {
-    policyEnforcer.checkOrderApprovalPermissions(userId, companyId);
+    requireCommandContext(userId, companyId);
     LeaseEnvelope leaseEnvelope =
         startLease(
             "ORCH.ORDER.FULFILLMENT.UPDATE",
@@ -231,7 +228,7 @@ public class CommandDispatcher {
       String requestId,
       String companyId,
       String userId) {
-    policyEnforcer.checkPayrollPermissions(userId, companyId);
+    requireCommandContext(userId, companyId);
     LeaseEnvelope leaseEnvelope =
         startLease("ORCH.PAYROLL.RUN", idempotencyKey, request, "payroll", requestId);
     OrchestratorIdempotencyService.CommandLease lease = leaseEnvelope.lease();
@@ -312,6 +309,12 @@ public class CommandDispatcher {
 
   public String generateTraceId() {
     return UUID.randomUUID().toString();
+  }
+
+  private static void requireCommandContext(String userId, String companyId) {
+    if (userId == null || companyId == null) {
+      throw new AccessDeniedException("Missing user or company context");
+    }
   }
 
   private void recordDeniedCommand(

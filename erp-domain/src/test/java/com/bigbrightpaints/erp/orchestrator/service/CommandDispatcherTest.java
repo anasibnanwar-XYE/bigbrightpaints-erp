@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -31,18 +32,17 @@ import com.bigbrightpaints.erp.orchestrator.dto.OrderFulfillmentRequest;
 import com.bigbrightpaints.erp.orchestrator.dto.PayrollRunRequest;
 import com.bigbrightpaints.erp.orchestrator.event.DomainEvent;
 import com.bigbrightpaints.erp.orchestrator.exception.OrchestratorFeatureDisabledException;
-import com.bigbrightpaints.erp.orchestrator.policy.PolicyEnforcer;
 import com.bigbrightpaints.erp.orchestrator.repository.OrchestratorCommand;
 import com.bigbrightpaints.erp.orchestrator.workflow.WorkflowService;
 
 @ExtendWith(MockitoExtension.class)
+@Tag("critical")
 class CommandDispatcherTest {
 
   @Mock private WorkflowService workflowService;
   @Mock private IntegrationCoordinator integrationCoordinator;
   @Mock private EventPublisherService eventPublisherService;
   @Mock private TraceService traceService;
-  @Mock private PolicyEnforcer policyEnforcer;
   @Mock private OrchestratorIdempotencyService idempotencyService;
 
   private CommandDispatcher commandDispatcher;
@@ -57,7 +57,6 @@ class CommandDispatcherTest {
             integrationCoordinator,
             eventPublisherService,
             traceService,
-            policyEnforcer,
             idempotencyService,
             featureFlags);
   }
@@ -83,7 +82,6 @@ class CommandDispatcherTest {
     String traceId = commandDispatcher.approveOrder(request, "idem-1", "req-1", "COMP", "user-1");
 
     assertThat(traceId).isEqualTo("trace-123");
-    verify(policyEnforcer).checkOrderApprovalPermissions("user-1", "COMP");
     verify(integrationCoordinator).reserveInventory("101", "COMP", "trace-123", "idem-1");
 
     ArgumentCaptor<DomainEvent> eventCaptor = ArgumentCaptor.forClass(DomainEvent.class);
@@ -251,11 +249,7 @@ class CommandDispatcherTest {
         .doesNotContain("dispatchBatch");
 
     verifyNoInteractions(
-        integrationCoordinator,
-        eventPublisherService,
-        traceService,
-        idempotencyService,
-        policyEnforcer);
+        integrationCoordinator, eventPublisherService, traceService, idempotencyService);
   }
 
   @Test
@@ -266,7 +260,6 @@ class CommandDispatcherTest {
             integrationCoordinator,
             eventPublisherService,
             traceService,
-            policyEnforcer,
             idempotencyService,
             new OrchestratorFeatureFlags(false, true));
 
@@ -463,7 +456,6 @@ class CommandDispatcherTest {
         commandDispatcher.runPayroll(request, "idem-payroll", "req-payroll", "COMP", "user-1");
 
     assertThat(traceId).isEqualTo("trace-payroll");
-    verify(policyEnforcer).checkPayrollPermissions("user-1", "COMP");
     verify(integrationCoordinator).syncEmployees("COMP", "trace-payroll", "idem-payroll");
     verify(integrationCoordinator)
         .recordPayrollPayment(

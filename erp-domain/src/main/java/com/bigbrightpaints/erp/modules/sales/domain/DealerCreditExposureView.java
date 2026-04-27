@@ -1,4 +1,4 @@
-package com.bigbrightpaints.erp.modules.sales.dto;
+package com.bigbrightpaints.erp.modules.sales.domain;
 
 import java.math.BigDecimal;
 

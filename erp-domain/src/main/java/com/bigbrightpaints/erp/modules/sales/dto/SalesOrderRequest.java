@@ -23,8 +23,6 @@ public record SalesOrderRequest(
     String paymentMode,
     String paymentTerms) {
   private static final String DEFAULT_PAYMENT_MODE = "CREDIT";
-  private static final String LEGACY_HYBRID_PAYMENT_MODE = "SPLIT";
-  private static final String HYBRID_PAYMENT_MODE = "HYBRID";
 
   public SalesOrderRequest(
       Long dealerId,
@@ -80,14 +78,7 @@ public record SalesOrderRequest(
     if (DEFAULT_PAYMENT_MODE.equals(normalized)) {
       return DEFAULT_PAYMENT_MODE;
     }
-    if (LEGACY_HYBRID_PAYMENT_MODE.equals(normalized)) {
-      return HYBRID_PAYMENT_MODE;
-    }
     return normalized;
-  }
-
-  public boolean usesLegacySplitReplayPaymentMode() {
-    return LEGACY_HYBRID_PAYMENT_MODE.equals(rawNormalizedPaymentMode());
   }
 
   public String resolveIdempotencyKey() {
@@ -95,27 +86,10 @@ public record SalesOrderRequest(
     if (normalized != null) {
       return normalized;
     }
-    return resolveDerivedIdempotencyKey(normalizedPaymentMode(), false);
+    return resolveDerivedIdempotencyKey(normalizedPaymentMode());
   }
 
-  public String resolveIdempotencyKeyIncludingDefaultPaymentMode() {
-    String normalized = IdempotencyUtils.normalizeKey(idempotencyKey);
-    if (normalized != null) {
-      return normalized;
-    }
-    return resolveDerivedIdempotencyKey(normalizedPaymentMode(), true);
-  }
-
-  public String resolveLegacySplitReplayIdempotencyKey() {
-    String normalized = IdempotencyUtils.normalizeKey(idempotencyKey);
-    if (normalized != null || !usesLegacySplitReplayPaymentMode()) {
-      return null;
-    }
-    return resolveDerivedIdempotencyKey(LEGACY_HYBRID_PAYMENT_MODE, false);
-  }
-
-  private String resolveDerivedIdempotencyKey(
-      String normalizedPaymentMode, boolean includeDefaultPaymentModeSegment) {
+  private String resolveDerivedIdempotencyKey(String normalizedPaymentMode) {
     IdempotencySignatureBuilder signatureBuilder =
         IdempotencySignatureBuilder.create()
             .add(dealerId == null ? "null" : dealerId)
@@ -125,7 +99,7 @@ public record SalesOrderRequest(
     if (!normalizedPaymentTerms.isBlank()) {
       signatureBuilder.addUpperToken(paymentTerms);
     }
-    if (includeDefaultPaymentModeSegment || !DEFAULT_PAYMENT_MODE.equals(normalizedPaymentMode)) {
+    if (!DEFAULT_PAYMENT_MODE.equals(normalizedPaymentMode)) {
       signatureBuilder.add(normalizedPaymentMode);
     }
     if (items != null) {

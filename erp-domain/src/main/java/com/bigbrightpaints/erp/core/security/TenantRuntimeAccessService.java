@@ -345,7 +345,7 @@ public class TenantRuntimeAccessService {
       CompanyContextHolder.setCompanyCode(company.getCode());
       auditService.logFailure(AuditEvent.ACCESS_DENIED, metadata);
     } catch (RuntimeException ex) {
-      log.warn("Unable to write legacy audit denial event for company {}", company.getCode(), ex);
+      log.warn("Unable to write access-denied audit event for company {}", company.getCode(), ex);
     } finally {
       restoreCompanyContext(previousCompany);
     }

@@ -89,6 +89,12 @@ class ProductionCatalogDiscountDefaultRegressionIT extends AbstractIntegrationTe
 
   @Test
   void createProductRejectsFinishedGoodAccountOutsideCompanyScope() {
+    Company managedCompany = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
+    Account discountAccount =
+        ensureAccountFor(managedCompany, "DISC", "Discounts", AccountType.EXPENSE);
+    managedCompany.setDefaultDiscountAccountId(discountAccount.getId());
+    company = companyRepository.saveAndFlush(managedCompany);
+
     Company foreignCompany =
         dataSeeder.ensureCompany(
             "FG-SCOPE-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase(),
@@ -118,8 +124,7 @@ class ProductionCatalogDiscountDefaultRegressionIT extends AbstractIntegrationTe
 
     assertThatThrownBy(() -> productionCatalogService.createCatalogItem(request))
         .isInstanceOf(com.bigbrightpaints.erp.core.exception.ApplicationException.class)
-        .hasMessageContaining("invalid account id")
-        .hasMessageContaining("fgValuationAccountId");
+        .hasMessageContaining("Account not found");
   }
 
   private Account ensureAccount(String code, String name, AccountType type) {

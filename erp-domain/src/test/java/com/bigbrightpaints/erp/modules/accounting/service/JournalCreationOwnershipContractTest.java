@@ -15,12 +15,17 @@ import org.junit.jupiter.api.Test;
 
 class JournalCreationOwnershipContractTest {
 
+  private static final Path ACCOUNTING_SOURCE_DIR =
+      Path.of(
+              System.getProperty("user.dir"),
+              "src/main/java/com/bigbrightpaints/erp/modules/accounting")
+          .toAbsolutePath()
+          .normalize();
+  private static final Path SERVICE_DIR = ACCOUNTING_SOURCE_DIR.resolve("service");
+
   @Test
   void deletedAccountingCoreEngineCoreRemainsUnavailable() {
-    assertThat(
-            Path.of(
-                    "/home/realnigga/Desktop/Mission-control/erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/internal/AccountingCoreEngineCore.java")
-                .toFile())
+    assertThat(ACCOUNTING_SOURCE_DIR.resolve("internal/AccountingCoreEngineCore.java").toFile())
         .doesNotExist();
   }
 
@@ -99,7 +104,6 @@ class JournalCreationOwnershipContractTest {
   @Test
   void journalPostingFacadeAndCollaboratorsStayBelowHotspotThresholds() {
     assertThat(lineCount("JournalPostingService.java")).isLessThan(500);
-    assertThat(lineCount("JournalEntryMutationService.java")).isLessThan(500);
     assertThat(lineCount("JournalPartnerContextService.java")).isLessThan(500);
     assertThat(lineCount("JournalDuplicateGuardService.java")).isLessThan(500);
     assertThat(lineCount("JournalLinePostingService.java")).isLessThan(500);
@@ -146,9 +150,7 @@ class JournalCreationOwnershipContractTest {
   }
 
   private Path serviceFile(String name) {
-    return Path.of(
-        "/home/realnigga/Desktop/Mission-control/erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/"
-            + name);
+    return SERVICE_DIR.resolve(name);
   }
 
   private String readService(String name) {
@@ -168,8 +170,7 @@ class JournalCreationOwnershipContractTest {
   }
 
   private List<String> legacySettlementSupportFiles() {
-    Path serviceDir = serviceFile("placeholder").getParent();
-    try (var stream = Files.list(serviceDir)) {
+    try (var stream = Files.list(SERVICE_DIR)) {
       return stream
           .map(path -> path.getFileName().toString())
           .filter(name -> name.matches("Settlement.*Support.*\\.java"))

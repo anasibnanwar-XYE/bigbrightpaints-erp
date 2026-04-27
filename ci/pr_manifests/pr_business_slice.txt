@@ -8,7 +8,6 @@ com.bigbrightpaints.erp.modules.production.controller.CatalogControllerCanonical
 com.bigbrightpaints.erp.modules.production.service.CatalogServiceBrandCrudTest
 com.bigbrightpaints.erp.modules.production.service.CatalogServiceBulkUpsertTest
 com.bigbrightpaints.erp.modules.production.service.ProductionCatalogServiceMetadataParsingTest
-com.bigbrightpaints.erp.modules.production.service.ProductionCatalogServiceBulkVariantRaceTest
 com.bigbrightpaints.erp.core.util.CompanyEntityLookupTest
 com.bigbrightpaints.erp.modules.inventory.service.CompanyScopedInventoryLookupServiceTest
 com.bigbrightpaints.erp.modules.factory.service.CostAllocationServiceTest
@@ -45,6 +44,7 @@ com.bigbrightpaints.erp.modules.sales.dto.CreditLimitRequestDecisionRequestTest
 com.bigbrightpaints.erp.modules.sales.dto.CreditLimitRequestDtoTest
 com.bigbrightpaints.erp.modules.sales.dto.DealerPortalCreditLimitRequestCreateRequestTest
 com.bigbrightpaints.erp.modules.sales.service.CreditLimitRequestServiceTest
+com.bigbrightpaints.erp.modules.sales.service.CreditLimitOverrideServiceTest
 DispatchArtifactPathsTest
 DispatchConfirmRequestTest
 DispatchControllerTest
@@ -76,6 +76,7 @@ PurchaseReturnIdempotencyRegressionIT
 PurchaseReturnServiceTest
 com.bigbrightpaints.erp.modules.purchasing.controller.SupplierControllerRoleVisibilityTest
 com.bigbrightpaints.erp.modules.purchasing.domain.PurchasingMutationHelpersTest
+com.bigbrightpaints.erp.modules.purchasing.service.SupplierImportServiceTest
 com.bigbrightpaints.erp.modules.purchasing.service.SupplierServiceTest
 PurchasingServiceGoodsReceiptTest
 PurchasingServiceTest
@@ -84,6 +85,7 @@ RawMaterialServiceReceiptContextTest
 SalesControllerIdempotencyHeaderTest
 SalesControllerIT
 com.bigbrightpaints.erp.modules.production.service.ProductionCatalogServiceRetryPolicyTest
+com.bigbrightpaints.erp.modules.sales.service.DealerImportServiceTest
 com.bigbrightpaints.erp.modules.sales.service.OrderNumberServiceTest
 com.bigbrightpaints.erp.modules.sales.service.SalesOrderAutoCloseServiceTest
 SalesCoreEngineCoverageTest

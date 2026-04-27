@@ -21,11 +21,11 @@ import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodSnapsho
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodSnapshotRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodTrialBalanceLine;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodTrialBalanceLineRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.DealerBalanceView;
 import com.bigbrightpaints.erp.modules.accounting.domain.DealerLedgerRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalLineRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.SupplierBalanceView;
 import com.bigbrightpaints.erp.modules.accounting.domain.SupplierLedgerRepository;
-import com.bigbrightpaints.erp.modules.accounting.dto.DealerBalanceView;
-import com.bigbrightpaints.erp.modules.accounting.dto.SupplierBalanceView;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.purchasing.domain.SupplierRepository;
 import com.bigbrightpaints.erp.modules.reports.service.InventoryValuationQueryService;

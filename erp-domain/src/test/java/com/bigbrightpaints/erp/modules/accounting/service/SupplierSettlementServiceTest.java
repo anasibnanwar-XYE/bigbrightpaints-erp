@@ -13,6 +13,13 @@ import org.junit.jupiter.api.Test;
 
 class SupplierSettlementServiceTest {
 
+  private static final Path SERVICE_DIR =
+      Path.of(
+              System.getProperty("user.dir"),
+              "src/main/java/com/bigbrightpaints/erp/modules/accounting/service")
+          .toAbsolutePath()
+          .normalize();
+
   @Test
   void supplierSettlementServiceUsesFocusedResolutionCollaborators() {
     Set<Class<?>> fieldTypes =
@@ -30,9 +37,7 @@ class SupplierSettlementServiceTest {
   }
 
   private Path serviceFile(String name) {
-    return Path.of(
-        "/home/realnigga/Desktop/Mission-control/erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/"
-            + name);
+    return SERVICE_DIR.resolve(name);
   }
 
   private String readService(String name) {

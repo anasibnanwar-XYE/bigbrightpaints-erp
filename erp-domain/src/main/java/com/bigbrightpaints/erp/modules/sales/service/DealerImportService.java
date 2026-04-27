@@ -26,7 +26,7 @@ import com.bigbrightpaints.erp.core.validation.ValidationUtils;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerPaymentTerms;
 import com.bigbrightpaints.erp.modules.sales.dto.CreateDealerRequest;
 import com.bigbrightpaints.erp.modules.sales.dto.DealerImportResponse;
-import com.bigbrightpaints.erp.modules.sales.dto.DealerImportResponse.ImportError;
+import com.bigbrightpaints.erp.shared.dto.ImportRowErrorDto;
 
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Validator;
@@ -51,7 +51,7 @@ public class DealerImportService {
     }
 
     int successCount = 0;
-    List<ImportError> errors = new ArrayList<>();
+    List<ImportRowErrorDto> errors = new ArrayList<>();
 
     try (BufferedReader reader =
             new BufferedReader(
@@ -77,7 +77,7 @@ public class DealerImportService {
           dealerService.createDealer(request);
           successCount++;
         } catch (RuntimeException ex) {
-          errors.add(new ImportError(record.getRecordNumber(), resolveErrorMessage(ex)));
+          errors.add(new ImportRowErrorDto(record.getRecordNumber(), resolveErrorMessage(ex)));
         }
       }
     } catch (IOException ex) {

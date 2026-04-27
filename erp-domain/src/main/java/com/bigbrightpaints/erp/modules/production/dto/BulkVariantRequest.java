@@ -7,9 +7,6 @@ import java.util.Map;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 
-/**
- * Request to generate multiple product variants (color x size) in one shot.
- */
 public record BulkVariantRequest(
     Long brandId,
     String brandName,

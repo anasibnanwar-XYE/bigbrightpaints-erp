@@ -1,4 +1,4 @@
-package com.bigbrightpaints.erp.modules.admin.dto;
+package com.bigbrightpaints.erp.modules.admin.domain;
 
 public enum ExportApprovalStatus {
   PENDING,

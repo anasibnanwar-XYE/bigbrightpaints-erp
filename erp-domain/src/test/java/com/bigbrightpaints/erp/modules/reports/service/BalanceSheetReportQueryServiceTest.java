@@ -1,5 +1,7 @@
 package com.bigbrightpaints.erp.modules.reports.service;
 
+import static com.bigbrightpaints.erp.modules.reports.service.ReportFixtures.account;
+import static com.bigbrightpaints.erp.modules.reports.service.ReportFixtures.row;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -13,7 +15,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
@@ -150,8 +151,8 @@ class BalanceSheetReportQueryServiceTest {
             primary.company(), primary.startDate(), primary.endDate()))
         .thenReturn(
             List.of(
-                typeRow(AccountType.REVENUE, "0.00", "100.00"),
-                typeRow(AccountType.EXPENSE, "40.00", "0.00")));
+                row(AccountType.REVENUE, "0.00", "100.00"),
+                row(AccountType.EXPENSE, "40.00", "0.00")));
 
     BalanceSheetDto dto = service.generate(request);
 
@@ -200,6 +201,7 @@ class BalanceSheetReportQueryServiceTest {
 
     when(reportQuerySupport.resolveWindow(request)).thenReturn(snapshotWindow);
     when(reportQuerySupport.resolveComparison(request)).thenReturn(null);
+    when(reportQuerySupport.usesClosedSnapshot(snapshotWindow)).thenReturn(true);
     when(reportQuerySupport.metadata(snapshotWindow))
         .thenReturn(
             new ReportMetadata(
@@ -297,8 +299,8 @@ class BalanceSheetReportQueryServiceTest {
             primary.company(), primary.startDate(), primary.endDate()))
         .thenReturn(
             List.of(
-                typeRow(AccountType.REVENUE, "0.00", "100.00"),
-                typeRow(AccountType.EXPENSE, "40.00", "0.00")));
+                row(AccountType.REVENUE, "0.00", "100.00"),
+                row(AccountType.EXPENSE, "40.00", "0.00")));
 
     BalanceSheetDto dto = service.generate(request);
 
@@ -361,8 +363,8 @@ class BalanceSheetReportQueryServiceTest {
             primary.company(), primary.startDate(), primary.endDate()))
         .thenReturn(
             java.util.List.<Object[]>of(
-                typeRow(AccountType.REVENUE, "0.00", "150.00"),
-                typeRow(AccountType.EXPENSE, "30.00", "0.00")));
+                row(AccountType.REVENUE, "0.00", "150.00"),
+                row(AccountType.EXPENSE, "30.00", "0.00")));
 
     BalanceSheetDto dto = service.generate(request);
 
@@ -553,8 +555,8 @@ class BalanceSheetReportQueryServiceTest {
             primary.company(), primary.startDate(), primary.endDate()))
         .thenReturn(
             List.of(
-                typeRow(AccountType.REVENUE, "0.00", "10.00"),
-                typeRow(AccountType.EXPENSE, "10.00", "0.00")));
+                row(AccountType.REVENUE, "0.00", "10.00"),
+                row(AccountType.EXPENSE, "10.00", "0.00")));
 
     BalanceSheetDto dto = service.generate(request);
 
@@ -573,110 +575,6 @@ class BalanceSheetReportQueryServiceTest {
         new BalanceSheetReportQueryService(
             reportQuerySupport, snapshotLineRepository, accountRepository, journalLineRepository);
 
-    var base =
-        ReportFixtures.window(
-            LocalDate.of(2026, 6, 1), LocalDate.of(2026, 6, 30), LocalDate.of(2026, 6, 30));
-    var snapshot = new com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodSnapshot();
-    var period = new com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriod();
-    period.setYear(2026);
-    period.setMonth(6);
-    period.setStartDate(base.startDate());
-    period.setEndDate(base.endDate());
-    period.setStatus(
-        com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodStatus.CLOSED);
-
-    var fullSnapshotWindow =
-        new ReportQuerySupport.FinancialQueryWindow(
-            base.company(),
-            base.startDate(),
-            base.endDate(),
-            base.asOfDate(),
-            period,
-            snapshot,
-            com.bigbrightpaints.erp.modules.reports.dto.ReportSource.SNAPSHOT,
-            base.exportOptions());
-
-    assertThat(
-            (Boolean)
-                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-                    service, "usesClosedSnapshot", base))
-        .isFalse();
-    assertThat(
-            (Boolean)
-                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-                    service,
-                    "usesClosedSnapshot",
-                    new ReportQuerySupport.FinancialQueryWindow(
-                        base.company(),
-                        base.startDate(),
-                        base.endDate(),
-                        base.asOfDate(),
-                        period,
-                        null,
-                        com.bigbrightpaints.erp.modules.reports.dto.ReportSource.SNAPSHOT,
-                        base.exportOptions())))
-        .isFalse();
-    assertThat(
-            (Boolean)
-                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-                    service,
-                    "usesClosedSnapshot",
-                    new ReportQuerySupport.FinancialQueryWindow(
-                        base.company(),
-                        base.startDate(),
-                        base.endDate(),
-                        base.asOfDate(),
-                        null,
-                        snapshot,
-                        com.bigbrightpaints.erp.modules.reports.dto.ReportSource.SNAPSHOT,
-                        base.exportOptions())))
-        .isFalse();
-    assertThat(
-            (Boolean)
-                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-                    service,
-                    "usesClosedSnapshot",
-                    new ReportQuerySupport.FinancialQueryWindow(
-                        base.company(),
-                        base.startDate().minusDays(1),
-                        base.endDate(),
-                        base.asOfDate(),
-                        period,
-                        snapshot,
-                        com.bigbrightpaints.erp.modules.reports.dto.ReportSource.SNAPSHOT,
-                        base.exportOptions())))
-        .isFalse();
-    assertThat(
-            (Boolean)
-                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-                    service,
-                    "usesClosedSnapshot",
-                    new ReportQuerySupport.FinancialQueryWindow(
-                        base.company(),
-                        base.startDate(),
-                        base.endDate().minusDays(1),
-                        base.asOfDate(),
-                        period,
-                        snapshot,
-                        com.bigbrightpaints.erp.modules.reports.dto.ReportSource.SNAPSHOT,
-                        base.exportOptions())))
-        .isFalse();
-    assertThat(
-            (Boolean)
-                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-                    service,
-                    "usesClosedSnapshot",
-                    new ReportQuerySupport.FinancialQueryWindow(
-                        base.company(),
-                        base.startDate(),
-                        base.endDate(),
-                        base.asOfDate(),
-                        period,
-                        snapshot,
-                        com.bigbrightpaints.erp.modules.reports.dto.ReportSource.SNAPSHOT,
-                        base.exportOptions())))
-        .isTrue();
-
     assertThat(
             (Boolean)
                 com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
@@ -687,22 +585,5 @@ class BalanceSheetReportQueryServiceTest {
                 com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     service, "isBalanceSheetType", AccountType.REVENUE))
         .isFalse();
-  }
-
-  private Account account(Long id, String code, String name, AccountType type) {
-    Account account = new Account();
-    ReflectionTestUtils.setField(account, "id", id);
-    account.setCode(code);
-    account.setName(name);
-    account.setType(type);
-    return account;
-  }
-
-  private Object[] row(Long accountId, String debit, String credit) {
-    return new Object[] {accountId, new BigDecimal(debit), new BigDecimal(credit)};
-  }
-
-  private Object[] typeRow(AccountType type, String debit, String credit) {
-    return new Object[] {type, new BigDecimal(debit), new BigDecimal(credit)};
   }
 }

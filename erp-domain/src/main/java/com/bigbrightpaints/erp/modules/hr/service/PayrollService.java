@@ -66,7 +66,7 @@ public class PayrollService {
    * if (run.getPaymentJournalEntryId() == null) {
    * "Payroll payment journal is required before marking payroll as PAID"
    * "canonicalPath", PAYROLL_PAYMENTS_CANONICAL_PATH
-   * var paymentJournal = companyEntityLookup.requireJournalEntry(company, run.getPaymentJournalEntryId());
+   * var paymentJournal = accountingLookupService.requireJournalEntry(company, run.getPaymentJournalEntryId());
    * String canonicalPaymentReference = paymentJournal.getReferenceNumber();
    * line.setPaymentReference(canonicalPaymentReference);
    * run.setStatus(PayrollRun.PayrollStatus.PAID);

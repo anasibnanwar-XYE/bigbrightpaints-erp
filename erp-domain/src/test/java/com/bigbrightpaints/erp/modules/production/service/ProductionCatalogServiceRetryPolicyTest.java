@@ -28,6 +28,7 @@ import org.springframework.transaction.PlatformTransactionManager;
 
 import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.idempotency.IdempotencyUtils;
 import com.bigbrightpaints.erp.modules.accounting.service.CompanyDefaultAccountsService;
 import com.bigbrightpaints.erp.modules.accounting.service.CompanyScopedAccountingLookupService;
@@ -52,6 +53,7 @@ import com.bigbrightpaints.erp.modules.production.domain.ProductionBrand;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionBrandRepository;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionProduct;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionProductRepository;
+import com.bigbrightpaints.erp.modules.production.dto.CatalogImportResponse;
 import com.bigbrightpaints.erp.modules.purchasing.domain.GoodsReceiptRepository;
 import com.bigbrightpaints.erp.modules.purchasing.domain.PurchaseOrderRepository;
 import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchaseRepository;
@@ -154,6 +156,38 @@ class ProductionCatalogServiceRetryPolicyTest {
         .hasMessageContaining("Idempotency key already used with different payload");
 
     verify(catalogImportRepository, never()).save(any(CatalogImport.class));
+    verifyNoInteractions(transactionManager);
+  }
+
+  @Test
+  void deserializeErrors_failsFastWhenPersistedJsonIsInvalid() {
+    assertThatThrownBy(
+            () ->
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    service, "deserializeErrors", "{"))
+        .isInstanceOfSatisfying(
+            ApplicationException.class,
+            ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_INVALID_STATE))
+        .hasMessageContaining("Invalid catalog import errors JSON");
+  }
+
+  @Test
+  void processCatalogImport_collectsInvalidParseAndSkuRowsWithoutPersistingProducts() {
+    Company company = new Company();
+    MockMultipartFile file =
+        csvFile(
+            String.join(
+                "\n",
+                "brand,product_name,sku_code,base_price",
+                "Safari,Wall Paint,SKU-1,not-a-number",
+                "Safari,Trim Paint,!!!,12.00"));
+
+    CatalogImportResponse response =
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "processCatalogImport", company, file);
+
+    assertThat(response.rowsProcessed()).isZero();
+    assertThat(response.errors()).hasSize(2);
     verifyNoInteractions(transactionManager);
   }
 

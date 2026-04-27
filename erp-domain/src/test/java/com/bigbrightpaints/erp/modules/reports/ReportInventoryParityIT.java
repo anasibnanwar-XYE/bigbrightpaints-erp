@@ -1,5 +1,9 @@
 package com.bigbrightpaints.erp.modules.reports;
 
+import static com.bigbrightpaints.erp.test.support.JsonResponseAssertions.mapList;
+import static com.bigbrightpaints.erp.test.support.JsonResponseAssertions.responseDataMap;
+import static com.bigbrightpaints.erp.test.support.JsonResponseAssertions.responseDataMapList;
+import static com.bigbrightpaints.erp.test.support.JsonResponseAssertions.responseMapType;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.math.BigDecimal;
@@ -74,7 +78,6 @@ class ReportInventoryParityIT extends AbstractIntegrationTest {
     String lifoCode = prefix + "-LIFO";
     String wacCode = prefix + "-WAC";
     String wacAliasCode = prefix + "-WAC-ALIAS";
-    String legacyFallbackCode = prefix + "-LEGACY";
     String reservedDriftCode = prefix + "-RES-DRIFT";
 
     seedFinishedGoodWithBatches(
@@ -150,24 +153,6 @@ class ReportInventoryParityIT extends AbstractIntegrationTest {
                 new BigDecimal("12"),
                 Instant.parse("2026-01-02T00:00:00Z"))));
     seedFinishedGoodWithBatches(
-        legacyFallbackCode,
-        "LEGACY_UNKNOWN",
-        new BigDecimal("5"),
-        new BigDecimal("1"),
-        List.of(
-            new BatchSeed(
-                legacyFallbackCode + "-OLD",
-                new BigDecimal("2"),
-                BigDecimal.ZERO,
-                new BigDecimal("5"),
-                Instant.parse("2026-01-01T00:00:00Z")),
-            new BatchSeed(
-                legacyFallbackCode + "-NEW",
-                new BigDecimal("10"),
-                new BigDecimal("10"),
-                new BigDecimal("20"),
-                Instant.parse("2026-01-02T00:00:00Z"))));
-    seedFinishedGoodWithBatches(
         reservedDriftCode,
         "FIFO",
         new BigDecimal("2"),
@@ -185,7 +170,7 @@ class ReportInventoryParityIT extends AbstractIntegrationTest {
             .filter(row -> String.valueOf(row.get("productCode")).startsWith(prefix))
             .toList();
 
-    assertThat(trackedRows).hasSize(6);
+    assertThat(trackedRows).hasSize(5);
 
     Map<String, Map<String, Object>> byCode =
         trackedRows.stream()
@@ -199,8 +184,6 @@ class ReportInventoryParityIT extends AbstractIntegrationTest {
         .isEqualByComparingTo(new BigDecimal("10.4"));
     assertThat(asDecimal(byCode.get(wacAliasCode).get("weightedAverageCost")))
         .isEqualByComparingTo(new BigDecimal("10.4"));
-    assertThat(asDecimal(byCode.get(legacyFallbackCode).get("weightedAverageCost")))
-        .isEqualByComparingTo(new BigDecimal("20"));
     assertThat(asDecimal(byCode.get(reservedDriftCode).get("weightedAverageCost")))
         .isEqualByComparingTo(BigDecimal.ZERO);
 
@@ -259,8 +242,7 @@ class ReportInventoryParityIT extends AbstractIntegrationTest {
     inventoryPhysicalCountRepository.saveAndFlush(physicalCount);
 
     Map<String, Object> report = inventoryReconciliation(headers);
-    @SuppressWarnings("unchecked")
-    List<Map<String, Object>> items = (List<Map<String, Object>>) report.get("items");
+    List<Map<String, Object>> items = mapList(report.get("items"));
 
     Map<String, Object> targetItem =
         items.stream()
@@ -311,8 +293,12 @@ class ReportInventoryParityIT extends AbstractIntegrationTest {
             "email", email,
             "password", password,
             "companyCode", companyCode);
-    ResponseEntity<Map> loginResponse =
-        rest.postForEntity("/api/v1/auth/login", loginPayload, Map.class);
+    ResponseEntity<Map<String, Object>> loginResponse =
+        rest.exchange(
+            "/api/v1/auth/login",
+            HttpMethod.POST,
+            new HttpEntity<>(loginPayload),
+            responseMapType());
     assertThat(loginResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
     assertThat(loginResponse.getBody()).isNotNull();
 
@@ -322,43 +308,37 @@ class ReportInventoryParityIT extends AbstractIntegrationTest {
     return headers;
   }
 
-  @SuppressWarnings("unchecked")
   private List<Map<String, Object>> stockSummaryRows(HttpHeaders headers) {
-    ResponseEntity<Map> response =
+    ResponseEntity<Map<String, Object>> response =
         rest.exchange(
             "/api/v1/finished-goods/stock-summary",
             HttpMethod.GET,
             new HttpEntity<>(headers),
-            Map.class);
+            responseMapType());
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-    assertThat(response.getBody()).isNotNull();
-    return (List<Map<String, Object>>) response.getBody().get("data");
+    return responseDataMapList(response);
   }
 
-  @SuppressWarnings("unchecked")
   private Map<String, Object> inventoryValuation(HttpHeaders headers) {
-    ResponseEntity<Map> response =
+    ResponseEntity<Map<String, Object>> response =
         rest.exchange(
             "/api/v1/reports/inventory-valuation?date=2099-01-01",
             HttpMethod.GET,
             new HttpEntity<>(headers),
-            Map.class);
+            responseMapType());
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-    assertThat(response.getBody()).isNotNull();
-    return (Map<String, Object>) response.getBody().get("data");
+    return responseDataMap(response);
   }
 
-  @SuppressWarnings("unchecked")
   private Map<String, Object> inventoryReconciliation(HttpHeaders headers) {
-    ResponseEntity<Map> response =
+    ResponseEntity<Map<String, Object>> response =
         rest.exchange(
             "/api/v1/reports/inventory-reconciliation",
             HttpMethod.GET,
             new HttpEntity<>(headers),
-            Map.class);
+            responseMapType());
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-    assertThat(response.getBody()).isNotNull();
-    return (Map<String, Object>) response.getBody().get("data");
+    return responseDataMap(response);
   }
 
   private BigDecimal asDecimal(Object value) {

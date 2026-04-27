@@ -46,7 +46,6 @@ The orchestrator publishes commands through an outbox pattern:
 Internal Spring events propagate cross-module side effects:
 
 - `InventoryMovementEvent` → `InventoryAccountingEventListener` for accounting integration.
-- `FactorySlipEventListener` for factory slip lifecycle visibility.
 - Event listeners execute within the originating transaction boundary by default; `@TransactionalEventListener` is used where after-commit semantics are required.
 
 ### 2.3 Dead-letter and failure routing
@@ -80,7 +79,7 @@ Batch-level stock operations use `deductQuantityIfSufficient` flows that atomica
 
 ### 4.1 Journal posting integrity
 
-- All journal entries go through centralized `AccountingFacade` / `AccountingCoreEngineCore` paths.
+- All journal entries go through centralized `AccountingFacade`, `JournalEntryService`, and focused posting-service paths.
 - Journal references are explicit per source module (e.g., `PAYROLL-<runToken>`, `PERIOD-CLOSE-<year><month>`).
 - Period controls enforce posted-truth boundaries: corrections use explicit notes/reversals rather than mutation of posted entries.
 
