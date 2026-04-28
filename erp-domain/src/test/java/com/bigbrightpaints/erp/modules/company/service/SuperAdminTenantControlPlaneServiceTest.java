@@ -122,6 +122,9 @@ class SuperAdminTenantControlPlaneServiceTest {
     lenient()
         .when(tenantActivationTokenRepository.lockByCompanyId(any(Long.class)))
         .thenReturn(List.of());
+    lenient()
+        .when(tenantDefaultSeedingService.seedDefaultsFailClosed(any(Company.class)))
+        .thenReturn(TenantDefaultSeedingService.SeedAttempt.ready(null));
     SecurityContextHolder.getContext()
         .setAuthentication(new UsernamePasswordAuthenticationToken("super-admin@bbp.com", "n/a"));
   }
@@ -247,7 +250,7 @@ class SuperAdminTenantControlPlaneServiceTest {
     assertThat(response.activation().redactedFields())
         .contains("secretMaterial", "activationLink", "credentialMaterial");
     assertThat(response.auditEventId()).isEqualTo(501L);
-    verify(tenantDefaultSeedingService).seedDefaults(any(Company.class));
+    verify(tenantDefaultSeedingService).seedDefaultsFailClosed(any(Company.class));
     verify(emailService, never())
         .sendTenantActivationEmailRequired(any(), any(), any(), any(), any(), any());
     verify(tenantActivationTokenRepository, never()).saveAndFlush(any());
@@ -300,7 +303,7 @@ class SuperAdminTenantControlPlaneServiceTest {
     assertThat(response.activation().tokenId()).isEqualTo(701L);
     assertThat(response.activation().sentAt()).isNotNull();
     assertThat(response.activation().expiresAt()).isNotNull();
-    verify(tenantDefaultSeedingService).seedDefaults(any(Company.class));
+    verify(tenantDefaultSeedingService).seedDefaultsFailClosed(any(Company.class));
     verify(emailService)
         .sendTenantActivationEmailRequired(
             eq("owner@example.com"),
@@ -355,7 +358,47 @@ class SuperAdminTenantControlPlaneServiceTest {
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("audit unavailable");
 
-    verify(tenantDefaultSeedingService).seedDefaults(any(Company.class));
+    verify(tenantDefaultSeedingService).seedDefaultsFailClosed(any(Company.class));
+    verify(emailService, never())
+        .sendTenantActivationEmailRequired(any(), any(), any(), any(), any(), any());
+  }
+
+  @Test
+  void createAddClient_sendActivationSeedFailureKeepsRecoverableTenantWithoutTokenOrEmail() {
+    Role adminRole = role("ROLE_ADMIN");
+    when(companyRepository.findByCodeIgnoreCase("ACME-M4")).thenReturn(Optional.empty());
+    when(userAccountRepository.existsByEmailIgnoreCase("owner@example.com")).thenReturn(false);
+    when(roleRepository.findByName("ROLE_ADMIN")).thenReturn(Optional.of(adminRole));
+    when(passwordEncoder.encode(any(String.class))).thenReturn("encoded-pending-password");
+    when(companyRepository.saveAndFlush(any(Company.class)))
+        .thenAnswer(
+            invocation -> {
+              Company company = invocation.getArgument(0);
+              if (company.getId() == null) {
+                ReflectionTestUtils.setField(company, "id", 42L);
+              }
+              return company;
+            });
+    when(userAccountRepository.saveAndFlush(any(UserAccount.class)))
+        .thenAnswer(
+            invocation -> {
+              UserAccount owner = invocation.getArgument(0);
+              ReflectionTestUtils.setField(owner, "id", 92L);
+              return owner;
+            });
+    when(tenantDefaultSeedingService.seedDefaultsFailClosed(any(Company.class)))
+        .thenReturn(TenantDefaultSeedingService.SeedAttempt.failed(null, 611L));
+
+    SuperAdminAddClientCreateResponse response =
+        service.createAddClient(
+            addClientRequest(SuperAdminAddClientCreateRequest.CreateMode.SEND_ACTIVATION));
+
+    assertThat(response.status()).isEqualTo("SEED_FAILED");
+    assertThat(response.activation().status()).isEqualTo("NOT_SENT");
+    assertThat(response.activation().sentAt()).isNull();
+    assertThat(response.activation().tokenId()).isNull();
+    assertThat(response.auditEventId()).isEqualTo(611L);
+    verify(tenantActivationTokenRepository, never()).saveAndFlush(any());
     verify(emailService, never())
         .sendTenantActivationEmailRequired(any(), any(), any(), any(), any(), any());
   }
@@ -386,7 +429,32 @@ class SuperAdminTenantControlPlaneServiceTest {
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("audit unavailable");
 
-    verify(tenantDefaultSeedingService).seedDefaults(company);
+    verify(tenantDefaultSeedingService).seedDefaultsFailClosed(company);
+    verify(emailService, never())
+        .sendTenantActivationEmailRequired(any(), any(), any(), any(), any(), any());
+  }
+
+  @Test
+  void sendActivation_seedFailureFailsClosedBeforeTokenOwnerLookupOrEmail() {
+    Company company = company(42L, "ACME-M4");
+    company.setActivationStatus("NOT_SENT");
+    company.setOnboardingAdminUserId(92L);
+    when(companyRepository.lockById(42L)).thenReturn(Optional.of(company));
+    when(tenantDefaultSeedingService.seedDefaultsFailClosed(company))
+        .thenReturn(TenantDefaultSeedingService.SeedAttempt.failed(null, 612L));
+
+    assertThatThrownBy(() -> service.sendActivation(42L))
+        .isInstanceOf(ApplicationException.class)
+        .hasMessageContaining("Tenant default seeding repair is required before activation")
+        .satisfies(
+            ex ->
+                assertThat(((ApplicationException) ex).getDetails())
+                    .containsEntry("auditEventId", 612L));
+
+    assertThat(company.getLifecycleReason()).isEqualTo("SEED_FAILED");
+    assertThat(company.getActivationStatus()).isEqualTo("NOT_SENT");
+    verify(userAccountRepository, never()).lockByIdAndCompanyId(any(), any());
+    verify(tenantActivationTokenRepository, never()).saveAndFlush(any());
     verify(emailService, never())
         .sendTenantActivationEmailRequired(any(), any(), any(), any(), any(), any());
   }

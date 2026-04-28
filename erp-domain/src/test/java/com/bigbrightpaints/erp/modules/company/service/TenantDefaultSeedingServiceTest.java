@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
@@ -12,6 +14,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -144,6 +147,62 @@ class TenantDefaultSeedingServiceTest {
     assertThatThrownBy(() -> service.rejectCoreMappingDelete(77L, "DEFAULT_REVENUE"))
         .hasMessageContaining("locked")
         .hasMessageContaining("auditEventId=601");
+  }
+
+  @Test
+  void seedDefaultsFailClosedMarksTenantRecoverableAuditsAndRemovesPartialAccounts() {
+    Company company = company(91L, "M7FAIL", BigDecimal.valueOf(18), "SME");
+    List<Account> accounts = new ArrayList<>();
+    AtomicLong accountIds = new AtomicLong(1L);
+    AtomicReference<Account> partialAccount = new AtomicReference<>();
+    when(companyRepository.findById(company.getId())).thenReturn(Optional.of(company));
+    when(companyRepository.saveAndFlush(company)).thenReturn(company);
+    when(accountRepository.findByCompanyOrderByCodeAsc(company)).thenAnswer(invocation -> accounts);
+    when(accountRepository.save(any(Account.class)))
+        .thenAnswer(
+            invocation -> {
+              Account account = invocation.getArgument(0);
+              if (account.getId() == null) {
+                ReflectionTestUtils.setField(account, "id", accountIds.getAndIncrement());
+              }
+              accounts.add(account);
+              if (partialAccount.get() == null) {
+                partialAccount.set(account);
+                return account;
+              }
+              throw new IllegalStateException("forced seed failure");
+            });
+    doAnswer(
+            invocation -> {
+              @SuppressWarnings("unchecked")
+              Iterable<Account> removed = invocation.getArgument(0);
+              removed.forEach(accounts::remove);
+              return null;
+            })
+        .when(accountRepository)
+        .deleteAll(any(Iterable.class));
+    AuditLog auditLog = new AuditLog();
+    auditLog.setId(701L);
+    when(auditService.logAuthSuccessRequired(
+            eq(AuditEvent.CONFIGURATION_CHANGED), any(), eq("M7FAIL"), any()))
+        .thenReturn(auditLog);
+    TenantDefaultSeedingService service =
+        new TenantDefaultSeedingService(
+            companyRepository, accountRepository, accountingPeriodService, auditService);
+
+    TenantDefaultSeedingService.SeedAttempt attempt = service.seedDefaultsFailClosed(company);
+
+    assertThat(attempt.ready()).isFalse();
+    assertThat(attempt.auditEventId()).isEqualTo(701L);
+    assertThat(company.getLifecycleReason()).isEqualTo("SEED_FAILED");
+    assertThat(company.getActivationStatus()).isEqualTo("NOT_SENT");
+    assertThat(company.getActivationSentAt()).isNull();
+    assertThat(company.getActivationExpiresAt()).isNull();
+    assertThat(accounts).isEmpty();
+    assertThat(attempt.status().readinessStatus()).isEqualTo("REPAIR_REQUIRED");
+    assertThat(attempt.status().repairOutcome())
+        .contains("FAILED", "auditEventId=701", "errorCode=SEED_DEFAULTS_FAILED");
+    verify(accountRepository).deleteAll(any(Iterable.class));
   }
 
   private TenantDefaultSeedingService service(Company company, List<Account> accounts) {

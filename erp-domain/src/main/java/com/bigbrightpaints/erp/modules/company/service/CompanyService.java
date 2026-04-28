@@ -700,12 +700,15 @@ public class CompanyService {
 
   private String resolveSuperAdminTenantStatus(
       Company company, CompanyLifecycleState lifecycleState) {
+    String reasonStatus =
+        normalizeSuperAdminStatusReason(company == null ? null : company.getLifecycleReason());
+    if ("SEED_FAILED".equals(reasonStatus)) {
+      return "SEED_FAILED";
+    }
     String onboardingStatus = resolveOnboardingTenantStatus(company);
     if (onboardingStatus != null) {
       return onboardingStatus;
     }
-    String reasonStatus =
-        normalizeSuperAdminStatusReason(company == null ? null : company.getLifecycleReason());
     CompanyLifecycleState state =
         lifecycleState == null ? CompanyLifecycleState.ACTIVE : lifecycleState;
     return switch (state) {

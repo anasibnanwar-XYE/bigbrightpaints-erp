@@ -411,7 +411,13 @@ public class SuperAdminTenantControlPlaneService {
           createPendingOwner(savedCompany, ownerEmail, request.owner().displayName());
       savedCompany.setMainAdminUserId(owner.getId());
       savedCompany.setOnboardingAdminUserId(owner.getId());
-      tenantDefaultSeedingService.seedDefaults(savedCompany);
+      TenantDefaultSeedingService.SeedAttempt seedAttempt =
+          tenantDefaultSeedingService.seedDefaultsFailClosed(savedCompany);
+      if (!seedAttempt.ready()) {
+        markSeedFailedRecoverable(savedCompany);
+        companyRepository.saveAndFlush(savedCompany);
+        return addClientResponse(savedCompany, owner, null, seedAttempt.auditEventId());
+      }
 
       ActivationIssue activationIssue = null;
       if (request.createMode() == SuperAdminAddClientCreateRequest.CreateMode.SEND_ACTIVATION) {
@@ -452,11 +458,11 @@ public class SuperAdminTenantControlPlaneService {
     }
   }
 
-  @Transactional
+  @Transactional(noRollbackFor = ApplicationException.class)
   public SuperAdminActivationActionResponse sendActivation(Long companyId) {
     Company company = companyRepository.lockById(companyId).orElseThrow(() -> notFound("Company"));
     requireActivationState(company, Set.of("NOT_SENT"), "send activation");
-    tenantDefaultSeedingService.seedDefaults(company);
+    requireSeedReadyForActivation(company);
     UserAccount owner = requireActivationOwner(company);
     ActivationIssue activationIssue = issueActivation(company, owner, true);
     company.setOnboardingCredentialsEmailedAt(activationIssue.sentAt());
@@ -473,11 +479,11 @@ public class SuperAdminTenantControlPlaneService {
     return activationActionResponse(company, activationIssue, "EMAIL_SENT", auditEventId);
   }
 
-  @Transactional
+  @Transactional(noRollbackFor = ApplicationException.class)
   public SuperAdminActivationActionResponse resendActivation(Long companyId) {
     Company company = companyRepository.lockById(companyId).orElseThrow(() -> notFound("Company"));
     requireActivationState(company, Set.of("SENT", "EXPIRED", "SUPERSEDED"), "resend activation");
-    tenantDefaultSeedingService.seedDefaults(company);
+    requireSeedReadyForActivation(company);
     UserAccount owner = requireActivationOwner(company);
     ActivationIssue activationIssue = issueActivation(company, owner, true);
     company.setOnboardingCredentialsEmailedAt(activationIssue.sentAt());
@@ -1505,6 +1511,29 @@ public class SuperAdminTenantControlPlaneService {
     return new ApplicationException(ErrorCode.BUSINESS_INVALID_STATE, message);
   }
 
+  private void requireSeedReadyForActivation(Company company) {
+    TenantDefaultSeedingService.SeedAttempt seedAttempt =
+        tenantDefaultSeedingService.seedDefaultsFailClosed(company);
+    if (seedAttempt.ready()) {
+      return;
+    }
+    markSeedFailedRecoverable(company);
+    companyRepository.saveAndFlush(company);
+    throw new ApplicationException(
+            ErrorCode.BUSINESS_INVALID_STATE,
+            "Tenant default seeding repair is required before activation")
+        .withDetail("seedStatus", "SEED_FAILED")
+        .withDetail("auditEventId", seedAttempt.auditEventId());
+  }
+
+  private void markSeedFailedRecoverable(Company company) {
+    company.setLifecycleReason("SEED_FAILED");
+    company.setActivationStatus("NOT_SENT");
+    company.setActivationSentAt(null);
+    company.setActivationExpiresAt(null);
+    company.setOnboardingCredentialsEmailedAt(null);
+  }
+
   private ApplicationException notFound(String entityName) {
     return new ApplicationException(ErrorCode.BUSINESS_ENTITY_NOT_FOUND, entityName + " not found");
   }
@@ -1571,7 +1600,7 @@ public class SuperAdminTenantControlPlaneService {
         company.getId(),
         company.getCode(),
         company.getName(),
-        sent ? "PENDING_ACTIVATION" : "DRAFT",
+        resolveTenantStatus(company, buildMetrics(company)),
         new SuperAdminAddClientCreateResponse.Owner(
             owner.getId(), owner.getEmail(), owner.getDisplayName(), "PENDING_ACTIVATION"),
         company.getCommercialPlanId(),
@@ -1696,6 +1725,10 @@ public class SuperAdminTenantControlPlaneService {
   }
 
   private String resolveTenantStatus(Company company, CompanyTenantMetricsDto metrics) {
+    if (company != null
+        && "SEED_FAILED".equals(normalizeCanonicalStatus(company.getLifecycleReason(), false))) {
+      return "SEED_FAILED";
+    }
     String metricsStatus =
         metrics == null ? null : normalizeCanonicalStatus(metrics.lifecycleState(), true);
     String lifecycle =

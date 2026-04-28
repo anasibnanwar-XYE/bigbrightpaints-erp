@@ -67,14 +67,41 @@ public class TenantDefaultSeedingService {
 
   @Transactional
   public TenantSeedStatusDto seedDefaults(Company company) {
+    return seedDefaultsInternal(requireManagedCompany(company));
+  }
+
+  @Transactional
+  public SeedAttempt seedDefaultsFailClosed(Company company) {
     Company lockedCompany = requireManagedCompany(company);
-    int beforeAccountCount = accountRepository.findByCompanyOrderByCodeAsc(lockedCompany).size();
-    ensureAccountsAndMappings(lockedCompany);
-    accountingPeriodService.ensurePeriod(lockedCompany, CompanyTime.today(lockedCompany));
-    companyRepository.saveAndFlush(lockedCompany);
-    TenantSeedStatusDto status = buildStatus(lockedCompany, null);
-    int afterAccountCount = status.chartOfAccounts().accountCount();
-    return withRepairOutcome(status, afterAccountCount > beforeAccountCount ? "REPAIRED" : "NOOP");
+    Set<Long> accountIdsBefore =
+        accountRepository.findByCompanyOrderByCodeAsc(lockedCompany).stream()
+            .map(Account::getId)
+            .filter(Objects::nonNull)
+            .collect(Collectors.toSet());
+    try {
+      TenantSeedStatusDto status = seedDefaultsInternal(lockedCompany);
+      return SeedAttempt.ready(status);
+    } catch (RuntimeException ex) {
+      cleanupFailedSeedArtifacts(lockedCompany, accountIdsBefore);
+      markSeedFailed(lockedCompany);
+      companyRepository.saveAndFlush(lockedCompany);
+      TenantSeedStatusDto status = buildStatus(lockedCompany, "FAILED");
+      Long auditEventId =
+          logAudit(
+              lockedCompany,
+              "tenant-default-seed-failed",
+              Map.of(
+                  "seedFailureCode",
+                  "SEED_DEFAULTS_FAILED",
+                  "ready",
+                  "false",
+                  "repairRequired",
+                  "true"));
+      return SeedAttempt.failed(
+          withRepairOutcome(
+              status, "FAILED;errorCode=SEED_DEFAULTS_FAILED;auditEventId=" + auditEventId),
+          auditEventId);
+    }
   }
 
   @Transactional(readOnly = true)
@@ -93,6 +120,73 @@ public class TenantDefaultSeedingService {
             Map.of(
                 "repairOutcome", status.repairOutcome(), "ready", String.valueOf(status.ready())));
     return withRepairOutcome(status, status.repairOutcome() + ";auditEventId=" + auditEventId);
+  }
+
+  private TenantSeedStatusDto seedDefaultsInternal(Company lockedCompany) {
+    int beforeAccountCount = accountRepository.findByCompanyOrderByCodeAsc(lockedCompany).size();
+    ensureAccountsAndMappings(lockedCompany);
+    accountingPeriodService.ensurePeriod(lockedCompany, CompanyTime.today(lockedCompany));
+    TenantSeedStatusDto status = buildStatus(lockedCompany, null);
+    if (status.ready()) {
+      clearSeedFailedMarker(lockedCompany);
+    }
+    companyRepository.saveAndFlush(lockedCompany);
+    int afterAccountCount = status.chartOfAccounts().accountCount();
+    return withRepairOutcome(status, afterAccountCount > beforeAccountCount ? "REPAIRED" : "NOOP");
+  }
+
+  private void cleanupFailedSeedArtifacts(Company company, Set<Long> accountIdsBefore) {
+    List<Account> createdAccounts =
+        accountRepository.findByCompanyOrderByCodeAsc(company).stream()
+            .filter(account -> account.getId() != null)
+            .filter(account -> !accountIdsBefore.contains(account.getId()))
+            .sorted(
+                Comparator.comparing(
+                        (Account account) -> account.getParent() == null ? 0 : 1,
+                        Comparator.naturalOrder())
+                    .reversed())
+            .toList();
+    if (!createdAccounts.isEmpty()) {
+      accountRepository.deleteAll(createdAccounts);
+    }
+    company.setDefaultInventoryAccountId(null);
+    company.setDefaultCogsAccountId(null);
+    company.setDefaultRevenueAccountId(null);
+    company.setDefaultDiscountAccountId(null);
+    company.setDefaultTaxAccountId(null);
+    company.setGstInputTaxAccountId(null);
+    company.setGstOutputTaxAccountId(null);
+    company.setGstPayableAccountId(null);
+    company.setPayrollCashAccount(null);
+    company.setPayrollExpenseAccount(null);
+  }
+
+  private void markSeedFailed(Company company) {
+    company.setLifecycleReason("SEED_FAILED");
+    company.setActivationStatus("NOT_SENT");
+    company.setActivationSentAt(null);
+    company.setActivationExpiresAt(null);
+    company.setOnboardingCredentialsEmailedAt(null);
+  }
+
+  private void clearSeedFailedMarker(Company company) {
+    if (isSeedFailedReason(company.getLifecycleReason())) {
+      company.setLifecycleReason(null);
+    }
+  }
+
+  private boolean isSeedFailedReason(String lifecycleReason) {
+    if (!StringUtils.hasText(lifecycleReason)) {
+      return false;
+    }
+    String normalized =
+        lifecycleReason
+            .trim()
+            .toUpperCase(Locale.ROOT)
+            .replace('-', '_')
+            .replaceAll("[^A-Z0-9]+", "_")
+            .replaceAll("_+", "_");
+    return Set.of("SEED_FAILED", "SETUP_FAILED", "SEEDING_FAILED").contains(normalized);
   }
 
   @Transactional
@@ -640,4 +734,14 @@ public class TenantDefaultSeedingService {
   }
 
   private record AccountBlueprint(String code, String name, AccountType type, String parentCode) {}
+
+  public record SeedAttempt(boolean ready, TenantSeedStatusDto status, Long auditEventId) {
+    public static SeedAttempt ready(TenantSeedStatusDto status) {
+      return new SeedAttempt(true, status, null);
+    }
+
+    public static SeedAttempt failed(TenantSeedStatusDto status, Long auditEventId) {
+      return new SeedAttempt(false, status, auditEventId);
+    }
+  }
 }
