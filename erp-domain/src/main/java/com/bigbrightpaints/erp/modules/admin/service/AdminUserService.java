@@ -26,7 +26,6 @@ import com.bigbrightpaints.erp.core.notification.EmailService;
 import com.bigbrightpaints.erp.core.security.AccessDeniedAuditMarker;
 import com.bigbrightpaints.erp.core.security.SecurityActorResolver;
 import com.bigbrightpaints.erp.core.security.TokenBlacklistService;
-import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.admin.dto.CreateUserRequest;
 import com.bigbrightpaints.erp.modules.admin.dto.UpdateUserRequest;
 import com.bigbrightpaints.erp.modules.admin.dto.UserDto;
@@ -44,7 +43,6 @@ import com.bigbrightpaints.erp.modules.rbac.domain.SystemRole;
 import com.bigbrightpaints.erp.modules.rbac.service.RoleService;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
-import com.bigbrightpaints.erp.modules.sales.util.DealerProvisioningSupport;
 
 @Service
 public class AdminUserService {
@@ -76,7 +74,6 @@ public class AdminUserService {
   private final AuditService auditService;
   private final AuditLogRepository auditLogRepository;
   private final DealerRepository dealerRepository;
-  private final AccountRepository accountRepository;
   private final TenantRuntimePolicyService tenantRuntimePolicyService;
   private final IamCanonicalStorageService iamCanonicalStorageService;
 
@@ -93,7 +90,6 @@ public class AdminUserService {
       AuditService auditService,
       AuditLogRepository auditLogRepository,
       DealerRepository dealerRepository,
-      AccountRepository accountRepository,
       TenantRuntimePolicyService tenantRuntimePolicyService,
       IamCanonicalStorageService iamCanonicalStorageService) {
     this.userRepository = userRepository;
@@ -108,7 +104,6 @@ public class AdminUserService {
     this.auditService = auditService;
     this.auditLogRepository = auditLogRepository;
     this.dealerRepository = dealerRepository;
-    this.accountRepository = accountRepository;
     this.tenantRuntimePolicyService = tenantRuntimePolicyService;
     this.iamCanonicalStorageService = iamCanonicalStorageService;
   }
@@ -163,9 +158,8 @@ public class AdminUserService {
                       company, request.email(), request.displayName(), user.getRoles());
                 });
 
-    // Auto-create Dealer entity if user has ROLE_DEALER
     if (isDealerUser) {
-      createDealerForUser(saved, company);
+      linkExistingDealerIdentityReference(saved, company);
     }
 
     auditUserAccountAction(
@@ -216,46 +210,27 @@ public class AdminUserService {
         "User already exists for scope: " + scopeCode);
   }
 
-  private void createDealerForUser(UserAccount user, Company company) {
-    Dealer dealer =
-        dealerRepository
-            .findByCompanyAndPortalUserEmail(company, user.getEmail())
-            .or(() -> dealerRepository.findByCompanyAndEmailIgnoreCase(company, user.getEmail()))
-            .orElseGet(
-                () -> {
-                  Dealer fresh = new Dealer();
-                  fresh.setCompany(company);
-                  fresh.setName(user.getDisplayName());
-                  fresh.setCode(
-                      DealerProvisioningSupport.generateDealerCode(
-                          user.getDisplayName(), company, dealerRepository));
-                  return fresh;
-                });
+  private void linkExistingDealerIdentityReference(UserAccount user, Company company) {
+    dealerRepository
+        .findByCompanyAndPortalUserEmail(company, user.getEmail())
+        .or(() -> dealerRepository.findByCompanyAndEmailIgnoreCase(company, user.getEmail()))
+        .ifPresent(dealer -> linkDealerPortalUser(dealer, user));
+  }
 
-    if (!StringUtils.hasText(dealer.getCode())) {
-      dealer.setCode(
-          DealerProvisioningSupport.generateDealerCode(
-              user.getDisplayName(), company, dealerRepository));
+  private void linkDealerPortalUser(Dealer dealer, UserAccount user) {
+    UserAccount existingPortalUser = dealer.getPortalUser();
+    if (existingPortalUser != null
+        && existingPortalUser.getId() != null
+        && user.getId() != null
+        && !existingPortalUser.getId().equals(user.getId())) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          "Dealer identity link is already assigned");
     }
-    if (!StringUtils.hasText(dealer.getName())) {
-      dealer.setName(user.getDisplayName());
-    }
-    dealer.setEmail(user.getEmail());
-    dealer.setPortalUser(user);
-    dealer.setStatus(DealerProvisioningSupport.resolveStatusForOnboarding(dealer.getStatus()));
-    dealer = dealerRepository.save(dealer);
-
-    if (dealer.getReceivableAccount() == null) {
-      dealer.setReceivableAccount(
-          DealerProvisioningSupport.createReceivableAccount(company, dealer, accountRepository));
-      dealerRepository.save(dealer);
+    if (existingPortalUser != null && Objects.equals(existingPortalUser.getId(), user.getId())) {
       return;
     }
-
-    if (!dealer.getReceivableAccount().isActive()) {
-      dealer.getReceivableAccount().setActive(true);
-      accountRepository.save(dealer.getReceivableAccount());
-    }
+    dealer.setPortalUser(user);
+    dealerRepository.save(dealer);
   }
 
   @Transactional
@@ -297,8 +272,7 @@ public class AdminUserService {
         "admin_user_update",
         Map.of(
             "displayNameChanged", Boolean.toString(displayNameChanged),
-            "rolesChanged", Boolean.toString(roleAssignmentChanged),
-            "displayName", user.getDisplayName()));
+            "rolesChanged", Boolean.toString(roleAssignmentChanged)));
     return toDto(user, resolveLastLoginAt(user));
   }
 
@@ -449,7 +423,20 @@ public class AdminUserService {
             "admin-read-security-events-out-of-scope",
             false,
             OutOfScopeResponseMode.ACCESS_DENIED);
-    return iamCanonicalStorageService.listSecurityEvents(user, type, 100);
+    List<Map<String, Object>> events =
+        iamCanonicalStorageService.listSecurityEvents(user, type, 100);
+    auditSecurityEventRead(user, company, type);
+    return events;
+  }
+
+  private void auditSecurityEventRead(UserAccount user, Company company, String type) {
+    Map<String, String> metadata = new LinkedHashMap<>();
+    metadata.put("targetUserId", user != null ? String.valueOf(user.getId()) : "UNKNOWN");
+    metadata.put("action", "admin_read_security_events");
+    metadata.put("tenantScope", company != null ? company.getCode() : "GLOBAL");
+    metadata.put("eventTypeFilter", StringUtils.hasText(type) ? type.trim() : "ALL");
+    auditUserAccountAction(
+        AuditEvent.AUDIT_LOG_ACCESSED, user, company, "admin_read_security_events", metadata);
   }
 
   private UserAccount resolveScopedUserForAdminAction(
@@ -501,8 +488,8 @@ public class AdminUserService {
             user,
             activeCompany,
             denialReason,
-            outOfScopeResponseMode,
-            Map.of("targetResolution", "PROTECTED_ROLE_TARGET"));
+            OutOfScopeResponseMode.ACCESS_DENIED,
+            Map.of("targetResolution", "PROTECTED_TARGET"));
       }
       return user;
     }
@@ -729,7 +716,11 @@ public class AdminUserService {
     String actor = resolveAuditActor();
     String targetCompanyCodes = resolveTargetCompanyCodes(targetUser);
     auditMetadata.put("actor", actor);
-    auditMetadata.put("targetUserEmail", targetUser != null ? targetUser.getEmail() : "UNKNOWN");
+    auditMetadata.put(
+        "targetUserId", targetUser != null ? String.valueOf(targetUser.getId()) : "UNKNOWN");
+    if (targetUser != null && targetUser.getPublicId() != null) {
+      auditMetadata.put("targetUserPublicId", targetUser.getPublicId().toString());
+    }
     auditMetadata.put("action", action);
     auditMetadata.put("tenantScope", actorCompany != null ? actorCompany.getCode() : "GLOBAL");
     if (StringUtils.hasText(targetCompanyCodes)) {
@@ -751,7 +742,16 @@ public class AdminUserService {
   }
 
   private boolean isTenantAdminProtectedTarget(UserAccount user) {
-    if (user == null || user.getRoles() == null || user.getRoles().isEmpty()) {
+    if (user == null) {
+      return false;
+    }
+    if (user.getId() != null
+        && user.getCompany() != null
+        && user.getCompany().getMainAdminUserId() != null
+        && user.getId().equals(user.getCompany().getMainAdminUserId())) {
+      return true;
+    }
+    if (user.getRoles() == null || user.getRoles().isEmpty()) {
       return false;
     }
     return user.getRoles().stream()
@@ -815,8 +815,8 @@ public class AdminUserService {
       if (targetUser.getId() != null) {
         metadata.put("targetUserId", String.valueOf(targetUser.getId()));
       }
-      if (StringUtils.hasText(targetUser.getEmail())) {
-        metadata.put("targetUserEmail", targetUser.getEmail());
+      if (targetUser.getPublicId() != null) {
+        metadata.put("targetUserPublicId", targetUser.getPublicId().toString());
       }
       String targetCompanyCodes = resolveTargetCompanyCodes(targetUser);
       if (StringUtils.hasText(targetCompanyCodes)) {

@@ -8,7 +8,6 @@ import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -39,8 +38,6 @@ import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.notification.EmailService;
 import com.bigbrightpaints.erp.core.security.AuthScopeService;
 import com.bigbrightpaints.erp.core.security.TokenBlacklistService;
-import com.bigbrightpaints.erp.modules.accounting.domain.Account;
-import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.admin.dto.CreateUserRequest;
 import com.bigbrightpaints.erp.modules.admin.dto.UpdateUserRequest;
 import com.bigbrightpaints.erp.modules.admin.dto.UserDto;
@@ -74,7 +71,6 @@ class AdminUserServiceTest {
   @Mock private AuditService auditService;
   @Mock private AuditLogRepository auditLogRepository;
   @Mock private DealerRepository dealerRepository;
-  @Mock private AccountRepository accountRepository;
   @Mock private TenantRuntimePolicyService tenantRuntimePolicyService;
   @Mock private IamCanonicalStorageService iamCanonicalStorageService;
 
@@ -105,7 +101,6 @@ class AdminUserServiceTest {
             auditService,
             auditLogRepository,
             dealerRepository,
-            accountRepository,
             tenantRuntimePolicyService,
             iamCanonicalStorageService);
     company = new Company();
@@ -147,13 +142,10 @@ class AdminUserServiceTest {
     lenient()
         .when(dealerRepository.save(any(Dealer.class)))
         .thenAnswer(invocation -> invocation.getArgument(0));
-    lenient()
-        .when(accountRepository.save(any(Account.class)))
-        .thenAnswer(invocation -> invocation.getArgument(0));
   }
 
   @Test
-  void createUser_relinksExistingDealerByEmailAndReactivatesReceivableAccount() {
+  void createUser_linksExistingDealerByEmailWithoutMutatingCommercialFields() {
     Dealer existingDealer = new Dealer();
     existingDealer.setCompany(company);
     ReflectionTestUtils.setField(existingDealer, "id", 44L);
@@ -161,12 +153,7 @@ class AdminUserServiceTest {
     existingDealer.setName("Legacy Dealer");
     existingDealer.setStatus("INACTIVE");
     existingDealer.setEmail("dealer@example.com");
-
-    Account receivable = new Account();
-    receivable.setCompany(company);
-    receivable.setCode("AR-LEGACY44");
-    receivable.setActive(false);
-    existingDealer.setReceivableAccount(receivable);
+    existingDealer.setCreditLimit(new java.math.BigDecimal("125.00"));
 
     when(dealerRepository.findByCompanyAndPortalUserEmail(company, "dealer@example.com"))
         .thenReturn(Optional.empty());
@@ -180,11 +167,12 @@ class AdminUserServiceTest {
     verify(dealerRepository).save(dealerCaptor.capture());
     Dealer savedDealer = dealerCaptor.getValue();
     assertThat(savedDealer.getId()).isEqualTo(44L);
-    assertThat(savedDealer.getStatus()).isEqualTo("ACTIVE");
+    assertThat(savedDealer.getStatus()).isEqualTo("INACTIVE");
+    assertThat(savedDealer.getCode()).isEqualTo("LEGACY44");
+    assertThat(savedDealer.getName()).isEqualTo("Legacy Dealer");
+    assertThat(savedDealer.getCreditLimit()).isEqualByComparingTo("125.00");
     assertThat(savedDealer.getPortalUser()).isNotNull();
     assertThat(savedDealer.getPortalUser().getEmail()).isEqualTo("dealer@example.com");
-    assertThat(receivable.isActive()).isTrue();
-    verify(accountRepository).save(receivable);
   }
 
   @Test
@@ -196,12 +184,6 @@ class AdminUserServiceTest {
     existingDealer.setName("Blocked Dealer");
     existingDealer.setStatus("BLOCKED");
     existingDealer.setEmail("blocked-dealer@example.com");
-
-    Account receivable = new Account();
-    receivable.setCompany(company);
-    receivable.setCode("AR-BLOCKED45");
-    receivable.setActive(false);
-    existingDealer.setReceivableAccount(receivable);
 
     when(dealerRepository.findByCompanyAndPortalUserEmail(company, "blocked-dealer@example.com"))
         .thenReturn(Optional.empty());
@@ -219,8 +201,6 @@ class AdminUserServiceTest {
     assertThat(savedDealer.getStatus()).isEqualTo("BLOCKED");
     assertThat(savedDealer.getPortalUser()).isNotNull();
     assertThat(savedDealer.getPortalUser().getEmail()).isEqualTo("blocked-dealer@example.com");
-    assertThat(receivable.isActive()).isTrue();
-    verify(accountRepository).save(receivable);
   }
 
   @Test
@@ -346,12 +326,18 @@ class AdminUserServiceTest {
     existingDealer.setName("Active Dealer");
     existingDealer.setEmail("dealer-active@example.com");
 
-    Account receivable = new Account();
-    receivable.setCompany(company);
-    receivable.setCode("AR-ACTIVE55");
-    receivable.setActive(true);
-    existingDealer.setReceivableAccount(receivable);
+    UserAccount existingScopedDealer =
+        new UserAccount("dealer-active@example.com", "TEST", "hash", "Dealer Active");
+    ReflectionTestUtils.setField(existingScopedDealer, "id", 55L);
+    existingScopedDealer.setCompany(company);
+    Role dealerRole = new Role();
+    dealerRole.setName("ROLE_DEALER");
+    existingScopedDealer.addRole(dealerRole);
+    existingDealer.setPortalUser(existingScopedDealer);
 
+    when(userRepository.findByEmailIgnoreCaseAndAuthScopeCodeIgnoreCase(
+            "dealer-active@example.com", "TEST"))
+        .thenReturn(Optional.of(existingScopedDealer));
     when(dealerRepository.findByCompanyAndPortalUserEmail(company, "dealer-active@example.com"))
         .thenReturn(Optional.of(existingDealer));
 
@@ -359,8 +345,7 @@ class AdminUserServiceTest {
         new CreateUserRequest(
             "dealer-active@example.com", "Dealer Active", List.of("ROLE_DEALER")));
 
-    verify(dealerRepository, times(1)).save(any(Dealer.class));
-    verify(accountRepository, never()).save(any(Account.class));
+    verify(dealerRepository, never()).save(any(Dealer.class));
   }
 
   @Test
@@ -381,11 +366,6 @@ class AdminUserServiceTest {
     existingDealer.setStatus("ACTIVE");
     existingDealer.setEmail("sales-first@example.com");
     existingDealer.setPortalUser(existingScopedDealer);
-    Account receivable = new Account();
-    receivable.setCompany(company);
-    receivable.setCode("AR-ACTIVE57");
-    receivable.setActive(true);
-    existingDealer.setReceivableAccount(receivable);
 
     when(userRepository.findByEmailIgnoreCaseAndAuthScopeCodeIgnoreCase(
             "sales-first@example.com", "TEST"))
@@ -406,8 +386,7 @@ class AdminUserServiceTest {
     verify(userRepository, never()).save(any(UserAccount.class));
     verify(emailService, never())
         .sendUserCredentialsEmailRequired(anyString(), anyString(), anyString(), anyString());
-    verify(dealerRepository, times(1)).save(any(Dealer.class));
-    verify(accountRepository, never()).save(any(Account.class));
+    verify(dealerRepository, never()).save(any(Dealer.class));
   }
 
   @Test
@@ -441,20 +420,17 @@ class AdminUserServiceTest {
   }
 
   @Test
-  void createUser_normalizedDealerRoleStillTriggersDealerProvisioning() {
+  void createUser_normalizedDealerRoleDoesNotCreateDealerCommercialRecords() {
     when(dealerRepository.findByCompanyAndPortalUserEmail(company, "dealer-normalized@example.com"))
         .thenReturn(Optional.empty());
     when(dealerRepository.findByCompanyAndEmailIgnoreCase(company, "dealer-normalized@example.com"))
-        .thenReturn(Optional.empty());
-    when(dealerRepository.findByCompanyAndCodeIgnoreCase(any(Company.class), anyString()))
         .thenReturn(Optional.empty());
 
     service.createUser(
         new CreateUserRequest(
             "dealer-normalized@example.com", "Dealer Normalized", List.of(" dealer ")));
 
-    verify(dealerRepository, times(2)).save(any(Dealer.class));
-    verify(accountRepository).save(any(Account.class));
+    verify(dealerRepository, never()).save(any(Dealer.class));
   }
 
   @Test
@@ -758,8 +734,7 @@ class AdminUserServiceTest {
   }
 
   @Test
-  void
-      forceResetPassword_sameTenantProtectedRole_forTenantAdmin_masksTargetAsMissingWithoutLocking() {
+  void forceResetPassword_sameTenantProtectedRole_forTenantAdmin_returnsProtectedTargetDenial() {
     UserAccount protectedUser =
         new UserAccount("tenant-admin-protected@example.com", "hash", "Tenant Admin");
     ReflectionTestUtils.setField(protectedUser, "id", 313L);
@@ -771,8 +746,8 @@ class AdminUserServiceTest {
     when(userRepository.findById(313L)).thenReturn(Optional.of(protectedUser));
 
     assertThatThrownBy(() -> service.forceResetPassword(313L))
-        .isInstanceOf(ApplicationException.class)
-        .hasMessageContaining("User not found");
+        .isInstanceOf(AccessDeniedException.class)
+        .hasMessageContaining("Target user is out of scope for this operation");
 
     verify(userRepository).findById(313L);
     verify(userRepository, never()).lockById(313L);
@@ -1112,23 +1087,31 @@ class AdminUserServiceTest {
   }
 
   @Test
-  void helper_createDealerForUser_buildsFreshDealerAndReceivableWhenNoDealerExists() {
+  void helper_linkExistingDealerIdentityReference_linksOnlyExistingDealerPortalUser() {
     UserAccount user = new UserAccount("fresh-dealer@example.com", "TEST", "hash", "Fresh Dealer");
+    ReflectionTestUtils.setField(user, "id", 909L);
     Company tenant = new Company();
     ReflectionTestUtils.setField(tenant, "id", 8L);
     tenant.setCode("TEST");
+    Dealer dealer = new Dealer();
+    ReflectionTestUtils.setField(dealer, "id", 709L);
+    dealer.setCompany(tenant);
+    dealer.setCode("COMM709");
+    dealer.setName("Commercial Dealer");
+    dealer.setStatus("INACTIVE");
     when(dealerRepository.findByCompanyAndPortalUserEmail(tenant, user.getEmail()))
         .thenReturn(Optional.empty());
     when(dealerRepository.findByCompanyAndEmailIgnoreCase(tenant, user.getEmail()))
-        .thenReturn(Optional.empty());
-    when(dealerRepository.findByCompanyAndCodeIgnoreCase(any(Company.class), anyString()))
-        .thenReturn(Optional.empty());
+        .thenReturn(Optional.of(dealer));
 
     com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-        service, "createDealerForUser", user, tenant);
+        service, "linkExistingDealerIdentityReference", user, tenant);
 
-    verify(dealerRepository, times(2)).save(any(Dealer.class));
-    verify(accountRepository).save(any(Account.class));
+    assertThat(dealer.getPortalUser()).isEqualTo(user);
+    assertThat(dealer.getCode()).isEqualTo("COMM709");
+    assertThat(dealer.getName()).isEqualTo("Commercial Dealer");
+    assertThat(dealer.getStatus()).isEqualTo("INACTIVE");
+    verify(dealerRepository).save(dealer);
   }
 
   @Test

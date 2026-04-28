@@ -45,6 +45,7 @@ import com.bigbrightpaints.erp.modules.auth.domain.MfaRecoveryCode;
 import com.bigbrightpaints.erp.modules.auth.domain.MfaRecoveryCodeRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
+import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
 
@@ -668,6 +669,66 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
   }
 
   @Test
+  void tenant_main_admin_is_excluded_from_list_and_denied_for_management_actions() {
+    UserAccount mainAdminTarget =
+        dataSeeder.ensureUser(
+            "main-admin-protected@bbp.com",
+            "MainAdmin123!",
+            "Main Admin Protected",
+            COMPANY,
+            List.of("ROLE_SALES"));
+    Company company = companyRepository.findByCodeIgnoreCase(COMPANY).orElseThrow();
+    company.setMainAdminUserId(mainAdminTarget.getId());
+    companyRepository.saveAndFlush(company);
+
+    String token = login(ADMIN_EMAIL, ADMIN_PASSWORD, COMPANY);
+    HttpHeaders headers = bearerHeaders(token);
+    HttpHeaders jsonHeaders = bearerHeaders(token);
+    jsonHeaders.setContentType(MediaType.APPLICATION_JSON);
+
+    ResponseEntity<Map> listResponse =
+        rest.exchange("/api/v1/admin/users", HttpMethod.GET, new HttpEntity<>(headers), Map.class);
+    assertThat(listResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> users =
+        (List<Map<String, Object>>) listResponse.getBody().get("data");
+    assertThat(users)
+        .noneMatch(
+            row ->
+                "main-admin-protected@bbp.com".equalsIgnoreCase(String.valueOf(row.get("email"))));
+
+    assertAccessDeniedEnvelopeAndReturn(
+        rest.exchange(
+            "/api/v1/admin/users/" + mainAdminTarget.getId(),
+            HttpMethod.GET,
+            new HttpEntity<>(headers),
+            Map.class));
+    assertAccessDeniedEnvelopeAndReturn(
+        rest.exchange(
+            "/api/v1/admin/users/" + mainAdminTarget.getId(),
+            HttpMethod.PUT,
+            new HttpEntity<>(Map.of("displayName", "Mutated Main Admin"), jsonHeaders),
+            Map.class));
+    assertAccessDeniedEnvelopeAndReturn(
+        rest.exchange(
+            "/api/v1/admin/users/" + mainAdminTarget.getId() + "/status",
+            HttpMethod.PUT,
+            new HttpEntity<>(Map.of("enabled", false), jsonHeaders),
+            Map.class));
+    assertAccessDeniedEnvelopeAndReturn(
+        rest.exchange(
+            "/api/v1/admin/users/" + mainAdminTarget.getId() + "/lock",
+            HttpMethod.POST,
+            new HttpEntity<>(headers),
+            Map.class));
+
+    UserAccount afterDenied = userAccountRepository.findById(mainAdminTarget.getId()).orElseThrow();
+    assertThat(afterDenied.getDisplayName()).isEqualTo("Main Admin Protected");
+    assertThat(afterDenied.isEnabled()).isTrue();
+    assertThat(afterDenied.getLockedUntil()).isNull();
+  }
+
+  @Test
   void admin_user_detail_blocks_same_tenant_super_admin_target() {
     String token = login(ADMIN_EMAIL, ADMIN_PASSWORD, COMPANY);
     long missingUserId = tenantSuperAdminUser.getId() + 10_000L;
@@ -695,7 +756,7 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
   }
 
   @Test
-  void tenant_admin_force_reset_masks_same_tenant_super_admin_target_as_missing() {
+  void tenant_admin_force_reset_denies_same_tenant_super_admin_target_as_protected() {
     String token = login(ADMIN_EMAIL, ADMIN_PASSWORD, COMPANY);
     long missingUserId = tenantSuperAdminUser.getId() + 10_000L;
     HttpHeaders headers = new HttpHeaders();
@@ -714,7 +775,8 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
             new HttpEntity<>(headers),
             Map.class);
 
-    assertMaskedMissingUserContractPair(privilegedResponse, missingResponse);
+    assertAccessDeniedEnvelopeAndReturn(privilegedResponse);
+    assertMaskedMissingUserContract(missingResponse);
   }
 
   @Test
@@ -828,7 +890,8 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
             new HttpEntity<>(headers),
             Map.class);
 
-    assertMaskedMissingUserContractPair(protectedResponse, missingResponse);
+    assertAccessDeniedEnvelopeAndReturn(protectedResponse);
+    assertMaskedMissingUserContract(missingResponse);
     UserAccount afterDenied = userAccountRepository.findById(protectedTarget.getId()).orElseThrow();
     assertThat(afterDenied.isMfaEnabled()).isTrue();
     assertThat(afterDenied.getMfaSecret()).isEqualTo("protected-admin-mfa-secret");
@@ -836,7 +899,8 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
   }
 
   @Test
-  void tenant_admin_revokes_only_target_sessions_and_exposes_redacted_session_events() {
+  void tenant_admin_revokes_only_target_sessions_and_exposes_redacted_session_events()
+      throws InterruptedException {
     String targetEmail = "admin-session-target@bbp.com";
     String targetPassword = "SessionTarget123!";
     UserAccount targetUser =
@@ -941,6 +1005,17 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
         .doesNotContain("passwordHash")
         .doesNotContain("mfaSecret")
         .doesNotContain("recoveryCode");
+
+    AuditLog readAudit =
+        awaitAuditLog(
+            AuditEvent.AUDIT_LOG_ACCESSED,
+            ADMIN_EMAIL,
+            String.valueOf(savedTarget.getId()),
+            "admin_read_security_events");
+    assertThat(readAudit.getMetadata())
+        .containsEntry("targetUserId", String.valueOf(savedTarget.getId()))
+        .containsEntry("tenantScope", COMPANY)
+        .containsEntry("action", "admin_read_security_events");
   }
 
   @Test
@@ -980,7 +1055,8 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
             new HttpEntity<>(headers),
             Map.class);
 
-    assertMaskedMissingUserContractPair(protectedResponse, missingResponse);
+    assertAccessDeniedEnvelopeAndReturn(protectedResponse);
+    assertMaskedMissingUserContract(missingResponse);
     assertThat(me(protectedAccess).getStatusCode()).isEqualTo(HttpStatus.OK);
     assertThat(refresh(protectedRefresh).getStatusCode()).isEqualTo(HttpStatus.OK);
   }
@@ -1321,19 +1397,26 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
 
   private AuditLog awaitMfaDisabledAudit(String actorUsername, Long targetUserId)
       throws InterruptedException {
+    return awaitAuditLog(
+        AuditEvent.MFA_DISABLED, actorUsername, String.valueOf(targetUserId), "admin_disable_mfa");
+  }
+
+  private AuditLog awaitAuditLog(
+      AuditEvent event, String actorUsername, String targetUserId, String action)
+      throws InterruptedException {
     for (int i = 0; i < 30; i++) {
       List<AuditLog> logs =
-          auditLogRepository.findByEventTypeWithMetadataOrderByTimestampDesc(
-              AuditEvent.MFA_DISABLED);
+          auditLogRepository.findByEventTypeWithMetadataOrderByTimestampDesc(event);
       for (AuditLog log : logs) {
         if (actorUsername.equalsIgnoreCase(log.getUsername())
-            && String.valueOf(targetUserId).equals(log.getMetadata().get("targetUserId"))) {
+            && String.valueOf(targetUserId).equals(log.getMetadata().get("targetUserId"))
+            && action.equals(log.getMetadata().get("action"))) {
           return log;
         }
       }
       Thread.sleep(100);
     }
-    throw new AssertionError("MFA disabled audit event not found for target " + targetUserId);
+    throw new AssertionError(event + " audit event not found for target " + targetUserId);
   }
 
   @SuppressWarnings("unchecked")
