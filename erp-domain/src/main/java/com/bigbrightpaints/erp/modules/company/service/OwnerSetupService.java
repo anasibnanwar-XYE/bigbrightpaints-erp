@@ -33,11 +33,16 @@ import com.bigbrightpaints.erp.modules.company.dto.OwnerSetupCompanyDetailsReque
 import com.bigbrightpaints.erp.modules.company.dto.OwnerSetupGstRequest;
 import com.bigbrightpaints.erp.modules.company.dto.OwnerSetupInviteTeamRequest;
 import com.bigbrightpaints.erp.modules.company.dto.OwnerSetupStatusResponse;
+import com.bigbrightpaints.erp.modules.rbac.domain.SystemRole;
 
 @Service
 public class OwnerSetupService {
   private static final List<String> TENANT_INVITE_ROLE_OPTIONS =
-      List.of("ROLE_ACCOUNTING", "ROLE_FACTORY", "ROLE_SALES", "ROLE_DEALER");
+      List.of(
+          SystemRole.ACCOUNTING.getRoleName(),
+          SystemRole.FACTORY.getRoleName(),
+          SystemRole.SALES.getRoleName(),
+          SystemRole.DEALER.getRoleName());
   private static final Set<String> TENANT_INVITE_ROLE_SET = Set.copyOf(TENANT_INVITE_ROLE_OPTIONS);
 
   private final CompanyRepository companyRepository;

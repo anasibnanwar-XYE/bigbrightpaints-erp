@@ -96,7 +96,17 @@ class TenantDefaultSeedingServiceTest {
         .contains("INV-", "SO-", "PO-", "RCP-");
     assertThat(first.roleTemplates())
         .extracting(TenantSeedStatusDto.RoleTemplate::key)
-        .containsExactly("TENANT_OWNER", "TENANT_ADMIN", "TENANT_STAFF");
+        .containsExactly("ROLE_ACCOUNTING", "ROLE_FACTORY", "ROLE_SALES", "ROLE_DEALER");
+    assertThat(first.roleTemplates())
+        .extracting(TenantSeedStatusDto.RoleTemplate::key)
+        .doesNotContain(
+            "ROLE_SUPER_ADMIN", "ROLE_ADMIN", "TENANT_OWNER", "TENANT_ADMIN", "TENANT_STAFF");
+    assertThat(first.roleTemplates())
+        .allSatisfy(
+            roleTemplate -> {
+              assertThat(roleTemplate.displayName()).isNotBlank();
+              assertThat(roleTemplate.permissions()).isNotEmpty();
+            });
     assertThat(first.seedRuns())
         .hasSize(9)
         .allSatisfy(

@@ -384,6 +384,9 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
                 addClientPayload(code, ownerEmail, "SEND_ACTIVATION"), superAdminHeaders),
             Map.class);
     assertThat(createResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+    @SuppressWarnings("unchecked")
+    Map<String, Object> created = (Map<String, Object>) createResponse.getBody().get("data");
+    Number tenantId = (Number) created.get("tenantId");
     org.mockito.ArgumentCaptor<SimpleMailMessage> messageCaptor =
         org.mockito.ArgumentCaptor.forClass(SimpleMailMessage.class);
     org.mockito.Mockito.verify(mailSender).send(messageCaptor.capture());
@@ -421,6 +424,15 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
 
     String ownerToken = loginToken(ownerEmail, code, "OwnerSetup123!");
     HttpHeaders ownerHeaders = headers(ownerToken, code);
+    ResponseEntity<Map> ownerMe =
+        rest.exchange("/api/v1/auth/me", HttpMethod.GET, new HttpEntity<>(ownerHeaders), Map.class);
+    assertThat(ownerMe.getStatusCode()).isEqualTo(HttpStatus.OK);
+    @SuppressWarnings("unchecked")
+    Map<String, Object> ownerIdentity = (Map<String, Object>) ownerMe.getBody().get("data");
+    @SuppressWarnings("unchecked")
+    List<String> ownerRoles = (List<String>) ownerIdentity.get("roles");
+    assertThat(ownerRoles).contains("ROLE_ADMIN").doesNotContain("ROLE_SUPER_ADMIN");
+
     ResponseEntity<Map> setupStatus =
         rest.exchange(
             "/api/v1/setup/status", HttpMethod.GET, new HttpEntity<>(ownerHeaders), Map.class);
@@ -433,6 +445,30 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
     assertThat(initialStatus.toString().toLowerCase(Locale.ROOT))
         .contains("company-details", "gst", "accounting", "invite-team", "finish")
         .doesNotContain("branch", "warehouse");
+    @SuppressWarnings("unchecked")
+    List<String> roleOptions = (List<String>) initialStatus.get("roleOptions");
+    assertThat(roleOptions)
+        .containsExactly("ROLE_ACCOUNTING", "ROLE_FACTORY", "ROLE_SALES", "ROLE_DEALER")
+        .doesNotContain("ROLE_SUPER_ADMIN", "ROLE_ADMIN");
+
+    ResponseEntity<Map> seedStatus =
+        rest.exchange(
+            "/api/v1/superadmin/tenants/" + tenantId.longValue() + "/seed-status",
+            HttpMethod.GET,
+            new HttpEntity<>(superAdminHeaders),
+            Map.class);
+    assertThat(seedStatus.getStatusCode()).isEqualTo(HttpStatus.OK);
+    @SuppressWarnings("unchecked")
+    Map<String, Object> seedData = (Map<String, Object>) seedStatus.getBody().get("data");
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> roleTemplates =
+        (List<Map<String, Object>>) seedData.get("roleTemplates");
+    List<String> roleTemplateKeys =
+        roleTemplates.stream().map(template -> template.get("key").toString()).toList();
+    assertThat(roleTemplateKeys)
+        .containsExactlyElementsOf(roleOptions)
+        .doesNotContain(
+            "ROLE_SUPER_ADMIN", "ROLE_ADMIN", "TENANT_OWNER", "TENANT_ADMIN", "TENANT_STAFF");
 
     ResponseEntity<Map> prematureAccounting =
         rest.exchange(
@@ -540,24 +576,43 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
             Map.class);
     assertThat(accounting.getStatusCode()).isEqualTo(HttpStatus.OK);
 
-    ResponseEntity<Map> superAdminInvite =
-        rest.exchange(
-            "/api/v1/setup/invite-team",
-            HttpMethod.POST,
-            new HttpEntity<>(
-                Map.of(
-                    "invitations",
-                    List.of(
-                        Map.of(
-                            "email",
-                            "platform-role-" + code.toLowerCase(Locale.ROOT) + "@example.com",
-                            "displayName",
-                            "Bad Role",
-                            "role",
-                            "ROLE_SUPER_ADMIN"))),
-                ownerHeaders),
-            Map.class);
-    assertThat(superAdminInvite.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    Long usersBeforeInvalidRoleInvites = countRows("select count(*) from app_users", null);
+    for (String invalidRole :
+        List.of(
+            "ROLE_SUPER_ADMIN",
+            "ROLE_ADMIN",
+            "TENANT_OWNER",
+            "TENANT_ADMIN",
+            "TENANT_STAFF",
+            "ROLE_TENANT_ADMIN")) {
+      ResponseEntity<Map> invalidRoleInvite =
+          rest.exchange(
+              "/api/v1/setup/invite-team",
+              HttpMethod.POST,
+              new HttpEntity<>(
+                  Map.of(
+                      "invitations",
+                      List.of(
+                          Map.of(
+                              "email",
+                              "blocked-"
+                                  + invalidRole.toLowerCase(Locale.ROOT).replace('_', '-')
+                                  + "-"
+                                  + code.toLowerCase(Locale.ROOT)
+                                  + "@example.com",
+                              "displayName",
+                              "Bad Role",
+                              "role",
+                              invalidRole))),
+                  ownerHeaders),
+              Map.class);
+      assertThat(invalidRoleInvite.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+      assertThat(invalidRoleInvite.getBody().toString())
+          .contains("Invite role must be one of")
+          .contains("ROLE_ACCOUNTING", "ROLE_FACTORY", "ROLE_SALES", "ROLE_DEALER");
+    }
+    assertThat(countRows("select count(*) from app_users", null))
+        .isEqualTo(usersBeforeInvalidRoleInvites);
 
     Long usersBeforeNullInvite = countRows("select count(*) from app_users", null);
     ResponseEntity<Map> nullInvite =

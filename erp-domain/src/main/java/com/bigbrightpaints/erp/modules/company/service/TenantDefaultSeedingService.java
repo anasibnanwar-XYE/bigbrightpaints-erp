@@ -34,6 +34,7 @@ import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.modules.company.domain.TenantDefaultSeedRun;
 import com.bigbrightpaints.erp.modules.company.domain.TenantDefaultSeedRunRepository;
 import com.bigbrightpaints.erp.modules.company.dto.TenantSeedStatusDto;
+import com.bigbrightpaints.erp.modules.rbac.domain.SystemRole;
 
 @Service
 public class TenantDefaultSeedingService {
@@ -566,16 +567,15 @@ public class TenantDefaultSeedingService {
 
   private List<TenantSeedStatusDto.RoleTemplate> roleTemplates() {
     return List.of(
-        new TenantSeedStatusDto.RoleTemplate(
-            "TENANT_OWNER",
-            "Tenant Owner",
-            List.of("SETUP_MANAGE", "USERS_INVITE", "ACCOUNTING_USE")),
-        new TenantSeedStatusDto.RoleTemplate(
-            "TENANT_ADMIN",
-            "Tenant Admin",
-            List.of("USERS_INVITE", "ACCOUNTING_USE", "REPORTS_READ")),
-        new TenantSeedStatusDto.RoleTemplate(
-            "TENANT_STAFF", "Tenant Staff", List.of("SALES_USE", "INVENTORY_USE", "REPORTS_READ")));
+        roleTemplate(SystemRole.ACCOUNTING),
+        roleTemplate(SystemRole.FACTORY),
+        roleTemplate(SystemRole.SALES),
+        roleTemplate(SystemRole.DEALER));
+  }
+
+  private TenantSeedStatusDto.RoleTemplate roleTemplate(SystemRole role) {
+    return new TenantSeedStatusDto.RoleTemplate(
+        role.getRoleName(), role.getDescription(), role.getDefaultPermissions());
   }
 
   private Map<String, Account> accountsByCode(List<Account> accounts) {
