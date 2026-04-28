@@ -12,13 +12,27 @@ PINNED_MANAGEMENT_PORT="9090"
 PINNED_MAILHOG_SMTP_PORT="1025"
 PINNED_MAILHOG_UI_PORT="8025"
 
-DB_PORT="$PINNED_DB_PORT"
-RABBIT_PORT="${RABBIT_PORT:-$PINNED_RABBIT_PORT}"
-RABBIT_MANAGEMENT_PORT="${RABBIT_MANAGEMENT_PORT:-$PINNED_RABBIT_MANAGEMENT_PORT}"
-APP_PORT="${APP_PORT:-$PINNED_APP_PORT}"
-MANAGEMENT_PORT="${MANAGEMENT_PORT:-$PINNED_MANAGEMENT_PORT}"
-MAILHOG_SMTP_PORT="${MAILHOG_SMTP_PORT:-$PINNED_MAILHOG_SMTP_PORT}"
-MAILHOG_UI_PORT="${MAILHOG_UI_PORT:-$PINNED_MAILHOG_UI_PORT}"
+pin_approved_runtime_port() {
+  local variable_name="$1"
+  local approved_value="$2"
+  local current_value="${!variable_name:-}"
+
+  if [[ "${!variable_name+x}" == "x" && "$current_value" != "$approved_value" ]]; then
+    echo "[final-validation-reset] ERROR: ${variable_name} must use approved runtime port ${approved_value}; override refused." >&2
+    exit 1
+  fi
+
+  printf -v "$variable_name" '%s' "$approved_value"
+  export "$variable_name"
+}
+
+pin_approved_runtime_port "DB_PORT" "$PINNED_DB_PORT"
+pin_approved_runtime_port "RABBIT_PORT" "$PINNED_RABBIT_PORT"
+pin_approved_runtime_port "RABBIT_MANAGEMENT_PORT" "$PINNED_RABBIT_MANAGEMENT_PORT"
+pin_approved_runtime_port "APP_PORT" "$PINNED_APP_PORT"
+pin_approved_runtime_port "MANAGEMENT_PORT" "$PINNED_MANAGEMENT_PORT"
+pin_approved_runtime_port "MAILHOG_SMTP_PORT" "$PINNED_MAILHOG_SMTP_PORT"
+pin_approved_runtime_port "MAILHOG_UI_PORT" "$PINNED_MAILHOG_UI_PORT"
 SPRING_DATASOURCE_URL="${SPRING_DATASOURCE_URL:-jdbc:postgresql://db:5432/erp_domain}"
 SPRING_DATASOURCE_USERNAME="${SPRING_DATASOURCE_USERNAME:-erp}"
 SPRING_DATASOURCE_PASSWORD="${SPRING_DATASOURCE_PASSWORD:-erp}"
@@ -47,13 +61,14 @@ if [[ "$ERP_VALIDATION_SEED_PASSWORD_WAS_EXPORTED" == true ]]; then
   ERP_VALIDATION_SEED_PASSWORD="$EXPORTED_ERP_VALIDATION_SEED_PASSWORD"
 fi
 
-DB_PORT="$PINNED_DB_PORT"
-RABBIT_PORT="${RABBIT_PORT:-$PINNED_RABBIT_PORT}"
-RABBIT_MANAGEMENT_PORT="${RABBIT_MANAGEMENT_PORT:-$PINNED_RABBIT_MANAGEMENT_PORT}"
-APP_PORT="${APP_PORT:-$PINNED_APP_PORT}"
-MANAGEMENT_PORT="${MANAGEMENT_PORT:-$PINNED_MANAGEMENT_PORT}"
-MAILHOG_SMTP_PORT="${MAILHOG_SMTP_PORT:-$PINNED_MAILHOG_SMTP_PORT}"
-MAILHOG_UI_PORT="${MAILHOG_UI_PORT:-$PINNED_MAILHOG_UI_PORT}"
+pin_approved_runtime_port "DB_PORT" "$PINNED_DB_PORT"
+pin_approved_runtime_port "RABBIT_PORT" "$PINNED_RABBIT_PORT"
+pin_approved_runtime_port "RABBIT_MANAGEMENT_PORT" "$PINNED_RABBIT_MANAGEMENT_PORT"
+pin_approved_runtime_port "APP_PORT" "$PINNED_APP_PORT"
+pin_approved_runtime_port "MANAGEMENT_PORT" "$PINNED_MANAGEMENT_PORT"
+pin_approved_runtime_port "MAILHOG_SMTP_PORT" "$PINNED_MAILHOG_SMTP_PORT"
+pin_approved_runtime_port "MAILHOG_UI_PORT" "$PINNED_MAILHOG_UI_PORT"
+approved_runtime_ports=pinned-after-env-source
 
 if [[ -z "${JWT_SECRET:-}" || "$JWT_SECRET" == YOUR_* || "$JWT_SECRET" == "placeholder" ]]; then
   JWT_SECRET="$(python3 - <<'PY'
@@ -98,6 +113,7 @@ export \
   ERP_INVENTORY_OPENING_STOCK_ENABLED \
   ERP_VALIDATION_SEED_PASSWORD
 
+echo "[final-validation-reset] approved_runtime_ports=${approved_runtime_ports}"
 echo "[final-validation-reset] Resetting compose runtime on approved ports (db=${DB_PORT}, app=${APP_PORT}, rabbit=${RABBIT_PORT}/${RABBIT_MANAGEMENT_PORT}, actuator=${MANAGEMENT_PORT}, mailhog=${MAILHOG_SMTP_PORT}/${MAILHOG_UI_PORT})"
 DB_PORT="$DB_PORT" RABBIT_PORT="$RABBIT_PORT" RABBIT_MANAGEMENT_PORT="$RABBIT_MANAGEMENT_PORT" APP_PORT="$APP_PORT" MANAGEMENT_PORT="$MANAGEMENT_PORT" MAILHOG_SMTP_PORT="$MAILHOG_SMTP_PORT" MAILHOG_UI_PORT="$MAILHOG_UI_PORT" docker compose -f "$COMPOSE_FILE" down -v --remove-orphans
 DB_PORT="$DB_PORT" RABBIT_PORT="$RABBIT_PORT" RABBIT_MANAGEMENT_PORT="$RABBIT_MANAGEMENT_PORT" APP_PORT="$APP_PORT" MANAGEMENT_PORT="$MANAGEMENT_PORT" MAILHOG_SMTP_PORT="$MAILHOG_SMTP_PORT" MAILHOG_UI_PORT="$MAILHOG_UI_PORT" docker compose -f "$COMPOSE_FILE" up -d db rabbitmq mailhog

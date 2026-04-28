@@ -40,6 +40,50 @@ require_not_contains() {
   fi
 }
 
+require_reset_pins_after_env_source() {
+  local reset_script="$1"
+  python3 - "$reset_script" <<'PY'
+import sys
+
+path = sys.argv[1]
+with open(path, "r", encoding="utf-8") as handle:
+    lines = handle.readlines()
+
+source_lines = [
+    index
+    for index, line in enumerate(lines)
+    if 'source "$ROOT/.env"' in line or '. "$ROOT/.env"' in line
+]
+
+if not source_lines:
+    print(f"{path} does not source $ROOT/.env", file=sys.stderr)
+    sys.exit(1)
+
+last_source_line = max(source_lines)
+required_calls = [
+    'pin_approved_runtime_port "DB_PORT" "$PINNED_DB_PORT"',
+    'pin_approved_runtime_port "RABBIT_PORT" "$PINNED_RABBIT_PORT"',
+    'pin_approved_runtime_port "RABBIT_MANAGEMENT_PORT" "$PINNED_RABBIT_MANAGEMENT_PORT"',
+    'pin_approved_runtime_port "APP_PORT" "$PINNED_APP_PORT"',
+    'pin_approved_runtime_port "MANAGEMENT_PORT" "$PINNED_MANAGEMENT_PORT"',
+    'pin_approved_runtime_port "MAILHOG_SMTP_PORT" "$PINNED_MAILHOG_SMTP_PORT"',
+    'pin_approved_runtime_port "MAILHOG_UI_PORT" "$PINNED_MAILHOG_UI_PORT"',
+]
+
+missing = []
+for call in required_calls:
+    if not any(call in line for line in lines[last_source_line + 1 :]):
+        missing.append(call)
+
+if missing:
+    print(
+        f"{path} does not pin approved runtime ports after .env sourcing: {', '.join(missing)}",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+PY
+}
+
 status_code() {
   local url="$1"
   local output="$2"
@@ -157,6 +201,16 @@ run_static_checks() {
   require_contains "$reset_script" 'PINNED_MANAGEMENT_PORT="9090"'
   require_contains "$reset_script" 'PINNED_MAILHOG_SMTP_PORT="1025"'
   require_contains "$reset_script" 'PINNED_MAILHOG_UI_PORT="8025"'
+  require_contains "$reset_script" '[[ "${!variable_name+x}" == "x" && "$current_value" != "$approved_value" ]]'
+  require_contains "$reset_script" 'pin_approved_runtime_port "DB_PORT" "$PINNED_DB_PORT"'
+  require_contains "$reset_script" 'pin_approved_runtime_port "RABBIT_PORT" "$PINNED_RABBIT_PORT"'
+  require_contains "$reset_script" 'pin_approved_runtime_port "RABBIT_MANAGEMENT_PORT" "$PINNED_RABBIT_MANAGEMENT_PORT"'
+  require_contains "$reset_script" 'pin_approved_runtime_port "APP_PORT" "$PINNED_APP_PORT"'
+  require_contains "$reset_script" 'pin_approved_runtime_port "MANAGEMENT_PORT" "$PINNED_MANAGEMENT_PORT"'
+  require_contains "$reset_script" 'pin_approved_runtime_port "MAILHOG_SMTP_PORT" "$PINNED_MAILHOG_SMTP_PORT"'
+  require_contains "$reset_script" 'pin_approved_runtime_port "MAILHOG_UI_PORT" "$PINNED_MAILHOG_UI_PORT"'
+  require_contains "$reset_script" 'approved_runtime_ports=pinned-after-env-source'
+  require_reset_pins_after_env_source "$reset_script"
 
   note "static_compose_ports=approved-localhost-only"
   note "static_datadog_disabled_boot=no-DD_API_KEY-required-for-app-service"
