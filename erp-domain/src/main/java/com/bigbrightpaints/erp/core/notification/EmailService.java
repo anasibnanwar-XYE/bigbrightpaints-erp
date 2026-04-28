@@ -251,6 +251,10 @@ public class EmailService {
         .toUriString();
   }
 
+  public String buildTenantActivationLink(String activationToken) {
+    return buildActivationLink(activationToken);
+  }
+
   public void sendTemplatedEmail(String to, String subject, String templateName, Context context) {
     sendHtmlEmail(to, subject, templateName, context);
   }

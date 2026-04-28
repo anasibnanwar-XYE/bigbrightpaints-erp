@@ -115,4 +115,28 @@ public class TenantActivationToken extends VersionedEntity {
     this.sentAt = sentAt;
     this.status = "SENT";
   }
+
+  public void markUsed(Instant usedAt) {
+    if (usedAt == null) {
+      return;
+    }
+    this.usedAt = usedAt;
+    this.status = "USED";
+  }
+
+  public void markExpired(Instant expiredAt) {
+    if (expiredAt == null) {
+      return;
+    }
+    this.expiredAt = expiredAt;
+    this.status = "EXPIRED";
+  }
+
+  public void markSuperseded(Instant supersededAt) {
+    if (supersededAt == null) {
+      return;
+    }
+    this.expiredAt = supersededAt;
+    this.status = "SUPERSEDED";
+  }
 }

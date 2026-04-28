@@ -46,6 +46,7 @@ import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserPrincipal;
 import com.bigbrightpaints.erp.modules.auth.service.IamCanonicalStorageService;
+import com.bigbrightpaints.erp.modules.auth.service.PasswordService;
 import com.bigbrightpaints.erp.modules.auth.service.RefreshTokenService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyLifecycleState;
@@ -126,6 +127,7 @@ public class SuperAdminTenantControlPlaneService {
   private final PasswordResetTokenRepository passwordResetTokenRepository;
   private final RoleRepository roleRepository;
   private final PasswordEncoder passwordEncoder;
+  private final PasswordService passwordService;
 
   public SuperAdminTenantControlPlaneService(
       CompanyRepository companyRepository,
@@ -144,7 +146,8 @@ public class SuperAdminTenantControlPlaneService {
       IamCanonicalStorageService iamCanonicalStorageService,
       PasswordResetTokenRepository passwordResetTokenRepository,
       RoleRepository roleRepository,
-      PasswordEncoder passwordEncoder) {
+      PasswordEncoder passwordEncoder,
+      PasswordService passwordService) {
     this.companyRepository = companyRepository;
     this.userAccountRepository = userAccountRepository;
     this.auditLogRepository = auditLogRepository;
@@ -162,6 +165,7 @@ public class SuperAdminTenantControlPlaneService {
     this.passwordResetTokenRepository = passwordResetTokenRepository;
     this.roleRepository = roleRepository;
     this.passwordEncoder = passwordEncoder;
+    this.passwordService = passwordService;
   }
 
   @Transactional(readOnly = true)
@@ -442,6 +446,147 @@ public class SuperAdminTenantControlPlaneService {
         releaseAddClientCreateLocks(createLocks);
       }
     }
+  }
+
+  @Transactional
+  public SuperAdminActivationActionResponse sendActivation(Long companyId) {
+    Company company = companyRepository.lockById(companyId).orElseThrow(() -> notFound("Company"));
+    requireActivationState(company, Set.of("NOT_SENT"), "send activation");
+    UserAccount owner = requireActivationOwner(company);
+    ActivationIssue activationIssue = issueActivation(company, owner, true);
+    company.setOnboardingCredentialsEmailedAt(activationIssue.sentAt());
+    company.setActivationStatus("SENT");
+    company.setActivationSentAt(activationIssue.sentAt());
+    company.setActivationExpiresAt(activationIssue.expiresAt());
+    companyRepository.saveAndFlush(company);
+    Long auditEventId =
+        logAuditRequired(
+            company,
+            "tenant-activation-sent",
+            activationAuditMetadata("SEND", activationIssue, "EMAIL_SENT"));
+    return activationActionResponse(company, activationIssue, "EMAIL_SENT", auditEventId);
+  }
+
+  @Transactional
+  public SuperAdminActivationActionResponse resendActivation(Long companyId) {
+    Company company = companyRepository.lockById(companyId).orElseThrow(() -> notFound("Company"));
+    requireActivationState(company, Set.of("SENT", "EXPIRED", "SUPERSEDED"), "resend activation");
+    UserAccount owner = requireActivationOwner(company);
+    ActivationIssue activationIssue = issueActivation(company, owner, true);
+    company.setOnboardingCredentialsEmailedAt(activationIssue.sentAt());
+    company.setActivationStatus("SENT");
+    company.setActivationSentAt(activationIssue.sentAt());
+    company.setActivationExpiresAt(activationIssue.expiresAt());
+    companyRepository.saveAndFlush(company);
+    Long auditEventId =
+        logAuditRequired(
+            company,
+            "tenant-activation-resent",
+            activationAuditMetadata("RESEND", activationIssue, "EMAIL_SENT"));
+    return activationActionResponse(company, activationIssue, "EMAIL_SENT", auditEventId);
+  }
+
+  @Transactional
+  public SuperAdminActivationCopyResponse copyActivationLink(Long companyId) {
+    Company company = companyRepository.lockById(companyId).orElseThrow(() -> notFound("Company"));
+    requireActivationState(company, Set.of("SENT", "SUPERSEDED"), "copy activation link");
+    UserAccount owner = requireActivationOwner(company);
+    ActivationIssue activationIssue = issueActivation(company, owner, false);
+    company.setActivationStatus("SENT");
+    company.setActivationExpiresAt(activationIssue.expiresAt());
+    companyRepository.saveAndFlush(company);
+    Long auditEventId =
+        logAuditRequired(
+            company,
+            "tenant-activation-link-copied",
+            activationAuditMetadata("COPY", activationIssue, "COPY_LINK"));
+    return new SuperAdminActivationCopyResponse(
+        company.getId(),
+        company.getCode(),
+        company.getActivationStatus(),
+        activationIssue.expiresAt(),
+        activationIssue.tokenId(),
+        activationIssue.activationUrl(),
+        auditEventId,
+        activationRedactedFields());
+  }
+
+  @Transactional
+  public SuperAdminActivationActionResponse expireActivation(Long companyId) {
+    Company company = companyRepository.lockById(companyId).orElseThrow(() -> notFound("Company"));
+    requireActivationState(company, Set.of("SENT", "SUPERSEDED"), "expire activation");
+    TenantActivationToken currentToken = requireCurrentActivationToken(company);
+    Instant now = CompanyTime.now(company);
+    currentToken.markExpired(now);
+    tenantActivationTokenRepository.saveAndFlush(currentToken);
+    company.setActivationStatus("EXPIRED");
+    company.setActivationExpiresAt(now);
+    companyRepository.saveAndFlush(company);
+    ActivationIssue activationIssue =
+        new ActivationIssue(currentToken.getId(), currentToken.getSentAt(), now, null);
+    Long auditEventId =
+        logAuditRequired(
+            company,
+            "tenant-activation-expired",
+            activationAuditMetadata("EXPIRE", activationIssue, "EXPIRED"));
+    return activationActionResponse(company, activationIssue, "EXPIRED", auditEventId);
+  }
+
+  @Transactional(readOnly = true)
+  public ActivationVerifyResponse verifyActivation(String tokenValue) {
+    TenantActivationToken token = requireUsableActivationToken(tokenValue);
+    Company company = token.getCompany();
+    UserAccount owner = token.getOwnerUser();
+    return new ActivationVerifyResponse(
+        company.getCode(),
+        company.getName(),
+        owner.getDisplayName(),
+        token.getExpiresAt(),
+        ownerSetupSteps(company),
+        activationRedactedFields());
+  }
+
+  @Transactional
+  public ActivationCompleteResponse completeActivation(ActivationCompleteRequest request) {
+    if (request == null) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          "Activation payload is required");
+    }
+    TenantActivationToken token = requireUsableActivationToken(request.token());
+    Company company = token.getCompany();
+    UserAccount owner = token.getOwnerUser();
+    if (owner.getCompany() == null || !company.getId().equals(owner.getCompany().getId())) {
+      throw invalidActivationToken();
+    }
+    owner.setEnabled(true);
+    passwordService.resetPassword(owner, request.newPassword(), request.confirmPassword());
+    owner.setEnabled(true);
+    owner.setMustChangePassword(false);
+    userAccountRepository.saveAndFlush(owner);
+    Instant now = CompanyTime.now(company);
+    token.markUsed(now);
+    tenantActivationTokenRepository.saveAndFlush(token);
+    company.setActivationStatus("USED");
+    company.setActivationExpiresAt(token.getExpiresAt());
+    company.setOnboardingAdminUserId(owner.getId());
+    companyRepository.saveAndFlush(company);
+    Long auditEventId =
+        logAuditRequired(
+            company,
+            "tenant-activation-completed",
+            activationAuditMetadata(
+                "COMPLETE",
+                new ActivationIssue(token.getId(), token.getSentAt(), token.getExpiresAt(), null),
+                "USED"));
+    return new ActivationCompleteResponse(
+        company.getId(),
+        company.getCode(),
+        owner.getId(),
+        "ACTIVE",
+        "SETUP_PENDING",
+        now,
+        ownerSetupSteps(company),
+        activationRedactedFields());
   }
 
   @Transactional
@@ -1188,23 +1333,163 @@ public class SuperAdminTenantControlPlaneService {
   }
 
   private ActivationIssue issueActivation(Company company, UserAccount owner) {
+    return issueActivation(company, owner, true);
+  }
+
+  private ActivationIssue issueActivation(Company company, UserAccount owner, boolean sendEmail) {
     Instant now = CompanyTime.now(company);
     Instant expiresAt = now.plus(72, ChronoUnit.HOURS);
+    supersedeActiveActivationTokens(company, now);
     String rawToken = newActivationToken();
     TenantActivationToken activationToken =
         tenantActivationTokenRepository.saveAndFlush(
             TenantActivationToken.digestOnly(
                 company, owner, activationTokenDigest(rawToken), now, expiresAt));
-    emailService.sendTenantActivationEmailRequired(
-        owner.getEmail(),
-        owner.getDisplayName(),
-        company.getName(),
-        company.getCode(),
-        rawToken,
-        expiresAt);
-    activationToken.markSent(now);
+    String activationUrl = emailService.buildTenantActivationLink(rawToken);
+    if (sendEmail) {
+      emailService.sendTenantActivationEmailRequired(
+          owner.getEmail(),
+          owner.getDisplayName(),
+          company.getName(),
+          company.getCode(),
+          rawToken,
+          expiresAt);
+      activationToken.markSent(now);
+    }
     tenantActivationTokenRepository.saveAndFlush(activationToken);
-    return new ActivationIssue(activationToken.getId(), now, expiresAt);
+    return new ActivationIssue(
+        activationToken.getId(), sendEmail ? now : null, expiresAt, activationUrl);
+  }
+
+  private void supersedeActiveActivationTokens(Company company, Instant supersededAt) {
+    if (company == null || company.getId() == null) {
+      return;
+    }
+    for (TenantActivationToken existingToken :
+        tenantActivationTokenRepository.lockByCompanyId(company.getId())) {
+      if (existingToken == null) {
+        continue;
+      }
+      if (Set.of("ISSUED", "SENT").contains(normalizeActivationStatus(existingToken.getStatus()))) {
+        existingToken.markSuperseded(supersededAt);
+        tenantActivationTokenRepository.saveAndFlush(existingToken);
+      }
+    }
+  }
+
+  private UserAccount requireActivationOwner(Company company) {
+    if (company == null || company.getId() == null || company.getOnboardingAdminUserId() == null) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState(
+          "Tenant owner must exist before activation");
+    }
+    UserAccount owner =
+        userAccountRepository
+            .lockByIdAndCompanyId(company.getOnboardingAdminUserId(), company.getId())
+            .orElseThrow(() -> invalidActivationState("Tenant owner not found for activation"));
+    assertTenantExclusiveUser(company, owner, "tenant activation");
+    return owner;
+  }
+
+  private TenantActivationToken requireCurrentActivationToken(Company company) {
+    if (company == null || company.getId() == null) {
+      throw invalidActivationToken();
+    }
+    return tenantActivationTokenRepository
+        .findTopByCompany_IdAndStatusInOrderByCreatedAtDesc(
+            company.getId(), Set.of("ISSUED", "SENT"))
+        .orElseThrow(() -> invalidActivationState("No usable activation token is available"));
+  }
+
+  private TenantActivationToken requireUsableActivationToken(String tokenValue) {
+    if (!StringUtils.hasText(tokenValue) || tokenValue.length() > 512) {
+      throw invalidActivationToken();
+    }
+    TenantActivationToken token =
+        tenantActivationTokenRepository
+            .findByTokenDigest(activationTokenDigest(tokenValue.trim()))
+            .orElseThrow(this::invalidActivationToken);
+    Instant now = CompanyTime.now(token.getCompany());
+    String status = normalizeActivationStatus(token.getStatus());
+    if (!Set.of("ISSUED", "SENT").contains(status)) {
+      throw invalidActivationToken();
+    }
+    if (token.getExpiresAt() == null || !token.getExpiresAt().isAfter(now)) {
+      throw invalidActivationToken();
+    }
+    if (token.getCompany() == null
+        || !"SENT".equals(normalizeActivationStatus(token.getCompany().getActivationStatus()))) {
+      throw invalidActivationToken();
+    }
+    return token;
+  }
+
+  private void requireActivationState(
+      Company company, Set<String> allowedStatuses, String actionDescription) {
+    String status =
+        normalizeActivationStatus(company == null ? null : company.getActivationStatus());
+    if (!allowedStatuses.contains(status)) {
+      throw invalidActivationState(
+          "Cannot " + actionDescription + " while activation is " + status);
+    }
+  }
+
+  private ApplicationException invalidActivationToken() {
+    return com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+        "Invalid or expired activation token");
+  }
+
+  private ApplicationException invalidActivationState(String message) {
+    return new ApplicationException(ErrorCode.BUSINESS_INVALID_STATE, message);
+  }
+
+  private ApplicationException notFound(String entityName) {
+    return new ApplicationException(ErrorCode.BUSINESS_ENTITY_NOT_FOUND, entityName + " not found");
+  }
+
+  private SuperAdminActivationActionResponse activationActionResponse(
+      Company company, ActivationIssue activationIssue, String deliveryStatus, Long auditEventId) {
+    return new SuperAdminActivationActionResponse(
+        company.getId(),
+        company.getCode(),
+        company.getActivationStatus(),
+        company.getActivationSentAt(),
+        company.getActivationExpiresAt(),
+        activationIssue == null ? null : activationIssue.tokenId(),
+        deliveryStatus,
+        auditEventId,
+        activationRedactedFields());
+  }
+
+  private Map<String, String> activationAuditMetadata(
+      String action, ActivationIssue activationIssue, String outcome) {
+    Map<String, String> metadata = new HashMap<>();
+    metadata.put("activationAction", action);
+    metadata.put("activationOutcome", outcome);
+    if (activationIssue != null && activationIssue.tokenId() != null) {
+      metadata.put("activationTokenId", String.valueOf(activationIssue.tokenId()));
+    }
+    if (activationIssue != null && activationIssue.expiresAt() != null) {
+      metadata.put("activationExpiresAt", activationIssue.expiresAt().toString());
+    }
+    metadata.put("redactedFields", String.join(",", activationRedactedFields()));
+    return metadata;
+  }
+
+  private List<String> activationRedactedFields() {
+    return List.of("activationToken", "activationLink", "tokenDigest", "password");
+  }
+
+  private List<String> ownerSetupSteps(Company company) {
+    boolean gstEnabled = company != null && company.getDefaultGstRate() != null;
+    List<String> steps = new ArrayList<>();
+    steps.add("company-details");
+    if (gstEnabled) {
+      steps.add("gst");
+    }
+    steps.add("accounting");
+    steps.add("invite-team");
+    steps.add("finish");
+    return List.copyOf(steps);
   }
 
   private String newActivationToken() {
@@ -1882,5 +2167,6 @@ public class SuperAdminTenantControlPlaneService {
 
   private record HeldAddClientCreateLock(String key, AddClientCreateLock lock) {}
 
-  private record ActivationIssue(Long tokenId, Instant sentAt, Instant expiresAt) {}
+  private record ActivationIssue(
+      Long tokenId, Instant sentAt, Instant expiresAt, String activationUrl) {}
 }

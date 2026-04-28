@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -41,6 +42,7 @@ import com.bigbrightpaints.erp.modules.auth.domain.PasswordResetTokenRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.auth.service.IamCanonicalStorageService;
+import com.bigbrightpaints.erp.modules.auth.service.PasswordService;
 import com.bigbrightpaints.erp.modules.auth.service.RefreshTokenService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyLifecycleState;
@@ -89,6 +91,7 @@ class SuperAdminTenantControlPlaneServiceTest {
   @Mock private PasswordResetTokenRepository passwordResetTokenRepository;
   @Mock private RoleRepository roleRepository;
   @Mock private PasswordEncoder passwordEncoder;
+  @Mock private PasswordService passwordService;
 
   private SuperAdminTenantControlPlaneService service;
 
@@ -112,7 +115,11 @@ class SuperAdminTenantControlPlaneServiceTest {
             iamCanonicalStorageService,
             passwordResetTokenRepository,
             roleRepository,
-            passwordEncoder);
+            passwordEncoder,
+            passwordService);
+    lenient()
+        .when(tenantActivationTokenRepository.lockByCompanyId(any(Long.class)))
+        .thenReturn(List.of());
     SecurityContextHolder.getContext()
         .setAuthentication(new UsernamePasswordAuthenticationToken("super-admin@bbp.com", "n/a"));
   }
@@ -1253,7 +1260,8 @@ class SuperAdminTenantControlPlaneServiceTest {
         iamCanonicalStorageService,
         passwordResetTokenRepository,
         roleRepository,
-        passwordEncoder);
+        passwordEncoder,
+        passwordService);
   }
 
   private void configureTenantStatusState(Company company, String status, int index) {

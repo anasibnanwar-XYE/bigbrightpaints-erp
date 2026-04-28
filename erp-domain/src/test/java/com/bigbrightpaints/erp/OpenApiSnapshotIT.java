@@ -139,6 +139,20 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
     assertOperationContract(root, "/api/v1/auth/sessions/{sessionId}", "delete", null, "204", null);
     assertOperationContract(root, "/api/v1/auth/sessions/current", "delete", null, "204", null);
     assertOperationContract(root, "/api/v1/auth/sessions", "delete", null, "204", null);
+    assertOperationContract(
+        root,
+        "/api/v1/auth/activation/verify",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseActivationVerifyResponse");
+    assertOperationContract(
+        root,
+        "/api/v1/auth/activation/complete",
+        "post",
+        "#/components/schemas/ActivationCompleteRequest",
+        "200",
+        "#/components/schemas/ApiResponseActivationCompleteResponse");
     assertOperationMissing(root, "/api/v1/auth/profile", "get");
     assertOperationMissing(root, "/api/v1/auth/profile", "post");
     assertOperationMissing(root, "/api/v1/auth/profile", "put");
@@ -285,6 +299,34 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
         null,
         "200",
         "#/components/schemas/ApiResponseSuperAdminTenantDetailDto");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/tenants/{id}/activation/send",
+        "post",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseSuperAdminActivationActionResponse");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/tenants/{id}/activation/resend",
+        "post",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseSuperAdminActivationActionResponse");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/tenants/{id}/activation/copy",
+        "post",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseSuperAdminActivationCopyResponse");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/tenants/{id}/activation/expire",
+        "post",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseSuperAdminActivationActionResponse");
     assertOperationContract(
         root,
         "/api/v1/superadmin/tenants/{id}/lifecycle",

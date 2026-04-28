@@ -23,6 +23,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.mail.MailSendException;
+import org.springframework.mail.SimpleMailMessage;
+import org.springframework.mail.javamail.JavaMailSender;
 
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyLifecycleState;
@@ -42,6 +45,8 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
   @Autowired private CompanyRepository companyRepository;
 
   @Autowired private JdbcTemplate jdbcTemplate;
+
+  @Autowired private JavaMailSender mailSender;
 
   @BeforeEach
   void seedUsers() {
@@ -190,6 +195,263 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
 
     assertTenantListAndProfileReadBackStatus(
         superAdminHeaders, code, "PENDING_ACTIVATION", ownerEmail);
+  }
+
+  @Test
+  void activationActionsVerifyAndCompleteUseSafeLinksAndSingleUseTokens() {
+    org.mockito.Mockito.reset(mailSender);
+    String superAdminToken = loginToken(SUPER_ADMIN_EMAIL, ROOT_COMPANY_CODE);
+    HttpHeaders superAdminHeaders = headers(superAdminToken, ROOT_COMPANY_CODE);
+    superAdminHeaders.set("Host", "evil.example");
+    superAdminHeaders.set("Forwarded", "host=evil.example;proto=https");
+    superAdminHeaders.set("X-Forwarded-Host", "evil.example");
+    superAdminHeaders.set("X-Forwarded-Proto", "https");
+    String code = "M5ACT" + Long.toString(System.nanoTime(), 36).toUpperCase(Locale.ROOT);
+    String ownerEmail = "owner-" + code.toLowerCase(Locale.ROOT) + "@example.com";
+
+    ResponseEntity<Map> draftResponse =
+        rest.exchange(
+            "/api/v1/superadmin/tenants",
+            HttpMethod.POST,
+            new HttpEntity<>(addClientPayload(code, ownerEmail, "DRAFT"), superAdminHeaders),
+            Map.class);
+    assertThat(draftResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+    @SuppressWarnings("unchecked")
+    Map<String, Object> draft = (Map<String, Object>) draftResponse.getBody().get("data");
+    Number tenantId = (Number) draft.get("tenantId");
+
+    ResponseEntity<Map> sendResponse =
+        rest.exchange(
+            "/api/v1/superadmin/tenants/" + tenantId.longValue() + "/activation/send",
+            HttpMethod.POST,
+            new HttpEntity<>(superAdminHeaders),
+            Map.class);
+
+    assertThat(sendResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    @SuppressWarnings("unchecked")
+    Map<String, Object> sent = (Map<String, Object>) sendResponse.getBody().get("data");
+    assertThat(sent).containsEntry("activationStatus", "SENT");
+    assertThat(sent.toString()).doesNotContain("temporaryPassword", "OwnerActivated123!");
+
+    org.mockito.ArgumentCaptor<SimpleMailMessage> messageCaptor =
+        org.mockito.ArgumentCaptor.forClass(SimpleMailMessage.class);
+    org.mockito.Mockito.verify(mailSender).send(messageCaptor.capture());
+    SimpleMailMessage activationEmail = messageCaptor.getValue();
+    assertThat(activationEmail.getSubject()).contains("Activate");
+    assertThat(activationEmail.getText())
+        .contains("http://localhost:3004/activate-client?token=")
+        .contains("No password or temporary credential is included")
+        .doesNotContain("evil.example", "temporary password");
+
+    ResponseEntity<Map> copyResponse =
+        rest.exchange(
+            "/api/v1/superadmin/tenants/" + tenantId.longValue() + "/activation/copy",
+            HttpMethod.POST,
+            new HttpEntity<>(superAdminHeaders),
+            Map.class);
+    assertThat(copyResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    @SuppressWarnings("unchecked")
+    Map<String, Object> copied = (Map<String, Object>) copyResponse.getBody().get("data");
+    String copiedUrl = copied.get("activationUrl").toString();
+    String copiedToken = copiedUrl.substring(copiedUrl.indexOf("token=") + "token=".length());
+    assertThat(copiedUrl).startsWith("http://localhost:3004/activate-client?token=");
+    org.mockito.Mockito.verifyNoMoreInteractions(mailSender);
+
+    String emailedToken =
+        activationEmail
+            .getText()
+            .substring(activationEmail.getText().indexOf("token=") + 6)
+            .lines()
+            .findFirst()
+            .orElseThrow();
+    ResponseEntity<Map> supersededVerify =
+        rest.exchange(
+            "/api/v1/auth/activation/verify?token=" + emailedToken,
+            HttpMethod.GET,
+            new HttpEntity<>(new HttpHeaders()),
+            Map.class);
+    assertThat(supersededVerify.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+    ResponseEntity<Map> verifyResponse =
+        rest.exchange(
+            "/api/v1/auth/activation/verify?token=" + copiedToken,
+            HttpMethod.GET,
+            new HttpEntity<>(new HttpHeaders()),
+            Map.class);
+    assertThat(verifyResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    @SuppressWarnings("unchecked")
+    Map<String, Object> verifyData = (Map<String, Object>) verifyResponse.getBody().get("data");
+    assertThat(verifyData).containsEntry("companyCode", code).containsKey("requiredSetupSteps");
+    assertThat(verifyData.toString()).doesNotContain(copiedToken, "passwordHash");
+
+    ResponseEntity<Map> weakComplete =
+        rest.exchange(
+            "/api/v1/auth/activation/complete",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of("token", copiedToken, "newPassword", "weak", "confirmPassword", "weak"),
+                jsonHeaders()),
+            Map.class);
+    assertThat(weakComplete.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+    ResponseEntity<Map> completeResponse =
+        rest.exchange(
+            "/api/v1/auth/activation/complete",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of(
+                    "token",
+                    copiedToken,
+                    "newPassword",
+                    "OwnerActivated123!",
+                    "confirmPassword",
+                    "OwnerActivated123!"),
+                jsonHeaders()),
+            Map.class);
+    assertThat(completeResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    @SuppressWarnings("unchecked")
+    Map<String, Object> completeData = (Map<String, Object>) completeResponse.getBody().get("data");
+    assertThat(completeData)
+        .containsEntry("ownerState", "ACTIVE")
+        .containsEntry("tenantStatus", "SETUP_PENDING");
+
+    ResponseEntity<Map> replayResponse =
+        rest.exchange(
+            "/api/v1/auth/activation/complete",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of(
+                    "token",
+                    copiedToken,
+                    "newPassword",
+                    "OwnerActivated124!",
+                    "confirmPassword",
+                    "OwnerActivated124!"),
+                jsonHeaders()),
+            Map.class);
+    assertThat(replayResponse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+    ResponseEntity<Map> ownerLogin =
+        rest.exchange(
+            "/api/v1/auth/login",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of("email", ownerEmail, "password", "OwnerActivated123!", "companyCode", code),
+                jsonHeaders()),
+            Map.class);
+    assertThat(ownerLogin.getStatusCode()).isEqualTo(HttpStatus.OK);
+  }
+
+  @Test
+  void activationExpireBlocksCurrentTokenButAllowsRecoveryByResend() {
+    org.mockito.Mockito.reset(mailSender);
+    String superAdminToken = loginToken(SUPER_ADMIN_EMAIL, ROOT_COMPANY_CODE);
+    HttpHeaders superAdminHeaders = headers(superAdminToken, ROOT_COMPANY_CODE);
+    String code = "M5EXP" + Long.toString(System.nanoTime(), 36).toUpperCase(Locale.ROOT);
+    String ownerEmail = "owner-" + code.toLowerCase(Locale.ROOT) + "@example.com";
+
+    ResponseEntity<Map> createResponse =
+        rest.exchange(
+            "/api/v1/superadmin/tenants",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                addClientPayload(code, ownerEmail, "SEND_ACTIVATION"), superAdminHeaders),
+            Map.class);
+    assertThat(createResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+    @SuppressWarnings("unchecked")
+    Map<String, Object> created = (Map<String, Object>) createResponse.getBody().get("data");
+    Number tenantId = (Number) created.get("tenantId");
+    org.mockito.ArgumentCaptor<SimpleMailMessage> firstMessage =
+        org.mockito.ArgumentCaptor.forClass(SimpleMailMessage.class);
+    org.mockito.Mockito.verify(mailSender).send(firstMessage.capture());
+    String expiredToken =
+        firstMessage
+            .getValue()
+            .getText()
+            .substring(firstMessage.getValue().getText().indexOf("token=") + 6)
+            .lines()
+            .findFirst()
+            .orElseThrow();
+
+    ResponseEntity<Map> expireResponse =
+        rest.exchange(
+            "/api/v1/superadmin/tenants/" + tenantId.longValue() + "/activation/expire",
+            HttpMethod.POST,
+            new HttpEntity<>(superAdminHeaders),
+            Map.class);
+    assertThat(expireResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    @SuppressWarnings("unchecked")
+    Map<String, Object> expired = (Map<String, Object>) expireResponse.getBody().get("data");
+    assertThat(expired).containsEntry("activationStatus", "EXPIRED");
+
+    ResponseEntity<Map> expiredVerify =
+        rest.exchange(
+            "/api/v1/auth/activation/verify?token=" + expiredToken,
+            HttpMethod.GET,
+            new HttpEntity<>(new HttpHeaders()),
+            Map.class);
+    assertThat(expiredVerify.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+    ResponseEntity<Map> resendResponse =
+        rest.exchange(
+            "/api/v1/superadmin/tenants/" + tenantId.longValue() + "/activation/resend",
+            HttpMethod.POST,
+            new HttpEntity<>(superAdminHeaders),
+            Map.class);
+    assertThat(resendResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    org.mockito.Mockito.verify(mailSender, org.mockito.Mockito.times(2))
+        .send(org.mockito.ArgumentMatchers.any(SimpleMailMessage.class));
+  }
+
+  @Test
+  void activationSendMailFailureLeavesDraftRecoverableWithoutTokenCommit() {
+    org.mockito.Mockito.reset(mailSender);
+    org.mockito.Mockito.doThrow(new MailSendException("smtp unavailable"))
+        .when(mailSender)
+        .send(org.mockito.ArgumentMatchers.any(SimpleMailMessage.class));
+    String superAdminToken = loginToken(SUPER_ADMIN_EMAIL, ROOT_COMPANY_CODE);
+    HttpHeaders superAdminHeaders = headers(superAdminToken, ROOT_COMPANY_CODE);
+    String code = "M5MAIL" + Long.toString(System.nanoTime(), 36).toUpperCase(Locale.ROOT);
+    String ownerEmail = "owner-" + code.toLowerCase(Locale.ROOT) + "@example.com";
+
+    ResponseEntity<Map> createResponse =
+        rest.exchange(
+            "/api/v1/superadmin/tenants",
+            HttpMethod.POST,
+            new HttpEntity<>(addClientPayload(code, ownerEmail, "DRAFT"), superAdminHeaders),
+            Map.class);
+    assertThat(createResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+    @SuppressWarnings("unchecked")
+    Map<String, Object> created = (Map<String, Object>) createResponse.getBody().get("data");
+    Number tenantId = (Number) created.get("tenantId");
+    long tokenCountBefore =
+        countRows("select count(*) from tenant_activation_tokens where company_id = ?", tenantId);
+
+    ResponseEntity<Map> sendResponse =
+        rest.exchange(
+            "/api/v1/superadmin/tenants/" + tenantId.longValue() + "/activation/send",
+            HttpMethod.POST,
+            new HttpEntity<>(superAdminHeaders),
+            Map.class);
+
+    assertThat(sendResponse.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+    Company tenant = companyRepository.findByCodeIgnoreCase(code).orElseThrow();
+    assertThat(tenant.getActivationStatus()).isEqualTo("NOT_SENT");
+    assertThat(
+            countRows(
+                "select count(*) from tenant_activation_tokens where company_id = ?", tenantId))
+        .isEqualTo(tokenCountBefore);
+
+    org.mockito.Mockito.reset(mailSender);
+    ResponseEntity<Map> retryResponse =
+        rest.exchange(
+            "/api/v1/superadmin/tenants/" + tenantId.longValue() + "/activation/send",
+            HttpMethod.POST,
+            new HttpEntity<>(superAdminHeaders),
+            Map.class);
+    assertThat(retryResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    org.mockito.Mockito.verify(mailSender)
+        .send(org.mockito.ArgumentMatchers.any(SimpleMailMessage.class));
   }
 
   @Test
@@ -913,6 +1175,12 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
     return headers;
   }
 
+  private HttpHeaders jsonHeaders() {
+    HttpHeaders headers = new HttpHeaders();
+    headers.setContentType(MediaType.APPLICATION_JSON);
+    return headers;
+  }
+
   private String loginToken(String email, String companyCode) {
     Map<String, Object> request =
         Map.of(
@@ -1032,7 +1300,7 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
         "select lifecycle_state from companies where id = ?", String.class, companyId);
   }
 
-  private Long countRows(String sql, String value) {
+  private Long countRows(String sql, Object value) {
     if (value == null) {
       return jdbcTemplate.queryForObject(sql, Long.class);
     }

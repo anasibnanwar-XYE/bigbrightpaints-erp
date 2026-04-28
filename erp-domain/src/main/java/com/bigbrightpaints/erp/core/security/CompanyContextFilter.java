@@ -106,7 +106,11 @@ public class CompanyContextFilter extends OncePerRequestFilter {
           "/api/v1/admin/notify",
           "/api/v1/admin/users");
   private static final Set<String> PUBLIC_PASSWORD_RESET_ENDPOINTS =
-      Set.of("/api/v1/auth/password/forgot", "/api/v1/auth/password/reset");
+      Set.of(
+          "/api/v1/auth/password/forgot",
+          "/api/v1/auth/password/reset",
+          "/api/v1/auth/activation/verify",
+          "/api/v1/auth/activation/complete");
 
   private record CompanyBoundControlRoute(
       String method, Pattern pattern, boolean tenantRuntimePolicyControl) {}

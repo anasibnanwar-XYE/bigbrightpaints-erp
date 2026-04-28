@@ -80,6 +80,38 @@ public class SuperAdminController {
             "Superadmin tenant detail fetched", controlPlaneService.getTenantDetail(tenantId)));
   }
 
+  @PostMapping("/tenants/{id}/activation/send")
+  public ResponseEntity<ApiResponse<SuperAdminActivationActionResponse>> sendActivation(
+      @PathVariable("id") Long tenantId) {
+    return ResponseEntity.ok(
+        ApiResponse.success(
+            "Tenant activation sent", controlPlaneService.sendActivation(tenantId)));
+  }
+
+  @PostMapping("/tenants/{id}/activation/resend")
+  public ResponseEntity<ApiResponse<SuperAdminActivationActionResponse>> resendActivation(
+      @PathVariable("id") Long tenantId) {
+    return ResponseEntity.ok(
+        ApiResponse.success(
+            "Tenant activation resent", controlPlaneService.resendActivation(tenantId)));
+  }
+
+  @PostMapping("/tenants/{id}/activation/copy")
+  public ResponseEntity<ApiResponse<SuperAdminActivationCopyResponse>> copyActivation(
+      @PathVariable("id") Long tenantId) {
+    return ResponseEntity.ok(
+        ApiResponse.success(
+            "Tenant activation link copied", controlPlaneService.copyActivationLink(tenantId)));
+  }
+
+  @PostMapping("/tenants/{id}/activation/expire")
+  public ResponseEntity<ApiResponse<SuperAdminActivationActionResponse>> expireActivation(
+      @PathVariable("id") Long tenantId) {
+    return ResponseEntity.ok(
+        ApiResponse.success(
+            "Tenant activation expired", controlPlaneService.expireActivation(tenantId)));
+  }
+
   @PutMapping("/tenants/{id}/lifecycle")
   public ResponseEntity<ApiResponse<CompanyLifecycleStateDto>> updateLifecycleState(
       @PathVariable("id") Long tenantId, @Valid @RequestBody CompanyLifecycleStateRequest request) {

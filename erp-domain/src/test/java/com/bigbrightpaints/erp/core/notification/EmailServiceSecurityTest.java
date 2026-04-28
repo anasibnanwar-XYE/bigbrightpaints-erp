@@ -28,4 +28,23 @@ class EmailServiceSecurityTest {
     assertThat(resetUrl).contains("raw%20token%2B%2F%3D%20should%20encode");
     assertThat(resetUrl).doesNotContain("evil.test");
   }
+
+  @Test
+  void activationLinkUsesConfiguredSafeBaseUrlAndEncodesToken() {
+    EmailProperties properties = new EmailProperties();
+    properties.setEnabled(true);
+    properties.setSendCredentials(true);
+    properties.setBaseUrl("https://app.bigbrightpaints.com/");
+    JavaMailSender mailSender = mock(JavaMailSender.class);
+    SpringTemplateEngine templateEngine = mock(SpringTemplateEngine.class);
+
+    String activationUrl =
+        new EmailService(mailSender, properties, templateEngine)
+            .buildTenantActivationLink("activation token+/= should encode");
+
+    assertThat(activationUrl).startsWith("https://app.bigbrightpaints.com/activate-client?token=");
+    assertThat(activationUrl).doesNotContain("activation token+/=");
+    assertThat(activationUrl).contains("activation%20token%2B%2F%3D%20should%20encode");
+    assertThat(activationUrl).doesNotContain("evil.test");
+  }
 }
