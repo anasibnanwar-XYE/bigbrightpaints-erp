@@ -227,6 +227,67 @@ class SuperAdminTenantControlPlaneServiceTest {
   }
 
   @Test
+  void listTenants_emitsAndFiltersEveryCanonicalReadModelStatus() {
+    java.util.List<String> statuses =
+        java.util.List.of(
+            "DRAFT",
+            "PENDING_ACTIVATION",
+            "SETUP_PENDING",
+            "TRIAL_ACTIVE",
+            "ACTIVE",
+            "GRACE",
+            "SUSPENDED_READ_ONLY",
+            "SUSPENDED_BLOCKED",
+            "CANCELED",
+            "ARCHIVED",
+            "SEED_FAILED");
+    java.util.List<Company> companies = new java.util.ArrayList<>();
+    for (int index = 0; index < statuses.size(); index++) {
+      String status = statuses.get(index);
+      Company company = company((long) index + 1, "T" + String.format("%02d", index));
+      company.setName(status + " tenant");
+      company.setOnboardingCompletedAt(Instant.parse("2026-03-26T09:00:00Z"));
+      if ("DRAFT".equals(status)) {
+        company.setOnboardingCompletedAt(null);
+        company.setOnboardingAdminEmail("owner-draft@example.com");
+      } else if ("PENDING_ACTIVATION".equals(status)) {
+        company.setOnboardingCompletedAt(null);
+        company.setOnboardingAdminEmail("owner-pending@example.com");
+        company.setOnboardingCredentialsEmailedAt(Instant.parse("2026-03-26T10:00:00Z"));
+      } else if ("SETUP_PENDING".equals(status)) {
+        company.setOnboardingCompletedAt(null);
+        company.setOnboardingAdminUserId(900L + index);
+      }
+      companies.add(company);
+      String metricsState =
+          switch (status) {
+            case "DRAFT", "PENDING_ACTIVATION", "SETUP_PENDING" -> "ACTIVE";
+            default -> status;
+          };
+      when(companyService.getTenantMetricsForSuperAdmin(company.getId()))
+          .thenReturn(metrics(company, metricsState));
+    }
+    when(companyRepository.findAll()).thenReturn(companies);
+    when(auditLogRepository.findTop1ByCompanyIdOrderByTimestampDesc(any(Long.class)))
+        .thenReturn(Optional.empty());
+
+    PageResponse<SuperAdminTenantSummaryDto> all =
+        service.listTenants(null, null, 0, 20, "companyCode,asc");
+
+    assertThat(all.content())
+        .extracting(SuperAdminTenantSummaryDto::status)
+        .containsExactlyElementsOf(statuses);
+    for (String status : statuses) {
+      PageResponse<SuperAdminTenantSummaryDto> filtered =
+          service.listTenants(
+              status.toLowerCase(java.util.Locale.ROOT), null, 0, 20, "companyCode,asc");
+      assertThat(filtered.content())
+          .extracting(SuperAdminTenantSummaryDto::status)
+          .containsExactly(status);
+    }
+  }
+
+  @Test
   void listTenants_rejectsInvalidPaginationAndSortInputs() {
     assertThatThrownBy(() -> service.listTenants(null, null, -1, 20, "companyCode,asc"))
         .hasMessageContaining("page must be greater than or equal to 0");
@@ -256,6 +317,63 @@ class SuperAdminTenantControlPlaneServiceTest {
     assertThat(result.size()).isEqualTo(100);
     assertThat(result.totalElements()).isEqualTo(2);
     assertThat(result.totalPages()).isEqualTo(1);
+  }
+
+  @Test
+  void getTenantDetail_usesStateAwareTabSummariesAcrossKeyStatuses() {
+    java.util.Map<String, String> expectedTabStates =
+        java.util.Map.of(
+            "DRAFT", "PENDING_SETUP",
+            "PENDING_ACTIVATION", "PENDING_ACTIVATION",
+            "SETUP_PENDING", "SETUP_REQUIRED",
+            "ACTIVE", "AVAILABLE",
+            "SUSPENDED_READ_ONLY", "READ_ONLY",
+            "ARCHIVED", "ARCHIVED",
+            "SEED_FAILED", "ACTION_REQUIRED");
+    int index = 0;
+    for (java.util.Map.Entry<String, String> entry : expectedTabStates.entrySet()) {
+      String status = entry.getKey();
+      Company company = company(100L + index, "TAB" + index);
+      company.setOnboardingCompletedAt(Instant.parse("2026-03-26T09:00:00Z"));
+      if ("DRAFT".equals(status)) {
+        company.setOnboardingCompletedAt(null);
+        company.setOnboardingAdminEmail("draft-tab@example.com");
+      } else if ("PENDING_ACTIVATION".equals(status)) {
+        company.setOnboardingCompletedAt(null);
+        company.setOnboardingAdminEmail("pending-tab@example.com");
+        company.setOnboardingCredentialsEmailedAt(Instant.parse("2026-03-26T10:00:00Z"));
+      } else if ("SETUP_PENDING".equals(status)) {
+        company.setOnboardingCompletedAt(null);
+        company.setOnboardingAdminUserId(1000L + index);
+      }
+      String metricsState =
+          switch (status) {
+            case "DRAFT", "PENDING_ACTIVATION", "SETUP_PENDING" -> "ACTIVE";
+            default -> status;
+          };
+      when(companyRepository.findById(company.getId())).thenReturn(Optional.of(company));
+      when(companyService.getTenantMetricsForSuperAdmin(company.getId()))
+          .thenReturn(metrics(company, metricsState));
+      when(auditLogRepository.findTop1ByCompanyIdOrderByTimestampDesc(company.getId()))
+          .thenReturn(Optional.empty());
+      when(tenantSupportWarningRepository.findByCompany_IdOrderByIssuedAtDesc(company.getId()))
+          .thenReturn(java.util.List.of());
+      when(auditLogRepository.findTop50ByCompanyIdOrderByTimestampDesc(company.getId()))
+          .thenReturn(java.util.List.of());
+
+      SuperAdminTenantDetailDto detail = service.getTenantDetail(company.getId());
+
+      assertThat(detail.status()).isEqualTo(status);
+      assertThat(detail.overview().tabState().state()).isEqualTo(entry.getValue());
+      assertThat(detail.plan().tabState().state()).isEqualTo(entry.getValue());
+      if ("ACTIVE".equals(status)) {
+        assertThat(detail.billing().tabState().state()).isEqualTo("EMPTY");
+      } else {
+        assertThat(detail.billing().tabState().state()).isEqualTo(entry.getValue());
+      }
+      assertThat(detail.settings().tabState().message()).contains(status);
+      index++;
+    }
   }
 
   @Test

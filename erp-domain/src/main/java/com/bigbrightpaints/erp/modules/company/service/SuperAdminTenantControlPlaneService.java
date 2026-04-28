@@ -48,6 +48,25 @@ import jakarta.persistence.EntityNotFoundException;
 @Service
 public class SuperAdminTenantControlPlaneService {
 
+  private static final Set<String> CANONICAL_TENANT_STATUSES =
+      Set.of(
+          "DRAFT",
+          "PENDING_ACTIVATION",
+          "SETUP_PENDING",
+          "TRIAL_ACTIVE",
+          "ACTIVE",
+          "GRACE",
+          "SUSPENDED_READ_ONLY",
+          "SUSPENDED_BLOCKED",
+          "CANCELED",
+          "ARCHIVED",
+          "SEED_FAILED");
+
+  private static final Map<String, String> LEGACY_STATUS_ALIASES =
+      Map.of(
+          "SUSPENDED", "SUSPENDED_BLOCKED",
+          "DEACTIVATED", "ARCHIVED");
+
   private final CompanyRepository companyRepository;
   private final UserAccountRepository userAccountRepository;
   private final AuditLogRepository auditLogRepository;
@@ -588,32 +607,33 @@ public class SuperAdminTenantControlPlaneService {
             health,
             mainAdminSummary,
             lastActivityAt,
-            tabState("AVAILABLE", "Overview summary is available")),
+            tabStateForStatus(status, "AVAILABLE", "Overview summary is available")),
         new SuperAdminTenantDetailDto.PlanSummary(
             resolvePlanId(company),
             "Trial",
             "STANDARD",
             limits,
-            tabState("AVAILABLE", "Plan limits summary is available")),
+            tabStateForStatus(status, "AVAILABLE", "Plan limits summary is available")),
         new SuperAdminTenantDetailDto.BillingSummary(
             resolveBillingStatus(status),
             0,
             company.getBaseCurrency(),
             resolveTrialEndsAt(company, status),
-            tabState("EMPTY", "No platform billing records yet")),
+            tabStateForStatus(status, "EMPTY", "No platform billing records yet")),
         new SuperAdminTenantDetailDto.SupportSummary(
             company.getSupportTags(),
             supportTimeline.size(),
-            tabState("AVAILABLE", "Support summary is available")),
-        new SuperAdminTenantDetailDto.BugsSummary(0, 0, tabState("EMPTY", "No bug reports yet")),
+            tabState("AVAILABLE", "Support summary is available for " + status)),
+        new SuperAdminTenantDetailDto.BugsSummary(
+            0, 0, tabState("EMPTY", "No bug reports yet for " + status)),
         new SuperAdminTenantDetailDto.AuditSummary(
             supportTimeline.size(),
             lastActivityAt,
-            tabState("AVAILABLE", "Audit summary is available")),
+            tabState("AVAILABLE", "Audit summary is available for " + status)),
         new SuperAdminTenantDetailDto.SettingsSummary(
             company.getTimezone(),
             company.getEnabledModules(),
-            tabState("AVAILABLE", "Settings summary is available")));
+            tabStateForStatus(status, "AVAILABLE", "Settings summary is available")));
   }
 
   private CompanyTenantMetricsDto buildMetrics(Company company) {
@@ -719,6 +739,13 @@ public class SuperAdminTenantControlPlaneService {
   }
 
   private String resolveTenantStatus(Company company, CompanyTenantMetricsDto metrics) {
+    String metricsStatus =
+        metrics == null ? null : normalizeCanonicalStatus(metrics.lifecycleState(), true);
+    if (metricsStatus != null
+        && !"ACTIVE".equals(metricsStatus)
+        && !"TRIAL_ACTIVE".equals(metricsStatus)) {
+      return metricsStatus;
+    }
     String lifecycle =
         metrics == null || !StringUtils.hasText(metrics.lifecycleState())
             ? resolveLifecycle(company)
@@ -730,21 +757,21 @@ public class SuperAdminTenantControlPlaneService {
       return "ARCHIVED";
     }
     if (company != null
-        && StringUtils.hasText(company.getOnboardingAdminEmail())
-        && company.getOnboardingAdminUserId() == null) {
-      return "DRAFT";
-    }
-    if (company != null
         && company.getOnboardingCredentialsEmailedAt() != null
         && company.getOnboardingCompletedAt() == null) {
       return "PENDING_ACTIVATION";
+    }
+    if (company != null
+        && StringUtils.hasText(company.getOnboardingAdminEmail())
+        && company.getOnboardingAdminUserId() == null) {
+      return "DRAFT";
     }
     if (company != null
         && company.getOnboardingAdminUserId() != null
         && company.getOnboardingCompletedAt() == null) {
       return "SETUP_PENDING";
     }
-    return "ACTIVE";
+    return metricsStatus == null ? "ACTIVE" : metricsStatus;
   }
 
   private Instant resolveLastActivityAt(Long companyId) {
@@ -760,21 +787,8 @@ public class SuperAdminTenantControlPlaneService {
       return null;
     }
     String normalized = statusFilter.trim().toUpperCase(Locale.ROOT);
-    if (Set.of(
-            "DRAFT",
-            "PENDING_ACTIVATION",
-            "SETUP_PENDING",
-            "TRIAL_ACTIVE",
-            "ACTIVE",
-            "GRACE",
-            "SUSPENDED",
-            "SUSPENDED_READ_ONLY",
-            "SUSPENDED_BLOCKED",
-            "DEACTIVATED",
-            "CANCELED",
-            "ARCHIVED",
-            "SEED_FAILED")
-        .contains(normalized)) {
+    if (CANONICAL_TENANT_STATUSES.contains(normalized)
+        || LEGACY_STATUS_ALIASES.containsKey(normalized)) {
       return normalized;
     }
     throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
@@ -793,9 +807,21 @@ public class SuperAdminTenantControlPlaneService {
           || "SUSPENDED_BLOCKED".equals(candidate.status());
     }
     if ("DEACTIVATED".equals(normalizedStatus)) {
-      return CompanyLifecycleState.DEACTIVATED.name().equals(resolveLifecycle(candidate.company()));
+      return CompanyLifecycleState.DEACTIVATED.name().equals(resolveLifecycle(candidate.company()))
+          || "ARCHIVED".equals(candidate.status());
     }
     return normalizedStatus.equals(candidate.status());
+  }
+
+  private String normalizeCanonicalStatus(String rawStatus, boolean allowLegacyAliases) {
+    if (!StringUtils.hasText(rawStatus)) {
+      return null;
+    }
+    String normalized = rawStatus.trim().toUpperCase(Locale.ROOT);
+    if (CANONICAL_TENANT_STATUSES.contains(normalized)) {
+      return normalized;
+    }
+    return allowLegacyAliases ? LEGACY_STATUS_ALIASES.get(normalized) : null;
   }
 
   private String normalizeSearchQuery(String query) {
@@ -903,8 +929,17 @@ public class SuperAdminTenantControlPlaneService {
   }
 
   private String resolveBillingStatus(String status) {
-    if ("ARCHIVED".equals(status) || "CANCELED".equals(status)) {
+    if ("ARCHIVED".equals(status)) {
       return "ARCHIVED";
+    }
+    if ("CANCELED".equals(status)) {
+      return "CANCELED";
+    }
+    if ("GRACE".equals(status)) {
+      return "GRACE";
+    }
+    if ("TRIAL_ACTIVE".equals(status)) {
+      return "TRIAL";
     }
     return "MANUAL";
   }
@@ -925,6 +960,18 @@ public class SuperAdminTenantControlPlaneService {
           Math.max(75, errorRate / 100),
           "Tenant access is restricted by lifecycle status");
     }
+    if ("SUSPENDED_READ_ONLY".equals(status)) {
+      return new SuperAdminTenantSummaryDto.HealthSummary(
+          "READ_ONLY", Math.max(60, errorRate / 100), "Tenant writes are restricted");
+    }
+    if ("SEED_FAILED".equals(status)) {
+      return new SuperAdminTenantSummaryDto.HealthSummary(
+          "SETUP_FAILED", Math.max(80, errorRate / 100), "Tenant seed repair is required");
+    }
+    if ("GRACE".equals(status)) {
+      return new SuperAdminTenantSummaryDto.HealthSummary(
+          "AT_RISK", Math.max(50, errorRate / 100), "Tenant is in billing grace");
+    }
     if ("DRAFT".equals(status)
         || "PENDING_ACTIVATION".equals(status)
         || "SETUP_PENDING".equals(status)) {
@@ -941,6 +988,33 @@ public class SuperAdminTenantControlPlaneService {
 
   private SuperAdminTenantDetailDto.TabState tabState(String state, String message) {
     return new SuperAdminTenantDetailDto.TabState(state, message);
+  }
+
+  private SuperAdminTenantDetailDto.TabState tabStateForStatus(
+      String status, String defaultState, String defaultMessage) {
+    String normalized = normalizeCanonicalStatus(status, false);
+    if (normalized == null) {
+      return tabState(defaultState, defaultMessage);
+    }
+    return switch (normalized) {
+      case "DRAFT" ->
+          tabState(
+              "PENDING_SETUP", "DRAFT tenant needs activation before this summary is actionable");
+      case "PENDING_ACTIVATION" ->
+          tabState(
+              "PENDING_ACTIVATION", "PENDING_ACTIVATION tenant is waiting for owner activation");
+      case "SETUP_PENDING" ->
+          tabState("SETUP_REQUIRED", "SETUP_PENDING tenant is completing first-login setup");
+      case "SEED_FAILED" ->
+          tabState("ACTION_REQUIRED", "SEED_FAILED tenant needs seed repair before normal use");
+      case "GRACE" -> tabState("ACTION_REQUIRED", "GRACE tenant needs billing follow-up");
+      case "SUSPENDED_READ_ONLY" ->
+          tabState("READ_ONLY", "SUSPENDED_READ_ONLY tenant permits safe reads only");
+      case "SUSPENDED_BLOCKED" -> tabState("BLOCKED", "SUSPENDED_BLOCKED tenant access is blocked");
+      case "CANCELED" -> tabState("CANCELED", "CANCELED tenant is no longer billable");
+      case "ARCHIVED" -> tabState("ARCHIVED", "ARCHIVED tenant is preserved for history");
+      default -> tabState(defaultState, defaultMessage + " for " + normalized);
+    };
   }
 
   private String normalizeRequiredEmail(String email, String fieldName) {
