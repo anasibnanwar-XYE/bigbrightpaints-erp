@@ -414,7 +414,7 @@ public class SuperAdminTenantControlPlaneService {
 
       ActivationIssue activationIssue = null;
       if (request.createMode() == SuperAdminAddClientCreateRequest.CreateMode.SEND_ACTIVATION) {
-        activationIssue = issueActivation(savedCompany, owner);
+        activationIssue = issueActivation(savedCompany, owner, true);
         savedCompany.setOnboardingCredentialsEmailedAt(activationIssue.sentAt());
         savedCompany.setActivationStatus("SENT");
         savedCompany.setActivationSentAt(activationIssue.sentAt());
@@ -437,6 +437,9 @@ public class SuperAdminTenantControlPlaneService {
                   String.valueOf(owner.getId()),
                   "planId",
                   savedCompany.getCommercialPlanId()));
+      if (activationIssue != null) {
+        deliverActivationEmailRequired(savedCompany, owner, activationIssue);
+      }
 
       return addClientResponse(savedCompany, owner, activationIssue, auditEventId);
     } catch (DataIntegrityViolationException ex) {
@@ -464,6 +467,7 @@ public class SuperAdminTenantControlPlaneService {
             company,
             "tenant-activation-sent",
             activationAuditMetadata("SEND", activationIssue, "EMAIL_SENT"));
+    deliverActivationEmailRequired(company, owner, activationIssue);
     return activationActionResponse(company, activationIssue, "EMAIL_SENT", auditEventId);
   }
 
@@ -483,6 +487,7 @@ public class SuperAdminTenantControlPlaneService {
             company,
             "tenant-activation-resent",
             activationAuditMetadata("RESEND", activationIssue, "EMAIL_SENT"));
+    deliverActivationEmailRequired(company, owner, activationIssue);
     return activationActionResponse(company, activationIssue, "EMAIL_SENT", auditEventId);
   }
 
@@ -523,7 +528,7 @@ public class SuperAdminTenantControlPlaneService {
     company.setActivationExpiresAt(now);
     companyRepository.saveAndFlush(company);
     ActivationIssue activationIssue =
-        new ActivationIssue(currentToken.getId(), currentToken.getSentAt(), now, null);
+        new ActivationIssue(currentToken.getId(), currentToken.getSentAt(), now, null, null);
     Long auditEventId =
         logAuditRequired(
             company,
@@ -576,7 +581,8 @@ public class SuperAdminTenantControlPlaneService {
             "tenant-activation-completed",
             activationAuditMetadata(
                 "COMPLETE",
-                new ActivationIssue(token.getId(), token.getSentAt(), token.getExpiresAt(), null),
+                new ActivationIssue(
+                    token.getId(), token.getSentAt(), token.getExpiresAt(), null, null),
                 "USED"));
     return new ActivationCompleteResponse(
         company.getId(),
@@ -1332,11 +1338,8 @@ public class SuperAdminTenantControlPlaneService {
     return saved;
   }
 
-  private ActivationIssue issueActivation(Company company, UserAccount owner) {
-    return issueActivation(company, owner, true);
-  }
-
-  private ActivationIssue issueActivation(Company company, UserAccount owner, boolean sendEmail) {
+  private ActivationIssue issueActivation(
+      Company company, UserAccount owner, boolean markForEmailDelivery) {
     Instant now = CompanyTime.now(company);
     Instant expiresAt = now.plus(72, ChronoUnit.HOURS);
     supersedeActiveActivationTokens(company, now);
@@ -1346,19 +1349,45 @@ public class SuperAdminTenantControlPlaneService {
             TenantActivationToken.digestOnly(
                 company, owner, activationTokenDigest(rawToken), now, expiresAt));
     String activationUrl = emailService.buildTenantActivationLink(rawToken);
-    if (sendEmail) {
-      emailService.sendTenantActivationEmailRequired(
-          owner.getEmail(),
-          owner.getDisplayName(),
-          company.getName(),
-          company.getCode(),
-          rawToken,
-          expiresAt);
+    if (markForEmailDelivery) {
       activationToken.markSent(now);
     }
     tenantActivationTokenRepository.saveAndFlush(activationToken);
     return new ActivationIssue(
-        activationToken.getId(), sendEmail ? now : null, expiresAt, activationUrl);
+        activationToken.getId(),
+        markForEmailDelivery ? now : null,
+        expiresAt,
+        activationUrl,
+        rawToken);
+  }
+
+  private void deliverActivationEmailRequired(
+      Company company, UserAccount owner, ActivationIssue activationIssue) {
+    if (activationIssue == null || !StringUtils.hasText(activationIssue.rawToken())) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState(
+          "Activation token material is required for email delivery");
+    }
+    Runnable delivery =
+        () ->
+            emailService.sendTenantActivationEmailRequired(
+                owner.getEmail(),
+                owner.getDisplayName(),
+                company.getName(),
+                company.getCode(),
+                activationIssue.rawToken(),
+                activationIssue.expiresAt());
+    if (TransactionSynchronizationManager.isSynchronizationActive()
+        && TransactionSynchronizationManager.isActualTransactionActive()) {
+      TransactionSynchronizationManager.registerSynchronization(
+          new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+              delivery.run();
+            }
+          });
+      return;
+    }
+    delivery.run();
   }
 
   private void supersedeActiveActivationTokens(Company company, Instant supersededAt) {
@@ -2168,5 +2197,5 @@ public class SuperAdminTenantControlPlaneService {
   private record HeldAddClientCreateLock(String key, AddClientCreateLock lock) {}
 
   private record ActivationIssue(
-      Long tokenId, Instant sentAt, Instant expiresAt, String activationUrl) {}
+      Long tokenId, Instant sentAt, Instant expiresAt, String activationUrl, String rawToken) {}
 }

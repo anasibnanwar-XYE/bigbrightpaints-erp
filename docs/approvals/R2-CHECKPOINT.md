@@ -2,6 +2,35 @@
 
 Last reviewed: 2026-05-01
 
+## Addendum — `m5-fix-activation-email-after-audit-commit`
+
+- Scope: activation create-with-send, send, and resend email side-effect ordering after required platform audit persistence and transaction commit.
+- Risk trigger: touches high-risk company/Super Admin activation control-plane code and activation regression tests under `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/company/**` and `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/company/**`.
+- Approval mode: orchestrator; human escalation required: no.
+- Escalation decision: no privilege widening, tenant-boundary change, data migration, or secret-handling relaxation was introduced. The change narrows activation email delivery so required audit persistence and the surrounding transaction commit happen before SMTP delivery, and audit failure fails closed without calling the activation email sender.
+- Rollback owner: Droid mission orchestrator.
+- Rollback method: revert this packet and rerun compile, Spotless, targeted Super Admin activation/controller tests, high-risk guard, and mission-safe baseline validators.
+- Expiry: 2026-05-05.
+- Verification evidence:
+  - create-with-send, send, and resend activation paths now persist token/company state and call the required audit writer before registering activation email delivery after commit
+  - SMTP delivery is registered with Spring transaction synchronization and runs only after the transaction containing token/company/audit state commits
+  - audit persistence/signing failure propagates before SMTP delivery for all three email-sending paths
+  - copy-link remains an explicit response/audit boundary and does not call the activation email sender
+  - regression tests verify a simulated required-audit failure sends no activation email for create-with-send, send, or resend
+- Commands run:
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=SuperAdminTenantControlPlaneServiceTest test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -q -DskipTests compile`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn spotless:check`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=SuperAdminTenantControlPlaneServiceTest,SuperAdminControllerIT,SuperAdminControllerTest test`
+  - `bash ci/lint-knowledgebase.sh`
+  - `bash ci/check-high-risk-changes.sh`
+  - mission-safe manifest test command with compile, Spotless, targeted Super Admin/auth/OpenAPI/runtime tests, OpenAPI drift guard, high-risk guard, and M0 static guards
+- Result summary:
+  - targeted service regression suite reported 41 tests run, 0 failures/errors/skips
+  - targeted controller/service suite reported 61 tests run, 0 failures/errors/skips
+  - mission-safe validator reported 161 tests run, 0 failures/errors/skips plus OpenAPI drift, high-risk, and M0 static guards OK
+  - no bearer tokens, passwords, activation links, token digests, provider credentials, or `.env` values were printed in evidence
+
 ## Addendum — `m5-digest-token-storage-guards`
 
 - Scope: activation/password-reset token storage hardening and non-black-box guard proof for digest-only persistence.

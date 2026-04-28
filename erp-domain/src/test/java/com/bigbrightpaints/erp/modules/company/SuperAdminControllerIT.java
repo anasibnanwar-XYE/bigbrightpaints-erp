@@ -421,7 +421,7 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
   }
 
   @Test
-  void activationSendMailFailureLeavesDraftRecoverableWithoutTokenCommit() {
+  void activationSendMailFailureCommitsAuditedTokenAndAllowsRecoveryByResend() {
     org.mockito.Mockito.reset(mailSender);
     org.mockito.Mockito.doThrow(new MailSendException("smtp unavailable"))
         .when(mailSender)
@@ -453,20 +453,20 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
 
     assertThat(sendResponse.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
     Company tenant = companyRepository.findByCodeIgnoreCase(code).orElseThrow();
-    assertThat(tenant.getActivationStatus()).isEqualTo("NOT_SENT");
+    assertThat(tenant.getActivationStatus()).isEqualTo("SENT");
     assertThat(
             countRows(
                 "select count(*) from tenant_activation_tokens where company_id = ?", tenantId))
-        .isEqualTo(tokenCountBefore);
+        .isEqualTo(tokenCountBefore + 1);
 
     org.mockito.Mockito.reset(mailSender);
-    ResponseEntity<Map> retryResponse =
+    ResponseEntity<Map> resendResponse =
         rest.exchange(
-            "/api/v1/superadmin/tenants/" + tenantId.longValue() + "/activation/send",
+            "/api/v1/superadmin/tenants/" + tenantId.longValue() + "/activation/resend",
             HttpMethod.POST,
             new HttpEntity<>(superAdminHeaders),
             Map.class);
-    assertThat(retryResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(resendResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
     org.mockito.Mockito.verify(mailSender)
         .send(org.mockito.ArgumentMatchers.any(SimpleMailMessage.class));
   }

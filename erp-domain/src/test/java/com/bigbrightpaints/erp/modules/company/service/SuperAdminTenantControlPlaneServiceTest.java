@@ -309,6 +309,113 @@ class SuperAdminTenantControlPlaneServiceTest {
   }
 
   @Test
+  void createAddClient_sendActivationAuditFailureDoesNotSendEmail() {
+    Role adminRole = role("ROLE_ADMIN");
+    when(companyRepository.findByCodeIgnoreCase("ACME-M4")).thenReturn(Optional.empty());
+    when(userAccountRepository.existsByEmailIgnoreCase("owner@example.com")).thenReturn(false);
+    when(roleRepository.findByName("ROLE_ADMIN")).thenReturn(Optional.of(adminRole));
+    when(passwordEncoder.encode(any(String.class))).thenReturn("encoded-pending-password");
+    when(companyRepository.saveAndFlush(any(Company.class)))
+        .thenAnswer(
+            invocation -> {
+              Company company = invocation.getArgument(0);
+              if (company.getId() == null) {
+                ReflectionTestUtils.setField(company, "id", 42L);
+              }
+              return company;
+            });
+    when(userAccountRepository.saveAndFlush(any(UserAccount.class)))
+        .thenAnswer(
+            invocation -> {
+              UserAccount owner = invocation.getArgument(0);
+              ReflectionTestUtils.setField(owner, "id", 92L);
+              return owner;
+            });
+    when(tenantActivationTokenRepository.saveAndFlush(any(TenantActivationToken.class)))
+        .thenAnswer(
+            invocation -> {
+              TenantActivationToken token = invocation.getArgument(0);
+              if (token.getId() == null) {
+                ReflectionTestUtils.setField(token, "id", 701L);
+              }
+              return token;
+            });
+    when(auditService.logAuthSuccessRequired(
+            any(), eq("super-admin@bbp.com"), eq("ACME-M4"), any()))
+        .thenThrow(new IllegalStateException("audit unavailable"));
+
+    assertThatThrownBy(
+            () ->
+                service.createAddClient(
+                    addClientRequest(SuperAdminAddClientCreateRequest.CreateMode.SEND_ACTIVATION)))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("audit unavailable");
+
+    verify(emailService, never())
+        .sendTenantActivationEmailRequired(any(), any(), any(), any(), any(), any());
+  }
+
+  @Test
+  void sendActivation_auditFailureDoesNotSendEmail() {
+    Company company = company(42L, "ACME-M4");
+    company.setActivationStatus("NOT_SENT");
+    company.setOnboardingAdminUserId(92L);
+    UserAccount owner = adminUser(92L, "owner@example.com", "ROLE_ADMIN", company);
+    when(companyRepository.lockById(42L)).thenReturn(Optional.of(company));
+    when(userAccountRepository.lockByIdAndCompanyId(92L, 42L)).thenReturn(Optional.of(owner));
+    when(tenantActivationTokenRepository.saveAndFlush(any(TenantActivationToken.class)))
+        .thenAnswer(
+            invocation -> {
+              TenantActivationToken token = invocation.getArgument(0);
+              if (token.getId() == null) {
+                ReflectionTestUtils.setField(token, "id", 702L);
+              }
+              return token;
+            });
+    when(companyRepository.saveAndFlush(company)).thenReturn(company);
+    when(auditService.logAuthSuccessRequired(
+            any(), eq("super-admin@bbp.com"), eq("ACME-M4"), any()))
+        .thenThrow(new IllegalStateException("audit unavailable"));
+
+    assertThatThrownBy(() -> service.sendActivation(42L))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("audit unavailable");
+
+    verify(emailService, never())
+        .sendTenantActivationEmailRequired(any(), any(), any(), any(), any(), any());
+  }
+
+  @Test
+  void resendActivation_auditFailureDoesNotSendEmail() {
+    Company company = company(43L, "ACME-M5");
+    company.setActivationStatus("SENT");
+    company.setOnboardingAdminUserId(93L);
+    UserAccount owner = adminUser(93L, "owner-resend@example.com", "ROLE_ADMIN", company);
+    when(companyRepository.lockById(43L)).thenReturn(Optional.of(company));
+    when(userAccountRepository.lockByIdAndCompanyId(93L, 43L)).thenReturn(Optional.of(owner));
+    when(tenantActivationTokenRepository.saveAndFlush(any(TenantActivationToken.class)))
+        .thenAnswer(
+            invocation -> {
+              TenantActivationToken token = invocation.getArgument(0);
+              if (token.getId() == null) {
+                ReflectionTestUtils.setField(token, "id", 703L);
+              }
+              return token;
+            });
+    when(companyRepository.saveAndFlush(company)).thenReturn(company);
+    when(auditService.logAuthSuccessRequired(
+            any(), eq("super-admin@bbp.com"), eq("ACME-M5"), any()))
+        .thenThrow(new IllegalStateException("audit unavailable"));
+
+    assertThatThrownBy(() -> service.resendActivation(43L))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("audit unavailable");
+
+    verify(emailService, never())
+        .sendTenantActivationEmailRequired(any(), any(), any(), any(), any(), any());
+  }
+
+  @Test
   void createAddClient_duplicateCodeIsTrimmedCaseInsensitiveConflictWithoutSideEffects() {
     Company existing = company(77L, "ACME-M4");
     when(companyRepository.findByCodeIgnoreCase("ACME-M4")).thenReturn(Optional.of(existing));
