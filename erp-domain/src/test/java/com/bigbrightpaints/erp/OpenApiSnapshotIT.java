@@ -348,8 +348,15 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
         "/api/v1/superadmin/tenants",
         "post",
         "#/components/schemas/SuperAdminAddClientCreateRequest",
-        "200",
+        "201",
         "#/components/schemas/ApiResponseSuperAdminAddClientCreateResponse");
+    JsonNode addClientCreateResponses =
+        root.path("paths").path("/api/v1/superadmin/tenants").path("post").path("responses");
+    assertThat(addClientCreateResponses.has("200"))
+        .withFailMessage(
+            "POST /api/v1/superadmin/tenants must not document a contradictory 200 success"
+                + " response when runtime creates clients with 201 Created")
+        .isFalse();
     assertOperationContract(
         root,
         "/api/v1/superadmin/tenants/{id}",

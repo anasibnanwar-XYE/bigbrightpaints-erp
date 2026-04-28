@@ -4,6 +4,7 @@ import java.net.URI;
 import java.util.Map;
 import java.util.Set;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -65,6 +66,7 @@ public class SuperAdminController {
   }
 
   @PostMapping("/tenants")
+  @ResponseStatus(HttpStatus.CREATED)
   public ResponseEntity<ApiResponse<SuperAdminAddClientCreateResponse>> createTenant(
       @Valid @RequestBody SuperAdminAddClientCreateRequest request) {
     SuperAdminAddClientCreateResponse response = controlPlaneService.createAddClient(request);
