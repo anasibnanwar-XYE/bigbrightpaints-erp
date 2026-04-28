@@ -122,12 +122,17 @@ class CR_ProductionMonitoringContractTest {
         new RequiredConfigHealthIndicator(
             "12345678901234567890123456789012",
             "abcdefghijklmnopqrstuvwxyz123456",
+            "audit-signing-key",
+            "jdbc:postgresql://db:5432/erp_domain",
+            "erp",
+            "db-password",
             true,
             "license-key",
             true,
             "smtp-relay.example.com",
             "mailer-user",
             "secret-password",
+            true,
             true,
             false);
 
@@ -137,6 +142,8 @@ class CR_ProductionMonitoringContractTest {
     assertThat(health.getDetails())
         .containsEntry("jwtSecretConfigured", true)
         .containsEntry("encryptionKeyConfigured", true)
+        .containsEntry("auditSigningConfigured", true)
+        .containsEntry("datasourceConfigured", true)
         .containsEntry("mailConfigured", true)
         .containsEntry("licenseConfigured", true);
   }
@@ -145,7 +152,8 @@ class CR_ProductionMonitoringContractTest {
   @DisplayName("Required configuration health indicator fails closed for missing secrets")
   void requiredConfigurationHealthIndicatorFailsClosed() {
     RequiredConfigHealthIndicator indicator =
-        new RequiredConfigHealthIndicator("short", "tiny", true, "", true, "", "", "", true, false);
+        new RequiredConfigHealthIndicator(
+            "short", "tiny", "", "", "", "", true, "", true, "", "", "", true, true, false);
 
     Health health = indicator.health();
 
@@ -154,6 +162,8 @@ class CR_ProductionMonitoringContractTest {
         .contains(
             "jwt.secret",
             "erp.security.encryption.key",
+            "erp.security.audit.private-key",
+            "spring.datasource.url/username/password",
             "erp.licensing.license-key",
             "spring.mail.host/username/password");
   }
