@@ -149,10 +149,6 @@ public class CompanyContextFilter extends OncePerRequestFilter {
         filterChain.doFilter(request, response);
         return;
       }
-      if (isPublicPasswordResetRequest(runtimePath, request.getMethod())) {
-        filterChain.doFilter(request, response);
-        return;
-      }
       CompanyBoundControlBinding controlBinding =
           resolveCompanyBoundControlBinding(runtimePath, request.getMethod());
       boolean lifecycleControlRequest = controlBinding != null;
@@ -176,6 +172,10 @@ public class CompanyContextFilter extends OncePerRequestFilter {
             response,
             "COMPANY_CONTEXT_LEGACY_HEADER_UNSUPPORTED",
             "Use X-Company-Code for company context binding");
+        return;
+      }
+      if (isPublicPasswordResetRequest(runtimePath, request.getMethod())) {
+        filterChain.doFilter(request, response);
         return;
       }
       String headerCompanyCode = request.getHeader("X-Company-Code");

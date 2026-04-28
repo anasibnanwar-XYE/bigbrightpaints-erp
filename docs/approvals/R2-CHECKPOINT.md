@@ -2,7 +2,91 @@
 
 Last reviewed: 2026-04-28
 
-## Current Packet Evidence — schema-core-active-storage-hard-cut-remediation-round2
+## Current Packet Evidence — auth-scope-jwt-lockout-and-http-hardening
+
+## Scope
+- Feature: `auth-scope-jwt-lockout-and-http-hardening`
+- Branch: codex/identity-account-hardcut-20260427 (base: origin/main)
+- PR: pending
+- Review candidate:
+  - serialize scoped login failure accounting with a pessimistic failed-account update and commit failed-attempt/lockout state on validation failures
+  - reject legacy `X-Company-Id` before public auth/password-reset bypass handling
+  - require bearer JWTs to include subject, `jti`, `companyCode`, expiry, and issued-at evidence before authentication is installed
+  - add focused regression coverage for lockout/session revocation, malformed public auth payloads, bearer-only cookie posture, legacy-header rejection, CORS origin validation, and sensitive actuator denial
+- Why this is R2: this packet changes high-risk authn/token/company-context code paths where incorrect behavior could weaken lockout, tenant scope, bearer-token validation, or management-endpoint exposure controls.
+
+## Risk Trigger
+- Triggered by:
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/service/AuthService.java`
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/core/security/JwtAuthenticationFilter.java`
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/core/security/CompanyContextFilter.java`
+  - focused auth/security/actuator tests under `erp-domain/src/test/java`
+- Contract surfaces affected:
+  - `VAL-AUTH-002`, `VAL-AUTH-003`, `VAL-AUTH-004`, `VAL-AUTH-005`, `VAL-AUTH-010`, `VAL-AUTH-011`, `VAL-AUTH-012`, `VAL-AUTH-013`
+  - `VAL-POLICY-001`, `VAL-POLICY-002`, `VAL-POLICY-003`, `VAL-ADV-001`, `VAL-ADV-002`, `VAL-ADV-004`, `VAL-ADV-010`, `VAL-ADV-012`, `VAL-HTTP-001`, `VAL-OPS-001`
+- Failure mode if wrong:
+  - failed-login counters could undercount or roll back, allowing lockout bypass
+  - legacy company-id headers could select or bypass tenant context on public/self-service paths
+  - bearer tokens missing mandatory JWT claims could authenticate without blacklist/scope checks
+  - malformed auth requests or sensitive actuator probes could leak stack traces, secrets, cookies, or management data
+
+## Approval Authority
+- Mode: orchestrator
+- Approver: Droid mission orchestrator
+- Canary owner: Droid mission orchestrator
+- Approval status: branch-local integration candidate pending PR review
+- Basis: this is an accepted auth-core hardening packet that tightens existing deny paths and validation requirements without widening privileges, changing public route names/envelopes, changing tenant boundaries, or introducing destructive migrations.
+
+## Escalation Decision
+- Human escalation required: no
+- Reason: the packet strengthens fail-closed authentication, tenant-header, JWT, and actuator controls using existing mission contract assertions; it does not add new authority, expose secrets, alter persisted schema, or require production migration decisions.
+
+## Rollback Owner
+- Owner: Droid mission orchestrator
+- Rollback method:
+  - before merge: revert this packet and rerun test-compile, focused auth/JWT/company-context/actuator tests, Spotless, OpenAPI guard, and High-Risk Change Control
+  - after merge: revert through a new remediation packet and rerun the same auth-core hardening proof lane
+- Rollback trigger:
+  - failed login attempts no longer lock after 5 failures for 15 minutes or old sessions remain usable after lockout
+  - public/self-service requests with `X-Company-Id` are not rejected fail-closed
+  - bearer JWTs without required claims authenticate or leak protected data
+  - malformed auth payloads or actuator probes produce broad 5xx, cookies, secrets, or sensitive management responses
+  - focused compile/tests, Spotless, OpenAPI guard, or High-Risk Change Control fail
+
+## Expiry
+- Valid until: 2026-05-05
+- Re-evaluate if: scope expands into public API shape changes, refresh/session-family semantics, broader RBAC/tenant-boundary policy, CORS origin contract changes, management endpoint exposure, or schema/migration behavior.
+
+## Verification Evidence
+- Scope-to-evidence mapping:
+  - Lockout proof: `AuthHardeningIT` verifies 5 failed passwords lock the account, preserve lock window, and revoke prior bearer/refresh credentials; `AuthService` now uses pessimistic account locking when recording failed attempts.
+  - Legacy-header proof: `AuthControllerIT` and `CompanyContextFilterPasswordResetBypassTest` verify `X-Company-Id` is rejected on authenticated auth-me and public password-reset paths while canonical `X-Company-Code` reset bypass remains intact.
+  - JWT proof: `AuthHardeningIT.bearerTokenMissingJwtId_isRejectedFailClosed` verifies a locally signed token missing `jti` cannot authenticate to the canonical auth-me endpoint.
+  - HTTP/abuse/ops proof: `AuthHardeningIT` verifies auth responses do not set cookies and malformed public auth JSON returns controlled `400`; `SystemSettingsServiceCorsTest` verifies no wildcard credentialed origins and prod HTTP-origin policy; `CR_ActuatorProdHardeningIT` verifies sensitive actuator endpoints are not exposed and do not contain configured test secrets.
+- Commands run:
+  - `mission init.sh`
+  - `cd /Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/identity-account-hardcut-20260427 && bash scripts/guard_openapi_contract_drift.sh && cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='AuthPasswordResetPublicContractIT,AdminUserSecurityIT,AuthControllerIT,AuthTenantAuthorityIT,TenantRuntimeEnforcementAuthIT,AuthDisabledUserTokenIT,MfaControllerIT' test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='AuthHardeningIT,CompanyContextFilterPasswordResetBypassTest,CR_ActuatorProdHardeningIT' test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='AuthControllerIT,AuthTenantAuthorityIT,TenantRuntimeEnforcementAuthIT,AuthDisabledUserTokenIT,AuthPlatformScopeCodeIT,CompanyContextFilterControlPlaneBindingTest,AuthHardeningIT,CompanyContextFilterPasswordResetBypassTest,CR_ActuatorProdHardeningIT,SystemSettingsServiceCorsTest' test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='AuthHardeningIT,MfaControllerIT' test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='AuthHardeningIT,CompanyContextFilterPasswordResetBypassTest,CR_ActuatorProdHardeningIT,SystemSettingsServiceCorsTest' test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -q -DskipTests test-compile`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn spotless:check`
+  - `bash scripts/guard_openapi_contract_drift.sh`
+  - `bash ci/lint-knowledgebase.sh`
+  - `bash ci/check-high-risk-changes.sh`
+  - `bash ci/check-architecture.sh`
+- Result summary:
+  - baseline IAM mission lane passed with 89 tests plus OpenAPI guard before code changes
+  - focused auth/MFA regression tests passed with 12 tests after the transaction-boundary fix
+  - final mission IAM lane passed with 89 tests plus OpenAPI guard after implementation
+  - focused auth/company-context/CORS/actuator hardening tests passed with 28 tests after implementation
+  - test-compile, architecture check, knowledgebase lint, High-Risk Change Control, Spotless, and OpenAPI guard passed
+  - no raw JWTs, refresh tokens, reset tokens, MFA secrets, recovery codes, password hashes, or production secrets were recorded in this checkpoint
+
+---
+
+## Previous Packet Evidence — schema-core-active-storage-hard-cut-remediation-round2
 
 ## Scope
 - Feature: `schema-core-active-storage-hard-cut-remediation-round2`

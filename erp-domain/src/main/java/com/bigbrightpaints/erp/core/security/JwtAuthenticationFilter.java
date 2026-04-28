@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.time.Instant;
 import java.util.Collection;
 import java.util.Date;
+import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -71,7 +72,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
       } catch (UnsupportedJwtException e) {
         logger.warn("Unsupported JWT token");
       } catch (Exception e) {
-        logger.error("JWT authentication error", e);
+        logger.warn("JWT authentication failed: {}", e.getClass().getSimpleName());
       }
     }
     filterChain.doFilter(request, response);
@@ -87,6 +88,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
   private void installAuthentication(ValidatedToken validatedToken, HttpServletRequest request) {
     Claims claims = validatedToken.claims();
+    if (!hasRequiredClaims(claims)) {
+      logger.warn("Rejecting bearer token with missing required claims");
+      return;
+    }
     String tokenId = claims.getId();
     if (tokenId != null && blacklistService.isTokenBlacklisted(tokenId)) {
       logger.warn("Attempted use of blacklisted token");
@@ -116,6 +121,34 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             principal, validatedToken.rawToken(), effectiveAuthorities);
     authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
     SecurityContextHolder.getContext().setAuthentication(authentication);
+  }
+
+  private boolean hasRequiredClaims(Claims claims) {
+    if (claims == null) {
+      return false;
+    }
+    if (!StringUtils.hasText(claims.getSubject()) || !isUuid(claims.getSubject())) {
+      return false;
+    }
+    if (!StringUtils.hasText(claims.getId())) {
+      return false;
+    }
+    if (!StringUtils.hasText(claims.get("companyCode", String.class))) {
+      return false;
+    }
+    if (claims.getExpiration() == null) {
+      return false;
+    }
+    return resolveTokenIssuedAt(claims) != null;
+  }
+
+  private boolean isUuid(String value) {
+    try {
+      UUID.fromString(value);
+      return true;
+    } catch (IllegalArgumentException ex) {
+      return false;
+    }
   }
 
   private Collection<? extends GrantedAuthority> resolveAuthorities(UserPrincipal principal) {

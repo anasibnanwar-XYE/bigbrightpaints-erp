@@ -64,6 +64,18 @@ class CompanyContextFilterPasswordResetBypassTest {
   }
 
   @Test
+  void forgotPasswordEndpoint_isBlockedByLegacyCompanyIdHeader()
+      throws ServletException, IOException {
+    assertRequestRejectedByLegacyCompanyIdHeader("POST", "/api/v1/auth/password/forgot");
+  }
+
+  @Test
+  void resetPasswordEndpoint_isBlockedByLegacyCompanyIdHeader()
+      throws ServletException, IOException {
+    assertRequestRejectedByLegacyCompanyIdHeader("POST", "/api/v1/auth/password/reset");
+  }
+
+  @Test
   void forgotPasswordEndpoint_getMethod_isBlockedByCompanyHeader()
       throws ServletException, IOException {
     assertRequestRejectedByCompanyHeader("GET", "/api/v1/auth/password/forgot");
@@ -100,6 +112,26 @@ class CompanyContextFilterPasswordResetBypassTest {
     request.setServletPath(path);
     request.setRequestURI(path);
     request.addHeader("X-Company-Code", "FRONTEND-TENANT");
+    MockHttpServletResponse response = new MockHttpServletResponse();
+
+    filter.doFilter(request, response, filterChain);
+
+    assertThat(response.getStatus()).isEqualTo(403);
+    verify(filterChain, never()).doFilter(request, response);
+    verifyNoInteractions(companyService);
+    verify(tenantRuntimeRequestAdmissionService)
+        .completeRequest(
+            any(TenantRuntimeEnforcementService.TenantRequestAdmission.class), eq(403));
+    verify(tenantRuntimeRequestAdmissionService, never())
+        .beginRequest(anyString(), anyString(), anyString(), anyString(), anyBoolean());
+  }
+
+  private void assertRequestRejectedByLegacyCompanyIdHeader(String method, String path)
+      throws ServletException, IOException {
+    MockHttpServletRequest request = new MockHttpServletRequest(method, path);
+    request.setServletPath(path);
+    request.setRequestURI(path);
+    request.addHeader("X-Company-Id", "123");
     MockHttpServletResponse response = new MockHttpServletResponse();
 
     filter.doFilter(request, response, filterChain);

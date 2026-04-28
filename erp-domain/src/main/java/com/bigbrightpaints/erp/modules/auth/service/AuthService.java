@@ -12,6 +12,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.security.authentication.LockedException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import com.bigbrightpaints.erp.core.audit.AuditEvent;
 import com.bigbrightpaints.erp.core.audit.AuditService;
@@ -56,6 +58,7 @@ public class AuthService {
   private final PasswordEncoder passwordEncoder;
   private final AuthScopeService authScopeService;
   private final IamCanonicalStorageService iamCanonicalStorageService;
+  private final TransactionTemplate transactionTemplate;
 
   public AuthService(
       JwtTokenService tokenService,
@@ -69,7 +72,8 @@ public class AuthService {
       TenantRuntimeRequestAdmissionService tenantRuntimeRequestAdmissionService,
       PasswordEncoder passwordEncoder,
       AuthScopeService authScopeService,
-      IamCanonicalStorageService iamCanonicalStorageService) {
+      IamCanonicalStorageService iamCanonicalStorageService,
+      PlatformTransactionManager transactionManager) {
     this.tokenService = tokenService;
     this.refreshTokenService = refreshTokenService;
     this.userAccountRepository = userAccountRepository;
@@ -82,6 +86,7 @@ public class AuthService {
     this.passwordEncoder = passwordEncoder;
     this.authScopeService = authScopeService;
     this.iamCanonicalStorageService = iamCanonicalStorageService;
+    this.transactionTemplate = new TransactionTemplate(transactionManager);
   }
 
   public AuthResponse login(LoginRequest request) {
@@ -341,24 +346,36 @@ public class AuthService {
   }
 
   private void resetLock(UserAccount user) {
-    user.setFailedLoginAttempts(0);
-    user.setLockedUntil(null);
-    userAccountRepository.save(user);
-    iamCanonicalStorageService.syncUser(user);
+    transactionTemplate.executeWithoutResult(
+        status -> {
+          UserAccount lockedUser = userAccountRepository.lockById(user.getId()).orElse(user);
+          lockedUser.setFailedLoginAttempts(0);
+          lockedUser.setLockedUntil(null);
+          userAccountRepository.save(lockedUser);
+          iamCanonicalStorageService.syncUser(lockedUser);
+          user.setFailedLoginAttempts(0);
+          user.setLockedUntil(null);
+        });
   }
 
   private void registerFailure(UserAccount user) {
-    int attempts = user.getFailedLoginAttempts() + 1;
-    user.setFailedLoginAttempts(attempts);
-    boolean locked = attempts >= MAX_FAILED_ATTEMPTS;
-    if (attempts >= MAX_FAILED_ATTEMPTS) {
-      user.setLockedUntil(Instant.now().plus(LOCKOUT_DURATION));
-    }
-    userAccountRepository.save(user);
-    iamCanonicalStorageService.syncUser(user);
-    if (locked) {
-      revokeActiveSessions(user.getPublicId());
-    }
+    transactionTemplate.executeWithoutResult(
+        status -> {
+          UserAccount lockedUser = userAccountRepository.lockById(user.getId()).orElse(user);
+          int attempts = lockedUser.getFailedLoginAttempts() + 1;
+          lockedUser.setFailedLoginAttempts(attempts);
+          boolean locked = attempts >= MAX_FAILED_ATTEMPTS;
+          if (locked) {
+            lockedUser.setLockedUntil(Instant.now().plus(LOCKOUT_DURATION));
+          }
+          userAccountRepository.save(lockedUser);
+          iamCanonicalStorageService.syncUser(lockedUser);
+          user.setFailedLoginAttempts(lockedUser.getFailedLoginAttempts());
+          user.setLockedUntil(lockedUser.getLockedUntil());
+          if (locked) {
+            revokeActiveSessions(lockedUser.getPublicId());
+          }
+        });
   }
 
   private UserAccount requireScopedAccount(String email, String scopeCode) {
