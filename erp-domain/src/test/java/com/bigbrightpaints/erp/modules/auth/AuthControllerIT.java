@@ -836,6 +836,40 @@ public class AuthControllerIT extends AbstractIntegrationTest {
   }
 
   @Test
+  void self_security_summary_reports_locked_only_for_active_lock_window() {
+    String suffix = Long.toString(System.nanoTime());
+    String email = "lock-window-" + suffix + "@bbp.com";
+    String password = "LockWindow123!";
+    dataSeeder.ensureUser(email, password, "Lock Window", COMPANY_CODE, List.of("ROLE_SALES"));
+    String accessToken = login(email, password).get("accessToken").toString();
+
+    UserAccount user = scopedUser(email);
+    user.setLockedUntil(Instant.now().minusSeconds(60));
+    userAccountRepository.save(user);
+
+    ResponseEntity<Map> expiredLockResponse =
+        rest.exchange(
+            "/api/v1/auth/me/security",
+            HttpMethod.GET,
+            new HttpEntity<>(bearer(accessToken)),
+            Map.class);
+    assertThat(expiredLockResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(responseData(expiredLockResponse)).containsEntry("locked", false);
+
+    user = scopedUser(email);
+    user.setLockedUntil(Instant.now().plusSeconds(300));
+    userAccountRepository.save(user);
+
+    ResponseEntity<Map> activeLockResponse =
+        rest.exchange(
+            "/api/v1/auth/me/security",
+            HttpMethod.GET,
+            new HttpEntity<>(bearer(accessToken)),
+            Map.class);
+    assertThat(activeLockResponse.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+  }
+
+  @Test
   void self_security_history_filters_before_bounded_stable_pagination() {
     String suffix = Long.toString(System.nanoTime());
     String email = "history-page-" + suffix + "@bbp.com";

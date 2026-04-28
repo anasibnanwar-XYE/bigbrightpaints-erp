@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.auth.controller;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -225,7 +226,7 @@ public class AuthController {
             new SelfSecuritySummaryResponse(
                 user.isMfaEnabled(),
                 user.isMustChangePassword(),
-                user.getLockedUntil() != null,
+                user.getLockedUntil() != null && user.getLockedUntil().isAfter(Instant.now()),
                 authSessionService.countActiveSessions(user))));
   }
 
