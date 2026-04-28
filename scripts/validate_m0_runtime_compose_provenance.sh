@@ -84,6 +84,33 @@ if missing:
 PY
 }
 
+require_base_compose_render_without_datadog_key() {
+  local compose_stdout compose_stderr
+  compose_stdout="$(mktemp)"
+  compose_stderr="$(mktemp)"
+
+  if ! (
+    cd "$ROOT" &&
+      env -u DD_API_KEY COMPOSE_DISABLE_ENV_FILE=1 docker compose config >"$compose_stdout" 2>"$compose_stderr"
+  ); then
+    fail "base docker compose config must render with DD_API_KEY unset and Datadog profile disabled"
+  fi
+
+  if ! (
+    cd "$ROOT" &&
+      COMPOSE_DISABLE_ENV_FILE=1 DD_API_KEY="" docker compose config >"$compose_stdout" 2>"$compose_stderr"
+  ); then
+    fail "base docker compose config must render with DD_API_KEY empty and Datadog profile disabled"
+  fi
+
+  if ! (
+    cd "$ROOT" &&
+      COMPOSE_DISABLE_ENV_FILE=1 DD_API_KEY="synthetic-validation-key" docker compose --profile datadog config >"$compose_stdout" 2>"$compose_stderr"
+  ); then
+    fail "Datadog-profile docker compose config must render when DD_API_KEY is supplied server-side"
+  fi
+}
+
 status_code() {
   local url="$1"
   local output="$2"
@@ -187,7 +214,9 @@ run_static_checks() {
   require_not_contains "$compose" '${MANAGEMENT_PORT:-19090}'
   require_contains "$compose" 'DD_JAVA_OPTS: ${DD_API_KEY:+-javaagent:/app/dd-java-agent.jar}'
   require_contains "$compose" 'DD_AGENT_HOST: ${DD_API_KEY:+datadog-agent}'
+  require_contains "$compose" 'DD_API_KEY: ${DD_API_KEY:-}'
   require_contains "$compose" 'profiles: ["datadog"]'
+  require_base_compose_render_without_datadog_key
 
   require_contains "$prod_yml" 'enabled: false'
   require_contains "$prod_yml" 'include: health,info'
