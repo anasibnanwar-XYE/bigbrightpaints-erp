@@ -68,7 +68,7 @@ public class SuperAdminTenantControlPlaneService {
 
   private static final SecureRandom ACTIVATION_RANDOM = new SecureRandom();
   private static final String ACTIVATION_TOKEN_SCOPE = "tenant-activation:v1";
-  private static final ConcurrentMap<String, ReentrantLock> ADD_CLIENT_CREATE_LOCKS =
+  private static final ConcurrentMap<String, AddClientCreateLock> ADD_CLIENT_CREATE_LOCKS =
       new ConcurrentHashMap<>();
 
   private static final Set<String> ADD_CLIENT_PLAN_IDS =
@@ -354,7 +354,8 @@ public class SuperAdminTenantControlPlaneService {
     String ownerEmail = normalizeRequiredEmail(request.owner().email(), "owner.email");
     validateOwnerEmailFormat(ownerEmail);
     validateCreatePayloadSemantics(request);
-    List<ReentrantLock> createLocks = acquireAddClientCreateLocks(companyCode, ownerEmail);
+    List<HeldAddClientCreateLock> createLocks =
+        acquireAddClientCreateLocks(companyCode, ownerEmail);
     boolean releaseLocksInFinally = true;
     try {
       if (TransactionSynchronizationManager.isSynchronizationActive()) {
@@ -1050,22 +1051,40 @@ public class SuperAdminTenantControlPlaneService {
     }
   }
 
-  private List<ReentrantLock> acquireAddClientCreateLocks(String companyCode, String ownerEmail) {
+  private List<HeldAddClientCreateLock> acquireAddClientCreateLocks(
+      String companyCode, String ownerEmail) {
     List<String> keys =
         List.of("company:" + companyCode, "owner-email:" + ownerEmail).stream().sorted().toList();
-    List<ReentrantLock> locks = new ArrayList<>();
+    List<HeldAddClientCreateLock> locks = new ArrayList<>();
     for (String key : keys) {
-      ReentrantLock lock =
-          ADD_CLIENT_CREATE_LOCKS.computeIfAbsent(key, ignored -> new ReentrantLock());
+      AddClientCreateLock lock =
+          ADD_CLIENT_CREATE_LOCKS.compute(
+              key,
+              (ignored, existing) -> {
+                AddClientCreateLock retained =
+                    existing == null ? new AddClientCreateLock() : existing;
+                retained.retain();
+                return retained;
+              });
       lock.lock();
-      locks.add(lock);
+      locks.add(new HeldAddClientCreateLock(key, lock));
     }
     return locks;
   }
 
-  private void releaseAddClientCreateLocks(List<ReentrantLock> locks) {
+  private void releaseAddClientCreateLocks(List<HeldAddClientCreateLock> locks) {
     for (int index = locks.size() - 1; index >= 0; index--) {
-      locks.get(index).unlock();
+      HeldAddClientCreateLock held = locks.get(index);
+      held.lock().unlock();
+      ADD_CLIENT_CREATE_LOCKS.computeIfPresent(
+          held.key(),
+          (ignored, existing) -> {
+            if (existing != held.lock()) {
+              return existing;
+            }
+            existing.releaseReservation();
+            return existing.canRemove() ? null : existing;
+          });
     }
   }
 
@@ -1133,7 +1152,16 @@ public class SuperAdminTenantControlPlaneService {
       throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
           "company.code is required");
     }
-    return code.trim().toUpperCase(Locale.ROOT);
+    String normalized = code.trim().toUpperCase(Locale.ROOT);
+    if (normalized.length() < 2 || normalized.length() > 32) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          "company.code must be between 2 and 32 characters");
+    }
+    if (!normalized.matches("^[A-Z0-9][A-Z0-9_-]*$")) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          "company.code must be uppercase code-safe");
+    }
+    return normalized;
   }
 
   private UserAccount createPendingOwner(Company company, String ownerEmail, String displayName) {
@@ -1818,6 +1846,36 @@ public class SuperAdminTenantControlPlaneService {
       String status) {}
 
   private record SortSpec(Comparator<TenantListCandidate> comparator) {}
+
+  private static final class AddClientCreateLock {
+    private final ReentrantLock lock = new ReentrantLock();
+    private int reservations;
+
+    private void retain() {
+      reservations++;
+    }
+
+    private void lock() {
+      lock.lock();
+    }
+
+    private void unlock() {
+      lock.unlock();
+    }
+
+    private void releaseReservation() {
+      reservations--;
+      if (reservations < 0) {
+        throw new IllegalStateException("Add Client create lock reservations underflow");
+      }
+    }
+
+    private boolean canRemove() {
+      return reservations == 0 && !lock.isLocked();
+    }
+  }
+
+  private record HeldAddClientCreateLock(String key, AddClientCreateLock lock) {}
 
   private record ActivationIssue(Long tokenId, Instant sentAt, Instant expiresAt) {}
 }

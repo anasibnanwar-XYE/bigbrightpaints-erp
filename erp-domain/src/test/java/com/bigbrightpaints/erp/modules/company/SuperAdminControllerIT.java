@@ -227,6 +227,91 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
   }
 
   @Test
+  void addClientDuplicateCompanyCodeIsNormalizedAtApiBoundaryWithoutSideEffects() {
+    String superAdminToken = loginToken(SUPER_ADMIN_EMAIL, ROOT_COMPANY_CODE);
+    HttpHeaders superAdminHeaders = headers(superAdminToken, ROOT_COMPANY_CODE);
+    String code = "M4NORM" + System.nanoTime();
+    String originalOwnerEmail = "owner-" + code.toLowerCase(Locale.ROOT) + "@example.com";
+    String duplicateOwnerEmail = "duplicate-" + code.toLowerCase(Locale.ROOT) + "@example.com";
+
+    ResponseEntity<Map> createdResponse =
+        rest.exchange(
+            "/api/v1/superadmin/tenants",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                addClientPayload(code, originalOwnerEmail, "DRAFT"), superAdminHeaders),
+            Map.class);
+    assertThat(createdResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+
+    ResponseEntity<Map> duplicateResponse =
+        rest.exchange(
+            "/api/v1/superadmin/tenants",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                addClientPayload(
+                    " " + code.toLowerCase(Locale.ROOT) + " ", duplicateOwnerEmail, "DRAFT"),
+                superAdminHeaders),
+            Map.class);
+
+    assertThat(duplicateResponse.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+    assertThat(countRows("select count(*) from companies where lower(code) = lower(?)", code))
+        .isOne();
+    assertThat(
+            countRows(
+                "select count(*) from app_users where lower(email) = lower(?)", originalOwnerEmail))
+        .isOne();
+    assertThat(
+            countRows(
+                "select count(*) from app_users where lower(email) = lower(?)",
+                duplicateOwnerEmail))
+        .isZero();
+  }
+
+  @Test
+  void addClientDuplicateOwnerEmailIsNormalizedAtApiBoundaryWithoutTenantOrTokenSideEffects() {
+    String superAdminToken = loginToken(SUPER_ADMIN_EMAIL, ROOT_COMPANY_CODE);
+    HttpHeaders superAdminHeaders = headers(superAdminToken, ROOT_COMPANY_CODE);
+    String originalCode = "M4MAIL" + System.nanoTime();
+    String duplicateCode = originalCode + "DUP";
+    String ownerEmail = "owner-" + originalCode.toLowerCase(Locale.ROOT) + "@example.com";
+    long activationTokensBefore = countRows("select count(*) from tenant_activation_tokens", null);
+
+    ResponseEntity<Map> createdResponse =
+        rest.exchange(
+            "/api/v1/superadmin/tenants",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                addClientPayload(originalCode, ownerEmail, "DRAFT"), superAdminHeaders),
+            Map.class);
+    assertThat(createdResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+
+    ResponseEntity<Map> duplicateResponse =
+        rest.exchange(
+            "/api/v1/superadmin/tenants",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                addClientPayload(
+                    duplicateCode,
+                    " " + ownerEmail.toUpperCase(Locale.ROOT) + " ",
+                    "SEND_ACTIVATION"),
+                superAdminHeaders),
+            Map.class);
+
+    assertThat(duplicateResponse.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+    assertThat(
+            countRows("select count(*) from companies where lower(code) = lower(?)", originalCode))
+        .isOne();
+    assertThat(
+            countRows("select count(*) from companies where lower(code) = lower(?)", duplicateCode))
+        .isZero();
+    assertThat(
+            countRows("select count(*) from app_users where lower(email) = lower(?)", ownerEmail))
+        .isOne();
+    assertThat(countRows("select count(*) from tenant_activation_tokens", null))
+        .isEqualTo(activationTokensBefore);
+  }
+
+  @Test
   void superAdmin_profileReadUpdatePasswordAndSessionControlsAreSafe() {
     String superAdminToken = loginToken(SUPER_ADMIN_EMAIL, ROOT_COMPANY_CODE);
     HttpHeaders superAdminHeaders = headers(superAdminToken, ROOT_COMPANY_CODE);
@@ -795,6 +880,9 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
   }
 
   private Long countRows(String sql, String value) {
+    if (value == null) {
+      return jdbcTemplate.queryForObject(sql, Long.class);
+    }
     return jdbcTemplate.queryForObject(sql, Long.class, value);
   }
 }

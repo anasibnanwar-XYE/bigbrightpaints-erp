@@ -5,11 +5,9 @@ import java.util.Set;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
-import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 public record SuperAdminAddClientCreateRequest(
@@ -28,10 +26,7 @@ public record SuperAdminAddClientCreateRequest(
 
   public record Company(
       @NotBlank @Size(max = 160) String name,
-      @NotBlank
-          @Size(min = 2, max = 32)
-          @Pattern(regexp = "^[A-Z0-9][A-Z0-9_-]*$", message = "code must be uppercase code-safe")
-          String code,
+      @NotBlank @Size(min = 2, max = 32) String code,
       @NotBlank @Size(max = 64) String timezone,
       @Size(min = 2, max = 2) String stateCode,
       @NotBlank @Size(min = 3, max = 3) String baseCurrency,
@@ -39,7 +34,7 @@ public record SuperAdminAddClientCreateRequest(
       @Size(max = 64) String coaTemplateCode) {}
 
   public record Owner(
-      @Email @NotBlank @Size(max = 255) String email,
+      @NotBlank @Size(max = 255) String email,
       @NotBlank @Size(max = 160) String displayName,
       @Size(max = 32) String phone) {}
 

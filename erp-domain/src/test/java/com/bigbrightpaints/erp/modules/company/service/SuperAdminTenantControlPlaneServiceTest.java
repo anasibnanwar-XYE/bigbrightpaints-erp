@@ -356,6 +356,30 @@ class SuperAdminTenantControlPlaneServiceTest {
   }
 
   @Test
+  void createAddClient_releasesKeyedCreateLocksAfterDuplicateConflict() {
+    addClientCreateLocks().clear();
+    Company existing = company(77L, "ACME-M4");
+    when(companyRepository.findByCodeIgnoreCase("ACME-M4")).thenReturn(Optional.of(existing));
+
+    assertThatThrownBy(
+            () ->
+                service.createAddClient(
+                    addClientRequest(
+                        " acme-m4 ",
+                        "fresh-owner@example.com",
+                        "TRIAL",
+                        Set.of("ACCOUNTING"),
+                        SuperAdminAddClientCreateRequest.CreateMode.DRAFT)))
+        .isInstanceOf(ApplicationException.class)
+        .satisfies(
+            ex ->
+                assertThat(((ApplicationException) ex).getErrorCode())
+                    .isEqualTo(ErrorCode.BUSINESS_DUPLICATE_ENTRY));
+
+    assertThat(addClientCreateLocks()).isEmpty();
+  }
+
+  @Test
   void createAddClient_invalidCommercialOrModuleInputsFailBeforeAnyMutation() {
     assertThatThrownBy(
             () ->
@@ -1171,6 +1195,13 @@ class SuperAdminTenantControlPlaneServiceTest {
         new SuperAdminAddClientCreateRequest.Modules(modules),
         new SuperAdminAddClientCreateRequest.Support("safe platform note", Set.of("M4")),
         createMode);
+  }
+
+  @SuppressWarnings("unchecked")
+  private java.util.Map<String, ?> addClientCreateLocks() {
+    return (java.util.Map<String, ?>)
+        ReflectionTestUtils.getField(
+            SuperAdminTenantControlPlaneService.class, "ADD_CLIENT_CREATE_LOCKS");
   }
 
   private CompanyTenantMetricsDto metrics(Company company, String lifecycleState) {
