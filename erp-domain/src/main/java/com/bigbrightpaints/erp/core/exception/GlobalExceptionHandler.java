@@ -34,6 +34,8 @@ import org.springframework.web.servlet.NoHandlerFoundException;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
+import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;
+
 import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.web.RequestTraceContext;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
@@ -160,6 +162,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
       WebRequest request) {
     String traceId = RequestTraceContext.traceId();
     String reason = "Failed to read request";
+    String responseReason = reason;
     String detail = resolveMostSpecificMessage(ex);
     logger.warn("Malformed request [{}]", traceId);
     Map<String, Object> data = new HashMap<>();
@@ -168,13 +171,57 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     data.put("reason", reason);
     data.put("traceId", traceId);
     data.put("path", resolveRequestPath(request));
+    UnrecognizedPropertyException unknownProperty =
+        findCause(ex, UnrecognizedPropertyException.class);
+    if (unknownProperty != null) {
+      String fieldPath = resolveUnknownPropertyPath(unknownProperty);
+      responseReason = "Unsupported field: " + fieldPath;
+      Map<String, String> fieldErrors = new LinkedHashMap<>();
+      fieldErrors.put(fieldPath, "Unsupported field");
+      data.put("message", responseReason);
+      data.put("reason", responseReason);
+      data.put("errors", fieldErrors);
+    }
     HttpServletRequest servletRequest =
         request instanceof ServletWebRequest servletWebRequest
             ? servletWebRequest.getRequest()
             : null;
     auditExceptionRoutingService.routeMalformedRequest(
         auditService, servletRequest, traceId, reason, detail);
-    return ResponseEntity.badRequest().body(ApiResponse.failure(reason, data));
+    return ResponseEntity.badRequest().body(ApiResponse.failure(responseReason, data));
+  }
+
+  private static <T extends Throwable> T findCause(Throwable throwable, Class<T> type) {
+    Throwable current = throwable;
+    while (current != null) {
+      if (type.isInstance(current)) {
+        return type.cast(current);
+      }
+      current = current.getCause();
+    }
+    return null;
+  }
+
+  private static String resolveUnknownPropertyPath(UnrecognizedPropertyException ex) {
+    List<String> path =
+        ex.getPath().stream()
+            .map(
+                reference -> {
+                  if (StringUtils.hasText(reference.getFieldName())) {
+                    return reference.getFieldName();
+                  }
+                  return reference.getIndex() >= 0 ? "[" + reference.getIndex() + "]" : "";
+                })
+            .filter(StringUtils::hasText)
+            .toList();
+    String property = ex.getPropertyName();
+    if (path.isEmpty()) {
+      return property;
+    }
+    String joined = String.join(".", path);
+    return joined.endsWith("." + property) || joined.equals(property)
+        ? joined
+        : joined + "." + property;
   }
 
   @Override

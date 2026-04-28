@@ -2,13 +2,14 @@
 
 ## Tenant onboarding
 
-1. Load `GET /api/v1/superadmin/tenants/coa-templates` before enabling submit.
-2. Collect tenant identity, timezone, quota defaults, first-admin identity, and `coaTemplateCode`.
-3. Do not submit the retired flat onboarding route; use the V1 Add Client activation flow once exposed.
+1. Load `GET /api/v1/superadmin/tenants/new` before enabling submit.
+2. Collect only the V1 sections returned by that endpoint: company, owner,
+   commercial, quotas, modules, support, and create mode.
+3. Do not submit the retired flat onboarding route; use `POST /api/v1/superadmin/tenants`.
 4. Treat the mutation as complete only when:
-   - `seededChartOfAccounts=true`
-   - `defaultAccountingPeriodCreated=true`
-   - `tenantAdminProvisioned=true`
+   - response `status` is `DRAFT` or `PENDING_ACTIVATION`
+   - response `activation.status` matches the selected create mode
+   - response `auditEventId` is present
 5. If `defaultGstRate=0`, do not expect retained GST input/output/payable
    account bindings on the created tenant; non-GST onboarding clears those
    company-level GST links.
@@ -40,7 +41,7 @@
 3. Use the least destructive action first:
    - update support context
    - issue warning
-   - reset tenant admin password
+   - use activation or password recovery for credential recovery
    - force logout
 4. After mutation success, refresh tenant detail and keep the operator on the same tab.
 

@@ -169,6 +169,7 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
             new HttpEntity<>(invalidPayload, superAdminHeaders),
             Map.class);
     assertThat(invalidResponse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(invalidResponse.getBody().toString()).contains("warehouse", "Unsupported field");
   }
 
   @Test
@@ -465,6 +466,27 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
                 ownerHeaders),
             Map.class);
     assertThat(companyDetails.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(companyDetails.getBody().toString()).contains("tenantId", "Unsupported field");
+
+    ResponseEntity<Map> companyDetailsWithLocation =
+        rest.exchange(
+            "/api/v1/setup/company-details",
+            HttpMethod.PUT,
+            new HttpEntity<>(
+                Map.of(
+                    "name",
+                    "M6 Setup Client",
+                    "timezone",
+                    "Asia/Kolkata",
+                    "stateCode",
+                    "MH",
+                    "branch",
+                    "B1"),
+                ownerHeaders),
+            Map.class);
+    assertThat(companyDetailsWithLocation.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(companyDetailsWithLocation.getBody().toString())
+        .contains("branch", "Unsupported field");
 
     companyDetails =
         rest.exchange(
@@ -484,6 +506,7 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
                 Map.of("enabled", true, "defaultGstRate", 18, "warehouse", "W1"), ownerHeaders),
             Map.class);
     assertThat(gstWithWarehouse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(gstWithWarehouse.getBody().toString()).contains("warehouse", "Unsupported field");
 
     ResponseEntity<Map> gst =
         rest.exchange(
@@ -502,6 +525,9 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
                 Map.of("confirmDefaults", true, "branch", "B1", "warehouse", "W1"), ownerHeaders),
             Map.class);
     assertThat(accounting.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(accounting.getBody().toString())
+        .contains("Unsupported field")
+        .containsAnyOf("branch", "warehouse");
 
     accounting =
         rest.exchange(

@@ -8,18 +8,82 @@
 - `companyId` in these responses is a superadmin-only `tenantId` route helper.
   Do not reuse it as tenant-shell auth scope or a substitute for `companyCode`.
 
-## `GET /api/v1/superadmin/tenants/coa-templates`
+## `GET /api/v1/superadmin/tenants/new`
 
-Use this to populate the onboarding wizard before the user can submit.
+Use this to populate the V1 Add Client wizard before the user can submit.
 
-Response `data[]` fields:
+Response `data` sections:
 
 | Field | Type | Notes |
 |---|---|---|
-| `code` | string | canonical template key submitted later as `coaTemplateCode` |
-| `name` | string | display label |
-| `description` | string | help text for selection UI |
-| `accountCount` | integer | show as impact hint only, not as a validation input |
+| `company.fields[]` | array | company identity, timezone, GST state, currency, and `coaTemplateCode` |
+| `owner.fields[]` | array | owner email, display name, and phone marker |
+| `commercial.fields[]` | array | `planId`, `billingStatus`, `trialDays`, and `supportTier` |
+| `quotas.fields[]` | array | active user, API, storage, concurrency, soft-limit, and hard-limit controls |
+| `modules.fields[]` | array | enabled module multi-select |
+| `support.fields[]` | array | platform support notes and tags |
+| `createModes[]` | array | `DRAFT` or `SEND_ACTIVATION`, including activation effects |
+| `seedPolicy` | object | setup artifact readiness categories and activation gating note |
+
+The wizard only collects those sections. Operational location setup is outside the V1 Add Client and owner setup corridor.
+
+## `POST /api/v1/superadmin/tenants`
+
+Creates a client as draft or sends the owner activation email.
+
+Request shape:
+
+```json
+{
+  "company": {
+    "name": "Acme Paints",
+    "code": "ACME",
+    "timezone": "Asia/Kolkata",
+    "stateCode": "KA",
+    "baseCurrency": "INR",
+    "defaultGstRate": 18,
+    "coaTemplateCode": "SME"
+  },
+  "owner": {
+    "email": "owner@example.com",
+    "displayName": "Owner Example",
+    "phone": "+919900000000"
+  },
+  "commercial": {
+    "planId": "TRIAL",
+    "billingStatus": "MANUAL",
+    "trialDays": 14,
+    "supportTier": "STANDARD"
+  },
+  "quotas": {
+    "maxActiveUsers": 10,
+    "maxApiRequests": 10000,
+    "maxStorageBytes": 1073741824,
+    "maxConcurrentRequests": 8,
+    "softLimitEnabled": false,
+    "hardLimitEnabled": true
+  },
+  "modules": {
+    "enabled": ["ACCOUNTING", "SALES"]
+  },
+  "support": {
+    "notes": "Safe platform note",
+    "tags": ["TRIAL"]
+  },
+  "createMode": "SEND_ACTIVATION"
+}
+```
+
+Response `data` includes:
+
+- `tenantId`
+- `companyCode`
+- `status`
+- `owner`
+- `activation`
+- `auditEventId`
+
+Unknown request fields fail with `400`; do not silently preserve stale wizard state.
 
 ## Retired: flat tenant onboarding
 
@@ -37,16 +101,12 @@ Response row shape:
 - `companyCode`
 - `companyName`
 - `timezone`
-- `lifecycleState`
-- `lifecycleReason`
-- `activeUserCount`
-- `quotaMaxActiveUsers`
-- `apiActivityCount`
-- `quotaMaxApiRequests`
-- `auditStorageBytes`
-- `quotaMaxStorageBytes`
-- `currentConcurrentRequests`
-- `quotaMaxConcurrentRequests`
+- `status`
+- `plan`
+- `billingStatus`
+- `usage`
+- `trialEndsAt`
+- `health`
 - `enabledModules`
 - `mainAdmin`
 - `lastActivityAt`
@@ -70,11 +130,18 @@ Important nested objects:
 - `supportContext.supportTags`
 - `supportTimeline[]`
 - `availableActions.*`
+- `overview`
+- `plan`
+- `billing`
+- `support`
+- `bugs`
+- `audit`
+- `settings`
 
 Frontend guidance:
 
 - Render action buttons from `availableActions` first, not only from static role assumptions.
-- Activation delivery status will be exposed by the V1 activation flow, not by legacy credential-email fields.
+- Activation delivery status is exposed by the V1 activation flow, not by legacy credential-email fields.
 
 ## `PUT /api/v1/superadmin/tenants/{id}/lifecycle`
 

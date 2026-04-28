@@ -10,7 +10,9 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import org.junit.jupiter.api.Test;
@@ -336,6 +338,20 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
     assertQueryParameter(root, "/api/v1/superadmin/tenants", "get", "sort");
     assertOperationContract(
         root,
+        "/api/v1/superadmin/tenants/new",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseSuperAdminAddClientOptionsDto");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/tenants",
+        "post",
+        "#/components/schemas/SuperAdminAddClientCreateRequest",
+        "200",
+        "#/components/schemas/ApiResponseSuperAdminAddClientCreateResponse");
+    assertOperationContract(
+        root,
         "/api/v1/superadmin/tenants/{id}",
         "get",
         null,
@@ -619,6 +635,8 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
         List.of(
             "GET /api/v1/superadmin/dashboard",
             "GET /api/v1/superadmin/tenants",
+            "GET /api/v1/superadmin/tenants/new",
+            "POST /api/v1/superadmin/tenants",
             "GET /api/v1/superadmin/tenants/{id}",
             "PUT /api/v1/superadmin/tenants/{id}/lifecycle",
             "PUT /api/v1/superadmin/tenants/{id}/limits",
@@ -695,6 +713,58 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
         .doesNotContain("credentialsEmailSent")
         .doesNotContain("TenantOnboardingRequest")
         .doesNotContain("CompanyAdminCredentialResetDto");
+  }
+
+  @Test
+  void no_location_setup_scanner_is_scoped_to_v1_setup_contract() throws IOException {
+    JsonNode root = fetchCurrentSpecNode();
+
+    List<String> scopedOpenApiOperations =
+        List.of(
+            "GET /api/v1/superadmin/tenants/new",
+            "POST /api/v1/superadmin/tenants",
+            "GET /api/v1/superadmin/tenants",
+            "GET /api/v1/superadmin/tenants/{id}",
+            "GET /api/v1/setup/status",
+            "PUT /api/v1/setup/company-details",
+            "PUT /api/v1/setup/gst",
+            "PUT /api/v1/setup/accounting",
+            "POST /api/v1/setup/invite-team",
+            "POST /api/v1/setup/finish");
+    for (String signature : scopedOpenApiOperations) {
+      int separator = signature.indexOf(' ');
+      assertNoProhibitedSetupTerms(
+          collectOperationAndSchemaText(
+              root, signature.substring(separator + 1), signature.substring(0, separator)),
+          "OpenAPI V1 setup scope " + signature);
+    }
+
+    List.of(
+            "/api/v1/setup/branches",
+            "/api/v1/setup/warehouses",
+            "/api/v1/superadmin/tenants/{id}/branches",
+            "/api/v1/superadmin/tenants/{id}/warehouses",
+            "/api/v1/superadmin/tenants/{id}/setup/branches",
+            "/api/v1/superadmin/tenants/{id}/setup/warehouses")
+        .forEach(
+            path -> {
+              assertOperationMissing(root, path, "get");
+              assertOperationMissing(root, path, "post");
+              assertOperationMissing(root, path, "put");
+            });
+
+    List.of(
+            "docs/frontend-portals/superadmin/api-contracts.md",
+            "docs/frontend-portals/superadmin/workflows.md",
+            "docs/frontend-portals/superadmin/README.md")
+        .forEach(
+            docPath -> {
+              try {
+                assertNoProhibitedSetupTerms(readRepoFile(docPath), "docs example " + docPath);
+              } catch (IOException e) {
+                throw new IllegalStateException("Unable to scan " + docPath, e);
+              }
+            });
   }
 
   @Test
@@ -1589,6 +1659,57 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
       return canonicalObject;
     }
     return node;
+  }
+
+  private String collectOperationAndSchemaText(JsonNode root, String path, String method)
+      throws IOException {
+    JsonNode operation = root.path("paths").path(path).path(method.toLowerCase());
+    assertThat(operation.isMissingNode())
+        .withFailMessage("Missing %s %s from generated OpenAPI spec", method.toUpperCase(), path)
+        .isFalse();
+    ObjectNode scoped = CANONICAL_JSON.createObjectNode();
+    scoped.set("operation", operation);
+    ObjectNode schemas = CANONICAL_JSON.createObjectNode();
+    collectReferencedSchemas(root, operation, new HashSet<>(), schemas);
+    scoped.set("schemas", schemas);
+    return CANONICAL_JSON.writeValueAsString(canonicalizeNode(scoped));
+  }
+
+  private static void collectReferencedSchemas(
+      JsonNode root, JsonNode node, Set<String> visitedSchemaNames, ObjectNode sink) {
+    if (node == null || node.isNull() || node.isMissingNode()) {
+      return;
+    }
+    if (node.isObject()) {
+      String ref = node.path("$ref").asText(null);
+      if (ref != null && ref.startsWith("#/components/schemas/")) {
+        String schemaName = ref.substring("#/components/schemas/".length());
+        if (visitedSchemaNames.add(schemaName)) {
+          JsonNode schema = root.path("components").path("schemas").path(schemaName);
+          sink.set(schemaName, schema);
+          collectReferencedSchemas(root, schema, visitedSchemaNames, sink);
+        }
+      }
+      node.fields()
+          .forEachRemaining(
+              entry -> collectReferencedSchemas(root, entry.getValue(), visitedSchemaNames, sink));
+      return;
+    }
+    if (node.isArray()) {
+      node.forEach(item -> collectReferencedSchemas(root, item, visitedSchemaNames, sink));
+    }
+  }
+
+  private static void assertNoProhibitedSetupTerms(String text, String scope) {
+    String normalized = text.toLowerCase(java.util.Locale.ROOT);
+    assertThat(normalized)
+        .withFailMessage(
+            "%s must not expose branch or warehouse setup terms. Scanner scope is V1 Add Client,"
+                + " owner setup, tenant profile summaries, OpenAPI operation schemas, and"
+                + " Super Admin frontend examples; unrelated ERP bank-branch fields and git"
+                + " branch provenance are intentionally excluded.",
+            scope)
+        .doesNotContain("branch", "warehouse");
   }
 
   private static String sha256Hex(String value) {
