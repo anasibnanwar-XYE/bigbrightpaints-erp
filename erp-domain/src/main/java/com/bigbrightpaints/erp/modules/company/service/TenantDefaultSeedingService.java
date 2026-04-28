@@ -142,7 +142,7 @@ public class TenantDefaultSeedingService {
   }
 
   private TenantSeedStatusDto seedDefaultsInternal(Company lockedCompany) {
-    int beforeAccountCount = accountRepository.findByCompanyOrderByCodeAsc(lockedCompany).size();
+    SeedStateSnapshot beforeSeedState = seedStateSnapshot(lockedCompany);
     boolean hadSeedRuns = seedRunRepository.existsByCompany_Id(lockedCompany.getId());
     ensureAccountsAndMappings(lockedCompany);
     accountingPeriodService.ensurePeriod(lockedCompany, CompanyTime.today(lockedCompany));
@@ -151,15 +151,16 @@ public class TenantDefaultSeedingService {
       clearSeedFailedMarker(lockedCompany);
     }
     companyRepository.saveAndFlush(lockedCompany);
-    int afterAccountCount = statusBeforeRunRecord.chartOfAccounts().accountCount();
-    String operation = seedOperation(hadSeedRuns, afterAccountCount > beforeAccountCount);
+    SeedStateSnapshot afterSeedState = seedStateSnapshot(statusBeforeRunRecord, lockedCompany);
+    boolean seedCategoryChanged = !afterSeedState.equals(beforeSeedState);
+    String operation = seedOperation(hadSeedRuns, seedCategoryChanged);
     recordSeedRuns(
         lockedCompany,
         statusBeforeRunRecord.ready(),
         statusBeforeRunRecord.ready() ? operation : "PENDING_REPAIR",
         CompanyTime.now(lockedCompany));
     TenantSeedStatusDto status = buildStatus(lockedCompany, null);
-    return withRepairOutcome(status, afterAccountCount > beforeAccountCount ? "REPAIRED" : "NOOP");
+    return withRepairOutcome(status, seedCategoryChanged ? "REPAIRED" : "NOOP");
   }
 
   private void cleanupFailedSeedArtifacts(Company company, Set<Long> accountIdsBefore) {
@@ -484,6 +485,42 @@ public class TenantDefaultSeedingService {
     }
     return hadSeedRuns ? "NOOP" : "SEEDED";
   }
+
+  private SeedStateSnapshot seedStateSnapshot(Company company) {
+    return seedStateSnapshot(buildStatus(company, null), company);
+  }
+
+  private SeedStateSnapshot seedStateSnapshot(TenantSeedStatusDto status, Company company) {
+    return new SeedStateSnapshot(
+        status.ready(),
+        status.readinessStatus(),
+        status.chartOfAccounts().accountCount(),
+        status.chartOfAccounts().duplicateAccountCodesPresent(),
+        List.copyOf(status.chartOfAccounts().requiredClasses()),
+        status.gstDefaults(),
+        List.copyOf(status.accountingMappings()),
+        status.defaultSettings(),
+        List.copyOf(status.numbering()),
+        List.copyOf(status.paymentModes()),
+        List.copyOf(status.documentPrefixes()),
+        List.copyOf(status.roleTemplates()),
+        isSeedFailedReason(company.getLifecycleReason()));
+  }
+
+  private record SeedStateSnapshot(
+      boolean ready,
+      String readinessStatus,
+      int accountCount,
+      boolean duplicateAccountCodesPresent,
+      List<String> requiredClasses,
+      TenantSeedStatusDto.GstDefaults gstDefaults,
+      List<TenantSeedStatusDto.AccountingMapping> accountingMappings,
+      TenantSeedStatusDto.DefaultSettings defaultSettings,
+      List<TenantSeedStatusDto.NumberingDefault> numbering,
+      List<String> paymentModes,
+      List<TenantSeedStatusDto.DocumentPrefix> documentPrefixes,
+      List<TenantSeedStatusDto.RoleTemplate> roleTemplates,
+      boolean seedFailedMarker) {}
 
   private void recordSeedRuns(
       Company company, boolean ready, String operation, Instant completedAt) {

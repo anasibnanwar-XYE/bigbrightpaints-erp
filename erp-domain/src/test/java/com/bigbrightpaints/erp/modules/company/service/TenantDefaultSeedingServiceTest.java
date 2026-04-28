@@ -178,6 +178,76 @@ class TenantDefaultSeedingServiceTest {
   }
 
   @Test
+  void repairSeedStatus_recordsRepairedForMappingOnlyDriftWithoutAccountGrowth() {
+    Company company = company(80L, "M7MAPREPAIR", BigDecimal.valueOf(18), "SME");
+    List<Account> accounts = new ArrayList<>();
+    TenantDefaultSeedingService service = service(company, accounts);
+    TenantSeedStatusDto seeded = service.seedDefaults(company);
+    List<String> originalRunIds =
+        seeded.seedRuns().stream().map(TenantSeedStatusDto.SeedRun::runId).toList();
+    int seededAccountCount = accounts.size();
+    company.setDefaultRevenueAccountId(null);
+    company.setGstInputTaxAccountId(null);
+
+    TenantSeedStatusDto repaired = service.repairSeedStatus(company.getId());
+    TenantSeedStatusDto noop = service.repairSeedStatus(company.getId());
+
+    assertThat(accounts).hasSize(seededAccountCount);
+    assertThat(repaired.repairOutcome()).contains("REPAIRED", "auditEventId=601");
+    assertThat(repaired.ready()).isTrue();
+    assertThat(repaired.gstDefaults().inputAccountId()).isNotNull();
+    assertThat(repaired.accountingMappings())
+        .filteredOn(mapping -> "DEFAULT_REVENUE".equals(mapping.key()))
+        .singleElement()
+        .satisfies(mapping -> assertThat(mapping.accountId()).isNotNull());
+    assertThat(repaired.seedRuns())
+        .hasSize(9)
+        .allSatisfy(run -> assertThat(run.operation()).isEqualTo("REPAIRED"));
+    assertThat(repaired.seedRuns())
+        .extracting(TenantSeedStatusDto.SeedRun::runId)
+        .containsExactlyElementsOf(originalRunIds);
+    assertThat(noop.repairOutcome()).contains("NOOP", "auditEventId=601");
+    assertThat(noop.seedRuns())
+        .hasSize(9)
+        .allSatisfy(run -> assertThat(run.operation()).isEqualTo("NOOP"));
+    assertThat(noop.seedRuns())
+        .extracting(TenantSeedStatusDto.SeedRun::runId)
+        .containsExactlyElementsOf(originalRunIds);
+  }
+
+  @Test
+  void repairSeedStatus_recordsRepairedWhenClearingSeedFailedMarkerWithoutAccountGrowth() {
+    Company company = company(81L, "M7MARKER", BigDecimal.valueOf(18), "SME");
+    List<Account> accounts = new ArrayList<>();
+    TenantDefaultSeedingService service = service(company, accounts);
+    TenantSeedStatusDto seeded = service.seedDefaults(company);
+    List<String> originalRunIds =
+        seeded.seedRuns().stream().map(TenantSeedStatusDto.SeedRun::runId).toList();
+    int seededAccountCount = accounts.size();
+    company.setLifecycleReason("SEED_FAILED");
+
+    TenantSeedStatusDto repaired = service.repairSeedStatus(company.getId());
+    TenantSeedStatusDto noop = service.repairSeedStatus(company.getId());
+
+    assertThat(accounts).hasSize(seededAccountCount);
+    assertThat(company.getLifecycleReason()).isNull();
+    assertThat(repaired.repairOutcome()).contains("REPAIRED", "auditEventId=601");
+    assertThat(repaired.seedRuns())
+        .hasSize(9)
+        .allSatisfy(run -> assertThat(run.operation()).isEqualTo("REPAIRED"));
+    assertThat(repaired.seedRuns())
+        .extracting(TenantSeedStatusDto.SeedRun::runId)
+        .containsExactlyElementsOf(originalRunIds);
+    assertThat(noop.repairOutcome()).contains("NOOP", "auditEventId=601");
+    assertThat(noop.seedRuns())
+        .hasSize(9)
+        .allSatisfy(run -> assertThat(run.operation()).isEqualTo("NOOP"));
+    assertThat(noop.seedRuns())
+        .extracting(TenantSeedStatusDto.SeedRun::runId)
+        .containsExactlyElementsOf(originalRunIds);
+  }
+
+  @Test
   void seedDefaults_keepsNonGstMappingsDisabledWithoutBlockingReadiness() {
     Company company = company(88L, "M7NONGST", BigDecimal.ZERO, "SME");
     TenantDefaultSeedingService service = service(company, new ArrayList<>());
