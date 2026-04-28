@@ -2,7 +2,143 @@
 
 Last reviewed: 2026-04-28
 
-## Current Packet Evidence — account-admin-scrutiny-remediation-users-access-denial-audit-redaction
+## Current Packet Evidence — cleanup-openapi-frontend-handoff-r2-quality-gates
+
+## Scope
+- Feature: `cleanup-openapi-frontend-handoff-r2-quality-gates`
+- Branch: codex/identity-account-hardcut-20260427 (base: origin/main)
+- PR: pending
+- Review candidate:
+  - keeps retired auth/admin identity aliases absent/non-mutating for unauthenticated, low-role,
+    tenant-admin, super-admin, and must-change-password callers
+  - removes IAM/security test-fixture audit FK noise by creating fixture accounting periods without
+    invoking business-audit period transition side effects before new test companies commit
+  - tightens `AdminUserService` direct-service target resolution so `ROLE_SUPER_ADMIN` cannot reuse
+    tenant-admin Users & Access service methods to mutate or read cross-tenant targets
+  - refreshes frontend/API handoff notes for canonical My Account, MFA recovery-code regeneration,
+    and self-session routes
+  - preserves OpenAPI parity and explicitly retains accepted session-scrutiny evidence, including
+    `sessions-scrutiny-remediation-redacted-scope-fallback` and the pre-redacted security-event
+    scope fallback regression, alongside stable-lineage/sid enforcement proof
+- Why this is R2: this cleanup packet touches high-risk auth/admin route retirement, tenant-admin
+  service-level authorization, test fixture security-audit behavior, OpenAPI/frontend handoff
+  evidence, and R2 proof surfaces where incorrect behavior could reintroduce retired aliases,
+  tenant-boundary bypass, unexplained audit failures, or stale frontend contracts.
+
+## Risk Trigger
+- Triggered by:
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/core/security/SecurityConfig.java`
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/core/security/MustChangePasswordCorridorFilter.java`
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/admin/service/AdminUserService.java`
+  - IAM/security integration and unit tests under `erp-domain/src/test/java`
+  - `openapi.json`, `docs/frontend-api/**`, `docs/frontend-portals/**`, and this R2 checkpoint
+- Contract surfaces affected:
+  - `VAL-CROSS-001`, `VAL-CROSS-002`, `VAL-CROSS-003`, `VAL-CROSS-004`,
+    `VAL-CROSS-006`, `VAL-CROSS-007`, `VAL-CROSS-008`, `VAL-CROSS-009`,
+    `VAL-CROSS-012`, `VAL-CROSS-013`
+- Failure mode if wrong:
+  - retired auth/admin aliases could become distinguishable, routable, or mutating for some actor
+    roles
+  - direct service reuse under `ROLE_SUPER_ADMIN` could bypass tenant-admin-only HTTP boundaries
+  - handled `audit_action_events` FK retries could mask fixture ordering problems or real audit
+    regressions
+  - OpenAPI/frontend handoff/R2 evidence could omit canonical session/MFA/profile routes or accepted
+    redacted-scope fallback proof
+
+## Approval Authority
+- Mode: orchestrator
+- Approver: Droid mission orchestrator
+- Canary owner: Droid mission orchestrator
+- Approval status: branch-local integration candidate pending PR review
+- Basis: this packet removes/locks down cleanup risks and narrows direct-service behavior; it does
+  not add authority, widen tenant boundaries, introduce destructive migration behavior, or persist
+  secrets.
+
+## Escalation Decision
+- Human escalation required: no
+- Reason: the packet strengthens absence/authorization proof and updates evidence for accepted
+  remediation packets without changing public success envelopes or granting new privileges.
+
+## Rollback Owner
+- Owner: Droid mission orchestrator
+- Rollback method:
+  - before merge: revert this packet and rerun OpenAPI guard/snapshot, focused auth/admin/security
+    tests, compile/test-compile, Spotless, knowledgebase/architecture checks, High-Risk Change
+    Control, and cleanup route-retirement greps
+  - after merge: revert through a new remediation packet and rerun the same cleanup/R2 proof lane
+- Rollback trigger:
+  - retired identity aliases return anything other than approved absence or mutate target state
+  - `ROLE_SUPER_ADMIN` direct service calls can resolve cross-tenant Users & Access targets
+  - `AuthTenantAuthorityIT`/`TenantRuntimeEnforcementAuthIT` surefire output again contains
+    `fk_audit_action_events_company` or persistent business-audit retry stack traces
+  - OpenAPI/frontend handoff/R2 evidence omits canonical routes, redacted scope fallback, or
+    stable-lineage/sid enforcement proof
+
+## Expiry
+- Valid until: 2026-05-05
+- Re-evaluate if: scope expands into new public routes, schema/migration changes, distributed
+  session stores, role-policy redesign, tenant-boundary changes, or broader audit/event retention
+  behavior.
+
+## Verification Evidence
+- Scope-to-evidence mapping:
+  - Route-retirement proof: `AuthControllerIT.retired_auth_aliases_are_absent_for_every_actor_state`
+    and `AdminUserSecurityIT.retired_admin_user_aliases_are_absent_and_non_mutating_for_every_actor_role`
+    verify retired auth/admin aliases return only approved absence statuses across actor states.
+  - OpenAPI proof: `OpenApiSnapshotIT.auth_and_admin_contract_paths_preserve_expected_response_shapes`
+    verifies canonical auth/admin/self-session routes and missing retired profile/password/admin
+    alias operations; `bash scripts/guard_openapi_contract_drift.sh` checks generated snapshot
+    parity.
+  - Audit-noise proof: `CriticalFixtureService` now creates fixture accounting periods directly in
+    test setup instead of calling audited period lifecycle APIs before new test companies commit;
+    rerunning `AuthTenantAuthorityIT` and `TenantRuntimeEnforcementAuthIT` must produce no
+    `audit_action_events` FK/retry stack traces.
+  - Direct-service tenant-boundary proof:
+    `AdminUserServiceTest.updateUser_rejectsSuperAdminDirectServiceCrossTenantTargetResolution`
+    and `lockUser_rejectsSuperAdminDirectServiceCrossTenantTargetResolution` verify direct
+    `ROLE_SUPER_ADMIN` calls cannot mutate cross-tenant Users & Access targets.
+  - Accepted sessions evidence carried forward:
+    `sessions-scrutiny-remediation-stable-lineage-and-scope-evidence` remains the stable refresh
+    lineage and bearer `sid` enforcement proof, and
+    `sessions-scrutiny-remediation-redacted-scope-fallback` remains the accepted proof that stored
+    `[REDACTED]`/blank scope metadata is treated as absent and falls back to safe account/company
+    scope evidence while secret-like metadata remains redacted. Its pre-redacted regression is
+    exercised by `AuthControllerIT.refresh_rotation_is_scope_bound_and_replay_revokes_rotated_family`
+    through `SESSION_PRE_REDACTED_SCOPE_PROBE`.
+- Commands run:
+  - `mission init.sh`
+  - `cd /Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/identity-account-hardcut-20260427 && bash scripts/guard_openapi_contract_drift.sh && cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='AuthPasswordResetPublicContractIT,AdminUserSecurityIT,AuthControllerIT,AuthTenantAuthorityIT,TenantRuntimeEnforcementAuthIT,AuthDisabledUserTokenIT,MfaControllerIT' test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn spotless:apply`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -q -DskipTests test-compile`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='CriticalFixtureServiceTest,AdminUserServiceTest,JwtAuthenticationFilterRoleHierarchyTest,OpenApiSnapshotIT' test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='TenantOnboardingServiceTest,TenantOnboardingControllerTest,AuthTenantAuthorityIT,TenantRuntimeEnforcementAuthIT' test`
+  - `cd /Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/identity-account-hardcut-20260427 && bash scripts/guard_openapi_contract_drift.sh && cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='AuthPasswordResetPublicContractIT,AdminUserSecurityIT,AuthControllerIT,AuthTenantAuthorityIT,TenantRuntimeEnforcementAuthIT,AuthDisabledUserTokenIT,MfaControllerIT' test`
+  - targeted surefire report greps for `AuthTenantAuthorityIT`, `TenantRuntimeEnforcementAuthIT`,
+    `AuthControllerIT`, `AdminUserSecurityIT`, `AuthDisabledUserTokenIT`, and `MfaControllerIT`
+    against `audit_action_events|fk_audit_action_events_company|Queued persistent business audit retry`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest=OpenApiSnapshotIT test`
+  - `bash ci/check-high-risk-changes.sh && cd erp-domain && MIGRATION_SET=v2 mvn spotless:check && cd .. && bash ci/lint-knowledgebase.sh && bash ci/check-architecture.sh`
+  - Python OpenAPI route-retirement proof for retired auth/admin aliases plus `X-Company-Id`
+    absence, scoped docs/source retired-route grep, and changed-file non-slop marker scan.
+- Result summary:
+  - baseline IAM mission lane passed before cleanup changes; the focused unit/snapshot lane passed
+    with 70 tests, the onboarding/auth noise lane passed with 49 tests, and the final OpenAPI guard
+    plus IAM mission lane passed with 114 tests
+  - targeted current IAM surefire report greps showed no `audit_action_events` FK/retry matches in
+    the rerun auth/admin reports
+  - OpenAPI snapshot passed with 13 tests; High-Risk Change Control, Spotless check,
+    knowledgebase lint, and architecture check passed
+  - Python OpenAPI proof showed all retired auth/admin aliases absent (`present=False`) and no
+    `X-Company-Id` in `openapi.json`; scoped grep references are retired/do-not-use guidance,
+    canonical session-revoke routes, or guard/test assertions
+  - changed-file non-slop static review found only accepted references (`legacy` guidance/test names,
+    non-slop proof wording, and bounded pagination `limit` alias)
+  - no raw JWTs, refresh tokens, reset tokens, reset links, token digests, MFA secrets, recovery
+    codes, password hashes, foreign tenant IDs, or production secrets are recorded in this checkpoint
+
+---
+
+## Previous Packet Evidence — account-admin-scrutiny-remediation-users-access-denial-audit-redaction
 
 ## Scope
 - Feature: `account-admin-scrutiny-remediation-users-access-denial-audit-redaction`

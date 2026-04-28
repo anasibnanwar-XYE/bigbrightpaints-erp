@@ -1,6 +1,7 @@
 package com.bigbrightpaints.erp.modules.company.service;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -20,7 +21,9 @@ import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriod;
-import com.bigbrightpaints.erp.modules.accounting.service.AccountingPeriodService;
+import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodStatus;
+import com.bigbrightpaints.erp.modules.accounting.domain.CostingMethod;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.auth.service.TenantAdminProvisioningService;
@@ -41,7 +44,7 @@ public class TenantOnboardingService {
   private final CompanyRepository companyRepository;
   private final UserAccountRepository userAccountRepository;
   private final AccountRepository accountRepository;
-  private final AccountingPeriodService accountingPeriodService;
+  private final AccountingPeriodRepository accountingPeriodRepository;
   private final CoATemplateService coATemplateService;
   private final SystemSettingsRepository systemSettingsRepository;
   private final TenantAdminProvisioningService tenantAdminProvisioningService;
@@ -52,7 +55,7 @@ public class TenantOnboardingService {
       CompanyRepository companyRepository,
       UserAccountRepository userAccountRepository,
       AccountRepository accountRepository,
-      AccountingPeriodService accountingPeriodService,
+      AccountingPeriodRepository accountingPeriodRepository,
       CoATemplateService coATemplateService,
       SystemSettingsRepository systemSettingsRepository,
       TenantAdminProvisioningService tenantAdminProvisioningService,
@@ -61,7 +64,7 @@ public class TenantOnboardingService {
     this.companyRepository = companyRepository;
     this.userAccountRepository = userAccountRepository;
     this.accountRepository = accountRepository;
-    this.accountingPeriodService = accountingPeriodService;
+    this.accountingPeriodRepository = accountingPeriodRepository;
     this.coATemplateService = coATemplateService;
     this.systemSettingsRepository = systemSettingsRepository;
     this.tenantAdminProvisioningService = tenantAdminProvisioningService;
@@ -96,8 +99,7 @@ public class TenantOnboardingService {
         tenantAdminProvisioningService.provisionInitialAdmin(
             savedCompany, normalizedAdminEmail, request.firstAdminDisplayName());
 
-    AccountingPeriod defaultPeriod =
-        accountingPeriodService.ensurePeriod(savedCompany, CompanyTime.today(savedCompany));
+    AccountingPeriod defaultPeriod = ensureInitialAccountingPeriod(savedCompany);
     boolean systemSettingsInitialized = initializeDefaultSystemSettings();
     savedCompany.setOnboardingCoaTemplateCode(template.getCode());
     savedCompany.setOnboardingCompletedAt(CompanyTime.now(savedCompany));
@@ -123,6 +125,27 @@ public class TenantOnboardingService {
         provisionedAdminEmail,
         tenantAdminProvisioned,
         systemSettingsInitialized);
+  }
+
+  private AccountingPeriod ensureInitialAccountingPeriod(Company company) {
+    LocalDate effectiveDate = CompanyTime.today(company);
+    int year = effectiveDate.getYear();
+    int month = effectiveDate.getMonthValue();
+    return accountingPeriodRepository
+        .findByCompanyAndYearAndMonth(company, year, month)
+        .orElseGet(
+            () -> {
+              LocalDate startDate = effectiveDate.withDayOfMonth(1);
+              AccountingPeriod period = new AccountingPeriod();
+              period.setCompany(company);
+              period.setYear(year);
+              period.setMonth(month);
+              period.setStartDate(startDate);
+              period.setEndDate(startDate.plusMonths(1).minusDays(1));
+              period.setCostingMethod(CostingMethod.FIFO);
+              period.setStatus(AccountingPeriodStatus.OPEN);
+              return accountingPeriodRepository.save(period);
+            });
   }
 
   private Company createCompany(TenantOnboardingRequest request, String normalizedCompanyCode) {

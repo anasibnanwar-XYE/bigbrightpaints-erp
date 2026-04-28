@@ -447,18 +447,17 @@ public class AdminUserService {
       String denialReason,
       boolean lockTarget,
       OutOfScopeResponseMode outOfScopeResponseMode) {
-    boolean superAdmin = hasSuperAdminAuthority();
     java.util.Optional<UserAccount> candidate =
         lockTarget
-            ? resolveLockedAdminActionTarget(userId, activeCompany, superAdmin)
+            ? resolveLockedAdminActionTarget(userId, activeCompany)
             : userRepository.findById(userId);
     UserAccount user = candidate.orElse(null);
     if (user == null) {
-      if (!superAdmin && outOfScopeResponseMode == OutOfScopeResponseMode.ACCESS_DENIED) {
+      if (outOfScopeResponseMode == OutOfScopeResponseMode.ACCESS_DENIED) {
         auditUnresolvedTargetDenied(userId, activeCompany, denialReason);
         throw new AccessDeniedException(OUT_OF_SCOPE_MESSAGE);
       }
-      if (!superAdmin && lockTarget) {
+      if (lockTarget) {
         return userRepository
             .findById(userId)
             .map(
@@ -477,14 +476,9 @@ public class AdminUserService {
                       USER_NOT_FOUND_MESSAGE);
                 });
       }
-      if (!superAdmin) {
-        auditUnresolvedTargetDenied(userId, activeCompany, denialReason);
-      }
+      auditUnresolvedTargetDenied(userId, activeCompany, denialReason);
       throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
           USER_NOT_FOUND_MESSAGE);
-    }
-    if (superAdmin) {
-      return user;
     }
     if (isUserWithinCompanyScope(user, activeCompany)) {
       if (isTenantAdminProtectedTarget(user)) {
@@ -502,8 +496,8 @@ public class AdminUserService {
   }
 
   private java.util.Optional<UserAccount> resolveLockedAdminActionTarget(
-      Long userId, Company activeCompany, boolean superAdmin) {
-    if (superAdmin || activeCompany == null || activeCompany.getId() == null) {
+      Long userId, Company activeCompany) {
+    if (activeCompany == null || activeCompany.getId() == null) {
       return userRepository.lockById(userId);
     }
     return userRepository.lockByIdAndCompanyId(userId, activeCompany.getId());

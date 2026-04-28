@@ -31,7 +31,8 @@ public class MustChangePasswordCorridorFilter extends OncePerRequestFilter {
   private static final Set<String> READ_ONLY_CORRIDOR_PATHS = Set.of("/api/v1/auth/me");
   private static final Set<String> MUTATING_CORRIDOR_PATHS =
       Set.of("/api/v1/auth/password/change", "/api/v1/auth/logout", "/api/v1/auth/refresh-token");
-  private static final Set<String> RETIRED_AUTH_SURFACES = Set.of("/api/v1/auth/profile");
+  private static final Set<String> RETIRED_AUTH_SURFACES =
+      Set.of("/api/v1/auth/profile", "/api/v1/auth/password/forgot/superadmin");
 
   private final ObjectMapper objectMapper;
 

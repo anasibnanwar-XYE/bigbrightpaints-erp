@@ -828,7 +828,7 @@ class AdminUserServiceTest {
   }
 
   @Test
-  void updateUser_allowsSuperAdminToTargetForeignTenantUser() {
+  void updateUser_rejectsSuperAdminDirectServiceCrossTenantTargetResolution() {
     Company foreignCompany = new Company();
     ReflectionTestUtils.setField(foreignCompany, "id", 21L);
     foreignCompany.setCode("FOREIGN");
@@ -847,19 +847,18 @@ class AdminUserServiceTest {
                 "n/a",
                 List.of(new SimpleGrantedAuthority("ROLE_SUPER_ADMIN"))));
     when(userRepository.findById(305L)).thenReturn(Optional.of(foreignUser));
-    when(auditLogRepository
-            .findFirstByEventTypeAndCompanyIdAndUsernameIgnoreCaseOrderByTimestampDesc(
-                AuditEvent.LOGIN_SUCCESS, foreignCompany.getId(), "foreign-user@example.com"))
-        .thenReturn(Optional.empty());
 
     try {
-      var response = service.updateUser(305L, new UpdateUserRequest("Foreign User Updated", null));
-      assertThat(response.displayName()).isEqualTo("Foreign User Updated");
+      assertThatThrownBy(
+              () -> service.updateUser(305L, new UpdateUserRequest("Foreign User Updated", null)))
+          .isInstanceOf(AccessDeniedException.class)
+          .hasMessageContaining("Target user is out of scope for this operation");
     } finally {
       SecurityContextHolder.clearContext();
     }
 
     verify(userRepository).findById(305L);
+    verify(userRepository, never()).save(any(UserAccount.class));
     verify(userRepository, never()).lockByIdAndCompanyId(eq(305L), any());
   }
 
@@ -1100,7 +1099,7 @@ class AdminUserServiceTest {
   }
 
   @Test
-  void lockUser_allowsSuperAdminToTargetForeignTenantUser() {
+  void lockUser_rejectsSuperAdminDirectServiceCrossTenantTargetResolution() {
     Company foreignCompany = new Company();
     ReflectionTestUtils.setField(foreignCompany, "id", 21L);
     foreignCompany.setCode("FOREIGN");
@@ -1115,19 +1114,23 @@ class AdminUserServiceTest {
                 "super-admin@bbp.com",
                 "n/a",
                 List.of(new SimpleGrantedAuthority("ROLE_SUPER_ADMIN"))));
-    when(userRepository.lockById(307L)).thenReturn(Optional.of(foreignUser));
-    when(userRepository.save(any(UserAccount.class)))
-        .thenAnswer(invocation -> invocation.getArgument(0));
+    when(userRepository.lockByIdAndCompanyId(307L, 1L)).thenReturn(Optional.empty());
+    when(userRepository.findById(307L)).thenReturn(Optional.of(foreignUser));
 
     try {
-      service.lockUser(307L);
+      assertThatThrownBy(() -> service.lockUser(307L))
+          .isInstanceOf(ApplicationException.class)
+          .hasMessageContaining("User not found");
     } finally {
       SecurityContextHolder.clearContext();
     }
 
-    assertThat(foreignUser.getLockedUntil()).isNotNull();
-    verify(tokenBlacklistService).revokeAllUserTokens(foreignUser.getPublicId().toString());
-    verify(refreshTokenService).revokeAllForUser(foreignUser.getPublicId());
+    assertThat(foreignUser.getLockedUntil()).isNull();
+    verify(userRepository).lockByIdAndCompanyId(307L, 1L);
+    verify(userRepository, never()).lockById(307L);
+    verify(userRepository, never()).save(any(UserAccount.class));
+    verify(tokenBlacklistService, never()).revokeAllUserTokens(anyString());
+    verify(refreshTokenService, never()).revokeAllForUser(any());
   }
 
   @Test

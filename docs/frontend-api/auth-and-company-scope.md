@@ -1,6 +1,6 @@
 # Auth and Company Scope
 
-Last reviewed: 2026-04-16
+Last reviewed: 2026-04-28
 
 ## Canonical Auth Routes
 
@@ -8,13 +8,22 @@ Last reviewed: 2026-04-16
 - `GET /api/v1/auth/me`
 - `POST /api/v1/auth/refresh-token`
 - `POST /api/v1/auth/logout`
+- `PATCH /api/v1/auth/me/profile`
+- `PATCH /api/v1/auth/me/contact`
+- `GET /api/v1/auth/me/security`
+- `GET /api/v1/auth/me/security-events`
 - `POST /api/v1/auth/password/change`
 - `POST /api/v1/auth/password/forgot`
 - `POST /api/v1/auth/password/reset`
+- `GET /api/v1/auth/mfa`
 - `POST /api/v1/auth/mfa/setup`
 - `POST /api/v1/auth/mfa/activate`
 - `POST /api/v1/auth/mfa/disable`
-- `GET /api/v1/auth/me/security-events`
+- `POST /api/v1/auth/mfa/recovery-codes/regenerate`
+- `GET /api/v1/auth/sessions`
+- `DELETE /api/v1/auth/sessions/{sessionId}`
+- `DELETE /api/v1/auth/sessions/current`
+- `DELETE /api/v1/auth/sessions`
 
 ## Scope Rules
 
@@ -95,6 +104,25 @@ Tenant-admin self/settings UX uses:
 - auth APIs for password and MFA mutations
 
 Do not use `/api/v1/auth/profile`; it is non-canonical for frontend identity bootstrap.
+Do not use `/api/v1/auth/password/forgot/superadmin`; password recovery is always the scoped
+`POST /api/v1/auth/password/forgot` route with `{ email, companyCode }`.
+
+## My Account profile, contact, security, and sessions
+
+- `PATCH /api/v1/auth/me/profile` updates only self-owned display profile fields such as
+  `preferredName` and `profilePictureUrl`; it does not accept role, tenant, email, or security
+  mutations.
+- `PATCH /api/v1/auth/me/contact` updates self contact fields such as secondary email or phone
+  without changing login identity.
+- `GET /api/v1/auth/me/security` returns a privacy-safe security summary for the current principal.
+- `GET /api/v1/auth/sessions` lists only the caller's active sessions/devices and omits access
+  tokens, refresh tokens, token digests, password hashes, MFA secrets, recovery codes, and raw
+  user-agent fingerprints.
+- `DELETE /api/v1/auth/sessions/{sessionId}` revokes another own session, `DELETE
+  /api/v1/auth/sessions/current` revokes the current session, and `DELETE /api/v1/auth/sessions`
+  revokes all sessions for the current user.
+- `POST /api/v1/auth/mfa/recovery-codes/regenerate` requires fresh MFA proof and returns the new
+  recovery-code set only once; old unused codes are invalidated and affected sessions are revoked.
 
 ## Role Boundaries
 

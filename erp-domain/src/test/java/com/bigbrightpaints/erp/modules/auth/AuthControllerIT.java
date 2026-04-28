@@ -580,6 +580,42 @@ public class AuthControllerIT extends AbstractIntegrationTest {
   }
 
   @Test
+  void retired_auth_aliases_are_absent_for_every_actor_state() {
+    UserAccount mustChangeUser =
+        dataSeeder.ensureUser(
+            "must-change-auth-retired@bbp.com",
+            "MustChange123!",
+            "Must Change Auth Retired",
+            COMPANY_CODE,
+            java.util.List.of("ROLE_SALES"));
+    mustChangeUser.setMustChangePassword(true);
+    userAccountRepository.save(mustChangeUser);
+
+    List<HttpHeaders> actorHeaders =
+        List.of(
+            new HttpHeaders(),
+            bearer(login(USER_EMAIL, USER_PASSWORD).get("accessToken").toString()),
+            bearer(login(ADMIN_EMAIL, ADMIN_PASSWORD).get("accessToken").toString()),
+            bearer(
+                login("must-change-auth-retired@bbp.com", "MustChange123!")
+                    .get("accessToken")
+                    .toString()));
+
+    for (HttpHeaders headers : actorHeaders) {
+      assertRouteAbsent("/api/v1/auth/profile", HttpMethod.GET, new HttpEntity<>(headers));
+      assertRouteAbsent(
+          "/api/v1/auth/profile", HttpMethod.PATCH, new HttpEntity<>(Map.of(), headers));
+      HttpHeaders jsonHeaders = new HttpHeaders();
+      jsonHeaders.putAll(headers);
+      jsonHeaders.setContentType(MediaType.APPLICATION_JSON);
+      assertRouteAbsent(
+          "/api/v1/auth/password/forgot/superadmin",
+          HttpMethod.POST,
+          new HttpEntity<>(Map.of("email", ADMIN_EMAIL, "companyCode", COMPANY_CODE), jsonHeaders));
+    }
+  }
+
+  @Test
   void self_profile_and_contact_updates_are_allowlisted_validated_audited_and_unverified() {
     List<String> resetRecipients = Collections.synchronizedList(new ArrayList<>());
     doAnswer(
@@ -955,6 +991,15 @@ public class AuthControllerIT extends AbstractIntegrationTest {
             Map.class);
     assertThat(retiredProfileResponse.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
 
+    ResponseEntity<Map> retiredForgotSuperadminResponse =
+        rest.exchange(
+            "/api/v1/auth/password/forgot/superadmin",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of("email", ADMIN_EMAIL, "companyCode", COMPANY_CODE), bearerJson(accessToken)),
+            Map.class);
+    assertThat(retiredForgotSuperadminResponse.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+
     ResponseEntity<Map> retiredAdminSettingsResponse =
         rest.exchange(
             "/api/v1/admin/settings",
@@ -1245,8 +1290,7 @@ public class AuthControllerIT extends AbstractIntegrationTest {
 
   private void assertRouteAbsent(String path, HttpMethod method, HttpEntity<?> entity) {
     ResponseEntity<Map> response = rest.exchange(path, method, entity, Map.class);
-    assertThat(response.getStatusCode())
-        .isIn(HttpStatus.NOT_FOUND, HttpStatus.METHOD_NOT_ALLOWED, HttpStatus.FORBIDDEN);
+    assertThat(response.getStatusCode()).isIn(HttpStatus.NOT_FOUND, HttpStatus.METHOD_NOT_ALLOWED);
   }
 
   private void assertRoutePresent(String path, HttpMethod method, HttpEntity<?> entity) {

@@ -140,7 +140,10 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
     assertOperationContract(root, "/api/v1/auth/sessions/current", "delete", null, "204", null);
     assertOperationContract(root, "/api/v1/auth/sessions", "delete", null, "204", null);
     assertOperationMissing(root, "/api/v1/auth/profile", "get");
+    assertOperationMissing(root, "/api/v1/auth/profile", "post");
     assertOperationMissing(root, "/api/v1/auth/profile", "put");
+    assertOperationMissing(root, "/api/v1/auth/profile", "patch");
+    assertOperationMissing(root, "/api/v1/auth/profile", "delete");
     assertThat(root.path("components").path("schemas").has("SelfProfileResponse")).isTrue();
     assertThat(root.path("components").path("schemas").has("SelfProfileRequest")).isTrue();
     assertThat(root.path("components").path("schemas").has("ApiResponseSelfProfileResponse"))
