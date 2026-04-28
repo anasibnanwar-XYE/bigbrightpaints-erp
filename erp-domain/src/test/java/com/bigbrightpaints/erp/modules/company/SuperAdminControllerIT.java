@@ -133,60 +133,8 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
     assertThat(options.toString().toLowerCase(Locale.ROOT)).doesNotContain("branch", "warehouse");
 
     String code = "M4IT" + System.nanoTime();
-    Map<String, Object> payload =
-        Map.of(
-            "company",
-            Map.of(
-                "name",
-                "M4 IT Client",
-                "code",
-                code,
-                "timezone",
-                "Asia/Kolkata",
-                "stateCode",
-                "KA",
-                "baseCurrency",
-                "INR",
-                "defaultGstRate",
-                18,
-                "coaTemplateCode",
-                "SME"),
-            "owner",
-            Map.of(
-                "email",
-                "owner-" + code.toLowerCase(Locale.ROOT) + "@example.com",
-                "displayName",
-                "Owner"),
-            "commercial",
-            Map.of(
-                "planId",
-                "TRIAL",
-                "billingStatus",
-                "MANUAL",
-                "trialDays",
-                14,
-                "supportTier",
-                "STANDARD"),
-            "quotas",
-            Map.of(
-                "maxActiveUsers",
-                10,
-                "maxApiRequests",
-                10000,
-                "maxStorageBytes",
-                1073741824,
-                "maxConcurrentRequests",
-                8,
-                "softLimitEnabled",
-                false,
-                "hardLimitEnabled",
-                true),
-            "modules",
-            Map.of("enabled", List.of("ACCOUNTING", "SALES")),
-            "support",
-            Map.of("notes", "safe note", "tags", List.of("M4")),
-            "createMode",
-            "DRAFT");
+    String ownerEmail = "owner-" + code.toLowerCase(Locale.ROOT) + "@example.com";
+    Map<String, Object> payload = addClientPayload(code, ownerEmail, "DRAFT");
 
     ResponseEntity<Map> createResponse =
         rest.exchange(
@@ -204,6 +152,8 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
     assertThat(activation).containsEntry("status", "NOT_SENT");
     assertThat(created.toString()).doesNotContain("temporaryPassword", "credentialsEmailSent");
 
+    assertTenantListAndProfileReadBackStatus(superAdminHeaders, code, "DRAFT", ownerEmail);
+
     Map<String, Object> invalidPayload = new java.util.LinkedHashMap<>(payload);
     invalidPayload.put("warehouse", Map.of("name", "Forbidden"));
     ResponseEntity<Map> invalidResponse =
@@ -216,61 +166,39 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
   }
 
   @Test
+  void addClientSendActivationReadBackRemainsPendingActivation() {
+    String superAdminToken = loginToken(SUPER_ADMIN_EMAIL, ROOT_COMPANY_CODE);
+    HttpHeaders superAdminHeaders = headers(superAdminToken, ROOT_COMPANY_CODE);
+    String code = "M4ACT" + System.nanoTime();
+    String ownerEmail = "owner-" + code.toLowerCase(Locale.ROOT) + "@example.com";
+
+    ResponseEntity<Map> createResponse =
+        rest.exchange(
+            "/api/v1/superadmin/tenants",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                addClientPayload(code, ownerEmail, "SEND_ACTIVATION"), superAdminHeaders),
+            Map.class);
+
+    assertThat(createResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+    @SuppressWarnings("unchecked")
+    Map<String, Object> created = (Map<String, Object>) createResponse.getBody().get("data");
+    assertThat(created).containsEntry("status", "PENDING_ACTIVATION");
+    @SuppressWarnings("unchecked")
+    Map<String, Object> activation = (Map<String, Object>) created.get("activation");
+    assertThat(activation).containsEntry("status", "SENT");
+
+    assertTenantListAndProfileReadBackStatus(
+        superAdminHeaders, code, "PENDING_ACTIVATION", ownerEmail);
+  }
+
+  @Test
   void addClientNearConcurrentDuplicateCreatesExactlyOneTenantAndOwner() throws Exception {
     String superAdminToken = loginToken(SUPER_ADMIN_EMAIL, ROOT_COMPANY_CODE);
     HttpHeaders superAdminHeaders = headers(superAdminToken, ROOT_COMPANY_CODE);
     String marker = "M4DUP" + System.nanoTime();
     String ownerEmail = "owner-" + marker.toLowerCase(Locale.ROOT) + "@example.com";
-    Map<String, Object> payload =
-        Map.of(
-            "company",
-            Map.of(
-                "name",
-                "M4 Duplicate Client",
-                "code",
-                marker,
-                "timezone",
-                "Asia/Kolkata",
-                "stateCode",
-                "KA",
-                "baseCurrency",
-                "INR",
-                "defaultGstRate",
-                18,
-                "coaTemplateCode",
-                "SME"),
-            "owner",
-            Map.of("email", ownerEmail, "displayName", "Owner"),
-            "commercial",
-            Map.of(
-                "planId",
-                "TRIAL",
-                "billingStatus",
-                "MANUAL",
-                "trialDays",
-                14,
-                "supportTier",
-                "STANDARD"),
-            "quotas",
-            Map.of(
-                "maxActiveUsers",
-                10,
-                "maxApiRequests",
-                10000,
-                "maxStorageBytes",
-                1073741824,
-                "maxConcurrentRequests",
-                8,
-                "softLimitEnabled",
-                false,
-                "hardLimitEnabled",
-                true),
-            "modules",
-            Map.of("enabled", List.of("ACCOUNTING", "SALES")),
-            "support",
-            Map.of("notes", "safe duplicate note", "tags", List.of("M4")),
-            "createMode",
-            "DRAFT");
+    Map<String, Object> payload = addClientPayload(marker, ownerEmail, "DRAFT");
     Callable<ResponseEntity<Map>> createCall =
         () ->
             rest.exchange(
@@ -768,6 +696,97 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
             "companyCode", companyCode);
     ResponseEntity<Map> response = rest.postForEntity("/api/v1/auth/login", request, Map.class);
     return (String) response.getBody().get("accessToken");
+  }
+
+  private Map<String, Object> addClientPayload(String code, String ownerEmail, String createMode) {
+    return Map.of(
+        "company",
+        Map.of(
+            "name",
+            "M4 IT Client",
+            "code",
+            code,
+            "timezone",
+            "Asia/Kolkata",
+            "stateCode",
+            "KA",
+            "baseCurrency",
+            "INR",
+            "defaultGstRate",
+            18,
+            "coaTemplateCode",
+            "SME"),
+        "owner",
+        Map.of("email", ownerEmail, "displayName", "Owner"),
+        "commercial",
+        Map.of(
+            "planId",
+            "TRIAL",
+            "billingStatus",
+            "MANUAL",
+            "trialDays",
+            14,
+            "supportTier",
+            "STANDARD"),
+        "quotas",
+        Map.of(
+            "maxActiveUsers",
+            10,
+            "maxApiRequests",
+            10000,
+            "maxStorageBytes",
+            1073741824,
+            "maxConcurrentRequests",
+            8,
+            "softLimitEnabled",
+            false,
+            "hardLimitEnabled",
+            true),
+        "modules",
+        Map.of("enabled", List.of("ACCOUNTING", "SALES")),
+        "support",
+        Map.of("notes", "safe note", "tags", List.of("M4")),
+        "createMode",
+        createMode);
+  }
+
+  private void assertTenantListAndProfileReadBackStatus(
+      HttpHeaders superAdminHeaders, String code, String expectedStatus, String ownerEmail) {
+    ResponseEntity<Map> listResponse =
+        rest.exchange(
+            "/api/v1/superadmin/tenants?q=" + code + "&page=0&size=10&sort=companyCode,asc",
+            HttpMethod.GET,
+            new HttpEntity<>(superAdminHeaders),
+            Map.class);
+    assertThat(listResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    @SuppressWarnings("unchecked")
+    Map<String, Object> page = (Map<String, Object>) listResponse.getBody().get("data");
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> tenants = (List<Map<String, Object>>) page.get("content");
+    Map<String, Object> tenantRow =
+        tenants.stream()
+            .filter(tenant -> code.equals(tenant.get("companyCode")))
+            .findFirst()
+            .orElseThrow();
+    assertThat(tenantRow).containsEntry("status", expectedStatus);
+    @SuppressWarnings("unchecked")
+    Map<String, Object> mainAdmin = (Map<String, Object>) tenantRow.get("mainAdmin");
+    assertThat(mainAdmin).containsEntry("email", ownerEmail);
+
+    Number tenantId = (Number) tenantRow.get("companyId");
+    ResponseEntity<Map> profileResponse =
+        rest.exchange(
+            "/api/v1/superadmin/tenants/" + tenantId.longValue(),
+            HttpMethod.GET,
+            new HttpEntity<>(superAdminHeaders),
+            Map.class);
+    assertThat(profileResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    @SuppressWarnings("unchecked")
+    Map<String, Object> profile = (Map<String, Object>) profileResponse.getBody().get("data");
+    assertThat(profile).containsEntry("status", expectedStatus);
+    @SuppressWarnings("unchecked")
+    Map<String, Object> profileMainAdmin = (Map<String, Object>) profile.get("mainAdmin");
+    assertThat(profileMainAdmin).containsEntry("email", ownerEmail);
   }
 
   private String readLifecycleState(Long companyId) {

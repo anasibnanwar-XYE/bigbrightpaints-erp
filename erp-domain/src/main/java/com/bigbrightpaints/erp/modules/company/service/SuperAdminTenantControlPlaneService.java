@@ -1335,11 +1335,6 @@ public class SuperAdminTenantControlPlaneService {
   private String resolveTenantStatus(Company company, CompanyTenantMetricsDto metrics) {
     String metricsStatus =
         metrics == null ? null : normalizeCanonicalStatus(metrics.lifecycleState(), true);
-    if (metricsStatus != null
-        && !"ACTIVE".equals(metricsStatus)
-        && !"TRIAL_ACTIVE".equals(metricsStatus)) {
-      return metricsStatus;
-    }
     String lifecycle =
         metrics == null || !StringUtils.hasText(metrics.lifecycleState())
             ? resolveLifecycle(company)
@@ -1350,22 +1345,52 @@ public class SuperAdminTenantControlPlaneService {
     if (CompanyLifecycleState.DEACTIVATED.name().equals(lifecycle)) {
       return "ARCHIVED";
     }
+    String onboardingStatus = resolveOnboardingTenantStatus(company);
+    if (onboardingStatus != null) {
+      return onboardingStatus;
+    }
+    if (metricsStatus != null
+        && !"ACTIVE".equals(metricsStatus)
+        && !"TRIAL_ACTIVE".equals(metricsStatus)) {
+      return metricsStatus;
+    }
+    return metricsStatus == null ? "ACTIVE" : metricsStatus;
+  }
+
+  private String resolveOnboardingTenantStatus(Company company) {
     if (company != null
-        && company.getOnboardingCredentialsEmailedAt() != null
-        && company.getOnboardingCompletedAt() == null) {
-      return "PENDING_ACTIVATION";
+        && company.getOnboardingCompletedAt() == null
+        && "USED".equals(normalizeActivationStatus(company.getActivationStatus()))) {
+      return "SETUP_PENDING";
     }
     if (company != null
-        && StringUtils.hasText(company.getOnboardingAdminEmail())
-        && company.getOnboardingAdminUserId() == null) {
-      return "DRAFT";
+        && company.getOnboardingCompletedAt() == null
+        && (company.getOnboardingCredentialsEmailedAt() != null
+            || company.getActivationSentAt() != null
+            || Set.of("SENT", "EXPIRED", "SUPERSEDED")
+                .contains(normalizeActivationStatus(company.getActivationStatus())))) {
+      return "PENDING_ACTIVATION";
+    }
+    if (company != null && company.getOnboardingCompletedAt() == null) {
+      String activationStatus = normalizeActivationStatus(company.getActivationStatus());
+      if (StringUtils.hasText(company.getOnboardingAdminEmail())
+          && (!StringUtils.hasText(activationStatus) || "NOT_SENT".equals(activationStatus))) {
+        return "DRAFT";
+      }
     }
     if (company != null
         && company.getOnboardingAdminUserId() != null
         && company.getOnboardingCompletedAt() == null) {
       return "SETUP_PENDING";
     }
-    return metricsStatus == null ? "ACTIVE" : metricsStatus;
+    return null;
+  }
+
+  private String normalizeActivationStatus(String activationStatus) {
+    if (!StringUtils.hasText(activationStatus)) {
+      return "NOT_SENT";
+    }
+    return activationStatus.trim().toUpperCase(Locale.ROOT);
   }
 
   private Instant resolveLastActivityAt(Long companyId) {

@@ -687,21 +687,9 @@ public class CompanyService {
 
   private String resolveSuperAdminTenantStatus(
       Company company, CompanyLifecycleState lifecycleState) {
-    if (company != null
-        && company.getOnboardingCredentialsEmailedAt() != null
-        && company.getOnboardingCompletedAt() == null) {
-      return "PENDING_ACTIVATION";
-    }
-    if (company != null
-        && StringUtils.hasText(company.getOnboardingAdminEmail())
-        && company.getOnboardingAdminUserId() == null
-        && company.getOnboardingCompletedAt() == null) {
-      return "DRAFT";
-    }
-    if (company != null
-        && company.getOnboardingAdminUserId() != null
-        && company.getOnboardingCompletedAt() == null) {
-      return "SETUP_PENDING";
+    String onboardingStatus = resolveOnboardingTenantStatus(company);
+    if (onboardingStatus != null) {
+      return onboardingStatus;
     }
     String reasonStatus =
         normalizeSuperAdminStatusReason(company == null ? null : company.getLifecycleReason());
@@ -713,6 +701,42 @@ public class CompanyService {
           "SUSPENDED_READ_ONLY".equals(reasonStatus) ? "SUSPENDED_READ_ONLY" : "SUSPENDED_BLOCKED";
       case DEACTIVATED -> "CANCELED".equals(reasonStatus) ? "CANCELED" : "ARCHIVED";
     };
+  }
+
+  private String resolveOnboardingTenantStatus(Company company) {
+    if (company != null
+        && company.getOnboardingCompletedAt() == null
+        && "USED".equals(normalizeActivationStatus(company.getActivationStatus()))) {
+      return "SETUP_PENDING";
+    }
+    if (company != null
+        && company.getOnboardingCompletedAt() == null
+        && (company.getOnboardingCredentialsEmailedAt() != null
+            || company.getActivationSentAt() != null
+            || Set.of("SENT", "EXPIRED", "SUPERSEDED")
+                .contains(normalizeActivationStatus(company.getActivationStatus())))) {
+      return "PENDING_ACTIVATION";
+    }
+    if (company != null && company.getOnboardingCompletedAt() == null) {
+      String activationStatus = normalizeActivationStatus(company.getActivationStatus());
+      if (StringUtils.hasText(company.getOnboardingAdminEmail())
+          && (!StringUtils.hasText(activationStatus) || "NOT_SENT".equals(activationStatus))) {
+        return "DRAFT";
+      }
+    }
+    if (company != null
+        && company.getOnboardingAdminUserId() != null
+        && company.getOnboardingCompletedAt() == null) {
+      return "SETUP_PENDING";
+    }
+    return null;
+  }
+
+  private String normalizeActivationStatus(String activationStatus) {
+    if (!StringUtils.hasText(activationStatus)) {
+      return "NOT_SENT";
+    }
+    return activationStatus.trim().toUpperCase(Locale.ROOT);
   }
 
   private String normalizeSuperAdminStatusReason(String lifecycleReason) {
