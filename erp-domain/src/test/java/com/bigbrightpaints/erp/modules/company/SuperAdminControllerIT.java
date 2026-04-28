@@ -2,9 +2,6 @@ package com.bigbrightpaints.erp.modules.company;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
@@ -30,6 +27,7 @@ import org.springframework.mail.MailSendException;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 
+import com.bigbrightpaints.erp.modules.auth.service.AuthTokenDigests;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyLifecycleState;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
@@ -264,6 +262,15 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
                     + " and token_digest = ?",
                 tenantId.longValue(),
                 activationDigest(copiedToken)))
+        .isOne();
+    assertThat(
+            countRows(
+                "select count(*) from tenant_activation_tokens where company_id = ?"
+                    + " and token_digest = ? and digest_algorithm = ? and digest_version = ?",
+                tenantId.longValue(),
+                activationDigest(copiedToken),
+                AuthTokenDigests.DIGEST_ALGORITHM,
+                AuthTokenDigests.DIGEST_VERSION))
         .isOne();
     assertThat(
             countRows(
@@ -1328,18 +1335,13 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
     return jdbcTemplate.queryForObject(sql, Long.class, firstValue, secondValue);
   }
 
+  private Long countRows(
+      String sql, Object firstValue, Object secondValue, Object thirdValue, Object fourthValue) {
+    return jdbcTemplate.queryForObject(
+        sql, Long.class, firstValue, secondValue, thirdValue, fourthValue);
+  }
+
   private String activationDigest(String token) {
-    try {
-      MessageDigest digest = MessageDigest.getInstance("SHA-256");
-      byte[] hashed =
-          digest.digest(("tenant-activation:v1:" + token).getBytes(StandardCharsets.UTF_8));
-      StringBuilder hex = new StringBuilder(hashed.length * 2);
-      for (byte value : hashed) {
-        hex.append(String.format("%02x", value));
-      }
-      return hex.toString();
-    } catch (NoSuchAlgorithmException ex) {
-      throw new AssertionError("SHA-256 must be available for activation digest proof", ex);
-    }
+    return AuthTokenDigests.tenantActivationTokenDigest(token);
   }
 }

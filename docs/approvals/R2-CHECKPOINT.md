@@ -2,6 +2,33 @@
 
 Last reviewed: 2026-05-01
 
+## Addendum — `m5-fix-activation-reset-digest-metadata`
+
+- Scope: activation and password-reset token persistence metadata hardening for digest algorithm/version.
+- Risk trigger: touches high-risk auth token persistence, Super Admin activation token issuance, and Flyway v2 schema under `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/**`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/company/**`, and `erp-domain/src/main/resources/db/migration_v2/**`.
+- Approval mode: orchestrator; human escalation required: no.
+- Escalation decision: no privilege widening, tenant-boundary change, destructive migration, or secret-handling relaxation was introduced. The schema only adds/backfills/enforces non-secret digest metadata for existing digest-only token rows and keeps raw token/link material out of persistence.
+- Rollback owner: Droid mission orchestrator.
+- Rollback method: revert this packet and rerun compile, Spotless, targeted digest-token guard/auth reset/activation tests, high-risk guard, and mission-safe baseline validators.
+- Expiry: 2026-05-05.
+- Verification evidence:
+  - `password_reset_tokens` and `tenant_activation_tokens` now persist `digest_algorithm='SHA-256'` and `digest_version=1` alongside the existing one-way `token_digest`
+  - Flyway v2 migration `V192__token_digest_metadata.sql` adds, backfills, marks non-null, and constrains digest metadata for both tables without adding any raw token, activation-link, or reset-link fields
+  - token issuance for password reset and tenant activation writes metadata from centralized `AuthTokenDigests` constants
+  - activation lookup and reset lookup still hash caller-supplied token material before repository lookup
+  - non-black-box truth-suite guard covers entities, migration metadata, centralized digest constants, repository lookup paths, and token/audit metadata-only proof
+- Commands run:
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -q -DskipTests compile`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=TS_AuthDigestTokenStorageGuardTest,AuthPasswordResetPublicContractIT,PasswordResetServiceTest,SuperAdminTenantControlPlaneServiceTest,SuperAdminControllerIT test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn spotless:check`
+  - `bash ci/check-high-risk-changes.sh`
+  - `bash ci/lint-knowledgebase.sh`
+- Result summary:
+  - targeted digest-token/auth/activation suite reported 94 tests run, 0 failures/errors/skips
+  - high-risk guard and knowledgebase lint both passed for the updated R2 evidence
+  - password-reset and activation integration proofs now assert persisted digest metadata values and absence of raw token columns
+  - no bearer tokens, passwords, activation links, reset links, token digests, provider credentials, or `.env` values were printed in evidence
+
 ## Addendum — `m5-fix-activation-email-after-audit-commit`
 
 - Scope: activation create-with-send, send, and resend email side-effect ordering after required platform audit persistence and transaction commit.

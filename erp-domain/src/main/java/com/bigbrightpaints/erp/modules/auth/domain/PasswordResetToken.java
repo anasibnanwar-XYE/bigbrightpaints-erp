@@ -25,6 +25,12 @@ public class PasswordResetToken extends VersionedEntity {
   @Column(name = "token_digest", nullable = false, length = 64)
   private String tokenDigest;
 
+  @Column(name = "digest_algorithm", nullable = false, length = 32)
+  private String digestAlgorithm;
+
+  @Column(name = "digest_version", nullable = false)
+  private Integer digestVersion;
+
   @Column(name = "expires_at", nullable = false)
   private Instant expiresAt;
 
@@ -39,16 +45,27 @@ public class PasswordResetToken extends VersionedEntity {
 
   protected PasswordResetToken() {}
 
-  private PasswordResetToken(UserAccount user, String tokenDigest, Instant expiresAt) {
+  private PasswordResetToken(
+      UserAccount user,
+      String tokenDigest,
+      String digestAlgorithm,
+      int digestVersion,
+      Instant expiresAt) {
     this.user = user;
     this.tokenDigest = tokenDigest;
+    this.digestAlgorithm = digestAlgorithm;
+    this.digestVersion = digestVersion;
     this.expiresAt = expiresAt;
     this.createdAt = Instant.now();
   }
 
   public static PasswordResetToken digestOnly(
-      UserAccount user, String tokenDigest, Instant expiresAt) {
-    return new PasswordResetToken(user, tokenDigest, expiresAt);
+      UserAccount user,
+      String tokenDigest,
+      String digestAlgorithm,
+      int digestVersion,
+      Instant expiresAt) {
+    return new PasswordResetToken(user, tokenDigest, digestAlgorithm, digestVersion, expiresAt);
   }
 
   public Long getId() {
@@ -61,6 +78,14 @@ public class PasswordResetToken extends VersionedEntity {
 
   public String getTokenDigest() {
     return tokenDigest;
+  }
+
+  public String getDigestAlgorithm() {
+    return digestAlgorithm;
+  }
+
+  public Integer getDigestVersion() {
+    return digestVersion;
   }
 
   public Instant getExpiresAt() {

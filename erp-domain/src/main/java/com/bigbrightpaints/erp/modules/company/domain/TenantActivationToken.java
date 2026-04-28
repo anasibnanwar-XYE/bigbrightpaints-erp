@@ -33,6 +33,12 @@ public class TenantActivationToken extends VersionedEntity {
   @Column(name = "token_digest", nullable = false, length = 64)
   private String tokenDigest;
 
+  @Column(name = "digest_algorithm", nullable = false, length = 32)
+  private String digestAlgorithm;
+
+  @Column(name = "digest_version", nullable = false)
+  private Integer digestVersion;
+
   @Column(nullable = false, length = 32)
   private String status = "ISSUED";
 
@@ -54,18 +60,33 @@ public class TenantActivationToken extends VersionedEntity {
   protected TenantActivationToken() {}
 
   private TenantActivationToken(
-      Company company, UserAccount ownerUser, String tokenDigest, Instant now, Instant expiresAt) {
+      Company company,
+      UserAccount ownerUser,
+      String tokenDigest,
+      String digestAlgorithm,
+      int digestVersion,
+      Instant now,
+      Instant expiresAt) {
     this.company = company;
     this.ownerUser = ownerUser;
     this.tokenDigest = tokenDigest;
+    this.digestAlgorithm = digestAlgorithm;
+    this.digestVersion = digestVersion;
     this.createdAt = now;
     this.expiresAt = expiresAt;
     this.status = "ISSUED";
   }
 
   public static TenantActivationToken digestOnly(
-      Company company, UserAccount ownerUser, String tokenDigest, Instant now, Instant expiresAt) {
-    return new TenantActivationToken(company, ownerUser, tokenDigest, now, expiresAt);
+      Company company,
+      UserAccount ownerUser,
+      String tokenDigest,
+      String digestAlgorithm,
+      int digestVersion,
+      Instant now,
+      Instant expiresAt) {
+    return new TenantActivationToken(
+        company, ownerUser, tokenDigest, digestAlgorithm, digestVersion, now, expiresAt);
   }
 
   public Long getId() {
@@ -82,6 +103,14 @@ public class TenantActivationToken extends VersionedEntity {
 
   public String getTokenDigest() {
     return tokenDigest;
+  }
+
+  public String getDigestAlgorithm() {
+    return digestAlgorithm;
+  }
+
+  public Integer getDigestVersion() {
+    return digestVersion;
   }
 
   public String getStatus() {

@@ -35,6 +35,7 @@ import com.bigbrightpaints.erp.modules.auth.domain.PasswordResetToken;
 import com.bigbrightpaints.erp.modules.auth.domain.PasswordResetTokenRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
+import com.bigbrightpaints.erp.modules.auth.service.AuthTokenDigests;
 import com.bigbrightpaints.erp.modules.auth.service.IamCanonicalStorageService;
 import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
 
@@ -1112,7 +1113,11 @@ public class AuthControllerIT extends AbstractIntegrationTest {
     String resetToken = "digest-reset-token";
     passwordResetTokenRepository.save(
         PasswordResetToken.digestOnly(
-            user, passwordResetDigest(resetToken), Instant.now().plusSeconds(600)));
+            user,
+            passwordResetDigest(resetToken),
+            AuthTokenDigests.DIGEST_ALGORITHM,
+            AuthTokenDigests.DIGEST_VERSION,
+            Instant.now().plusSeconds(600)));
 
     ResponseEntity<Map> resetResponse =
         rest.postForEntity(

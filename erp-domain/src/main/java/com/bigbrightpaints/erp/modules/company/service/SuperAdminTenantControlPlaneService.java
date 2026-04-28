@@ -1,8 +1,5 @@
 package com.bigbrightpaints.erp.modules.company.service;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -45,6 +42,7 @@ import com.bigbrightpaints.erp.modules.auth.domain.PasswordResetTokenRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserPrincipal;
+import com.bigbrightpaints.erp.modules.auth.service.AuthTokenDigests;
 import com.bigbrightpaints.erp.modules.auth.service.IamCanonicalStorageService;
 import com.bigbrightpaints.erp.modules.auth.service.PasswordService;
 import com.bigbrightpaints.erp.modules.auth.service.RefreshTokenService;
@@ -68,7 +66,6 @@ import jakarta.persistence.EntityNotFoundException;
 public class SuperAdminTenantControlPlaneService {
 
   private static final SecureRandom ACTIVATION_RANDOM = new SecureRandom();
-  private static final String ACTIVATION_TOKEN_SCOPE = "tenant-activation:v1";
   private static final ConcurrentMap<String, AddClientCreateLock> ADD_CLIENT_CREATE_LOCKS =
       new ConcurrentHashMap<>();
 
@@ -1347,7 +1344,13 @@ public class SuperAdminTenantControlPlaneService {
     TenantActivationToken activationToken =
         tenantActivationTokenRepository.saveAndFlush(
             TenantActivationToken.digestOnly(
-                company, owner, activationTokenDigest(rawToken), now, expiresAt));
+                company,
+                owner,
+                AuthTokenDigests.tenantActivationTokenDigest(rawToken),
+                AuthTokenDigests.DIGEST_ALGORITHM,
+                AuthTokenDigests.DIGEST_VERSION,
+                now,
+                expiresAt));
     String activationUrl = emailService.buildTenantActivationLink(rawToken);
     if (markForEmailDelivery) {
       activationToken.markSent(now);
@@ -1435,7 +1438,7 @@ public class SuperAdminTenantControlPlaneService {
     }
     TenantActivationToken token =
         tenantActivationTokenRepository
-            .findByTokenDigest(activationTokenDigest(tokenValue.trim()))
+            .findByTokenDigest(AuthTokenDigests.tenantActivationTokenDigest(tokenValue.trim()))
             .orElseThrow(this::invalidActivationToken);
     Instant now = CompanyTime.now(token.getCompany());
     String status = normalizeActivationStatus(token.getStatus());
@@ -1525,22 +1528,6 @@ public class SuperAdminTenantControlPlaneService {
     byte[] bytes = new byte[32];
     ACTIVATION_RANDOM.nextBytes(bytes);
     return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
-  }
-
-  private String activationTokenDigest(String rawToken) {
-    try {
-      MessageDigest digest = MessageDigest.getInstance("SHA-256");
-      byte[] hashed =
-          digest.digest((ACTIVATION_TOKEN_SCOPE + ":" + rawToken).getBytes(StandardCharsets.UTF_8));
-      StringBuilder hex = new StringBuilder(hashed.length * 2);
-      for (byte value : hashed) {
-        hex.append(String.format("%02x", value));
-      }
-      return hex.toString();
-    } catch (NoSuchAlgorithmException ex) {
-      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState(
-          "Activation token digest algorithm is unavailable", ex);
-    }
   }
 
   private SuperAdminAddClientCreateResponse addClientResponse(

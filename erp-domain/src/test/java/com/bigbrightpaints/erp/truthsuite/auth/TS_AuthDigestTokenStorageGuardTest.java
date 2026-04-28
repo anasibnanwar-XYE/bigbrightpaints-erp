@@ -16,6 +16,8 @@ class TS_AuthDigestTokenStorageGuardTest {
       "src/main/java/com/bigbrightpaints/erp/modules/auth/domain/PasswordResetTokenRepository.java";
   private static final String PASSWORD_RESET_SERVICE =
       "src/main/java/com/bigbrightpaints/erp/modules/auth/service/PasswordResetService.java";
+  private static final String AUTH_TOKEN_DIGESTS =
+      "src/main/java/com/bigbrightpaints/erp/modules/auth/service/AuthTokenDigests.java";
   private static final String ACTIVATION_ENTITY =
       "src/main/java/com/bigbrightpaints/erp/modules/company/domain/TenantActivationToken.java";
   private static final String ACTIVATION_REPOSITORY =
@@ -24,6 +26,8 @@ class TS_AuthDigestTokenStorageGuardTest {
       "src/main/java/com/bigbrightpaints/erp/modules/company/service/SuperAdminTenantControlPlaneService.java";
   private static final String RESET_DIGEST_MIGRATION =
       "src/main/resources/db/migration_v2/V190__iam_core_schema_and_model_hard_cut.sql";
+  private static final String DIGEST_METADATA_MIGRATION =
+      "src/main/resources/db/migration_v2/V192__token_digest_metadata.sql";
   private static final String ACTIVATION_MIGRATION =
       "src/main/resources/db/migration_v2/V191__super_admin_add_client_activation.sql";
 
@@ -32,6 +36,8 @@ class TS_AuthDigestTokenStorageGuardTest {
     String entity = TruthSuiteFileAssert.read(PASSWORD_RESET_ENTITY);
     assertThat(entity)
         .contains("@Column(name = \"token_digest\", nullable = false, length = 64)")
+        .contains("@Column(name = \"digest_algorithm\", nullable = false, length = 32)")
+        .contains("@Column(name = \"digest_version\", nullable = false)")
         .contains("static PasswordResetToken digestOnly(")
         .doesNotContain("@Column(name = \"token\"")
         .doesNotContain("private String token;")
@@ -51,6 +57,8 @@ class TS_AuthDigestTokenStorageGuardTest {
     String entity = TruthSuiteFileAssert.read(ACTIVATION_ENTITY);
     assertThat(entity)
         .contains("@Column(name = \"token_digest\", nullable = false, length = 64)")
+        .contains("@Column(name = \"digest_algorithm\", nullable = false, length = 32)")
+        .contains("@Column(name = \"digest_version\", nullable = false)")
         .contains("TenantActivationToken digestOnly(")
         .doesNotContain("@Column(name = \"token\"")
         .doesNotContain("activationUrl")
@@ -68,7 +76,48 @@ class TS_AuthDigestTokenStorageGuardTest {
   }
 
   @Test
+  void tokenDigestMetadataIsBackfilledAndEnforcedWithoutRawTokenColumns() {
+    String metadataMigration = TruthSuiteFileAssert.read(DIGEST_METADATA_MIGRATION);
+    TruthSuiteFileAssert.assertContainsInOrder(
+        DIGEST_METADATA_MIGRATION,
+        "ALTER TABLE password_reset_tokens",
+        "ADD COLUMN IF NOT EXISTS digest_algorithm VARCHAR(32)",
+        "ADD COLUMN IF NOT EXISTS digest_version INTEGER",
+        "UPDATE password_reset_tokens",
+        "digest_algorithm = 'SHA-256'",
+        "UPDATE password_reset_tokens",
+        "digest_version = 1",
+        "ALTER COLUMN digest_algorithm SET NOT NULL",
+        "ALTER COLUMN digest_version SET NOT NULL",
+        "chk_password_reset_tokens_digest_algorithm",
+        "chk_password_reset_tokens_digest_version");
+    TruthSuiteFileAssert.assertContainsInOrder(
+        DIGEST_METADATA_MIGRATION,
+        "ALTER TABLE tenant_activation_tokens",
+        "ADD COLUMN IF NOT EXISTS digest_algorithm VARCHAR(32)",
+        "ADD COLUMN IF NOT EXISTS digest_version INTEGER",
+        "UPDATE tenant_activation_tokens",
+        "digest_algorithm = 'SHA-256'",
+        "UPDATE tenant_activation_tokens",
+        "digest_version = 1",
+        "ALTER COLUMN digest_algorithm SET NOT NULL",
+        "ALTER COLUMN digest_version SET NOT NULL",
+        "chk_tenant_activation_tokens_digest_algorithm",
+        "chk_tenant_activation_tokens_digest_version");
+    assertThat(metadataMigration.replace("digest_version", "").replace("digest_algorithm", ""))
+        .doesNotContain(" raw_token ")
+        .doesNotContain(" activation_link ")
+        .doesNotContain(" activation_url ")
+        .doesNotContain(" reset_link ");
+  }
+
+  @Test
   void tokenLookupsHashInputBeforeRepositoryLookup() {
+    assertThat(TruthSuiteFileAssert.read(AUTH_TOKEN_DIGESTS))
+        .contains("public static final String DIGEST_ALGORITHM = \"SHA-256\";")
+        .contains("public static final int DIGEST_VERSION = 1;")
+        .contains("public static String passwordResetTokenDigest(String token)")
+        .contains("public static String tenantActivationTokenDigest(String token)");
     TruthSuiteFileAssert.assertContainsInOrder(
         PASSWORD_RESET_SERVICE,
         "String tokenDigest = AuthTokenDigests.passwordResetTokenDigest(tokenValue);",
@@ -77,7 +126,9 @@ class TS_AuthDigestTokenStorageGuardTest {
         PASSWORD_RESET_SERVICE,
         "String token = generateToken();",
         "PasswordResetToken.digestOnly(",
-        "AuthTokenDigests.passwordResetTokenDigest(token)");
+        "AuthTokenDigests.passwordResetTokenDigest(token)",
+        "AuthTokenDigests.DIGEST_ALGORITHM",
+        "AuthTokenDigests.DIGEST_VERSION");
     TruthSuiteFileAssert.assertContains(PASSWORD_RESET_SERVICE, "sendPasswordResetEmailRequired");
     TruthSuiteFileAssert.assertContains(
         PASSWORD_RESET_REPOSITORY, "findByTokenDigest", "deleteByTokenDigest");
@@ -86,9 +137,12 @@ class TS_AuthDigestTokenStorageGuardTest {
         ACTIVATION_SERVICE,
         "String rawToken = newActivationToken();",
         "TenantActivationToken.digestOnly(",
-        "activationTokenDigest(rawToken)");
+        "AuthTokenDigests.tenantActivationTokenDigest(rawToken)",
+        "AuthTokenDigests.DIGEST_ALGORITHM",
+        "AuthTokenDigests.DIGEST_VERSION");
     TruthSuiteFileAssert.assertContainsInOrder(
-        ACTIVATION_SERVICE, ".findByTokenDigest(activationTokenDigest(tokenValue.trim()))");
+        ACTIVATION_SERVICE,
+        ".findByTokenDigest(AuthTokenDigests.tenantActivationTokenDigest(tokenValue.trim()))");
     TruthSuiteFileAssert.assertContains(ACTIVATION_REPOSITORY, "findByTokenDigest");
   }
 

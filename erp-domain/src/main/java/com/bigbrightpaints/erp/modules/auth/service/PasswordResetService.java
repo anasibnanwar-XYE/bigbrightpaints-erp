@@ -315,7 +315,11 @@ public class PasswordResetService {
     Instant expiresAt = Instant.now().plusSeconds(RESET_TOKEN_TTL_SECONDS);
     PasswordResetToken resetToken =
         PasswordResetToken.digestOnly(
-            lockedUser, AuthTokenDigests.passwordResetTokenDigest(token), expiresAt);
+            lockedUser,
+            AuthTokenDigests.passwordResetTokenDigest(token),
+            AuthTokenDigests.DIGEST_ALGORITHM,
+            AuthTokenDigests.DIGEST_VERSION,
+            expiresAt);
     PasswordResetToken saved = tokenRepository.saveAndFlush(resetToken);
     return new IssuedResetToken(saved.getId(), token);
   }
