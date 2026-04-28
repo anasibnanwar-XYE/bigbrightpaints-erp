@@ -14,6 +14,7 @@ Last reviewed: 2026-04-28
   - adds defensive null-user validation for MFA enrollment/activation/disable/login verification
   - closes session revoke/refresh digest races by deleting digests returned from the revoke update
   - scopes session-device reuse and device last-seen updates by IAM account
+  - deduplicates V190 MFA recovery-code hash backfill before relying on conflict handling
   - backfills or removes legacy raw token rows before V190 drops raw token columns and enforces
     digest `NOT NULL` constraints
   - keeps logout best-effort for stale optional refresh tokens while still revoking the authenticated

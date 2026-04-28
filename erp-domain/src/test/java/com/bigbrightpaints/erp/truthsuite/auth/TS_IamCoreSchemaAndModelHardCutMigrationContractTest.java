@@ -30,6 +30,7 @@ class TS_IamCoreSchemaAndModelHardCutMigrationContractTest {
     TruthSuiteFileAssert.assertContainsInOrder(
         V2_MIGRATION,
         "INSERT INTO mfa_recovery_codes",
+        "SELECT DISTINCT u.id, btrim(code_hash), now()",
         "UPDATE refresh_tokens",
         "SET token_digest = encode(digest(token, 'sha256'), 'hex')",
         "DELETE FROM refresh_tokens",

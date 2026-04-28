@@ -186,7 +186,7 @@ WHERE u.mfa_secret IS NOT NULL AND btrim(u.mfa_secret) <> ''
 ON CONFLICT (account_id, factor_type) DO NOTHING;
 
 INSERT INTO mfa_recovery_codes (user_id, code_hash, created_at)
-SELECT u.id, btrim(code_hash), now()
+SELECT DISTINCT u.id, btrim(code_hash), now()
 FROM app_users u
 CROSS JOIN LATERAL regexp_split_to_table(COALESCE(u.mfa_recovery_codes, ''), ',') AS code_hash
 WHERE btrim(code_hash) <> ''
