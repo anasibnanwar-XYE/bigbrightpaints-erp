@@ -1055,6 +1055,59 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
   }
 
   @Test
+  void superadmin_contract_documents_standard_envelope_errors_and_trace_metadata()
+      throws IOException {
+    JsonNode root = fetchCurrentSpecNode();
+    JsonNode dashboardEnvelope =
+        root.path("components").path("schemas").path("ApiResponseCompanySuperAdminDashboardDto");
+    assertThat(dashboardEnvelope.path("properties").has("metadata")).isTrue();
+    JsonNode metadataSchema = root.path("components").path("schemas").path("Metadata");
+    assertThat(metadataSchema.path("properties").has("traceId")).isTrue();
+    assertThat(metadataSchema.path("properties").has("correlationId")).isTrue();
+
+    root.path("paths")
+        .fields()
+        .forEachRemaining(
+            pathEntry -> {
+              if (!pathEntry.getKey().startsWith("/api/v1/superadmin")) {
+                return;
+              }
+              pathEntry
+                  .getValue()
+                  .fields()
+                  .forEachRemaining(
+                      methodEntry -> {
+                        if (!isHttpMethod(methodEntry.getKey())) {
+                          return;
+                        }
+                        JsonNode responses = methodEntry.getValue().path("responses");
+                        assertThat(responses.has("400"))
+                            .as(
+                                "400 response documented for %s %s",
+                                methodEntry.getKey(), pathEntry.getKey())
+                            .isTrue();
+                        assertThat(responses.has("403"))
+                            .as(
+                                "403 response documented for %s %s",
+                                methodEntry.getKey(), pathEntry.getKey())
+                            .isTrue();
+                        assertThat(responses.has("415"))
+                            .as(
+                                "415 response documented for %s %s",
+                                methodEntry.getKey(), pathEntry.getKey())
+                            .isTrue();
+                        assertThat(
+                                responses
+                                    .path("400")
+                                    .path("description")
+                                    .asText("")
+                                    .contains("metadata.traceId"))
+                            .isTrue();
+                      });
+            });
+  }
+
+  @Test
   void packing_contract_keeps_only_canonical_write_surface_and_header_only_idempotency()
       throws IOException {
     JsonNode root = fetchCurrentSpecNode();

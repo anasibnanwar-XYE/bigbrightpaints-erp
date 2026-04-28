@@ -3,7 +3,6 @@ package com.bigbrightpaints.erp.core.security;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.UUID;
 
 import org.springframework.http.MediaType;
 import org.springframework.security.access.AccessDeniedException;
@@ -16,6 +15,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.bigbrightpaints.erp.core.audit.AuditEvent;
 import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
+import com.bigbrightpaints.erp.core.web.RequestTraceContext;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 
 import jakarta.servlet.http.HttpServletRequest;
@@ -40,7 +40,7 @@ public class AuditAwareAccessDeniedHandler implements AccessDeniedHandler {
   public void handle(
       HttpServletRequest request, HttpServletResponse response, AccessDeniedException ex)
       throws IOException {
-    String traceId = UUID.randomUUID().toString();
+    String traceId = RequestTraceContext.traceId();
     String userMessage =
         PortalRoleActionMatrix.resolveAccessDeniedMessage(
             org.springframework.security.core.context.SecurityContextHolder.getContext()

@@ -6,7 +6,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,14 +20,22 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.util.StringUtils;
 import org.springframework.validation.FieldError;
+import org.springframework.web.HttpMediaTypeNotAcceptableException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.context.request.ServletWebRequest;
 import org.springframework.web.context.request.WebRequest;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.servlet.NoHandlerFoundException;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import com.bigbrightpaints.erp.core.audit.AuditService;
+import com.bigbrightpaints.erp.core.web.RequestTraceContext;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 
 import jakarta.servlet.http.HttpServletRequest;
@@ -85,7 +92,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
       HttpServletRequest request,
       HttpStatus status,
       Map<String, Object> responseDetails) {
-    String traceId = UUID.randomUUID().toString();
+    String traceId = RequestTraceContext.traceId();
     logger.error("Application error [{}] - Code: {}", traceId, ex.getErrorCode().getCode(), ex);
     Map<String, Object> data = new HashMap<>();
     data.put("code", ex.getErrorCode().getCode());
@@ -104,7 +111,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
   @ExceptionHandler(CreditLimitExceededException.class)
   public ResponseEntity<ApiResponse<Map<String, Object>>> handleCreditLimitExceeded(
       CreditLimitExceededException ex, HttpServletRequest request) {
-    String traceId = UUID.randomUUID().toString();
+    String traceId = RequestTraceContext.traceId();
     logger.warn("Credit limit exceeded [{}]", traceId);
     Map<String, Object> data = new HashMap<>();
     data.put("code", ex.getErrorCode().getCode());
@@ -128,7 +135,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
       HttpHeaders headers,
       HttpStatusCode status,
       WebRequest request) {
-    String traceId = UUID.randomUUID().toString();
+    String traceId = RequestTraceContext.traceId();
     logger.warn("Validation error [{}]", traceId);
     Map<String, String> fieldErrors = new LinkedHashMap<>();
     for (FieldError error : ex.getBindingResult().getFieldErrors()) {
@@ -141,6 +148,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     data.put("reason", reason);
     data.put("traceId", traceId);
     data.put("errors", fieldErrors);
+    data.put("path", resolveRequestPath(request));
     return ResponseEntity.badRequest().body(ApiResponse.failure(reason, data));
   }
 
@@ -150,7 +158,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
       HttpHeaders headers,
       HttpStatusCode status,
       WebRequest request) {
-    String traceId = UUID.randomUUID().toString();
+    String traceId = RequestTraceContext.traceId();
     String reason = "Failed to read request";
     String detail = resolveMostSpecificMessage(ex);
     logger.warn("Malformed request [{}]", traceId);
@@ -159,9 +167,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     data.put("message", reason);
     data.put("reason", reason);
     data.put("traceId", traceId);
-    if (!isProductionMode() && StringUtils.hasText(detail)) {
-      data.put("details", detail);
-    }
+    data.put("path", resolveRequestPath(request));
     HttpServletRequest servletRequest =
         request instanceof ServletWebRequest servletWebRequest
             ? servletWebRequest.getRequest()
@@ -171,10 +177,97 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     return ResponseEntity.badRequest().body(ApiResponse.failure(reason, data));
   }
 
+  @Override
+  protected ResponseEntity<Object> handleHttpMediaTypeNotSupported(
+      HttpMediaTypeNotSupportedException ex,
+      HttpHeaders headers,
+      HttpStatusCode status,
+      WebRequest request) {
+    return buildFrameworkError(
+        HttpStatus.UNSUPPORTED_MEDIA_TYPE,
+        ErrorCode.VALIDATION_INVALID_INPUT,
+        "Unsupported media type",
+        request);
+  }
+
+  @Override
+  protected ResponseEntity<Object> handleHttpMediaTypeNotAcceptable(
+      HttpMediaTypeNotAcceptableException ex,
+      HttpHeaders headers,
+      HttpStatusCode status,
+      WebRequest request) {
+    return buildFrameworkError(
+        HttpStatus.NOT_ACCEPTABLE,
+        ErrorCode.VALIDATION_INVALID_INPUT,
+        "Requested response media type is not available",
+        request);
+  }
+
+  @Override
+  protected ResponseEntity<Object> handleHttpRequestMethodNotSupported(
+      HttpRequestMethodNotSupportedException ex,
+      HttpHeaders headers,
+      HttpStatusCode status,
+      WebRequest request) {
+    headers.setAllow(
+        ex.getSupportedHttpMethods() == null ? Set.of() : ex.getSupportedHttpMethods());
+    return buildFrameworkError(
+        HttpStatus.METHOD_NOT_ALLOWED,
+        ErrorCode.VALIDATION_INVALID_INPUT,
+        "HTTP method is not supported for this endpoint",
+        request);
+  }
+
+  @Override
+  protected ResponseEntity<Object> handleMissingServletRequestParameter(
+      MissingServletRequestParameterException ex,
+      HttpHeaders headers,
+      HttpStatusCode status,
+      WebRequest request) {
+    return buildFrameworkError(
+        HttpStatus.BAD_REQUEST,
+        ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,
+        "Required request parameter is missing",
+        request);
+  }
+
+  @Override
+  protected ResponseEntity<Object> handleNoHandlerFoundException(
+      NoHandlerFoundException ex, HttpHeaders headers, HttpStatusCode status, WebRequest request) {
+    return buildFrameworkError(
+        HttpStatus.NOT_FOUND,
+        ErrorCode.BUSINESS_ENTITY_NOT_FOUND,
+        "Requested resource was not found",
+        request);
+  }
+
+  @Override
+  protected ResponseEntity<Object> handleNoResourceFoundException(
+      NoResourceFoundException ex, HttpHeaders headers, HttpStatusCode status, WebRequest request) {
+    return buildFrameworkError(
+        HttpStatus.NOT_FOUND,
+        ErrorCode.BUSINESS_ENTITY_NOT_FOUND,
+        "Requested resource was not found",
+        request);
+  }
+
+  @Override
+  protected ResponseEntity<Object> handleMaxUploadSizeExceededException(
+      MaxUploadSizeExceededException ex,
+      HttpHeaders headers,
+      HttpStatusCode status,
+      WebRequest request) {
+    return buildFrameworkError(
+        HttpStatus.PAYLOAD_TOO_LARGE,
+        ErrorCode.FILE_SIZE_EXCEEDED,
+        "Request body is too large",
+        request);
+  }
+
   @ExceptionHandler(ConstraintViolationException.class)
   public ResponseEntity<ApiResponse<Map<String, Object>>> handleConstraintViolation(
       ConstraintViolationException ex, HttpServletRequest request) {
-    String traceId = UUID.randomUUID().toString();
+    String traceId = RequestTraceContext.traceId();
     logger.warn("Constraint violation [{}]", traceId, ex);
     Map<String, String> violations = new LinkedHashMap<>();
     ex.getConstraintViolations()
@@ -197,6 +290,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     data.put("message", reason);
     data.put("reason", reason);
     data.put("traceId", traceId);
+    data.put("path", request.getRequestURI());
     if (!violations.isEmpty()) {
       data.put("errors", violations);
     }
@@ -206,7 +300,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
   @ExceptionHandler(IllegalArgumentException.class)
   public ResponseEntity<ApiResponse<Map<String, Object>>> handleIllegalArgument(
       IllegalArgumentException ex, HttpServletRequest request) {
-    String traceId = UUID.randomUUID().toString();
+    String traceId = RequestTraceContext.traceId();
     logger.warn("Illegal argument [{}]", traceId);
     String reason = resolveIllegalArgumentMessage(ex.getMessage());
     Map<String, Object> data = new HashMap<>();
@@ -214,7 +308,21 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     data.put("message", reason);
     data.put("reason", reason);
     data.put("traceId", traceId);
+    data.put("path", request.getRequestURI());
     return ResponseEntity.badRequest().body(ApiResponse.failure(reason, data));
+  }
+
+  private ResponseEntity<Object> buildFrameworkError(
+      HttpStatus status, ErrorCode code, String message, WebRequest request) {
+    String traceId = RequestTraceContext.traceId();
+    logger.warn("Safe framework request error [{}] - status: {}", traceId, status.value());
+    Map<String, Object> data = new HashMap<>();
+    data.put("code", code.getCode());
+    data.put("message", message);
+    data.put("reason", message);
+    data.put("traceId", traceId);
+    data.put("path", resolveRequestPath(request));
+    return ResponseEntity.status(status).body(ApiResponse.failure(message, data));
   }
 
   private HttpStatus determineHttpStatus(ErrorCode errorCode) {
@@ -348,5 +456,12 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
       current = current.getCause();
     }
     return current.getMessage();
+  }
+
+  private String resolveRequestPath(WebRequest request) {
+    if (request instanceof ServletWebRequest servletWebRequest) {
+      return servletWebRequest.getRequest().getRequestURI();
+    }
+    return null;
   }
 }

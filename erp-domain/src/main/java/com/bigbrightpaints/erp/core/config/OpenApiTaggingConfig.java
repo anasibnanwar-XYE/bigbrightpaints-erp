@@ -8,6 +8,10 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import io.swagger.v3.oas.models.Operation;
+import io.swagger.v3.oas.models.media.Content;
+import io.swagger.v3.oas.models.media.MediaType;
+import io.swagger.v3.oas.models.media.Schema;
+import io.swagger.v3.oas.models.responses.ApiResponse;
 
 @Configuration
 public class OpenApiTaggingConfig {
@@ -25,7 +29,12 @@ public class OpenApiTaggingConfig {
                 if (tag == null) {
                   return;
                 }
-                item.readOperations().forEach(operation -> applyTag(operation, tag));
+                item.readOperations()
+                    .forEach(
+                        operation -> {
+                          applyTag(operation, tag);
+                          applyControlPlaneErrors(path, operation);
+                        });
               });
     };
   }
@@ -42,6 +51,9 @@ public class OpenApiTaggingConfig {
 
   private String resolveTag(String path) {
     String normalized = path.toLowerCase(Locale.ROOT);
+    if (normalized.startsWith("/api/v1/superadmin")) {
+      return "SUPER_ADMIN";
+    }
     if (normalized.startsWith("/api/v1/admin")
         || normalized.startsWith("/api/v1/auth")
         || normalized.startsWith("/api/v1/companies")
@@ -78,5 +90,46 @@ public class OpenApiTaggingConfig {
       return "DEALERS";
     }
     return null;
+  }
+
+  private void applyControlPlaneErrors(String path, Operation operation) {
+    String normalized = path.toLowerCase(Locale.ROOT);
+    if (!normalized.startsWith("/api/v1/superadmin") && !normalized.startsWith("/api/v1/auth")) {
+      return;
+    }
+    if (operation.getResponses() == null) {
+      return;
+    }
+    addErrorResponse(operation, "400", "Validation, parser, oversized query/header, or bad input");
+    addErrorResponse(operation, "401", "Authentication failed or token missing");
+    addErrorResponse(operation, "403", "Authenticated actor is not allowed");
+    addErrorResponse(operation, "404", "Requested resource was not found");
+    addErrorResponse(operation, "405", "HTTP method is not supported for this endpoint");
+    addErrorResponse(operation, "406", "Requested response media type is not available");
+    addErrorResponse(operation, "409", "Conflict or duplicate input");
+    addErrorResponse(operation, "413", "Request body is too large");
+    addErrorResponse(operation, "415", "Unsupported request media type");
+    addErrorResponse(operation, "429", "Rate limit exceeded");
+  }
+
+  private void addErrorResponse(Operation operation, String status, String description) {
+    if (operation.getResponses().containsKey(status)) {
+      return;
+    }
+    operation
+        .getResponses()
+        .addApiResponse(
+            status,
+            new ApiResponse()
+                .description(description + "; response uses ApiResponse metadata.traceId")
+                .content(
+                    new Content()
+                        .addMediaType(
+                            org.springframework.http.MediaType.APPLICATION_JSON_VALUE,
+                            new MediaType().schema(errorEnvelopeSchema()))));
+  }
+
+  private Schema<?> errorEnvelopeSchema() {
+    return new Schema<>().$ref("#/components/schemas/ApiResponseMapStringObject");
   }
 }
