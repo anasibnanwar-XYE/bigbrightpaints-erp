@@ -15,6 +15,7 @@ import org.junit.jupiter.api.Test;
 import com.bigbrightpaints.erp.core.idempotency.IdempotencyUtils;
 import com.bigbrightpaints.erp.modules.auth.domain.RefreshToken;
 import com.bigbrightpaints.erp.modules.auth.domain.RefreshTokenRepository;
+import com.bigbrightpaints.erp.modules.auth.service.IamCanonicalStorageService;
 import com.bigbrightpaints.erp.modules.auth.service.RefreshTokenService;
 
 @Tag("critical")
@@ -23,7 +24,8 @@ class TS_RuntimeRefreshTokenServiceExecutableCoverageTest {
   @Test
   void consume_usesDigestLookupAndDeletesExpiredRecords_runtimeCoverage() {
     RefreshTokenRepository repository = mock(RefreshTokenRepository.class);
-    RefreshTokenService service = new RefreshTokenService(repository);
+    IamCanonicalStorageService iamCanonicalStorageService = mock(IamCanonicalStorageService.class);
+    RefreshTokenService service = new RefreshTokenService(repository, iamCanonicalStorageService);
     String rawToken = "expired-refresh-token";
     String digest = refreshTokenDigest(rawToken);
     RefreshToken stored =
@@ -44,7 +46,8 @@ class TS_RuntimeRefreshTokenServiceExecutableCoverageTest {
   @Test
   void revoke_deletesByDigest_runtimeCoverage() {
     RefreshTokenRepository repository = mock(RefreshTokenRepository.class);
-    RefreshTokenService service = new RefreshTokenService(repository);
+    IamCanonicalStorageService iamCanonicalStorageService = mock(IamCanonicalStorageService.class);
+    RefreshTokenService service = new RefreshTokenService(repository, iamCanonicalStorageService);
     String rawToken = "active-refresh-token";
     String digest = refreshTokenDigest(rawToken);
 
