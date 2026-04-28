@@ -30,10 +30,18 @@ class TS_IamCoreSchemaAndModelHardCutMigrationContractTest {
     TruthSuiteFileAssert.assertContainsInOrder(
         V2_MIGRATION,
         "INSERT INTO mfa_recovery_codes",
+        "UPDATE refresh_tokens",
+        "SET token_digest = encode(digest(token, 'sha256'), 'hex')",
+        "DELETE FROM refresh_tokens",
         "ALTER TABLE refresh_tokens",
         "DROP COLUMN IF EXISTS token",
+        "ALTER COLUMN token_digest SET NOT NULL",
+        "UPDATE password_reset_tokens",
+        "SET token_digest = encode(digest(token, 'sha256'), 'hex')",
+        "DELETE FROM password_reset_tokens",
         "ALTER TABLE password_reset_tokens",
         "DROP COLUMN IF EXISTS token",
+        "ALTER COLUMN token_digest SET NOT NULL",
         "ALTER TABLE app_users",
         "DROP COLUMN IF EXISTS mfa_recovery_codes");
     TruthSuiteFileAssert.assertContains(

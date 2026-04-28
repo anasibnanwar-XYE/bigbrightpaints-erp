@@ -396,6 +396,29 @@ class AuthServiceAuditAttributionTest {
   }
 
   @Test
+  void logoutIgnoresStaleOptionalRefreshTokenAndRevokesCurrentSession() {
+    Claims claims = org.mockito.Mockito.mock(Claims.class);
+    Instant expiresAt = Instant.parse("2026-01-01T00:05:00Z");
+    UUID userPublicId = UUID.randomUUID();
+    UUID sessionPublicId = UUID.randomUUID();
+    when(tokenService.parse("access-token")).thenReturn(claims);
+    when(claims.getSubject()).thenReturn(userPublicId.toString());
+    when(claims.getId()).thenReturn("jti-logout");
+    when(claims.getExpiration()).thenReturn(Date.from(expiresAt));
+    when(claims.get("companyCode", String.class)).thenReturn("ACME");
+    when(authSessionService.currentSessionIdFromClaims(claims)).thenReturn(sessionPublicId);
+    when(authSessionService.refreshTokenBelongsToSession(
+            "stale-refresh", userPublicId, sessionPublicId, "ACME"))
+        .thenReturn(false);
+
+    authService.logout("stale-refresh", "access-token");
+
+    verify(authSessionService).revokeCurrentSession(userPublicId, sessionPublicId, "logout");
+    verify(tokenBlacklistService)
+        .blacklistToken("jti-logout", expiresAt, userPublicId.toString(), "logout");
+  }
+
+  @Test
   void logoutUsesNullIdentityWhenAccessTokenSubjectIsNotUuid() {
     Claims claims = org.mockito.Mockito.mock(Claims.class);
     Instant expiresAt = Instant.parse("2026-01-01T00:05:00Z");

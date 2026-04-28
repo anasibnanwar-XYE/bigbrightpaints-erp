@@ -324,8 +324,10 @@ public class AuthService {
           && !refreshToken.isBlank()
           && !authSessionService.refreshTokenBelongsToSession(
               refreshToken, tokenUserPublicId, currentSessionId, authScopeCode)) {
-        throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
-            "Invalid refresh token");
+        log.info(
+            "Ignoring stale refresh token during logout (actor={}, sessionId={})",
+            tokenUserPublicId,
+            currentSessionId);
       }
       authSessionService.revokeCurrentSession(tokenUserPublicId, currentSessionId, "logout");
     } else if (refreshToken != null && !refreshToken.isBlank()) {

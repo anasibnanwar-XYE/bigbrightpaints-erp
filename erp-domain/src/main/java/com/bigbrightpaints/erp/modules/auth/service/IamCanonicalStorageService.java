@@ -778,14 +778,18 @@ public class IamCanonicalStorageService {
     if (StringUtils.hasText(previousRefreshTokenDigest)) {
       Long previousDeviceId =
           jdbcTemplate.query(
-              "select device_id from iam_sessions where refresh_token_digest = ?",
+              "select device_id from iam_sessions where account_id = ? and refresh_token_digest ="
+                  + " ?",
               rs -> rs.next() ? rs.getObject("device_id", Long.class) : null,
+              accountId,
               previousRefreshTokenDigest);
       if (previousDeviceId != null) {
         jdbcTemplate.update(
-            "update iam_devices set last_seen_at = ?, version = version + 1 where id = ?",
+            "update iam_devices set last_seen_at = ?, version = version + 1 where id = ? and"
+                + " account_id = ?",
             timestampNow(),
-            previousDeviceId);
+            previousDeviceId,
+            accountId);
         return previousDeviceId;
       }
     }

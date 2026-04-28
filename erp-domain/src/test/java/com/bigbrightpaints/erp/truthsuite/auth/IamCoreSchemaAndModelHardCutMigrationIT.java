@@ -236,13 +236,15 @@ class IamCoreSchemaAndModelHardCutMigrationIT extends AbstractIntegrationTest {
                 "select activated_at from iam_mfa_factors where account_id = ?", accountId))
         .isTrue();
 
+    LoginTokens mfaTokens =
+        login(email, password, scope, TotpTestUtils.generateCurrentCode(secret));
     ResponseEntity<Map> disable =
         rest.exchange(
             "/api/v1/auth/mfa/disable",
             HttpMethod.POST,
             new HttpEntity<>(
                 Map.of("code", TotpTestUtils.generateCurrentCode(secret)),
-                bearerJson(tokens.accessToken())),
+                bearerJson(mfaTokens.accessToken())),
             Map.class);
     assertThat(disable.getStatusCode()).isEqualTo(HttpStatus.OK);
     assertThat(
@@ -335,10 +337,24 @@ class IamCoreSchemaAndModelHardCutMigrationIT extends AbstractIntegrationTest {
   }
 
   private LoginTokens login(String email, String password, String companyCode) {
+    return login(email, password, companyCode, null);
+  }
+
+  private LoginTokens login(String email, String password, String companyCode, String mfaCode) {
     ResponseEntity<Map> response =
         rest.postForEntity(
             "/api/v1/auth/login",
-            Map.of("email", email, "password", password, "companyCode", companyCode),
+            mfaCode == null
+                ? Map.of("email", email, "password", password, "companyCode", companyCode)
+                : Map.of(
+                    "email",
+                    email,
+                    "password",
+                    password,
+                    "companyCode",
+                    companyCode,
+                    "mfaCode",
+                    mfaCode),
             Map.class);
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
     assertThat(response.getBody()).isNotNull();

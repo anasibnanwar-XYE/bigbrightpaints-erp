@@ -115,6 +115,20 @@ class MfaServiceTest {
   }
 
   @Test
+  void userScopedOperationsRejectNullUserWithValidationError() {
+    assertThat(assertThrows(ApplicationException.class, () -> mfaService.beginEnrollment(null)))
+        .hasMessage("User is required");
+    assertThat(assertThrows(ApplicationException.class, () -> mfaService.activate(null, "000000")))
+        .hasMessage("User is required");
+    assertThat(assertThrows(ApplicationException.class, () -> mfaService.disable(null, null, null)))
+        .hasMessage("User is required");
+    assertThat(
+            assertThrows(
+                ApplicationException.class, () -> mfaService.verifyDuringLogin(null, null, null)))
+        .hasMessage("User is required");
+  }
+
+  @Test
   void disable_acceptsRecoveryCodeAndClearsEnrollment() {
     UserAccount user = userWithSecret();
     MfaRecoveryCode code = new MfaRecoveryCode(user, "hash-1");

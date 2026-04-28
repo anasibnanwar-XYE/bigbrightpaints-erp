@@ -44,6 +44,7 @@ import com.bigbrightpaints.erp.modules.accounting.dto.OverdueInvoiceDto;
 import com.bigbrightpaints.erp.modules.accounting.service.StatementService;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
+import com.bigbrightpaints.erp.modules.auth.service.IamCanonicalStorageService;
 import com.bigbrightpaints.erp.modules.auth.service.ScopedAccountBootstrapService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
@@ -68,6 +69,7 @@ class DealerServiceTest {
   @Mock private PasswordEncoder passwordEncoder;
   @Mock private EmailService emailService;
   @Mock private AuthScopeService authScopeService;
+  @Mock private IamCanonicalStorageService iamCanonicalStorageService;
   @Mock private AccountRepository accountRepository;
 
   @Mock
@@ -86,7 +88,11 @@ class DealerServiceTest {
   void setUp() {
     scopedAccountBootstrapService =
         new ScopedAccountBootstrapService(
-            userAccountRepository, passwordEncoder, emailService, authScopeService);
+            userAccountRepository,
+            passwordEncoder,
+            emailService,
+            authScopeService,
+            iamCanonicalStorageService);
     dealerService =
         new DealerService(
             dealerRepository,

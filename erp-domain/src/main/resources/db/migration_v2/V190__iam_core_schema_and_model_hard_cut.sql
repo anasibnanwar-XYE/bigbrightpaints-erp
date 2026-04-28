@@ -192,6 +192,16 @@ CROSS JOIN LATERAL regexp_split_to_table(COALESCE(u.mfa_recovery_codes, ''), ','
 WHERE btrim(code_hash) <> ''
 ON CONFLICT DO NOTHING;
 
+UPDATE refresh_tokens
+SET token_digest = encode(digest(token, 'sha256'), 'hex')
+WHERE token_digest IS NULL
+  AND token IS NOT NULL
+  AND btrim(token) <> '';
+
+DELETE FROM refresh_tokens
+WHERE token_digest IS NULL
+   OR length(token_digest) <> 64;
+
 ALTER TABLE refresh_tokens
     DROP COLUMN IF EXISTS token;
 
@@ -203,6 +213,16 @@ ALTER TABLE refresh_tokens
 
 ALTER TABLE password_reset_tokens
     DROP CONSTRAINT IF EXISTS password_reset_tokens_token_key;
+
+UPDATE password_reset_tokens
+SET token_digest = encode(digest(token, 'sha256'), 'hex')
+WHERE token_digest IS NULL
+  AND token IS NOT NULL
+  AND btrim(token) <> '';
+
+DELETE FROM password_reset_tokens
+WHERE token_digest IS NULL
+   OR length(token_digest) <> 64;
 
 ALTER TABLE password_reset_tokens
     DROP COLUMN IF EXISTS token;

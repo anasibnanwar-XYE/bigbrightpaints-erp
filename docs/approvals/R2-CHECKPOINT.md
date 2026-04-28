@@ -2,6 +2,81 @@
 
 Last reviewed: 2026-04-28
 
+## Current Packet Evidence — PR #197 review remediation
+
+## Scope
+- Feature: `codex: address PR review feedback (#197)`
+- Branch: codex/identity-account-hardcut-20260427 (base: origin/main)
+- PR: #197
+- Review candidate:
+  - tightens self security summary lock state so expired `locked_until` windows report unlocked
+  - keeps missing-`jti` hardening coverage specific by supplying an otherwise-present `sid`
+  - adds defensive null-user validation for MFA enrollment/activation/disable/login verification
+  - closes session revoke/refresh digest races by deleting digests returned from the revoke update
+  - scopes session-device reuse and device last-seen updates by IAM account
+  - backfills or removes legacy raw token rows before V190 drops raw token columns and enforces
+    digest `NOT NULL` constraints
+  - keeps logout best-effort for stale optional refresh tokens while still revoking the authenticated
+    current session and blacklisting the access token
+- Why this is R2: this packet touches high-risk auth/session/MFA behavior and the IAM v2 migration.
+  Incorrect behavior could block rollout, leak cross-account device/session state, or leave sessions
+  active after logout/revoke paths.
+
+## Risk Trigger
+- Triggered by:
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/**`
+  - `erp-domain/src/main/resources/db/migration_v2/V190__iam_core_schema_and_model_hard_cut.sql`
+  - auth/session/MFA integration and unit tests under `erp-domain/src/test/java`
+- Contract surfaces affected:
+  - session revocation, credential-safe storage, MFA self-service, and My Account security summary
+- Failure mode if wrong:
+  - legacy plaintext token rows could fail V190 hard-cut migration at `NOT NULL`
+  - stale optional refresh tokens could prevent logout cleanup
+  - cross-account previous refresh digests could update or reuse a foreign device row
+  - session revoke operations could miss a concurrently rotated refresh digest
+
+## Approval Authority
+- Mode: orchestrator
+- Approver: Droid mission orchestrator
+- Canary owner: Droid mission orchestrator
+- Approval status: branch-local integration candidate pending PR review
+- Basis: the packet is compatibility-preserving hardening for review-identified gaps; it narrows
+  behavior and does not grant new privileges or widen tenant boundaries.
+
+## Escalation Decision
+- Human escalation required: no
+- Reason: changes close privacy/session/migration gaps without destructive data migration beyond
+  deleting unusable token rows that still lack a valid digest after deterministic backfill.
+
+## Rollback Owner
+- Owner: Droid mission orchestrator
+- Rollback method:
+  - before merge: revert this packet and rerun compile, focused auth/session/MFA/migration tests,
+    Spotless, knowledgebase lint, high-risk change control, and OpenAPI guard
+  - after merge: revert through a new remediation packet and rerun the same R2 proof lane
+- Rollback trigger:
+  - V190 fails against legacy digest-null token rows
+  - logout fails before current-session/access-token cleanup for stale optional refresh tokens
+  - session/device queries can cross account boundaries
+  - MFA null-user paths throw misleading or untyped failures
+
+## Expiry
+- Valid until: 2026-05-05
+- Re-evaluate if: scope expands into new auth public routes, role-policy redesign, destructive token
+  retention changes, or broader session-store changes.
+
+## Evidence
+- Commands run:
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -q -DskipTests test-compile`
+- Result summary:
+  - compile/test-compile passed after the review-remediation packet
+  - focused test, Spotless, docs lint, high-risk, OpenAPI, and migration evidence are recorded in
+    the PR babysitting session before this packet is pushed
+- Artifacts/links:
+  - this checkpoint section is the branch-local R2 evidence artifact for PR #197 review remediation
+
+---
+
 ## Current Packet Evidence — cleanup-openapi-frontend-handoff-r2-quality-gates
 
 ## Scope

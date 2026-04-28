@@ -121,12 +121,8 @@ public class AuthSessionService {
     if (user == null || user.getPublicId() == null || parsedSessionId == null) {
       return false;
     }
-    List<String> digests = activeSessionDigestsForUser(user.getPublicId(), parsedSessionId);
-    if (digests.isEmpty()) {
-      return false;
-    }
-    int updated =
-        jdbcTemplate.update(
+    List<String> digests =
+        jdbcTemplate.queryForList(
             """
             update iam_sessions s
                set revoked_at = coalesce(s.revoked_at, ?),
@@ -137,13 +133,18 @@ public class AuthSessionService {
                and ia.public_id = ?
                and s.public_id = ?
                and s.revoked_at is null
+               and s.consumed_at is null
+             returning s.refresh_token_digest
             """,
+            String.class,
             Timestamp.from(Instant.now()),
             safeReason(reason),
             user.getPublicId(),
             parsedSessionId);
-    digests.forEach(refreshTokenRepository::deleteByTokenDigest);
-    return updated > 0;
+    digests.stream()
+        .filter(StringUtils::hasText)
+        .forEach(refreshTokenRepository::deleteByTokenDigest);
+    return !digests.isEmpty();
   }
 
   @Transactional
@@ -151,27 +152,29 @@ public class AuthSessionService {
     if (userPublicId == null || sessionId == null) {
       return;
     }
-    List<String> digests = activeSessionDigestsForUser(userPublicId, sessionId);
-    if (digests.isEmpty()) {
-      return;
-    }
-    jdbcTemplate.update(
-        """
-        update iam_sessions s
-           set revoked_at = coalesce(s.revoked_at, ?),
-               revoked_reason = ?,
-               version = s.version + 1
-          from iam_accounts ia
-         where s.account_id = ia.id
-           and ia.public_id = ?
-           and s.public_id = ?
-           and s.revoked_at is null
-        """,
-        Timestamp.from(Instant.now()),
-        safeReason(reason),
-        userPublicId,
-        sessionId);
-    digests.forEach(refreshTokenRepository::deleteByTokenDigest);
+    List<String> digests =
+        jdbcTemplate.queryForList(
+            """
+            update iam_sessions s
+               set revoked_at = coalesce(s.revoked_at, ?),
+                   revoked_reason = ?,
+                   version = s.version + 1
+              from iam_accounts ia
+             where s.account_id = ia.id
+               and ia.public_id = ?
+               and s.public_id = ?
+               and s.revoked_at is null
+               and s.consumed_at is null
+             returning s.refresh_token_digest
+            """,
+            String.class,
+            Timestamp.from(Instant.now()),
+            safeReason(reason),
+            userPublicId,
+            sessionId);
+    digests.stream()
+        .filter(StringUtils::hasText)
+        .forEach(refreshTokenRepository::deleteByTokenDigest);
   }
 
   @Transactional
@@ -182,30 +185,24 @@ public class AuthSessionService {
     List<String> digests =
         jdbcTemplate.queryForList(
             """
-            select s.refresh_token_digest
-              from iam_sessions s
-              join iam_accounts ia on ia.id = s.account_id
-             where ia.public_id = ?
+            update iam_sessions s
+               set revoked_at = coalesce(s.revoked_at, ?),
+                   revoked_reason = ?,
+                   version = s.version + 1
+              from iam_accounts ia
+             where s.account_id = ia.id
+               and ia.public_id = ?
                and s.revoked_at is null
                and s.consumed_at is null
+             returning s.refresh_token_digest
             """,
             String.class,
+            Timestamp.from(Instant.now()),
+            safeReason(reason),
             userPublicId);
-    jdbcTemplate.update(
-        """
-        update iam_sessions s
-           set revoked_at = coalesce(s.revoked_at, ?),
-               revoked_reason = ?,
-               version = s.version + 1
-          from iam_accounts ia
-         where s.account_id = ia.id
-           and ia.public_id = ?
-           and s.revoked_at is null
-        """,
-        Timestamp.from(Instant.now()),
-        safeReason(reason),
-        userPublicId);
-    digests.forEach(refreshTokenRepository::deleteByTokenDigest);
+    digests.stream()
+        .filter(StringUtils::hasText)
+        .forEach(refreshTokenRepository::deleteByTokenDigest);
   }
 
   @Transactional(readOnly = true)
@@ -270,22 +267,6 @@ public class AuthSessionService {
       return null;
     }
     return parseUuid(claims.get("sid", String.class));
-  }
-
-  private List<String> activeSessionDigestsForUser(UUID userPublicId, UUID sessionId) {
-    return jdbcTemplate.queryForList(
-        """
-        select s.refresh_token_digest
-          from iam_sessions s
-          join iam_accounts ia on ia.id = s.account_id
-         where ia.public_id = ?
-           and s.public_id = ?
-           and s.revoked_at is null
-           and s.consumed_at is null
-        """,
-        String.class,
-        userPublicId,
-        sessionId);
   }
 
   private String sanitizeDeviceLabel(String raw) {

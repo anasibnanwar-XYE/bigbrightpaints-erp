@@ -8,6 +8,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Date;
 import java.util.Map;
+import java.util.UUID;
 
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.client5.http.impl.classic.HttpClients;
@@ -270,6 +271,7 @@ public class AuthHardeningIT extends AbstractIntegrationTest {
     return Jwts.builder()
         .setSubject(user.getPublicId().toString())
         .claim("companyCode", COMPANY)
+        .claim("sid", UUID.randomUUID().toString())
         .claim("iatMs", now.toEpochMilli())
         .setIssuedAt(Date.from(now))
         .setExpiration(Date.from(now.plusSeconds(300)))

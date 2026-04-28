@@ -110,8 +110,9 @@ public class MfaService {
 
   @Transactional
   public MfaEnrollment beginEnrollment(UserAccount user) {
+    requireUser(user);
     accountLockoutService.enforceUnlocked(user);
-    if (user == null || user.isMfaEnabled()) {
+    if (user.isMfaEnabled()) {
       throw new ApplicationException(
           ErrorCode.VALIDATION_INVALID_INPUT,
           "MFA is already enabled; use a verified MFA profile-change flow");
@@ -129,6 +130,7 @@ public class MfaService {
 
   @Transactional
   public void activate(UserAccount user, String code) {
+    requireUser(user);
     accountLockoutService.enforceUnlocked(user);
     // Decrypt the MFA secret for validation
     String decryptedSecret = requireActiveSecret(user);
@@ -145,6 +147,7 @@ public class MfaService {
 
   @Transactional
   public void disable(UserAccount user, String totpCode, String recoveryCode) {
+    requireUser(user);
     accountLockoutService.enforceUnlocked(user);
     if (!user.isMfaEnabled()) {
       return;
@@ -209,6 +212,7 @@ public class MfaService {
 
   @Transactional
   public void verifyDuringLogin(UserAccount user, String totpCode, String recoveryCode) {
+    requireUser(user);
     if (!user.isMfaEnabled()) {
       return;
     }
@@ -235,6 +239,12 @@ public class MfaService {
           ErrorCode.VALIDATION_INVALID_INPUT, "MFA enrollment is inactive for this user");
     }
     return cryptoService.decrypt(user.getMfaSecret());
+  }
+
+  private void requireUser(UserAccount user) {
+    if (user == null) {
+      throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "User is required");
+    }
   }
 
   private String normalizeCode(String code) {
