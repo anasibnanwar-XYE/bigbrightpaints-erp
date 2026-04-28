@@ -234,7 +234,22 @@ class TS_RuntimeCompanyContextFilterExecutableCoverageTest {
   }
 
   @Test
-  void helperMethods_coverPathResolutionBranches() {
+  void helperMethods_coverCanonicalControlPathAndPathResolutionBranches() {
+    assertThat(invokeIsLifecycleControlRequest("/api/v1/superadmin/tenants/77", "GET")).isTrue();
+    assertThat(invokeIsLifecycleControlRequest("/api/v1/superadmin/tenants/77/lifecycle", "PUT"))
+        .isTrue();
+    assertThat(
+            invokeIsLifecycleControlRequest(
+                "/api/v1/superadmin/tenants/77/support/admin-password-reset", "POST"))
+        .as("retired support reset is harmless/410, not runtime lifecycle-control")
+        .isFalse();
+    assertThat(
+            invokeIsLifecycleControlRequest(
+                "/api/v1/superadmin/tenants/77/admins/9/email-change/request", "POST"))
+        .isTrue();
+    assertThat(invokeIsLifecycleControlRequest("/api/v1/superadmin/tenants/77", "POST")).isFalse();
+    assertThat(invokeIsLifecycleControlRequest("/api/v1/private", "POST")).isFalse();
+
     assertThat(invokeResolveApplicationPath(null)).isNull();
     MockHttpServletRequest contextAware = request("PUT", "");
     contextAware.setContextPath("/erp");
