@@ -754,6 +754,7 @@ public class AuthControllerIT extends AbstractIntegrationTest {
         companyId,
         COMPANY_CODE);
 
+    historyUser = scopedUser(email);
     historyUser.setEmail(renamedEmail);
     userAccountRepository.save(historyUser);
     iamCanonicalStorageService.syncUser(historyUser);
