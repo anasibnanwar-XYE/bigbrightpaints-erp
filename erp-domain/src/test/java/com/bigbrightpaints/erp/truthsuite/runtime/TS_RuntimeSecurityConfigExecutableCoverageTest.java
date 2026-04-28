@@ -14,6 +14,7 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import com.bigbrightpaints.erp.core.security.ApiAuthenticationEntryPoint;
 import com.bigbrightpaints.erp.core.security.AuditAwareAccessDeniedHandler;
 import com.bigbrightpaints.erp.core.security.CompanyContextFilter;
 import com.bigbrightpaints.erp.core.security.JwtAuthenticationFilter;
@@ -34,6 +35,7 @@ class TS_RuntimeSecurityConfigExecutableCoverageTest {
             mock(CompanyContextFilter.class),
             mock(MustChangePasswordCorridorFilter.class),
             mock(AuditAwareAccessDeniedHandler.class),
+            mock(ApiAuthenticationEntryPoint.class),
             mock(UserAccountDetailsService.class),
             null,
             false);

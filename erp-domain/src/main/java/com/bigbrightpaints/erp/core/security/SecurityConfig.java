@@ -38,6 +38,7 @@ public class SecurityConfig {
   private final CompanyContextFilter companyContextFilter;
   private final MustChangePasswordCorridorFilter mustChangePasswordCorridorFilter;
   private final AuditAwareAccessDeniedHandler auditAwareAccessDeniedHandler;
+  private final ApiAuthenticationEntryPoint apiAuthenticationEntryPoint;
   private final UserDetailsService userDetailsService;
   private final Environment environment;
   private final boolean swaggerPublic;
@@ -49,6 +50,7 @@ public class SecurityConfig {
       CompanyContextFilter companyContextFilter,
       MustChangePasswordCorridorFilter mustChangePasswordCorridorFilter,
       AuditAwareAccessDeniedHandler auditAwareAccessDeniedHandler,
+      ApiAuthenticationEntryPoint apiAuthenticationEntryPoint,
       UserDetailsService userDetailsService,
       @Autowired(required = false) Environment environment,
       @Value("${erp.security.swagger-public:false}") boolean swaggerPublic) {
@@ -57,6 +59,7 @@ public class SecurityConfig {
     this.companyContextFilter = companyContextFilter;
     this.mustChangePasswordCorridorFilter = mustChangePasswordCorridorFilter;
     this.auditAwareAccessDeniedHandler = auditAwareAccessDeniedHandler;
+    this.apiAuthenticationEntryPoint = apiAuthenticationEntryPoint;
     this.userDetailsService = userDetailsService;
     this.environment = environment;
     this.swaggerPublic = swaggerPublic;
@@ -68,6 +71,7 @@ public class SecurityConfig {
       CompanyContextFilter companyContextFilter,
       MustChangePasswordCorridorFilter mustChangePasswordCorridorFilter,
       AuditAwareAccessDeniedHandler auditAwareAccessDeniedHandler,
+      ApiAuthenticationEntryPoint apiAuthenticationEntryPoint,
       UserDetailsService userDetailsService,
       boolean swaggerPublic) {
     this(
@@ -76,6 +80,7 @@ public class SecurityConfig {
         companyContextFilter,
         mustChangePasswordCorridorFilter,
         auditAwareAccessDeniedHandler,
+        apiAuthenticationEntryPoint,
         userDetailsService,
         null,
         swaggerPublic);
@@ -97,7 +102,10 @@ public class SecurityConfig {
         .formLogin(AbstractHttpConfigurer::disable)
         .logout(AbstractHttpConfigurer::disable)
         .exceptionHandling(
-            exception -> exception.accessDeniedHandler(auditAwareAccessDeniedHandler))
+            exception ->
+                exception
+                    .authenticationEntryPoint(apiAuthenticationEntryPoint)
+                    .accessDeniedHandler(auditAwareAccessDeniedHandler))
         .sessionManagement(
             session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
         .authorizeHttpRequests(

@@ -13,6 +13,7 @@ import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -233,6 +234,46 @@ class SuperAdminApiContractIT extends AbstractIntegrationTest {
         "retired-superadmin-admin-password-reset");
   }
 
+  @Test
+  void protectedSuperAdminAuthFailuresUseStandardSafeErrorEnvelope() {
+    HttpHeaders noAuthHeaders = contractErrorHeaders();
+    ResponseEntity<Map> noAuthResponse =
+        rest.exchange(
+            "/api/v1/superadmin/dashboard",
+            HttpMethod.GET,
+            new HttpEntity<>(noAuthHeaders),
+            Map.class);
+    assertThat(noAuthResponse.getStatusCode()).isIn(HttpStatus.UNAUTHORIZED, HttpStatus.FORBIDDEN);
+    assertSafeError(noAuthResponse, noAuthResponse.getStatusCode(), "AUTH_003");
+    assertErrorPath(noAuthResponse, "/api/v1/superadmin/dashboard");
+
+    HttpHeaders malformedTokenHeaders = contractErrorHeaders();
+    malformedTokenHeaders.setBearerAuth("not-a-valid-jwt");
+    ResponseEntity<Map> malformedTokenResponse =
+        rest.exchange(
+            "/api/v1/superadmin/dashboard",
+            HttpMethod.GET,
+            new HttpEntity<>(malformedTokenHeaders),
+            Map.class);
+    assertThat(malformedTokenResponse.getStatusCode())
+        .isIn(HttpStatus.UNAUTHORIZED, HttpStatus.FORBIDDEN);
+    assertSafeError(malformedTokenResponse, malformedTokenResponse.getStatusCode(), "AUTH_003");
+    assertErrorPath(malformedTokenResponse, "/api/v1/superadmin/dashboard");
+
+    String adminToken = loginToken("admin-contract@bbp.com", COMPANY_CODE);
+    HttpHeaders tenantAdminHeaders = contractErrorHeaders();
+    tenantAdminHeaders.setBearerAuth(adminToken);
+    tenantAdminHeaders.set("X-Company-Code", COMPANY_CODE);
+    ResponseEntity<Map> accessDeniedResponse =
+        rest.exchange(
+            "/api/v1/superadmin/dashboard",
+            HttpMethod.GET,
+            new HttpEntity<>(tenantAdminHeaders),
+            Map.class);
+    assertSafeError(accessDeniedResponse, HttpStatus.FORBIDDEN, "AUTH_004");
+    assertErrorPath(accessDeniedResponse, "/api/v1/superadmin/dashboard");
+  }
+
   private void assertStandardSuccess(ResponseEntity<Map> response, String expectedCorrelationId) {
     assertThat(response.getHeaders().getFirst("X-Trace-Id")).isNotBlank();
     @SuppressWarnings("unchecked")
@@ -263,7 +304,7 @@ class SuperAdminApiContractIT extends AbstractIntegrationTest {
   }
 
   private void assertSafeError(
-      ResponseEntity<Map> response, HttpStatus expectedStatus, String expectedCode) {
+      ResponseEntity<Map> response, HttpStatusCode expectedStatus, String expectedCode) {
     assertThat(response.getStatusCode()).isEqualTo(expectedStatus);
     assertStandardError(response, expectedCode);
     assertThat(response.getHeaders().getFirst("X-Trace-Id")).isNotBlank();
@@ -313,6 +354,21 @@ class SuperAdminApiContractIT extends AbstractIntegrationTest {
         .doesNotContain("SQLException")
         .doesNotContain("org.springframework")
         .doesNotContain("java.");
+  }
+
+  private HttpHeaders contractErrorHeaders() {
+    HttpHeaders headers = new HttpHeaders();
+    headers.setContentType(MediaType.APPLICATION_JSON);
+    headers.setAccept(List.of(MediaType.APPLICATION_JSON));
+    headers.set("X-Correlation-ID", "m1-contract-error");
+    return headers;
+  }
+
+  @SuppressWarnings("unchecked")
+  private void assertErrorPath(ResponseEntity<Map> response, String expectedPath) {
+    Map<String, Object> data = (Map<String, Object>) response.getBody().get("data");
+    assertThat(data).containsEntry("path", expectedPath);
+    assertThat(data.get("reason")).isEqualTo(data.get("message"));
   }
 
   private HttpHeaders superAdminHeaders() {

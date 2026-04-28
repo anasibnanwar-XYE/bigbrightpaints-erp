@@ -347,8 +347,17 @@ class AuthTenantAuthorityIT extends AbstractIntegrationTest {
     assertThat(unknownTenantError.get("code")).isEqualTo("AUTH_004");
     assertThat(foreignTenantError.get("message")).isEqualTo("Access denied");
     assertThat(unknownTenantError.get("message")).isEqualTo("Access denied");
-    assertThat(foreignTenantError).doesNotContainKeys("reason", "reasonDetail");
-    assertThat(unknownTenantError).doesNotContainKeys("reason", "reasonDetail");
+    assertThat(foreignTenantError)
+        .containsEntry("reason", "Access denied")
+        .containsEntry(
+            "path", "/api/v1/superadmin/tenants/" + tenantBId + "/support/admin-password-reset")
+        .doesNotContainKey("reasonDetail");
+    assertThat(unknownTenantError)
+        .containsEntry("reason", "Access denied")
+        .containsEntry(
+            "path",
+            "/api/v1/superadmin/tenants/" + unknownCompanyId + "/support/admin-password-reset")
+        .doesNotContainKey("reasonDetail");
     assertThat(foreignTenantError.get("traceId")).isNotNull();
     assertThat(unknownTenantError.get("traceId")).isNotNull();
   }
