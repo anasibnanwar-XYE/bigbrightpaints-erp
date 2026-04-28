@@ -52,6 +52,7 @@ import com.bigbrightpaints.erp.modules.company.dto.SuperAdminTenantLimitsDto;
 import com.bigbrightpaints.erp.modules.company.dto.SuperAdminTenantSummaryDto;
 import com.bigbrightpaints.erp.modules.company.dto.SuperAdminTenantSupportContextDto;
 import com.bigbrightpaints.erp.modules.rbac.domain.Role;
+import com.bigbrightpaints.erp.shared.dto.PageResponse;
 
 import jakarta.persistence.EntityNotFoundException;
 
@@ -176,7 +177,61 @@ class SuperAdminTenantControlPlaneServiceTest {
   @Test
   void listTenants_rejectsUnknownLifecycleFilter() {
     assertThatThrownBy(() -> service.listTenants("legacy"))
-        .hasMessageContaining("status filter must be ACTIVE, SUSPENDED, or DEACTIVATED");
+        .hasMessageContaining("status filter must be one of");
+  }
+
+  @Test
+  void listTenants_searchesNormalizedSafeFieldsAndPaginatesStatusAndSorts() {
+    Company alpha = company(1L, " alpha-01 ");
+    alpha.setName("Alpha Paints");
+    alpha.setMainAdminUserId(91L);
+    Company beta = company(2L, "BETA");
+    beta.setName("Beta Coatings");
+    beta.setOnboardingAdminEmail("Owner@Beta.example");
+    Company gamma = company(3L, "GAMMA");
+    gamma.setName("Gamma Paints");
+    when(companyRepository.findAll()).thenReturn(java.util.List.of(gamma, beta, alpha));
+    when(companyService.getTenantMetricsForSuperAdmin(1L)).thenReturn(metrics(alpha, "ACTIVE"));
+    when(companyService.getTenantMetricsForSuperAdmin(2L)).thenReturn(metrics(beta, "ACTIVE"));
+    when(companyService.getTenantMetricsForSuperAdmin(3L)).thenReturn(metrics(gamma, "ACTIVE"));
+    when(userAccountRepository.findById(91L))
+        .thenReturn(Optional.of(adminUser(91L, "owner.alpha@example.com", "ROLE_ADMIN", alpha)));
+    when(auditLogRepository.findTop1ByCompanyIdOrderByTimestampDesc(any(Long.class)))
+        .thenReturn(Optional.empty());
+
+    PageResponse<SuperAdminTenantSummaryDto> ownerSearch =
+        service.listTenants(null, " Owner Alpha Example ", 0, 10, "companyName,desc");
+    PageResponse<SuperAdminTenantSummaryDto> draftSearch =
+        service.listTenants("DRAFT", "owner beta", 0, 10, "companyCode,asc");
+    PageResponse<SuperAdminTenantSummaryDto> secondPage =
+        service.listTenants(null, "paint", 1, 1, "companyCode,asc");
+
+    assertThat(ownerSearch.totalElements()).isEqualTo(1);
+    assertThat(ownerSearch.content().get(0).companyCode()).isEqualTo(" alpha-01 ");
+    assertThat(ownerSearch.content().get(0).status()).isEqualTo("ACTIVE");
+    assertThat(ownerSearch.content().get(0).plan()).isEqualTo("TRIAL");
+    assertThat(ownerSearch.content().get(0).billingStatus()).isEqualTo("MANUAL");
+    assertThat(ownerSearch.content().get(0).usage().activeUsers()).isEqualTo(5);
+    assertThat(ownerSearch.content().get(0).health().status()).isEqualTo("HEALTHY");
+    assertThat(draftSearch.content())
+        .extracting(SuperAdminTenantSummaryDto::companyCode)
+        .containsExactly("BETA");
+    assertThat(draftSearch.content().get(0).status()).isEqualTo("DRAFT");
+    assertThat(secondPage.totalElements()).isEqualTo(2);
+    assertThat(secondPage.totalPages()).isEqualTo(2);
+    assertThat(secondPage.content())
+        .extracting(SuperAdminTenantSummaryDto::companyCode)
+        .containsExactly("GAMMA");
+  }
+
+  @Test
+  void listTenants_rejectsInvalidPaginationAndSortInputs() {
+    assertThatThrownBy(() -> service.listTenants(null, null, -1, 20, "companyCode,asc"))
+        .hasMessageContaining("page must be greater than or equal to 0");
+    assertThatThrownBy(() -> service.listTenants(null, null, 0, 101, "companyCode,asc"))
+        .hasMessageContaining("size must be between 1 and 100");
+    assertThatThrownBy(() -> service.listTenants(null, null, 0, 20, "privateLedger,asc"))
+        .hasMessageContaining("sort field must be one of");
   }
 
   @Test
@@ -187,7 +242,7 @@ class SuperAdminTenantControlPlaneServiceTest {
     company.setStateCode("KA");
     company.setLifecycleState(CompanyLifecycleState.SUSPENDED);
     company.setLifecycleReason("ops-review");
-    company.setEnabledModules(Set.of("ACCOUNTING", "SALES"));
+    company.setEnabledModules(Set.of("PORTAL", "PURCHASING"));
     company.setSupportNotes("  needs follow-up  ");
     company.setSupportTags(Set.of(" urgent ", "finance"));
     company.setMainAdminUserId(91L);
@@ -258,7 +313,18 @@ class SuperAdminTenantControlPlaneServiceTest {
     SuperAdminTenantDetailDto detail = service.getTenantDetail(7L);
 
     assertThat(detail.companyCode()).isEqualTo("ACME");
+    assertThat(detail.status()).isEqualTo("SUSPENDED_BLOCKED");
     assertThat(detail.lifecycleState()).isEqualTo("SUSPENDED");
+    assertThat(detail.overview().companyCode()).isEqualTo("ACME");
+    assertThat(detail.overview().health().status()).isEqualTo("BLOCKED");
+    assertThat(detail.plan().planId()).isEqualTo("TRIAL");
+    assertThat(detail.plan().limits().quotaMaxActiveUsers()).isEqualTo(120);
+    assertThat(detail.billing().billingStatus()).isEqualTo("MANUAL");
+    assertThat(detail.support().eventCount()).isEqualTo(3);
+    assertThat(detail.bugs().tabState().state()).isEqualTo("EMPTY");
+    assertThat(detail.audit().recentEventCount()).isEqualTo(3);
+    assertThat(detail.settings().enabledModules())
+        .containsExactlyInAnyOrder("PORTAL", "PURCHASING");
     assertThat(detail.mainAdmin().email()).isEqualTo("main-admin@acme.com");
     assertThat(detail.onboarding().templateCode()).isEqualTo("SME");
     assertThat(detail.onboarding().adminEmail()).isEqualTo("admin@example.com");

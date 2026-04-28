@@ -272,8 +272,12 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
         "get",
         null,
         "200",
-        "#/components/schemas/ApiResponseListSuperAdminTenantSummaryDto");
+        "#/components/schemas/ApiResponsePageResponseSuperAdminTenantSummaryDto");
     assertQueryParameter(root, "/api/v1/superadmin/tenants", "get", "status");
+    assertQueryParameter(root, "/api/v1/superadmin/tenants", "get", "q");
+    assertQueryParameter(root, "/api/v1/superadmin/tenants", "get", "page");
+    assertQueryParameter(root, "/api/v1/superadmin/tenants", "get", "size");
+    assertQueryParameter(root, "/api/v1/superadmin/tenants", "get", "sort");
     assertOperationContract(
         root,
         "/api/v1/superadmin/tenants/{id}",

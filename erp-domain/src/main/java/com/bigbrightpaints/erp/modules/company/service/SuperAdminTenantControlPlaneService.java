@@ -41,6 +41,7 @@ import com.bigbrightpaints.erp.modules.company.domain.TenantSupportWarning;
 import com.bigbrightpaints.erp.modules.company.domain.TenantSupportWarningRepository;
 import com.bigbrightpaints.erp.modules.company.dto.*;
 import com.bigbrightpaints.erp.modules.rbac.domain.Role;
+import com.bigbrightpaints.erp.shared.dto.PageResponse;
 
 import jakarta.persistence.EntityNotFoundException;
 
@@ -95,14 +96,38 @@ public class SuperAdminTenantControlPlaneService {
 
   @Transactional(readOnly = true)
   public List<SuperAdminTenantSummaryDto> listTenants(String statusFilter) {
-    String normalizedStatus = normalizeLifecycleFilter(statusFilter);
-    return companyRepository.findAll().stream()
-        .sorted(Comparator.comparing(Company::getCode, String.CASE_INSENSITIVE_ORDER))
-        .filter(
-            company ->
-                normalizedStatus == null || normalizedStatus.equals(resolveLifecycle(company)))
-        .map(this::toSummary)
-        .toList();
+    return listTenants(statusFilter, null, 0, 100, "companyCode,asc").content();
+  }
+
+  @Transactional(readOnly = true)
+  public PageResponse<SuperAdminTenantSummaryDto> listTenants(
+      String statusFilter, String query, int page, int size, String sort) {
+    int safePage = validatePage(page);
+    int safeSize = validateSize(size);
+    String normalizedStatus = normalizeStatusFilter(statusFilter);
+    String normalizedQuery = normalizeSearchQuery(query);
+    SortSpec sortSpec = parseSort(sort);
+    List<TenantListCandidate> candidates =
+        companyRepository.findAll().stream()
+            .map(this::toTenantListCandidate)
+            .filter(candidate -> statusMatches(candidate, normalizedStatus))
+            .filter(candidate -> searchMatches(candidate, normalizedQuery))
+            .sorted(sortSpec.comparator())
+            .toList();
+    int start = Math.min(safePage * safeSize, candidates.size());
+    int end = Math.min(start + safeSize, candidates.size());
+    List<SuperAdminTenantSummaryDto> content =
+        candidates.subList(start, end).stream()
+            .map(
+                candidate ->
+                    toSummary(
+                        candidate.company(),
+                        candidate.metrics(),
+                        candidate.mainAdmin(),
+                        candidate.lastActivityAt(),
+                        candidate.status()))
+            .toList();
+    return PageResponse.of(content, candidates.size(), safePage, safeSize);
   }
 
   @Transactional(readOnly = true)
@@ -441,13 +466,52 @@ public class SuperAdminTenantControlPlaneService {
         changeRequest.getConfirmedAt());
   }
 
+  private TenantListCandidate toTenantListCandidate(Company company) {
+    CompanyTenantMetricsDto metrics = buildMetrics(company);
+    UserAccount mainAdmin = resolveMainAdmin(company);
+    Instant lastActivityAt = resolveLastActivityAt(company.getId());
+    return new TenantListCandidate(
+        company, metrics, mainAdmin, lastActivityAt, resolveTenantStatus(company, metrics));
+  }
+
   private SuperAdminTenantSummaryDto toSummary(Company company) {
     CompanyTenantMetricsDto metrics = buildMetrics(company);
+    return toSummary(
+        company,
+        metrics,
+        resolveMainAdmin(company),
+        resolveLastActivityAt(company.getId()),
+        resolveTenantStatus(company, metrics));
+  }
+
+  private SuperAdminTenantSummaryDto toSummary(
+      Company company,
+      CompanyTenantMetricsDto metrics,
+      UserAccount mainAdmin,
+      Instant lastActivityAt,
+      String status) {
+    SuperAdminTenantSummaryDto.UsageSummary usage =
+        new SuperAdminTenantSummaryDto.UsageSummary(
+            metrics.activeUserCount(),
+            metrics.quotaMaxActiveUsers(),
+            metrics.apiActivityCount(),
+            metrics.quotaMaxApiRequests(),
+            metrics.auditStorageBytes(),
+            metrics.quotaMaxStorageBytes(),
+            metrics.currentConcurrentRequests(),
+            metrics.quotaMaxConcurrentRequests());
+    SuperAdminTenantSummaryDto.HealthSummary health = healthSummary(status, metrics);
     return new SuperAdminTenantSummaryDto(
         company.getId(),
         company.getCode(),
         company.getName(),
         company.getTimezone(),
+        status,
+        resolvePlanId(company),
+        resolveBillingStatus(status),
+        usage,
+        resolveTrialEndsAt(company, status),
+        health,
         metrics.lifecycleState(),
         metrics.lifecycleReason(),
         metrics.activeUserCount(),
@@ -459,13 +523,36 @@ public class SuperAdminTenantControlPlaneService {
         metrics.currentConcurrentRequests(),
         metrics.quotaMaxConcurrentRequests(),
         company.getEnabledModules(),
-        toMainAdminSummary(company, resolveMainAdmin(company)),
-        resolveLastActivityAt(company.getId()));
+        toMainAdminSummary(company, mainAdmin),
+        lastActivityAt);
   }
 
   private SuperAdminTenantDetailDto toDetail(Company company) {
     CompanyTenantMetricsDto metrics = buildMetrics(company);
     UserAccount mainAdmin = resolveMainAdmin(company);
+    Instant lastActivityAt = resolveLastActivityAt(company.getId());
+    String status = resolveTenantStatus(company, metrics);
+    SuperAdminTenantSummaryDto.HealthSummary health = healthSummary(status, metrics);
+    SuperAdminTenantDetailDto.Limits limits =
+        new SuperAdminTenantDetailDto.Limits(
+            metrics.quotaMaxActiveUsers(),
+            metrics.quotaMaxApiRequests(),
+            metrics.quotaMaxStorageBytes(),
+            metrics.quotaMaxConcurrentRequests(),
+            metrics.quotaSoftLimitEnabled(),
+            metrics.quotaHardLimitEnabled());
+    SuperAdminTenantDetailDto.Usage usage =
+        new SuperAdminTenantDetailDto.Usage(
+            metrics.activeUserCount(),
+            metrics.apiActivityCount(),
+            metrics.apiErrorCount(),
+            metrics.apiErrorRateInBasisPoints(),
+            metrics.auditStorageBytes(),
+            metrics.currentConcurrentRequests(),
+            lastActivityAt);
+    List<SuperAdminTenantDetailDto.SupportTimelineEvent> supportTimeline =
+        buildSupportTimeline(company);
+    MainAdminSummaryDto mainAdminSummary = toMainAdminSummary(company, mainAdmin);
     return new SuperAdminTenantDetailDto(
         company.getId(),
         company.getCode(),
@@ -481,27 +568,53 @@ public class SuperAdminTenantControlPlaneService {
             company.getOnboardingAdminUserId(),
             company.getOnboardingAdminUserId() != null,
             company.getOnboardingCompletedAt()),
-        toMainAdminSummary(company, mainAdmin),
-        new SuperAdminTenantDetailDto.Limits(
-            metrics.quotaMaxActiveUsers(),
-            metrics.quotaMaxApiRequests(),
-            metrics.quotaMaxStorageBytes(),
-            metrics.quotaMaxConcurrentRequests(),
-            metrics.quotaSoftLimitEnabled(),
-            metrics.quotaHardLimitEnabled()),
-        new SuperAdminTenantDetailDto.Usage(
-            metrics.activeUserCount(),
-            metrics.apiActivityCount(),
-            metrics.apiErrorCount(),
-            metrics.apiErrorRateInBasisPoints(),
-            metrics.auditStorageBytes(),
-            metrics.currentConcurrentRequests(),
-            resolveLastActivityAt(company.getId())),
+        mainAdminSummary,
+        limits,
+        usage,
         new SuperAdminTenantDetailDto.SupportContext(
             company.getSupportNotes(), company.getSupportTags()),
-        buildSupportTimeline(company),
+        supportTimeline,
         new SuperAdminTenantDetailDto.AvailableActions(
-            true, true, true, true, true, true, true, true));
+            true, true, true, true, true, true, true, true),
+        status,
+        new SuperAdminTenantDetailDto.Overview(
+            company.getId(),
+            company.getCode(),
+            company.getName(),
+            company.getTimezone(),
+            company.getStateCode(),
+            status,
+            resolveLifecycle(company),
+            resolveBillingStatus(status),
+            health,
+            mainAdminSummary,
+            lastActivityAt,
+            tabState("AVAILABLE", "Overview summary is available")),
+        new SuperAdminTenantDetailDto.PlanSummary(
+            resolvePlanId(company),
+            "Trial",
+            "STANDARD",
+            limits,
+            tabState("AVAILABLE", "Plan limits summary is available")),
+        new SuperAdminTenantDetailDto.BillingSummary(
+            resolveBillingStatus(status),
+            0,
+            company.getBaseCurrency(),
+            resolveTrialEndsAt(company, status),
+            tabState("EMPTY", "No platform billing records yet")),
+        new SuperAdminTenantDetailDto.SupportSummary(
+            company.getSupportTags(),
+            supportTimeline.size(),
+            tabState("AVAILABLE", "Support summary is available")),
+        new SuperAdminTenantDetailDto.BugsSummary(0, 0, tabState("EMPTY", "No bug reports yet")),
+        new SuperAdminTenantDetailDto.AuditSummary(
+            supportTimeline.size(),
+            lastActivityAt,
+            tabState("AVAILABLE", "Audit summary is available")),
+        new SuperAdminTenantDetailDto.SettingsSummary(
+            company.getTimezone(),
+            company.getEnabledModules(),
+            tabState("AVAILABLE", "Settings summary is available")));
   }
 
   private CompanyTenantMetricsDto buildMetrics(Company company) {
@@ -611,6 +724,35 @@ public class SuperAdminTenantControlPlaneService {
         : company.getLifecycleState().name();
   }
 
+  private String resolveTenantStatus(Company company, CompanyTenantMetricsDto metrics) {
+    String lifecycle =
+        metrics == null || !StringUtils.hasText(metrics.lifecycleState())
+            ? resolveLifecycle(company)
+            : metrics.lifecycleState().trim().toUpperCase(Locale.ROOT);
+    if (CompanyLifecycleState.SUSPENDED.name().equals(lifecycle)) {
+      return "SUSPENDED_BLOCKED";
+    }
+    if (CompanyLifecycleState.DEACTIVATED.name().equals(lifecycle)) {
+      return "ARCHIVED";
+    }
+    if (company != null
+        && StringUtils.hasText(company.getOnboardingAdminEmail())
+        && company.getOnboardingAdminUserId() == null) {
+      return "DRAFT";
+    }
+    if (company != null
+        && company.getOnboardingCredentialsEmailedAt() != null
+        && company.getOnboardingCompletedAt() == null) {
+      return "PENDING_ACTIVATION";
+    }
+    if (company != null
+        && company.getOnboardingAdminUserId() != null
+        && company.getOnboardingCompletedAt() == null) {
+      return "SETUP_PENDING";
+    }
+    return "ACTIVE";
+  }
+
   private Instant resolveLastActivityAt(Long companyId) {
     return auditLogRepository
         .findTop1ByCompanyIdOrderByTimestampDesc(companyId)
@@ -619,18 +761,192 @@ public class SuperAdminTenantControlPlaneService {
         .orElse(null);
   }
 
-  private String normalizeLifecycleFilter(String statusFilter) {
+  private String normalizeStatusFilter(String statusFilter) {
     if (!StringUtils.hasText(statusFilter)) {
       return null;
     }
     String normalized = statusFilter.trim().toUpperCase(Locale.ROOT);
-    if (normalized.equals(CompanyLifecycleState.ACTIVE.name())
-        || normalized.equals(CompanyLifecycleState.SUSPENDED.name())
-        || normalized.equals(CompanyLifecycleState.DEACTIVATED.name())) {
+    if (Set.of(
+            "DRAFT",
+            "PENDING_ACTIVATION",
+            "SETUP_PENDING",
+            "TRIAL_ACTIVE",
+            "ACTIVE",
+            "GRACE",
+            "SUSPENDED",
+            "SUSPENDED_READ_ONLY",
+            "SUSPENDED_BLOCKED",
+            "DEACTIVATED",
+            "CANCELED",
+            "ARCHIVED",
+            "SEED_FAILED")
+        .contains(normalized)) {
       return normalized;
     }
     throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
-        "status filter must be ACTIVE, SUSPENDED, or DEACTIVATED");
+        "status filter must be one of DRAFT, PENDING_ACTIVATION, SETUP_PENDING, TRIAL_ACTIVE,"
+            + " ACTIVE, GRACE, SUSPENDED_READ_ONLY, SUSPENDED_BLOCKED, CANCELED, ARCHIVED,"
+            + " SEED_FAILED, or legacy aliases SUSPENDED/DEACTIVATED");
+  }
+
+  private boolean statusMatches(TenantListCandidate candidate, String normalizedStatus) {
+    if (!StringUtils.hasText(normalizedStatus)) {
+      return true;
+    }
+    if ("SUSPENDED".equals(normalizedStatus)) {
+      return CompanyLifecycleState.SUSPENDED.name().equals(resolveLifecycle(candidate.company()))
+          || "SUSPENDED_READ_ONLY".equals(candidate.status())
+          || "SUSPENDED_BLOCKED".equals(candidate.status());
+    }
+    if ("DEACTIVATED".equals(normalizedStatus)) {
+      return CompanyLifecycleState.DEACTIVATED.name().equals(resolveLifecycle(candidate.company()));
+    }
+    return normalizedStatus.equals(candidate.status());
+  }
+
+  private String normalizeSearchQuery(String query) {
+    if (!StringUtils.hasText(query)) {
+      return null;
+    }
+    return normalizeSearchText(query);
+  }
+
+  private boolean searchMatches(TenantListCandidate candidate, String normalizedQuery) {
+    if (!StringUtils.hasText(normalizedQuery)) {
+      return true;
+    }
+    Company company = candidate.company();
+    UserAccount mainAdmin = candidate.mainAdmin();
+    return containsNormalized(company.getName(), normalizedQuery)
+        || containsNormalized(company.getCode(), normalizedQuery)
+        || containsNormalized(company.getOnboardingAdminEmail(), normalizedQuery)
+        || (mainAdmin != null && containsNormalized(mainAdmin.getEmail(), normalizedQuery))
+        || (mainAdmin != null && containsNormalized(mainAdmin.getDisplayName(), normalizedQuery));
+  }
+
+  private boolean containsNormalized(String value, String normalizedQuery) {
+    return StringUtils.hasText(value) && normalizeSearchText(value).contains(normalizedQuery);
+  }
+
+  private String normalizeSearchText(String value) {
+    if (!StringUtils.hasText(value)) {
+      return "";
+    }
+    StringBuilder normalized = new StringBuilder();
+    for (char ch : value.trim().toLowerCase(Locale.ROOT).toCharArray()) {
+      if (Character.isLetterOrDigit(ch)) {
+        normalized.append(ch);
+      }
+    }
+    return normalized.toString();
+  }
+
+  private int validatePage(int page) {
+    if (page < 0) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          "page must be greater than or equal to 0");
+    }
+    return page;
+  }
+
+  private int validateSize(int size) {
+    if (size < 1 || size > 100) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          "size must be between 1 and 100");
+    }
+    return size;
+  }
+
+  private SortSpec parseSort(String sort) {
+    String raw = StringUtils.hasText(sort) ? sort.trim() : "companyCode,asc";
+    String[] parts = raw.split(",", -1);
+    String field = parts[0].trim();
+    String direction = parts.length > 1 ? parts[1].trim().toLowerCase(Locale.ROOT) : "asc";
+    if (parts.length > 2 || !Set.of("asc", "desc").contains(direction)) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          "sort must use '<field>,asc' or '<field>,desc'");
+    }
+    Comparator<TenantListCandidate> comparator =
+        switch (field) {
+          case "companyCode", "code" ->
+              Comparator.comparing(
+                  candidate -> safeLower(candidate.company().getCode()), Comparator.naturalOrder());
+          case "companyName", "name" ->
+              Comparator.comparing(
+                  candidate -> safeLower(candidate.company().getName()), Comparator.naturalOrder());
+          case "status" ->
+              Comparator.comparing(TenantListCandidate::status, Comparator.naturalOrder());
+          case "plan" ->
+              Comparator.comparing(
+                  candidate -> resolvePlanId(candidate.company()), Comparator.naturalOrder());
+          case "billingStatus" ->
+              Comparator.comparing(
+                  candidate -> resolveBillingStatus(candidate.status()), Comparator.naturalOrder());
+          case "lastActivityAt" ->
+              Comparator.comparing(
+                  TenantListCandidate::lastActivityAt,
+                  Comparator.nullsLast(Comparator.naturalOrder()));
+          case "health" ->
+              Comparator.comparingInt(
+                  candidate -> healthSummary(candidate.status(), candidate.metrics()).riskScore());
+          default ->
+              throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+                  "sort field must be one of companyCode, companyName, status, plan,"
+                      + " billingStatus, lastActivityAt, or health");
+        };
+    Comparator<TenantListCandidate> stableComparator =
+        comparator.thenComparing(
+            candidate -> safeLower(candidate.company().getCode()), Comparator.naturalOrder());
+    return new SortSpec("desc".equals(direction) ? stableComparator.reversed() : stableComparator);
+  }
+
+  private String safeLower(String value) {
+    return StringUtils.hasText(value) ? value.trim().toLowerCase(Locale.ROOT) : "";
+  }
+
+  private String resolvePlanId(Company company) {
+    return "TRIAL";
+  }
+
+  private String resolveBillingStatus(String status) {
+    if ("ARCHIVED".equals(status) || "CANCELED".equals(status)) {
+      return "ARCHIVED";
+    }
+    return "MANUAL";
+  }
+
+  private Instant resolveTrialEndsAt(Company company, String status) {
+    return null;
+  }
+
+  private SuperAdminTenantSummaryDto.HealthSummary healthSummary(
+      String status, CompanyTenantMetricsDto metrics) {
+    int errorRate =
+        metrics == null ? 0 : (int) Math.min(metrics.apiErrorRateInBasisPoints(), 10000);
+    if ("SUSPENDED_BLOCKED".equals(status)
+        || "ARCHIVED".equals(status)
+        || "CANCELED".equals(status)) {
+      return new SuperAdminTenantSummaryDto.HealthSummary(
+          "BLOCKED",
+          Math.max(75, errorRate / 100),
+          "Tenant access is restricted by lifecycle status");
+    }
+    if ("DRAFT".equals(status)
+        || "PENDING_ACTIVATION".equals(status)
+        || "SETUP_PENDING".equals(status)) {
+      return new SuperAdminTenantSummaryDto.HealthSummary(
+          "SETUP_REQUIRED", Math.max(25, errorRate / 100), "Tenant setup is not complete");
+    }
+    if (errorRate >= 500) {
+      return new SuperAdminTenantSummaryDto.HealthSummary(
+          "DEGRADED", errorRate / 100, "API error rate needs review");
+    }
+    return new SuperAdminTenantSummaryDto.HealthSummary(
+        "HEALTHY", errorRate / 100, "No platform risk signals");
+  }
+
+  private SuperAdminTenantDetailDto.TabState tabState(String state, String message) {
+    return new SuperAdminTenantDetailDto.TabState(state, message);
   }
 
   private String normalizeRequiredEmail(String email, String fieldName) {
@@ -775,4 +1091,13 @@ public class SuperAdminTenantControlPlaneService {
     }
     return null;
   }
+
+  private record TenantListCandidate(
+      Company company,
+      CompanyTenantMetricsDto metrics,
+      UserAccount mainAdmin,
+      Instant lastActivityAt,
+      String status) {}
+
+  private record SortSpec(Comparator<TenantListCandidate> comparator) {}
 }

@@ -272,17 +272,39 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
 
     ResponseEntity<Map> tenantsResponse =
         rest.exchange(
-            "/api/v1/superadmin/tenants?status=SUSPENDED",
+            "/api/v1/superadmin/tenants?status=SUSPENDED&q=acme&page=0&size=5&sort=companyCode,asc",
             HttpMethod.GET,
             new HttpEntity<>(superAdminHeaders),
             Map.class);
     assertThat(tenantsResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
     @SuppressWarnings("unchecked")
-    List<Map<String, Object>> tenants =
-        (List<Map<String, Object>>) tenantsResponse.getBody().get("data");
+    Map<String, Object> page = (Map<String, Object>) tenantsResponse.getBody().get("data");
+    assertThat(page).containsEntry("page", 0).containsEntry("size", 5);
+    assertThat(page.get("totalElements")).isNotNull();
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> tenants = (List<Map<String, Object>>) page.get("content");
     assertThat(tenants)
         .extracting(row -> row.get("companyCode").toString().toUpperCase(Locale.ROOT))
         .contains(COMPANY_CODE);
+    assertThat(tenants.get(0))
+        .containsKeys("status", "plan", "billingStatus", "usage", "trialEndsAt", "health");
+    assertThat(tenants.get(0)).doesNotContainKeys("invoice", "ledger", "inventory", "salary");
+
+    ResponseEntity<Map> invalidSizeResponse =
+        rest.exchange(
+            "/api/v1/superadmin/tenants?size=101",
+            HttpMethod.GET,
+            new HttpEntity<>(superAdminHeaders),
+            Map.class);
+    assertThat(invalidSizeResponse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+    ResponseEntity<Map> invalidSortResponse =
+        rest.exchange(
+            "/api/v1/superadmin/tenants?sort=privateLedger,asc",
+            HttpMethod.GET,
+            new HttpEntity<>(superAdminHeaders),
+            Map.class);
+    assertThat(invalidSortResponse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
 
     ResponseEntity<Map> detailResponse =
         rest.exchange(
@@ -295,6 +317,19 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
     Map<String, Object> detail = (Map<String, Object>) detailResponse.getBody().get("data");
     assertThat(detail.get("companyCode")).isEqualTo(COMPANY_CODE);
     assertThat(detail.get("lifecycleState")).isEqualTo("SUSPENDED");
+    assertThat(detail.get("status")).isEqualTo("SUSPENDED_BLOCKED");
+    assertThat(detail)
+        .containsKeys(
+            "overview",
+            "onboarding",
+            "plan",
+            "usage",
+            "billing",
+            "support",
+            "bugs",
+            "audit",
+            "settings");
+    assertThat(detail).doesNotContainKeys("passwordHash", "token", "ledgerEntries", "invoices");
 
     ResponseEntity<Map> deactivateResponse =
         rest.exchange(

@@ -30,6 +30,7 @@ import com.bigbrightpaints.erp.modules.company.dto.SuperAdminTenantSupportContex
 import com.bigbrightpaints.erp.modules.company.service.CompanyService;
 import com.bigbrightpaints.erp.modules.company.service.SuperAdminTenantControlPlaneService;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
+import com.bigbrightpaints.erp.shared.dto.PageResponse;
 
 @ExtendWith(MockitoExtension.class)
 class SuperAdminControllerTest {
@@ -63,27 +64,31 @@ class SuperAdminControllerTest {
                     new CompanySuperAdminDashboardDto.TenantOverview(
                         7L, "ACME", "Acme", "KA", "ACTIVE", null, 2, 10, 200, 400, 1, 4, 40, 2000,
                         1, 250, true, false, 2000, 5000, 2500))));
-    when(controlPlaneService.listTenants("ACTIVE"))
+    when(controlPlaneService.listTenants("ACTIVE", "acme", 0, 20, "companyCode,asc"))
         .thenReturn(
-            List.of(
-                new SuperAdminTenantSummaryDto(
-                    7L,
-                    "ACME",
-                    "Acme",
-                    "UTC",
-                    "ACTIVE",
-                    null,
-                    12,
-                    120,
-                    400,
-                    2000,
-                    2048,
-                    4096,
-                    3,
-                    8,
-                    Set.of("ACCOUNTING"),
-                    new MainAdminSummaryDto(91L, "admin@acme.com", "Main Admin", true, true),
-                    Instant.parse("2026-03-26T11:00:00Z"))));
+            PageResponse.of(
+                List.of(
+                    new SuperAdminTenantSummaryDto(
+                        7L,
+                        "ACME",
+                        "Acme",
+                        "UTC",
+                        "ACTIVE",
+                        null,
+                        12,
+                        120,
+                        400,
+                        2000,
+                        2048,
+                        4096,
+                        3,
+                        8,
+                        Set.of("ACCOUNTING"),
+                        new MainAdminSummaryDto(91L, "admin@acme.com", "Main Admin", true, true),
+                        Instant.parse("2026-03-26T11:00:00Z"))),
+                1,
+                0,
+                20));
     SuperAdminTenantDetailDto detail =
         new SuperAdminTenantDetailDto(
             7L,
@@ -168,7 +173,9 @@ class SuperAdminControllerTest {
                 Instant.parse("2026-03-26T14:00:00Z")));
 
     assertSuccess(controller.dashboard().getBody(), "Superadmin dashboard fetched");
-    assertSuccess(controller.listTenants("ACTIVE").getBody(), "Superadmin tenant list fetched");
+    assertSuccess(
+        controller.listTenants("ACTIVE", "acme", 0, 20, "companyCode,asc").getBody(),
+        "Superadmin tenant list fetched");
     assertThat(controller.getTenantDetail(7L).getBody().data()).isEqualTo(detail);
     assertSuccess(
         controller

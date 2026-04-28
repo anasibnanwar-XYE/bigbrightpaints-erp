@@ -1,6 +1,5 @@
 package com.bigbrightpaints.erp.modules.company.controller;
 
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -12,6 +11,7 @@ import com.bigbrightpaints.erp.modules.company.dto.*;
 import com.bigbrightpaints.erp.modules.company.service.CompanyService;
 import com.bigbrightpaints.erp.modules.company.service.SuperAdminTenantControlPlaneService;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
+import com.bigbrightpaints.erp.shared.dto.PageResponse;
 
 import io.swagger.v3.oas.annotations.Hidden;
 import jakarta.servlet.http.HttpServletRequest;
@@ -44,11 +44,16 @@ public class SuperAdminController {
   }
 
   @GetMapping("/tenants")
-  public ResponseEntity<ApiResponse<List<SuperAdminTenantSummaryDto>>> listTenants(
-      @RequestParam(value = "status", required = false) String status) {
+  public ResponseEntity<ApiResponse<PageResponse<SuperAdminTenantSummaryDto>>> listTenants(
+      @RequestParam(value = "status", required = false) String status,
+      @RequestParam(value = "q", required = false) String query,
+      @RequestParam(value = "page", defaultValue = "0") int page,
+      @RequestParam(value = "size", defaultValue = "20") int size,
+      @RequestParam(value = "sort", defaultValue = "companyCode,asc") String sort) {
     return ResponseEntity.ok(
         ApiResponse.success(
-            "Superadmin tenant list fetched", controlPlaneService.listTenants(status)));
+            "Superadmin tenant list fetched",
+            controlPlaneService.listTenants(status, query, page, size, sort)));
   }
 
   @GetMapping("/tenants/{id}")
