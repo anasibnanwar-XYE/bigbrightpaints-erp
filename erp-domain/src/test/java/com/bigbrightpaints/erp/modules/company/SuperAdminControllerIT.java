@@ -26,10 +26,10 @@ import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
 class SuperAdminControllerIT extends AbstractIntegrationTest {
 
   private static final String COMPANY_CODE = "ACME";
-  private static final String ROOT_COMPANY_CODE = "ROOT";
+  private static final String ROOT_COMPANY_CODE = "PLATFORM";
   private static final String ADMIN_EMAIL = "admin@bbp.com";
   private static final String SUPER_ADMIN_EMAIL = "super-admin@bbp.com";
-  private static final String PASSWORD = "admin123";
+  private static final String LOGIN_CREDENTIAL = "admin123";
 
   @Autowired private TestRestTemplate rest;
 
@@ -39,10 +39,11 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
 
   @BeforeEach
   void seedUsers() {
-    dataSeeder.ensureUser(ADMIN_EMAIL, PASSWORD, "Admin", COMPANY_CODE, List.of("ROLE_ADMIN"));
+    dataSeeder.ensureUser(
+        ADMIN_EMAIL, LOGIN_CREDENTIAL, "Admin", COMPANY_CODE, List.of("ROLE_ADMIN"));
     dataSeeder.ensureUser(
         SUPER_ADMIN_EMAIL,
-        PASSWORD,
+        LOGIN_CREDENTIAL,
         "Super Admin",
         ROOT_COMPANY_CODE,
         List.of("ROLE_SUPER_ADMIN", "ROLE_ADMIN"));
@@ -79,6 +80,178 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
     assertThat(allowed.getStatusCode()).isEqualTo(HttpStatus.OK);
     assertThat(allowed.getBody()).isNotNull();
     assertThat(allowed.getBody()).containsKey("data");
+    @SuppressWarnings("unchecked")
+    Map<String, Object> dashboard = (Map<String, Object>) allowed.getBody().get("data");
+    assertThat(dashboard)
+        .containsKeys(
+            "totalClients",
+            "activeClients",
+            "trialClients",
+            "suspendedClients",
+            "mrrMinorUnits",
+            "arrMinorUnits",
+            "openSupportTickets",
+            "openBugs",
+            "storageBytes",
+            "serverCostMinorUnits",
+            "failedJobs",
+            "apiErrorHealthBasisPoints",
+            "riskClients");
+  }
+
+  @Test
+  void superAdmin_profileReadUpdatePasswordAndSessionControlsAreSafe() {
+    String superAdminToken = loginToken(SUPER_ADMIN_EMAIL, ROOT_COMPANY_CODE);
+    HttpHeaders superAdminHeaders = headers(superAdminToken, ROOT_COMPANY_CODE);
+
+    ResponseEntity<Map> profileResponse =
+        rest.exchange(
+            "/api/v1/superadmin/profile",
+            HttpMethod.GET,
+            new HttpEntity<>(superAdminHeaders),
+            Map.class);
+    assertThat(profileResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    @SuppressWarnings("unchecked")
+    Map<String, Object> profile = (Map<String, Object>) profileResponse.getBody().get("data");
+    assertThat(profile)
+        .containsKeys(
+            "displayName",
+            "email",
+            "phone",
+            "avatarUrl",
+            "timezone",
+            "language",
+            "sessions",
+            "lastLoginAt");
+    assertThat(profile).doesNotContainKeys("passwordHash", "token", "roles", "authorities");
+
+    ResponseEntity<Map> updateResponse =
+        rest.exchange(
+            "/api/v1/superadmin/profile",
+            HttpMethod.PUT,
+            new HttpEntity<>(
+                Map.of(
+                    "displayName",
+                    "Super Admin Updated",
+                    "phone",
+                    "+15550000000",
+                    "avatarUrl",
+                    "https://cdn.bigbrightpaints.example/avatar.png",
+                    "timezone",
+                    "Asia/Kolkata",
+                    "language",
+                    "en"),
+                superAdminHeaders),
+            Map.class);
+    assertThat(updateResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    @SuppressWarnings("unchecked")
+    Map<String, Object> updated = (Map<String, Object>) updateResponse.getBody().get("data");
+    assertThat(updated.get("displayName")).isEqualTo("Super Admin Updated");
+    assertThat(updated.get("timezone")).isEqualTo("Asia/Kolkata");
+
+    ResponseEntity<Map> forbiddenUpdate =
+        rest.exchange(
+            "/api/v1/superadmin/profile",
+            HttpMethod.PUT,
+            new HttpEntity<>(
+                "{\"role\":\"ROLE_ADMIN\",\"passwordHash\":\"must-not-change\"}",
+                superAdminHeaders),
+            Map.class);
+    assertThat(forbiddenUpdate.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+    ResponseEntity<Map> sessionsResponse =
+        rest.exchange(
+            "/api/v1/superadmin/profile/sessions",
+            HttpMethod.GET,
+            new HttpEntity<>(superAdminHeaders),
+            Map.class);
+    assertThat(sessionsResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> sessions =
+        (List<Map<String, Object>>) sessionsResponse.getBody().get("data");
+    assertThat(sessions).isNotEmpty();
+    String sessionId = sessions.get(0).get("sessionId").toString();
+    assertThat(sessions.get(0)).containsEntry("ipAddress", "redacted");
+
+    ResponseEntity<Map> revokeResponse =
+        rest.exchange(
+            "/api/v1/superadmin/profile/sessions/" + sessionId + "/revoke",
+            HttpMethod.POST,
+            new HttpEntity<>(superAdminHeaders),
+            Map.class);
+    assertThat(revokeResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+    String passwordToken = loginToken(SUPER_ADMIN_EMAIL, ROOT_COMPANY_CODE);
+    ResponseEntity<Map> passwordResponse =
+        rest.exchange(
+            "/api/v1/superadmin/profile/password",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of(
+                    "currentPassword",
+                    LOGIN_CREDENTIAL,
+                    "newPassword",
+                    "Changed!2026",
+                    "confirmPassword",
+                    "Changed!2026"),
+                headers(passwordToken, ROOT_COMPANY_CODE)),
+            Map.class);
+    assertThat(passwordResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    @SuppressWarnings("unchecked")
+    Map<String, Object> passwordData = (Map<String, Object>) passwordResponse.getBody().get("data");
+    assertThat(passwordData.get("sessionPolicy")).isEqualTo("all-user-sessions-revoked");
+
+    ResponseEntity<Map> oldTokenProbe =
+        rest.exchange(
+            "/api/v1/superadmin/profile",
+            HttpMethod.GET,
+            new HttpEntity<>(headers(passwordToken, ROOT_COMPANY_CODE)),
+            Map.class);
+    assertThat(oldTokenProbe.getStatusCode()).isIn(HttpStatus.UNAUTHORIZED, HttpStatus.FORBIDDEN);
+  }
+
+  @Test
+  void superAdmin_settingsAreGroupedRedactedValidatedAndAudited() {
+    String superAdminToken = loginToken(SUPER_ADMIN_EMAIL, ROOT_COMPANY_CODE);
+    HttpHeaders superAdminHeaders = headers(superAdminToken, ROOT_COMPANY_CODE);
+
+    ResponseEntity<Map> settingsResponse =
+        rest.exchange(
+            "/api/v1/superadmin/settings",
+            HttpMethod.GET,
+            new HttpEntity<>(superAdminHeaders),
+            Map.class);
+    assertThat(settingsResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    @SuppressWarnings("unchecked")
+    Map<String, Object> settings = (Map<String, Object>) settingsResponse.getBody().get("data");
+    assertThat(settings).containsKeys("access", "mail", "workflow", "security");
+    @SuppressWarnings("unchecked")
+    Map<String, Object> access = (Map<String, Object>) settings.get("access");
+    @SuppressWarnings("unchecked")
+    Map<String, Object> authCode = (Map<String, Object>) access.get("authCode");
+    assertThat(authCode.get("value")).isEqualTo("<redacted>");
+
+    ResponseEntity<Map> updateResponse =
+        rest.exchange(
+            "/api/v1/superadmin/settings",
+            HttpMethod.PUT,
+            new HttpEntity<>(
+                Map.of(
+                    "workflow",
+                    Map.of("exportApprovalRequired", true),
+                    "mail",
+                    Map.of("sendPasswordReset", true)),
+                superAdminHeaders),
+            Map.class);
+    assertThat(updateResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+    ResponseEntity<Map> unknownKeyResponse =
+        rest.exchange(
+            "/api/v1/superadmin/settings",
+            HttpMethod.PUT,
+            new HttpEntity<>("{\"unknownGroup\":{\"enabled\":true}}", superAdminHeaders),
+            Map.class);
+    assertThat(unknownKeyResponse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
   }
 
   @Test
@@ -219,7 +392,7 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
     Map<String, Object> request =
         Map.of(
             "email", email,
-            "password", PASSWORD,
+            "password", LOGIN_CREDENTIAL,
             "companyCode", companyCode);
     ResponseEntity<Map> response = rest.postForEntity("/api/v1/auth/login", request, Map.class);
     return (String) response.getBody().get("accessToken");

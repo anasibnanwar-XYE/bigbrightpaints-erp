@@ -3,17 +3,74 @@ package com.bigbrightpaints.erp.modules.company.dto;
 import java.util.List;
 
 public record CompanySuperAdminDashboardDto(
+    long totalClients,
+    long activeClients,
+    long trialClients,
+    long suspendedClients,
     long totalTenants,
     long activeTenants,
     long suspendedTenants,
     long deactivatedTenants,
+    long mrrMinorUnits,
+    long arrMinorUnits,
+    long openSupportTickets,
+    long openBugs,
     long totalActiveUsers,
     long totalActiveUserQuota,
     long totalAuditStorageBytes,
+    long storageBytes,
     long totalStorageQuotaBytes,
+    long serverCostMinorUnits,
+    long failedJobs,
+    long apiErrorHealthBasisPoints,
+    long riskClients,
     long totalCurrentConcurrentRequests,
     long totalConcurrentRequestQuota,
     List<TenantOverview> tenants) {
+
+  public CompanySuperAdminDashboardDto(
+      long totalTenants,
+      long activeTenants,
+      long suspendedTenants,
+      long deactivatedTenants,
+      long totalActiveUsers,
+      long totalActiveUserQuota,
+      long totalAuditStorageBytes,
+      long totalStorageQuotaBytes,
+      long totalCurrentConcurrentRequests,
+      long totalConcurrentRequestQuota,
+      List<TenantOverview> tenants) {
+    this(
+        totalTenants,
+        activeTenants,
+        0,
+        suspendedTenants,
+        totalTenants,
+        activeTenants,
+        suspendedTenants,
+        deactivatedTenants,
+        0,
+        0,
+        0,
+        0,
+        totalActiveUsers,
+        totalActiveUserQuota,
+        totalAuditStorageBytes,
+        totalAuditStorageBytes,
+        totalStorageQuotaBytes,
+        0,
+        0,
+        tenants == null
+            ? 0
+            : tenants.stream().mapToLong(TenantOverview::apiErrorRateInBasisPoints).max().orElse(0),
+        tenants == null
+            ? 0
+            : tenants.stream().filter(tenant -> tenant.apiErrorRateInBasisPoints() > 0).count(),
+        totalCurrentConcurrentRequests,
+        totalConcurrentRequestQuota,
+        tenants);
+  }
+
   public record TenantOverview(
       Long companyId,
       String companyCode,

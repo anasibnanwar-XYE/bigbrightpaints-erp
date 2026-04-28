@@ -54,6 +54,9 @@ public interface AuditLogRepository
   Optional<AuditLog> findFirstByEventTypeAndCompanyIdAndUsernameIgnoreCaseOrderByTimestampDesc(
       AuditEvent eventType, Long companyId, String username);
 
+  Optional<AuditLog> findFirstByEventTypeAndUsernameIgnoreCaseOrderByTimestampDesc(
+      AuditEvent eventType, String username);
+
   /**
    * Projection for batched username login lookups.
    */

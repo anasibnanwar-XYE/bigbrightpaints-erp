@@ -29,7 +29,7 @@ class AuthPlatformScopeCodeIT extends AbstractIntegrationTest {
   private static final String UPDATED_PLATFORM_CODE = "ROOTCTRL";
   private static final String COLLIDING_TENANT_CODE = "MOCK";
   private static final String SUPER_ADMIN_EMAIL = "platform-root@bbp.com";
-  private static final String PASSWORD = "Passw0rd!";
+  private static final String LOGIN_CREDENTIAL = "Passw0rd!";
 
   @Autowired private TestRestTemplate rest;
 
@@ -46,7 +46,7 @@ class AuthPlatformScopeCodeIT extends AbstractIntegrationTest {
         .ifPresent(userAccountRepository::delete);
     dataSeeder.ensureUser(
         SUPER_ADMIN_EMAIL,
-        PASSWORD,
+        LOGIN_CREDENTIAL,
         "Platform Root",
         DEFAULT_PLATFORM_CODE,
         List.of("ROLE_SUPER_ADMIN"));
@@ -64,13 +64,27 @@ class AuthPlatformScopeCodeIT extends AbstractIntegrationTest {
             "/api/v1/superadmin/settings",
             HttpMethod.PUT,
             new HttpEntity<>(
-                Map.of("platformAuthCode", UPDATED_PLATFORM_CODE),
+                Map.of("access", Map.of("platformAuthCode", UPDATED_PLATFORM_CODE)),
                 jsonHeaders(currentToken, DEFAULT_PLATFORM_CODE)),
             Map.class);
 
     assertThat(updateResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
     Map<String, Object> updateData = responseData(updateResponse);
-    assertThat(updateData.get("platformAuthCode")).isEqualTo(UPDATED_PLATFORM_CODE);
+    @SuppressWarnings("unchecked")
+    Map<String, Object> access = (Map<String, Object>) updateData.get("access");
+    @SuppressWarnings("unchecked")
+    Map<String, Object> authCode = (Map<String, Object>) access.get("authCode");
+    assertThat(authCode.get("configured")).isEqualTo(true);
+    assertThat(authCode.get("value")).isEqualTo("<redacted>");
+
+    ResponseEntity<Map> oldTokenResponse =
+        rest.exchange(
+            "/api/v1/superadmin/dashboard",
+            HttpMethod.GET,
+            new HttpEntity<>(jsonHeaders(currentToken, DEFAULT_PLATFORM_CODE)),
+            Map.class);
+    assertThat(oldTokenResponse.getStatusCode())
+        .isIn(HttpStatus.UNAUTHORIZED, HttpStatus.FORBIDDEN);
 
     ResponseEntity<Map> oldLoginResponse = loginResponse(DEFAULT_PLATFORM_CODE);
     assertThat(oldLoginResponse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
@@ -118,7 +132,7 @@ class AuthPlatformScopeCodeIT extends AbstractIntegrationTest {
             "/api/v1/superadmin/settings",
             HttpMethod.PUT,
             new HttpEntity<>(
-                Map.of("platformAuthCode", COLLIDING_TENANT_CODE),
+                Map.of("access", Map.of("platformAuthCode", COLLIDING_TENANT_CODE)),
                 jsonHeaders(currentToken, DEFAULT_PLATFORM_CODE)),
             Map.class);
 
@@ -127,6 +141,23 @@ class AuthPlatformScopeCodeIT extends AbstractIntegrationTest {
             userAccountRepository.findByEmailIgnoreCaseAndAuthScopeCodeIgnoreCase(
                 SUPER_ADMIN_EMAIL, DEFAULT_PLATFORM_CODE))
         .isPresent();
+    assertThat(loginResponse(DEFAULT_PLATFORM_CODE).getStatusCode()).isEqualTo(HttpStatus.OK);
+  }
+
+  @Test
+  void platformAuthCodeUpdate_rejectsUnsafeControlCharacters() {
+    String currentToken = login(DEFAULT_PLATFORM_CODE);
+
+    ResponseEntity<Map> updateResponse =
+        rest.exchange(
+            "/api/v1/superadmin/settings",
+            HttpMethod.PUT,
+            new HttpEntity<>(
+                Map.of("access", Map.of("platformAuthCode", "ROOT\nCTRL")),
+                jsonHeaders(currentToken, DEFAULT_PLATFORM_CODE)),
+            Map.class);
+
+    assertThat(updateResponse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
     assertThat(loginResponse(DEFAULT_PLATFORM_CODE).getStatusCode()).isEqualTo(HttpStatus.OK);
   }
 
@@ -149,7 +180,7 @@ class AuthPlatformScopeCodeIT extends AbstractIntegrationTest {
         "/api/v1/auth/login",
         Map.of(
             "email", SUPER_ADMIN_EMAIL,
-            "password", PASSWORD,
+            "password", LOGIN_CREDENTIAL,
             "companyCode", companyCode),
         Map.class);
   }

@@ -155,14 +155,49 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
         "get",
         null,
         "200",
-        "#/components/schemas/ApiResponseSystemSettingsDto");
+        "#/components/schemas/ApiResponseSuperAdminPlatformSettingsDto");
     assertOperationContract(
         root,
         "/api/v1/superadmin/settings",
         "put",
-        "#/components/schemas/SystemSettingsUpdateRequest",
+        "#/components/schemas/SuperAdminPlatformSettingsUpdateRequest",
         "200",
-        "#/components/schemas/ApiResponseSystemSettingsDto");
+        "#/components/schemas/ApiResponseSuperAdminPlatformSettingsDto");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/profile",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseSuperAdminProfileDto");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/profile",
+        "put",
+        "#/components/schemas/SuperAdminProfileUpdateRequest",
+        "200",
+        "#/components/schemas/ApiResponseSuperAdminProfileDto");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/profile/password",
+        "post",
+        "#/components/schemas/ChangePasswordRequest",
+        "200",
+        "#/components/schemas/ApiResponseSuperAdminPasswordChangeResponseDto");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/profile/sessions",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseListSuperAdminProfileSessionDto");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/profile/sessions/{sessionId}/revoke",
+        "post",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseSuperAdminSessionRevokeResponseDto");
     assertOperationContract(
         root,
         "/api/v1/superadmin/roles",

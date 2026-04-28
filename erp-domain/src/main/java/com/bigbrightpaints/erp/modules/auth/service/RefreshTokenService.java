@@ -1,6 +1,7 @@
 package com.bigbrightpaints.erp.modules.auth.service;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -162,6 +163,22 @@ public class RefreshTokenService {
     }
     iamCanonicalStorageService.markAllSessionsRevoked(userPublicId, "revoked_all");
     refreshTokenRepository.deleteByUserPublicId(userPublicId);
+  }
+
+  @Transactional(readOnly = true)
+  public List<RefreshToken> sessionsForUser(UUID userPublicId) {
+    if (userPublicId == null) {
+      return List.of();
+    }
+    return refreshTokenRepository.findByUserPublicIdOrderByIssuedAtDesc(userPublicId);
+  }
+
+  @Transactional
+  public boolean revokeSession(UUID userPublicId, Long sessionId) {
+    if (userPublicId == null || sessionId == null) {
+      return false;
+    }
+    return refreshTokenRepository.deleteByIdAndUserPublicId(sessionId, userPublicId) > 0;
   }
 
   @Scheduled(fixedDelay = 3600000) // 1 hour
