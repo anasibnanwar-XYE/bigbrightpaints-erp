@@ -347,6 +347,7 @@ public class AdminUserService {
     user.setLockedUntil(Instant.now().plus(Duration.ofDays(36500)));
     userRepository.save(user);
     iamCanonicalStorageService.syncUser(user);
+    passwordResetService.invalidateOutstandingResetTokens(user);
     tokenBlacklistService.revokeAllUserTokens(user.getPublicId().toString());
     refreshTokenService.revokeAllForUser(user.getPublicId());
     auditUserAccountAction(
@@ -394,6 +395,7 @@ public class AdminUserService {
     mfaRecoveryCodeRepository.deleteAllByUser(user);
     userRepository.save(user);
     iamCanonicalStorageService.syncUser(user);
+    passwordResetService.invalidateOutstandingResetTokens(user);
     tokenBlacklistService.revokeAllUserTokens(user.getPublicId().toString());
     refreshTokenService.revokeAllForUser(user.getPublicId());
     auditUserAccountAction(
@@ -534,6 +536,7 @@ public class AdminUserService {
     iamCanonicalStorageService.syncUser(user);
 
     if (!enabled) {
+      passwordResetService.invalidateOutstandingResetTokens(user);
       tokenBlacklistService.revokeAllUserTokens(user.getPublicId().toString());
       refreshTokenService.revokeAllForUser(user.getPublicId());
       emailService.sendUserSuspendedEmail(user.getEmail(), user.getDisplayName());

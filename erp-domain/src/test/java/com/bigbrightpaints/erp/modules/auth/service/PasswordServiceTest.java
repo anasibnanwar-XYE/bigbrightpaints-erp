@@ -23,6 +23,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.security.TokenBlacklistService;
+import com.bigbrightpaints.erp.modules.auth.domain.PasswordResetTokenRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserPasswordHistory;
@@ -40,6 +41,10 @@ class PasswordServiceTest {
 
   @Mock private RefreshTokenService refreshTokenService;
 
+  @Mock private IamCanonicalStorageService iamCanonicalStorageService;
+
+  @Mock private PasswordResetTokenRepository passwordResetTokenRepository;
+
   private PasswordEncoder passwordEncoder;
   private PasswordPolicy passwordPolicy;
   private PasswordService passwordService;
@@ -55,7 +60,9 @@ class PasswordServiceTest {
             passwordEncoder,
             passwordPolicy,
             tokenBlacklistService,
-            refreshTokenService);
+            refreshTokenService,
+            iamCanonicalStorageService,
+            passwordResetTokenRepository);
   }
 
   @Test
@@ -106,9 +113,41 @@ class PasswordServiceTest {
                     entry.getUser() == user
                         && passwordEncoder.matches("CurrentPass1!", entry.getPasswordHash())));
     verify(userAccountRepository).save(user);
+    verify(iamCanonicalStorageService).syncUser(user);
+    verify(passwordResetTokenRepository).deleteByUser(user);
     verify(tokenBlacklistService).revokeAllUserTokens(user.getPublicId().toString());
     verify(refreshTokenService).revokeAllForUser(user.getPublicId());
     assertTrue(passwordEncoder.matches("NewPassword1!", user.getPasswordHash()));
+  }
+
+  @Test
+  void resetPasswordRejectsCurrentPasswordReuse() {
+    UserAccount user = userWithPassword("CurrentPass1!");
+
+    assertThrows(
+        ApplicationException.class,
+        () -> passwordService.resetPassword(user, "CurrentPass1!", "CurrentPass1!"));
+
+    verify(passwordHistoryRepository, never()).save(any());
+    verifyNoInteractions(userAccountRepository);
+    verifyNoInteractions(tokenBlacklistService, refreshTokenService);
+  }
+
+  @Test
+  void changePasswordNormalizesNewPasswordBeforeHashingAndHistoryChecks() {
+    UserAccount user = userWithPassword("CurrentPass1!");
+    when(passwordHistoryRepository.findTop5ByUserOrderByChangedAtDesc(user))
+        .thenReturn(Collections.emptyList());
+    when(passwordHistoryRepository.findByUserOrderByChangedAtDesc(user))
+        .thenReturn(new ArrayList<>());
+
+    ChangePasswordRequest request =
+        new ChangePasswordRequest("CurrentPass1!", "Cafe\u0301Pass1!", "Caf\u00e9Pass1!");
+
+    passwordService.changePassword(user, request);
+
+    assertTrue(passwordEncoder.matches("Caf\u00e9Pass1!", user.getPasswordHash()));
+    verify(userAccountRepository).save(user);
   }
 
   private UserAccount userWithPassword(String rawPassword) {

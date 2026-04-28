@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.core.notification;
 
+import java.net.URI;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
@@ -108,7 +109,8 @@ public class EmailService {
           "Password reset email delivery is disabled; enable erp.mail.enabled=true and"
               + " erp.mail.send-password-reset=true");
     }
-    String resetLink = properties.getBaseUrl() + "/reset-password?token=" + resetToken;
+    String baseUrl = canonicalBaseUrl();
+    String resetLink = baseUrl + "/reset-password?token=" + resetToken;
     String subject = "Reset your BigBright ERP password";
     Context context = new Context();
     context.setVariable("displayName", displayName);
@@ -116,10 +118,34 @@ public class EmailService {
     context.setVariable(
         "companyCode", StringUtils.hasText(companyCode) ? companyCode.trim() : null);
     context.setVariable("resetUrl", resetLink);
-    context.setVariable("baseUrl", properties.getBaseUrl());
+    context.setVariable("baseUrl", baseUrl);
     context.setVariable(
         "preheader", "Use this secure link to reset your password (expires in 60 minutes).");
     sendHtmlEmailRequired(to, subject, "mail/password-reset", context);
+  }
+
+  private String canonicalBaseUrl() {
+    String configuredBaseUrl = properties.getBaseUrl();
+    if (!StringUtils.hasText(configuredBaseUrl)) {
+      throw new ApplicationException(
+          ErrorCode.SYSTEM_CONFIGURATION_ERROR, "ERP mail base URL must be configured");
+    }
+    String trimmed = configuredBaseUrl.trim();
+    URI uri;
+    try {
+      uri = URI.create(trimmed);
+    } catch (IllegalArgumentException ex) {
+      throw new ApplicationException(
+          ErrorCode.SYSTEM_CONFIGURATION_ERROR, "ERP mail base URL must be an absolute URL", ex);
+    }
+    if (!uri.isAbsolute() || !StringUtils.hasText(uri.getHost())) {
+      throw new ApplicationException(
+          ErrorCode.SYSTEM_CONFIGURATION_ERROR, "ERP mail base URL must be an absolute URL");
+    }
+    while (trimmed.endsWith("/")) {
+      trimmed = trimmed.substring(0, trimmed.length() - 1);
+    }
+    return trimmed;
   }
 
   public void sendPasswordResetConfirmation(String to, String displayName) {

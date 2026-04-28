@@ -1,12 +1,14 @@
 package com.bigbrightpaints.erp.modules.auth.service;
 
 import java.util.List;
+import java.util.Objects;
 
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import com.bigbrightpaints.erp.core.security.TokenBlacklistService;
+import com.bigbrightpaints.erp.modules.auth.domain.PasswordResetTokenRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserPasswordHistory;
@@ -27,6 +29,7 @@ public class PasswordService {
   private final TokenBlacklistService tokenBlacklistService;
   private final RefreshTokenService refreshTokenService;
   private final IamCanonicalStorageService iamCanonicalStorageService;
+  private final PasswordResetTokenRepository passwordResetTokenRepository;
 
   public PasswordService(
       UserAccountRepository userAccountRepository,
@@ -35,7 +38,8 @@ public class PasswordService {
       PasswordPolicy passwordPolicy,
       TokenBlacklistService tokenBlacklistService,
       RefreshTokenService refreshTokenService,
-      IamCanonicalStorageService iamCanonicalStorageService) {
+      IamCanonicalStorageService iamCanonicalStorageService,
+      PasswordResetTokenRepository passwordResetTokenRepository) {
     this.userAccountRepository = userAccountRepository;
     this.passwordHistoryRepository = passwordHistoryRepository;
     this.passwordEncoder = passwordEncoder;
@@ -43,6 +47,7 @@ public class PasswordService {
     this.tokenBlacklistService = tokenBlacklistService;
     this.refreshTokenService = refreshTokenService;
     this.iamCanonicalStorageService = iamCanonicalStorageService;
+    this.passwordResetTokenRepository = passwordResetTokenRepository;
   }
 
   @Transactional
@@ -54,31 +59,40 @@ public class PasswordService {
             "Current password is incorrect");
       }
     }
-    if (!request.newPassword().equals(request.confirmPassword())) {
+    String normalizedNewPassword = passwordPolicy.normalize(request.newPassword());
+    String normalizedConfirmPassword = passwordPolicy.normalize(request.confirmPassword());
+    if (!Objects.equals(normalizedNewPassword, normalizedConfirmPassword)) {
       throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
           "Password confirmation does not match");
     }
-    if (passwordEncoder.matches(request.newPassword(), user.getPasswordHash())) {
+    if (passwordEncoder.matches(normalizedNewPassword, user.getPasswordHash())) {
       throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
           "New password must be different from current password");
     }
-    applyNewPassword(user, request.newPassword());
+    applyNewPassword(user, normalizedNewPassword, true);
   }
 
   @Transactional
   public void resetPassword(UserAccount user, String newPassword, String confirmPassword) {
-    if (!newPassword.equals(confirmPassword)) {
+    String normalizedNewPassword = passwordPolicy.normalize(newPassword);
+    String normalizedConfirmPassword = passwordPolicy.normalize(confirmPassword);
+    if (!Objects.equals(normalizedNewPassword, normalizedConfirmPassword)) {
       throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
           "Password confirmation does not match");
     }
-    applyNewPassword(user, newPassword);
+    applyNewPassword(user, normalizedNewPassword, false);
   }
 
-  private void applyNewPassword(UserAccount user, String newPassword) {
+  private void applyNewPassword(
+      UserAccount user, String newPassword, boolean invalidateOutstandingResetTokens) {
     List<String> violations = passwordPolicy.validate(newPassword);
     if (!violations.isEmpty()) {
       throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
           "Password does not meet policy: " + String.join(", ", violations));
+    }
+    if (passwordEncoder.matches(newPassword, user.getPasswordHash())) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          "New password must be different from current password");
     }
     ensureNotReused(user, newPassword);
     rememberCurrentPassword(user);
@@ -86,6 +100,9 @@ public class PasswordService {
     user.setMustChangePassword(false);
     userAccountRepository.save(user);
     iamCanonicalStorageService.syncUser(user);
+    if (invalidateOutstandingResetTokens) {
+      invalidateOutstandingResetTokens(user);
+    }
     revokeExistingSessions(user);
   }
 
@@ -107,6 +124,13 @@ public class PasswordService {
       throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
           "Cannot reuse one of the last " + PASSWORD_HISTORY_LIMIT + " passwords");
     }
+  }
+
+  public void invalidateOutstandingResetTokens(UserAccount user) {
+    if (user == null) {
+      return;
+    }
+    passwordResetTokenRepository.deleteByUser(user);
   }
 
   private void rememberCurrentPassword(UserAccount user) {

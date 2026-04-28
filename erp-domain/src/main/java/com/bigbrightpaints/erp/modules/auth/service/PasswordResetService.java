@@ -164,7 +164,7 @@ public class PasswordResetService {
     String tokenDigest = AuthTokenDigests.passwordResetTokenDigest(tokenValue);
     PasswordResetToken token =
         tokenRepository
-            .findByTokenDigest(tokenDigest)
+            .findByTokenDigestForUpdate(tokenDigest)
             .orElseThrow(() -> invalidOrExpiredResetToken(correlationId));
     Instant now = Instant.now();
     if (token.isUsed() || token.isExpired(now)) {
@@ -194,6 +194,14 @@ public class PasswordResetService {
     tokenRepository.save(token);
     tokenRepository.deleteByUser(user);
     auditResetCompleted(user, scopeCode, correlationId);
+  }
+
+  @Transactional
+  public void invalidateOutstandingResetTokens(UserAccount user) {
+    if (user == null) {
+      return;
+    }
+    tokenRepository.deleteByUser(user);
   }
 
   private String generateToken() {

@@ -34,6 +34,7 @@ import com.bigbrightpaints.erp.modules.auth.domain.PasswordResetToken;
 import com.bigbrightpaints.erp.modules.auth.domain.PasswordResetTokenRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
+import com.bigbrightpaints.erp.modules.auth.service.IamCanonicalStorageService;
 import com.bigbrightpaints.erp.modules.auth.service.PasswordResetService;
 import com.bigbrightpaints.erp.modules.auth.service.PasswordService;
 import com.bigbrightpaints.erp.modules.auth.service.RefreshTokenService;
@@ -247,6 +248,7 @@ class TS_RuntimePasswordResetServiceExecutableCoverageTest {
         mock(TokenBlacklistService.class),
         mock(RefreshTokenService.class),
         authScopeService,
+        mock(IamCanonicalStorageService.class),
         new ResourcelessTransactionManager());
   }
 

@@ -60,6 +60,7 @@ class PasswordResetServiceTest {
   @Mock private TokenBlacklistService tokenBlacklistService;
   @Mock private RefreshTokenService refreshTokenService;
   @Mock private AuthScopeService authScopeService;
+  @Mock private IamCanonicalStorageService iamCanonicalStorageService;
 
   private EmailProperties emailProperties;
   private PasswordResetService passwordResetService;
@@ -82,6 +83,7 @@ class PasswordResetServiceTest {
             tokenBlacklistService,
             refreshTokenService,
             authScopeService,
+            iamCanonicalStorageService,
             new ResourcelessTransactionManager());
     lenient()
         .when(authScopeService.requireScopeCode(anyString()))
@@ -287,7 +289,8 @@ class PasswordResetServiceTest {
             user,
             AuthTokenDigests.passwordResetTokenDigest(rawToken),
             Instant.now().plusSeconds(600));
-    when(tokenRepository.findByTokenDigest(AuthTokenDigests.passwordResetTokenDigest(rawToken)))
+    when(tokenRepository.findByTokenDigestForUpdate(
+            AuthTokenDigests.passwordResetTokenDigest(rawToken)))
         .thenReturn(Optional.of(token));
 
     passwordResetService.resetPassword(rawToken, "NewPass123", "NewPass123");
@@ -388,6 +391,7 @@ class PasswordResetServiceTest {
             tokenBlacklistService,
             refreshTokenService,
             authScopeService,
+            iamCanonicalStorageService,
             new ResourcelessTransactionManager());
 
     for (int attempt = 0; attempt < 3; attempt++) {
@@ -423,7 +427,8 @@ class PasswordResetServiceTest {
             user,
             AuthTokenDigests.passwordResetTokenDigest("raw-token"),
             Instant.now().plusSeconds(600));
-    when(tokenRepository.findByTokenDigest(AuthTokenDigests.passwordResetTokenDigest("raw-token")))
+    when(tokenRepository.findByTokenDigestForUpdate(
+            AuthTokenDigests.passwordResetTokenDigest("raw-token")))
         .thenReturn(Optional.of(token));
 
     assertThrows(

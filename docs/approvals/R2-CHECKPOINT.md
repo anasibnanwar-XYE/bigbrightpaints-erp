@@ -2,7 +2,91 @@
 
 Last reviewed: 2026-04-28
 
-## Current Packet Evidence — auth-core-disabled-login-nonenumeration-remediation
+## Current Packet Evidence — credentials-policy-reset-and-recovery-hardening
+
+## Scope
+- Feature: `credentials-policy-reset-and-recovery-hardening`
+- Branch: codex/identity-account-hardcut-20260427 (base: origin/main)
+- PR: pending
+- Review candidate:
+  - enforce centralized NFC-normalized password policy bounds and current/recent password reuse checks across change and reset
+  - serialize password-reset token consumption with row-level locking so concurrent submissions produce at most one successful reset
+  - invalidate outstanding reset material after self-service password change, account disablement/lock, and MFA reset/disable security changes
+  - build password-reset links only from the configured canonical mail base URL, ignoring request host/forwarding input
+- Why this is R2: this packet touches high-risk credential verification, reset-token lifecycle, account-state revocation, and reset-link delivery-origin code paths where incorrect behavior could allow credential reuse, reset-token replay, stale reset material, or origin poisoning.
+
+## Risk Trigger
+- Triggered by:
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/service/PasswordPolicy.java`
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/service/PasswordService.java`
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/service/PasswordResetService.java`
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/domain/PasswordResetTokenRepository.java`
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/core/notification/EmailService.java`
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/admin/service/AdminUserService.java`
+  - focused auth/password/email tests under `erp-domain/src/test/java`
+- Contract surfaces affected:
+  - `VAL-AUTH-008`, `VAL-CRED-002`, `VAL-CRED-003`, `VAL-CRED-004`, `VAL-CRED-005`, `VAL-CRED-006`, `VAL-CRED-007`, `VAL-CRED-008`, `VAL-CRED-012`, `VAL-CRED-014`, `VAL-CRED-016`, `VAL-CRED-017`, `VAL-CRED-018`
+- Failure mode if wrong:
+  - weak, overlong, whitespace, non-normalized, current, or recent passwords could update credentials
+  - two reset-token submissions could both succeed or leave ambiguous final credentials
+  - reset links issued before sensitive account changes could remain usable
+  - reset email links could use attacker-controlled host or forwarding headers
+
+## Approval Authority
+- Mode: orchestrator
+- Approver: Droid mission orchestrator
+- Canary owner: Droid mission orchestrator
+- Approval status: branch-local integration candidate pending PR review
+- Basis: this is an accepted credentials milestone slice that strengthens existing credential and reset-token deny paths without widening privileges, changing tenant boundaries, or introducing destructive schema changes.
+
+## Escalation Decision
+- Human escalation required: no
+- Reason: the packet narrows credential/reset-token risk, preserves current auth password routes and envelopes, and does not add new authority, expose secrets, change tenant boundaries, or rewrite applied migrations.
+
+## Rollback Owner
+- Owner: Droid mission orchestrator
+- Rollback method:
+  - before merge: revert this packet and rerun compile, focused password/reset/auth tests, password/email unit tests, Spotless, OpenAPI guard, and High-Risk Change Control
+  - after merge: revert through a new remediation packet and rerun the same credentials proof lane
+- Rollback trigger:
+  - password change/reset accepts weak, overlong, whitespace, current, or recent passwords
+  - reset-token replay or concurrent consumption succeeds more than once
+  - outstanding reset tokens remain valid after password change, disablement, lock, or MFA security-profile reset
+  - reset emails contain a host derived from request headers rather than configured base URL
+  - focused compile/tests, Spotless, OpenAPI guard, or High-Risk Change Control fail
+
+## Expiry
+- Valid until: 2026-05-05
+- Re-evaluate if: scope expands into admin force-reset semantics, rate-limit policy changes, first-class session-family storage, MFA factor policy, public API envelope changes, tenant-boundary behavior, or schema/migration behavior.
+
+## Verification Evidence
+- Scope-to-evidence mapping:
+  - Policy/normalization proof: `PasswordPolicyTest`, `PasswordServiceTest`, and `AuthPasswordResetPublicContractIT.resetEndpoint_enforcesPolicyConfirmationAndCurrentPasswordReuse` verify min/max length, no whitespace, NFC normalization, confirmation matching, current password rejection, and history/reuse behavior.
+  - Reset lifecycle proof: `AuthPasswordResetPublicContractIT.resetTokenConsumption_isAtomicUnderConcurrentSubmissions`, `overlappingForgotRequests_forDifferentScopes_leaveBothResetLinksUsable`, and `AuthControllerIT.overlappingPublicAndAdminResetRequests_leaveLatestResetLinkUsable` verify row-locked single-use consumption, latest-link semantics, and independent scoped reset material.
+  - Outstanding invalidation proof: `AuthPasswordResetPublicContractIT.passwordChangeInvalidatesOutstandingResetToken`, `AuthControllerIT.password_change_revokes_existing_access_and_refresh_tokens`, and admin user service changes invalidate reset material on lock/disable/MFA reset while preserving session revocation.
+  - Link-origin proof: `EmailServiceTest.sendPasswordResetEmailRequired_usesOnlyConfiguredCanonicalBaseUrl` verifies reset URLs are built from the configured canonical base URL with trailing slash normalization and no request-derived host.
+- Commands run:
+  - `mission init.sh`
+  - `cd /Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/identity-account-hardcut-20260427 && bash scripts/guard_openapi_contract_drift.sh && cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='AuthPasswordResetPublicContractIT,AdminUserSecurityIT,AuthControllerIT,AuthTenantAuthorityIT,TenantRuntimeEnforcementAuthIT,AuthDisabledUserTokenIT,MfaControllerIT' test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -q -DskipTests compile`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='AuthPasswordResetPublicContractIT,PasswordResetServiceTest,AuthControllerIT' test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='PasswordPolicyTest,PasswordServiceTest,EmailServiceTest' test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn spotless:apply`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn spotless:check`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -q -DskipTests test-compile`
+  - `bash scripts/guard_openapi_contract_drift.sh`
+  - `bash ci/check-high-risk-changes.sh`
+- Result summary:
+  - baseline IAM mission lane passed with 89 tests plus OpenAPI guard before code changes
+  - compile and test-compile passed after implementation
+  - focused credential/auth reset lane passed with 43 tests after implementation
+  - focused password-policy/password-service/email-origin unit lane passed with 30 tests
+  - Spotless check, OpenAPI guard, and High-Risk Change Control passed
+  - no raw JWTs, refresh tokens, reset tokens, reset links, MFA secrets, recovery codes, password hashes, or production secrets were recorded in this checkpoint
+
+---
+
+## Previous Packet Evidence — auth-core-disabled-login-nonenumeration-remediation
 
 ## Scope
 - Feature: `auth-core-disabled-login-nonenumeration-remediation`

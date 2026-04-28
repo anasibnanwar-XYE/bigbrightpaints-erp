@@ -15,6 +15,10 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -30,6 +34,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 import com.bigbrightpaints.erp.core.audit.AuditEvent;
 import com.bigbrightpaints.erp.core.audit.AuditLog;
@@ -62,6 +67,8 @@ class AuthPasswordResetPublicContractIT extends AbstractIntegrationTest {
 
   @Autowired private JdbcTemplate jdbcTemplate;
 
+  @Autowired private PasswordEncoder passwordEncoder;
+
   @BeforeEach
   void seedSuperAdmin() {
     resetScopedSuperAdmin(PRIMARY_COMPANY);
@@ -78,6 +85,7 @@ class AuthPasswordResetPublicContractIT extends AbstractIntegrationTest {
             List.of("ROLE_SUPER_ADMIN"));
     user.setEnabled(true);
     user.setMustChangePassword(false);
+    user.setPasswordHash(passwordEncoder.encode(SUPERADMIN_PASSWORD));
     user.setFailedLoginAttempts(0);
     user.setLockedUntil(null);
     userAccountRepository.saveAndFlush(user);
@@ -255,6 +263,115 @@ class AuthPasswordResetPublicContractIT extends AbstractIntegrationTest {
     assertThat(resetResponse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
     assertThat(resetResponse.getBody()).isNotNull();
     assertThat(resetResponse.getBody().get("message")).isEqualTo("Invalid or expired token");
+  }
+
+  @Test
+  void resetEndpoint_enforcesPolicyConfirmationAndCurrentPasswordReuse() {
+    UserAccount user =
+        userAccountRepository
+            .findByEmailIgnoreCaseAndAuthScopeCodeIgnoreCase(SUPERADMIN_EMAIL, PRIMARY_COMPANY)
+            .orElseThrow();
+
+    String weakToken = saveResetToken(user, "weak-policy-token");
+    ResponseEntity<Map> weakResponse = postReset(weakToken, "weak", "weak");
+    assertThat(weakResponse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(weakResponse.getBody()).isNotNull();
+    assertThat(weakResponse.getBody().get("message").toString())
+        .startsWith("Password does not meet policy");
+
+    String mismatchToken = saveResetToken(user, "mismatch-policy-token");
+    ResponseEntity<Map> mismatchResponse =
+        postReset(mismatchToken, "Mismatch123!", "Mismatch123!!");
+    assertThat(mismatchResponse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(mismatchResponse.getBody()).isNotNull();
+    assertThat(mismatchResponse.getBody().get("message"))
+        .isEqualTo("Password confirmation does not match");
+
+    String currentReuseToken = saveResetToken(user, "current-reuse-token");
+    ResponseEntity<Map> currentReuseResponse =
+        postReset(currentReuseToken, SUPERADMIN_PASSWORD, SUPERADMIN_PASSWORD);
+    assertThat(currentReuseResponse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(currentReuseResponse.getBody()).isNotNull();
+    assertThat(currentReuseResponse.getBody().get("message"))
+        .isEqualTo("New password must be different from current password");
+    assertThat(loginResponse(PRIMARY_COMPANY, SUPERADMIN_PASSWORD).getStatusCode())
+        .isEqualTo(HttpStatus.OK);
+  }
+
+  @Test
+  void passwordChangeInvalidatesOutstandingResetToken() {
+    UserAccount user =
+        userAccountRepository
+            .findByEmailIgnoreCaseAndAuthScopeCodeIgnoreCase(SUPERADMIN_EMAIL, PRIMARY_COMPANY)
+            .orElseThrow();
+    String staleResetToken = saveResetToken(user, "stale-after-change-token");
+
+    ResponseEntity<Map> loginResponse = loginResponse(PRIMARY_COMPANY, SUPERADMIN_PASSWORD);
+    String accessToken = loginResponse.getBody().get("accessToken").toString();
+    HttpHeaders changeHeaders = jsonHeaders();
+    changeHeaders.setBearerAuth(accessToken);
+    changeHeaders.set("X-Company-Code", PRIMARY_COMPANY);
+
+    ResponseEntity<Map> changeResponse =
+        rest.exchange(
+            "/api/v1/auth/password/change",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of(
+                    "currentPassword", SUPERADMIN_PASSWORD,
+                    "newPassword", "ChangedReset123!",
+                    "confirmPassword", "ChangedReset123!"),
+                changeHeaders),
+            Map.class);
+
+    assertThat(changeResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    ResponseEntity<Map> staleResetResponse = postReset(staleResetToken, "AfterChange123!");
+    assertThat(staleResetResponse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(staleResetResponse.getBody()).isNotNull();
+    assertThat(staleResetResponse.getBody().get("message")).isEqualTo("Invalid or expired token");
+    Integer tokenCount =
+        jdbcTemplate.queryForObject(
+            "select count(*) from password_reset_tokens where user_id = ?",
+            Integer.class,
+            user.getId());
+    assertThat(tokenCount).isZero();
+  }
+
+  @Test
+  void resetTokenConsumption_isAtomicUnderConcurrentSubmissions() throws Exception {
+    UserAccount user =
+        userAccountRepository
+            .findByEmailIgnoreCaseAndAuthScopeCodeIgnoreCase(SUPERADMIN_EMAIL, PRIMARY_COMPANY)
+            .orElseThrow();
+    String resetToken = saveResetToken(user, "concurrent-reset-token");
+
+    ExecutorService executor = Executors.newFixedThreadPool(2);
+    try {
+      Future<ResponseEntity<Map>> first =
+          executor.submit(() -> postReset(resetToken, "ConcurrentA123!", "ConcurrentA123!"));
+      Future<ResponseEntity<Map>> second =
+          executor.submit(() -> postReset(resetToken, "ConcurrentB123!", "ConcurrentB123!"));
+
+      List<HttpStatus> statuses =
+          List.of(
+              (HttpStatus) first.get(10, TimeUnit.SECONDS).getStatusCode(),
+              (HttpStatus) second.get(10, TimeUnit.SECONDS).getStatusCode());
+
+      assertThat(statuses).containsExactlyInAnyOrder(HttpStatus.OK, HttpStatus.BAD_REQUEST);
+      assertThat(loginResponse(PRIMARY_COMPANY, "ConcurrentA123!").getStatusCode())
+          .isIn(HttpStatus.OK, HttpStatus.BAD_REQUEST);
+      assertThat(loginResponse(PRIMARY_COMPANY, "ConcurrentB123!").getStatusCode())
+          .isIn(HttpStatus.OK, HttpStatus.BAD_REQUEST);
+      long successfulCredentialCount =
+          List.of("ConcurrentA123!", "ConcurrentB123!").stream()
+              .filter(
+                  password ->
+                      loginResponse(PRIMARY_COMPANY, password).getStatusCode().is2xxSuccessful())
+              .count();
+      assertThat(successfulCredentialCount).isEqualTo(1);
+    } finally {
+      executor.shutdownNow();
+    }
   }
 
   @Test
@@ -469,6 +586,10 @@ class AuthPasswordResetPublicContractIT extends AbstractIntegrationTest {
   }
 
   private ResponseEntity<Map> postReset(String token, String newPassword) {
+    return postReset(token, newPassword, newPassword);
+  }
+
+  private ResponseEntity<Map> postReset(String token, String newPassword, String confirmPassword) {
     HttpHeaders headers = new HttpHeaders();
     headers.setContentType(MediaType.APPLICATION_JSON);
     return rest.exchange(
@@ -478,9 +599,17 @@ class AuthPasswordResetPublicContractIT extends AbstractIntegrationTest {
             Map.of(
                 "token", token,
                 "newPassword", newPassword,
-                "confirmPassword", newPassword),
+                "confirmPassword", confirmPassword),
             headers),
         Map.class);
+  }
+
+  private String saveResetToken(UserAccount user, String token) {
+    jdbcTemplate.update("delete from password_reset_tokens where user_id = ?", user.getId());
+    passwordResetTokenRepository.saveAndFlush(
+        PasswordResetToken.digestOnly(
+            user, passwordResetDigest(token), Instant.now().plusSeconds(600)));
+    return token;
   }
 
   private HttpHeaders jsonHeaders() {
