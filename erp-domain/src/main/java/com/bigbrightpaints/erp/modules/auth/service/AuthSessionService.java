@@ -300,10 +300,32 @@ public class AuthSessionService {
     if (!StringUtils.hasText(sanitized)) {
       return "Unknown device";
     }
-    if (sanitized.length() > MAX_DEVICE_LABEL_LENGTH) {
-      return sanitized.substring(0, MAX_DEVICE_LABEL_LENGTH);
+    return coarseDeviceLabel(sanitized);
+  }
+
+  private String coarseDeviceLabel(String sanitized) {
+    String lower = sanitized.toLowerCase(Locale.ROOT);
+    String label;
+    if (lower.contains("edg/") || lower.contains("edge/")) {
+      label = "Edge browser";
+    } else if (lower.contains("chrome/") || lower.contains("chromium/")) {
+      label = "Chrome browser";
+    } else if (lower.contains("firefox/")) {
+      label = "Firefox browser";
+    } else if (lower.contains("safari/")) {
+      label = "Safari browser";
+    } else if (lower.contains("curl/")) {
+      label = "curl client";
+    } else if (lower.contains("java/")) {
+      label = "Java client";
+    } else if (lower.contains("python")) {
+      label = "Python client";
+    } else {
+      label = "Other client";
     }
-    return sanitized;
+    return label.length() > MAX_DEVICE_LABEL_LENGTH
+        ? label.substring(0, MAX_DEVICE_LABEL_LENGTH)
+        : label;
   }
 
   private String safeReason(String reason) {

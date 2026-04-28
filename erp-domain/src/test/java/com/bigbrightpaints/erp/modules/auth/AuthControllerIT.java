@@ -203,8 +203,10 @@ public class AuthControllerIT extends AbstractIntegrationTest {
 
   @Test
   void login_lists_current_session_with_sanitized_device_metadata() {
+    String userAgentCanary = "ADV_CANARY_UA_PRIVACY_MARKER";
     Map<String, Object> loginPayload =
-        loginWithUserAgent(ADMIN_EMAIL, ADMIN_PASSWORD, "<script>alert(1)</script>\r\nInjected");
+        loginWithUserAgent(
+            ADMIN_EMAIL, ADMIN_PASSWORD, userAgentCanary + "<script>alert(1)</script>\r\nInjected");
     String accessToken = loginPayload.get("accessToken").toString();
     Map<String, Object> accessClaims = decodeJwtClaims(accessToken);
     assertThat(accessClaims.get("sid")).as("access token carries opaque session id").isNotNull();
@@ -236,6 +238,8 @@ public class AuthControllerIT extends AbstractIntegrationTest {
             "recoveryCodes");
     assertThat(session.get("deviceName").toString()).doesNotContain("<", ">", "\r", "\n");
     assertThat(session.get("userAgent").toString()).doesNotContain("<", ">", "\r", "\n");
+    assertThat(session.get("deviceName").toString()).doesNotContain(userAgentCanary);
+    assertThat(session.get("userAgent").toString()).doesNotContain(userAgentCanary);
   }
 
   @Test
