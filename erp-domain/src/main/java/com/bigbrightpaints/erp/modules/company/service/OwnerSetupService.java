@@ -157,7 +157,12 @@ public class OwnerSetupService {
           "Provide at least one invitation or set skip=true");
     }
     List<CreateUserRequest> inviteRequests = new ArrayList<>();
-    for (OwnerSetupInviteTeamRequest.Invitation invitation : invitations) {
+    for (int index = 0; index < invitations.size(); index++) {
+      OwnerSetupInviteTeamRequest.Invitation invitation = invitations.get(index);
+      if (invitation == null) {
+        throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+            "invitations[" + index + "] is required");
+      }
       inviteRequests.add(
           new CreateUserRequest(
               invitation.email(),

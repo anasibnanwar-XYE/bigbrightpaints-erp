@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.bigbrightpaints.erp.core.security.PortalRoleActionMatrix;
 import com.bigbrightpaints.erp.modules.company.dto.OwnerSetupAccountingRequest;
 import com.bigbrightpaints.erp.modules.company.dto.OwnerSetupCompanyDetailsRequest;
+import com.bigbrightpaints.erp.modules.company.dto.OwnerSetupFinishRequest;
 import com.bigbrightpaints.erp.modules.company.dto.OwnerSetupGstRequest;
 import com.bigbrightpaints.erp.modules.company.dto.OwnerSetupInviteTeamRequest;
 import com.bigbrightpaints.erp.modules.company.dto.OwnerSetupStatusResponse;
@@ -67,7 +68,8 @@ public class OwnerSetupController {
   }
 
   @PostMapping("/finish")
-  public ResponseEntity<ApiResponse<OwnerSetupStatusResponse>> finish() {
+  public ResponseEntity<ApiResponse<OwnerSetupStatusResponse>> finish(
+      @RequestBody(required = false) OwnerSetupFinishRequest request) {
     return ResponseEntity.ok(ApiResponse.success("Setup finished", ownerSetupService.finish()));
   }
 }

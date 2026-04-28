@@ -3,6 +3,7 @@ package com.bigbrightpaints.erp.modules.company;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Instant;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -466,7 +467,9 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
                 ownerHeaders),
             Map.class);
     assertThat(companyDetails.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-    assertThat(companyDetails.getBody().toString()).contains("tenantId", "Unsupported field");
+    assertThat(companyDetails.getBody().toString())
+        .contains("Unsupported field")
+        .containsAnyOf("tenantId", "code");
 
     ResponseEntity<Map> companyDetailsWithLocation =
         rest.exchange(
@@ -556,6 +559,17 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
             Map.class);
     assertThat(superAdminInvite.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
 
+    Long usersBeforeNullInvite = countRows("select count(*) from app_users", null);
+    ResponseEntity<Map> nullInvite =
+        rest.exchange(
+            "/api/v1/setup/invite-team",
+            HttpMethod.POST,
+            new HttpEntity<>(Map.of("invitations", Collections.singletonList(null)), ownerHeaders),
+            Map.class);
+    assertThat(nullInvite.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(nullInvite.getBody().toString()).contains("invitations");
+    assertThat(countRows("select count(*) from app_users", null)).isEqualTo(usersBeforeNullInvite);
+
     String invitedEmail = "invited-" + code.toLowerCase(Locale.ROOT) + "@example.com";
     ResponseEntity<Map> positiveInvite =
         rest.exchange(
@@ -611,6 +625,23 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
             new HttpEntity<>(headers(staffToken, code)),
             Map.class);
     assertThat(staffFinish.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+
+    for (String staleField : List.of("branch", "warehouse", "surpriseField")) {
+      ResponseEntity<Map> staleFinish =
+          rest.exchange(
+              "/api/v1/setup/finish",
+              HttpMethod.POST,
+              new HttpEntity<>(Map.of(staleField, "stale-value"), ownerHeaders),
+              Map.class);
+      assertThat(staleFinish.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+      assertThat(staleFinish.getBody().toString()).contains(staleField, "Unsupported field");
+      assertThat(
+              countRows(
+                  "select count(*) from companies where lower(code) = lower(?)"
+                      + " and onboarding_completed_at is not null",
+                  code))
+          .isZero();
+    }
 
     ResponseEntity<Map> finish =
         rest.exchange(

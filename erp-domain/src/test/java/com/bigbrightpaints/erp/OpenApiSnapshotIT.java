@@ -194,7 +194,7 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
         root,
         "/api/v1/setup/finish",
         "post",
-        null,
+        "#/components/schemas/OwnerSetupFinishRequest",
         "200",
         "#/components/schemas/ApiResponseOwnerSetupStatusResponse");
     assertOperationMissing(root, "/api/v1/auth/profile", "get");
