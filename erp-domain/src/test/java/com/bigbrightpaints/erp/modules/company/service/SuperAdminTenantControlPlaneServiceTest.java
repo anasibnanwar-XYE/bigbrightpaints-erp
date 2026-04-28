@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
@@ -228,8 +229,14 @@ class SuperAdminTenantControlPlaneServiceTest {
 
   @Test
   void listTenants_emitsAndFiltersEveryCanonicalReadModelStatus() {
-    java.util.List<String> statuses =
-        java.util.List.of(
+    SecurityContextHolder.getContext()
+        .setAuthentication(
+            new UsernamePasswordAuthenticationToken(
+                "super-admin@bbp.com", "n/a", List.of(() -> "ROLE_SUPER_ADMIN")));
+    SuperAdminTenantControlPlaneService realProducerService =
+        serviceWithRealCompanyMetricsProducer();
+    List<String> statuses =
+        List.of(
             "DRAFT",
             "PENDING_ACTIVATION",
             "SETUP_PENDING",
@@ -246,40 +253,26 @@ class SuperAdminTenantControlPlaneServiceTest {
       String status = statuses.get(index);
       Company company = company((long) index + 1, "T" + String.format("%02d", index));
       company.setName(status + " tenant");
-      company.setOnboardingCompletedAt(Instant.parse("2026-03-26T09:00:00Z"));
-      if ("DRAFT".equals(status)) {
-        company.setOnboardingCompletedAt(null);
-        company.setOnboardingAdminEmail("owner-draft@example.com");
-      } else if ("PENDING_ACTIVATION".equals(status)) {
-        company.setOnboardingCompletedAt(null);
-        company.setOnboardingAdminEmail("owner-pending@example.com");
-        company.setOnboardingCredentialsEmailedAt(Instant.parse("2026-03-26T10:00:00Z"));
-      } else if ("SETUP_PENDING".equals(status)) {
-        company.setOnboardingCompletedAt(null);
-        company.setOnboardingAdminUserId(900L + index);
-      }
+      configureTenantStatusState(company, status, index);
       companies.add(company);
-      String metricsState =
-          switch (status) {
-            case "DRAFT", "PENDING_ACTIVATION", "SETUP_PENDING" -> "ACTIVE";
-            default -> status;
-          };
-      when(companyService.getTenantMetricsForSuperAdmin(company.getId()))
-          .thenReturn(metrics(company, metricsState));
+      when(companyRepository.findById(company.getId())).thenReturn(Optional.of(company));
     }
     when(companyRepository.findAll()).thenReturn(companies);
     when(auditLogRepository.findTop1ByCompanyIdOrderByTimestampDesc(any(Long.class)))
         .thenReturn(Optional.empty());
 
     PageResponse<SuperAdminTenantSummaryDto> all =
-        service.listTenants(null, null, 0, 20, "companyCode,asc");
+        realProducerService.listTenants(null, null, 0, 20, "companyCode,asc");
 
     assertThat(all.content())
         .extracting(SuperAdminTenantSummaryDto::status)
         .containsExactlyElementsOf(statuses);
+    assertThat(all.content())
+        .extracting(SuperAdminTenantSummaryDto::lifecycleState)
+        .containsExactlyElementsOf(statuses);
     for (String status : statuses) {
       PageResponse<SuperAdminTenantSummaryDto> filtered =
-          service.listTenants(
+          realProducerService.listTenants(
               status.toLowerCase(java.util.Locale.ROOT), null, 0, 20, "companyCode,asc");
       assertThat(filtered.content())
           .extracting(SuperAdminTenantSummaryDto::status)
@@ -921,6 +914,69 @@ class SuperAdminTenantControlPlaneServiceTest {
         25,
         1,
         64);
+  }
+
+  private SuperAdminTenantControlPlaneService serviceWithRealCompanyMetricsProducer() {
+    CompanyService realCompanyService =
+        new CompanyService(
+            companyRepository,
+            auditService,
+            userAccountRepository,
+            auditLogRepository,
+            tenantRuntimeEnforcementService,
+            null,
+            new TenantLifecycleService(auditService),
+            null,
+            null);
+    return new SuperAdminTenantControlPlaneService(
+        companyRepository,
+        userAccountRepository,
+        auditLogRepository,
+        auditService,
+        emailService,
+        tokenBlacklistService,
+        refreshTokenService,
+        tenantSupportWarningRepository,
+        tenantAdminEmailChangeRequestRepository,
+        tenantRuntimeEnforcementService,
+        tenantReviewIntelligenceToggleService,
+        realCompanyService);
+  }
+
+  private void configureTenantStatusState(Company company, String status, int index) {
+    company.setLifecycleState(CompanyLifecycleState.ACTIVE);
+    company.setLifecycleReason(null);
+    company.setOnboardingAdminEmail(null);
+    company.setOnboardingAdminUserId(null);
+    company.setOnboardingCredentialsEmailedAt(null);
+    company.setOnboardingCompletedAt(Instant.parse("2026-03-26T09:00:00Z"));
+    switch (status) {
+      case "DRAFT" -> {
+        company.setOnboardingCompletedAt(null);
+        company.setOnboardingAdminEmail("draft-" + index + "@example.com");
+      }
+      case "PENDING_ACTIVATION" -> {
+        company.setOnboardingCompletedAt(null);
+        company.setOnboardingAdminEmail("pending-" + index + "@example.com");
+        company.setOnboardingCredentialsEmailedAt(Instant.parse("2026-03-26T10:00:00Z"));
+      }
+      case "SETUP_PENDING" -> {
+        company.setOnboardingCompletedAt(null);
+        company.setOnboardingAdminUserId(9000L + index);
+      }
+      case "TRIAL_ACTIVE", "GRACE", "SEED_FAILED" -> company.setLifecycleReason(status);
+      case "SUSPENDED_READ_ONLY", "SUSPENDED_BLOCKED" -> {
+        company.setLifecycleState(CompanyLifecycleState.SUSPENDED);
+        company.setLifecycleReason(status);
+      }
+      case "CANCELED", "ARCHIVED" -> {
+        company.setLifecycleState(CompanyLifecycleState.DEACTIVATED);
+        company.setLifecycleReason(status);
+      }
+      default -> {
+        // ACTIVE uses the default completed onboarding and active lifecycle state.
+      }
+    }
   }
 
   private UserAccount adminUser(Long id, String email, String roleName, Company company) {

@@ -1006,6 +1006,37 @@ class CompanyServiceTest {
   }
 
   @Test
+  void getTenantMetricsForSuperAdmin_emitsCanonicalStatusesFromPersistedCompanyState() {
+    authenticateAs("ROLE_SUPER_ADMIN");
+    List<String> statuses =
+        List.of(
+            "DRAFT",
+            "PENDING_ACTIVATION",
+            "SETUP_PENDING",
+            "TRIAL_ACTIVE",
+            "ACTIVE",
+            "GRACE",
+            "SUSPENDED_READ_ONLY",
+            "SUSPENDED_BLOCKED",
+            "CANCELED",
+            "ARCHIVED",
+            "SEED_FAILED");
+    for (int index = 0; index < statuses.size(); index++) {
+      String status = statuses.get(index);
+      Company company = company((long) index + 101, "M3-" + index);
+      configureTenantStatusState(company, status, index);
+      when(repository.findById(company.getId())).thenReturn(Optional.of(company));
+
+      CompanyTenantMetricsDto metrics =
+          companyService.getTenantMetricsForSuperAdmin(company.getId());
+
+      assertThat(metrics.companyId()).isEqualTo(company.getId());
+      assertThat(metrics.companyCode()).isEqualTo(company.getCode());
+      assertThat(metrics.lifecycleState()).isEqualTo(status);
+    }
+  }
+
+  @Test
   void getTenantMetrics_deniesTenantAdmin() {
     authenticateAs("ROLE_ADMIN");
     Company company = company(1L, "ACME");
@@ -1751,6 +1782,42 @@ class CompanyServiceTest {
     company.setTimezone("UTC");
     company.setDefaultGstRate(BigDecimal.TEN);
     return company;
+  }
+
+  private void configureTenantStatusState(Company company, String status, int index) {
+    company.setLifecycleState(CompanyLifecycleState.ACTIVE);
+    company.setLifecycleReason(null);
+    company.setOnboardingAdminEmail(null);
+    company.setOnboardingAdminUserId(null);
+    company.setOnboardingCredentialsEmailedAt(null);
+    company.setOnboardingCompletedAt(Instant.parse("2026-03-26T09:00:00Z"));
+    switch (status) {
+      case "DRAFT" -> {
+        company.setOnboardingCompletedAt(null);
+        company.setOnboardingAdminEmail("draft-" + index + "@example.com");
+      }
+      case "PENDING_ACTIVATION" -> {
+        company.setOnboardingCompletedAt(null);
+        company.setOnboardingAdminEmail("pending-" + index + "@example.com");
+        company.setOnboardingCredentialsEmailedAt(Instant.parse("2026-03-26T10:00:00Z"));
+      }
+      case "SETUP_PENDING" -> {
+        company.setOnboardingCompletedAt(null);
+        company.setOnboardingAdminUserId(9000L + index);
+      }
+      case "TRIAL_ACTIVE", "GRACE", "SEED_FAILED" -> company.setLifecycleReason(status);
+      case "SUSPENDED_READ_ONLY", "SUSPENDED_BLOCKED" -> {
+        company.setLifecycleState(CompanyLifecycleState.SUSPENDED);
+        company.setLifecycleReason(status);
+      }
+      case "CANCELED", "ARCHIVED" -> {
+        company.setLifecycleState(CompanyLifecycleState.DEACTIVATED);
+        company.setLifecycleReason(status);
+      }
+      default -> {
+        // ACTIVE uses the default completed onboarding and active lifecycle state.
+      }
+    }
   }
 
   private void authenticateAs(String authority) {

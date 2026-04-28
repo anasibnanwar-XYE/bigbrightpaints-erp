@@ -2,6 +2,7 @@ package com.bigbrightpaints.erp.modules.company;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -378,6 +379,70 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
   }
 
   @Test
+  void superAdminTenantListAndProfileUseProductionCanonicalStatusSource() {
+    String superAdminToken = loginToken(SUPER_ADMIN_EMAIL, ROOT_COMPANY_CODE);
+    HttpHeaders superAdminHeaders = headers(superAdminToken, ROOT_COMPANY_CODE);
+    List<String> statuses =
+        List.of(
+            "DRAFT",
+            "PENDING_ACTIVATION",
+            "SETUP_PENDING",
+            "TRIAL_ACTIVE",
+            "ACTIVE",
+            "GRACE",
+            "SUSPENDED_READ_ONLY",
+            "SUSPENDED_BLOCKED",
+            "CANCELED",
+            "ARCHIVED",
+            "SEED_FAILED");
+    for (int index = 0; index < statuses.size(); index++) {
+      upsertStatusTenant(statuses.get(index), index);
+    }
+
+    for (int index = 0; index < statuses.size(); index++) {
+      String status = statuses.get(index);
+      String code = statusTenantCode(index);
+      ResponseEntity<Map> response =
+          rest.exchange(
+              "/api/v1/superadmin/tenants?status="
+                  + status.toLowerCase(Locale.ROOT)
+                  + "&q="
+                  + code
+                  + "&page=0&size=20&sort=companyCode,asc",
+              HttpMethod.GET,
+              new HttpEntity<>(superAdminHeaders),
+              Map.class);
+      assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+      @SuppressWarnings("unchecked")
+      Map<String, Object> page = (Map<String, Object>) response.getBody().get("data");
+      @SuppressWarnings("unchecked")
+      List<Map<String, Object>> tenants = (List<Map<String, Object>>) page.get("content");
+      assertThat(tenants)
+          .anySatisfy(
+              tenant -> {
+                assertThat(tenant.get("companyCode")).isEqualTo(code);
+                assertThat(tenant.get("status")).isEqualTo(status);
+                assertThat(tenant.get("lifecycleState")).isEqualTo(status);
+              });
+    }
+
+    Company seedFailedTenant =
+        companyRepository
+            .findByCodeIgnoreCase(statusTenantCode(statuses.indexOf("SEED_FAILED")))
+            .orElseThrow();
+    ResponseEntity<Map> detailResponse =
+        rest.exchange(
+            "/api/v1/superadmin/tenants/" + seedFailedTenant.getId(),
+            HttpMethod.GET,
+            new HttpEntity<>(superAdminHeaders),
+            Map.class);
+    assertThat(detailResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    @SuppressWarnings("unchecked")
+    Map<String, Object> detail = (Map<String, Object>) detailResponse.getBody().get("data");
+    assertThat(detail.get("status")).isEqualTo("SEED_FAILED");
+  }
+
+  @Test
   void superAdmin_lifecycle_update_rejects_retired_legacy_states() {
     Company tenant = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
     String superAdminToken = loginToken(SUPER_ADMIN_EMAIL, ROOT_COMPANY_CODE);
@@ -403,6 +468,54 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
 
     assertThat(blockedResponse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
     assertThat(readLifecycleState(tenant.getId())).isEqualTo("ACTIVE");
+  }
+
+  private Company upsertStatusTenant(String status, int index) {
+    String code = statusTenantCode(index);
+    Company company = companyRepository.findByCodeIgnoreCase(code).orElseGet(Company::new);
+    company.setCode(code);
+    company.setName("M3 " + status + " Tenant");
+    company.setTimezone("UTC");
+    company.setStateCode("KA");
+    configureTenantStatusState(company, status, index);
+    return companyRepository.save(company);
+  }
+
+  private String statusTenantCode(int index) {
+    return "M3STATUS" + index;
+  }
+
+  private void configureTenantStatusState(Company company, String status, int index) {
+    company.setLifecycleState(CompanyLifecycleState.ACTIVE);
+    company.setLifecycleReason(null);
+    company.setOnboardingAdminEmail(null);
+    company.setOnboardingAdminUserId(null);
+    company.setOnboardingCredentialsEmailedAt(null);
+    company.setOnboardingCompletedAt(Instant.parse("2026-03-26T09:00:00Z"));
+    switch (status) {
+      case "DRAFT" -> {
+        company.setOnboardingCompletedAt(null);
+        company.setOnboardingAdminEmail("draft-" + index + "@example.com");
+      }
+      case "PENDING_ACTIVATION" -> {
+        company.setOnboardingCompletedAt(null);
+        company.setOnboardingAdminEmail("pending-" + index + "@example.com");
+        company.setOnboardingCredentialsEmailedAt(Instant.parse("2026-03-26T10:00:00Z"));
+      }
+      case "SETUP_PENDING" -> company.setLifecycleReason(status);
+      case "TRIAL_ACTIVE", "GRACE", "SEED_FAILED" -> company.setLifecycleReason(status);
+      case "SUSPENDED_READ_ONLY", "SUSPENDED_BLOCKED" -> {
+        company.setLifecycleState(CompanyLifecycleState.SUSPENDED);
+        company.setLifecycleReason(status);
+      }
+      case "CANCELED", "ARCHIVED" -> {
+        company.setLifecycleState(CompanyLifecycleState.DEACTIVATED);
+        company.setLifecycleReason(status);
+      }
+      default -> {
+        // ACTIVE uses the default completed onboarding and active lifecycle state.
+      }
+    }
   }
 
   @Test

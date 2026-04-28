@@ -418,7 +418,7 @@ public class CompanyService {
                         "Company not found"));
     assertBoundControlPlaneCompanyMatchesTarget(company.getCode());
     auditAuthorityDecision(true, METRICS_READ_REASON, company.getCode(), authentication);
-    return buildTenantMetrics(company);
+    return buildTenantMetrics(company, false);
   }
 
   public CompanyTenantMetricsDto getTenantMetricsForSuperAdmin(Long companyId) {
@@ -431,7 +431,7 @@ public class CompanyService {
                     com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
                         "Company not found"));
     auditAuthorityDecision(true, METRICS_READ_REASON, company.getCode(), authentication);
-    return buildTenantMetrics(company);
+    return buildTenantMetrics(company, true);
   }
 
   public CompanySuperAdminDashboardDto getSuperAdminDashboard() {
@@ -445,15 +445,15 @@ public class CompanyService {
     long totalTenants = tenantOverview.size();
     long activeTenants =
         tenantOverview.stream()
-            .filter(tenant -> "ACTIVE".equalsIgnoreCase(tenant.lifecycleState()))
+            .filter(tenant -> isActiveTenantStatus(tenant.lifecycleState()))
             .count();
     long suspendedTenants =
         tenantOverview.stream()
-            .filter(tenant -> "SUSPENDED".equalsIgnoreCase(tenant.lifecycleState()))
+            .filter(tenant -> isSuspendedTenantStatus(tenant.lifecycleState()))
             .count();
     long deactivatedTenants =
         tenantOverview.stream()
-            .filter(tenant -> "DEACTIVATED".equalsIgnoreCase(tenant.lifecycleState()))
+            .filter(tenant -> isDeactivatedTenantStatus(tenant.lifecycleState()))
             .count();
     long totalActiveUsers =
         tenantOverview.stream()
@@ -623,11 +623,13 @@ public class CompanyService {
         company.getId(), company.getCode(), resetEmail, "reset-link-emailed");
   }
 
-  private CompanyTenantMetricsDto buildTenantMetrics(Company company) {
+  private CompanyTenantMetricsDto buildTenantMetrics(Company company, boolean superAdminReadModel) {
     CompanyLifecycleState state =
         company.getLifecycleState() == null
             ? CompanyLifecycleState.ACTIVE
             : company.getLifecycleState();
+    String lifecycleState =
+        superAdminReadModel ? resolveSuperAdminTenantStatus(company, state) : state.name();
     Long companyId = company.getId();
     long activeUserCount = countActiveUsers(companyId);
     long apiActivityCount = countApiActivity(companyId);
@@ -639,7 +641,7 @@ public class CompanyService {
     return new CompanyTenantMetricsDto(
         company.getId(),
         company.getCode(),
-        state.name(),
+        lifecycleState,
         company.getLifecycleReason(),
         company.getQuotaMaxActiveUsers(),
         company.getQuotaMaxApiRequests(),
@@ -656,7 +658,7 @@ public class CompanyService {
   }
 
   private CompanySuperAdminDashboardDto.TenantOverview buildTenantOverview(Company company) {
-    CompanyTenantMetricsDto metrics = buildTenantMetrics(company);
+    CompanyTenantMetricsDto metrics = buildTenantMetrics(company, true);
     return new CompanySuperAdminDashboardDto.TenantOverview(
         metrics.companyId(),
         metrics.companyCode(),
@@ -681,6 +683,71 @@ public class CompanyService {
             metrics.auditStorageBytes(), metrics.quotaMaxStorageBytes()),
         calculateUtilizationInBasisPoints(
             metrics.currentConcurrentRequests(), metrics.quotaMaxConcurrentRequests()));
+  }
+
+  private String resolveSuperAdminTenantStatus(
+      Company company, CompanyLifecycleState lifecycleState) {
+    if (company != null
+        && company.getOnboardingCredentialsEmailedAt() != null
+        && company.getOnboardingCompletedAt() == null) {
+      return "PENDING_ACTIVATION";
+    }
+    if (company != null
+        && StringUtils.hasText(company.getOnboardingAdminEmail())
+        && company.getOnboardingAdminUserId() == null
+        && company.getOnboardingCompletedAt() == null) {
+      return "DRAFT";
+    }
+    if (company != null
+        && company.getOnboardingAdminUserId() != null
+        && company.getOnboardingCompletedAt() == null) {
+      return "SETUP_PENDING";
+    }
+    String reasonStatus =
+        normalizeSuperAdminStatusReason(company == null ? null : company.getLifecycleReason());
+    CompanyLifecycleState state =
+        lifecycleState == null ? CompanyLifecycleState.ACTIVE : lifecycleState;
+    return switch (state) {
+      case ACTIVE -> reasonStatus == null ? "ACTIVE" : reasonStatus;
+      case SUSPENDED ->
+          "SUSPENDED_READ_ONLY".equals(reasonStatus) ? "SUSPENDED_READ_ONLY" : "SUSPENDED_BLOCKED";
+      case DEACTIVATED -> "CANCELED".equals(reasonStatus) ? "CANCELED" : "ARCHIVED";
+    };
+  }
+
+  private String normalizeSuperAdminStatusReason(String lifecycleReason) {
+    if (!StringUtils.hasText(lifecycleReason)) {
+      return null;
+    }
+    String normalized = lifecycleReason.trim().toUpperCase(Locale.ROOT).replace('-', '_');
+    normalized = normalized.replaceAll("[^A-Z0-9]+", "_").replaceAll("_+", "_");
+    return switch (normalized) {
+      case "TRIAL", "TRIAL_ACTIVE" -> "TRIAL_ACTIVE";
+      case "SETUP_PENDING" -> "SETUP_PENDING";
+      case "GRACE", "BILLING_GRACE", "PAYMENT_GRACE" -> "GRACE";
+      case "READ_ONLY", "SUSPENDED_READ_ONLY" -> "SUSPENDED_READ_ONLY";
+      case "SUSPENDED_BLOCKED", "BLOCKED" -> "SUSPENDED_BLOCKED";
+      case "CANCELED", "CANCELLED" -> "CANCELED";
+      case "ARCHIVED", "DEACTIVATED" -> "ARCHIVED";
+      case "SEED_FAILED", "SETUP_FAILED", "SEEDING_FAILED" -> "SEED_FAILED";
+      default -> null;
+    };
+  }
+
+  private boolean isActiveTenantStatus(String status) {
+    return "ACTIVE".equalsIgnoreCase(status) || "TRIAL_ACTIVE".equalsIgnoreCase(status);
+  }
+
+  private boolean isSuspendedTenantStatus(String status) {
+    return "SUSPENDED".equalsIgnoreCase(status)
+        || "SUSPENDED_READ_ONLY".equalsIgnoreCase(status)
+        || "SUSPENDED_BLOCKED".equalsIgnoreCase(status);
+  }
+
+  private boolean isDeactivatedTenantStatus(String status) {
+    return "DEACTIVATED".equalsIgnoreCase(status)
+        || "CANCELED".equalsIgnoreCase(status)
+        || "ARCHIVED".equalsIgnoreCase(status);
   }
 
   private void requireMembershipById(Long companyId, Set<Company> allowedCompanies) {
