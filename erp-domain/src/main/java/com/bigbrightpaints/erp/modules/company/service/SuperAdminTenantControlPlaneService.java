@@ -114,8 +114,9 @@ public class SuperAdminTenantControlPlaneService {
             .filter(candidate -> searchMatches(candidate, normalizedQuery))
             .sorted(sortSpec.comparator())
             .toList();
-    int start = Math.min(safePage * safeSize, candidates.size());
-    int end = Math.min(start + safeSize, candidates.size());
+    long requestedOffset = (long) safePage * safeSize;
+    int start = requestedOffset >= candidates.size() ? candidates.size() : (int) requestedOffset;
+    int end = (int) Math.min(requestedOffset + safeSize, (long) candidates.size());
     List<SuperAdminTenantSummaryDto> content =
         candidates.subList(start, end).stream()
             .map(

@@ -235,6 +235,28 @@ class SuperAdminTenantControlPlaneServiceTest {
   }
 
   @Test
+  void listTenants_returnsEmptyPageWhenPageOffsetWouldOverflowIntegerArithmetic() {
+    Company alpha = company(1L, "ALPHA");
+    alpha.setName("Alpha Paints");
+    Company beta = company(2L, "BETA");
+    beta.setName("Beta Coatings");
+    when(companyRepository.findAll()).thenReturn(java.util.List.of(beta, alpha));
+    when(companyService.getTenantMetricsForSuperAdmin(1L)).thenReturn(metrics(alpha, "ACTIVE"));
+    when(companyService.getTenantMetricsForSuperAdmin(2L)).thenReturn(metrics(beta, "ACTIVE"));
+    when(auditLogRepository.findTop1ByCompanyIdOrderByTimestampDesc(any(Long.class)))
+        .thenReturn(Optional.empty());
+
+    PageResponse<SuperAdminTenantSummaryDto> result =
+        service.listTenants(null, null, Integer.MAX_VALUE, 100, "companyCode,asc");
+
+    assertThat(result.content()).isEmpty();
+    assertThat(result.page()).isEqualTo(Integer.MAX_VALUE);
+    assertThat(result.size()).isEqualTo(100);
+    assertThat(result.totalElements()).isEqualTo(2);
+    assertThat(result.totalPages()).isEqualTo(1);
+  }
+
+  @Test
   void getTenantDetail_aggregatesMetricsTimelineAndMainAdmin() {
     Company company = company(7L, "ACME");
     company.setName("Acme Paints");

@@ -297,6 +297,16 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
             new HttpEntity<>(superAdminHeaders),
             Map.class);
     assertThat(invalidSizeResponse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(invalidSizeResponse.getBody()).containsEntry("success", false);
+
+    ResponseEntity<Map> invalidPageResponse =
+        rest.exchange(
+            "/api/v1/superadmin/tenants?page=-1",
+            HttpMethod.GET,
+            new HttpEntity<>(superAdminHeaders),
+            Map.class);
+    assertThat(invalidPageResponse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(invalidPageResponse.getBody()).containsEntry("success", false);
 
     ResponseEntity<Map> invalidSortResponse =
         rest.exchange(
@@ -305,6 +315,22 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
             new HttpEntity<>(superAdminHeaders),
             Map.class);
     assertThat(invalidSortResponse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+    ResponseEntity<Map> overflowPageResponse =
+        rest.exchange(
+            "/api/v1/superadmin/tenants?page=2147483647&size=100&sort=companyCode,asc",
+            HttpMethod.GET,
+            new HttpEntity<>(superAdminHeaders),
+            Map.class);
+    assertThat(overflowPageResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    @SuppressWarnings("unchecked")
+    Map<String, Object> overflowPage =
+        (Map<String, Object>) overflowPageResponse.getBody().get("data");
+    assertThat(overflowPage).containsEntry("page", Integer.MAX_VALUE).containsEntry("size", 100);
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> overflowTenants =
+        (List<Map<String, Object>>) overflowPage.get("content");
+    assertThat(overflowTenants).isEmpty();
 
     ResponseEntity<Map> detailResponse =
         rest.exchange(
