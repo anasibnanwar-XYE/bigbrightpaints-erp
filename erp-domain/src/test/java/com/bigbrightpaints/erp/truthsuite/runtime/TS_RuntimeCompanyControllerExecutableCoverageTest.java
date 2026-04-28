@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.mock.web.MockHttpServletRequest;
 
 import com.bigbrightpaints.erp.modules.company.controller.SuperAdminController;
 import com.bigbrightpaints.erp.modules.company.dto.CompanyLifecycleStateDto;
@@ -53,14 +54,20 @@ class TS_RuntimeCompanyControllerExecutableCoverageTest {
         mock(SuperAdminTenantControlPlaneService.class);
     SuperAdminController controller = new SuperAdminController(companyService, controlPlaneService);
 
-    ResponseEntity<ApiResponse<Map<String, String>>> response =
-        controller.retiredTenantAdminPasswordReset(42L, Map.of("adminEmail", "admin@ske.com"));
+    ResponseEntity<ApiResponse<Map<String, Object>>> response =
+        controller.retiredTenantAdminPasswordReset(
+            42L,
+            Map.of("adminEmail", "admin@ske.com"),
+            new MockHttpServletRequest(
+                "POST", "/api/v1/superadmin/tenants/42/support/admin-password-reset"));
 
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.GONE);
     assertThat(response.getBody()).isNotNull();
     assertThat(response.getBody().success()).isFalse();
     assertThat(response.getBody().data())
-        .containsEntry("code", "retired-superadmin-admin-password-reset");
+        .containsEntry("code", "retired-superadmin-admin-password-reset")
+        .containsEntry("path", "/api/v1/superadmin/tenants/42/support/admin-password-reset")
+        .containsKeys("message", "reason", "traceId");
     verify(controlPlaneService, never()).resetTenantAdminPassword(42L, "admin@ske.com", null);
   }
 }

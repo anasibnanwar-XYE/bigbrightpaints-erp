@@ -206,6 +206,33 @@ class SuperAdminApiContractIT extends AbstractIntegrationTest {
     assertThat(readLifecycleState()).isEqualTo("ACTIVE");
   }
 
+  @Test
+  void retiredSuperAdminRoutesUseStandardSafeErrorEnvelope() {
+    assertRetiredRouteEnvelope(
+        "/api/v1/superadmin/tenants/onboard",
+        Map.of(
+            "name",
+            "Retired Contract Tenant",
+            "code",
+            "RET-CONTRACT",
+            "temporaryPassword",
+            "must-not-leak",
+            "firstAdminEmail",
+            "retired-contract@example.com"),
+        "retired-superadmin-flat-onboarding");
+
+    assertRetiredRouteEnvelope(
+        "/api/v1/superadmin/tenants/" + tenantId + "/support/admin-password-reset",
+        Map.of(
+            "adminEmail",
+            "admin-contract@bbp.com",
+            "password",
+            "must-not-leak",
+            "token",
+            "must-not-leak"),
+        "retired-superadmin-admin-password-reset");
+  }
+
   private void assertStandardSuccess(ResponseEntity<Map> response, String expectedCorrelationId) {
     assertThat(response.getHeaders().getFirst("X-Trace-Id")).isNotBlank();
     @SuppressWarnings("unchecked")
@@ -262,6 +289,30 @@ class SuperAdminApiContractIT extends AbstractIntegrationTest {
     Map<String, Object> metadata = (Map<String, Object>) body.get("metadata");
     assertThat(metadata).containsKey("traceId").containsEntry("correlationId", "m1-contract-error");
     assertThat(data.get("traceId")).isEqualTo(metadata.get("traceId"));
+  }
+
+  private void assertRetiredRouteEnvelope(String path, Map<String, Object> payload, String code) {
+    HttpHeaders headers = superAdminHeaders();
+    headers.set("X-Correlation-ID", "m1-contract-error");
+
+    ResponseEntity<Map> response =
+        rest.exchange(path, HttpMethod.POST, new HttpEntity<>(payload, headers), Map.class);
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.GONE);
+    assertStandardError(response, code);
+    @SuppressWarnings("unchecked")
+    Map<String, Object> data = (Map<String, Object>) response.getBody().get("data");
+    assertThat(data.get("message").toString()).contains("retired");
+    assertThat(data.get("reason")).isEqualTo(data.get("message"));
+    assertThat(data).containsEntry("path", path);
+    assertThat(String.valueOf(response.getBody()))
+        .doesNotContain("must-not-leak")
+        .doesNotContain("temporaryPassword")
+        .doesNotContain("password=")
+        .doesNotContain("token=")
+        .doesNotContain("SQLException")
+        .doesNotContain("org.springframework")
+        .doesNotContain("java.");
   }
 
   private HttpHeaders superAdminHeaders() {

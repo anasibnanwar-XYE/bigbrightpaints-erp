@@ -13,6 +13,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
+import org.springframework.mock.web.MockHttpServletRequest;
 
 import com.bigbrightpaints.erp.modules.company.dto.CompanyEnabledModulesDto;
 import com.bigbrightpaints.erp.modules.company.dto.CompanyLifecycleStateDto;
@@ -199,7 +200,14 @@ class SuperAdminControllerTest {
                     "OPS", "Check", "SUSPENDED", 24))
             .getBody(),
         "Tenant warning issued");
-    assertThat(controller.retiredTenantAdminPasswordReset(7L, null).getStatusCode())
+    assertThat(
+            controller
+                .retiredTenantAdminPasswordReset(
+                    7L,
+                    null,
+                    new MockHttpServletRequest(
+                        "POST", "/api/v1/superadmin/tenants/7/support/admin-password-reset"))
+                .getStatusCode())
         .isEqualTo(HttpStatus.GONE);
     assertSuccess(
         controller

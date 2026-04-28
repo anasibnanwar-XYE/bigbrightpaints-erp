@@ -3,7 +3,6 @@ package com.bigbrightpaints.erp.modules.company.controller;
 import java.util.List;
 import java.util.Map;
 
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -18,6 +17,7 @@ import com.bigbrightpaints.erp.modules.company.service.TenantOnboardingService;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 
 import io.swagger.v3.oas.annotations.Hidden;
+import jakarta.servlet.http.HttpServletRequest;
 
 @RestController
 @RequestMapping("/api/v1/superadmin/tenants")
@@ -41,13 +41,12 @@ public class SuperAdminTenantOnboardingController {
 
   @Hidden
   @PostMapping("/onboard")
-  public ResponseEntity<ApiResponse<Map<String, String>>> retiredOnboardTenant(
-      @RequestBody(required = false) Object ignored) {
-    return ResponseEntity.status(HttpStatus.GONE)
-        .body(
-            ApiResponse.failure(
-                "Flat Super Admin tenant onboarding is retired; use the V1 Add Client activation"
-                    + " flow",
-                Map.of("code", "retired-superadmin-flat-onboarding")));
+  public ResponseEntity<ApiResponse<Map<String, Object>>> retiredOnboardTenant(
+      @RequestBody(required = false) Object ignored, HttpServletRequest request) {
+    return SuperAdminRetiredRouteErrors.gone(
+        "retired-superadmin-flat-onboarding",
+        "Flat Super Admin tenant onboarding is retired; use the V1 Add Client activation flow",
+        request,
+        "/api/v1/superadmin/tenants/onboard");
   }
 }
