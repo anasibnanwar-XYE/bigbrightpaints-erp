@@ -438,6 +438,8 @@ public class CompanyContextFilter extends OncePerRequestFilter {
     Map<String, String> metadata = new LinkedHashMap<>();
     metadata.put("actor", actor);
     metadata.put("reason", "SUPER_ADMIN_PLATFORM_ONLY");
+    metadata.put("traceId", RequestTraceContext.traceId());
+    metadata.put("correlationId", RequestTraceContext.correlationId());
     metadata.put(
         "deniedPath",
         StringUtils.hasText(normalizedPath)

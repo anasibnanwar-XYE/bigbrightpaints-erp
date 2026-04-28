@@ -476,6 +476,43 @@ class CompanyContextFilterControlPlaneBindingTest {
   }
 
   @Test
+  void platformWorkflowDenialAuditMetadata_usesRequestTraceAndCorrelation()
+      throws ServletException, IOException {
+    ReflectionTestUtils.setField(filter, "auditService", auditService);
+    RequestTraceContext.start("trace-platform-denial-m2", "corr-platform-denial-m2");
+    authenticate("root-superadmin@bbp.com", Set.of("ROLE_SUPER_ADMIN"), Set.of("TENANT-A"));
+    MockHttpServletRequest request = request("GET", "/api/v1/admin/support/tickets");
+    request.setAttribute("jwtClaims", claimsFor("TENANT-A"));
+    MockHttpServletResponse response = new MockHttpServletResponse();
+
+    filter.doFilter(request, response, filterChain);
+
+    assertThat(response.getStatus()).isEqualTo(403);
+    assertThat(response.getContentAsString())
+        .contains("SUPER_ADMIN_PLATFORM_ONLY")
+        .contains("trace-platform-denial-m2")
+        .contains("corr-platform-denial-m2");
+    @SuppressWarnings("unchecked")
+    org.mockito.ArgumentCaptor<Map<String, String>> metadataCaptor =
+        org.mockito.ArgumentCaptor.forClass(Map.class);
+    verify(auditService)
+        .logAuthFailure(
+            org.mockito.ArgumentMatchers.eq(AuditEvent.ACCESS_DENIED),
+            org.mockito.ArgumentMatchers.eq("root-superadmin@bbp.com"),
+            org.mockito.ArgumentMatchers.eq("TENANT-A"),
+            metadataCaptor.capture());
+    assertThat(metadataCaptor.getValue())
+        .containsEntry("reason", "SUPER_ADMIN_PLATFORM_ONLY")
+        .containsEntry("traceId", "trace-platform-denial-m2")
+        .containsEntry("correlationId", "corr-platform-denial-m2")
+        .containsEntry("deniedPath", "/api/v1/admin/support/tickets")
+        .containsEntry("deniedMethod", "GET")
+        .containsEntry("tenantScope", "TENANT-A");
+    verifyNoInteractions(companyService);
+    verify(filterChain, never()).doFilter(request, response);
+  }
+
+  @Test
   void superAdminPlatformScopeOnlyHost_checkInvokesPlatformScopeLookupOncePerRequest()
       throws ServletException, IOException {
     authenticate("root-superadmin@bbp.com", Set.of("ROLE_SUPER_ADMIN"), Set.of("TENANT-A"));
