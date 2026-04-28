@@ -481,11 +481,7 @@ public class PasswordResetService {
       return "no-request";
     }
     HttpServletRequest request = attributes.getRequest();
-    String forwardedFor = firstNonBlank(request.getHeader("X-Forwarded-For"));
-    String clientIp =
-        StringUtils.hasText(forwardedFor)
-            ? forwardedFor.split(",", 2)[0].trim()
-            : request.getRemoteAddr();
+    String clientIp = request.getRemoteAddr();
     return "ip:" + sanitizeTenantContextForLog(clientIp);
   }
 

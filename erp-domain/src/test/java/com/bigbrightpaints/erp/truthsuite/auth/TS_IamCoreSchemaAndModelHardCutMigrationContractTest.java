@@ -34,6 +34,8 @@ class TS_IamCoreSchemaAndModelHardCutMigrationContractTest {
         "UPDATE refresh_tokens",
         "SET token_digest = encode(digest(token, 'sha256'), 'hex')",
         "DELETE FROM refresh_tokens",
+        "INSERT INTO iam_sessions",
+        "ON CONFLICT (refresh_token_digest) DO NOTHING",
         "ALTER TABLE refresh_tokens",
         "DROP COLUMN IF EXISTS token",
         "ALTER COLUMN token_digest SET NOT NULL",

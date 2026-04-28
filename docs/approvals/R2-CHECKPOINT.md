@@ -17,6 +17,10 @@ Last reviewed: 2026-04-28
   - deduplicates V190 MFA recovery-code hash backfill before relying on conflict handling
   - backfills or removes legacy raw token rows before V190 drops raw token columns and enforces
     digest `NOT NULL` constraints
+  - seeds canonical IAM sessions for still-unexpired legacy refresh-token rows before enforcing
+    session-bound refresh checks
+  - uses the trusted servlet remote address, not client-supplied `X-Forwarded-For`, for
+    password-reset request throttling
   - keeps logout best-effort for stale optional refresh tokens while still revoking the authenticated
     current session and blacklisting the access token
 - Why this is R2: this packet touches high-risk auth/session/MFA behavior and the IAM v2 migration.

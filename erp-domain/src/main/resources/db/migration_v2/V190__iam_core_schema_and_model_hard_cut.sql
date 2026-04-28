@@ -202,6 +202,29 @@ DELETE FROM refresh_tokens
 WHERE token_digest IS NULL
    OR length(token_digest) <> 64;
 
+INSERT INTO iam_sessions (
+    account_id,
+    refresh_token_digest,
+    auth_scope_code,
+    issued_at,
+    last_seen_at,
+    expires_at
+)
+SELECT ia.id,
+       rt.token_digest,
+       UPPER(TRIM(rt.auth_scope_code)),
+       rt.issued_at,
+       rt.issued_at,
+       rt.expires_at
+FROM refresh_tokens rt
+JOIN iam_accounts ia
+  ON ia.public_id = rt.user_public_id
+ AND ia.auth_scope_code = UPPER(TRIM(rt.auth_scope_code))
+WHERE rt.expires_at > now()
+  AND rt.token_digest IS NOT NULL
+  AND length(rt.token_digest) = 64
+ON CONFLICT (refresh_token_digest) DO NOTHING;
+
 ALTER TABLE refresh_tokens
     DROP COLUMN IF EXISTS token;
 

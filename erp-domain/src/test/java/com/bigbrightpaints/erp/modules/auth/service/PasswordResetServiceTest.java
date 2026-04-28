@@ -31,7 +31,10 @@ import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.batch.support.transaction.ResourcelessTransactionManager;
+import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 
 import com.bigbrightpaints.erp.core.audit.AuditEvent;
 import com.bigbrightpaints.erp.core.audit.AuditLogRepository;
@@ -391,6 +394,36 @@ class PasswordResetServiceTest {
     verify(tokenRepository, never()).findByTokenDigestForUpdate(anyString());
     verify(passwordService, never())
         .resetPassword(any(UserAccount.class), anyString(), anyString());
+  }
+
+  @Test
+  void resetPasswordRequestRateLimitUsesTrustedRemoteAddressInsteadOfForwardedHeader() {
+    when(tokenRepository.findByTokenDigestForUpdate(anyString())).thenReturn(Optional.empty());
+    MockHttpServletRequest request = new MockHttpServletRequest();
+    request.setRemoteAddr("203.0.113.10");
+    try {
+      request.addHeader("X-Forwarded-For", "198.51.100.1");
+      RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
+      assertThrows(
+          ApplicationException.class,
+          () -> passwordResetService.resetPassword("missing-1", "NewPass123!", "NewPass123!"));
+
+      request.removeHeader("X-Forwarded-For");
+      request.addHeader("X-Forwarded-For", "198.51.100.2");
+      assertThrows(
+          ApplicationException.class,
+          () -> passwordResetService.resetPassword("missing-2", "NewPass123!", "NewPass123!"));
+    } finally {
+      RequestContextHolder.resetRequestAttributes();
+    }
+
+    ArgumentCaptor<String> keys = ArgumentCaptor.forClass(String.class);
+    verify(securityMonitoringService, times(2))
+        .checkRateLimit(argThat(PasswordResetServiceTest::isResetPasswordRequestRateLimitKey));
+    verify(securityMonitoringService, times(2)).checkRateLimit(keys.capture());
+    org.assertj.core.api.Assertions.assertThat(keys.getAllValues()).hasSize(2);
+    org.assertj.core.api.Assertions.assertThat(keys.getAllValues().get(1))
+        .isEqualTo(keys.getAllValues().get(0));
   }
 
   @Test
