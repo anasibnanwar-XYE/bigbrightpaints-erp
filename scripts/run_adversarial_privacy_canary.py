@@ -37,6 +37,7 @@ DEFAULT_BASE_URL = "http://localhost:18081"
 DEFAULT_MGMT_URL = "http://localhost:19090"
 DEFAULT_MAILHOG_URL = "http://localhost:18025"
 ALLOWED_HOSTS = {"localhost", "127.0.0.1", "::1"}
+MISSION_APPROVED_PORTS = {"base-url": 18081, "mgmt-url": 19090, "mailhog-url": 18025}
 SECRET_KEY_RE = re.compile(
     r"(password|passtoken|token|secret|qruri|recovery|authorization|cookie|digest|hash|mfa)",
     re.IGNORECASE,
@@ -44,12 +45,33 @@ SECRET_KEY_RE = re.compile(
 JWT_RE = re.compile(r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b")
 BEARER_RE = re.compile(r"Bearer\s+[A-Za-z0-9._~+/=-]{20,}", re.IGNORECASE)
 REFRESH_JSON_RE = re.compile(
-    r'("(?:accessToken|refreshToken|token|secret|qrUri|password|recoveryCode|recoveryCodes)"\s*:\s*)"[^"]*"',
+    r'("(?:accessToken|refreshToken|token|secret|qrUri|password|recoveryCode|recoveryCodes)"\s*:\s*)"([^"]*)"',
     re.IGNORECASE,
 )
 EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
 PHONE_RE = re.compile(r"\b(?:\+?\d[\d .()-]{7,}\d)\b")
 QUERY_TOKEN_RE = re.compile(r"(?i)(access[_-]?token|refresh[_-]?token|token|jwt|secret)=")
+AUTH_PAYLOAD_KEYS = {
+    "accessToken",
+    "authScopeCode",
+    "companyCode",
+    "displayName",
+    "email",
+    "expiresIn",
+    "mfaEnabled",
+    "mustChangePassword",
+    "permissions",
+    "qrUri",
+    "recoveryCode",
+    "recoveryCodes",
+    "refreshToken",
+    "roles",
+    "sessionId",
+    "sessions",
+    "token",
+    "tokenType",
+    "user",
+}
 
 
 @dataclasses.dataclass
@@ -60,6 +82,15 @@ class HttpCapture:
     elapsed_ms: int
     sanitized_body: Any
     body_text: str
+
+
+@dataclasses.dataclass(frozen=True)
+class ProbeExpectation:
+    name: str
+    expected_statuses: tuple[int, ...]
+    required_fragments: tuple[str, ...] = ()
+    allow_200: bool = False
+    forbid_auth_payload: bool = True
 
 
 class Budget:
@@ -129,6 +160,13 @@ def ensure_local_http_url(url: str, label: str) -> str:
     host = parsed.hostname
     if host not in ALLOWED_HOSTS:
         raise SystemExit(f"{label} must target localhost only, got host={host!r}")
+    expected_port = MISSION_APPROVED_PORTS.get(label)
+    actual_port = parsed.port
+    if expected_port is not None and actual_port != expected_port:
+        raise SystemExit(
+            f"{label} must use mission-approved localhost port {expected_port}, "
+            f"got {actual_port or 80}: {url}"
+        )
     return url.rstrip("/")
 
 
@@ -174,6 +212,59 @@ def decode_json_or_text(body: bytes) -> tuple[Any, str]:
     return sanitized, json.dumps(sanitized, sort_keys=True)
 
 
+def raw_text(body: bytes) -> str:
+    return body.decode("utf-8", errors="replace")
+
+
+def response_has_success_true(value: Any) -> bool:
+    if isinstance(value, dict):
+        if value.get("success") is True:
+            return True
+        return any(response_has_success_true(item) for item in value.values())
+    if isinstance(value, list):
+        return any(response_has_success_true(item) for item in value)
+    return False
+
+
+def response_contains_auth_payload(value: Any, *, inside_error_metadata: bool = False) -> bool:
+    if isinstance(value, dict):
+        for key, val in value.items():
+            key_text = str(key)
+            if not inside_error_metadata and key_text in AUTH_PAYLOAD_KEYS:
+                return True
+            next_inside_error_metadata = inside_error_metadata or key_text in {"details", "errors"}
+            if response_contains_auth_payload(
+                val, inside_error_metadata=next_inside_error_metadata
+            ):
+                return True
+    elif isinstance(value, list):
+        return any(
+            response_contains_auth_payload(item, inside_error_metadata=inside_error_metadata)
+            for item in value
+        )
+    return False
+
+
+def contains_unredacted_secret_json_field(text: str) -> bool:
+    for match in REFRESH_JSON_RE.finditer(text):
+        value = match.group(2).strip()
+        normalized = value.lower()
+        if not value:
+            continue
+        if "redacted" in normalized or "masked" in normalized:
+            continue
+        if value.startswith("***") or set(value) == {"*"}:
+            continue
+        if value.endswith("..."):
+            continue
+        if value.startswith("<") and value.endswith(">"):
+            continue
+        if value.startswith("${") and value.endswith("}"):
+            continue
+        return True
+    return False
+
+
 class Harness:
     def __init__(self, args: argparse.Namespace, seed_password: str, evidence_dir: Path) -> None:
         self.base_url = ensure_local_http_url(args.base_url, "base-url")
@@ -182,6 +273,7 @@ class Harness:
         self.timeout = args.timeout
         self.connect_timeout = args.connect_timeout
         self.verbose = args.verbose
+        self.backend_log_paths = self.resolve_backend_log_paths(args.backend_log)
         self.budget = Budget(args.max_requests, args.per_assertion_max, args.max_concurrency)
         self.seed_password = seed_password
         self.evidence_dir = evidence_dir
@@ -197,7 +289,26 @@ class Harness:
             "tenant": f"ADV_CANARY_TENANT_{uuid.uuid4().hex}",
         }
         self.captures: list[HttpCapture] = []
-        self.allowed_status = {200, 201, 202, 204, 400, 401, 403, 404, 405, 409, 413, 423, 428, 429}
+    def resolve_backend_log_paths(self, explicit_backend_log: str) -> list[Path]:
+        candidates = [
+            explicit_backend_log,
+            os.environ.get("BACKEND_LOG_PATH", ""),
+            os.environ.get("LOG_FILE", ""),
+            os.environ.get("SPRING_BOOT_LOG_FILE", ""),
+            os.environ.get("SPRING_LOG_FILE", ""),
+        ]
+        paths: list[Path] = []
+        seen: set[str] = set()
+        for candidate in candidates:
+            if not candidate:
+                continue
+            path = Path(candidate).expanduser()
+            key = str(path)
+            if key in seen:
+                continue
+            seen.add(key)
+            paths.append(path)
+        return paths
 
     def request(
         self,
@@ -235,6 +346,12 @@ class Harness:
                 raw = exc.read(65536)
                 status = exc.code
         elapsed_ms = round((time.monotonic() - start) * 1000)
+        self.assert_raw_surface_clean(
+            f"raw-http {method} {path}",
+            raw_text(raw),
+            allow_token_material=False,
+            strict_email=False,
+        )
         sanitized_body, body_text = decode_json_or_text(raw)
         capture_obj = HttpCapture(method, path, status, elapsed_ms, sanitized_body, body_text)
         if capture:
@@ -279,6 +396,7 @@ class Harness:
             headers={"User-Agent": user_agent},
             body={"email": email, "password": self.seed_password, "companyCode": company_code},
             capture=True,
+            allow_token_material=True,
         )
         if capture.status != 200:
             raise RuntimeError(f"expected login success for {email}/{company_code}, got {capture.status}")
@@ -299,6 +417,7 @@ class Harness:
         body: dict[str, Any] | None = None,
         headers: dict[str, str] | None = None,
         capture: bool = False,
+        allow_token_material: bool = False,
     ) -> tuple[dict[str, Any], HttpCapture]:
         """Return raw JSON only in memory; do not persist this response."""
         if QUERY_TOKEN_RE.search(path):
@@ -315,6 +434,12 @@ class Harness:
                 raw = response.read(65536)
                 status = response.getcode()
         elapsed_ms = round((time.monotonic() - start) * 1000)
+        self.assert_raw_surface_clean(
+            f"raw-http {method} {path}",
+            raw_text(raw),
+            allow_token_material=allow_token_material,
+            strict_email=False,
+        )
         sanitized_body, body_text = decode_json_or_text(raw)
         capture_obj = HttpCapture(method, path, status, elapsed_ms, sanitized_body, body_text)
         if capture:
@@ -325,20 +450,58 @@ class Harness:
             raise RuntimeError("expected object JSON response")
         return parsed, capture_obj
 
-    def scan_text_blob(self, label: str, text: str, strict_email: bool = False) -> list[str]:
+    def scan_text_blob(
+        self,
+        label: str,
+        text: str,
+        *,
+        strict_email: bool = False,
+        allow_token_material: bool = False,
+        detect_secret_json_fields: bool = True,
+    ) -> list[str]:
         findings: list[str] = []
         for name, marker in self.canaries.items():
             if marker and marker in text:
                 findings.append(f"{label}: canary {name} marker leaked")
-        if JWT_RE.search(text):
+        if not allow_token_material and JWT_RE.search(text):
             findings.append(f"{label}: JWT-shaped token leaked")
-        if BEARER_RE.search(text):
+        if not allow_token_material and BEARER_RE.search(text):
             findings.append(f"{label}: bearer token leaked")
+        if (
+            detect_secret_json_fields
+            and not allow_token_material
+            and contains_unredacted_secret_json_field(text)
+        ):
+            findings.append(f"{label}: secret-bearing JSON field leaked")
+        if not allow_token_material and QUERY_TOKEN_RE.search(text):
+            findings.append(f"{label}: token-like URL query material leaked")
         if strict_email and EMAIL_RE.search(text):
             findings.append(f"{label}: email-shaped PII remained in sanitized evidence")
         return findings
 
-    def scan_path(self, path: Path, strict_email: bool = False) -> list[str]:
+    def assert_raw_surface_clean(
+        self,
+        label: str,
+        text: str,
+        *,
+        allow_token_material: bool,
+        strict_email: bool,
+    ) -> None:
+        findings = self.scan_text_blob(
+            label,
+            text,
+            strict_email=strict_email,
+            allow_token_material=allow_token_material,
+        )
+        if findings:
+            raise RuntimeError("raw pre-redaction scan failed:\n  - " + "\n  - ".join(findings))
+
+    def scan_path(
+        self,
+        path: Path,
+        strict_email: bool = False,
+        detect_secret_json_fields: bool = True,
+    ) -> list[str]:
         findings: list[str] = []
         if not path.exists():
             return findings
@@ -352,7 +515,14 @@ class Harness:
             except OSError as exc:
                 findings.append(f"{candidate}: could not read for scan: {exc}")
                 continue
-            findings.extend(self.scan_text_blob(str(candidate), text, strict_email=strict_email))
+            findings.extend(
+                self.scan_text_blob(
+                    str(candidate),
+                    text,
+                    strict_email=strict_email,
+                    detect_secret_json_fields=detect_secret_json_fields,
+                )
+            )
         return findings
 
     def fetch_mailhog(self) -> str:
@@ -362,7 +532,14 @@ class Harness:
                 raw = response.read(500_000)
         except Exception as exc:  # MailHog may be unavailable in non-mail flows.
             return json.dumps({"mailhogUnavailable": str(exc)})
-        sanitized = sanitize_text(raw.decode("utf-8", errors="replace"))
+        decoded_raw = raw_text(raw)
+        self.assert_raw_surface_clean(
+            "raw-mailhog",
+            decoded_raw,
+            allow_token_material=False,
+            strict_email=False,
+        )
+        sanitized = sanitize_text(decoded_raw)
         (self.evidence_dir / "mailhog_sanitized.json").write_text(sanitized, encoding="utf-8")
         return sanitized
 
@@ -394,9 +571,45 @@ class Harness:
         except Exception as exc:
             return json.dumps({"auditScan": "skipped", "reason": str(exc)})
         output = result.stdout if result.returncode == 0 else result.stderr
+        self.assert_raw_surface_clean(
+            "raw-audit-metadata",
+            output,
+            allow_token_material=False,
+            strict_email=False,
+        )
         sanitized = sanitize_text(output)
         (self.evidence_dir / "audit_metadata_sanitized.json").write_text(sanitized, encoding="utf-8")
         return sanitized
+
+    def scan_backend_logs(self) -> list[str]:
+        findings: list[str] = []
+        for path in self.backend_log_paths:
+            if path.is_file():
+                findings.extend(self.scan_path(path))
+            elif self.verbose:
+                print(f"[adv-canary] backend log path not found/skipped: {path}", file=sys.stderr)
+        return findings
+
+    def expect_probe(self, capture: HttpCapture, expectation: ProbeExpectation) -> None:
+        if capture.status not in expectation.expected_statuses:
+            raise RuntimeError(
+                f"{expectation.name} expected status "
+                f"{'/'.join(map(str, expectation.expected_statuses))}, got {capture.status}"
+            )
+        if capture.status == 200 and not expectation.allow_200:
+            raise RuntimeError(f"{expectation.name} unexpectedly returned HTTP 200")
+        for fragment in expectation.required_fragments:
+            if fragment.lower() not in capture.body_text.lower():
+                raise RuntimeError(
+                    f"{expectation.name} response missing required body invariant "
+                    f"{fragment!r}: {capture.body_text}"
+                )
+        if response_has_success_true(capture.sanitized_body):
+            raise RuntimeError(f"{expectation.name} returned success=true on denial/absence probe")
+        if expectation.forbid_auth_payload and response_contains_auth_payload(capture.sanitized_body):
+            raise RuntimeError(
+                f"{expectation.name} returned usable auth/profile/session payload fields"
+            )
 
     def run(self) -> dict[str, Any]:
         self.health()
@@ -411,21 +624,71 @@ class Harness:
             "AdvCanaryRival/" + uuid.uuid4().hex,
         )
         auth = {"Authorization": f"Bearer {admin['access']}"}
+        denial_expectations = {
+            "tenant-mismatch": ProbeExpectation(
+                "tenant mismatch X-Company-Code",
+                (403,),
+                ("success", "false", "COMPANY_CONTEXT_MISMATCH"),
+            ),
+            "legacy-company-id": ProbeExpectation(
+                "legacy X-Company-Id",
+                (403,),
+                ("success", "false", "COMPANY_CONTEXT_LEGACY_HEADER_UNSUPPORTED"),
+            ),
+            "retired-profile": ProbeExpectation(
+                "retired auth profile route",
+                (404, 405),
+            ),
+            "wrong-scope-refresh": ProbeExpectation(
+                "wrong-scope refresh token",
+                (400,),
+                ("success", "false", "Invalid refresh token"),
+            ),
+            "malformed-login": ProbeExpectation(
+                "malformed login payload",
+                (400,),
+                ("success", "false"),
+            ),
+            "malformed-refresh": ProbeExpectation(
+                "malformed refresh payload",
+                (400,),
+                ("success", "false", "Invalid refresh token"),
+            ),
+            "malformed-mfa-activate": ProbeExpectation(
+                "malformed MFA activate payload",
+                (400,),
+                ("success", "false"),
+            ),
+            "malformed-mfa-disable": ProbeExpectation(
+                "malformed MFA disable payload",
+                (400,),
+                ("success", "false"),
+            ),
+        }
         self.request("VAL-ADV-013", "GET", "/api/v1/auth/me", headers=auth)
         self.request("VAL-ADV-013", "GET", "/api/v1/auth/sessions", headers=auth)
-        self.request(
-            "VAL-CROSS-010",
-            "GET",
-            "/api/v1/auth/me",
-            headers={**auth, "X-Company-Code": "RIVAL"},
+        self.expect_probe(
+            self.request(
+                "VAL-CROSS-010",
+                "GET",
+                "/api/v1/auth/me",
+                headers={**auth, "X-Company-Code": "RIVAL"},
+            ),
+            denial_expectations["tenant-mismatch"],
         )
-        self.request(
-            "VAL-CROSS-010",
-            "GET",
-            "/api/v1/auth/me",
-            headers={**auth, "X-Company-Id": self.canaries["tenant"]},
+        self.expect_probe(
+            self.request(
+                "VAL-CROSS-010",
+                "GET",
+                "/api/v1/auth/me",
+                headers={**auth, "X-Company-Id": self.canaries["tenant"]},
+            ),
+            denial_expectations["legacy-company-id"],
         )
-        self.request("VAL-CROSS-010", "GET", "/api/v1/auth/profile", headers=auth)
+        self.expect_probe(
+            self.request("VAL-CROSS-010", "GET", "/api/v1/auth/profile", headers=auth),
+            denial_expectations["retired-profile"],
+        )
         self.request(
             "VAL-ADV-013",
             "POST",
@@ -448,11 +711,14 @@ class Harness:
                 "resetHint": self.canaries["reset"],
             },
         )
-        self.request(
-            "VAL-CROSS-011",
-            "POST",
-            "/api/v1/auth/refresh-token",
-            body={"refreshToken": admin["refresh"], "companyCode": "RIVAL"},
+        self.expect_probe(
+            self.request(
+                "VAL-CROSS-011",
+                "POST",
+                "/api/v1/auth/refresh-token",
+                body={"refreshToken": admin["refresh"], "companyCode": "RIVAL"},
+            ),
+            denial_expectations["wrong-scope-refresh"],
         )
         self.request(
             "VAL-CROSS-011",
@@ -462,10 +728,30 @@ class Harness:
         )
 
         malformed_payloads = [
-            ("/api/v1/auth/login", {"email": "not-an-email", "password": self.canaries["password"], "companyCode": "MOCK"}),
-            ("/api/v1/auth/refresh-token", {"refreshToken": self.canaries["token"], "companyCode": "MOCK"}),
-            ("/api/v1/auth/mfa/activate", {"code": self.canaries["mfa"], "factorType": "sms"}),
-            ("/api/v1/auth/mfa/disable", {"recoveryCode": self.canaries["recovery"]}),
+            (
+                "malformed-login",
+                "/api/v1/auth/login",
+                {
+                    "email": "not-an-email",
+                    "password": self.canaries["password"],
+                    "companyCode": "MOCK",
+                },
+            ),
+            (
+                "malformed-refresh",
+                "/api/v1/auth/refresh-token",
+                {"refreshToken": self.canaries["token"], "companyCode": "MOCK"},
+            ),
+            (
+                "malformed-mfa-activate",
+                "/api/v1/auth/mfa/activate",
+                {"code": self.canaries["mfa"], "factorType": "sms"},
+            ),
+            (
+                "malformed-mfa-disable",
+                "/api/v1/auth/mfa/disable",
+                {"recoveryCode": self.canaries["recovery"], "factorType": "sms"},
+            ),
         ]
         with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
             futures = [
@@ -477,15 +763,15 @@ class Harness:
                     body=payload,
                     headers=auth if "mfa" in path else None,
                 )
-                for path, payload in malformed_payloads
+                for _, path, payload in malformed_payloads
             ]
+            expectation_by_future = {
+                future: denial_expectations[name]
+                for future, (name, _, _) in zip(futures, malformed_payloads)
+            }
             for future in concurrent.futures.as_completed(futures):
                 capture = future.result()
-                if capture.status not in self.allowed_status:
-                    raise RuntimeError(
-                        f"unexpected malformed/adversarial status {capture.status} "
-                        f"for {capture.method} {capture.path}"
-                    )
+                self.expect_probe(capture, expectation_by_future[future])
 
         self.request(
             "VAL-CROSS-011",
@@ -511,15 +797,17 @@ class Harness:
         findings: list[str] = []
         findings.extend(self.scan_path(self.evidence_dir, strict_email=True))
         findings.extend(self.scan_path(ROOT / "openapi.json"))
-        findings.extend(self.scan_path(ROOT / "docs" / "frontend-api"))
-        findings.extend(self.scan_path(ROOT / "docs" / "frontend-portals"))
+        findings.extend(
+            self.scan_path(ROOT / "docs" / "frontend-api", detect_secret_json_fields=False)
+        )
+        findings.extend(
+            self.scan_path(ROOT / "docs" / "frontend-portals", detect_secret_json_fields=False)
+        )
         mailhog_text = self.fetch_mailhog()
         findings.extend(self.scan_text_blob("mailhog", mailhog_text))
         audit_text = self.query_audit_metadata()
         findings.extend(self.scan_text_blob("audit-metadata", audit_text))
-        backend_log = Path(os.environ.get("BACKEND_LOG_PATH", ""))
-        if backend_log.is_file():
-            findings.extend(self.scan_path(backend_log))
+        findings.extend(self.scan_backend_logs())
 
         if findings:
             raise RuntimeError("canary/secret scan failed:\n  - " + "\n  - ".join(findings))
@@ -557,7 +845,7 @@ class Harness:
                 "docs/frontend-portals",
                 "MailHog API",
                 "iam_security_events metadata via mission Postgres container when available",
-                "backend log when BACKEND_LOG_PATH is supplied",
+                "backend log when --backend-log or supported environment defaults are supplied",
             ],
             "statusSummary": dict(sorted(statuses.items())),
             "result": "PASS",
