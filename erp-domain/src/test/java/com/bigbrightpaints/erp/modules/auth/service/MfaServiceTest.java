@@ -34,6 +34,7 @@ class MfaServiceTest {
   private TokenBlacklistService tokenBlacklistService;
   private RefreshTokenService refreshTokenService;
   private IamCanonicalStorageService iamCanonicalStorageService;
+  private AccountLockoutService accountLockoutService;
   private MfaService mfaService;
 
   @BeforeEach
@@ -45,6 +46,7 @@ class MfaServiceTest {
     tokenBlacklistService = mock(TokenBlacklistService.class);
     refreshTokenService = mock(RefreshTokenService.class);
     iamCanonicalStorageService = mock(IamCanonicalStorageService.class);
+    accountLockoutService = mock(AccountLockoutService.class);
     clock = Clock.fixed(Instant.parse("2024-01-01T00:00:00Z"), ZoneOffset.UTC);
     when(cryptoService.encrypt(anyString())).thenAnswer(invocation -> invocation.getArgument(0));
     when(cryptoService.decrypt(anyString())).thenAnswer(invocation -> invocation.getArgument(0));
@@ -57,6 +59,7 @@ class MfaServiceTest {
             tokenBlacklistService,
             refreshTokenService,
             iamCanonicalStorageService,
+            accountLockoutService,
             "BigBright ERP",
             clock);
   }
@@ -172,6 +175,17 @@ class MfaServiceTest {
     UserAccount user = userWithSecret();
 
     assertThrows(ApplicationException.class, () -> mfaService.activate(user, "000000"));
+    verify(accountLockoutService).recordFailure(user);
+  }
+
+  @Test
+  void disable_recordsCanonicalFailureForInvalidVerifier() {
+    UserAccount user = userWithSecret();
+
+    assertThrows(ApplicationException.class, () -> mfaService.disable(user, "000000", null));
+
+    verify(accountLockoutService).recordFailure(user);
+    verify(mfaRecoveryCodeRepository, never()).deleteAllByUser(user);
   }
 
   @Test

@@ -6,6 +6,12 @@ import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.client5.http.impl.classic.HttpClients;
@@ -42,6 +48,8 @@ public class MfaControllerIT extends AbstractIntegrationTest {
             USER_EMAIL, USER_PASSWORD, "MFA User", COMPANY_CODE, List.of("ROLE_ADMIN"));
     user.setMfaEnabled(false);
     user.setMfaSecret(null);
+    user.setFailedLoginAttempts(0);
+    user.setLockedUntil(null);
     UserAccount saved = userAccountRepository.save(user);
     mfaRecoveryCodeRepository.deleteAllByUser(saved);
   }
@@ -155,6 +163,7 @@ public class MfaControllerIT extends AbstractIntegrationTest {
     assertThat(invalidVerifier.getStatusCode())
         .isIn(HttpStatus.BAD_REQUEST, HttpStatus.UNAUTHORIZED);
     assertThat(scopedUser().isMfaEnabled()).isTrue();
+    assertThat(scopedUser().getFailedLoginAttempts()).isEqualTo(1);
 
     String disableCode = TotpTestUtils.generateCurrentCode(setup.secret());
     ResponseEntity<Map> disable =
@@ -167,6 +176,7 @@ public class MfaControllerIT extends AbstractIntegrationTest {
     UserAccount afterDisable = scopedUser();
     assertThat(afterDisable.isMfaEnabled()).isFalse();
     assertThat(afterDisable.getMfaSecret()).isNull();
+    assertThat(afterDisable.getFailedLoginAttempts()).isZero();
     assertThat(unusedRecoveryHashes(afterDisable)).isEmpty();
   }
 
@@ -197,6 +207,7 @@ public class MfaControllerIT extends AbstractIntegrationTest {
     assertThat(invalidProof.getStatusCode()).isIn(HttpStatus.BAD_REQUEST, HttpStatus.UNAUTHORIZED);
     assertThat(unusedRecoveryHashes(scopedUser())).isEqualTo(originalHashes);
     assertThat(String.valueOf(invalidProof.getBody())).doesNotContain("recoveryCodes");
+    assertThat(scopedUser().getFailedLoginAttempts()).isEqualTo(1);
 
     ResponseEntity<Map> regenerate =
         postWithBearer(
@@ -215,12 +226,135 @@ public class MfaControllerIT extends AbstractIntegrationTest {
     assertThat(unusedRecoveryHashes(scopedUser()))
         .doesNotContainAnyElementsOf(regeneratedCodes)
         .hasSize(regeneratedCodes.size());
+    assertThat(scopedUser().getFailedLoginAttempts()).isZero();
 
     ResponseEntity<Map> oldRecoveryCodeLogin = login(null, setup.recoveryCodes().getFirst());
     assertThat(oldRecoveryCodeLogin.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
 
     ResponseEntity<Map> regeneratedRecoveryCodeLogin = login(null, regeneratedCodes.getFirst());
     assertThat(regeneratedRecoveryCodeLogin.getStatusCode()).isEqualTo(HttpStatus.OK);
+  }
+
+  @Test
+  void invalid_self_service_mfa_proofs_increment_lockout_and_revoke_sessions() {
+    LoginTokens setupSession = obtainTokens(null, null);
+    SetupPayload setup = startEnrollment(setupSession.accessToken());
+    String invalidActivationCode =
+        nonMatchingTotpCode(TotpTestUtils.generateCurrentCode(setup.secret()));
+
+    for (int i = 0; i < 5; i++) {
+      ResponseEntity<Map> response =
+          postWithBearer(
+              "/api/v1/auth/mfa/activate",
+              Map.of("code", invalidActivationCode),
+              setupSession.accessToken());
+      assertThat(response.getStatusCode()).isIn(HttpStatus.BAD_REQUEST, HttpStatus.UNAUTHORIZED);
+      assertThat(String.valueOf(response.getBody())).doesNotContain("accessToken", "refreshToken");
+    }
+
+    UserAccount lockedUser = scopedUser();
+    assertThat(lockedUser.getFailedLoginAttempts()).isGreaterThanOrEqualTo(5);
+    assertThat(lockedUser.getLockedUntil()).isNotNull();
+    assertAuthenticatedTokenDenied(getWithBearer("/api/v1/auth/me", setupSession.accessToken()));
+    assertRefreshDenied(refresh(setupSession.refreshToken()));
+    assertAuthenticatedTokenDenied(
+        postWithBearer("/api/v1/auth/mfa/setup", null, setupSession.accessToken()));
+  }
+
+  @Test
+  void invalid_regeneration_proof_does_not_consume_valid_recovery_code() {
+    String token = obtainAccessToken(null, null);
+    SetupPayload setup = startEnrollment(token);
+    String activationCode = TotpTestUtils.generateCurrentCode(setup.secret());
+    assertThat(
+            postWithBearer("/api/v1/auth/mfa/activate", Map.of("code", activationCode), token)
+                .getStatusCode())
+        .isEqualTo(HttpStatus.OK);
+    String postActivationToken =
+        obtainAccessToken(TotpTestUtils.generateCurrentCode(setup.secret()), null);
+
+    ResponseEntity<Map> invalidProof =
+        postWithBearer(
+            "/api/v1/auth/mfa/recovery-codes/regenerate",
+            Map.of("recoveryCode", "NOT-A-VALID-CODE"),
+            postActivationToken);
+
+    assertThat(invalidProof.getStatusCode()).isIn(HttpStatus.BAD_REQUEST, HttpStatus.UNAUTHORIZED);
+    assertThat(String.valueOf(invalidProof.getBody())).doesNotContain("recoveryCodes");
+    ResponseEntity<Map> validRecoveryLogin = login(null, setup.recoveryCodes().getFirst());
+    assertThat(validRecoveryLogin.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(String.valueOf(validRecoveryLogin.getBody()))
+        .contains("accessToken")
+        .contains("refreshToken");
+  }
+
+  @Test
+  void concurrent_totp_recovery_code_regeneration_returns_only_one_plaintext_set()
+      throws Exception {
+    String token = obtainAccessToken(null, null);
+    SetupPayload setup = startEnrollment(token);
+    String activationCode = TotpTestUtils.generateCurrentCode(setup.secret());
+    assertThat(
+            postWithBearer("/api/v1/auth/mfa/activate", Map.of("code", activationCode), token)
+                .getStatusCode())
+        .isEqualTo(HttpStatus.OK);
+    LoginTokens firstSession =
+        obtainTokens(TotpTestUtils.generateCurrentCode(setup.secret()), null);
+    LoginTokens secondSession =
+        obtainTokens(TotpTestUtils.generateCurrentCode(setup.secret()), null);
+    String regenerationCode = TotpTestUtils.generateCurrentCode(setup.secret());
+
+    ExecutorService executor = Executors.newFixedThreadPool(2);
+    CountDownLatch start = new CountDownLatch(1);
+    try {
+      Callable<ResponseEntity<Map>> firstCall =
+          () -> {
+            start.await(5, TimeUnit.SECONDS);
+            return postWithBearer(
+                "/api/v1/auth/mfa/recovery-codes/regenerate",
+                Map.of("code", regenerationCode),
+                firstSession.accessToken());
+          };
+      Callable<ResponseEntity<Map>> secondCall =
+          () -> {
+            start.await(5, TimeUnit.SECONDS);
+            return postWithBearer(
+                "/api/v1/auth/mfa/recovery-codes/regenerate",
+                Map.of("code", regenerationCode),
+                secondSession.accessToken());
+          };
+      Future<ResponseEntity<Map>> firstFuture = executor.submit(firstCall);
+      Future<ResponseEntity<Map>> secondFuture = executor.submit(secondCall);
+      start.countDown();
+      List<ResponseEntity<Map>> responses =
+          List.of(firstFuture.get(10, TimeUnit.SECONDS), secondFuture.get(10, TimeUnit.SECONDS));
+
+      List<ResponseEntity<Map>> successes =
+          responses.stream().filter(response -> response.getStatusCode() == HttpStatus.OK).toList();
+      assertThat(successes).hasSize(1);
+      assertThat(responses)
+          .allSatisfy(
+              response ->
+                  assertThat(String.valueOf(response.getBody()))
+                      .doesNotContain("mfaSecret", "codeHash"));
+
+      @SuppressWarnings("unchecked")
+      List<String> regeneratedCodes =
+          ((List<Object>) apiData(successes.getFirst()).get("recoveryCodes"))
+              .stream().map(Object::toString).toList();
+      assertThat(regeneratedCodes).hasSize(setup.recoveryCodes().size());
+      assertThat(responses)
+          .filteredOn(response -> response.getStatusCode() != HttpStatus.OK)
+          .allSatisfy(
+              response ->
+                  assertThat(String.valueOf(response.getBody())).doesNotContain("recoveryCodes"));
+
+      assertThat(login(null, setup.recoveryCodes().getFirst()).getStatusCode())
+          .isEqualTo(HttpStatus.UNAUTHORIZED);
+      assertThat(login(null, regeneratedCodes.getFirst()).getStatusCode()).isEqualTo(HttpStatus.OK);
+    } finally {
+      executor.shutdownNow();
+    }
   }
 
   @Test
@@ -434,6 +568,10 @@ public class MfaControllerIT extends AbstractIntegrationTest {
     return mfaRecoveryCodeRepository.findUnusedByUser(user).stream()
         .map(code -> code.getCodeHash())
         .toList();
+  }
+
+  private String nonMatchingTotpCode(String validCode) {
+    return "000000".equals(validCode) ? "111111" : "000000";
   }
 
   @SuppressWarnings("unchecked")

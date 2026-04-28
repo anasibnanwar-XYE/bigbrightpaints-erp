@@ -1,6 +1,5 @@
 package com.bigbrightpaints.erp.modules.auth.service;
 
-import java.time.Duration;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.Locale;
@@ -9,11 +8,8 @@ import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.security.authentication.LockedException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.transaction.support.TransactionTemplate;
 
 import com.bigbrightpaints.erp.core.audit.AuditEvent;
 import com.bigbrightpaints.erp.core.audit.AuditService;
@@ -42,8 +38,6 @@ import io.jsonwebtoken.Claims;
 public class AuthService {
 
   private static final Logger log = LoggerFactory.getLogger(AuthService.class);
-  private static final int MAX_FAILED_ATTEMPTS = 5;
-  private static final Duration LOCKOUT_DURATION = Duration.ofMinutes(15);
   private static final String SUPER_ADMIN_ROLE = "ROLE_SUPER_ADMIN";
 
   private final JwtTokenService tokenService;
@@ -58,7 +52,7 @@ public class AuthService {
   private final PasswordEncoder passwordEncoder;
   private final AuthScopeService authScopeService;
   private final IamCanonicalStorageService iamCanonicalStorageService;
-  private final TransactionTemplate transactionTemplate;
+  private final AccountLockoutService accountLockoutService;
 
   public AuthService(
       JwtTokenService tokenService,
@@ -73,7 +67,7 @@ public class AuthService {
       PasswordEncoder passwordEncoder,
       AuthScopeService authScopeService,
       IamCanonicalStorageService iamCanonicalStorageService,
-      PlatformTransactionManager transactionManager) {
+      AccountLockoutService accountLockoutService) {
     this.tokenService = tokenService;
     this.refreshTokenService = refreshTokenService;
     this.userAccountRepository = userAccountRepository;
@@ -86,7 +80,7 @@ public class AuthService {
     this.passwordEncoder = passwordEncoder;
     this.authScopeService = authScopeService;
     this.iamCanonicalStorageService = iamCanonicalStorageService;
-    this.transactionTemplate = new TransactionTemplate(transactionManager);
+    this.accountLockoutService = accountLockoutService;
   }
 
   public AuthResponse login(LoginRequest request) {
@@ -96,10 +90,10 @@ public class AuthService {
       String scopeCode = authScopeService.requireScopeCode(request.companyCode());
       user = requireScopedAccount(request.email(), scopeCode);
       ensureEnabledForLogin(user);
-      enforceLock(user);
+      accountLockoutService.enforceUnlocked(user);
       if (!passwordEncoder.matches(request.password(), user.getPasswordHash())) {
         failedSecretValidation = true;
-        registerFailure(user);
+        accountLockoutService.recordFailure(user);
         throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
             "Invalid credentials");
       }
@@ -120,7 +114,7 @@ public class AuthService {
         auditService.logAuthSuccess(
             AuditEvent.MFA_SUCCESS, user.getEmail(), scopeCode, mfaMetadata);
       }
-      resetLock(user);
+      accountLockoutService.resetFailures(user);
       Map<String, String> successMetadata = new HashMap<>();
       successMetadata.put("companyCode", scopeCode);
       if (user.getPublicId() != null) {
@@ -151,7 +145,7 @@ public class AuthService {
           user.isMustChangePassword());
     } catch (RuntimeException ex) {
       if (user != null && isMfaFailure(ex) && !failedSecretValidation) {
-        registerFailure(user);
+        accountLockoutService.recordFailure(user);
         Map<String, String> mfaFailureMetadata = new HashMap<>();
         mfaFailureMetadata.put("operation", "mfa_login_verification");
         mfaFailureMetadata.put("reason", "invalid_or_missing_mfa_verifier");
@@ -205,7 +199,7 @@ public class AuthService {
                     com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
                         "User not found"));
     ensureEnabledForAuthentication(user);
-    enforceLock(user);
+    accountLockoutService.enforceUnlocked(user);
     Company company = resolveCompanyForScope(user, requestedScopeCode);
     if (company != null) {
       tenantRuntimeRequestAdmissionService.enforceAuthOperationAllowed(
@@ -363,45 +357,6 @@ public class AuthService {
           expiration,
           ex);
     }
-  }
-
-  private void enforceLock(UserAccount user) {
-    if (user.getLockedUntil() != null && user.getLockedUntil().isAfter(Instant.now())) {
-      throw new LockedException("Account locked until " + user.getLockedUntil());
-    }
-  }
-
-  private void resetLock(UserAccount user) {
-    transactionTemplate.executeWithoutResult(
-        status -> {
-          UserAccount lockedUser = userAccountRepository.lockById(user.getId()).orElse(user);
-          lockedUser.setFailedLoginAttempts(0);
-          lockedUser.setLockedUntil(null);
-          userAccountRepository.save(lockedUser);
-          iamCanonicalStorageService.syncUser(lockedUser);
-          user.setFailedLoginAttempts(0);
-          user.setLockedUntil(null);
-        });
-  }
-
-  private void registerFailure(UserAccount user) {
-    transactionTemplate.executeWithoutResult(
-        status -> {
-          UserAccount lockedUser = userAccountRepository.lockById(user.getId()).orElse(user);
-          int attempts = lockedUser.getFailedLoginAttempts() + 1;
-          lockedUser.setFailedLoginAttempts(attempts);
-          boolean locked = attempts >= MAX_FAILED_ATTEMPTS;
-          if (locked) {
-            lockedUser.setLockedUntil(Instant.now().plus(LOCKOUT_DURATION));
-          }
-          userAccountRepository.save(lockedUser);
-          iamCanonicalStorageService.syncUser(lockedUser);
-          user.setFailedLoginAttempts(lockedUser.getFailedLoginAttempts());
-          user.setLockedUntil(lockedUser.getLockedUntil());
-          if (locked) {
-            revokeActiveSessions(lockedUser.getPublicId());
-          }
-        });
   }
 
   private UserAccount requireScopedAccount(String email, String scopeCode) {

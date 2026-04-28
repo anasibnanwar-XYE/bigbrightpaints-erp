@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.auth.controller;
 
+import java.time.Instant;
 import java.util.Map;
 
 import org.springframework.http.HttpStatus;
@@ -23,6 +24,8 @@ import com.bigbrightpaints.erp.modules.auth.web.MfaDisableRequest;
 import com.bigbrightpaints.erp.modules.auth.web.MfaSetupResponse;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 
+import io.jsonwebtoken.Claims;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 
 @RestController
@@ -131,6 +134,7 @@ public class MfaController {
   @PostMapping("/recovery-codes/regenerate")
   public ResponseEntity<ApiResponse<Map<String, Object>>> regenerateRecoveryCodes(
       @AuthenticationPrincipal UserPrincipal principal,
+      HttpServletRequest servletRequest,
       @Valid @RequestBody MfaDisableRequest request) {
     if (principal == null) {
       return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
@@ -141,7 +145,8 @@ public class MfaController {
           mfaService.regenerateRecoveryCodes(
               principal.getUser(),
               request == null ? null : request.code(),
-              request == null ? null : request.recoveryCode());
+              request == null ? null : request.recoveryCode(),
+              resolveTokenIssuedAt(servletRequest));
       auditService.logAuthSuccess(
           AuditEvent.MFA_RECOVERY_CODE_USED,
           principal.getUsername(),
@@ -179,5 +184,16 @@ public class MfaController {
       metadata.put("outcome", outcome);
     }
     return metadata;
+  }
+
+  private Instant resolveTokenIssuedAt(HttpServletRequest request) {
+    if (request == null || !(request.getAttribute("jwtClaims") instanceof Claims claims)) {
+      return null;
+    }
+    Number issuedAtMillis = claims.get("iatMs", Number.class);
+    if (issuedAtMillis != null) {
+      return Instant.ofEpochMilli(issuedAtMillis.longValue());
+    }
+    return claims.getIssuedAt() != null ? claims.getIssuedAt().toInstant() : null;
   }
 }

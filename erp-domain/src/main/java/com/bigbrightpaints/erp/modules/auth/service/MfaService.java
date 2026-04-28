@@ -6,10 +6,14 @@ import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
 import java.security.SecureRandom;
 import java.time.Clock;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.locks.ReentrantLock;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
@@ -55,6 +59,9 @@ public class MfaService {
   private final TokenBlacklistService tokenBlacklistService;
   private final RefreshTokenService refreshTokenService;
   private final IamCanonicalStorageService iamCanonicalStorageService;
+  private final AccountLockoutService accountLockoutService;
+  private final ConcurrentMap<Long, ReentrantLock> recoveryRegenerationLocks =
+      new ConcurrentHashMap<>();
   private final SecureRandom secureRandom = new SecureRandom();
   private final Clock clock;
   private final String issuer;
@@ -68,6 +75,7 @@ public class MfaService {
       TokenBlacklistService tokenBlacklistService,
       RefreshTokenService refreshTokenService,
       IamCanonicalStorageService iamCanonicalStorageService,
+      AccountLockoutService accountLockoutService,
       @Value("${security.mfa.issuer:BigBright ERP}") String issuer) {
     this(
         userAccountRepository,
@@ -77,6 +85,7 @@ public class MfaService {
         tokenBlacklistService,
         refreshTokenService,
         iamCanonicalStorageService,
+        accountLockoutService,
         issuer,
         Clock.systemUTC());
   }
@@ -89,6 +98,7 @@ public class MfaService {
       TokenBlacklistService tokenBlacklistService,
       RefreshTokenService refreshTokenService,
       IamCanonicalStorageService iamCanonicalStorageService,
+      AccountLockoutService accountLockoutService,
       String issuer,
       Clock clock) {
     this.userAccountRepository = userAccountRepository;
@@ -98,12 +108,14 @@ public class MfaService {
     this.tokenBlacklistService = tokenBlacklistService;
     this.refreshTokenService = refreshTokenService;
     this.iamCanonicalStorageService = iamCanonicalStorageService;
+    this.accountLockoutService = accountLockoutService;
     this.issuer = issuer;
     this.clock = clock;
   }
 
   @Transactional
   public MfaEnrollment beginEnrollment(UserAccount user) {
+    accountLockoutService.enforceUnlocked(user);
     if (user == null || user.isMfaEnabled()) {
       throw new ApplicationException(
           ErrorCode.VALIDATION_INVALID_INPUT,
@@ -122,11 +134,14 @@ public class MfaService {
 
   @Transactional
   public void activate(UserAccount user, String code) {
+    accountLockoutService.enforceUnlocked(user);
     // Decrypt the MFA secret for validation
     String decryptedSecret = requireActiveSecret(user);
     if (!isValidTotp(decryptedSecret, code)) {
+      accountLockoutService.recordFailure(user);
       throw new ApplicationException(ErrorCode.AUTH_MFA_INVALID, "Invalid MFA code");
     }
+    accountLockoutService.resetFailures(user);
     user.setMfaEnabled(true);
     userAccountRepository.save(user);
     iamCanonicalStorageService.syncUser(user);
@@ -135,6 +150,7 @@ public class MfaService {
 
   @Transactional
   public void disable(UserAccount user, String totpCode, String recoveryCode) {
+    accountLockoutService.enforceUnlocked(user);
     if (!user.isMfaEnabled()) {
       return;
     }
@@ -147,8 +163,10 @@ public class MfaService {
       cleared = true;
     }
     if (!cleared) {
+      accountLockoutService.recordFailure(user);
       throw new ApplicationException(ErrorCode.AUTH_MFA_INVALID, "Invalid MFA verification data");
     }
+    accountLockoutService.resetFailures(user);
     clearMfa(user);
     userAccountRepository.save(user);
     iamCanonicalStorageService.syncUser(user);
@@ -158,29 +176,46 @@ public class MfaService {
   @Transactional
   public List<String> regenerateRecoveryCodes(
       UserAccount user, String totpCode, String recoveryCode) {
-    if (user == null || !user.isMfaEnabled()) {
-      throw new ApplicationException(
-          ErrorCode.VALIDATION_INVALID_INPUT, "MFA must be enabled to regenerate recovery codes");
+    return regenerateRecoveryCodes(user, totpCode, recoveryCode, null);
+  }
+
+  @Transactional
+  public List<String> regenerateRecoveryCodes(
+      UserAccount user, String totpCode, String recoveryCode, Instant authenticatedTokenIssuedAt) {
+    accountLockoutService.enforceUnlocked(user);
+    ReentrantLock regenerationLock = acquireRecoveryRegenerationLock(user);
+    try {
+      UserAccount lockedUser = user;
+      accountLockoutService.enforceUnlocked(lockedUser);
+      if (!lockedUser.isMfaEnabled()) {
+        throw new ApplicationException(
+            ErrorCode.VALIDATION_INVALID_INPUT, "MFA must be enabled to regenerate recovery codes");
+      }
+      String decryptedSecret = requireActiveSecret(lockedUser);
+      boolean verified = false;
+      String normalizedTotp = normalizeCode(totpCode);
+      String normalizedRecovery = normalizeCode(recoveryCode);
+      if (StringUtils.hasText(normalizedTotp) && isValidTotp(decryptedSecret, normalizedTotp)) {
+        verified = true;
+      } else if (StringUtils.hasText(normalizedRecovery)
+          && consumeRecoveryCode(lockedUser, normalizedRecovery)) {
+        verified = true;
+      }
+      if (!verified) {
+        accountLockoutService.recordFailure(lockedUser);
+        throw new ApplicationException(ErrorCode.AUTH_MFA_INVALID, "Invalid MFA verification data");
+      }
+      enforceTokenStillActive(lockedUser, authenticatedTokenIssuedAt);
+      accountLockoutService.resetFailures(lockedUser);
+      List<String> recoveryCodes = generateRecoveryCodes();
+      replaceRecoveryCodes(lockedUser, recoveryCodes);
+      userAccountRepository.save(lockedUser);
+      iamCanonicalStorageService.syncUser(lockedUser);
+      revokeActiveSessions(lockedUser);
+      return recoveryCodes;
+    } finally {
+      releaseRecoveryRegenerationLock(regenerationLock);
     }
-    String decryptedSecret = requireActiveSecret(user);
-    boolean verified = false;
-    String normalizedTotp = normalizeCode(totpCode);
-    String normalizedRecovery = normalizeCode(recoveryCode);
-    if (StringUtils.hasText(normalizedTotp) && isValidTotp(decryptedSecret, normalizedTotp)) {
-      verified = true;
-    } else if (StringUtils.hasText(normalizedRecovery)
-        && consumeRecoveryCode(user, normalizedRecovery)) {
-      verified = true;
-    }
-    if (!verified) {
-      throw new ApplicationException(ErrorCode.AUTH_MFA_INVALID, "Invalid MFA verification data");
-    }
-    List<String> recoveryCodes = generateRecoveryCodes();
-    replaceRecoveryCodes(user, recoveryCodes);
-    userAccountRepository.save(user);
-    iamCanonicalStorageService.syncUser(user);
-    revokeActiveSessions(user);
-    return recoveryCodes;
   }
 
   @Transactional
@@ -256,6 +291,38 @@ public class MfaService {
       }
     }
     return false;
+  }
+
+  private ReentrantLock acquireRecoveryRegenerationLock(UserAccount user) {
+    if (user == null || user.getId() == null) {
+      throw new ApplicationException(
+          ErrorCode.VALIDATION_INVALID_INPUT, "MFA must be enabled to regenerate recovery codes");
+    }
+    ReentrantLock lock =
+        recoveryRegenerationLocks.computeIfAbsent(user.getId(), ignored -> new ReentrantLock());
+    if (!lock.tryLock()) {
+      throw new ApplicationException(
+          ErrorCode.CONCURRENCY_CONFLICT, "MFA recovery-code regeneration is already in progress");
+    }
+    return lock;
+  }
+
+  private void releaseRecoveryRegenerationLock(ReentrantLock lock) {
+    if (lock == null) {
+      return;
+    }
+    lock.unlock();
+  }
+
+  private void enforceTokenStillActive(UserAccount user, Instant authenticatedTokenIssuedAt) {
+    if (user == null || user.getPublicId() == null || authenticatedTokenIssuedAt == null) {
+      return;
+    }
+    if (tokenBlacklistService.isUserTokenRevoked(
+        user.getPublicId().toString(), authenticatedTokenIssuedAt)) {
+      throw new ApplicationException(
+          ErrorCode.AUTH_SESSION_EXPIRED, ErrorCode.AUTH_SESSION_EXPIRED.getDefaultMessage());
+    }
   }
 
   private void replaceRecoveryCodes(UserAccount user, List<String> recoveryCodes) {

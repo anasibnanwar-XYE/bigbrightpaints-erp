@@ -71,6 +71,7 @@ class AuthServiceAuditAttributionTest {
   @Mock private PasswordEncoder passwordEncoder;
   @Mock private AuthScopeService authScopeService;
   @Mock private IamCanonicalStorageService iamCanonicalStorageService;
+  private AccountLockoutService accountLockoutService;
 
   private final PlatformTransactionManager transactionManager =
       new PlatformTransactionManager() {
@@ -90,6 +91,13 @@ class AuthServiceAuditAttributionTest {
 
   @BeforeEach
   void setup() {
+    accountLockoutService =
+        new AccountLockoutService(
+            userAccountRepository,
+            tokenBlacklistService,
+            refreshTokenService,
+            iamCanonicalStorageService,
+            transactionManager);
     authService =
         new AuthService(
             tokenService,
@@ -104,7 +112,7 @@ class AuthServiceAuditAttributionTest {
             passwordEncoder,
             authScopeService,
             iamCanonicalStorageService,
-            transactionManager);
+            accountLockoutService);
   }
 
   @Test
