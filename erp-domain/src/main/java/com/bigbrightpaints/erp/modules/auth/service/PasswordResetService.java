@@ -24,6 +24,7 @@ import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.config.EmailProperties;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
+import com.bigbrightpaints.erp.core.idempotency.IdempotencyUtils;
 import com.bigbrightpaints.erp.core.notification.EmailService;
 import com.bigbrightpaints.erp.core.security.AuthScopeService;
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
@@ -128,6 +129,15 @@ public class PasswordResetService {
 
   @Transactional
   public void requestResetByAdmin(UserAccount targetUser) {
+    requestResetByAdmin(targetUser, false);
+  }
+
+  @Transactional
+  public void requestForceResetByAdmin(UserAccount targetUser) {
+    requestResetByAdmin(targetUser, true);
+  }
+
+  private void requestResetByAdmin(UserAccount targetUser, boolean requirePasswordChange) {
     if (targetUser == null) {
       throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
           "Target user is required");
@@ -146,8 +156,14 @@ public class PasswordResetService {
     if (dispatchResetEmail(targetUser, correlationId, "admin_force_reset")) {
       String safeCorrelationId = sanitizeForPlainTextLog(correlationId);
       String safeMaskedEmail = sanitizeForPlainTextLog(obfuscateEmail(targetUser.getEmail()));
+      if (requirePasswordChange) {
+        targetUser.setMustChangePassword(true);
+        userAccountRepository.save(targetUser);
+        iamCanonicalStorageService.syncUser(targetUser);
+      }
       revokeActiveSessions(targetUser);
-      auditResetRequested("admin_force_reset", targetUser, scopeCode, correlationId);
+      auditResetRequested(
+          "admin_force_reset", targetUser, scopeCode, correlationId, requirePasswordChange);
       log.info(
           "event=password_reset.admin_force_reset.dispatched policy={} correlationId={} email={}"
               + " outcome=email_dispatched",
@@ -405,9 +421,20 @@ public class PasswordResetService {
       String scopeCode,
       String correlationId,
       UserAccount subject) {
-    String rateLimitKey =
-        RATE_LIMIT_PREFIX + ":" + operation + ":" + scopeCode + ":" + normalizedEmail;
-    if (securityMonitoringService.checkRateLimit(rateLimitKey)) {
+    String accountRateLimitKey =
+        RATE_LIMIT_PREFIX
+            + ":"
+            + operation
+            + ":account:"
+            + IdempotencyUtils.sha256Hex(scopeCode + ":" + normalizedEmail, 16);
+    String requestRateLimitKey =
+        RATE_LIMIT_PREFIX
+            + ":"
+            + operation
+            + ":request:"
+            + IdempotencyUtils.sha256Hex(resolveRequestAbuseFingerprint(), 16);
+    if (securityMonitoringService.checkRateLimit(accountRateLimitKey)
+        && securityMonitoringService.checkRateLimit(requestRateLimitKey)) {
       return;
     }
     if (subject != null) {
@@ -420,13 +447,38 @@ public class PasswordResetService {
         .withDetail("companyCode", scopeCode);
   }
 
+  private String resolveRequestAbuseFingerprint() {
+    ServletRequestAttributes attributes =
+        (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
+    if (attributes == null || attributes.getRequest() == null) {
+      return "no-request";
+    }
+    HttpServletRequest request = attributes.getRequest();
+    String forwardedFor = firstNonBlank(request.getHeader("X-Forwarded-For"));
+    String clientIp =
+        StringUtils.hasText(forwardedFor)
+            ? forwardedFor.split(",", 2)[0].trim()
+            : request.getRemoteAddr();
+    return "ip:" + sanitizeTenantContextForLog(clientIp);
+  }
+
   private void auditResetRequested(
       String operation, UserAccount user, String scopeCode, String correlationId) {
+    auditResetRequested(operation, user, scopeCode, correlationId, false);
+  }
+
+  private void auditResetRequested(
+      String operation,
+      UserAccount user,
+      String scopeCode,
+      String correlationId,
+      boolean resetRequired) {
     auditService.logAuthSuccess(
         AuditEvent.PASSWORD_RESET_REQUESTED,
         user.getEmail(),
         scopeCode,
-        resetAuditMetadata(operation, correlationId, scopeCode, "email_dispatched", user));
+        resetAuditMetadata(
+            operation, correlationId, scopeCode, "email_dispatched", user, resetRequired));
   }
 
   private void auditResetCompleted(UserAccount user, String scopeCode, String correlationId) {
@@ -490,10 +542,23 @@ public class PasswordResetService {
       String scopeCode,
       String outcome,
       UserAccount subject) {
+    return resetAuditMetadata(operation, correlationId, scopeCode, outcome, subject, false);
+  }
+
+  private java.util.Map<String, String> resetAuditMetadata(
+      String operation,
+      String correlationId,
+      String scopeCode,
+      String outcome,
+      UserAccount subject,
+      boolean resetRequired) {
     java.util.Map<String, String> metadata =
         resetAuditMetadata(operation, correlationId, scopeCode, outcome);
     if (subject != null && subject.getPublicId() != null) {
       metadata.put("subjectPublicId", subject.getPublicId().toString());
+    }
+    if (resetRequired) {
+      metadata.put("resetRequired", "true");
     }
     return metadata;
   }

@@ -312,7 +312,7 @@ public class AdminUserService {
             "admin-force-reset-password-out-of-scope",
             false,
             OutOfScopeResponseMode.MASK_AS_MISSING);
-    passwordResetService.requestResetByAdmin(targetUser);
+    passwordResetService.requestForceResetByAdmin(targetUser);
     auditUserAccountAction(
         AuditEvent.PASSWORD_RESET_REQUESTED,
         targetUser,

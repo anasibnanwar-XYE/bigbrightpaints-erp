@@ -180,6 +180,21 @@ class PasswordResetServiceTest {
     verify(emailService)
         .sendPasswordResetEmailRequired(
             eq("admin-reset@example.com"), eq("User"), anyString(), eq(TENANT_SCOPE));
+    verify(tokenBlacklistService).revokeAllUserTokens(user.getPublicId().toString());
+    verify(refreshTokenService).revokeAllForUser(user.getPublicId());
+  }
+
+  @Test
+  void requestForceResetByAdminMarksTargetMustChangeAndRevokesSessions() {
+    UserAccount user = enabledUser("admin-force-reset@example.com", TENANT_SCOPE);
+
+    passwordResetService.requestForceResetByAdmin(user);
+
+    assertEquals(true, user.isMustChangePassword());
+    verify(userAccountRepository).save(user);
+    verify(iamCanonicalStorageService).syncUser(user);
+    verify(tokenBlacklistService).revokeAllUserTokens(user.getPublicId().toString());
+    verify(refreshTokenService).revokeAllForUser(user.getPublicId());
   }
 
   @Test

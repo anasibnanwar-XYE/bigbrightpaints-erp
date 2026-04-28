@@ -2,7 +2,87 @@
 
 Last reviewed: 2026-04-28
 
-## Current Packet Evidence — credentials-policy-reset-and-recovery-hardening
+## Current Packet Evidence — admin-force-reset-credential-events-and-abuse-controls
+
+## Scope
+- Feature: `admin-force-reset-credential-events-and-abuse-controls`
+- Branch: codex/identity-account-hardcut-20260427 (base: origin/main)
+- PR: pending
+- Review candidate:
+  - make tenant-admin force reset explicitly place the target into `mustChangePassword=true` after reset-link delivery
+  - keep existing force-reset session revocation so pre-reset bearer and refresh credentials stop working
+  - add request-fingerprint and hashed account reset-abuse limiter keys so rate-limit security evidence avoids raw email identifiers
+  - verify force-reset response safety, reset-link single use, corridor denial, old-token invalidation, and fresh-login recovery
+- Why this is R2: this packet touches high-risk admin credential recovery, reset-required account state, token/session revocation, and recovery abuse-control code paths where incorrect behavior could allow stale sessions, normal protected access after force reset, or secret-bearing reset evidence.
+
+## Risk Trigger
+- Triggered by:
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/service/PasswordResetService.java`
+  - `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/admin/AdminUserSecurityIT.java`
+  - `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/auth/service/PasswordResetServiceTest.java`
+- Contract surfaces affected:
+  - `VAL-CRED-009`, `VAL-CRED-010`, `VAL-CRED-011`, `VAL-CRED-013`, `VAL-CRED-015`, `VAL-ADMIN-009`
+- Failure mode if wrong:
+  - tenant-admin force reset could leave a target able to use old normal protected access
+  - pre-reset bearer or refresh credentials could remain valid after force reset
+  - API responses or audit/security evidence could expose reset material, token material, or raw abuse-control identifiers
+  - force-reset recovery links could become reusable or fail to clear reset-required state after completion
+
+## Approval Authority
+- Mode: orchestrator
+- Approver: Droid mission orchestrator
+- Canary owner: Droid mission orchestrator
+- Approval status: branch-local integration candidate pending PR review
+- Basis: this is an accepted credentials milestone slice that narrows existing admin force-reset semantics and abuse-control evidence without widening privileges, changing tenant boundaries, altering public route envelopes, or introducing destructive schema changes.
+
+## Escalation Decision
+- Human escalation required: no
+- Reason: the packet makes reset-required state stricter after authorized same-tenant admin force reset, preserves current auth/admin password routes and envelopes, does not add new authority, and stores no raw reset tokens or production secrets.
+
+## Rollback Owner
+- Owner: Droid mission orchestrator
+- Rollback method:
+  - before merge: revert this packet and rerun focused password-reset/admin/auth-audit tests, Spotless, OpenAPI guard, and High-Risk Change Control
+  - after merge: revert through a new remediation packet and rerun the same admin force-reset credentials proof lane
+- Rollback trigger:
+  - authorized tenant-admin force reset no longer sets `mustChangePassword=true`
+  - pre-reset access or refresh tokens remain usable after force reset
+  - force-reset API response includes reset token/link/password or refresh/access token material
+  - reset-abuse rate-limit evidence exposes raw reset tokens or raw email identifiers
+  - focused compile/tests, Spotless, OpenAPI guard, or High-Risk Change Control fail
+
+## Expiry
+- Valid until: 2026-05-05
+- Re-evaluate if: scope expands into first-class session-family storage, MFA factor policy, public API envelope changes, tenant-boundary behavior, distributed rate limiting, or schema/migration behavior.
+
+## Verification Evidence
+- Scope-to-evidence mapping:
+  - Force-reset corridor proof: `AdminUserSecurityIT.tenant_admin_force_reset_revokes_sessions_and_confines_target_to_reset_corridor` verifies same-tenant admin force reset returns a safe response, delivers reset material only through mail, sets `mustChangePassword=true`, denies normal protected access with `PASSWORD_CHANGE_REQUIRED`, and clears the flag after reset completion and fresh login.
+  - Session revocation proof: the same integration test verifies pre-reset bearer self-identity access and refresh-token rotation fail after force reset.
+  - Single-use/reset proof: the same integration test verifies the delivered reset token succeeds once and replay returns `400`.
+  - Unit semantics proof: `PasswordResetServiceTest.requestForceResetByAdminMarksTargetMustChangeAndRevokesSessions` verifies force reset marks the target must-change, syncs IAM storage, and revokes access/refresh sessions; `requestResetByAdminSendsResetEmailForEnabledUser` preserves reset-link-only support semantics.
+  - Abuse-control privacy proof: `PasswordResetService` now uses hashed account limiter keys and hashed request-fingerprint limiter keys; `PasswordResetServiceTest.requestReset_rateLimitedPasswordResetAbuseSendsOnlyOneSecurityAlertEmail` rechecks bounded rate-limit alert behavior without dispatching reset email.
+- Commands run:
+  - `mission init.sh`
+  - `cd /Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/identity-account-hardcut-20260427 && bash scripts/guard_openapi_contract_drift.sh && cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='AuthPasswordResetPublicContractIT,AdminUserSecurityIT,AuthControllerIT,AuthTenantAuthorityIT,TenantRuntimeEnforcementAuthIT,AuthDisabledUserTokenIT,MfaControllerIT' test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='PasswordResetServiceTest,AdminUserSecurityIT' test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn spotless:apply`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='PasswordResetServiceTest,AuthTenantAuthorityIT,AdminUserSecurityIT' test`
+  - `cd /Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/identity-account-hardcut-20260427 && bash scripts/guard_openapi_contract_drift.sh && cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='AuthPasswordResetPublicContractIT,AdminUserSecurityIT,AuthControllerIT,AuthTenantAuthorityIT,TenantRuntimeEnforcementAuthIT,AuthDisabledUserTokenIT,MfaControllerIT' test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='PasswordResetServiceTest,AuthPasswordResetPublicContractIT,AdminUserSecurityIT,AuthAuditIT' test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -q -DskipTests test-compile && MIGRATION_SET=v2 mvn spotless:check && cd /Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/identity-account-hardcut-20260427 && bash scripts/guard_openapi_contract_drift.sh && bash ci/check-high-risk-changes.sh && bash ci/lint-knowledgebase.sh`
+- Result summary:
+  - baseline IAM mission lane passed with 92 tests plus OpenAPI guard before code changes
+  - focused admin/password-reset lane passed with 44 tests after implementation
+  - support-reset/admin regression lane passed with 74 tests after preserving support reset-link-only semantics
+  - final IAM mission lane passed with 93 tests plus OpenAPI guard
+  - final feature credential/audit lane passed with 63 tests after formatting
+  - test-compile, Spotless check, OpenAPI guard, High-Risk Change Control, and knowledgebase lint passed
+  - no raw JWTs, refresh tokens, reset tokens, reset links, MFA secrets, recovery codes, password hashes, or production secrets were recorded in this checkpoint
+
+---
+
+## Previous Packet Evidence — credentials-policy-reset-and-recovery-hardening
 
 ## Scope
 - Feature: `credentials-policy-reset-and-recovery-hardening`

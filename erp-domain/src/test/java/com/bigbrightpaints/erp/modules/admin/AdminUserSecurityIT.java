@@ -1,11 +1,16 @@
 package com.bigbrightpaints.erp.modules.admin;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
@@ -21,6 +26,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.mock.mockito.SpyBean;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -29,6 +35,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 
+import com.bigbrightpaints.erp.core.notification.EmailService;
 import com.bigbrightpaints.erp.core.security.AuthScopeService;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
@@ -55,6 +62,8 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
   @Autowired private UserAccountRepository userAccountRepository;
 
   @Autowired private DataSource dataSource;
+
+  @SpyBean private EmailService emailService;
 
   private UserAccount tenantSuperAdminUser;
   private UserAccount otherCompanyUser;
@@ -697,6 +706,111 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
   }
 
   @Test
+  void tenant_admin_force_reset_revokes_sessions_and_confines_target_to_reset_corridor() {
+    String targetEmail = "force-reset-target@bbp.com";
+    String targetPassword = "ForceReset123!";
+    UserAccount targetUser =
+        dataSeeder.ensureUser(
+            targetEmail, targetPassword, "Force Reset Target", COMPANY, List.of("ROLE_SALES"));
+    targetUser.setEnabled(true);
+    targetUser.setMustChangePassword(false);
+    targetUser.setFailedLoginAttempts(0);
+    targetUser.setLockedUntil(null);
+    userAccountRepository.saveAndFlush(targetUser);
+
+    Map<String, Object> preResetLogin = loginPayload(targetEmail, targetPassword, COMPANY);
+    String preResetAccess = preResetLogin.get("accessToken").toString();
+    String preResetRefresh = preResetLogin.get("refreshToken").toString();
+
+    List<String> deliveredTokens = Collections.synchronizedList(new ArrayList<>());
+    doAnswer(
+            invocation -> {
+              deliveredTokens.add(invocation.getArgument(2, String.class));
+              return null;
+            })
+        .when(emailService)
+        .sendPasswordResetEmailRequired(
+            eq(targetEmail), eq("Force Reset Target"), anyString(), eq(COMPANY));
+
+    String adminToken = login(ADMIN_EMAIL, ADMIN_PASSWORD, COMPANY);
+    ResponseEntity<Map> forceResetResponse =
+        rest.exchange(
+            "/api/v1/admin/users/" + targetUser.getId() + "/force-reset-password",
+            HttpMethod.POST,
+            new HttpEntity<>(bearerHeaders(adminToken)),
+            Map.class);
+
+    assertThat(forceResetResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(forceResetResponse.getBody()).isNotNull();
+    assertThat(deliveredTokens).hasSize(1);
+    assertThat(forceResetResponse.getBody().toString())
+        .doesNotContain("accessToken")
+        .doesNotContain("refreshToken")
+        .doesNotContain(deliveredTokens.getFirst());
+    assertThat(
+            userAccountRepository.findById(targetUser.getId()).orElseThrow().isMustChangePassword())
+        .isTrue();
+
+    ResponseEntity<Map> oldAccessResponse =
+        rest.exchange(
+            "/api/v1/auth/me",
+            HttpMethod.GET,
+            new HttpEntity<>(bearerHeaders(preResetAccess)),
+            Map.class);
+    assertThat(oldAccessResponse.getStatusCode())
+        .isIn(HttpStatus.UNAUTHORIZED, HttpStatus.FORBIDDEN);
+
+    ResponseEntity<Map> oldRefreshResponse =
+        rest.postForEntity(
+            "/api/v1/auth/refresh-token",
+            Map.of("refreshToken", preResetRefresh, "companyCode", COMPANY),
+            Map.class);
+    assertThat(oldRefreshResponse.getStatusCode())
+        .isIn(HttpStatus.BAD_REQUEST, HttpStatus.UNAUTHORIZED);
+
+    Map<String, Object> corridorLogin = loginPayload(targetEmail, targetPassword, COMPANY);
+    assertThat(corridorLogin.get("mustChangePassword")).isEqualTo(Boolean.TRUE);
+    String corridorAccess = corridorLogin.get("accessToken").toString();
+    ResponseEntity<Map> protectedResponse =
+        rest.exchange(
+            "/api/v1/admin/users",
+            HttpMethod.GET,
+            new HttpEntity<>(bearerHeaders(corridorAccess)),
+            Map.class);
+    assertThat(protectedResponse.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+    assertThat(String.valueOf(protectedResponse.getBody())).contains("PASSWORD_CHANGE_REQUIRED");
+
+    ResponseEntity<Map> resetResponse =
+        rest.postForEntity(
+            "/api/v1/auth/password/reset",
+            Map.of(
+                "token",
+                deliveredTokens.getFirst(),
+                "newPassword",
+                "ForceReset456!",
+                "confirmPassword",
+                "ForceReset456!"),
+            Map.class);
+    assertThat(resetResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+    ResponseEntity<Map> replayResponse =
+        rest.postForEntity(
+            "/api/v1/auth/password/reset",
+            Map.of(
+                "token",
+                deliveredTokens.getFirst(),
+                "newPassword",
+                "ForceReset789!",
+                "confirmPassword",
+                "ForceReset789!"),
+            Map.class);
+    assertThat(replayResponse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+    Map<String, Object> freshLogin = loginPayload(targetEmail, "ForceReset456!", COMPANY);
+    assertThat(freshLogin.get("mustChangePassword")).isEqualTo(Boolean.FALSE);
+  }
+
+  @Test
   void admin_user_create_is_blocked_when_active_user_quota_reached() {
     String quotaCompanyCode = "SECADMIN_QUOTA";
     String quotaAdminEmail = "quota-admin@bbp.com";
@@ -840,6 +954,10 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
   }
 
   private String login(String email, String password, String companyCode) {
+    return loginPayload(email, password, companyCode).get("accessToken").toString();
+  }
+
+  private Map<String, Object> loginPayload(String email, String password, String companyCode) {
     Map<String, Object> body =
         Map.of(
             "email", email,
@@ -849,9 +967,8 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
     assertThat(loginResp.getStatusCode()).isEqualTo(HttpStatus.OK);
     Map<String, Object> payload = loginResp.getBody();
     assertThat(payload).isNotNull();
-    String token = payload.get("accessToken").toString();
-    assertThat(token).isNotBlank();
-    return token;
+    assertThat(payload.get("accessToken").toString()).isNotBlank();
+    return payload;
   }
 
   private HttpHeaders bearerHeaders(String token) {
