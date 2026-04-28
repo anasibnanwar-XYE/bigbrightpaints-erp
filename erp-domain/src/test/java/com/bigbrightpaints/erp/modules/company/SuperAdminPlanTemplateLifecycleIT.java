@@ -306,6 +306,81 @@ class SuperAdminPlanTemplateLifecycleIT extends AbstractIntegrationTest {
   }
 
   @Test
+  void planTemplateFeatureRegistryRejectsUnsupportedAndDisabledCoreKeysWithoutPersistence() {
+    String unsupportedStableId = uniqueStableId("FEAT");
+    Map<String, Object> unsupportedPayload =
+        planPayload(
+            unsupportedStableId,
+            "Unsupported Feature",
+            12_345L,
+            "PRIORITY",
+            "reject unsupported feature");
+    unsupportedPayload.put("featureFlags", Map.of("ACCOUNTING", true, "UNKNOWN_FEATURE", true));
+
+    ResponseEntity<Map> unsupportedResponse =
+        rest.exchange(
+            "/api/v1/superadmin/plans",
+            HttpMethod.POST,
+            new HttpEntity<>(unsupportedPayload, superAdminHeaders()),
+            Map.class);
+
+    assertThat(unsupportedResponse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    assertPlanRowCount(unsupportedStableId, 0);
+
+    String coreStableId = uniqueStableId("CORE");
+    Map<String, Object> disabledCorePayload =
+        planPayload(
+            coreStableId, "Disabled Core", 12_345L, "PRIORITY", "reject disabled core feature");
+    disabledCorePayload.put("featureFlags", Map.of("ACCOUNTING", false, "PORTAL", true));
+
+    ResponseEntity<Map> disabledCoreResponse =
+        rest.exchange(
+            "/api/v1/superadmin/plans",
+            HttpMethod.POST,
+            new HttpEntity<>(disabledCorePayload, superAdminHeaders()),
+            Map.class);
+
+    assertThat(disabledCoreResponse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    assertPlanRowCount(coreStableId, 0);
+
+    String updateStableId = uniqueStableId("COREUPD");
+    ResponseEntity<Map> createResponse =
+        rest.exchange(
+            "/api/v1/superadmin/plans",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                planPayload(
+                    updateStableId,
+                    "Feature Registry Update Guard",
+                    12_345L,
+                    "PRIORITY",
+                    "create for feature update"),
+                superAdminHeaders()),
+            Map.class);
+    assertThat(createResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+
+    Map<String, Object> updatePayload =
+        planPayload(
+            updateStableId,
+            "Feature Registry Update Guard v2",
+            22_222L,
+            "DEDICATED",
+            "reject update feature");
+    updatePayload.put("featureFlags", Map.of("INVENTORY", false, "PORTAL", true));
+
+    ResponseEntity<Map> updateResponse =
+        rest.exchange(
+            "/api/v1/superadmin/plans/" + updateStableId,
+            HttpMethod.PUT,
+            new HttpEntity<>(updatePayload, superAdminHeaders()),
+            Map.class);
+
+    assertThat(updateResponse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    assertPlanRowCount(updateStableId, 1);
+    assertLatestVersion(updateStableId, 1);
+  }
+
+  @Test
   void planTemplateCreateAndUpdateStillAllowExplicitZeroLimitReadback() {
     String stableId = uniqueStableId("ZERO");
     Map<String, Object> createPayload =

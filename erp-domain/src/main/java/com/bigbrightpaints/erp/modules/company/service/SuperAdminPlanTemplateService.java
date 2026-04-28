@@ -22,6 +22,7 @@ import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
+import com.bigbrightpaints.erp.modules.company.domain.EntitlementFeature;
 import com.bigbrightpaints.erp.modules.company.domain.SuperAdminPlanTemplate;
 import com.bigbrightpaints.erp.modules.company.domain.SuperAdminPlanTemplateRepository;
 import com.bigbrightpaints.erp.modules.company.dto.SuperAdminPlanTemplateArchiveRequest;
@@ -323,7 +324,7 @@ public class SuperAdminPlanTemplateService {
         template.getCurrency(),
         template.getTrialDurationDays(),
         template.getSupportTier(),
-        template.getFeatureFlags(),
+        normalizeFeatureFlags(template.getFeatureFlags()),
         new SuperAdminPlanTemplateDto.DefaultLimits(
             template.getMaxActiveUsers(),
             template.getMaxApiRequests(),
@@ -380,11 +381,18 @@ public class SuperAdminPlanTemplateService {
     Map<String, Boolean> normalized = new TreeMap<>();
     featureFlags.forEach(
         (key, value) -> {
-          String normalizedKey = normalizeToken(key, "featureFlags");
+          EntitlementFeature feature = EntitlementFeature.require(key, this::invalidInput);
           if (value == null) {
-            throw invalidInput("featureFlags." + normalizedKey + " is required");
+            throw invalidInput("featureFlags." + feature.key() + " is required");
           }
-          normalized.put(normalizedKey, value);
+          if (!feature.mutable() && !value) {
+            throw invalidInput(
+                "featureFlags."
+                    + feature.key()
+                    + " cannot disable always-on feature "
+                    + feature.key());
+          }
+          normalized.put(feature.key(), value);
         });
     return normalized;
   }

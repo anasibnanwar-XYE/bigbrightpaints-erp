@@ -24,6 +24,7 @@ import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyModule;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
+import com.bigbrightpaints.erp.modules.company.domain.EntitlementFeature;
 import com.bigbrightpaints.erp.modules.company.domain.SuperAdminPlanTemplate;
 import com.bigbrightpaints.erp.modules.company.domain.SuperAdminPlanTemplateRepository;
 import com.bigbrightpaints.erp.modules.company.dto.SuperAdminTenantEntitlementOverrideRequest;
@@ -171,10 +172,15 @@ public class SuperAdminTenantEntitlementService {
     if (LIMIT_KEYS.contains(normalizedKey)) {
       removed |= deleteSetting(limitOverrideKey(company.getId(), normalizedKey));
       removed |= deleteSetting(limitOverrideUpdatedKey(company.getId(), normalizedKey));
+    } else {
+      String featureKey = normalizeFeatureKey(normalizedKey);
+      EntitlementFeature feature = EntitlementFeature.require(featureKey, this::invalidInput);
+      if (!feature.mutable()) {
+        throw invalidInput("Feature override " + feature.key() + " is not mutable");
+      }
+      removed |= deleteSetting(featureOverrideKey(company.getId(), featureKey));
+      removed |= deleteSetting(featureOverrideUpdatedKey(company.getId(), featureKey));
     }
-    String featureKey = normalizeFeatureKey(normalizedKey);
-    removed |= deleteSetting(featureOverrideKey(company.getId(), featureKey));
-    removed |= deleteSetting(featureOverrideUpdatedKey(company.getId(), featureKey));
     if (!removed) {
       throw invalidInput("No entitlement override exists for " + normalizedKey);
     }
@@ -215,7 +221,7 @@ public class SuperAdminTenantEntitlementService {
     }
     SuperAdminTenantEntitlementsDto entitlements = buildEntitlements(company, null, false, null);
     SuperAdminTenantEntitlementsDto.FeatureEntitlement feature =
-        entitlements.features().get(featureKeyForModule(module));
+        entitlements.features().get(EntitlementFeature.keyForModule(module));
     return feature != null
         ? feature.effectiveValue()
         : company.getEnabledModules().contains(module.name());
@@ -294,7 +300,7 @@ public class SuperAdminTenantEntitlementService {
         continue;
       }
       SuperAdminTenantEntitlementsDto.FeatureEntitlement feature =
-          features.get(featureKeyForModule(module));
+          features.get(EntitlementFeature.keyForModule(module));
       if (feature != null && feature.effectiveValue()) {
         modules.add(module.name());
       }
@@ -304,18 +310,17 @@ public class SuperAdminTenantEntitlementService {
 
   private Map<String, SuperAdminTenantEntitlementsDto.FeatureEntitlement> effectiveFeatureMap(
       Company company, PlanView plan, Instant now) {
-    LinkedHashSet<String> keys = new LinkedHashSet<>();
-    keys.addAll(plan.features().keySet());
-    for (CompanyModule module : CompanyModule.values()) {
-      if (module.isGatable()) {
-        keys.add(featureKeyForModule(module));
-      }
-    }
     Map<String, SuperAdminTenantEntitlementsDto.FeatureEntitlement> result = new LinkedHashMap<>();
-    for (String key : keys) {
-      String featureKey = normalizeFeatureKey(key);
-      boolean planDefault = Boolean.TRUE.equals(plan.features().get(featureKey));
-      Boolean override = readBoolean(featureOverrideKey(company.getId(), featureKey)).orElse(null);
+    for (EntitlementFeature feature : EntitlementFeature.values()) {
+      String featureKey = feature.key();
+      boolean planDefault =
+          feature.alwaysOn()
+              || (feature == EntitlementFeature.CUSTOM_PLAN && plan.custom())
+              || Boolean.TRUE.equals(plan.features().get(featureKey));
+      Boolean override =
+          feature.mutable()
+              ? readBoolean(featureOverrideKey(company.getId(), featureKey)).orElse(null)
+              : null;
       Instant updatedAt =
           override == null
               ? plan.updatedAt()
@@ -412,14 +417,9 @@ public class SuperAdminTenantEntitlementService {
     Instant updatedAt =
         readInstant(customPlanKey(companyId, "updatedAt")).orElse(CompanyTime.now());
     Map<String, Boolean> features = new LinkedHashMap<>();
-    for (CompanyModule module : CompanyModule.values()) {
-      if (module.isGatable()) {
-        readBoolean(customFeatureKey(companyId, featureKeyForModule(module)))
-            .ifPresent(value -> features.put(featureKeyForModule(module), value));
-      }
-    }
-    if (features.isEmpty()) {
-      features.put("CUSTOM_PLAN", true);
+    for (EntitlementFeature feature : EntitlementFeature.values()) {
+      readBoolean(customFeatureKey(companyId, feature.key()))
+          .ifPresent(value -> features.put(feature.key(), value));
     }
     Map<String, Long> limits = new LinkedHashMap<>();
     for (String key : LIMIT_KEYS) {
@@ -451,6 +451,9 @@ public class SuperAdminTenantEntitlementService {
     putSetting(customPlanKey(companyId, "supportTier"), plan.supportTier());
     putSetting(customPlanKey(companyId, "effectiveFrom"), plan.effectiveFrom().toString());
     putSetting(customPlanKey(companyId, "updatedAt"), plan.updatedAt().toString());
+    EntitlementFeature.canonicalKeys()
+        .forEach(key -> deleteSetting(customFeatureKey(companyId, key)));
+    LIMIT_KEYS.forEach(key -> deleteSetting(customLimitKey(companyId, key)));
     plan.features()
         .forEach(
             (key, value) -> putSetting(customFeatureKey(companyId, key), Boolean.toString(value)));
@@ -469,12 +472,7 @@ public class SuperAdminTenantEntitlementService {
             "effectiveFrom",
             "updatedAt")
         .forEach(key -> deleteSetting(customPlanKey(companyId, key)));
-    for (CompanyModule module : CompanyModule.values()) {
-      if (module.isGatable()) {
-        deleteSetting(customFeatureKey(companyId, featureKeyForModule(module)));
-      }
-    }
-    List.of("ACCOUNTING", "SALES", "INVENTORY", "CUSTOM_PLAN")
+    EntitlementFeature.canonicalKeys()
         .forEach(key -> deleteSetting(customFeatureKey(companyId, key)));
     LIMIT_KEYS.forEach(key -> deleteSetting(customLimitKey(companyId, key)));
   }
@@ -577,6 +575,10 @@ public class SuperAdminTenantEntitlementService {
       throw invalidInput("Feature override value is required for " + key);
     }
     String featureKey = normalizeFeatureKey(key);
+    EntitlementFeature feature = EntitlementFeature.require(featureKey, this::invalidInput);
+    if (!feature.mutable()) {
+      throw invalidInput("Feature override " + feature.key() + " is not mutable");
+    }
     putSetting(featureOverrideKey(companyId, featureKey), Boolean.toString(value));
     putSetting(featureOverrideUpdatedKey(companyId, featureKey), now.toString());
   }
@@ -591,28 +593,19 @@ public class SuperAdminTenantEntitlementService {
           if (value == null) {
             throw invalidInput("featureFlags." + key + " is required");
           }
-          normalized.put(normalizeFeatureKey(key), value);
+          EntitlementFeature feature = EntitlementFeature.require(key, this::invalidInput);
+          if (!feature.mutable() && !value) {
+            throw invalidInput(
+                "featureFlags." + key + " cannot disable always-on feature " + feature.key());
+          }
+          normalized.put(feature.key(), value);
         });
     return normalized;
   }
 
-  private String featureKeyForModule(CompanyModule module) {
-    return switch (module) {
-      case MANUFACTURING -> "PRODUCTION";
-      case HR_PAYROLL -> "HR";
-      case REPORTS_ADVANCED -> "REPORTS";
-      default -> module.name();
-    };
-  }
-
   private String normalizeFeatureKey(String value) {
-    String normalized = normalizeToken(value, "feature");
-    return switch (normalized) {
-      case "MANUFACTURING" -> "PRODUCTION";
-      case "HR_PAYROLL" -> "HR";
-      case "REPORTS_ADVANCED" -> "REPORTS";
-      default -> normalized;
-    };
+    normalizeToken(value, "feature");
+    return EntitlementFeature.normalizeKey(value, this::invalidInput);
   }
 
   private String normalizeEntitlementKey(String value) {

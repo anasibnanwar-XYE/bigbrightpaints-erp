@@ -1,8 +1,10 @@
 package com.bigbrightpaints.erp.modules.company.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -150,6 +152,118 @@ class SuperAdminTenantEntitlementServiceTest {
 
     assertThat(restored.features().get("PORTAL").effectiveValue()).isTrue();
     assertThat(restored.features().get("PORTAL").source()).isEqualTo("PLAN_DEFAULT");
+  }
+
+  @Test
+  void customPlanAcceptedRegistryKeysPersistAndReadBackWithoutCoreMismatch() {
+    Company company = company();
+    when(companyRepository.findById(7L)).thenReturn(Optional.of(company));
+    when(companyRepository.saveAndFlush(company)).thenReturn(company);
+
+    SuperAdminTenantPlanAssignmentRequest.CustomPlan customPlan =
+        new SuperAdminTenantPlanAssignmentRequest.CustomPlan(
+            "Registry Custom",
+            "CUSTOM",
+            42_000L,
+            "INR",
+            0,
+            "DEDICATED",
+            Map.of(
+                "PRODUCTION",
+                false,
+                "REPORTS",
+                true,
+                "ACCOUNTING",
+                true,
+                "CUSTOM_PLAN",
+                true),
+            new SuperAdminTenantEntitlementLimitsRequest(3L, 4L, 5L, 6L, 7L, 8L, 9L, 10L));
+
+    service.assignPlan(
+        7L, new SuperAdminTenantPlanAssignmentRequest(null, customPlan, true, "registry plan"));
+    SuperAdminTenantEntitlementsDto readback = service.getEffectiveEntitlements(7L);
+
+    assertThat(readback.features()).containsKeys("PRODUCTION", "REPORTS", "ACCOUNTING", "SALES");
+    assertThat(readback.features().get("PRODUCTION").planDefault()).isFalse();
+    assertThat(readback.features().get("REPORTS").planDefault()).isTrue();
+    assertThat(readback.features().get("ACCOUNTING").effectiveValue()).isTrue();
+    assertThat(readback.features().get("SALES").effectiveValue()).isTrue();
+    assertThat(service.isFeatureEnabled(company, CompanyModule.ACCOUNTING)).isTrue();
+    assertThat(service.isFeatureEnabled(company, CompanyModule.MANUFACTURING)).isFalse();
+  }
+
+  @Test
+  void unsupportedCustomPlanAndOverrideKeysFailBeforeAuditOrCacheSideEffects() {
+    Company company = company();
+    when(companyRepository.findById(7L)).thenReturn(Optional.of(company));
+
+    SuperAdminTenantPlanAssignmentRequest.CustomPlan customPlan =
+        new SuperAdminTenantPlanAssignmentRequest.CustomPlan(
+            "Bad Custom",
+            "CUSTOM",
+            42_000L,
+            "INR",
+            0,
+            "DEDICATED",
+            Map.of("UNKNOWN_FEATURE", true),
+            new SuperAdminTenantEntitlementLimitsRequest(3L, 4L, 5L, 6L, 7L, 8L, 9L, 10L));
+
+    assertThatThrownBy(
+            () ->
+                service.assignPlan(
+                    7L,
+                    new SuperAdminTenantPlanAssignmentRequest(
+                        null, customPlan, true, "bad registry key")))
+        .hasMessageContaining("Unsupported entitlement feature");
+
+    assertThat(settings.keySet()).noneMatch(key -> key.startsWith("ten.ent.cf.7."));
+
+    assertThatThrownBy(
+            () ->
+                service.putOverrides(
+                    7L,
+                    new SuperAdminTenantEntitlementOverrideRequest(
+                        null, Map.of("UNKNOWN_FEATURE", true), "bad override")))
+        .hasMessageContaining("Unsupported entitlement feature");
+
+    assertThat(settings.keySet()).noneMatch(key -> key.startsWith("ten.ent.fo.7."));
+    verify(tenantRuntimeEnforcementService, never()).invalidatePolicyCache(any());
+  }
+
+  @Test
+  void coreAlwaysOnFeaturesCannotBeDisabledByCustomPlansOrOverrides() {
+    Company company = company();
+    when(companyRepository.findById(7L)).thenReturn(Optional.of(company));
+
+    SuperAdminTenantPlanAssignmentRequest.CustomPlan customPlan =
+        new SuperAdminTenantPlanAssignmentRequest.CustomPlan(
+            "Core Disable",
+            "CUSTOM",
+            42_000L,
+            "INR",
+            0,
+            "DEDICATED",
+            Map.of("ACCOUNTING", false, "PORTAL", true),
+            new SuperAdminTenantEntitlementLimitsRequest(3L, 4L, 5L, 6L, 7L, 8L, 9L, 10L));
+
+    assertThatThrownBy(
+            () ->
+                service.assignPlan(
+                    7L,
+                    new SuperAdminTenantPlanAssignmentRequest(
+                        null, customPlan, true, "disable accounting")))
+        .hasMessageContaining("cannot disable always-on feature ACCOUNTING");
+
+    assertThatThrownBy(
+            () ->
+                service.putOverrides(
+                    7L,
+                    new SuperAdminTenantEntitlementOverrideRequest(
+                        null, Map.of("ACCOUNTING", false), "disable accounting override")))
+        .hasMessageContaining("Feature override ACCOUNTING is not mutable");
+
+    assertThat(service.isFeatureEnabled(company, CompanyModule.ACCOUNTING)).isTrue();
+    verify(tenantRuntimeEnforcementService, never()).invalidatePolicyCache(any());
   }
 
   @Test
