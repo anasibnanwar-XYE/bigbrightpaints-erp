@@ -31,6 +31,8 @@ import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingPeriodService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
+import com.bigbrightpaints.erp.modules.company.domain.TenantDefaultSeedRun;
+import com.bigbrightpaints.erp.modules.company.domain.TenantDefaultSeedRunRepository;
 import com.bigbrightpaints.erp.modules.company.dto.TenantSeedStatusDto;
 
 @Service
@@ -49,18 +51,33 @@ public class TenantDefaultSeedingService {
           "DEFAULT_DISCOUNT",
           "DEFAULT_FREIGHT");
 
+  private static final List<String> SEED_CATEGORIES =
+      List.of(
+          "COA",
+          "GST",
+          "ACCOUNTING_MAPPINGS",
+          "SETTINGS",
+          "NUMBERING",
+          "PAYMENT_MODES",
+          "PREFIXES",
+          "ROLES",
+          "PERMISSION_TEMPLATES");
+
   private final CompanyRepository companyRepository;
   private final AccountRepository accountRepository;
+  private final TenantDefaultSeedRunRepository seedRunRepository;
   private final AccountingPeriodService accountingPeriodService;
   private final AuditService auditService;
 
   public TenantDefaultSeedingService(
       CompanyRepository companyRepository,
       AccountRepository accountRepository,
+      TenantDefaultSeedRunRepository seedRunRepository,
       AccountingPeriodService accountingPeriodService,
       AuditService auditService) {
     this.companyRepository = companyRepository;
     this.accountRepository = accountRepository;
+    this.seedRunRepository = seedRunRepository;
     this.accountingPeriodService = accountingPeriodService;
     this.auditService = auditService;
   }
@@ -85,6 +102,7 @@ public class TenantDefaultSeedingService {
       cleanupFailedSeedArtifacts(lockedCompany, accountIdsBefore);
       markSeedFailed(lockedCompany);
       companyRepository.saveAndFlush(lockedCompany);
+      recordSeedRuns(lockedCompany, false, "PENDING_REPAIR", CompanyTime.now(lockedCompany));
       TenantSeedStatusDto status = buildStatus(lockedCompany, "FAILED");
       Long auditEventId =
           logAudit(
@@ -124,14 +142,22 @@ public class TenantDefaultSeedingService {
 
   private TenantSeedStatusDto seedDefaultsInternal(Company lockedCompany) {
     int beforeAccountCount = accountRepository.findByCompanyOrderByCodeAsc(lockedCompany).size();
+    boolean hadSeedRuns = seedRunRepository.existsByCompany_Id(lockedCompany.getId());
     ensureAccountsAndMappings(lockedCompany);
     accountingPeriodService.ensurePeriod(lockedCompany, CompanyTime.today(lockedCompany));
-    TenantSeedStatusDto status = buildStatus(lockedCompany, null);
-    if (status.ready()) {
+    TenantSeedStatusDto statusBeforeRunRecord = buildStatus(lockedCompany, null);
+    if (statusBeforeRunRecord.ready()) {
       clearSeedFailedMarker(lockedCompany);
     }
     companyRepository.saveAndFlush(lockedCompany);
-    int afterAccountCount = status.chartOfAccounts().accountCount();
+    int afterAccountCount = statusBeforeRunRecord.chartOfAccounts().accountCount();
+    String operation = seedOperation(hadSeedRuns, afterAccountCount > beforeAccountCount);
+    recordSeedRuns(
+        lockedCompany,
+        statusBeforeRunRecord.ready(),
+        statusBeforeRunRecord.ready() ? operation : "PENDING_REPAIR",
+        CompanyTime.now(lockedCompany));
+    TenantSeedStatusDto status = buildStatus(lockedCompany, null);
     return withRepairOutcome(status, afterAccountCount > beforeAccountCount ? "REPAIRED" : "NOOP");
   }
 
@@ -385,7 +411,6 @@ public class TenantDefaultSeedingService {
             && requiredClassesPresent
             && mappingsReady
             && gstReady;
-    Instant completedAt = CompanyTime.now(company);
     return new TenantSeedStatusDto(
         company.getId(),
         company.getCode(),
@@ -393,7 +418,7 @@ public class TenantDefaultSeedingService {
         ready,
         ready ? "READY" : "REPAIR_REQUIRED",
         repairOutcome,
-        seedRuns(company, completedAt, ready),
+        seedRuns(company),
         new TenantSeedStatusDto.ChartOfAccounts(
             accounts.size(),
             List.of("ASSET", "LIABILITY", "EQUITY", "REVENUE", "COGS", "EXPENSE"),
@@ -452,29 +477,48 @@ public class TenantDefaultSeedingService {
         status.roleTemplates());
   }
 
-  private List<TenantSeedStatusDto.SeedRun> seedRuns(
-      Company company, Instant completedAt, boolean ready) {
-    List<String> categories =
-        List.of(
-            "COA",
-            "GST",
-            "ACCOUNTING_MAPPINGS",
-            "SETTINGS",
-            "NUMBERING",
-            "PAYMENT_MODES",
-            "PREFIXES",
-            "ROLES",
-            "PERMISSION_TEMPLATES");
-    return categories.stream()
+  private String seedOperation(boolean hadSeedRuns, boolean createdSeedData) {
+    if (createdSeedData) {
+      return hadSeedRuns ? "REPAIRED" : "SEEDED";
+    }
+    return hadSeedRuns ? "NOOP" : "SEEDED";
+  }
+
+  private void recordSeedRuns(
+      Company company, boolean ready, String operation, Instant completedAt) {
+    Map<String, TenantDefaultSeedRun> runsByCategory =
+        seedRunRepository.findByCompany_IdOrderByCategoryAsc(company.getId()).stream()
+            .collect(Collectors.toMap(TenantDefaultSeedRun::getCategory, Function.identity()));
+    String status = ready ? "COMPLETE" : "REPAIR_REQUIRED";
+    List<TenantDefaultSeedRun> runs = new ArrayList<>();
+    for (String category : SEED_CATEGORIES) {
+      TenantDefaultSeedRun run = runsByCategory.get(category);
+      if (run == null) {
+        run = TenantDefaultSeedRun.create(company, category, status, operation, true, completedAt);
+      } else {
+        run.record(status, operation, true, completedAt);
+      }
+      runs.add(run);
+    }
+    seedRunRepository.saveAll(runs);
+  }
+
+  private List<TenantSeedStatusDto.SeedRun> seedRuns(Company company) {
+    Map<String, TenantDefaultSeedRun> runsByCategory =
+        seedRunRepository.findByCompany_IdOrderByCategoryAsc(company.getId()).stream()
+            .collect(Collectors.toMap(TenantDefaultSeedRun::getCategory, Function.identity()));
+    return SEED_CATEGORIES.stream()
+        .map(runsByCategory::get)
+        .filter(Objects::nonNull)
         .map(
-            category ->
+            run ->
                 new TenantSeedStatusDto.SeedRun(
-                    company.getId() + "-" + category.toLowerCase(Locale.ROOT),
-                    category,
-                    ready ? "COMPLETE" : "REPAIR_REQUIRED",
-                    ready ? "SEEDED_OR_NOOP" : "PENDING_REPAIR",
-                    completedAt,
-                    true))
+                    run.getRunId(),
+                    run.getCategory(),
+                    run.getStatus(),
+                    run.getOperation(),
+                    run.getCompletedAt(),
+                    run.isRequired()))
         .toList();
   }
 

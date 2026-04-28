@@ -5,12 +5,14 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
@@ -32,6 +34,8 @@ import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriod;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingPeriodService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
+import com.bigbrightpaints.erp.modules.company.domain.TenantDefaultSeedRun;
+import com.bigbrightpaints.erp.modules.company.domain.TenantDefaultSeedRunRepository;
 import com.bigbrightpaints.erp.modules.company.dto.TenantSeedStatusDto;
 
 @ExtendWith(MockitoExtension.class)
@@ -39,6 +43,7 @@ class TenantDefaultSeedingServiceTest {
 
   @Mock private CompanyRepository companyRepository;
   @Mock private AccountRepository accountRepository;
+  @Mock private TenantDefaultSeedRunRepository seedRunRepository;
   @Mock private AccountingPeriodService accountingPeriodService;
   @Mock private AuditService auditService;
 
@@ -94,11 +99,72 @@ class TenantDefaultSeedingServiceTest {
         .containsExactly("TENANT_OWNER", "TENANT_ADMIN", "TENANT_STAFF");
     assertThat(first.seedRuns())
         .hasSize(9)
-        .allSatisfy(run -> assertThat(run.status()).isEqualTo("COMPLETE"));
+        .allSatisfy(
+            run -> {
+              assertThat(run.runId()).isNotBlank();
+              assertThat(run.status()).isEqualTo("COMPLETE");
+              assertThat(run.operation()).isEqualTo("SEEDED");
+              assertThat(run.completedAt()).isNotNull();
+            });
 
     assertThat(accounts).hasSize(accountCountAfterFirstRun);
     assertThat(second.repairOutcome()).isEqualTo("NOOP");
     assertThat(second.ready()).isTrue();
+    assertThat(second.seedRuns())
+        .hasSize(9)
+        .allSatisfy(run -> assertThat(run.operation()).isEqualTo("NOOP"));
+  }
+
+  @Test
+  void getSeedStatus_readsPersistedRunsWithoutRefreshingRunIdsOrCompletedAt() {
+    Company company = company(78L, "M7DURABLE", BigDecimal.valueOf(18), "SME");
+    List<Account> accounts = new ArrayList<>();
+    TenantDefaultSeedingService service = service(company, accounts);
+    TenantSeedStatusDto seeded = service.seedDefaults(company);
+
+    TenantSeedStatusDto firstRead = service.getSeedStatus(company.getId());
+    TenantSeedStatusDto secondRead = service.getSeedStatus(company.getId());
+
+    assertThat(firstRead.seedRuns()).hasSize(9);
+    assertThat(firstRead.seedRuns())
+        .extracting(TenantSeedStatusDto.SeedRun::runId)
+        .containsExactlyElementsOf(
+            seeded.seedRuns().stream().map(TenantSeedStatusDto.SeedRun::runId).toList());
+    assertThat(secondRead.seedRuns())
+        .usingRecursiveFieldByFieldElementComparator()
+        .containsExactlyElementsOf(firstRead.seedRuns());
+    verify(seedRunRepository, times(1)).saveAll(any(Iterable.class));
+  }
+
+  @Test
+  void repairSeedStatus_recordsRepairedThenNoopWithoutDuplicatingRunRowsOrAccounts() {
+    Company company = company(79L, "M7REPAIR", BigDecimal.valueOf(18), "SME");
+    List<Account> accounts = new ArrayList<>();
+    TenantDefaultSeedingService service = service(company, accounts);
+    TenantSeedStatusDto seeded = service.seedDefaults(company);
+    List<String> originalRunIds =
+        seeded.seedRuns().stream().map(TenantSeedStatusDto.SeedRun::runId).toList();
+    int seededAccountCount = accounts.size();
+    accounts.removeIf(account -> "CASH".equals(account.getCode()));
+
+    TenantSeedStatusDto repaired = service.repairSeedStatus(company.getId());
+    TenantSeedStatusDto noop = service.repairSeedStatus(company.getId());
+
+    assertThat(accounts).hasSize(seededAccountCount);
+    assertThat(repaired.repairOutcome()).contains("REPAIRED", "auditEventId=601");
+    assertThat(repaired.seedRuns())
+        .hasSize(9)
+        .allSatisfy(run -> assertThat(run.operation()).isEqualTo("REPAIRED"));
+    assertThat(repaired.seedRuns())
+        .extracting(TenantSeedStatusDto.SeedRun::runId)
+        .containsExactlyElementsOf(originalRunIds);
+    assertThat(noop.repairOutcome()).contains("NOOP", "auditEventId=601");
+    assertThat(noop.seedRuns())
+        .hasSize(9)
+        .allSatisfy(run -> assertThat(run.operation()).isEqualTo("NOOP"));
+    assertThat(noop.seedRuns())
+        .extracting(TenantSeedStatusDto.SeedRun::runId)
+        .containsExactlyElementsOf(originalRunIds);
   }
 
   @Test
@@ -158,6 +224,8 @@ class TenantDefaultSeedingServiceTest {
     when(companyRepository.findById(company.getId())).thenReturn(Optional.of(company));
     when(companyRepository.saveAndFlush(company)).thenReturn(company);
     when(accountRepository.findByCompanyOrderByCodeAsc(company)).thenAnswer(invocation -> accounts);
+    List<TenantDefaultSeedRun> seedRuns = new ArrayList<>();
+    stubSeedRuns(company, seedRuns);
     when(accountRepository.save(any(Account.class)))
         .thenAnswer(
             invocation -> {
@@ -188,7 +256,11 @@ class TenantDefaultSeedingServiceTest {
         .thenReturn(auditLog);
     TenantDefaultSeedingService service =
         new TenantDefaultSeedingService(
-            companyRepository, accountRepository, accountingPeriodService, auditService);
+            companyRepository,
+            accountRepository,
+            seedRunRepository,
+            accountingPeriodService,
+            auditService);
 
     TenantDefaultSeedingService.SeedAttempt attempt = service.seedDefaultsFailClosed(company);
 
@@ -200,6 +272,13 @@ class TenantDefaultSeedingServiceTest {
     assertThat(company.getActivationExpiresAt()).isNull();
     assertThat(accounts).isEmpty();
     assertThat(attempt.status().readinessStatus()).isEqualTo("REPAIR_REQUIRED");
+    assertThat(attempt.status().seedRuns())
+        .hasSize(9)
+        .allSatisfy(
+            run -> {
+              assertThat(run.status()).isEqualTo("REPAIR_REQUIRED");
+              assertThat(run.operation()).isEqualTo("PENDING_REPAIR");
+            });
     assertThat(attempt.status().repairOutcome())
         .contains("FAILED", "auditEventId=701", "errorCode=SEED_DEFAULTS_FAILED");
     verify(accountRepository).deleteAll(any(Iterable.class));
@@ -207,9 +286,11 @@ class TenantDefaultSeedingServiceTest {
 
   private TenantDefaultSeedingService service(Company company, List<Account> accounts) {
     AtomicLong accountIds = new AtomicLong(1L);
+    List<TenantDefaultSeedRun> seedRuns = new ArrayList<>();
     when(companyRepository.findById(company.getId())).thenReturn(Optional.of(company));
     when(companyRepository.saveAndFlush(company)).thenReturn(company);
     when(accountRepository.findByCompanyOrderByCodeAsc(company)).thenAnswer(invocation -> accounts);
+    stubSeedRuns(company, seedRuns);
     when(accountRepository.save(any(Account.class)))
         .thenAnswer(
             invocation -> {
@@ -224,8 +305,44 @@ class TenantDefaultSeedingServiceTest {
     ReflectionTestUtils.setField(period, "id", 501L);
     when(accountingPeriodService.ensurePeriod(eq(company), any(LocalDate.class)))
         .thenReturn(period);
+    AuditLog auditLog = new AuditLog();
+    auditLog.setId(601L);
+    org.mockito.Mockito.lenient()
+        .when(
+            auditService.logAuthSuccessRequired(
+                eq(AuditEvent.CONFIGURATION_CHANGED), any(), eq(company.getCode()), any()))
+        .thenReturn(auditLog);
     return new TenantDefaultSeedingService(
-        companyRepository, accountRepository, accountingPeriodService, auditService);
+        companyRepository,
+        accountRepository,
+        seedRunRepository,
+        accountingPeriodService,
+        auditService);
+  }
+
+  private void stubSeedRuns(Company company, List<TenantDefaultSeedRun> seedRuns) {
+    when(seedRunRepository.findByCompany_IdOrderByCategoryAsc(company.getId()))
+        .thenAnswer(
+            invocation ->
+                seedRuns.stream()
+                    .sorted(Comparator.comparing(TenantDefaultSeedRun::getCategory))
+                    .toList());
+    when(seedRunRepository.existsByCompany_Id(company.getId()))
+        .thenAnswer(invocation -> !seedRuns.isEmpty());
+    when(seedRunRepository.saveAll(any(Iterable.class)))
+        .thenAnswer(
+            invocation -> {
+              @SuppressWarnings("unchecked")
+              Iterable<TenantDefaultSeedRun> saved = invocation.getArgument(0);
+              List<TenantDefaultSeedRun> result = new ArrayList<>();
+              for (TenantDefaultSeedRun run : saved) {
+                if (!seedRuns.contains(run)) {
+                  seedRuns.add(run);
+                }
+                result.add(run);
+              }
+              return result;
+            });
   }
 
   private Company company(Long id, String code, BigDecimal gstRate, String template) {
