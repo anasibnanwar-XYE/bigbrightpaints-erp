@@ -122,7 +122,11 @@ The lifecycle mostly works, but the persistence model is split. The schema conta
 
 Disabled-user handling is fail-closed across most entrypoints:
 
-- `AuthService.ensureEnabledForAuthentication(...)` blocks login and refresh with `AUTH_ACCOUNT_DISABLED`.
+- Login masks disabled accounts behind the same generic invalid-credentials response used for
+  unknown accounts and wrong passwords; clients must not branch on disabled state during login.
+- `AuthService.ensureEnabledForAuthentication(...)` still blocks refresh with
+  `AUTH_ACCOUNT_DISABLED`, and existing bearer tokens for disabled users fail closed before
+  protected data is returned.
 - `PasswordResetService.requestReset(...)` and `requestResetByAdmin(...)` skip disabled users, making them look like unknown users from the reset surface.
 - `PasswordResetService.resetPassword(...)` refuses to reset a disabled user.
 - `JwtAuthenticationFilter` refuses to build an authenticated principal when a token belongs to a now-disabled user.

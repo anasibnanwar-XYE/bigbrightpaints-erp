@@ -2,7 +2,86 @@
 
 Last reviewed: 2026-04-28
 
-## Current Packet Evidence — auth-scope-jwt-lockout-and-http-hardening
+## Current Packet Evidence — auth-core-disabled-login-nonenumeration-remediation
+
+## Scope
+- Feature: `auth-core-disabled-login-nonenumeration-remediation`
+- Branch: codex/identity-account-hardcut-20260427 (base: origin/main)
+- PR: pending
+- Review candidate:
+  - mask disabled-account login behind the same generic `Invalid credentials` / `VAL_001` envelope and `400` status used for unknown-account and wrong-password login failures
+  - preserve disabled-user fail-closed behavior for existing bearer tokens, refresh-token rotation, auth-me, password change, and MFA self-service by keeping non-login enabled-account guards intact
+  - update focused login-matrix coverage so disabled, unknown, and wrong-password responses have the same external response shape and never contain access or refresh tokens
+  - narrow stale frontend/code-review guidance so clients do not expect `AUTH_006` or account-disabled disclosure during login
+- Why this is R2: this packet touches high-risk authn failure semantics in `AuthService` and auth integration tests, where incorrect behavior could reintroduce account-state enumeration or accidentally mint credentials for disabled users.
+
+## Risk Trigger
+- Triggered by:
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/service/AuthService.java`
+  - `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/auth/AuthDisabledUserTokenIT.java`
+  - `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/auth/service/AuthServiceAuditAttributionTest.java`
+  - scoped auth guidance under `.factory/library/**`, `docs/code-review/flows/auth-identity.md`, and `docs/ERP-DOD-BIBLE.md`
+- Contract surfaces affected:
+  - `VAL-AUTH-002`, `VAL-AUTH-010`, `VAL-ADV-001`
+- Failure mode if wrong:
+  - disabled-account login could disclose account state through status, code, message, or response shape
+  - disabled-account login could mint access or refresh tokens
+  - unknown, wrong-password, and disabled-login failures could diverge and become enumerable
+  - refresh or existing-token paths could stop failing closed after disablement
+
+## Approval Authority
+- Mode: orchestrator
+- Approver: Droid mission orchestrator
+- Canary owner: Droid mission orchestrator
+- Approval status: branch-local integration candidate pending PR review
+- Basis: this is an accepted auth-core scrutiny remediation that removes externally visible account-state disclosure from login while preserving existing fail-closed disabled-account denial on authenticated and refresh-token paths.
+
+## Escalation Decision
+- Human escalation required: no
+- Reason: the packet narrows an auth disclosure and does not widen privileges, change tenant boundaries, expose secrets, alter persisted schema, or introduce destructive migration behavior.
+
+## Rollback Owner
+- Owner: Droid mission orchestrator
+- Rollback method:
+  - before merge: revert this packet and rerun test-compile, focused auth login/token tests, Spotless, OpenAPI guard, lint/architecture, and High-Risk Change Control
+  - after merge: revert through a new remediation packet and rerun the same auth-core non-enumeration proof lane
+- Rollback trigger:
+  - disabled login no longer matches wrong-password and unknown-account external failure status/body shape
+  - disabled login issues an access token or refresh token
+  - refresh, auth-me, password change, or MFA self-service remain usable after account disablement
+  - focused compile/tests, Spotless, OpenAPI guard, lint/architecture, or High-Risk Change Control fail
+
+## Expiry
+- Valid until: 2026-05-05
+- Re-evaluate if: scope expands into locked-account public semantics, MFA challenge semantics, refresh-token error-envelope changes, broader RBAC/tenant-boundary policy, or schema/migration behavior.
+
+## Verification Evidence
+- Scope-to-evidence mapping:
+  - Login non-enumeration proof: `AuthDisabledUserTokenIT.disabledUnknownAndWrongPasswordLoginFailures_shareGenericInvalidCredentialsEnvelope` verifies disabled, unknown, and wrong-password login attempts all return `400`, `success=false`, `message=Invalid credentials`, `VAL_001`, no disabled-account strings, and no token fields.
+  - Disabled-token proof: `AuthDisabledUserTokenIT.disabledUserToken_isRejectedEvenWhenJwtStillValid` and `disabledUserRefreshToken_isRejectedAfterDisablement` verify existing bearer and refresh credentials fail after disablement.
+  - Regression proof: `AuthControllerIT`, `AuthHardeningIT`, `AuthServiceAuditAttributionTest`, and `TenantRuntimeEnforcementAuthIT` recheck login, auth-me, lockout, tenant-runtime denial, and audit-attribution adjacency.
+  - Guidance proof: frontend/code-review guidance now scopes `AUTH_006` to authenticated/refresh/self-service paths after login and states login remains generic invalid-credentials.
+- Commands run:
+  - `mission init.sh`
+  - `cd /Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/identity-account-hardcut-20260427 && bash scripts/guard_openapi_contract_drift.sh && cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='AuthPasswordResetPublicContractIT,AdminUserSecurityIT,AuthControllerIT,AuthTenantAuthorityIT,TenantRuntimeEnforcementAuthIT,AuthDisabledUserTokenIT,MfaControllerIT' test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -q -DskipTests test-compile`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='AuthDisabledUserTokenIT,AuthControllerIT,AuthHardeningIT,AuthServiceAuditAttributionTest,TenantRuntimeEnforcementAuthIT' test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn spotless:apply`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -q -DskipTests test-compile`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='AuthDisabledUserTokenIT,AuthControllerIT,AuthHardeningIT,AuthServiceAuditAttributionTest,TenantRuntimeEnforcementAuthIT' test`
+  - `bash scripts/guard_openapi_contract_drift.sh`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn spotless:check`
+  - `bash ci/lint-knowledgebase.sh && bash ci/check-architecture.sh && bash ci/check-high-risk-changes.sh`
+- Result summary:
+  - baseline IAM mission lane passed with 89 tests plus OpenAPI guard before code changes
+  - test-compile passed after implementation and after formatting
+  - focused disabled-login/auth hardening lane passed with 39 tests after implementation and after formatting
+  - OpenAPI guard, Spotless check, knowledgebase lint, architecture check, and High-Risk Change Control passed
+  - no raw JWTs, refresh tokens, reset tokens, MFA secrets, recovery codes, password hashes, or production secrets were recorded in this checkpoint
+
+---
+
+## Previous Packet Evidence — auth-scope-jwt-lockout-and-http-hardening
 
 ## Scope
 - Feature: `auth-scope-jwt-lockout-and-http-hardening`

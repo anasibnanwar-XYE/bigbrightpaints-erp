@@ -26,6 +26,10 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.TransactionStatus;
+import org.springframework.transaction.support.SimpleTransactionStatus;
 
 import com.bigbrightpaints.erp.core.audit.AuditEvent;
 import com.bigbrightpaints.erp.core.audit.AuditService;
@@ -66,6 +70,21 @@ class AuthServiceAuditAttributionTest {
   @Mock private TenantRuntimeRequestAdmissionService tenantRuntimeRequestAdmissionService;
   @Mock private PasswordEncoder passwordEncoder;
   @Mock private AuthScopeService authScopeService;
+  @Mock private IamCanonicalStorageService iamCanonicalStorageService;
+
+  private final PlatformTransactionManager transactionManager =
+      new PlatformTransactionManager() {
+        @Override
+        public TransactionStatus getTransaction(TransactionDefinition definition) {
+          return new SimpleTransactionStatus();
+        }
+
+        @Override
+        public void commit(TransactionStatus status) {}
+
+        @Override
+        public void rollback(TransactionStatus status) {}
+      };
 
   private AuthService authService;
 
@@ -83,7 +102,9 @@ class AuthServiceAuditAttributionTest {
             auditService,
             tenantRuntimeRequestAdmissionService,
             passwordEncoder,
-            authScopeService);
+            authScopeService,
+            iamCanonicalStorageService,
+            transactionManager);
   }
 
   @Test

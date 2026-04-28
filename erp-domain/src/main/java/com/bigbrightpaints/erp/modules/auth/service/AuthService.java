@@ -95,7 +95,7 @@ public class AuthService {
     try {
       String scopeCode = authScopeService.requireScopeCode(request.companyCode());
       user = requireScopedAccount(request.email(), scopeCode);
-      ensureEnabledForAuthentication(user);
+      ensureEnabledForLogin(user);
       enforceLock(user);
       if (!passwordEncoder.matches(request.password(), user.getPasswordHash())) {
         failedSecretValidation = true;
@@ -254,6 +254,13 @@ public class AuthService {
     if (user == null || !user.isEnabled()) {
       throw new ApplicationException(
           ErrorCode.AUTH_ACCOUNT_DISABLED, ErrorCode.AUTH_ACCOUNT_DISABLED.getDefaultMessage());
+    }
+  }
+
+  private void ensureEnabledForLogin(UserAccount user) {
+    if (user == null || !user.isEnabled()) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          "Invalid credentials");
     }
   }
 

@@ -290,8 +290,7 @@ Authenticate a user and establish tenant context so they can access company-scop
 
 | Failure Type | Response | Retriable | User Impact |
 |--------------|----------|-----------|-------------|
-| Invalid credentials | 400 INVALID_INPUT | No | Generic error (no leak) |
-| Account disabled | AUTH_ACCOUNT_DISABLED | No | Clear error message |
+| Invalid credentials, unknown account, or disabled account on login | 400 INVALID_INPUT | No | Generic error (no account-state leak) |
 | Account locked | LockedException | No | "Account locked until {timestamp}" |
 | MFA required | MfaRequiredException | No | "Multi-factor authentication required" |
 | MFA invalid | InvalidMfaException | No | "Invalid MFA verifier" |

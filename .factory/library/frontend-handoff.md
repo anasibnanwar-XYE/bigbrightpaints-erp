@@ -344,7 +344,7 @@ Disabled module requests return `403` with `BUS_010` (`MODULE_DISABLED`). Runtim
 | Error code / status | Meaning | Suggested frontend behavior |
 |---|---|---|
 | `AUTH_004` (`AUTH_INSUFFICIENT_PERMISSIONS`) / 403 | Caller lacks role (e.g., non-superadmin on control plane) | Route to access-denied state and hide privileged actions. |
-| `AUTH_006` (`AUTH_ACCOUNT_DISABLED`) / 401 | Disabled user attempted auth/login or token refresh | Show account-disabled screen; block retry loops and route to support/admin contact. |
+| `AUTH_006` (`AUTH_ACCOUNT_DISABLED`) / 401 | Disabled or inactive account state on authenticated/refresh/self-service paths after login | End the current session and route to support/admin contact without retry loops. Login itself remains generic invalid-credentials and must not show an account-disabled state. |
 | `BUS_010` (`MODULE_DISABLED`) / 403 | Tenant module disabled by gating policy | Show module-disabled empty state; hide create/write CTA. |
 | `VAL_001` (`VALIDATION_INVALID_INPUT`) / 400 | Invalid status filter, unknown tenant/user/company, missing lifecycle reason, invalid enabled modules payload | Inline validation + toast with backend message. |
 | `VAL_007` (`VALIDATION_INVALID_STATE`) / 400 or 409 | Invalid tenant lifecycle transition | Show state-transition-specific error and refresh tenant row status. |
