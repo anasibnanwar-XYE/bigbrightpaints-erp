@@ -54,7 +54,7 @@ Core security infrastructure in `core/security/` owns the **request-pipeline enf
 
 | Method | Path | Auth | Purpose |
 | --- | --- | --- | --- |
-| POST | `/api/v1/superadmin/tenants/{id}/support/admin-password-reset` | `ROLE_SUPER_ADMIN` | Issue the canonical tenant-admin reset-link recovery action |
+| POST | `/api/v1/auth/password/forgot` / `/api/v1/auth/password/reset` | `ROLE_SUPER_ADMIN` | Issue the canonical tenant-admin reset-link recovery action |
 
 ## Key Services
 

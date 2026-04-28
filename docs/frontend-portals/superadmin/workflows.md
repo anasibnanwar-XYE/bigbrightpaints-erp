@@ -4,7 +4,7 @@
 
 1. Load `GET /api/v1/superadmin/tenants/coa-templates` before enabling submit.
 2. Collect tenant identity, timezone, quota defaults, first-admin identity, and `coaTemplateCode`.
-3. Submit `POST /api/v1/superadmin/tenants/onboard`.
+3. Do not submit the retired flat onboarding route; use the V1 Add Client activation flow once exposed.
 4. Treat the mutation as complete only when:
    - `seededChartOfAccounts=true`
    - `defaultAccountingPeriodCreated=true`

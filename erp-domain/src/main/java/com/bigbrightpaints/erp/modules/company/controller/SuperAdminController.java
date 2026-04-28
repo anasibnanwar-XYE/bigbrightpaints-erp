@@ -1,8 +1,10 @@
 package com.bigbrightpaints.erp.modules.company.controller;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -12,6 +14,7 @@ import com.bigbrightpaints.erp.modules.company.service.CompanyService;
 import com.bigbrightpaints.erp.modules.company.service.SuperAdminTenantControlPlaneService;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 
+import io.swagger.v3.oas.annotations.Hidden;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.Min;
@@ -104,15 +107,13 @@ public class SuperAdminController {
                 request.gracePeriodHours())));
   }
 
+  @Hidden
   @PostMapping("/tenants/{id}/support/admin-password-reset")
-  public ResponseEntity<ApiResponse<CompanyAdminCredentialResetDto>> resetTenantAdminPassword(
-      @PathVariable("id") Long tenantId,
-      @Valid @RequestBody TenantAdminPasswordResetRequest request) {
-    return ResponseEntity.ok(
-        ApiResponse.success(
-            "Admin credentials reset and emailed",
-            controlPlaneService.resetTenantAdminPassword(
-                tenantId, request.adminEmail(), request.reason())));
+  public ResponseEntity<ApiResponse<Map<String, String>>> retiredTenantAdminPasswordReset(
+      @PathVariable("id") Long tenantId, @RequestBody(required = false) Object ignored) {
+    return retiredRoute(
+        "retired-superadmin-admin-password-reset",
+        "Tenant admin credential reset is retired; use the V1 activation/password recovery flow");
   }
 
   @PutMapping("/tenants/{id}/support/context")
@@ -234,4 +235,10 @@ public class SuperAdminController {
 
   public record TenantAdminEmailChangeConfirmRequest(
       @NotNull Long requestId, @NotBlank @Size(max = 255) String verificationToken) {}
+
+  private ResponseEntity<ApiResponse<Map<String, String>>> retiredRoute(
+      String code, String message) {
+    return ResponseEntity.status(HttpStatus.GONE)
+        .body(ApiResponse.failure(message, Map.of("code", code)));
+  }
 }

@@ -12,8 +12,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpStatus;
 
-import com.bigbrightpaints.erp.modules.company.dto.CompanyAdminCredentialResetDto;
 import com.bigbrightpaints.erp.modules.company.dto.CompanyEnabledModulesDto;
 import com.bigbrightpaints.erp.modules.company.dto.CompanyLifecycleStateDto;
 import com.bigbrightpaints.erp.modules.company.dto.CompanySuperAdminDashboardDto;
@@ -94,13 +94,7 @@ class SuperAdminControllerTest {
             null,
             Set.of("ACCOUNTING"),
             new SuperAdminTenantDetailDto.Onboarding(
-                "SME",
-                "admin@acme.com",
-                91L,
-                true,
-                true,
-                Instant.parse("2026-03-26T09:00:00Z"),
-                Instant.parse("2026-03-26T09:30:00Z")),
+                "SME", "admin@acme.com", 91L, true, Instant.parse("2026-03-26T09:30:00Z")),
             new MainAdminSummaryDto(91L, "admin@acme.com", "Main Admin", true, true),
             new SuperAdminTenantDetailDto.Limits(10, 20, 30, 4, true, false),
             new SuperAdminTenantDetailDto.Usage(
@@ -137,8 +131,6 @@ class SuperAdminControllerTest {
                 24,
                 "super-admin@bbp.com",
                 Instant.parse("2026-03-26T12:30:00Z")));
-    when(controlPlaneService.resetTenantAdminPassword(7L, "admin@acme.com", "support"))
-        .thenReturn(new CompanyAdminCredentialResetDto(7L, "ACME", "admin@acme.com", "EMAIL_SENT"));
     when(controlPlaneService.updateSupportContext(7L, "note", Set.of("OPS")))
         .thenReturn(new SuperAdminTenantSupportContextDto(7L, "ACME", "note", Set.of("OPS")));
     when(controlPlaneService.forceLogoutAllUsers(7L, "security"))
@@ -207,14 +199,8 @@ class SuperAdminControllerTest {
                     "OPS", "Check", "SUSPENDED", 24))
             .getBody(),
         "Tenant warning issued");
-    assertSuccess(
-        controller
-            .resetTenantAdminPassword(
-                7L,
-                new SuperAdminController.TenantAdminPasswordResetRequest(
-                    "admin@acme.com", "support"))
-            .getBody(),
-        "Admin credentials reset and emailed");
+    assertThat(controller.retiredTenantAdminPasswordReset(7L, null).getStatusCode())
+        .isEqualTo(HttpStatus.GONE);
     assertSuccess(
         controller
             .updateSupportContext(

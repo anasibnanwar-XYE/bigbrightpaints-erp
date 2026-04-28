@@ -480,8 +480,6 @@ public class SuperAdminTenantControlPlaneService {
             company.getOnboardingAdminEmail(),
             company.getOnboardingAdminUserId(),
             company.getOnboardingAdminUserId() != null,
-            company.getOnboardingCredentialsEmailedAt() != null,
-            company.getOnboardingCredentialsEmailedAt(),
             company.getOnboardingCompletedAt()),
         toMainAdminSummary(company, mainAdmin),
         new SuperAdminTenantDetailDto.Limits(

@@ -190,7 +190,7 @@ class AuthTenantAuthorityIT extends AbstractIntegrationTest {
   }
 
   @Test
-  void super_admin_can_bootstrap_new_tenant() {
+  void super_admin_flat_onboarding_route_is_retired_without_side_effects() {
     String token = login(SUPER_ADMIN_EMAIL, PLATFORM_SCOPE);
     String newCode = "TEN-ALLOW-" + System.nanoTime();
     String firstAdminEmail = "allowed-bootstrap-" + System.nanoTime() + "@bbp.com";
@@ -204,28 +204,19 @@ class AuthTenantAuthorityIT extends AbstractIntegrationTest {
                 jsonHeaders(token, PLATFORM_SCOPE)),
             Map.class);
 
-    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-    Company saved = companyRepository.findByCodeIgnoreCase(newCode).orElseThrow();
-    assertThat(saved.getCode()).isEqualTo(newCode);
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.GONE);
+    assertThat(response.getBody()).isNotNull();
+    assertThat(response.getBody()).containsEntry("success", Boolean.FALSE);
+    assertThat(response.getBody().get("message").toString()).contains("retired");
+    assertThat(companyRepository.findByCodeIgnoreCase(newCode)).isEmpty();
     assertThat(
             userAccountRepository.findByEmailIgnoreCaseAndAuthScopeCodeIgnoreCase(
                 firstAdminEmail, newCode))
-        .isPresent();
-    @SuppressWarnings("unchecked")
-    Map<String, Object> data = (Map<String, Object>) response.getBody().get("data");
-    assertThat(data)
-        .containsEntry("companyCode", newCode)
-        .containsEntry("templateCode", "MANUFACTURING")
-        .containsEntry("bootstrapMode", "SEEDED")
-        .containsEntry("seededChartOfAccounts", true)
-        .containsEntry("defaultAccountingPeriodCreated", true)
-        .containsEntry("tenantAdminProvisioned", true);
-    assertThat(data.get("adminEmail")).isEqualTo(firstAdminEmail);
-    assertThat(data).doesNotContainKeys("temporaryPassword", "adminTemporaryPassword");
+        .isEmpty();
   }
 
   @Test
-  void super_admin_can_bootstrap_new_tenant_with_first_admin_credentials_provisioning() {
+  void retired_flat_onboarding_does_not_provision_first_admin_credentials() {
     String token = login(SUPER_ADMIN_EMAIL, PLATFORM_SCOPE);
     String newCode = "TEN-ADM-" + System.nanoTime();
     String firstAdminEmail = "first-admin-" + System.nanoTime() + "@bbp.com";
@@ -240,37 +231,24 @@ class AuthTenantAuthorityIT extends AbstractIntegrationTest {
             new HttpEntity<>(payload, jsonHeaders(token, PLATFORM_SCOPE)),
             Map.class);
 
-    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-    Company savedCompany = companyRepository.findByCodeIgnoreCase(newCode).orElseThrow();
-    assertThat(savedCompany.getDefaultGstRate()).isEqualByComparingTo("18");
-    UserAccount firstAdmin =
-        userAccountRepository
-            .findByEmailIgnoreCaseAndAuthScopeCodeIgnoreCase(firstAdminEmail, newCode)
-            .orElseThrow();
-    assertThat(firstAdmin.isMustChangePassword()).isTrue();
-    assertThat(firstAdmin.getCompany()).extracting(Company::getCode).isEqualTo(newCode);
-    assertThat(firstAdmin.getRoles())
-        .anyMatch(role -> "ROLE_ADMIN".equalsIgnoreCase(role.getName()));
-    assertThat(savedCompany.getMainAdminUserId()).isEqualTo(firstAdmin.getId());
-    assertThat(savedCompany.getOnboardingAdminEmail()).isEqualTo(firstAdminEmail);
-    assertThat(savedCompany.getOnboardingAdminUserId()).isEqualTo(firstAdmin.getId());
-    assertThat(savedCompany.getOnboardingCoaTemplateCode()).isEqualTo("MANUFACTURING");
-    assertThat(savedCompany.getOnboardingCompletedAt()).isNotNull();
-    @SuppressWarnings("unchecked")
-    Map<String, Object> data = (Map<String, Object>) response.getBody().get("data");
-    assertThat(data)
-        .containsEntry("companyCode", newCode)
-        .containsEntry("adminEmail", firstAdminEmail)
-        .containsEntry("tenantAdminProvisioned", true)
-        .containsEntry("templateCode", "MANUFACTURING");
-    assertThat(data).doesNotContainKeys("temporaryPassword", "adminTemporaryPassword");
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.GONE);
+    assertThat(companyRepository.findByCodeIgnoreCase(newCode)).isEmpty();
+    assertThat(
+            userAccountRepository.findByEmailIgnoreCaseAndAuthScopeCodeIgnoreCase(
+                firstAdminEmail, newCode))
+        .isEmpty();
   }
 
   @Test
-  void super_admin_can_reset_tenant_admin_password_for_support() {
+  void retired_support_admin_password_reset_returns_gone_without_password_side_effects() {
     String superToken = login(SUPER_ADMIN_EMAIL, PLATFORM_SCOPE);
     Long tenantAId =
         companyRepository.findByCodeIgnoreCase(TENANT_A).map(Company::getId).orElseThrow();
+    UserAccount adminBefore =
+        userAccountRepository
+            .findByEmailIgnoreCaseAndAuthScopeCodeIgnoreCase(ADMIN_EMAIL, TENANT_A)
+            .orElseThrow();
+    boolean mustChangePasswordBefore = adminBefore.isMustChangePassword();
 
     ResponseEntity<Map> response =
         rest.exchange(
@@ -280,24 +258,19 @@ class AuthTenantAuthorityIT extends AbstractIntegrationTest {
                 Map.of("adminEmail", ADMIN_EMAIL), jsonHeaders(superToken, PLATFORM_SCOPE)),
             Map.class);
 
-    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.GONE);
     assertThat(response.getBody()).isNotNull();
-    @SuppressWarnings("unchecked")
-    Map<String, Object> data = (Map<String, Object>) response.getBody().get("data");
-    assertThat(data)
-        .containsEntry("companyId", tenantAId.intValue())
-        .containsEntry("companyCode", TENANT_A)
-        .containsEntry("adminEmail", ADMIN_EMAIL)
-        .containsEntry("status", "reset-link-emailed");
+    assertThat(response.getBody()).containsEntry("success", Boolean.FALSE);
+    assertThat(response.getBody().get("message").toString()).contains("retired");
     UserAccount admin =
         userAccountRepository
             .findByEmailIgnoreCaseAndAuthScopeCodeIgnoreCase(ADMIN_EMAIL, TENANT_A)
             .orElseThrow();
-    assertThat(admin.isMustChangePassword()).isFalse();
+    assertThat(admin.isMustChangePassword()).isEqualTo(mustChangePasswordBefore);
   }
 
   @Test
-  void root_only_super_admin_can_reset_tenant_admin_password_for_support() {
+  void root_only_super_admin_gets_gone_for_retired_support_admin_password_reset() {
     String rootOnlySuperAdminEmail =
         "root-only-support-super-admin@" + System.nanoTime() + ".bbp.com";
     dataSeeder.ensureUser(
@@ -318,16 +291,10 @@ class AuthTenantAuthorityIT extends AbstractIntegrationTest {
                 Map.of("adminEmail", ADMIN_EMAIL), jsonHeaders(superToken, PLATFORM_SCOPE)),
             Map.class);
 
-    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-    @SuppressWarnings("unchecked")
-    Map<String, Object> responseBody = response.getBody();
-    assertThat(responseBody).isNotNull();
-    @SuppressWarnings("unchecked")
-    Map<String, Object> data = (Map<String, Object>) responseBody.get("data");
-    assertThat(data).isNotNull();
-    assertThat(data.get("companyCode")).isEqualTo(TENANT_A);
-    assertThat(data.get("adminEmail")).isEqualTo(ADMIN_EMAIL);
-    assertThat(data).doesNotContainKeys("temporaryPassword", "adminTemporaryPassword");
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.GONE);
+    assertThat(response.getBody()).isNotNull();
+    assertThat(response.getBody()).containsEntry("success", Boolean.FALSE);
+    assertThat(response.getBody().get("message").toString()).contains("retired");
   }
 
   @Test
@@ -380,10 +347,8 @@ class AuthTenantAuthorityIT extends AbstractIntegrationTest {
     assertThat(unknownTenantError.get("code")).isEqualTo("AUTH_004");
     assertThat(foreignTenantError.get("message")).isEqualTo("Access denied");
     assertThat(unknownTenantError.get("message")).isEqualTo("Access denied");
-    assertThat(foreignTenantError.get("reason")).isEqualTo("COMPANY_CONTROL_ACCESS_DENIED");
-    assertThat(unknownTenantError.get("reason")).isEqualTo("COMPANY_CONTROL_ACCESS_DENIED");
-    assertThat(foreignTenantError.get("reasonDetail")).isEqualTo(CONTROL_PLANE_AUTH_DENIED_MESSAGE);
-    assertThat(unknownTenantError.get("reasonDetail")).isEqualTo(CONTROL_PLANE_AUTH_DENIED_MESSAGE);
+    assertThat(foreignTenantError).doesNotContainKeys("reason", "reasonDetail");
+    assertThat(unknownTenantError).doesNotContainKeys("reason", "reasonDetail");
     assertThat(foreignTenantError.get("traceId")).isNotNull();
     assertThat(unknownTenantError.get("traceId")).isNotNull();
   }

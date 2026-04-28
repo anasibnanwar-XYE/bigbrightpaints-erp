@@ -21,9 +21,9 @@ Primary evidence:
 
 | Surface | Entrypoints | Controller | Notes |
 | --- | --- | --- | --- |
-| Tenant bootstrap | `GET /api/v1/superadmin/tenants/coa-templates`, `POST /api/v1/superadmin/tenants/onboard` | `SuperAdminTenantOnboardingController` | Creates tenant shell, chart of accounts, first admin, default period, and some global settings; the response now explicitly confirms seeded bootstrap outcomes. |
+| Tenant bootstrap templates | `GET /api/v1/superadmin/tenants/coa-templates` | `SuperAdminTenantOnboardingController` | Lists seed templates. The flat `POST /api/v1/superadmin/tenants/onboard` bootstrap route is retired in favor of the V1 Add Client activation flow. |
 | Company directory and control plane | `GET /api/v1/companies` | `CompanyController` | Tenant creation moved to the super-admin onboarding flow. The old `/api/v1/companies/{id}` delete surface is retired and no longer has a live operation contract. |
-| Canonical super-admin company controls | `PUT /api/v1/superadmin/tenants/{id}/lifecycle`, `PUT /api/v1/superadmin/tenants/{id}/limits`, `PUT /api/v1/superadmin/tenants/{id}/modules`, `POST /api/v1/superadmin/tenants/{id}/support/admin-password-reset`, `POST /api/v1/superadmin/tenants/{id}/support/warnings`, `PUT /api/v1/superadmin/tenants/{id}/support/context`, `POST /api/v1/superadmin/tenants/{id}/force-logout` | `SuperAdminController` | The live contract is tenant-id under `/api/v1/superadmin/tenants/**`; company-id control-plane aliases are retired from the canonical surface. |
+| Canonical super-admin company controls | `PUT /api/v1/superadmin/tenants/{id}/lifecycle`, `PUT /api/v1/superadmin/tenants/{id}/limits`, `PUT /api/v1/superadmin/tenants/{id}/modules`, `POST /api/v1/auth/password/forgot`, `POST /api/v1/superadmin/tenants/{id}/support/warnings`, `PUT /api/v1/superadmin/tenants/{id}/support/context`, `POST /api/v1/superadmin/tenants/{id}/force-logout` | `SuperAdminController` | The live contract is tenant-id under `/api/v1/superadmin/tenants/**`; company-id control-plane aliases are retired from the canonical surface. |
 | Super-admin operations hub | `GET /api/v1/superadmin/dashboard`, `GET /api/v1/superadmin/tenants`, `GET /api/v1/superadmin/tenants/{id}` | `SuperAdminController` | Platform dashboard and tenant-detail reads stay here; lifecycle and support mutations use the canonical tenant-control endpoints above. |
 | Scoped company context | Login and refresh with `companyCode`; `GET /api/v1/companies` for company metadata | `AuthController`, `CompanyController` | The canonical contract has no post-login company-switch route; bearer scope is chosen during login or refresh for one scoped account. |
 
@@ -71,7 +71,7 @@ Side effects:
 
 `CompanyService` still contains some tenant-control mutations internally, but the published control-plane contract is the super-admin tenant family.
 
-- `POST /api/v1/superadmin/tenants/onboard` is the only tenant-creation surface left in the live contract.
+- `POST /api/v1/superadmin/tenants/onboard` is retired and hidden from the live contract; future tenant creation uses the V1 Add Client activation flow.
 - `PUT /api/v1/superadmin/tenants/{id}/modules` calls `CompanyService.updateEnabledModules(...)`.
 - `PUT /api/v1/superadmin/tenants/{id}/lifecycle`, `PUT /api/v1/superadmin/tenants/{id}/limits`, `PUT /api/v1/superadmin/tenants/{id}/modules`, `POST /api/v1/superadmin/tenants/{id}/support/warnings`, `PUT /api/v1/superadmin/tenants/{id}/support/context`, and `POST /api/v1/superadmin/tenants/{id}/force-logout` are the current-state control mutations.
 
@@ -167,7 +167,7 @@ Result: the control plane exposes multiple tenant-usage dashboards that do not s
 
 #### Admin password reset
 
-`POST /api/v1/superadmin/tenants/{id}/support/admin-password-reset` -> `SuperAdminService.resetTenantAdminPassword(...)` -> `TenantAdminProvisioningService.resetTenantAdminPassword(...)`.
+`POST /api/v1/auth/password/forgot` -> `SuperAdminService.resetTenantAdminPassword(...)` -> `TenantAdminProvisioningService.resetTenantAdminPassword(...)`.
 
 This path:
 

@@ -26,8 +26,6 @@ public record SuperAdminTenantDetailDto(
       String adminEmail,
       Long adminUserId,
       boolean tenantAdminProvisioned,
-      boolean credentialsEmailSent,
-      Instant credentialsEmailedAt,
       Instant completedAt) {}
 
   public record Limits(
@@ -57,7 +55,7 @@ public record SuperAdminTenantDetailDto(
       boolean canUpdateLimits,
       boolean canUpdateModules,
       boolean canIssueWarnings,
-      boolean canResetAdminPassword,
+      boolean canManageActivation,
       boolean canForceLogout,
       boolean canReplaceMainAdmin,
       boolean canRequestAdminEmailChange) {}

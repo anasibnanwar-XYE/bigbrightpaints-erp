@@ -223,13 +223,7 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
         "200",
         "#/components/schemas/ApiResponseAdminSelfSettingsDto");
     assertOperationMissing(root, "/api/v1/admin/exports/pending", "get");
-    assertOperationContract(
-        root,
-        "/api/v1/superadmin/tenants/onboard",
-        "post",
-        "#/components/schemas/TenantOnboardingRequest",
-        "200",
-        "#/components/schemas/ApiResponseTenantOnboardingResponse");
+    assertOperationMissing(root, "/api/v1/superadmin/tenants/onboard", "post");
     assertOperationContract(
         root,
         "/api/v1/superadmin/dashboard",
@@ -280,13 +274,8 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
         "#/components/schemas/TenantSupportWarningRequest",
         "200",
         "#/components/schemas/ApiResponseCompanySupportWarningDto");
-    assertOperationContract(
-        root,
-        "/api/v1/superadmin/tenants/{id}/support/admin-password-reset",
-        "post",
-        "#/components/schemas/TenantAdminPasswordResetRequest",
-        "200",
-        "#/components/schemas/ApiResponseCompanyAdminCredentialResetDto");
+    assertOperationMissing(
+        root, "/api/v1/superadmin/tenants/{id}/support/admin-password-reset", "post");
     assertOperationContract(
         root,
         "/api/v1/superadmin/tenants/{id}/support/context",
@@ -408,6 +397,10 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
     assertOperationMissing(root, "/api/v1/superadmin/tenants/{id}/deactivate", "post");
     assertOperationMissing(root, "/api/v1/superadmin/tenants/{id}/suspend", "post");
     assertOperationMissing(root, "/api/v1/superadmin/tenants/{id}/lifecycle-state", "put");
+    assertSchemaPresence(root, "TenantOnboardingRequest", false);
+    assertSchemaPresence(root, "TenantOnboardingResponse", false);
+    assertSchemaPresence(root, "TenantAdminPasswordResetRequest", false);
+    assertSchemaPresence(root, "CompanyAdminCredentialResetDto", false);
     assertOperationContract(
         root,
         "/api/v1/admin/users/{userId}/force-reset-password",
@@ -490,11 +483,91 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
   }
 
   @Test
+  void superadmin_route_inventory_classifies_canonical_and_retired_v1_routes() throws IOException {
+    JsonNode root = fetchCurrentSpecNode();
+
+    List<String> canonicalRoutes =
+        List.of(
+            "GET /api/v1/superadmin/dashboard",
+            "GET /api/v1/superadmin/tenants",
+            "GET /api/v1/superadmin/tenants/{id}",
+            "PUT /api/v1/superadmin/tenants/{id}/lifecycle",
+            "PUT /api/v1/superadmin/tenants/{id}/limits",
+            "PUT /api/v1/superadmin/tenants/{id}/modules",
+            "POST /api/v1/superadmin/tenants/{id}/support/warnings",
+            "PUT /api/v1/superadmin/tenants/{id}/support/context",
+            "GET /api/v1/superadmin/tenants/{id}/review-intelligence",
+            "PUT /api/v1/superadmin/tenants/{id}/review-intelligence",
+            "POST /api/v1/superadmin/tenants/{id}/force-logout",
+            "PUT /api/v1/superadmin/tenants/{id}/admins/main",
+            "POST /api/v1/superadmin/tenants/{id}/admins/{adminId}/email-change/request",
+            "POST /api/v1/superadmin/tenants/{id}/admins/{adminId}/email-change/confirm",
+            "GET /api/v1/superadmin/tenants/coa-templates",
+            "GET /api/v1/superadmin/settings",
+            "PUT /api/v1/superadmin/settings",
+            "GET /api/v1/superadmin/audit/platform-events",
+            "POST /api/v1/superadmin/changelog",
+            "PUT /api/v1/superadmin/changelog/{id}",
+            "DELETE /api/v1/superadmin/changelog/{id}",
+            "POST /api/v1/superadmin/notify",
+            "POST /api/v1/auth/login",
+            "POST /api/v1/auth/refresh-token",
+            "POST /api/v1/auth/logout",
+            "GET /api/v1/auth/me",
+            "POST /api/v1/auth/password/change",
+            "POST /api/v1/auth/password/forgot",
+            "POST /api/v1/auth/password/reset",
+            "POST /api/v1/auth/mfa/setup",
+            "POST /api/v1/auth/mfa/activate",
+            "POST /api/v1/auth/mfa/disable",
+            "GET /api/v1/admin/support/tickets",
+            "POST /api/v1/admin/support/tickets",
+            "GET /api/v1/admin/support/tickets/{ticketId}",
+            "GET /api/v1/portal/support/tickets",
+            "POST /api/v1/portal/support/tickets",
+            "GET /api/v1/portal/support/tickets/{ticketId}",
+            "GET /api/v1/dealer-portal/support/tickets",
+            "POST /api/v1/dealer-portal/support/tickets",
+            "GET /api/v1/dealer-portal/support/tickets/{ticketId}");
+    List<String> actualRoutes = extractOperationSignatures(root.toString());
+    assertThat(actualRoutes).containsAll(canonicalRoutes);
+
+    List<String> retiredRoutes =
+        List.of(
+            "post /api/v1/superadmin/tenants/onboard",
+            "post /api/v1/superadmin/tenants/{id}/support/admin-password-reset",
+            "post /api/v1/superadmin/tenants/{id}/activate",
+            "post /api/v1/superadmin/tenants/{id}/deactivate",
+            "post /api/v1/superadmin/tenants/{id}/suspend",
+            "put /api/v1/superadmin/tenants/{id}/lifecycle-state",
+            "post /api/v1/companies/{id}/support/admin-password-reset",
+            "post /api/v1/companies/superadmin/tenants",
+            "get /api/v1/auth/profile",
+            "put /api/v1/auth/profile",
+            "get /api/v1/support/tickets",
+            "post /api/v1/support/tickets");
+    retiredRoutes.forEach(
+        retired -> {
+          int separator = retired.indexOf(' ');
+          assertOperationMissing(
+              root, retired.substring(separator + 1), retired.substring(0, separator));
+        });
+
+    String specText = root.toString();
+    assertThat(specText)
+        .doesNotContain("temporaryPassword")
+        .doesNotContain("adminTemporaryPassword")
+        .doesNotContain("credentialsEmailSent")
+        .doesNotContain("TenantOnboardingRequest")
+        .doesNotContain("CompanyAdminCredentialResetDto");
+  }
+
+  @Test
   void auth_and_tenant_control_docs_match_the_hard_cut_route_story() throws IOException {
     String modulesAuth = readRepoFile("docs/modules/auth.md");
     assertThat(modulesAuth).contains("`GET /api/v1/auth/me`");
     assertThat(modulesAuth)
-        .contains("`/api/v1/superadmin/tenants/{id}/support/admin-password-reset`");
+        .doesNotContain("`/api/v1/superadmin/tenants/{id}/support/admin-password-reset`");
     assertThat(modulesAuth)
         .doesNotContain("### UserProfileController — `/api/v1/auth/profile`")
         .doesNotContain("| GET | `/api/v1/auth/profile` |")
@@ -504,9 +577,7 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
     String flowAuthIdentity = readRepoFile("docs/flows/auth-identity.md");
     assertThat(flowAuthIdentity).contains("| `/me` | GET | `/api/v1/auth/me` |");
     assertThat(flowAuthIdentity)
-        .contains(
-            "| Super-admin support reset | POST |"
-                + " `/api/v1/superadmin/tenants/{id}/support/admin-password-reset` |")
+        .doesNotContain("`/api/v1/superadmin/tenants/{id}/support/admin-password-reset`")
         .doesNotContain("| Profile read | GET | `/api/v1/auth/profile` |")
         .doesNotContain("| Profile update | PUT | `/api/v1/auth/profile` |")
         .doesNotContain("PUT `/api/v1/auth/profile`")
@@ -517,7 +588,7 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
     assertThat(codeReviewControlPlane)
         .contains("`PUT /api/v1/superadmin/tenants/{id}/lifecycle`")
         .contains("`PUT /api/v1/superadmin/tenants/{id}/limits`")
-        .contains("`POST /api/v1/superadmin/tenants/{id}/support/admin-password-reset`")
+        .doesNotContain("`POST /api/v1/superadmin/tenants/{id}/support/admin-password-reset`")
         .doesNotContain("`GET /api/v1/admin/tenant-runtime/metrics`")
         .doesNotContain("`PUT /api/v1/admin/tenant-runtime/policy`")
         .doesNotContain("`PUT /api/v1/companies/{id}/tenant-runtime/policy`")

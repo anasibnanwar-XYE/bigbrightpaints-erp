@@ -1,7 +1,9 @@
 package com.bigbrightpaints.erp.modules.company.controller;
 
 import java.util.List;
+import java.util.Map;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -11,13 +13,11 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.bigbrightpaints.erp.modules.company.dto.CoATemplateDto;
-import com.bigbrightpaints.erp.modules.company.dto.TenantOnboardingRequest;
-import com.bigbrightpaints.erp.modules.company.dto.TenantOnboardingResponse;
 import com.bigbrightpaints.erp.modules.company.service.CoATemplateService;
 import com.bigbrightpaints.erp.modules.company.service.TenantOnboardingService;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 
-import jakarta.validation.Valid;
+import io.swagger.v3.oas.annotations.Hidden;
 
 @RestController
 @RequestMapping("/api/v1/superadmin/tenants")
@@ -39,13 +39,15 @@ public class SuperAdminTenantOnboardingController {
         ApiResponse.success("CoA templates fetched", coATemplateService.listActiveTemplates()));
   }
 
+  @Hidden
   @PostMapping("/onboard")
-  public ResponseEntity<ApiResponse<TenantOnboardingResponse>> onboardTenant(
-      @Valid @RequestBody TenantOnboardingRequest request) {
-    return ResponseEntity.ok(
-        ApiResponse.success(
-            "Tenant onboarded with seeded chart of accounts, tenant admin, and default accounting"
-                + " period",
-            tenantOnboardingService.onboardTenant(request)));
+  public ResponseEntity<ApiResponse<Map<String, String>>> retiredOnboardTenant(
+      @RequestBody(required = false) Object ignored) {
+    return ResponseEntity.status(HttpStatus.GONE)
+        .body(
+            ApiResponse.failure(
+                "Flat Super Admin tenant onboarding is retired; use the V1 Add Client activation"
+                    + " flow",
+                Map.of("code", "retired-superadmin-flat-onboarding")));
   }
 }

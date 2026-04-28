@@ -21,46 +21,9 @@ Response `data[]` fields:
 | `description` | string | help text for selection UI |
 | `accountCount` | integer | show as impact hint only, not as a validation input |
 
-## `POST /api/v1/superadmin/tenants/onboard`
+## Retired: flat tenant onboarding
 
-Request body:
-
-| Field | Type | Required | Validation notes |
-|---|---|---|---|
-| `name` | string | yes | max 255 |
-| `code` | string | yes | max 64; treat as tenant code |
-| `timezone` | string | yes | max 64 |
-| `defaultGstRate` | decimal | no | `0.0` to `100.0` |
-| `maxActiveUsers` | long | no | `>= 0` |
-| `maxApiRequests` | long | no | `>= 0` |
-| `maxStorageBytes` | long | no | `>= 0` |
-| `maxConcurrentRequests` | long | no | `>= 0` |
-| `softLimitEnabled` | boolean | no | quota warning behavior |
-| `hardLimitEnabled` | boolean | no | hard-stop behavior |
-| `firstAdminEmail` | string | yes | valid email |
-| `firstAdminDisplayName` | string | no | max 255 |
-| `coaTemplateCode` | string | yes | must match template `code` |
-
-Success response `data` fields:
-
-| Field | Type | Frontend use |
-|---|---|---|
-| `companyId` | long | route to tenant detail only |
-| `companyCode` | string | display and copy actions |
-| `templateCode` | string | confirmation summary |
-| `bootstrapMode` | string | informational status label |
-| `seededChartOfAccounts` | boolean | must be `true` before success UX |
-| `accountsCreated` | integer | confirmation summary |
-| `accountingPeriodId` | long | detail deep-link helper if needed |
-| `defaultAccountingPeriodCreated` | boolean | must be `true` before success UX |
-| `adminEmail` | string | confirmation summary |
-| `tenantAdminProvisioned` | boolean | must be `true` before success UX |
-| `systemSettingsInitialized` | boolean | show warning if `false` |
-
-UI handling:
-
-- Do not show a success state when any of `seededChartOfAccounts`, `defaultAccountingPeriodCreated`, or `tenantAdminProvisioned` is `false`.
-- No plaintext password is returned. Do not design a password reveal panel.
+`POST /api/v1/superadmin/tenants/onboard` is retired and hidden from the current OpenAPI contract. Treat any `410 Gone` response as a signal to use the V1 Add Client activation flow instead. Do not build new UI against the old flat create payload.
 
 ## `GET /api/v1/superadmin/tenants`
 
@@ -100,8 +63,6 @@ Important nested objects:
 - `onboarding.adminEmail`
 - `onboarding.adminUserId`
 - `onboarding.tenantAdminProvisioned`
-- `onboarding.credentialsEmailSent`
-- `onboarding.credentialsEmailedAt`
 - `onboarding.completedAt`
 - `limits.*`
 - `usage.*`
@@ -113,7 +74,7 @@ Important nested objects:
 Frontend guidance:
 
 - Render action buttons from `availableActions` first, not only from static role assumptions.
-- Show `credentialsEmailSent` as delivery status only. It does not replace the three bootstrap truth flags from onboarding response.
+- Activation delivery status will be exposed by the V1 activation flow, not by legacy credential-email fields.
 
 ## `PUT /api/v1/superadmin/tenants/{id}/lifecycle`
 
@@ -175,19 +136,9 @@ Request:
 - `supportNotes` optional, max 4000
 - `supportTags` optional string set, each item max 64
 
-### `POST /api/v1/superadmin/tenants/{id}/support/admin-password-reset`
+### Retired tenant admin support reset
 
-Request:
-
-- `adminEmail` required
-- `reason` optional, max 300
-
-Response:
-
-- `companyId`
-- `companyCode`
-- `adminEmail`
-- `status`
+`POST /api/v1/superadmin/tenants/{id}/support/admin-password-reset` is retired and hidden from the current OpenAPI contract. Use password recovery / activation-specific routes rather than a Super Admin credential reset action.
 
 ### `POST /api/v1/superadmin/tenants/{id}/force-logout`
 

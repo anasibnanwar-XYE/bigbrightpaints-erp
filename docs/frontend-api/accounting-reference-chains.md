@@ -11,7 +11,7 @@ when linking screens, toasts, audits, and support traces.
 
 - `GET /api/v1/superadmin/tenants/coa-templates`
 - operator selects `coaTemplateCode`
-- `POST /api/v1/superadmin/tenants/onboard`
+- V1 Add Client activation flow (the old flat onboarding route is retired)
 - `seededChartOfAccounts=true`
 - `defaultAccountingPeriodCreated=true`
 - `tenantAdminProvisioned=true`

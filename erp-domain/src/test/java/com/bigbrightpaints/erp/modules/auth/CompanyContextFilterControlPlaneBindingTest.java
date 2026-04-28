@@ -105,12 +105,9 @@ class CompanyContextFilterControlPlaneBindingTest {
   }
 
   @Test
-  void canonicalSupportResetRequest_bindsPathTargetCompany_andBypassesRuntimeAdmission()
+  void retiredSupportResetRequest_doesNotBindPathTargetCompany()
       throws ServletException, IOException {
     authenticate("root-superadmin@bbp.com", Set.of("ROLE_SUPER_ADMIN"), Set.of("ROOT"));
-    when(companyService.resolveCompanyCodeById(42L)).thenReturn("TENANT-A");
-    when(companyService.resolveLifecycleStateByCode("TENANT-A"))
-        .thenReturn(CompanyLifecycleState.ACTIVE);
 
     MockHttpServletRequest request =
         request("POST", "/api/v1/superadmin/tenants/42/support/admin-password-reset");
@@ -119,12 +116,9 @@ class CompanyContextFilterControlPlaneBindingTest {
 
     filter.doFilter(request, response, filterChain);
 
-    assertThat(response.getStatus()).isEqualTo(200);
-    verify(companyService).resolveCompanyCodeById(42L);
-    verify(companyService).resolveLifecycleStateByCode("TENANT-A");
-    verify(tenantRuntimeRequestAdmissionService, never())
-        .beginRequest(anyString(), anyString(), anyString(), anyString(), anyBoolean());
-    verify(filterChain).doFilter(request, response);
+    assertThat(response.getStatus()).isEqualTo(403);
+    verify(companyService, never()).resolveCompanyCodeById(42L);
+    verify(filterChain, never()).doFilter(request, response);
   }
 
   @Test
@@ -481,6 +475,21 @@ class CompanyContextFilterControlPlaneBindingTest {
     verify(tenantRuntimeRequestAdmissionService, never())
         .beginRequest(anyString(), anyString(), anyString(), anyString(), anyBoolean());
     verify(filterChain).doFilter(request, response);
+  }
+
+  @Test
+  void extractCompanyIdFromControlPlanePath_handlesCanonicalAndMalformedValues() {
+    assertThat(extractCompanyId(null)).isNull();
+    assertThat(extractCompanyId("   ")).isNull();
+    assertThat(extractCompanyId("/api/v1/private")).isNull();
+    assertThat(extractCompanyId("/api/v1/superadmin/tenants/not-a-number")).isNull();
+    assertThat(extractCompanyId("/api/v1/superadmin/tenants//limits")).isNull();
+    assertThat(extractCompanyId("/api/v1/superadmin/tenants/42")).isEqualTo(42L);
+    assertThat(extractCompanyId("/api/v1/superadmin/tenants/42/limits")).isEqualTo(42L);
+    assertThat(extractCompanyId("/api/v1/superadmin/tenants/42/support/admin-password-reset"))
+        .isNull();
+    assertThat(extractCompanyId("/api/v1/superadmin/tenants/42/review-intelligence"))
+        .isEqualTo(42L);
   }
 
   @Test

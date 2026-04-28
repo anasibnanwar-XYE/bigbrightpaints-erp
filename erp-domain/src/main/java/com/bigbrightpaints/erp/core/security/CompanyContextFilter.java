@@ -55,8 +55,6 @@ public class CompanyContextFilter extends OncePerRequestFilter {
           controlRoute("PUT", "^/api/v1/superadmin/tenants/([^/]+)/limits$", true),
           controlRoute("PUT", "^/api/v1/superadmin/tenants/([^/]+)/modules$", false),
           controlRoute("POST", "^/api/v1/superadmin/tenants/([^/]+)/support/warnings$", false),
-          controlRoute(
-              "POST", "^/api/v1/superadmin/tenants/([^/]+)/support/admin-password-reset$", false),
           controlRoute("PUT", "^/api/v1/superadmin/tenants/([^/]+)/support/context$", false),
           controlRoute("GET", "^/api/v1/superadmin/tenants/([^/]+)/review-intelligence$", false),
           controlRoute("PUT", "^/api/v1/superadmin/tenants/([^/]+)/review-intelligence$", false),

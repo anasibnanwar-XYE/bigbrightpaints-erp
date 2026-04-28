@@ -45,7 +45,7 @@ Recommended tenant-detail tabs:
 
 ## Critical frontend rules
 
-- Treat `POST /api/v1/superadmin/tenants/onboard` as successful only when `seededChartOfAccounts`, `defaultAccountingPeriodCreated`, and `tenantAdminProvisioned` are all `true`.
+- Do not build new UI against retired `POST /api/v1/superadmin/tenants/onboard`; use the V1 Add Client activation flow once exposed.
 - Do not ask frontend operators to manage `companyCode` headers manually for control-plane routes. The tenant target is in the path.
 - Do not reuse the tenant-admin shell chrome here.
 - Keep lifecycle state vocabulary exact: `ACTIVE`, `SUSPENDED`, `DEACTIVATED`.
