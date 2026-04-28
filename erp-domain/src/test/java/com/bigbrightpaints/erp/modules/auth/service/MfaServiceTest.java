@@ -33,6 +33,7 @@ class MfaServiceTest {
   private CryptoService cryptoService;
   private TokenBlacklistService tokenBlacklistService;
   private RefreshTokenService refreshTokenService;
+  private IamCanonicalStorageService iamCanonicalStorageService;
   private MfaService mfaService;
 
   @BeforeEach
@@ -43,6 +44,7 @@ class MfaServiceTest {
     cryptoService = mock(CryptoService.class);
     tokenBlacklistService = mock(TokenBlacklistService.class);
     refreshTokenService = mock(RefreshTokenService.class);
+    iamCanonicalStorageService = mock(IamCanonicalStorageService.class);
     clock = Clock.fixed(Instant.parse("2024-01-01T00:00:00Z"), ZoneOffset.UTC);
     when(cryptoService.encrypt(anyString())).thenAnswer(invocation -> invocation.getArgument(0));
     when(cryptoService.decrypt(anyString())).thenAnswer(invocation -> invocation.getArgument(0));
@@ -54,6 +56,7 @@ class MfaServiceTest {
             cryptoService,
             tokenBlacklistService,
             refreshTokenService,
+            iamCanonicalStorageService,
             "BigBright ERP",
             clock);
   }
@@ -93,10 +96,24 @@ class MfaServiceTest {
   }
 
   @Test
+  void beginEnrollment_rejectsEnabledMfaWithoutDowngradingState() {
+    UserAccount user = userWithSecret();
+    String originalSecret = user.getMfaSecret();
+
+    assertThrows(ApplicationException.class, () -> mfaService.beginEnrollment(user));
+
+    assertThat(user.isMfaEnabled()).isTrue();
+    assertThat(user.getMfaSecret()).isEqualTo(originalSecret);
+    verifyNoInteractions(repository);
+    verifyNoInteractions(mfaRecoveryCodeRepository);
+  }
+
+  @Test
   void disable_acceptsRecoveryCodeAndClearsEnrollment() {
     UserAccount user = userWithSecret();
     MfaRecoveryCode code = new MfaRecoveryCode(user, "hash-1");
-    when(mfaRecoveryCodeRepository.findUnusedByUser(user)).thenReturn(java.util.List.of(code));
+    when(mfaRecoveryCodeRepository.findUnusedByUserForUpdate(user))
+        .thenReturn(java.util.List.of(code));
     when(passwordEncoder.matches("RECOVERY1", "hash-1")).thenReturn(true);
 
     mfaService.disable(user, null, "RECOVERY1");
@@ -111,7 +128,8 @@ class MfaServiceTest {
   void verifyDuringLogin_acceptsRecoveryCodeAndPersistsConsumption() {
     UserAccount user = userWithSecret();
     MfaRecoveryCode code = new MfaRecoveryCode(user, "hash-1");
-    when(mfaRecoveryCodeRepository.findUnusedByUser(user)).thenReturn(java.util.List.of(code));
+    when(mfaRecoveryCodeRepository.findUnusedByUserForUpdate(user))
+        .thenReturn(java.util.List.of(code));
     when(passwordEncoder.matches("RECOVERY1", "hash-1")).thenReturn(true);
 
     assertDoesNotThrow(() -> mfaService.verifyDuringLogin(user, null, " RECOVERY1 "));
@@ -130,16 +148,66 @@ class MfaServiceTest {
   }
 
   @Test
+  void verifyDuringLogin_acceptsOnlyCurrentOrAdjacentTotpWindow() {
+    UserAccount user = userWithSecret();
+    String previousStep =
+        TotpTestUtils.generateCode(user.getMfaSecret(), clock.instant().minusSeconds(30));
+    String currentStep = TotpTestUtils.generateCode(user.getMfaSecret(), clock.instant());
+    String nextStep =
+        TotpTestUtils.generateCode(user.getMfaSecret(), clock.instant().plusSeconds(30));
+    String tooOld =
+        TotpTestUtils.generateCode(user.getMfaSecret(), clock.instant().minusSeconds(60));
+    String tooNew =
+        TotpTestUtils.generateCode(user.getMfaSecret(), clock.instant().plusSeconds(60));
+
+    assertDoesNotThrow(() -> mfaService.verifyDuringLogin(user, previousStep, null));
+    assertDoesNotThrow(() -> mfaService.verifyDuringLogin(user, currentStep, null));
+    assertDoesNotThrow(() -> mfaService.verifyDuringLogin(user, nextStep, null));
+    assertThrows(InvalidMfaException.class, () -> mfaService.verifyDuringLogin(user, tooOld, null));
+    assertThrows(InvalidMfaException.class, () -> mfaService.verifyDuringLogin(user, tooNew, null));
+  }
+
+  @Test
   void activate_requiresValidTotp() {
     UserAccount user = userWithSecret();
 
     assertThrows(ApplicationException.class, () -> mfaService.activate(user, "000000"));
   }
 
+  @Test
+  void activate_revokesPreChangeSessionsAfterSuccessfulActivation() {
+    UserAccount user = userWithPendingSecret();
+    String code = TotpTestUtils.generateCode(user.getMfaSecret(), clock.instant());
+
+    mfaService.activate(user, code);
+
+    assertThat(user.isMfaEnabled()).isTrue();
+    verify(tokenBlacklistService).revokeAllUserTokens(user.getPublicId().toString());
+    verify(refreshTokenService).revokeAllForUser(user.getPublicId());
+  }
+
+  @Test
+  void disable_revokesPreChangeSessionsAfterSuccessfulDisable() {
+    UserAccount user = userWithSecret();
+    String code = TotpTestUtils.generateCode(user.getMfaSecret(), clock.instant());
+
+    mfaService.disable(user, code, null);
+
+    assertThat(user.isMfaEnabled()).isFalse();
+    verify(tokenBlacklistService).revokeAllUserTokens(user.getPublicId().toString());
+    verify(refreshTokenService).revokeAllForUser(user.getPublicId());
+  }
+
   private UserAccount userWithSecret() {
     UserAccount user = new UserAccount("user@bbp.dev", "hash", "User");
     user.setMfaSecret("JBSWY3DPEHPK3PXP");
     user.setMfaEnabled(true);
+    return user;
+  }
+
+  private UserAccount userWithPendingSecret() {
+    UserAccount user = userWithSecret();
+    user.setMfaEnabled(false);
     return user;
   }
 }

@@ -2,83 +2,92 @@
 
 Last reviewed: 2026-04-28
 
-## Current Packet Evidence — admin-force-reset-credential-events-and-abuse-controls
+## Current Packet Evidence — mfa-self-service-and-recovery-hard-cut
 
 ## Scope
-- Feature: `admin-force-reset-credential-events-and-abuse-controls`
+- Feature: `mfa-self-service-and-recovery-hard-cut`
 - Branch: codex/identity-account-hardcut-20260427 (base: origin/main)
 - PR: pending
 - Review candidate:
-  - make tenant-admin force reset explicitly place the target into `mustChangePassword=true` after reset-link delivery
-  - keep existing force-reset session revocation so pre-reset bearer and refresh credentials stop working
-  - add request-fingerprint and hashed account reset-abuse limiter keys so rate-limit security evidence avoids raw email identifiers
-  - verify force-reset response safety, reset-link single use, corridor denial, old-token invalidation, and fresh-login recovery
-- Why this is R2: this packet touches high-risk admin credential recovery, reset-required account state, token/session revocation, and recovery abuse-control code paths where incorrect behavior could allow stale sessions, normal protected access after force reset, or secret-bearing reset evidence.
+  - reject self-service setup for already enabled MFA profiles so re-enrollment cannot silently downgrade or replace a live factor
+  - revoke pre-change access and refresh sessions after successful MFA activation, disablement, and recovery-code regeneration
+  - consume recovery codes under row-level locks so one-use verifier semantics remain concurrency safe
+  - document/enforce TOTP-only request factor policy for login, activation, disablement, and regeneration while preserving verifier-only recovery-code storage
+  - add redacted MFA success/failure audit events for login and self-service profile-change denial paths
+- Why this is R2: this packet touches high-risk MFA enrollment, second-factor verification, recovery-code consumption, authentication lockout/audit behavior, and token/session revocation paths where incorrect behavior could permit MFA downgrade, stale-session use, verifier replay, or secret leakage.
 
 ## Risk Trigger
 - Triggered by:
-  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/service/PasswordResetService.java`
-  - `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/admin/AdminUserSecurityIT.java`
-  - `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/auth/service/PasswordResetServiceTest.java`
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/service/MfaService.java`
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/service/AuthService.java`
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/controller/MfaController.java`
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/domain/MfaRecoveryCodeRepository.java`
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/web/LoginRequest.java`
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/web/MfaActivateRequest.java`
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/web/MfaDisableRequest.java`
+  - focused auth/MFA tests under `erp-domain/src/test/java`
 - Contract surfaces affected:
-  - `VAL-CRED-009`, `VAL-CRED-010`, `VAL-CRED-011`, `VAL-CRED-013`, `VAL-CRED-015`, `VAL-ADMIN-009`
+  - `VAL-AUTH-009`, `VAL-MFA-001`, `VAL-MFA-002`, `VAL-MFA-003`, `VAL-MFA-004`, `VAL-MFA-005`, `VAL-MFA-006`, `VAL-MFA-007`, `VAL-MFA-009`, `VAL-MFA-010`, `VAL-MFA-011`, `VAL-MFA-012`, `VAL-MFA-013`, `VAL-MFA-014`, `VAL-MFA-015`, `VAL-ACCT-007`, `VAL-ACCT-008`, `VAL-ADV-009`, `VAL-ADV-011`
 - Failure mode if wrong:
-  - tenant-admin force reset could leave a target able to use old normal protected access
-  - pre-reset bearer or refresh credentials could remain valid after force reset
-  - API responses or audit/security evidence could expose reset material, token material, or raw abuse-control identifiers
-  - force-reset recovery links could become reusable or fail to clear reset-required state after completion
+  - an enabled MFA user could call setup and end up with MFA disabled or replaced without fresh proof
+  - pre-activation/pre-disable bearer or refresh credentials could remain usable after MFA security-profile changes
+  - concurrent recovery-code submissions could authenticate more than once
+  - unsupported `sms`/email/push-style factor fields could bypass TOTP/recovery-code proof
+  - audit/security evidence could include raw TOTP codes, secrets, recovery codes, hashes, or token material
 
 ## Approval Authority
 - Mode: orchestrator
 - Approver: Droid mission orchestrator
 - Canary owner: Droid mission orchestrator
 - Approval status: branch-local integration candidate pending PR review
-- Basis: this is an accepted credentials milestone slice that narrows existing admin force-reset semantics and abuse-control evidence without widening privileges, changing tenant boundaries, altering public route envelopes, or introducing destructive schema changes.
+- Basis: this is an accepted MFA milestone slice that narrows MFA self-service semantics, keeps current route envelopes, stores no raw verifier material, and does not widen privileges, change tenant boundaries, or introduce destructive schema changes.
 
 ## Escalation Decision
 - Human escalation required: no
-- Reason: the packet makes reset-required state stricter after authorized same-tenant admin force reset, preserves current auth/admin password routes and envelopes, does not add new authority, and stores no raw reset tokens or production secrets.
+- Reason: the packet strengthens existing MFA verification and session-revocation controls without adding new authority, weakening tenant scope, changing production migrations, or exposing secrets.
 
 ## Rollback Owner
 - Owner: Droid mission orchestrator
 - Rollback method:
-  - before merge: revert this packet and rerun focused password-reset/admin/auth-audit tests, Spotless, OpenAPI guard, and High-Risk Change Control
-  - after merge: revert through a new remediation packet and rerun the same admin force-reset credentials proof lane
+  - before merge: revert this packet and rerun focused MFA/auth/audit tests, Spotless, OpenAPI guard, and High-Risk Change Control
+  - after merge: revert through a new remediation packet and rerun the same MFA self-service proof lane
 - Rollback trigger:
-  - authorized tenant-admin force reset no longer sets `mustChangePassword=true`
-  - pre-reset access or refresh tokens remain usable after force reset
-  - force-reset API response includes reset token/link/password or refresh/access token material
-  - reset-abuse rate-limit evidence exposes raw reset tokens or raw email identifiers
+  - enabled-user setup disables, replaces, or downgrades MFA without verified profile-change proof
+  - pre-change access or refresh credentials remain usable after MFA activation, disablement, or recovery-code regeneration
+  - a recovery code can be used more than once or concurrently succeeds more than once
+  - unsupported MFA factor payloads authenticate, activate, disable, or regenerate recovery codes
   - focused compile/tests, Spotless, OpenAPI guard, or High-Risk Change Control fail
 
 ## Expiry
 - Valid until: 2026-05-05
-- Re-evaluate if: scope expands into first-class session-family storage, MFA factor policy, public API envelope changes, tenant-boundary behavior, distributed rate limiting, or schema/migration behavior.
+- Re-evaluate if: scope expands into admin MFA reset, first-class session-family storage, public API envelope changes, tenant-boundary behavior, distributed rate limiting, or schema/migration behavior.
 
 ## Verification Evidence
 - Scope-to-evidence mapping:
-  - Force-reset corridor proof: `AdminUserSecurityIT.tenant_admin_force_reset_revokes_sessions_and_confines_target_to_reset_corridor` verifies same-tenant admin force reset returns a safe response, delivers reset material only through mail, sets `mustChangePassword=true`, denies normal protected access with `PASSWORD_CHANGE_REQUIRED`, and clears the flag after reset completion and fresh login.
-  - Session revocation proof: the same integration test verifies pre-reset bearer self-identity access and refresh-token rotation fail after force reset.
-  - Single-use/reset proof: the same integration test verifies the delivered reset token succeeds once and replay returns `400`.
-  - Unit semantics proof: `PasswordResetServiceTest.requestForceResetByAdminMarksTargetMustChangeAndRevokesSessions` verifies force reset marks the target must-change, syncs IAM storage, and revokes access/refresh sessions; `requestResetByAdminSendsResetEmailForEnabledUser` preserves reset-link-only support semantics.
-  - Abuse-control privacy proof: `PasswordResetService` now uses hashed account limiter keys and hashed request-fingerprint limiter keys; `PasswordResetServiceTest.requestReset_rateLimitedPasswordResetAbuseSendsOnlyOneSecurityAlertEmail` rechecks bounded rate-limit alert behavior without dispatching reset email.
+  - No-downgrade setup proof: `MfaControllerIT.enabled_user_setup_is_rejected_without_downgrading_mfa_state` and `MfaServiceTest.beginEnrollment_rejectsEnabledMfaWithoutDowngradingState` verify enabled MFA setup is rejected and leaves the encrypted secret/recovery verifiers and MFA-required login state unchanged.
+  - Session revocation proof: `MfaControllerIT.mfa_activation_and_disable_revoke_pre_change_access_and_refresh_tokens`, `recovery_code_regeneration_revokes_pre_change_access_and_refresh_tokens`, `MfaServiceTest.activate_revokesPreChangeSessionsAfterSuccessfulActivation`, and `disable_revokesPreChangeSessionsAfterSuccessfulDisable` verify pre-change bearer and refresh credentials fail after MFA profile changes.
+  - Recovery-code concurrency safety proof: `MfaRecoveryCodeRepository.findUnusedByUserForUpdate` locks unused verifier rows during consumption; `MfaControllerIT.recovery_code_is_consumed_after_login` and `recovery_code_regeneration_returns_new_codes_and_replaces_old_verifiers` verify one-use and replacement behavior without plaintext persistence.
+  - TOTP/factor-policy proof: `MfaServiceTest.verifyDuringLogin_acceptsOnlyCurrentOrAdjacentTotpWindow` verifies the current 30-second step plus one adjacent step on either side; `MfaControllerIT.unsupported_factor_type_payloads_do_not_bypass_totp_only_policy` verifies `sms` factor payloads do not activate or authenticate.
+  - Audit/redaction proof: `AuthService` emits redacted `MFA_SUCCESS`/`MFA_FAILURE` login events and `MfaController` emits redacted self-service failure metadata; `AuthAuditIT` rechecks MFA enrolled/activated/disabled audit scope without recording raw verifier material.
 - Commands run:
   - `mission init.sh`
   - `cd /Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/identity-account-hardcut-20260427 && bash scripts/guard_openapi_contract_drift.sh && cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='AuthPasswordResetPublicContractIT,AdminUserSecurityIT,AuthControllerIT,AuthTenantAuthorityIT,TenantRuntimeEnforcementAuthIT,AuthDisabledUserTokenIT,MfaControllerIT' test`
-  - `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='PasswordResetServiceTest,AdminUserSecurityIT' test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -q -DskipTests test-compile`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='MfaControllerIT,MfaServiceTest,AuthControllerIT' test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='AuthAuditIT,MfaControllerIT,MfaServiceTest' test`
   - `cd erp-domain && MIGRATION_SET=v2 mvn spotless:apply`
-  - `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='PasswordResetServiceTest,AuthTenantAuthorityIT,AdminUserSecurityIT' test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn spotless:check`
+  - `bash scripts/guard_openapi_contract_drift.sh`
   - `cd /Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/identity-account-hardcut-20260427 && bash scripts/guard_openapi_contract_drift.sh && cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='AuthPasswordResetPublicContractIT,AdminUserSecurityIT,AuthControllerIT,AuthTenantAuthorityIT,TenantRuntimeEnforcementAuthIT,AuthDisabledUserTokenIT,MfaControllerIT' test`
-  - `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='PasswordResetServiceTest,AuthPasswordResetPublicContractIT,AdminUserSecurityIT,AuthAuditIT' test`
-  - `cd erp-domain && MIGRATION_SET=v2 mvn -q -DskipTests test-compile && MIGRATION_SET=v2 mvn spotless:check && cd /Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/identity-account-hardcut-20260427 && bash scripts/guard_openapi_contract_drift.sh && bash ci/check-high-risk-changes.sh && bash ci/lint-knowledgebase.sh`
+  - `bash ci/check-high-risk-changes.sh`
+  - `bash ci/lint-knowledgebase.sh && bash ci/check-architecture.sh`
 - Result summary:
-  - baseline IAM mission lane passed with 92 tests plus OpenAPI guard before code changes
-  - focused admin/password-reset lane passed with 44 tests after implementation
-  - support-reset/admin regression lane passed with 74 tests after preserving support reset-link-only semantics
-  - final IAM mission lane passed with 93 tests plus OpenAPI guard
-  - final feature credential/audit lane passed with 63 tests after formatting
-  - test-compile, Spotless check, OpenAPI guard, High-Risk Change Control, and knowledgebase lint passed
-  - no raw JWTs, refresh tokens, reset tokens, reset links, MFA secrets, recovery codes, password hashes, or production secrets were recorded in this checkpoint
+  - baseline IAM mission lane passed with 93 tests plus OpenAPI guard before code changes
+  - feature-specific MFA/auth lane passed with 32 tests after implementation
+  - focused MFA audit/service lane passed with 25 tests after formatting
+  - final IAM mission lane passed with 96 tests plus OpenAPI guard
+  - test-compile, Spotless check, OpenAPI guard, High-Risk Change Control, knowledgebase lint, and architecture check passed
+  - no raw JWTs, refresh tokens, reset tokens, reset links, MFA secrets, TOTP candidate codes, recovery codes, password hashes, or production secrets were recorded in this checkpoint
 
 ---
 

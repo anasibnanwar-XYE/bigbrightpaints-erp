@@ -142,21 +142,24 @@ public class MfaControllerIT extends AbstractIntegrationTest {
             postWithBearer("/api/v1/auth/mfa/activate", Map.of("code", activationCode), token)
                 .getStatusCode())
         .isEqualTo(HttpStatus.OK);
+    String postActivationToken =
+        obtainAccessToken(TotpTestUtils.generateCurrentCode(setup.secret()), null);
 
     ResponseEntity<Map> missingVerifier =
-        postWithBearer("/api/v1/auth/mfa/disable", Map.of(), token);
+        postWithBearer("/api/v1/auth/mfa/disable", Map.of(), postActivationToken);
     assertThat(missingVerifier.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
     assertThat(scopedUser().isMfaEnabled()).isTrue();
 
     ResponseEntity<Map> invalidVerifier =
-        postWithBearer("/api/v1/auth/mfa/disable", Map.of("code", "abc123"), token);
+        postWithBearer("/api/v1/auth/mfa/disable", Map.of("code", "abc123"), postActivationToken);
     assertThat(invalidVerifier.getStatusCode())
         .isIn(HttpStatus.BAD_REQUEST, HttpStatus.UNAUTHORIZED);
     assertThat(scopedUser().isMfaEnabled()).isTrue();
 
     String disableCode = TotpTestUtils.generateCurrentCode(setup.secret());
     ResponseEntity<Map> disable =
-        postWithBearer("/api/v1/auth/mfa/disable", Map.of("code", disableCode), token);
+        postWithBearer(
+            "/api/v1/auth/mfa/disable", Map.of("code", disableCode), postActivationToken);
     assertThat(disable.getStatusCode()).isEqualTo(HttpStatus.OK);
     Map<String, Object> disableData = apiData(disable);
     assertThat(disableData.get("enabled")).isEqualTo(Boolean.FALSE);
@@ -176,24 +179,30 @@ public class MfaControllerIT extends AbstractIntegrationTest {
             postWithBearer("/api/v1/auth/mfa/activate", Map.of("code", activationCode), token)
                 .getStatusCode())
         .isEqualTo(HttpStatus.OK);
+    String postActivationToken =
+        obtainAccessToken(TotpTestUtils.generateCurrentCode(setup.secret()), null);
 
     List<String> originalHashes = unusedRecoveryHashes(scopedUser());
     ResponseEntity<Map> missingProof =
-        postWithBearer("/api/v1/auth/mfa/recovery-codes/regenerate", Map.of(), token);
+        postWithBearer("/api/v1/auth/mfa/recovery-codes/regenerate", Map.of(), postActivationToken);
     assertThat(missingProof.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
     assertThat(unusedRecoveryHashes(scopedUser())).isEqualTo(originalHashes);
     assertThat(String.valueOf(missingProof.getBody())).doesNotContain("recoveryCodes");
 
     ResponseEntity<Map> invalidProof =
         postWithBearer(
-            "/api/v1/auth/mfa/recovery-codes/regenerate", Map.of("code", "abc123"), token);
+            "/api/v1/auth/mfa/recovery-codes/regenerate",
+            Map.of("code", "abc123"),
+            postActivationToken);
     assertThat(invalidProof.getStatusCode()).isIn(HttpStatus.BAD_REQUEST, HttpStatus.UNAUTHORIZED);
     assertThat(unusedRecoveryHashes(scopedUser())).isEqualTo(originalHashes);
     assertThat(String.valueOf(invalidProof.getBody())).doesNotContain("recoveryCodes");
 
     ResponseEntity<Map> regenerate =
         postWithBearer(
-            "/api/v1/auth/mfa/recovery-codes/regenerate", Map.of("code", activationCode), token);
+            "/api/v1/auth/mfa/recovery-codes/regenerate",
+            Map.of("code", activationCode),
+            postActivationToken);
     assertThat(regenerate.getStatusCode()).isEqualTo(HttpStatus.OK);
     Map<String, Object> regenerateData = apiData(regenerate);
     assertThat(regenerateData.get("enabled")).isEqualTo(Boolean.TRUE);
@@ -212,6 +221,92 @@ public class MfaControllerIT extends AbstractIntegrationTest {
 
     ResponseEntity<Map> regeneratedRecoveryCodeLogin = login(null, regeneratedCodes.getFirst());
     assertThat(regeneratedRecoveryCodeLogin.getStatusCode()).isEqualTo(HttpStatus.OK);
+  }
+
+  @Test
+  void enabled_user_setup_is_rejected_without_downgrading_mfa_state() {
+    String token = obtainAccessToken(null, null);
+    SetupPayload setup = startEnrollment(token);
+    String activationCode = TotpTestUtils.generateCurrentCode(setup.secret());
+    assertThat(
+            postWithBearer("/api/v1/auth/mfa/activate", Map.of("code", activationCode), token)
+                .getStatusCode())
+        .isEqualTo(HttpStatus.OK);
+    LoginTokens postActivation =
+        obtainTokens(TotpTestUtils.generateCurrentCode(setup.secret()), null);
+
+    UserAccount enabledUser = scopedUser();
+    String encryptedSecret = enabledUser.getMfaSecret();
+    List<String> originalRecoveryHashes = unusedRecoveryHashes(enabledUser);
+
+    ResponseEntity<Map> setupWhileEnabled =
+        postWithBearer("/api/v1/auth/mfa/setup", null, postActivation.accessToken());
+
+    assertThat(setupWhileEnabled.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    UserAccount afterRejectedSetup = scopedUser();
+    assertThat(afterRejectedSetup.isMfaEnabled()).isTrue();
+    assertThat(afterRejectedSetup.getMfaSecret()).isEqualTo(encryptedSecret);
+    assertThat(unusedRecoveryHashes(afterRejectedSetup)).isEqualTo(originalRecoveryHashes);
+    assertMfaChallenge(login(null, null));
+  }
+
+  @Test
+  void mfa_activation_and_disable_revoke_pre_change_access_and_refresh_tokens() {
+    LoginTokens setupSession = obtainTokens(null, null);
+    SetupPayload setup = startEnrollment(setupSession.accessToken());
+    String activationCode = TotpTestUtils.generateCurrentCode(setup.secret());
+
+    assertThat(
+            postWithBearer(
+                    "/api/v1/auth/mfa/activate",
+                    Map.of("code", activationCode),
+                    setupSession.accessToken())
+                .getStatusCode())
+        .isEqualTo(HttpStatus.OK);
+
+    assertAuthenticatedTokenDenied(getWithBearer("/api/v1/auth/me", setupSession.accessToken()));
+    assertRefreshDenied(refresh(setupSession.refreshToken()));
+
+    LoginTokens disableSession =
+        obtainTokens(TotpTestUtils.generateCurrentCode(setup.secret()), null);
+    assertThat(
+            postWithBearer(
+                    "/api/v1/auth/mfa/disable",
+                    Map.of("code", TotpTestUtils.generateCurrentCode(setup.secret())),
+                    disableSession.accessToken())
+                .getStatusCode())
+        .isEqualTo(HttpStatus.OK);
+
+    assertAuthenticatedTokenDenied(getWithBearer("/api/v1/auth/me", disableSession.accessToken()));
+    assertRefreshDenied(refresh(disableSession.refreshToken()));
+    assertThat(login(null, null).getStatusCode()).isEqualTo(HttpStatus.OK);
+  }
+
+  @Test
+  void unsupported_factor_type_payloads_do_not_bypass_totp_only_policy() {
+    String token = obtainAccessToken(null, null);
+    SetupPayload setup = startEnrollment(token);
+    String activationCode = TotpTestUtils.generateCurrentCode(setup.secret());
+
+    ResponseEntity<Map> smsActivation =
+        postWithBearer(
+            "/api/v1/auth/mfa/activate",
+            Map.of("code", activationCode, "factorType", "sms"),
+            token);
+    assertThat(smsActivation.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(scopedUser().isMfaEnabled()).isFalse();
+
+    assertThat(
+            postWithBearer("/api/v1/auth/mfa/activate", Map.of("code", activationCode), token)
+                .getStatusCode())
+        .isEqualTo(HttpStatus.OK);
+
+    ResponseEntity<Map> smsLogin =
+        login(
+            Map.of(
+                "mfaCode", TotpTestUtils.generateCurrentCode(setup.secret()), "factorType", "sms"));
+    assertThat(smsLogin.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(String.valueOf(smsLogin.getBody())).doesNotContain("accessToken", "refreshToken");
   }
 
   @Test
@@ -285,6 +380,15 @@ public class MfaControllerIT extends AbstractIntegrationTest {
     if (recoveryCode != null) {
       payload.put("recoveryCode", recoveryCode);
     }
+    return rest.postForEntity("/api/v1/auth/login", payload, Map.class);
+  }
+
+  private ResponseEntity<Map> login(Map<String, ?> mfaFields) {
+    Map<String, Object> payload = new HashMap<>();
+    payload.put("email", USER_EMAIL);
+    payload.put("password", USER_PASSWORD);
+    payload.put("companyCode", COMPANY_CODE);
+    payload.putAll(mfaFields);
     return rest.postForEntity("/api/v1/auth/login", payload, Map.class);
   }
 

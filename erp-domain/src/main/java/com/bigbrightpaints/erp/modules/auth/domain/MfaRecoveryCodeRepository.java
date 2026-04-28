@@ -5,11 +5,14 @@ import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
+
+import jakarta.persistence.LockModeType;
 
 /**
  * Repository for MFA recovery code operations.
@@ -22,6 +25,13 @@ public interface MfaRecoveryCodeRepository extends JpaRepository<MfaRecoveryCode
    */
   @Query("SELECT rc FROM MfaRecoveryCode rc WHERE rc.user = :user AND rc.usedAt IS NULL")
   List<MfaRecoveryCode> findUnusedByUser(@Param("user") UserAccount user);
+
+  /**
+   * Find all unused recovery codes for a user while holding row locks for verifier consumption.
+   */
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
+  @Query("SELECT rc FROM MfaRecoveryCode rc WHERE rc.user = :user AND rc.usedAt IS NULL")
+  List<MfaRecoveryCode> findUnusedByUserForUpdate(@Param("user") UserAccount user);
 
   /**
    * Find a specific unused recovery code by user and hash.

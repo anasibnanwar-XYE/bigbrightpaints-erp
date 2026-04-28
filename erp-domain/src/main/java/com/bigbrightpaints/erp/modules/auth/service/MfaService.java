@@ -104,6 +104,11 @@ public class MfaService {
 
   @Transactional
   public MfaEnrollment beginEnrollment(UserAccount user) {
+    if (user == null || user.isMfaEnabled()) {
+      throw new ApplicationException(
+          ErrorCode.VALIDATION_INVALID_INPUT,
+          "MFA is already enabled; use a verified MFA profile-change flow");
+    }
     String secret = generateSecret();
     List<String> recoveryCodes = generateRecoveryCodes();
     // Encrypt the MFA secret before storing
@@ -125,6 +130,7 @@ public class MfaService {
     user.setMfaEnabled(true);
     userAccountRepository.save(user);
     iamCanonicalStorageService.syncUser(user);
+    revokeActiveSessions(user);
   }
 
   @Transactional
@@ -146,6 +152,7 @@ public class MfaService {
     clearMfa(user);
     userAccountRepository.save(user);
     iamCanonicalStorageService.syncUser(user);
+    revokeActiveSessions(user);
   }
 
   @Transactional
@@ -240,7 +247,7 @@ public class MfaService {
     if (!StringUtils.hasText(candidate)) {
       return false;
     }
-    List<MfaRecoveryCode> codes = mfaRecoveryCodeRepository.findUnusedByUser(user);
+    List<MfaRecoveryCode> codes = mfaRecoveryCodeRepository.findUnusedByUserForUpdate(user);
     for (MfaRecoveryCode code : codes) {
       if (passwordEncoder.matches(candidate, code.getCodeHash())) {
         code.markAsUsed();

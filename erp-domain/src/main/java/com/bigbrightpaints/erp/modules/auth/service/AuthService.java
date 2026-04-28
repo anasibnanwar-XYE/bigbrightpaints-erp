@@ -108,7 +108,18 @@ public class AuthService {
         tenantRuntimeRequestAdmissionService.enforceAuthOperationAllowed(
             company.getCode(), user.getEmail(), "LOGIN");
       }
+      boolean mfaChallengeActive = user.isMfaEnabled();
       mfaService.verifyDuringLogin(user, request.mfaCode(), request.recoveryCode());
+      if (mfaChallengeActive) {
+        Map<String, String> mfaMetadata = new HashMap<>();
+        mfaMetadata.put("operation", "mfa_login_verification");
+        mfaMetadata.put("companyCode", scopeCode);
+        if (user.getPublicId() != null) {
+          mfaMetadata.put("actorPublicId", user.getPublicId().toString());
+        }
+        auditService.logAuthSuccess(
+            AuditEvent.MFA_SUCCESS, user.getEmail(), scopeCode, mfaMetadata);
+      }
       resetLock(user);
       Map<String, String> successMetadata = new HashMap<>();
       successMetadata.put("companyCode", scopeCode);
@@ -141,6 +152,14 @@ public class AuthService {
     } catch (RuntimeException ex) {
       if (user != null && isMfaFailure(ex) && !failedSecretValidation) {
         registerFailure(user);
+        Map<String, String> mfaFailureMetadata = new HashMap<>();
+        mfaFailureMetadata.put("operation", "mfa_login_verification");
+        mfaFailureMetadata.put("reason", "invalid_or_missing_mfa_verifier");
+        if (user.getPublicId() != null) {
+          mfaFailureMetadata.put("actorPublicId", user.getPublicId().toString());
+        }
+        auditService.logAuthFailure(
+            AuditEvent.MFA_FAILURE, user.getEmail(), user.getAuthScopeCode(), mfaFailureMetadata);
       }
       String reason = ex.getMessage();
       if (reason == null || reason.isBlank()) {

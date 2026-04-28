@@ -155,6 +155,8 @@ public class AuthAuditIT extends AbstractIntegrationTest {
                 bearerJson(token, companyCode)),
             Map.class);
     assertThat(activateResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+    String postActivationToken =
+        loginToken(email, PASSWORD, companyCode, TotpTestUtils.generateCurrentCode(secret));
 
     ResponseEntity<Map> disableResp =
         rest.exchange(
@@ -162,7 +164,7 @@ public class AuthAuditIT extends AbstractIntegrationTest {
             HttpMethod.POST,
             new HttpEntity<>(
                 Map.of("code", TotpTestUtils.generateCurrentCode(secret)),
-                bearerJson(token, companyCode)),
+                bearerJson(postActivationToken, companyCode)),
             Map.class);
     assertThat(disableResp.getStatusCode()).isEqualTo(HttpStatus.OK);
 
@@ -175,11 +177,18 @@ public class AuthAuditIT extends AbstractIntegrationTest {
   }
 
   private String loginToken(String email, String password, String companyCode) {
-    ResponseEntity<Map> response =
-        rest.postForEntity(
-            "/api/v1/auth/login",
-            Map.of("email", email, "password", password, "companyCode", companyCode),
-            Map.class);
+    return loginToken(email, password, companyCode, null);
+  }
+
+  private String loginToken(String email, String password, String companyCode, String mfaCode) {
+    Map<String, Object> payload = new java.util.LinkedHashMap<>();
+    payload.put("email", email);
+    payload.put("password", password);
+    payload.put("companyCode", companyCode);
+    if (mfaCode != null) {
+      payload.put("mfaCode", mfaCode);
+    }
+    ResponseEntity<Map> response = rest.postForEntity("/api/v1/auth/login", payload, Map.class);
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
     assertThat(response.getBody()).isNotNull();
     return response.getBody().get("accessToken").toString();
