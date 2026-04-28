@@ -6,6 +6,11 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -208,6 +213,89 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
             new HttpEntity<>(invalidPayload, superAdminHeaders),
             Map.class);
     assertThat(invalidResponse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+  }
+
+  @Test
+  void addClientNearConcurrentDuplicateCreatesExactlyOneTenantAndOwner() throws Exception {
+    String superAdminToken = loginToken(SUPER_ADMIN_EMAIL, ROOT_COMPANY_CODE);
+    HttpHeaders superAdminHeaders = headers(superAdminToken, ROOT_COMPANY_CODE);
+    String marker = "M4DUP" + System.nanoTime();
+    String ownerEmail = "owner-" + marker.toLowerCase(Locale.ROOT) + "@example.com";
+    Map<String, Object> payload =
+        Map.of(
+            "company",
+            Map.of(
+                "name",
+                "M4 Duplicate Client",
+                "code",
+                marker,
+                "timezone",
+                "Asia/Kolkata",
+                "stateCode",
+                "KA",
+                "baseCurrency",
+                "INR",
+                "defaultGstRate",
+                18,
+                "coaTemplateCode",
+                "SME"),
+            "owner",
+            Map.of("email", ownerEmail, "displayName", "Owner"),
+            "commercial",
+            Map.of(
+                "planId",
+                "TRIAL",
+                "billingStatus",
+                "MANUAL",
+                "trialDays",
+                14,
+                "supportTier",
+                "STANDARD"),
+            "quotas",
+            Map.of(
+                "maxActiveUsers",
+                10,
+                "maxApiRequests",
+                10000,
+                "maxStorageBytes",
+                1073741824,
+                "maxConcurrentRequests",
+                8,
+                "softLimitEnabled",
+                false,
+                "hardLimitEnabled",
+                true),
+            "modules",
+            Map.of("enabled", List.of("ACCOUNTING", "SALES")),
+            "support",
+            Map.of("notes", "safe duplicate note", "tags", List.of("M4")),
+            "createMode",
+            "DRAFT");
+    Callable<ResponseEntity<Map>> createCall =
+        () ->
+            rest.exchange(
+                "/api/v1/superadmin/tenants",
+                HttpMethod.POST,
+                new HttpEntity<>(payload, superAdminHeaders),
+                Map.class);
+    ExecutorService executor = Executors.newFixedThreadPool(2);
+    try {
+      List<Future<ResponseEntity<Map>>> futures =
+          executor.invokeAll(List.of(createCall, createCall));
+      ResponseEntity<Map> first = futures.get(0).get();
+      ResponseEntity<Map> second = futures.get(1).get();
+
+      assertThat(List.of(first.getStatusCode(), second.getStatusCode()))
+          .containsExactlyInAnyOrder(HttpStatus.CREATED, HttpStatus.CONFLICT);
+      assertThat(countRows("select count(*) from companies where lower(code) = lower(?)", marker))
+          .isOne();
+      assertThat(
+              countRows("select count(*) from app_users where lower(email) = lower(?)", ownerEmail))
+          .isOne();
+    } finally {
+      executor.shutdownNow();
+      assertThat(executor.awaitTermination(5, TimeUnit.SECONDS)).isTrue();
+    }
   }
 
   @Test
@@ -685,5 +773,9 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
   private String readLifecycleState(Long companyId) {
     return jdbcTemplate.queryForObject(
         "select lifecycle_state from companies where id = ?", String.class, companyId);
+  }
+
+  private Long countRows(String sql, String value) {
+    return jdbcTemplate.queryForObject(sql, Long.class, value);
   }
 }

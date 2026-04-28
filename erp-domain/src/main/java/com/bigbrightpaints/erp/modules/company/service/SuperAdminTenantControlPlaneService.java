@@ -17,19 +17,27 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.locks.ReentrantLock;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.StringUtils;
 
 import com.bigbrightpaints.erp.core.audit.AuditEvent;
 import com.bigbrightpaints.erp.core.audit.AuditLog;
 import com.bigbrightpaints.erp.core.audit.AuditLogRepository;
 import com.bigbrightpaints.erp.core.audit.AuditService;
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.notification.EmailService;
 import com.bigbrightpaints.erp.core.security.TokenBlacklistService;
 import com.bigbrightpaints.erp.core.util.CompanyTime;
@@ -60,6 +68,27 @@ public class SuperAdminTenantControlPlaneService {
 
   private static final SecureRandom ACTIVATION_RANDOM = new SecureRandom();
   private static final String ACTIVATION_TOKEN_SCOPE = "tenant-activation:v1";
+  private static final ConcurrentMap<String, ReentrantLock> ADD_CLIENT_CREATE_LOCKS =
+      new ConcurrentHashMap<>();
+
+  private static final Set<String> ADD_CLIENT_PLAN_IDS =
+      Set.of("TRIAL", "STARTER", "GROWTH", "ENTERPRISE", "CUSTOM");
+  private static final Set<String> ADD_CLIENT_BILLING_STATUSES =
+      Set.of("TRIAL", "MANUAL", "PAID", "DUE");
+  private static final Set<String> ADD_CLIENT_SUPPORT_TIERS =
+      Set.of("STANDARD", "PRIORITY", "DEDICATED");
+  private static final Set<String> ADD_CLIENT_MODULES =
+      Set.of(
+          "ACCOUNTING",
+          "SALES",
+          "INVENTORY",
+          "PURCHASING",
+          "PRODUCTION",
+          "HR",
+          "REPORTS",
+          "PORTAL");
+  private static final Set<String> ADD_CLIENT_COA_TEMPLATES =
+      Set.of("SME", "DISTRIBUTION", "MANUFACTURING");
 
   private static final Set<String> CANONICAL_TENANT_STATUSES =
       Set.of(
@@ -320,74 +349,98 @@ public class SuperAdminTenantControlPlaneService {
       throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
           "Add Client payload is required");
     }
+    validateCreatePayloadShape(request);
     String companyCode = normalizeCreateCode(request.company().code());
     String ownerEmail = normalizeRequiredEmail(request.owner().email(), "owner.email");
-    if (companyRepository.findByCodeIgnoreCase(companyCode).isPresent()) {
-      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
-          "Company code already exists: " + companyCode);
+    validateOwnerEmailFormat(ownerEmail);
+    validateCreatePayloadSemantics(request);
+    List<ReentrantLock> createLocks = acquireAddClientCreateLocks(companyCode, ownerEmail);
+    boolean releaseLocksInFinally = true;
+    try {
+      if (TransactionSynchronizationManager.isSynchronizationActive()) {
+        releaseLocksInFinally = false;
+        TransactionSynchronizationManager.registerSynchronization(
+            new TransactionSynchronization() {
+              @Override
+              public void afterCompletion(int status) {
+                releaseAddClientCreateLocks(createLocks);
+              }
+            });
+      }
+      if (companyRepository.findByCodeIgnoreCase(companyCode).isPresent()) {
+        throw duplicateConflict("Company code already exists", "company.code");
+      }
+      if (userAccountRepository.existsByEmailIgnoreCase(ownerEmail)) {
+        throw duplicateConflict("Owner email already exists", "owner.email");
+      }
+
+      Company company = new Company();
+      company.setName(request.company().name().trim());
+      company.setCode(companyCode);
+      company.setTimezone(request.company().timezone().trim());
+      company.setStateCode(normalizeOptionalUpper(request.company().stateCode()));
+      company.setBaseCurrency(request.company().baseCurrency().trim().toUpperCase(Locale.ROOT));
+      company.setDefaultGstRate(request.company().defaultGstRate());
+      company.setOnboardingCoaTemplateCode(
+          normalizeOptionalUpper(request.company().coaTemplateCode()));
+      company.setOnboardingAdminEmail(ownerEmail);
+      company.setCommercialPlanId(request.commercial().planId().trim().toUpperCase(Locale.ROOT));
+      company.setCommercialBillingStatus(
+          request.commercial().billingStatus().trim().toUpperCase(Locale.ROOT));
+      company.setCommercialSupportTier(
+          request.commercial().supportTier().trim().toUpperCase(Locale.ROOT));
+      company.setCommercialTrialEndsAt(resolveTrialEndsAt(request.commercial().trialDays()));
+      company.setQuotaMaxActiveUsers(request.quotas().maxActiveUsers());
+      company.setQuotaMaxApiRequests(request.quotas().maxApiRequests());
+      company.setQuotaMaxStorageBytes(request.quotas().maxStorageBytes());
+      company.setQuotaMaxConcurrentRequests(request.quotas().maxConcurrentRequests());
+      company.setQuotaSoftLimitEnabled(request.quotas().softLimitEnabled());
+      company.setQuotaHardLimitEnabled(request.quotas().hardLimitEnabled());
+      company.setEnabledModules(normalizeModules(request.modules().enabled()));
+      company.setSupportNotes(request.support().notes());
+      company.setSupportTags(request.support().tags());
+      company.setActivationStatus("NOT_SENT");
+      Company savedCompany = companyRepository.saveAndFlush(company);
+
+      UserAccount owner =
+          createPendingOwner(savedCompany, ownerEmail, request.owner().displayName());
+      savedCompany.setMainAdminUserId(owner.getId());
+      savedCompany.setOnboardingAdminUserId(owner.getId());
+
+      ActivationIssue activationIssue = null;
+      if (request.createMode() == SuperAdminAddClientCreateRequest.CreateMode.SEND_ACTIVATION) {
+        activationIssue = issueActivation(savedCompany, owner);
+        savedCompany.setOnboardingCredentialsEmailedAt(activationIssue.sentAt());
+        savedCompany.setActivationStatus("SENT");
+        savedCompany.setActivationSentAt(activationIssue.sentAt());
+        savedCompany.setActivationExpiresAt(activationIssue.expiresAt());
+      }
+      companyRepository.saveAndFlush(savedCompany);
+
+      Long auditEventId =
+          logAuditRequired(
+              savedCompany,
+              request.createMode() == SuperAdminAddClientCreateRequest.CreateMode.DRAFT
+                  ? "tenant-created-draft"
+                  : "tenant-created-pending-activation",
+              Map.of(
+                  "createMode",
+                  request.createMode().name(),
+                  "activationStatus",
+                  savedCompany.getActivationStatus(),
+                  "ownerUserId",
+                  String.valueOf(owner.getId()),
+                  "planId",
+                  savedCompany.getCommercialPlanId()));
+
+      return addClientResponse(savedCompany, owner, activationIssue, auditEventId);
+    } catch (DataIntegrityViolationException ex) {
+      throw duplicateConflict("Duplicate Add Client tenant code or owner email", "createRequest");
+    } finally {
+      if (releaseLocksInFinally) {
+        releaseAddClientCreateLocks(createLocks);
+      }
     }
-    if (userAccountRepository.existsByEmailIgnoreCaseAndAuthScopeCodeIgnoreCase(
-        ownerEmail, companyCode)) {
-      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
-          "Owner email already exists for company: " + companyCode);
-    }
-
-    Company company = new Company();
-    company.setName(request.company().name().trim());
-    company.setCode(companyCode);
-    company.setTimezone(request.company().timezone().trim());
-    company.setStateCode(request.company().stateCode());
-    company.setBaseCurrency(request.company().baseCurrency());
-    company.setDefaultGstRate(request.company().defaultGstRate());
-    company.setOnboardingCoaTemplateCode(request.company().coaTemplateCode());
-    company.setOnboardingAdminEmail(ownerEmail);
-    company.setCommercialPlanId(request.commercial().planId());
-    company.setCommercialBillingStatus(request.commercial().billingStatus());
-    company.setCommercialSupportTier(request.commercial().supportTier());
-    company.setCommercialTrialEndsAt(resolveTrialEndsAt(request.commercial().trialDays()));
-    company.setQuotaMaxActiveUsers(request.quotas().maxActiveUsers());
-    company.setQuotaMaxApiRequests(request.quotas().maxApiRequests());
-    company.setQuotaMaxStorageBytes(request.quotas().maxStorageBytes());
-    company.setQuotaMaxConcurrentRequests(request.quotas().maxConcurrentRequests());
-    company.setQuotaSoftLimitEnabled(request.quotas().softLimitEnabled());
-    company.setQuotaHardLimitEnabled(request.quotas().hardLimitEnabled());
-    company.setEnabledModules(request.modules().enabled());
-    company.setSupportNotes(request.support().notes());
-    company.setSupportTags(request.support().tags());
-    company.setActivationStatus("NOT_SENT");
-    Company savedCompany = companyRepository.saveAndFlush(company);
-
-    UserAccount owner = createPendingOwner(savedCompany, ownerEmail, request.owner().displayName());
-    savedCompany.setMainAdminUserId(owner.getId());
-    savedCompany.setOnboardingAdminUserId(owner.getId());
-
-    ActivationIssue activationIssue = null;
-    if (request.createMode() == SuperAdminAddClientCreateRequest.CreateMode.SEND_ACTIVATION) {
-      activationIssue = issueActivation(savedCompany, owner);
-      savedCompany.setOnboardingCredentialsEmailedAt(activationIssue.sentAt());
-      savedCompany.setActivationStatus("SENT");
-      savedCompany.setActivationSentAt(activationIssue.sentAt());
-      savedCompany.setActivationExpiresAt(activationIssue.expiresAt());
-    }
-    companyRepository.saveAndFlush(savedCompany);
-
-    Long auditEventId =
-        logAuditRequired(
-            savedCompany,
-            request.createMode() == SuperAdminAddClientCreateRequest.CreateMode.DRAFT
-                ? "tenant-created-draft"
-                : "tenant-created-pending-activation",
-            Map.of(
-                "createMode",
-                request.createMode().name(),
-                "activationStatus",
-                savedCompany.getActivationStatus(),
-                "ownerUserId",
-                String.valueOf(owner.getId()),
-                "planId",
-                savedCompany.getCommercialPlanId()));
-
-    return addClientResponse(savedCompany, owner, activationIssue, auditEventId);
   }
 
   @Transactional
@@ -936,6 +989,136 @@ public class SuperAdminTenantControlPlaneService {
         "Activation may be sent only after company, owner, and commercial policy metadata are"
             + " COMPLETE; deferred setup categories remain pending until the owner setup"
             + " corridor.");
+  }
+
+  private void validateCreatePayloadShape(SuperAdminAddClientCreateRequest request) {
+    if (request.company() == null) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          "company is required");
+    }
+    if (request.owner() == null) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          "owner is required");
+    }
+    if (request.commercial() == null) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          "commercial is required");
+    }
+    if (request.quotas() == null) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          "quotas is required");
+    }
+    if (request.modules() == null) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          "modules is required");
+    }
+    if (request.support() == null) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          "support is required");
+    }
+    if (request.createMode() == null) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          "createMode is required");
+    }
+  }
+
+  private void validateCreatePayloadSemantics(SuperAdminAddClientCreateRequest request) {
+    requireText(request.company().name(), "company.name");
+    requireText(request.company().timezone(), "company.timezone");
+    requireAllowedUpper(request.company().baseCurrency(), "company.baseCurrency", Set.of("INR"));
+    requireOptionalAllowedUpper(
+        request.company().coaTemplateCode(), "company.coaTemplateCode", ADD_CLIENT_COA_TEMPLATES);
+    requireText(request.owner().displayName(), "owner.displayName");
+    requireAllowedUpper(request.commercial().planId(), "commercial.planId", ADD_CLIENT_PLAN_IDS);
+    requireAllowedUpper(
+        request.commercial().billingStatus(),
+        "commercial.billingStatus",
+        ADD_CLIENT_BILLING_STATUSES);
+    requireAllowedUpper(
+        request.commercial().supportTier(), "commercial.supportTier", ADD_CLIENT_SUPPORT_TIERS);
+    requireNonNegative(request.quotas().maxActiveUsers(), "quotas.maxActiveUsers");
+    requireNonNegative(request.quotas().maxApiRequests(), "quotas.maxApiRequests");
+    requireNonNegative(request.quotas().maxStorageBytes(), "quotas.maxStorageBytes");
+    requireNonNegative(request.quotas().maxConcurrentRequests(), "quotas.maxConcurrentRequests");
+    Set<String> modules = request.modules().enabled();
+    if (modules == null || modules.isEmpty()) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          "modules.enabled must include at least one module");
+    }
+    for (String module : modules) {
+      requireAllowedUpper(module, "modules.enabled", ADD_CLIENT_MODULES);
+    }
+  }
+
+  private List<ReentrantLock> acquireAddClientCreateLocks(String companyCode, String ownerEmail) {
+    List<String> keys =
+        List.of("company:" + companyCode, "owner-email:" + ownerEmail).stream().sorted().toList();
+    List<ReentrantLock> locks = new ArrayList<>();
+    for (String key : keys) {
+      ReentrantLock lock =
+          ADD_CLIENT_CREATE_LOCKS.computeIfAbsent(key, ignored -> new ReentrantLock());
+      lock.lock();
+      locks.add(lock);
+    }
+    return locks;
+  }
+
+  private void releaseAddClientCreateLocks(List<ReentrantLock> locks) {
+    for (int index = locks.size() - 1; index >= 0; index--) {
+      locks.get(index).unlock();
+    }
+  }
+
+  private ApplicationException duplicateConflict(String message, String field) {
+    return new ApplicationException(ErrorCode.BUSINESS_DUPLICATE_ENTRY, message)
+        .withDetail("field", field);
+  }
+
+  private void requireText(String value, String fieldName) {
+    if (!StringUtils.hasText(value)) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          fieldName + " is required");
+    }
+  }
+
+  private void requireAllowedUpper(String value, String fieldName, Set<String> allowed) {
+    requireText(value, fieldName);
+    String normalized = value.trim().toUpperCase(Locale.ROOT);
+    if (!allowed.contains(normalized)) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          fieldName + " must be one of " + allowed);
+    }
+  }
+
+  private void requireOptionalAllowedUpper(String value, String fieldName, Set<String> allowed) {
+    if (!StringUtils.hasText(value)) {
+      return;
+    }
+    requireAllowedUpper(value, fieldName, allowed);
+  }
+
+  private void requireNonNegative(Long value, String fieldName) {
+    if (value != null && value < 0) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          fieldName + " must be greater than or equal to 0");
+    }
+  }
+
+  private void validateOwnerEmailFormat(String ownerEmail) {
+    if (!ownerEmail.matches("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$")) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          "owner.email must be a valid email address");
+    }
+  }
+
+  private Set<String> normalizeModules(Set<String> modules) {
+    return modules.stream()
+        .map(module -> module.trim().toUpperCase(Locale.ROOT))
+        .collect(java.util.stream.Collectors.toSet());
+  }
+
+  private String normalizeOptionalUpper(String value) {
+    return StringUtils.hasText(value) ? value.trim().toUpperCase(Locale.ROOT) : value;
   }
 
   private Instant resolveTrialEndsAt(Integer trialDays) {

@@ -33,6 +33,8 @@ import com.bigbrightpaints.erp.core.audit.AuditEvent;
 import com.bigbrightpaints.erp.core.audit.AuditLog;
 import com.bigbrightpaints.erp.core.audit.AuditLogRepository;
 import com.bigbrightpaints.erp.core.audit.AuditService;
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.notification.EmailService;
 import com.bigbrightpaints.erp.core.security.TokenBlacklistService;
 import com.bigbrightpaints.erp.modules.auth.domain.PasswordResetTokenRepository;
@@ -198,9 +200,7 @@ class SuperAdminTenantControlPlaneServiceTest {
     Role adminRole = role("ROLE_ADMIN");
     Company savedCompany = company(41L, "ACME-M4");
     when(companyRepository.findByCodeIgnoreCase("ACME-M4")).thenReturn(Optional.empty());
-    when(userAccountRepository.existsByEmailIgnoreCaseAndAuthScopeCodeIgnoreCase(
-            "owner@example.com", "ACME-M4"))
-        .thenReturn(false);
+    when(userAccountRepository.existsByEmailIgnoreCase("owner@example.com")).thenReturn(false);
     when(roleRepository.findByName("ROLE_ADMIN")).thenReturn(Optional.of(adminRole));
     when(passwordEncoder.encode(any(String.class))).thenReturn("encoded-pending-password");
     when(companyRepository.saveAndFlush(any(Company.class)))
@@ -247,9 +247,7 @@ class SuperAdminTenantControlPlaneServiceTest {
   void createAddClient_sendActivationStoresDigestOnlyTokenAndSendsOneEmail() {
     Role adminRole = role("ROLE_ADMIN");
     when(companyRepository.findByCodeIgnoreCase("ACME-M4")).thenReturn(Optional.empty());
-    when(userAccountRepository.existsByEmailIgnoreCaseAndAuthScopeCodeIgnoreCase(
-            "owner@example.com", "ACME-M4"))
-        .thenReturn(false);
+    when(userAccountRepository.existsByEmailIgnoreCase("owner@example.com")).thenReturn(false);
     when(roleRepository.findByName("ROLE_ADMIN")).thenReturn(Optional.of(adminRole));
     when(passwordEncoder.encode(any(String.class))).thenReturn("encoded-pending-password");
     when(companyRepository.saveAndFlush(any(Company.class)))
@@ -301,6 +299,102 @@ class SuperAdminTenantControlPlaneServiceTest {
             any(),
             any());
     verify(tenantActivationTokenRepository, org.mockito.Mockito.times(2)).saveAndFlush(any());
+  }
+
+  @Test
+  void createAddClient_duplicateCodeIsTrimmedCaseInsensitiveConflictWithoutSideEffects() {
+    Company existing = company(77L, "ACME-M4");
+    when(companyRepository.findByCodeIgnoreCase("ACME-M4")).thenReturn(Optional.of(existing));
+
+    assertThatThrownBy(
+            () ->
+                service.createAddClient(
+                    addClientRequest(
+                        " acme-m4 ",
+                        "fresh-owner@example.com",
+                        "TRIAL",
+                        Set.of("ACCOUNTING"),
+                        SuperAdminAddClientCreateRequest.CreateMode.DRAFT)))
+        .isInstanceOf(ApplicationException.class)
+        .satisfies(
+            ex ->
+                assertThat(((ApplicationException) ex).getErrorCode())
+                    .isEqualTo(ErrorCode.BUSINESS_DUPLICATE_ENTRY))
+        .hasMessageContaining("Company code already exists");
+    verify(companyRepository, never()).saveAndFlush(any());
+    verify(userAccountRepository, never()).saveAndFlush(any());
+    verify(emailService, never())
+        .sendTenantActivationEmailRequired(any(), any(), any(), any(), any(), any());
+  }
+
+  @Test
+  void
+      createAddClient_duplicateOwnerEmailIsGlobalCaseInsensitiveConflictWithoutTenantSideEffects() {
+    when(companyRepository.findByCodeIgnoreCase("NEW-M4")).thenReturn(Optional.empty());
+    when(userAccountRepository.existsByEmailIgnoreCase("owner@example.com")).thenReturn(true);
+
+    assertThatThrownBy(
+            () ->
+                service.createAddClient(
+                    addClientRequest(
+                        "NEW-M4",
+                        " Owner@Example.COM ",
+                        "TRIAL",
+                        Set.of("ACCOUNTING"),
+                        SuperAdminAddClientCreateRequest.CreateMode.SEND_ACTIVATION)))
+        .isInstanceOf(ApplicationException.class)
+        .satisfies(
+            ex ->
+                assertThat(((ApplicationException) ex).getErrorCode())
+                    .isEqualTo(ErrorCode.BUSINESS_DUPLICATE_ENTRY))
+        .hasMessageContaining("Owner email already exists");
+    verify(companyRepository, never()).saveAndFlush(any());
+    verify(userAccountRepository, never()).saveAndFlush(any());
+    verify(tenantActivationTokenRepository, never()).saveAndFlush(any());
+    verify(emailService, never())
+        .sendTenantActivationEmailRequired(any(), any(), any(), any(), any(), any());
+  }
+
+  @Test
+  void createAddClient_invalidCommercialOrModuleInputsFailBeforeAnyMutation() {
+    assertThatThrownBy(
+            () ->
+                service.createAddClient(
+                    addClientRequest(
+                        "INVALID-M4",
+                        "not-an-email",
+                        "TRIAL",
+                        Set.of("ACCOUNTING"),
+                        SuperAdminAddClientCreateRequest.CreateMode.DRAFT)))
+        .hasMessageContaining("owner.email must be a valid email address");
+
+    assertThatThrownBy(
+            () ->
+                service.createAddClient(
+                    addClientRequest(
+                        "INVALID-M4",
+                        "invalid-owner@example.com",
+                        "LEGACY",
+                        Set.of("ACCOUNTING"),
+                        SuperAdminAddClientCreateRequest.CreateMode.DRAFT)))
+        .hasMessageContaining("commercial.planId must be one of");
+
+    assertThatThrownBy(
+            () ->
+                service.createAddClient(
+                    addClientRequest(
+                        "INVALID-M4",
+                        "invalid-owner@example.com",
+                        "TRIAL",
+                        Set.of("WAREHOUSE"),
+                        SuperAdminAddClientCreateRequest.CreateMode.SEND_ACTIVATION)))
+        .hasMessageContaining("modules.enabled must be one of");
+
+    verify(companyRepository, never()).saveAndFlush(any());
+    verify(userAccountRepository, never()).saveAndFlush(any());
+    verify(tenantActivationTokenRepository, never()).saveAndFlush(any());
+    verify(emailService, never())
+        .sendTenantActivationEmailRequired(any(), any(), any(), any(), any(), any());
   }
 
   @Test
@@ -1058,20 +1152,23 @@ class SuperAdminTenantControlPlaneServiceTest {
 
   private SuperAdminAddClientCreateRequest addClientRequest(
       SuperAdminAddClientCreateRequest.CreateMode createMode) {
+    return addClientRequest(
+        "ACME-M4", "owner@example.com", "TRIAL", Set.of("ACCOUNTING", "SALES"), createMode);
+  }
+
+  private SuperAdminAddClientCreateRequest addClientRequest(
+      String code,
+      String ownerEmail,
+      String planId,
+      Set<String> modules,
+      SuperAdminAddClientCreateRequest.CreateMode createMode) {
     return new SuperAdminAddClientCreateRequest(
         new SuperAdminAddClientCreateRequest.Company(
-            "Acme M4",
-            "ACME-M4",
-            "Asia/Kolkata",
-            "KA",
-            "INR",
-            new java.math.BigDecimal("18.00"),
-            "SME"),
-        new SuperAdminAddClientCreateRequest.Owner(
-            "owner@example.com", "Owner Example", "+15550000000"),
-        new SuperAdminAddClientCreateRequest.Commercial("TRIAL", "MANUAL", 14, "STANDARD"),
+            "Acme M4", code, "Asia/Kolkata", "KA", "INR", new java.math.BigDecimal("18.00"), "SME"),
+        new SuperAdminAddClientCreateRequest.Owner(ownerEmail, "Owner Example", "+15550000000"),
+        new SuperAdminAddClientCreateRequest.Commercial(planId, "MANUAL", 14, "STANDARD"),
         new SuperAdminAddClientCreateRequest.Quotas(10L, 10000L, 1073741824L, 8L, false, true),
-        new SuperAdminAddClientCreateRequest.Modules(Set.of("ACCOUNTING", "SALES")),
+        new SuperAdminAddClientCreateRequest.Modules(modules),
         new SuperAdminAddClientCreateRequest.Support("safe platform note", Set.of("M4")),
         createMode);
   }
