@@ -28,6 +28,10 @@ Core security infrastructure in `core/security/` owns the **request-pipeline enf
 | POST | `/api/v1/auth/refresh-token` | Public | Refresh-token rotation, new access/refresh pair |
 | POST | `/api/v1/auth/logout` | Authenticated | Revoke sessions and blacklist access token |
 | GET | `/api/v1/auth/me` | Authenticated | Current user identity, roles, permissions, must-change-password flag |
+| PATCH | `/api/v1/auth/me/profile` | Authenticated | Self-service profile display fields only |
+| PATCH | `/api/v1/auth/me/contact` | Authenticated | Self-service secondary contact fields only |
+| GET | `/api/v1/auth/me/security` | Authenticated | Self-service MFA/password/session summary |
+| GET | `/api/v1/auth/me/security-events` | Authenticated | Self-service security history, paginated and redacted |
 | POST | `/api/v1/auth/password/change` | Authenticated | Authenticated password change (respects must-change-password skip) |
 | POST | `/api/v1/auth/password/forgot` | Public | Password-reset email dispatch (rate-limited, scope-aware) |
 | POST | `/api/v1/auth/password/reset` | Public | Token-based password reset with confirmation |
@@ -227,6 +231,23 @@ Both `MfaRequiredException` and `InvalidMfaException` count as failed login atte
 - **Account lockout** (5 failed attempts): revokes all active tokens + refresh tokens.
 - **Admin force-logout** (`SuperAdminController`): revokes all user tokens + refresh tokens.
 - **Admin force-reset-password**: revokes all user tokens + refresh tokens.
+
+## My Account Security History
+
+`GET /api/v1/auth/me/security-events` returns the current user's security
+history as `ApiResponse<PageResponse<SelfSecurityEvent>>`. Query parameters:
+
+- `type` filters event types before SQL ordering and pagination. `SESSION`
+  includes session, token, logout, and login-success events; other values match
+  event-type prefixes.
+- `page` is zero-based and defaults to `0`.
+- `size` defaults to `50` and is clamped to `1..100`; `limit` is accepted as a
+  size alias when `size` is omitted.
+
+Rows are ordered deterministically by `occurred_at desc, id desc`, scoped by the
+authenticated account's stable public subject and auth scope, and expose only
+privacy-safe fields. Self rows omit actor IDs, target user IDs, session IDs,
+token/reset/MFA/recovery-code/hash material, and unrelated tenant/user data.
 
 ### Revocation Checking
 

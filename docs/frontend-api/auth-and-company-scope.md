@@ -14,6 +14,7 @@ Last reviewed: 2026-04-16
 - `POST /api/v1/auth/mfa/setup`
 - `POST /api/v1/auth/mfa/activate`
 - `POST /api/v1/auth/mfa/disable`
+- `GET /api/v1/auth/me/security-events`
 
 ## Scope Rules
 
@@ -67,6 +68,24 @@ POST /api/v1/auth/logout
 ```
 
 May include refresh token for explicit revocation.
+
+### My Account security history
+
+```text
+GET /api/v1/auth/me/security-events?type=&page=0&size=50
+```
+
+Returns `ApiResponse<PageResponse<SelfSecurityEvent>>` with `content`,
+`page`, `size`, `totalElements`, and `totalPages`. The backend clamps
+`size` to `1..100` and keeps legacy `limit` as a size alias when `size` is
+omitted. Type filtering is applied before ordering and paging; ordering is
+stable by `occurredAt desc, id desc`. Self-history rows are scoped to the
+authenticated stable account/company scope and expose only privacy-safe fields:
+`type`, `eventType`, `companyCode`, `authScopeCode`, `outcome`, `reason`,
+`createdAt`, and allowlisted `metadata` (`operation`, `reason`, `outcome`,
+`action`, `changedFields`). Do not expect actor IDs, target user IDs, session
+IDs, token material, MFA secrets, recovery codes, hashes, or raw user-agent
+fingerprints in this feed.
 
 ## Tenant-admin self/settings integration
 

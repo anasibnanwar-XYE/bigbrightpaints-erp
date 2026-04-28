@@ -43,6 +43,7 @@ import com.bigbrightpaints.erp.modules.auth.web.MeResponse;
 import com.bigbrightpaints.erp.modules.auth.web.RefreshTokenRequest;
 import com.bigbrightpaints.erp.modules.auth.web.ResetPasswordRequest;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
+import com.bigbrightpaints.erp.shared.dto.PageResponse;
 
 import io.jsonwebtoken.Claims;
 import jakarta.servlet.http.HttpServletRequest;
@@ -230,16 +231,20 @@ public class AuthController {
 
   @GetMapping("/me/security-events")
   @PreAuthorize("isAuthenticated()")
-  public ResponseEntity<ApiResponse<List<Map<String, Object>>>> securityEvents(
+  public ResponseEntity<ApiResponse<PageResponse<Map<String, Object>>>> securityEvents(
       @AuthenticationPrincipal UserPrincipal principal,
       @RequestParam(required = false) String type,
-      @RequestParam(defaultValue = "50") int limit) {
+      @RequestParam(defaultValue = "0") int page,
+      @RequestParam(required = false) Integer size,
+      @RequestParam(required = false) Integer limit) {
     if (principal == null) {
       return ResponseEntity.status(401).body(ApiResponse.failure("Unauthenticated"));
     }
+    int requestedSize = size != null ? size : (limit != null ? limit : 50);
     return ResponseEntity.ok(
         ApiResponse.success(
-            iamCanonicalStorageService.listSelfSecurityEvents(principal.getUser(), type, limit)));
+            iamCanonicalStorageService.listSelfSecurityEvents(
+                principal.getUser(), type, page, requestedSize)));
   }
 
   @GetMapping("/sessions")

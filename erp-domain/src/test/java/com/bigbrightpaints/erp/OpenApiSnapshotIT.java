@@ -92,7 +92,7 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
         "get",
         null,
         "200",
-        "#/components/schemas/ApiResponseListMapStringObject");
+        "#/components/schemas/ApiResponsePageResponseMapStringObject");
     assertOperationContract(
         root,
         "/api/v1/auth/password/change",

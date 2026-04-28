@@ -1,5 +1,7 @@
 package com.bigbrightpaints.erp.modules.auth.service;
 
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -22,6 +24,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.bigbrightpaints.erp.modules.auth.domain.RefreshToken;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
+import com.bigbrightpaints.erp.shared.dto.PageResponse;
 
 @Service
 public class IamCanonicalStorageService {
@@ -432,11 +435,68 @@ public class IamCanonicalStorageService {
   @Transactional(readOnly = true)
   public List<Map<String, Object>> listSecurityEvents(
       UserAccount user, String eventTypeFilter, int limit) {
+    return querySecurityEvents(user, eventTypeFilter, 0, limit).content();
+  }
+
+  @Transactional(readOnly = true)
+  public PageResponse<Map<String, Object>> listSelfSecurityEvents(
+      UserAccount user, String eventTypeFilter, int page, int size) {
+    PageResponse<Map<String, Object>> events =
+        querySecurityEvents(user, eventTypeFilter, page, size);
+    return new PageResponse<>(
+        events.content().stream().map(this::toSelfSecurityEvent).toList(),
+        events.totalElements(),
+        events.totalPages(),
+        events.page(),
+        events.size());
+  }
+
+  private PageResponse<Map<String, Object>> querySecurityEvents(
+      UserAccount user, String eventTypeFilter, int page, int size) {
+    int safePage = Math.max(page, 0);
+    int safeSize = Math.max(1, Math.min(size, 100));
     if (user == null || user.getPublicId() == null) {
-      return List.of();
+      return PageResponse.of(List.of(), 0, safePage, safeSize);
     }
     String normalizedScope = normalizeNullableScopeCode(user.getAuthScopeCode());
-    int boundedLimit = Math.max(1, Math.min(limit, 100));
+    String normalizedFilter = normalizeEventTypeFilter(eventTypeFilter);
+    String prefixFilter = normalizedFilter == null ? null : normalizedFilter + "%";
+    long offset = (long) safePage * safeSize;
+    Long total =
+        jdbcTemplate.queryForObject(
+            """
+            select count(*)
+              from iam_security_events e
+              join iam_accounts ia on ia.id = e.account_id
+              left join companies c on c.id = e.company_id
+              left join companies account_company on account_company.id = ia.company_id
+             where ia.public_id = ?
+               and (? is null
+                    or e.auth_scope_code = ?
+                    or ((e.auth_scope_code is null
+                         or btrim(e.auth_scope_code) = ''
+                         or lower(btrim(e.auth_scope_code)) in (
+                            '[redacted]', 'redacted', '<redacted>', '(redacted)',
+                            '[masked]', 'masked', '<masked>', '***', '****'
+                         ))
+                        and ia.auth_scope_code = ?))
+               and (?::varchar is null
+                    or (?::varchar = 'SESSION'
+                        and (upper(e.event_type) like '%SESSION%'
+                             or upper(e.event_type) like 'TOKEN%'
+                             or upper(e.event_type) = 'LOGOUT'
+                             or upper(e.event_type) = 'LOGIN_SUCCESS'))
+                    or (?::varchar <> 'SESSION' and upper(e.event_type) like ?))
+            """,
+            Long.class,
+            user.getPublicId(),
+            normalizedScope,
+            normalizedScope,
+            normalizedScope,
+            normalizedFilter,
+            normalizedFilter,
+            normalizedFilter,
+            prefixFilter);
     List<Map<String, Object>> events =
         jdbcTemplate.query(
             """
@@ -462,72 +522,73 @@ public class IamCanonicalStorageService {
                             '[masked]', 'masked', '<masked>', '***', '****'
                          ))
                         and ia.auth_scope_code = ?))
+               and (?::varchar is null
+                    or (?::varchar = 'SESSION'
+                        and (upper(e.event_type) like '%SESSION%'
+                             or upper(e.event_type) like 'TOKEN%'
+                             or upper(e.event_type) = 'LOGOUT'
+                             or upper(e.event_type) = 'LOGIN_SUCCESS'))
+                    or (?::varchar <> 'SESSION' and upper(e.event_type) like ?))
              order by e.occurred_at desc, e.id desc
              limit ?
+             offset ?
             """,
-            (rs, rowNum) -> {
-              Map<String, String> metadata = fromJsonMap(rs.getString("metadata_json"));
-              Map<String, Object> row = new LinkedHashMap<>();
-              String eventType = rs.getString("event_type");
-              String joinedCompanyCode = rs.getString("company_code");
-              String eventAuthScopeCode = rs.getString("auth_scope_code");
-              String accountAuthScopeCode = rs.getString("account_auth_scope_code");
-              String resolvedAuthScopeCode =
-                  firstSafeScopeEvidence(
-                      metadata.get("authScopeCode"),
-                      metadata.get("scopeCode"),
-                      metadata.get("tenantScope"),
-                      metadata.get("companyCode"),
-                      joinedCompanyCode,
-                      eventAuthScopeCode,
-                      accountAuthScopeCode,
-                      normalizedScope);
-              row.put("type", eventType);
-              row.put("eventType", eventType);
-              row.put("actor", firstNonBlank(metadata.get("actor"), metadata.get("actorUserId")));
-              row.put("targetUserId", firstNonBlank(metadata.get("targetUserId"), null));
-              row.put(
-                  "sessionId",
-                  firstNonBlank(metadata.get("sessionId"), metadata.get("sessionReference")));
-              row.put(
-                  "companyCode",
-                  firstSafeScopeEvidence(
-                      metadata.get("companyCode"),
-                      metadata.get("tenantScope"),
-                      metadata.get("authScopeCode"),
-                      metadata.get("scopeCode"),
-                      joinedCompanyCode,
-                      eventAuthScopeCode,
-                      accountAuthScopeCode,
-                      normalizedScope));
-              row.put("authScopeCode", resolvedAuthScopeCode);
-              row.put("outcome", rs.getString("outcome"));
-              row.put("reason", firstNonBlank(rs.getString("reason"), metadata.get("reason")));
-              Timestamp occurredAt = rs.getTimestamp("occurred_at");
-              row.put("createdAt", occurredAt == null ? null : occurredAt.toInstant().toString());
-              row.put("metadata", securityEventMetadata(metadata));
-              return row;
-            },
+            (rs, rowNum) -> mapSecurityEventRow(rs, normalizedScope),
             user.getPublicId(),
             normalizedScope,
             normalizedScope,
             normalizedScope,
-            boundedLimit);
-    String normalizedFilter = normalizeEventTypeFilter(eventTypeFilter);
-    if (!StringUtils.hasText(normalizedFilter)) {
-      return events;
-    }
-    return events.stream()
-        .filter(row -> matchesEventFilter(String.valueOf(row.get("eventType")), normalizedFilter))
-        .toList();
+            normalizedFilter,
+            normalizedFilter,
+            normalizedFilter,
+            prefixFilter,
+            safeSize,
+            offset);
+    return PageResponse.of(events, total == null ? 0 : total, safePage, safeSize);
   }
 
-  @Transactional(readOnly = true)
-  public List<Map<String, Object>> listSelfSecurityEvents(
-      UserAccount user, String eventTypeFilter, int limit) {
-    return listSecurityEvents(user, eventTypeFilter, limit).stream()
-        .map(this::toSelfSecurityEvent)
-        .toList();
+  private Map<String, Object> mapSecurityEventRow(ResultSet rs, String normalizedScope)
+      throws SQLException {
+    Map<String, String> metadata = fromJsonMap(rs.getString("metadata_json"));
+    Map<String, Object> row = new LinkedHashMap<>();
+    String eventType = rs.getString("event_type");
+    String joinedCompanyCode = rs.getString("company_code");
+    String eventAuthScopeCode = rs.getString("auth_scope_code");
+    String accountAuthScopeCode = rs.getString("account_auth_scope_code");
+    String resolvedAuthScopeCode =
+        firstSafeScopeEvidence(
+            metadata.get("authScopeCode"),
+            metadata.get("scopeCode"),
+            metadata.get("tenantScope"),
+            metadata.get("companyCode"),
+            joinedCompanyCode,
+            eventAuthScopeCode,
+            accountAuthScopeCode,
+            normalizedScope);
+    row.put("type", eventType);
+    row.put("eventType", eventType);
+    row.put("actor", firstNonBlank(metadata.get("actor"), metadata.get("actorUserId")));
+    row.put("targetUserId", firstNonBlank(metadata.get("targetUserId"), null));
+    row.put(
+        "sessionId", firstNonBlank(metadata.get("sessionId"), metadata.get("sessionReference")));
+    row.put(
+        "companyCode",
+        firstSafeScopeEvidence(
+            metadata.get("companyCode"),
+            metadata.get("tenantScope"),
+            metadata.get("authScopeCode"),
+            metadata.get("scopeCode"),
+            joinedCompanyCode,
+            eventAuthScopeCode,
+            accountAuthScopeCode,
+            normalizedScope));
+    row.put("authScopeCode", resolvedAuthScopeCode);
+    row.put("outcome", rs.getString("outcome"));
+    row.put("reason", firstNonBlank(rs.getString("reason"), metadata.get("reason")));
+    Timestamp occurredAt = rs.getTimestamp("occurred_at");
+    row.put("createdAt", occurredAt == null ? null : occurredAt.toInstant().toString());
+    row.put("metadata", securityEventMetadata(metadata));
+    return row;
   }
 
   private void upsertAccount(UserAccount user) {
@@ -874,21 +935,6 @@ public class IamCanonicalStorageService {
     return StringUtils.hasText(eventTypeFilter)
         ? eventTypeFilter.trim().toUpperCase(Locale.ROOT)
         : null;
-  }
-
-  private boolean matchesEventFilter(String eventType, String filter) {
-    if (!StringUtils.hasText(filter)) {
-      return true;
-    }
-    String normalizedEvent =
-        StringUtils.hasText(eventType) ? eventType.toUpperCase(Locale.ROOT) : "";
-    if ("SESSION".equals(filter)) {
-      return normalizedEvent.contains("SESSION")
-          || normalizedEvent.startsWith("TOKEN")
-          || "LOGOUT".equals(normalizedEvent)
-          || "LOGIN_SUCCESS".equals(normalizedEvent);
-    }
-    return normalizedEvent.startsWith(filter);
   }
 
   private Map<String, Object> toSelfSecurityEvent(Map<String, Object> event) {

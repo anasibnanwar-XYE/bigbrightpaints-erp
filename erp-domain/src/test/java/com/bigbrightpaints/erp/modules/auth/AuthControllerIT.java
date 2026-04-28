@@ -417,14 +417,15 @@ public class AuthControllerIT extends AbstractIntegrationTest {
             new HttpEntity<>(bearer(rotatedAccess)),
             Map.class);
     assertThat(eventResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
-    assertThat(responseDataList(eventResponse))
+    List<Map<String, Object>> eventRows = responsePageContent(eventResponse);
+    assertThat(eventRows)
         .anySatisfy(
             row -> {
               assertThat(row.get("companyCode")).isEqualTo(COMPANY_CODE);
               assertThat(row.get("authScopeCode")).isEqualTo(COMPANY_CODE);
               assertThat(row.get("companyCode")).isNotEqualTo("[REDACTED]");
             });
-    assertThat(responseDataList(eventResponse))
+    assertThat(eventRows)
         .filteredOn(row -> "SESSION_PRE_REDACTED_SCOPE_PROBE".equals(row.get("type")))
         .isNotEmpty()
         .anySatisfy(
@@ -766,7 +767,12 @@ public class AuthControllerIT extends AbstractIntegrationTest {
             new HttpEntity<>(bearer(accessToken)),
             Map.class);
     assertThat(historyResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
-    List<Map<String, Object>> events = responseDataList(historyResponse);
+    Map<String, Object> historyPage = responseData(historyResponse);
+    assertThat(historyPage)
+        .containsEntry("page", 0)
+        .containsEntry("size", 10)
+        .containsKeys("content", "totalElements", "totalPages");
+    List<Map<String, Object>> events = responsePageContent(historyResponse);
     assertThat(events)
         .extracting(event -> event.get("type"))
         .contains("SELF_HISTORY_BEFORE_EMAIL_CHANGE", "SELF_HISTORY_AFTER_EMAIL_CHANGE")
@@ -787,6 +793,64 @@ public class AuthControllerIT extends AbstractIntegrationTest {
         .allSatisfy(
             event ->
                 assertThat(event.keySet()).doesNotContain("actor", "targetUserId", "sessionId"));
+  }
+
+  @Test
+  void self_security_history_filters_before_bounded_stable_pagination() {
+    String suffix = Long.toString(System.nanoTime());
+    String email = "history-page-" + suffix + "@bbp.com";
+    String password = "HistoryUser123!";
+    UserAccount pagingUser =
+        dataSeeder.ensureUser(
+            email, password, "History Page User", COMPANY_CODE, List.of("ROLE_SALES"));
+    pagingUser.setMustChangePassword(false);
+    userAccountRepository.save(pagingUser);
+    iamCanonicalStorageService.syncUser(pagingUser);
+    Long iamAccountId =
+        jdbcTemplate.queryForObject(
+            "select id from iam_accounts where public_id = ?",
+            Long.class,
+            pagingUser.getPublicId());
+    Long companyId = pagingUser.getCompany().getId();
+    Instant fixedTime = Instant.parse("2026-04-28T00:00:00Z");
+
+    insertSecurityEvent(iamAccountId, companyId, "PAGE_SESSION_FIRST", fixedTime);
+    insertSecurityEvent(iamAccountId, companyId, "PAGE_SESSION_SECOND", fixedTime);
+    insertSecurityEvent(iamAccountId, companyId, "PAGE_SESSION_THIRD", fixedTime);
+    insertSecurityEvent(iamAccountId, companyId, "PAGE_PROFILE_NEWER_1", fixedTime.plusSeconds(10));
+    insertSecurityEvent(iamAccountId, companyId, "PAGE_PROFILE_NEWER_2", fixedTime.plusSeconds(10));
+
+    String accessToken = login(email, password).get("accessToken").toString();
+    ResponseEntity<Map> firstPageResponse =
+        rest.exchange(
+            "/api/v1/auth/me/security-events?type=PAGE_SESSION&page=0&size=2",
+            HttpMethod.GET,
+            new HttpEntity<>(bearer(accessToken)),
+            Map.class);
+
+    assertThat(firstPageResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    Map<String, Object> page = responseData(firstPageResponse);
+    assertThat(page)
+        .containsEntry("page", 0)
+        .containsEntry("size", 2)
+        .containsEntry("totalElements", 3)
+        .containsEntry("totalPages", 2);
+    List<Map<String, Object>> firstPage = responsePageContent(firstPageResponse);
+    assertThat(firstPage)
+        .extracting(event -> event.get("type"))
+        .containsExactly("PAGE_SESSION_THIRD", "PAGE_SESSION_SECOND");
+    assertThat(firstPageResponse.getBody().toString()).doesNotContain("PAGE_PROFILE_NEWER");
+
+    ResponseEntity<Map> boundedSizeResponse =
+        rest.exchange(
+            "/api/v1/auth/me/security-events?type=PAGE_SESSION&size=500",
+            HttpMethod.GET,
+            new HttpEntity<>(bearer(accessToken)),
+            Map.class);
+    assertThat(boundedSizeResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(responseData(boundedSizeResponse))
+        .containsEntry("size", 100)
+        .containsEntry("totalElements", 3);
   }
 
   @Test
@@ -1092,11 +1156,46 @@ public class AuthControllerIT extends AbstractIntegrationTest {
     return (List<Map<String, Object>>) data;
   }
 
+  private List<Map<String, Object>> responsePageContent(ResponseEntity<Map> response) {
+    Map<String, Object> page = responseData(response);
+    Object content = page.get("content");
+    assertThat(content).isInstanceOf(List.class);
+    return (List<Map<String, Object>>) content;
+  }
+
   private Map<String, Object> responseData(ResponseEntity<Map> response) {
     assertThat(response.getBody()).isNotNull();
     Object data = response.getBody().get("data");
     assertThat(data).isInstanceOf(Map.class);
     return (Map<String, Object>) data;
+  }
+
+  private void insertSecurityEvent(
+      Long iamAccountId, Long companyId, String eventType, Instant occurredAt) {
+    jdbcTemplate.update(
+        """
+        insert into iam_security_events (
+            account_id,
+            actor_account_id,
+            company_id,
+            auth_scope_code,
+            event_type,
+            outcome,
+            reason,
+            metadata,
+            occurred_at
+        )
+        values (?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?)
+        """,
+        iamAccountId,
+        iamAccountId,
+        companyId,
+        COMPANY_CODE,
+        eventType,
+        "SUCCESS",
+        "pagination_contract",
+        "{\"operation\":\"pagination_contract\"}",
+        java.sql.Timestamp.from(occurredAt));
   }
 
   private int indexOfEvent(List<Map<String, Object>> events, String eventType) {

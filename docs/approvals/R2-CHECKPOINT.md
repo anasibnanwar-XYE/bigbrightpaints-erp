@@ -2,7 +2,88 @@
 
 Last reviewed: 2026-04-28
 
-## Current Packet Evidence — sessions-scrutiny-remediation-stable-lineage-and-scope-evidence
+## Current Packet Evidence — account-admin-scrutiny-remediation-self-security-events-pagination
+
+## Scope
+- Feature: `account-admin-scrutiny-remediation-self-security-events-pagination`
+- Branch: codex/identity-account-hardcut-20260427 (base: origin/main)
+- PR: pending
+- Review candidate:
+  - change `GET /api/v1/auth/me/security-events` from a bare list to `ApiResponse<PageResponse<SelfSecurityEvent>>` with `content`, `page`, `size`, `totalElements`, and `totalPages`
+  - clamp self-history page size to `1..100` while preserving `limit` as a size alias when `size` is omitted
+  - push security-event `type` filtering into the SQL query before deterministic `occurred_at desc, id desc` ordering and bounded paging
+  - preserve self-only stable account/auth-scope filtering and privacy-safe self-history fields without actor, target-user, session, token, verifier, or secret leakage
+  - refresh OpenAPI and frontend/library contract notes for the new paged response shape
+- Why this is R2: this packet touches high-risk auth/security-event read paths where incorrect paging/filtering or field mapping could omit user-visible security history, expose cross-user/foreign-scope data, or leak actor/session/token/security identifiers.
+
+## Risk Trigger
+- Triggered by:
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/controller/AuthController.java`
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/service/IamCanonicalStorageService.java`
+  - focused auth/security-event/OpenAPI tests under `erp-domain/src/test/java`
+  - `openapi.json`, `docs/frontend-api/auth-and-company-scope.md`, `docs/modules/auth.md`, and mission library frontend/status notes
+- Contract surfaces affected:
+  - `VAL-ACCT-010`, `VAL-ADV-007`
+- Failure mode if wrong:
+  - self security history could return unbounded or metadata-less lists without pagination controls
+  - newer non-matching events could hide older matching events when filtering happens after pagination
+  - page ordering could be unstable across equal timestamps
+  - self history could leak actor, target, session, token, MFA, recovery-code, hash/digest, or foreign-user/tenant identifiers
+
+## Approval Authority
+- Mode: orchestrator
+- Approver: Droid mission orchestrator
+- Canary owner: Droid mission orchestrator
+- Approval status: branch-local integration candidate pending PR review
+- Basis: this is an accepted account-admin scrutiny remediation that narrows and documents an existing self-history contract, preserves self-only scope and route names, and does not add authority, widen tenant boundaries, persist secrets, or alter applied migrations.
+
+## Escalation Decision
+- Human escalation required: no
+- Reason: the packet is compatibility-preserving on route ownership, adds bounded pagination metadata, moves filtering earlier for correctness, and keeps privacy fields reduced; it does not introduce destructive schema or authorization policy changes.
+
+## Rollback Owner
+- Owner: Droid mission orchestrator
+- Rollback method:
+  - before merge: revert this packet and rerun focused auth/security-event/OpenAPI tests, compile/test-compile, Spotless, OpenAPI guard, lint/architecture, and High-Risk Change Control
+  - after merge: revert through a new remediation packet and rerun the same account-admin security-event proof lane
+- Rollback trigger:
+  - `GET /api/v1/auth/me/security-events` omits pagination metadata or accepts unbounded size
+  - type filtering occurs after ordering/paging or matching events are omitted behind newer non-matching events
+  - ordering is not deterministic by timestamp plus id
+  - self history leaks actor/target/session identifiers, token/verifier/secret material, or foreign-user/tenant data
+
+## Expiry
+- Valid until: 2026-05-05
+- Re-evaluate if: scope expands into admin security-event response shapes, new public route names, schema/migration behavior, broader audit retention policy, or tenant-boundary/role-policy changes.
+
+## Verification Evidence
+- Scope-to-evidence mapping:
+  - Pagination/filter proof: `AuthControllerIT.self_security_history_filters_before_bounded_stable_pagination` seeds newer non-matching events plus same-timestamp matching events and verifies `type` filtering returns the matching page with `page`, capped `size`, `totalElements`, `totalPages`, and deterministic id-desc tie ordering.
+  - Self/privacy proof: `AuthControllerIT.self_security_summary_and_history_are_stable_subject_bound_and_privacy_safe` verifies stable-subject history survives email change, excludes another user's events, returns page metadata, and omits raw session references, refresh tokens, access tokens, password hashes, MFA secrets, recovery codes, actor IDs, target IDs, and session IDs.
+  - Scope fallback/redaction proof: `AuthControllerIT.refresh_rotation_is_scope_bound_and_replay_revokes_rotated_family` continues to verify self security-event scope evidence is non-redacted while pre-redacted/secret-like metadata stays absent from self responses.
+  - Contract proof: `OpenApiSnapshotIT.auth_and_admin_contract_paths_preserve_expected_response_shapes` now locks `GET /api/v1/auth/me/security-events` to `ApiResponsePageResponseMapStringObject`; `openapi.json` was refreshed to the paged shape.
+- Commands run:
+  - `mission init.sh`
+  - `cd /Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/identity-account-hardcut-20260427 && bash scripts/guard_openapi_contract_drift.sh && cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='AuthPasswordResetPublicContractIT,AdminUserSecurityIT,AuthControllerIT,AuthTenantAuthorityIT,TenantRuntimeEnforcementAuthIT,AuthDisabledUserTokenIT,MfaControllerIT' test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -q -DskipTests test-compile`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='AuthControllerIT#self_security_summary_and_history_are_stable_subject_bound_and_privacy_safe+self_security_history_filters_before_bounded_stable_pagination+refresh_rotation_is_scope_bound_and_replay_revokes_rotated_family' test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn spotless:apply`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest=OpenApiSnapshotIT -Derp.openapi.snapshot.verify=true -Derp.openapi.snapshot.refresh=true test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='AuthControllerIT,AuthAuditIT,OpenApiSnapshotIT' test`
+  - `bash scripts/guard_openapi_contract_drift.sh`
+  - `bash ci/lint-knowledgebase.sh && bash ci/check-architecture.sh && bash ci/check-high-risk-changes.sh`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn spotless:check`
+- Result summary:
+  - mission init completed and baseline IAM mission lane passed with 111 tests plus OpenAPI guard before code changes
+  - test-compile passed after implementation
+  - focused self-history/security-event regression lane passed with 3 tests after SQL filter/pagination remediation
+  - OpenAPI snapshot refresh passed with 13 tests and updated the self security-events response schema to the paged contract
+  - feature-specific validator passed with 37 tests; OpenAPI guard, knowledgebase lint, architecture check, High-Risk Change Control, and Spotless check passed
+  - no raw JWTs, refresh tokens, reset tokens, reset links, token digests, MFA secrets, recovery codes, password hashes, actor IDs, target user IDs, session IDs, or production secrets were recorded in this checkpoint
+
+---
+
+## Previous Packet Evidence — sessions-scrutiny-remediation-stable-lineage-and-scope-evidence
 
 ## Scope
 - Feature: `sessions-scrutiny-remediation-stable-lineage-and-scope-evidence`
