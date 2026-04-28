@@ -22,12 +22,14 @@ import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyModule;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.company.service.ModuleGatingService;
+import com.bigbrightpaints.erp.modules.company.service.SuperAdminTenantEntitlementService;
 
 @ExtendWith(MockitoExtension.class)
 @Tag("critical")
 class TS_RuntimeModuleGatingServiceExecutableCoverageTest {
 
   @Mock private CompanyContextService companyContextService;
+  @Mock private SuperAdminTenantEntitlementService entitlementService;
 
   @AfterEach
   void tearDown() {
@@ -38,7 +40,9 @@ class TS_RuntimeModuleGatingServiceExecutableCoverageTest {
   void requireEnabledForCurrentCompany_allowsEnabledModule() {
     Company company = company("ACME", CompanyModule.HR_PAYROLL.name());
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
-    ModuleGatingService service = new ModuleGatingService(companyContextService);
+    when(entitlementService.isFeatureEnabled(company, CompanyModule.HR_PAYROLL)).thenReturn(true);
+    ModuleGatingService service =
+        new ModuleGatingService(companyContextService, entitlementService);
 
     service.requireEnabledForCurrentCompany(CompanyModule.HR_PAYROLL, "/api/v1/portal/workforce");
 
@@ -47,14 +51,15 @@ class TS_RuntimeModuleGatingServiceExecutableCoverageTest {
 
   @Test
   void requireEnabled_throwsWithProvidedCompanyCodeAndPath() {
-    ModuleGatingService service = new ModuleGatingService(companyContextService);
+    ModuleGatingService service =
+        new ModuleGatingService(companyContextService, entitlementService);
+    Company company = company("ACME", CompanyModule.PORTAL.name());
+    when(entitlementService.isFeatureEnabled(company, CompanyModule.HR_PAYROLL)).thenReturn(false);
 
     assertThatThrownBy(
             () ->
                 service.requireEnabled(
-                    company("ACME", CompanyModule.PORTAL.name()),
-                    CompanyModule.HR_PAYROLL,
-                    "/api/v1/portal/workforce"))
+                    company, CompanyModule.HR_PAYROLL, "/api/v1/portal/workforce"))
         .isInstanceOfSatisfying(
             ApplicationException.class,
             ex -> {
@@ -68,13 +73,13 @@ class TS_RuntimeModuleGatingServiceExecutableCoverageTest {
 
   @Test
   void requireEnabled_fallsBackToCompanyContextWhenCompanyCodeBlank() {
-    ModuleGatingService service = new ModuleGatingService(companyContextService);
+    ModuleGatingService service =
+        new ModuleGatingService(companyContextService, entitlementService);
     CompanyContextHolder.setCompanyCode("CTX-COMP");
+    Company company = company("   ", CompanyModule.PORTAL.name());
+    when(entitlementService.isFeatureEnabled(company, CompanyModule.HR_PAYROLL)).thenReturn(false);
 
-    assertThatThrownBy(
-            () ->
-                service.requireEnabled(
-                    company("   ", CompanyModule.PORTAL.name()), CompanyModule.HR_PAYROLL, "   "))
+    assertThatThrownBy(() -> service.requireEnabled(company, CompanyModule.HR_PAYROLL, "   "))
         .isInstanceOfSatisfying(
             ApplicationException.class,
             ex -> {
@@ -88,7 +93,9 @@ class TS_RuntimeModuleGatingServiceExecutableCoverageTest {
 
   @Test
   void requireEnabled_omitsCompanyCodeWhenUnavailable() {
-    ModuleGatingService service = new ModuleGatingService(companyContextService);
+    ModuleGatingService service =
+        new ModuleGatingService(companyContextService, entitlementService);
+    when(entitlementService.isFeatureEnabled(null, CompanyModule.HR_PAYROLL)).thenReturn(false);
 
     assertThatThrownBy(
             () ->
@@ -106,8 +113,11 @@ class TS_RuntimeModuleGatingServiceExecutableCoverageTest {
 
   @Test
   void isEnabled_handlesCoreAndDisabledModulesWithoutContextLookup() {
-    ModuleGatingService service = new ModuleGatingService(companyContextService);
+    ModuleGatingService service =
+        new ModuleGatingService(companyContextService, entitlementService);
     Company company = company("ACME", CompanyModule.PORTAL.name());
+    when(entitlementService.isFeatureEnabled(company, CompanyModule.HR_PAYROLL)).thenReturn(false);
+    when(entitlementService.isFeatureEnabled(null, CompanyModule.HR_PAYROLL)).thenReturn(false);
 
     assertThat(service.isEnabled(company, CompanyModule.ACCOUNTING)).isTrue();
     assertThat(service.isEnabled(company, CompanyModule.HR_PAYROLL)).isFalse();

@@ -5,6 +5,7 @@ import static org.mockito.Mockito.when;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -26,12 +27,16 @@ import com.bigbrightpaints.erp.modules.company.dto.SuperAdminAddClientOptionsDto
 import com.bigbrightpaints.erp.modules.company.dto.SuperAdminTenantAdminEmailChangeConfirmationDto;
 import com.bigbrightpaints.erp.modules.company.dto.SuperAdminTenantAdminEmailChangeRequestDto;
 import com.bigbrightpaints.erp.modules.company.dto.SuperAdminTenantDetailDto;
+import com.bigbrightpaints.erp.modules.company.dto.SuperAdminTenantEntitlementOverrideRequest;
+import com.bigbrightpaints.erp.modules.company.dto.SuperAdminTenantEntitlementsDto;
 import com.bigbrightpaints.erp.modules.company.dto.SuperAdminTenantForceLogoutDto;
 import com.bigbrightpaints.erp.modules.company.dto.SuperAdminTenantLimitsDto;
+import com.bigbrightpaints.erp.modules.company.dto.SuperAdminTenantPlanAssignmentRequest;
 import com.bigbrightpaints.erp.modules.company.dto.SuperAdminTenantSummaryDto;
 import com.bigbrightpaints.erp.modules.company.dto.SuperAdminTenantSupportContextDto;
 import com.bigbrightpaints.erp.modules.company.service.CompanyService;
 import com.bigbrightpaints.erp.modules.company.service.SuperAdminTenantControlPlaneService;
+import com.bigbrightpaints.erp.modules.company.service.SuperAdminTenantEntitlementService;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 import com.bigbrightpaints.erp.shared.dto.PageResponse;
 
@@ -40,12 +45,13 @@ class SuperAdminControllerTest {
 
   @Mock private CompanyService companyService;
   @Mock private SuperAdminTenantControlPlaneService controlPlaneService;
+  @Mock private SuperAdminTenantEntitlementService entitlementService;
 
   private SuperAdminController controller;
 
   @BeforeEach
   void setUp() {
-    controller = new SuperAdminController(companyService, controlPlaneService);
+    controller = new SuperAdminController(companyService, controlPlaneService, entitlementService);
   }
 
   @Test
@@ -168,6 +174,18 @@ class SuperAdminControllerTest {
         .thenReturn(new SuperAdminTenantLimitsDto(7L, "ACME", 10, 20, 30, 4, true, false));
     when(controlPlaneService.updateModules(7L, Set.of("ACCOUNTING", "SALES")))
         .thenReturn(new CompanyEnabledModulesDto(7L, "ACME", Set.of("ACCOUNTING", "SALES")));
+    SuperAdminTenantEntitlementsDto entitlements = entitlements();
+    SuperAdminTenantPlanAssignmentRequest planRequest =
+        new SuperAdminTenantPlanAssignmentRequest("GROWTH", null, false, "upgrade");
+    SuperAdminTenantEntitlementOverrideRequest overrideRequest =
+        new SuperAdminTenantEntitlementOverrideRequest(
+            Map.of("maxActiveUsers", 25L), Map.of("PORTAL", false), "contract");
+    SuperAdminController.TenantEntitlementOverrideRemoveRequest removeRequest =
+        new SuperAdminController.TenantEntitlementOverrideRemoveRequest("restore");
+    when(entitlementService.getEffectiveEntitlements(7L)).thenReturn(entitlements);
+    when(entitlementService.assignPlan(7L, planRequest)).thenReturn(entitlements);
+    when(entitlementService.putOverrides(7L, overrideRequest)).thenReturn(entitlements);
+    when(entitlementService.removeOverride(7L, "PORTAL", "restore")).thenReturn(entitlements);
     when(controlPlaneService.issueSupportWarning(7L, "OPS", "Check", "SUSPENDED", 24))
         .thenReturn(
             new CompanySupportWarningDto(
@@ -246,6 +264,15 @@ class SuperAdminControllerTest {
             .getBody(),
         "Tenant modules updated");
     assertSuccess(
+        controller.getTenantEntitlements(7L).getBody(), "Tenant effective entitlements fetched");
+    assertSuccess(controller.assignTenantPlan(7L, planRequest).getBody(), "Tenant plan assigned");
+    assertSuccess(
+        controller.upsertTenantOverrides(7L, overrideRequest).getBody(),
+        "Tenant entitlement overrides updated");
+    assertSuccess(
+        controller.removeTenantOverride(7L, "PORTAL", removeRequest).getBody(),
+        "Tenant entitlement override removed");
+    assertSuccess(
         controller
             .issueSupportWarning(
                 7L,
@@ -301,5 +328,33 @@ class SuperAdminControllerTest {
     assertThat(response.success()).isTrue();
     assertThat(response.message()).isEqualTo(message);
     assertThat(response.data()).isNotNull();
+  }
+
+  private SuperAdminTenantEntitlementsDto entitlements() {
+    Instant now = Instant.parse("2026-03-26T12:00:00Z");
+    return new SuperAdminTenantEntitlementsDto(
+        7L,
+        "ACME",
+        new SuperAdminTenantEntitlementsDto.PlanSummary(
+            "GROWTH", "Growth", 1, false, "PRIORITY", now),
+        Map.of(
+            "maxActiveUsers",
+            new SuperAdminTenantEntitlementsDto.LimitEntitlement(
+                "maxActiveUsers", 50, 25L, 25, "TENANT_OVERRIDE", now)),
+        Map.of(
+            "PORTAL",
+            new SuperAdminTenantEntitlementsDto.FeatureEntitlement(
+                "PORTAL", true, false, false, "TENANT_OVERRIDE", now)),
+        new SuperAdminTenantEntitlementsDto.CacheMetadata(true, now, true, "TENANT_ENTITLEMENTS_7"),
+        new SuperAdminTenantEntitlementsDto.BillingSnapshot(
+            "STARTER",
+            "Starter",
+            "MONTHLY",
+            499900,
+            "INR",
+            now,
+            false,
+            "SNAPSHOT_UNCHANGED_UNTIL_EXPLICIT_REPRICE"),
+        701L);
   }
 }

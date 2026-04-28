@@ -61,6 +61,7 @@ import com.bigbrightpaints.erp.modules.company.dto.SuperAdminAddClientOptionsDto
 import com.bigbrightpaints.erp.modules.company.dto.SuperAdminTenantAdminEmailChangeConfirmationDto;
 import com.bigbrightpaints.erp.modules.company.dto.SuperAdminTenantAdminEmailChangeRequestDto;
 import com.bigbrightpaints.erp.modules.company.dto.SuperAdminTenantDetailDto;
+import com.bigbrightpaints.erp.modules.company.dto.SuperAdminTenantEntitlementsDto;
 import com.bigbrightpaints.erp.modules.company.dto.SuperAdminTenantForceLogoutDto;
 import com.bigbrightpaints.erp.modules.company.dto.SuperAdminTenantLimitsDto;
 import com.bigbrightpaints.erp.modules.company.dto.SuperAdminTenantSummaryDto;
@@ -93,6 +94,7 @@ class SuperAdminTenantControlPlaneServiceTest {
   @Mock private PasswordEncoder passwordEncoder;
   @Mock private PasswordService passwordService;
   @Mock private TenantDefaultSeedingService tenantDefaultSeedingService;
+  @Mock private SuperAdminTenantEntitlementService tenantEntitlementService;
 
   private SuperAdminTenantControlPlaneService service;
 
@@ -118,13 +120,28 @@ class SuperAdminTenantControlPlaneServiceTest {
             roleRepository,
             passwordEncoder,
             passwordService,
-            tenantDefaultSeedingService);
+            tenantDefaultSeedingService,
+            tenantEntitlementService);
     lenient()
         .when(tenantActivationTokenRepository.lockByCompanyId(any(Long.class)))
         .thenReturn(List.of());
     lenient()
         .when(tenantDefaultSeedingService.seedDefaultsFailClosed(any(Company.class)))
         .thenReturn(TenantDefaultSeedingService.SeedAttempt.ready(null));
+    lenient()
+        .when(tenantEntitlementService.planSummaryFor(any(Company.class)))
+        .thenAnswer(
+            invocation -> {
+              Company company = invocation.getArgument(0);
+              return new SuperAdminTenantEntitlementsDto.PlanSummary(
+                  company.getCommercialPlanId(),
+                  company.getCommercialPlanId().charAt(0)
+                      + company.getCommercialPlanId().substring(1).toLowerCase(Locale.ROOT),
+                  1,
+                  "CUSTOM".equals(company.getCommercialPlanId()),
+                  company.getCommercialSupportTier(),
+                  null);
+            });
     SecurityContextHolder.getContext()
         .setAuthentication(new UsernamePasswordAuthenticationToken("super-admin@bbp.com", "n/a"));
   }
@@ -1443,7 +1460,8 @@ class SuperAdminTenantControlPlaneServiceTest {
         roleRepository,
         passwordEncoder,
         passwordService,
-        tenantDefaultSeedingService);
+        tenantDefaultSeedingService,
+        tenantEntitlementService);
   }
 
   private void configureTenantStatusState(Company company, String status, int index) {

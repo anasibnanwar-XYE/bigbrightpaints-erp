@@ -126,6 +126,7 @@ public class SuperAdminTenantControlPlaneService {
   private final PasswordEncoder passwordEncoder;
   private final PasswordService passwordService;
   private final TenantDefaultSeedingService tenantDefaultSeedingService;
+  private final SuperAdminTenantEntitlementService tenantEntitlementService;
 
   public SuperAdminTenantControlPlaneService(
       CompanyRepository companyRepository,
@@ -146,7 +147,8 @@ public class SuperAdminTenantControlPlaneService {
       RoleRepository roleRepository,
       PasswordEncoder passwordEncoder,
       PasswordService passwordService,
-      TenantDefaultSeedingService tenantDefaultSeedingService) {
+      TenantDefaultSeedingService tenantDefaultSeedingService,
+      SuperAdminTenantEntitlementService tenantEntitlementService) {
     this.companyRepository = companyRepository;
     this.userAccountRepository = userAccountRepository;
     this.auditLogRepository = auditLogRepository;
@@ -166,6 +168,7 @@ public class SuperAdminTenantControlPlaneService {
     this.passwordEncoder = passwordEncoder;
     this.passwordService = passwordService;
     this.tenantDefaultSeedingService = tenantDefaultSeedingService;
+    this.tenantEntitlementService = tenantEntitlementService;
   }
 
   @Transactional(readOnly = true)
@@ -1031,6 +1034,8 @@ public class SuperAdminTenantControlPlaneService {
             metrics.quotaMaxConcurrentRequests(),
             metrics.quotaSoftLimitEnabled(),
             metrics.quotaHardLimitEnabled());
+    SuperAdminTenantEntitlementsDto.PlanSummary planSummary =
+        tenantEntitlementService.planSummaryFor(company);
     SuperAdminTenantDetailDto.Usage usage =
         new SuperAdminTenantDetailDto.Usage(
             metrics.activeUserCount(),
@@ -1080,9 +1085,9 @@ public class SuperAdminTenantControlPlaneService {
             lastActivityAt,
             tabStateForStatus(status, "AVAILABLE", "Overview summary is available")),
         new SuperAdminTenantDetailDto.PlanSummary(
-            resolvePlanId(company),
-            "Trial",
-            "STANDARD",
+            planSummary.planId(),
+            planSummary.displayName(),
+            planSummary.supportTier(),
             limits,
             tabStateForStatus(status, "AVAILABLE", "Plan limits summary is available")),
         new SuperAdminTenantDetailDto.BillingSummary(

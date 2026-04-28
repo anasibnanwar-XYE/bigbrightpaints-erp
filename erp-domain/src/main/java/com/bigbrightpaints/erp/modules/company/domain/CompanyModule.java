@@ -44,6 +44,13 @@ public enum CompanyModule {
       return Optional.empty();
     }
     String normalized = rawValue.trim().toUpperCase(Locale.ROOT);
+    normalized =
+        switch (normalized) {
+          case "PRODUCTION" -> MANUFACTURING.name();
+          case "HR" -> HR_PAYROLL.name();
+          case "REPORTS" -> REPORTS_ADVANCED.name();
+          default -> normalized;
+        };
     for (CompanyModule module : values()) {
       if (module.name().equals(normalized)) {
         return Optional.of(module);

@@ -19,6 +19,7 @@ import com.bigbrightpaints.erp.modules.company.dto.CompanyLifecycleStateDto;
 import com.bigbrightpaints.erp.modules.company.dto.CompanyLifecycleStateRequest;
 import com.bigbrightpaints.erp.modules.company.service.CompanyService;
 import com.bigbrightpaints.erp.modules.company.service.SuperAdminTenantControlPlaneService;
+import com.bigbrightpaints.erp.modules.company.service.SuperAdminTenantEntitlementService;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 
 @Tag("critical")
@@ -30,7 +31,10 @@ class TS_RuntimeCompanyControllerExecutableCoverageTest {
     CompanyService companyService = mock(CompanyService.class);
     SuperAdminTenantControlPlaneService controlPlaneService =
         mock(SuperAdminTenantControlPlaneService.class);
-    SuperAdminController controller = new SuperAdminController(companyService, controlPlaneService);
+    SuperAdminTenantEntitlementService entitlementService =
+        mock(SuperAdminTenantEntitlementService.class);
+    SuperAdminController controller =
+        new SuperAdminController(companyService, controlPlaneService, entitlementService);
     CompanyLifecycleStateRequest request =
         new CompanyLifecycleStateRequest("SUSPENDED", "reconciliation");
     CompanyLifecycleStateDto responseDto =
@@ -52,7 +56,10 @@ class TS_RuntimeCompanyControllerExecutableCoverageTest {
     CompanyService companyService = mock(CompanyService.class);
     SuperAdminTenantControlPlaneService controlPlaneService =
         mock(SuperAdminTenantControlPlaneService.class);
-    SuperAdminController controller = new SuperAdminController(companyService, controlPlaneService);
+    SuperAdminTenantEntitlementService entitlementService =
+        mock(SuperAdminTenantEntitlementService.class);
+    SuperAdminController controller =
+        new SuperAdminController(companyService, controlPlaneService, entitlementService);
 
     ResponseEntity<ApiResponse<Map<String, Object>>> response =
         controller.retiredTenantAdminPasswordReset(

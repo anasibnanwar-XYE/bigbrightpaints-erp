@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.*;
 import com.bigbrightpaints.erp.modules.company.dto.*;
 import com.bigbrightpaints.erp.modules.company.service.CompanyService;
 import com.bigbrightpaints.erp.modules.company.service.SuperAdminTenantControlPlaneService;
+import com.bigbrightpaints.erp.modules.company.service.SuperAdminTenantEntitlementService;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 import com.bigbrightpaints.erp.shared.dto.PageResponse;
 
@@ -31,11 +32,15 @@ public class SuperAdminController {
 
   private final CompanyService companyService;
   private final SuperAdminTenantControlPlaneService controlPlaneService;
+  private final SuperAdminTenantEntitlementService entitlementService;
 
   public SuperAdminController(
-      CompanyService companyService, SuperAdminTenantControlPlaneService controlPlaneService) {
+      CompanyService companyService,
+      SuperAdminTenantControlPlaneService controlPlaneService,
+      SuperAdminTenantEntitlementService entitlementService) {
     this.companyService = companyService;
     this.controlPlaneService = controlPlaneService;
+    this.entitlementService = entitlementService;
   }
 
   @GetMapping("/dashboard")
@@ -185,6 +190,46 @@ public class SuperAdminController {
             controlPlaneService.updateModules(tenantId, request.enabledModules())));
   }
 
+  @GetMapping("/tenants/{id}/entitlements")
+  public ResponseEntity<ApiResponse<SuperAdminTenantEntitlementsDto>> getTenantEntitlements(
+      @PathVariable("id") Long tenantId) {
+    return ResponseEntity.ok(
+        ApiResponse.success(
+            "Tenant effective entitlements fetched",
+            entitlementService.getEffectiveEntitlements(tenantId)));
+  }
+
+  @PutMapping("/tenants/{id}/plan")
+  public ResponseEntity<ApiResponse<SuperAdminTenantEntitlementsDto>> assignTenantPlan(
+      @PathVariable("id") Long tenantId,
+      @Valid @RequestBody SuperAdminTenantPlanAssignmentRequest request) {
+    return ResponseEntity.ok(
+        ApiResponse.success(
+            "Tenant plan assigned", entitlementService.assignPlan(tenantId, request)));
+  }
+
+  @PutMapping("/tenants/{id}/entitlements/overrides")
+  public ResponseEntity<ApiResponse<SuperAdminTenantEntitlementsDto>> upsertTenantOverrides(
+      @PathVariable("id") Long tenantId,
+      @Valid @RequestBody SuperAdminTenantEntitlementOverrideRequest request) {
+    return ResponseEntity.ok(
+        ApiResponse.success(
+            "Tenant entitlement overrides updated",
+            entitlementService.putOverrides(tenantId, request)));
+  }
+
+  @DeleteMapping("/tenants/{id}/entitlements/overrides/{key}")
+  public ResponseEntity<ApiResponse<SuperAdminTenantEntitlementsDto>> removeTenantOverride(
+      @PathVariable("id") Long tenantId,
+      @PathVariable("key") String key,
+      @RequestBody(required = false) TenantEntitlementOverrideRemoveRequest request) {
+    return ResponseEntity.ok(
+        ApiResponse.success(
+            "Tenant entitlement override removed",
+            entitlementService.removeOverride(
+                tenantId, key, request == null ? null : request.reason())));
+  }
+
   @PostMapping("/tenants/{id}/support/warnings")
   public ResponseEntity<ApiResponse<CompanySupportWarningDto>> issueSupportWarning(
       @PathVariable("id") Long tenantId, @Valid @RequestBody TenantSupportWarningRequest request) {
@@ -290,6 +335,9 @@ public class SuperAdminController {
 
   public record TenantModulesUpdateRequest(
       @NotNull Set<@NotBlank @Size(max = 64) String> enabledModules) {}
+
+  public record TenantEntitlementOverrideRemoveRequest(
+      @Size(max = 300, message = "reason must be at most 300 characters") String reason) {}
 
   public record TenantLimitsUpdateRequest(
       @Min(value = 0, message = "quotaMaxActiveUsers must be greater than or equal to 0")

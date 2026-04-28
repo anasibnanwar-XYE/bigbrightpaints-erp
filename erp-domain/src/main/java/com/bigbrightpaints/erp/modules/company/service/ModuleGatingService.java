@@ -16,9 +16,13 @@ import com.bigbrightpaints.erp.modules.company.domain.CompanyModule;
 public class ModuleGatingService {
 
   private final CompanyContextService companyContextService;
+  private final SuperAdminTenantEntitlementService entitlementService;
 
-  public ModuleGatingService(CompanyContextService companyContextService) {
+  public ModuleGatingService(
+      CompanyContextService companyContextService,
+      SuperAdminTenantEntitlementService entitlementService) {
     this.companyContextService = companyContextService;
+    this.entitlementService = entitlementService;
   }
 
   public boolean isEnabledForCurrentCompany(CompanyModule module) {
@@ -38,7 +42,7 @@ public class ModuleGatingService {
     if (module == null || module.isCore()) {
       return true;
     }
-    return resolveEnabledGatableModules(company).contains(module.name());
+    return entitlementService.isFeatureEnabled(company, module);
   }
 
   public void requireEnabled(Company company, CompanyModule module, String path) {

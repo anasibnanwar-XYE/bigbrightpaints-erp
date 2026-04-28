@@ -415,6 +415,34 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
         "#/components/schemas/ApiResponseCompanyEnabledModulesDto");
     assertOperationContract(
         root,
+        "/api/v1/superadmin/tenants/{id}/entitlements",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseSuperAdminTenantEntitlementsDto");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/tenants/{id}/plan",
+        "put",
+        "#/components/schemas/SuperAdminTenantPlanAssignmentRequest",
+        "200",
+        "#/components/schemas/ApiResponseSuperAdminTenantEntitlementsDto");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/tenants/{id}/entitlements/overrides",
+        "put",
+        "#/components/schemas/SuperAdminTenantEntitlementOverrideRequest",
+        "200",
+        "#/components/schemas/ApiResponseSuperAdminTenantEntitlementsDto");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/tenants/{id}/entitlements/overrides/{key}",
+        "delete",
+        "#/components/schemas/TenantEntitlementOverrideRemoveRequest",
+        "200",
+        "#/components/schemas/ApiResponseSuperAdminTenantEntitlementsDto");
+    assertOperationContract(
+        root,
         "/api/v1/superadmin/tenants/{id}/support/warnings",
         "post",
         "#/components/schemas/TenantSupportWarningRequest",
@@ -690,6 +718,10 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
             "PUT /api/v1/superadmin/tenants/{id}/lifecycle",
             "PUT /api/v1/superadmin/tenants/{id}/limits",
             "PUT /api/v1/superadmin/tenants/{id}/modules",
+            "GET /api/v1/superadmin/tenants/{id}/entitlements",
+            "PUT /api/v1/superadmin/tenants/{id}/plan",
+            "PUT /api/v1/superadmin/tenants/{id}/entitlements/overrides",
+            "DELETE /api/v1/superadmin/tenants/{id}/entitlements/overrides/{key}",
             "POST /api/v1/superadmin/tenants/{id}/support/warnings",
             "PUT /api/v1/superadmin/tenants/{id}/support/context",
             "GET /api/v1/superadmin/tenants/{id}/review-intelligence",
