@@ -377,7 +377,13 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
         "#/components/schemas/ChangelogEntryRequest",
         "200",
         "#/components/schemas/ApiResponseChangelogEntryResponse");
-    assertOperationContract(root, "/api/v1/superadmin/changelog/{id}", "delete", null, "204", null);
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/changelog/{id}",
+        "delete",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseVoid");
     assertOperationMissing(root, "/api/v1/admin/tenant-runtime/metrics", "get");
     assertOperationMissing(root, "/api/v1/admin/tenant-runtime/policy", "put");
     assertOperationMissing(root, "/api/v1/admin/changelog", "post");
@@ -1081,6 +1087,32 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
                           return;
                         }
                         JsonNode responses = methodEntry.getValue().path("responses");
+                        responses
+                            .fields()
+                            .forEachRemaining(
+                                responseEntry -> {
+                                  String responseCode = responseEntry.getKey();
+                                  if (!responseCode.startsWith("2")) {
+                                    return;
+                                  }
+                                  JsonNode content = responseEntry.getValue().path("content");
+                                  assertThat(content.isMissingNode() || content.isEmpty())
+                                      .as(
+                                          "Super Admin success response %s for %s %s must document"
+                                              + " an ApiResponse schema",
+                                          responseCode, methodEntry.getKey(), pathEntry.getKey())
+                                      .isFalse();
+                                  JsonNode schema = content.path("*/*").path("schema");
+                                  if (schema.isMissingNode()) {
+                                    schema = content.path("application/json").path("schema");
+                                  }
+                                  assertThat(schema.path("$ref").asText())
+                                      .as(
+                                          "Super Admin success response %s for %s %s must use"
+                                              + " ApiResponse schema",
+                                          responseCode, methodEntry.getKey(), pathEntry.getKey())
+                                      .startsWith("#/components/schemas/ApiResponse");
+                                });
                         assertThat(responses.has("400"))
                             .as(
                                 "400 response documented for %s %s",

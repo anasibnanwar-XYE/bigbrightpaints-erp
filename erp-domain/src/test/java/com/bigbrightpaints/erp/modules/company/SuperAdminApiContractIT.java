@@ -79,6 +79,45 @@ class SuperAdminApiContractIT extends AbstractIntegrationTest {
   }
 
   @Test
+  void mutationSuccessEnvelope_includesTraceMetadataForDelete() {
+    HttpHeaders headers = superAdminHeaders();
+    headers.set("X-Correlation-ID", "m1-contract-delete-success");
+
+    ResponseEntity<Map> createResponse =
+        rest.exchange(
+            "/api/v1/superadmin/changelog",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of(
+                    "version",
+                    "99.0.1",
+                    "title",
+                    "Delete envelope contract",
+                    "body",
+                    "Contract fixture for Super Admin delete envelope",
+                    "isHighlighted",
+                    false),
+                headers),
+            Map.class);
+
+    assertThat(createResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    @SuppressWarnings("unchecked")
+    Map<String, Object> createdData = (Map<String, Object>) createResponse.getBody().get("data");
+    Number id = (Number) createdData.get("id");
+
+    ResponseEntity<Map> deleteResponse =
+        rest.exchange(
+            "/api/v1/superadmin/changelog/" + id.longValue(),
+            HttpMethod.DELETE,
+            new HttpEntity<>(headers),
+            Map.class);
+
+    assertThat(deleteResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertStandardSuccess(deleteResponse, "m1-contract-delete-success");
+    assertThat(deleteResponse.getBody()).containsEntry("message", "Changelog entry deleted");
+  }
+
+  @Test
   void unknownBodyFieldsAreRejectedWithoutChangingState() {
     HttpHeaders headers = superAdminHeaders();
     headers.set("X-Correlation-ID", "m1-contract-error");
@@ -165,6 +204,22 @@ class SuperAdminApiContractIT extends AbstractIntegrationTest {
         "FILE_004");
 
     assertThat(readLifecycleState()).isEqualTo("ACTIVE");
+  }
+
+  private void assertStandardSuccess(ResponseEntity<Map> response, String expectedCorrelationId) {
+    assertThat(response.getHeaders().getFirst("X-Trace-Id")).isNotBlank();
+    @SuppressWarnings("unchecked")
+    Map<String, Object> body = (Map<String, Object>) response.getBody();
+    assertThat(body).isNotNull();
+    assertThat(body)
+        .containsEntry("success", true)
+        .containsKeys("message", "timestamp", "metadata");
+    @SuppressWarnings("unchecked")
+    Map<String, Object> metadata = (Map<String, Object>) body.get("metadata");
+    assertThat(metadata)
+        .containsEntry("correlationId", expectedCorrelationId)
+        .containsKey("traceId");
+    assertThat(metadata.get("traceId")).isEqualTo(response.getHeaders().getFirst("X-Trace-Id"));
   }
 
   private ResponseEntity<Map> exchangeRaw(

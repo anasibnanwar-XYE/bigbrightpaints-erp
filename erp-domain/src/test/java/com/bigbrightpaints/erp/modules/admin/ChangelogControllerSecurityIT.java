@@ -103,14 +103,21 @@ class ChangelogControllerSecurityIT extends AbstractIntegrationTest {
     Map<String, Object> updatedData = (Map<String, Object>) updateResponse.getBody().get("data");
     assertThat(updatedData.get("version")).isEqualTo("1.2.2");
 
-    ResponseEntity<Void> deleteResponse =
+    ResponseEntity<Map> deleteResponse =
         rest.exchange(
             "/api/v1/superadmin/changelog/" + id.longValue(),
             HttpMethod.DELETE,
             new HttpEntity<>(superHeaders),
-            Void.class);
+            Map.class);
 
-    assertThat(deleteResponse.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+    assertThat(deleteResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(deleteResponse.getBody())
+        .containsEntry("success", true)
+        .containsEntry("message", "Changelog entry deleted")
+        .containsKeys("timestamp", "metadata");
+    @SuppressWarnings("unchecked")
+    Map<String, Object> metadata = (Map<String, Object>) deleteResponse.getBody().get("metadata");
+    assertThat(metadata).containsKeys("traceId", "correlationId");
   }
 
   @Test
