@@ -71,6 +71,7 @@ class AuthServiceAuditAttributionTest {
   @Mock private PasswordEncoder passwordEncoder;
   @Mock private AuthScopeService authScopeService;
   @Mock private IamCanonicalStorageService iamCanonicalStorageService;
+  @Mock private AuthSessionService authSessionService;
   private AccountLockoutService accountLockoutService;
 
   private final PlatformTransactionManager transactionManager =
@@ -112,7 +113,8 @@ class AuthServiceAuditAttributionTest {
             passwordEncoder,
             authScopeService,
             iamCanonicalStorageService,
-            accountLockoutService);
+            accountLockoutService,
+            authSessionService);
   }
 
   @Test
@@ -224,9 +226,14 @@ class AuthServiceAuditAttributionTest {
     when(tokenService.generateAccessToken(
             eq(user.getPublicId().toString()), eq("PLATFORM"), any(Map.class), any(Instant.class)))
         .thenReturn("access-new");
-    when(refreshTokenService.issue(
-            eq(user.getPublicId()), eq("PLATFORM"), any(Instant.class), any(Instant.class)))
-        .thenReturn("refresh-new");
+    when(refreshTokenService.issueSession(
+            eq(user.getPublicId()),
+            eq("PLATFORM"),
+            any(Instant.class),
+            any(Instant.class),
+            any(),
+            any()))
+        .thenReturn(new RefreshTokenService.IssuedRefreshToken("refresh-new", UUID.randomUUID()));
     when(properties.getRefreshTokenTtlSeconds()).thenReturn(3600L);
     when(properties.getAccessTokenTtlSeconds()).thenReturn(900L);
 
@@ -266,11 +273,12 @@ class AuthServiceAuditAttributionTest {
     UserAccount user = userWithCompany("user@example.com", "ACME");
     RefreshTokenService.TokenRecord record =
         new RefreshTokenService.TokenRecord(
-            user.getPublicId(), "ACME", issuedAt, issuedAt.plus(1, ChronoUnit.DAYS));
+            user.getPublicId(), "ACME", issuedAt, issuedAt.plus(1, ChronoUnit.DAYS), "digest-old");
 
     when(authScopeService.requireScopeCode("acme")).thenReturn("ACME");
     when(authScopeService.isPlatformScope("ACME")).thenReturn(false);
-    when(refreshTokenService.consume("refresh-old")).thenReturn(Optional.of(record));
+    when(refreshTokenService.inspect("refresh-old", "ACME")).thenReturn(Optional.of(record));
+    when(refreshTokenService.consume("refresh-old", "ACME")).thenReturn(Optional.of(record));
     when(tokenBlacklistService.isUserTokenRevoked(user.getPublicId().toString(), issuedAt))
         .thenReturn(false);
     when(userAccountRepository.findByPublicId(user.getPublicId())).thenReturn(Optional.of(user));
@@ -282,9 +290,14 @@ class AuthServiceAuditAttributionTest {
                     claims != null && user.getDisplayName().equals(claims.get("name"))),
             any(Instant.class)))
         .thenReturn("access-new");
-    when(refreshTokenService.issue(
-            eq(user.getPublicId()), eq("ACME"), any(Instant.class), any(Instant.class)))
-        .thenReturn("refresh-new");
+    when(refreshTokenService.issueSession(
+            eq(user.getPublicId()),
+            eq("ACME"),
+            any(Instant.class),
+            any(Instant.class),
+            any(),
+            eq("digest-old")))
+        .thenReturn(new RefreshTokenService.IssuedRefreshToken("refresh-new", UUID.randomUUID()));
     when(properties.getRefreshTokenTtlSeconds()).thenReturn(3600L);
     when(properties.getAccessTokenTtlSeconds()).thenReturn(900L);
 
@@ -305,10 +318,10 @@ class AuthServiceAuditAttributionTest {
     UUID userPublicId = UUID.randomUUID();
     RefreshTokenService.TokenRecord record =
         new RefreshTokenService.TokenRecord(
-            userPublicId, "ACME", issuedAt, issuedAt.plus(1, ChronoUnit.DAYS));
+            userPublicId, "ACME", issuedAt, issuedAt.plus(1, ChronoUnit.DAYS), "digest-old");
 
     when(authScopeService.requireScopeCode("ACME")).thenReturn("ACME");
-    when(refreshTokenService.consume("refresh-old")).thenReturn(Optional.of(record));
+    when(refreshTokenService.inspect("refresh-old", "ACME")).thenReturn(Optional.of(record));
     when(tokenBlacklistService.isUserTokenRevoked(userPublicId.toString(), issuedAt))
         .thenReturn(true);
 
@@ -319,14 +332,8 @@ class AuthServiceAuditAttributionTest {
 
   @Test
   void refreshRejectsWhenRequestedScopeDoesNotMatchStoredScope() {
-    Instant issuedAt = Instant.parse("2026-01-01T00:00:00Z");
-    UUID userPublicId = UUID.randomUUID();
-    RefreshTokenService.TokenRecord record =
-        new RefreshTokenService.TokenRecord(
-            userPublicId, "BBB", issuedAt, issuedAt.plus(1, ChronoUnit.DAYS));
-
     when(authScopeService.requireScopeCode("ACME")).thenReturn("ACME");
-    when(refreshTokenService.consume("refresh-old")).thenReturn(Optional.of(record));
+    when(refreshTokenService.inspect("refresh-old", "ACME")).thenReturn(Optional.empty());
 
     assertThatThrownBy(() -> authService.refresh(new RefreshTokenRequest("refresh-old", "ACME")))
         .isInstanceOf(ApplicationException.class)
@@ -346,8 +353,8 @@ class AuthServiceAuditAttributionTest {
 
     authService.logout("   ", "access-token");
 
-    verify(tokenBlacklistService).revokeAllUserTokens(userPublicId.toString());
-    verify(refreshTokenService).revokeAllForUser(userPublicId);
+    verify(tokenBlacklistService, never()).revokeAllUserTokens(userPublicId.toString());
+    verify(refreshTokenService, never()).revokeAllForUser(userPublicId);
     verify(tokenBlacklistService)
         .blacklistToken("jti-logout", expiresAt, userPublicId.toString(), "logout");
   }
@@ -377,8 +384,8 @@ class AuthServiceAuditAttributionTest {
       logAppender.stop();
     }
 
-    verify(tokenBlacklistService).revokeAllUserTokens(userPublicId.toString());
-    verify(refreshTokenService).revokeAllForUser(userPublicId);
+    verify(tokenBlacklistService, never()).revokeAllUserTokens(userPublicId.toString());
+    verify(refreshTokenService, never()).revokeAllForUser(userPublicId);
     assertThat(logAppender.list)
         .anySatisfy(
             event -> {
@@ -446,9 +453,14 @@ class AuthServiceAuditAttributionTest {
       when(tokenService.generateAccessToken(
               eq(user.getPublicId().toString()), eq("ACME"), any(Map.class), any(Instant.class)))
           .thenReturn("access-new");
-      when(refreshTokenService.issue(
-              eq(user.getPublicId()), eq("ACME"), any(Instant.class), any(Instant.class)))
-          .thenReturn("refresh-new");
+      when(refreshTokenService.issueSession(
+              eq(user.getPublicId()),
+              eq("ACME"),
+              any(Instant.class),
+              any(Instant.class),
+              any(),
+              any()))
+          .thenReturn(new RefreshTokenService.IssuedRefreshToken("refresh-new", UUID.randomUUID()));
       when(properties.getRefreshTokenTtlSeconds()).thenReturn(3600L);
       when(properties.getAccessTokenTtlSeconds()).thenReturn(900L);
 

@@ -962,7 +962,7 @@ Last reviewed: 2026-04-28
   - round 2 MFA recovery-code regeneration proof and session invalidation tests passed, OpenAPI guard was refreshed for the request body, and docs/library stale alias guidance was cleaned
 - Artifacts/links:
   - `openapi.json` updated in-repo
-  - focused test reports under `erp-domain/target/surefire-reports/`
+  - focused test evidence is captured in the command list above
   - this checkpoint section is the branch-local R2 evidence artifact for the scoped route-disposition packet
 
 ---
