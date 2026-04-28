@@ -164,6 +164,19 @@ Rationale:
 - When validating auth bootstrap, the canonical surface is `GET /api/v1/auth/me`; `/api/v1/auth/profile` is retired.
 - When validating runtime policy mutation, the canonical public write surfaces are the superadmin tenant lifecycle/limits routes.
 
+### Flow-validator fallback
+
+- If `user-testing-flow-validator` exits before producing a report, treat that as helper-launch friction, not assertion evidence.
+- Retry the same child-droid launch once. If the retry also exits before a report, record both launch failures and complete the assigned flow directly in the parent validator.
+- The direct fallback must use the same commands, run markers, redaction rules, and evidence requirements the child would have used.
+- The flow report and synthesis must name the fallback path, affected assertion IDs, and preserved assertion statuses. Do not block a milestone solely because the child droid produced no output.
+
+### Runtime pipeline exit capture
+
+- Prefer direct, unpiped runtime commands for final pass/fail proof.
+- If a runtime validator pipes `docker compose`, `curl`, Maven, or guard output through `tee`, enable `set -o pipefail` before the pipeline or capture the producer command status explicitly (for example `${PIPESTATUS[0]}`) and exit with that status.
+- Never report a piped runtime command as passed from `tee` alone; Docker, curl, Maven, and guard failures must remain visible to synthesis.
+
 ## Known Constraints
 
 - The current strict compose path is a smoke surface only; authenticated business-flow proof still depends on targeted Maven suites unless a later feature introduces a clean bootstrap/auth fixture path.
