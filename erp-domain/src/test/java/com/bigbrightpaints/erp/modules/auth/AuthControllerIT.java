@@ -57,8 +57,11 @@ public class AuthControllerIT extends AbstractIntegrationTest {
   @SpyBean private EmailService emailService;
 
   private static final String COMPANY_CODE = "ACME";
+  private static final String PLATFORM_SCOPE = "PLATFORM";
   private static final String ADMIN_EMAIL = "admin@bbp.com";
   private static final String ADMIN_PASSWORD = "admin123";
+  private static final String SUPER_ADMIN_EMAIL = "platform-superadmin@bbp.com";
+  private static final String SUPER_ADMIN_LOGIN_VALUE = "ChangeMe123!";
   private static final String USER_EMAIL = "reset-target@bbp.com";
   private static final String USER_PASSWORD = "User@12345";
 
@@ -79,6 +82,19 @@ public class AuthControllerIT extends AbstractIntegrationTest {
             java.util.List.of("ROLE_SALES"));
     resetTarget.setMustChangePassword(false);
     userAccountRepository.save(resetTarget);
+
+    UserAccount platformSuperAdmin =
+        dataSeeder.ensureUser(
+            SUPER_ADMIN_EMAIL,
+            SUPER_ADMIN_LOGIN_VALUE,
+            "Platform Super Admin",
+            PLATFORM_SCOPE,
+            java.util.List.of("ROLE_SUPER_ADMIN"));
+    platformSuperAdmin.setEnabled(true);
+    platformSuperAdmin.setMustChangePassword(false);
+    platformSuperAdmin.setFailedLoginAttempts(0);
+    platformSuperAdmin.setLockedUntil(null);
+    userAccountRepository.save(platformSuperAdmin);
   }
 
   @Test
@@ -112,6 +128,50 @@ public class AuthControllerIT extends AbstractIntegrationTest {
     assertThat(roles).contains("ROLE_ADMIN");
     List<String> permissions = (List<String>) data.get("permissions");
     assertThat(permissions).isNotNull();
+  }
+
+  @Test
+  void platformSuperAdminLoginAndMeExposePlatformScopeWithoutSecretFields() {
+    ResponseEntity<Map> loginResp =
+        rest.postForEntity(
+            "/api/v1/auth/login",
+            Map.of(
+                "email", SUPER_ADMIN_EMAIL,
+                "password", SUPER_ADMIN_LOGIN_VALUE,
+                "companyCode", PLATFORM_SCOPE),
+            Map.class);
+
+    assertThat(loginResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(loginResp.getHeaders().get(HttpHeaders.SET_COOKIE)).isNullOrEmpty();
+    assertThat(loginResp.getBody()).isNotNull();
+    assertThat(loginResp.getBody()).containsEntry("tokenType", "Bearer");
+    assertThat(loginResp.getBody()).containsEntry("companyCode", PLATFORM_SCOPE);
+    assertThat(loginResp.getBody()).containsEntry("scopeType", "PLATFORM");
+    @SuppressWarnings("unchecked")
+    List<String> loginRoles = (List<String>) loginResp.getBody().get("roles");
+    assertThat(loginRoles).contains("ROLE_SUPER_ADMIN");
+    String accessToken = loginResp.getBody().get("accessToken").toString();
+
+    ResponseEntity<Map> meResp =
+        rest.exchange(
+            "/api/v1/auth/me",
+            HttpMethod.GET,
+            new HttpEntity<>(bearer(accessToken, PLATFORM_SCOPE)),
+            Map.class);
+
+    assertThat(meResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(meResp.getBody()).isNotNull();
+    @SuppressWarnings("unchecked")
+    Map<String, Object> meData = (Map<String, Object>) meResp.getBody().get("data");
+    assertThat(meData)
+        .containsEntry("email", SUPER_ADMIN_EMAIL)
+        .containsEntry("companyCode", PLATFORM_SCOPE)
+        .containsEntry("scopeType", "PLATFORM");
+    @SuppressWarnings("unchecked")
+    List<String> meRoles = (List<String>) meData.get("roles");
+    assertThat(meRoles).contains("ROLE_SUPER_ADMIN");
+    assertThat(meData.keySet())
+        .doesNotContain("password", "passwordHash", "accessToken", "refreshToken", "token");
   }
 
   @Test
@@ -480,6 +540,67 @@ public class AuthControllerIT extends AbstractIntegrationTest {
         .isIn(HttpStatus.UNAUTHORIZED, HttpStatus.FORBIDDEN);
     assertThat(me(inactiveSidAccessToken).getStatusCode())
         .isIn(HttpStatus.UNAUTHORIZED, HttpStatus.FORBIDDEN);
+  }
+
+  @Test
+  void staleTokensIssuedBeforeMustChangePasswordAreDenied() {
+    Map<String, Object> loginPayload = login(ADMIN_EMAIL, ADMIN_PASSWORD);
+    String staleAccessToken = loginPayload.get("accessToken").toString();
+    String staleRefreshToken = loginPayload.get("refreshToken").toString();
+
+    markMustChangePassword(ADMIN_EMAIL);
+
+    assertThat(me(staleAccessToken).getStatusCode())
+        .isIn(HttpStatus.UNAUTHORIZED, HttpStatus.FORBIDDEN);
+    assertThat(refresh(staleRefreshToken).getStatusCode())
+        .isIn(HttpStatus.BAD_REQUEST, HttpStatus.UNAUTHORIZED);
+
+    Map<String, Object> freshLoginPayload = login(ADMIN_EMAIL, ADMIN_PASSWORD);
+    assertThat(freshLoginPayload).containsEntry("mustChangePassword", true);
+    String corridorToken = freshLoginPayload.get("accessToken").toString();
+    ResponseEntity<Map> meResponse = me(corridorToken);
+    assertThat(meResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    Map<?, ?> meData = (Map<?, ?>) meResponse.getBody().get("data");
+    assertThat(meData).containsEntry("mustChangePassword", true);
+  }
+
+  @Test
+  void disabledPlatformSuperAdminCannotUsePreviouslyIssuedTokens() {
+    ResponseEntity<Map> loginResp =
+        rest.postForEntity(
+            "/api/v1/auth/login",
+            Map.of(
+                "email", SUPER_ADMIN_EMAIL,
+                "password", SUPER_ADMIN_LOGIN_VALUE,
+                "companyCode", PLATFORM_SCOPE),
+            Map.class);
+    assertThat(loginResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(loginResp.getBody()).isNotNull();
+    String accessToken = loginResp.getBody().get("accessToken").toString();
+    String refreshToken = loginResp.getBody().get("refreshToken").toString();
+
+    UserAccount superAdmin =
+        userAccountRepository
+            .findByEmailIgnoreCaseAndAuthScopeCodeIgnoreCase(SUPER_ADMIN_EMAIL, PLATFORM_SCOPE)
+            .orElseThrow();
+    superAdmin.setEnabled(false);
+    userAccountRepository.save(superAdmin);
+
+    ResponseEntity<Map> meResponse =
+        rest.exchange(
+            "/api/v1/auth/me",
+            HttpMethod.GET,
+            new HttpEntity<>(bearer(accessToken, PLATFORM_SCOPE)),
+            Map.class);
+    assertThat(meResponse.getStatusCode()).isIn(HttpStatus.UNAUTHORIZED, HttpStatus.FORBIDDEN);
+
+    ResponseEntity<Map> refreshResponse =
+        rest.postForEntity(
+            "/api/v1/auth/refresh-token",
+            Map.of("refreshToken", refreshToken, "companyCode", PLATFORM_SCOPE),
+            Map.class);
+    assertThat(refreshResponse.getStatusCode())
+        .isIn(HttpStatus.BAD_REQUEST, HttpStatus.UNAUTHORIZED);
   }
 
   @Test

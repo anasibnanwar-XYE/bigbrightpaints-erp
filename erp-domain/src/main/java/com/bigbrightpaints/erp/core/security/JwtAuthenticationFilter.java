@@ -128,6 +128,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
       logger.warn("Attempted use of token for locked user");
       return;
     }
+    if (principal.getUser().isMustChangePassword()
+        && !Boolean.TRUE.equals(claims.get("mustChangePassword", Boolean.class))) {
+      logger.warn("Attempted use of stale token after password-change requirement");
+      return;
+    }
     Collection<? extends GrantedAuthority> effectiveAuthorities = resolveAuthorities(principal);
     UsernamePasswordAuthenticationToken authentication =
         new UsernamePasswordAuthenticationToken(

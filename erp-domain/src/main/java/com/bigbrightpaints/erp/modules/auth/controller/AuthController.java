@@ -136,6 +136,7 @@ public class AuthController {
             principal.getUsername(),
             principal.getUser().getDisplayName(),
             companyCode,
+            authService.scopeType(companyCode),
             principal.getUser().isMfaEnabled(),
             principal.getUser().isMustChangePassword(),
             roles,

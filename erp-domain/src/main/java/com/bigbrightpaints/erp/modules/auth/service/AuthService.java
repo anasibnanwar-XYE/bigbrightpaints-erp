@@ -137,6 +137,7 @@ public class AuthService {
       Map<String, Object> claims = new HashMap<>();
       claims.put("name", user.getDisplayName());
       claims.put("email", user.getEmail());
+      claims.put("mustChangePassword", user.isMustChangePassword());
       Instant issuedAt = Instant.now();
       RefreshTokenService.IssuedRefreshToken issuedRefreshToken =
           refreshTokenService.issueSession(
@@ -156,8 +157,10 @@ public class AuthService {
           issuedRefreshToken.refreshToken(),
           properties.getAccessTokenTtlSeconds(),
           scopeCode,
+          scopeType(scopeCode),
           user.getDisplayName(),
-          user.isMustChangePassword());
+          user.isMustChangePassword(),
+          roleNames(user));
     } catch (RuntimeException ex) {
       if (user != null && isMfaFailure(ex) && !failedSecretValidation) {
         accountLockoutService.recordFailure(user);
@@ -218,6 +221,10 @@ public class AuthService {
                         "User not found"));
     ensureEnabledForAuthentication(user);
     accountLockoutService.enforceUnlocked(user);
+    if (user.isMustChangePassword()) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          "Refresh token revoked");
+    }
     Company company = resolveCompanyForScope(user, requestedScopeCode);
     if (company != null) {
       tenantRuntimeRequestAdmissionService.enforceAuthOperationAllowed(
@@ -233,6 +240,7 @@ public class AuthService {
     Map<String, Object> claims = new HashMap<>();
     claims.put("name", user.getDisplayName());
     claims.put("email", user.getEmail());
+    claims.put("mustChangePassword", user.isMustChangePassword());
     Instant issuedAt = Instant.now();
     RefreshTokenService.IssuedRefreshToken issuedRefreshToken =
         refreshTokenService.issueSession(
@@ -261,8 +269,14 @@ public class AuthService {
         issuedRefreshToken.refreshToken(),
         properties.getAccessTokenTtlSeconds(),
         requestedScopeCode,
+        scopeType(requestedScopeCode),
         user.getDisplayName(),
-        user.isMustChangePassword());
+        user.isMustChangePassword(),
+        roleNames(user));
+  }
+
+  public String scopeType(String scopeCode) {
+    return authScopeService.isPlatformScope(scopeCode) ? "PLATFORM" : "TENANT";
   }
 
   private Company resolveCompanyForScope(UserAccount user, String scopeCode) {
@@ -288,6 +302,10 @@ public class AuthService {
   private boolean hasSuperAdminRole(UserAccount user) {
     return user.getRoles().stream()
         .anyMatch(role -> SUPER_ADMIN_ROLE.equalsIgnoreCase(role.getName()));
+  }
+
+  private java.util.List<String> roleNames(UserAccount user) {
+    return user.getRoles().stream().map(role -> role.getName()).sorted().toList();
   }
 
   private boolean isMfaFailure(RuntimeException ex) {

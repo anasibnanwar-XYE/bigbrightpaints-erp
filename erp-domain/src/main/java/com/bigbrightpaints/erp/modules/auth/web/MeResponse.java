@@ -6,6 +6,7 @@ public record MeResponse(
     String email,
     String displayName,
     String companyCode,
+    String scopeType,
     boolean mfaEnabled,
     boolean mustChangePassword,
     List<String> roles,
