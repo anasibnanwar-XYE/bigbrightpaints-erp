@@ -9,7 +9,7 @@ from pathlib import Path
 
 
 JAVA_SOURCE_ROOT = "erp-domain/src/main/java/"
-DEFAULT_CHANGED_COVERAGE_BASELINE_SHA = "1b00fc3bfd82423cbff6c4cffaeb126b3e8d7a9a"
+DEFAULT_CHANGED_COVERAGE_BASELINE_SHA = "b087f2e9363bbbf67d314d831ec140ff4106a7fe"
 LOCAL_SEED_RUNTIME_EXCLUSIONS = (
     "erp-domain/src/main/java/com/bigbrightpaints/erp/core/config/MockDataInitializer.java",
     "erp-domain/src/main/java/com/bigbrightpaints/erp/core/config/SeedCompanyAdminSupport.java",
