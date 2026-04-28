@@ -125,6 +125,7 @@ public class SuperAdminTenantControlPlaneService {
   private final RoleRepository roleRepository;
   private final PasswordEncoder passwordEncoder;
   private final PasswordService passwordService;
+  private final TenantDefaultSeedingService tenantDefaultSeedingService;
 
   public SuperAdminTenantControlPlaneService(
       CompanyRepository companyRepository,
@@ -144,7 +145,8 @@ public class SuperAdminTenantControlPlaneService {
       PasswordResetTokenRepository passwordResetTokenRepository,
       RoleRepository roleRepository,
       PasswordEncoder passwordEncoder,
-      PasswordService passwordService) {
+      PasswordService passwordService,
+      TenantDefaultSeedingService tenantDefaultSeedingService) {
     this.companyRepository = companyRepository;
     this.userAccountRepository = userAccountRepository;
     this.auditLogRepository = auditLogRepository;
@@ -163,6 +165,7 @@ public class SuperAdminTenantControlPlaneService {
     this.roleRepository = roleRepository;
     this.passwordEncoder = passwordEncoder;
     this.passwordService = passwordService;
+    this.tenantDefaultSeedingService = tenantDefaultSeedingService;
   }
 
   @Transactional(readOnly = true)
@@ -408,6 +411,7 @@ public class SuperAdminTenantControlPlaneService {
           createPendingOwner(savedCompany, ownerEmail, request.owner().displayName());
       savedCompany.setMainAdminUserId(owner.getId());
       savedCompany.setOnboardingAdminUserId(owner.getId());
+      tenantDefaultSeedingService.seedDefaults(savedCompany);
 
       ActivationIssue activationIssue = null;
       if (request.createMode() == SuperAdminAddClientCreateRequest.CreateMode.SEND_ACTIVATION) {
@@ -452,6 +456,7 @@ public class SuperAdminTenantControlPlaneService {
   public SuperAdminActivationActionResponse sendActivation(Long companyId) {
     Company company = companyRepository.lockById(companyId).orElseThrow(() -> notFound("Company"));
     requireActivationState(company, Set.of("NOT_SENT"), "send activation");
+    tenantDefaultSeedingService.seedDefaults(company);
     UserAccount owner = requireActivationOwner(company);
     ActivationIssue activationIssue = issueActivation(company, owner, true);
     company.setOnboardingCredentialsEmailedAt(activationIssue.sentAt());
@@ -472,6 +477,7 @@ public class SuperAdminTenantControlPlaneService {
   public SuperAdminActivationActionResponse resendActivation(Long companyId) {
     Company company = companyRepository.lockById(companyId).orElseThrow(() -> notFound("Company"));
     requireActivationState(company, Set.of("SENT", "EXPIRED", "SUPERSEDED"), "resend activation");
+    tenantDefaultSeedingService.seedDefaults(company);
     UserAccount owner = requireActivationOwner(company);
     ActivationIssue activationIssue = issueActivation(company, owner, true);
     company.setOnboardingCredentialsEmailedAt(activationIssue.sentAt());
@@ -757,6 +763,28 @@ public class SuperAdminTenantControlPlaneService {
     logAuditSuccess(company, "tenant-review-intelligence-toggle-updated", metadata);
     return new SuperAdminTenantReviewIntelligenceToggleDto(
         company.getId(), company.getCode(), snapshot.enabled(), snapshot.updatedAt());
+  }
+
+  @Transactional(readOnly = true)
+  public TenantSeedStatusDto getSeedStatus(Long companyId) {
+    return tenantDefaultSeedingService.getSeedStatus(companyId);
+  }
+
+  @Transactional
+  public TenantSeedStatusDto repairSeedStatus(Long companyId) {
+    return tenantDefaultSeedingService.repairSeedStatus(companyId);
+  }
+
+  @Transactional
+  public TenantSeedStatusDto rejectCoreMappingDelete(Long companyId, String mappingKey) {
+    return tenantDefaultSeedingService.rejectCoreMappingDelete(companyId, mappingKey);
+  }
+
+  @Transactional
+  public TenantSeedStatusDto rejectCoreMappingRemap(
+      Long companyId, String mappingKey, Long requestedAccountId) {
+    return tenantDefaultSeedingService.rejectCoreMappingRemap(
+        companyId, mappingKey, requestedAccountId);
   }
 
   @Transactional
@@ -1120,24 +1148,27 @@ public class SuperAdminTenantControlPlaneService {
             new SuperAdminAddClientOptionsDto.SeedCategory(
                 "accounting_defaults",
                 "Accounting defaults",
-                "PENDING",
-                false,
-                "Default accounting setup is deferred to the owner setup/seeding milestone"),
+                "COMPLETE",
+                true,
+                "Default chart of accounts and core accounting mappings are seeded during Add"
+                    + " Client creation"),
             new SuperAdminAddClientOptionsDto.SeedCategory(
                 "gst_defaults",
                 "GST defaults",
-                "PENDING",
-                false,
-                "GST setup is deferred to the owner setup milestone"),
+                "COMPLETE",
+                true,
+                "GST or non-GST defaults are seeded during Add Client creation and repaired during"
+                    + " owner setup"),
             new SuperAdminAddClientOptionsDto.SeedCategory(
                 "role_templates",
                 "Role templates",
-                "PENDING",
-                false,
-                "Tenant role template seeding is deferred to the default seeding milestone")),
-        "Activation may be sent only after company, owner, and commercial policy metadata are"
-            + " COMPLETE; deferred setup categories remain pending until the owner setup"
-            + " corridor.");
+                "COMPLETE",
+                true,
+                "Tenant owner/admin/staff role-template metadata is available after default"
+                    + " seeding")),
+        "Activation may be sent only after company, owner, commercial policy, and default seed"
+            + " categories are COMPLETE; owner setup can repair the same idempotent defaults before"
+            + " accounting is confirmed.");
   }
 
   private void validateCreatePayloadShape(SuperAdminAddClientCreateRequest request) {

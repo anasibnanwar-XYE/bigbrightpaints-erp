@@ -43,14 +43,17 @@ public class OwnerSetupService {
   private final CompanyRepository companyRepository;
   private final AdminUserService adminUserService;
   private final AuditService auditService;
+  private final TenantDefaultSeedingService tenantDefaultSeedingService;
 
   public OwnerSetupService(
       CompanyRepository companyRepository,
       AdminUserService adminUserService,
-      AuditService auditService) {
+      AuditService auditService,
+      TenantDefaultSeedingService tenantDefaultSeedingService) {
     this.companyRepository = companyRepository;
     this.adminUserService = adminUserService;
     this.auditService = auditService;
+    this.tenantDefaultSeedingService = tenantDefaultSeedingService;
   }
 
   @Transactional(readOnly = true)
@@ -102,6 +105,7 @@ public class OwnerSetupService {
     if (StringUtils.hasText(request.stateCode())) {
       company.setStateCode(normalizeOptionalUpper(request.stateCode()));
     }
+    tenantDefaultSeedingService.seedDefaults(company);
     Instant now = CompanyTime.now(company);
     if (company.getSetupGstCompletedAt() == null) {
       company.setSetupGstCompletedAt(now);
@@ -126,6 +130,8 @@ public class OwnerSetupService {
     if (isGstEnabled(company)) {
       requireStepComplete(company.getSetupGstCompletedAt(), "gst");
     }
+    tenantDefaultSeedingService.seedDefaults(company);
+    tenantDefaultSeedingService.requireReadiness(company);
     Instant now = CompanyTime.now(company);
     if (company.getSetupAccountingCompletedAt() == null) {
       company.setSetupAccountingCompletedAt(now);

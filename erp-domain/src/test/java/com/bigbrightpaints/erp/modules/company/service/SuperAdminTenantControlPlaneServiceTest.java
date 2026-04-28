@@ -92,6 +92,7 @@ class SuperAdminTenantControlPlaneServiceTest {
   @Mock private RoleRepository roleRepository;
   @Mock private PasswordEncoder passwordEncoder;
   @Mock private PasswordService passwordService;
+  @Mock private TenantDefaultSeedingService tenantDefaultSeedingService;
 
   private SuperAdminTenantControlPlaneService service;
 
@@ -116,7 +117,8 @@ class SuperAdminTenantControlPlaneServiceTest {
             passwordResetTokenRepository,
             roleRepository,
             passwordEncoder,
-            passwordService);
+            passwordService,
+            tenantDefaultSeedingService);
     lenient()
         .when(tenantActivationTokenRepository.lockByCompanyId(any(Long.class)))
         .thenReturn(List.of());
@@ -245,6 +247,7 @@ class SuperAdminTenantControlPlaneServiceTest {
     assertThat(response.activation().redactedFields())
         .contains("secretMaterial", "activationLink", "credentialMaterial");
     assertThat(response.auditEventId()).isEqualTo(501L);
+    verify(tenantDefaultSeedingService).seedDefaults(any(Company.class));
     verify(emailService, never())
         .sendTenantActivationEmailRequired(any(), any(), any(), any(), any(), any());
     verify(tenantActivationTokenRepository, never()).saveAndFlush(any());
@@ -297,6 +300,7 @@ class SuperAdminTenantControlPlaneServiceTest {
     assertThat(response.activation().tokenId()).isEqualTo(701L);
     assertThat(response.activation().sentAt()).isNotNull();
     assertThat(response.activation().expiresAt()).isNotNull();
+    verify(tenantDefaultSeedingService).seedDefaults(any(Company.class));
     verify(emailService)
         .sendTenantActivationEmailRequired(
             eq("owner@example.com"),
@@ -351,6 +355,7 @@ class SuperAdminTenantControlPlaneServiceTest {
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("audit unavailable");
 
+    verify(tenantDefaultSeedingService).seedDefaults(any(Company.class));
     verify(emailService, never())
         .sendTenantActivationEmailRequired(any(), any(), any(), any(), any(), any());
   }
@@ -381,6 +386,7 @@ class SuperAdminTenantControlPlaneServiceTest {
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("audit unavailable");
 
+    verify(tenantDefaultSeedingService).seedDefaults(company);
     verify(emailService, never())
         .sendTenantActivationEmailRequired(any(), any(), any(), any(), any(), any());
   }
@@ -1368,7 +1374,8 @@ class SuperAdminTenantControlPlaneServiceTest {
         passwordResetTokenRepository,
         roleRepository,
         passwordEncoder,
-        passwordService);
+        passwordService,
+        tenantDefaultSeedingService);
   }
 
   private void configureTenantStatusState(Company company, String status, int index) {

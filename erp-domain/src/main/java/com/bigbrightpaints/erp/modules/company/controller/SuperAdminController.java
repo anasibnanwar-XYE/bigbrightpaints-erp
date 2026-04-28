@@ -82,6 +82,43 @@ public class SuperAdminController {
             "Superadmin tenant detail fetched", controlPlaneService.getTenantDetail(tenantId)));
   }
 
+  @GetMapping("/tenants/{id}/seed-status")
+  public ResponseEntity<ApiResponse<TenantSeedStatusDto>> getSeedStatus(
+      @PathVariable("id") Long tenantId) {
+    return ResponseEntity.ok(
+        ApiResponse.success(
+            "Tenant default seed status fetched", controlPlaneService.getSeedStatus(tenantId)));
+  }
+
+  @PostMapping("/tenants/{id}/seed-status/repair")
+  public ResponseEntity<ApiResponse<TenantSeedStatusDto>> repairSeedStatus(
+      @PathVariable("id") Long tenantId) {
+    return ResponseEntity.ok(
+        ApiResponse.success(
+            "Tenant default seed repair completed",
+            controlPlaneService.repairSeedStatus(tenantId)));
+  }
+
+  @DeleteMapping("/tenants/{id}/accounting-mappings/{mappingKey}")
+  public ResponseEntity<ApiResponse<TenantSeedStatusDto>> deleteAccountingMapping(
+      @PathVariable("id") Long tenantId, @PathVariable("mappingKey") String mappingKey) {
+    return ResponseEntity.ok(
+        ApiResponse.success(
+            "Tenant default accounting mapping deleted",
+            controlPlaneService.rejectCoreMappingDelete(tenantId, mappingKey)));
+  }
+
+  @PutMapping("/tenants/{id}/accounting-mappings/{mappingKey}")
+  public ResponseEntity<ApiResponse<TenantSeedStatusDto>> updateAccountingMapping(
+      @PathVariable("id") Long tenantId,
+      @PathVariable("mappingKey") String mappingKey,
+      @Valid @RequestBody TenantSeedMappingUpdateRequest request) {
+    return ResponseEntity.ok(
+        ApiResponse.success(
+            "Tenant default accounting mapping updated",
+            controlPlaneService.rejectCoreMappingRemap(tenantId, mappingKey, request.accountId())));
+  }
+
   @PostMapping("/tenants/{id}/activation/send")
   public ResponseEntity<ApiResponse<SuperAdminActivationActionResponse>> sendActivation(
       @PathVariable("id") Long tenantId) {
