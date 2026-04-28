@@ -36,11 +36,11 @@ This mission is not preserving dead compatibility.
 
 The approved runtime boundary for this mission is fixed:
 
-- Postgres: `5433`
-- RabbitMQ: `5672`
-- MailHog UI: `8025`
-- App HTTP: `8081`
-- Actuator/management: `9090`
+- Postgres: `15434`
+- RabbitMQ: `15673`
+- MailHog UI: `18025`
+- App HTTP: `18081`
+- Actuator/management: `19090`
 
 Workers must not use host Postgres `5432` or introduce new services outside this boundary without returning to the orchestrator.
 

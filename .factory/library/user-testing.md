@@ -11,10 +11,10 @@ Validation surfaces, tools, setup rules, and concurrency guidance for the curren
 ### 1. Strict runtime smoke
 
 - **Type:** strict compose-backed API/runtime smoke
-- **Base URL:** `http://localhost:8081`
-- **Actuator:** `http://localhost:9090/actuator/health`
-- **MailHog UI:** `http://localhost:8025`
-- **Services:** Postgres `5433`, RabbitMQ `5672`, MailHog `8025`, app `8081`, actuator `9090`
+- **Base URL:** `http://localhost:18081`
+- **Actuator:** `http://localhost:19090/actuator/health`
+- **MailHog UI:** `http://localhost:18025`
+- **Services:** Postgres `15434`, RabbitMQ `15673`, MailHog `18025`, app `18081`, actuator `19090`
 
 This surface proves bootability and runtime boundary correctness, not the full business workflow by itself.
 
@@ -62,8 +62,8 @@ Rationale:
 2. Ensure strict runtime env values are present for datasource, JWT, encryption, audit key, and mail settings. For compose-backed validation, set the datasource explicitly to `jdbc:postgresql://db:5432/erp_domain` with the compose credentials so the app container does not fall back to the host-only `localhost:5432` value from `.env`.
 3. Start the approved compose boundary from `.factory/services.yaml`.
 4. Probe both:
-   - `http://localhost:9090/actuator/health`
-   - `GET http://localhost:8081/api/v1/auth/me`
+   - `http://localhost:19090/actuator/health`
+   - `GET http://localhost:18081/api/v1/auth/me`
 5. Treat `GET /api/v1/auth/me` returning `200`, `401`, or `403` as the acceptable strict-smoke application-boundary proof.
 6. Use targeted Maven suites for the touched risk area; do not rely on broad exploratory reruns unless a feature explicitly requires them.
 7. For repo-static docs/governance validation, skip service startup and inspect the canonical files, retirement registry, and governance scripts directly from the checkout.
@@ -71,8 +71,8 @@ Rationale:
 ## Runtime Probe Guidance
 
 - Always pair the management-port probe with an app-boundary probe.
-- `9090` proves management/readiness visibility.
-- `8081/api/v1/auth/me` proves the app is actually serving requests.
+- `19090` proves management/readiness visibility.
+- `18081/api/v1/auth/me` proves the app is actually serving requests.
 - If actuator is degraded but the app boundary is alive, record both facts explicitly; do not silently treat the runtime as healthy.
 - Do not use retired routes as bootstrap probes.
 
@@ -171,9 +171,9 @@ Rationale:
 - M7 runtime note (2026-04-07): the same `app_users = 0` condition still reproduced after `reset_final_validation_runtime.sh`. The working workaround was to insert a PLATFORM-scoped `ROLE_SUPER_ADMIN` + `ROLE_ADMIN` user directly into `app_users`/`user_roles`, then use `POST /api/v1/superadmin/tenants/onboard` to create isolated tenant fixtures. Also note that `GET /api/v1/superadmin/tenants/coa-templates` currently returns `403 COMPANY_CONTROL_ACCESS_DENIED` because `CompanyContextFilter` misclassifies `coa-templates` as a company-id control route; use the known template code `INDIAN_STANDARD` instead of discovering it from that endpoint. Tenant-admin/dealer bootstrap passwords still arrive through MailHog and can be normalized with `POST /api/v1/auth/password/change`.
 - M7 rerun note (2026-04-08): the reset banner is still non-authoritative for more than actors alone. A fresh `reset_final_validation_runtime.sh` run still reported seeded actors even though `companies = 0`, `app_users = 0`, and `invoices = 0` in `erp_db`, so strict-runtime invoice/PDF proofs had to restore a minimal MOCK fixture (admin/accounting/sales users + dealer + invoice) directly in the database before live API validation could continue.
 - M8 reconciliation rerun note (2026-04-08): `GET /api/v1/accounting/reconciliation/subledger` can fail on the local validation runtime if the active tenant has `companies.state_code = null` or if the latest `OPEN` accounting period is future-dated. For the M8VAL fixture, setting `state_code='KA'` and closing the stray May 2026 period let subledger discrepancy sync succeed against April 2026. Inter-company reconciliation also needs at least one second company row/tenant in the runtime; otherwise the endpoint returns `companyBId=null` with no pairings.
-- M10 runtime note (2026-04-09): local compose strict runtime was aligned so once `GET /api/v1/auth/me` returns an app-boundary status (`200/401/403`), `http://localhost:9090/actuator/health` and `/actuator/health/readiness` should also return `200 UP` under the validation compose profile (`erp.environment.validation.enabled=false`). Treat any recurring `503/503` alongside a usable app boundary as a regression and capture endpoint status evidence.
+- M10 runtime note (2026-04-09): local compose strict runtime was aligned so once `GET /api/v1/auth/me` returns an app-boundary status (`200/401/403`), `http://localhost:19090/actuator/health` and `/actuator/health/readiness` should also return `200 UP` under the validation compose profile (`erp.environment.validation.enabled=false`). Treat any recurring `503/503` alongside a usable app boundary as a regression and capture endpoint status evidence.
 - M9 audit note (updated 2026-04-08/09): the public `GET /api/v1/accounting/audit/events` surface is suitable for event/action/source-module coverage and may now include `correlationId` in feed rows on the current runtime, but the authoritative proof for one flow-stable correlation across related accounting rows is still `GET /api/v1/accounting/audit/transactions/{journalEntryId}`. Use the transaction-detail `eventTrail` to compare correlation ids across linked O2C/P2P journals.
-- Current M4 runtime workaround: after `reset_final_validation_runtime.sh`, manually seed at least one PLATFORM super-admin (and, if useful, a MOCK admin/accounting user) directly into `erp_db.app_users` plus `user_roles`, then authenticate through `/api/v1/auth/login` and use the super-admin to create fresh tenant data through `/api/v1/superadmin/tenants/onboard`. MailHog (`http://localhost:8025`) captures the tenant-admin credential email, which is the cleanest way to obtain the temporary password for the newly onboarded company.
+- Current M4 runtime workaround: after `reset_final_validation_runtime.sh`, manually seed at least one PLATFORM super-admin (and, if useful, a MOCK admin/accounting user) directly into `erp_db.app_users` plus `user_roles`, then authenticate through `/api/v1/auth/login` and use the super-admin to create fresh tenant data through `/api/v1/superadmin/tenants/onboard`. MailHog (`http://localhost:18025`) captures the tenant-admin credential email, which is the cleanest way to obtain the temporary password for the newly onboarded company.
 - M4 period-close validation needs two tenant actors: `POST /api/v1/accounting/periods/{id}/request-close` can be performed by a tenant `ROLE_ACCOUNTING` user, while `POST /api/v1/accounting/periods/{id}/approve-close` must be performed by a different tenant `ROLE_ADMIN` user or the API returns `400 Maker-checker violation: requester and reviewer cannot be the same actor`. Creating the extra tenant accounting user via `POST /api/v1/admin/users` works; MailHog again provides the temporary password that must be rotated before use.
 - `POST /api/v1/accounting/periods/{id}/reopen` does work with a tenant-scoped `ROLE_SUPER_ADMIN` token, but the global PLATFORM super-admin is still denied on tenant business routes with `SUPER_ADMIN_PLATFORM_ONLY`. For local validation, seed `ROLE_SUPER_ADMIN` onto a tenant-scoped validation user in `app_users/user_roles` if no product surface exists to mint that actor.
 - M4 rerun note (2026-04-07): after rotating the emailed tenant-admin password on a freshly onboarded tenant, both `GET /api/v1/accounting/month-end/checklist?periodId={id}` and `POST /api/v1/accounting/month-end/checklist/{periodId}` returned `200` with canonical checklist data on tenant `UTM4R2P`.
@@ -185,10 +185,10 @@ Rationale:
 
 ## Flow Validator Guidance: strict-runtime
 
-- Use the already-started compose boundary on `localhost:8081` and `localhost:9090`; do not restart, rebuild, or stop shared services from inside the flow validator.
+- Use the already-started compose boundary on `localhost:18081` and `localhost:19090`; do not restart, rebuild, or stop shared services from inside the flow validator.
 - Restrict probes to canonical validation endpoints and absence checks needed for the assigned assertions. Record the exact HTTP status and any response body snippets needed to explain the result.
 - Treat auth-required responses (`401`/`403`) as valid boundary evidence only for the bootstrap probe defined in this mission. Do not use retired routes as liveness checks.
-- Stay within the approved runtime boundary (`5433`, `5672`, `8025`, `8081`, `9090`) and write only flow reports/evidence files.
+- Stay within the approved runtime boundary (`15434`, `15673`, `18025`, `18081`, `19090`) and write only flow reports/evidence files.
 
 ## Flow Validator Guidance: jvm-tests
 
