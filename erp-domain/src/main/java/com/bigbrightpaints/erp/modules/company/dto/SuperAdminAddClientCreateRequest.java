@@ -26,7 +26,7 @@ public record SuperAdminAddClientCreateRequest(
 
   public record Company(
       @NotBlank @Size(max = 160) String name,
-      @NotBlank @Size(min = 2, max = 32) String code,
+      @NotBlank String code,
       @NotBlank @Size(max = 64) String timezone,
       @Size(min = 2, max = 2) String stateCode,
       @NotBlank @Size(min = 3, max = 3) String baseCurrency,
@@ -34,7 +34,7 @@ public record SuperAdminAddClientCreateRequest(
       @Size(max = 64) String coaTemplateCode) {}
 
   public record Owner(
-      @NotBlank @Size(max = 255) String email,
+      @NotBlank String email,
       @NotBlank @Size(max = 160) String displayName,
       @Size(max = 32) String phone) {}
 

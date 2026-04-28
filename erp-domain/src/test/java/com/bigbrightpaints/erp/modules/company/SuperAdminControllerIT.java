@@ -312,6 +312,146 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
   }
 
   @Test
+  void addClientDuplicateMaxLengthCompanyCodeTrimsBeforeConflictHandling() {
+    String superAdminToken = loginToken(SUPER_ADMIN_EMAIL, ROOT_COMPANY_CODE);
+    HttpHeaders superAdminHeaders = headers(superAdminToken, ROOT_COMPANY_CODE);
+    String code = maxLengthCompanyCode();
+    String originalOwnerEmail = "owner-" + code.toLowerCase(Locale.ROOT) + "@example.com";
+    String duplicateOwnerEmail = "duplicate-" + code.toLowerCase(Locale.ROOT) + "@example.com";
+
+    ResponseEntity<Map> createdResponse =
+        rest.exchange(
+            "/api/v1/superadmin/tenants",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                addClientPayload(code, originalOwnerEmail, "DRAFT"), superAdminHeaders),
+            Map.class);
+    assertThat(createdResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+
+    ResponseEntity<Map> duplicateResponse =
+        rest.exchange(
+            "/api/v1/superadmin/tenants",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                addClientPayload(
+                    " " + code.toLowerCase(Locale.ROOT) + " ", duplicateOwnerEmail, "DRAFT"),
+                superAdminHeaders),
+            Map.class);
+
+    assertThat(duplicateResponse.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+    assertThat(countRows("select count(*) from companies where lower(code) = lower(?)", code))
+        .isOne();
+    assertThat(
+            countRows(
+                "select count(*) from app_users where lower(email) = lower(?)", originalOwnerEmail))
+        .isOne();
+    assertThat(
+            countRows(
+                "select count(*) from app_users where lower(email) = lower(?)",
+                duplicateOwnerEmail))
+        .isZero();
+  }
+
+  @Test
+  void addClientDuplicateMaxLengthOwnerEmailTrimsBeforeConflictHandling() {
+    String superAdminToken = loginToken(SUPER_ADMIN_EMAIL, ROOT_COMPANY_CODE);
+    HttpHeaders superAdminHeaders = headers(superAdminToken, ROOT_COMPANY_CODE);
+    String originalCode = "M4MAXM" + Long.toString(System.nanoTime(), 36).toUpperCase(Locale.ROOT);
+    String duplicateCode = originalCode + "D";
+    String ownerEmail = maxLengthOwnerEmail();
+
+    ResponseEntity<Map> createdResponse =
+        rest.exchange(
+            "/api/v1/superadmin/tenants",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                addClientPayload(originalCode, ownerEmail, "DRAFT"), superAdminHeaders),
+            Map.class);
+    assertThat(createdResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+    long activationTokensAfterOriginal =
+        countRows("select count(*) from tenant_activation_tokens", null);
+
+    ResponseEntity<Map> duplicateResponse =
+        rest.exchange(
+            "/api/v1/superadmin/tenants",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                addClientPayload(
+                    duplicateCode,
+                    " " + ownerEmail.toUpperCase(Locale.ROOT) + " ",
+                    "SEND_ACTIVATION"),
+                superAdminHeaders),
+            Map.class);
+
+    assertThat(duplicateResponse.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+    assertThat(
+            countRows("select count(*) from companies where lower(code) = lower(?)", originalCode))
+        .isOne();
+    assertThat(
+            countRows("select count(*) from companies where lower(code) = lower(?)", duplicateCode))
+        .isZero();
+    assertThat(
+            countRows("select count(*) from app_users where lower(email) = lower(?)", ownerEmail))
+        .isOne();
+    assertThat(countRows("select count(*) from tenant_activation_tokens", null))
+        .isEqualTo(activationTokensAfterOriginal);
+  }
+
+  @Test
+  void addClientRejectsOversizedNormalizedCompanyCodeWithoutSideEffects() {
+    String superAdminToken = loginToken(SUPER_ADMIN_EMAIL, ROOT_COMPANY_CODE);
+    HttpHeaders superAdminHeaders = headers(superAdminToken, ROOT_COMPANY_CODE);
+    String oversizedCode = maxLengthCompanyCode() + "X";
+    String ownerEmail = "oversized-code-" + Long.toString(System.nanoTime(), 36) + "@example.com";
+
+    ResponseEntity<Map> response =
+        rest.exchange(
+            "/api/v1/superadmin/tenants",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                addClientPayload(" " + oversizedCode + " ", ownerEmail, "DRAFT"),
+                superAdminHeaders),
+            Map.class);
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(
+            countRows("select count(*) from companies where lower(code) = lower(?)", oversizedCode))
+        .isZero();
+    assertThat(
+            countRows("select count(*) from app_users where lower(email) = lower(?)", ownerEmail))
+        .isZero();
+  }
+
+  @Test
+  void addClientRejectsOversizedNormalizedOwnerEmailWithoutTenantOrTokenSideEffects() {
+    String superAdminToken = loginToken(SUPER_ADMIN_EMAIL, ROOT_COMPANY_CODE);
+    HttpHeaders superAdminHeaders = headers(superAdminToken, ROOT_COMPANY_CODE);
+    String code = "M4OEM" + Long.toString(System.nanoTime(), 36).toUpperCase(Locale.ROOT);
+    String oversizedOwnerEmail = maxLengthOwnerEmail() + "x";
+    long activationTokensBefore = countRows("select count(*) from tenant_activation_tokens", null);
+
+    ResponseEntity<Map> response =
+        rest.exchange(
+            "/api/v1/superadmin/tenants",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                addClientPayload(code, " " + oversizedOwnerEmail + " ", "SEND_ACTIVATION"),
+                superAdminHeaders),
+            Map.class);
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(countRows("select count(*) from companies where lower(code) = lower(?)", code))
+        .isZero();
+    assertThat(
+            countRows(
+                "select count(*) from app_users where lower(email) = lower(?)",
+                oversizedOwnerEmail))
+        .isZero();
+    assertThat(countRows("select count(*) from tenant_activation_tokens", null))
+        .isEqualTo(activationTokensBefore);
+  }
+
+  @Test
   void superAdmin_profileReadUpdatePasswordAndSessionControlsAreSafe() {
     String superAdminToken = loginToken(SUPER_ADMIN_EMAIL, ROOT_COMPANY_CODE);
     HttpHeaders superAdminHeaders = headers(superAdminToken, ROOT_COMPANY_CODE);
@@ -833,6 +973,19 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
         Map.of("notes", "safe note", "tags", List.of("M4")),
         "createMode",
         createMode);
+  }
+
+  private String maxLengthCompanyCode() {
+    String unique = "M4B" + Long.toString(System.nanoTime(), 36).toUpperCase(Locale.ROOT);
+    return (unique + "X".repeat(32)).substring(0, 32);
+  }
+
+  private String maxLengthOwnerEmail() {
+    String uniqueLocal = "m4b" + Long.toString(System.nanoTime(), 36).toLowerCase(Locale.ROOT);
+    String domain = "example.com";
+    String local = uniqueLocal + "x".repeat(64 - uniqueLocal.length());
+    String base = local + "@" + domain;
+    return base + "y".repeat(255 - base.length());
   }
 
   private void assertTenantListAndProfileReadBackStatus(

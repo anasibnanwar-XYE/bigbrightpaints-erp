@@ -1678,7 +1678,12 @@ public class SuperAdminTenantControlPlaneService {
       throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
           fieldName + " is required");
     }
-    return email.trim().toLowerCase(Locale.ROOT);
+    String normalized = email.trim().toLowerCase(Locale.ROOT);
+    if (normalized.length() > 255) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          fieldName + " must be at most 255 characters");
+    }
+    return normalized;
   }
 
   private String normalizeOptionalReason(String value, String fallback) {
