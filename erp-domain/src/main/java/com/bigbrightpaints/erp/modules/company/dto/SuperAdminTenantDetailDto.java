@@ -11,7 +11,6 @@ public record SuperAdminTenantDetailDto(
     String timezone,
     String stateCode,
     String lifecycleState,
-    String lifecycleReason,
     Set<String> enabledModules,
     Onboarding onboarding,
     MainAdminSummaryDto mainAdmin,
@@ -52,7 +51,6 @@ public record SuperAdminTenantDetailDto(
         timezone,
         stateCode,
         lifecycleState,
-        lifecycleReason,
         enabledModules,
         onboarding,
         mainAdmin,
@@ -120,10 +118,24 @@ public record SuperAdminTenantDetailDto(
       long currentConcurrentRequests,
       Instant lastActivityAt) {}
 
-  public record SupportContext(String supportNotes, Set<String> supportTags) {}
+  public record SupportContext(Set<String> supportTags) {
+    public SupportContext(String supportNotes, Set<String> supportTags) {
+      this(supportTags);
+    }
+  }
 
   public record SupportTimelineEvent(
-      String category, String title, String message, String actor, Instant occurredAt) {}
+      String category,
+      String title,
+      String status,
+      String reasonCode,
+      String actor,
+      Instant occurredAt) {
+    public SupportTimelineEvent(
+        String category, String title, String message, String actor, Instant occurredAt) {
+      this(category, title, null, null, actor, occurredAt);
+    }
+  }
 
   public record AvailableActions(
       boolean canUpdateLifecycle,

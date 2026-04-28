@@ -7,8 +7,28 @@ public record CompanySupportWarningDto(
     String companyCode,
     String warningId,
     String warningCategory,
-    String message,
     String requestedLifecycleState,
     int gracePeriodHours,
     String issuedBy,
-    Instant issuedAt) {}
+    Instant issuedAt) {
+  public CompanySupportWarningDto(
+      Long companyId,
+      String companyCode,
+      String warningId,
+      String warningCategory,
+      String message,
+      String requestedLifecycleState,
+      int gracePeriodHours,
+      String issuedBy,
+      Instant issuedAt) {
+    this(
+        companyId,
+        companyCode,
+        warningId,
+        warningCategory,
+        requestedLifecycleState,
+        gracePeriodHours,
+        issuedBy,
+        issuedAt);
+  }
+}

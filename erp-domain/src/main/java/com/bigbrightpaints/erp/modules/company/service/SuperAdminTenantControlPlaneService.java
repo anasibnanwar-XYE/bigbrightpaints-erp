@@ -514,7 +514,6 @@ public class SuperAdminTenantControlPlaneService {
         resolveTrialEndsAt(company, status),
         health,
         metrics.lifecycleState(),
-        metrics.lifecycleReason(),
         metrics.activeUserCount(),
         metrics.quotaMaxActiveUsers(),
         metrics.apiActivityCount(),
@@ -561,7 +560,6 @@ public class SuperAdminTenantControlPlaneService {
         company.getTimezone(),
         company.getStateCode(),
         resolveLifecycle(company),
-        company.getLifecycleReason(),
         company.getEnabledModules(),
         new SuperAdminTenantDetailDto.Onboarding(
             company.getOnboardingCoaTemplateCode(),
@@ -631,7 +629,8 @@ public class SuperAdminTenantControlPlaneService {
           new SuperAdminTenantDetailDto.SupportTimelineEvent(
               "WARNING",
               warning.getWarningCategory(),
-              warning.getMessage(),
+              warning.getRequestedLifecycleState(),
+              warning.getWarningCategory(),
               warning.getIssuedBy(),
               warning.getIssuedAt()));
     }
@@ -641,7 +640,8 @@ public class SuperAdminTenantControlPlaneService {
           new SuperAdminTenantDetailDto.SupportTimelineEvent(
               "AUDIT",
               auditLog.getEventType().name(),
-              auditMessage(auditLog),
+              auditStatus(auditLog),
+              auditLog.getEventType().name(),
               StringUtils.hasText(auditLog.getUsername()) ? auditLog.getUsername() : "system",
               toInstant(auditLog.getTimestamp())));
     }
@@ -653,15 +653,8 @@ public class SuperAdminTenantControlPlaneService {
     return timeline.size() > 50 ? timeline.subList(0, 50) : timeline;
   }
 
-  private String auditMessage(AuditLog auditLog) {
-    if (auditLog.getMetadata() != null
-        && StringUtils.hasText(auditLog.getMetadata().get("reason"))) {
-      return auditLog.getMetadata().get("reason");
-    }
-    if (StringUtils.hasText(auditLog.getErrorMessage())) {
-      return auditLog.getErrorMessage();
-    }
-    return auditLog.getEventType().name();
+  private String auditStatus(AuditLog auditLog) {
+    return auditLog.getStatus() == null ? "SUCCESS" : auditLog.getStatus().name();
   }
 
   private MainAdminSummaryDto toMainAdminSummary(Company company, UserAccount mainAdmin) {

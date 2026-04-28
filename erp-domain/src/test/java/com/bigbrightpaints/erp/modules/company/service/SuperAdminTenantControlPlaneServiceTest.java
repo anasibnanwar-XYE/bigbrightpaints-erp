@@ -24,6 +24,8 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import com.bigbrightpaints.erp.core.audit.AuditEvent;
 import com.bigbrightpaints.erp.core.audit.AuditLog;
 import com.bigbrightpaints.erp.core.audit.AuditLogRepository;
@@ -257,15 +259,15 @@ class SuperAdminTenantControlPlaneServiceTest {
   }
 
   @Test
-  void getTenantDetail_aggregatesMetricsTimelineAndMainAdmin() {
+  void getTenantDetail_aggregatesMetricsTimelineAndMainAdmin() throws Exception {
     Company company = company(7L, "ACME");
     company.setName("Acme Paints");
     company.setTimezone("Asia/Kolkata");
     company.setStateCode("KA");
     company.setLifecycleState(CompanyLifecycleState.SUSPENDED);
-    company.setLifecycleReason("ops-review");
+    company.setLifecycleReason("tenant-private-canary-lifecycle-reason");
     company.setEnabledModules(Set.of("PORTAL", "PURCHASING"));
-    company.setSupportNotes("  needs follow-up  ");
+    company.setSupportNotes("  tenant-private-canary-support-notes  ");
     company.setSupportTags(Set.of(" urgent ", "finance"));
     company.setMainAdminUserId(91L);
     company.setOnboardingCoaTemplateCode("  sme ");
@@ -282,7 +284,7 @@ class SuperAdminTenantControlPlaneServiceTest {
                 7L,
                 "ACME",
                 "SUSPENDED",
-                "ops-review",
+                "tenant-private-canary-lifecycle-reason",
                 120,
                 3000,
                 4096,
@@ -303,7 +305,7 @@ class SuperAdminTenantControlPlaneServiceTest {
     ReflectionTestUtils.setField(warning, "id", 501L);
     warning.setCompany(company);
     warning.setWarningCategory("FINANCE");
-    warning.setMessage("Pending payment");
+    warning.setMessage("tenant-private-canary-warning-message");
     warning.setRequestedLifecycleState("SUSPENDED");
     warning.setGracePeriodHours(48);
     warning.setIssuedBy("support@bbp.com");
@@ -317,7 +319,7 @@ class SuperAdminTenantControlPlaneServiceTest {
             .companyId(7L)
             .username("super-admin@bbp.com")
             .timestamp(LocalDateTime.of(2026, 3, 26, 12, 0))
-            .metadata(java.util.Map.of("reason", "tenant-force-logout"))
+            .metadata(java.util.Map.of("reason", "tenant-private-canary-audit-reason"))
             .build();
     AuditLog olderAudit =
         new AuditLog.Builder()
@@ -325,7 +327,7 @@ class SuperAdminTenantControlPlaneServiceTest {
             .companyId(7L)
             .username("system")
             .timestamp(LocalDateTime.of(2026, 3, 25, 12, 0))
-            .errorMessage("fallback-error")
+            .errorMessage("tenant-private-canary-audit-error")
             .build();
     when(auditLogRepository.findTop50ByCompanyIdOrderByTimestampDesc(7L))
         .thenReturn(java.util.List.of(olderAudit, newerAudit));
@@ -351,13 +353,22 @@ class SuperAdminTenantControlPlaneServiceTest {
     assertThat(detail.onboarding().templateCode()).isEqualTo("SME");
     assertThat(detail.onboarding().adminEmail()).isEqualTo("admin@example.com");
     assertThat(detail.usage().lastActivityAt()).isEqualTo(Instant.parse("2026-03-26T12:00:00Z"));
-    assertThat(detail.supportContext().supportNotes()).isEqualTo("needs follow-up");
     assertThat(detail.supportContext().supportTags())
         .containsExactlyInAnyOrder("URGENT", "FINANCE");
     assertThat(detail.supportTimeline()).hasSize(3);
     assertThat(detail.supportTimeline().get(0).category()).isEqualTo("AUDIT");
-    assertThat(detail.supportTimeline().get(0).message()).isEqualTo("tenant-force-logout");
+    assertThat(detail.supportTimeline().get(0).status()).isEqualTo("SUCCESS");
+    assertThat(detail.supportTimeline().get(0).reasonCode()).isEqualTo("CONFIGURATION_CHANGED");
     assertThat(detail.supportTimeline().get(1).category()).isEqualTo("WARNING");
+    assertThat(detail.supportTimeline().get(1).status()).isEqualTo("SUSPENDED");
+    assertThat(detail.supportTimeline().get(1).reasonCode()).isEqualTo("FINANCE");
+    String serialized = new ObjectMapper().findAndRegisterModules().writeValueAsString(detail);
+    assertThat(serialized)
+        .doesNotContain("tenant-private-canary-support-notes")
+        .doesNotContain("tenant-private-canary-warning-message")
+        .doesNotContain("tenant-private-canary-audit-reason")
+        .doesNotContain("tenant-private-canary-audit-error")
+        .doesNotContain("tenant-private-canary-lifecycle-reason");
   }
 
   @Test
@@ -378,7 +389,6 @@ class SuperAdminTenantControlPlaneServiceTest {
     assertThat(response.warningCategory()).isEqualTo("GENERAL");
     assertThat(response.requestedLifecycleState()).isEqualTo("SUSPENDED");
     assertThat(response.gracePeriodHours()).isEqualTo(24);
-    assertThat(response.message()).isEqualTo("Please respond");
     assertThat(response.issuedAt()).isNotNull();
     verify(auditService)
         .logAuthSuccess(
@@ -415,7 +425,7 @@ class SuperAdminTenantControlPlaneServiceTest {
     SuperAdminTenantSupportContextDto response =
         service.updateSupportContext(7L, "  investigate first  ", Set.of(" urgent ", "billing"));
 
-    assertThat(response.supportNotes()).isEqualTo("investigate first");
+    assertThat(company.getSupportNotes()).isEqualTo("investigate first");
     assertThat(response.supportTags()).containsExactlyInAnyOrder("URGENT", "BILLING");
   }
 
@@ -428,7 +438,7 @@ class SuperAdminTenantControlPlaneServiceTest {
     SuperAdminTenantSupportContextDto response =
         service.updateSupportContext(7L, null, Set.of(" urgent "));
 
-    assertThat(response.supportNotes()).isEqualTo("keep existing notes");
+    assertThat(company.getSupportNotes()).isEqualTo("keep existing notes");
     assertThat(response.supportTags()).containsExactly("URGENT");
   }
 
