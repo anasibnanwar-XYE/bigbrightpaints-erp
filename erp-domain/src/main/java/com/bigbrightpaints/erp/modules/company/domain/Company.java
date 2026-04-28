@@ -159,6 +159,21 @@ public class Company extends VersionedEntity {
   @Column(name = "activation_expires_at")
   private Instant activationExpiresAt;
 
+  @Column(name = "setup_company_details_completed_at")
+  private Instant setupCompanyDetailsCompletedAt;
+
+  @Column(name = "setup_gst_completed_at")
+  private Instant setupGstCompletedAt;
+
+  @Column(name = "setup_accounting_completed_at")
+  private Instant setupAccountingCompletedAt;
+
+  @Column(name = "setup_invite_team_completed_at")
+  private Instant setupInviteTeamCompletedAt;
+
+  @Column(name = "setup_finished_at")
+  private Instant setupFinishedAt;
+
   @PrePersist
   public void prePersist() {
     if (publicId == null) {
@@ -550,6 +565,46 @@ public class Company extends VersionedEntity {
 
   public void setActivationExpiresAt(Instant activationExpiresAt) {
     this.activationExpiresAt = activationExpiresAt;
+  }
+
+  public Instant getSetupCompanyDetailsCompletedAt() {
+    return setupCompanyDetailsCompletedAt;
+  }
+
+  public void setSetupCompanyDetailsCompletedAt(Instant setupCompanyDetailsCompletedAt) {
+    this.setupCompanyDetailsCompletedAt = setupCompanyDetailsCompletedAt;
+  }
+
+  public Instant getSetupGstCompletedAt() {
+    return setupGstCompletedAt;
+  }
+
+  public void setSetupGstCompletedAt(Instant setupGstCompletedAt) {
+    this.setupGstCompletedAt = setupGstCompletedAt;
+  }
+
+  public Instant getSetupAccountingCompletedAt() {
+    return setupAccountingCompletedAt;
+  }
+
+  public void setSetupAccountingCompletedAt(Instant setupAccountingCompletedAt) {
+    this.setupAccountingCompletedAt = setupAccountingCompletedAt;
+  }
+
+  public Instant getSetupInviteTeamCompletedAt() {
+    return setupInviteTeamCompletedAt;
+  }
+
+  public void setSetupInviteTeamCompletedAt(Instant setupInviteTeamCompletedAt) {
+    this.setupInviteTeamCompletedAt = setupInviteTeamCompletedAt;
+  }
+
+  public Instant getSetupFinishedAt() {
+    return setupFinishedAt;
+  }
+
+  public void setSetupFinishedAt(Instant setupFinishedAt) {
+    this.setupFinishedAt = setupFinishedAt;
   }
 
   public boolean isQuotaSoftLimitEnabled() {

@@ -153,6 +153,48 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
         "#/components/schemas/ActivationCompleteRequest",
         "200",
         "#/components/schemas/ApiResponseActivationCompleteResponse");
+    assertOperationContract(
+        root,
+        "/api/v1/setup/status",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseOwnerSetupStatusResponse");
+    assertOperationContract(
+        root,
+        "/api/v1/setup/company-details",
+        "put",
+        "#/components/schemas/OwnerSetupCompanyDetailsRequest",
+        "200",
+        "#/components/schemas/ApiResponseOwnerSetupStatusResponse");
+    assertOperationContract(
+        root,
+        "/api/v1/setup/gst",
+        "put",
+        "#/components/schemas/OwnerSetupGstRequest",
+        "200",
+        "#/components/schemas/ApiResponseOwnerSetupStatusResponse");
+    assertOperationContract(
+        root,
+        "/api/v1/setup/accounting",
+        "put",
+        "#/components/schemas/OwnerSetupAccountingRequest",
+        "200",
+        "#/components/schemas/ApiResponseOwnerSetupStatusResponse");
+    assertOperationContract(
+        root,
+        "/api/v1/setup/invite-team",
+        "post",
+        "#/components/schemas/OwnerSetupInviteTeamRequest",
+        "200",
+        "#/components/schemas/ApiResponseOwnerSetupStatusResponse");
+    assertOperationContract(
+        root,
+        "/api/v1/setup/finish",
+        "post",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseOwnerSetupStatusResponse");
     assertOperationMissing(root, "/api/v1/auth/profile", "get");
     assertOperationMissing(root, "/api/v1/auth/profile", "post");
     assertOperationMissing(root, "/api/v1/auth/profile", "put");
@@ -604,6 +646,12 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
             "POST /api/v1/auth/password/change",
             "POST /api/v1/auth/password/forgot",
             "POST /api/v1/auth/password/reset",
+            "GET /api/v1/setup/status",
+            "PUT /api/v1/setup/company-details",
+            "PUT /api/v1/setup/gst",
+            "PUT /api/v1/setup/accounting",
+            "POST /api/v1/setup/invite-team",
+            "POST /api/v1/setup/finish",
             "POST /api/v1/auth/mfa/setup",
             "POST /api/v1/auth/mfa/activate",
             "POST /api/v1/auth/mfa/disable",

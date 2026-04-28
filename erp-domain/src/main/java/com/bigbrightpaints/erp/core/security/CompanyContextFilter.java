@@ -323,6 +323,15 @@ public class CompanyContextFilter extends OncePerRequestFilter {
               response, "TENANT_LIFECYCLE_RESTRICTED", lifecycleDeniedMessage(lifecycleState));
           return;
         }
+        if (!lifecycleControlBypass
+            && companyService.isOwnerSetupRequiredByCode(companyCode)
+            && !isSetupCorridorRequestAllowed(runtimePath)) {
+          writeAccessDenied(
+              response,
+              "TENANT_SETUP_REQUIRED",
+              "Tenant owner first-login setup must be completed before using tenant workflows");
+          return;
+        }
         if (!lifecycleControlRequest || tenantRuntimePolicyControlRequest) {
           TenantRuntimeEnforcementService.TenantRequestAdmission runtimeAdmission =
               tenantRuntimeRequestAdmissionService.beginRequest(
@@ -723,6 +732,17 @@ public class CompanyContextFilter extends OncePerRequestFilter {
   private boolean isRetiredAdminHostPath(HttpServletRequest request, String normalizedPath) {
     return RetiredTenantAdminHostPaths.matchesNormalizedPath(
         normalizedPath, request == null ? null : request.getMethod());
+  }
+
+  private boolean isSetupCorridorRequestAllowed(String path) {
+    String normalizedPath = normalizePath(path);
+    if (!StringUtils.hasText(normalizedPath)) {
+      return false;
+    }
+    return normalizedPath.equals("/api/v1/auth/me")
+        || normalizedPath.equals("/api/v1/auth/logout")
+        || normalizedPath.equals("/api/v1/setup")
+        || normalizedPath.startsWith("/api/v1/setup/");
   }
 
   private boolean isSuperadminPlatformScopeOnlyHostPath(String path) {

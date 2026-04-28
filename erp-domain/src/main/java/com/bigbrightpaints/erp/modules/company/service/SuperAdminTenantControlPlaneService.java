@@ -1512,7 +1512,10 @@ public class SuperAdminTenantControlPlaneService {
   }
 
   private List<String> ownerSetupSteps(Company company) {
-    boolean gstEnabled = company != null && company.getDefaultGstRate() != null;
+    boolean gstEnabled =
+        company != null
+            && company.getDefaultGstRate() != null
+            && company.getDefaultGstRate().compareTo(java.math.BigDecimal.ZERO) > 0;
     List<String> steps = new ArrayList<>();
     steps.add("company-details");
     if (gstEnabled) {

@@ -2,6 +2,36 @@
 
 Last reviewed: 2026-05-01
 
+## Addendum — `m6-owner-setup-corridor`
+
+- Scope: owner first-login setup corridor after activation, including setup step persistence on companies, tenant-workflow setup-required gating, owner/admin setup APIs, invite-role bounds, and OpenAPI/test coverage.
+- Risk trigger: touches high-risk company/auth boundary code and Flyway v2 schema under `erp-domain/src/main/java/com/bigbrightpaints/erp/core/security/**`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/company/**`, and `erp-domain/src/main/resources/db/migration_v2/**`.
+- Approval mode: orchestrator; human escalation required: no.
+- Escalation decision: no privilege widening, tenant-boundary expansion, destructive migration, or secret-handling relaxation was introduced. The schema adds nullable setup-step timestamps only; setup APIs are tenant owner/admin-only and platform Super Admin/staff actors are denied.
+- Rollback owner: Droid mission orchestrator.
+- Rollback method: revert this packet and rerun compile, Spotless, targeted owner setup/Super Admin/OpenAPI tests, OpenAPI drift guard, high-risk guard, and mission-safe baseline validators.
+- Expiry: 2026-05-05.
+- Verification evidence:
+  - activation completion still moves tenants to `SETUP_PENDING`, with setup steps limited to company details, GST when enabled, accounting, invite team, and finish
+  - owner setup APIs persist ordered step completion and reject out-of-order accounting, immutable company mutation probes, branch/warehouse payload fields via strict input handling, and `ROLE_SUPER_ADMIN` invites
+  - setup-required tenants can use auth/setup routes but receive safe `TENANT_SETUP_REQUIRED` denial for representative tenant workflows until finish
+  - finish is idempotent, sets onboarding completion once, and transitions the read model to `TRIAL_ACTIVE` or `ACTIVE`
+  - accepted setup mutations write required audit evidence with safe step/action metadata and no passwords, tokens, activation links, or tenant-private business data
+- Commands run:
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=SuperAdminControllerIT#ownerFirstLoginSetupCorridorIsOrderedResumableIdempotentAndAuthorized test`
+  - `cd erp-domain && MIGRATION_SET=v2 ERP_OPENAPI_SNAPSHOT_VERIFY=true ERP_OPENAPI_SNAPSHOT_REFRESH=true mvn -Djacoco.skip=true -Dtest=OpenApiSnapshotIT test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -q -DskipTests compile && MIGRATION_SET=v2 mvn spotless:check`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=SuperAdminControllerIT,OpenApiSnapshotIT,SuperAdminTenantControlPlaneServiceTest,CompanyContextFilterControlPlaneBindingTest test`
+  - `bash scripts/guard_openapi_contract_drift.sh && bash ci/check-high-risk-changes.sh`
+  - `bash scripts/guard_accounting_portal_scope_contract.sh && bash scripts/validate_m0_validation_harness_gates.sh --static && bash ci/lint-knowledgebase.sh`
+- Result summary:
+  - targeted owner setup canary reported 1 test run, 0 failures/errors/skips
+  - OpenAPI snapshot refresh suite reported 15 tests run, 0 failures/errors/skips
+  - impacted Super Admin/OpenAPI/filter suite reported 99 tests run, 0 failures/errors/skips
+  - compile, Spotless, OpenAPI drift guard, high-risk guard, accounting portal scope guard, M0 static gates, and knowledgebase lint passed
+  - broad `scripts/gate_fast.sh` was attempted after targeted validators and remains blocked by unrelated legacy truth-lane failures outside this packet; see worker handoff for details
+  - no bearer tokens, passwords, activation links, token digests, provider credentials, or `.env` values are included in evidence
+
 ## Addendum — `m5-fix-activation-reset-digest-metadata`
 
 - Scope: activation and password-reset token persistence metadata hardening for digest algorithm/version.

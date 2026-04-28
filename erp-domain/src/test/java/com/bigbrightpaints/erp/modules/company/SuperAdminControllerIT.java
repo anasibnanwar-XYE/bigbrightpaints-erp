@@ -367,6 +367,209 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
   }
 
   @Test
+  void ownerFirstLoginSetupCorridorIsOrderedResumableIdempotentAndAuthorized() {
+    org.mockito.Mockito.reset(mailSender);
+    String superAdminToken = loginToken(SUPER_ADMIN_EMAIL, ROOT_COMPANY_CODE);
+    HttpHeaders superAdminHeaders = headers(superAdminToken, ROOT_COMPANY_CODE);
+    String code = "M6SET" + Long.toString(System.nanoTime(), 36).toUpperCase(Locale.ROOT);
+    String ownerEmail = "owner-" + code.toLowerCase(Locale.ROOT) + "@example.com";
+
+    ResponseEntity<Map> createResponse =
+        rest.exchange(
+            "/api/v1/superadmin/tenants",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                addClientPayload(code, ownerEmail, "SEND_ACTIVATION"), superAdminHeaders),
+            Map.class);
+    assertThat(createResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+    org.mockito.ArgumentCaptor<SimpleMailMessage> messageCaptor =
+        org.mockito.ArgumentCaptor.forClass(SimpleMailMessage.class);
+    org.mockito.Mockito.verify(mailSender).send(messageCaptor.capture());
+    String activationToken =
+        messageCaptor
+            .getValue()
+            .getText()
+            .substring(messageCaptor.getValue().getText().indexOf("token=") + 6)
+            .lines()
+            .findFirst()
+            .orElseThrow();
+
+    ResponseEntity<Map> completeResponse =
+        rest.exchange(
+            "/api/v1/auth/activation/complete",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of(
+                    "token",
+                    activationToken,
+                    "newPassword",
+                    "OwnerSetup123!",
+                    "confirmPassword",
+                    "OwnerSetup123!"),
+                jsonHeaders()),
+            Map.class);
+    assertThat(completeResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    @SuppressWarnings("unchecked")
+    Map<String, Object> completeData = (Map<String, Object>) completeResponse.getBody().get("data");
+    assertThat(completeData)
+        .containsEntry("tenantStatus", "SETUP_PENDING")
+        .containsKey("nextSetupSteps");
+    assertThat(completeData.toString().toLowerCase(Locale.ROOT))
+        .doesNotContain("branch", "warehouse", "temporarypassword");
+
+    String ownerToken = loginToken(ownerEmail, code, "OwnerSetup123!");
+    HttpHeaders ownerHeaders = headers(ownerToken, code);
+    ResponseEntity<Map> setupStatus =
+        rest.exchange(
+            "/api/v1/setup/status", HttpMethod.GET, new HttpEntity<>(ownerHeaders), Map.class);
+    assertThat(setupStatus.getStatusCode()).isEqualTo(HttpStatus.OK);
+    @SuppressWarnings("unchecked")
+    Map<String, Object> initialStatus = (Map<String, Object>) setupStatus.getBody().get("data");
+    assertThat(initialStatus)
+        .containsEntry("tenantStatus", "SETUP_PENDING")
+        .containsEntry("setupRequired", true);
+    assertThat(initialStatus.toString().toLowerCase(Locale.ROOT))
+        .contains("company-details", "gst", "accounting", "invite-team", "finish")
+        .doesNotContain("branch", "warehouse");
+
+    ResponseEntity<Map> prematureAccounting =
+        rest.exchange(
+            "/api/v1/setup/accounting",
+            HttpMethod.PUT,
+            new HttpEntity<>(Map.of("confirmDefaults", true), ownerHeaders),
+            Map.class);
+    assertThat(prematureAccounting.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+    ResponseEntity<Map> setupRequiredProbe =
+        rest.exchange(
+            "/api/v1/companies", HttpMethod.GET, new HttpEntity<>(ownerHeaders), Map.class);
+    assertThat(setupRequiredProbe.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+    assertThat(setupRequiredProbe.getBody().toString()).contains("TENANT_SETUP_REQUIRED");
+
+    ResponseEntity<Map> companyDetails =
+        rest.exchange(
+            "/api/v1/setup/company-details",
+            HttpMethod.PUT,
+            new HttpEntity<>(
+                Map.of(
+                    "name",
+                    "M6 Setup Client",
+                    "timezone",
+                    "Asia/Kolkata",
+                    "stateCode",
+                    "MH",
+                    "tenantId",
+                    "must-not-mutate"),
+                ownerHeaders),
+            Map.class);
+    assertThat(companyDetails.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+    companyDetails =
+        rest.exchange(
+            "/api/v1/setup/company-details",
+            HttpMethod.PUT,
+            new HttpEntity<>(
+                Map.of("name", "M6 Setup Client", "timezone", "Asia/Kolkata", "stateCode", "MH"),
+                ownerHeaders),
+            Map.class);
+    assertThat(companyDetails.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+    ResponseEntity<Map> gstWithWarehouse =
+        rest.exchange(
+            "/api/v1/setup/gst",
+            HttpMethod.PUT,
+            new HttpEntity<>(
+                Map.of("enabled", true, "defaultGstRate", 18, "warehouse", "W1"), ownerHeaders),
+            Map.class);
+    assertThat(gstWithWarehouse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+    ResponseEntity<Map> gst =
+        rest.exchange(
+            "/api/v1/setup/gst",
+            HttpMethod.PUT,
+            new HttpEntity<>(
+                Map.of("enabled", true, "defaultGstRate", 18, "stateCode", "MH"), ownerHeaders),
+            Map.class);
+    assertThat(gst.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+    ResponseEntity<Map> accounting =
+        rest.exchange(
+            "/api/v1/setup/accounting",
+            HttpMethod.PUT,
+            new HttpEntity<>(Map.of("confirmDefaults", true), ownerHeaders),
+            Map.class);
+    assertThat(accounting.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+    ResponseEntity<Map> superAdminInvite =
+        rest.exchange(
+            "/api/v1/setup/invite-team",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of(
+                    "invitations",
+                    List.of(
+                        Map.of(
+                            "email",
+                            "platform-role-" + code.toLowerCase(Locale.ROOT) + "@example.com",
+                            "displayName",
+                            "Bad Role",
+                            "role",
+                            "ROLE_SUPER_ADMIN"))),
+                ownerHeaders),
+            Map.class);
+    assertThat(superAdminInvite.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+    ResponseEntity<Map> skipInvite =
+        rest.exchange(
+            "/api/v1/setup/invite-team",
+            HttpMethod.POST,
+            new HttpEntity<>(Map.of("skip", true), ownerHeaders),
+            Map.class);
+    assertThat(skipInvite.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+    String staffEmail = "staff-" + code.toLowerCase(Locale.ROOT) + "@example.com";
+    dataSeeder.ensureUser(staffEmail, LOGIN_CREDENTIAL, "Staff", code, List.of("ROLE_SALES"));
+    String staffToken = loginToken(staffEmail, code);
+    ResponseEntity<Map> staffFinish =
+        rest.exchange(
+            "/api/v1/setup/finish",
+            HttpMethod.POST,
+            new HttpEntity<>(headers(staffToken, code)),
+            Map.class);
+    assertThat(staffFinish.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+
+    ResponseEntity<Map> finish =
+        rest.exchange(
+            "/api/v1/setup/finish", HttpMethod.POST, new HttpEntity<>(ownerHeaders), Map.class);
+    assertThat(finish.getStatusCode()).isEqualTo(HttpStatus.OK);
+    @SuppressWarnings("unchecked")
+    Map<String, Object> finishData = (Map<String, Object>) finish.getBody().get("data");
+    assertThat(finishData).containsEntry("setupRequired", false);
+    assertThat(finishData.get("tenantStatus")).isIn("TRIAL_ACTIVE", "ACTIVE");
+
+    ResponseEntity<Map> replayFinish =
+        rest.exchange(
+            "/api/v1/setup/finish", HttpMethod.POST, new HttpEntity<>(ownerHeaders), Map.class);
+    assertThat(replayFinish.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(
+            countRows(
+                "select count(*) from companies where lower(code) = lower(?)"
+                    + " and onboarding_completed_at is not null",
+                code))
+        .isOne();
+
+    ResponseEntity<Map> postFinishCompanies =
+        rest.exchange(
+            "/api/v1/companies", HttpMethod.GET, new HttpEntity<>(ownerHeaders), Map.class);
+    assertThat(postFinishCompanies.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+    ResponseEntity<Map> superAdminStatus =
+        rest.exchange(
+            "/api/v1/setup/status", HttpMethod.GET, new HttpEntity<>(superAdminHeaders), Map.class);
+    assertThat(superAdminStatus.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+  }
+
+  @Test
   void activationExpireBlocksCurrentTokenButAllowsRecoveryByResend() {
     org.mockito.Mockito.reset(mailSender);
     String superAdminToken = loginToken(SUPER_ADMIN_EMAIL, ROOT_COMPANY_CODE);
@@ -1206,10 +1409,14 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
   }
 
   private String loginToken(String email, String companyCode) {
+    return loginToken(email, companyCode, LOGIN_CREDENTIAL);
+  }
+
+  private String loginToken(String email, String companyCode, String password) {
     Map<String, Object> request =
         Map.of(
             "email", email,
-            "password", LOGIN_CREDENTIAL,
+            "password", password,
             "companyCode", companyCode);
     ResponseEntity<Map> response = rest.postForEntity("/api/v1/auth/login", request, Map.class);
     return (String) response.getBody().get("accessToken");

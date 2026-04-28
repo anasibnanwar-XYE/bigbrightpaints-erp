@@ -381,6 +381,19 @@ public class CompanyService {
         .orElse(CompanyLifecycleState.DEACTIVATED);
   }
 
+  public boolean isOwnerSetupRequiredByCode(String companyCode) {
+    if (!StringUtils.hasText(companyCode)) {
+      return false;
+    }
+    return repository
+        .findByCodeIgnoreCase(companyCode.trim())
+        .map(
+            company ->
+                company.getOnboardingCompletedAt() == null
+                    && "USED".equals(normalizeActivationStatus(company.getActivationStatus())))
+        .orElse(false);
+  }
+
   public CompanyLifecycleState resolveLifecycleStateById(Long companyId) {
     if (companyId == null) {
       return CompanyLifecycleState.DEACTIVATED;
