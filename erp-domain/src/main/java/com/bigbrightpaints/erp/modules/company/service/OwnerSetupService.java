@@ -149,22 +149,29 @@ public class OwnerSetupService {
     requireStepComplete(company.getSetupAccountingCompletedAt(), "accounting");
     boolean skip = request != null && Boolean.TRUE.equals(request.skip());
     List<OwnerSetupInviteTeamRequest.Invitation> invitations =
-        request == null || request.invitations() == null ? List.of() : request.invitations();
+        skip || request == null || request.invitations() == null
+            ? List.of()
+            : request.invitations();
     if (!skip && invitations.isEmpty()) {
       throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
           "Provide at least one invitation or set skip=true");
     }
+    List<CreateUserRequest> inviteRequests = new ArrayList<>();
     for (OwnerSetupInviteTeamRequest.Invitation invitation : invitations) {
-      adminUserService.createUser(
+      inviteRequests.add(
           new CreateUserRequest(
               invitation.email(),
               invitation.displayName(),
               List.of(normalizeInviteRole(invitation.role()))));
     }
-    Instant now = CompanyTime.now(company);
-    if (company.getSetupInviteTeamCompletedAt() == null) {
-      company.setSetupInviteTeamCompletedAt(now);
+    if (company.getSetupInviteTeamCompletedAt() != null) {
+      return toStatus(company, null);
     }
+    for (CreateUserRequest inviteRequest : inviteRequests) {
+      adminUserService.createUser(inviteRequest);
+    }
+    Instant now = CompanyTime.now(company);
+    company.setSetupInviteTeamCompletedAt(now);
     companyRepository.saveAndFlush(company);
     Long auditEventId =
         logSetupAudit(

@@ -459,6 +459,8 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
                     "stateCode",
                     "MH",
                     "tenantId",
+                    "must-not-mutate",
+                    "code",
                     "must-not-mutate"),
                 ownerHeaders),
             Map.class);
@@ -496,6 +498,15 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
         rest.exchange(
             "/api/v1/setup/accounting",
             HttpMethod.PUT,
+            new HttpEntity<>(
+                Map.of("confirmDefaults", true, "branch", "B1", "warehouse", "W1"), ownerHeaders),
+            Map.class);
+    assertThat(accounting.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+    accounting =
+        rest.exchange(
+            "/api/v1/setup/accounting",
+            HttpMethod.PUT,
             new HttpEntity<>(Map.of("confirmDefaults", true), ownerHeaders),
             Map.class);
     assertThat(accounting.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -519,13 +530,50 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
             Map.class);
     assertThat(superAdminInvite.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
 
-    ResponseEntity<Map> skipInvite =
+    String invitedEmail = "invited-" + code.toLowerCase(Locale.ROOT) + "@example.com";
+    ResponseEntity<Map> positiveInvite =
         rest.exchange(
             "/api/v1/setup/invite-team",
             HttpMethod.POST,
-            new HttpEntity<>(Map.of("skip", true), ownerHeaders),
+            new HttpEntity<>(
+                Map.of(
+                    "invitations",
+                    List.of(
+                        Map.of(
+                            "email",
+                            invitedEmail,
+                            "displayName",
+                            "Invited Sales",
+                            "role",
+                            "sales"))),
+                ownerHeaders),
             Map.class);
-    assertThat(skipInvite.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(positiveInvite.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(
+            countRows("select count(*) from app_users where lower(email) = lower(?)", invitedEmail))
+        .isOne();
+
+    ResponseEntity<Map> replayInvite =
+        rest.exchange(
+            "/api/v1/setup/invite-team",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of(
+                    "invitations",
+                    List.of(
+                        Map.of(
+                            "email",
+                            invitedEmail,
+                            "displayName",
+                            "Invited Sales",
+                            "role",
+                            "ROLE_SALES"))),
+                ownerHeaders),
+            Map.class);
+    assertThat(replayInvite.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(
+            countRows("select count(*) from app_users where lower(email) = lower(?)", invitedEmail))
+        .isOne();
 
     String staffEmail = "staff-" + code.toLowerCase(Locale.ROOT) + "@example.com";
     dataSeeder.ensureUser(staffEmail, LOGIN_CREDENTIAL, "Staff", code, List.of("ROLE_SALES"));

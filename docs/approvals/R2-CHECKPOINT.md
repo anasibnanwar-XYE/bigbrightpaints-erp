@@ -14,6 +14,7 @@ Last reviewed: 2026-05-01
 - Verification evidence:
   - activation completion still moves tenants to `SETUP_PENDING`, with setup steps limited to company details, GST when enabled, accounting, invite team, and finish
   - owner setup APIs persist ordered step completion and reject out-of-order accounting, immutable company mutation probes, branch/warehouse payload fields via strict input handling, and `ROLE_SUPER_ADMIN` invites
+  - invite-team setup accepts tenant-bounded roles, creates the invited tenant user once, and idempotent invite replay returns the stable setup status without duplicate users or emails
   - setup-required tenants can use auth/setup routes but receive safe `TENANT_SETUP_REQUIRED` denial for representative tenant workflows until finish
   - finish is idempotent, sets onboarding completion once, and transitions the read model to `TRIAL_ACTIVE` or `ACTIVE`
   - accepted setup mutations write required audit evidence with safe step/action metadata and no passwords, tokens, activation links, or tenant-private business data
