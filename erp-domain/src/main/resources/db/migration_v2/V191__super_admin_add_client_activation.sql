@@ -10,7 +10,7 @@ ALTER TABLE companies
 ALTER TABLE companies
     ADD CONSTRAINT chk_companies_activation_status_v191
         CHECK (activation_status IN ('NOT_SENT', 'SENT', 'EXPIRED', 'USED', 'SUPERSEDED')),
-    ADD CONSTRAINT chk_companies_commercial_billing_status_v190
+    ADD CONSTRAINT chk_companies_commercial_billing_status_v191
         CHECK (commercial_billing_status IN ('TRIAL', 'MANUAL', 'PAID', 'DUE', 'OVERDUE', 'GRACE', 'CANCELED', 'ARCHIVED'));
 
 CREATE TABLE tenant_activation_tokens (
@@ -26,6 +26,8 @@ CREATE TABLE tenant_activation_tokens (
     used_at TIMESTAMP WITH TIME ZONE,
     expired_at TIMESTAMP WITH TIME ZONE,
     CONSTRAINT uq_tenant_activation_tokens_token_digest UNIQUE (token_digest),
+    CONSTRAINT chk_tenant_activation_tokens_token_digest_hex
+        CHECK (token_digest ~ '^[0-9a-f]{64}$'),
     CONSTRAINT chk_tenant_activation_tokens_status
         CHECK (status IN ('ISSUED', 'SENT', 'USED', 'EXPIRED', 'SUPERSEDED'))
 );

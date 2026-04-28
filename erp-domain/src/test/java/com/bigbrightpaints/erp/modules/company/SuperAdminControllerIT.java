@@ -2,6 +2,9 @@ package com.bigbrightpaints.erp.modules.company;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
@@ -255,6 +258,20 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
     String copiedUrl = copied.get("activationUrl").toString();
     String copiedToken = copiedUrl.substring(copiedUrl.indexOf("token=") + "token=".length());
     assertThat(copiedUrl).startsWith("http://localhost:3004/activate-client?token=");
+    assertThat(
+            countRows(
+                "select count(*) from tenant_activation_tokens where company_id = ?"
+                    + " and token_digest = ?",
+                tenantId.longValue(),
+                activationDigest(copiedToken)))
+        .isOne();
+    assertThat(
+            countRows(
+                "select count(*) from information_schema.columns where table_name = ?"
+                    + " and column_name in ('token', 'activation_token', 'activation_url',"
+                    + " 'activation_link')",
+                "tenant_activation_tokens"))
+        .isZero();
     org.mockito.Mockito.verifyNoMoreInteractions(mailSender);
 
     String emailedToken =
@@ -1305,5 +1322,24 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
       return jdbcTemplate.queryForObject(sql, Long.class);
     }
     return jdbcTemplate.queryForObject(sql, Long.class, value);
+  }
+
+  private Long countRows(String sql, Object firstValue, Object secondValue) {
+    return jdbcTemplate.queryForObject(sql, Long.class, firstValue, secondValue);
+  }
+
+  private String activationDigest(String token) {
+    try {
+      MessageDigest digest = MessageDigest.getInstance("SHA-256");
+      byte[] hashed =
+          digest.digest(("tenant-activation:v1:" + token).getBytes(StandardCharsets.UTF_8));
+      StringBuilder hex = new StringBuilder(hashed.length * 2);
+      for (byte value : hashed) {
+        hex.append(String.format("%02x", value));
+      }
+      return hex.toString();
+    } catch (NoSuchAlgorithmException ex) {
+      throw new AssertionError("SHA-256 must be available for activation digest proof", ex);
+    }
   }
 }

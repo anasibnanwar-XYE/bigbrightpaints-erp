@@ -245,19 +245,14 @@ class AuthPasswordResetPublicContractIT extends AbstractIntegrationTest {
 
   @Test
   void resetEndpoint_hasNoLegacyRawTokenColumnAndRejectsRawOnlyCandidates() {
-    String rawLegacyToken = "legacy-raw-reset-token";
+    String rawTokenCanary = "legacy-raw-reset-token";
     Integer rawTokenColumnCount =
         jdbcTemplate.queryForObject(
-            """
-            select count(*)
-              from information_schema.columns
-             where table_schema = 'public'
-               and table_name = 'password_reset_tokens'
-               and column_name = 'token'
-            """,
+            "select count(*) from information_schema.columns where table_name ="
+                + " 'password_reset_tokens' and column_name = 'token'",
             Integer.class);
 
-    ResponseEntity<Map> resetResponse = postReset(rawLegacyToken, "NewPass123!");
+    ResponseEntity<Map> resetResponse = postReset(rawTokenCanary, "NewPass123!");
 
     assertThat(rawTokenColumnCount).isZero();
     assertThat(resetResponse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
@@ -407,18 +402,13 @@ class AuthPasswordResetPublicContractIT extends AbstractIntegrationTest {
             Integer.class,
             user.getId(),
             digest);
-    Integer rawTokenRowCount =
+    Integer rawTokenColumnCount =
         jdbcTemplate.queryForObject(
-            """
-            select count(*)
-              from information_schema.columns
-             where table_schema = 'public'
-               and table_name = 'password_reset_tokens'
-               and column_name = 'token'
-            """,
+            "select count(*) from information_schema.columns where table_name ="
+                + " 'password_reset_tokens' and column_name = 'token'",
             Integer.class);
     assertThat(digestRowCount).isEqualTo(1);
-    assertThat(rawTokenRowCount).isEqualTo(0);
+    assertThat(rawTokenColumnCount).isZero();
 
     ResponseEntity<Map> resetResponse = postReset(resetToken, "CanonReset123!");
     assertThat(resetResponse.getStatusCode()).isEqualTo(HttpStatus.OK);

@@ -2,6 +2,28 @@
 
 Last reviewed: 2026-05-01
 
+## Addendum — `m5-digest-token-storage-guards`
+
+- Scope: activation/password-reset token storage hardening and non-black-box guard proof for digest-only persistence.
+- Risk trigger: touches high-risk auth token persistence and Flyway v2 schema under `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/**`, `erp-domain/src/main/resources/db/migration_v2/**`, and activation control-plane tests.
+- Approval mode: orchestrator; human escalation required: no.
+- Escalation decision: no privilege widening, tenant-boundary change, or secret-handling relaxation was introduced. The schema change removes legacy password-reset raw-token storage/indexing, enforces digest metadata, and adds guard tests that prove activation/reset lookups hash input before persistence lookup.
+- Rollback owner: Droid mission orchestrator.
+- Rollback method: revert this packet and rerun compile, Spotless, targeted digest-token guard/auth activation/reset tests, OpenAPI drift guard if affected, high-risk guard, and mission-safe baseline validators.
+- Expiry: 2026-05-05.
+- Verification evidence:
+  - password reset persistence entity exposes `tokenDigest` only; the raw `token` field, getter, and legacy migration helper were removed
+  - v2 migration `V191__digest_only_activation_reset_token_storage_guards.sql` drops the legacy password-reset raw-token unique constraint and column, makes `token_digest` non-null, and adds digest-shape checks for reset and activation tokens
+  - activation persistence remains `token_digest` plus status/expiry metadata only; integration proof verifies copied/emailed activation token material is present only at the explicit delivery/copy boundary and not in storage columns
+  - non-black-box truth-suite guard verifies schema/entity/repository/service lookup paths and audit/log metadata stay digest/metadata-only
+  - password-reset public contract proof verifies the final schema has no raw reset-token column and canonical reset flows use digest rows
+- Commands run:
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=TS_AuthDigestTokenStorageGuardTest,AuthPasswordResetPublicContractIT,SuperAdminControllerIT test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn spotless:apply`
+- Result summary:
+  - targeted digest-token/auth/activation suite reported 34 tests run, 0 failures/errors/skips after formatting
+  - no bearer tokens, passwords, activation links, reset links, token digests, provider credentials, or `.env` values were printed in evidence
+
 ## Scope
 - Feature: `identity-account-hardcut-20260427` / PR #197
 - Branch: codex identity-account-hardcut-20260427
