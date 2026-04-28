@@ -145,6 +145,50 @@ class AuthPlatformScopeCodeIT extends AbstractIntegrationTest {
   }
 
   @Test
+  void platformAuthCodeUpdate_rejectsTenantCompanyCollisionWithoutPartialSettingsPersistence() {
+    dataSeeder.ensureCompany(COLLIDING_TENANT_CODE, "Mock Ltd");
+    String currentToken = login(DEFAULT_PLATFORM_CODE);
+    Map<String, Object> settingsBefore = currentSettings(currentToken, DEFAULT_PLATFORM_CODE);
+    @SuppressWarnings("unchecked")
+    Map<String, Object> workflowBefore = (Map<String, Object>) settingsBefore.get("workflow");
+    @SuppressWarnings("unchecked")
+    Map<String, Object> mailBefore = (Map<String, Object>) settingsBefore.get("mail");
+    boolean requestedExportApproval =
+        !Boolean.TRUE.equals(workflowBefore.get("exportApprovalRequired"));
+    boolean requestedMailEnabled = !Boolean.TRUE.equals(mailBefore.get("enabled"));
+
+    ResponseEntity<Map> updateResponse =
+        rest.exchange(
+            "/api/v1/superadmin/settings",
+            HttpMethod.PUT,
+            new HttpEntity<>(
+                Map.of(
+                    "access",
+                    Map.of(
+                        "allowedOrigins",
+                        List.of("https://atomicity.bigbrightpaints.example"),
+                        "platformAuthCode",
+                        COLLIDING_TENANT_CODE),
+                    "workflow",
+                    Map.of("exportApprovalRequired", requestedExportApproval),
+                    "mail",
+                    Map.of(
+                        "enabled",
+                        requestedMailEnabled,
+                        "fromAddress",
+                        "atomicity@bigbrightpaints.example",
+                        "sendPasswordReset",
+                        false)),
+                jsonHeaders(currentToken, DEFAULT_PLATFORM_CODE)),
+            Map.class);
+
+    assertThat(updateResponse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    Map<String, Object> settingsAfter = currentSettings(currentToken, DEFAULT_PLATFORM_CODE);
+    assertThat(settingsAfter).usingRecursiveComparison().isEqualTo(settingsBefore);
+    assertThat(loginResponse(DEFAULT_PLATFORM_CODE).getStatusCode()).isEqualTo(HttpStatus.OK);
+  }
+
+  @Test
   void platformAuthCodeUpdate_rejectsUnsafeControlCharacters() {
     String currentToken = login(DEFAULT_PLATFORM_CODE);
 
@@ -159,6 +203,17 @@ class AuthPlatformScopeCodeIT extends AbstractIntegrationTest {
 
     assertThat(updateResponse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
     assertThat(loginResponse(DEFAULT_PLATFORM_CODE).getStatusCode()).isEqualTo(HttpStatus.OK);
+  }
+
+  private Map<String, Object> currentSettings(String token, String companyCode) {
+    ResponseEntity<Map> settingsResponse =
+        rest.exchange(
+            "/api/v1/superadmin/settings",
+            HttpMethod.GET,
+            new HttpEntity<>(jsonHeaders(token, companyCode)),
+            Map.class);
+    assertThat(settingsResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    return responseData(settingsResponse);
   }
 
   private void resetSeededUserState(UserAccount user) {

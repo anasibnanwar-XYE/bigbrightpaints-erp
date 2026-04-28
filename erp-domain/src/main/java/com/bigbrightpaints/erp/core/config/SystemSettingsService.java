@@ -15,6 +15,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.env.Environment;
 import org.springframework.core.env.Profiles;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.cors.CorsConfiguration;
 
 import com.bigbrightpaints.erp.core.security.AuthScopeService;
@@ -161,7 +162,12 @@ public class SystemSettingsService {
         emailProperties.isSendPasswordReset());
   }
 
+  @Transactional
   public SystemSettingsDto update(SystemSettingsUpdateRequest request) {
+    validateRequestedUpdate(request);
+    if (request.platformAuthCode() != null) {
+      authScopeService.updatePlatformScopeCode(request.platformAuthCode());
+    }
     if (request.allowedOrigins() != null && !request.allowedOrigins().isEmpty()) {
       setAllowedOrigins(request.allowedOrigins());
     }
@@ -173,9 +179,6 @@ public class SystemSettingsService {
     }
     if (request.exportApprovalRequired() != null) {
       setExportApprovalRequired(request.exportApprovalRequired());
-    }
-    if (request.platformAuthCode() != null) {
-      authScopeService.updatePlatformScopeCode(request.platformAuthCode());
     }
     if (request.mailEnabled() != null) {
       emailProperties.setEnabled(request.mailEnabled());
@@ -201,6 +204,15 @@ public class SystemSettingsService {
           new SystemSetting(KEY_SEND_RESET, String.valueOf(request.sendPasswordReset())));
     }
     return snapshot();
+  }
+
+  private void validateRequestedUpdate(SystemSettingsUpdateRequest request) {
+    if (request.allowedOrigins() != null && !request.allowedOrigins().isEmpty()) {
+      validateOrigins(request.allowedOrigins());
+    }
+    if (request.platformAuthCode() != null) {
+      authScopeService.validatePlatformScopeCodeChange(request.platformAuthCode());
+    }
   }
 
   public CorsConfiguration buildCorsConfiguration() {

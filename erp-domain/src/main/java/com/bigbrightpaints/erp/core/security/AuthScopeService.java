@@ -51,12 +51,31 @@ public class AuthScopeService {
 
   @Transactional
   public String updatePlatformScopeCode(String requestedCode) {
+    String current = getPlatformScopeCode();
+    String normalized = validatePlatformScopeCodeChange(requestedCode, current);
+    if (!current.equalsIgnoreCase(normalized)) {
+      List<UserAccount> platformUsers =
+          userAccountRepository.findAllByAuthScopeCodeIgnoreCase(current);
+      for (UserAccount platformUser : platformUsers) {
+        platformUser.setAuthScopeCode(normalized);
+        platformUser.clearCompany();
+      }
+      userAccountRepository.saveAll(platformUsers);
+    }
+    settingsRepository.save(new SystemSetting(KEY_PLATFORM_AUTH_CODE, normalized));
+    return normalized;
+  }
+
+  public String validatePlatformScopeCodeChange(String requestedCode) {
+    return validatePlatformScopeCodeChange(requestedCode, getPlatformScopeCode());
+  }
+
+  private String validatePlatformScopeCodeChange(String requestedCode, String current) {
     String normalized = requireScopeCode(requestedCode);
     if (companyRepository.findByCodeIgnoreCase(normalized).isPresent()) {
       throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
           "Platform auth code conflicts with tenant company code: " + normalized);
     }
-    String current = getPlatformScopeCode();
     if (!current.equalsIgnoreCase(normalized)) {
       List<UserAccount> platformUsers =
           userAccountRepository.findAllByAuthScopeCodeIgnoreCase(current);
@@ -68,13 +87,7 @@ public class AuthScopeService {
                   + platformUser.getEmail());
         }
       }
-      for (UserAccount platformUser : platformUsers) {
-        platformUser.setAuthScopeCode(normalized);
-        platformUser.clearCompany();
-      }
-      userAccountRepository.saveAll(platformUsers);
     }
-    settingsRepository.save(new SystemSetting(KEY_PLATFORM_AUTH_CODE, normalized));
     return normalized;
   }
 
