@@ -109,9 +109,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
       return;
     }
     UUID sessionId = authSessionService.currentSessionIdFromClaims(claims);
-    if (sessionId != null
-        && !authSessionService.isSessionActive(
-            UUID.fromString(userId), claims.get("companyCode", String.class), sessionId)) {
+    if (sessionId == null) {
+      logger.warn("Rejecting bearer token with missing or invalid session id");
+      return;
+    }
+    if (!authSessionService.isSessionActive(
+        UUID.fromString(userId), claims.get("companyCode", String.class), sessionId)) {
       logger.warn("Attempted use of inactive session token");
       return;
     }
@@ -145,6 +148,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
       return false;
     }
     if (!StringUtils.hasText(claims.get("companyCode", String.class))) {
+      return false;
+    }
+    if (!StringUtils.hasText(claims.get("sid", String.class))) {
       return false;
     }
     if (claims.getExpiration() == null) {

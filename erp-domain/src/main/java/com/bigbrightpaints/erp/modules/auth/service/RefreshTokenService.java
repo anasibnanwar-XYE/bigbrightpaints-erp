@@ -92,8 +92,19 @@ public class RefreshTokenService {
       iamCanonicalStorageService.markSessionRevoked(tokenDigest, "expired");
       return Optional.empty();
     }
+    boolean canonicalAccount =
+        iamCanonicalStorageService.hasCanonicalAccount(stored.getUserPublicId());
+    if (canonicalAccount && !iamCanonicalStorageService.isRefreshSessionActive(stored)) {
+      iamCanonicalStorageService
+          .markRefreshReplayCompromised(tokenDigest)
+          .forEach(refreshTokenRepository::deleteByTokenDigest);
+      refreshTokenRepository.delete(stored);
+      return Optional.empty();
+    }
     iamCanonicalStorageService.markSessionConsumed(tokenDigest);
-    refreshTokenRepository.delete(stored);
+    if (!canonicalAccount) {
+      refreshTokenRepository.delete(stored);
+    }
     return Optional.of(
         new TokenRecord(
             stored.getUserPublicId(),
@@ -119,6 +130,10 @@ public class RefreshTokenService {
       return Optional.empty();
     }
     if (stored.isExpired(Instant.now())) {
+      return Optional.empty();
+    }
+    if (iamCanonicalStorageService.hasCanonicalAccount(stored.getUserPublicId())
+        && !iamCanonicalStorageService.isRefreshSessionActive(stored)) {
       return Optional.empty();
     }
     return Optional.of(

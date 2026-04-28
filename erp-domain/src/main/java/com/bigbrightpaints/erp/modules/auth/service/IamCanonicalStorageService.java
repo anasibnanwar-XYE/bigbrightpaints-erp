@@ -41,9 +41,10 @@ public class IamCanonicalStorageService {
           "mfasecret",
           "recoverycode",
           "recoverycodes",
-          "code",
           "hash",
           "digest");
+  private static final Set<String> SAFE_SCOPE_METADATA_KEYS =
+      Set.of("companycode", "authscopecode", "scopecode", "tenantscope");
 
   private final JdbcTemplate jdbcTemplate;
   private final UserAccountRepository userAccountRepository;
@@ -94,6 +95,11 @@ public class IamCanonicalStorageService {
       return sessionPublicId;
     }
     Long deviceId = resolveSessionDevice(accountId, previousRefreshTokenDigest, metadata);
+    UUID rotatedSessionPublicId =
+        rotateExistingSessionIfPresent(token, accountId, deviceId, previousRefreshTokenDigest);
+    if (rotatedSessionPublicId != null) {
+      return rotatedSessionPublicId;
+    }
     jdbcTemplate.update(
         """
         insert into iam_sessions (
@@ -125,6 +131,52 @@ public class IamCanonicalStorageService {
         timestamp(token.getIssuedAt()),
         timestamp(token.getExpiresAt()));
     return sessionPublicId;
+  }
+
+  private UUID rotateExistingSessionIfPresent(
+      RefreshToken token, Long accountId, Long deviceId, String previousRefreshTokenDigest) {
+    if (!StringUtils.hasText(previousRefreshTokenDigest)) {
+      return null;
+    }
+    ExistingSession existingSession =
+        jdbcTemplate.query(
+            """
+            select id, public_id
+              from iam_sessions
+             where account_id = ?
+               and refresh_token_digest = ?
+               and auth_scope_code = ?
+             for update
+            """,
+            rs ->
+                rs.next()
+                    ? new ExistingSession(rs.getLong("id"), rs.getObject("public_id", UUID.class))
+                    : null,
+            accountId,
+            previousRefreshTokenDigest,
+            normalizeScopeCode(token.getAuthScopeCode()));
+    if (existingSession == null) {
+      return null;
+    }
+    jdbcTemplate.update(
+        """
+        update iam_sessions
+           set refresh_token_digest = ?,
+               device_id = ?,
+               last_seen_at = ?,
+               expires_at = ?,
+               consumed_at = null,
+               revoked_at = null,
+               revoked_reason = null,
+               version = version + 1
+         where id = ?
+        """,
+        token.getTokenDigest(),
+        deviceId,
+        timestamp(token.getIssuedAt()),
+        timestamp(token.getExpiresAt()),
+        existingSession.id());
+    return existingSession.publicId();
   }
 
   @Transactional
@@ -161,6 +213,46 @@ public class IamCanonicalStorageService {
         timestampNow(),
         safeReason(reason),
         refreshTokenDigest);
+  }
+
+  @Transactional(readOnly = true)
+  public boolean hasCanonicalAccount(UUID userPublicId) {
+    if (userPublicId == null) {
+      return false;
+    }
+    Integer count =
+        jdbcTemplate.queryForObject(
+            "select count(*) from iam_accounts where public_id = ?", Integer.class, userPublicId);
+    return count != null && count > 0;
+  }
+
+  @Transactional(readOnly = true)
+  public boolean isRefreshSessionActive(RefreshToken token) {
+    if (token == null
+        || token.getUserPublicId() == null
+        || !StringUtils.hasText(token.getTokenDigest())
+        || !StringUtils.hasText(token.getAuthScopeCode())) {
+      return false;
+    }
+    Integer count =
+        jdbcTemplate.queryForObject(
+            """
+            select count(*)
+              from iam_sessions s
+              join iam_accounts ia on ia.id = s.account_id
+             where ia.public_id = ?
+               and s.refresh_token_digest = ?
+               and s.auth_scope_code = ?
+               and s.revoked_at is null
+               and s.consumed_at is null
+               and s.expires_at > ?
+            """,
+            Integer.class,
+            token.getUserPublicId(),
+            token.getTokenDigest(),
+            normalizeScopeCode(token.getAuthScopeCode()),
+            timestampNow());
+    return count != null && count > 0;
   }
 
   @Transactional
@@ -214,7 +306,33 @@ public class IamCanonicalStorageService {
             },
             refreshTokenDigest);
     if (replaySession == null) {
-      return List.of();
+      replaySession =
+          jdbcTemplate.query(
+              """
+              select ia.id as account_id,
+                     ia.public_id as account_public_id,
+                     null::bigint as device_id,
+                     rt.auth_scope_code
+                from refresh_tokens rt
+                join iam_accounts ia on ia.public_id = rt.user_public_id
+               where rt.token_digest = ?
+               limit 1
+              """,
+              rs -> {
+                if (!rs.next()) {
+                  return null;
+                }
+                return new ReplaySession(
+                    rs.getLong("account_id"),
+                    rs.getObject("account_public_id", UUID.class),
+                    rs.getObject("device_id", Long.class),
+                    null,
+                    normalizeScopeCode(rs.getString("auth_scope_code")));
+              },
+              refreshTokenDigest);
+      if (replaySession == null) {
+        return List.of();
+      }
     }
     List<String> activeDigests =
         jdbcTemplate.queryForList(
@@ -330,6 +448,8 @@ public class IamCanonicalStorageService {
               Map<String, String> metadata = fromJsonMap(rs.getString("metadata_json"));
               Map<String, Object> row = new LinkedHashMap<>();
               String eventType = rs.getString("event_type");
+              String resolvedAuthScopeCode =
+                  firstNonBlank(metadata.get("authScopeCode"), rs.getString("auth_scope_code"));
               row.put("type", eventType);
               row.put("eventType", eventType);
               row.put("actor", firstNonBlank(metadata.get("actor"), metadata.get("actorUserId")));
@@ -341,9 +461,11 @@ public class IamCanonicalStorageService {
                   "companyCode",
                   firstNonBlank(
                       metadata.get("companyCode"),
+                      metadata.get("authScopeCode"),
                       metadata.get("tenantScope"),
                       rs.getString("company_code"),
-                      rs.getString("auth_scope_code")));
+                      resolvedAuthScopeCode));
+              row.put("authScopeCode", resolvedAuthScopeCode);
               row.put("outcome", rs.getString("outcome"));
               row.put("reason", firstNonBlank(rs.getString("reason"), metadata.get("reason")));
               Timestamp occurredAt = rs.getTimestamp("occurred_at");
@@ -637,13 +759,26 @@ public class IamCanonicalStorageService {
             return;
           }
           String normalizedKey = key.replaceAll("[^A-Za-z0-9]", "").toLowerCase(Locale.ROOT);
-          if (SENSITIVE_METADATA_KEYS.stream().anyMatch(normalizedKey::contains)) {
+          if (isSensitiveMetadataKey(normalizedKey)) {
             redacted.put(key, "[REDACTED]");
           } else if (value != null) {
             redacted.put(key, truncate(value, 512));
           }
         });
     return redacted;
+  }
+
+  private boolean isSensitiveMetadataKey(String normalizedKey) {
+    if (!StringUtils.hasText(normalizedKey)) {
+      return false;
+    }
+    if (SAFE_SCOPE_METADATA_KEYS.contains(normalizedKey)) {
+      return false;
+    }
+    if (SENSITIVE_METADATA_KEYS.stream().anyMatch(normalizedKey::contains)) {
+      return true;
+    }
+    return normalizedKey.contains("code");
   }
 
   private Map<String, String> fromJsonMap(String metadataJson) {
@@ -671,6 +806,7 @@ public class IamCanonicalStorageService {
             "sessionId",
             "sessionReference",
             "companyCode",
+            "authScopeCode",
             "tenantScope",
             "outcome",
             "action");
@@ -790,4 +926,6 @@ public class IamCanonicalStorageService {
       Long deviceId,
       Instant consumedAt,
       String authScopeCode) {}
+
+  private record ExistingSession(Long id, UUID publicId) {}
 }

@@ -2,7 +2,91 @@
 
 Last reviewed: 2026-04-28
 
-## Current Packet Evidence — admin-session-revocation-and-session-events
+## Current Packet Evidence — sessions-scrutiny-remediation-stable-lineage-and-scope-evidence
+
+## Scope
+- Feature: `sessions-scrutiny-remediation-stable-lineage-and-scope-evidence`
+- Branch: codex/identity-account-hardcut-20260427 (base: origin/main)
+- PR: pending
+- Review candidate:
+  - rotate refresh tokens within the same active canonical `iam_sessions.public_id` lineage instead of creating a second active session/device row
+  - preserve one-use refresh replay compromise handling while allowing same-lineage verifier/expiry/last-seen metadata rotation
+  - require bearer-token `sid` claims and reject missing, malformed, or inactive session ids before authentication
+  - preserve safe `companyCode` / `authScopeCode` security-event evidence while continuing to redact secret-like code, token, hash, digest, password, MFA, and recovery-code fields
+- Why this is R2: this packet touches high-risk auth/session revocation, bearer-token acceptance, refresh-token verifier rotation, replay compromise handling, and security-event privacy surfaces where incorrect behavior could allow stale-session use, sid-less token bypass, tenant scope loss, duplicate active sessions, or secret leakage.
+
+## Risk Trigger
+- Triggered by:
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/core/security/JwtAuthenticationFilter.java`
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/service/AuthService.java`
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/service/IamCanonicalStorageService.java`
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/service/RefreshTokenService.java`
+  - focused auth/session/security tests under `erp-domain/src/test/java`
+- Contract surfaces affected:
+  - `VAL-SESS-003`, `VAL-SESS-010`
+- Failure mode if wrong:
+  - refresh rotation could create multiple active session/device lineages for one login
+  - old refresh-token replay could fail to revoke the rotated family
+  - signed tenant bearer tokens without active `sid` could authenticate
+  - security-event APIs could redact required company/auth-scope evidence or expose secret-like verifier fields
+
+## Approval Authority
+- Mode: orchestrator
+- Approver: Droid mission orchestrator
+- Canary owner: Droid mission orchestrator
+- Approval status: branch-local integration candidate pending PR review
+- Basis: this is an accepted sessions scrutiny remediation that narrows bearer-token/session acceptance and preserves existing API envelopes, tenant boundaries, and digest-only verifier storage without destructive schema changes.
+
+## Escalation Decision
+- Human escalation required: no
+- Reason: the packet strengthens existing fail-closed session and refresh-token controls, keeps tenant scope evidence safe, and does not add new authority, widen tenant boundaries, expose secrets, or rewrite applied migrations.
+
+## Rollback Owner
+- Owner: Droid mission orchestrator
+- Rollback method:
+  - before merge: revert this packet and rerun focused auth/session tests, compile/test-compile, Spotless, OpenAPI guard, lint/architecture, and High-Risk Change Control
+  - after merge: revert through a new remediation packet and rerun the same sessions scrutiny proof lane
+- Rollback trigger:
+  - refresh rotation creates a second active canonical session row or changes the session/device public id
+  - refresh replay leaves the rotated bearer or refresh token usable
+  - signed tokens missing `sid` or carrying inactive `sid` authenticate
+  - security-event feeds return `[REDACTED]` for company/auth-scope evidence or leak token/verifier material
+
+## Expiry
+- Valid until: 2026-05-05
+- Re-evaluate if: scope expands into new public route names, schema/migration behavior, distributed session stores, role-policy redesign, tenant-boundary changes, or broader audit/event retention policy.
+
+## Verification Evidence
+- Scope-to-evidence mapping:
+  - Stable-lineage proof: `AuthControllerIT.refresh_rotation_is_scope_bound_and_replay_revokes_rotated_family` verifies refresh rotation returns a new token pair with the same JWT `sid`, the same visible session `createdAt`, one active canonical row for that `sessionId`, and replay denial for the old refresh token.
+  - Replay compromise proof: the same test and `AuthControllerIT.concurrent_refresh_replay_race_settles_to_revoked_family` verify replay still fails closed and invalidates the rotated family.
+  - Bearer sid proof: `AuthControllerIT.bearer_tokens_without_active_sid_fail_closed` and `JwtAuthenticationFilterRoleHierarchyTest.doFilter_skipsAuthenticationWhenSessionIdClaimIsMissing` / `doFilter_skipsAuthenticationWhenSessionIsInactive` verify sid-less and inactive-sid bearer tokens do not authenticate.
+  - Scope evidence/redaction proof: `AuthControllerIT.refresh_rotation_is_scope_bound_and_replay_revokes_rotated_family` verifies self security-event responses return non-redacted `companyCode` and `authScopeCode`; `IamCanonicalStorageService.redactMetadata` keeps scope keys safe while preserving secret-like code/token/hash/digest redaction.
+- Commands run:
+  - `mission init.sh`
+  - `cd /Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/identity-account-hardcut-20260427 && bash scripts/guard_openapi_contract_drift.sh && cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='AuthPasswordResetPublicContractIT,AdminUserSecurityIT,AuthControllerIT,AuthTenantAuthorityIT,TenantRuntimeEnforcementAuthIT,AuthDisabledUserTokenIT,MfaControllerIT' test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -q -DskipTests test-compile`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest=JwtAuthenticationFilterRoleHierarchyTest test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='AuthControllerIT' test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='RefreshTokenServiceIT' test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn spotless:check`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='AuthControllerIT,RefreshTokenServiceIT,AuthDisabledUserTokenIT,AdminUserSecurityIT,AuthAuditIT' test`
+  - `cd /Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/identity-account-hardcut-20260427 && bash scripts/guard_openapi_contract_drift.sh && cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='AuthPasswordResetPublicContractIT,AdminUserSecurityIT,AuthControllerIT,AuthTenantAuthorityIT,TenantRuntimeEnforcementAuthIT,AuthDisabledUserTokenIT,MfaControllerIT' test`
+  - `bash ci/lint-knowledgebase.sh && bash ci/check-architecture.sh && bash ci/check-high-risk-changes.sh && bash scripts/guard_openapi_contract_drift.sh`
+- Result summary:
+  - mission init completed and baseline IAM mission lane passed with 107 tests plus OpenAPI guard before code changes
+  - test-compile passed after implementation
+  - focused JwtAuthenticationFilter unit lane passed with 15 tests after implementation
+  - focused AuthControllerIT and RefreshTokenServiceIT lanes passed after implementation
+  - feature-specific validator passed with 57 tests after implementation
+  - final IAM mission lane passed with 108 tests plus OpenAPI guard
+  - OpenAPI guard, Spotless check, High-Risk Change Control, knowledgebase lint, and architecture check passed
+  - runtime smoke startup was attempted on mission ports; Postgres and MailHog started, RabbitMQ startup was auto-denied in the delegated session, so runtime curl smoke was replaced by the focused Spring HTTP-level integration tests above
+  - no raw JWTs, refresh tokens, reset tokens, reset links, token digests, MFA secrets, recovery codes, password hashes, or production secrets were recorded in this checkpoint
+
+---
+
+## Previous Packet Evidence — admin-session-revocation-and-session-events
 
 ## Scope
 - Feature: `admin-session-revocation-and-session-events`

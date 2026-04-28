@@ -12,6 +12,7 @@ import java.util.Base64;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -29,10 +30,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import com.bigbrightpaints.erp.core.idempotency.IdempotencyUtils;
 import com.bigbrightpaints.erp.core.notification.EmailService;
+import com.bigbrightpaints.erp.core.security.JwtTokenService;
 import com.bigbrightpaints.erp.modules.auth.domain.PasswordResetToken;
 import com.bigbrightpaints.erp.modules.auth.domain.PasswordResetTokenRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
+import com.bigbrightpaints.erp.modules.auth.service.IamCanonicalStorageService;
 import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
 
 public class AuthControllerIT extends AbstractIntegrationTest {
@@ -46,6 +49,10 @@ public class AuthControllerIT extends AbstractIntegrationTest {
   @Autowired private PasswordResetTokenRepository passwordResetTokenRepository;
 
   @Autowired private JdbcTemplate jdbcTemplate;
+
+  @Autowired private JwtTokenService tokenService;
+
+  @Autowired private IamCanonicalStorageService iamCanonicalStorageService;
 
   @SpyBean private EmailService emailService;
 
@@ -285,7 +292,14 @@ public class AuthControllerIT extends AbstractIntegrationTest {
   @Test
   void refresh_rotation_is_scope_bound_and_replay_revokes_rotated_family() {
     Map<String, Object> loginPayload = login(ADMIN_EMAIL, ADMIN_PASSWORD);
+    String originalAccess = loginPayload.get("accessToken").toString();
     String originalRefresh = loginPayload.get("refreshToken").toString();
+    String originalSessionId = decodeJwtClaims(originalAccess).get("sid").toString();
+    Map<String, Object> originalSession =
+        responseDataList(sessions(originalAccess)).stream()
+            .filter(row -> originalSessionId.equals(row.get("sessionId")))
+            .findFirst()
+            .orElseThrow();
 
     ResponseEntity<Map> wrongScopeRefresh =
         rest.postForEntity(
@@ -298,6 +312,78 @@ public class AuthControllerIT extends AbstractIntegrationTest {
     assertThat(firstRefresh.getStatusCode()).isEqualTo(HttpStatus.OK);
     String rotatedAccess = firstRefresh.getBody().get("accessToken").toString();
     String rotatedRefresh = firstRefresh.getBody().get("refreshToken").toString();
+    String rotatedSessionId = decodeJwtClaims(rotatedAccess).get("sid").toString();
+    assertThat(rotatedSessionId).isEqualTo(originalSessionId);
+    List<Map<String, Object>> rotatedSessions = responseDataList(sessions(rotatedAccess));
+    assertThat(rotatedSessions)
+        .filteredOn(row -> rotatedSessionId.equals(row.get("sessionId")))
+        .singleElement()
+        .satisfies(
+            row -> {
+              assertThat(row.get("current")).isEqualTo(true);
+              assertThat(row.get("createdAt")).isEqualTo(originalSession.get("createdAt"));
+              assertThat(row.get("authScopeCode")).isEqualTo(COMPANY_CODE);
+            });
+    Integer activeSessionLineages =
+        jdbcTemplate.queryForObject(
+            """
+            select count(*)
+              from iam_sessions s
+             where s.public_id = ?
+               and s.auth_scope_code = ?
+               and s.revoked_at is null
+               and s.consumed_at is null
+            """,
+            Integer.class,
+            UUID.fromString(rotatedSessionId),
+            COMPANY_CODE);
+    assertThat(activeSessionLineages).isEqualTo(1);
+
+    iamCanonicalStorageService.recordSecurityEvent(
+        "SESSION_SCOPE_REDACTION_PROBE",
+        "SUCCESS",
+        Map.of(
+            "operation",
+            "scope_probe",
+            "companyCode",
+            COMPANY_CODE,
+            "authScopeCode",
+            COMPANY_CODE,
+            "recoveryCode",
+            "123456"),
+        decodeJwtClaims(rotatedAccess).get("sub").toString(),
+        ADMIN_EMAIL,
+        null,
+        COMPANY_CODE);
+    String metadataJson =
+        jdbcTemplate.queryForObject(
+            """
+            select metadata::text
+              from iam_security_events
+             where event_type = 'SESSION_SCOPE_REDACTION_PROBE'
+             order by occurred_at desc, id desc
+             limit 1
+            """,
+            String.class);
+    assertThat(metadataJson)
+        .contains("\"companyCode\": \"ACME\"")
+        .contains("\"authScopeCode\": \"ACME\"")
+        .contains("\"recoveryCode\": \"[REDACTED]\"");
+
+    ResponseEntity<Map> eventResponse =
+        rest.exchange(
+            "/api/v1/auth/me/security-events?type=SESSION",
+            HttpMethod.GET,
+            new HttpEntity<>(bearer(rotatedAccess)),
+            Map.class);
+    assertThat(eventResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(responseDataList(eventResponse))
+        .anySatisfy(
+            row -> {
+              assertThat(row.get("companyCode")).isEqualTo(COMPANY_CODE);
+              assertThat(row.get("authScopeCode")).isEqualTo(COMPANY_CODE);
+              assertThat(row.get("companyCode")).isNotEqualTo("[REDACTED]");
+            });
 
     ResponseEntity<Map> replay = refresh(originalRefresh);
     assertThat(replay.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
@@ -310,6 +396,29 @@ public class AuthControllerIT extends AbstractIntegrationTest {
             "select count(*) from iam_security_events where event_type = 'SESSION_REFRESH_REPLAY'",
             Integer.class);
     assertThat(replayEvents).isNotNull().isGreaterThanOrEqualTo(1);
+  }
+
+  @Test
+  void bearer_tokens_without_active_sid_fail_closed() {
+    UserAccount admin = scopedUser(ADMIN_EMAIL);
+    Instant issuedAt = Instant.now();
+    String sidlessAccessToken =
+        tokenService.generateAccessToken(
+            admin.getPublicId().toString(),
+            COMPANY_CODE,
+            Map.of("email", ADMIN_EMAIL, "name", "Admin"),
+            issuedAt);
+    String inactiveSidAccessToken =
+        tokenService.generateAccessToken(
+            admin.getPublicId().toString(),
+            COMPANY_CODE,
+            Map.of("email", ADMIN_EMAIL, "name", "Admin", "sid", UUID.randomUUID().toString()),
+            issuedAt);
+
+    assertThat(me(sidlessAccessToken).getStatusCode())
+        .isIn(HttpStatus.UNAUTHORIZED, HttpStatus.FORBIDDEN);
+    assertThat(me(inactiveSidAccessToken).getStatusCode())
+        .isIn(HttpStatus.UNAUTHORIZED, HttpStatus.FORBIDDEN);
   }
 
   @Test
