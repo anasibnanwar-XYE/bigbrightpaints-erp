@@ -459,6 +459,48 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
         "#/components/schemas/ApiResponseSuperAdminTenantAdminEmailChangeConfirmationDto");
     assertOperationContract(
         root,
+        "/api/v1/superadmin/plans",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseListSuperAdminPlanTemplateDto");
+    assertQueryParameter(root, "/api/v1/superadmin/plans", "get", "includeArchived");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/plans",
+        "post",
+        "#/components/schemas/SuperAdminPlanTemplateCreateRequest",
+        "201",
+        "#/components/schemas/ApiResponseSuperAdminPlanTemplateDto");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/plans/{stableId}",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseSuperAdminPlanTemplateDto");
+    assertQueryParameter(root, "/api/v1/superadmin/plans/{stableId}", "get", "version");
+    assertQueryParameter(root, "/api/v1/superadmin/plans/{stableId}", "get", "includeArchived");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/plans/{stableId}",
+        "put",
+        "#/components/schemas/SuperAdminPlanTemplateUpdateRequest",
+        "200",
+        "#/components/schemas/ApiResponseSuperAdminPlanTemplateDto");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/plans/{stableId}/archive",
+        "post",
+        "#/components/schemas/SuperAdminPlanTemplateArchiveRequest",
+        "200",
+        "#/components/schemas/ApiResponseSuperAdminPlanTemplateDto");
+    assertThat(root.path("paths").has("/api/v1/superadmin/plan-templates")).isFalse();
+    assertThat(root.path("paths").has("/api/v1/superadmin/plan-templates/{stableId}")).isFalse();
+    assertThat(root.path("paths").has("/api/v1/superadmin/plan-templates/{stableId}/archive"))
+        .isFalse();
+    assertOperationContract(
+        root,
         "/api/v1/changelog",
         "get",
         null,
@@ -656,6 +698,11 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
             "PUT /api/v1/superadmin/tenants/{id}/admins/main",
             "POST /api/v1/superadmin/tenants/{id}/admins/{adminId}/email-change/request",
             "POST /api/v1/superadmin/tenants/{id}/admins/{adminId}/email-change/confirm",
+            "GET /api/v1/superadmin/plans",
+            "POST /api/v1/superadmin/plans",
+            "GET /api/v1/superadmin/plans/{stableId}",
+            "PUT /api/v1/superadmin/plans/{stableId}",
+            "POST /api/v1/superadmin/plans/{stableId}/archive",
             "GET /api/v1/superadmin/tenants/coa-templates",
             "GET /api/v1/superadmin/settings",
             "PUT /api/v1/superadmin/settings",

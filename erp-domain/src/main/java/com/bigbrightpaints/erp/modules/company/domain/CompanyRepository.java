@@ -20,6 +20,8 @@ public interface CompanyRepository extends JpaRepository<Company, Long> {
 
   Optional<Company> findByCodeIgnoreCase(String code);
 
+  int countByCommercialPlanIdIgnoreCase(String commercialPlanId);
+
   @Query("select c.id from Company c where lower(c.code) = lower(:code)")
   Optional<Long> findIdByCodeIgnoreCase(@Param("code") String code);
 
