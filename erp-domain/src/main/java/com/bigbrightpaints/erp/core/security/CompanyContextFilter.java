@@ -6,7 +6,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -26,6 +25,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.bigbrightpaints.erp.core.audit.AuditEvent;
 import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
+import com.bigbrightpaints.erp.core.web.RequestTraceContext;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserPrincipal;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyLifecycleState;
@@ -167,6 +167,7 @@ public class CompanyContextFilter extends OncePerRequestFilter {
       String legacyHeaderCompanyId = request.getHeader("X-Company-Id");
       if (StringUtils.hasText(legacyHeaderCompanyId)) {
         writeAccessDenied(
+            request,
             response,
             "COMPANY_CONTEXT_LEGACY_HEADER_UNSUPPORTED",
             "Use X-Company-Code for company context binding");
@@ -186,7 +187,10 @@ public class CompanyContextFilter extends OncePerRequestFilter {
               "Rejecting authenticated request without company claim. path={}",
               sanitizeForLog(request.getRequestURI()));
           writeAccessDenied(
-              response, "COMPANY_CONTEXT_MISSING", "Authenticated token missing company context");
+              request,
+              response,
+              "COMPANY_CONTEXT_MISSING",
+              "Authenticated token missing company context");
           return;
         }
         if (StringUtils.hasText(requestedCompany)
@@ -195,6 +199,7 @@ public class CompanyContextFilter extends OncePerRequestFilter {
               "Rejecting company header mismatch. path={}",
               sanitizeForLog(request.getRequestURI()));
           writeAccessDenied(
+              request,
               response,
               "COMPANY_CONTEXT_MISMATCH",
               "Company header does not match authenticated company context");
@@ -205,7 +210,10 @@ public class CompanyContextFilter extends OncePerRequestFilter {
         // Do not allow unauthenticated requests to set tenant context via header.
         if (StringUtils.hasText(requestedCompany)) {
           writeAccessDenied(
-              response, "COMPANY_CONTEXT_AUTH_REQUIRED", "Access denied to company-scoped request");
+              request,
+              response,
+              "COMPANY_CONTEXT_AUTH_REQUIRED",
+              "Access denied to company-scoped request");
           return;
         }
         requestedCompany = null;
@@ -443,6 +451,39 @@ public class CompanyContextFilter extends OncePerRequestFilter {
     AccessDeniedAuditMarker.markCurrentRequestAudited();
   }
 
+  private void auditCompanyContextDenied(
+      HttpServletRequest request, String reason, String reasonDetail) {
+    if (auditService == null || AccessDeniedAuditMarker.isCurrentRequestAlreadyAudited(request)) {
+      return;
+    }
+    String actor = SecurityActorResolver.resolveActorWithSystemProcessFallback();
+    String tenantScope = request == null ? null : request.getHeader("X-Company-Code");
+    if (!StringUtils.hasText(tenantScope)) {
+      tenantScope = AccessDeniedAuditMarker.resolveTenantScope(request);
+    }
+    Map<String, String> metadata = new LinkedHashMap<>();
+    metadata.put("actor", actor);
+    metadata.put("reason", reason);
+    metadata.put("reasonDetail", reasonDetail);
+    metadata.put("traceId", RequestTraceContext.traceId());
+    metadata.put("correlationId", RequestTraceContext.correlationId());
+    if (request != null) {
+      metadata.put("deniedPath", normalizePath(resolveApplicationPath(request)));
+      metadata.put("deniedMethod", request.getMethod());
+      if (StringUtils.hasText(request.getHeader("X-Company-Id"))) {
+        metadata.put("legacyCompanyIdHeaderPresent", "true");
+      }
+      if (StringUtils.hasText(request.getHeader("X-Company-Code"))) {
+        metadata.put("companyCodeHeaderPresent", "true");
+      }
+    }
+    if (StringUtils.hasText(tenantScope)) {
+      metadata.put("tenantScope", tenantScope.trim());
+    }
+    auditService.logAuthFailure(AuditEvent.ACCESS_DENIED, actor, tenantScope, metadata);
+    AccessDeniedAuditMarker.markCurrentRequestAudited();
+  }
+
   private boolean isSuperAdminAllowedOrchestratorControlPath(String normalizedPath) {
     return normalizedPath.equals("/api/v1/orchestrator/health")
         || normalizedPath.startsWith("/api/v1/orchestrator/health/");
@@ -523,8 +564,15 @@ public class CompanyContextFilter extends OncePerRequestFilter {
     data.put("message", userMessage);
     data.put("reason", reason);
     data.put("reasonDetail", reasonDetail);
-    data.put("traceId", UUID.randomUUID().toString());
+    data.put("traceId", RequestTraceContext.traceId());
     writeControlledError(response, HttpServletResponse.SC_FORBIDDEN, userMessage, data);
+  }
+
+  private void writeAccessDenied(
+      HttpServletRequest request, HttpServletResponse response, String reason, String reasonDetail)
+      throws IOException {
+    auditCompanyContextDenied(request, reason, reasonDetail);
+    writeAccessDenied(response, reason, reasonDetail);
   }
 
   private void writeServiceUnavailable(
@@ -535,7 +583,7 @@ public class CompanyContextFilter extends OncePerRequestFilter {
     data.put("message", userMessage);
     data.put("reason", reason);
     data.put("reasonDetail", reasonDetail);
-    data.put("traceId", UUID.randomUUID().toString());
+    data.put("traceId", RequestTraceContext.traceId());
     writeControlledError(response, HttpServletResponse.SC_SERVICE_UNAVAILABLE, userMessage, data);
   }
 
@@ -552,7 +600,7 @@ public class CompanyContextFilter extends OncePerRequestFilter {
             ? admission.reasonCode()
             : "TENANT_REQUEST_DENIED");
     data.put("message", message);
-    data.put("traceId", UUID.randomUUID().toString());
+    data.put("traceId", RequestTraceContext.traceId());
     if (StringUtils.hasText(admission.reasonCode())) {
       data.put("reason", admission.reasonCode());
     }

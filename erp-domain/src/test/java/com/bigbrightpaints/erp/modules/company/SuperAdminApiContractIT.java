@@ -66,6 +66,7 @@ class SuperAdminApiContractIT extends AbstractIntegrationTest {
 
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
     assertThat(response.getHeaders().getFirst("X-Trace-Id")).isNotBlank();
+    assertSecurityHeaders(response);
     @SuppressWarnings("unchecked")
     Map<String, Object> body = (Map<String, Object>) response.getBody();
     assertThat(body).isNotNull();
@@ -276,6 +277,7 @@ class SuperAdminApiContractIT extends AbstractIntegrationTest {
 
   private void assertStandardSuccess(ResponseEntity<Map> response, String expectedCorrelationId) {
     assertThat(response.getHeaders().getFirst("X-Trace-Id")).isNotBlank();
+    assertSecurityHeaders(response);
     @SuppressWarnings("unchecked")
     Map<String, Object> body = (Map<String, Object>) response.getBody();
     assertThat(body).isNotNull();
@@ -314,6 +316,19 @@ class SuperAdminApiContractIT extends AbstractIntegrationTest {
         .doesNotContain("SQLException")
         .doesNotContain("stackTrace")
         .doesNotContain("java.");
+  }
+
+  private void assertSecurityHeaders(ResponseEntity<?> response) {
+    assertThat(response.getHeaders().getFirst("Cache-Control"))
+        .isEqualTo("no-store, no-cache, max-age=0, must-revalidate");
+    assertThat(response.getHeaders().getFirst("Pragma")).isEqualTo("no-cache");
+    assertThat(response.getHeaders().getFirst("X-Content-Type-Options")).isEqualTo("nosniff");
+    assertThat(response.getHeaders().getFirst("X-Frame-Options")).isEqualTo("DENY");
+    assertThat(response.getHeaders().getFirst("Referrer-Policy")).isEqualTo("no-referrer");
+    assertThat(response.getHeaders().getFirst("Content-Security-Policy"))
+        .contains("default-src 'none'", "frame-ancestors 'none'", "base-uri 'none'");
+    assertThat(response.getHeaders().getFirst("Permissions-Policy"))
+        .contains("geolocation=()", "camera=()", "microphone=()", "payment=()");
   }
 
   private void assertStandardError(ResponseEntity<Map> response, String expectedCode) {
