@@ -516,6 +516,7 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
         "#/components/schemas/SuperAdminPlanTemplateUpdateRequest",
         "200",
         "#/components/schemas/ApiResponseSuperAdminPlanTemplateDto");
+    assertPlanDefaultLimitsRequestSchema(root);
     assertOperationContract(
         root,
         "/api/v1/superadmin/plans/{stableId}/archive",
@@ -1682,6 +1683,41 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
             "Expected schema %s presence=%s in generated OpenAPI spec",
             schemaName, expectedPresence)
         .isEqualTo(expectedPresence);
+  }
+
+  private void assertPlanDefaultLimitsRequestSchema(JsonNode root) {
+    JsonNode schemas = root.path("components").path("schemas");
+    JsonNode createRequest = schemas.path("SuperAdminPlanTemplateCreateRequest");
+    JsonNode updateRequest = schemas.path("SuperAdminPlanTemplateUpdateRequest");
+    String limitsRef = "#/components/schemas/SuperAdminPlanTemplateDefaultLimitsRequest";
+    assertThat(createRequest.path("properties").path("defaultLimits").path("$ref").asText())
+        .isEqualTo(limitsRef);
+    assertThat(updateRequest.path("properties").path("defaultLimits").path("$ref").asText())
+        .isEqualTo(limitsRef);
+
+    JsonNode requestLimits = schemas.path("SuperAdminPlanTemplateDefaultLimitsRequest");
+    JsonNode responseLimits = schemas.path("DefaultLimits");
+    assertThat(requestLimits.path("properties").has("zeroMeansUnlimited")).isFalse();
+    assertThat(responseLimits.path("properties").has("zeroMeansUnlimited")).isTrue();
+    assertThat(requestLimits.path("required").isArray()).isTrue();
+    List<String> requiredFields = new ArrayList<>();
+    requestLimits.path("required").forEach(node -> requiredFields.add(node.asText()));
+    List<String> limitFields =
+        List.of(
+            "maxActiveUsers",
+            "maxApiRequests",
+            "maxStorageBytes",
+            "maxPdfExports",
+            "maxEmails",
+            "maxJobs",
+            "burstRequestsPerMinute",
+            "maxConcurrentRequests");
+    assertThat(requiredFields).containsAll(limitFields);
+    limitFields.forEach(
+        field -> {
+          JsonNode property = requestLimits.path("properties").path(field);
+          assertThat(property.path("minimum").asInt()).as(field + " minimum").isZero();
+        });
   }
 
   private static List<String> extractOperationSignatures(String spec) throws IOException {

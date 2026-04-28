@@ -18,6 +18,6 @@ public record SuperAdminPlanTemplateUpdateRequest(
     @NotNull @Min(0) Integer trialDurationDays,
     @NotBlank @Size(max = 32) String supportTier,
     Map<@NotBlank @Size(max = 64) String, @NotNull Boolean> featureFlags,
-    @Valid @NotNull SuperAdminPlanTemplateDto.DefaultLimits defaultLimits,
+    @Valid @NotNull SuperAdminPlanTemplateDefaultLimitsRequest defaultLimits,
     Instant effectiveFrom,
     @Size(max = 300) String reason) {}

@@ -26,6 +26,7 @@ import com.bigbrightpaints.erp.modules.company.domain.SuperAdminPlanTemplate;
 import com.bigbrightpaints.erp.modules.company.domain.SuperAdminPlanTemplateRepository;
 import com.bigbrightpaints.erp.modules.company.dto.SuperAdminPlanTemplateArchiveRequest;
 import com.bigbrightpaints.erp.modules.company.dto.SuperAdminPlanTemplateCreateRequest;
+import com.bigbrightpaints.erp.modules.company.dto.SuperAdminPlanTemplateDefaultLimitsRequest;
 import com.bigbrightpaints.erp.modules.company.dto.SuperAdminPlanTemplateDto;
 import com.bigbrightpaints.erp.modules.company.dto.SuperAdminPlanTemplateUpdateRequest;
 
@@ -267,7 +268,7 @@ public class SuperAdminPlanTemplateService {
       Integer trialDurationDays,
       String supportTier,
       Map<String, Boolean> featureFlags,
-      SuperAdminPlanTemplateDto.DefaultLimits limits,
+      SuperAdminPlanTemplateDefaultLimitsRequest limits,
       Instant effectiveFrom) {
     template.setStableId(stableId);
     template.setTemplateVersion(version);
@@ -284,7 +285,7 @@ public class SuperAdminPlanTemplateService {
   }
 
   private void applyLimits(
-      SuperAdminPlanTemplate template, SuperAdminPlanTemplateDto.DefaultLimits limits) {
+      SuperAdminPlanTemplate template, SuperAdminPlanTemplateDefaultLimitsRequest limits) {
     if (limits == null) {
       throw invalidInput("defaultLimits is required");
     }
