@@ -91,6 +91,30 @@ public class AuthSessionService {
         DEFAULT_SESSION_LIMIT);
   }
 
+  @Transactional(readOnly = true)
+  public int countActiveSessions(UserAccount user) {
+    if (user == null || user.getPublicId() == null) {
+      return 0;
+    }
+    Integer count =
+        jdbcTemplate.queryForObject(
+            """
+            select count(*)
+              from iam_sessions s
+              join iam_accounts ia on ia.id = s.account_id
+             where ia.public_id = ?
+               and s.auth_scope_code = ?
+               and s.revoked_at is null
+               and s.consumed_at is null
+               and s.expires_at > ?
+            """,
+            Integer.class,
+            user.getPublicId(),
+            normalizeScopeCode(user.getAuthScopeCode()),
+            Timestamp.from(Instant.now()));
+    return count == null ? 0 : count;
+  }
+
   @Transactional
   public boolean revokeSession(UserAccount user, String sessionId, String reason) {
     UUID parsedSessionId = parseUuid(sessionId);

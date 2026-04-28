@@ -575,6 +575,221 @@ public class AuthControllerIT extends AbstractIntegrationTest {
   }
 
   @Test
+  void self_profile_and_contact_updates_are_allowlisted_validated_audited_and_unverified() {
+    List<String> resetRecipients = Collections.synchronizedList(new ArrayList<>());
+    doAnswer(
+            invocation -> {
+              resetRecipients.add(invocation.getArgument(0, String.class));
+              return null;
+            })
+        .when(emailService)
+        .sendPasswordResetEmailRequired(anyString(), anyString(), anyString(), anyString());
+    String accessToken = login(ADMIN_EMAIL, ADMIN_PASSWORD).get("accessToken").toString();
+    UserAccount before = scopedUser(ADMIN_EMAIL);
+    before.setJobTitle("Tenant-controlled title");
+    userAccountRepository.save(before);
+
+    ResponseEntity<Map> forbiddenProfileAttempt =
+        rest.exchange(
+            "/api/v1/auth/me/profile",
+            HttpMethod.PATCH,
+            new HttpEntity<>(
+                Map.of(
+                    "email", "attacker@bbp.com",
+                    "companyCode", "OTHER",
+                    "roles", List.of("ROLE_SUPER_ADMIN"),
+                    "enabled", false,
+                    "jobTitle", "Self-promoted"),
+                bearerJson(accessToken)),
+            Map.class);
+    assertThat(forbiddenProfileAttempt.getStatusCode()).isIn(HttpStatus.BAD_REQUEST, HttpStatus.OK);
+    UserAccount afterForbiddenProfile = scopedUser(ADMIN_EMAIL);
+    assertThat(afterForbiddenProfile.getEmail()).isEqualTo(ADMIN_EMAIL);
+    assertThat(afterForbiddenProfile.getAuthScopeCode()).isEqualTo(COMPANY_CODE);
+    assertThat(afterForbiddenProfile.isEnabled()).isTrue();
+    assertThat(afterForbiddenProfile.getJobTitle()).isEqualTo("Tenant-controlled title");
+    assertThat(afterForbiddenProfile.getRoles())
+        .extracting(role -> role.getName())
+        .doesNotContain("ROLE_SUPER_ADMIN");
+
+    ResponseEntity<Map> profileResponse =
+        rest.exchange(
+            "/api/v1/auth/me/profile",
+            HttpMethod.PATCH,
+            new HttpEntity<>(
+                Map.of(
+                    "preferredName", "Admin Self",
+                    "profilePictureUrl", "https://img.example/avatar.png"),
+                bearerJson(accessToken)),
+            Map.class);
+    assertThat(profileResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    Map<String, Object> profile = responseData(profileResponse);
+    assertThat(profile)
+        .containsEntry("preferredName", "Admin Self")
+        .containsEntry("profilePictureUrl", "https://img.example/avatar.png");
+    assertThat(profile.keySet()).containsOnly("preferredName", "profilePictureUrl");
+
+    ResponseEntity<Map> contactResponse =
+        rest.exchange(
+            "/api/v1/auth/me/contact",
+            HttpMethod.PATCH,
+            new HttpEntity<>(
+                Map.of(
+                    "secondaryEmail", "RESET-SHADOW@BBP.COM",
+                    "phoneSecondary", "+91-555-0100"),
+                bearerJson(accessToken)),
+            Map.class);
+    assertThat(contactResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    Map<String, Object> contact = responseData(contactResponse);
+    assertThat(contact)
+        .containsEntry("secondaryEmail", "reset-shadow@bbp.com")
+        .containsEntry("phoneSecondary", "+91-555-0100")
+        .containsEntry("secondaryEmailVerified", false)
+        .containsEntry("phoneSecondaryVerified", false);
+    assertThat(contact.keySet())
+        .containsOnly(
+            "secondaryEmail", "phoneSecondary", "secondaryEmailVerified", "phoneSecondaryVerified");
+
+    ResponseEntity<Map> invalidContactResponse =
+        rest.exchange(
+            "/api/v1/auth/me/contact",
+            HttpMethod.PATCH,
+            new HttpEntity<>(Map.of("secondaryEmail", "not-an-email"), bearerJson(accessToken)),
+            Map.class);
+    assertThat(invalidContactResponse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(scopedUser(ADMIN_EMAIL).getSecondaryEmail()).isEqualTo("reset-shadow@bbp.com");
+
+    rest.postForEntity(
+        "/api/v1/auth/password/forgot",
+        Map.of("email", ADMIN_EMAIL, "companyCode", COMPANY_CODE),
+        Map.class);
+    rest.postForEntity(
+        "/api/v1/auth/password/forgot",
+        Map.of("email", "reset-shadow@bbp.com", "companyCode", COMPANY_CODE),
+        Map.class);
+    assertThat(resetRecipients).contains(ADMIN_EMAIL);
+    assertThat(resetRecipients).doesNotContain("reset-shadow@bbp.com");
+    jdbcTemplate.update(
+        "delete from password_reset_tokens where user_id = ?", scopedUser(ADMIN_EMAIL).getId());
+
+    String profileAudit =
+        awaitSecurityEventMetadata(ADMIN_EMAIL, "DATA_UPDATE", "self_profile_update");
+    String contactAudit =
+        awaitSecurityEventMetadata(ADMIN_EMAIL, "DATA_UPDATE", "self_contact_update");
+    assertThat(profileAudit)
+        .contains("\"changedFields\": \"preferredName,profilePictureUrl\"")
+        .doesNotContain("Admin Self", "https://img.example/avatar.png");
+    assertThat(contactAudit)
+        .contains("\"changedFields\": \"phoneSecondary,secondaryEmail\"")
+        .doesNotContain("reset-shadow@bbp.com", "+91-555-0100");
+  }
+
+  @Test
+  void self_security_summary_and_history_are_stable_subject_bound_and_privacy_safe() {
+    String suffix = Long.toString(System.nanoTime());
+    String email = "history-" + suffix + "@bbp.com";
+    String renamedEmail = "history-renamed-" + suffix + "@bbp.com";
+    String password = "HistoryUser123!";
+    UserAccount historyUser =
+        dataSeeder.ensureUser(email, password, "History User", COMPANY_CODE, List.of("ROLE_SALES"));
+    historyUser.setMustChangePassword(false);
+    userAccountRepository.save(historyUser);
+    iamCanonicalStorageService.syncUser(historyUser);
+    String accessToken = login(email, password).get("accessToken").toString();
+    Long companyId = historyUser.getCompany().getId();
+
+    iamCanonicalStorageService.recordSecurityEvent(
+        "SELF_HISTORY_BEFORE_EMAIL_CHANGE",
+        "SUCCESS",
+        Map.of(
+            "operation",
+            "before_email_change",
+            "sessionId",
+            "raw-self-session-id",
+            "refreshToken",
+            "raw-refresh-token"),
+        historyUser.getPublicId().toString(),
+        email,
+        companyId,
+        COMPANY_CODE);
+
+    historyUser.setEmail(renamedEmail);
+    userAccountRepository.save(historyUser);
+    iamCanonicalStorageService.syncUser(historyUser);
+
+    iamCanonicalStorageService.recordSecurityEvent(
+        "SELF_HISTORY_AFTER_EMAIL_CHANGE",
+        "SUCCESS",
+        Map.of("operation", "after_email_change", "sessionReference", "raw-session-reference"),
+        historyUser.getPublicId().toString(),
+        renamedEmail,
+        companyId,
+        COMPANY_CODE);
+
+    UserAccount otherUser =
+        dataSeeder.ensureUser(
+            "history-other-" + suffix + "@bbp.com",
+            password,
+            "Other History User",
+            COMPANY_CODE,
+            List.of("ROLE_SALES"));
+    iamCanonicalStorageService.syncUser(otherUser);
+    iamCanonicalStorageService.recordSecurityEvent(
+        "SELF_HISTORY_OTHER_USER",
+        "SUCCESS",
+        Map.of("operation", "other_user_history"),
+        otherUser.getPublicId().toString(),
+        otherUser.getEmail(),
+        otherUser.getCompany().getId(),
+        COMPANY_CODE);
+
+    ResponseEntity<Map> summaryResponse =
+        rest.exchange(
+            "/api/v1/auth/me/security",
+            HttpMethod.GET,
+            new HttpEntity<>(bearer(accessToken)),
+            Map.class);
+    assertThat(summaryResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    Map<String, Object> summary = responseData(summaryResponse);
+    assertThat(summary)
+        .containsEntry("mfaEnabled", false)
+        .containsEntry("mustChangePassword", false)
+        .containsEntry("locked", false);
+    assertThat(((Number) summary.get("activeSessionCount")).intValue()).isGreaterThanOrEqualTo(1);
+    assertThat(summary.toString())
+        .doesNotContain("passwordHash", "refreshToken", "mfaSecret", "recoveryCode");
+
+    ResponseEntity<Map> historyResponse =
+        rest.exchange(
+            "/api/v1/auth/me/security-events?limit=10",
+            HttpMethod.GET,
+            new HttpEntity<>(bearer(accessToken)),
+            Map.class);
+    assertThat(historyResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    List<Map<String, Object>> events = responseDataList(historyResponse);
+    assertThat(events)
+        .extracting(event -> event.get("type"))
+        .contains("SELF_HISTORY_BEFORE_EMAIL_CHANGE", "SELF_HISTORY_AFTER_EMAIL_CHANGE")
+        .doesNotContain("SELF_HISTORY_OTHER_USER");
+    assertThat(indexOfEvent(events, "SELF_HISTORY_AFTER_EMAIL_CHANGE"))
+        .isLessThan(indexOfEvent(events, "SELF_HISTORY_BEFORE_EMAIL_CHANGE"));
+    assertThat(historyResponse.getBody().toString())
+        .doesNotContain(
+            "raw-self-session-id",
+            "raw-session-reference",
+            "raw-refresh-token",
+            "refreshToken",
+            "accessToken",
+            "passwordHash",
+            "mfaSecret",
+            "recoveryCode");
+    assertThat(events)
+        .allSatisfy(
+            event ->
+                assertThat(event.keySet()).doesNotContain("actor", "targetUserId", "sessionId"));
+  }
+
+  @Test
   void password_change_revokes_existing_access_and_refresh_tokens() {
     Map<String, Object> loginPayload = login(ADMIN_EMAIL, ADMIN_PASSWORD);
     String accessToken = loginPayload.get("accessToken").toString();
@@ -875,6 +1090,54 @@ public class AuthControllerIT extends AbstractIntegrationTest {
     Object data = response.getBody().get("data");
     assertThat(data).isInstanceOf(List.class);
     return (List<Map<String, Object>>) data;
+  }
+
+  private Map<String, Object> responseData(ResponseEntity<Map> response) {
+    assertThat(response.getBody()).isNotNull();
+    Object data = response.getBody().get("data");
+    assertThat(data).isInstanceOf(Map.class);
+    return (Map<String, Object>) data;
+  }
+
+  private int indexOfEvent(List<Map<String, Object>> events, String eventType) {
+    for (int i = 0; i < events.size(); i++) {
+      if (eventType.equals(events.get(i).get("type"))) {
+        return i;
+      }
+    }
+    throw new AssertionError("Missing security event " + eventType);
+  }
+
+  private String awaitSecurityEventMetadata(String email, String eventType, String operation) {
+    UUID publicId = scopedUser(email).getPublicId();
+    for (int i = 0; i < 30; i++) {
+      String metadata =
+          jdbcTemplate.query(
+              """
+              select e.metadata::text
+                from iam_security_events e
+                join iam_accounts ia on ia.id = e.account_id
+               where ia.public_id = ?
+                 and e.event_type = ?
+                 and e.metadata ->> 'operation' = ?
+               order by e.occurred_at desc, e.id desc
+               limit 1
+              """,
+              rs -> rs.next() ? rs.getString(1) : null,
+              publicId,
+              eventType,
+              operation);
+      if (metadata != null) {
+        return metadata;
+      }
+      try {
+        Thread.sleep(100);
+      } catch (InterruptedException ex) {
+        Thread.currentThread().interrupt();
+        throw new AssertionError("Interrupted waiting for security event", ex);
+      }
+    }
+    throw new AssertionError("Security event not recorded for operation " + operation);
   }
 
   private void assertRouteAbsent(String path, HttpMethod method, HttpEntity<?> entity) {

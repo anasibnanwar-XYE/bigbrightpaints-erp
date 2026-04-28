@@ -1,6 +1,7 @@
 package com.bigbrightpaints.erp.modules.auth.controller;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -20,6 +21,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 import com.bigbrightpaints.erp.core.audit.AuditEvent;
 import com.bigbrightpaints.erp.core.audit.AuditService;
@@ -44,6 +47,9 @@ import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 import io.jsonwebtoken.Claims;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 
 @RestController
 @RequestMapping("/api/v1/auth")
@@ -145,16 +151,28 @@ public class AuthController {
   @PreAuthorize("isAuthenticated()")
   public ResponseEntity<ApiResponse<SelfProfileResponse>> updateProfile(
       @AuthenticationPrincipal UserPrincipal principal,
-      @RequestBody(required = false) SelfProfileRequest request) {
+      @Valid @RequestBody(required = false) SelfProfileRequest request) {
     if (principal == null) {
       return ResponseEntity.status(401).body(ApiResponse.failure("Unauthenticated"));
     }
     UserAccount user = principal.getUser();
     if (request != null) {
+      String beforePreferredName = user.getPreferredName();
+      String beforeProfilePictureUrl = user.getProfilePictureUrl();
       user.setPreferredName(trimToNull(request.preferredName()));
       user.setProfilePictureUrl(trimToNull(request.profilePictureUrl()));
       userAccountRepository.save(user);
       iamCanonicalStorageService.syncUser(user);
+      auditSelfAccountChange(
+          AuditEvent.DATA_UPDATE,
+          user,
+          "self_profile_update",
+          changedFields(
+              Map.of(
+                  "preferredName",
+                  new FieldChange(beforePreferredName, user.getPreferredName()),
+                  "profilePictureUrl",
+                  new FieldChange(beforeProfilePictureUrl, user.getProfilePictureUrl()))));
     }
     return ResponseEntity.ok(ApiResponse.success(toProfileResponse(user)));
   }
@@ -163,16 +181,32 @@ public class AuthController {
   @PreAuthorize("isAuthenticated()")
   public ResponseEntity<ApiResponse<SelfContactResponse>> updateContact(
       @AuthenticationPrincipal UserPrincipal principal,
-      @RequestBody(required = false) SelfContactRequest request) {
+      @Valid @RequestBody(required = false) SelfContactRequest request) {
     if (principal == null) {
       return ResponseEntity.status(401).body(ApiResponse.failure("Unauthenticated"));
     }
     UserAccount user = principal.getUser();
     if (request != null) {
-      user.setSecondaryEmail(trimToNull(request.secondaryEmail()));
+      String beforeSecondaryEmail = user.getSecondaryEmail();
+      String beforePhoneSecondary = user.getPhoneSecondary();
+      user.setSecondaryEmail(normalizeNullableEmail(request.secondaryEmail()));
       user.setPhoneSecondary(trimToNull(request.phoneSecondary()));
       userAccountRepository.save(user);
       iamCanonicalStorageService.syncUser(user);
+      auditSelfAccountChange(
+          AuditEvent.DATA_UPDATE,
+          user,
+          "self_contact_update",
+          changedFields(
+              Map.of(
+                  "secondaryEmail",
+                  new FieldChange(beforeSecondaryEmail, user.getSecondaryEmail()),
+                  "phoneSecondary",
+                  new FieldChange(beforePhoneSecondary, user.getPhoneSecondary()),
+                  "secondaryEmailVerified",
+                  new FieldChange("false", "false"),
+                  "phoneSecondaryVerified",
+                  new FieldChange("false", "false"))));
     }
     return ResponseEntity.ok(ApiResponse.success(toContactResponse(user)));
   }
@@ -188,20 +222,24 @@ public class AuthController {
     return ResponseEntity.ok(
         ApiResponse.success(
             new SelfSecuritySummaryResponse(
-                user.isMfaEnabled(), user.isMustChangePassword(), user.getLockedUntil() != null)));
+                user.isMfaEnabled(),
+                user.isMustChangePassword(),
+                user.getLockedUntil() != null,
+                authSessionService.countActiveSessions(user))));
   }
 
   @GetMapping("/me/security-events")
   @PreAuthorize("isAuthenticated()")
   public ResponseEntity<ApiResponse<List<Map<String, Object>>>> securityEvents(
       @AuthenticationPrincipal UserPrincipal principal,
-      @RequestParam(required = false) String type) {
+      @RequestParam(required = false) String type,
+      @RequestParam(defaultValue = "50") int limit) {
     if (principal == null) {
       return ResponseEntity.status(401).body(ApiResponse.failure("Unauthenticated"));
     }
     return ResponseEntity.ok(
         ApiResponse.success(
-            iamCanonicalStorageService.listSecurityEvents(principal.getUser(), type, 50)));
+            iamCanonicalStorageService.listSelfSecurityEvents(principal.getUser(), type, limit)));
   }
 
   @GetMapping("/sessions")
@@ -328,7 +366,8 @@ public class AuthController {
   }
 
   private SelfContactResponse toContactResponse(UserAccount user) {
-    return new SelfContactResponse(user.getSecondaryEmail(), user.getPhoneSecondary());
+    return new SelfContactResponse(
+        user.getSecondaryEmail(), user.getPhoneSecondary(), false, false);
   }
 
   private String trimToNull(String value) {
@@ -338,16 +377,68 @@ public class AuthController {
     return value.trim();
   }
 
+  private String normalizeNullableEmail(String value) {
+    String trimmed = trimToNull(value);
+    return trimmed == null ? null : trimmed.toLowerCase(Locale.ROOT);
+  }
+
+  private void auditSelfAccountChange(
+      AuditEvent event, UserAccount user, String operation, List<String> changedFields) {
+    if (changedFields.isEmpty()) {
+      return;
+    }
+    String companyCode =
+        StringUtils.hasText(CompanyContextHolder.getCompanyCode())
+            ? CompanyContextHolder.getCompanyCode()
+            : user.getAuthScopeCode();
+    Map<String, String> metadata = new java.util.LinkedHashMap<>();
+    metadata.put("operation", operation);
+    metadata.put("outcome", "updated");
+    metadata.put("changedFields", String.join(",", changedFields));
+    if (user.getPublicId() != null) {
+      metadata.put("actorPublicId", user.getPublicId().toString());
+    }
+    if (StringUtils.hasText(companyCode)) {
+      metadata.put("companyCode", companyCode);
+    }
+    auditService.logAuthSuccess(event, user.getEmail(), companyCode, metadata);
+  }
+
+  private List<String> changedFields(Map<String, FieldChange> fields) {
+    return fields.entrySet().stream()
+        .filter(
+            entry -> !java.util.Objects.equals(entry.getValue().before(), entry.getValue().after()))
+        .map(Map.Entry::getKey)
+        .sorted()
+        .toList();
+  }
+
   public record LogoutRequest(String refreshToken) {}
 
-  public record SelfProfileRequest(String preferredName, String profilePictureUrl) {}
+  @JsonIgnoreProperties(ignoreUnknown = false)
+  public record SelfProfileRequest(
+      @Size(max = 120) String preferredName,
+      @Size(max = 512)
+          @Pattern(regexp = "^$|https?://[^\\s]+", message = "must be a valid http(s) URL")
+          String profilePictureUrl) {}
 
   public record SelfProfileResponse(String preferredName, String profilePictureUrl) {}
 
-  public record SelfContactRequest(String secondaryEmail, String phoneSecondary) {}
+  @JsonIgnoreProperties(ignoreUnknown = false)
+  public record SelfContactRequest(
+      @Size(max = 255) @Email String secondaryEmail,
+      @Size(max = 64)
+          @Pattern(regexp = "^$|[+0-9][0-9 .()\\-]{5,63}", message = "must be a valid phone number")
+          String phoneSecondary) {}
 
-  public record SelfContactResponse(String secondaryEmail, String phoneSecondary) {}
+  public record SelfContactResponse(
+      String secondaryEmail,
+      String phoneSecondary,
+      boolean secondaryEmailVerified,
+      boolean phoneSecondaryVerified) {}
 
   public record SelfSecuritySummaryResponse(
-      boolean mfaEnabled, boolean mustChangePassword, boolean locked) {}
+      boolean mfaEnabled, boolean mustChangePassword, boolean locked, int activeSessionCount) {}
+
+  private record FieldChange(String before, String after) {}
 }

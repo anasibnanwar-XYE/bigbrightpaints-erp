@@ -125,6 +125,53 @@ public class AuthAuditIT extends AbstractIntegrationTest {
   }
 
   @Test
+  void self_profile_and_contact_changes_log_field_allowlist_without_values()
+      throws InterruptedException {
+    String suffix = Long.toString(System.nanoTime());
+    String companyCode = "AUTH-SELF-" + suffix;
+    String email = "self-audit-" + suffix + "@bbp.com";
+
+    dataSeeder.ensureUser(email, PASSWORD, "Self Audit User", companyCode, List.of("ROLE_ADMIN"));
+    Company company = companyRepository.findByCodeIgnoreCase(companyCode).orElseThrow();
+    String token = loginToken(email, PASSWORD, companyCode);
+
+    ResponseEntity<Map> profileResponse =
+        rest.exchange(
+            "/api/v1/auth/me/profile",
+            HttpMethod.PATCH,
+            new HttpEntity<>(
+                Map.of(
+                    "preferredName", "Self Audit",
+                    "profilePictureUrl", "https://img.example/self-audit.png"),
+                bearerJson(token, companyCode)),
+            Map.class);
+    assertThat(profileResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+    ResponseEntity<Map> contactResponse =
+        rest.exchange(
+            "/api/v1/auth/me/contact",
+            HttpMethod.PATCH,
+            new HttpEntity<>(
+                Map.of("secondaryEmail", "SELF-AUDIT-SECONDARY@BBP.COM"),
+                bearerJson(token, companyCode)),
+            Map.class);
+    assertThat(contactResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+    AuditLog profileLog = awaitAuditEvent(AuditEvent.DATA_UPDATE, email, "self_profile_update");
+    AuditLog contactLog = awaitAuditEvent(AuditEvent.DATA_UPDATE, email, "self_contact_update");
+    assertThat(profileLog.getCompanyId()).isEqualTo(company.getId());
+    assertThat(profileLog.getMetadata())
+        .containsEntry("operation", "self_profile_update")
+        .containsEntry("changedFields", "preferredName,profilePictureUrl");
+    assertThat(contactLog.getMetadata())
+        .containsEntry("operation", "self_contact_update")
+        .containsEntry("changedFields", "secondaryEmail");
+    assertThat(profileLog.getMetadata().toString())
+        .doesNotContain("Self Audit", "https://img.example/self-audit.png");
+    assertThat(contactLog.getMetadata().toString()).doesNotContain("SELF-AUDIT-SECONDARY");
+  }
+
+  @Test
   void mfa_profile_changes_log_enrollment_activation_and_disable_events()
       throws InterruptedException {
     String suffix = Long.toString(System.nanoTime());
@@ -214,6 +261,24 @@ public class AuthAuditIT extends AbstractIntegrationTest {
       Thread.sleep(100);
     }
     fail("Audit event not recorded for user %s and event %s", username, eventType);
+    return null;
+  }
+
+  private AuditLog awaitAuditEvent(AuditEvent eventType, String username, String operation)
+      throws InterruptedException {
+    for (int i = 0; i < 30; i++) {
+      List<AuditLog> logs = auditLogRepository.findByEventTypeOrderByTimestampDesc(eventType);
+      for (AuditLog log : logs) {
+        if (username.equalsIgnoreCase(log.getUsername())
+            && operation.equals(log.getMetadata().get("operation"))) {
+          return log;
+        }
+      }
+      Thread.sleep(100);
+    }
+    fail(
+        "Audit event not recorded for user %s, event %s, operation %s",
+        username, eventType, operation);
     return null;
   }
 }

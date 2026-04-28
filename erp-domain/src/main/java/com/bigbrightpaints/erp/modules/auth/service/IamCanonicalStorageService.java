@@ -522,6 +522,14 @@ public class IamCanonicalStorageService {
         .toList();
   }
 
+  @Transactional(readOnly = true)
+  public List<Map<String, Object>> listSelfSecurityEvents(
+      UserAccount user, String eventTypeFilter, int limit) {
+    return listSecurityEvents(user, eventTypeFilter, limit).stream()
+        .map(this::toSelfSecurityEvent)
+        .toList();
+  }
+
   private void upsertAccount(UserAccount user) {
     jdbcTemplate.update(
         """
@@ -845,7 +853,8 @@ public class IamCanonicalStorageService {
             "authScopeCode",
             "tenantScope",
             "outcome",
-            "action");
+            "action",
+            "changedFields");
     Map<String, String> safe = new LinkedHashMap<>();
     for (String key : allowlist) {
       String value = metadata.get(key);
@@ -880,6 +889,37 @@ public class IamCanonicalStorageService {
           || "LOGIN_SUCCESS".equals(normalizedEvent);
     }
     return normalizedEvent.startsWith(filter);
+  }
+
+  private Map<String, Object> toSelfSecurityEvent(Map<String, Object> event) {
+    Map<String, Object> selfEvent = new LinkedHashMap<>();
+    selfEvent.put("type", event.get("type"));
+    selfEvent.put("eventType", event.get("eventType"));
+    selfEvent.put("companyCode", event.get("companyCode"));
+    selfEvent.put("authScopeCode", event.get("authScopeCode"));
+    selfEvent.put("outcome", event.get("outcome"));
+    selfEvent.put("reason", event.get("reason"));
+    selfEvent.put("createdAt", event.get("createdAt"));
+    Object metadata = event.get("metadata");
+    if (metadata instanceof Map<?, ?> metadataMap) {
+      Map<String, String> safeMetadata = new LinkedHashMap<>();
+      copyStringMetadata(metadataMap, safeMetadata, "operation");
+      copyStringMetadata(metadataMap, safeMetadata, "reason");
+      copyStringMetadata(metadataMap, safeMetadata, "outcome");
+      copyStringMetadata(metadataMap, safeMetadata, "action");
+      copyStringMetadata(metadataMap, safeMetadata, "changedFields");
+      selfEvent.put("metadata", safeMetadata);
+    } else {
+      selfEvent.put("metadata", Map.of());
+    }
+    return selfEvent;
+  }
+
+  private void copyStringMetadata(Map<?, ?> metadata, Map<String, String> target, String key) {
+    Object value = metadata.get(key);
+    if (value instanceof String stringValue && StringUtils.hasText(stringValue)) {
+      target.put(key, stringValue);
+    }
   }
 
   private String firstNonBlank(String... values) {
