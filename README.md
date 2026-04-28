@@ -179,7 +179,7 @@ docker build -t erp-test -f erp-domain/Dockerfile .
 ### Production-style startup
 1. Create production env from template:
    ```bash
-   cp .env.prod.template .env
+   cp production.env.template .env
    ```
 2. Fill all required runtime values before first boot:
    - datasource: `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`

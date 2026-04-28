@@ -34,7 +34,7 @@ assert_secret_ignore_gate() {
     fail ".env.example must remain trackable"
   fi
   local tracked_secret_files
-  tracked_secret_files="$(git ls-files -- .env '.env.*' | grep -Ev '^(.env.example|.env.prod.template)$' || true)"
+  tracked_secret_files="$(git ls-files -- .env '.env.*' | grep -Ev '^\.env\.example$' || true)"
   [[ -z "$tracked_secret_files" ]] || fail "tracked local secret files detected"
   note "secret_ignore_gate=passed files=.env,.env.* trackable=.env.example"
 }
