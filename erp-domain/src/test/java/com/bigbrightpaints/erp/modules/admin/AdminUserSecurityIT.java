@@ -35,8 +35,13 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 
+import com.bigbrightpaints.erp.core.audit.AuditEvent;
+import com.bigbrightpaints.erp.core.audit.AuditLog;
+import com.bigbrightpaints.erp.core.audit.AuditLogRepository;
 import com.bigbrightpaints.erp.core.notification.EmailService;
 import com.bigbrightpaints.erp.core.security.AuthScopeService;
+import com.bigbrightpaints.erp.modules.auth.domain.MfaRecoveryCode;
+import com.bigbrightpaints.erp.modules.auth.domain.MfaRecoveryCodeRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
@@ -60,6 +65,10 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
   @Autowired private CompanyRepository companyRepository;
 
   @Autowired private UserAccountRepository userAccountRepository;
+
+  @Autowired private MfaRecoveryCodeRepository mfaRecoveryCodeRepository;
+
+  @Autowired private AuditLogRepository auditLogRepository;
 
   @Autowired private DataSource dataSource;
 
@@ -706,6 +715,124 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
   }
 
   @Test
+  void tenant_admin_reset_mfa_clears_only_mfa_state_revokes_sessions_and_audits()
+      throws InterruptedException {
+    String targetEmail = "admin-mfa-reset-target@bbp.com";
+    String targetPassword = "MfaReset123!";
+    UserAccount targetUser =
+        dataSeeder.ensureUser(
+            targetEmail, targetPassword, "Admin MFA Reset Target", COMPANY, List.of("ROLE_SALES"));
+    targetUser.setEnabled(true);
+    targetUser.setMustChangePassword(false);
+    targetUser.setFailedLoginAttempts(0);
+    targetUser.setLockedUntil(null);
+    targetUser.setMfaEnabled(false);
+    targetUser.setMfaSecret(null);
+    UserAccount savedTarget = userAccountRepository.saveAndFlush(targetUser);
+    mfaRecoveryCodeRepository.deleteAllByUser(savedTarget);
+
+    Map<String, Object> preResetLogin = loginPayload(targetEmail, targetPassword, COMPANY);
+    String preResetAccess = preResetLogin.get("accessToken").toString();
+    String preResetRefresh = preResetLogin.get("refreshToken").toString();
+
+    savedTarget.setMfaEnabled(true);
+    savedTarget.setMfaSecret("encrypted-secret-for-admin-reset");
+    userAccountRepository.saveAndFlush(savedTarget);
+    mfaRecoveryCodeRepository.saveAndFlush(
+        new MfaRecoveryCode(savedTarget, "hash-admin-reset-recovery-code"));
+    assertThat(mfaRecoveryCodeRepository.countUnusedByUser(savedTarget)).isEqualTo(1);
+
+    String adminToken = login(ADMIN_EMAIL, ADMIN_PASSWORD, COMPANY);
+    ResponseEntity<Map> resetResponse =
+        rest.exchange(
+            "/api/v1/admin/users/" + savedTarget.getId() + "/mfa/disable",
+            HttpMethod.PATCH,
+            new HttpEntity<>(bearerHeaders(adminToken)),
+            Map.class);
+
+    assertThat(resetResponse.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+    assertThat(String.valueOf(resetResponse.getBody()))
+        .doesNotContain("mfaSecret")
+        .doesNotContain("qrUri")
+        .doesNotContain("recoveryCode")
+        .doesNotContain("hash-admin-reset");
+
+    UserAccount afterReset = userAccountRepository.findById(savedTarget.getId()).orElseThrow();
+    assertThat(afterReset.isMfaEnabled()).isFalse();
+    assertThat(afterReset.getMfaSecret()).isNull();
+    assertThat(mfaRecoveryCodeRepository.countUnusedByUser(afterReset)).isZero();
+    assertThat(afterReset.isEnabled()).isTrue();
+    assertThat(afterReset.isMustChangePassword()).isFalse();
+    assertThat(afterReset.getCompany().getCode()).isEqualTo(COMPANY);
+    assertThat(afterReset.getRoles()).extracting("name").contains("ROLE_SALES");
+
+    ResponseEntity<Map> oldAccessResponse =
+        rest.exchange(
+            "/api/v1/auth/me",
+            HttpMethod.GET,
+            new HttpEntity<>(bearerHeaders(preResetAccess)),
+            Map.class);
+    assertThat(oldAccessResponse.getStatusCode())
+        .isIn(HttpStatus.UNAUTHORIZED, HttpStatus.FORBIDDEN);
+
+    ResponseEntity<Map> oldRefreshResponse =
+        rest.postForEntity(
+            "/api/v1/auth/refresh-token",
+            Map.of("refreshToken", preResetRefresh, "companyCode", COMPANY),
+            Map.class);
+    assertThat(oldRefreshResponse.getStatusCode())
+        .isIn(HttpStatus.BAD_REQUEST, HttpStatus.UNAUTHORIZED);
+
+    Map<String, Object> freshLogin = loginPayload(targetEmail, targetPassword, COMPANY);
+    assertThat(freshLogin.get("accessToken").toString()).isNotBlank();
+
+    AuditLog resetAudit = awaitMfaDisabledAudit(ADMIN_EMAIL, savedTarget.getId());
+    assertThat(resetAudit.getCompanyId())
+        .isEqualTo(companyRepository.findByCodeIgnoreCase(COMPANY).orElseThrow().getId());
+    assertThat(resetAudit.getMetadata())
+        .containsEntry("action", "admin_disable_mfa")
+        .containsEntry("targetUserId", String.valueOf(savedTarget.getId()))
+        .containsEntry("tenantScope", COMPANY);
+    assertThat(resetAudit.getMetadata().toString())
+        .doesNotContain("encrypted-secret-for-admin-reset")
+        .doesNotContain("hash-admin-reset")
+        .doesNotContain("qrUri")
+        .doesNotContain("recoveryCode");
+  }
+
+  @Test
+  void tenant_admin_reset_mfa_denies_protected_target_without_changing_mfa_state() {
+    tenantSuperAdminUser.setMfaEnabled(true);
+    tenantSuperAdminUser.setMfaSecret("protected-admin-mfa-secret");
+    UserAccount protectedTarget = userAccountRepository.saveAndFlush(tenantSuperAdminUser);
+    mfaRecoveryCodeRepository.deleteAllByUser(protectedTarget);
+    mfaRecoveryCodeRepository.saveAndFlush(new MfaRecoveryCode(protectedTarget, "protected-hash"));
+    long missingUserId = protectedTarget.getId() + 10_000L;
+
+    String token = login(ADMIN_EMAIL, ADMIN_PASSWORD, COMPANY);
+    HttpHeaders headers = bearerHeaders(token);
+
+    ResponseEntity<Map> protectedResponse =
+        rest.exchange(
+            "/api/v1/admin/users/" + protectedTarget.getId() + "/mfa/disable",
+            HttpMethod.PATCH,
+            new HttpEntity<>(headers),
+            Map.class);
+    ResponseEntity<Map> missingResponse =
+        rest.exchange(
+            "/api/v1/admin/users/" + missingUserId + "/mfa/disable",
+            HttpMethod.PATCH,
+            new HttpEntity<>(headers),
+            Map.class);
+
+    assertMaskedMissingUserContractPair(protectedResponse, missingResponse);
+    UserAccount afterDenied = userAccountRepository.findById(protectedTarget.getId()).orElseThrow();
+    assertThat(afterDenied.isMfaEnabled()).isTrue();
+    assertThat(afterDenied.getMfaSecret()).isEqualTo("protected-admin-mfa-secret");
+    assertThat(mfaRecoveryCodeRepository.countUnusedByUser(afterDenied)).isEqualTo(1);
+  }
+
+  @Test
   void tenant_admin_force_reset_revokes_sessions_and_confines_target_to_reset_corridor() {
     String targetEmail = "force-reset-target@bbp.com";
     String targetPassword = "ForceReset123!";
@@ -1025,6 +1152,23 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
   @SuppressWarnings("unchecked")
   private void assertPlatformOnlyAccessDenied(ResponseEntity<Map> response) {
     assertPlatformOnlyAccessDeniedAndReturn(response);
+  }
+
+  private AuditLog awaitMfaDisabledAudit(String actorUsername, Long targetUserId)
+      throws InterruptedException {
+    for (int i = 0; i < 30; i++) {
+      List<AuditLog> logs =
+          auditLogRepository.findByEventTypeWithMetadataOrderByTimestampDesc(
+              AuditEvent.MFA_DISABLED);
+      for (AuditLog log : logs) {
+        if (actorUsername.equalsIgnoreCase(log.getUsername())
+            && String.valueOf(targetUserId).equals(log.getMetadata().get("targetUserId"))) {
+          return log;
+        }
+      }
+      Thread.sleep(100);
+    }
+    throw new AssertionError("MFA disabled audit event not found for target " + targetUserId);
   }
 
   @SuppressWarnings("unchecked")

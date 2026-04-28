@@ -47,6 +47,7 @@ import com.bigbrightpaints.erp.modules.admin.dto.UserDto;
 import com.bigbrightpaints.erp.modules.auth.domain.MfaRecoveryCodeRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
+import com.bigbrightpaints.erp.modules.auth.service.IamCanonicalStorageService;
 import com.bigbrightpaints.erp.modules.auth.service.PasswordResetService;
 import com.bigbrightpaints.erp.modules.auth.service.RefreshTokenService;
 import com.bigbrightpaints.erp.modules.auth.service.ScopedAccountBootstrapService;
@@ -75,6 +76,7 @@ class AdminUserServiceTest {
   @Mock private DealerRepository dealerRepository;
   @Mock private AccountRepository accountRepository;
   @Mock private TenantRuntimePolicyService tenantRuntimePolicyService;
+  @Mock private IamCanonicalStorageService iamCanonicalStorageService;
 
   private AdminUserService service;
   private Company company;
@@ -84,7 +86,11 @@ class AdminUserServiceTest {
   void setUp() {
     scopedAccountBootstrapService =
         new ScopedAccountBootstrapService(
-            userRepository, passwordEncoder, emailService, authScopeService);
+            userRepository,
+            passwordEncoder,
+            emailService,
+            authScopeService,
+            iamCanonicalStorageService);
     service =
         new AdminUserService(
             userRepository,
@@ -100,7 +106,8 @@ class AdminUserServiceTest {
             auditLogRepository,
             dealerRepository,
             accountRepository,
-            tenantRuntimePolicyService);
+            tenantRuntimePolicyService,
+            iamCanonicalStorageService);
     company = new Company();
     ReflectionTestUtils.setField(company, "id", 1L);
     company.setCode("TEST");
@@ -716,7 +723,7 @@ class AdminUserServiceTest {
 
     service.forceResetPassword(304L);
 
-    verify(passwordResetService).requestResetByAdmin(user);
+    verify(passwordResetService).requestForceResetByAdmin(user);
     verify(auditService)
         .logAuthSuccess(
             eq(AuditEvent.PASSWORD_RESET_REQUESTED),
@@ -1038,6 +1045,39 @@ class AdminUserServiceTest {
         .logAuthFailure(
             eq(AuditEvent.ACCESS_DENIED), eq("UNKNOWN_AUTH_ACTOR"), eq("TEST"), any(Map.class));
     verify(userRepository, never()).save(any(UserAccount.class));
+  }
+
+  @Test
+  void disableMfa_clearsOnlyMfaStateAndRevokesSessionsWithoutCredentialResetMutation() {
+    UserAccount user = new UserAccount("mfa-reset-target@example.com", "hash", "MFA Reset Target");
+    ReflectionTestUtils.setField(user, "id", 311L);
+    user.setCompany(company);
+    user.setEnabled(true);
+    user.setMustChangePassword(false);
+    user.setMfaEnabled(true);
+    user.setMfaSecret("encrypted-mfa-secret");
+    Role sales = new Role();
+    sales.setName("ROLE_SALES");
+    user.addRole(sales);
+
+    when(userRepository.lockByIdAndCompanyId(311L, 1L)).thenReturn(Optional.of(user));
+    when(userRepository.save(any(UserAccount.class)))
+        .thenAnswer(invocation -> invocation.getArgument(0));
+
+    service.disableMfa(311L);
+
+    assertThat(user.isMfaEnabled()).isFalse();
+    assertThat(user.getMfaSecret()).isNull();
+    assertThat(user.isEnabled()).isTrue();
+    assertThat(user.isMustChangePassword()).isFalse();
+    assertThat(user.getRoles()).extracting(Role::getName).containsExactly("ROLE_SALES");
+    verify(mfaRecoveryCodeRepository).deleteAllByUser(user);
+    verify(tokenBlacklistService).revokeAllUserTokens(user.getPublicId().toString());
+    verify(refreshTokenService).revokeAllForUser(user.getPublicId());
+    verify(passwordResetService, never()).invalidateOutstandingResetTokens(user);
+    verify(auditService)
+        .logAuthSuccess(
+            eq(AuditEvent.MFA_DISABLED), eq("UNKNOWN_AUTH_ACTOR"), eq("TEST"), any(Map.class));
   }
 
   @Test

@@ -395,7 +395,6 @@ public class AdminUserService {
     mfaRecoveryCodeRepository.deleteAllByUser(user);
     userRepository.save(user);
     iamCanonicalStorageService.syncUser(user);
-    passwordResetService.invalidateOutstandingResetTokens(user);
     tokenBlacklistService.revokeAllUserTokens(user.getPublicId().toString());
     refreshTokenService.revokeAllForUser(user.getPublicId());
     auditUserAccountAction(
