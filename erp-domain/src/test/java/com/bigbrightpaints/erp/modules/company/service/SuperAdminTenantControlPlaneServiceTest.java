@@ -30,6 +30,7 @@ import com.bigbrightpaints.erp.core.audit.AuditLogRepository;
 import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.notification.EmailService;
 import com.bigbrightpaints.erp.core.security.TokenBlacklistService;
+import com.bigbrightpaints.erp.modules.auth.domain.PasswordResetTokenRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.auth.service.IamCanonicalStorageService;
@@ -70,6 +71,7 @@ class SuperAdminTenantControlPlaneServiceTest {
   @Mock private TenantReviewIntelligenceToggleService tenantReviewIntelligenceToggleService;
   @Mock private CompanyService companyService;
   @Mock private IamCanonicalStorageService iamCanonicalStorageService;
+  @Mock private PasswordResetTokenRepository passwordResetTokenRepository;
 
   private SuperAdminTenantControlPlaneService service;
 
@@ -89,7 +91,8 @@ class SuperAdminTenantControlPlaneServiceTest {
             tenantRuntimeEnforcementService,
             tenantReviewIntelligenceToggleService,
             companyService,
-            iamCanonicalStorageService);
+            iamCanonicalStorageService,
+            passwordResetTokenRepository);
     SecurityContextHolder.getContext()
         .setAuthentication(new UsernamePasswordAuthenticationToken("super-admin@bbp.com", "n/a"));
   }
@@ -527,6 +530,7 @@ class SuperAdminTenantControlPlaneServiceTest {
     verify(iamCanonicalStorageService).syncUser(admin);
     verify(tokenBlacklistService).revokeAllUserTokens(admin.getPublicId().toString());
     verify(refreshTokenService).revokeAllForUser(admin.getPublicId());
+    verify(passwordResetTokenRepository).deleteByUser(admin);
   }
 
   @Test
@@ -635,6 +639,7 @@ class SuperAdminTenantControlPlaneServiceTest {
 
     verify(userAccountRepository, never()).save(admin);
     verify(iamCanonicalStorageService, never()).syncUser(any(UserAccount.class));
+    verify(passwordResetTokenRepository, never()).deleteByUser(any(UserAccount.class));
     verify(tenantAdminEmailChangeRequestRepository, never())
         .save(any(TenantAdminEmailChangeRequest.class));
   }

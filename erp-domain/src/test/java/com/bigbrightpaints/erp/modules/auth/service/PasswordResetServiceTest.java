@@ -6,8 +6,10 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -25,6 +27,7 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.batch.support.transaction.ResourcelessTransactionManager;
@@ -319,6 +322,78 @@ class PasswordResetServiceTest {
   }
 
   @Test
+  void resetPasswordChecksRequestScopedAbuseLimitBeforeMissingTokenLookupCompletes() {
+    String rawToken = "missing-token";
+    when(tokenRepository.findByTokenDigestForUpdate(
+            AuthTokenDigests.passwordResetTokenDigest(rawToken)))
+        .thenReturn(Optional.empty());
+
+    assertThrows(
+        ApplicationException.class,
+        () -> passwordResetService.resetPassword(rawToken, "NewPass123!", "NewPass123!"));
+
+    InOrder inOrder = inOrder(securityMonitoringService, tokenRepository);
+    inOrder
+        .verify(securityMonitoringService)
+        .checkRateLimit(argThat(PasswordResetServiceTest::isResetPasswordRequestRateLimitKey));
+    inOrder.verify(tokenRepository).findByTokenDigestForUpdate(anyString());
+    verify(passwordService, never())
+        .resetPassword(any(UserAccount.class), anyString(), anyString());
+  }
+
+  @Test
+  void resetPasswordChecksRequestScopedAbuseLimitForExpiredAndReplayedTokens() {
+    UserAccount user = enabledUser("user@example.com", TENANT_SCOPE);
+    PasswordResetToken expiredToken =
+        PasswordResetToken.digestOnly(
+            user,
+            AuthTokenDigests.passwordResetTokenDigest("expired-token"),
+            Instant.now().minusSeconds(1));
+    PasswordResetToken replayedToken =
+        PasswordResetToken.digestOnly(
+            user,
+            AuthTokenDigests.passwordResetTokenDigest("replayed-token"),
+            Instant.now().plusSeconds(600));
+    replayedToken.markUsed();
+    when(tokenRepository.findByTokenDigestForUpdate(
+            AuthTokenDigests.passwordResetTokenDigest("expired-token")))
+        .thenReturn(Optional.of(expiredToken));
+    when(tokenRepository.findByTokenDigestForUpdate(
+            AuthTokenDigests.passwordResetTokenDigest("replayed-token")))
+        .thenReturn(Optional.of(replayedToken));
+
+    assertThrows(
+        ApplicationException.class,
+        () -> passwordResetService.resetPassword("expired-token", "NewPass123!", "NewPass123!"));
+    assertThrows(
+        ApplicationException.class,
+        () -> passwordResetService.resetPassword("replayed-token", "NewPass123!", "NewPass123!"));
+
+    verify(securityMonitoringService, times(2))
+        .checkRateLimit(argThat(PasswordResetServiceTest::isResetPasswordRequestRateLimitKey));
+    verify(passwordService, never())
+        .resetPassword(any(UserAccount.class), anyString(), anyString());
+  }
+
+  @Test
+  void resetPasswordRateLimitedInvalidAttemptStopsBeforeTokenLookup() {
+    when(securityMonitoringService.checkRateLimit(
+            argThat(PasswordResetServiceTest::isResetPasswordRequestRateLimitKey)))
+        .thenReturn(false);
+
+    ApplicationException exception =
+        assertThrows(
+            ApplicationException.class,
+            () ->
+                passwordResetService.resetPassword("missing-token", "NewPass123!", "NewPass123!"));
+
+    assertEquals(ErrorCode.SYSTEM_RATE_LIMIT_EXCEEDED, exception.getErrorCode());
+    verify(tokenRepository, never()).findByTokenDigestForUpdate(anyString());
+    verify(passwordService, never())
+        .resetPassword(any(UserAccount.class), anyString(), anyString());
+  }
+
+  @Test
   void requestResetCleansUpIssuedTokenWhenDispatchFailsInAdminFlow() {
     UserAccount user = enabledUser("user@example.com", TENANT_SCOPE);
     doThrow(new RuntimeException("smtp down"))
@@ -517,5 +592,9 @@ class PasswordResetServiceTest {
     UserAccount user = new UserAccount(email, scopeCode, "hash", "User");
     user.setEnabled(true);
     return user;
+  }
+
+  private static boolean isResetPasswordRequestRateLimitKey(String key) {
+    return key != null && key.startsWith("password-reset:reset_password:request:");
   }
 }

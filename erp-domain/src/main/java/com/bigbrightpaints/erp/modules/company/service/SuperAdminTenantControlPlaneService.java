@@ -26,6 +26,7 @@ import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.notification.EmailService;
 import com.bigbrightpaints.erp.core.security.TokenBlacklistService;
 import com.bigbrightpaints.erp.core.util.CompanyTime;
+import com.bigbrightpaints.erp.modules.auth.domain.PasswordResetTokenRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserPrincipal;
@@ -59,6 +60,7 @@ public class SuperAdminTenantControlPlaneService {
   private final TenantReviewIntelligenceToggleService tenantReviewIntelligenceToggleService;
   private final CompanyService companyService;
   private final IamCanonicalStorageService iamCanonicalStorageService;
+  private final PasswordResetTokenRepository passwordResetTokenRepository;
 
   public SuperAdminTenantControlPlaneService(
       CompanyRepository companyRepository,
@@ -73,7 +75,8 @@ public class SuperAdminTenantControlPlaneService {
       TenantRuntimeEnforcementService tenantRuntimeEnforcementService,
       TenantReviewIntelligenceToggleService tenantReviewIntelligenceToggleService,
       CompanyService companyService,
-      IamCanonicalStorageService iamCanonicalStorageService) {
+      IamCanonicalStorageService iamCanonicalStorageService,
+      PasswordResetTokenRepository passwordResetTokenRepository) {
     this.companyRepository = companyRepository;
     this.userAccountRepository = userAccountRepository;
     this.auditLogRepository = auditLogRepository;
@@ -87,6 +90,7 @@ public class SuperAdminTenantControlPlaneService {
     this.tenantReviewIntelligenceToggleService = tenantReviewIntelligenceToggleService;
     this.companyService = companyService;
     this.iamCanonicalStorageService = iamCanonicalStorageService;
+    this.passwordResetTokenRepository = passwordResetTokenRepository;
   }
 
   @Transactional(readOnly = true)
@@ -419,6 +423,7 @@ public class SuperAdminTenantControlPlaneService {
     tenantAdminEmailChangeRequestRepository.save(changeRequest);
     tokenBlacklistService.revokeAllUserTokens(savedAdmin.getPublicId().toString());
     refreshTokenService.revokeAllForUser(savedAdmin.getPublicId());
+    passwordResetTokenRepository.deleteByUser(savedAdmin);
     logAuditSuccess(
         company,
         "tenant-admin-email-change-confirmed",

@@ -3,6 +3,7 @@ package com.bigbrightpaints.erp.modules.auth.service;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -89,6 +90,33 @@ class PasswordServiceTest {
 
     assertThrows(ApplicationException.class, () -> passwordService.changePassword(user, request));
     verify(passwordHistoryRepository, never()).save(any());
+    verifyNoInteractions(userAccountRepository);
+    verifyNoInteractions(tokenBlacklistService, refreshTokenService);
+  }
+
+  @Test
+  void changePasswordRejectsOverlongCandidateBeforeAnyPasswordEncoderMatches() {
+    PasswordEncoder guardedPasswordEncoder = org.mockito.Mockito.mock(PasswordEncoder.class);
+    PasswordService guardedPasswordService =
+        new PasswordService(
+            userAccountRepository,
+            passwordHistoryRepository,
+            guardedPasswordEncoder,
+            new PasswordPolicy(),
+            tokenBlacklistService,
+            refreshTokenService,
+            iamCanonicalStorageService,
+            passwordResetTokenRepository);
+    UserAccount user = new UserAccount("user@bbp.dev", "BBP", "stored-hash", "User");
+    String overlongPassword = "A" + "a".repeat(126) + "1!";
+    ChangePasswordRequest request =
+        new ChangePasswordRequest("CurrentPass1!", overlongPassword, overlongPassword);
+
+    assertThrows(
+        ApplicationException.class, () -> guardedPasswordService.changePassword(user, request));
+
+    verify(guardedPasswordEncoder, never()).matches(anyString(), anyString());
+    verifyNoInteractions(passwordHistoryRepository);
     verifyNoInteractions(userAccountRepository);
     verifyNoInteractions(tokenBlacklistService, refreshTokenService);
   }

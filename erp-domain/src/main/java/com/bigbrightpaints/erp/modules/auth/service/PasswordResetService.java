@@ -177,6 +177,7 @@ public class PasswordResetService {
   public void resetPassword(String tokenValue, String newPassword, String confirmPassword) {
     String correlationId = resolveCorrelationId();
     logTenantContextIgnoredIfPresent("reset_password", correlationId);
+    enforceResetRequestRateLimit("reset_password", correlationId);
     String tokenDigest = AuthTokenDigests.passwordResetTokenDigest(tokenValue);
     PasswordResetToken token =
         tokenRepository
@@ -199,7 +200,7 @@ public class PasswordResetService {
     }
     String scopeCode = authScopeService.requireScopeCode(user.getAuthScopeCode());
     enforceResetRateLimit(
-        "reset_password", normalizeEmail(user.getEmail()), scopeCode, correlationId, user);
+        "reset_password", normalizeEmail(user.getEmail()), scopeCode, correlationId, user, false);
     passwordService.resetPassword(user, newPassword, confirmPassword);
     user.setFailedLoginAttempts(0);
     user.setLockedUntil(null);
@@ -421,20 +422,27 @@ public class PasswordResetService {
       String scopeCode,
       String correlationId,
       UserAccount subject) {
+    enforceResetRateLimit(operation, normalizedEmail, scopeCode, correlationId, subject, true);
+  }
+
+  private void enforceResetRateLimit(
+      String operation,
+      String normalizedEmail,
+      String scopeCode,
+      String correlationId,
+      UserAccount subject,
+      boolean includeRequestLimit) {
     String accountRateLimitKey =
         RATE_LIMIT_PREFIX
             + ":"
             + operation
             + ":account:"
             + IdempotencyUtils.sha256Hex(scopeCode + ":" + normalizedEmail, 16);
-    String requestRateLimitKey =
-        RATE_LIMIT_PREFIX
-            + ":"
-            + operation
-            + ":request:"
-            + IdempotencyUtils.sha256Hex(resolveRequestAbuseFingerprint(), 16);
-    if (securityMonitoringService.checkRateLimit(accountRateLimitKey)
-        && securityMonitoringService.checkRateLimit(requestRateLimitKey)) {
+    boolean allowed = securityMonitoringService.checkRateLimit(accountRateLimitKey);
+    if (includeRequestLimit) {
+      allowed = allowed && checkResetRequestRateLimit(operation);
+    }
+    if (allowed) {
       return;
     }
     if (subject != null) {
@@ -445,6 +453,25 @@ public class PasswordResetService {
     throw new ApplicationException(
             ErrorCode.SYSTEM_RATE_LIMIT_EXCEEDED, "Password reset rate limit exceeded")
         .withDetail("companyCode", scopeCode);
+  }
+
+  private void enforceResetRequestRateLimit(String operation, String correlationId) {
+    if (checkResetRequestRateLimit(operation)) {
+      return;
+    }
+    auditResetFailure(operation, correlationId, null, (String) null, "rate_limited");
+    throw new ApplicationException(
+        ErrorCode.SYSTEM_RATE_LIMIT_EXCEEDED, "Password reset rate limit exceeded");
+  }
+
+  private boolean checkResetRequestRateLimit(String operation) {
+    String requestRateLimitKey =
+        RATE_LIMIT_PREFIX
+            + ":"
+            + operation
+            + ":request:"
+            + IdempotencyUtils.sha256Hex(resolveRequestAbuseFingerprint(), 16);
+    return securityMonitoringService.checkRateLimit(requestRateLimitKey);
   }
 
   private String resolveRequestAbuseFingerprint() {

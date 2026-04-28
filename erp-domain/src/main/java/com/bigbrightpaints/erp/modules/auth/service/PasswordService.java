@@ -52,22 +52,15 @@ public class PasswordService {
 
   @Transactional
   public void changePassword(UserAccount user, ChangePasswordRequest request) {
+    String normalizedNewPassword = passwordPolicy.normalize(request.newPassword());
+    String normalizedConfirmPassword = passwordPolicy.normalize(request.confirmPassword());
+    validateNewPasswordCandidate(normalizedNewPassword, normalizedConfirmPassword);
     // If forced change is required, skip current password check to avoid blocking on temp passwords
     if (!user.isMustChangePassword()) {
       if (!passwordEncoder.matches(request.currentPassword(), user.getPasswordHash())) {
         throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
             "Current password is incorrect");
       }
-    }
-    String normalizedNewPassword = passwordPolicy.normalize(request.newPassword());
-    String normalizedConfirmPassword = passwordPolicy.normalize(request.confirmPassword());
-    if (!Objects.equals(normalizedNewPassword, normalizedConfirmPassword)) {
-      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
-          "Password confirmation does not match");
-    }
-    if (passwordEncoder.matches(normalizedNewPassword, user.getPasswordHash())) {
-      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
-          "New password must be different from current password");
     }
     applyNewPassword(user, normalizedNewPassword, true);
   }
@@ -81,6 +74,19 @@ public class PasswordService {
           "Password confirmation does not match");
     }
     applyNewPassword(user, normalizedNewPassword, false);
+  }
+
+  private void validateNewPasswordCandidate(
+      String normalizedNewPassword, String normalizedConfirmPassword) {
+    if (!Objects.equals(normalizedNewPassword, normalizedConfirmPassword)) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          "Password confirmation does not match");
+    }
+    List<String> violations = passwordPolicy.validate(normalizedNewPassword);
+    if (!violations.isEmpty()) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          "Password does not meet policy: " + String.join(", ", violations));
+    }
   }
 
   private void applyNewPassword(
