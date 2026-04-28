@@ -45,6 +45,17 @@ public class IamCanonicalStorageService {
           "digest");
   private static final Set<String> SAFE_SCOPE_METADATA_KEYS =
       Set.of("companycode", "authscopecode", "scopecode", "tenantscope");
+  private static final Set<String> REDACTION_SENTINELS =
+      Set.of(
+          "[redacted]",
+          "redacted",
+          "<redacted>",
+          "(redacted)",
+          "[masked]",
+          "masked",
+          "<masked>",
+          "***",
+          "****");
 
   private final JdbcTemplate jdbcTemplate;
   private final UserAccountRepository userAccountRepository;
@@ -433,14 +444,24 @@ public class IamCanonicalStorageService {
                    e.outcome,
                    e.reason,
                    e.auth_scope_code,
+                   ia.auth_scope_code as account_auth_scope_code,
                    e.metadata::text as metadata_json,
                    e.occurred_at,
-                   c.code as company_code
+                   coalesce(c.code, account_company.code) as company_code
               from iam_security_events e
               join iam_accounts ia on ia.id = e.account_id
               left join companies c on c.id = e.company_id
+              left join companies account_company on account_company.id = ia.company_id
              where ia.public_id = ?
-               and (? is null or e.auth_scope_code = ?)
+               and (? is null
+                    or e.auth_scope_code = ?
+                    or ((e.auth_scope_code is null
+                         or btrim(e.auth_scope_code) = ''
+                         or lower(btrim(e.auth_scope_code)) in (
+                            '[redacted]', 'redacted', '<redacted>', '(redacted)',
+                            '[masked]', 'masked', '<masked>', '***', '****'
+                         ))
+                        and ia.auth_scope_code = ?))
              order by e.occurred_at desc, e.id desc
              limit ?
             """,
@@ -448,8 +469,19 @@ public class IamCanonicalStorageService {
               Map<String, String> metadata = fromJsonMap(rs.getString("metadata_json"));
               Map<String, Object> row = new LinkedHashMap<>();
               String eventType = rs.getString("event_type");
+              String joinedCompanyCode = rs.getString("company_code");
+              String eventAuthScopeCode = rs.getString("auth_scope_code");
+              String accountAuthScopeCode = rs.getString("account_auth_scope_code");
               String resolvedAuthScopeCode =
-                  firstNonBlank(metadata.get("authScopeCode"), rs.getString("auth_scope_code"));
+                  firstSafeScopeEvidence(
+                      metadata.get("authScopeCode"),
+                      metadata.get("scopeCode"),
+                      metadata.get("tenantScope"),
+                      metadata.get("companyCode"),
+                      joinedCompanyCode,
+                      eventAuthScopeCode,
+                      accountAuthScopeCode,
+                      normalizedScope);
               row.put("type", eventType);
               row.put("eventType", eventType);
               row.put("actor", firstNonBlank(metadata.get("actor"), metadata.get("actorUserId")));
@@ -459,12 +491,15 @@ public class IamCanonicalStorageService {
                   firstNonBlank(metadata.get("sessionId"), metadata.get("sessionReference")));
               row.put(
                   "companyCode",
-                  firstNonBlank(
+                  firstSafeScopeEvidence(
                       metadata.get("companyCode"),
-                      metadata.get("authScopeCode"),
                       metadata.get("tenantScope"),
-                      rs.getString("company_code"),
-                      resolvedAuthScopeCode));
+                      metadata.get("authScopeCode"),
+                      metadata.get("scopeCode"),
+                      joinedCompanyCode,
+                      eventAuthScopeCode,
+                      accountAuthScopeCode,
+                      normalizedScope));
               row.put("authScopeCode", resolvedAuthScopeCode);
               row.put("outcome", rs.getString("outcome"));
               row.put("reason", firstNonBlank(rs.getString("reason"), metadata.get("reason")));
@@ -474,6 +509,7 @@ public class IamCanonicalStorageService {
               return row;
             },
             user.getPublicId(),
+            normalizedScope,
             normalizedScope,
             normalizedScope,
             boundedLimit);
@@ -813,7 +849,12 @@ public class IamCanonicalStorageService {
     Map<String, String> safe = new LinkedHashMap<>();
     for (String key : allowlist) {
       String value = metadata.get(key);
-      if (StringUtils.hasText(value)) {
+      if (isSafeScopeMetadataKey(key)) {
+        String safeValue = firstSafeScopeEvidence(value);
+        if (safeValue != null) {
+          safe.put(key, safeValue);
+        }
+      } else if (StringUtils.hasText(value)) {
         safe.put(key, value);
       }
     }
@@ -851,6 +892,37 @@ public class IamCanonicalStorageService {
       }
     }
     return null;
+  }
+
+  private String firstSafeScopeEvidence(String... values) {
+    if (values == null) {
+      return null;
+    }
+    for (String value : values) {
+      if (isSafeScopeEvidence(value)) {
+        return value.trim();
+      }
+    }
+    return null;
+  }
+
+  private boolean isSafeScopeEvidence(String value) {
+    return StringUtils.hasText(value) && !isRedactionSentinel(value);
+  }
+
+  private boolean isRedactionSentinel(String value) {
+    if (!StringUtils.hasText(value)) {
+      return false;
+    }
+    return REDACTION_SENTINELS.contains(value.trim().toLowerCase(Locale.ROOT));
+  }
+
+  private boolean isSafeScopeMetadataKey(String key) {
+    if (!StringUtils.hasText(key)) {
+      return false;
+    }
+    String normalizedKey = key.replaceAll("[^A-Za-z0-9]", "").toLowerCase(Locale.ROOT);
+    return SAFE_SCOPE_METADATA_KEYS.contains(normalizedKey);
   }
 
   private String toJson(Map<String, String> metadata) {

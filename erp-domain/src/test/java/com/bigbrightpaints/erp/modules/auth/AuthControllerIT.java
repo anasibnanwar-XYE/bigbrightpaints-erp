@@ -370,6 +370,46 @@ public class AuthControllerIT extends AbstractIntegrationTest {
         .contains("\"authScopeCode\": \"ACME\"")
         .contains("\"recoveryCode\": \"[REDACTED]\"");
 
+    UserAccount admin = scopedUser(ADMIN_EMAIL);
+    Long iamAccountId =
+        jdbcTemplate.queryForObject(
+            "select id from iam_accounts where public_id = ?", Long.class, admin.getPublicId());
+    Long companyId = admin.getCompany().getId();
+    jdbcTemplate.update(
+        """
+        insert into iam_security_events (
+            account_id,
+            actor_account_id,
+            company_id,
+            auth_scope_code,
+            event_type,
+            outcome,
+            reason,
+            metadata,
+            occurred_at
+        )
+        values (?, ?, ?, ?, ?, ?, ?, ?::jsonb, now())
+        """,
+        iamAccountId,
+        iamAccountId,
+        companyId,
+        " [ReDaCtEd] ",
+        "SESSION_PRE_REDACTED_SCOPE_PROBE",
+        "SUCCESS",
+        "pre_redacted_scope_probe",
+        """
+        {
+          "operation": "pre_redacted_scope_probe",
+          "companyCode": " [REDACTED] ",
+          "authScopeCode": " <redacted> ",
+          "tenantScope": "   ",
+          "sessionId": "pre-redacted-safe-session",
+          "token": "raw-token-must-not-appear",
+          "refreshTokenDigest": "digest-must-not-appear",
+          "recoveryCode": "raw-recovery-code-must-not-appear"
+        }
+        """);
+
     ResponseEntity<Map> eventResponse =
         rest.exchange(
             "/api/v1/auth/me/security-events?type=SESSION",
@@ -383,6 +423,22 @@ public class AuthControllerIT extends AbstractIntegrationTest {
               assertThat(row.get("companyCode")).isEqualTo(COMPANY_CODE);
               assertThat(row.get("authScopeCode")).isEqualTo(COMPANY_CODE);
               assertThat(row.get("companyCode")).isNotEqualTo("[REDACTED]");
+            });
+    assertThat(responseDataList(eventResponse))
+        .filteredOn(row -> "SESSION_PRE_REDACTED_SCOPE_PROBE".equals(row.get("type")))
+        .isNotEmpty()
+        .anySatisfy(
+            row -> {
+              assertThat(row.get("companyCode")).isEqualTo(COMPANY_CODE);
+              assertThat(row.get("authScopeCode")).isEqualTo(COMPANY_CODE);
+              @SuppressWarnings("unchecked")
+              Map<String, Object> metadata = (Map<String, Object>) row.get("metadata");
+              assertThat(metadata).containsEntry("operation", "pre_redacted_scope_probe");
+              assertThat(metadata).doesNotContainKeys("companyCode", "authScopeCode");
+              assertThat(row.toString())
+                  .doesNotContain("raw-token-must-not-appear")
+                  .doesNotContain("digest-must-not-appear")
+                  .doesNotContain("raw-recovery-code-must-not-appear");
             });
 
     ResponseEntity<Map> replay = refresh(originalRefresh);
