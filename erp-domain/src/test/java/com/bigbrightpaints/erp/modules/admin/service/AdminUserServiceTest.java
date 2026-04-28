@@ -589,9 +589,18 @@ class AdminUserServiceTest {
         .isInstanceOf(AccessDeniedException.class)
         .hasMessageContaining("Target user is out of scope for this operation");
 
+    ArgumentCaptor<Map<String, String>> metadataCaptor = ArgumentCaptor.forClass(Map.class);
     verify(auditService)
         .logAuthFailure(
-            eq(AuditEvent.ACCESS_DENIED), eq("UNKNOWN_AUTH_ACTOR"), eq("TEST"), any(Map.class));
+            eq(AuditEvent.ACCESS_DENIED),
+            eq("UNKNOWN_AUTH_ACTOR"),
+            eq("TEST"),
+            metadataCaptor.capture());
+    assertThat(metadataCaptor.getValue())
+        .containsEntry("attemptedTargetId", "305")
+        .containsEntry("targetResolution", "MISSING_OR_OUT_OF_SCOPE")
+        .containsEntry("tenantScope", "TEST")
+        .doesNotContainKeys("targetUserId", "targetUserPublicId", "targetCompanyCode");
   }
 
   @Test
@@ -610,9 +619,19 @@ class AdminUserServiceTest {
         .isInstanceOf(AccessDeniedException.class)
         .hasMessageContaining("Target user is out of scope for this operation");
 
+    ArgumentCaptor<Map<String, String>> metadataCaptor = ArgumentCaptor.forClass(Map.class);
     verify(auditService)
         .logAuthFailure(
-            eq(AuditEvent.ACCESS_DENIED), eq("UNKNOWN_AUTH_ACTOR"), eq("TEST"), any(Map.class));
+            eq(AuditEvent.ACCESS_DENIED),
+            eq("UNKNOWN_AUTH_ACTOR"),
+            eq("TEST"),
+            metadataCaptor.capture());
+    assertThat(metadataCaptor.getValue())
+        .containsEntry("targetUserId", "399")
+        .containsEntry("targetUserPublicId", tenantSuperAdmin.getPublicId().toString())
+        .containsEntry("targetCompanyCode", "TEST")
+        .containsEntry("targetResolution", "PROTECTED_TARGET")
+        .doesNotContainKey("attemptedTargetId");
   }
 
   @Test
@@ -623,9 +642,17 @@ class AdminUserServiceTest {
         .isInstanceOf(AccessDeniedException.class)
         .hasMessageContaining("Target user is out of scope for this operation");
 
+    ArgumentCaptor<Map<String, String>> metadataCaptor = ArgumentCaptor.forClass(Map.class);
     verify(auditService)
         .logAuthFailure(
-            eq(AuditEvent.ACCESS_DENIED), eq("UNKNOWN_AUTH_ACTOR"), eq("TEST"), any(Map.class));
+            eq(AuditEvent.ACCESS_DENIED),
+            eq("UNKNOWN_AUTH_ACTOR"),
+            eq("TEST"),
+            metadataCaptor.capture());
+    assertThat(metadataCaptor.getValue())
+        .containsEntry("attemptedTargetId", "999")
+        .containsEntry("targetResolution", "MISSING_OR_OUT_OF_SCOPE")
+        .doesNotContainKeys("targetUserId", "targetUserPublicId", "targetCompanyCode");
   }
 
   @Test
@@ -728,9 +755,17 @@ class AdminUserServiceTest {
     verify(userRepository, never()).lockById(311L);
     verify(userRepository, never()).lockByIdAndCompanyId(311L, 1L);
     verify(passwordResetService, never()).requestResetByAdmin(any(UserAccount.class));
+    ArgumentCaptor<Map<String, String>> metadataCaptor = ArgumentCaptor.forClass(Map.class);
     verify(auditService)
         .logAuthFailure(
-            eq(AuditEvent.ACCESS_DENIED), eq("UNKNOWN_AUTH_ACTOR"), eq("TEST"), any(Map.class));
+            eq(AuditEvent.ACCESS_DENIED),
+            eq("UNKNOWN_AUTH_ACTOR"),
+            eq("TEST"),
+            metadataCaptor.capture());
+    assertThat(metadataCaptor.getValue())
+        .containsEntry("attemptedTargetId", "311")
+        .containsEntry("targetResolution", "MISSING_OR_OUT_OF_SCOPE")
+        .doesNotContainKeys("targetUserId", "targetUserPublicId", "targetCompanyCode");
   }
 
   @Test
@@ -753,9 +788,18 @@ class AdminUserServiceTest {
     verify(userRepository, never()).lockById(313L);
     verify(userRepository, never()).lockByIdAndCompanyId(313L, 1L);
     verify(passwordResetService, never()).requestResetByAdmin(any(UserAccount.class));
+    ArgumentCaptor<Map<String, String>> metadataCaptor = ArgumentCaptor.forClass(Map.class);
     verify(auditService)
         .logAuthFailure(
-            eq(AuditEvent.ACCESS_DENIED), eq("UNKNOWN_AUTH_ACTOR"), eq("TEST"), any(Map.class));
+            eq(AuditEvent.ACCESS_DENIED),
+            eq("UNKNOWN_AUTH_ACTOR"),
+            eq("TEST"),
+            metadataCaptor.capture());
+    assertThat(metadataCaptor.getValue())
+        .containsEntry("targetUserId", "313")
+        .containsEntry("targetUserPublicId", protectedUser.getPublicId().toString())
+        .containsEntry("targetCompanyCode", "TEST")
+        .containsEntry("targetResolution", "PROTECTED_TARGET");
   }
 
   @Test

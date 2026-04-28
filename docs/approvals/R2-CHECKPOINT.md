@@ -2,7 +2,76 @@
 
 Last reviewed: 2026-04-28
 
-## Current Packet Evidence — account-admin-scrutiny-remediation-self-security-events-pagination
+## Current Packet Evidence — account-admin-scrutiny-remediation-users-access-denial-audit-redaction
+
+## Scope
+- Feature: `account-admin-scrutiny-remediation-users-access-denial-audit-redaction`
+- Branch: codex/identity-account-hardcut-20260427 (base: origin/main)
+- PR: pending
+- Review candidate:
+  - changes Users & Access denial audit metadata for foreign and missing target IDs to record `attemptedTargetId` plus `targetResolution=MISSING_OR_OUT_OF_SCOPE` only
+  - prevents actor-tenant-visible `ACCESS_DENIED` audit metadata from persisting resolved foreign `targetUserId`, `targetUserPublicId`, or `targetCompanyCode`
+  - preserves same-tenant protected-target denial evidence with `targetResolution=PROTECTED_TARGET` and tenant-local target identifiers
+  - keeps super-admin tenant-workflow requests blocked at the controller/security boundary; service-level tests now document the audit privacy contract
+- Why this is R2: this packet touches high-risk admin/RBAC/company privacy behavior where incorrect audit metadata could expose foreign tenant identifiers or weaken protected-target denial evidence.
+
+## Risk Trigger
+- Triggered by:
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/admin/service/AdminUserService.java`
+  - focused Users & Access tests under `erp-domain/src/test/java`
+  - mission library frontend/status notes
+- Contract surfaces affected:
+  - `VAL-ADMIN-005`, `VAL-ADMIN-014`, `VAL-ADMIN-019`, `VAL-ADV-006`
+- Failure mode if wrong:
+  - tenant admins could infer foreign-user existence or foreign company code from audit/security records
+  - missing-target denials might not be durably audited
+  - protected same-tenant admin/main-admin denial evidence could lose required policy context
+
+## Approval Authority
+- Mode: orchestrator
+- Approver: Droid mission orchestrator
+- Canary owner: Droid mission orchestrator
+- Approval status: branch-local integration candidate pending PR review
+- Basis: this remediation narrows persisted denial metadata, does not add authority, does not widen tenant boundaries, and does not alter schema or migrations.
+
+## Escalation Decision
+- Human escalation required: no
+- Reason: the packet reduces privacy exposure and preserves existing API response contracts for foreign, missing, and protected targets.
+
+## Rollback Owner
+- Owner: Droid mission orchestrator
+- Rollback method:
+  - before merge: revert this packet and rerun focused admin Users & Access tests, compile/test-compile, OpenAPI guard, Spotless, lint/architecture, and High-Risk Change Control
+  - after merge: revert through a new remediation packet and rerun the same account-admin privacy proof lane
+- Rollback trigger:
+  - foreign or missing target denials persist `targetUserId`, `targetUserPublicId`, or `targetCompanyCode`
+  - missing target denials stop emitting durable `ACCESS_DENIED` evidence
+  - same-tenant protected-target denials no longer retain protected-target policy metadata
+
+## Expiry
+- Valid until: 2026-05-05
+- Re-evaluate if: scope expands into public response envelopes, new route names, schema/migration behavior, role-policy redesign, or broader audit/event retention policy.
+
+## Verification Evidence
+- Scope-to-evidence mapping:
+  - Foreign/missing audit privacy proof: `AdminUserServiceTest` and `AdminUserSecurityIT.tenant_admin_foreign_and_missing_denial_audits_keep_only_attempt_metadata` verify foreign and missing Users & Access denials record `attemptedTargetId` and `targetResolution=MISSING_OR_OUT_OF_SCOPE` without `targetUserId`, `targetUserPublicId`, or `targetCompanyCode`.
+  - Protected-target preservation proof: `AdminUserServiceTest` verifies same-tenant protected-target denials keep `targetResolution=PROTECTED_TARGET` plus allowed tenant-local target evidence.
+  - Tenant workflow boundary proof: existing `AdminUserSecurityIT` / `AuthTenantAuthorityIT` super-admin tenant-workflow tests continue to cover platform-only controller boundaries.
+- Commands run:
+  - `mission init.sh`
+  - baseline `bash scripts/guard_openapi_contract_drift.sh && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='AuthPasswordResetPublicContractIT,AdminUserSecurityIT,AuthControllerIT,AuthTenantAuthorityIT,TenantRuntimeEnforcementAuthIT,AuthDisabledUserTokenIT,MfaControllerIT' test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest=AdminUserServiceTest test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='AdminUserSecurityIT#tenant_admin_foreign_and_missing_denial_audits_keep_only_attempt_metadata+tenant_admin_cross_company_privileged_actions_mask_foreign_targets_as_missing' test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='AuthTenantAuthorityIT#tenant_admin_cross_tenant_privileged_user_actions_mask_foreign_targets_as_missing_and_still_audit_denials' test`
+- Result summary:
+  - baseline mission IAM lane passed before code changes
+  - focused unit and integration audit-privacy regressions passed after implementation
+  - final feature-specific validators are recorded in the worker handoff
+  - no raw JWTs, refresh tokens, reset tokens, reset links, token digests, MFA secrets, recovery codes, password hashes, resolved foreign user IDs, foreign public IDs, or foreign company codes were recorded for the remediated denial metadata
+
+---
+
+## Previous Packet Evidence — account-admin-scrutiny-remediation-self-security-events-pagination
 
 ## Scope
 - Feature: `account-admin-scrutiny-remediation-self-security-events-pagination`

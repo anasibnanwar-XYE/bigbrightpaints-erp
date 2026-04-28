@@ -1473,10 +1473,13 @@ class AuthTenantAuthorityIT extends AbstractIntegrationTest {
             log ->
                 actorEmail.equalsIgnoreCase(log.getUsername())
                     && reason.equals(log.getMetadata().get("reason"))
-                    && String.valueOf(targetUserId).equals(log.getMetadata().get("targetUserId")));
+                    && String.valueOf(targetUserId)
+                        .equals(log.getMetadata().get("attemptedTargetId")));
     assertThat(denied.getMetadata()).containsEntry("actor", actorEmail);
     assertThat(denied.getMetadata().get("tenantScope")).contains(TENANT_A);
-    assertThat(denied.getMetadata().get("targetCompanyCode")).contains(TENANT_B);
+    assertThat(denied.getMetadata())
+        .containsEntry("targetResolution", "MISSING_OR_OUT_OF_SCOPE")
+        .doesNotContainKeys("targetUserId", "targetUserPublicId", "targetCompanyCode");
   }
 
   private String login(String email, String companyCode) {

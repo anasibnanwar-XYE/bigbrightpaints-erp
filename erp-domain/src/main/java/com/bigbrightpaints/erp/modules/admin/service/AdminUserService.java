@@ -61,6 +61,8 @@ public class AdminUserService {
   private static final String OUT_OF_SCOPE_MESSAGE =
       "Target user is out of scope for this operation";
   private static final String USER_NOT_FOUND_MESSAGE = "User not found";
+  private static final String TARGET_RESOLUTION_MISSING_OR_OUT_OF_SCOPE = "MISSING_OR_OUT_OF_SCOPE";
+  private static final String TARGET_RESOLUTION_PROTECTED_TARGET = "PROTECTED_TARGET";
 
   private final UserAccountRepository userRepository;
   private final CompanyContextService companyContextService;
@@ -453,15 +455,7 @@ public class AdminUserService {
     UserAccount user = candidate.orElse(null);
     if (user == null) {
       if (!superAdmin && outOfScopeResponseMode == OutOfScopeResponseMode.ACCESS_DENIED) {
-        auditPrivilegedUserActionDenied(
-            null,
-            activeCompany,
-            denialReason,
-            Map.of(
-                "targetUserId",
-                String.valueOf(userId),
-                "targetResolution",
-                "MISSING_OR_OUT_OF_SCOPE"));
+        auditUnresolvedTargetDenied(userId, activeCompany, denialReason);
         throw new AccessDeniedException(OUT_OF_SCOPE_MESSAGE);
       }
       if (!superAdmin && lockTarget) {
@@ -470,11 +464,21 @@ public class AdminUserService {
             .map(
                 outOfScopeUser ->
                     handleOutOfScopeAdminAction(
-                        outOfScopeUser, activeCompany, denialReason, outOfScopeResponseMode))
+                        outOfScopeUser,
+                        activeCompany,
+                        denialReason,
+                        outOfScopeResponseMode,
+                        userId,
+                        Map.of()))
             .orElseThrow(
-                () ->
-                    com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
-                        USER_NOT_FOUND_MESSAGE));
+                () -> {
+                  auditUnresolvedTargetDenied(userId, activeCompany, denialReason);
+                  return com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+                      USER_NOT_FOUND_MESSAGE);
+                });
+      }
+      if (!superAdmin) {
+        auditUnresolvedTargetDenied(userId, activeCompany, denialReason);
       }
       throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
           USER_NOT_FOUND_MESSAGE);
@@ -489,11 +493,12 @@ public class AdminUserService {
             activeCompany,
             denialReason,
             OutOfScopeResponseMode.ACCESS_DENIED,
-            Map.of("targetResolution", "PROTECTED_TARGET"));
+            Map.of("targetResolution", TARGET_RESOLUTION_PROTECTED_TARGET));
       }
       return user;
     }
-    return handleOutOfScopeAdminAction(user, activeCompany, denialReason, outOfScopeResponseMode);
+    return handleOutOfScopeAdminAction(
+        user, activeCompany, denialReason, outOfScopeResponseMode, userId, Map.of());
   }
 
   private java.util.Optional<UserAccount> resolveLockedAdminActionTarget(
@@ -519,12 +524,52 @@ public class AdminUserService {
       String denialReason,
       OutOfScopeResponseMode outOfScopeResponseMode,
       Map<String, String> extraMetadata) {
-    auditPrivilegedUserActionDenied(user, activeCompany, denialReason, extraMetadata);
+    return handleOutOfScopeAdminAction(
+        user,
+        activeCompany,
+        denialReason,
+        outOfScopeResponseMode,
+        user != null ? user.getId() : null,
+        extraMetadata);
+  }
+
+  private UserAccount handleOutOfScopeAdminAction(
+      UserAccount user,
+      Company activeCompany,
+      String denialReason,
+      OutOfScopeResponseMode outOfScopeResponseMode,
+      Long attemptedTargetId,
+      Map<String, String> extraMetadata) {
+    Map<String, String> metadata = new LinkedHashMap<>();
+    if (extraMetadata != null && !extraMetadata.isEmpty()) {
+      metadata.putAll(extraMetadata);
+    }
+    UserAccount auditTarget = user;
+    if (!isUserWithinCompanyScope(user, activeCompany)) {
+      auditTarget = null;
+      metadata.putAll(safeAttemptedTargetMetadata(attemptedTargetId));
+    }
+    auditPrivilegedUserActionDenied(auditTarget, activeCompany, denialReason, metadata);
     if (outOfScopeResponseMode == OutOfScopeResponseMode.MASK_AS_MISSING) {
       throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
           USER_NOT_FOUND_MESSAGE);
     }
     throw new AccessDeniedException(OUT_OF_SCOPE_MESSAGE);
+  }
+
+  private void auditUnresolvedTargetDenied(
+      Long attemptedTargetId, Company actorCompany, String denialReason) {
+    auditPrivilegedUserActionDenied(
+        null, actorCompany, denialReason, safeAttemptedTargetMetadata(attemptedTargetId));
+  }
+
+  private Map<String, String> safeAttemptedTargetMetadata(Long attemptedTargetId) {
+    Map<String, String> metadata = new LinkedHashMap<>();
+    if (attemptedTargetId != null) {
+      metadata.put("attemptedTargetId", String.valueOf(attemptedTargetId));
+    }
+    metadata.put("targetResolution", TARGET_RESOLUTION_MISSING_OR_OUT_OF_SCOPE);
+    return metadata;
   }
 
   private enum OutOfScopeResponseMode {

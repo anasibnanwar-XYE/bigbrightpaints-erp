@@ -393,6 +393,40 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
   }
 
   @Test
+  void tenant_admin_foreign_and_missing_denial_audits_keep_only_attempt_metadata()
+      throws InterruptedException {
+    String token = login(ADMIN_EMAIL, ADMIN_PASSWORD, COMPANY);
+    long foreignUserId = otherCompanyUser.getId();
+    long missingUserId = foreignUserId + 10_000L;
+    HttpHeaders headers = new HttpHeaders();
+    headers.setBearerAuth(token);
+
+    ResponseEntity<Map> foreignResponse =
+        rest.exchange(
+            "/api/v1/admin/users/" + foreignUserId + "/force-reset-password",
+            HttpMethod.POST,
+            new HttpEntity<>(headers),
+            Map.class);
+    ResponseEntity<Map> missingResponse =
+        rest.exchange(
+            "/api/v1/admin/users/" + missingUserId + "/force-reset-password",
+            HttpMethod.POST,
+            new HttpEntity<>(headers),
+            Map.class);
+    assertMaskedMissingUserContractPair(foreignResponse, missingResponse);
+
+    AuditLog foreignAudit =
+        awaitAdminAccessDeniedAudit(
+            ADMIN_EMAIL, foreignUserId, "admin-force-reset-password-out-of-scope");
+    AuditLog missingAudit =
+        awaitAdminAccessDeniedAudit(
+            ADMIN_EMAIL, missingUserId, "admin-force-reset-password-out-of-scope");
+
+    assertAttemptOnlyDeniedAudit(foreignAudit, String.valueOf(foreignUserId));
+    assertAttemptOnlyDeniedAudit(missingAudit, String.valueOf(missingUserId));
+  }
+
+  @Test
   void tenant_admin_foreign_row_lock_does_not_block_masked_user_operations() throws Exception {
     String token = login(ADMIN_EMAIL, ADMIN_PASSWORD, COMPANY);
     HttpHeaders headers = new HttpHeaders();
@@ -1399,6 +1433,34 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
       throws InterruptedException {
     return awaitAuditLog(
         AuditEvent.MFA_DISABLED, actorUsername, String.valueOf(targetUserId), "admin_disable_mfa");
+  }
+
+  private AuditLog awaitAdminAccessDeniedAudit(
+      String actorUsername, Long attemptedTargetId, String reason) throws InterruptedException {
+    for (int i = 0; i < 30; i++) {
+      List<AuditLog> logs =
+          auditLogRepository.findByEventTypeWithMetadataOrderByTimestampDesc(
+              AuditEvent.ACCESS_DENIED);
+      for (AuditLog log : logs) {
+        if (actorUsername.equalsIgnoreCase(log.getUsername())
+            && String.valueOf(attemptedTargetId).equals(log.getMetadata().get("attemptedTargetId"))
+            && reason.equals(log.getMetadata().get("reason"))) {
+          return log;
+        }
+      }
+      Thread.sleep(100);
+    }
+    throw new AssertionError(
+        "ACCESS_DENIED audit event not found for attempted target " + attemptedTargetId);
+  }
+
+  private void assertAttemptOnlyDeniedAudit(AuditLog auditLog, String attemptedTargetId) {
+    assertThat(auditLog.getMetadata())
+        .containsEntry("actor", ADMIN_EMAIL)
+        .containsEntry("tenantScope", COMPANY)
+        .containsEntry("attemptedTargetId", attemptedTargetId)
+        .containsEntry("targetResolution", "MISSING_OR_OUT_OF_SCOPE")
+        .doesNotContainKeys("targetUserId", "targetUserPublicId", "targetCompanyCode");
   }
 
   private AuditLog awaitAuditLog(
