@@ -82,6 +82,22 @@ public class AuditService {
         requestContext);
   }
 
+  @Transactional
+  public AuditLog logAuthSuccessRequired(
+      AuditEvent event, String username, String companyCode, Map<String, String> metadata) {
+    Map<String, String> authMetadata = metadata != null ? new HashMap<>(metadata) : new HashMap<>();
+    String usernameOverride = normalizeAuthUsernameOverride(username, authMetadata);
+    enrichAuthMetadataWithAuthenticatedActorPublicId(authMetadata, usernameOverride);
+    String companyCodeOverride = normalizeAuthCompanyOverride(companyCode, authMetadata);
+    return logRequiredEventInternal(
+        event,
+        AuditStatus.SUCCESS,
+        authMetadata,
+        usernameOverride,
+        companyCodeOverride,
+        captureRequestContextMetadata());
+  }
+
   @Async
   @Transactional(propagation = Propagation.REQUIRES_NEW)
   public void logEventAsync(
@@ -186,6 +202,86 @@ public class AuditService {
       // Don't let audit logging failures impact the main application
       logger.error("Failed to log audit event: {} - Status: {}", event, status, e);
     }
+  }
+
+  private AuditLog logRequiredEventInternal(
+      AuditEvent event,
+      AuditStatus status,
+      Map<String, String> metadata,
+      String usernameOverride,
+      String companyCodeOverride,
+      Map<String, String> requestContext) {
+    metadata = metadata == null ? null : new HashMap<>(metadata);
+    AuditLog.Builder builder =
+        new AuditLog.Builder().eventType(event).status(status).timestamp(LocalDateTime.now());
+
+    boolean hasUsernameOverride = StringUtils.hasText(usernameOverride);
+    String resolvedUsername = normalizeToken(usernameOverride);
+    String resolvedUserId = extractMetadataActorPublicId(metadata);
+    if (!hasUsernameOverride) {
+      Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+      if (auth != null && auth.isAuthenticated()) {
+        if (!StringUtils.hasText(resolvedUsername)) {
+          resolvedUsername = normalizeToken(auth.getName());
+        }
+        if (!StringUtils.hasText(resolvedUserId)) {
+          resolvedUserId = resolveAuthenticatedPublicId(auth);
+        }
+        if (!StringUtils.hasText(resolvedUserId)) {
+          resolvedUserId = normalizeToken(auth.getName());
+        }
+      }
+    } else if (!StringUtils.hasText(resolvedUserId)) {
+      resolvedUserId = resolvedUsername;
+    }
+    if (StringUtils.hasText(resolvedUsername)) {
+      builder.username(resolvedUsername);
+    }
+    if (StringUtils.hasText(resolvedUserId)) {
+      builder.userId(resolvedUserId);
+    }
+
+    String companyToken;
+    if (AUTH_COMPANY_UNRESOLVED_SENTINEL.equals(companyCodeOverride)) {
+      companyToken = null;
+    } else if (companyCodeOverride != null && !companyCodeOverride.isBlank()) {
+      companyToken = companyCodeOverride;
+    } else {
+      companyToken = CompanyContextHolder.getCompanyCode();
+    }
+    Long companyId = resolveCompanyId(companyToken);
+    if (companyId != null) {
+      builder.companyId(companyId);
+    } else if (companyToken != null) {
+      if (metadata != null) {
+        metadata.putIfAbsent("authCompanyToken", companyToken.trim());
+        metadata.put("authCompanyResolution", "UNRESOLVED");
+      }
+      logger.warn("Unable to resolve company code");
+    }
+
+    if (requestContext != null && !requestContext.isEmpty()) {
+      builder
+          .ipAddress(requestContext.get("ipAddress"))
+          .userAgent(requestContext.get("userAgent"))
+          .requestMethod(requestContext.get("requestMethod"))
+          .requestPath(requestContext.get("requestPath"))
+          .sessionId(requestContext.get("sessionId"));
+      String traceId = requestContext.get("traceId");
+      if (traceId != null && !traceId.isBlank()) {
+        builder.traceId(traceId);
+      }
+    }
+
+    if (metadata != null && !metadata.isEmpty()) {
+      builder.metadata(metadata);
+    }
+
+    AuditLog auditLog = auditLogRepository.saveAndFlush(builder.build());
+    iamCanonicalStorageService.recordSecurityEvent(
+        event.name(), iamOutcome(status), metadata, resolvedUserId, resolvedUsername, companyId, companyToken);
+    logger.debug("Required audit event logged: {} - Status: {}", event, status);
+    return auditLog;
   }
 
   private String resolveAuthenticatedPublicId(Authentication authentication) {

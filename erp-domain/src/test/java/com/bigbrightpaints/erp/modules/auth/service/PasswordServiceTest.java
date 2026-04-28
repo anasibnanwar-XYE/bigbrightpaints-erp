@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -22,6 +23,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
+import com.bigbrightpaints.erp.core.audit.AuditEvent;
+import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.security.TokenBlacklistService;
 import com.bigbrightpaints.erp.modules.auth.domain.PasswordResetTokenRepository;
@@ -46,6 +49,8 @@ class PasswordServiceTest {
 
   @Mock private PasswordResetTokenRepository passwordResetTokenRepository;
 
+  @Mock private AuditService auditService;
+
   private PasswordEncoder passwordEncoder;
   private PasswordPolicy passwordPolicy;
   private PasswordService passwordService;
@@ -63,7 +68,8 @@ class PasswordServiceTest {
             tokenBlacklistService,
             refreshTokenService,
             iamCanonicalStorageService,
-            passwordResetTokenRepository);
+            passwordResetTokenRepository,
+            auditService);
   }
 
   @Test
@@ -106,7 +112,8 @@ class PasswordServiceTest {
             tokenBlacklistService,
             refreshTokenService,
             iamCanonicalStorageService,
-            passwordResetTokenRepository);
+            passwordResetTokenRepository,
+            auditService);
     UserAccount user = new UserAccount("user@bbp.dev", "BBP", "stored-hash", "User");
     String overlongPassword = "A" + "a".repeat(126) + "1!";
     ChangePasswordRequest request =
@@ -145,6 +152,17 @@ class PasswordServiceTest {
     verify(passwordResetTokenRepository).deleteByUser(user);
     verify(tokenBlacklistService).revokeAllUserTokens(user.getPublicId().toString());
     verify(refreshTokenService).revokeAllForUser(user.getPublicId());
+    verify(auditService)
+        .logAuthSuccessRequired(
+            eq(AuditEvent.TOKEN_REVOKED),
+            eq("user@bbp.dev"),
+            eq("BBP"),
+            argThat(
+                metadata ->
+                    metadata != null
+                        && "password_change".equals(metadata.get("operation"))
+                        && "all_user_sessions_revoked".equals(metadata.get("outcome"))
+                        && "redacted".equals(metadata.get("tokenMaterial"))));
     assertTrue(passwordEncoder.matches("NewPassword1!", user.getPasswordHash()));
   }
 

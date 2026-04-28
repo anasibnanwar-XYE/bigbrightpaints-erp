@@ -138,13 +138,23 @@ public class SuperAdminProfileService {
     Long refreshTokenId = parseSessionId(sessionId);
     boolean revoked = refreshTokenService.revokeSession(user.getPublicId(), refreshTokenId);
     Instant revokedAt = Instant.now();
-    recordAudit(
-        AuditEvent.CONFIGURATION_CHANGED,
-        user,
-        "superadmin-profile-session-revoked",
-        Map.of("sessionId", safeSessionId(refreshTokenId), "revoked", Boolean.toString(revoked)));
+    AuditLog audit =
+        recordRequiredAudit(
+            AuditEvent.TOKEN_REVOKED,
+            user,
+            "superadmin-profile-session-revoked",
+            Map.of(
+                "sessionId",
+                safeSessionId(refreshTokenId),
+                "revoked",
+                Boolean.toString(revoked),
+                "tokenMaterial",
+                "redacted"));
     return new SuperAdminSessionRevokeResponseDto(
-        safeSessionId(refreshTokenId), revoked, revokedAt, "audit:event=CONFIGURATION_CHANGED");
+        safeSessionId(refreshTokenId),
+        revoked,
+        revokedAt,
+        "audit:event=TOKEN_REVOKED,id=" + audit.getId());
   }
 
   private SuperAdminProfileDto toProfile(UserAccount user) {
@@ -284,6 +294,19 @@ public class SuperAdminProfileService {
       auditMetadata.putAll(metadata);
     }
     auditService.logAuthSuccess(
+        event, user.getEmail().toLowerCase(Locale.ROOT), user.getAuthScopeCode(), auditMetadata);
+  }
+
+  private AuditLog recordRequiredAudit(
+      AuditEvent event, UserAccount user, String reason, Map<String, String> metadata) {
+    Map<String, String> auditMetadata = new HashMap<>();
+    auditMetadata.put("reason", reason);
+    auditMetadata.put("actorPublicId", user.getPublicId().toString());
+    auditMetadata.put("scope", user.getAuthScopeCode());
+    if (metadata != null) {
+      auditMetadata.putAll(metadata);
+    }
+    return auditService.logAuthSuccessRequired(
         event, user.getEmail().toLowerCase(Locale.ROOT), user.getAuthScopeCode(), auditMetadata);
   }
 }
