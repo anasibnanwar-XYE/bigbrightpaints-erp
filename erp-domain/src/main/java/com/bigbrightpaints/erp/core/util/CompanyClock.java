@@ -4,6 +4,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.function.Supplier;
 
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -11,6 +12,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
+import com.bigbrightpaints.erp.core.validationharness.ValidationTimeControlService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 
 @Component
@@ -19,6 +21,7 @@ public class CompanyClock {
   private static final String DEFAULT_TIMEZONE = "UTC";
 
   private final Clock clock;
+  private final Supplier<ValidationTimeControlService> validationTimeControlProvider;
 
   /**
    * Override date for benchmark mode. When set, all calls to today() and now()
@@ -29,15 +32,28 @@ public class CompanyClock {
   private String overrideDateString;
 
   @Autowired
-  public CompanyClock(ObjectProvider<Clock> clockProvider) {
+  public CompanyClock(
+      ObjectProvider<Clock> clockProvider,
+      ObjectProvider<ValidationTimeControlService> validationTimeControlProvider) {
     this.clock = clockProvider.getIfAvailable(Clock::systemUTC);
+    this.validationTimeControlProvider = validationTimeControlProvider::getIfAvailable;
   }
 
   CompanyClock(Clock clock) {
     this.clock = clock != null ? clock : Clock.systemUTC();
+    this.validationTimeControlProvider = null;
+  }
+
+  CompanyClock(Clock clock, ValidationTimeControlService validationTimeControlService) {
+    this.clock = clock != null ? clock : Clock.systemUTC();
+    this.validationTimeControlProvider = () -> validationTimeControlService;
   }
 
   public LocalDate today(Company company) {
+    Instant validationInstant = validationInstant();
+    if (validationInstant != null) {
+      return LocalDate.ofInstant(validationInstant, zoneId(company));
+    }
     if (StringUtils.hasText(overrideDateString)) {
       return LocalDate.parse(overrideDateString);
     }
@@ -45,6 +61,10 @@ public class CompanyClock {
   }
 
   public Instant now(Company company) {
+    Instant validationInstant = validationInstant();
+    if (validationInstant != null) {
+      return validationInstant;
+    }
     if (StringUtils.hasText(overrideDateString)) {
       LocalDate overrideDate = LocalDate.parse(overrideDateString);
       return overrideDate.atStartOfDay(zoneId(company)).toInstant();
@@ -53,6 +73,10 @@ public class CompanyClock {
   }
 
   public LocalDate dateForInstant(Company company, Instant instant) {
+    Instant validationInstant = validationInstant();
+    if (validationInstant != null) {
+      return LocalDate.ofInstant(validationInstant, zoneId(company));
+    }
     if (StringUtils.hasText(overrideDateString)) {
       return LocalDate.parse(overrideDateString);
     }
@@ -65,5 +89,16 @@ public class CompanyClock {
   public ZoneId zoneId(Company company) {
     String timezone = company != null ? company.getTimezone() : null;
     return ZoneId.of(StringUtils.hasText(timezone) ? timezone : DEFAULT_TIMEZONE);
+  }
+
+  private Instant validationInstant() {
+    if (validationTimeControlProvider == null) {
+      return null;
+    }
+    ValidationTimeControlService timeControl = validationTimeControlProvider.get();
+    if (timeControl == null) {
+      return null;
+    }
+    return timeControl.fixedInstant().orElse(null);
   }
 }

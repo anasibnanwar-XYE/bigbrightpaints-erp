@@ -127,6 +127,9 @@ public class SecurityConfig {
                     .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/v3/api-docs.yaml")
                     .permitAll();
               }
+              if (isValidationHarnessAllowed()) {
+                registry.requestMatchers("/api/v1/validation/harness/**").permitAll();
+              }
               registry
                   .requestMatchers(
                       HttpMethod.POST,
@@ -168,6 +171,10 @@ public class SecurityConfig {
       return false;
     }
     return true;
+  }
+
+  private boolean isValidationHarnessAllowed() {
+    return environment != null && environment.acceptsProfiles(Profiles.of("validation-harness"));
   }
 
   @Bean
