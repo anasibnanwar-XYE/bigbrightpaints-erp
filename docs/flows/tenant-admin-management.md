@@ -18,11 +18,11 @@ This packet describes the canonical behavior for tenant and admin management aft
 
 ### Control-plane (out of tenant-admin scope)
 
-- Tenant onboarding
+- V1 Add Client / activation tenant setup
 - Tenant lifecycle transitions
 - Module enable/disable
 - Tenant limit and quota mutation
-- Support recovery operations
+- Support warnings and context operations
 - Platform changelog publishing
 
 All control-plane behavior stays under `/api/v1/superadmin/**`.
@@ -40,17 +40,22 @@ All control-plane behavior stays under `/api/v1/superadmin/**`.
 
 ### Superadmin control-plane entrypoints
 
-- `POST /api/v1/superadmin/tenants/onboard`
 - `GET /api/v1/superadmin/tenants`
 - `GET /api/v1/superadmin/tenants/{id}`
 - `PUT /api/v1/superadmin/tenants/{id}/lifecycle`
 - `PUT /api/v1/superadmin/tenants/{id}/limits`
 - `PUT /api/v1/superadmin/tenants/{id}/modules`
-- `POST /api/v1/superadmin/tenants/{id}/support/admin-password-reset`
 - `POST /api/v1/superadmin/tenants/{id}/support/warnings`
 - `PUT /api/v1/superadmin/tenants/{id}/support/context`
 - `POST /api/v1/superadmin/changelog`
 - `POST /api/v1/superadmin/notify`
+
+### Retired Superadmin routes
+
+These routes are not active workflows, are hidden from current OpenAPI/frontend contracts, and return `410 Gone` with no credential or email side effects:
+
+- Retired `POST /api/v1/superadmin/tenants/onboard` — use the V1 Add Client + activation workflow for tenant creation.
+- Retired `POST /api/v1/superadmin/tenants/{id}/support/admin-password-reset` — use the V1 activation/password recovery flow instead of platform-issued credential resets.
 
 ### Tenant-admin product entrypoints
 
