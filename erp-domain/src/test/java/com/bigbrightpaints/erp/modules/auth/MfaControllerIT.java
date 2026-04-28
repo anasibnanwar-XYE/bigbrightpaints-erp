@@ -289,7 +289,7 @@ public class MfaControllerIT extends AbstractIntegrationTest {
   }
 
   @Test
-  void concurrent_totp_recovery_code_regeneration_returns_only_one_plaintext_set()
+  void concurrent_totp_recovery_code_regeneration_serializes_cross_transaction_plaintext_set()
       throws Exception {
     String token = obtainAccessToken(null, null);
     SetupPayload setup = startEnrollment(token);
@@ -343,6 +343,10 @@ public class MfaControllerIT extends AbstractIntegrationTest {
           ((List<Object>) apiData(successes.getFirst()).get("recoveryCodes"))
               .stream().map(Object::toString).toList();
       assertThat(regeneratedCodes).hasSize(setup.recoveryCodes().size());
+      assertThat(unusedRecoveryHashes(scopedUser()))
+          .doesNotContainAnyElementsOf(setup.recoveryCodes())
+          .doesNotContainAnyElementsOf(regeneratedCodes)
+          .hasSize(regeneratedCodes.size());
       assertThat(responses)
           .filteredOn(response -> response.getStatusCode() != HttpStatus.OK)
           .allSatisfy(

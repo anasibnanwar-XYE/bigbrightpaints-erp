@@ -8,10 +8,13 @@ import static org.mockito.Mockito.*;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.List;
+import java.util.Optional;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.security.CryptoService;
@@ -210,6 +213,60 @@ class MfaServiceTest {
     assertThat(user.isMfaEnabled()).isFalse();
     verify(tokenBlacklistService).revokeAllUserTokens(user.getPublicId().toString());
     verify(refreshTokenService).revokeAllForUser(user.getPublicId());
+  }
+
+  @Test
+  void regenerateRecoveryCodes_locksAndUsesManagedAccountBeforeReplacingVerifiers() {
+    UserAccount requestUser = userWithSecret();
+    UserAccount lockedUser = userWithSecret();
+    lockedUser.setMfaSecret("JBSWY3DPEHPK3PXP");
+    requestUser.setMfaSecret("AAAAAAAAAAAAAAAA");
+    ReflectionTestUtils.setField(requestUser, "id", 42L);
+    ReflectionTestUtils.setField(lockedUser, "id", 42L);
+    when(repository.lockById(42L)).thenReturn(Optional.of(lockedUser));
+    when(passwordEncoder.encode(anyString())).thenReturn("hashed-recovery-code");
+
+    String code = TotpTestUtils.generateCode(lockedUser.getMfaSecret(), clock.instant());
+
+    List<String> regeneratedCodes =
+        mfaService.regenerateRecoveryCodes(requestUser, code, null, clock.instant());
+
+    assertThat(regeneratedCodes).hasSize(8);
+    verify(repository).lockById(42L);
+    verify(mfaRecoveryCodeRepository).deleteAllByUser(lockedUser);
+    verify(mfaRecoveryCodeRepository).saveAll(anyList());
+    verify(repository).save(lockedUser);
+    verify(iamCanonicalStorageService).syncUser(lockedUser);
+    verify(tokenBlacklistService).revokeAllUserTokens(lockedUser.getPublicId().toString());
+    verify(refreshTokenService).revokeAllForUser(lockedUser.getPublicId());
+    verify(repository, never()).save(requestUser);
+  }
+
+  @Test
+  void regenerateRecoveryCodes_rejectsStaleTokenBeforeVerifierValidation() {
+    UserAccount requestUser = userWithSecret();
+    UserAccount lockedUser = userWithSecret();
+    ReflectionTestUtils.setField(requestUser, "id", 43L);
+    ReflectionTestUtils.setField(lockedUser, "id", 43L);
+    Instant tokenIssuedAt = clock.instant();
+    when(repository.lockById(43L)).thenReturn(Optional.of(lockedUser));
+    when(tokenBlacklistService.isUserTokenRevoked(
+            lockedUser.getPublicId().toString(), tokenIssuedAt))
+        .thenReturn(true);
+
+    assertThrows(
+        ApplicationException.class,
+        () ->
+            mfaService.regenerateRecoveryCodes(requestUser, "000000", "RECOVERY1", tokenIssuedAt));
+
+    verify(repository).lockById(43L);
+    verify(tokenBlacklistService)
+        .isUserTokenRevoked(lockedUser.getPublicId().toString(), tokenIssuedAt);
+    verifyNoInteractions(mfaRecoveryCodeRepository);
+    verify(cryptoService, never()).decrypt(anyString());
+    verify(accountLockoutService, never()).recordFailure(any());
+    verify(repository, never()).save(any(UserAccount.class));
+    verify(iamCanonicalStorageService, never()).syncUser(any(UserAccount.class));
   }
 
   private UserAccount userWithSecret() {

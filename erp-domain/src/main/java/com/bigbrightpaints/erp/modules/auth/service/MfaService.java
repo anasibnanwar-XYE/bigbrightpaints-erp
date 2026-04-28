@@ -11,9 +11,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.locks.ReentrantLock;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
@@ -60,8 +57,6 @@ public class MfaService {
   private final RefreshTokenService refreshTokenService;
   private final IamCanonicalStorageService iamCanonicalStorageService;
   private final AccountLockoutService accountLockoutService;
-  private final ConcurrentMap<Long, ReentrantLock> recoveryRegenerationLocks =
-      new ConcurrentHashMap<>();
   private final SecureRandom secureRandom = new SecureRandom();
   private final Clock clock;
   private final String issuer;
@@ -173,49 +168,43 @@ public class MfaService {
     revokeActiveSessions(user);
   }
 
-  @Transactional
+  @Transactional(dontRollbackOn = ApplicationException.class)
   public List<String> regenerateRecoveryCodes(
       UserAccount user, String totpCode, String recoveryCode) {
     return regenerateRecoveryCodes(user, totpCode, recoveryCode, null);
   }
 
-  @Transactional
+  @Transactional(dontRollbackOn = ApplicationException.class)
   public List<String> regenerateRecoveryCodes(
       UserAccount user, String totpCode, String recoveryCode, Instant authenticatedTokenIssuedAt) {
-    accountLockoutService.enforceUnlocked(user);
-    ReentrantLock regenerationLock = acquireRecoveryRegenerationLock(user);
-    try {
-      UserAccount lockedUser = user;
-      accountLockoutService.enforceUnlocked(lockedUser);
-      if (!lockedUser.isMfaEnabled()) {
-        throw new ApplicationException(
-            ErrorCode.VALIDATION_INVALID_INPUT, "MFA must be enabled to regenerate recovery codes");
-      }
-      String decryptedSecret = requireActiveSecret(lockedUser);
-      boolean verified = false;
-      String normalizedTotp = normalizeCode(totpCode);
-      String normalizedRecovery = normalizeCode(recoveryCode);
-      if (StringUtils.hasText(normalizedTotp) && isValidTotp(decryptedSecret, normalizedTotp)) {
-        verified = true;
-      } else if (StringUtils.hasText(normalizedRecovery)
-          && consumeRecoveryCode(lockedUser, normalizedRecovery)) {
-        verified = true;
-      }
-      if (!verified) {
-        accountLockoutService.recordFailure(lockedUser);
-        throw new ApplicationException(ErrorCode.AUTH_MFA_INVALID, "Invalid MFA verification data");
-      }
-      enforceTokenStillActive(lockedUser, authenticatedTokenIssuedAt);
-      accountLockoutService.resetFailures(lockedUser);
-      List<String> recoveryCodes = generateRecoveryCodes();
-      replaceRecoveryCodes(lockedUser, recoveryCodes);
-      userAccountRepository.save(lockedUser);
-      iamCanonicalStorageService.syncUser(lockedUser);
-      revokeActiveSessions(lockedUser);
-      return recoveryCodes;
-    } finally {
-      releaseRecoveryRegenerationLock(regenerationLock);
+    UserAccount lockedUser = lockUserForRecoveryRegeneration(user);
+    accountLockoutService.enforceUnlocked(lockedUser);
+    enforceTokenStillActive(lockedUser, authenticatedTokenIssuedAt);
+    if (!lockedUser.isMfaEnabled()) {
+      throw new ApplicationException(
+          ErrorCode.VALIDATION_INVALID_INPUT, "MFA must be enabled to regenerate recovery codes");
     }
+    String decryptedSecret = requireActiveSecret(lockedUser);
+    boolean verified = false;
+    String normalizedTotp = normalizeCode(totpCode);
+    String normalizedRecovery = normalizeCode(recoveryCode);
+    if (StringUtils.hasText(normalizedTotp) && isValidTotp(decryptedSecret, normalizedTotp)) {
+      verified = true;
+    } else if (StringUtils.hasText(normalizedRecovery)
+        && consumeRecoveryCode(lockedUser, normalizedRecovery)) {
+      verified = true;
+    }
+    if (!verified) {
+      accountLockoutService.recordFailureOnLockedAccount(lockedUser);
+      throw new ApplicationException(ErrorCode.AUTH_MFA_INVALID, "Invalid MFA verification data");
+    }
+    accountLockoutService.resetFailures(lockedUser);
+    List<String> recoveryCodes = generateRecoveryCodes();
+    replaceRecoveryCodes(lockedUser, recoveryCodes);
+    userAccountRepository.save(lockedUser);
+    iamCanonicalStorageService.syncUser(lockedUser);
+    revokeActiveSessions(lockedUser);
+    return recoveryCodes;
   }
 
   @Transactional
@@ -293,25 +282,18 @@ public class MfaService {
     return false;
   }
 
-  private ReentrantLock acquireRecoveryRegenerationLock(UserAccount user) {
+  private UserAccount lockUserForRecoveryRegeneration(UserAccount user) {
     if (user == null || user.getId() == null) {
       throw new ApplicationException(
           ErrorCode.VALIDATION_INVALID_INPUT, "MFA must be enabled to regenerate recovery codes");
     }
-    ReentrantLock lock =
-        recoveryRegenerationLocks.computeIfAbsent(user.getId(), ignored -> new ReentrantLock());
-    if (!lock.tryLock()) {
-      throw new ApplicationException(
-          ErrorCode.CONCURRENCY_CONFLICT, "MFA recovery-code regeneration is already in progress");
-    }
-    return lock;
-  }
-
-  private void releaseRecoveryRegenerationLock(ReentrantLock lock) {
-    if (lock == null) {
-      return;
-    }
-    lock.unlock();
+    return userAccountRepository
+        .lockById(user.getId())
+        .orElseThrow(
+            () ->
+                new ApplicationException(
+                    ErrorCode.VALIDATION_INVALID_INPUT,
+                    "MFA must be enabled to regenerate recovery codes"));
   }
 
   private void enforceTokenStillActive(UserAccount user, Instant authenticatedTokenIssuedAt) {

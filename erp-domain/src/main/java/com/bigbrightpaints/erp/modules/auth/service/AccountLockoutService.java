@@ -108,6 +108,23 @@ public class AccountLockoutService {
         });
   }
 
+  public void recordFailureOnLockedAccount(UserAccount lockedUser) {
+    if (lockedUser == null) {
+      return;
+    }
+    int attempts = lockedUser.getFailedLoginAttempts() + 1;
+    lockedUser.setFailedLoginAttempts(attempts);
+    boolean locked = attempts >= MAX_FAILED_ATTEMPTS;
+    if (locked) {
+      lockedUser.setLockedUntil(now().plus(LOCKOUT_DURATION));
+    }
+    userAccountRepository.save(lockedUser);
+    iamCanonicalStorageService.syncUser(lockedUser);
+    if (locked) {
+      revokeActiveSessions(lockedUser);
+    }
+  }
+
   private void revokeActiveSessions(UserAccount user) {
     if (user == null || user.getPublicId() == null) {
       return;
