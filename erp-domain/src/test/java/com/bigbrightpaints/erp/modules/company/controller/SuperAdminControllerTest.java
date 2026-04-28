@@ -20,6 +20,9 @@ import com.bigbrightpaints.erp.modules.company.dto.CompanyLifecycleStateDto;
 import com.bigbrightpaints.erp.modules.company.dto.CompanySuperAdminDashboardDto;
 import com.bigbrightpaints.erp.modules.company.dto.CompanySupportWarningDto;
 import com.bigbrightpaints.erp.modules.company.dto.MainAdminSummaryDto;
+import com.bigbrightpaints.erp.modules.company.dto.SuperAdminAddClientCreateRequest;
+import com.bigbrightpaints.erp.modules.company.dto.SuperAdminAddClientCreateResponse;
+import com.bigbrightpaints.erp.modules.company.dto.SuperAdminAddClientOptionsDto;
 import com.bigbrightpaints.erp.modules.company.dto.SuperAdminTenantAdminEmailChangeConfirmationDto;
 import com.bigbrightpaints.erp.modules.company.dto.SuperAdminTenantAdminEmailChangeRequestDto;
 import com.bigbrightpaints.erp.modules.company.dto.SuperAdminTenantDetailDto;
@@ -89,6 +92,46 @@ class SuperAdminControllerTest {
                 1,
                 0,
                 20));
+    SuperAdminAddClientOptionsDto options =
+        new SuperAdminAddClientOptionsDto(
+            new SuperAdminAddClientOptionsDto.Section("company", "Company", List.of()),
+            new SuperAdminAddClientOptionsDto.Section("owner", "Owner", List.of()),
+            new SuperAdminAddClientOptionsDto.Section("commercial", "Commercial", List.of()),
+            new SuperAdminAddClientOptionsDto.Section("quotas", "Quotas", List.of()),
+            new SuperAdminAddClientOptionsDto.Section("modules", "Modules", List.of()),
+            new SuperAdminAddClientOptionsDto.Section("support", "Support", List.of()),
+            List.of(),
+            new SuperAdminAddClientOptionsDto.SeedPolicy("v1", true, List.of(), "rule"));
+    SuperAdminAddClientCreateRequest createRequest =
+        new SuperAdminAddClientCreateRequest(
+            new SuperAdminAddClientCreateRequest.Company(
+                "Acme", "ACME2", "UTC", "KA", "INR", null, "SME"),
+            new SuperAdminAddClientCreateRequest.Owner("owner@acme.com", "Owner", null),
+            new SuperAdminAddClientCreateRequest.Commercial("TRIAL", "MANUAL", 14, "STANDARD"),
+            new SuperAdminAddClientCreateRequest.Quotas(10L, 100L, 1000L, 4L, false, true),
+            new SuperAdminAddClientCreateRequest.Modules(Set.of("ACCOUNTING")),
+            new SuperAdminAddClientCreateRequest.Support(null, Set.of("M4")),
+            SuperAdminAddClientCreateRequest.CreateMode.DRAFT);
+    SuperAdminAddClientCreateResponse createResponse =
+        new SuperAdminAddClientCreateResponse(
+            44L,
+            "ACME2",
+            "Acme",
+            "DRAFT",
+            new SuperAdminAddClientCreateResponse.Owner(
+                92L, "owner@acme.com", "Owner", "PENDING_ACTIVATION"),
+            "TRIAL",
+            "MANUAL",
+            null,
+            "STANDARD",
+            new SuperAdminAddClientCreateResponse.Quotas(10, 100, 1000, 4, false, true),
+            Set.of("ACCOUNTING"),
+            new SuperAdminAddClientCreateResponse.Activation(
+                "NOT_SENT", null, null, null, "NOT_SENT", List.of("rawToken")),
+            options.seedPolicy(),
+            501L);
+    when(controlPlaneService.getAddClientOptions()).thenReturn(options);
+    when(controlPlaneService.createAddClient(createRequest)).thenReturn(createResponse);
     SuperAdminTenantDetailDto detail =
         new SuperAdminTenantDetailDto(
             7L,
@@ -176,6 +219,9 @@ class SuperAdminControllerTest {
     assertSuccess(
         controller.listTenants("ACTIVE", "acme", 0, 20, "companyCode,asc").getBody(),
         "Superadmin tenant list fetched");
+    assertSuccess(controller.addClientOptions().getBody(), "Add Client options fetched");
+    assertThat(controller.createTenant(createRequest).getStatusCode().value()).isEqualTo(201);
+    assertThat(controller.createTenant(createRequest).getBody().data().status()).isEqualTo("DRAFT");
     assertThat(controller.getTenantDetail(7L).getBody().data()).isEqualTo(detail);
     assertSuccess(
         controller

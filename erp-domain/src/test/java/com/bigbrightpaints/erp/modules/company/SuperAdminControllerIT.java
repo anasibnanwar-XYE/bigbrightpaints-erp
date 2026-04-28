@@ -101,6 +101,116 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
   }
 
   @Test
+  void addClientOptionsAndDraftCreateAreStrictAndBranchFree() {
+    String superAdminToken = loginToken(SUPER_ADMIN_EMAIL, ROOT_COMPANY_CODE);
+    HttpHeaders superAdminHeaders = headers(superAdminToken, ROOT_COMPANY_CODE);
+
+    ResponseEntity<Map> optionsResponse =
+        rest.exchange(
+            "/api/v1/superadmin/tenants/new",
+            HttpMethod.GET,
+            new HttpEntity<>(superAdminHeaders),
+            Map.class);
+
+    assertThat(optionsResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    @SuppressWarnings("unchecked")
+    Map<String, Object> options = (Map<String, Object>) optionsResponse.getBody().get("data");
+    assertThat(options)
+        .containsKeys(
+            "company",
+            "owner",
+            "commercial",
+            "quotas",
+            "modules",
+            "support",
+            "createModes",
+            "seedPolicy");
+    assertThat(options.toString().toLowerCase(Locale.ROOT)).doesNotContain("branch", "warehouse");
+
+    String code = "M4IT" + System.nanoTime();
+    Map<String, Object> payload =
+        Map.of(
+            "company",
+            Map.of(
+                "name",
+                "M4 IT Client",
+                "code",
+                code,
+                "timezone",
+                "Asia/Kolkata",
+                "stateCode",
+                "KA",
+                "baseCurrency",
+                "INR",
+                "defaultGstRate",
+                18,
+                "coaTemplateCode",
+                "SME"),
+            "owner",
+            Map.of(
+                "email",
+                "owner-" + code.toLowerCase(Locale.ROOT) + "@example.com",
+                "displayName",
+                "Owner"),
+            "commercial",
+            Map.of(
+                "planId",
+                "TRIAL",
+                "billingStatus",
+                "MANUAL",
+                "trialDays",
+                14,
+                "supportTier",
+                "STANDARD"),
+            "quotas",
+            Map.of(
+                "maxActiveUsers",
+                10,
+                "maxApiRequests",
+                10000,
+                "maxStorageBytes",
+                1073741824,
+                "maxConcurrentRequests",
+                8,
+                "softLimitEnabled",
+                false,
+                "hardLimitEnabled",
+                true),
+            "modules",
+            Map.of("enabled", List.of("ACCOUNTING", "SALES")),
+            "support",
+            Map.of("notes", "safe note", "tags", List.of("M4")),
+            "createMode",
+            "DRAFT");
+
+    ResponseEntity<Map> createResponse =
+        rest.exchange(
+            "/api/v1/superadmin/tenants",
+            HttpMethod.POST,
+            new HttpEntity<>(payload, superAdminHeaders),
+            Map.class);
+
+    assertThat(createResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+    @SuppressWarnings("unchecked")
+    Map<String, Object> created = (Map<String, Object>) createResponse.getBody().get("data");
+    assertThat(created).containsEntry("status", "DRAFT");
+    @SuppressWarnings("unchecked")
+    Map<String, Object> activation = (Map<String, Object>) created.get("activation");
+    assertThat(activation).containsEntry("status", "NOT_SENT");
+    assertThat(created.toString()).doesNotContain("temporaryPassword", "credentialsEmailSent");
+
+    Map<String, Object> invalidPayload = new java.util.LinkedHashMap<>(payload);
+    invalidPayload.put("warehouse", Map.of("name", "Forbidden"));
+    ResponseEntity<Map> invalidResponse =
+        rest.exchange(
+            "/api/v1/superadmin/tenants",
+            HttpMethod.POST,
+            new HttpEntity<>(invalidPayload, superAdminHeaders),
+            Map.class);
+    assertThat(invalidResponse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+  }
+
+  @Test
   void superAdmin_profileReadUpdatePasswordAndSessionControlsAreSafe() {
     String superAdminToken = loginToken(SUPER_ADMIN_EMAIL, ROOT_COMPANY_CODE);
     HttpHeaders superAdminHeaders = headers(superAdminToken, ROOT_COMPANY_CODE);

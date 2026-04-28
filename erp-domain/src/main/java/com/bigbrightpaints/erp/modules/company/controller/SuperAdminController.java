@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.company.controller;
 
+import java.net.URI;
 import java.util.Map;
 import java.util.Set;
 
@@ -54,6 +55,21 @@ public class SuperAdminController {
         ApiResponse.success(
             "Superadmin tenant list fetched",
             controlPlaneService.listTenants(status, query, page, size, sort)));
+  }
+
+  @GetMapping("/tenants/new")
+  public ResponseEntity<ApiResponse<SuperAdminAddClientOptionsDto>> addClientOptions() {
+    return ResponseEntity.ok(
+        ApiResponse.success(
+            "Add Client options fetched", controlPlaneService.getAddClientOptions()));
+  }
+
+  @PostMapping("/tenants")
+  public ResponseEntity<ApiResponse<SuperAdminAddClientCreateResponse>> createTenant(
+      @Valid @RequestBody SuperAdminAddClientCreateRequest request) {
+    SuperAdminAddClientCreateResponse response = controlPlaneService.createAddClient(request);
+    return ResponseEntity.created(URI.create("/api/v1/superadmin/tenants/" + response.tenantId()))
+        .body(ApiResponse.success("Add Client created", response));
   }
 
   @GetMapping("/tenants/{id}")

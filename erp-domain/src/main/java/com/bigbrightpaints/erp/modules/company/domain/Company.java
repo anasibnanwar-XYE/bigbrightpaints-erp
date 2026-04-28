@@ -138,6 +138,27 @@ public class Company extends VersionedEntity {
   @Column(name = "onboarding_credentials_emailed_at")
   private Instant onboardingCredentialsEmailedAt;
 
+  @Column(name = "commercial_plan_id", nullable = false)
+  private String commercialPlanId = "TRIAL";
+
+  @Column(name = "commercial_billing_status", nullable = false)
+  private String commercialBillingStatus = "MANUAL";
+
+  @Column(name = "commercial_trial_ends_at")
+  private Instant commercialTrialEndsAt;
+
+  @Column(name = "commercial_support_tier", nullable = false)
+  private String commercialSupportTier = "STANDARD";
+
+  @Column(name = "activation_status", nullable = false)
+  private String activationStatus = "NOT_SENT";
+
+  @Column(name = "activation_sent_at")
+  private Instant activationSentAt;
+
+  @Column(name = "activation_expires_at")
+  private Instant activationExpiresAt;
+
   @PrePersist
   public void prePersist() {
     if (publicId == null) {
@@ -152,6 +173,7 @@ public class Company extends VersionedEntity {
     if (lifecycleState == null) {
       lifecycleState = CompanyLifecycleState.ACTIVE;
     }
+    initializeControlPlaneDefaults();
     enabledModules = CompanyModule.normalizeEnabledGatableModuleNames(enabledModules);
     supportTags = normalizeSupportTags(supportTags);
     initializeQuotaDefaults();
@@ -159,6 +181,7 @@ public class Company extends VersionedEntity {
 
   @PreUpdate
   public void preUpdate() {
+    initializeControlPlaneDefaults();
     enabledModules = CompanyModule.normalizeEnabledGatableModuleNames(enabledModules);
     supportTags = normalizeSupportTags(supportTags);
     initializeQuotaDefaults();
@@ -457,6 +480,78 @@ public class Company extends VersionedEntity {
     this.onboardingCredentialsEmailedAt = onboardingCredentialsEmailedAt;
   }
 
+  public String getCommercialPlanId() {
+    return commercialPlanId;
+  }
+
+  public void setCommercialPlanId(String commercialPlanId) {
+    if (commercialPlanId == null || commercialPlanId.isBlank()) {
+      this.commercialPlanId = "TRIAL";
+      return;
+    }
+    this.commercialPlanId = commercialPlanId.trim().toUpperCase();
+  }
+
+  public String getCommercialBillingStatus() {
+    return commercialBillingStatus;
+  }
+
+  public void setCommercialBillingStatus(String commercialBillingStatus) {
+    if (commercialBillingStatus == null || commercialBillingStatus.isBlank()) {
+      this.commercialBillingStatus = "MANUAL";
+      return;
+    }
+    this.commercialBillingStatus = commercialBillingStatus.trim().toUpperCase();
+  }
+
+  public Instant getCommercialTrialEndsAt() {
+    return commercialTrialEndsAt;
+  }
+
+  public void setCommercialTrialEndsAt(Instant commercialTrialEndsAt) {
+    this.commercialTrialEndsAt = commercialTrialEndsAt;
+  }
+
+  public String getCommercialSupportTier() {
+    return commercialSupportTier;
+  }
+
+  public void setCommercialSupportTier(String commercialSupportTier) {
+    if (commercialSupportTier == null || commercialSupportTier.isBlank()) {
+      this.commercialSupportTier = "STANDARD";
+      return;
+    }
+    this.commercialSupportTier = commercialSupportTier.trim().toUpperCase();
+  }
+
+  public String getActivationStatus() {
+    return activationStatus;
+  }
+
+  public void setActivationStatus(String activationStatus) {
+    if (activationStatus == null || activationStatus.isBlank()) {
+      this.activationStatus = "NOT_SENT";
+      return;
+    }
+    this.activationStatus = activationStatus.trim().toUpperCase();
+  }
+
+  public Instant getActivationSentAt() {
+    return activationSentAt;
+  }
+
+  public void setActivationSentAt(Instant activationSentAt) {
+    this.activationSentAt = activationSentAt;
+  }
+
+  public Instant getActivationExpiresAt() {
+    return activationExpiresAt;
+  }
+
+  public void setActivationExpiresAt(Instant activationExpiresAt) {
+    this.activationExpiresAt = activationExpiresAt;
+  }
+
   public boolean isQuotaSoftLimitEnabled() {
     return Boolean.TRUE.equals(quotaSoftLimitEnabled);
   }
@@ -502,6 +597,13 @@ public class Company extends VersionedEntity {
       quotaHardLimitEnabled = true;
     }
     enforceFailClosedQuotaPolicy();
+  }
+
+  private void initializeControlPlaneDefaults() {
+    setCommercialPlanId(commercialPlanId);
+    setCommercialBillingStatus(commercialBillingStatus);
+    setCommercialSupportTier(commercialSupportTier);
+    setActivationStatus(activationStatus);
   }
 
   private void enforceFailClosedQuotaPolicy() {

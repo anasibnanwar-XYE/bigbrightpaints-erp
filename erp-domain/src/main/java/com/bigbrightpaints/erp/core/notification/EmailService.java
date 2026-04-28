@@ -161,6 +161,38 @@ public class EmailService {
     sendHtmlEmail(to, subject, "mail/password-reset-confirmed", context);
   }
 
+  public void sendTenantActivationEmailRequired(
+      String to,
+      String displayName,
+      String companyName,
+      String companyCode,
+      String activationToken,
+      Instant expiresAt) {
+    assertCredentialEmailDeliveryReady(to);
+    String activationLink = buildActivationLink(activationToken);
+    String safeDisplayName = StringUtils.hasText(displayName) ? displayName.trim() : "Owner";
+    String safeCompanyName = StringUtils.hasText(companyName) ? companyName.trim() : "your company";
+    String subject = "Activate your BigBright ERP client account";
+    String body =
+        "Hello "
+            + safeDisplayName
+            + ",\n\n"
+            + "Your BigBright ERP client account for "
+            + safeCompanyName
+            + " is ready for activation.\n"
+            + "Use this activation link to set your password and continue setup:\n"
+            + activationLink
+            + "\n\n"
+            + "This activation link expires at "
+            + formatUtcTimestamp(expiresAt)
+            + ".\n"
+            + "Company code: "
+            + (StringUtils.hasText(companyCode) ? companyCode.trim().toUpperCase() : "")
+            + "\n\n"
+            + "No password or temporary credential is included in this email.";
+    sendSimpleEmail(to, subject, body);
+  }
+
   public void sendAdminEmailChangeVerificationRequired(
       String to,
       String displayName,
@@ -203,6 +235,17 @@ public class EmailService {
             .replace("+", "%20");
     return UriComponentsBuilder.fromUriString(baseUrl)
         .path("/reset-password")
+        .query("token=" + encodedToken)
+        .build(true)
+        .toUriString();
+  }
+
+  String buildActivationLink(String activationToken) {
+    String encodedToken =
+        URLEncoder.encode(activationToken == null ? "" : activationToken, StandardCharsets.UTF_8)
+            .replace("+", "%20");
+    return UriComponentsBuilder.fromUriString(properties.getBaseUrl())
+        .path("/activate-client")
         .query("token=" + encodedToken)
         .build(true)
         .toUriString();
