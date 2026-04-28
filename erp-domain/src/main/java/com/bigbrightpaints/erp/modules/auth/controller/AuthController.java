@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -193,11 +194,14 @@ public class AuthController {
   @GetMapping("/me/security-events")
   @PreAuthorize("isAuthenticated()")
   public ResponseEntity<ApiResponse<List<Map<String, Object>>>> securityEvents(
-      @AuthenticationPrincipal UserPrincipal principal) {
+      @AuthenticationPrincipal UserPrincipal principal,
+      @RequestParam(required = false) String type) {
     if (principal == null) {
       return ResponseEntity.status(401).body(ApiResponse.failure("Unauthenticated"));
     }
-    return ResponseEntity.ok(ApiResponse.success(List.of()));
+    return ResponseEntity.ok(
+        ApiResponse.success(
+            iamCanonicalStorageService.listSecurityEvents(principal.getUser(), type, 50)));
   }
 
   @GetMapping("/sessions")
@@ -222,7 +226,25 @@ public class AuthController {
     if (principal == null) {
       return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
     }
-    authSessionService.revokeSession(principal.getUser(), sessionId, "self_revoke");
+    boolean revoked =
+        authSessionService.revokeSession(principal.getUser(), sessionId, "self_revoke");
+    if (revoked) {
+      Map<String, String> metadata = new java.util.LinkedHashMap<>();
+      metadata.put("operation", "self_session_revoke");
+      metadata.put("reason", "self_revoke");
+      metadata.put("sessionId", sessionId);
+      metadata.put("targetUserId", String.valueOf(principal.getUser().getId()));
+      iamCanonicalStorageService.recordSecurityEvent(
+          "SESSION_REVOKED",
+          "SUCCESS",
+          metadata,
+          principal.getUser().getPublicId().toString(),
+          principal.getUsername(),
+          principal.getUser().getCompany() == null
+              ? null
+              : principal.getUser().getCompany().getId(),
+          principal.getUser().getAuthScopeCode());
+    }
     return ResponseEntity.noContent().build();
   }
 

@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import com.bigbrightpaints.erp.modules.auth.domain.RefreshToken;
@@ -299,6 +300,70 @@ public class IamCanonicalStorageService {
         timestampNow());
   }
 
+  @Transactional(readOnly = true)
+  public List<Map<String, Object>> listSecurityEvents(
+      UserAccount user, String eventTypeFilter, int limit) {
+    if (user == null || user.getPublicId() == null) {
+      return List.of();
+    }
+    String normalizedScope = normalizeNullableScopeCode(user.getAuthScopeCode());
+    int boundedLimit = Math.max(1, Math.min(limit, 100));
+    List<Map<String, Object>> events =
+        jdbcTemplate.query(
+            """
+            select e.event_type,
+                   e.outcome,
+                   e.reason,
+                   e.auth_scope_code,
+                   e.metadata::text as metadata_json,
+                   e.occurred_at,
+                   c.code as company_code
+              from iam_security_events e
+              join iam_accounts ia on ia.id = e.account_id
+              left join companies c on c.id = e.company_id
+             where ia.public_id = ?
+               and (? is null or e.auth_scope_code = ?)
+             order by e.occurred_at desc, e.id desc
+             limit ?
+            """,
+            (rs, rowNum) -> {
+              Map<String, String> metadata = fromJsonMap(rs.getString("metadata_json"));
+              Map<String, Object> row = new LinkedHashMap<>();
+              String eventType = rs.getString("event_type");
+              row.put("type", eventType);
+              row.put("eventType", eventType);
+              row.put("actor", firstNonBlank(metadata.get("actor"), metadata.get("actorUserId")));
+              row.put("targetUserId", firstNonBlank(metadata.get("targetUserId"), null));
+              row.put(
+                  "sessionId",
+                  firstNonBlank(metadata.get("sessionId"), metadata.get("sessionReference")));
+              row.put(
+                  "companyCode",
+                  firstNonBlank(
+                      metadata.get("companyCode"),
+                      metadata.get("tenantScope"),
+                      rs.getString("company_code"),
+                      rs.getString("auth_scope_code")));
+              row.put("outcome", rs.getString("outcome"));
+              row.put("reason", firstNonBlank(rs.getString("reason"), metadata.get("reason")));
+              Timestamp occurredAt = rs.getTimestamp("occurred_at");
+              row.put("createdAt", occurredAt == null ? null : occurredAt.toInstant().toString());
+              row.put("metadata", securityEventMetadata(metadata));
+              return row;
+            },
+            user.getPublicId(),
+            normalizedScope,
+            normalizedScope,
+            boundedLimit);
+    String normalizedFilter = normalizeEventTypeFilter(eventTypeFilter);
+    if (!StringUtils.hasText(normalizedFilter)) {
+      return events;
+    }
+    return events.stream()
+        .filter(row -> matchesEventFilter(String.valueOf(row.get("eventType")), normalizedFilter))
+        .toList();
+  }
+
   private void upsertAccount(UserAccount user) {
     jdbcTemplate.update(
         """
@@ -579,6 +644,77 @@ public class IamCanonicalStorageService {
           }
         });
     return redacted;
+  }
+
+  private Map<String, String> fromJsonMap(String metadataJson) {
+    if (!StringUtils.hasText(metadataJson)) {
+      return Map.of();
+    }
+    try {
+      Map<String, String> parsed =
+          objectMapper.readValue(metadataJson, new TypeReference<Map<String, String>>() {});
+      return redactMetadata(parsed);
+    } catch (Exception ex) {
+      return Map.of();
+    }
+  }
+
+  private Map<String, String> securityEventMetadata(Map<String, String> metadata) {
+    if (metadata == null || metadata.isEmpty()) {
+      return Map.of();
+    }
+    List<String> allowlist =
+        List.of(
+            "operation",
+            "reason",
+            "targetUserId",
+            "sessionId",
+            "sessionReference",
+            "companyCode",
+            "tenantScope",
+            "outcome",
+            "action");
+    Map<String, String> safe = new LinkedHashMap<>();
+    for (String key : allowlist) {
+      String value = metadata.get(key);
+      if (StringUtils.hasText(value)) {
+        safe.put(key, value);
+      }
+    }
+    return safe;
+  }
+
+  private String normalizeEventTypeFilter(String eventTypeFilter) {
+    return StringUtils.hasText(eventTypeFilter)
+        ? eventTypeFilter.trim().toUpperCase(Locale.ROOT)
+        : null;
+  }
+
+  private boolean matchesEventFilter(String eventType, String filter) {
+    if (!StringUtils.hasText(filter)) {
+      return true;
+    }
+    String normalizedEvent =
+        StringUtils.hasText(eventType) ? eventType.toUpperCase(Locale.ROOT) : "";
+    if ("SESSION".equals(filter)) {
+      return normalizedEvent.contains("SESSION")
+          || normalizedEvent.startsWith("TOKEN")
+          || "LOGOUT".equals(normalizedEvent)
+          || "LOGIN_SUCCESS".equals(normalizedEvent);
+    }
+    return normalizedEvent.startsWith(filter);
+  }
+
+  private String firstNonBlank(String... values) {
+    if (values == null) {
+      return null;
+    }
+    for (String value : values) {
+      if (StringUtils.hasText(value)) {
+        return value.trim();
+      }
+    }
+    return null;
   }
 
   private String toJson(Map<String, String> metadata) {

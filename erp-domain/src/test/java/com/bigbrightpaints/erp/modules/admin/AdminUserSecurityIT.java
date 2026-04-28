@@ -34,6 +34,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import com.bigbrightpaints.erp.core.audit.AuditEvent;
 import com.bigbrightpaints.erp.core.audit.AuditLog;
@@ -71,6 +72,8 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
   @Autowired private AuditLogRepository auditLogRepository;
 
   @Autowired private DataSource dataSource;
+
+  @Autowired private JdbcTemplate jdbcTemplate;
 
   @SpyBean private EmailService emailService;
 
@@ -833,6 +836,156 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
   }
 
   @Test
+  void tenant_admin_revokes_only_target_sessions_and_exposes_redacted_session_events() {
+    String targetEmail = "admin-session-target@bbp.com";
+    String targetPassword = "SessionTarget123!";
+    UserAccount targetUser =
+        dataSeeder.ensureUser(
+            targetEmail, targetPassword, "Admin Session Target", COMPANY, List.of("ROLE_SALES"));
+    targetUser.setEnabled(true);
+    targetUser.setMustChangePassword(false);
+    targetUser.setFailedLoginAttempts(0);
+    targetUser.setLockedUntil(null);
+    UserAccount savedTarget = userAccountRepository.saveAndFlush(targetUser);
+
+    String unrelatedEmail = "admin-session-unrelated@bbp.com";
+    String unrelatedPassword = "SessionOther123!";
+    UserAccount unrelatedUser =
+        dataSeeder.ensureUser(
+            unrelatedEmail,
+            unrelatedPassword,
+            "Admin Session Unrelated",
+            COMPANY,
+            List.of("ROLE_SALES"));
+    unrelatedUser.setEnabled(true);
+    unrelatedUser.setMustChangePassword(false);
+    userAccountRepository.saveAndFlush(unrelatedUser);
+
+    Map<String, Object> targetLoginA = loginPayload(targetEmail, targetPassword, COMPANY);
+    Map<String, Object> targetLoginB = loginPayload(targetEmail, targetPassword, COMPANY);
+    Map<String, Object> unrelatedLogin = loginPayload(unrelatedEmail, unrelatedPassword, COMPANY);
+    Map<String, Object> adminLogin = loginPayload(ADMIN_EMAIL, ADMIN_PASSWORD, COMPANY);
+    String targetAccessA = targetLoginA.get("accessToken").toString();
+    String targetAccessB = targetLoginB.get("accessToken").toString();
+    String targetRefreshA = targetLoginA.get("refreshToken").toString();
+    String targetRefreshB = targetLoginB.get("refreshToken").toString();
+    String unrelatedAccess = unrelatedLogin.get("accessToken").toString();
+    String unrelatedRefresh = unrelatedLogin.get("refreshToken").toString();
+    String adminAccess = adminLogin.get("accessToken").toString();
+
+    ResponseEntity<Map> revokeResponse =
+        rest.exchange(
+            "/api/v1/admin/users/" + savedTarget.getId() + "/sessions",
+            HttpMethod.DELETE,
+            new HttpEntity<>(bearerHeaders(adminAccess)),
+            Map.class);
+
+    assertThat(revokeResponse.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+    assertThat(String.valueOf(revokeResponse.getBody()))
+        .doesNotContain(targetRefreshA)
+        .doesNotContain(targetRefreshB)
+        .doesNotContain("refreshTokenDigest")
+        .doesNotContain("accessToken");
+
+    assertThat(me(targetAccessA).getStatusCode())
+        .isIn(HttpStatus.UNAUTHORIZED, HttpStatus.FORBIDDEN);
+    assertThat(me(targetAccessB).getStatusCode())
+        .isIn(HttpStatus.UNAUTHORIZED, HttpStatus.FORBIDDEN);
+    assertThat(refresh(targetRefreshA).getStatusCode())
+        .isIn(HttpStatus.BAD_REQUEST, HttpStatus.UNAUTHORIZED);
+    assertThat(refresh(targetRefreshB).getStatusCode())
+        .isIn(HttpStatus.BAD_REQUEST, HttpStatus.UNAUTHORIZED);
+    assertThat(me(adminAccess).getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(me(unrelatedAccess).getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(refresh(unrelatedRefresh).getStatusCode()).isEqualTo(HttpStatus.OK);
+
+    Integer remainingActiveTargetSessions =
+        jdbcTemplate.queryForObject(
+            """
+            select count(*)
+              from iam_sessions s
+              join iam_accounts ia on ia.id = s.account_id
+             where ia.public_id = ?
+               and s.revoked_at is null
+               and s.consumed_at is null
+            """,
+            Integer.class,
+            savedTarget.getPublicId());
+    assertThat(remainingActiveTargetSessions).isZero();
+
+    ResponseEntity<Map> eventsResponse =
+        rest.exchange(
+            "/api/v1/admin/users/" + savedTarget.getId() + "/security-events?type=SESSION",
+            HttpMethod.GET,
+            new HttpEntity<>(bearerHeaders(adminAccess)),
+            Map.class);
+    assertThat(eventsResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(eventsResponse.getBody()).isNotNull();
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> events =
+        (List<Map<String, Object>>) eventsResponse.getBody().get("data");
+    assertThat(events)
+        .anySatisfy(
+            event -> {
+              assertThat(event.get("type")).isEqualTo("ADMIN_SESSION_REVOKE");
+              assertThat(event.get("targetUserId")).isEqualTo(String.valueOf(savedTarget.getId()));
+              assertThat(event.get("companyCode")).isEqualTo(COMPANY);
+              assertThat(event.get("outcome")).isEqualTo("SUCCESS");
+            });
+    assertThat(eventsResponse.getBody().toString())
+        .doesNotContain(targetRefreshA)
+        .doesNotContain(targetRefreshB)
+        .doesNotContain(unrelatedRefresh)
+        .doesNotContain("refreshTokenDigest")
+        .doesNotContain("accessToken")
+        .doesNotContain("passwordHash")
+        .doesNotContain("mfaSecret")
+        .doesNotContain("recoveryCode");
+  }
+
+  @Test
+  void tenant_admin_session_revocation_denies_protected_target_without_revoking_sessions() {
+    String protectedEmail = "protected-admin-session-revoke@bbp.com";
+    String protectedPassword = "ProtectedAdmin123!";
+    UserAccount protectedTarget =
+        dataSeeder.ensureUser(
+            protectedEmail,
+            protectedPassword,
+            "Protected Admin Session Revoke",
+            COMPANY,
+            List.of("ROLE_ADMIN"));
+    protectedTarget.setEnabled(true);
+    protectedTarget.setMustChangePassword(false);
+    protectedTarget.setFailedLoginAttempts(0);
+    protectedTarget.setLockedUntil(null);
+    protectedTarget = userAccountRepository.saveAndFlush(protectedTarget);
+    Map<String, Object> protectedLogin = loginPayload(protectedEmail, protectedPassword, COMPANY);
+    String protectedAccess = protectedLogin.get("accessToken").toString();
+    String protectedRefresh = protectedLogin.get("refreshToken").toString();
+    long missingUserId = protectedTarget.getId() + 10_000L;
+
+    String adminToken = login(ADMIN_EMAIL, ADMIN_PASSWORD, COMPANY);
+    HttpHeaders headers = bearerHeaders(adminToken);
+
+    ResponseEntity<Map> protectedResponse =
+        rest.exchange(
+            "/api/v1/admin/users/" + protectedTarget.getId() + "/sessions",
+            HttpMethod.DELETE,
+            new HttpEntity<>(headers),
+            Map.class);
+    ResponseEntity<Map> missingResponse =
+        rest.exchange(
+            "/api/v1/admin/users/" + missingUserId + "/sessions",
+            HttpMethod.DELETE,
+            new HttpEntity<>(headers),
+            Map.class);
+
+    assertMaskedMissingUserContractPair(protectedResponse, missingResponse);
+    assertThat(me(protectedAccess).getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(refresh(protectedRefresh).getStatusCode()).isEqualTo(HttpStatus.OK);
+  }
+
+  @Test
   void tenant_admin_force_reset_revokes_sessions_and_confines_target_to_reset_corridor() {
     String targetEmail = "force-reset-target@bbp.com";
     String targetPassword = "ForceReset123!";
@@ -1096,6 +1249,18 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
     assertThat(payload).isNotNull();
     assertThat(payload.get("accessToken").toString()).isNotBlank();
     return payload;
+  }
+
+  private ResponseEntity<Map> me(String accessToken) {
+    return rest.exchange(
+        "/api/v1/auth/me", HttpMethod.GET, new HttpEntity<>(bearerHeaders(accessToken)), Map.class);
+  }
+
+  private ResponseEntity<Map> refresh(String refreshToken) {
+    return rest.postForEntity(
+        "/api/v1/auth/refresh-token",
+        Map.of("refreshToken", refreshToken, "companyCode", COMPANY),
+        Map.class);
   }
 
   private HttpHeaders bearerHeaders(String token) {

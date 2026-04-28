@@ -236,6 +236,15 @@ public class AuthService {
             issuedAt.plusSeconds(properties.getRefreshTokenTtlSeconds()),
             deviceMetadata,
             record.refreshTokenDigest());
+    auditSessionEvent(
+        AuditEvent.TOKEN_REFRESH,
+        user,
+        requestedScopeCode,
+        Map.of(
+            "operation",
+            "refresh_rotation",
+            "sessionId",
+            issuedRefreshToken.sessionPublicId().toString()));
     claims.put("sid", issuedRefreshToken.sessionPublicId().toString());
     String accessToken =
         tokenService.generateAccessToken(
@@ -322,15 +331,37 @@ public class AuthService {
     }
 
     blacklistAccessToken(accessTokenClaims, tokenUserPublicId);
+    auditSessionEventByPublicId(
+        AuditEvent.LOGOUT,
+        tokenUserPublicId,
+        authScopeCode,
+        Map.of(
+            "operation",
+            "logout",
+            "reason",
+            "logout",
+            "sessionId",
+            currentSessionId == null ? "unknown" : currentSessionId.toString()));
   }
 
   public void revokeAllSessionsForAccessToken(String accessToken, String reason) {
     Claims accessTokenClaims = parseLogoutClaims(accessToken);
     UUID tokenUserPublicId = extractTokenSubject(accessTokenClaims);
+    String authScopeCode =
+        accessTokenClaims == null ? null : accessTokenClaims.get("companyCode", String.class);
     if (tokenUserPublicId != null) {
       revokeActiveSessions(tokenUserPublicId, reason);
     }
     blacklistAccessToken(accessTokenClaims, tokenUserPublicId);
+    auditSessionEventByPublicId(
+        AuditEvent.TOKEN_REVOKED,
+        tokenUserPublicId,
+        authScopeCode,
+        Map.of(
+            "operation",
+            "self_revoke_all_sessions",
+            "reason",
+            reason == null ? "self_revoke_all" : reason));
   }
 
   private void revokeActiveSessions(UUID userPublicId, String reason) {
@@ -341,6 +372,31 @@ public class AuthService {
     tokenBlacklistService.revokeAllUserTokens(accountKey);
     refreshTokenService.revokeAllForUser(userPublicId);
     iamCanonicalStorageService.markAllSessionsRevoked(userPublicId, reason);
+  }
+
+  private void auditSessionEventByPublicId(
+      AuditEvent event, UUID userPublicId, String authScopeCode, Map<String, String> metadata) {
+    if (userPublicId == null) {
+      return;
+    }
+    userAccountRepository
+        .findByPublicId(userPublicId)
+        .ifPresent(user -> auditSessionEvent(event, user, authScopeCode, metadata));
+  }
+
+  private void auditSessionEvent(
+      AuditEvent event, UserAccount user, String authScopeCode, Map<String, String> metadata) {
+    if (user == null || user.getPublicId() == null) {
+      return;
+    }
+    Map<String, String> auditMetadata = new HashMap<>();
+    if (metadata != null) {
+      auditMetadata.putAll(metadata);
+    }
+    auditMetadata.put("actorPublicId", user.getPublicId().toString());
+    auditMetadata.put("targetUserId", String.valueOf(user.getId()));
+    auditMetadata.put("companyCode", authScopeCode);
+    auditService.logAuthSuccess(event, user.getEmail(), authScopeCode, auditMetadata);
   }
 
   private Claims parseLogoutClaims(String accessToken) {

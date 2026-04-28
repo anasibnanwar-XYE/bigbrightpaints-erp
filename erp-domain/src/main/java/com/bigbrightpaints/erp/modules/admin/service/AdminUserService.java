@@ -417,12 +417,39 @@ public class AdminUserService {
             OutOfScopeResponseMode.MASK_AS_MISSING);
     tokenBlacklistService.revokeAllUserTokens(user.getPublicId().toString());
     refreshTokenService.revokeAllForUser(user.getPublicId());
+    Map<String, String> securityMetadata = new LinkedHashMap<>();
+    securityMetadata.put("operation", "admin_revoke_user_sessions");
+    securityMetadata.put("reason", "admin_revoke_user_sessions");
+    securityMetadata.put("actor", resolveAuditActor());
+    securityMetadata.put("targetUserId", String.valueOf(user.getId()));
+    securityMetadata.put("tenantScope", company.getCode());
+    iamCanonicalStorageService.recordSecurityEvent(
+        "ADMIN_SESSION_REVOKE",
+        "SUCCESS",
+        securityMetadata,
+        user.getPublicId().toString(),
+        user.getEmail(),
+        company.getId(),
+        company.getCode());
     auditUserAccountAction(
         AuditEvent.TOKEN_REVOKED,
         user,
         company,
         "admin_revoke_user_sessions",
         Map.of("targetUserId", String.valueOf(user.getId())));
+  }
+
+  @Transactional(readOnly = true)
+  public List<Map<String, Object>> listSecurityEvents(Long userId, String type) {
+    Company company = companyContextService.requireCurrentCompany();
+    UserAccount user =
+        resolveScopedUserForAdminAction(
+            userId,
+            company,
+            "admin-read-security-events-out-of-scope",
+            false,
+            OutOfScopeResponseMode.ACCESS_DENIED);
+    return iamCanonicalStorageService.listSecurityEvents(user, type, 100);
   }
 
   private UserAccount resolveScopedUserForAdminAction(

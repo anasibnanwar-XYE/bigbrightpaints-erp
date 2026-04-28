@@ -98,9 +98,9 @@ public class AdminUserController {
 
   @GetMapping("/{userId}/security-events")
   public ResponseEntity<ApiResponse<List<java.util.Map<String, Object>>>> securityEvents(
-      @PathVariable Long userId) {
-    adminUserService.assertReadableUser(userId);
-    return ResponseEntity.ok(ApiResponse.success(List.of()));
+      @PathVariable Long userId, @RequestParam(required = false) String type) {
+    return ResponseEntity.ok(
+        ApiResponse.success(adminUserService.listSecurityEvents(userId, type)));
   }
 
   @GetMapping("/assignable-roles")

@@ -2,96 +2,90 @@
 
 Last reviewed: 2026-04-28
 
-## Current Packet Evidence — self-sessions-devices-refresh-and-logout
+## Current Packet Evidence — admin-session-revocation-and-session-events
 
 ## Scope
-- Feature: `self-sessions-devices-refresh-and-logout`
+- Feature: `admin-session-revocation-and-session-events`
 - Branch: codex/identity-account-hardcut-20260427 (base: origin/main)
 - PR: pending
 - Review candidate:
-  - issue first-class canonical IAM session/device rows at login and refresh rotation while keeping refresh tokens digest-only
-  - add `sid`-bound bearer validation so revoked/consumed session tokens fail on the next protected request
-  - implement self session listing, current-session logout, targeted self revocation, all-session revocation, and safe logout request-shape checks
-  - make refresh rotation scope-bound, one-use, replay-aware, and compromise-revoking for the rotated device family
-  - sanitize and bound session/device metadata returned by self-session APIs without exposing raw tokens, digests, IP chains, hashes, or secrets
-- Why this is R2: this packet touches high-risk authentication token lifecycle, bearer-token acceptance, refresh replay handling, logout/session revocation, and session/device privacy where incorrect behavior could allow stale-session use, tenant-scope escape, token-family replay, or sensitive metadata leakage.
+  - implement tenant-admin session revocation for nonprotected own-tenant Users & Access targets
+  - preserve actor and unrelated-user sessions while invalidating all target access-session markers and refresh verifiers
+  - deny foreign and protected admin/superadmin targets through the existing masked target policy
+  - expose tenant-filtered self/admin security-event feeds backed by canonical `iam_security_events`
+  - add durable, redacted session lifecycle/security evidence for refresh rotation, logout, self revocation, all-session revocation, and admin session revocation
+- Why this is R2: this packet touches high-risk auth/session revocation, bearer-token acceptance, refresh-token invalidation, admin Users & Access authorization, and security-event privacy surfaces where incorrect behavior could allow stale-session use, tenant escape, protected-target control, or secret leakage.
 
 ## Risk Trigger
 - Triggered by:
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/admin/controller/AdminUserController.java`
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/admin/service/AdminUserService.java`
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/controller/AuthController.java`
   - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/service/AuthService.java`
-  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/service/RefreshTokenService.java`
   - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/service/AuthSessionService.java`
   - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/service/IamCanonicalStorageService.java`
-  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/controller/AuthController.java`
-  - `erp-domain/src/main/java/com/bigbrightpaints/erp/core/security/JwtAuthenticationFilter.java`
-  - focused auth/session tests under `erp-domain/src/test/java`
+  - focused auth/admin/session tests under `erp-domain/src/test/java`
 - Contract surfaces affected:
-  - `VAL-AUTH-006`, `VAL-AUTH-007`, `VAL-SESS-001`, `VAL-SESS-002`, `VAL-SESS-003`, `VAL-SESS-004`, `VAL-SESS-005`, `VAL-SESS-006`, `VAL-SESS-007`, `VAL-SESS-012`, `VAL-SESS-013`, `VAL-SESS-014`, `VAL-SESS-015`, `VAL-SESS-017`, `VAL-ACCT-009`, `VAL-ADV-008`
+  - `VAL-SESS-008`, `VAL-SESS-009`, `VAL-SESS-010`, `VAL-ADMIN-011`
 - Failure mode if wrong:
-  - refresh tokens could become reusable, cross-scope, or replayable after rotation
-  - logout or self-revocation could revoke sibling/foreign sessions or leave the current token pair usable
-  - consumed/revoked session access tokens could remain accepted by bearer authentication
-  - session lists could expose token material, token digests, raw IP chains, injection strings, or other users' sessions
-  - refresh/logout races could leave a pre-change token family active after compromise or revocation
+  - tenant admins could revoke foreign/protected sessions or enumerate target existence
+  - target access or refresh tokens could remain usable after admin revocation or sensitive account changes
+  - acting admin or unrelated same-tenant/foreign sessions could be revoked accidentally
+  - security-event APIs could expose raw JWTs, refresh tokens, token digests, passwords, MFA secrets, recovery codes, or cross-tenant rows
 
 ## Approval Authority
 - Mode: orchestrator
 - Approver: Droid mission orchestrator
 - Canary owner: Droid mission orchestrator
 - Approval status: branch-local integration candidate pending PR review
-- Basis: this is an accepted sessions milestone slice that narrows token/session lifecycle semantics, keeps current auth route envelopes, stores no raw refresh material, and does not widen privileges, change tenant boundaries, or introduce destructive schema changes.
+- Basis: this is an accepted sessions milestone slice that narrows admin session revocation and security-event read semantics, preserves current route envelopes, stores no raw token material, and does not widen privileges, tenant boundaries, or destructive schema behavior.
 
 ## Escalation Decision
 - Human escalation required: no
-- Reason: the packet strengthens existing refresh/logout/session controls without adding new authority, weakening tenant scope, changing production migrations, or exposing secrets.
+- Reason: the packet strengthens existing tenant-admin and session lifecycle controls, keeps protected-target policy fail-closed, and does not add new authority, expose secrets, alter tenant boundaries, or rewrite applied migrations.
 
 ## Rollback Owner
 - Owner: Droid mission orchestrator
 - Rollback method:
-  - before merge: revert this packet and rerun focused auth/session tests, Spotless, OpenAPI guard, and High-Risk Change Control
-  - after merge: revert through a new remediation packet and rerun the same auth/session proof lane
+  - before merge: revert this packet and rerun focused admin/session/auth tests, compile/test-compile, Spotless, OpenAPI guard, and High-Risk Change Control
+  - after merge: revert through a new remediation packet and rerun the same admin/session/security-event proof lane
 - Rollback trigger:
-  - refresh rotation accepts replay, wrong-company scope, or logged-out/disabled-user token use
-  - current-session logout revokes sibling/foreign sessions or leaves the current token pair usable
-  - targeted/all self revocation leaves revoked access/refresh tokens usable or crosses user/tenant boundaries
-  - session listing leaks raw token material, token digests, password/MFA material, raw IP chains, or unsafe device strings
+  - admin session revocation affects foreign/protected/unrelated users or leaves target sessions usable
+  - sensitive password, role, status, lock, or MFA account changes leave pre-change access/refresh tokens usable
+  - security-event feeds leak token material, token digests, passwords, MFA secrets, recovery codes, hashes, or cross-tenant rows
   - focused compile/tests, Spotless, OpenAPI guard, or High-Risk Change Control fail
 
 ## Expiry
 - Valid until: 2026-05-05
-- Re-evaluate if: scope expands into admin session revocation, public API envelope changes, tenant-boundary behavior, distributed rate limiting, or schema/migration behavior.
+- Re-evaluate if: scope expands into new public route names, schema/migration behavior, distributed session stores, role-policy redesign, tenant-boundary changes, or broader audit/event retention policy.
 
 ## Verification Evidence
 - Scope-to-evidence mapping:
-  - Session/device creation and listing proof: `AuthControllerIT.login_lists_current_session_with_sanitized_device_metadata` verifies login creates a current active session/device, carries an opaque `sid`, returns bounded safe metadata, and omits token/digest/password/MFA fields.
-  - Self revocation proof: `AuthControllerIT.user_revokes_other_current_and_all_sessions_without_cross_session_leakage` verifies targeted other-session revocation, current-session revocation, and all-session revocation invalidate the expected access/refresh tokens while preserving or revoking sibling sessions according to the selected route.
-  - Refresh rotation/replay proof: `AuthControllerIT.refresh_rotation_is_scope_bound_and_replay_revokes_rotated_family` verifies wrong-scope refresh rejection without token consumption, one-use rotation, old-token replay failure, compromise security event creation, and rotated-family invalidation.
-  - Race safety proof: `AuthControllerIT.concurrent_refresh_replay_race_settles_to_revoked_family` verifies a bounded two-request refresh replay race yields at most one successful rotation and the replayed family settles revoked.
-  - Verifier-only storage proof: `RefreshTokenServiceIT.issue_persists_digest_only_consume_removes_and_replay_is_rejected` verifies refresh-token persistence stores only the digest and removes the verifier on consumption/revocation.
+  - Admin revocation proof: `AdminUserSecurityIT.tenant_admin_revokes_only_target_sessions_and_exposes_redacted_session_events` verifies two target sessions are revoked, target access/refresh tokens fail, the acting admin and unrelated user remain valid, canonical active target session rows are gone, and the admin security-event feed returns redacted `ADMIN_SESSION_REVOKE` evidence.
+  - Protected-target proof: `AdminUserSecurityIT.tenant_admin_session_revocation_denies_protected_target_without_revoking_sessions` verifies protected admin targets are masked like missing users and their pre-denial access/refresh tokens remain usable.
+  - Existing sensitive-change proof: `AdminUserSecurityIT.tenant_admin_reset_mfa_clears_only_mfa_state_revokes_sessions_and_audits`, `tenant_admin_force_reset_revokes_sessions_and_confines_target_to_reset_corridor`, `AuthControllerIT.password_change_revokes_existing_access_and_refresh_tokens`, and `AuthControllerIT.password_reset_revokes_existing_access_and_refresh_tokens` continue to prove session invalidation after MFA reset, force reset, password change, and password reset.
+  - Session/security-event proof: `AuthControllerIT.refresh_rotation_is_scope_bound_and_replay_revokes_rotated_family` and new event recording in `AuthService` / `AuthSessionService` produce durable redacted session lifecycle events; `IamCanonicalStorageService.listSecurityEvents` scopes event feeds by target account and auth scope with a strict metadata allowlist.
 - Commands run:
-  - `mission init.sh`
+  - `rtk /Users/anas/.factory/missions/7ef22e70-61c7-4cdf-b7a7-1c48f4127853/init.sh`
   - `cd /Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/identity-account-hardcut-20260427 && bash scripts/guard_openapi_contract_drift.sh && cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='AuthPasswordResetPublicContractIT,AdminUserSecurityIT,AuthControllerIT,AuthTenantAuthorityIT,TenantRuntimeEnforcementAuthIT,AuthDisabledUserTokenIT,MfaControllerIT' test`
   - `cd erp-domain && MIGRATION_SET=v2 mvn -q -DskipTests test-compile`
-  - `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest=AuthControllerIT test`
-  - `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='RefreshTokenServiceIT' test`
-  - `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest=TenantRuntimeEnforcementAuthIT test`
-  - `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='AuthControllerIT,RefreshTokenServiceIT,AuthDisabledUserTokenIT' test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='AdminUserSecurityIT#tenant_admin_revokes_only_target_sessions_and_exposes_redacted_session_events+tenant_admin_session_revocation_denies_protected_target_without_revoking_sessions' test`
   - `cd erp-domain && MIGRATION_SET=v2 mvn spotless:apply`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='AdminUserSecurityIT,AuthDisabledUserTokenIT,AuthAuditIT' test`
+  - `cd /Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/identity-account-hardcut-20260427 && bash scripts/guard_openapi_contract_drift.sh`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -q -DskipTests compile`
   - `cd erp-domain && MIGRATION_SET=v2 mvn spotless:check`
-  - `bash scripts/guard_openapi_contract_drift.sh`
   - `bash ci/check-high-risk-changes.sh`
   - `bash ci/lint-knowledgebase.sh && bash ci/check-architecture.sh`
   - `cd /Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/identity-account-hardcut-20260427 && bash scripts/guard_openapi_contract_drift.sh && cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='AuthPasswordResetPublicContractIT,AdminUserSecurityIT,AuthControllerIT,AuthTenantAuthorityIT,TenantRuntimeEnforcementAuthIT,AuthDisabledUserTokenIT,MfaControllerIT' test`
 - Result summary:
-  - baseline IAM mission lane passed with 101 tests plus OpenAPI guard before code changes
-  - focused AuthControllerIT session/refresh/logout lane passed with 15 tests after implementation
-  - `RefreshTokenServiceIT` passed with 4 tests and now matches the feature-specific validator selector
-  - feature-specific auth/session validator passed with 22 tests
-  - targeted tenant runtime admission lane passed with 4 tests after refresh inspection was made non-consuming before runtime denial
-  - final IAM mission lane passed with 105 tests plus OpenAPI guard
-  - test-compile, Spotless check, OpenAPI guard, High-Risk Change Control, knowledgebase lint, and architecture check passed
-  - runtime curl smoke was not started because focused Spring HTTP integration tests exercised the real controller/security stack with redacted assertions
-  - no raw JWTs, refresh tokens, reset tokens, reset links, MFA secrets, recovery codes, token digests, password hashes, or production secrets were recorded in this checkpoint
+  - mission init completed and baseline IAM mission lane passed with 105 tests plus OpenAPI guard before code changes
+  - final IAM mission lane passed with 107 tests plus OpenAPI guard after implementation
+  - test-compile and compile passed after implementation
+  - two focused new admin session-revocation tests passed after remediation
+  - feature-specific validator passed with 37 tests after implementation
+  - OpenAPI guard, Spotless check, High-Risk Change Control, knowledgebase lint, and architecture check passed after implementation
+  - no raw JWTs, refresh tokens, reset tokens, reset links, token digests, MFA secrets, recovery codes, password hashes, or production secrets were recorded in this checkpoint
 
 ---
 
