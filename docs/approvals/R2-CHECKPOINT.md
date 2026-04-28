@@ -2,92 +2,96 @@
 
 Last reviewed: 2026-04-28
 
-## Current Packet Evidence — mfa-self-service-and-recovery-hard-cut
+## Current Packet Evidence — self-sessions-devices-refresh-and-logout
 
 ## Scope
-- Feature: `mfa-self-service-and-recovery-hard-cut`
+- Feature: `self-sessions-devices-refresh-and-logout`
 - Branch: codex/identity-account-hardcut-20260427 (base: origin/main)
 - PR: pending
 - Review candidate:
-  - reject self-service setup for already enabled MFA profiles so re-enrollment cannot silently downgrade or replace a live factor
-  - revoke pre-change access and refresh sessions after successful MFA activation, disablement, and recovery-code regeneration
-  - consume recovery codes under row-level locks so one-use verifier semantics remain concurrency safe
-  - document/enforce TOTP-only request factor policy for login, activation, disablement, and regeneration while preserving verifier-only recovery-code storage
-  - add redacted MFA success/failure audit events for login and self-service profile-change denial paths
-- Why this is R2: this packet touches high-risk MFA enrollment, second-factor verification, recovery-code consumption, authentication lockout/audit behavior, and token/session revocation paths where incorrect behavior could permit MFA downgrade, stale-session use, verifier replay, or secret leakage.
+  - issue first-class canonical IAM session/device rows at login and refresh rotation while keeping refresh tokens digest-only
+  - add `sid`-bound bearer validation so revoked/consumed session tokens fail on the next protected request
+  - implement self session listing, current-session logout, targeted self revocation, all-session revocation, and safe logout request-shape checks
+  - make refresh rotation scope-bound, one-use, replay-aware, and compromise-revoking for the rotated device family
+  - sanitize and bound session/device metadata returned by self-session APIs without exposing raw tokens, digests, IP chains, hashes, or secrets
+- Why this is R2: this packet touches high-risk authentication token lifecycle, bearer-token acceptance, refresh replay handling, logout/session revocation, and session/device privacy where incorrect behavior could allow stale-session use, tenant-scope escape, token-family replay, or sensitive metadata leakage.
 
 ## Risk Trigger
 - Triggered by:
-  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/service/MfaService.java`
   - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/service/AuthService.java`
-  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/controller/MfaController.java`
-  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/domain/MfaRecoveryCodeRepository.java`
-  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/web/LoginRequest.java`
-  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/web/MfaActivateRequest.java`
-  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/web/MfaDisableRequest.java`
-  - focused auth/MFA tests under `erp-domain/src/test/java`
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/service/RefreshTokenService.java`
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/service/AuthSessionService.java`
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/service/IamCanonicalStorageService.java`
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/controller/AuthController.java`
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/core/security/JwtAuthenticationFilter.java`
+  - focused auth/session tests under `erp-domain/src/test/java`
 - Contract surfaces affected:
-  - `VAL-AUTH-009`, `VAL-MFA-001`, `VAL-MFA-002`, `VAL-MFA-003`, `VAL-MFA-004`, `VAL-MFA-005`, `VAL-MFA-006`, `VAL-MFA-007`, `VAL-MFA-009`, `VAL-MFA-010`, `VAL-MFA-011`, `VAL-MFA-012`, `VAL-MFA-013`, `VAL-MFA-014`, `VAL-MFA-015`, `VAL-ACCT-007`, `VAL-ACCT-008`, `VAL-ADV-009`, `VAL-ADV-011`
+  - `VAL-AUTH-006`, `VAL-AUTH-007`, `VAL-SESS-001`, `VAL-SESS-002`, `VAL-SESS-003`, `VAL-SESS-004`, `VAL-SESS-005`, `VAL-SESS-006`, `VAL-SESS-007`, `VAL-SESS-012`, `VAL-SESS-013`, `VAL-SESS-014`, `VAL-SESS-015`, `VAL-SESS-017`, `VAL-ACCT-009`, `VAL-ADV-008`
 - Failure mode if wrong:
-  - an enabled MFA user could call setup and end up with MFA disabled or replaced without fresh proof
-  - pre-activation/pre-disable bearer or refresh credentials could remain usable after MFA security-profile changes
-  - concurrent recovery-code submissions could authenticate more than once
-  - unsupported `sms`/email/push-style factor fields could bypass TOTP/recovery-code proof
-  - audit/security evidence could include raw TOTP codes, secrets, recovery codes, hashes, or token material
+  - refresh tokens could become reusable, cross-scope, or replayable after rotation
+  - logout or self-revocation could revoke sibling/foreign sessions or leave the current token pair usable
+  - consumed/revoked session access tokens could remain accepted by bearer authentication
+  - session lists could expose token material, token digests, raw IP chains, injection strings, or other users' sessions
+  - refresh/logout races could leave a pre-change token family active after compromise or revocation
 
 ## Approval Authority
 - Mode: orchestrator
 - Approver: Droid mission orchestrator
 - Canary owner: Droid mission orchestrator
 - Approval status: branch-local integration candidate pending PR review
-- Basis: this is an accepted MFA milestone slice that narrows MFA self-service semantics, keeps current route envelopes, stores no raw verifier material, and does not widen privileges, change tenant boundaries, or introduce destructive schema changes.
+- Basis: this is an accepted sessions milestone slice that narrows token/session lifecycle semantics, keeps current auth route envelopes, stores no raw refresh material, and does not widen privileges, change tenant boundaries, or introduce destructive schema changes.
 
 ## Escalation Decision
 - Human escalation required: no
-- Reason: the packet strengthens existing MFA verification and session-revocation controls without adding new authority, weakening tenant scope, changing production migrations, or exposing secrets.
+- Reason: the packet strengthens existing refresh/logout/session controls without adding new authority, weakening tenant scope, changing production migrations, or exposing secrets.
 
 ## Rollback Owner
 - Owner: Droid mission orchestrator
 - Rollback method:
-  - before merge: revert this packet and rerun focused MFA/auth/audit tests, Spotless, OpenAPI guard, and High-Risk Change Control
-  - after merge: revert through a new remediation packet and rerun the same MFA self-service proof lane
+  - before merge: revert this packet and rerun focused auth/session tests, Spotless, OpenAPI guard, and High-Risk Change Control
+  - after merge: revert through a new remediation packet and rerun the same auth/session proof lane
 - Rollback trigger:
-  - enabled-user setup disables, replaces, or downgrades MFA without verified profile-change proof
-  - pre-change access or refresh credentials remain usable after MFA activation, disablement, or recovery-code regeneration
-  - a recovery code can be used more than once or concurrently succeeds more than once
-  - unsupported MFA factor payloads authenticate, activate, disable, or regenerate recovery codes
+  - refresh rotation accepts replay, wrong-company scope, or logged-out/disabled-user token use
+  - current-session logout revokes sibling/foreign sessions or leaves the current token pair usable
+  - targeted/all self revocation leaves revoked access/refresh tokens usable or crosses user/tenant boundaries
+  - session listing leaks raw token material, token digests, password/MFA material, raw IP chains, or unsafe device strings
   - focused compile/tests, Spotless, OpenAPI guard, or High-Risk Change Control fail
 
 ## Expiry
 - Valid until: 2026-05-05
-- Re-evaluate if: scope expands into admin MFA reset, first-class session-family storage, public API envelope changes, tenant-boundary behavior, distributed rate limiting, or schema/migration behavior.
+- Re-evaluate if: scope expands into admin session revocation, public API envelope changes, tenant-boundary behavior, distributed rate limiting, or schema/migration behavior.
 
 ## Verification Evidence
 - Scope-to-evidence mapping:
-  - No-downgrade setup proof: `MfaControllerIT.enabled_user_setup_is_rejected_without_downgrading_mfa_state` and `MfaServiceTest.beginEnrollment_rejectsEnabledMfaWithoutDowngradingState` verify enabled MFA setup is rejected and leaves the encrypted secret/recovery verifiers and MFA-required login state unchanged.
-  - Session revocation proof: `MfaControllerIT.mfa_activation_and_disable_revoke_pre_change_access_and_refresh_tokens`, `recovery_code_regeneration_revokes_pre_change_access_and_refresh_tokens`, `MfaServiceTest.activate_revokesPreChangeSessionsAfterSuccessfulActivation`, and `disable_revokesPreChangeSessionsAfterSuccessfulDisable` verify pre-change bearer and refresh credentials fail after MFA profile changes.
-  - Recovery-code concurrency safety proof: `MfaRecoveryCodeRepository.findUnusedByUserForUpdate` locks unused verifier rows during consumption; `MfaControllerIT.recovery_code_is_consumed_after_login` and `recovery_code_regeneration_returns_new_codes_and_replaces_old_verifiers` verify one-use and replacement behavior without plaintext persistence.
-  - TOTP/factor-policy proof: `MfaServiceTest.verifyDuringLogin_acceptsOnlyCurrentOrAdjacentTotpWindow` verifies the current 30-second step plus one adjacent step on either side; `MfaControllerIT.unsupported_factor_type_payloads_do_not_bypass_totp_only_policy` verifies `sms` factor payloads do not activate or authenticate.
-  - Audit/redaction proof: `AuthService` emits redacted `MFA_SUCCESS`/`MFA_FAILURE` login events and `MfaController` emits redacted self-service failure metadata; `AuthAuditIT` rechecks MFA enrolled/activated/disabled audit scope without recording raw verifier material.
+  - Session/device creation and listing proof: `AuthControllerIT.login_lists_current_session_with_sanitized_device_metadata` verifies login creates a current active session/device, carries an opaque `sid`, returns bounded safe metadata, and omits token/digest/password/MFA fields.
+  - Self revocation proof: `AuthControllerIT.user_revokes_other_current_and_all_sessions_without_cross_session_leakage` verifies targeted other-session revocation, current-session revocation, and all-session revocation invalidate the expected access/refresh tokens while preserving or revoking sibling sessions according to the selected route.
+  - Refresh rotation/replay proof: `AuthControllerIT.refresh_rotation_is_scope_bound_and_replay_revokes_rotated_family` verifies wrong-scope refresh rejection without token consumption, one-use rotation, old-token replay failure, compromise security event creation, and rotated-family invalidation.
+  - Race safety proof: `AuthControllerIT.concurrent_refresh_replay_race_settles_to_revoked_family` verifies a bounded two-request refresh replay race yields at most one successful rotation and the replayed family settles revoked.
+  - Verifier-only storage proof: `RefreshTokenServiceIT.issue_persists_digest_only_consume_removes_and_replay_is_rejected` verifies refresh-token persistence stores only the digest and removes the verifier on consumption/revocation.
 - Commands run:
   - `mission init.sh`
   - `cd /Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/identity-account-hardcut-20260427 && bash scripts/guard_openapi_contract_drift.sh && cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='AuthPasswordResetPublicContractIT,AdminUserSecurityIT,AuthControllerIT,AuthTenantAuthorityIT,TenantRuntimeEnforcementAuthIT,AuthDisabledUserTokenIT,MfaControllerIT' test`
   - `cd erp-domain && MIGRATION_SET=v2 mvn -q -DskipTests test-compile`
-  - `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='MfaControllerIT,MfaServiceTest,AuthControllerIT' test`
-  - `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='AuthAuditIT,MfaControllerIT,MfaServiceTest' test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest=AuthControllerIT test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='RefreshTokenServiceIT' test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest=TenantRuntimeEnforcementAuthIT test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='AuthControllerIT,RefreshTokenServiceIT,AuthDisabledUserTokenIT' test`
   - `cd erp-domain && MIGRATION_SET=v2 mvn spotless:apply`
   - `cd erp-domain && MIGRATION_SET=v2 mvn spotless:check`
   - `bash scripts/guard_openapi_contract_drift.sh`
-  - `cd /Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/identity-account-hardcut-20260427 && bash scripts/guard_openapi_contract_drift.sh && cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='AuthPasswordResetPublicContractIT,AdminUserSecurityIT,AuthControllerIT,AuthTenantAuthorityIT,TenantRuntimeEnforcementAuthIT,AuthDisabledUserTokenIT,MfaControllerIT' test`
   - `bash ci/check-high-risk-changes.sh`
   - `bash ci/lint-knowledgebase.sh && bash ci/check-architecture.sh`
+  - `cd /Users/anas/Documents/Factory/bigbrightpaints-erp_worktrees/identity-account-hardcut-20260427 && bash scripts/guard_openapi_contract_drift.sh && cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='AuthPasswordResetPublicContractIT,AdminUserSecurityIT,AuthControllerIT,AuthTenantAuthorityIT,TenantRuntimeEnforcementAuthIT,AuthDisabledUserTokenIT,MfaControllerIT' test`
 - Result summary:
-  - baseline IAM mission lane passed with 93 tests plus OpenAPI guard before code changes
-  - feature-specific MFA/auth lane passed with 32 tests after implementation
-  - focused MFA audit/service lane passed with 25 tests after formatting
-  - final IAM mission lane passed with 96 tests plus OpenAPI guard
+  - baseline IAM mission lane passed with 101 tests plus OpenAPI guard before code changes
+  - focused AuthControllerIT session/refresh/logout lane passed with 15 tests after implementation
+  - `RefreshTokenServiceIT` passed with 4 tests and now matches the feature-specific validator selector
+  - feature-specific auth/session validator passed with 22 tests
+  - targeted tenant runtime admission lane passed with 4 tests after refresh inspection was made non-consuming before runtime denial
+  - final IAM mission lane passed with 105 tests plus OpenAPI guard
   - test-compile, Spotless check, OpenAPI guard, High-Risk Change Control, knowledgebase lint, and architecture check passed
-  - no raw JWTs, refresh tokens, reset tokens, reset links, MFA secrets, TOTP candidate codes, recovery codes, password hashes, or production secrets were recorded in this checkpoint
+  - runtime curl smoke was not started because focused Spring HTTP integration tests exercised the real controller/security stack with redacted assertions
+  - no raw JWTs, refresh tokens, reset tokens, reset links, MFA secrets, recovery codes, token digests, password hashes, or production secrets were recorded in this checkpoint
 
 ---
 

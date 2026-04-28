@@ -36,7 +36,20 @@ public class RefreshTokenService {
   @Transactional
   public String issue(
       UUID userPublicId, String authScopeCode, Instant issuedAt, Instant expiresAt) {
+    return issueSession(userPublicId, authScopeCode, issuedAt, expiresAt, null, null)
+        .refreshToken();
+  }
+
+  @Transactional
+  public IssuedRefreshToken issueSession(
+      UUID userPublicId,
+      String authScopeCode,
+      Instant issuedAt,
+      Instant expiresAt,
+      SessionDeviceMetadata metadata,
+      String previousRefreshTokenDigest) {
     String token = UUID.randomUUID().toString();
+    UUID sessionPublicId = UUID.randomUUID();
     RefreshToken record =
         RefreshToken.digestOnly(
             AuthTokenDigests.refreshTokenDigest(token),
@@ -45,21 +58,35 @@ public class RefreshTokenService {
             issuedAt,
             expiresAt);
     RefreshToken saved = refreshTokenRepository.save(record);
-    iamCanonicalStorageService.recordSessionIssued(saved);
-    return token;
+    UUID savedSessionId =
+        iamCanonicalStorageService.recordSessionIssued(
+            saved, sessionPublicId, previousRefreshTokenDigest, metadata);
+    return new IssuedRefreshToken(token, savedSessionId);
   }
 
   @Transactional
   public Optional<TokenRecord> consume(String refreshToken) {
+    return consume(refreshToken, null);
+  }
+
+  @Transactional
+  public Optional<TokenRecord> consume(String refreshToken, String requiredAuthScopeCode) {
     if (refreshToken == null || refreshToken.isBlank()) {
       return Optional.empty();
     }
     String tokenDigest = AuthTokenDigests.refreshTokenDigest(refreshToken);
     Optional<RefreshToken> record = refreshTokenRepository.findForUpdateByTokenDigest(tokenDigest);
     if (record.isEmpty()) {
+      iamCanonicalStorageService
+          .markRefreshReplayCompromised(tokenDigest)
+          .forEach(refreshTokenRepository::deleteByTokenDigest);
       return Optional.empty();
     }
     RefreshToken stored = record.get();
+    if (requiredAuthScopeCode != null
+        && !requiredAuthScopeCode.equalsIgnoreCase(stored.getAuthScopeCode())) {
+      return Optional.empty();
+    }
     if (stored.isExpired(Instant.now())) {
       refreshTokenRepository.delete(stored);
       iamCanonicalStorageService.markSessionRevoked(tokenDigest, "expired");
@@ -72,7 +99,35 @@ public class RefreshTokenService {
             stored.getUserPublicId(),
             stored.getAuthScopeCode(),
             stored.getIssuedAt(),
-            stored.getExpiresAt()));
+            stored.getExpiresAt(),
+            stored.getTokenDigest()));
+  }
+
+  @Transactional(readOnly = true)
+  public Optional<TokenRecord> inspect(String refreshToken, String requiredAuthScopeCode) {
+    if (refreshToken == null || refreshToken.isBlank()) {
+      return Optional.empty();
+    }
+    String tokenDigest = AuthTokenDigests.refreshTokenDigest(refreshToken);
+    Optional<RefreshToken> record = refreshTokenRepository.findByTokenDigest(tokenDigest);
+    if (record.isEmpty()) {
+      return Optional.empty();
+    }
+    RefreshToken stored = record.get();
+    if (requiredAuthScopeCode != null
+        && !requiredAuthScopeCode.equalsIgnoreCase(stored.getAuthScopeCode())) {
+      return Optional.empty();
+    }
+    if (stored.isExpired(Instant.now())) {
+      return Optional.empty();
+    }
+    return Optional.of(
+        new TokenRecord(
+            stored.getUserPublicId(),
+            stored.getAuthScopeCode(),
+            stored.getIssuedAt(),
+            stored.getExpiresAt(),
+            stored.getTokenDigest()));
   }
 
   @Transactional
@@ -104,5 +159,11 @@ public class RefreshTokenService {
   }
 
   public record TokenRecord(
-      UUID userPublicId, String authScopeCode, Instant issuedAt, Instant expiresAt) {}
+      UUID userPublicId,
+      String authScopeCode,
+      Instant issuedAt,
+      Instant expiresAt,
+      String refreshTokenDigest) {}
+
+  public record IssuedRefreshToken(String refreshToken, UUID sessionPublicId) {}
 }

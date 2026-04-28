@@ -20,6 +20,7 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import com.bigbrightpaints.erp.modules.auth.domain.UserPrincipal;
+import com.bigbrightpaints.erp.modules.auth.service.AuthSessionService;
 import com.bigbrightpaints.erp.modules.auth.service.UserAccountDetailsService;
 
 import io.jsonwebtoken.Claims;
@@ -41,16 +42,19 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
   private final UserAccountDetailsService userDetailsService;
   private final TokenBlacklistService blacklistService;
   private final ObjectProvider<RoleHierarchy> roleHierarchyProvider;
+  private final AuthSessionService authSessionService;
 
   public JwtAuthenticationFilter(
       JwtTokenService tokenService,
       UserAccountDetailsService userDetailsService,
       TokenBlacklistService blacklistService,
-      ObjectProvider<RoleHierarchy> roleHierarchyProvider) {
+      ObjectProvider<RoleHierarchy> roleHierarchyProvider,
+      AuthSessionService authSessionService) {
     this.tokenService = tokenService;
     this.userDetailsService = userDetailsService;
     this.blacklistService = blacklistService;
     this.roleHierarchyProvider = roleHierarchyProvider;
+    this.authSessionService = authSessionService;
   }
 
   @Override
@@ -102,6 +106,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     Instant issuedAt = resolveTokenIssuedAt(claims);
     if (issuedAt != null && blacklistService.isUserTokenRevoked(userId, issuedAt)) {
       logger.warn("Attempted use of revoked user token");
+      return;
+    }
+    UUID sessionId = authSessionService.currentSessionIdFromClaims(claims);
+    if (sessionId != null
+        && !authSessionService.isSessionActive(
+            UUID.fromString(userId), claims.get("companyCode", String.class), sessionId)) {
+      logger.warn("Attempted use of inactive session token");
       return;
     }
 

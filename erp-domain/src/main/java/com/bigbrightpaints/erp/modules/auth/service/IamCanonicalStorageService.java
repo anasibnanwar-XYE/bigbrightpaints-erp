@@ -3,6 +3,7 @@ package com.bigbrightpaints.erp.modules.auth.service;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -70,37 +71,59 @@ public class IamCanonicalStorageService {
 
   @Transactional
   public void recordSessionIssued(RefreshToken token) {
+    recordSessionIssued(token, UUID.randomUUID(), null, null);
+  }
+
+  @Transactional
+  public UUID recordSessionIssued(
+      RefreshToken token,
+      UUID sessionPublicId,
+      String previousRefreshTokenDigest,
+      SessionDeviceMetadata metadata) {
     if (token == null || token.getUserPublicId() == null) {
-      return;
+      return sessionPublicId;
     }
     ensureAccountForPublicId(token.getUserPublicId());
+    Long accountId =
+        jdbcTemplate.query(
+            "select id from iam_accounts where public_id = ?",
+            rs -> rs.next() ? rs.getLong("id") : null,
+            token.getUserPublicId());
+    if (accountId == null) {
+      return sessionPublicId;
+    }
+    Long deviceId = resolveSessionDevice(accountId, previousRefreshTokenDigest, metadata);
     jdbcTemplate.update(
         """
         insert into iam_sessions (
             account_id,
+            device_id,
+            public_id,
             refresh_token_digest,
             auth_scope_code,
             issued_at,
             last_seen_at,
             expires_at
         )
-        select ia.id, ?, ?, ?, ?, ?
-          from iam_accounts ia
-         where ia.public_id = ?
+        values (?, ?, ?, ?, ?, ?, ?, ?)
         on conflict (refresh_token_digest) do update
             set last_seen_at = excluded.last_seen_at,
                 expires_at = excluded.expires_at,
+                device_id = excluded.device_id,
                 consumed_at = null,
                 revoked_at = null,
                 revoked_reason = null,
                 version = iam_sessions.version + 1
         """,
+        accountId,
+        deviceId,
+        sessionPublicId,
         token.getTokenDigest(),
         normalizeScopeCode(token.getAuthScopeCode()),
         timestamp(token.getIssuedAt()),
         timestamp(token.getIssuedAt()),
-        timestamp(token.getExpiresAt()),
-        token.getUserPublicId());
+        timestamp(token.getExpiresAt()));
+    return sessionPublicId;
   }
 
   @Transactional
@@ -158,6 +181,80 @@ public class IamCanonicalStorageService {
         timestampNow(),
         safeReason(reason),
         userPublicId);
+  }
+
+  @Transactional
+  public List<String> markRefreshReplayCompromised(String refreshTokenDigest) {
+    if (!StringUtils.hasText(refreshTokenDigest)) {
+      return List.of();
+    }
+    ReplaySession replaySession =
+        jdbcTemplate.query(
+            """
+            select ia.id as account_id,
+                   ia.public_id as account_public_id,
+                   s.device_id,
+                   s.consumed_at,
+                   s.auth_scope_code
+              from iam_sessions s
+              join iam_accounts ia on ia.id = s.account_id
+             where s.refresh_token_digest = ?
+            """,
+            rs -> {
+              if (!rs.next() || rs.getTimestamp("consumed_at") == null) {
+                return null;
+              }
+              return new ReplaySession(
+                  rs.getLong("account_id"),
+                  rs.getObject("account_public_id", UUID.class),
+                  rs.getObject("device_id", Long.class),
+                  rs.getTimestamp("consumed_at").toInstant(),
+                  rs.getString("auth_scope_code"));
+            },
+            refreshTokenDigest);
+    if (replaySession == null) {
+      return List.of();
+    }
+    List<String> activeDigests =
+        jdbcTemplate.queryForList(
+            """
+            select refresh_token_digest
+              from iam_sessions
+             where account_id = ?
+               and auth_scope_code = ?
+               and revoked_at is null
+               and consumed_at is null
+            """,
+            String.class,
+            replaySession.accountId(),
+            replaySession.authScopeCode());
+    jdbcTemplate.update(
+        """
+        update iam_sessions
+           set revoked_at = coalesce(revoked_at, ?),
+               revoked_reason = 'refresh_replay',
+               version = version + 1
+         where account_id = ?
+           and auth_scope_code = ?
+           and revoked_at is null
+           and consumed_at is null
+        """,
+        timestampNow(),
+        replaySession.accountId(),
+        replaySession.authScopeCode());
+    Map<String, String> metadata = new LinkedHashMap<>();
+    metadata.put("operation", "refresh_replay_detected");
+    metadata.put("reason", "refresh_replay");
+    metadata.put("sessionReference", "known_consumed_refresh");
+    recordSecurityEvent(
+        "SESSION_REFRESH_REPLAY",
+        "DENIED",
+        metadata,
+        replaySession.accountPublicId().toString(),
+        null,
+        null,
+        replaySession.authScopeCode());
+    return activeDigests;
   }
 
   @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -384,6 +481,52 @@ public class IamCanonicalStorageService {
     userAccountRepository.findByPublicId(publicId).ifPresent(this::syncUser);
   }
 
+  private Long resolveSessionDevice(
+      Long accountId, String previousRefreshTokenDigest, SessionDeviceMetadata metadata) {
+    if (StringUtils.hasText(previousRefreshTokenDigest)) {
+      Long previousDeviceId =
+          jdbcTemplate.query(
+              "select device_id from iam_sessions where refresh_token_digest = ?",
+              rs -> rs.next() ? rs.getObject("device_id", Long.class) : null,
+              previousRefreshTokenDigest);
+      if (previousDeviceId != null) {
+        jdbcTemplate.update(
+            "update iam_devices set last_seen_at = ?, version = version + 1 where id = ?",
+            timestampNow(),
+            previousDeviceId);
+        return previousDeviceId;
+      }
+    }
+    SessionDeviceMetadata safeMetadata =
+        metadata == null ? new SessionDeviceMetadata("Unknown device", null, null) : metadata;
+    return jdbcTemplate.query(
+        """
+        insert into iam_devices (
+            account_id,
+            public_id,
+            device_label,
+            user_agent_hash,
+            ip_address_hash,
+            created_at,
+            last_seen_at
+        )
+        values (?, ?, ?, ?, ?, ?, ?)
+        returning id
+        """,
+        rs -> rs.next() ? rs.getLong("id") : null,
+        accountId,
+        UUID.randomUUID(),
+        truncate(
+            StringUtils.hasText(safeMetadata.deviceLabel())
+                ? safeMetadata.deviceLabel()
+                : "Unknown device",
+            255),
+        safeMetadata.userAgentHash(),
+        safeMetadata.ipAddressHash(),
+        timestampNow(),
+        timestampNow());
+  }
+
   private Long resolveAccountId(String userId, String username, String authScopeCode) {
     UUID publicId = parseUuid(userId);
     if (publicId != null) {
@@ -504,4 +647,11 @@ public class IamCanonicalStorageService {
   private Timestamp timestamp(Instant instant) {
     return instant == null ? null : Timestamp.from(instant);
   }
+
+  private record ReplaySession(
+      Long accountId,
+      UUID accountPublicId,
+      Long deviceId,
+      Instant consumedAt,
+      String authScopeCode) {}
 }

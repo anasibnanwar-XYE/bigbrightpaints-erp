@@ -27,6 +27,7 @@ import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserPrincipal;
 import com.bigbrightpaints.erp.modules.auth.service.AuthService;
+import com.bigbrightpaints.erp.modules.auth.service.AuthSessionService;
 import com.bigbrightpaints.erp.modules.auth.service.IamCanonicalStorageService;
 import com.bigbrightpaints.erp.modules.auth.service.PasswordResetService;
 import com.bigbrightpaints.erp.modules.auth.service.PasswordService;
@@ -39,6 +40,7 @@ import com.bigbrightpaints.erp.modules.auth.web.RefreshTokenRequest;
 import com.bigbrightpaints.erp.modules.auth.web.ResetPasswordRequest;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 
+import io.jsonwebtoken.Claims;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 
@@ -52,6 +54,7 @@ public class AuthController {
   private final AuditService auditService;
   private final UserAccountRepository userAccountRepository;
   private final IamCanonicalStorageService iamCanonicalStorageService;
+  private final AuthSessionService authSessionService;
 
   public AuthController(
       AuthService authService,
@@ -59,23 +62,29 @@ public class AuthController {
       PasswordResetService passwordResetService,
       AuditService auditService,
       UserAccountRepository userAccountRepository,
-      IamCanonicalStorageService iamCanonicalStorageService) {
+      IamCanonicalStorageService iamCanonicalStorageService,
+      AuthSessionService authSessionService) {
     this.authService = authService;
     this.passwordService = passwordService;
     this.passwordResetService = passwordResetService;
     this.auditService = auditService;
     this.userAccountRepository = userAccountRepository;
     this.iamCanonicalStorageService = iamCanonicalStorageService;
+    this.authSessionService = authSessionService;
   }
 
   @PostMapping("/login")
-  public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
-    return ResponseEntity.ok(authService.login(request));
+  public ResponseEntity<AuthResponse> login(
+      @Valid @RequestBody LoginRequest request, HttpServletRequest httpRequest) {
+    return ResponseEntity.ok(
+        authService.login(request, authSessionService.metadataFrom(httpRequest)));
   }
 
   @PostMapping("/refresh-token")
-  public ResponseEntity<AuthResponse> refresh(@Valid @RequestBody RefreshTokenRequest request) {
-    return ResponseEntity.ok(authService.refresh(request));
+  public ResponseEntity<AuthResponse> refresh(
+      @Valid @RequestBody RefreshTokenRequest request, HttpServletRequest httpRequest) {
+    return ResponseEntity.ok(
+        authService.refresh(request, authSessionService.metadataFrom(httpRequest)));
   }
 
   @PostMapping("/logout")
@@ -194,11 +203,15 @@ public class AuthController {
   @GetMapping("/sessions")
   @PreAuthorize("isAuthenticated()")
   public ResponseEntity<ApiResponse<List<Map<String, Object>>>> sessions(
-      @AuthenticationPrincipal UserPrincipal principal) {
+      @AuthenticationPrincipal UserPrincipal principal, HttpServletRequest request) {
     if (principal == null) {
       return ResponseEntity.status(401).body(ApiResponse.failure("Unauthenticated"));
     }
-    return ResponseEntity.ok(ApiResponse.success(List.of()));
+    return ResponseEntity.ok(
+        ApiResponse.success(
+            authSessionService.listActiveSessions(
+                principal.getUser(),
+                authSessionService.currentSessionIdFromClaims(claims(request)))));
   }
 
   @DeleteMapping("/sessions/{sessionId}")
@@ -209,6 +222,7 @@ public class AuthController {
     if (principal == null) {
       return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
     }
+    authSessionService.revokeSession(principal.getUser(), sessionId, "self_revoke");
     return ResponseEntity.noContent().build();
   }
 
@@ -224,7 +238,7 @@ public class AuthController {
   @PreAuthorize("isAuthenticated()")
   @ResponseStatus(HttpStatus.NO_CONTENT)
   public ResponseEntity<Void> revokeAllSessions(Authentication authentication) {
-    authService.logout(null, accessToken(authentication));
+    authService.revokeAllSessionsForAccessToken(accessToken(authentication), "self_revoke_all");
     return ResponseEntity.noContent().build();
   }
 
@@ -277,6 +291,14 @@ public class AuthController {
       return token;
     }
     return null;
+  }
+
+  private Claims claims(HttpServletRequest request) {
+    if (request == null) {
+      return null;
+    }
+    Object claims = request.getAttribute("jwtClaims");
+    return claims instanceof Claims jwtClaims ? jwtClaims : null;
   }
 
   private SelfProfileResponse toProfileResponse(UserAccount user) {

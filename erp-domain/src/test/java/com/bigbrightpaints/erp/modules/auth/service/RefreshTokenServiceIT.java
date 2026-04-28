@@ -13,7 +13,7 @@ import com.bigbrightpaints.erp.modules.auth.domain.RefreshToken;
 import com.bigbrightpaints.erp.modules.auth.domain.RefreshTokenRepository;
 import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
 
-class RefreshTokenServiceTest extends AbstractIntegrationTest {
+class RefreshTokenServiceIT extends AbstractIntegrationTest {
 
   @Autowired private RefreshTokenService refreshTokenService;
   @Autowired private RefreshTokenRepository refreshTokenRepository;

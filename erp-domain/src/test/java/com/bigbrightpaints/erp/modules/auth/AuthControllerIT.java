@@ -23,6 +23,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.mock.mockito.SpyBean;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.http.*;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -43,6 +44,8 @@ public class AuthControllerIT extends AbstractIntegrationTest {
   @Autowired private UserAccountRepository userAccountRepository;
 
   @Autowired private PasswordResetTokenRepository passwordResetTokenRepository;
+
+  @Autowired private JdbcTemplate jdbcTemplate;
 
   @SpyBean private EmailService emailService;
 
@@ -189,6 +192,166 @@ public class AuthControllerIT extends AbstractIntegrationTest {
     assertThat(me(accessToken).getStatusCode()).isIn(HttpStatus.UNAUTHORIZED, HttpStatus.FORBIDDEN);
     assertThat(me(refreshedAccessToken).getStatusCode())
         .isIn(HttpStatus.UNAUTHORIZED, HttpStatus.FORBIDDEN);
+  }
+
+  @Test
+  void login_lists_current_session_with_sanitized_device_metadata() {
+    Map<String, Object> loginPayload =
+        loginWithUserAgent(ADMIN_EMAIL, ADMIN_PASSWORD, "<script>alert(1)</script>\r\nInjected");
+    String accessToken = loginPayload.get("accessToken").toString();
+    Map<String, Object> accessClaims = decodeJwtClaims(accessToken);
+    assertThat(accessClaims.get("sid")).as("access token carries opaque session id").isNotNull();
+
+    ResponseEntity<Map> sessionsResponse = sessions(accessToken);
+
+    assertThat(sessionsResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    List<Map<String, Object>> sessions = responseDataList(sessionsResponse);
+    assertThat(sessions).isNotEmpty();
+    Map<String, Object> session =
+        sessions.stream()
+            .filter(row -> accessClaims.get("sid").equals(row.get("sessionId")))
+            .findFirst()
+            .orElseThrow();
+    assertThat(session.get("sessionId")).isEqualTo(accessClaims.get("sid"));
+    assertThat(session.get("current")).isEqualTo(true);
+    assertThat(session.get("authScopeCode")).isEqualTo(COMPANY_CODE);
+    assertThat(session.get("createdAt")).isNotNull();
+    assertThat(session.get("lastSeenAt")).isNotNull();
+    assertThat(session.get("expiresAt")).isNotNull();
+    assertThat(session.keySet())
+        .doesNotContain(
+            "accessToken",
+            "refreshToken",
+            "refreshTokenDigest",
+            "tokenDigest",
+            "passwordHash",
+            "mfaSecret",
+            "recoveryCodes");
+    assertThat(session.get("deviceName").toString()).doesNotContain("<", ">", "\r", "\n");
+    assertThat(session.get("userAgent").toString()).doesNotContain("<", ">", "\r", "\n");
+  }
+
+  @Test
+  void user_revokes_other_current_and_all_sessions_without_cross_session_leakage() {
+    Map<String, Object> deviceA = login(ADMIN_EMAIL, ADMIN_PASSWORD);
+    Map<String, Object> deviceB = login(ADMIN_EMAIL, ADMIN_PASSWORD);
+    String accessA = deviceA.get("accessToken").toString();
+    String accessB = deviceB.get("accessToken").toString();
+    String refreshB = deviceB.get("refreshToken").toString();
+
+    String sessionB = decodeJwtClaims(accessB).get("sid").toString();
+    ResponseEntity<Void> revokeOther =
+        rest.exchange(
+            "/api/v1/auth/sessions/" + sessionB,
+            HttpMethod.DELETE,
+            new HttpEntity<>(bearer(accessA)),
+            Void.class);
+
+    assertThat(revokeOther.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+    assertThat(me(accessB).getStatusCode()).isIn(HttpStatus.UNAUTHORIZED, HttpStatus.FORBIDDEN);
+    assertThat(refresh(refreshB).getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(me(accessA).getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(responseDataList(sessions(accessA)))
+        .extracting(row -> row.get("sessionId"))
+        .doesNotContain(sessionB);
+
+    ResponseEntity<Void> revokeCurrent =
+        rest.exchange(
+            "/api/v1/auth/sessions/current",
+            HttpMethod.DELETE,
+            new HttpEntity<>(bearer(accessA)),
+            Void.class);
+    assertThat(revokeCurrent.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+    assertThat(me(accessA).getStatusCode()).isIn(HttpStatus.UNAUTHORIZED, HttpStatus.FORBIDDEN);
+
+    Map<String, Object> deviceC = login(ADMIN_EMAIL, ADMIN_PASSWORD);
+    Map<String, Object> deviceD = login(ADMIN_EMAIL, ADMIN_PASSWORD);
+    String accessC = deviceC.get("accessToken").toString();
+    String accessD = deviceD.get("accessToken").toString();
+    String refreshD = deviceD.get("refreshToken").toString();
+    ResponseEntity<Void> revokeAll =
+        rest.exchange(
+            "/api/v1/auth/sessions",
+            HttpMethod.DELETE,
+            new HttpEntity<>(bearer(accessC)),
+            Void.class);
+
+    assertThat(revokeAll.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+    assertThat(me(accessC).getStatusCode()).isIn(HttpStatus.UNAUTHORIZED, HttpStatus.FORBIDDEN);
+    assertThat(me(accessD).getStatusCode()).isIn(HttpStatus.UNAUTHORIZED, HttpStatus.FORBIDDEN);
+    assertThat(refresh(refreshD).getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+  }
+
+  @Test
+  void refresh_rotation_is_scope_bound_and_replay_revokes_rotated_family() {
+    Map<String, Object> loginPayload = login(ADMIN_EMAIL, ADMIN_PASSWORD);
+    String originalRefresh = loginPayload.get("refreshToken").toString();
+
+    ResponseEntity<Map> wrongScopeRefresh =
+        rest.postForEntity(
+            "/api/v1/auth/refresh-token",
+            Map.of("refreshToken", originalRefresh, "companyCode", "OTHER"),
+            Map.class);
+    assertThat(wrongScopeRefresh.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+    ResponseEntity<Map> firstRefresh = refresh(originalRefresh);
+    assertThat(firstRefresh.getStatusCode()).isEqualTo(HttpStatus.OK);
+    String rotatedAccess = firstRefresh.getBody().get("accessToken").toString();
+    String rotatedRefresh = firstRefresh.getBody().get("refreshToken").toString();
+
+    ResponseEntity<Map> replay = refresh(originalRefresh);
+    assertThat(replay.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(me(rotatedAccess).getStatusCode())
+        .isIn(HttpStatus.UNAUTHORIZED, HttpStatus.FORBIDDEN);
+    assertThat(refresh(rotatedRefresh).getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+    Integer replayEvents =
+        jdbcTemplate.queryForObject(
+            "select count(*) from iam_security_events where event_type = 'SESSION_REFRESH_REPLAY'",
+            Integer.class);
+    assertThat(replayEvents).isNotNull().isGreaterThanOrEqualTo(1);
+  }
+
+  @Test
+  void concurrent_refresh_replay_race_settles_to_revoked_family() throws Exception {
+    Map<String, Object> loginPayload = login(ADMIN_EMAIL, ADMIN_PASSWORD);
+    String originalRefresh = loginPayload.get("refreshToken").toString();
+
+    CountDownLatch ready = new CountDownLatch(2);
+    CountDownLatch start = new CountDownLatch(1);
+    ExecutorService executor = Executors.newFixedThreadPool(2);
+    try {
+      List<Future<ResponseEntity<Map>>> attempts =
+          List.of(
+              executor.submit(() -> concurrentRefreshAttempt(originalRefresh, ready, start)),
+              executor.submit(() -> concurrentRefreshAttempt(originalRefresh, ready, start)));
+      assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
+      start.countDown();
+
+      List<ResponseEntity<Map>> responses =
+          List.of(
+              attempts.get(0).get(10, TimeUnit.SECONDS), attempts.get(1).get(10, TimeUnit.SECONDS));
+      long successes =
+          responses.stream().filter(response -> response.getStatusCode().is2xxSuccessful()).count();
+      assertThat(successes).isLessThanOrEqualTo(1);
+
+      responses.stream()
+          .filter(response -> response.getStatusCode().is2xxSuccessful())
+          .findFirst()
+          .ifPresent(
+              response -> {
+                String rotatedAccess = response.getBody().get("accessToken").toString();
+                String rotatedRefresh = response.getBody().get("refreshToken").toString();
+                assertThat(refresh(originalRefresh).getStatusCode())
+                    .isEqualTo(HttpStatus.BAD_REQUEST);
+                assertThat(me(rotatedAccess).getStatusCode())
+                    .isIn(HttpStatus.UNAUTHORIZED, HttpStatus.FORBIDDEN);
+                assertThat(refresh(rotatedRefresh).getStatusCode())
+                    .isEqualTo(HttpStatus.BAD_REQUEST);
+              });
+    } finally {
+      executor.shutdownNow();
+    }
   }
 
   @Test
@@ -506,6 +669,47 @@ public class AuthControllerIT extends AbstractIntegrationTest {
     assertThat(loginResp.getStatusCode()).isEqualTo(HttpStatus.OK);
     assertThat(loginResp.getBody()).isNotNull();
     return loginResp.getBody();
+  }
+
+  private Map<String, Object> loginWithUserAgent(String email, String password, String userAgent) {
+    HttpHeaders headers = jsonHeaders();
+    headers.set("User-Agent", userAgent);
+    ResponseEntity<Map> loginResp =
+        rest.exchange(
+            "/api/v1/auth/login",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of("email", email, "password", password, "companyCode", COMPANY_CODE), headers),
+            Map.class);
+    assertThat(loginResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(loginResp.getBody()).isNotNull();
+    return loginResp.getBody();
+  }
+
+  private ResponseEntity<Map> refresh(String refreshToken) {
+    return rest.postForEntity(
+        "/api/v1/auth/refresh-token",
+        Map.of("refreshToken", refreshToken, "companyCode", COMPANY_CODE),
+        Map.class);
+  }
+
+  private ResponseEntity<Map> concurrentRefreshAttempt(
+      String refreshToken, CountDownLatch ready, CountDownLatch start) throws Exception {
+    ready.countDown();
+    assertThat(start.await(5, TimeUnit.SECONDS)).isTrue();
+    return refresh(refreshToken);
+  }
+
+  private ResponseEntity<Map> sessions(String accessToken) {
+    return rest.exchange(
+        "/api/v1/auth/sessions", HttpMethod.GET, new HttpEntity<>(bearer(accessToken)), Map.class);
+  }
+
+  private List<Map<String, Object>> responseDataList(ResponseEntity<Map> response) {
+    assertThat(response.getBody()).isNotNull();
+    Object data = response.getBody().get("data");
+    assertThat(data).isInstanceOf(List.class);
+    return (List<Map<String, Object>>) data;
   }
 
   private void assertRouteAbsent(String path, HttpMethod method, HttpEntity<?> entity) {

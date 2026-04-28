@@ -33,6 +33,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserPrincipal;
+import com.bigbrightpaints.erp.modules.auth.service.AuthSessionService;
 import com.bigbrightpaints.erp.modules.auth.service.UserAccountDetailsService;
 import com.bigbrightpaints.erp.modules.rbac.domain.Role;
 
@@ -55,6 +56,8 @@ class JwtAuthenticationFilterRoleHierarchyTest {
 
   @Mock private ObjectProvider<RoleHierarchy> roleHierarchyProvider;
 
+  @Mock private AuthSessionService authSessionService;
+
   @Mock private FilterChain filterChain;
 
   private JwtAuthenticationFilter filter;
@@ -63,7 +66,11 @@ class JwtAuthenticationFilterRoleHierarchyTest {
   void setUp() {
     filter =
         new JwtAuthenticationFilter(
-            tokenService, userDetailsService, blacklistService, roleHierarchyProvider);
+            tokenService,
+            userDetailsService,
+            blacklistService,
+            roleHierarchyProvider,
+            authSessionService);
   }
 
   @AfterEach
