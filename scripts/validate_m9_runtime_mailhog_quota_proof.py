@@ -62,9 +62,11 @@ def dry_run() -> None:
   note("runtime_profile=prod,flyway-v2,mock,validation-seed")
   note(
       "coverage=real-actions:PDF_EXPORTS(invoice-pdf),EMAILS(invoice-business-email/MailHog),"
-      "JOBS(orchestrator-command),STORAGE(catalog-import),"
+      "JOBS(orchestrator-command),STORAGE(catalog-import/raw-material-delete),"
       "API_CALLS(monthly),BURST_REQUESTS_PER_MINUTE,MAX_CONCURRENT_REQUESTS")
-  note("dry_run_real_action_plan=success-delta,exhausted-block,blocked-usage-unchanged")
+  note(
+      "dry_run_real_action_plan=success-delta,storage-delete-decrement,"
+      "exhausted-block,blocked-usage-unchanged")
   note("auth_evidence=token-present markers only; passwords and bearer tokens are never printed")
   note("mailhog_evidence=HTTP status, message count, IDs, subjects, recipients only")
   note("rate_limit_evidence=HTTP 429 plus Retry-After/X-RateLimit-* headers and safe error code")
@@ -403,6 +405,17 @@ def tenant_post(
   )
 
 
+def tenant_delete(path: str, tenant_token: str, expected: set[int]) -> HttpResult:
+  return request(
+      "DELETE",
+      f"{APP_BASE}{path}",
+      token=tenant_token,
+      company_code=TENANT_CODE,
+      expected=expected,
+      timeout=60,
+  )
+
+
 def usage_snapshot(super_token: str, company_id: int) -> dict[str, Any]:
   return get_data(
       request(
@@ -532,13 +545,33 @@ def find_order_id(tenant_token: str) -> int:
   return order_id
 
 
-def storage_csv(run_marker: str) -> bytes:
+def storage_csv(run_marker: str) -> tuple[bytes, str, str, str, int]:
   sku = "RM-M9-" + uuid.uuid4().hex[:10].upper()
+  material_name = f"{run_marker} storage import"
+  unit = "KG"
   rows = [
       "brand,product_name,sku_code,category,unit_of_measure,base_price,gst_rate",
-      f"M9 Proof Brand,{run_marker} storage import,{sku},RAW_MATERIAL,KG,10.00,18.00",
+      f"M9 Proof Brand,{material_name},{sku},RAW_MATERIAL,{unit},10.00,18.00",
   ]
-  return ("\n".join(rows) + "\n").encode("utf-8")
+  content = ("\n".join(rows) + "\n").encode("utf-8")
+  delete_bytes = (
+      1
+      + len(material_name.encode("utf-8"))
+      + len(sku.encode("utf-8"))
+      + len(unit.encode("utf-8")))
+  return content, sku, material_name, unit, delete_bytes
+
+
+def find_raw_material_id_by_sku(tenant_token: str, sku: str) -> int:
+  result = tenant_get("/api/v1/raw-materials", tenant_token, {200})
+  data = get_data(result)
+  materials = data if isinstance(data, list) else data.get("content", [])
+  for material in materials:
+    if material.get("sku") == sku:
+      material_id = int(material["id"])
+      note(f"storage_delete_fixture rawMaterialId={material_id} sku={sku}")
+      return material_id
+  fail(f"raw material fixture not found for storage delete proof; sku={sku}")
 
 
 def main() -> None:
@@ -717,7 +750,7 @@ def main() -> None:
     )
 
     def storage_import_action(expected: set[int]) -> tuple[HttpResult, int]:
-      csv = storage_csv(run_marker)
+      csv, _, _, _, _ = storage_csv(run_marker)
       result = multipart_request(
           "POST",
           f"{APP_BASE}/api/v1/catalog/import",
@@ -733,7 +766,7 @@ def main() -> None:
       return result, len(csv)
 
     storage_before = dimension_value(super_token, company_id, "STORAGE")
-    storage_probe_csv = storage_csv(run_marker)
+    storage_probe_csv, storage_sku, _, _, storage_delete_expected_bytes = storage_csv(run_marker)
     set_real_action_limit(super_token, company_id, "STORAGE", storage_before + len(storage_probe_csv) + 1024)
     storage_result = multipart_request(
         "POST",
@@ -757,6 +790,25 @@ def main() -> None:
         f"real_action=catalog_import_storage dimension=STORAGE status={storage_result.status} "
         f"usedBefore={storage_before} usedAfter={storage_after} delta={storage_delta} "
         f"bytes={len(storage_probe_csv)} trace={response_trace(storage_result)}")
+    raw_material_id = find_raw_material_id_by_sku(tenant_token, storage_sku)
+    storage_delete_before = dimension_value(super_token, company_id, "STORAGE")
+    delete_result = tenant_delete(f"/api/v1/raw-materials/{raw_material_id}", tenant_token, {200})
+    storage_delete_after = dimension_value(super_token, company_id, "STORAGE")
+    storage_delete_delta = storage_delete_before - storage_delete_after
+    if storage_delete_after < 0:
+      fail(
+          f"raw material storage delete drove usage below zero: "
+          f"usedBefore={storage_delete_before} usedAfter={storage_delete_after}")
+    if storage_delete_delta < storage_delete_expected_bytes:
+      fail(
+          "raw material storage delete expected STORAGE decrement >= "
+          f"{storage_delete_expected_bytes}, "
+          f"usedBefore={storage_delete_before} usedAfter={storage_delete_after} delta={storage_delete_delta}")
+    note(
+        f"real_action=raw_material_storage_delete dimension=STORAGE status={delete_result.status} "
+        f"usedBefore={storage_delete_before} usedAfter={storage_delete_after} "
+        f"delta={storage_delete_delta} expectedBytes={storage_delete_expected_bytes} "
+        f"trace={response_trace(delete_result)}")
     set_real_action_limit(super_token, company_id, "STORAGE", 1)
     storage_block_before = dimension_value(super_token, company_id, "STORAGE")
     blocked_storage, blocked_storage_bytes = storage_import_action({200, *BLOCK_STATUSES})

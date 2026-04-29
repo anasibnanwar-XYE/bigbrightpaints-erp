@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.UUID;
 
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -21,6 +22,7 @@ import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.modules.inventory.dto.InventoryExpiringBatchDto;
 import com.bigbrightpaints.erp.modules.inventory.dto.RawMaterialAdjustmentRequest;
+import com.bigbrightpaints.erp.modules.inventory.dto.RawMaterialDto;
 import com.bigbrightpaints.erp.modules.inventory.dto.RawMaterialStockEntryDto;
 import com.bigbrightpaints.erp.modules.inventory.service.InventoryBatchQueryService;
 import com.bigbrightpaints.erp.modules.inventory.service.RawMaterialService;
@@ -130,6 +132,41 @@ class RawMaterialControllerTest {
     assertThat(controller.stock().getBody()).isNotNull();
 
     verify(rawMaterialService).listStockEntries();
+  }
+
+  @Test
+  void listRawMaterials_delegatesToRawMaterialService() {
+    RawMaterialController controller = controller();
+    List<RawMaterialDto> materials =
+        List.of(
+            new RawMaterialDto(
+                11L,
+                UUID.randomUUID(),
+                "M9 proof material",
+                "RM-M9-PROOF",
+                "KG",
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                "OK",
+                null,
+                "FIFO",
+                "CHEMICAL"));
+    when(rawMaterialService.listRawMaterials()).thenReturn(materials);
+
+    assertThat(controller.listRawMaterials().getBody()).isNotNull();
+
+    verify(rawMaterialService).listRawMaterials();
+  }
+
+  @Test
+  void deleteRawMaterial_delegatesToRawMaterialService() {
+    RawMaterialController controller = controller();
+
+    controller.deleteRawMaterial(11L);
+
+    verify(rawMaterialService).deleteRawMaterial(11L);
   }
 
   @Test
