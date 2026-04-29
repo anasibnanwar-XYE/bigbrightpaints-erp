@@ -22,9 +22,6 @@ public interface SupportTicketMessageRepository extends JpaRepository<SupportTic
       Collection<SupportTicketMessageVisibility> visibilities,
       Pageable pageable);
 
-  List<SupportTicketMessage> findByTicketAndVisibilityInOrderByCreatedAtAscIdAsc(
-      SupportTicket ticket, Collection<SupportTicketMessageVisibility> visibilities);
-
   @Query("SELECT u FROM UserAccount u WHERE u.id IN :ids")
   List<UserAccount> findUsersByIdIn(@Param("ids") Set<Long> ids);
 }
