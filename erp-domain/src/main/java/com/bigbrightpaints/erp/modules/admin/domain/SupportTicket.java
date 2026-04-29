@@ -50,6 +50,10 @@ public class SupportTicket extends VersionedEntity {
   private String description;
 
   @Enumerated(EnumType.STRING)
+  @Column(name = "priority", nullable = false, length = 32)
+  private SupportTicketPriority priority = SupportTicketPriority.NORMAL;
+
+  @Enumerated(EnumType.STRING)
   @Column(name = "status", nullable = false)
   private SupportTicketStatus status;
 
@@ -90,6 +94,9 @@ public class SupportTicket extends VersionedEntity {
     }
     if (status == null) {
       status = SupportTicketStatus.OPEN;
+    }
+    if (priority == null) {
+      priority = SupportTicketPriority.NORMAL;
     }
     Instant now = CompanyTime.now(company);
     if (createdAt == null) {
@@ -151,6 +158,14 @@ public class SupportTicket extends VersionedEntity {
 
   public void setDescription(String description) {
     this.description = description;
+  }
+
+  public SupportTicketPriority getPriority() {
+    return priority;
+  }
+
+  public void setPriority(SupportTicketPriority priority) {
+    this.priority = priority == null ? SupportTicketPriority.NORMAL : priority;
   }
 
   public SupportTicketStatus getStatus() {

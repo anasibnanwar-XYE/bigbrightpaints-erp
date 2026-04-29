@@ -1,9 +1,11 @@
 package com.bigbrightpaints.erp.modules.admin.dto;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketCategory;
+import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketPriority;
 import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketStatus;
 
 public record SupportTicketResponse(
@@ -13,6 +15,7 @@ public record SupportTicketResponse(
     Long userId,
     String requesterEmail,
     SupportTicketCategory category,
+    SupportTicketPriority priority,
     String subject,
     String description,
     SupportTicketStatus status,
@@ -24,4 +27,5 @@ public record SupportTicketResponse(
     Instant resolvedAt,
     Instant resolvedNotificationSentAt,
     Instant createdAt,
-    Instant updatedAt) {}
+    Instant updatedAt,
+    List<SupportTicketMessageResponse> messages) {}

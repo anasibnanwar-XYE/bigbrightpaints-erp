@@ -18,6 +18,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 
+import com.bigbrightpaints.erp.core.audit.AuditLogRepository;
 import com.bigbrightpaints.erp.modules.admin.domain.SupportTicket;
 import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketCategory;
 import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketRepository;
@@ -48,6 +49,8 @@ class SupportTicketControllerIT extends AbstractIntegrationTest {
   @Autowired private UserAccountRepository userAccountRepository;
 
   @Autowired private SupportTicketRepository supportTicketRepository;
+
+  @Autowired private AuditLogRepository auditLogRepository;
 
   @BeforeEach
   void seedUsers() {
@@ -375,6 +378,259 @@ class SupportTicketControllerIT extends AbstractIntegrationTest {
     assertForbiddenPlatformOnly(response);
   }
 
+  @Test
+  void superAdminQueueMessagesAndInternalNotesAreTenantSafeAuditedAndPaginated() {
+    String marker = "m11-chat-" + System.nanoTime();
+    Long ticketId = seedTicket(TENANT_A, ADMIN_A_EMAIL, marker + "-ticket");
+    String tenantToken = login(ADMIN_A_EMAIL, TENANT_A);
+    String superAdminToken = login(SUPER_ADMIN_EMAIL, ROOT_TENANT);
+
+    ResponseEntity<Map> tenantMessage =
+        rest.exchange(
+            "/api/v1/admin/support/tickets/" + ticketId + "/messages",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of("content", "Customer reply <b>" + marker + "</b>"),
+                authHeaders(tenantToken, TENANT_A)),
+            Map.class);
+    assertThat(tenantMessage.getStatusCode()).isEqualTo(HttpStatus.OK);
+    Map<String, Object> tenantMessageData = data(tenantMessage);
+    assertThat(tenantMessageData.get("authorRole")).isEqualTo("TENANT");
+    assertThat(tenantMessageData.get("visibility")).isEqualTo("CUSTOMER");
+    assertThat(String.valueOf(tenantMessageData.get("content"))).doesNotContain("<b>");
+
+    ResponseEntity<Map> platformReply =
+        rest.exchange(
+            "/api/v1/superadmin/support/tickets/" + ticketId + "/messages",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of("content", "Platform reply " + marker),
+                authHeaders(superAdminToken, ROOT_TENANT)),
+            Map.class);
+    assertThat(platformReply.getStatusCode()).isEqualTo(HttpStatus.OK);
+    Map<String, Object> platformReplyData = data(platformReply);
+    assertThat(platformReplyData.get("authorRole")).isEqualTo("SUPER_ADMIN");
+    assertThat(platformReplyData.get("visibility")).isEqualTo("CUSTOMER");
+    assertThat(platformReplyData.get("authorEmail")).isEqualTo(SUPER_ADMIN_EMAIL);
+    assertThat(platformReplyData.get("auditEventId")).isNotNull();
+
+    ResponseEntity<Map> internalNote =
+        rest.exchange(
+            "/api/v1/superadmin/support/tickets/" + ticketId + "/internal-notes",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of("content", "Internal triage note " + marker),
+                authHeaders(superAdminToken, ROOT_TENANT)),
+            Map.class);
+    assertThat(internalNote.getStatusCode()).isEqualTo(HttpStatus.OK);
+    Map<String, Object> internalNoteData = data(internalNote);
+    assertThat(internalNoteData.get("visibility")).isEqualTo("INTERNAL");
+    assertThat(internalNoteData.get("auditEventId")).isNotNull();
+    assertThat(
+            auditLogRepository.findById(
+                Long.parseLong(String.valueOf(internalNoteData.get("auditEventId")))))
+        .isPresent();
+
+    ResponseEntity<Map> queue =
+        rest.exchange(
+            "/api/v1/superadmin/support/tickets?q="
+                + marker
+                + "&status=OPEN&page=0&size=5&sort=createdAt,desc",
+            HttpMethod.GET,
+            new HttpEntity<>(authHeaders(superAdminToken, ROOT_TENANT)),
+            Map.class);
+    assertThat(queue.getStatusCode()).isEqualTo(HttpStatus.OK);
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> queueContent = (List<Map<String, Object>>) data(queue).get("content");
+    assertThat(queueContent).hasSize(1);
+    Map<String, Object> queueItem = queueContent.getFirst();
+    assertThat(queueItem.get("ticketId")).isEqualTo(ticketId.intValue());
+    assertThat(queueItem.get("companyCode")).isEqualTo(TENANT_A);
+    assertThat(queueItem.get("priority")).isEqualTo("NORMAL");
+    assertThat(queueItem.get("requesterEmail")).isEqualTo(ADMIN_A_EMAIL);
+    assertThat(queueItem.get("requesterRole")).isEqualTo("TENANT_ADMIN");
+    assertThat(queueItem.get("sla")).isInstanceOf(Map.class);
+
+    ResponseEntity<Map> platformDetail =
+        rest.exchange(
+            "/api/v1/superadmin/support/tickets/" + ticketId,
+            HttpMethod.GET,
+            new HttpEntity<>(authHeaders(superAdminToken, ROOT_TENANT)),
+            Map.class);
+    assertThat(platformDetail.getStatusCode()).isEqualTo(HttpStatus.OK);
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> platformMessages =
+        (List<Map<String, Object>>) data(platformDetail).get("messages");
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> platformInternalNotes =
+        (List<Map<String, Object>>) data(platformDetail).get("internalNotes");
+    assertThat(platformMessages)
+        .extracting(message -> message.get("authorRole"))
+        .containsExactly("TENANT", "SUPER_ADMIN");
+    assertThat(platformMessages.get(1).get("authorEmail")).isEqualTo(SUPER_ADMIN_EMAIL);
+    assertThat(platformMessages.get(1).get("authorUserId")).isNotNull();
+    assertThat(platformMessages.get(1).get("auditEventId")).isNotNull();
+    assertThat(platformInternalNotes)
+        .extracting(message -> String.valueOf(message.get("content")))
+        .containsExactly("Internal triage note " + marker);
+
+    ResponseEntity<Map> tenantDetail =
+        rest.exchange(
+            "/api/v1/admin/support/tickets/" + ticketId,
+            HttpMethod.GET,
+            new HttpEntity<>(authHeaders(tenantToken, TENANT_A)),
+            Map.class);
+    assertThat(tenantDetail.getStatusCode()).isEqualTo(HttpStatus.OK);
+    Map<String, Object> tenantDetailData = data(tenantDetail);
+    assertThat(tenantDetailData).doesNotContainKey("internalNotes");
+    assertThat(String.valueOf(tenantDetailData)).doesNotContain("Internal triage note " + marker);
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> tenantDetailMessages =
+        (List<Map<String, Object>>) tenantDetailData.get("messages");
+    assertThat(tenantDetailMessages).hasSize(2);
+    Map<String, Object> tenantVisiblePlatformReply = tenantDetailMessages.get(1);
+    assertThat(tenantVisiblePlatformReply.get("authorRole")).isEqualTo("SUPER_ADMIN");
+    assertThat(tenantVisiblePlatformReply.get("authorEmail")).isNull();
+    assertThat(tenantVisiblePlatformReply.get("authorUserId")).isNull();
+    assertThat(tenantVisiblePlatformReply.get("auditEventId")).isNull();
+
+    ResponseEntity<Map> firstMessagePage =
+        rest.exchange(
+            "/api/v1/admin/support/tickets/" + ticketId + "/messages?page=0&size=1",
+            HttpMethod.GET,
+            new HttpEntity<>(authHeaders(tenantToken, TENANT_A)),
+            Map.class);
+    assertThat(firstMessagePage.getStatusCode()).isEqualTo(HttpStatus.OK);
+    Map<String, Object> firstMessagePageData = data(firstMessagePage);
+    assertThat(firstMessagePageData.get("totalElements")).isEqualTo(2);
+    assertThat(firstMessagePageData.get("page")).isEqualTo(0);
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> firstPageContent =
+        (List<Map<String, Object>>) firstMessagePageData.get("content");
+    assertThat(firstPageContent).hasSize(1);
+    assertThat(firstPageContent.getFirst().get("id")).isEqualTo(tenantMessageData.get("id"));
+
+    ResponseEntity<Map> allMessagesForTenant =
+        rest.exchange(
+            "/api/v1/admin/support/tickets/" + ticketId + "/messages?page=0&size=10",
+            HttpMethod.GET,
+            new HttpEntity<>(authHeaders(tenantToken, TENANT_A)),
+            Map.class);
+    assertThat(allMessagesForTenant.getStatusCode()).isEqualTo(HttpStatus.OK);
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> tenantMessagePage =
+        (List<Map<String, Object>>) data(allMessagesForTenant).get("content");
+    Map<String, Object> redactedPlatformReply = tenantMessagePage.get(1);
+    assertThat(redactedPlatformReply.get("authorRole")).isEqualTo("SUPER_ADMIN");
+    assertThat(redactedPlatformReply.get("authorEmail")).isNull();
+    assertThat(redactedPlatformReply.get("authorUserId")).isNull();
+    assertThat(redactedPlatformReply.get("auditEventId")).isNull();
+
+    ResponseEntity<Map> editProbe =
+        rest.exchange(
+            "/api/v1/admin/support/tickets/"
+                + ticketId
+                + "/messages/"
+                + tenantMessageData.get("id"),
+            HttpMethod.PUT,
+            new HttpEntity<>(Map.of("content", "edited"), authHeaders(tenantToken, TENANT_A)),
+            Map.class);
+    assertThat(editProbe.getStatusCode()).isIn(HttpStatus.METHOD_NOT_ALLOWED, HttpStatus.NOT_FOUND);
+  }
+
+  @Test
+  void supportAccessMatrixEnforcesTenantBoundariesAndPlatformOnlyControls() {
+    Long tenantTicket = seedTicket(TENANT_A, ADMIN_A_EMAIL, "matrix-admin-" + System.nanoTime());
+    Long dealerTicket = seedTicket(TENANT_A, DEALER_A_EMAIL, "matrix-dealer-" + System.nanoTime());
+    Long foreignTicket = seedTicket(TENANT_B, ADMIN_B_EMAIL, "matrix-foreign-" + System.nanoTime());
+    String dealerToken = login(DEALER_A_EMAIL, TENANT_A);
+    String superAdminToken = login(SUPER_ADMIN_EMAIL, ROOT_TENANT);
+
+    ResponseEntity<Map> foreignTenantMessageProbe =
+        rest.exchange(
+            "/api/v1/admin/support/tickets/" + foreignTicket + "/messages",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of("content", "cross tenant probe"),
+                authHeaders(login(ADMIN_A_EMAIL, TENANT_A), TENANT_A)),
+            Map.class);
+    assertThat(foreignTenantMessageProbe.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+
+    ResponseEntity<Map> dealerPeerMessageProbe =
+        rest.exchange(
+            "/api/v1/dealer-portal/support/tickets/" + tenantTicket + "/messages",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of("content", "dealer should not message admin ticket"),
+                authHeaders(dealerToken, TENANT_A)),
+            Map.class);
+    assertThat(dealerPeerMessageProbe.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+
+    ResponseEntity<Map> dealerOwnMessage =
+        rest.exchange(
+            "/api/v1/dealer-portal/support/tickets/" + dealerTicket + "/messages",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of("content", "dealer own ticket reply"), authHeaders(dealerToken, TENANT_A)),
+            Map.class);
+    assertThat(dealerOwnMessage.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+    ResponseEntity<Map> superAdminDealerReply =
+        rest.exchange(
+            "/api/v1/superadmin/support/tickets/" + dealerTicket + "/messages",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of("content", "platform dealer reply"),
+                authHeaders(superAdminToken, ROOT_TENANT)),
+            Map.class);
+    assertThat(superAdminDealerReply.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+    ResponseEntity<Map> dealerMessages =
+        rest.exchange(
+            "/api/v1/dealer-portal/support/tickets/" + dealerTicket + "/messages?page=0&size=10",
+            HttpMethod.GET,
+            new HttpEntity<>(authHeaders(dealerToken, TENANT_A)),
+            Map.class);
+    assertThat(dealerMessages.getStatusCode()).isEqualTo(HttpStatus.OK);
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> dealerMessageContent =
+        (List<Map<String, Object>>) data(dealerMessages).get("content");
+    Map<String, Object> dealerVisiblePlatformReply = dealerMessageContent.get(1);
+    assertThat(dealerVisiblePlatformReply.get("authorRole")).isEqualTo("SUPER_ADMIN");
+    assertThat(dealerVisiblePlatformReply.get("authorEmail")).isNull();
+    assertThat(dealerVisiblePlatformReply.get("authorUserId")).isNull();
+    assertThat(dealerVisiblePlatformReply.get("auditEventId")).isNull();
+
+    ResponseEntity<Map> tenantInternalNoteProbe =
+        rest.exchange(
+            "/api/v1/superadmin/support/tickets/" + tenantTicket + "/internal-notes",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of("content", "tenant cannot add platform note"),
+                authHeaders(login(ADMIN_A_EMAIL, TENANT_A), TENANT_A)),
+            Map.class);
+    assertThat(tenantInternalNoteProbe.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+
+    ResponseEntity<Map> anonymousQueueProbe =
+        rest.exchange(
+            "/api/v1/superadmin/support/tickets",
+            HttpMethod.GET,
+            new HttpEntity<>(jsonOnlyHeaders()),
+            Map.class);
+    assertThat(anonymousQueueProbe.getStatusCode())
+        .isIn(HttpStatus.UNAUTHORIZED, HttpStatus.FORBIDDEN);
+
+    ResponseEntity<Map> tenantPriorityProbe =
+        rest.exchange(
+            "/api/v1/admin/support/tickets/" + tenantTicket + "/priority",
+            HttpMethod.PUT,
+            new HttpEntity<>(
+                Map.of("priority", "URGENT"),
+                authHeaders(login(ADMIN_A_EMAIL, TENANT_A), TENANT_A)),
+            Map.class);
+    assertThat(tenantPriorityProbe.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+  }
+
   private Long seedTicket(String companyCode, String userEmail, String subject) {
     Company company = companyRepository.findByCodeIgnoreCase(companyCode).orElseThrow();
     UserAccount requester =
@@ -412,6 +668,20 @@ class SupportTicketControllerIT extends AbstractIntegrationTest {
     headers.setContentType(MediaType.APPLICATION_JSON);
     headers.set("X-Company-Code", companyCode);
     return headers;
+  }
+
+  private HttpHeaders jsonOnlyHeaders() {
+    HttpHeaders headers = new HttpHeaders();
+    headers.setContentType(MediaType.APPLICATION_JSON);
+    return headers;
+  }
+
+  @SuppressWarnings("unchecked")
+  private Map<String, Object> data(ResponseEntity<Map> response) {
+    assertThat(response.getBody()).isNotNull();
+    Map<String, Object> data = (Map<String, Object>) response.getBody().get("data");
+    assertThat(data).isNotNull();
+    return data;
   }
 
   private String login(String email, String companyCode) {

@@ -6,6 +6,9 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -13,18 +16,30 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.StringUtils;
+import org.springframework.web.util.HtmlUtils;
 
+import com.bigbrightpaints.erp.core.audit.AuditEvent;
+import com.bigbrightpaints.erp.core.audit.AuditLog;
+import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.security.SecurityActorResolver;
 import com.bigbrightpaints.erp.modules.admin.domain.SupportTicket;
 import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketCategory;
+import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketMessage;
+import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketMessageAuthorRole;
+import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketMessageRepository;
+import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketMessageVisibility;
+import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketPriority;
 import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketRepository;
 import com.bigbrightpaints.erp.modules.admin.dto.SupportTicketCreateRequest;
+import com.bigbrightpaints.erp.modules.admin.dto.SupportTicketMessageRequest;
+import com.bigbrightpaints.erp.modules.admin.dto.SupportTicketMessageResponse;
 import com.bigbrightpaints.erp.modules.admin.dto.SupportTicketResponse;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserPrincipal;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
+import com.bigbrightpaints.erp.shared.dto.PageResponse;
 
 import jakarta.annotation.Nullable;
 
@@ -32,13 +47,19 @@ import jakarta.annotation.Nullable;
 public class SupportTicketAccessSupport {
 
   private final SupportTicketRepository supportTicketRepository;
+  private final SupportTicketMessageRepository supportTicketMessageRepository;
   private final SupportTicketGitHubSyncService supportTicketGitHubSyncService;
+  private final AuditService auditService;
 
   public SupportTicketAccessSupport(
       SupportTicketRepository supportTicketRepository,
-      SupportTicketGitHubSyncService supportTicketGitHubSyncService) {
+      SupportTicketMessageRepository supportTicketMessageRepository,
+      SupportTicketGitHubSyncService supportTicketGitHubSyncService,
+      AuditService auditService) {
     this.supportTicketRepository = supportTicketRepository;
+    this.supportTicketMessageRepository = supportTicketMessageRepository;
     this.supportTicketGitHubSyncService = supportTicketGitHubSyncService;
+    this.auditService = auditService;
   }
 
   @Transactional
@@ -49,10 +70,16 @@ public class SupportTicketAccessSupport {
     ticket.setCompany(company);
     ticket.setUserId(actor.getId());
     ticket.setCategory(parseCategory(request.category()));
+    ticket.setPriority(parsePriority(request.priority()));
     ticket.setSubject(normalizeRequired(request.subject(), "subject", 255));
     ticket.setDescription(normalizeRequired(request.description(), "description", 4000));
 
     SupportTicket saved = supportTicketRepository.save(ticket);
+    auditRequired(
+        saved,
+        "support-ticket-created",
+        SupportTicketMessageAuthorRole.TENANT,
+        SupportTicketMessageVisibility.CUSTOMER);
     if (TransactionSynchronizationManager.isSynchronizationActive()) {
       TransactionSynchronizationManager.registerSynchronization(
           new TransactionSynchronization() {
@@ -65,6 +92,42 @@ public class SupportTicketAccessSupport {
       supportTicketGitHubSyncService.submitGitHubIssueAsync(saved.getId());
     }
     return toResponses(List.of(saved), actor.getId()).getFirst();
+  }
+
+  @Transactional
+  public SupportTicketMessageResponse addMessage(
+      SupportTicket ticket,
+      SupportTicketMessageRequest request,
+      SupportTicketMessageAuthorRole authorRole,
+      SupportTicketMessageVisibility visibility) {
+    UserAccount actor = requireCurrentUser();
+    SupportTicketMessage message = new SupportTicketMessage();
+    message.setTicket(ticket);
+    message.setCompany(ticket.getCompany());
+    message.setAuthorUserId(actor.getId());
+    message.setAuthorRole(authorRole);
+    message.setVisibility(visibility);
+    message.setContent(sanitizeContent(request == null ? null : request.content()));
+    SupportTicketMessage saved = supportTicketMessageRepository.saveAndFlush(message);
+    Long auditEventId =
+        auditRequired(ticket, supportAuditReason(visibility), authorRole, visibility);
+    saved.setAuditEventId(auditEventId);
+    supportTicketMessageRepository.saveAndFlush(saved);
+    return toMessageResponses(List.of(saved)).getFirst();
+  }
+
+  @Transactional(readOnly = true)
+  public PageResponse<SupportTicketMessageResponse> listCustomerMessages(
+      SupportTicket ticket, int page, int size, boolean platformAudience) {
+    Pageable pageable = PageRequest.of(requirePage(page), requireSize(size));
+    Page<SupportTicketMessage> messages =
+        supportTicketMessageRepository.findByTicketAndVisibilityOrderByCreatedAtAscIdAsc(
+            ticket, SupportTicketMessageVisibility.CUSTOMER, pageable);
+    return PageResponse.of(
+        toMessageResponses(messages.getContent(), platformAudience),
+        messages.getTotalElements(),
+        messages.getNumber(),
+        messages.getSize());
   }
 
   public UserAccount requireCurrentUser() {
@@ -121,6 +184,7 @@ public class SupportTicketAccessSupport {
                   ticket.getUserId(),
                   requesterEmails.get(ticket.getUserId()),
                   ticket.getCategory(),
+                  ticket.getPriority(),
                   ticket.getSubject(),
                   ticket.getDescription(),
                   ticket.getStatus(),
@@ -132,7 +196,68 @@ public class SupportTicketAccessSupport {
                   ticket.getResolvedAt(),
                   ticket.getResolvedNotificationSentAt(),
                   ticket.getCreatedAt(),
-                  ticket.getUpdatedAt());
+                  ticket.getUpdatedAt(),
+                  customerMessages(ticket, false));
+            })
+        .toList();
+  }
+
+  public List<SupportTicketMessageResponse> customerMessages(
+      SupportTicket ticket, boolean platformAudience) {
+    return toMessageResponses(
+        supportTicketMessageRepository.findByTicketAndVisibilityInOrderByCreatedAtAscIdAsc(
+            ticket, List.of(SupportTicketMessageVisibility.CUSTOMER)),
+        platformAudience);
+  }
+
+  public List<SupportTicketMessageResponse> internalNotes(SupportTicket ticket) {
+    return toMessageResponses(
+        supportTicketMessageRepository.findByTicketAndVisibilityInOrderByCreatedAtAscIdAsc(
+            ticket, List.of(SupportTicketMessageVisibility.INTERNAL)));
+  }
+
+  public List<SupportTicketMessageResponse> toMessageResponses(
+      List<SupportTicketMessage> messages) {
+    return toMessageResponses(messages, true);
+  }
+
+  private List<SupportTicketMessageResponse> toMessageResponses(
+      List<SupportTicketMessage> messages, boolean platformAudience) {
+    if (messages == null || messages.isEmpty()) {
+      return List.of();
+    }
+    Set<Long> authorIds =
+        messages.stream()
+            .map(SupportTicketMessage::getAuthorUserId)
+            .filter(id -> id != null && id > 0)
+            .collect(Collectors.toSet());
+    Map<Long, String> emails =
+        authorIds.isEmpty()
+            ? Map.of()
+            : supportTicketMessageRepository.findUsersByIdIn(authorIds).stream()
+                .collect(
+                    Collectors.toMap(
+                        UserAccount::getId,
+                        UserAccount::getEmail,
+                        (existing, replacement) -> existing,
+                        java.util.LinkedHashMap::new));
+    return messages.stream()
+        .map(
+            message -> {
+              boolean redactPlatformAuthor =
+                  !platformAudience
+                      && message.getAuthorRole() == SupportTicketMessageAuthorRole.SUPER_ADMIN;
+              return new SupportTicketMessageResponse(
+                  message.getId(),
+                  message.getPublicId(),
+                  message.getTicket().getId(),
+                  redactPlatformAuthor ? null : message.getAuthorUserId(),
+                  redactPlatformAuthor ? null : emails.get(message.getAuthorUserId()),
+                  message.getAuthorRole(),
+                  message.getVisibility(),
+                  message.getContent(),
+                  message.getCreatedAt(),
+                  redactPlatformAuthor ? null : message.getAuditEventId());
             })
         .toList();
   }
@@ -145,6 +270,85 @@ public class SupportTicketAccessSupport {
       throw new ApplicationException(
           ErrorCode.VALIDATION_INVALID_INPUT, "Invalid category: " + rawCategory);
     }
+  }
+
+  private SupportTicketPriority parsePriority(String rawPriority) {
+    if (!StringUtils.hasText(rawPriority)) {
+      return SupportTicketPriority.NORMAL;
+    }
+    String normalized = normalizeRequired(rawPriority, "priority", 32).toUpperCase(Locale.ROOT);
+    try {
+      return SupportTicketPriority.valueOf(normalized);
+    } catch (IllegalArgumentException ex) {
+      throw new ApplicationException(
+          ErrorCode.VALIDATION_INVALID_INPUT, "Invalid priority: " + rawPriority);
+    }
+  }
+
+  private int requirePage(int page) {
+    if (page < 0) {
+      throw new ApplicationException(
+          ErrorCode.VALIDATION_OUT_OF_RANGE, "page must be greater than or equal to 0");
+    }
+    return page;
+  }
+
+  private int requireSize(int size) {
+    if (size < 1 || size > 100) {
+      throw new ApplicationException(
+          ErrorCode.VALIDATION_OUT_OF_RANGE, "size must be between 1 and 100");
+    }
+    return size;
+  }
+
+  private String sanitizeContent(String value) {
+    String normalized = normalizeRequired(value, "content", 4000);
+    return HtmlUtils.htmlEscape(normalized);
+  }
+
+  private String supportAuditReason(SupportTicketMessageVisibility visibility) {
+    return visibility == SupportTicketMessageVisibility.INTERNAL
+        ? "support-internal-note-created"
+        : "support-message-created";
+  }
+
+  private Long auditRequired(
+      SupportTicket ticket,
+      String reason,
+      SupportTicketMessageAuthorRole authorRole,
+      SupportTicketMessageVisibility visibility) {
+    AuditLog auditLog =
+        auditService.logAuthSuccessRequired(
+            AuditEvent.DATA_CREATE,
+            currentActor(),
+            ticket.getCompany().getCode(),
+            Map.of(
+                "reason",
+                reason,
+                "ticketId",
+                String.valueOf(ticket.getId()),
+                "ticketPublicId",
+                ticket.getPublicId() == null ? "unassigned" : ticket.getPublicId().toString(),
+                "targetCompanyCode",
+                ticket.getCompany().getCode(),
+                "targetCompanyId",
+                String.valueOf(ticket.getCompany().getId()),
+                "authorRole",
+                authorRole.name(),
+                "visibility",
+                visibility.name()));
+    if (auditLog == null || auditLog.getId() == null) {
+      throw new ApplicationException(
+          ErrorCode.BUSINESS_INVALID_STATE, "Support ticket audit event was not persisted");
+    }
+    return auditLog.getId();
+  }
+
+  private String currentActor() {
+    Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+    return authentication == null || !StringUtils.hasText(authentication.getName())
+        ? "system"
+        : authentication.getName();
   }
 
   private String normalizeRequired(String value, String fieldName, int maxLength) {

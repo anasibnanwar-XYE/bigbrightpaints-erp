@@ -5,6 +5,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -25,6 +27,21 @@ public interface SupportTicketRepository extends JpaRepository<SupportTicket, Lo
   Optional<SupportTicket> findByCompanyAndId(Company company, Long id);
 
   long countByCompanyAndStatus(Company company, SupportTicketStatus status);
+
+  @Query(
+      """
+      SELECT t FROM SupportTicket t
+      JOIN t.company c
+      WHERE (:status IS NULL OR t.status = :status)
+        AND (
+          :query IS NULL
+          OR LOWER(t.subject) LIKE LOWER(CONCAT('%', :query, '%'))
+          OR LOWER(c.code) LIKE LOWER(CONCAT('%', :query, '%'))
+          OR LOWER(c.name) LIKE LOWER(CONCAT('%', :query, '%'))
+        )
+      """)
+  Page<SupportTicket> findSuperAdminQueue(
+      @Param("status") SupportTicketStatus status, @Param("query") String query, Pageable pageable);
 
   List<SupportTicket> findTop200ByGithubIssueNumberIsNotNullAndStatusInOrderByCreatedAtAsc(
       Collection<SupportTicketStatus> statuses);

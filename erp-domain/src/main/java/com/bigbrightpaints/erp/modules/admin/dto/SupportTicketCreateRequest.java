@@ -5,5 +5,6 @@ import jakarta.validation.constraints.Size;
 
 public record SupportTicketCreateRequest(
     @NotBlank @Size(max = 32) String category,
+    @Size(max = 32) String priority,
     @NotBlank @Size(max = 255) String subject,
     @NotBlank @Size(max = 4000) String description) {}

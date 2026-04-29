@@ -520,6 +520,52 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
         "#/components/schemas/ApiResponseSuperAdminTenantSupportContextDto");
     assertOperationContract(
         root,
+        "/api/v1/superadmin/support/tickets",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponsePageResponseQueueItem");
+    assertQueryParameter(root, "/api/v1/superadmin/support/tickets", "get", "status");
+    assertQueryParameter(root, "/api/v1/superadmin/support/tickets", "get", "q");
+    assertQueryParameter(root, "/api/v1/superadmin/support/tickets", "get", "page");
+    assertQueryParameter(root, "/api/v1/superadmin/support/tickets", "get", "size");
+    assertQueryParameter(root, "/api/v1/superadmin/support/tickets", "get", "sort");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/support/tickets/{ticketId}",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseDetail");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/support/tickets/{ticketId}/messages",
+        "post",
+        "#/components/schemas/SupportTicketMessageRequest",
+        "200",
+        "#/components/schemas/ApiResponseSupportTicketMessageResponse");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/support/tickets/{ticketId}/messages",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponsePageResponseSupportTicketMessageResponse");
+    assertQueryParameter(
+        root, "/api/v1/superadmin/support/tickets/{ticketId}/messages", "get", "page");
+    assertQueryParameter(
+        root, "/api/v1/superadmin/support/tickets/{ticketId}/messages", "get", "size");
+    assertQueryParameter(
+        root, "/api/v1/superadmin/support/tickets/{ticketId}/messages", "get", "includeInternal");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/support/tickets/{ticketId}/internal-notes",
+        "post",
+        "#/components/schemas/SupportTicketMessageRequest",
+        "200",
+        "#/components/schemas/ApiResponseSupportTicketMessageResponse");
+    assertOperationContract(
+        root,
         "/api/v1/superadmin/tenants/{id}/force-logout",
         "post",
         "#/components/schemas/TenantForceLogoutRequest",
