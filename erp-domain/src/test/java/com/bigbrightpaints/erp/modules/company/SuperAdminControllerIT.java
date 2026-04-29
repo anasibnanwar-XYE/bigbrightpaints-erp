@@ -141,6 +141,71 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
   }
 
   @Test
+  void platformHealthRequiresSuperAdminAndReturnsRedactedComponentStatuses() {
+    String adminToken = loginToken(ADMIN_EMAIL, COMPANY_CODE);
+    ResponseEntity<Map> forbidden =
+        rest.exchange(
+            "/api/v1/superadmin/infra/health",
+            HttpMethod.GET,
+            new HttpEntity<>(headers(adminToken, COMPANY_CODE)),
+            Map.class);
+
+    assertThat(forbidden.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+
+    String superAdminToken = loginToken(SUPER_ADMIN_EMAIL, ROOT_COMPANY_CODE);
+    ResponseEntity<Map> allowed =
+        rest.exchange(
+            "/api/v1/superadmin/infra/health",
+            HttpMethod.GET,
+            new HttpEntity<>(headers(superAdminToken, ROOT_COMPANY_CODE)),
+            Map.class);
+
+    assertThat(allowed.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(allowed.getBody()).isNotNull();
+    @SuppressWarnings("unchecked")
+    Map<String, Object> data = (Map<String, Object>) allowed.getBody().get("data");
+    assertThat(data)
+        .containsKeys(
+            "checkedAt",
+            "overallStatus",
+            "traceId",
+            "appReadiness",
+            "database",
+            "rabbitMq",
+            "queue",
+            "email",
+            "sentry",
+            "datadog",
+            "backup",
+            "failedJobs",
+            "components",
+            "redactionPolicy");
+    assertThat(data.get("components").toString())
+        .contains(
+            "appReadiness",
+            "database",
+            "rabbitMq",
+            "queue",
+            "email",
+            "sentry",
+            "datadog",
+            "backup",
+            "failedJobs");
+    String body = allowed.getBody().toString().toLowerCase(Locale.ROOT);
+    assertThat(body)
+        .doesNotContain(
+            "admin123",
+            "bearer ",
+            "sentry_auth_token",
+            "dd_api_key",
+            "jdbc:",
+            "amqp://",
+            "stacktrace",
+            "payload",
+            "arguments");
+  }
+
+  @Test
   void addClientOptionsAndDraftCreateAreStrictAndBranchFree() {
     String superAdminToken = loginToken(SUPER_ADMIN_EMAIL, ROOT_COMPANY_CODE);
     HttpHeaders superAdminHeaders = headers(superAdminToken, ROOT_COMPANY_CODE);

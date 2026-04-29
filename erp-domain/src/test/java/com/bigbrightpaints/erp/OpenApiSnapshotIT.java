@@ -541,6 +541,13 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
         "#/components/schemas/ApiResponseSlaRefreshResponse");
     assertOperationContract(
         root,
+        "/api/v1/superadmin/infra/health",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseSuperAdminPlatformHealthDto");
+    assertOperationContract(
+        root,
         "/api/v1/superadmin/support/tickets/{ticketId}",
         "get",
         null,
@@ -886,6 +893,7 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
             "POST /api/v1/superadmin/support/tickets/{ticketId}/messages",
             "POST /api/v1/superadmin/support/tickets/{ticketId}/status",
             "POST /api/v1/superadmin/support/tickets/sla/refresh",
+            "GET /api/v1/superadmin/infra/health",
             "GET /api/v1/superadmin/tenants/coa-templates",
             "GET /api/v1/superadmin/settings",
             "PUT /api/v1/superadmin/settings",
