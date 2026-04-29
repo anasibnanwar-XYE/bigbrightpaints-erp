@@ -6,6 +6,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
@@ -112,7 +113,18 @@ class TS_RuntimeDealerPortalControllerExportCoverageTest {
                 200,
                 5000,
                 500,
-                new TenantRuntimeEnforcementService.TenantRuntimeMetrics(0, 0, 0, 0, 0, 0, 0L)));
+                new TenantRuntimeEnforcementService.TenantRuntimeMetrics(
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0L,
+                    Instant.parse("2026-01-01T00:00:00Z"),
+                    Instant.parse("2026-01-01T00:01:00Z"),
+                    Instant.parse("2026-01-01T00:01:00Z"),
+                    Instant.parse("2026-01-01T00:00:00Z"))));
 
     assertThat(service.metrics().holdReason()).isEqualTo("POLICY_ACTIVE");
   }

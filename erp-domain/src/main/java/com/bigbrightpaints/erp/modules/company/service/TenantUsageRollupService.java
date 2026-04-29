@@ -144,6 +144,7 @@ public class TenantUsageRollupService {
         toPeriod(PeriodType.DAILY, daily, false, null),
         toPeriod(PeriodType.MONTHLY, monthly, false, null),
         dimensions,
+        List.of(),
         history);
   }
 

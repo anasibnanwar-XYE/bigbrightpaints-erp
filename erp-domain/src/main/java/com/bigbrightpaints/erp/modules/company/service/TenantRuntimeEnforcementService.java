@@ -401,6 +401,12 @@ public class TenantRuntimeEnforcementService {
     TenantRuntimePolicy policy = policyForManagedOperation(normalizedCompany);
     TenantRuntimeCounters usageCounters = countersFor(normalizedCompany);
     Long activeUsers = resolveActiveUsers(normalizedCompany);
+    Instant capturedAt = CompanyTime.now();
+    long currentMinuteBucket = capturedAt.getEpochSecond() / 60L;
+    long trackedMinuteBucket = usageCounters.minuteBucket.get();
+    boolean currentWindowTracked = trackedMinuteBucket == currentMinuteBucket;
+    Instant currentWindowStartAt = Instant.ofEpochSecond(currentMinuteBucket * 60L);
+    Instant currentWindowEndAt = currentWindowStartAt.plusSeconds(60L);
     return new TenantRuntimeSnapshot(
         normalizedCompany,
         policy.state,
@@ -415,9 +421,13 @@ public class TenantRuntimeEnforcementService {
             usageCounters.rejectedRequests.get(),
             usageCounters.errorResponses.get(),
             usageCounters.inFlightRequests.get(),
-            usageCounters.minuteRequestCount.get(),
-            usageCounters.minuteRejectedCount.get(),
-            activeUsers));
+            currentWindowTracked ? usageCounters.minuteRequestCount.get() : 0,
+            currentWindowTracked ? usageCounters.minuteRejectedCount.get() : 0,
+            activeUsers,
+            currentWindowStartAt,
+            currentWindowEndAt,
+            currentWindowEndAt,
+            capturedAt));
   }
 
   public void invalidatePolicyCache(String companyCode) {
@@ -1428,7 +1438,11 @@ public class TenantRuntimeEnforcementService {
       int inFlightRequests,
       int minuteRequestCount,
       int minuteRejectedCount,
-      long activeUsers) {}
+      long activeUsers,
+      Instant currentWindowStartAt,
+      Instant currentWindowEndAt,
+      Instant currentWindowResetAt,
+      Instant capturedAt) {}
 
   public record TenantRuntimeSnapshot(
       String companyCode,

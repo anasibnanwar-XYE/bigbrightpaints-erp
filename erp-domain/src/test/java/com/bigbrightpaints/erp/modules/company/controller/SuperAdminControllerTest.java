@@ -37,6 +37,7 @@ import com.bigbrightpaints.erp.modules.company.dto.SuperAdminTenantSupportContex
 import com.bigbrightpaints.erp.modules.company.service.CompanyService;
 import com.bigbrightpaints.erp.modules.company.service.SuperAdminTenantControlPlaneService;
 import com.bigbrightpaints.erp.modules.company.service.SuperAdminTenantEntitlementService;
+import com.bigbrightpaints.erp.modules.company.service.SuperAdminUsageService;
 import com.bigbrightpaints.erp.modules.company.service.TenantUsageRollupService;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 import com.bigbrightpaints.erp.shared.dto.PageResponse;
@@ -48,6 +49,7 @@ class SuperAdminControllerTest {
   @Mock private SuperAdminTenantControlPlaneService controlPlaneService;
   @Mock private SuperAdminTenantEntitlementService entitlementService;
   @Mock private TenantUsageRollupService tenantUsageRollupService;
+  @Mock private SuperAdminUsageService superAdminUsageService;
 
   private SuperAdminController controller;
 
@@ -55,7 +57,11 @@ class SuperAdminControllerTest {
   void setUp() {
     controller =
         new SuperAdminController(
-            companyService, controlPlaneService, entitlementService, tenantUsageRollupService);
+            companyService,
+            controlPlaneService,
+            entitlementService,
+            tenantUsageRollupService,
+            superAdminUsageService);
   }
 
   @Test
@@ -194,10 +200,10 @@ class SuperAdminControllerTest {
         .thenReturn(
             new com.bigbrightpaints.erp.modules.company.dto.SuperAdminUsageDtos.PlatformUsage(
                 Instant.parse("2026-03-26T12:00:00Z"), null, List.of(), List.of()));
-    when(tenantUsageRollupService.getTenantUsage(7L, entitlements.limits()))
+    when(superAdminUsageService.getTenantUsage(7L, entitlements.limits()))
         .thenReturn(
             new com.bigbrightpaints.erp.modules.company.dto.SuperAdminUsageDtos.TenantUsage(
-                7L, "ACME", "Acme", "UTC", null, null, List.of(), List.of()));
+                7L, "ACME", "Acme", "UTC", null, null, List.of(), List.of(), List.of()));
     when(tenantUsageRollupService.getTenantUsageHistory(7L, "DAILY"))
         .thenReturn(
             new com.bigbrightpaints.erp.modules.company.dto.SuperAdminUsageDtos.TenantUsageHistory(

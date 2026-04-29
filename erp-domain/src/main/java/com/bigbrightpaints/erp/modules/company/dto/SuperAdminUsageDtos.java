@@ -15,6 +15,7 @@ public final class SuperAdminUsageDtos {
       Period currentDailyPeriod,
       Period currentMonthlyPeriod,
       List<DimensionUsage> dimensions,
+      List<DimensionUsage> operationalDimensions,
       List<RollupWindow> history) {}
 
   public record TenantQuotaPolicy(

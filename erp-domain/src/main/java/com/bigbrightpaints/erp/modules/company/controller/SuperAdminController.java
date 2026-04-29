@@ -13,6 +13,7 @@ import com.bigbrightpaints.erp.modules.company.dto.*;
 import com.bigbrightpaints.erp.modules.company.service.CompanyService;
 import com.bigbrightpaints.erp.modules.company.service.SuperAdminTenantControlPlaneService;
 import com.bigbrightpaints.erp.modules.company.service.SuperAdminTenantEntitlementService;
+import com.bigbrightpaints.erp.modules.company.service.SuperAdminUsageService;
 import com.bigbrightpaints.erp.modules.company.service.TenantUsageRollupService;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 import com.bigbrightpaints.erp.shared.dto.PageResponse;
@@ -35,16 +36,19 @@ public class SuperAdminController {
   private final SuperAdminTenantControlPlaneService controlPlaneService;
   private final SuperAdminTenantEntitlementService entitlementService;
   private final TenantUsageRollupService tenantUsageRollupService;
+  private final SuperAdminUsageService superAdminUsageService;
 
   public SuperAdminController(
       CompanyService companyService,
       SuperAdminTenantControlPlaneService controlPlaneService,
       SuperAdminTenantEntitlementService entitlementService,
-      TenantUsageRollupService tenantUsageRollupService) {
+      TenantUsageRollupService tenantUsageRollupService,
+      SuperAdminUsageService superAdminUsageService) {
     this.companyService = companyService;
     this.controlPlaneService = controlPlaneService;
     this.entitlementService = entitlementService;
     this.tenantUsageRollupService = tenantUsageRollupService;
+    this.superAdminUsageService = superAdminUsageService;
   }
 
   @GetMapping("/dashboard")
@@ -105,7 +109,7 @@ public class SuperAdminController {
     return ResponseEntity.ok(
         ApiResponse.success(
             "Tenant usage fetched",
-            tenantUsageRollupService.getTenantUsage(tenantId, entitlements.limits())));
+            superAdminUsageService.getTenantUsage(tenantId, entitlements.limits())));
   }
 
   @GetMapping("/tenants/{id}/usage/history")

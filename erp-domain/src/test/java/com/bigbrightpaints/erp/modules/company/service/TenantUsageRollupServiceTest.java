@@ -70,6 +70,7 @@ class TenantUsageRollupServiceTest {
     assertThat(usage.dimensions())
         .extracting(SuperAdminUsageDtos.DimensionUsage::dimension)
         .containsExactly("USERS", "STORAGE", "API_CALLS", "PDF_EXPORTS", "EMAILS", "JOBS");
+    assertThat(usage.operationalDimensions()).isEmpty();
     assertThat(usage.dimensions())
         .filteredOn(dimension -> "USERS".equals(dimension.dimension()))
         .singleElement()

@@ -596,6 +596,17 @@ class TS_RuntimeTenantPolicyControlExecutableCoverageTest {
         10,
         100,
         50,
-        new TenantRuntimeEnforcementService.TenantRuntimeMetrics(0, 0, 0, 0, 0, 0, 0));
+        new TenantRuntimeEnforcementService.TenantRuntimeMetrics(
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            Instant.parse("2026-01-01T00:00:00Z"),
+            Instant.parse("2026-01-01T00:01:00Z"),
+            Instant.parse("2026-01-01T00:01:00Z"),
+            Instant.parse("2026-01-01T00:00:00Z")));
   }
 }

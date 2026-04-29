@@ -203,6 +203,33 @@ class TenantRuntimeEnforcementServiceTest {
   }
 
   @Test
+  void snapshotExposesCurrentRuntimeWindowMetadataFromAdmissionCounters() {
+    TenantRuntimeEnforcementService.TenantRequestAdmission first =
+        admissionService.beginRequest("ACME", "/api/v1/private", "GET", "actor@bbp.com");
+    TenantRuntimeEnforcementService.TenantRequestAdmission second =
+        admissionService.beginRequest("ACME", "/api/v1/private", "GET", "actor@bbp.com");
+    TenantRuntimeEnforcementService.TenantRequestAdmission third =
+        admissionService.beginRequest("ACME", "/api/v1/private", "GET", "actor@bbp.com");
+    TenantRuntimeEnforcementService.TenantRequestAdmission rejected =
+        admissionService.beginRequest("ACME", "/api/v1/private", "GET", "actor@bbp.com");
+    admissionService.completeRequest(first, 200);
+    admissionService.completeRequest(second, 200);
+
+    TenantRuntimeEnforcementService.TenantRuntimeSnapshot snapshot = service.snapshot("ACME");
+
+    assertThat(third.isAdmitted()).isTrue();
+    assertThat(rejected.isAdmitted()).isFalse();
+    assertThat(snapshot.metrics().minuteRequestCount()).isEqualTo(4);
+    assertThat(snapshot.metrics().minuteRejectedCount()).isEqualTo(1);
+    assertThat(snapshot.metrics().inFlightRequests()).isEqualTo(1);
+    assertThat(snapshot.metrics().currentWindowStartAt()).isEqualTo("2026-01-01T00:00:00Z");
+    assertThat(snapshot.metrics().currentWindowEndAt()).isEqualTo("2026-01-01T00:01:00Z");
+    assertThat(snapshot.metrics().currentWindowResetAt()).isEqualTo("2026-01-01T00:01:00Z");
+    assertThat(snapshot.metrics().capturedAt()).isEqualTo("2026-01-01T00:00:10Z");
+    admissionService.completeRequest(third, 200);
+  }
+
+  @Test
   void holdTenant_rejectsNewRequests_withLockedStatusAndAuditFailure() {
     TenantRuntimeEnforcementService.TenantRuntimeSnapshot holdSnapshot =
         service.holdTenant("ACME", "compliance_review", "ops@bbp.com");

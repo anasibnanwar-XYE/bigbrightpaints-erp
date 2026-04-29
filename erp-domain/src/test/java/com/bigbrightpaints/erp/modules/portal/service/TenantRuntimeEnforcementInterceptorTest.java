@@ -614,7 +614,11 @@ class TenantRuntimeEnforcementInterceptorTest {
             inFlightRequests,
             totalRequests,
             rejectedRequests,
-            activeUsers));
+            activeUsers,
+            updatedAt,
+            updatedAt.plusSeconds(60L),
+            updatedAt.plusSeconds(60L),
+            updatedAt));
   }
 
   @SuppressWarnings("unchecked")

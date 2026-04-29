@@ -215,6 +215,10 @@ class TenantRuntimePolicyServiceTest {
             inFlightRequests,
             requestsThisMinute,
             blockedThisMinute,
-            activeUsers));
+            activeUsers,
+            updatedAt,
+            updatedAt.plusSeconds(60L),
+            updatedAt.plusSeconds(60L),
+            updatedAt));
   }
 }

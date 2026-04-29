@@ -378,6 +378,16 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
         null,
         "200",
         "#/components/schemas/ApiResponseTenantUsage");
+    assertThat(
+            root.path("components")
+                .path("schemas")
+                .path("TenantUsage")
+                .path("properties")
+                .has("operationalDimensions"))
+        .withFailMessage(
+            "Tenant usage schema must expose operationalDimensions for runtime API window,"
+                + " rejected-request, and in-flight/concurrent readback")
+        .isTrue();
     assertOperationContract(
         root,
         "/api/v1/superadmin/tenants/{id}/usage/history",

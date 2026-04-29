@@ -1410,7 +1410,18 @@ class CompanyServiceTest {
             20,
             100,
             80,
-            new TenantRuntimeEnforcementService.TenantRuntimeMetrics(1, 0, 0, 0, 1, 0, 5));
+            new TenantRuntimeEnforcementService.TenantRuntimeMetrics(
+                1,
+                0,
+                0,
+                0,
+                1,
+                0,
+                5,
+                Instant.parse("2026-01-01T00:00:00Z"),
+                Instant.parse("2026-01-01T00:01:00Z"),
+                Instant.parse("2026-01-01T00:01:00Z"),
+                Instant.parse("2026-01-01T00:00:00Z")));
     when(tenantRuntimeEnforcementService.updatePolicy(
             eq("ACME"),
             eq(TenantRuntimeEnforcementService.TenantRuntimeState.HOLD),
