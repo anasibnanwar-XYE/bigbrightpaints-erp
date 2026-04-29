@@ -388,18 +388,10 @@ class SuperAdminBillingIT extends AbstractIntegrationTest {
         .containsEntry("writesAllowed", true)
         .containsEntry("backgroundWorkAllowed", true);
 
-    Instant cancelEffectiveAt = Instant.parse("2026-06-01T00:00:00Z");
     Map<String, Object> canceled =
         postCommercialAction(
-            tenantId,
-            "cancel",
-            Map.of(
-                "reason",
-                "Customer requested cancellation",
-                "effectiveAt",
-                cancelEffectiveAt.toString()));
+            tenantId, "cancel", Map.of("reason", "Customer requested cancellation"));
     assertCommercialState(canceled, "CANCELED", "DEACTIVATED", "BLOCKED", "CANCELED");
-    assertThat(canceled).containsEntry("effectiveAt", cancelEffectiveAt.toString());
     assertAuditReason((Number) canceled.get("auditEventId"), "commercial-state-canceled");
 
     Map<String, Object> archived =
@@ -429,6 +421,170 @@ class SuperAdminBillingIT extends AbstractIntegrationTest {
     Map<String, Object> archivedPage =
         (Map<String, Object>) includeArchivedList.getBody().get("data");
     assertThat(archivedPage.get("totalElements")).isEqualTo(1);
+  }
+
+  @Test
+  void futureCancelAndArchiveStayScheduledUntilEffectiveInstantThenApplyDeterministically()
+      throws Exception {
+    Long cancelTenant = createTenant("M10FCA", "GROWTH", "DUE");
+    createSubscription(cancelTenant, subscriptionPayload("GROWTH", "MONTHLY", 75_000L, "ACTIVE"));
+    long mrrBefore = usdMrrMinorUnits();
+    Instant futureCancelAt = Instant.now().plusSeconds(60);
+
+    Map<String, Object> scheduledCancel =
+        postCommercialAction(
+            cancelTenant,
+            "cancel",
+            Map.of(
+                "reason",
+                "Schedule future cancellation",
+                "effectiveAt",
+                futureCancelAt.toString()));
+
+    assertCommercialState(scheduledCancel, "ACTIVE", "ACTIVE", "ACTIVE", "PAID");
+    assertThat(scheduledCancel)
+        .containsEntry("effectiveAt", futureCancelAt.toString())
+        .containsEntry("canceledAt", futureCancelAt.toString())
+        .containsEntry("loginAllowed", true)
+        .containsEntry("writesAllowed", true);
+    assertThat(usdMrrMinorUnits()).isEqualTo(mrrBefore);
+    assertSubscriptionStatus(cancelTenant, "ACTIVE", "PAID");
+
+    ResponseEntity<Map> conflictingArchive =
+        postCommercialActionRaw(
+            cancelTenant, "archive", Map.of("reason", "Cannot archive while cancel is pending"));
+    assertThat(conflictingArchive.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+    assertSubscriptionStatus(cancelTenant, "ACTIVE", "PAID");
+
+    Long dueCancelTenant = createTenant("M10DCA", "GROWTH", "DUE");
+    createSubscription(
+        dueCancelTenant, subscriptionPayload("GROWTH", "MONTHLY", 75_000L, "ACTIVE"));
+    Instant dueCancelAt = Instant.now().plusMillis(250);
+    Map<String, Object> scheduledDueCancel =
+        postCommercialAction(
+            dueCancelTenant,
+            "cancel",
+            Map.of("reason", "Due cancellation", "effectiveAt", dueCancelAt.toString()));
+    assertCommercialState(scheduledDueCancel, "ACTIVE", "ACTIVE", "ACTIVE", "PAID");
+    Thread.sleep(400);
+    Map<String, Object> appliedCancel = getCommercialState(dueCancelTenant);
+    assertCommercialState(appliedCancel, "CANCELED", "DEACTIVATED", "BLOCKED", "CANCELED");
+
+    Long archiveTenant = createTenant("M10FAR", "GROWTH", "DUE");
+    createSubscription(archiveTenant, subscriptionPayload("GROWTH", "MONTHLY", 75_000L, "ACTIVE"));
+    Instant archiveAt = Instant.now().plusMillis(250);
+    Map<String, Object> scheduledArchive =
+        postCommercialAction(
+            archiveTenant,
+            "archive",
+            Map.of("reason", "Schedule archive", "effectiveAt", archiveAt.toString()));
+    assertCommercialState(scheduledArchive, "ACTIVE", "ACTIVE", "ACTIVE", "PAID");
+    assertThat(defaultListCount((String) scheduledArchive.get("tenantCode"), false)).isEqualTo(1);
+    Thread.sleep(400);
+    Map<String, Object> appliedArchive = getCommercialState(archiveTenant);
+    assertCommercialState(appliedArchive, "ARCHIVED", "DEACTIVATED", "BLOCKED", "ARCHIVED");
+    assertThat(defaultListCount((String) appliedArchive.get("tenantCode"), false)).isZero();
+    assertThat(defaultListCount((String) appliedArchive.get("tenantCode"), true)).isEqualTo(1);
+  }
+
+  @Test
+  void lifecycleActionRepeatsAreNoOpAndConflictsDoNotMutateStateOrAudit() {
+    Long tenantId = createTenant("M10IDM", "GROWTH", "DUE");
+    createSubscription(
+        tenantId,
+        subscriptionPayload("GROWTH", "MONTHLY", 75_000L, "ACTIVE", "INR", "2026-05-15T00:00:00Z"));
+    postLedger(
+        tenantId,
+        "invoices",
+        ledgerPayload(tenantId, "idempotency-invoice", 75_000L, "INR", "Idempotency invoice"));
+
+    Map<String, Object> graceRequest =
+        Map.of("reason", "Grace idempotency", "graceUntilAt", "2026-05-20T00:00:00Z");
+    Map<String, Object> firstGrace =
+        postCommercialAction(tenantId, "suspension/grace", graceRequest);
+    long auditAfterFirstGrace = countCommercialLifecycleAuditEvents(tenantId);
+    Map<String, Object> replayGrace =
+        postCommercialAction(tenantId, "suspension/grace", graceRequest);
+    assertThat(replayGrace.get("auditEventId")).isEqualTo(firstGrace.get("auditEventId"));
+    assertThat(countCommercialLifecycleAuditEvents(tenantId)).isEqualTo(auditAfterFirstGrace);
+
+    ResponseEntity<Map> conflictingGrace =
+        postCommercialActionRaw(
+            tenantId,
+            "suspension/grace",
+            Map.of("reason", "Different grace", "graceUntilAt", "2026-05-21T00:00:00Z"));
+    assertThat(conflictingGrace.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+    assertThat(countCommercialLifecycleAuditEvents(tenantId)).isEqualTo(auditAfterFirstGrace);
+    assertCommercialState(getCommercialState(tenantId), "GRACE", "ACTIVE", "ACTIVE", "GRACE");
+
+    Map<String, Object> readOnlyRequest =
+        Map.of("reason", "Read-only idempotency", "effectiveAt", "2026-05-21T00:00:00Z");
+    Map<String, Object> firstReadOnly =
+        postCommercialAction(tenantId, "suspension/read-only", readOnlyRequest);
+    long auditAfterReadOnly = countCommercialLifecycleAuditEvents(tenantId);
+    Map<String, Object> replayReadOnly =
+        postCommercialAction(tenantId, "suspension/read-only", readOnlyRequest);
+    assertThat(replayReadOnly.get("auditEventId")).isEqualTo(firstReadOnly.get("auditEventId"));
+    assertThat(countCommercialLifecycleAuditEvents(tenantId)).isEqualTo(auditAfterReadOnly);
+
+    Map<String, Object> blockedRequest =
+        Map.of("reason", "Blocked idempotency", "effectiveAt", "2026-05-22T00:00:00Z");
+    Map<String, Object> firstBlocked =
+        postCommercialAction(tenantId, "suspension/blocked", blockedRequest);
+    long auditAfterBlocked = countCommercialLifecycleAuditEvents(tenantId);
+    Map<String, Object> replayBlocked =
+        postCommercialAction(tenantId, "suspension/blocked", blockedRequest);
+    assertThat(replayBlocked.get("auditEventId")).isEqualTo(firstBlocked.get("auditEventId"));
+    assertThat(countCommercialLifecycleAuditEvents(tenantId)).isEqualTo(auditAfterBlocked);
+
+    postLedger(
+        tenantId,
+        "payments",
+        ledgerPayload(tenantId, "idempotency-payment", 75_000L, "INR", "Idempotency payment"));
+    Map<String, Object> resumeRequest = Map.of("reason", "Resume idempotency");
+    Map<String, Object> firstResume = postCommercialAction(tenantId, "resume", resumeRequest);
+    long auditAfterResume = countCommercialLifecycleAuditEvents(tenantId);
+    Map<String, Object> replayResume = postCommercialAction(tenantId, "resume", resumeRequest);
+    assertThat(replayResume.get("auditEventId")).isEqualTo(firstResume.get("auditEventId"));
+    assertThat(countCommercialLifecycleAuditEvents(tenantId)).isEqualTo(auditAfterResume);
+
+    Map<String, Object> archiveRequest = Map.of("reason", "Archive idempotency");
+    Map<String, Object> firstArchive = postCommercialAction(tenantId, "archive", archiveRequest);
+    long auditAfterArchive = countCommercialLifecycleAuditEvents(tenantId);
+    Map<String, Object> replayArchive = postCommercialAction(tenantId, "archive", archiveRequest);
+    assertThat(replayArchive.get("auditEventId")).isEqualTo(firstArchive.get("auditEventId"));
+    assertThat(countCommercialLifecycleAuditEvents(tenantId)).isEqualTo(auditAfterArchive);
+
+    Long futureCancelTenant = createTenant("M10IDC", "GROWTH", "DUE");
+    createSubscription(
+        futureCancelTenant, subscriptionPayload("GROWTH", "MONTHLY", 75_000L, "ACTIVE", "INR"));
+    Map<String, Object> cancelRequest =
+        Map.of(
+            "reason",
+            "Future cancel idempotency",
+            "effectiveAt",
+            Instant.now().plusSeconds(60).toString());
+    Map<String, Object> firstCancel =
+        postCommercialAction(futureCancelTenant, "cancel", cancelRequest);
+    long auditAfterCancel = countCommercialLifecycleAuditEvents(futureCancelTenant);
+    Map<String, Object> replayCancel =
+        postCommercialAction(futureCancelTenant, "cancel", cancelRequest);
+    assertThat(replayCancel.get("auditEventId")).isEqualTo(firstCancel.get("auditEventId"));
+    assertThat(countCommercialLifecycleAuditEvents(futureCancelTenant)).isEqualTo(auditAfterCancel);
+
+    ResponseEntity<Map> conflictingCancel =
+        postCommercialActionRaw(
+            futureCancelTenant,
+            "cancel",
+            Map.of(
+                "reason",
+                "Different future cancel",
+                "effectiveAt",
+                Instant.now().plusSeconds(120).toString()));
+    assertThat(conflictingCancel.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+    assertThat(countCommercialLifecycleAuditEvents(futureCancelTenant)).isEqualTo(auditAfterCancel);
+    assertCommercialState(
+        getCommercialState(futureCancelTenant), "ACTIVE", "ACTIVE", "ACTIVE", "PAID");
   }
 
   @Test
@@ -649,16 +805,77 @@ class SuperAdminBillingIT extends AbstractIntegrationTest {
 
   private Map<String, Object> postCommercialAction(
       Long tenantId, String action, Map<String, Object> request) {
+    ResponseEntity<Map> response = postCommercialActionRaw(tenantId, action, request);
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+    @SuppressWarnings("unchecked")
+    Map<String, Object> data = (Map<String, Object>) response.getBody().get("data");
+    return data;
+  }
+
+  private ResponseEntity<Map> postCommercialActionRaw(
+      Long tenantId, String action, Map<String, Object> request) {
+    return rest.exchange(
+        "/api/v1/superadmin/tenants/" + tenantId + "/" + action,
+        HttpMethod.POST,
+        new HttpEntity<>(request, superAdminHeaders),
+        Map.class);
+  }
+
+  private Map<String, Object> getCommercialState(Long tenantId) {
     ResponseEntity<Map> response =
         rest.exchange(
-            "/api/v1/superadmin/tenants/" + tenantId + "/" + action,
-            HttpMethod.POST,
-            new HttpEntity<>(request, superAdminHeaders),
+            "/api/v1/superadmin/tenants/" + tenantId + "/commercial-state",
+            HttpMethod.GET,
+            new HttpEntity<>(superAdminHeaders),
             Map.class);
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
     @SuppressWarnings("unchecked")
     Map<String, Object> data = (Map<String, Object>) response.getBody().get("data");
     return data;
+  }
+
+  private void assertSubscriptionStatus(
+      Long tenantId, String expectedStatus, String expectedBillingStatus) {
+    ResponseEntity<Map> response =
+        rest.exchange(
+            "/api/v1/superadmin/tenants/" + tenantId + "/billing/subscription",
+            HttpMethod.GET,
+            new HttpEntity<>(superAdminHeaders),
+            Map.class);
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+    @SuppressWarnings("unchecked")
+    Map<String, Object> data = (Map<String, Object>) response.getBody().get("data");
+    assertThat(data)
+        .containsEntry("status", expectedStatus)
+        .containsEntry("billingStatus", expectedBillingStatus);
+  }
+
+  private long usdMrrMinorUnits() {
+    ResponseEntity<Map> response =
+        rest.exchange(
+            "/api/v1/superadmin/billing/metrics",
+            HttpMethod.GET,
+            new HttpEntity<>(superAdminHeaders),
+            Map.class);
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+    @SuppressWarnings("unchecked")
+    Map<String, Object> metrics = (Map<String, Object>) response.getBody().get("data");
+    @SuppressWarnings("unchecked")
+    Map<String, Object> usd = (Map<String, Object>) metrics.get("USD");
+    return usd == null ? 0L : ((Number) usd.get("mrrMinorUnits")).longValue();
+  }
+
+  private int defaultListCount(String tenantCode, boolean includeArchived) {
+    String url =
+        "/api/v1/superadmin/tenants?q="
+            + tenantCode
+            + (includeArchived ? "&includeArchived=true" : "");
+    ResponseEntity<Map> response =
+        rest.exchange(url, HttpMethod.GET, new HttpEntity<>(superAdminHeaders), Map.class);
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+    @SuppressWarnings("unchecked")
+    Map<String, Object> page = (Map<String, Object>) response.getBody().get("data");
+    return ((Number) page.get("totalElements")).intValue();
   }
 
   private void assertCommercialState(
@@ -716,6 +933,17 @@ class SuperAdminBillingIT extends AbstractIntegrationTest {
             + "join audit_log_metadata target on target.audit_log_id = reason.audit_log_id "
             + "where reason.metadata_key = 'reason' "
             + "and reason.metadata_value like 'billing-ledger-%' "
+            + "and target.metadata_key = 'targetCompanyId' "
+            + "and target.metadata_value = ?",
+        Long.class, String.valueOf(companyId));
+  }
+
+  private Long countCommercialLifecycleAuditEvents(Long companyId) {
+    return jdbcTemplate.queryForObject(
+        "select count(distinct reason.audit_log_id) from audit_log_metadata reason "
+            + "join audit_log_metadata target on target.audit_log_id = reason.audit_log_id "
+            + "where reason.metadata_key = 'reason' "
+            + "and reason.metadata_value like 'commercial-state-%' "
             + "and target.metadata_key = 'targetCompanyId' "
             + "and target.metadata_value = ?",
         Long.class, String.valueOf(companyId));

@@ -32,4 +32,11 @@ public interface SuperAdminBillingSubscriptionRepository
       "select s from SuperAdminBillingSubscription s where s.status in ('TRIAL', 'MANUAL',"
           + " 'ACTIVE', 'CANCELED', 'ARCHIVED')")
   List<SuperAdminBillingSubscription> findAllForMetrics();
+
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
+  @Query(
+      "select s from SuperAdminBillingSubscription s join fetch s.company where"
+          + " s.pendingCommercialAction in ('CANCEL', 'ARCHIVE') order by"
+          + " s.pendingCommercialEffectiveAt asc, s.id asc")
+  List<SuperAdminBillingSubscription> lockPendingCommercialActions();
 }

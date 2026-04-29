@@ -2,7 +2,11 @@ package com.bigbrightpaints.erp.modules.company.service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -11,6 +15,7 @@ import java.util.Objects;
 import java.util.Set;
 
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -138,9 +143,10 @@ public class SuperAdminBillingService {
     return toSubscriptionResponse(subscription, billingStatus);
   }
 
-  @Transactional(readOnly = true)
+  @Transactional
   public SuperAdminBillingDtos.SubscriptionResponse getSubscription(Long companyId) {
     SuperAdminBillingSubscription subscription = latestSubscription(companyId);
+    applyDueScheduledCommercialState(subscription, CompanyTime.now(subscription.getCompany()));
     return toSubscriptionResponse(
         subscription,
         deriveBillingStatus(
@@ -197,13 +203,17 @@ public class SuperAdminBillingService {
         privacy());
   }
 
-  @Transactional(readOnly = true)
+  @Transactional
   public SuperAdminBillingDtos.CommercialStateResponse getCommercialState(Long companyId) {
     Company company = lockCompany(companyId);
     SuperAdminBillingSubscription subscription = latestSubscription(companyId);
+    Instant now = CompanyTime.now(company);
+    applyDueScheduledCommercialState(subscription, now);
     String commercialState = resolveCommercialState(company);
     String billingStatus =
-        deriveBillingStatus(subscription, balance(companyId), CompanyTime.now(company));
+        Set.of("ACTIVE", "TRIAL_ACTIVE").contains(commercialState)
+            ? deriveBillingStatus(subscription, balance(companyId), now)
+            : companyBillingStatusOrManual(company);
     return commercialStateResponse(
         company,
         subscription,
@@ -211,7 +221,7 @@ public class SuperAdminBillingService {
         billingStatus,
         accessRuntimeState(commercialState),
         safeReason(company.getLifecycleReason()),
-        effectiveAtFor(commercialState, subscription, CompanyTime.now(company)),
+        effectiveAtFor(commercialState, subscription, now),
         null);
   }
 
@@ -219,6 +229,8 @@ public class SuperAdminBillingService {
   public SuperAdminBillingDtos.CommercialStateResponse startGrace(
       Long companyId, SuperAdminBillingDtos.CommercialStateActionRequest request) {
     SuperAdminBillingSubscription subscription = latestSubscription(companyId);
+    applyDueScheduledCommercialState(subscription, CompanyTime.now(subscription.getCompany()));
+    requireNoPendingTerminalAction(subscription, "GRACE");
     Instant effectiveAt = resolveEffectiveAt(subscription.getCompany(), request);
     Instant graceUntilAt =
         request != null && request.graceUntilAt() != null
@@ -227,10 +239,9 @@ public class SuperAdminBillingService {
     if (graceUntilAt == null || !graceUntilAt.isAfter(effectiveAt)) {
       throw invalidInput("graceUntilAt must be after the grace effective time");
     }
-    subscription.setGraceUntilAt(graceUntilAt);
-    subscriptionRepository.saveAndFlush(subscription);
     return applyCommercialState(
         subscription,
+        "GRACE",
         "GRACE",
         CompanyLifecycleState.ACTIVE,
         TenantRuntimeEnforcementService.TenantRuntimeState.ACTIVE,
@@ -245,10 +256,13 @@ public class SuperAdminBillingService {
   public SuperAdminBillingDtos.CommercialStateResponse suspendReadOnly(
       Long companyId, SuperAdminBillingDtos.CommercialStateActionRequest request) {
     SuperAdminBillingSubscription subscription = latestSubscription(companyId);
+    applyDueScheduledCommercialState(subscription, CompanyTime.now(subscription.getCompany()));
+    requireNoPendingTerminalAction(subscription, "SUSPEND_READ_ONLY");
     Instant effectiveAt = resolveEffectiveAt(subscription.getCompany(), request);
     String billingStatus = deriveBillingStatus(subscription, balance(companyId), effectiveAt);
     return applyCommercialState(
         subscription,
+        "SUSPEND_READ_ONLY",
         "SUSPENDED_READ_ONLY",
         CompanyLifecycleState.SUSPENDED,
         TenantRuntimeEnforcementService.TenantRuntimeState.HOLD,
@@ -263,10 +277,13 @@ public class SuperAdminBillingService {
   public SuperAdminBillingDtos.CommercialStateResponse suspendBlocked(
       Long companyId, SuperAdminBillingDtos.CommercialStateActionRequest request) {
     SuperAdminBillingSubscription subscription = latestSubscription(companyId);
+    applyDueScheduledCommercialState(subscription, CompanyTime.now(subscription.getCompany()));
+    requireNoPendingTerminalAction(subscription, "SUSPEND_BLOCKED");
     Instant effectiveAt = resolveEffectiveAt(subscription.getCompany(), request);
     String billingStatus = deriveBillingStatus(subscription, balance(companyId), effectiveAt);
     return applyCommercialState(
         subscription,
+        "SUSPEND_BLOCKED",
         "SUSPENDED_BLOCKED",
         CompanyLifecycleState.SUSPENDED,
         TenantRuntimeEnforcementService.TenantRuntimeState.BLOCKED,
@@ -281,11 +298,14 @@ public class SuperAdminBillingService {
   public SuperAdminBillingDtos.CommercialStateResponse resume(
       Long companyId, SuperAdminBillingDtos.CommercialStateActionRequest request) {
     SuperAdminBillingSubscription subscription = latestSubscription(companyId);
+    applyDueScheduledCommercialState(subscription, CompanyTime.now(subscription.getCompany()));
+    requireNoPendingTerminalAction(subscription, "RESUME");
     Instant effectiveAt = resolveEffectiveAt(subscription.getCompany(), request);
     String billingStatus = deriveBillingStatus(subscription, balance(companyId), effectiveAt);
     String activeState = "TRIAL".equals(billingStatus) ? "TRIAL_ACTIVE" : "ACTIVE";
     return applyCommercialState(
         subscription,
+        "RESUME",
         activeState,
         CompanyLifecycleState.ACTIVE,
         TenantRuntimeEnforcementService.TenantRuntimeState.ACTIVE,
@@ -300,12 +320,16 @@ public class SuperAdminBillingService {
   public SuperAdminBillingDtos.CommercialStateResponse cancel(
       Long companyId, SuperAdminBillingDtos.CommercialStateActionRequest request) {
     SuperAdminBillingSubscription subscription = latestSubscription(companyId);
-    Instant effectiveAt = resolveEffectiveAt(subscription.getCompany(), request);
-    subscription.setStatus("CANCELED");
-    subscription.setCanceledAt(effectiveAt);
-    subscriptionRepository.saveAndFlush(subscription);
+    Instant now = CompanyTime.now(subscription.getCompany());
+    applyDueScheduledCommercialState(subscription, now);
+    Instant effectiveAt =
+        request != null && request.effectiveAt() != null ? request.effectiveAt() : now;
+    if (effectiveAt.isAfter(now)) {
+      return scheduleTerminalCommercialState(subscription, "CANCEL", request, effectiveAt);
+    }
     return applyCommercialState(
         subscription,
+        "CANCEL",
         "CANCELED",
         CompanyLifecycleState.DEACTIVATED,
         TenantRuntimeEnforcementService.TenantRuntimeState.BLOCKED,
@@ -320,12 +344,16 @@ public class SuperAdminBillingService {
   public SuperAdminBillingDtos.CommercialStateResponse archive(
       Long companyId, SuperAdminBillingDtos.CommercialStateActionRequest request) {
     SuperAdminBillingSubscription subscription = latestSubscription(companyId);
-    Instant effectiveAt = resolveEffectiveAt(subscription.getCompany(), request);
-    subscription.setStatus("ARCHIVED");
-    subscription.setArchivedAt(effectiveAt);
-    subscriptionRepository.saveAndFlush(subscription);
+    Instant now = CompanyTime.now(subscription.getCompany());
+    applyDueScheduledCommercialState(subscription, now);
+    Instant effectiveAt =
+        request != null && request.effectiveAt() != null ? request.effectiveAt() : now;
+    if (effectiveAt.isAfter(now)) {
+      return scheduleTerminalCommercialState(subscription, "ARCHIVE", request, effectiveAt);
+    }
     return applyCommercialState(
         subscription,
+        "ARCHIVE",
         "ARCHIVED",
         CompanyLifecycleState.DEACTIVATED,
         TenantRuntimeEnforcementService.TenantRuntimeState.BLOCKED,
@@ -336,7 +364,7 @@ public class SuperAdminBillingService {
         subscription.getGraceUntilAt());
   }
 
-  @Transactional(readOnly = true)
+  @Transactional
   public SuperAdminBillingDtos.BillingStatusSummary billingSummaryFor(Company company) {
     if (company == null || company.getId() == null) {
       throw invalidInput("Company is required for billing summary");
@@ -345,6 +373,7 @@ public class SuperAdminBillingService {
         .findTopByCompanyIdOrderByCreatedAtDescIdDesc(company.getId())
         .map(
             subscription -> {
+              applyDueScheduledCommercialState(subscription, CompanyTime.now(company));
               long balance = balance(company.getId());
               String status = deriveBillingStatus(subscription, balance, CompanyTime.now(company));
               return new SuperAdminBillingDtos.BillingStatusSummary(
@@ -368,8 +397,9 @@ public class SuperAdminBillingService {
                     0));
   }
 
-  @Transactional(readOnly = true)
+  @Transactional
   public Map<String, SuperAdminBillingDtos.CurrencyMetrics> getBillingMetrics() {
+    applyDueScheduledCommercialStates();
     Map<String, MutableMetrics> metrics = new LinkedHashMap<>();
     for (SuperAdminBillingSubscription subscription : subscriptionRepository.findAllForMetrics()) {
       String currency = subscription.getCurrency();
@@ -389,12 +419,14 @@ public class SuperAdminBillingService {
     return result;
   }
 
+  @Transactional
   public long dashboardMrrMinorUnits() {
     return getBillingMetrics().values().stream()
         .mapToLong(SuperAdminBillingDtos.CurrencyMetrics::mrrMinorUnits)
         .sum();
   }
 
+  @Transactional
   public long dashboardArrMinorUnits() {
     return getBillingMetrics().values().stream()
         .mapToLong(SuperAdminBillingDtos.CurrencyMetrics::arrMinorUnits)
@@ -522,8 +554,224 @@ public class SuperAdminBillingService {
         .orElseThrow(() -> invalidInput("Tenant does not have a billing subscription"));
   }
 
+  @Scheduled(fixedDelayString = "${erp.superadmin.billing.lifecycle-sweep-ms:60000}")
+  @Transactional
+  public void applyDueScheduledCommercialStates() {
+    Instant now = CompanyTime.now();
+    for (SuperAdminBillingSubscription subscription :
+        subscriptionRepository.lockPendingCommercialActions()) {
+      applyDueScheduledCommercialState(subscription, now);
+    }
+  }
+
+  private void applyDueScheduledCommercialState(
+      SuperAdminBillingSubscription subscription, Instant now) {
+    if (subscription == null
+        || !StringUtils.hasText(subscription.getPendingCommercialAction())
+        || subscription.getPendingCommercialEffectiveAt() == null
+        || subscription.getPendingCommercialEffectiveAt().isAfter(now)) {
+      return;
+    }
+    String action = subscription.getPendingCommercialAction();
+    if ("CANCEL".equals(action)) {
+      applyScheduledTerminalCommercialState(subscription, "CANCELED", "commercial-state-canceled");
+      return;
+    }
+    if ("ARCHIVE".equals(action)) {
+      applyScheduledTerminalCommercialState(subscription, "ARCHIVED", "commercial-state-archived");
+    }
+  }
+
+  private void applyScheduledTerminalCommercialState(
+      SuperAdminBillingSubscription subscription, String terminalState, String auditReason) {
+    Company company = subscription.getCompany();
+    String previousCommercialState = resolveCommercialState(company);
+    String previousBillingStatus = companyBillingStatusOrManual(company);
+    CompanyLifecycleState previousLifecycle =
+        company.getLifecycleState() == null
+            ? CompanyLifecycleState.ACTIVE
+            : company.getLifecycleState();
+    Instant effectiveAt = subscription.getPendingCommercialEffectiveAt();
+    String pendingReason = subscription.getPendingCommercialReason();
+    subscription.setStatus(terminalState);
+    if ("CANCELED".equals(terminalState)) {
+      subscription.setCanceledAt(effectiveAt);
+    } else {
+      subscription.setArchivedAt(effectiveAt);
+    }
+    subscription.setPendingCommercialAction(null);
+    subscription.setPendingCommercialEffectiveAt(null);
+    subscription.setPendingCommercialReason(null);
+    company.setLifecycleState(CompanyLifecycleState.DEACTIVATED);
+    company.setLifecycleReason(terminalState);
+    company.setCommercialBillingStatus(terminalState);
+    companyRepository.saveAndFlush(company);
+    tenantRuntimeEnforcementService.updatePolicy(
+        company.getCode(),
+        TenantRuntimeEnforcementService.TenantRuntimeState.BLOCKED,
+        terminalState,
+        safeRuntimeLimit(company.getQuotaMaxConcurrentRequests()),
+        safeRuntimeLimit(company.getQuotaMaxApiRequests()),
+        safeRuntimeLimit(company.getQuotaMaxActiveUsers()),
+        "commercial-lifecycle-scheduler");
+    Long auditEventId =
+        auditRequired(
+            company,
+            auditReason,
+            Map.ofEntries(
+                Map.entry("oldCommercialState", previousCommercialState),
+                Map.entry("newCommercialState", terminalState),
+                Map.entry("oldBillingStatus", previousBillingStatus),
+                Map.entry("newBillingStatus", terminalState),
+                Map.entry("oldLifecycleState", previousLifecycle.name()),
+                Map.entry("newLifecycleState", CompanyLifecycleState.DEACTIVATED.name()),
+                Map.entry(
+                    "runtimeState",
+                    TenantRuntimeEnforcementService.TenantRuntimeState.BLOCKED.name()),
+                Map.entry("effectiveAt", effectiveAt.toString()),
+                Map.entry("subscriptionId", String.valueOf(subscription.getId())),
+                Map.entry("reasonDetail", safeReason(pendingReason))));
+    subscription.setAuditEventId(auditEventId);
+    subscriptionRepository.saveAndFlush(subscription);
+  }
+
+  private SuperAdminBillingDtos.CommercialStateResponse scheduleTerminalCommercialState(
+      SuperAdminBillingSubscription subscription,
+      String actionCode,
+      SuperAdminBillingDtos.CommercialStateActionRequest request,
+      Instant effectiveAt) {
+    requireNoPendingTerminalAction(subscription, actionCode);
+    String fingerprint = commercialActionFingerprint(actionCode, request, null);
+    String currentCommercialState = resolveCommercialState(subscription.getCompany());
+    String currentBillingStatus =
+        deriveBillingStatus(
+            subscription,
+            balance(subscription.getCompany().getId()),
+            CompanyTime.now(subscription.getCompany()));
+    SuperAdminBillingDtos.CommercialStateResponse replay =
+        replayCommercialActionIfIdentical(
+            subscription,
+            actionCode,
+            fingerprint,
+            currentCommercialState,
+            currentBillingStatus,
+            accessRuntimeState(currentCommercialState),
+            effectiveAt,
+            safeReason(request == null ? null : request.reason()));
+    if (replay != null) {
+      return replay;
+    }
+    Company company = subscription.getCompany();
+    String terminalState = "CANCEL".equals(actionCode) ? "CANCELED" : "ARCHIVED";
+    if ("CANCEL".equals(actionCode)) {
+      subscription.setCanceledAt(effectiveAt);
+    } else {
+      subscription.setArchivedAt(effectiveAt);
+    }
+    subscription.setPendingCommercialAction(actionCode);
+    subscription.setPendingCommercialEffectiveAt(effectiveAt);
+    subscription.setPendingCommercialReason(safeReason(request == null ? null : request.reason()));
+    Long auditEventId =
+        auditRequired(
+            company,
+            "commercial-state-" + terminalState.toLowerCase(Locale.ROOT) + "-scheduled",
+            Map.ofEntries(
+                Map.entry("oldCommercialState", currentCommercialState),
+                Map.entry("newCommercialState", currentCommercialState),
+                Map.entry("scheduledCommercialState", terminalState),
+                Map.entry("oldBillingStatus", currentBillingStatus),
+                Map.entry("newBillingStatus", currentBillingStatus),
+                Map.entry("runtimeState", accessRuntimeState(currentCommercialState).name()),
+                Map.entry("effectiveAt", effectiveAt.toString()),
+                Map.entry("subscriptionId", String.valueOf(subscription.getId())),
+                Map.entry("reasonDetail", safeReason(request == null ? null : request.reason()))));
+    subscription.setLastCommercialAction(actionCode);
+    subscription.setLastCommercialActionFingerprint(fingerprint);
+    subscription.setLastCommercialActionEffectiveAt(effectiveAt);
+    subscription.setLastCommercialActionAuditEventId(auditEventId);
+    subscription.setAuditEventId(auditEventId);
+    subscriptionRepository.saveAndFlush(subscription);
+    return commercialStateResponse(
+        company,
+        subscription,
+        currentCommercialState,
+        currentBillingStatus,
+        accessRuntimeState(currentCommercialState),
+        safeReason(request == null ? null : request.reason()),
+        effectiveAt,
+        auditEventId);
+  }
+
+  private void requireNoPendingTerminalAction(
+      SuperAdminBillingSubscription subscription, String requestedAction) {
+    if (subscription == null || !StringUtils.hasText(subscription.getPendingCommercialAction())) {
+      return;
+    }
+    if (!Objects.equals(subscription.getPendingCommercialAction(), requestedAction)) {
+      throw new ApplicationException(
+          ErrorCode.CONCURRENCY_CONFLICT,
+          "Pending commercial lifecycle action must apply before another lifecycle action");
+    }
+  }
+
+  private SuperAdminBillingDtos.CommercialStateResponse replayCommercialActionIfIdentical(
+      SuperAdminBillingSubscription subscription,
+      String actionCode,
+      String fingerprint,
+      String commercialState,
+      String billingStatus,
+      TenantRuntimeEnforcementService.TenantRuntimeState runtimeState,
+      Instant effectiveAt,
+      String reason) {
+    if (subscription == null
+        || !Objects.equals(subscription.getLastCommercialAction(), actionCode)) {
+      return null;
+    }
+    if (!Objects.equals(subscription.getLastCommercialActionFingerprint(), fingerprint)) {
+      throw new ApplicationException(
+          ErrorCode.CONCURRENCY_CONFLICT,
+          "Commercial lifecycle action replay payload conflicts with the previous request");
+    }
+    Company company = subscription.getCompany();
+    Instant replayEffectiveAt =
+        subscription.getLastCommercialActionEffectiveAt() == null
+            ? effectiveAt
+            : subscription.getLastCommercialActionEffectiveAt();
+    return commercialStateResponse(
+        company,
+        subscription,
+        commercialState,
+        billingStatus,
+        runtimeState,
+        reason,
+        replayEffectiveAt,
+        subscription.getLastCommercialActionAuditEventId());
+  }
+
+  private String commercialActionFingerprint(
+      String actionCode,
+      SuperAdminBillingDtos.CommercialStateActionRequest request,
+      Instant graceUntilAt) {
+    String raw =
+        String.join(
+            "|",
+            actionCode == null ? "" : actionCode,
+            safeReason(request == null ? null : request.reason()),
+            request == null || request.effectiveAt() == null
+                ? "IMMEDIATE"
+                : request.effectiveAt().toString(),
+            graceUntilAt == null ? "" : graceUntilAt.toString());
+    try {
+      MessageDigest digest = MessageDigest.getInstance("SHA-256");
+      return HexFormat.of().formatHex(digest.digest(raw.getBytes(StandardCharsets.UTF_8)));
+    } catch (NoSuchAlgorithmException ex) {
+      throw new IllegalStateException("SHA-256 digest is unavailable", ex);
+    }
+  }
+
   private SuperAdminBillingDtos.CommercialStateResponse applyCommercialState(
       SuperAdminBillingSubscription subscription,
+      String actionCode,
       String commercialState,
       CompanyLifecycleState lifecycleState,
       TenantRuntimeEnforcementService.TenantRuntimeState runtimeState,
@@ -533,12 +781,42 @@ public class SuperAdminBillingService {
       Instant effectiveAt,
       Instant graceUntilAt) {
     Company company = subscription.getCompany();
+    String actionFingerprint = commercialActionFingerprint(actionCode, request, graceUntilAt);
+    SuperAdminBillingDtos.CommercialStateResponse replay =
+        replayCommercialActionIfIdentical(
+            subscription,
+            actionCode,
+            actionFingerprint,
+            commercialState,
+            billingStatus,
+            runtimeState,
+            effectiveAt,
+            safeReason(request == null ? null : request.reason()));
+    if (replay != null) {
+      return replay;
+    }
+    requireNoPendingTerminalAction(subscription, actionCode);
     String previousCommercialState = resolveCommercialState(company);
     String previousBillingStatus = companyBillingStatusOrManual(company);
     CompanyLifecycleState previousLifecycle =
         company.getLifecycleState() == null
             ? CompanyLifecycleState.ACTIVE
             : company.getLifecycleState();
+    if ("GRACE".equals(actionCode)) {
+      subscription.setGraceUntilAt(graceUntilAt);
+    }
+    if ("CANCEL".equals(actionCode)) {
+      subscription.setStatus("CANCELED");
+      subscription.setCanceledAt(effectiveAt);
+    }
+    if ("ARCHIVE".equals(actionCode)) {
+      subscription.setStatus("ARCHIVED");
+      subscription.setArchivedAt(effectiveAt);
+    }
+    if ("RESUME".equals(actionCode)
+        && Set.of("CANCELED", "ARCHIVED").contains(subscription.getStatus())) {
+      subscription.setStatus("ACTIVE");
+    }
     company.setLifecycleState(lifecycleState);
     company.setLifecycleReason(commercialState);
     company.setCommercialBillingStatus(billingStatus);
@@ -566,6 +844,13 @@ public class SuperAdminBillingService {
                 Map.entry("effectiveAt", effectiveAt.toString()),
                 Map.entry("subscriptionId", String.valueOf(subscription.getId())),
                 Map.entry("reasonDetail", safeReason(request == null ? null : request.reason()))));
+    subscription.setPendingCommercialAction(null);
+    subscription.setPendingCommercialEffectiveAt(null);
+    subscription.setPendingCommercialReason(null);
+    subscription.setLastCommercialAction(actionCode);
+    subscription.setLastCommercialActionFingerprint(actionFingerprint);
+    subscription.setLastCommercialActionEffectiveAt(effectiveAt);
+    subscription.setLastCommercialActionAuditEventId(auditEventId);
     subscription.setAuditEventId(auditEventId);
     subscriptionRepository.saveAndFlush(subscription);
     return commercialStateResponse(

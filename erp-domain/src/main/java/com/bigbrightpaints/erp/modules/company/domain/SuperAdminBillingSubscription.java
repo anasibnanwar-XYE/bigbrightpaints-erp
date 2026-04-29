@@ -73,6 +73,27 @@ public class SuperAdminBillingSubscription {
   @Column(name = "archived_at")
   private Instant archivedAt;
 
+  @Column(name = "pending_commercial_action", length = 32)
+  private String pendingCommercialAction;
+
+  @Column(name = "pending_commercial_effective_at")
+  private Instant pendingCommercialEffectiveAt;
+
+  @Column(name = "pending_commercial_reason", length = 300)
+  private String pendingCommercialReason;
+
+  @Column(name = "last_commercial_action", length = 32)
+  private String lastCommercialAction;
+
+  @Column(name = "last_commercial_action_fingerprint", length = 128)
+  private String lastCommercialActionFingerprint;
+
+  @Column(name = "last_commercial_action_effective_at")
+  private Instant lastCommercialActionEffectiveAt;
+
+  @Column(name = "last_commercial_action_audit_event_id")
+  private Long lastCommercialActionAuditEventId;
+
   @Column(name = "external_reference", length = 160)
   private String externalReference;
 
@@ -239,6 +260,62 @@ public class SuperAdminBillingSubscription {
 
   public void setArchivedAt(Instant archivedAt) {
     this.archivedAt = archivedAt;
+  }
+
+  public String getPendingCommercialAction() {
+    return pendingCommercialAction;
+  }
+
+  public void setPendingCommercialAction(String pendingCommercialAction) {
+    this.pendingCommercialAction = pendingCommercialAction;
+  }
+
+  public Instant getPendingCommercialEffectiveAt() {
+    return pendingCommercialEffectiveAt;
+  }
+
+  public void setPendingCommercialEffectiveAt(Instant pendingCommercialEffectiveAt) {
+    this.pendingCommercialEffectiveAt = pendingCommercialEffectiveAt;
+  }
+
+  public String getPendingCommercialReason() {
+    return pendingCommercialReason;
+  }
+
+  public void setPendingCommercialReason(String pendingCommercialReason) {
+    this.pendingCommercialReason = pendingCommercialReason;
+  }
+
+  public String getLastCommercialAction() {
+    return lastCommercialAction;
+  }
+
+  public void setLastCommercialAction(String lastCommercialAction) {
+    this.lastCommercialAction = lastCommercialAction;
+  }
+
+  public String getLastCommercialActionFingerprint() {
+    return lastCommercialActionFingerprint;
+  }
+
+  public void setLastCommercialActionFingerprint(String lastCommercialActionFingerprint) {
+    this.lastCommercialActionFingerprint = lastCommercialActionFingerprint;
+  }
+
+  public Instant getLastCommercialActionEffectiveAt() {
+    return lastCommercialActionEffectiveAt;
+  }
+
+  public void setLastCommercialActionEffectiveAt(Instant lastCommercialActionEffectiveAt) {
+    this.lastCommercialActionEffectiveAt = lastCommercialActionEffectiveAt;
+  }
+
+  public Long getLastCommercialActionAuditEventId() {
+    return lastCommercialActionAuditEventId;
+  }
+
+  public void setLastCommercialActionAuditEventId(Long lastCommercialActionAuditEventId) {
+    this.lastCommercialActionAuditEventId = lastCommercialActionAuditEventId;
   }
 
   public String getExternalReference() {
