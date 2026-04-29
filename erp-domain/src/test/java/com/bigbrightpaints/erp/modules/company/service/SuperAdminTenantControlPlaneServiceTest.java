@@ -58,6 +58,7 @@ import com.bigbrightpaints.erp.modules.company.dto.MainAdminSummaryDto;
 import com.bigbrightpaints.erp.modules.company.dto.SuperAdminAddClientCreateRequest;
 import com.bigbrightpaints.erp.modules.company.dto.SuperAdminAddClientCreateResponse;
 import com.bigbrightpaints.erp.modules.company.dto.SuperAdminAddClientOptionsDto;
+import com.bigbrightpaints.erp.modules.company.dto.SuperAdminBillingDtos;
 import com.bigbrightpaints.erp.modules.company.dto.SuperAdminTenantAdminEmailChangeConfirmationDto;
 import com.bigbrightpaints.erp.modules.company.dto.SuperAdminTenantAdminEmailChangeRequestDto;
 import com.bigbrightpaints.erp.modules.company.dto.SuperAdminTenantDetailDto;
@@ -95,6 +96,7 @@ class SuperAdminTenantControlPlaneServiceTest {
   @Mock private PasswordService passwordService;
   @Mock private TenantDefaultSeedingService tenantDefaultSeedingService;
   @Mock private SuperAdminTenantEntitlementService tenantEntitlementService;
+  @Mock private SuperAdminBillingService billingService;
 
   private SuperAdminTenantControlPlaneService service;
 
@@ -121,7 +123,8 @@ class SuperAdminTenantControlPlaneServiceTest {
             passwordEncoder,
             passwordService,
             tenantDefaultSeedingService,
-            tenantEntitlementService);
+            tenantEntitlementService,
+            billingService);
     lenient()
         .when(tenantActivationTokenRepository.lockByCompanyId(any(Long.class)))
         .thenReturn(List.of());
@@ -141,6 +144,27 @@ class SuperAdminTenantControlPlaneServiceTest {
                   "CUSTOM".equals(company.getCommercialPlanId()),
                   company.getCommercialSupportTier(),
                   null);
+            });
+    lenient()
+        .when(billingService.billingSummaryFor(any(Company.class)))
+        .thenAnswer(
+            invocation -> {
+              Company company = invocation.getArgument(0);
+              String status =
+                  company != null && company.getCommercialBillingStatus() != null
+                      ? company.getCommercialBillingStatus().trim().toUpperCase(Locale.ROOT)
+                      : "MANUAL";
+              String currency =
+                  company != null && company.getBaseCurrency() != null
+                      ? company.getBaseCurrency()
+                      : "INR";
+              return new SuperAdminBillingDtos.BillingStatusSummary(
+                  status,
+                  0,
+                  currency,
+                  company != null ? company.getCommercialTrialEndsAt() : null,
+                  null,
+                  0);
             });
     SecurityContextHolder.getContext()
         .setAuthentication(new UsernamePasswordAuthenticationToken("super-admin@bbp.com", "n/a"));
@@ -1511,7 +1535,8 @@ class SuperAdminTenantControlPlaneServiceTest {
         passwordEncoder,
         passwordService,
         tenantDefaultSeedingService,
-        tenantEntitlementService);
+        tenantEntitlementService,
+        billingService);
   }
 
   private void configureTenantStatusState(Company company, String status, int index) {

@@ -83,9 +83,10 @@ public class CompanyService {
   private final TenantLifecycleService tenantLifecycleService;
   private final PasswordResetService passwordResetService;
   private final AuthScopeService authScopeService;
+  private final SuperAdminBillingService billingService;
 
   public CompanyService(CompanyRepository repository) {
-    this(repository, null, null, null, null, null, null, null, null);
+    this(repository, null, null, null, null, null, null, null, null, null);
   }
 
   public CompanyService(
@@ -98,6 +99,7 @@ public class CompanyService {
         auditService,
         userAccountRepository,
         auditLogRepository,
+        null,
         null,
         null,
         null,
@@ -120,6 +122,30 @@ public class CompanyService {
         null,
         null,
         null,
+        null,
+        null);
+  }
+
+  public CompanyService(
+      CompanyRepository repository,
+      AuditService auditService,
+      UserAccountRepository userAccountRepository,
+      AuditLogRepository auditLogRepository,
+      TenantRuntimeEnforcementService tenantRuntimeEnforcementService,
+      TenantAdminProvisioningService tenantAdminProvisioningService,
+      TenantLifecycleService tenantLifecycleService,
+      PasswordResetService passwordResetService,
+      AuthScopeService authScopeService) {
+    this(
+        repository,
+        auditService,
+        userAccountRepository,
+        auditLogRepository,
+        tenantRuntimeEnforcementService,
+        tenantAdminProvisioningService,
+        tenantLifecycleService,
+        passwordResetService,
+        authScopeService,
         null);
   }
 
@@ -133,7 +159,8 @@ public class CompanyService {
       TenantAdminProvisioningService tenantAdminProvisioningService,
       TenantLifecycleService tenantLifecycleService,
       PasswordResetService passwordResetService,
-      AuthScopeService authScopeService) {
+      AuthScopeService authScopeService,
+      SuperAdminBillingService billingService) {
     this.repository = repository;
     this.auditService = auditService;
     this.userAccountRepository = userAccountRepository;
@@ -143,6 +170,7 @@ public class CompanyService {
     this.tenantLifecycleService = tenantLifecycleService;
     this.passwordResetService = passwordResetService;
     this.authScopeService = authScopeService;
+    this.billingService = billingService;
   }
 
   public List<CompanyDto> findAll() {
@@ -497,12 +525,30 @@ public class CompanyService {
     return new CompanySuperAdminDashboardDto(
         totalTenants,
         activeTenants,
+        tenantOverview.stream()
+            .filter(tenant -> "TRIAL_ACTIVE".equals(tenant.lifecycleState()))
+            .count(),
+        suspendedTenants,
+        totalTenants,
+        activeTenants,
         suspendedTenants,
         deactivatedTenants,
+        billingService == null ? 0 : billingService.dashboardMrrMinorUnits(),
+        billingService == null ? 0 : billingService.dashboardArrMinorUnits(),
+        0,
+        0,
         totalActiveUsers,
         totalActiveUserQuota,
         totalAuditStorageBytes,
+        totalAuditStorageBytes,
         totalStorageQuotaBytes,
+        0,
+        0,
+        tenantOverview.stream()
+            .mapToLong(CompanySuperAdminDashboardDto.TenantOverview::apiErrorRateInBasisPoints)
+            .max()
+            .orElse(0),
+        tenantOverview.stream().filter(tenant -> tenant.apiErrorRateInBasisPoints() > 0).count(),
         totalCurrentConcurrentRequests,
         totalConcurrentRequestQuota,
         tenantOverview);

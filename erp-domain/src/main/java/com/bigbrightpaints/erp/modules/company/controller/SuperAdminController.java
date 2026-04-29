@@ -4,6 +4,7 @@ import java.net.URI;
 import java.util.Map;
 import java.util.Set;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -11,6 +12,7 @@ import org.springframework.web.bind.annotation.*;
 
 import com.bigbrightpaints.erp.modules.company.dto.*;
 import com.bigbrightpaints.erp.modules.company.service.CompanyService;
+import com.bigbrightpaints.erp.modules.company.service.SuperAdminBillingService;
 import com.bigbrightpaints.erp.modules.company.service.SuperAdminTenantControlPlaneService;
 import com.bigbrightpaints.erp.modules.company.service.SuperAdminTenantEntitlementService;
 import com.bigbrightpaints.erp.modules.company.service.SuperAdminUsageService;
@@ -37,6 +39,23 @@ public class SuperAdminController {
   private final SuperAdminTenantEntitlementService entitlementService;
   private final TenantUsageRollupService tenantUsageRollupService;
   private final SuperAdminUsageService superAdminUsageService;
+  private final SuperAdminBillingService billingService;
+
+  @Autowired
+  public SuperAdminController(
+      CompanyService companyService,
+      SuperAdminTenantControlPlaneService controlPlaneService,
+      SuperAdminTenantEntitlementService entitlementService,
+      TenantUsageRollupService tenantUsageRollupService,
+      SuperAdminUsageService superAdminUsageService,
+      SuperAdminBillingService billingService) {
+    this.companyService = companyService;
+    this.controlPlaneService = controlPlaneService;
+    this.entitlementService = entitlementService;
+    this.tenantUsageRollupService = tenantUsageRollupService;
+    this.superAdminUsageService = superAdminUsageService;
+    this.billingService = billingService;
+  }
 
   public SuperAdminController(
       CompanyService companyService,
@@ -44,11 +63,13 @@ public class SuperAdminController {
       SuperAdminTenantEntitlementService entitlementService,
       TenantUsageRollupService tenantUsageRollupService,
       SuperAdminUsageService superAdminUsageService) {
-    this.companyService = companyService;
-    this.controlPlaneService = controlPlaneService;
-    this.entitlementService = entitlementService;
-    this.tenantUsageRollupService = tenantUsageRollupService;
-    this.superAdminUsageService = superAdminUsageService;
+    this(
+        companyService,
+        controlPlaneService,
+        entitlementService,
+        tenantUsageRollupService,
+        superAdminUsageService,
+        null);
   }
 
   @GetMapping("/dashboard")
@@ -93,6 +114,71 @@ public class SuperAdminController {
     return ResponseEntity.ok(
         ApiResponse.success(
             "Superadmin tenant detail fetched", controlPlaneService.getTenantDetail(tenantId)));
+  }
+
+  @PostMapping("/tenants/{id}/billing/subscription")
+  public ResponseEntity<ApiResponse<SuperAdminBillingDtos.SubscriptionResponse>>
+      createBillingSubscription(
+          @PathVariable("id") Long tenantId,
+          @Valid @RequestBody SuperAdminBillingDtos.SubscriptionRequest request) {
+    SuperAdminBillingDtos.SubscriptionResponse response =
+        billingService.createSubscription(tenantId, request);
+    return ResponseEntity.created(
+            URI.create("/api/v1/superadmin/tenants/" + tenantId + "/billing/subscription"))
+        .body(ApiResponse.success("Tenant billing subscription created", response));
+  }
+
+  @GetMapping("/tenants/{id}/billing/subscription")
+  public ResponseEntity<ApiResponse<SuperAdminBillingDtos.SubscriptionResponse>>
+      getBillingSubscription(@PathVariable("id") Long tenantId) {
+    return ResponseEntity.ok(
+        ApiResponse.success(
+            "Tenant billing subscription fetched", billingService.getSubscription(tenantId)));
+  }
+
+  @PostMapping("/tenants/{id}/billing/invoices")
+  public ResponseEntity<ApiResponse<SuperAdminBillingDtos.LedgerEntryResponse>> createManualInvoice(
+      @PathVariable("id") Long tenantId,
+      @Valid @RequestBody SuperAdminBillingDtos.LedgerEntryRequest request) {
+    SuperAdminBillingService.LedgerMutationResult result =
+        billingService.createInvoice(tenantId, request);
+    return ResponseEntity.status(result.replay() ? HttpStatus.OK : HttpStatus.CREATED)
+        .body(ApiResponse.success("Tenant manual invoice recorded", result.response()));
+  }
+
+  @PostMapping("/tenants/{id}/billing/payments")
+  public ResponseEntity<ApiResponse<SuperAdminBillingDtos.LedgerEntryResponse>> createManualPayment(
+      @PathVariable("id") Long tenantId,
+      @Valid @RequestBody SuperAdminBillingDtos.LedgerEntryRequest request) {
+    SuperAdminBillingService.LedgerMutationResult result =
+        billingService.createPayment(tenantId, request);
+    return ResponseEntity.status(result.replay() ? HttpStatus.OK : HttpStatus.CREATED)
+        .body(ApiResponse.success("Tenant manual payment recorded", result.response()));
+  }
+
+  @PostMapping("/tenants/{id}/billing/adjustments")
+  public ResponseEntity<ApiResponse<SuperAdminBillingDtos.LedgerEntryResponse>>
+      createManualAdjustment(
+          @PathVariable("id") Long tenantId,
+          @Valid @RequestBody SuperAdminBillingDtos.AdjustmentRequest request) {
+    SuperAdminBillingService.LedgerMutationResult result =
+        billingService.createAdjustment(tenantId, request);
+    return ResponseEntity.status(result.replay() ? HttpStatus.OK : HttpStatus.CREATED)
+        .body(ApiResponse.success("Tenant manual adjustment recorded", result.response()));
+  }
+
+  @GetMapping("/tenants/{id}/billing/ledger")
+  public ResponseEntity<ApiResponse<SuperAdminBillingDtos.LedgerResponse>> getBillingLedger(
+      @PathVariable("id") Long tenantId) {
+    return ResponseEntity.ok(
+        ApiResponse.success("Tenant billing ledger fetched", billingService.getLedger(tenantId)));
+  }
+
+  @GetMapping("/billing/metrics")
+  public ResponseEntity<ApiResponse<Map<String, SuperAdminBillingDtos.CurrencyMetrics>>>
+      getBillingMetrics() {
+    return ResponseEntity.ok(
+        ApiResponse.success("Billing metrics fetched", billingService.getBillingMetrics()));
   }
 
   @GetMapping("/usage")

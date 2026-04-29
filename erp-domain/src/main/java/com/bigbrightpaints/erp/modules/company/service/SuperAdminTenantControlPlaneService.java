@@ -127,6 +127,7 @@ public class SuperAdminTenantControlPlaneService {
   private final PasswordService passwordService;
   private final TenantDefaultSeedingService tenantDefaultSeedingService;
   private final SuperAdminTenantEntitlementService tenantEntitlementService;
+  private final SuperAdminBillingService billingService;
 
   public SuperAdminTenantControlPlaneService(
       CompanyRepository companyRepository,
@@ -148,7 +149,8 @@ public class SuperAdminTenantControlPlaneService {
       PasswordEncoder passwordEncoder,
       PasswordService passwordService,
       TenantDefaultSeedingService tenantDefaultSeedingService,
-      SuperAdminTenantEntitlementService tenantEntitlementService) {
+      SuperAdminTenantEntitlementService tenantEntitlementService,
+      SuperAdminBillingService billingService) {
     this.companyRepository = companyRepository;
     this.userAccountRepository = userAccountRepository;
     this.auditLogRepository = auditLogRepository;
@@ -169,6 +171,7 @@ public class SuperAdminTenantControlPlaneService {
     this.passwordService = passwordService;
     this.tenantDefaultSeedingService = tenantDefaultSeedingService;
     this.tenantEntitlementService = tenantEntitlementService;
+    this.billingService = billingService;
   }
 
   @Transactional(readOnly = true)
@@ -1005,6 +1008,7 @@ public class SuperAdminTenantControlPlaneService {
             metrics.currentConcurrentRequests(),
             metrics.quotaMaxConcurrentRequests());
     SuperAdminTenantSummaryDto.HealthSummary health = healthSummary(status, metrics);
+    SuperAdminBillingDtos.BillingStatusSummary billingSummary = billingSummary(company, status);
     return new SuperAdminTenantSummaryDto(
         company.getId(),
         company.getCode(),
@@ -1012,9 +1016,9 @@ public class SuperAdminTenantControlPlaneService {
         company.getTimezone(),
         status,
         resolvePlanId(company),
-        resolveBillingStatus(company, status),
+        billingSummary.billingStatus(),
         usage,
-        resolveTrialEndsAt(company, status),
+        billingSummary.trialEndsAt(),
         health,
         metrics.lifecycleState(),
         metrics.activeUserCount(),
@@ -1047,6 +1051,7 @@ public class SuperAdminTenantControlPlaneService {
             metrics.quotaHardLimitEnabled());
     SuperAdminTenantEntitlementsDto.PlanSummary planSummary =
         tenantEntitlementService.planSummaryFor(company);
+    SuperAdminBillingDtos.BillingStatusSummary billingSummary = billingSummary(company, status);
     SuperAdminTenantDetailDto.Usage usage =
         new SuperAdminTenantDetailDto.Usage(
             metrics.activeUserCount(),
@@ -1090,7 +1095,7 @@ public class SuperAdminTenantControlPlaneService {
             company.getStateCode(),
             status,
             resolveLifecycle(company),
-            resolveBillingStatus(company, status),
+            billingSummary.billingStatus(),
             health,
             mainAdminSummary,
             lastActivityAt,
@@ -1102,11 +1107,16 @@ public class SuperAdminTenantControlPlaneService {
             limits,
             tabStateForStatus(status, "AVAILABLE", "Plan limits summary is available")),
         new SuperAdminTenantDetailDto.BillingSummary(
-            resolveBillingStatus(company, status),
-            0,
-            company.getBaseCurrency(),
-            resolveTrialEndsAt(company, status),
-            tabStateForStatus(status, "EMPTY", "No platform billing records yet")),
+            billingSummary.billingStatus(),
+            billingSummary.balanceDueMinorUnits(),
+            billingSummary.currency(),
+            billingSummary.trialEndsAt(),
+            tabStateForStatus(
+                status,
+                billingSummary.historyRows() > 0 ? "AVAILABLE" : "EMPTY",
+                billingSummary.historyRows() > 0
+                    ? "Platform billing summary is available"
+                    : "No platform billing records yet")),
         new SuperAdminTenantDetailDto.SupportSummary(
             company.getSupportTags(),
             supportTimeline.size(),
@@ -1982,6 +1992,11 @@ public class SuperAdminTenantControlPlaneService {
       return company.getCommercialBillingStatus();
     }
     return resolveBillingStatus(status);
+  }
+
+  private SuperAdminBillingDtos.BillingStatusSummary billingSummary(
+      Company company, String status) {
+    return billingService.billingSummaryFor(company);
   }
 
   private Instant resolveTrialEndsAt(Company company, String status) {
