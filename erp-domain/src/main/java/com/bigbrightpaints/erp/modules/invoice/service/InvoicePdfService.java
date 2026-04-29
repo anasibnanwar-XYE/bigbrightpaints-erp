@@ -40,7 +40,7 @@ public class InvoicePdfService {
     this.realActionUsageService = realActionUsageService;
   }
 
-  @Transactional(readOnly = true)
+  @Transactional
   public PdfDocument renderInvoicePdf(Long invoiceId) {
     Company company = companyContextService.requireCurrentCompany();
     realActionUsageService.enforcePdfExportAllowed(company);

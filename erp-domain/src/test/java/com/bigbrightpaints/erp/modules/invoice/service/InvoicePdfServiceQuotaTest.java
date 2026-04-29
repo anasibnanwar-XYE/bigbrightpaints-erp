@@ -10,6 +10,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.annotation.Transactional;
 import org.thymeleaf.TemplateEngine;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
@@ -25,6 +26,17 @@ class InvoicePdfServiceQuotaTest {
   @Mock private CompanyScopedInvoiceLookupService invoiceLookupService;
   @Mock private TemplateEngine templateEngine;
   @Mock private TenantRealActionUsageService realActionUsageService;
+
+  @Test
+  void renderInvoicePdfUsesWritableTransactionForDurableUsageRecording() throws Exception {
+    Transactional transactional =
+        InvoicePdfService.class
+            .getMethod("renderInvoicePdf", Long.class)
+            .getAnnotation(Transactional.class);
+
+    org.assertj.core.api.Assertions.assertThat(transactional).isNotNull();
+    org.assertj.core.api.Assertions.assertThat(transactional.readOnly()).isFalse();
+  }
 
   @Test
   void renderInvoicePdfEnforcesPdfQuotaBeforeInvoiceLookupAndRenderSideEffects() {
