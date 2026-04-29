@@ -127,8 +127,7 @@ public class SuperAdminPlatformHealthService {
         actuatorStatus = "DEGRADED";
       }
     }
-    String status =
-        "UP".equals(readinessStatus) && !"DOWN".equals(actuatorStatus) ? "UP" : "DEGRADED";
+    String status = "UP".equals(readinessStatus) && "UP".equals(actuatorStatus) ? "UP" : "DEGRADED";
     return component(
         "appReadiness",
         status,
@@ -191,27 +190,37 @@ public class SuperAdminPlatformHealthService {
   }
 
   private SuperAdminPlatformHealthDto.Component queue(Instant checkedAt, String traceId) {
-    long pending =
-        outboxEventRepository.countByStatusAndDeadLetterFalse(OutboxEvent.Status.PENDING);
-    long publishing =
-        outboxEventRepository.countByStatusAndDeadLetterFalse(OutboxEvent.Status.PUBLISHING);
-    long pendingRetries =
-        outboxEventRepository.countByStatusAndDeadLetterFalseAndRetryCountGreaterThan(
-            OutboxEvent.Status.PENDING, 0);
-    String status = pending + publishing > 1_000 ? "DEGRADED" : "UP";
-    return component(
-        "queue",
-        status,
-        "UP".equals(status) ? "QUEUE_READY" : "QUEUE_BACKLOG_HIGH",
-        checkedAt,
-        traceId,
-        Map.of(
-            "pendingEvents",
-            pending,
-            "publishingEvents",
-            publishing,
-            "pendingRetries",
-            pendingRetries));
+    try {
+      long pending =
+          outboxEventRepository.countByStatusAndDeadLetterFalse(OutboxEvent.Status.PENDING);
+      long publishing =
+          outboxEventRepository.countByStatusAndDeadLetterFalse(OutboxEvent.Status.PUBLISHING);
+      long pendingRetries =
+          outboxEventRepository.countByStatusAndDeadLetterFalseAndRetryCountGreaterThan(
+              OutboxEvent.Status.PENDING, 0);
+      String status = pending + publishing > 1_000 ? "DEGRADED" : "UP";
+      return component(
+          "queue",
+          status,
+          "UP".equals(status) ? "QUEUE_READY" : "QUEUE_BACKLOG_HIGH",
+          checkedAt,
+          traceId,
+          Map.of(
+              "pendingEvents",
+              pending,
+              "publishingEvents",
+              publishing,
+              "pendingRetries",
+              pendingRetries));
+    } catch (RuntimeException ex) {
+      return component(
+          "queue",
+          "DEGRADED",
+          "QUEUE_PROBE_UNAVAILABLE",
+          checkedAt,
+          traceId,
+          Map.of("probeAvailable", false));
+    }
   }
 
   private SuperAdminPlatformHealthDto.Component email(Instant checkedAt, String traceId) {
@@ -274,18 +283,28 @@ public class SuperAdminPlatformHealthService {
   }
 
   private SuperAdminPlatformHealthDto.Component failedJobs(Instant checkedAt, String traceId) {
-    long failedOutbox =
-        outboxEventRepository.countByStatusAndDeadLetterTrue(OutboxEvent.Status.FAILED)
-            + outboxEventRepository.countByStatusAndDeadLetterFalse(OutboxEvent.Status.FAILED);
-    long auditRetries = auditActionEventRetryRepository.count();
-    long total = failedOutbox + auditRetries;
-    return component(
-        "failedJobs",
-        total == 0 ? "UP" : "DEGRADED",
-        total == 0 ? "NO_FAILED_JOBS" : "FAILED_JOBS_PRESENT",
-        checkedAt,
-        traceId,
-        Map.of("failedOutboxEvents", failedOutbox, "auditRetryJobs", auditRetries));
+    try {
+      long failedOutbox =
+          outboxEventRepository.countByStatusAndDeadLetterTrue(OutboxEvent.Status.FAILED)
+              + outboxEventRepository.countByStatusAndDeadLetterFalse(OutboxEvent.Status.FAILED);
+      long auditRetries = auditActionEventRetryRepository.count();
+      long total = failedOutbox + auditRetries;
+      return component(
+          "failedJobs",
+          total == 0 ? "UP" : "DEGRADED",
+          total == 0 ? "NO_FAILED_JOBS" : "FAILED_JOBS_PRESENT",
+          checkedAt,
+          traceId,
+          Map.of("failedOutboxEvents", failedOutbox, "auditRetryJobs", auditRetries));
+    } catch (RuntimeException ex) {
+      return component(
+          "failedJobs",
+          "DEGRADED",
+          "FAILED_JOBS_PROBE_UNAVAILABLE",
+          checkedAt,
+          traceId,
+          Map.of("probeAvailable", false));
+    }
   }
 
   private String overallStatus(List<SuperAdminPlatformHealthDto.Component> components) {
@@ -341,7 +360,10 @@ public class SuperAdminPlatformHealthService {
       return "UNKNOWN";
     }
     String code = status.getCode().trim().toUpperCase(Locale.ROOT);
-    if ("UP".equals(code) || "DOWN".equals(code) || "OUT_OF_SERVICE".equals(code)) {
+    if ("UP".equals(code)
+        || "DOWN".equals(code)
+        || "OUT_OF_SERVICE".equals(code)
+        || "UNKNOWN".equals(code)) {
       return code;
     }
     return "DEGRADED";
