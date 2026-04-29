@@ -37,6 +37,7 @@ import com.bigbrightpaints.erp.modules.company.dto.SuperAdminTenantSupportContex
 import com.bigbrightpaints.erp.modules.company.service.CompanyService;
 import com.bigbrightpaints.erp.modules.company.service.SuperAdminTenantControlPlaneService;
 import com.bigbrightpaints.erp.modules.company.service.SuperAdminTenantEntitlementService;
+import com.bigbrightpaints.erp.modules.company.service.TenantUsageRollupService;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 import com.bigbrightpaints.erp.shared.dto.PageResponse;
 
@@ -46,12 +47,15 @@ class SuperAdminControllerTest {
   @Mock private CompanyService companyService;
   @Mock private SuperAdminTenantControlPlaneService controlPlaneService;
   @Mock private SuperAdminTenantEntitlementService entitlementService;
+  @Mock private TenantUsageRollupService tenantUsageRollupService;
 
   private SuperAdminController controller;
 
   @BeforeEach
   void setUp() {
-    controller = new SuperAdminController(companyService, controlPlaneService, entitlementService);
+    controller =
+        new SuperAdminController(
+            companyService, controlPlaneService, entitlementService, tenantUsageRollupService);
   }
 
   @Test
@@ -186,6 +190,18 @@ class SuperAdminControllerTest {
     when(entitlementService.assignPlan(7L, planRequest)).thenReturn(entitlements);
     when(entitlementService.putOverrides(7L, overrideRequest)).thenReturn(entitlements);
     when(entitlementService.removeOverride(7L, "PORTAL", "restore")).thenReturn(entitlements);
+    when(tenantUsageRollupService.getPlatformUsage())
+        .thenReturn(
+            new com.bigbrightpaints.erp.modules.company.dto.SuperAdminUsageDtos.PlatformUsage(
+                Instant.parse("2026-03-26T12:00:00Z"), null, List.of(), List.of()));
+    when(tenantUsageRollupService.getTenantUsage(7L, entitlements.limits()))
+        .thenReturn(
+            new com.bigbrightpaints.erp.modules.company.dto.SuperAdminUsageDtos.TenantUsage(
+                7L, "ACME", "Acme", "UTC", null, null, List.of(), List.of()));
+    when(tenantUsageRollupService.getTenantUsageHistory(7L, "DAILY"))
+        .thenReturn(
+            new com.bigbrightpaints.erp.modules.company.dto.SuperAdminUsageDtos.TenantUsageHistory(
+                7L, "ACME", "UTC", "DAILY", List.of()));
     when(controlPlaneService.issueSupportWarning(7L, "OPS", "Check", "SUSPENDED", 24))
         .thenReturn(
             new CompanySupportWarningDto(
@@ -265,6 +281,10 @@ class SuperAdminControllerTest {
         "Tenant modules updated");
     assertSuccess(
         controller.getTenantEntitlements(7L).getBody(), "Tenant effective entitlements fetched");
+    assertSuccess(controller.getPlatformUsage().getBody(), "Platform usage fetched");
+    assertSuccess(controller.getTenantUsage(7L).getBody(), "Tenant usage fetched");
+    assertSuccess(
+        controller.getTenantUsageHistory(7L, "DAILY").getBody(), "Tenant usage history fetched");
     assertSuccess(controller.assignTenantPlan(7L, planRequest).getBody(), "Tenant plan assigned");
     assertSuccess(
         controller.upsertTenantOverrides(7L, overrideRequest).getBody(),

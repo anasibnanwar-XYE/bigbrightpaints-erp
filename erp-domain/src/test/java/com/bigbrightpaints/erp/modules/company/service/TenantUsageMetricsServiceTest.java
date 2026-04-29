@@ -34,10 +34,13 @@ class TenantUsageMetricsServiceTest {
 
   @Mock private SystemSettingsRepository systemSettingsRepository;
 
+  @Mock private TenantUsageRollupService tenantUsageRollupService;
+
   @Test
   void recordApiCall_concurrentTraffic_usesAtomicIncrementPerCall() throws Exception {
     TenantUsageMetricsService service =
-        new TenantUsageMetricsService(companyRepository, systemSettingsRepository);
+        new TenantUsageMetricsService(
+            companyRepository, systemSettingsRepository, tenantUsageRollupService);
     Company company = company(42L, "ACME");
     when(companyRepository.findByCodeIgnoreCase("ACME")).thenReturn(Optional.of(company));
 
@@ -71,6 +74,7 @@ class TenantUsageMetricsServiceTest {
 
     verify(systemSettingsRepository, times(calls))
         .incrementLongSetting("tenant.usage.api-call-count.42");
+    verify(tenantUsageRollupService, times(calls)).recordApiCall(company);
     verify(systemSettingsRepository, times(calls))
         .save(
             argThat(

@@ -13,6 +13,7 @@ import com.bigbrightpaints.erp.modules.company.dto.*;
 import com.bigbrightpaints.erp.modules.company.service.CompanyService;
 import com.bigbrightpaints.erp.modules.company.service.SuperAdminTenantControlPlaneService;
 import com.bigbrightpaints.erp.modules.company.service.SuperAdminTenantEntitlementService;
+import com.bigbrightpaints.erp.modules.company.service.TenantUsageRollupService;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 import com.bigbrightpaints.erp.shared.dto.PageResponse;
 
@@ -33,14 +34,17 @@ public class SuperAdminController {
   private final CompanyService companyService;
   private final SuperAdminTenantControlPlaneService controlPlaneService;
   private final SuperAdminTenantEntitlementService entitlementService;
+  private final TenantUsageRollupService tenantUsageRollupService;
 
   public SuperAdminController(
       CompanyService companyService,
       SuperAdminTenantControlPlaneService controlPlaneService,
-      SuperAdminTenantEntitlementService entitlementService) {
+      SuperAdminTenantEntitlementService entitlementService,
+      TenantUsageRollupService tenantUsageRollupService) {
     this.companyService = companyService;
     this.controlPlaneService = controlPlaneService;
     this.entitlementService = entitlementService;
+    this.tenantUsageRollupService = tenantUsageRollupService;
   }
 
   @GetMapping("/dashboard")
@@ -85,6 +89,33 @@ public class SuperAdminController {
     return ResponseEntity.ok(
         ApiResponse.success(
             "Superadmin tenant detail fetched", controlPlaneService.getTenantDetail(tenantId)));
+  }
+
+  @GetMapping("/usage")
+  public ResponseEntity<ApiResponse<SuperAdminUsageDtos.PlatformUsage>> getPlatformUsage() {
+    return ResponseEntity.ok(
+        ApiResponse.success("Platform usage fetched", tenantUsageRollupService.getPlatformUsage()));
+  }
+
+  @GetMapping("/tenants/{id}/usage")
+  public ResponseEntity<ApiResponse<SuperAdminUsageDtos.TenantUsage>> getTenantUsage(
+      @PathVariable("id") Long tenantId) {
+    SuperAdminTenantEntitlementsDto entitlements =
+        entitlementService.getEffectiveEntitlements(tenantId);
+    return ResponseEntity.ok(
+        ApiResponse.success(
+            "Tenant usage fetched",
+            tenantUsageRollupService.getTenantUsage(tenantId, entitlements.limits())));
+  }
+
+  @GetMapping("/tenants/{id}/usage/history")
+  public ResponseEntity<ApiResponse<SuperAdminUsageDtos.TenantUsageHistory>> getTenantUsageHistory(
+      @PathVariable("id") Long tenantId,
+      @RequestParam(value = "periodType", required = false) String periodType) {
+    return ResponseEntity.ok(
+        ApiResponse.success(
+            "Tenant usage history fetched",
+            tenantUsageRollupService.getTenantUsageHistory(tenantId, periodType)));
   }
 
   @GetMapping("/tenants/{id}/seed-status")

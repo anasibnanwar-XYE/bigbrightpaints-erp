@@ -3,6 +3,7 @@ package com.bigbrightpaints.erp.modules.company.service;
 import java.time.Instant;
 import java.util.Optional;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -21,11 +22,21 @@ public class TenantUsageMetricsService {
 
   private final CompanyRepository companyRepository;
   private final SystemSettingsRepository systemSettingsRepository;
+  private final TenantUsageRollupService tenantUsageRollupService;
 
   public TenantUsageMetricsService(
       CompanyRepository companyRepository, SystemSettingsRepository systemSettingsRepository) {
+    this(companyRepository, systemSettingsRepository, null);
+  }
+
+  @Autowired
+  public TenantUsageMetricsService(
+      CompanyRepository companyRepository,
+      SystemSettingsRepository systemSettingsRepository,
+      TenantUsageRollupService tenantUsageRollupService) {
     this.companyRepository = companyRepository;
     this.systemSettingsRepository = systemSettingsRepository;
+    this.tenantUsageRollupService = tenantUsageRollupService;
   }
 
   public void recordApiCall(String companyCode) {
@@ -42,6 +53,9 @@ public class TenantUsageMetricsService {
       return;
     }
     systemSettingsRepository.incrementLongSetting(apiCallCountKey(companyId));
+    if (tenantUsageRollupService != null) {
+      tenantUsageRollupService.recordApiCall(company);
+    }
     persistSetting(lastActivityAtKey(companyId), CompanyTime.now().toString());
   }
 

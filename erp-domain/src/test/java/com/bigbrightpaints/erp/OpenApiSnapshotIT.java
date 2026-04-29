@@ -366,6 +366,29 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
         "#/components/schemas/ApiResponseSuperAdminTenantDetailDto");
     assertOperationContract(
         root,
+        "/api/v1/superadmin/usage",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponsePlatformUsage");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/tenants/{id}/usage",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseTenantUsage");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/tenants/{id}/usage/history",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseTenantUsageHistory");
+    assertQueryParameter(
+        root, "/api/v1/superadmin/tenants/{id}/usage/history", "get", "periodType");
+    assertOperationContract(
+        root,
         "/api/v1/superadmin/tenants/{id}/activation/send",
         "post",
         null,
@@ -615,7 +638,6 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
     assertOperationMissing(root, "/api/v1/companies/{id}/support/warnings", "post");
     assertOperationMissing(root, "/api/v1/companies/superadmin/tenants", "post");
     assertOperationMissing(root, "/api/v1/companies/superadmin/tenants/{id}", "put");
-    assertOperationMissing(root, "/api/v1/superadmin/tenants/{id}/usage", "get");
     assertOperationMissing(root, "/api/v1/superadmin/tenants/{id}/activate", "post");
     assertOperationMissing(root, "/api/v1/superadmin/tenants/{id}/deactivate", "post");
     assertOperationMissing(root, "/api/v1/superadmin/tenants/{id}/suspend", "post");
@@ -716,6 +738,9 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
             "GET /api/v1/superadmin/tenants/new",
             "POST /api/v1/superadmin/tenants",
             "GET /api/v1/superadmin/tenants/{id}",
+            "GET /api/v1/superadmin/usage",
+            "GET /api/v1/superadmin/tenants/{id}/usage",
+            "GET /api/v1/superadmin/tenants/{id}/usage/history",
             "PUT /api/v1/superadmin/tenants/{id}/lifecycle",
             "PUT /api/v1/superadmin/tenants/{id}/limits",
             "PUT /api/v1/superadmin/tenants/{id}/modules",
