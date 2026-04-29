@@ -24,7 +24,9 @@ import com.bigbrightpaints.erp.modules.admin.domain.SupportTicket;
 import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketCategory;
 import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketPriority;
 import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketRepository;
+import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketSlaStatus;
 import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketStatus;
+import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketTimelineRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
@@ -51,6 +53,8 @@ class SupportTicketControllerIT extends AbstractIntegrationTest {
   @Autowired private UserAccountRepository userAccountRepository;
 
   @Autowired private SupportTicketRepository supportTicketRepository;
+
+  @Autowired private SupportTicketTimelineRepository supportTicketTimelineRepository;
 
   @Autowired private AuditLogRepository auditLogRepository;
 
@@ -848,6 +852,61 @@ class SupportTicketControllerIT extends AbstractIntegrationTest {
   }
 
   @Test
+  void slaRefreshRejectsFutureAsOfWithoutTicketAuditTimelineOrCounterSideEffects() {
+    Company company = companyRepository.findByCodeIgnoreCase(TENANT_A).orElseThrow();
+    company.setCommercialSupportTier("PRIORITY");
+    companyRepository.saveAndFlush(company);
+
+    String marker = "m11-sla-future-asof-" + System.nanoTime();
+    String tenantToken = login(ADMIN_A_EMAIL, TENANT_A);
+    String superAdminToken = login(SUPER_ADMIN_EMAIL, ROOT_TENANT);
+    Long ticketId = createTenantTicket(tenantToken, "SUPPORT", "HIGH", marker + "-ticket");
+
+    Map<String, Object> initialData = data(superAdminDetail(ticketId, superAdminToken));
+    Map<String, Object> initialSla = nestedMap(initialData, "sla");
+    SupportTicket ticket = supportTicketRepository.findById(ticketId).orElseThrow();
+    long breachedCounterBefore =
+        supportTicketRepository.countBySlaStatus(SupportTicketSlaStatus.BREACHED);
+    long auditCountBefore = auditLogRepository.count();
+    long timelineCountBefore = supportTicketTimelineRepository.count();
+    long breachTimelineBefore =
+        supportTicketTimelineRepository.countByTicketAndEventTypeIn(
+            ticket, List.of("SLA_BREACHED"));
+
+    ResponseEntity<Map> futureRefresh =
+        rest.exchange(
+            "/api/v1/superadmin/support/tickets/sla/refresh",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of(
+                    "asOf",
+                    Instant.parse(String.valueOf(initialSla.get("resolutionDueAt")))
+                        .plusSeconds(60)
+                        .toString()),
+                authHeaders(superAdminToken, ROOT_TENANT)),
+            Map.class);
+
+    assertThat(futureRefresh.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(supportTicketRepository.countBySlaStatus(SupportTicketSlaStatus.BREACHED))
+        .isEqualTo(breachedCounterBefore);
+    assertThat(auditLogRepository.count()).isEqualTo(auditCountBefore);
+    assertThat(supportTicketTimelineRepository.count()).isEqualTo(timelineCountBefore);
+    SupportTicket unchanged = supportTicketRepository.findById(ticketId).orElseThrow();
+    assertThat(unchanged.getSlaStatus()).isEqualTo(SupportTicketSlaStatus.PENDING);
+    assertThat(unchanged.getBreachedAt()).isNull();
+    assertThat(unchanged.getFirstResponseDueAt())
+        .isEqualTo(Instant.parse(String.valueOf(initialSla.get("firstResponseDueAt"))));
+    assertThat(unchanged.getResolutionDueAt())
+        .isEqualTo(Instant.parse(String.valueOf(initialSla.get("resolutionDueAt"))));
+    assertThat(
+            supportTicketTimelineRepository.countByTicketAndEventTypeIn(
+                unchanged, List.of("SLA_BREACHED")))
+        .isEqualTo(breachTimelineBefore);
+    assertThat(nestedMap(data(superAdminDetail(ticketId, superAdminToken)), "sla").get("status"))
+        .isEqualTo("PENDING");
+  }
+
+  @Test
   void slaPolicyFirstResponseAndBreachLifecycleAreDeterministicAndIdempotent() {
     Company company = companyRepository.findByCodeIgnoreCase(TENANT_A).orElseThrow();
     company.setCommercialSupportTier("PRIORITY");
@@ -914,13 +973,15 @@ class SupportTicketControllerIT extends AbstractIntegrationTest {
     assertThat(afterReplySla.get("firstRespondedAt")).isNotNull();
     assertThat(afterReplySla.get("status")).isEqualTo("RESPONDED");
 
+    SupportTicket overdueTicket = supportTicketRepository.findById(ticketId).orElseThrow();
+    overdueTicket.setResolutionDueAt(Instant.now().minusSeconds(60));
+    supportTicketRepository.saveAndFlush(overdueTicket);
+
     ResponseEntity<Map> breachRefresh =
         rest.exchange(
             "/api/v1/superadmin/support/tickets/sla/refresh",
             HttpMethod.POST,
-            new HttpEntity<>(
-                Map.of("asOf", createdAt.plusSeconds(41L * 3600L).toString()),
-                authHeaders(superAdminToken, ROOT_TENANT)),
+            new HttpEntity<>(authHeaders(superAdminToken, ROOT_TENANT)),
             Map.class);
     assertThat(breachRefresh.getStatusCode()).isEqualTo(HttpStatus.OK);
     assertThat(Long.parseLong(String.valueOf(data(breachRefresh).get("breachedTickets"))))
@@ -946,9 +1007,7 @@ class SupportTicketControllerIT extends AbstractIntegrationTest {
         rest.exchange(
             "/api/v1/superadmin/support/tickets/sla/refresh",
             HttpMethod.POST,
-            new HttpEntity<>(
-                Map.of("asOf", createdAt.plusSeconds(42L * 3600L).toString()),
-                authHeaders(superAdminToken, ROOT_TENANT)),
+            new HttpEntity<>(authHeaders(superAdminToken, ROOT_TENANT)),
             Map.class);
     assertThat(secondRefresh.getStatusCode()).isEqualTo(HttpStatus.OK);
     assertThat(data(secondRefresh).get("breachedTickets")).isEqualTo(0);
@@ -1137,9 +1196,7 @@ class SupportTicketControllerIT extends AbstractIntegrationTest {
         rest.exchange(
             "/api/v1/superadmin/support/tickets/sla/refresh",
             HttpMethod.POST,
-            new HttpEntity<>(
-                Map.of("asOf", Instant.now().plusSeconds(365L * 24L * 3600L).toString()),
-                authHeaders(superAdminToken, ROOT_TENANT)),
+            new HttpEntity<>(authHeaders(superAdminToken, ROOT_TENANT)),
             Map.class);
     assertThat(refresh.getStatusCode()).isEqualTo(HttpStatus.OK);
     assertThat(nestedMap(data(superAdminDetail(ticketId, superAdminToken)), "sla").get("status"))

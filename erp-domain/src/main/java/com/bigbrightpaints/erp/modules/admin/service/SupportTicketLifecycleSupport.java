@@ -220,7 +220,12 @@ public class SupportTicketLifecycleSupport {
 
   @Transactional
   public SuperAdminSupportTicketDtos.SlaRefreshResponse refreshBreaches(Instant asOf) {
-    Instant effectiveAsOf = asOf == null ? CompanyTime.now() : asOf;
+    Instant serverNow = CompanyTime.now();
+    if (asOf != null && asOf.isAfter(serverNow)) {
+      throw new ApplicationException(
+          ErrorCode.VALIDATION_INVALID_DATE, "SLA breach refresh asOf cannot be in the future");
+    }
+    Instant effectiveAsOf = asOf == null ? serverNow : asOf;
     List<SupportTicket> candidates =
         supportTicketRepository.findTop200ByStatusInAndSlaStatusNotOrderByResolutionDueAtAscIdAsc(
             ACTIVE_STATUSES, SupportTicketSlaStatus.BREACHED);
