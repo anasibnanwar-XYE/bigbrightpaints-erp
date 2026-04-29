@@ -21,6 +21,7 @@ import org.springframework.http.ResponseEntity;
 import com.bigbrightpaints.erp.core.audit.AuditLogRepository;
 import com.bigbrightpaints.erp.modules.admin.domain.SupportTicket;
 import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketCategory;
+import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketPriority;
 import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketRepository;
 import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketStatus;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
@@ -539,6 +540,213 @@ class SupportTicketControllerIT extends AbstractIntegrationTest {
   }
 
   @Test
+  void listAndDetailResponsesEmbedOnlyBoundedMessagePreviewForLongThreads() {
+    String marker = "m11-preview-" + System.nanoTime();
+    Long adminTicketId = seedTicket(TENANT_A, ADMIN_A_EMAIL, marker + "-admin-ticket");
+    String tenantToken = login(ADMIN_A_EMAIL, TENANT_A);
+    String superAdminToken = login(SUPER_ADMIN_EMAIL, ROOT_TENANT);
+
+    for (int i = 1; i <= 7; i++) {
+      ResponseEntity<Map> message =
+          rest.exchange(
+              "/api/v1/admin/support/tickets/" + adminTicketId + "/messages",
+              HttpMethod.POST,
+              new HttpEntity<>(
+                  Map.of("content", marker + "-admin-message-" + i),
+                  authHeaders(tenantToken, TENANT_A)),
+              Map.class);
+      assertThat(message.getStatusCode()).isEqualTo(HttpStatus.OK);
+    }
+
+    ResponseEntity<Map> adminList =
+        rest.exchange(
+            "/api/v1/admin/support/tickets",
+            HttpMethod.GET,
+            new HttpEntity<>(authHeaders(tenantToken, TENANT_A)),
+            Map.class);
+    assertThat(adminList.getStatusCode()).isEqualTo(HttpStatus.OK);
+    Map<String, Object> listTicket = ticketFromListResponse(adminList, adminTicketId);
+    assertMessagesAreBoundedPreview(listTicket, 5);
+
+    ResponseEntity<Map> adminDetail =
+        rest.exchange(
+            "/api/v1/admin/support/tickets/" + adminTicketId,
+            HttpMethod.GET,
+            new HttpEntity<>(authHeaders(tenantToken, TENANT_A)),
+            Map.class);
+    assertThat(adminDetail.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertMessagesAreBoundedPreview(data(adminDetail), 5);
+
+    ResponseEntity<Map> superAdminDetail =
+        rest.exchange(
+            "/api/v1/superadmin/support/tickets/" + adminTicketId,
+            HttpMethod.GET,
+            new HttpEntity<>(authHeaders(superAdminToken, ROOT_TENANT)),
+            Map.class);
+    assertThat(superAdminDetail.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertMessagesAreBoundedPreview(data(superAdminDetail), 5);
+
+    ResponseEntity<Map> pagedMessages =
+        rest.exchange(
+            "/api/v1/admin/support/tickets/" + adminTicketId + "/messages?page=1&size=3",
+            HttpMethod.GET,
+            new HttpEntity<>(authHeaders(tenantToken, TENANT_A)),
+            Map.class);
+    assertThat(pagedMessages.getStatusCode()).isEqualTo(HttpStatus.OK);
+    Map<String, Object> pagedData = data(pagedMessages);
+    assertThat(pagedData.get("totalElements")).isEqualTo(7);
+    assertThat(pagedData.get("page")).isEqualTo(1);
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> pagedContent = (List<Map<String, Object>>) pagedData.get("content");
+    assertThat(pagedContent).hasSize(3);
+    assertThat(String.valueOf(pagedContent.getFirst().get("content")))
+        .isEqualTo(marker + "-admin-message-4");
+
+    Long dealerTicketId = seedTicket(TENANT_A, DEALER_A_EMAIL, marker + "-dealer-ticket");
+    String dealerToken = login(DEALER_A_EMAIL, TENANT_A);
+    for (int i = 1; i <= 6; i++) {
+      ResponseEntity<Map> message =
+          rest.exchange(
+              "/api/v1/dealer-portal/support/tickets/" + dealerTicketId + "/messages",
+              HttpMethod.POST,
+              new HttpEntity<>(
+                  Map.of("content", marker + "-dealer-message-" + i),
+                  authHeaders(dealerToken, TENANT_A)),
+              Map.class);
+      assertThat(message.getStatusCode()).isEqualTo(HttpStatus.OK);
+    }
+
+    ResponseEntity<Map> dealerDetail =
+        rest.exchange(
+            "/api/v1/dealer-portal/support/tickets/" + dealerTicketId,
+            HttpMethod.GET,
+            new HttpEntity<>(authHeaders(dealerToken, TENANT_A)),
+            Map.class);
+    assertThat(dealerDetail.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertMessagesAreBoundedPreview(data(dealerDetail), 5);
+  }
+
+  @Test
+  void superAdminIncludeInternalMessagesArePaginatedAcrossCustomerMessagesAndInternalNotes() {
+    String marker = "m11-include-internal-" + System.nanoTime();
+    Long ticketId = seedTicket(TENANT_A, ADMIN_A_EMAIL, marker + "-ticket");
+    String tenantToken = login(ADMIN_A_EMAIL, TENANT_A);
+    String superAdminToken = login(SUPER_ADMIN_EMAIL, ROOT_TENANT);
+
+    postMessage(
+        "/api/v1/admin/support/tickets/" + ticketId + "/messages",
+        marker + "-customer-1",
+        tenantToken,
+        TENANT_A);
+    postMessage(
+        "/api/v1/superadmin/support/tickets/" + ticketId + "/internal-notes",
+        marker + "-internal-1",
+        superAdminToken,
+        ROOT_TENANT);
+    postMessage(
+        "/api/v1/superadmin/support/tickets/" + ticketId + "/messages",
+        marker + "-customer-2",
+        superAdminToken,
+        ROOT_TENANT);
+    postMessage(
+        "/api/v1/superadmin/support/tickets/" + ticketId + "/internal-notes",
+        marker + "-internal-2",
+        superAdminToken,
+        ROOT_TENANT);
+    postMessage(
+        "/api/v1/admin/support/tickets/" + ticketId + "/messages",
+        marker + "-customer-3",
+        tenantToken,
+        TENANT_A);
+
+    ResponseEntity<Map> includeInternalPage0 =
+        rest.exchange(
+            "/api/v1/superadmin/support/tickets/"
+                + ticketId
+                + "/messages?includeInternal=true&page=0&size=3",
+            HttpMethod.GET,
+            new HttpEntity<>(authHeaders(superAdminToken, ROOT_TENANT)),
+            Map.class);
+    assertThat(includeInternalPage0.getStatusCode()).isEqualTo(HttpStatus.OK);
+    Map<String, Object> page0Data = data(includeInternalPage0);
+    assertThat(page0Data.get("totalElements")).isEqualTo(5);
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> page0Content = (List<Map<String, Object>>) page0Data.get("content");
+    assertThat(page0Content)
+        .extracting(message -> message.get("visibility"))
+        .containsExactly("CUSTOMER", "INTERNAL", "CUSTOMER");
+    assertThat(page0Content)
+        .extracting(message -> String.valueOf(message.get("content")))
+        .containsExactly(marker + "-customer-1", marker + "-internal-1", marker + "-customer-2");
+
+    ResponseEntity<Map> includeInternalPage1 =
+        rest.exchange(
+            "/api/v1/superadmin/support/tickets/"
+                + ticketId
+                + "/messages?includeInternal=true&page=1&size=3",
+            HttpMethod.GET,
+            new HttpEntity<>(authHeaders(superAdminToken, ROOT_TENANT)),
+            Map.class);
+    assertThat(includeInternalPage1.getStatusCode()).isEqualTo(HttpStatus.OK);
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> page1Content =
+        (List<Map<String, Object>>) data(includeInternalPage1).get("content");
+    assertThat(page1Content)
+        .extracting(message -> message.get("visibility"))
+        .containsExactly("INTERNAL", "CUSTOMER");
+
+    ResponseEntity<Map> customerOnlyPage =
+        rest.exchange(
+            "/api/v1/superadmin/support/tickets/"
+                + ticketId
+                + "/messages?includeInternal=false&page=0&size=10",
+            HttpMethod.GET,
+            new HttpEntity<>(authHeaders(superAdminToken, ROOT_TENANT)),
+            Map.class);
+    assertThat(customerOnlyPage.getStatusCode()).isEqualTo(HttpStatus.OK);
+    Map<String, Object> customerOnlyData = data(customerOnlyPage);
+    assertThat(customerOnlyData.get("totalElements")).isEqualTo(3);
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> customerOnlyContent =
+        (List<Map<String, Object>>) customerOnlyData.get("content");
+    assertThat(customerOnlyContent)
+        .extracting(message -> message.get("visibility"))
+        .containsExactly("CUSTOMER", "CUSTOMER", "CUSTOMER");
+  }
+
+  @Test
+  void superAdminPrioritySortUsesBusinessRankAndDeterministicIdTieBreakers() {
+    String marker = "m11-priority-" + System.nanoTime();
+    Long low = seedTicket(TENANT_A, ADMIN_A_EMAIL, marker + "-low", SupportTicketPriority.LOW);
+    Long high1 =
+        seedTicket(TENANT_A, ADMIN_A_EMAIL, marker + "-high-1", SupportTicketPriority.HIGH);
+    Long normal =
+        seedTicket(TENANT_A, ADMIN_A_EMAIL, marker + "-normal", SupportTicketPriority.NORMAL);
+    Long urgent =
+        seedTicket(TENANT_A, ADMIN_A_EMAIL, marker + "-urgent", SupportTicketPriority.URGENT);
+    Long high2 =
+        seedTicket(TENANT_A, ADMIN_A_EMAIL, marker + "-high-2", SupportTicketPriority.HIGH);
+
+    ResponseEntity<Map> queue =
+        rest.exchange(
+            "/api/v1/superadmin/support/tickets?q=" + marker + "&page=0&size=10&sort=priority",
+            HttpMethod.GET,
+            new HttpEntity<>(authHeaders(login(SUPER_ADMIN_EMAIL, ROOT_TENANT), ROOT_TENANT)),
+            Map.class);
+    assertThat(queue.getStatusCode()).isEqualTo(HttpStatus.OK);
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> queueContent = (List<Map<String, Object>>) data(queue).get("content");
+
+    assertThat(queueContent).hasSize(5);
+    assertThat(queueContent)
+        .extracting(item -> item.get("priority"))
+        .containsExactly("URGENT", "HIGH", "HIGH", "NORMAL", "LOW");
+    assertThat(queueContent)
+        .extracting(item -> Long.parseLong(String.valueOf(item.get("ticketId"))))
+        .containsExactly(urgent, high1, high2, normal, low);
+  }
+
+  @Test
   void supportAccessMatrixEnforcesTenantBoundariesAndPlatformOnlyControls() {
     Long tenantTicket = seedTicket(TENANT_A, ADMIN_A_EMAIL, "matrix-admin-" + System.nanoTime());
     Long dealerTicket = seedTicket(TENANT_A, DEALER_A_EMAIL, "matrix-dealer-" + System.nanoTime());
@@ -632,6 +840,11 @@ class SupportTicketControllerIT extends AbstractIntegrationTest {
   }
 
   private Long seedTicket(String companyCode, String userEmail, String subject) {
+    return seedTicket(companyCode, userEmail, subject, SupportTicketPriority.NORMAL);
+  }
+
+  private Long seedTicket(
+      String companyCode, String userEmail, String subject, SupportTicketPriority priority) {
     Company company = companyRepository.findByCodeIgnoreCase(companyCode).orElseThrow();
     UserAccount requester =
         userAccountRepository
@@ -642,11 +855,22 @@ class SupportTicketControllerIT extends AbstractIntegrationTest {
     ticket.setCompany(company);
     ticket.setUserId(requester.getId());
     ticket.setCategory(SupportTicketCategory.SUPPORT);
+    ticket.setPriority(priority);
     ticket.setSubject(subject);
     ticket.setDescription("Investigate support visibility");
     ticket.setStatus(SupportTicketStatus.OPEN);
 
     return supportTicketRepository.save(ticket).getId();
+  }
+
+  private void postMessage(String path, String content, String token, String companyCode) {
+    ResponseEntity<Map> response =
+        rest.exchange(
+            path,
+            HttpMethod.POST,
+            new HttpEntity<>(Map.of("content", content), authHeaders(token, companyCode)),
+            Map.class);
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
   }
 
   private Set<String> subjectsFromListResponse(ResponseEntity<Map> response) {
@@ -660,6 +884,26 @@ class SupportTicketControllerIT extends AbstractIntegrationTest {
     return tickets.stream()
         .map(ticket -> String.valueOf(ticket.get("subject")))
         .collect(Collectors.toSet());
+  }
+
+  private Map<String, Object> ticketFromListResponse(ResponseEntity<Map> response, Long ticketId) {
+    assertThat(response.getBody()).isNotNull();
+    @SuppressWarnings("unchecked")
+    Map<String, Object> data = (Map<String, Object>) response.getBody().get("data");
+    assertThat(data).isNotNull();
+
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> tickets = (List<Map<String, Object>>) data.get("tickets");
+    return tickets.stream()
+        .filter(ticket -> Long.valueOf(String.valueOf(ticket.get("id"))).equals(ticketId))
+        .findFirst()
+        .orElseThrow();
+  }
+
+  private void assertMessagesAreBoundedPreview(Map<String, Object> ticketData, int expectedSize) {
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> messages = (List<Map<String, Object>>) ticketData.get("messages");
+    assertThat(messages).hasSize(expectedSize);
   }
 
   private HttpHeaders authHeaders(String token, String companyCode) {

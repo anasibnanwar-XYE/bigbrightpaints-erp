@@ -46,6 +46,8 @@ import jakarta.annotation.Nullable;
 @Service
 public class SupportTicketAccessSupport {
 
+  private static final int EMBEDDED_MESSAGE_PREVIEW_SIZE = 5;
+
   private final SupportTicketRepository supportTicketRepository;
   private final SupportTicketMessageRepository supportTicketMessageRepository;
   private final SupportTicketGitHubSyncService supportTicketGitHubSyncService;
@@ -197,23 +199,49 @@ public class SupportTicketAccessSupport {
                   ticket.getResolvedNotificationSentAt(),
                   ticket.getCreatedAt(),
                   ticket.getUpdatedAt(),
-                  customerMessages(ticket, false));
+                  customerMessagePreview(ticket, false));
             })
         .toList();
   }
 
-  public List<SupportTicketMessageResponse> customerMessages(
+  public List<SupportTicketMessageResponse> customerMessagePreview(
       SupportTicket ticket, boolean platformAudience) {
     return toMessageResponses(
-        supportTicketMessageRepository.findByTicketAndVisibilityInOrderByCreatedAtAscIdAsc(
-            ticket, List.of(SupportTicketMessageVisibility.CUSTOMER)),
+        supportTicketMessageRepository
+            .findByTicketAndVisibilityOrderByCreatedAtAscIdAsc(
+                ticket,
+                SupportTicketMessageVisibility.CUSTOMER,
+                PageRequest.of(0, EMBEDDED_MESSAGE_PREVIEW_SIZE))
+            .getContent(),
         platformAudience);
   }
 
-  public List<SupportTicketMessageResponse> internalNotes(SupportTicket ticket) {
+  public List<SupportTicketMessageResponse> internalNotePreview(SupportTicket ticket) {
     return toMessageResponses(
+        supportTicketMessageRepository
+            .findByTicketAndVisibilityOrderByCreatedAtAscIdAsc(
+                ticket,
+                SupportTicketMessageVisibility.INTERNAL,
+                PageRequest.of(0, EMBEDDED_MESSAGE_PREVIEW_SIZE))
+            .getContent());
+  }
+
+  @Transactional(readOnly = true)
+  public PageResponse<SupportTicketMessageResponse> listMessagesByVisibility(
+      SupportTicket ticket,
+      List<SupportTicketMessageVisibility> visibilities,
+      int page,
+      int size,
+      boolean platformAudience) {
+    Pageable pageable = PageRequest.of(requirePage(page), requireSize(size));
+    Page<SupportTicketMessage> messages =
         supportTicketMessageRepository.findByTicketAndVisibilityInOrderByCreatedAtAscIdAsc(
-            ticket, List.of(SupportTicketMessageVisibility.INTERNAL)));
+            ticket, visibilities, pageable);
+    return PageResponse.of(
+        toMessageResponses(messages.getContent(), platformAudience),
+        messages.getTotalElements(),
+        messages.getNumber(),
+        messages.getSize());
   }
 
   public List<SupportTicketMessageResponse> toMessageResponses(

@@ -2,7 +2,6 @@ package com.bigbrightpaints.erp.modules.admin.service;
 
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -51,9 +50,15 @@ public class SuperAdminSupportService {
   public PageResponse<SuperAdminSupportTicketDtos.QueueItem> listQueue(
       String status, String query, int page, int size, String sort) {
     Pageable pageable = PageRequest.of(requirePage(page), requireSize(size), parseSort(sort));
+    SupportTicketStatus parsedStatus = parseStatus(status);
+    String normalizedQuery = normalizeOptional(query);
     Page<SupportTicket> tickets =
-        supportTicketRepository.findSuperAdminQueue(
-            parseStatus(status), normalizeOptional(query), pageable);
+        isPrioritySort(sort)
+            ? supportTicketRepository.findSuperAdminQueueOrderByPriorityRank(
+                parsedStatus,
+                normalizedQuery,
+                PageRequest.of(pageable.getPageNumber(), pageable.getPageSize()))
+            : supportTicketRepository.findSuperAdminQueue(parsedStatus, normalizedQuery, pageable);
     Map<Long, UserAccount> requesters = requesters(tickets.getContent());
     List<SuperAdminSupportTicketDtos.QueueItem> content =
         tickets.getContent().stream().map(ticket -> queueItem(ticket, requesters)).toList();
@@ -82,8 +87,8 @@ public class SuperAdminSupportService {
         ticket.getCreatedAt(),
         ticket.getUpdatedAt(),
         sla(ticket),
-        supportTicketAccessSupport.customerMessages(ticket, true),
-        supportTicketAccessSupport.internalNotes(ticket));
+        supportTicketAccessSupport.customerMessagePreview(ticket, true),
+        supportTicketAccessSupport.internalNotePreview(ticket));
   }
 
   @Transactional
@@ -113,17 +118,12 @@ public class SuperAdminSupportService {
     if (!includeInternal) {
       return supportTicketAccessSupport.listCustomerMessages(ticket, page, size, true);
     }
-    List<SupportTicketMessageResponse> all =
-        new java.util.ArrayList<>(supportTicketAccessSupport.customerMessages(ticket, true));
-    all.addAll(supportTicketAccessSupport.internalNotes(ticket));
-    all.sort(
-        Comparator.comparing(SupportTicketMessageResponse::createdAt)
-            .thenComparing(SupportTicketMessageResponse::id));
-    int safePage = requirePage(page);
-    int safeSize = requireSize(size);
-    int from = Math.min(safePage * safeSize, all.size());
-    int to = Math.min(from + safeSize, all.size());
-    return PageResponse.of(all.subList(from, to), all.size(), safePage, safeSize);
+    return supportTicketAccessSupport.listMessagesByVisibility(
+        ticket,
+        List.of(SupportTicketMessageVisibility.CUSTOMER, SupportTicketMessageVisibility.INTERNAL),
+        page,
+        size,
+        true);
   }
 
   private SupportTicket requireTicket(Long ticketId) {
@@ -256,6 +256,12 @@ public class SuperAdminSupportService {
             ? Sort.Direction.ASC
             : Sort.Direction.DESC;
     return Sort.by(direction, field).and(Sort.by(direction, "id"));
+  }
+
+  private boolean isPrioritySort(String sort) {
+    String raw = StringUtils.hasText(sort) ? sort.trim() : "createdAt,desc";
+    String[] parts = raw.split(",");
+    return "priority".equals(parts[0].trim());
   }
 
   private int requirePage(int page) {

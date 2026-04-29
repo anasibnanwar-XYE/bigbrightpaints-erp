@@ -17,6 +17,11 @@ public interface SupportTicketMessageRepository extends JpaRepository<SupportTic
   Page<SupportTicketMessage> findByTicketAndVisibilityOrderByCreatedAtAscIdAsc(
       SupportTicket ticket, SupportTicketMessageVisibility visibility, Pageable pageable);
 
+  Page<SupportTicketMessage> findByTicketAndVisibilityInOrderByCreatedAtAscIdAsc(
+      SupportTicket ticket,
+      Collection<SupportTicketMessageVisibility> visibilities,
+      Pageable pageable);
+
   List<SupportTicketMessage> findByTicketAndVisibilityInOrderByCreatedAtAscIdAsc(
       SupportTicket ticket, Collection<SupportTicketMessageVisibility> visibilities);
 

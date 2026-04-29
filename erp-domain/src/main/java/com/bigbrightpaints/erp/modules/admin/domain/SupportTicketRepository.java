@@ -29,18 +29,56 @@ public interface SupportTicketRepository extends JpaRepository<SupportTicket, Lo
   long countByCompanyAndStatus(Company company, SupportTicketStatus status);
 
   @Query(
-      """
-      SELECT t FROM SupportTicket t
-      JOIN t.company c
-      WHERE (:status IS NULL OR t.status = :status)
-        AND (
-          :query IS NULL
-          OR LOWER(t.subject) LIKE LOWER(CONCAT('%', :query, '%'))
-          OR LOWER(c.code) LIKE LOWER(CONCAT('%', :query, '%'))
-          OR LOWER(c.name) LIKE LOWER(CONCAT('%', :query, '%'))
-        )
-      """)
+      value =
+          """
+          SELECT t FROM SupportTicket t
+          JOIN t.company c
+          WHERE (:status IS NULL OR t.status = :status)
+            AND (
+              :query IS NULL
+              OR LOWER(t.subject) LIKE LOWER(CONCAT('%', :query, '%'))
+              OR LOWER(c.code) LIKE LOWER(CONCAT('%', :query, '%'))
+              OR LOWER(c.name) LIKE LOWER(CONCAT('%', :query, '%'))
+            )
+          """)
   Page<SupportTicket> findSuperAdminQueue(
+      @Param("status") SupportTicketStatus status, @Param("query") String query, Pageable pageable);
+
+  @Query(
+      value =
+          """
+          SELECT t FROM SupportTicket t
+          JOIN t.company c
+          WHERE (:status IS NULL OR t.status = :status)
+            AND (
+              :query IS NULL
+              OR LOWER(t.subject) LIKE LOWER(CONCAT('%', :query, '%'))
+              OR LOWER(c.code) LIKE LOWER(CONCAT('%', :query, '%'))
+              OR LOWER(c.name) LIKE LOWER(CONCAT('%', :query, '%'))
+            )
+          ORDER BY
+            CASE t.priority
+              WHEN com.bigbrightpaints.erp.modules.admin.domain.SupportTicketPriority.URGENT THEN 0
+              WHEN com.bigbrightpaints.erp.modules.admin.domain.SupportTicketPriority.HIGH THEN 1
+              WHEN com.bigbrightpaints.erp.modules.admin.domain.SupportTicketPriority.NORMAL THEN 2
+              WHEN com.bigbrightpaints.erp.modules.admin.domain.SupportTicketPriority.LOW THEN 3
+              ELSE 4
+            END ASC,
+            t.id ASC
+          """,
+      countQuery =
+          """
+          SELECT COUNT(t) FROM SupportTicket t
+          JOIN t.company c
+          WHERE (:status IS NULL OR t.status = :status)
+            AND (
+              :query IS NULL
+              OR LOWER(t.subject) LIKE LOWER(CONCAT('%', :query, '%'))
+              OR LOWER(c.code) LIKE LOWER(CONCAT('%', :query, '%'))
+              OR LOWER(c.name) LIKE LOWER(CONCAT('%', :query, '%'))
+            )
+          """)
+  Page<SupportTicket> findSuperAdminQueueOrderByPriorityRank(
       @Param("status") SupportTicketStatus status, @Param("query") String query, Pageable pageable);
 
   List<SupportTicket> findTop200ByGithubIssueNumberIsNotNullAndStatusInOrderByCreatedAtAsc(
