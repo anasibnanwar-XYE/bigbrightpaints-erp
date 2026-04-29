@@ -39,6 +39,7 @@ import com.bigbrightpaints.erp.modules.accounting.dto.OverdueInvoiceDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.SupplierBalanceView;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
+import com.bigbrightpaints.erp.modules.company.service.TenantRealActionUsageService;
 import com.bigbrightpaints.erp.modules.invoice.domain.Invoice;
 import com.bigbrightpaints.erp.modules.purchasing.domain.Supplier;
 import com.bigbrightpaints.erp.modules.purchasing.domain.SupplierRepository;
@@ -57,6 +58,7 @@ class StatementServiceTest {
   @Mock private SupplierLedgerRepository supplierLedgerRepository;
   @Mock private PartnerSettlementAllocationRepository settlementAllocationRepository;
   @Mock private CompanyClock companyClock;
+  @Mock private TenantRealActionUsageService realActionUsageService;
 
   private StatementService statementService;
   private Company company;
@@ -71,7 +73,8 @@ class StatementServiceTest {
             dealerLedgerRepository,
             supplierLedgerRepository,
             settlementAllocationRepository,
-            companyClock);
+            companyClock,
+            realActionUsageService);
     company = new Company();
     ReflectionFieldAccess.setField(company, "id", 88L);
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
@@ -648,6 +651,71 @@ class StatementServiceTest {
 
     assertThat(pdf).isNotEmpty();
     assertThat(new String(pdf, 0, 5, StandardCharsets.US_ASCII)).isEqualTo("%PDF-");
+  }
+
+  @Test
+  void statementAndAgingPdfsEnforceAndRecordPdfQuotaForEachSuccessfulExport() {
+    Dealer dealer = new Dealer();
+    dealer.setName("Dealer PDF Quota");
+    ReflectionFieldAccess.setField(dealer, "id", 131L);
+    Supplier supplier = new Supplier();
+    supplier.setName("Supplier PDF Quota");
+    ReflectionFieldAccess.setField(supplier, "id", 141L);
+    LocalDate from = LocalDate.of(2026, 2, 1);
+    LocalDate to = LocalDate.of(2026, 2, 28);
+    LocalDate asOf = LocalDate.of(2026, 2, 12);
+
+    when(dealerRepository.findByCompanyAndId(company, 131L)).thenReturn(Optional.of(dealer));
+    when(supplierRepository.findByCompanyAndId(company, 141L)).thenReturn(Optional.of(supplier));
+    when(dealerLedgerRepository.aggregateBalanceBefore(company, dealer, from))
+        .thenReturn(Optional.empty());
+    when(supplierLedgerRepository.aggregateBalanceBefore(company, supplier, from))
+        .thenReturn(Optional.empty());
+    when(dealerLedgerRepository.findByCompanyAndDealerAndEntryDateBetweenOrderByEntryDateAscIdAsc(
+            company, dealer, from, to))
+        .thenReturn(List.of());
+    when(supplierLedgerRepository
+            .findByCompanyAndSupplierAndEntryDateBetweenOrderByEntryDateAscIdAsc(
+                company, supplier, from, to))
+        .thenReturn(List.of());
+    when(dealerLedgerRepository
+            .findByCompanyAndDealerAndEntryDateLessThanEqualOrderByEntryDateAscIdAsc(
+                company, dealer, asOf))
+        .thenReturn(List.of());
+    when(supplierLedgerRepository
+            .findByCompanyAndSupplierAndEntryDateLessThanEqualOrderByEntryDateAscIdAsc(
+                company, supplier, asOf))
+        .thenReturn(List.of());
+
+    assertThat(statementService.dealerStatementPdf(131L, from, to)).isNotEmpty();
+    assertThat(statementService.supplierStatementPdf(141L, from, to)).isNotEmpty();
+    assertThat(statementService.dealerAgingPdf(131L, asOf, "0-30,30-60,61")).isNotEmpty();
+    assertThat(statementService.supplierAgingPdf(141L, asOf, "0-30,30-60,61")).isNotEmpty();
+
+    org.mockito.Mockito.verify(realActionUsageService, org.mockito.Mockito.times(4))
+        .enforcePdfExportAllowed(company);
+    org.mockito.Mockito.verify(realActionUsageService, org.mockito.Mockito.times(4))
+        .recordPdfExport(company);
+  }
+
+  @Test
+  void statementPdfQuotaExhaustionPreventsLookupAndUsageRecording() {
+    ApplicationException quotaExceeded =
+        new ApplicationException(
+            com.bigbrightpaints.erp.core.exception.ErrorCode.BUSINESS_LIMIT_EXCEEDED,
+            "PDF exports quota exhausted");
+    org.mockito.Mockito.doThrow(quotaExceeded)
+        .when(realActionUsageService)
+        .enforcePdfExportAllowed(company);
+
+    assertThatThrownBy(
+            () ->
+                statementService.dealerStatementPdf(
+                    151L, LocalDate.of(2026, 2, 1), LocalDate.of(2026, 2, 28)))
+        .isSameAs(quotaExceeded);
+
+    verify(dealerRepository, never()).findByCompanyAndId(company, 151L);
+    verify(realActionUsageService, never()).recordPdfExport(company);
   }
 
   @Test

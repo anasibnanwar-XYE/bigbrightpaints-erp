@@ -1,6 +1,7 @@
 package com.bigbrightpaints.erp.modules.sales.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
@@ -20,6 +21,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.notification.EmailService;
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
@@ -29,6 +32,7 @@ import com.bigbrightpaints.erp.modules.accounting.service.StatementService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
+import com.bigbrightpaints.erp.modules.company.service.TenantRealActionUsageService;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
 
@@ -41,6 +45,7 @@ class DunningServiceTest {
   @Mock private StatementService statementService;
   @Mock private CompanyClock companyClock;
   @Mock private EmailService emailService;
+  @Mock private TenantRealActionUsageService realActionUsageService;
 
   private DunningService dunningService;
   private Company company;
@@ -55,7 +60,8 @@ class DunningServiceTest {
             dealerRepository,
             statementService,
             companyClock,
-            emailService);
+            emailService,
+            realActionUsageService);
 
     company = new Company();
     company.setCode("TEST");
@@ -94,6 +100,8 @@ class DunningServiceTest {
         .sendSimpleEmail(eq("dealer@example.com"), subjectCaptor.capture(), bodyCaptor.capture());
     assertThat(subjectCaptor.getValue()).contains("DLR-01");
     assertThat(bodyCaptor.getValue()).contains("500");
+    verify(realActionUsageService).enforceBusinessEmailAllowed(company);
+    verify(realActionUsageService).recordBusinessEmail(company);
   }
 
   @Test
@@ -114,6 +122,34 @@ class DunningServiceTest {
     assertThat(placed).isFalse();
     verify(dealerRepository, never()).save(any(Dealer.class));
     verify(emailService, never()).sendSimpleEmail(any(), any(), any());
+    verify(realActionUsageService, never()).enforceBusinessEmailAllowed(any());
+    verify(realActionUsageService, never()).recordBusinessEmail(any());
+  }
+
+  @Test
+  void evaluateDealerHold_exhaustedEmailQuotaPreventsSendAndUsageRecording() {
+    when(companyContextService.requireCurrentCompany()).thenReturn(company);
+    when(dealerRepository.findByCompanyAndId(company, 1L)).thenReturn(Optional.of(dealer));
+    when(companyClock.today(company)).thenReturn(LocalDate.of(2026, 2, 23));
+    when(statementService.dealerAging(eq(1L), eq(LocalDate.of(2026, 2, 23)), eq(null)))
+        .thenReturn(
+            new AgingSummaryResponse(
+                1L,
+                "Dealer One",
+                new BigDecimal("500"),
+                List.of(new AgingBucketDto("45+", 45, null, new BigDecimal("500")))));
+    ApplicationException quotaExceeded =
+        new ApplicationException(ErrorCode.BUSINESS_LIMIT_EXCEEDED, "Email quota exhausted");
+    org.mockito.Mockito.doThrow(quotaExceeded)
+        .when(realActionUsageService)
+        .enforceBusinessEmailAllowed(company);
+
+    assertThatThrownBy(() -> dunningService.evaluateDealerHold(1L, 45, new BigDecimal("100")))
+        .isSameAs(quotaExceeded);
+    assertThat(dealer.getStatus()).isEqualTo("ON_HOLD");
+    verify(dealerRepository).save(dealer);
+    verify(emailService, never()).sendSimpleEmail(any(), any(), any());
+    verify(realActionUsageService, never()).recordBusinessEmail(any());
   }
 
   @Test
