@@ -389,6 +389,20 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
         root, "/api/v1/superadmin/tenants/{id}/usage/history", "get", "periodType");
     assertOperationContract(
         root,
+        "/api/v1/superadmin/tenants/{id}/quota-policy",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseTenantQuotaPolicy");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/tenants/{id}/quota-check",
+        "post",
+        "#/components/schemas/QuotaActionRequest",
+        "200",
+        "#/components/schemas/ApiResponseQuotaActionResult");
+    assertOperationContract(
+        root,
         "/api/v1/superadmin/tenants/{id}/activation/send",
         "post",
         null,
@@ -741,6 +755,8 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
             "GET /api/v1/superadmin/usage",
             "GET /api/v1/superadmin/tenants/{id}/usage",
             "GET /api/v1/superadmin/tenants/{id}/usage/history",
+            "GET /api/v1/superadmin/tenants/{id}/quota-policy",
+            "POST /api/v1/superadmin/tenants/{id}/quota-check",
             "PUT /api/v1/superadmin/tenants/{id}/lifecycle",
             "PUT /api/v1/superadmin/tenants/{id}/limits",
             "PUT /api/v1/superadmin/tenants/{id}/modules",

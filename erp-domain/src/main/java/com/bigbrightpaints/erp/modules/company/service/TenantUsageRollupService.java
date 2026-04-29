@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -32,7 +33,18 @@ import com.bigbrightpaints.erp.modules.company.dto.SuperAdminUsageDtos;
 public class TenantUsageRollupService {
 
   private static final long PERCENT_SCALE = 100L;
+  private static final int WARNING_THRESHOLD_PERCENT = 80;
   private static final String DEFAULT_TIMEZONE = "UTC";
+  private static final Set<String> COUNTED_EMAIL_CATEGORIES = Set.of("BUSINESS");
+  private static final Set<String> EXEMPT_EMAIL_CATEGORIES =
+      Set.of(
+          "ACTIVATION",
+          "PASSWORD_RESET",
+          "LOCKOUT_SECURITY",
+          "SECURITY",
+          "SUSPENSION_WARNING",
+          "BILLING_NOTICE",
+          "SUPPORT_SYSTEM");
 
   private final TenantUsageRollupRepository rollupRepository;
   private final CompanyRepository companyRepository;
@@ -115,6 +127,108 @@ public class TenantUsageRollupService {
         toPeriod(PeriodType.MONTHLY, monthly, false, null),
         dimensions,
         history);
+  }
+
+  @Transactional
+  public SuperAdminUsageDtos.TenantQuotaPolicy getTenantQuotaPolicy(
+      Long companyId,
+      Map<String, SuperAdminTenantEntitlementsDto.LimitEntitlement> effectiveLimits) {
+    Company company = requireCompany(companyId);
+    closeElapsedWindows(company);
+    refreshCurrentWindows(company);
+    Map<UsageDimension, Long> limits = resolveLimits(company, effectiveLimits);
+    PeriodWindow monthly = periodWindow(company, PeriodType.MONTHLY);
+    List<TenantUsageRollup> rollups =
+        rollupRepository.findByCompany_IdAndPeriodTypeAndPeriodStartAtOrderByDimensionAsc(
+            company.getId(), monthly.periodType().name(), monthly.startAt());
+    List<SuperAdminUsageDtos.QuotaDimensionPolicy> dimensions =
+        UsageDimension.ordered().stream()
+            .map(
+                dimension -> {
+                  long used = currentUsed(dimension, rollups);
+                  long limit = limits.getOrDefault(dimension, 0L);
+                  return quotaPolicy(dimension, company, used, limit);
+                })
+            .toList();
+    return new SuperAdminUsageDtos.TenantQuotaPolicy(
+        company.getId(),
+        company.getCode(),
+        timezone(company),
+        toPeriod(PeriodType.MONTHLY, monthly, false, null),
+        dimensions,
+        emailCategoryPolicies());
+  }
+
+  @Transactional
+  public SuperAdminUsageDtos.QuotaActionResult enforceQuotaAction(
+      Long companyId,
+      SuperAdminUsageDtos.QuotaActionRequest request,
+      Map<String, SuperAdminTenantEntitlementsDto.LimitEntitlement> effectiveLimits) {
+    if (request == null) {
+      throw ValidationUtils.invalidInput("Quota action payload is required");
+    }
+    Company company = requireCompany(companyId);
+    UsageDimension dimension = normalizeDimension(request.dimension());
+    String emailCategory =
+        dimension == UsageDimension.EMAILS ? normalizeEmailCategory(request.emailCategory()) : null;
+    boolean countedEmail =
+        dimension != UsageDimension.EMAILS || COUNTED_EMAIL_CATEGORIES.contains(emailCategory);
+    closeElapsedWindows(company);
+    refreshCurrentWindows(company);
+    Map<UsageDimension, Long> limits = resolveLimits(company, effectiveLimits);
+    PeriodWindow monthly = periodWindow(company, PeriodType.MONTHLY);
+    List<TenantUsageRollup> rollups =
+        rollupRepository.findByCompany_IdAndPeriodTypeAndPeriodStartAtOrderByDimensionAsc(
+            company.getId(), monthly.periodType().name(), monthly.startAt());
+    long usedBefore = currentUsed(dimension, rollups);
+    long requestedUnits = requestedUnits(dimension, request);
+    long effectiveIncrement = countedEmail ? requestedUnits : 0L;
+    long usedAfter = usedBefore + effectiveIncrement;
+    long limit = limits.getOrDefault(dimension, 0L);
+    SuperAdminUsageDtos.QuotaDimensionPolicy beforePolicy =
+        quotaPolicy(dimension, company, usedBefore, limit);
+    QuotaDecision decision =
+        decide(
+            dimension,
+            usedAfter,
+            limit,
+            company.isQuotaSoftLimitEnabled(),
+            company.isQuotaHardLimitEnabled());
+    if (!countedEmail) {
+      decision =
+          new QuotaDecision(
+              "ALLOWED_EXEMPT",
+              true,
+              "EMAIL_CATEGORY_EXEMPT",
+              "Email category is exempt from tenant business-email quota");
+    }
+    boolean usageRecorded = false;
+    if (decision.accepted() && effectiveIncrement > 0L && !request.dryRun()) {
+      recordAcceptedCounter(company, dimension, requestedUnits, request.bytes());
+      usageRecorded = dimension.isCounter();
+    }
+    SuperAdminUsageDtos.QuotaDimensionPolicy afterPolicy =
+        quotaPolicy(dimension, company, usedAfter, limit);
+    return new SuperAdminUsageDtos.QuotaActionResult(
+        company.getId(),
+        company.getCode(),
+        dimension.name(),
+        emailCategory,
+        decision.decision(),
+        decision.accepted(),
+        usageRecorded,
+        requestedUnits,
+        usedBefore,
+        usedAfter,
+        limit,
+        beforePolicy.state(),
+        afterPolicy.state(),
+        decision.reasonCode(),
+        decision.message(),
+        afterPolicy.safeReadsAllowed(),
+        afterPolicy.existingResourcesPreserved(),
+        dimension == UsageDimension.EMAILS,
+        dimension == UsageDimension.EMAILS);
   }
 
   @Transactional
@@ -316,6 +430,183 @@ public class TenantUsageRollupService {
         .toList();
   }
 
+  private SuperAdminUsageDtos.QuotaDimensionPolicy quotaPolicy(
+      UsageDimension dimension, Company company, long used, long limit) {
+    long graceAllowance = graceAllowance(dimension, limit);
+    long graceStartAt = limit <= 0L || graceAllowance == 0L ? 0L : limit + 1L;
+    long graceEndAt = limit <= 0L || graceAllowance == 0L ? 0L : limit + graceAllowance;
+    long hardBlockAt = hardBlockAt(dimension, limit);
+    return new SuperAdminUsageDtos.QuotaDimensionPolicy(
+        dimension.name(),
+        dimension.label(),
+        dimension.unit(),
+        used,
+        limit,
+        percentage(used, limit),
+        policyState(dimension, used, limit),
+        WARNING_THRESHOLD_PERCENT,
+        graceStartAt,
+        graceEndAt,
+        hardBlockAt,
+        true,
+        true,
+        company != null && company.isQuotaSoftLimitEnabled(),
+        company == null || company.isQuotaHardLimitEnabled(),
+        loweredLimitBehavior(dimension, used, limit));
+  }
+
+  private List<SuperAdminUsageDtos.EmailQuotaCategoryPolicy> emailCategoryPolicies() {
+    List<SuperAdminUsageDtos.EmailQuotaCategoryPolicy> policies = new ArrayList<>();
+    policies.add(
+        new SuperAdminUsageDtos.EmailQuotaCategoryPolicy("BUSINESS", true, true, null, true, true));
+    EXEMPT_EMAIL_CATEGORIES.stream()
+        .sorted()
+        .forEach(
+            category ->
+                policies.add(
+                    new SuperAdminUsageDtos.EmailQuotaCategoryPolicy(
+                        category,
+                        false,
+                        false,
+                        "REQUIRED_ONBOARDING_SECURITY_OR_PLATFORM_NOTICE",
+                        true,
+                        true)));
+    return policies;
+  }
+
+  private long currentUsed(UsageDimension dimension, List<TenantUsageRollup> rollups) {
+    TenantUsageRollup rollup =
+        rollups.stream()
+            .filter(candidate -> dimension.name().equals(candidate.getDimension()))
+            .findFirst()
+            .orElse(null);
+    return usedValue(dimension, rollup);
+  }
+
+  private QuotaDecision decide(
+      UsageDimension dimension,
+      long projectedUsed,
+      long limit,
+      boolean softLimit,
+      boolean hardLimit) {
+    if (limit <= 0L || !hardLimit) {
+      return new QuotaDecision("ALLOWED", true, "QUOTA_ALLOWED", "Quota allows this action");
+    }
+    long hardBlockAt = hardBlockAt(dimension, limit);
+    if (projectedUsed >= hardBlockAt) {
+      return new QuotaDecision(
+          "BLOCKED",
+          false,
+          "TENANT_" + dimension.name() + "_QUOTA_EXHAUSTED",
+          dimension.label() + " quota exhausted");
+    }
+    if (projectedUsed > limit) {
+      return new QuotaDecision(
+          softLimit ? "GRACE" : "ALLOWED_GRACE",
+          true,
+          "TENANT_" + dimension.name() + "_QUOTA_GRACE",
+          dimension.label() + " quota is in grace");
+    }
+    if (percentage(projectedUsed, limit) >= WARNING_THRESHOLD_PERCENT) {
+      return new QuotaDecision(
+          "WARNING",
+          true,
+          "TENANT_" + dimension.name() + "_QUOTA_WARNING",
+          dimension.label() + " quota is near the limit");
+    }
+    return new QuotaDecision("ALLOWED", true, "QUOTA_ALLOWED", "Quota allows this action");
+  }
+
+  private String policyState(UsageDimension dimension, long used, long limit) {
+    if (limit <= 0L) {
+      return "OK";
+    }
+    if (used >= hardBlockAt(dimension, limit)) {
+      return "BLOCKED";
+    }
+    if (used > limit) {
+      return "GRACE";
+    }
+    if (percentage(used, limit) >= WARNING_THRESHOLD_PERCENT) {
+      return "WARNING";
+    }
+    return "OK";
+  }
+
+  private long graceAllowance(UsageDimension dimension, long limit) {
+    if (limit <= 0L || !dimension.hasGrace()) {
+      return 0L;
+    }
+    return Math.max(1L, (limit + 9L) / 10L);
+  }
+
+  private long hardBlockAt(UsageDimension dimension, long limit) {
+    if (limit <= 0L) {
+      return 0L;
+    }
+    return limit + graceAllowance(dimension, limit) + 1L;
+  }
+
+  private String loweredLimitBehavior(UsageDimension dimension, long used, long limit) {
+    if (limit <= 0L || used <= limit) {
+      return "NORMAL";
+    }
+    if (used >= hardBlockAt(dimension, limit)) {
+      return "LOWERED_LIMIT_BLOCKS_NEW_WRITES_SAFE_READS_ALLOWED";
+    }
+    if (dimension.hasGrace()) {
+      return "LOWERED_LIMIT_ENTERS_GRACE_UNTIL_GRACE_EXHAUSTED";
+    }
+    return "LOWERED_LIMIT_BLOCKS_NEW_WRITES_SAFE_READS_ALLOWED";
+  }
+
+  private UsageDimension normalizeDimension(String dimension) {
+    if (!StringUtils.hasText(dimension)) {
+      throw ValidationUtils.invalidInput("dimension is required");
+    }
+    try {
+      return UsageDimension.valueOf(dimension.trim().toUpperCase(Locale.ROOT));
+    } catch (RuntimeException ex) {
+      throw ValidationUtils.invalidInput("Unsupported quota dimension: " + dimension);
+    }
+  }
+
+  private String normalizeEmailCategory(String category) {
+    if (!StringUtils.hasText(category)) {
+      return "BUSINESS";
+    }
+    String normalized = category.trim().toUpperCase(Locale.ROOT).replace('-', '_');
+    if (COUNTED_EMAIL_CATEGORIES.contains(normalized)
+        || EXEMPT_EMAIL_CATEGORIES.contains(normalized)) {
+      return normalized;
+    }
+    throw ValidationUtils.invalidInput("Unsupported email quota category: " + category);
+  }
+
+  private long requestedUnits(
+      UsageDimension dimension, SuperAdminUsageDtos.QuotaActionRequest request) {
+    long units = request.units() == null ? 1L : request.units();
+    if (dimension == UsageDimension.STORAGE && request.bytes() != null) {
+      units = request.bytes();
+    }
+    if (units <= 0L) {
+      throw ValidationUtils.invalidInput("Quota action units must be positive");
+    }
+    return units;
+  }
+
+  private void recordAcceptedCounter(
+      Company company, UsageDimension dimension, long requestedUnits, Long requestedBytes) {
+    if (!dimension.isCounter()) {
+      return;
+    }
+    long bytesDelta =
+        dimension == UsageDimension.STORAGE
+            ? Math.max(requestedBytes == null ? requestedUnits : requestedBytes, 0L)
+            : 0L;
+    incrementCounter(company, dimension, requestedUnits, bytesDelta);
+  }
+
   private SuperAdminUsageDtos.RollupWindow toHistoryWindow(
       TenantUsageRollup rollup, Map<UsageDimension, Long> limits) {
     UsageDimension dimension = UsageDimension.valueOf(rollup.getDimension());
@@ -515,6 +806,14 @@ public class TenantUsageRollupService {
       return unit;
     }
 
+    private boolean isCounter() {
+      return "COUNTER".equals(accountingMode);
+    }
+
+    private boolean hasGrace() {
+      return this == API_CALLS || this == PDF_EXPORTS || this == EMAILS || this == JOBS;
+    }
+
     private static List<UsageDimension> ordered() {
       return List.of(USERS, STORAGE, API_CALLS, PDF_EXPORTS, EMAILS, JOBS);
     }
@@ -526,4 +825,7 @@ public class TenantUsageRollupService {
 
   private record PeriodWindow(
       PeriodType periodType, Instant startAt, Instant endAt, String timezone, String periodId) {}
+
+  private record QuotaDecision(
+      String decision, boolean accepted, String reasonCode, String message) {}
 }

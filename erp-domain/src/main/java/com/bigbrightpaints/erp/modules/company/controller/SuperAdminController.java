@@ -118,6 +118,29 @@ public class SuperAdminController {
             tenantUsageRollupService.getTenantUsageHistory(tenantId, periodType)));
   }
 
+  @GetMapping("/tenants/{id}/quota-policy")
+  public ResponseEntity<ApiResponse<SuperAdminUsageDtos.TenantQuotaPolicy>> getTenantQuotaPolicy(
+      @PathVariable("id") Long tenantId) {
+    SuperAdminTenantEntitlementsDto entitlements =
+        entitlementService.getEffectiveEntitlements(tenantId);
+    return ResponseEntity.ok(
+        ApiResponse.success(
+            "Tenant quota policy fetched",
+            tenantUsageRollupService.getTenantQuotaPolicy(tenantId, entitlements.limits())));
+  }
+
+  @PostMapping("/tenants/{id}/quota-check")
+  public ResponseEntity<ApiResponse<SuperAdminUsageDtos.QuotaActionResult>> checkTenantQuotaAction(
+      @PathVariable("id") Long tenantId,
+      @RequestBody SuperAdminUsageDtos.QuotaActionRequest request) {
+    SuperAdminTenantEntitlementsDto entitlements =
+        entitlementService.getEffectiveEntitlements(tenantId);
+    return ResponseEntity.ok(
+        ApiResponse.success(
+            "Tenant quota action evaluated",
+            tenantUsageRollupService.enforceQuotaAction(tenantId, request, entitlements.limits())));
+  }
+
   @GetMapping("/tenants/{id}/seed-status")
   public ResponseEntity<ApiResponse<TenantSeedStatusDto>> getSeedStatus(
       @PathVariable("id") Long tenantId) {
