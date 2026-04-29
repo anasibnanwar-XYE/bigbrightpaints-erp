@@ -1,7 +1,5 @@
 package com.bigbrightpaints.erp.modules.admin.service;
 
-import java.time.Duration;
-import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -19,10 +17,11 @@ import org.springframework.util.StringUtils;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.modules.admin.domain.SupportTicket;
+import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketCategory;
 import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketMessageAuthorRole;
 import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketMessageVisibility;
-import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketPriority;
 import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketRepository;
+import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketSlaStatus;
 import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketStatus;
 import com.bigbrightpaints.erp.modules.admin.dto.SuperAdminSupportTicketDtos;
 import com.bigbrightpaints.erp.modules.admin.dto.SupportTicketMessageRequest;
@@ -38,27 +37,41 @@ public class SuperAdminSupportService {
 
   private final SupportTicketRepository supportTicketRepository;
   private final SupportTicketAccessSupport supportTicketAccessSupport;
+  private final SupportTicketLifecycleSupport lifecycleSupport;
 
   public SuperAdminSupportService(
       SupportTicketRepository supportTicketRepository,
-      SupportTicketAccessSupport supportTicketAccessSupport) {
+      SupportTicketAccessSupport supportTicketAccessSupport,
+      SupportTicketLifecycleSupport lifecycleSupport) {
     this.supportTicketRepository = supportTicketRepository;
     this.supportTicketAccessSupport = supportTicketAccessSupport;
+    this.lifecycleSupport = lifecycleSupport;
   }
 
   @Transactional(readOnly = true)
   public PageResponse<SuperAdminSupportTicketDtos.QueueItem> listQueue(
-      String status, String query, int page, int size, String sort) {
+      String status,
+      String category,
+      String slaStatus,
+      String query,
+      int page,
+      int size,
+      String sort) {
     Pageable pageable = PageRequest.of(requirePage(page), requireSize(size), parseSort(sort));
     SupportTicketStatus parsedStatus = parseStatus(status);
+    SupportTicketCategory parsedCategory = parseCategory(category);
+    SupportTicketSlaStatus parsedSlaStatus = parseSlaStatus(slaStatus);
     String normalizedQuery = normalizeOptional(query);
     Page<SupportTicket> tickets =
         isPrioritySort(sort)
             ? supportTicketRepository.findSuperAdminQueueOrderByPriorityRank(
                 parsedStatus,
+                parsedCategory,
+                parsedSlaStatus,
                 normalizedQuery,
                 PageRequest.of(pageable.getPageNumber(), pageable.getPageSize()))
-            : supportTicketRepository.findSuperAdminQueue(parsedStatus, normalizedQuery, pageable);
+            : supportTicketRepository.findSuperAdminQueue(
+                parsedStatus, parsedCategory, parsedSlaStatus, normalizedQuery, pageable);
     Map<Long, UserAccount> requesters = requesters(tickets.getContent());
     List<SuperAdminSupportTicketDtos.QueueItem> content =
         tickets.getContent().stream().map(ticket -> queueItem(ticket, requesters)).toList();
@@ -86,9 +99,11 @@ public class SuperAdminSupportService {
         requester == null ? null : requester.getEmail(),
         ticket.getCreatedAt(),
         ticket.getUpdatedAt(),
-        sla(ticket),
+        lifecycleSupport.summary(ticket),
         supportTicketAccessSupport.customerMessagePreview(ticket, true),
-        supportTicketAccessSupport.internalNotePreview(ticket));
+        supportTicketAccessSupport.internalNotePreview(ticket),
+        ticket.getConvertedToIncidentAt(),
+        lifecycleSupport.timeline(ticket));
   }
 
   @Transactional
@@ -126,6 +141,35 @@ public class SuperAdminSupportService {
         true);
   }
 
+  @Transactional
+  public SuperAdminSupportTicketDtos.Detail updateStatus(
+      Long ticketId, SuperAdminSupportTicketDtos.StatusUpdateRequest request) {
+    SupportTicket ticket = requireTicket(ticketId);
+    lifecycleSupport.changeStatus(
+        ticket, lifecycleSupport.parseStatus(request.status()), request.reason());
+    return getDetail(ticket.getId());
+  }
+
+  @Transactional
+  public SuperAdminSupportTicketDtos.Detail convertFeatureRequestToIncident(
+      Long ticketId, SuperAdminSupportTicketDtos.ConvertToIncidentRequest request) {
+    SupportTicket ticket = requireTicket(ticketId);
+    lifecycleSupport.convertFeatureRequestToIncident(
+        ticket, request == null ? null : request.reason());
+    return getDetail(ticket.getId());
+  }
+
+  @Transactional
+  public SuperAdminSupportTicketDtos.SlaRefreshResponse refreshSlaBreaches(
+      SuperAdminSupportTicketDtos.SlaRefreshRequest request) {
+    return lifecycleSupport.refreshBreaches(request == null ? null : request.asOf());
+  }
+
+  @Transactional(readOnly = true)
+  public List<SuperAdminSupportTicketDtos.TimelineItem> timeline(Long ticketId) {
+    return lifecycleSupport.timeline(requireTicket(ticketId));
+  }
+
   private SupportTicket requireTicket(Long ticketId) {
     Long resolvedTicketId = supportTicketAccessSupport.requireTicketId(ticketId);
     return supportTicketRepository
@@ -149,7 +193,7 @@ public class SuperAdminSupportService {
         requester == null ? null : requester.getEmail(),
         ticket.getCreatedAt(),
         ticket.getUpdatedAt(),
-        sla(ticket));
+        lifecycleSupport.summary(ticket));
   }
 
   private Map<Long, UserAccount> requesters(List<SupportTicket> tickets) {
@@ -182,52 +226,6 @@ public class SuperAdminSupportService {
     return "TENANT_USER";
   }
 
-  private SuperAdminSupportTicketDtos.SlaSummary sla(SupportTicket ticket) {
-    String tier = ticket.getCompany().getCommercialSupportTier();
-    String normalizedTier =
-        StringUtils.hasText(tier) ? tier.trim().toUpperCase(Locale.ROOT) : "STANDARD";
-    SupportTicketPriority priority =
-        ticket.getPriority() == null ? SupportTicketPriority.NORMAL : ticket.getPriority();
-    Duration firstResponse = firstResponseWindow(normalizedTier, priority);
-    Duration resolution = resolutionWindow(normalizedTier, priority);
-    Instant createdAt = ticket.getCreatedAt();
-    Instant firstDue = createdAt == null ? null : createdAt.plus(firstResponse);
-    Instant resolutionDue = createdAt == null ? null : createdAt.plus(resolution);
-    String status =
-        resolutionDue != null && Instant.now().isAfter(resolutionDue) ? "BREACHED" : "PENDING";
-    return new SuperAdminSupportTicketDtos.SlaSummary(
-        normalizedTier + "-" + priority.name(), normalizedTier, firstDue, resolutionDue, status);
-  }
-
-  private Duration firstResponseWindow(String supportTier, SupportTicketPriority priority) {
-    long hours =
-        switch (supportTier) {
-          case "DEDICATED", "ENTERPRISE" -> 2;
-          case "PRIORITY" -> 4;
-          default -> 8;
-        };
-    return Duration.ofHours(Math.max(1, hours - priorityUrgency(priority)));
-  }
-
-  private Duration resolutionWindow(String supportTier, SupportTicketPriority priority) {
-    long hours =
-        switch (supportTier) {
-          case "DEDICATED", "ENTERPRISE" -> 24;
-          case "PRIORITY" -> 48;
-          default -> 72;
-        };
-    return Duration.ofHours(Math.max(4, hours - (priorityUrgency(priority) * 4L)));
-  }
-
-  private long priorityUrgency(SupportTicketPriority priority) {
-    return switch (priority) {
-      case URGENT -> 3;
-      case HIGH -> 2;
-      case NORMAL -> 1;
-      case LOW -> 0;
-    };
-  }
-
   private SupportTicketStatus parseStatus(String status) {
     if (!StringUtils.hasText(status)) {
       return null;
@@ -237,6 +235,30 @@ public class SuperAdminSupportService {
     } catch (IllegalArgumentException ex) {
       throw new ApplicationException(
           ErrorCode.VALIDATION_INVALID_INPUT, "Invalid support ticket status: " + status);
+    }
+  }
+
+  private SupportTicketCategory parseCategory(String category) {
+    if (!StringUtils.hasText(category)) {
+      return null;
+    }
+    try {
+      return SupportTicketCategory.valueOf(category.trim().toUpperCase(Locale.ROOT));
+    } catch (IllegalArgumentException ex) {
+      throw new ApplicationException(
+          ErrorCode.VALIDATION_INVALID_INPUT, "Invalid support ticket category: " + category);
+    }
+  }
+
+  private SupportTicketSlaStatus parseSlaStatus(String slaStatus) {
+    if (!StringUtils.hasText(slaStatus)) {
+      return null;
+    }
+    try {
+      return SupportTicketSlaStatus.valueOf(slaStatus.trim().toUpperCase(Locale.ROOT));
+    } catch (IllegalArgumentException ex) {
+      throw new ApplicationException(
+          ErrorCode.VALIDATION_INVALID_INPUT, "Invalid support ticket SLA status: " + slaStatus);
     }
   }
 

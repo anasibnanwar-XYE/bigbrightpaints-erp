@@ -28,12 +28,22 @@ public interface SupportTicketRepository extends JpaRepository<SupportTicket, Lo
 
   long countByCompanyAndStatus(Company company, SupportTicketStatus status);
 
+  long countByCategoryAndStatusIn(
+      SupportTicketCategory category, Collection<SupportTicketStatus> statuses);
+
+  long countBySlaStatus(SupportTicketSlaStatus slaStatus);
+
+  List<SupportTicket> findTop200ByStatusInAndSlaStatusNotOrderByResolutionDueAtAscIdAsc(
+      Collection<SupportTicketStatus> statuses, SupportTicketSlaStatus slaStatus);
+
   @Query(
       value =
           """
           SELECT t FROM SupportTicket t
           JOIN t.company c
           WHERE (:status IS NULL OR t.status = :status)
+            AND (:category IS NULL OR t.category = :category)
+            AND (:slaStatus IS NULL OR t.slaStatus = :slaStatus)
             AND (
               :query IS NULL
               OR LOWER(t.subject) LIKE LOWER(CONCAT('%', :query, '%'))
@@ -42,7 +52,11 @@ public interface SupportTicketRepository extends JpaRepository<SupportTicket, Lo
             )
           """)
   Page<SupportTicket> findSuperAdminQueue(
-      @Param("status") SupportTicketStatus status, @Param("query") String query, Pageable pageable);
+      @Param("status") SupportTicketStatus status,
+      @Param("category") SupportTicketCategory category,
+      @Param("slaStatus") SupportTicketSlaStatus slaStatus,
+      @Param("query") String query,
+      Pageable pageable);
 
   @Query(
       value =
@@ -50,6 +64,8 @@ public interface SupportTicketRepository extends JpaRepository<SupportTicket, Lo
           SELECT t FROM SupportTicket t
           JOIN t.company c
           WHERE (:status IS NULL OR t.status = :status)
+            AND (:category IS NULL OR t.category = :category)
+            AND (:slaStatus IS NULL OR t.slaStatus = :slaStatus)
             AND (
               :query IS NULL
               OR LOWER(t.subject) LIKE LOWER(CONCAT('%', :query, '%'))
@@ -71,6 +87,8 @@ public interface SupportTicketRepository extends JpaRepository<SupportTicket, Lo
           SELECT COUNT(t) FROM SupportTicket t
           JOIN t.company c
           WHERE (:status IS NULL OR t.status = :status)
+            AND (:category IS NULL OR t.category = :category)
+            AND (:slaStatus IS NULL OR t.slaStatus = :slaStatus)
             AND (
               :query IS NULL
               OR LOWER(t.subject) LIKE LOWER(CONCAT('%', :query, '%'))
@@ -79,7 +97,11 @@ public interface SupportTicketRepository extends JpaRepository<SupportTicket, Lo
             )
           """)
   Page<SupportTicket> findSuperAdminQueueOrderByPriorityRank(
-      @Param("status") SupportTicketStatus status, @Param("query") String query, Pageable pageable);
+      @Param("status") SupportTicketStatus status,
+      @Param("category") SupportTicketCategory category,
+      @Param("slaStatus") SupportTicketSlaStatus slaStatus,
+      @Param("query") String query,
+      Pageable pageable);
 
   List<SupportTicket> findTop200ByGithubIssueNumberIsNotNullAndStatusInOrderByCreatedAtAsc(
       Collection<SupportTicketStatus> statuses);

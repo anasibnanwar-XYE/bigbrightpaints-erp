@@ -81,6 +81,31 @@ public class SupportTicket extends VersionedEntity {
   @Column(name = "resolved_notification_sent_at")
   private Instant resolvedNotificationSentAt;
 
+  @Column(name = "sla_policy_id", length = 64)
+  private String slaPolicyId;
+
+  @Column(name = "sla_support_tier", length = 32)
+  private String slaSupportTier;
+
+  @Column(name = "first_response_due_at")
+  private Instant firstResponseDueAt;
+
+  @Column(name = "resolution_due_at")
+  private Instant resolutionDueAt;
+
+  @Enumerated(EnumType.STRING)
+  @Column(name = "sla_status", nullable = false, length = 32)
+  private SupportTicketSlaStatus slaStatus = SupportTicketSlaStatus.PENDING;
+
+  @Column(name = "first_responded_at")
+  private Instant firstRespondedAt;
+
+  @Column(name = "breached_at")
+  private Instant breachedAt;
+
+  @Column(name = "converted_to_incident_at")
+  private Instant convertedToIncidentAt;
+
   @Column(name = "created_at", nullable = false)
   private Instant createdAt;
 
@@ -97,6 +122,12 @@ public class SupportTicket extends VersionedEntity {
     }
     if (priority == null) {
       priority = SupportTicketPriority.NORMAL;
+    }
+    if (slaStatus == null) {
+      slaStatus =
+          category == SupportTicketCategory.FEATURE_REQUEST
+              ? SupportTicketSlaStatus.NOT_APPLICABLE
+              : SupportTicketSlaStatus.PENDING;
     }
     Instant now = CompanyTime.now(company);
     if (createdAt == null) {
@@ -238,6 +269,70 @@ public class SupportTicket extends VersionedEntity {
 
   public void setResolvedNotificationSentAt(Instant resolvedNotificationSentAt) {
     this.resolvedNotificationSentAt = resolvedNotificationSentAt;
+  }
+
+  public String getSlaPolicyId() {
+    return slaPolicyId;
+  }
+
+  public void setSlaPolicyId(String slaPolicyId) {
+    this.slaPolicyId = slaPolicyId;
+  }
+
+  public String getSlaSupportTier() {
+    return slaSupportTier;
+  }
+
+  public void setSlaSupportTier(String slaSupportTier) {
+    this.slaSupportTier = slaSupportTier;
+  }
+
+  public Instant getFirstResponseDueAt() {
+    return firstResponseDueAt;
+  }
+
+  public void setFirstResponseDueAt(Instant firstResponseDueAt) {
+    this.firstResponseDueAt = firstResponseDueAt;
+  }
+
+  public Instant getResolutionDueAt() {
+    return resolutionDueAt;
+  }
+
+  public void setResolutionDueAt(Instant resolutionDueAt) {
+    this.resolutionDueAt = resolutionDueAt;
+  }
+
+  public SupportTicketSlaStatus getSlaStatus() {
+    return slaStatus;
+  }
+
+  public void setSlaStatus(SupportTicketSlaStatus slaStatus) {
+    this.slaStatus = slaStatus;
+  }
+
+  public Instant getFirstRespondedAt() {
+    return firstRespondedAt;
+  }
+
+  public void setFirstRespondedAt(Instant firstRespondedAt) {
+    this.firstRespondedAt = firstRespondedAt;
+  }
+
+  public Instant getBreachedAt() {
+    return breachedAt;
+  }
+
+  public void setBreachedAt(Instant breachedAt) {
+    this.breachedAt = breachedAt;
+  }
+
+  public Instant getConvertedToIncidentAt() {
+    return convertedToIncidentAt;
+  }
+
+  public void setConvertedToIncidentAt(Instant convertedToIncidentAt) {
+    this.convertedToIncidentAt = convertedToIncidentAt;
   }
 
   public Instant getCreatedAt() {

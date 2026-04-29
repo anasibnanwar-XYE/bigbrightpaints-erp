@@ -34,6 +34,8 @@ public class SuperAdminSupportController {
   @GetMapping
   public ResponseEntity<ApiResponse<PageResponse<SuperAdminSupportTicketDtos.QueueItem>>> listQueue(
       @RequestParam(required = false) String status,
+      @RequestParam(required = false) String category,
+      @RequestParam(required = false) String slaStatus,
       @RequestParam(required = false, name = "q") String query,
       @RequestParam(defaultValue = "0") int page,
       @RequestParam(defaultValue = "20") int size,
@@ -41,7 +43,18 @@ public class SuperAdminSupportController {
     return ResponseEntity.ok(
         ApiResponse.success(
             "Super Admin support queue fetched",
-            superAdminSupportService.listQueue(status, query, page, size, sort)));
+            superAdminSupportService.listQueue(
+                status, category, slaStatus, query, page, size, sort)));
+  }
+
+  @PostMapping("/sla/refresh")
+  public ResponseEntity<ApiResponse<SuperAdminSupportTicketDtos.SlaRefreshResponse>>
+      refreshSlaBreaches(
+          @RequestBody(required = false) SuperAdminSupportTicketDtos.SlaRefreshRequest request) {
+    return ResponseEntity.ok(
+        ApiResponse.success(
+            "Super Admin support SLA breaches refreshed",
+            superAdminSupportService.refreshSlaBreaches(request)));
   }
 
   @GetMapping("/{ticketId}")
@@ -71,6 +84,36 @@ public class SuperAdminSupportController {
         ApiResponse.success(
             "Super Admin support ticket messages fetched",
             superAdminSupportService.listMessages(ticketId, page, size, includeInternal)));
+  }
+
+  @PostMapping("/{ticketId}/status")
+  public ResponseEntity<ApiResponse<SuperAdminSupportTicketDtos.Detail>> updateStatus(
+      @PathVariable Long ticketId,
+      @Valid @RequestBody SuperAdminSupportTicketDtos.StatusUpdateRequest request) {
+    return ResponseEntity.ok(
+        ApiResponse.success(
+            "Super Admin support ticket status updated",
+            superAdminSupportService.updateStatus(ticketId, request)));
+  }
+
+  @PostMapping("/{ticketId}/convert-to-incident")
+  public ResponseEntity<ApiResponse<SuperAdminSupportTicketDtos.Detail>> convertToIncident(
+      @PathVariable Long ticketId,
+      @Valid @RequestBody(required = false)
+          SuperAdminSupportTicketDtos.ConvertToIncidentRequest request) {
+    return ResponseEntity.ok(
+        ApiResponse.success(
+            "Super Admin feature request converted to incident",
+            superAdminSupportService.convertFeatureRequestToIncident(ticketId, request)));
+  }
+
+  @GetMapping("/{ticketId}/timeline")
+  public ResponseEntity<ApiResponse<java.util.List<SuperAdminSupportTicketDtos.TimelineItem>>>
+      timeline(@PathVariable Long ticketId) {
+    return ResponseEntity.ok(
+        ApiResponse.success(
+            "Super Admin support ticket timeline fetched",
+            superAdminSupportService.timeline(ticketId)));
   }
 
   @PostMapping("/{ticketId}/internal-notes")

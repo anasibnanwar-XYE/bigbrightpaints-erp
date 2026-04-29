@@ -24,6 +24,7 @@ import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.security.SecurityActorResolver;
+import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.modules.admin.domain.SupportTicket;
 import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketCategory;
 import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketMessage;
@@ -52,16 +53,19 @@ public class SupportTicketAccessSupport {
   private final SupportTicketMessageRepository supportTicketMessageRepository;
   private final SupportTicketGitHubSyncService supportTicketGitHubSyncService;
   private final AuditService auditService;
+  private final SupportTicketLifecycleSupport lifecycleSupport;
 
   public SupportTicketAccessSupport(
       SupportTicketRepository supportTicketRepository,
       SupportTicketMessageRepository supportTicketMessageRepository,
       SupportTicketGitHubSyncService supportTicketGitHubSyncService,
-      AuditService auditService) {
+      AuditService auditService,
+      SupportTicketLifecycleSupport lifecycleSupport) {
     this.supportTicketRepository = supportTicketRepository;
     this.supportTicketMessageRepository = supportTicketMessageRepository;
     this.supportTicketGitHubSyncService = supportTicketGitHubSyncService;
     this.auditService = auditService;
+    this.lifecycleSupport = lifecycleSupport;
   }
 
   @Transactional
@@ -75,13 +79,16 @@ public class SupportTicketAccessSupport {
     ticket.setPriority(parsePriority(request.priority()));
     ticket.setSubject(normalizeRequired(request.subject(), "subject", 255));
     ticket.setDescription(normalizeRequired(request.description(), "description", 4000));
+    lifecycleSupport.initializeSla(ticket, CompanyTime.now(company));
 
     SupportTicket saved = supportTicketRepository.save(ticket);
-    auditRequired(
-        saved,
-        "support-ticket-created",
-        SupportTicketMessageAuthorRole.TENANT,
-        SupportTicketMessageVisibility.CUSTOMER);
+    Long auditEventId =
+        auditRequired(
+            saved,
+            "support-ticket-created",
+            SupportTicketMessageAuthorRole.TENANT,
+            SupportTicketMessageVisibility.CUSTOMER);
+    lifecycleSupport.recordCreation(saved, auditEventId);
     if (TransactionSynchronizationManager.isSynchronizationActive()) {
       TransactionSynchronizationManager.registerSynchronization(
           new TransactionSynchronization() {
@@ -115,6 +122,10 @@ public class SupportTicketAccessSupport {
         auditRequired(ticket, supportAuditReason(visibility), authorRole, visibility);
     saved.setAuditEventId(auditEventId);
     supportTicketMessageRepository.saveAndFlush(saved);
+    if (authorRole == SupportTicketMessageAuthorRole.SUPER_ADMIN
+        && visibility == SupportTicketMessageVisibility.CUSTOMER) {
+      lifecycleSupport.recordFirstResponseIfNeeded(ticket, auditEventId);
+    }
     return toMessageResponses(List.of(saved)).getFirst();
   }
 

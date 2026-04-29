@@ -530,6 +530,15 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
     assertQueryParameter(root, "/api/v1/superadmin/support/tickets", "get", "page");
     assertQueryParameter(root, "/api/v1/superadmin/support/tickets", "get", "size");
     assertQueryParameter(root, "/api/v1/superadmin/support/tickets", "get", "sort");
+    assertQueryParameter(root, "/api/v1/superadmin/support/tickets", "get", "category");
+    assertQueryParameter(root, "/api/v1/superadmin/support/tickets", "get", "slaStatus");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/support/tickets/sla/refresh",
+        "post",
+        "#/components/schemas/SlaRefreshRequest",
+        "200",
+        "#/components/schemas/ApiResponseSlaRefreshResponse");
     assertOperationContract(
         root,
         "/api/v1/superadmin/support/tickets/{ticketId}",
@@ -564,6 +573,27 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
         "#/components/schemas/SupportTicketMessageRequest",
         "200",
         "#/components/schemas/ApiResponseSupportTicketMessageResponse");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/support/tickets/{ticketId}/status",
+        "post",
+        "#/components/schemas/StatusUpdateRequest",
+        "200",
+        "#/components/schemas/ApiResponseDetail");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/support/tickets/{ticketId}/convert-to-incident",
+        "post",
+        "#/components/schemas/ConvertToIncidentRequest",
+        "200",
+        "#/components/schemas/ApiResponseDetail");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/support/tickets/{ticketId}/timeline",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseListTimelineItem");
     assertOperationContract(
         root,
         "/api/v1/superadmin/tenants/{id}/force-logout",
@@ -847,6 +877,15 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
             "GET /api/v1/superadmin/plans/{stableId}",
             "PUT /api/v1/superadmin/plans/{stableId}",
             "POST /api/v1/superadmin/plans/{stableId}/archive",
+            "GET /api/v1/superadmin/support/tickets",
+            "GET /api/v1/superadmin/support/tickets/{ticketId}",
+            "GET /api/v1/superadmin/support/tickets/{ticketId}/messages",
+            "GET /api/v1/superadmin/support/tickets/{ticketId}/timeline",
+            "POST /api/v1/superadmin/support/tickets/{ticketId}/convert-to-incident",
+            "POST /api/v1/superadmin/support/tickets/{ticketId}/internal-notes",
+            "POST /api/v1/superadmin/support/tickets/{ticketId}/messages",
+            "POST /api/v1/superadmin/support/tickets/{ticketId}/status",
+            "POST /api/v1/superadmin/support/tickets/sla/refresh",
             "GET /api/v1/superadmin/tenants/coa-templates",
             "GET /api/v1/superadmin/settings",
             "PUT /api/v1/superadmin/settings",

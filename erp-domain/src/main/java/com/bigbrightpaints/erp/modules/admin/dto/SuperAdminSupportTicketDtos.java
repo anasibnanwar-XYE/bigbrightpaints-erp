@@ -6,7 +6,11 @@ import java.util.UUID;
 
 import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketCategory;
 import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketPriority;
+import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketSlaStatus;
 import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketStatus;
+
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 
 public final class SuperAdminSupportTicketDtos {
 
@@ -17,7 +21,34 @@ public final class SuperAdminSupportTicketDtos {
       String supportTier,
       Instant firstResponseDueAt,
       Instant resolutionDueAt,
-      String status) {}
+      Instant firstRespondedAt,
+      Instant breachedAt,
+      SupportTicketSlaStatus status) {}
+
+  public record TimelineItem(
+      Long id,
+      UUID publicId,
+      String eventType,
+      String fromStatus,
+      String toStatus,
+      String fromCategory,
+      String toCategory,
+      String note,
+      Long auditEventId,
+      Instant createdAt) {}
+
+  public record StatusUpdateRequest(
+      @NotBlank @Size(max = 32) String status, @Size(max = 256) String reason) {}
+
+  public record ConvertToIncidentRequest(@Size(max = 256) String reason) {}
+
+  public record SlaRefreshRequest(Instant asOf) {}
+
+  public record SlaRefreshResponse(
+      int processedTickets,
+      int breachedTickets,
+      long totalBreachedTickets,
+      List<Long> auditEventIds) {}
 
   public record QueueItem(
       Long ticketId,
@@ -51,5 +82,7 @@ public final class SuperAdminSupportTicketDtos {
       Instant updatedAt,
       SlaSummary sla,
       List<SupportTicketMessageResponse> messages,
-      List<SupportTicketMessageResponse> internalNotes) {}
+      List<SupportTicketMessageResponse> internalNotes,
+      Instant convertedToIncidentAt,
+      List<TimelineItem> timeline) {}
 }

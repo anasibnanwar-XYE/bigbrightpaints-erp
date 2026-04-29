@@ -30,6 +30,9 @@ import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.security.AuthScopeService;
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
 import com.bigbrightpaints.erp.core.util.CompanyTime;
+import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketCategory;
+import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketRepository;
+import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketStatus;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserPrincipal;
 import com.bigbrightpaints.erp.modules.auth.service.PasswordResetService;
@@ -86,9 +89,10 @@ public class CompanyService {
   private final PasswordResetService passwordResetService;
   private final AuthScopeService authScopeService;
   private final SuperAdminBillingService billingService;
+  private final SupportTicketRepository supportTicketRepository;
 
   public CompanyService(CompanyRepository repository) {
-    this(repository, null, null, null, null, null, null, null, null, null);
+    this(repository, null, null, null, null, null, null, null, null, null, null);
   }
 
   public CompanyService(
@@ -101,6 +105,7 @@ public class CompanyService {
         auditService,
         userAccountRepository,
         auditLogRepository,
+        null,
         null,
         null,
         null,
@@ -121,6 +126,7 @@ public class CompanyService {
         userAccountRepository,
         auditLogRepository,
         tenantRuntimeEnforcementService,
+        null,
         null,
         null,
         null,
@@ -148,6 +154,7 @@ public class CompanyService {
         tenantLifecycleService,
         passwordResetService,
         authScopeService,
+        null,
         null);
   }
 
@@ -162,7 +169,8 @@ public class CompanyService {
       TenantLifecycleService tenantLifecycleService,
       PasswordResetService passwordResetService,
       AuthScopeService authScopeService,
-      SuperAdminBillingService billingService) {
+      SuperAdminBillingService billingService,
+      SupportTicketRepository supportTicketRepository) {
     this.repository = repository;
     this.auditService = auditService;
     this.userAccountRepository = userAccountRepository;
@@ -173,6 +181,7 @@ public class CompanyService {
     this.passwordResetService = passwordResetService;
     this.authScopeService = authScopeService;
     this.billingService = billingService;
+    this.supportTicketRepository = supportTicketRepository;
   }
 
   public List<CompanyDto> findAll() {
@@ -532,6 +541,16 @@ public class CompanyService {
         recurringRevenueCurrencyCount == 1 ? singleCurrencyMrr(recurringRevenueByCurrency) : 0;
     long dashboardArrMinorUnits =
         recurringRevenueCurrencyCount == 1 ? singleCurrencyArr(recurringRevenueByCurrency) : 0;
+    List<SupportTicketStatus> activeSupportStatuses =
+        List.of(SupportTicketStatus.OPEN, SupportTicketStatus.IN_PROGRESS);
+    long openSupportTickets =
+        supportTicketRepository.countByCategoryAndStatusIn(
+                SupportTicketCategory.SUPPORT, activeSupportStatuses)
+            + supportTicketRepository.countByCategoryAndStatusIn(
+                SupportTicketCategory.FEATURE_REQUEST, activeSupportStatuses);
+    long openBugs =
+        supportTicketRepository.countByCategoryAndStatusIn(
+            SupportTicketCategory.BUG, activeSupportStatuses);
     auditAuthorityDecision(true, SUPERADMIN_DASHBOARD_READ_REASON, null, authentication);
 
     return new CompanySuperAdminDashboardDto(
@@ -550,8 +569,8 @@ public class CompanyService {
         recurringRevenueByCurrency,
         "GROUPED_BY_CURRENCY",
         Math.toIntExact(recurringRevenueCurrencyCount),
-        0,
-        0,
+        openSupportTickets,
+        openBugs,
         totalActiveUsers,
         totalActiveUserQuota,
         totalAuditStorageBytes,

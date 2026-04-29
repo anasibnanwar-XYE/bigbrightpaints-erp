@@ -31,6 +31,7 @@ import com.bigbrightpaints.erp.modules.admin.service.AdminSupportService;
 import com.bigbrightpaints.erp.modules.admin.service.DealerPortalSupportTicketService;
 import com.bigbrightpaints.erp.modules.admin.service.SupportTicketAccessSupport;
 import com.bigbrightpaints.erp.modules.admin.service.SupportTicketGitHubSyncService;
+import com.bigbrightpaints.erp.modules.admin.service.SupportTicketLifecycleSupport;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserPrincipal;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
@@ -44,6 +45,7 @@ class TS_RuntimeSupportTicketServiceExecutableCoverageTest {
   private SupportTicketMessageRepository supportTicketMessageRepository;
   private CompanyContextService companyContextService;
   private SupportTicketGitHubSyncService supportTicketGitHubSyncService;
+  private SupportTicketLifecycleSupport supportTicketLifecycleSupport;
   private AuditService auditService;
   private AdminSupportService adminSupportService;
   private DealerPortalSupportTicketService dealerPortalSupportTicketService;
@@ -55,6 +57,7 @@ class TS_RuntimeSupportTicketServiceExecutableCoverageTest {
     supportTicketMessageRepository = Mockito.mock(SupportTicketMessageRepository.class);
     companyContextService = Mockito.mock(CompanyContextService.class);
     supportTicketGitHubSyncService = Mockito.mock(SupportTicketGitHubSyncService.class);
+    supportTicketLifecycleSupport = Mockito.mock(SupportTicketLifecycleSupport.class);
     auditService = Mockito.mock(AuditService.class);
     AuditLog auditLog = new AuditLog();
     auditLog.setId(9901L);
@@ -64,7 +67,8 @@ class TS_RuntimeSupportTicketServiceExecutableCoverageTest {
             supportTicketRepository,
             supportTicketMessageRepository,
             supportTicketGitHubSyncService,
-            auditService);
+            auditService,
+            supportTicketLifecycleSupport);
     adminSupportService =
         new AdminSupportService(
             supportTicketRepository, companyContextService, supportTicketAccessSupport);
