@@ -492,6 +492,18 @@ class SuperAdminBillingIT extends AbstractIntegrationTest {
     assertCommercialState(appliedArchive, "ARCHIVED", "DEACTIVATED", "BLOCKED", "ARCHIVED");
     assertThat(defaultListCount((String) appliedArchive.get("tenantCode"), false)).isZero();
     assertThat(defaultListCount((String) appliedArchive.get("tenantCode"), true)).isEqualTo(1);
+
+    ResponseEntity<Map> archivedProfile =
+        rest.exchange(
+            "/api/v1/superadmin/tenants/" + archiveTenant,
+            HttpMethod.GET,
+            new HttpEntity<>(superAdminHeaders),
+            Map.class);
+    assertThat(archivedProfile.getStatusCode()).isEqualTo(HttpStatus.OK);
+    @SuppressWarnings("unchecked")
+    Map<String, Object> archivedProfileData =
+        (Map<String, Object>) archivedProfile.getBody().get("data");
+    assertThat(archivedProfileData).containsEntry("status", "ARCHIVED");
   }
 
   @Test

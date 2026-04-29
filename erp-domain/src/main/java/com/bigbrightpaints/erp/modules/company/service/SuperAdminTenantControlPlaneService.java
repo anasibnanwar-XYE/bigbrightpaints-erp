@@ -218,8 +218,9 @@ public class SuperAdminTenantControlPlaneService {
     return PageResponse.of(content, candidates.size(), safePage, safeSize);
   }
 
-  @Transactional(readOnly = true)
+  @Transactional
   public SuperAdminTenantDetailDto getTenantDetail(Long companyId) {
+    billingService.applyDueScheduledCommercialStateForTenant(companyId);
     return toDetail(requireCompany(companyId));
   }
 

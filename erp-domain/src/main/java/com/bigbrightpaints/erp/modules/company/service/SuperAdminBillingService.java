@@ -399,6 +399,20 @@ public class SuperAdminBillingService {
   }
 
   @Transactional
+  public void applyDueScheduledCommercialStateForTenant(Long companyId) {
+    if (companyId == null) {
+      throw invalidInput("Company id is required");
+    }
+    List<SuperAdminBillingSubscription> subscriptions =
+        subscriptionRepository.lockByCompanyIdOrderByCreatedAtDesc(companyId);
+    if (subscriptions.isEmpty()) {
+      return;
+    }
+    SuperAdminBillingSubscription subscription = subscriptions.get(0);
+    applyDueScheduledCommercialState(subscription, CompanyTime.now(subscription.getCompany()));
+  }
+
+  @Transactional
   public Map<String, SuperAdminBillingDtos.CurrencyMetrics> getBillingMetrics() {
     applyDueScheduledCommercialStates();
     Map<String, MutableMetrics> metrics = new LinkedHashMap<>();
