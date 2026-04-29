@@ -3,6 +3,7 @@ package com.bigbrightpaints.erp.modules.company;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -125,6 +126,42 @@ class SuperAdminBillingIT extends AbstractIntegrationTest {
     assertThat(replayInvoice.getStatusCode()).isEqualTo(HttpStatus.OK);
     assertThat(replayInvoice.getBody().get("data")).isEqualTo(invoice);
     assertThat(countRows("super_admin_billing_ledger_entries", tenantId)).isEqualTo(1L);
+    long auditRowsAfterReplay = countBillingLedgerAuditEvents(tenantId);
+
+    ResponseEntity<Map> endpointConflict = postLedger(tenantId, "payments", invoiceRequest);
+    assertThat(endpointConflict.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+    assertThat(countRows("super_admin_billing_ledger_entries", tenantId)).isEqualTo(1L);
+    assertThat(countBillingLedgerAuditEvents(tenantId)).isEqualTo(auditRowsAfterReplay);
+
+    Map<String, Object> amountConflictRequest = new LinkedHashMap<>(invoiceRequest);
+    amountConflictRequest.put("amountMinorUnits", 121_000L);
+    ResponseEntity<Map> amountConflict = postLedger(tenantId, "invoices", amountConflictRequest);
+    assertThat(amountConflict.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+    assertThat(countRows("super_admin_billing_ledger_entries", tenantId)).isEqualTo(1L);
+    assertThat(countBillingLedgerAuditEvents(tenantId)).isEqualTo(auditRowsAfterReplay);
+
+    Map<String, Object> currencyConflictRequest = new LinkedHashMap<>(invoiceRequest);
+    currencyConflictRequest.put("currency", "USD");
+    ResponseEntity<Map> currencyConflict =
+        postLedger(tenantId, "invoices", currencyConflictRequest);
+    assertThat(currencyConflict.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+    assertThat(countRows("super_admin_billing_ledger_entries", tenantId)).isEqualTo(1L);
+    assertThat(countBillingLedgerAuditEvents(tenantId)).isEqualTo(auditRowsAfterReplay);
+
+    Map<String, Object> reasonConflictRequest = new LinkedHashMap<>(invoiceRequest);
+    reasonConflictRequest.put("reason", "Changed May invoice reason");
+    ResponseEntity<Map> reasonConflict = postLedger(tenantId, "invoices", reasonConflictRequest);
+    assertThat(reasonConflict.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+    assertThat(countRows("super_admin_billing_ledger_entries", tenantId)).isEqualTo(1L);
+    assertThat(countBillingLedgerAuditEvents(tenantId)).isEqualTo(auditRowsAfterReplay);
+
+    Map<String, Object> referenceConflictRequest = new LinkedHashMap<>(invoiceRequest);
+    referenceConflictRequest.put("externalReference", "EXT-invoice-changed");
+    ResponseEntity<Map> referenceConflict =
+        postLedger(tenantId, "invoices", referenceConflictRequest);
+    assertThat(referenceConflict.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+    assertThat(countRows("super_admin_billing_ledger_entries", tenantId)).isEqualTo(1L);
+    assertThat(countBillingLedgerAuditEvents(tenantId)).isEqualTo(auditRowsAfterReplay);
 
     ResponseEntity<Map> zeroInvoice =
         postLedger(
@@ -168,6 +205,18 @@ class SuperAdminBillingIT extends AbstractIntegrationTest {
         .containsEntry("balanceAfterMinorUnits", 0)
         .containsEntry("billingStatusAfter", "PAID");
     assertAuditReason((Number) adjustment.get("auditEventId"), "billing-ledger-adjustment-created");
+    long rowsAfterAdjustment = countRows("super_admin_billing_ledger_entries", tenantId);
+    long auditRowsAfterAdjustment = countBillingLedgerAuditEvents(tenantId);
+
+    Map<String, Object> directionConflictRequest =
+        new LinkedHashMap<>(
+            adjustmentPayload(tenantId, "credit-adjustment", 60_000L, "INR", "DEBIT"));
+    ResponseEntity<Map> directionConflict =
+        postLedger(tenantId, "adjustments", directionConflictRequest);
+    assertThat(directionConflict.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+    assertThat(countRows("super_admin_billing_ledger_entries", tenantId))
+        .isEqualTo(rowsAfterAdjustment);
+    assertThat(countBillingLedgerAuditEvents(tenantId)).isEqualTo(auditRowsAfterAdjustment);
 
     ResponseEntity<Map> ledgerResponse =
         rest.exchange(
@@ -207,15 +256,45 @@ class SuperAdminBillingIT extends AbstractIntegrationTest {
 
   @Test
   void metricsUseMinorUnitsCadenceRoundingCurrencyGroupingAndLifecycleExclusions() {
+    Instant now = Instant.now();
+    String currentStart = now.minusSeconds(86_400).toString();
+    String currentEnd = now.plusSeconds(2_592_000).toString();
+    String futureStart = now.plusSeconds(2_592_000).toString();
+    String futureEnd = now.plusSeconds(5_184_000).toString();
+    String pastStart = now.minusSeconds(5_184_000).toString();
+    String pastEnd = now.minusSeconds(86_400).toString();
+    String dueAt = now.plusSeconds(86_400).toString();
+
     Long monthlyTenant = createTenant("M10MRR", "STARTER", "MANUAL");
     createSubscription(
-        monthlyTenant, subscriptionPayload("STARTER", "MONTHLY", 10_000L, "ACTIVE", "USD"));
+        monthlyTenant,
+        subscriptionPayload(
+            "STARTER", "MONTHLY", 10_000L, "ACTIVE", "USD", dueAt, currentStart, currentEnd));
     Long annualTenant = createTenant("M10ARR", "ENTERPRISE", "MANUAL");
     createSubscription(
-        annualTenant, subscriptionPayload("ENTERPRISE", "ANNUAL", 120_001L, "ACTIVE", "USD"));
+        annualTenant,
+        subscriptionPayload(
+            "ENTERPRISE", "ANNUAL", 120_001L, "ACTIVE", "USD", dueAt, currentStart, currentEnd));
+    Long manualTenant = createTenant("M10MAN", "CUSTOM", "MANUAL");
+    createSubscription(
+        manualTenant,
+        subscriptionPayload(
+            "CUSTOM", "MONTHLY", 3_000L, "MANUAL", "USD", dueAt, currentStart, currentEnd));
+    Long futureTenant = createTenant("M10FUT", "GROWTH", "MANUAL");
+    createSubscription(
+        futureTenant,
+        subscriptionPayload(
+            "GROWTH", "MONTHLY", 99_999L, "ACTIVE", "USD", dueAt, futureStart, futureEnd));
+    Long endedTenant = createTenant("M10END", "GROWTH", "MANUAL");
+    createSubscription(
+        endedTenant,
+        subscriptionPayload(
+            "GROWTH", "MONTHLY", 88_888L, "ACTIVE", "USD", dueAt, pastStart, pastEnd));
     Long canceledTenant = createTenant("M10CAN", "GROWTH", "MANUAL");
     createSubscription(
-        canceledTenant, subscriptionPayload("GROWTH", "MONTHLY", 99_999L, "CANCELED", "USD"));
+        canceledTenant,
+        subscriptionPayload(
+            "GROWTH", "MONTHLY", 77_777L, "CANCELED", "USD", dueAt, currentStart, currentEnd));
 
     ResponseEntity<Map> response =
         rest.exchange(
@@ -231,10 +310,10 @@ class SuperAdminBillingIT extends AbstractIntegrationTest {
     Map<String, Object> usd = (Map<String, Object>) metrics.get("USD");
     assertThat(usd)
         .containsEntry("currency", "USD")
-        .containsEntry("mrrMinorUnits", 20_000)
-        .containsEntry("arrMinorUnits", 240_000)
-        .containsEntry("activeSubscriptionCount", 2)
-        .containsEntry("excludedSubscriptionCount", 1)
+        .containsEntry("mrrMinorUnits", 23_000)
+        .containsEntry("arrMinorUnits", 276_000)
+        .containsEntry("activeSubscriptionCount", 3)
+        .containsEntry("excludedSubscriptionCount", 3)
         .containsEntry("annualToMonthlyRoundingPolicy", "HALF_UP_TO_MINOR_UNIT");
 
     ResponseEntity<Map> dashboard =
@@ -247,9 +326,9 @@ class SuperAdminBillingIT extends AbstractIntegrationTest {
     @SuppressWarnings("unchecked")
     Map<String, Object> dashboardData = (Map<String, Object>) dashboard.getBody().get("data");
     assertThat(((Number) dashboardData.get("mrrMinorUnits")).longValue())
-        .isGreaterThanOrEqualTo(20_000L);
+        .isGreaterThanOrEqualTo(23_000L);
     assertThat(((Number) dashboardData.get("arrMinorUnits")).longValue())
-        .isGreaterThanOrEqualTo(240_000L);
+        .isGreaterThanOrEqualTo(276_000L);
   }
 
   @Test
@@ -478,6 +557,27 @@ class SuperAdminBillingIT extends AbstractIntegrationTest {
       String status,
       String currency,
       String dueAt) {
+    Instant now = Instant.now();
+    return subscriptionPayload(
+        planId,
+        cadence,
+        amountMinorUnits,
+        status,
+        currency,
+        dueAt,
+        now.minusSeconds(86_400).toString(),
+        now.plusSeconds(2_592_000).toString());
+  }
+
+  private Map<String, Object> subscriptionPayload(
+      String planId,
+      String cadence,
+      long amountMinorUnits,
+      String status,
+      String currency,
+      String dueAt,
+      String periodStartAt,
+      String periodEndAt) {
     return Map.ofEntries(
         Map.entry("planId", planId),
         Map.entry("status", status),
@@ -485,13 +585,13 @@ class SuperAdminBillingIT extends AbstractIntegrationTest {
         Map.entry("amountMinorUnits", amountMinorUnits),
         Map.entry("currency", currency),
         Map.entry("collectionMode", "MANUAL"),
-        Map.entry("periodStartAt", "2026-05-01T00:00:00Z"),
-        Map.entry("periodEndAt", "2026-05-31T23:59:59Z"),
-        Map.entry("renewalAt", "2026-06-01T00:00:00Z"),
+        Map.entry("periodStartAt", periodStartAt),
+        Map.entry("periodEndAt", periodEndAt),
+        Map.entry("renewalAt", periodEndAt),
         Map.entry("dueAt", dueAt),
-        Map.entry("trialStartAt", "2026-05-01T00:00:00Z"),
-        Map.entry("trialEndAt", "2026-05-15T00:00:00Z"),
-        Map.entry("graceUntilAt", "2026-05-22T00:00:00Z"),
+        Map.entry("trialStartAt", periodStartAt),
+        Map.entry("trialEndAt", periodStartAt),
+        Map.entry("graceUntilAt", periodEndAt),
         Map.entry("externalReference", "REF-" + UUID.randomUUID()),
         Map.entry("reason", "M10 subscription test"));
   }
@@ -608,5 +708,16 @@ class SuperAdminBillingIT extends AbstractIntegrationTest {
   private Long countRows(String tableName, Long companyId) {
     return jdbcTemplate.queryForObject(
         "select count(*) from " + tableName + " where company_id = ?", Long.class, companyId);
+  }
+
+  private Long countBillingLedgerAuditEvents(Long companyId) {
+    return jdbcTemplate.queryForObject(
+        "select count(distinct reason.audit_log_id) from audit_log_metadata reason "
+            + "join audit_log_metadata target on target.audit_log_id = reason.audit_log_id "
+            + "where reason.metadata_key = 'reason' "
+            + "and reason.metadata_value like 'billing-ledger-%' "
+            + "and target.metadata_key = 'targetCompanyId' "
+            + "and target.metadata_value = ?",
+        Long.class, String.valueOf(companyId));
   }
 }

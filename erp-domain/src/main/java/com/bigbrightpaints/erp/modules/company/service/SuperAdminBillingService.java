@@ -7,6 +7,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 import org.springframework.dao.DataIntegrityViolationException;
@@ -412,17 +413,27 @@ public class SuperAdminBillingService {
     Company company = lockCompany(companyId);
     String idempotencyKey = requireText(request.idempotencyKey(), "idempotencyKey");
     SuperAdminBillingSubscription subscription = activeSubscription(companyId);
+    long amount = requirePositive(request.amountMinorUnits(), "amountMinorUnits");
+    String currency = requireCurrency(request.currency());
+    String reason = requireText(request.reason(), "reason");
+    String externalReference = trimToNull(request.externalReference());
     var existing =
         ledgerEntryRepository.findByCompanyIdAndIdempotencyKey(companyId, idempotencyKey);
     if (existing.isPresent()) {
+      requireIdenticalLedgerReplay(
+          existing.get(),
+          subscription,
+          entryType,
+          direction,
+          amount,
+          currency,
+          reason,
+          externalReference);
       return new LedgerMutationResult(toLedgerEntryResponse(existing.get()), true);
     }
-    long amount = requirePositive(request.amountMinorUnits(), "amountMinorUnits");
-    String currency = requireCurrency(request.currency());
     if (!currency.equals(subscription.getCurrency())) {
       throw invalidInput("Ledger currency must match the active subscription currency");
     }
-    String reason = requireText(request.reason(), "reason");
     long before = balance(companyId);
     long signedAmount = "DEBIT".equals(direction) ? amount : -amount;
     long after = safeAdd(before, signedAmount);
@@ -435,7 +446,7 @@ public class SuperAdminBillingService {
     entry.setAmountMinorUnits(amount);
     entry.setCurrency(currency);
     entry.setReason(reason);
-    entry.setExternalReference(trimToNull(request.externalReference()));
+    entry.setExternalReference(externalReference);
     entry.setIdempotencyKey(idempotencyKey);
     entry.setBalanceBeforeMinorUnits(before);
     entry.setBalanceAfterMinorUnits(after);
@@ -470,6 +481,30 @@ public class SuperAdminBillingService {
     entry.setAuditEventId(auditEventId);
     ledgerEntryRepository.saveAndFlush(entry);
     return new LedgerMutationResult(toLedgerEntryResponse(entry), false);
+  }
+
+  private void requireIdenticalLedgerReplay(
+      SuperAdminBillingLedgerEntry existing,
+      SuperAdminBillingSubscription subscription,
+      String entryType,
+      String direction,
+      long amount,
+      String currency,
+      String reason,
+      String externalReference) {
+    boolean identical =
+        Objects.equals(existing.getSubscription().getId(), subscription.getId())
+            && Objects.equals(existing.getEntryType(), entryType)
+            && Objects.equals(existing.getDirection(), direction)
+            && Objects.equals(existing.getAmountMinorUnits(), amount)
+            && Objects.equals(existing.getCurrency(), currency)
+            && Objects.equals(existing.getReason(), reason)
+            && Objects.equals(existing.getExternalReference(), externalReference);
+    if (!identical) {
+      throw new ApplicationException(
+          ErrorCode.CONCURRENCY_CONFLICT,
+          "Idempotency key already used with different billing ledger payload");
+    }
   }
 
   private SuperAdminBillingSubscription activeSubscription(Long companyId) {
@@ -783,8 +818,30 @@ public class SuperAdminBillingService {
   }
 
   private boolean isIncludedInRecurringRevenue(SuperAdminBillingSubscription subscription) {
-    return "ACTIVE".equals(subscription.getStatus())
-        || ("MANUAL".equals(subscription.getStatus()) && subscription.getAmountMinorUnits() > 0);
+    if (subscription == null || subscription.getAmountMinorUnits() == null) {
+      return false;
+    }
+    Instant now = CompanyTime.now(subscription.getCompany());
+    if (subscription.getPeriodStartAt() == null || subscription.getPeriodStartAt().isAfter(now)) {
+      return false;
+    }
+    if (subscription.getPeriodEndAt() != null && !subscription.getPeriodEndAt().isAfter(now)) {
+      return false;
+    }
+    if (subscription.getCanceledAt() != null && !subscription.getCanceledAt().isAfter(now)) {
+      return false;
+    }
+    if (subscription.getArchivedAt() != null && !subscription.getArchivedAt().isAfter(now)) {
+      return false;
+    }
+    if ("ACTIVE".equals(subscription.getStatus())) {
+      return true;
+    }
+    if ("MANUAL".equals(subscription.getStatus())) {
+      return subscription.getAmountMinorUnits() > 0;
+    }
+    return ("CANCELED".equals(subscription.getStatus()) && subscription.getCanceledAt() != null)
+        || ("ARCHIVED".equals(subscription.getStatus()) && subscription.getArchivedAt() != null);
   }
 
   private long mrrMinorUnits(SuperAdminBillingSubscription subscription) {
@@ -956,7 +1013,7 @@ public class SuperAdminBillingService {
           activeSubscriptionCount,
           excludedSubscriptionCount,
           "HALF_UP_TO_MINOR_UNIT",
-          "ACTIVE_AND_BILLABLE_MANUAL_ONLY");
+          "BILLABLE_STATUS_WITHIN_EFFECTIVE_WINDOW");
     }
   }
 }
