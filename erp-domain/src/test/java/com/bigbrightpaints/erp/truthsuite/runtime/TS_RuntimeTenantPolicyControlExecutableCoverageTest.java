@@ -52,6 +52,7 @@ import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyService;
 import com.bigbrightpaints.erp.modules.company.service.TenantRuntimeEnforcementService;
 import com.bigbrightpaints.erp.modules.company.service.TenantRuntimeRequestAdmissionService;
+import com.bigbrightpaints.erp.modules.company.service.TenantUsageRollupService;
 import com.bigbrightpaints.erp.modules.rbac.domain.Role;
 import com.bigbrightpaints.erp.modules.rbac.domain.RoleRepository;
 import com.bigbrightpaints.erp.modules.rbac.service.RoleService;
@@ -236,6 +237,7 @@ class TS_RuntimeTenantPolicyControlExecutableCoverageTest {
             systemSettingsRepository,
             userAccountRepository,
             auditService,
+            mock(TenantUsageRollupService.class),
             100,
             100,
             100,

@@ -63,6 +63,8 @@ class TenantRuntimeEnforcementServiceTest {
 
   @Mock private AuditService auditService;
 
+  @Mock private TenantUsageRollupService tenantUsageRollupService;
+
   private final Map<String, Company> companiesByCode = new HashMap<>();
   private final Map<Long, Long> activeUsersByCompanyId = new HashMap<>();
   private final Map<String, String> persistedSettingsByKey = new HashMap<>();
@@ -77,8 +79,19 @@ class TenantRuntimeEnforcementServiceTest {
     ReflectionTestUtils.setField(CompanyTime.class, "companyClock", fixedClock);
 
     Company acme = company(1L, "ACME");
+    Company bravo = company(2L, "BRAVO");
     companiesByCode.put("ACME", acme);
+    companiesByCode.put("BRAVO", bravo);
     activeUsersByCompanyId.put(1L, 1L);
+    activeUsersByCompanyId.put(2L, 1L);
+    lenient()
+        .when(tenantUsageRollupService.getCurrentMonthlyApiUsage(any(Company.class)))
+        .thenAnswer(
+            invocation ->
+                new TenantUsageRollupService.MonthlyApiUsage(
+                    0L,
+                    Instant.parse("2026-01-01T00:00:00Z"),
+                    Instant.parse("2026-02-01T00:00:00Z")));
 
     service =
         new TenantRuntimeEnforcementService(
@@ -86,6 +99,7 @@ class TenantRuntimeEnforcementServiceTest {
             systemSettingsRepository,
             userAccountRepository,
             auditService,
+            tenantUsageRollupService,
             3,
             3,
             3,
@@ -425,10 +439,69 @@ class TenantRuntimeEnforcementServiceTest {
     assertThat(second.isAdmitted()).isFalse();
     assertThat(second.statusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS.value());
     assertThat(second.message()).isEqualTo("Tenant request rate quota exceeded");
+    assertThat(second.limitType()).isEqualTo("BURST_REQUESTS_PER_MINUTE");
+    assertThat(second.retryAfterSeconds()).isPositive();
+    assertThat(second.resetAtEpochSecond()).isGreaterThan(CompanyTime.now().getEpochSecond());
     assertThat(snapshot.metrics().totalRequests()).isEqualTo(1L);
     assertThat(snapshot.metrics().rejectedRequests()).isEqualTo(1L);
     assertThat(snapshot.metrics().minuteRequestCount()).isEqualTo(2);
     assertThat(snapshot.metrics().inFlightRequests()).isEqualTo(0);
+  }
+
+  @Test
+  void beginRequest_keepsMonthlyApiQuotaSeparateFromBurstAndReturnsPeriodResetMetadata() {
+    companiesByCode.get("ACME").setQuotaMaxApiRequests(2L);
+    service.updateQuotas("ACME", 10, 10, 10, "separate_api_quota", "ops@bbp.com");
+    when(tenantUsageRollupService.getCurrentMonthlyApiUsage(companiesByCode.get("ACME")))
+        .thenReturn(
+            new TenantUsageRollupService.MonthlyApiUsage(
+                3L, Instant.parse("2026-01-01T00:00:00Z"), Instant.parse("2026-02-01T00:00:00Z")));
+
+    TenantRuntimeEnforcementService.TenantRequestAdmission denied =
+        admissionService.beginRequest("ACME", "/api/v1/private", "GET", "actor@bbp.com");
+
+    assertThat(denied.isAdmitted()).isFalse();
+    assertThat(denied.statusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS.value());
+    assertThat(denied.reasonCode()).isEqualTo("TENANT_MONTHLY_API_QUOTA_EXHAUSTED");
+    assertThat(denied.limitType()).isEqualTo("MONTHLY_API_CALLS");
+    assertThat(denied.limitValue()).isEqualTo("2");
+    assertThat(denied.observedValue()).isEqualTo("4");
+    assertThat(denied.retryAfterSeconds()).isEqualTo(2_678_390L);
+    assertThat(denied.resetAtEpochSecond())
+        .isEqualTo(Instant.parse("2026-02-01T00:00:00Z").getEpochSecond());
+    assertThat(service.snapshot("ACME").metrics().minuteRequestCount()).isZero();
+    verify(auditService)
+        .logAuthFailure(eq(AuditEvent.ACCESS_DENIED), eq("ACTOR@BBP.COM"), eq("ACME"), anyMap());
+  }
+
+  @Test
+  void beginRequest_burstAndConcurrencyCountersAreTenantIsolated() {
+    service.updateQuotas("ACME", 1, 1, 10, "tight_acme", "ops@bbp.com");
+    service.updateQuotas("BRAVO", 1, 10, 10, "tight_bravo", "ops@bbp.com");
+
+    TenantRuntimeEnforcementService.TenantRequestAdmission acmeFirst =
+        admissionService.beginRequest("ACME", "/api/v1/private", "GET", "actor@bbp.com");
+    TenantRuntimeEnforcementService.TenantRequestAdmission acmeBurst =
+        admissionService.beginRequest("ACME", "/api/v1/private", "GET", "actor@bbp.com");
+    TenantRuntimeEnforcementService.TenantRequestAdmission bravoFirst =
+        admissionService.beginRequest("BRAVO", "/api/v1/private", "GET", "actor@bbp.com");
+    TenantRuntimeEnforcementService.TenantRequestAdmission bravoConcurrent =
+        admissionService.beginRequest("BRAVO", "/api/v1/private", "GET", "actor@bbp.com");
+
+    admissionService.completeRequest(acmeFirst, 200);
+    admissionService.completeRequest(bravoFirst, 200);
+
+    assertThat(acmeFirst.isAdmitted()).isTrue();
+    assertThat(acmeBurst.isAdmitted()).isFalse();
+    assertThat(acmeBurst.reasonCode()).isEqualTo("TENANT_REQUEST_RATE_EXCEEDED");
+    assertThat(acmeBurst.limitType()).isEqualTo("BURST_REQUESTS_PER_MINUTE");
+    assertThat(bravoFirst.isAdmitted()).isTrue();
+    assertThat(bravoConcurrent.isAdmitted()).isFalse();
+    assertThat(bravoConcurrent.reasonCode()).isEqualTo("TENANT_CONCURRENCY_EXCEEDED");
+    assertThat(bravoConcurrent.limitType()).isEqualTo("MAX_CONCURRENT_REQUESTS");
+    assertThat(bravoConcurrent.retryAfterSeconds()).isEqualTo(1L);
+    assertThat(service.snapshot("ACME").metrics().rejectedRequests()).isEqualTo(1L);
+    assertThat(service.snapshot("BRAVO").metrics().rejectedRequests()).isEqualTo(1L);
   }
 
   @Test

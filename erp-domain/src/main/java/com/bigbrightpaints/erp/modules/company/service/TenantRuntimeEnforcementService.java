@@ -14,6 +14,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -54,6 +55,7 @@ public class TenantRuntimeEnforcementService {
   private final SystemSettingsRepository systemSettingsRepository;
   private final UserAccountRepository userAccountRepository;
   private final AuditService auditService;
+  private final TenantUsageRollupService tenantUsageRollupService;
   private final int defaultMaxConcurrentRequests;
   private final ConcurrentMap<String, Object> policyMutationLocks = new ConcurrentHashMap<>();
   private final int defaultMaxRequestsPerMinute;
@@ -62,11 +64,13 @@ public class TenantRuntimeEnforcementService {
   private final ConcurrentMap<String, TenantRuntimePolicy> policies = new ConcurrentHashMap<>();
   private final ConcurrentMap<String, TenantRuntimeCounters> counters = new ConcurrentHashMap<>();
 
+  @Autowired
   public TenantRuntimeEnforcementService(
       CompanyRepository companyRepository,
       SystemSettingsRepository systemSettingsRepository,
       UserAccountRepository userAccountRepository,
       AuditService auditService,
+      TenantUsageRollupService tenantUsageRollupService,
       @Value("${erp.tenant.runtime.default-max-concurrent-requests:200}")
           int defaultMaxConcurrentRequests,
       @Value("${erp.tenant.runtime.default-max-requests-per-minute:5000}")
@@ -77,6 +81,8 @@ public class TenantRuntimeEnforcementService {
     this.systemSettingsRepository = systemSettingsRepository;
     this.userAccountRepository = userAccountRepository;
     this.auditService = auditService;
+    this.tenantUsageRollupService =
+        Objects.requireNonNull(tenantUsageRollupService, "tenantUsageRollupService");
     this.defaultMaxConcurrentRequests = sanitizeLimit(defaultMaxConcurrentRequests);
     this.defaultMaxRequestsPerMinute = sanitizeLimit(defaultMaxRequestsPerMinute);
     this.defaultMaxActiveUsers = sanitizeLimit(defaultMaxActiveUsers);
@@ -127,11 +133,23 @@ public class TenantRuntimeEnforcementService {
       return TenantRequestAdmission.rejected(stateRejection);
     }
 
+    TenantRuntimeQuotaRejection monthlyQuotaRejection =
+        monthlyApiQuotaRejection(normalizedCompany, policy);
+    if (monthlyQuotaRejection != null) {
+      incrementRejectedCount(usageCounters);
+      auditRejection(monthlyQuotaRejection.rejection(), actor, requestPath, requestMethod);
+      return TenantRequestAdmission.rejected(
+          monthlyQuotaRejection.rejection(),
+          monthlyQuotaRejection.retryAfterSeconds(),
+          monthlyQuotaRejection.resetAtEpochSecond());
+    }
+
     long minuteBucket = CompanyTime.now().getEpochSecond() / 60L;
     int requestsInMinute = incrementMinuteCount(usageCounters, minuteBucket);
     int maxRequestsPerMinute = policy.effectiveMaxRequestsPerMinute(defaultMaxRequestsPerMinute);
     if (requestsInMinute > maxRequestsPerMinute) {
       incrementRejectedCount(usageCounters);
+      long resetAtEpochSecond = (minuteBucket + 1L) * 60L;
       TenantRuntimeRejection rejection =
           new TenantRuntimeRejection(
               normalizedCompany,
@@ -141,11 +159,12 @@ public class TenantRuntimeEnforcementService {
               HttpStatus.TOO_MANY_REQUESTS,
               "TENANT_REQUEST_RATE_EXCEEDED",
               "Tenant request rate quota exceeded",
-              "MAX_REQUESTS_PER_MINUTE",
+              "BURST_REQUESTS_PER_MINUTE",
               Integer.toString(requestsInMinute),
               Integer.toString(maxRequestsPerMinute));
       auditRejection(rejection, actor, requestPath, requestMethod);
-      return TenantRequestAdmission.rejected(rejection);
+      return TenantRequestAdmission.rejected(
+          rejection, retryAfterSeconds(resetAtEpochSecond), resetAtEpochSecond);
     }
 
     int inFlightNow = usageCounters.inFlightRequests.incrementAndGet();
@@ -166,7 +185,8 @@ public class TenantRuntimeEnforcementService {
               Integer.toString(inFlightNow),
               Integer.toString(maxConcurrentRequests));
       auditRejection(rejection, actor, requestPath, requestMethod);
-      return TenantRequestAdmission.rejected(rejection);
+      return TenantRequestAdmission.rejected(
+          rejection, 1L, CompanyTime.now().getEpochSecond() + 1L);
     }
 
     usageCounters.totalRequests.incrementAndGet();
@@ -740,6 +760,83 @@ public class TenantRuntimeEnforcementService {
           TenantRuntimeState.ACTIVE.name());
     }
     return null;
+  }
+
+  private TenantRuntimeQuotaRejection monthlyApiQuotaRejection(
+      String companyCode, TenantRuntimePolicy policy) {
+    if (!StringUtils.hasText(companyCode)) {
+      return null;
+    }
+    Company company;
+    try {
+      company = companyRepository.findByCodeIgnoreCase(companyCode.trim()).orElse(null);
+    } catch (RuntimeException ex) {
+      TenantRuntimeRejection rejection =
+          unavailableRejection(
+              companyCode,
+              "TENANT_COMPANY_LOOKUP_UNAVAILABLE",
+              "Tenant company lookup is unavailable");
+      return new TenantRuntimeQuotaRejection(rejection, null, null);
+    }
+    if (company == null || company.getId() == null) {
+      return new TenantRuntimeQuotaRejection(tenantNotFoundRejection(companyCode), null, null);
+    }
+    long monthlyLimit = Math.max(0L, company.getQuotaMaxApiRequests());
+    if (monthlyLimit <= 0L || !company.isQuotaHardLimitEnabled()) {
+      return null;
+    }
+    TenantUsageRollupService.MonthlyApiUsage monthlyUsage;
+    try {
+      monthlyUsage = tenantUsageRollupService.getCurrentMonthlyApiUsage(company);
+    } catch (RuntimeException ex) {
+      TenantRuntimeRejection rejection =
+          unavailableRejection(
+              companyCode,
+              "TENANT_MONTHLY_API_QUOTA_UNAVAILABLE",
+              "Tenant monthly API quota is unavailable");
+      return new TenantRuntimeQuotaRejection(rejection, null, null);
+    }
+    if (monthlyUsage == null || monthlyUsage.periodEndAt() == null) {
+      TenantRuntimeRejection rejection =
+          unavailableRejection(
+              companyCode,
+              "TENANT_MONTHLY_API_QUOTA_UNAVAILABLE",
+              "Tenant monthly API quota is unavailable");
+      return new TenantRuntimeQuotaRejection(rejection, null, null);
+    }
+    long used = Math.max(0L, monthlyUsage.used());
+    long projectedUsed = used + 1L;
+    long hardBlockAt = monthlyHardBlockAt(monthlyLimit);
+    if (projectedUsed < hardBlockAt) {
+      return null;
+    }
+    long resetAtEpochSecond = monthlyUsage.periodEndAt().getEpochSecond();
+    TenantRuntimeRejection rejection =
+        new TenantRuntimeRejection(
+            companyCode,
+            policy.state,
+            policy.reasonCode,
+            policy.auditChainId,
+            HttpStatus.TOO_MANY_REQUESTS,
+            "TENANT_MONTHLY_API_QUOTA_EXHAUSTED",
+            "Tenant monthly API quota exhausted",
+            "MONTHLY_API_CALLS",
+            Long.toString(projectedUsed),
+            Long.toString(monthlyLimit));
+    return new TenantRuntimeQuotaRejection(
+        rejection, retryAfterSeconds(resetAtEpochSecond), resetAtEpochSecond);
+  }
+
+  private long monthlyHardBlockAt(long monthlyLimit) {
+    if (monthlyLimit <= 0L) {
+      return 0L;
+    }
+    long graceAllowance = Math.max(1L, (monthlyLimit + 9L) / 10L);
+    return monthlyLimit + graceAllowance + 1L;
+  }
+
+  private long retryAfterSeconds(long resetAtEpochSecond) {
+    return Math.max(1L, resetAtEpochSecond - CompanyTime.now().getEpochSecond());
   }
 
   private boolean isMutatingRequest(String requestMethod) {
@@ -1344,6 +1441,9 @@ public class TenantRuntimeEnforcementService {
       int maxActiveUsers,
       TenantRuntimeMetrics metrics) {}
 
+  private record TenantRuntimeQuotaRejection(
+      TenantRuntimeRejection rejection, Long retryAfterSeconds, Long resetAtEpochSecond) {}
+
   public static final class TenantRequestAdmission {
     private static final TenantRequestAdmission NOT_TRACKED =
         new TenantRequestAdmission(
@@ -1354,6 +1454,8 @@ public class TenantRuntimeEnforcementService {
             HttpStatus.OK.value(),
             null,
             false,
+            null,
+            null,
             null,
             null,
             null,
@@ -1372,6 +1474,8 @@ public class TenantRuntimeEnforcementService {
     private final String limitType;
     private final String observedValue;
     private final String limitValue;
+    private final Long retryAfterSeconds;
+    private final Long resetAtEpochSecond;
 
     private TenantRequestAdmission(
         boolean admitted,
@@ -1392,6 +1496,8 @@ public class TenantRuntimeEnforcementService {
           null,
           null,
           null,
+          null,
+          null,
           null);
     }
 
@@ -1407,7 +1513,9 @@ public class TenantRuntimeEnforcementService {
         String tenantReasonCode,
         String limitType,
         String observedValue,
-        String limitValue) {
+        String limitValue,
+        Long retryAfterSeconds,
+        Long resetAtEpochSecond) {
       this.admitted = admitted;
       this.companyCode = companyCode;
       this.auditChainId = auditChainId;
@@ -1420,6 +1528,8 @@ public class TenantRuntimeEnforcementService {
       this.limitType = limitType;
       this.observedValue = observedValue;
       this.limitValue = limitValue;
+      this.retryAfterSeconds = retryAfterSeconds;
+      this.resetAtEpochSecond = resetAtEpochSecond;
     }
 
     public static TenantRequestAdmission notTracked() {
@@ -1455,10 +1565,17 @@ public class TenantRuntimeEnforcementService {
           null,
           null,
           null,
+          null,
+          null,
           null);
     }
 
     public static TenantRequestAdmission rejected(TenantRuntimeRejection rejection) {
+      return rejected(rejection, null, null);
+    }
+
+    public static TenantRequestAdmission rejected(
+        TenantRuntimeRejection rejection, Long retryAfterSeconds, Long resetAtEpochSecond) {
       return new TenantRequestAdmission(
           false,
           rejection.companyCode,
@@ -1471,7 +1588,9 @@ public class TenantRuntimeEnforcementService {
           rejection.tenantReasonCode,
           rejection.limitType,
           rejection.observedValue,
-          rejection.limitValue);
+          rejection.limitValue,
+          retryAfterSeconds,
+          resetAtEpochSecond);
     }
 
     public boolean isAdmitted() {
@@ -1516,6 +1635,14 @@ public class TenantRuntimeEnforcementService {
 
     public String limitValue() {
       return limitValue;
+    }
+
+    public Long retryAfterSeconds() {
+      return retryAfterSeconds;
+    }
+
+    public Long resetAtEpochSecond() {
+      return resetAtEpochSecond;
     }
 
     private boolean isPolicyControlRequest() {

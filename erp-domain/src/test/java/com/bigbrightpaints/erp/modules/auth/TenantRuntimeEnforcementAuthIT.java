@@ -137,7 +137,8 @@ class TenantRuntimeEnforcementAuthIT extends AbstractIntegrationTest {
             scenario.companyCode(),
             Map.of(
                 "quotaMaxConcurrentRequests", 50L,
-                "quotaMaxApiRequests", 1L,
+                "quotaMaxApiRequests", 500L,
+                "burstRequestsPerMinute", 1L,
                 "quotaMaxActiveUsers", 500L));
 
     ResponseEntity<Map> firstCall =
@@ -160,7 +161,7 @@ class TenantRuntimeEnforcementAuthIT extends AbstractIntegrationTest {
     Map<String, String> metadata =
         awaitAccessDeniedMetadata(
             String.valueOf(snapshot.get("auditChainId")), "TENANT_REQUEST_RATE_EXCEEDED");
-    assertThat(metadata).containsEntry("limitType", "MAX_REQUESTS_PER_MINUTE");
+    assertThat(metadata).containsEntry("limitType", "BURST_REQUESTS_PER_MINUTE");
   }
 
   private void assertControlledRuntimeError(

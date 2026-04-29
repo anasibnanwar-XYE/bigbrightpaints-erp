@@ -300,7 +300,7 @@ class TenantRuntimeEnforcementInterceptorTest {
             "Tenant request rate quota exceeded",
             "TENANT_REQUEST_RATE_EXCEEDED",
             "POLICY_ACTIVE",
-            "MAX_REQUESTS_PER_MINUTE",
+            "BURST_REQUESTS_PER_MINUTE",
             "   ",
             "not-a-number",
             "policy-rpm");
@@ -338,7 +338,7 @@ class TenantRuntimeEnforcementInterceptorTest {
             "Tenant request rate quota exceeded",
             "TENANT_REQUEST_RATE_EXCEEDED",
             "POLICY_ACTIVE",
-            "MAX_REQUESTS_PER_MINUTE",
+            "BURST_REQUESTS_PER_MINUTE",
             "2",
             "1",
             "policy-rpm");
@@ -356,7 +356,7 @@ class TenantRuntimeEnforcementInterceptorTest {
               assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.BUSINESS_LIMIT_EXCEEDED);
               assertThat(exception.getDetails())
                   .containsEntry("companyCode", "ACME")
-                  .containsEntry("quotaType", "MAX_REQUESTS_PER_MINUTE")
+                  .containsEntry("quotaType", "BURST_REQUESTS_PER_MINUTE")
                   .containsEntry("quotaValue", 1)
                   .containsEntry("observed", 2)
                   .containsEntry("policyReference", "policy-rpm")
@@ -659,7 +659,7 @@ class TenantRuntimeEnforcementInterceptorTest {
               Arrays.stream(
                       TenantRuntimeEnforcementService.TenantRequestAdmission.class
                           .getDeclaredConstructors())
-                  .filter(candidate -> candidate.getParameterCount() == 12)
+                  .filter(candidate -> candidate.getParameterCount() == 14)
                   .findFirst()
                   .orElseThrow();
       ctor.setAccessible(true);
@@ -675,7 +675,9 @@ class TenantRuntimeEnforcementInterceptorTest {
           tenantReasonCode,
           limitType,
           observedValue,
-          limitValue);
+          limitValue,
+          null,
+          null);
     } catch (ReflectiveOperationException ex) {
       throw new IllegalStateException("Unable to construct tenant request admission for test", ex);
     }

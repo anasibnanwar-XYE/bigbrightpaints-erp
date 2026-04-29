@@ -675,6 +675,7 @@ public class SuperAdminTenantControlPlaneService {
       Long quotaMaxApiRequests,
       Long quotaMaxStorageBytes,
       Long quotaMaxConcurrentRequests,
+      Long burstRequestsPerMinute,
       Boolean quotaSoftLimitEnabled,
       Boolean quotaHardLimitEnabled) {
     Company company = requireCompany(companyId);
@@ -682,6 +683,7 @@ public class SuperAdminTenantControlPlaneService {
         && quotaMaxApiRequests == null
         && quotaMaxStorageBytes == null
         && quotaMaxConcurrentRequests == null
+        && burstRequestsPerMinute == null
         && quotaSoftLimitEnabled == null
         && quotaHardLimitEnabled == null) {
       throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
@@ -706,14 +708,20 @@ public class SuperAdminTenantControlPlaneService {
       company.setQuotaHardLimitEnabled(quotaHardLimitEnabled);
     }
     companyRepository.save(company);
-    tenantRuntimeEnforcementService.updatePolicy(
-        company.getCode(),
-        null,
-        "ERP37_LIMITS_UPDATE",
-        safeInteger(company.getQuotaMaxConcurrentRequests()),
-        safeInteger(company.getQuotaMaxApiRequests()),
-        safeInteger(company.getQuotaMaxActiveUsers()),
-        currentActor());
+    if (quotaMaxConcurrentRequests != null
+        || burstRequestsPerMinute != null
+        || quotaMaxActiveUsers != null) {
+      tenantRuntimeEnforcementService.updatePolicy(
+          company.getCode(),
+          null,
+          "ERP37_LIMITS_UPDATE",
+          quotaMaxConcurrentRequests == null
+              ? null
+              : safeInteger(company.getQuotaMaxConcurrentRequests()),
+          burstRequestsPerMinute == null ? null : safeInteger(burstRequestsPerMinute),
+          quotaMaxActiveUsers == null ? null : safeInteger(company.getQuotaMaxActiveUsers()),
+          currentActor());
+    }
     logAuditSuccess(
         company,
         "tenant-limits-updated",
@@ -721,7 +729,8 @@ public class SuperAdminTenantControlPlaneService {
             "quotaMaxActiveUsers", String.valueOf(company.getQuotaMaxActiveUsers()),
             "quotaMaxApiRequests", String.valueOf(company.getQuotaMaxApiRequests()),
             "quotaMaxStorageBytes", String.valueOf(company.getQuotaMaxStorageBytes()),
-            "quotaMaxConcurrentRequests", String.valueOf(company.getQuotaMaxConcurrentRequests())));
+            "quotaMaxConcurrentRequests", String.valueOf(company.getQuotaMaxConcurrentRequests()),
+            "burstRequestsPerMinute", String.valueOf(burstRequestsPerMinute)));
     return new SuperAdminTenantLimitsDto(
         company.getId(),
         company.getCode(),

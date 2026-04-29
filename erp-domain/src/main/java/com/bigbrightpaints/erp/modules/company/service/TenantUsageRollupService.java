@@ -84,6 +84,24 @@ public class TenantUsageRollupService {
     incrementCounter(company, UsageDimension.API_CALLS, 1L, 0L);
   }
 
+  @Transactional(readOnly = true)
+  public MonthlyApiUsage getCurrentMonthlyApiUsage(Company company) {
+    if (company == null || company.getId() == null) {
+      throw ValidationUtils.invalidInput("Company is required");
+    }
+    PeriodWindow monthly = periodWindow(company, PeriodType.MONTHLY);
+    long used =
+        rollupRepository
+            .findByCompany_IdAndDimensionAndPeriodTypeAndPeriodStartAt(
+                company.getId(),
+                UsageDimension.API_CALLS.name(),
+                monthly.periodType().name(),
+                monthly.startAt())
+            .map(rollup -> usedValue(UsageDimension.API_CALLS, rollup))
+            .orElse(0L);
+    return new MonthlyApiUsage(used, monthly.startAt(), monthly.endAt());
+  }
+
   @Transactional
   public void recordPdfExport(Company company) {
     incrementCounter(company, UsageDimension.PDF_EXPORTS, 1L, 0L);
@@ -828,4 +846,6 @@ public class TenantUsageRollupService {
 
   private record QuotaDecision(
       String decision, boolean accepted, String reasonCode, String message) {}
+
+  public record MonthlyApiUsage(long used, Instant periodStartAt, Instant periodEndAt) {}
 }

@@ -174,7 +174,7 @@ class SuperAdminControllerTest {
             new com.bigbrightpaints.erp.modules.company.dto.CompanyLifecycleStateRequest(
                 "ACTIVE", "ok")))
         .thenReturn(new CompanyLifecycleStateDto(7L, "ACME", "SUSPENDED", "ACTIVE", "ok"));
-    when(controlPlaneService.updateLimits(7L, 10L, 20L, 30L, 4L, true, false))
+    when(controlPlaneService.updateLimits(7L, 10L, 20L, 30L, 4L, 5L, true, false))
         .thenReturn(new SuperAdminTenantLimitsDto(7L, "ACME", 10, 20, 30, 4, true, false));
     when(controlPlaneService.updateModules(7L, Set.of("ACCOUNTING", "SALES")))
         .thenReturn(new CompanyEnabledModulesDto(7L, "ACME", Set.of("ACCOUNTING", "SALES")));
@@ -269,7 +269,8 @@ class SuperAdminControllerTest {
         controller
             .updateTenantLimits(
                 7L,
-                new SuperAdminController.TenantLimitsUpdateRequest(10L, 20L, 30L, 4L, true, false))
+                new SuperAdminController.TenantLimitsUpdateRequest(
+                    10L, 20L, 30L, 4L, 5L, true, false))
             .getBody(),
         "Tenant limits updated");
     assertSuccess(

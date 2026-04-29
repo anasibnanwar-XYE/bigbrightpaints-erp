@@ -133,6 +133,27 @@ class TenantUsageRollupServiceTest {
   }
 
   @Test
+  void currentMonthlyApiUsageReturnsDurableCounterAndResetBoundary() {
+    Company company = company(7L, "ACME", "Asia/Kolkata");
+    rollups.add(
+        TenantUsageRollup.snapshot(
+            company,
+            "API_CALLS",
+            "MONTHLY",
+            Instant.parse("2026-03-31T18:30:00Z"),
+            Instant.parse("2026-04-30T18:30:00Z"),
+            "Asia/Kolkata",
+            17L,
+            0L));
+
+    TenantUsageRollupService.MonthlyApiUsage usage = service.getCurrentMonthlyApiUsage(company);
+
+    assertThat(usage.used()).isEqualTo(17L);
+    assertThat(usage.periodStartAt()).isEqualTo("2026-03-31T18:30:00Z");
+    assertThat(usage.periodEndAt()).isEqualTo("2026-04-30T18:30:00Z");
+  }
+
+  @Test
   void tenantUsageHistory_closesElapsedWindowsUsingTenantTimezoneBoundaries() {
     Company company = company(7L, "ACME", "Asia/Kolkata");
     when(companyRepository.findById(7L)).thenReturn(Optional.of(company));

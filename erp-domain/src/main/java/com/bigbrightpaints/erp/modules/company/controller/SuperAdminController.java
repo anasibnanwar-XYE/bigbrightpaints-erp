@@ -231,6 +231,7 @@ public class SuperAdminController {
                 request.quotaMaxApiRequests(),
                 request.quotaMaxStorageBytes(),
                 request.quotaMaxConcurrentRequests(),
+                request.burstRequestsPerMinute(),
                 request.quotaSoftLimitEnabled(),
                 request.quotaHardLimitEnabled())));
   }
@@ -402,6 +403,8 @@ public class SuperAdminController {
           Long quotaMaxStorageBytes,
       @Min(value = 0, message = "quotaMaxConcurrentRequests must be greater than or equal to 0")
           Long quotaMaxConcurrentRequests,
+      @Min(value = 0, message = "burstRequestsPerMinute must be greater than or equal to 0")
+          Long burstRequestsPerMinute,
       Boolean quotaSoftLimitEnabled,
       Boolean quotaHardLimitEnabled) {}
 

@@ -12,6 +12,7 @@ import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
 import org.springframework.lang.Nullable;
 import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -634,7 +635,31 @@ public class CompanyContextFilter extends OncePerRequestFilter {
     if (StringUtils.hasText(admission.limitValue())) {
       data.put("limitValue", admission.limitValue());
     }
+    if (admission.retryAfterSeconds() != null) {
+      data.put("retryAfterSeconds", admission.retryAfterSeconds());
+    }
+    if (admission.resetAtEpochSecond() != null) {
+      data.put("resetAtEpochSecond", admission.resetAtEpochSecond());
+    }
+    if (admission.statusCode() == 429) {
+      writeRateLimitHeaders(response, admission);
+    }
     writeControlledError(response, admission.statusCode(), message, data);
+  }
+
+  private void writeRateLimitHeaders(
+      HttpServletResponse response,
+      TenantRuntimeEnforcementService.TenantRequestAdmission admission) {
+    if (admission.retryAfterSeconds() != null) {
+      response.setHeader(HttpHeaders.RETRY_AFTER, Long.toString(admission.retryAfterSeconds()));
+    }
+    if (StringUtils.hasText(admission.limitValue())) {
+      response.setHeader("X-RateLimit-Limit", admission.limitValue().trim());
+    }
+    response.setHeader("X-RateLimit-Remaining", "0");
+    if (admission.resetAtEpochSecond() != null) {
+      response.setHeader("X-RateLimit-Reset", Long.toString(admission.resetAtEpochSecond()));
+    }
   }
 
   private void writeControlledError(

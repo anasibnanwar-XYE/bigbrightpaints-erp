@@ -159,14 +159,15 @@ class SuperAdminTenantControlPlaneServiceTest {
     when(companyRepository.findById(7L)).thenReturn(Optional.of(company));
     when(companyRepository.save(company)).thenReturn(company);
 
-    SuperAdminTenantLimitsDto response = service.updateLimits(7L, 0L, 0L, 0L, 0L, true, false);
+    SuperAdminTenantLimitsDto response =
+        service.updateLimits(7L, 0L, 0L, 0L, 0L, null, true, false);
 
     assertThat(response.quotaMaxActiveUsers()).isZero();
     assertThat(response.quotaMaxApiRequests()).isZero();
     assertThat(response.quotaMaxStorageBytes()).isZero();
     assertThat(response.quotaMaxConcurrentRequests()).isZero();
     verify(tenantRuntimeEnforcementService)
-        .updatePolicy("ACME", null, "ERP37_LIMITS_UPDATE", 0, 0, 0, "super-admin@bbp.com");
+        .updatePolicy("ACME", null, "ERP37_LIMITS_UPDATE", 0, null, 0, "super-admin@bbp.com");
   }
 
   @Test
@@ -174,7 +175,7 @@ class SuperAdminTenantControlPlaneServiceTest {
     Company company = company(7L, "ACME");
     when(companyRepository.findById(7L)).thenReturn(Optional.of(company));
 
-    assertThatThrownBy(() -> service.updateLimits(7L, null, null, null, null, null, null))
+    assertThatThrownBy(() -> service.updateLimits(7L, null, null, null, null, null, null, null))
         .hasMessageContaining("Tenant limits payload is required");
   }
 
@@ -185,14 +186,20 @@ class SuperAdminTenantControlPlaneServiceTest {
     when(companyRepository.save(company)).thenReturn(company);
 
     SuperAdminTenantLimitsDto response =
-        service.updateLimits(7L, null, null, null, Long.MAX_VALUE, null, true);
+        service.updateLimits(7L, null, null, null, Long.MAX_VALUE, null, null, true);
 
     assertThat(response.quotaMaxConcurrentRequests()).isEqualTo(Long.MAX_VALUE);
     assertThat(response.quotaHardLimitEnabled()).isTrue();
     assertThat(response.quotaSoftLimitEnabled()).isFalse();
     verify(tenantRuntimeEnforcementService)
         .updatePolicy(
-            "ACME", null, "ERP37_LIMITS_UPDATE", Integer.MAX_VALUE, 0, 0, "super-admin@bbp.com");
+            "ACME",
+            null,
+            "ERP37_LIMITS_UPDATE",
+            Integer.MAX_VALUE,
+            null,
+            null,
+            "super-admin@bbp.com");
   }
 
   @Test
