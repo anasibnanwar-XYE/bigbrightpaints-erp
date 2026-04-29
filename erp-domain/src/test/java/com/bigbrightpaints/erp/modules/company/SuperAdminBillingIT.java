@@ -3,11 +3,18 @@ package com.bigbrightpaints.erp.modules.company;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -459,20 +466,20 @@ class SuperAdminBillingIT extends AbstractIntegrationTest {
     Long dueCancelTenant = createTenant("M10DCA", "GROWTH", "DUE");
     createSubscription(
         dueCancelTenant, subscriptionPayload("GROWTH", "MONTHLY", 75_000L, "ACTIVE"));
-    Instant dueCancelAt = Instant.now().plusMillis(250);
+    Instant dueCancelAt = Instant.now().plusSeconds(2);
     Map<String, Object> scheduledDueCancel =
         postCommercialAction(
             dueCancelTenant,
             "cancel",
             Map.of("reason", "Due cancellation", "effectiveAt", dueCancelAt.toString()));
     assertCommercialState(scheduledDueCancel, "ACTIVE", "ACTIVE", "ACTIVE", "PAID");
-    Thread.sleep(400);
+    Thread.sleep(2_250);
     Map<String, Object> appliedCancel = getCommercialState(dueCancelTenant);
     assertCommercialState(appliedCancel, "CANCELED", "DEACTIVATED", "BLOCKED", "CANCELED");
 
     Long archiveTenant = createTenant("M10FAR", "GROWTH", "DUE");
     createSubscription(archiveTenant, subscriptionPayload("GROWTH", "MONTHLY", 75_000L, "ACTIVE"));
-    Instant archiveAt = Instant.now().plusMillis(250);
+    Instant archiveAt = Instant.now().plusSeconds(2);
     Map<String, Object> scheduledArchive =
         postCommercialAction(
             archiveTenant,
@@ -480,7 +487,7 @@ class SuperAdminBillingIT extends AbstractIntegrationTest {
             Map.of("reason", "Schedule archive", "effectiveAt", archiveAt.toString()));
     assertCommercialState(scheduledArchive, "ACTIVE", "ACTIVE", "ACTIVE", "PAID");
     assertThat(defaultListCount((String) scheduledArchive.get("tenantCode"), false)).isEqualTo(1);
-    Thread.sleep(400);
+    Thread.sleep(2_250);
     Map<String, Object> appliedArchive = getCommercialState(archiveTenant);
     assertCommercialState(appliedArchive, "ARCHIVED", "DEACTIVATED", "BLOCKED", "ARCHIVED");
     assertThat(defaultListCount((String) appliedArchive.get("tenantCode"), false)).isZero();
@@ -588,6 +595,138 @@ class SuperAdminBillingIT extends AbstractIntegrationTest {
   }
 
   @Test
+  void concurrentLifecycleActionsAreAtomicForIdenticalReplaysAndConflicts() throws Exception {
+    Long identicalTenant = createTenant("M10ACI", "GROWTH", "DUE");
+    createSubscription(
+        identicalTenant,
+        subscriptionPayload("GROWTH", "MONTHLY", 75_000L, "ACTIVE", "INR", "2026-05-15T00:00:00Z"));
+    postLedger(
+        identicalTenant,
+        "invoices",
+        ledgerPayload(
+            identicalTenant, "atomic-identical-invoice", 75_000L, "INR", "Atomic invoice"));
+
+    assertConcurrentIdenticalMutation(
+        identicalTenant,
+        "suspension/grace",
+        Map.of("reason", "Atomic grace", "graceUntilAt", "2026-05-20T00:00:00Z"),
+        "GRACE");
+    assertConcurrentIdenticalMutation(
+        identicalTenant,
+        "suspension/read-only",
+        Map.of("reason", "Atomic read only", "effectiveAt", "2026-05-21T00:00:00Z"),
+        "SUSPENDED_READ_ONLY");
+    assertConcurrentIdenticalMutation(
+        identicalTenant,
+        "suspension/blocked",
+        Map.of("reason", "Atomic blocked", "effectiveAt", "2026-05-22T00:00:00Z"),
+        "SUSPENDED_BLOCKED");
+
+    postLedger(
+        identicalTenant,
+        "payments",
+        ledgerPayload(
+            identicalTenant, "atomic-identical-payment", 75_000L, "INR", "Atomic payment"));
+    assertConcurrentIdenticalMutation(
+        identicalTenant, "resume", Map.of("reason", "Atomic resume"), "ACTIVE");
+    assertConcurrentIdenticalMutation(
+        identicalTenant, "cancel", Map.of("reason", "Atomic cancel"), "CANCELED");
+    assertConcurrentIdenticalMutation(
+        identicalTenant, "archive", Map.of("reason", "Atomic archive"), "ARCHIVED");
+
+    assertConcurrentConflictingMutation(
+        "suspension/grace",
+        Map.of("reason", "Conflict grace winner", "graceUntilAt", "2026-05-20T00:00:00Z"),
+        Map.of("reason", "Conflict grace loser", "graceUntilAt", "2026-05-21T00:00:00Z"),
+        "GRACE");
+    assertConcurrentConflictingMutation(
+        "suspension/read-only",
+        Map.of("reason", "Conflict read only winner", "effectiveAt", "2026-05-21T00:00:00Z"),
+        Map.of("reason", "Conflict read only loser", "effectiveAt", "2026-05-22T00:00:00Z"),
+        "SUSPENDED_READ_ONLY");
+    assertConcurrentConflictingMutation(
+        "suspension/blocked",
+        Map.of("reason", "Conflict blocked winner", "effectiveAt", "2026-05-22T00:00:00Z"),
+        Map.of("reason", "Conflict blocked loser", "effectiveAt", "2026-05-23T00:00:00Z"),
+        "SUSPENDED_BLOCKED");
+    Long resumeTenant = preparedSuspendedTenant("M10ACR");
+    assertConcurrentConflictingMutation(
+        resumeTenant,
+        "resume",
+        Map.of("reason", "Conflict resume winner"),
+        Map.of("reason", "Conflict resume loser"),
+        "ACTIVE");
+    assertConcurrentConflictingMutation(
+        "cancel",
+        Map.of("reason", "Conflict cancel winner"),
+        Map.of("reason", "Conflict cancel loser"),
+        "CANCELED");
+    assertConcurrentConflictingMutation(
+        "archive",
+        Map.of("reason", "Conflict archive winner"),
+        Map.of("reason", "Conflict archive loser"),
+        "ARCHIVED");
+  }
+
+  @Test
+  void concurrentFutureCancelAndArchiveSchedulingUsesTheSameAtomicReplayPath() throws Exception {
+    Instant futureCancelAt = Instant.now().plusSeconds(120);
+    Long futureCancelTenant = createTenant("M10AFC", "GROWTH", "DUE");
+    createSubscription(
+        futureCancelTenant, subscriptionPayload("GROWTH", "MONTHLY", 75_000L, "ACTIVE", "INR"));
+
+    assertConcurrentIdenticalMutation(
+        futureCancelTenant,
+        "cancel",
+        Map.of("reason", "Atomic future cancel", "effectiveAt", futureCancelAt.toString()),
+        "ACTIVE");
+    assertThat(countCommercialLifecycleAuditEvents(futureCancelTenant)).isEqualTo(1L);
+
+    Instant conflictingCancelAt = Instant.now().plusSeconds(120);
+    Long conflictingCancelTenant = createTenant("M10CFC", "GROWTH", "DUE");
+    createSubscription(
+        conflictingCancelTenant,
+        subscriptionPayload("GROWTH", "MONTHLY", 75_000L, "ACTIVE", "INR"));
+    assertConcurrentConflictForTenant(
+        conflictingCancelTenant,
+        "cancel",
+        Map.of("reason", "Future cancel winner", "effectiveAt", conflictingCancelAt.toString()),
+        Map.of(
+            "reason",
+            "Future cancel loser",
+            "effectiveAt",
+            conflictingCancelAt.plusSeconds(60).toString()),
+        "ACTIVE");
+
+    Instant futureArchiveAt = Instant.now().plusSeconds(120);
+    Long futureArchiveTenant = createTenant("M10AFA", "GROWTH", "DUE");
+    createSubscription(
+        futureArchiveTenant, subscriptionPayload("GROWTH", "MONTHLY", 75_000L, "ACTIVE", "INR"));
+    assertConcurrentIdenticalMutation(
+        futureArchiveTenant,
+        "archive",
+        Map.of("reason", "Atomic future archive", "effectiveAt", futureArchiveAt.toString()),
+        "ACTIVE");
+    assertThat(countCommercialLifecycleAuditEvents(futureArchiveTenant)).isEqualTo(1L);
+
+    Instant conflictingArchiveAt = Instant.now().plusSeconds(120);
+    Long conflictingArchiveTenant = createTenant("M10CFA", "GROWTH", "DUE");
+    createSubscription(
+        conflictingArchiveTenant,
+        subscriptionPayload("GROWTH", "MONTHLY", 75_000L, "ACTIVE", "INR"));
+    assertConcurrentConflictForTenant(
+        conflictingArchiveTenant,
+        "archive",
+        Map.of("reason", "Future archive winner", "effectiveAt", conflictingArchiveAt.toString()),
+        Map.of(
+            "reason",
+            "Future archive loser",
+            "effectiveAt",
+            conflictingArchiveAt.plusSeconds(60).toString()),
+        "ACTIVE");
+  }
+
+  @Test
   void billingStatusBoundaryDrivesGraceThenOverdueWithoutTimezoneDrift() {
     Long tenantId = createTenant("M10TIM", "STARTER", "DUE");
     createSubscription(
@@ -639,6 +778,129 @@ class SuperAdminBillingIT extends AbstractIntegrationTest {
     @SuppressWarnings("unchecked")
     Map<String, Object> data = (Map<String, Object>) response.getBody().get("data");
     return ((Number) data.get("tenantId")).longValue();
+  }
+
+  private Long preparedSuspendedTenant(String prefix) {
+    Long tenantId = createTenant(prefix, "GROWTH", "DUE");
+    createSubscription(
+        tenantId,
+        subscriptionPayload("GROWTH", "MONTHLY", 75_000L, "ACTIVE", "INR", "2026-05-15T00:00:00Z"));
+    postLedger(
+        tenantId,
+        "invoices",
+        ledgerPayload(
+            tenantId, prefix.toLowerCase(Locale.ROOT) + "-invoice", 75_000L, "INR", "Invoice"));
+    postCommercialAction(
+        tenantId,
+        "suspension/blocked",
+        Map.of("reason", prefix + " suspended", "effectiveAt", "2026-05-22T00:00:00Z"));
+    postLedger(
+        tenantId,
+        "payments",
+        ledgerPayload(
+            tenantId, prefix.toLowerCase(Locale.ROOT) + "-payment", 75_000L, "INR", "Payment"));
+    return tenantId;
+  }
+
+  private void assertConcurrentIdenticalMutation(
+      Long tenantId, String action, Map<String, Object> request, String expectedCommercialState)
+      throws Exception {
+    long auditBefore = countCommercialLifecycleAuditEvents(tenantId);
+    List<ResponseEntity<Map>> responses =
+        concurrentPostCommercialActions(tenantId, action, request, request);
+    assertThat(responses).hasSize(2);
+    assertThat(responses)
+        .allSatisfy(response -> assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK));
+    @SuppressWarnings("unchecked")
+    Map<String, Object> first = (Map<String, Object>) responses.get(0).getBody().get("data");
+    @SuppressWarnings("unchecked")
+    Map<String, Object> second = (Map<String, Object>) responses.get(1).getBody().get("data");
+    assertThat(second.get("auditEventId")).isEqualTo(first.get("auditEventId"));
+    assertThat(countCommercialLifecycleAuditEvents(tenantId)).isEqualTo(auditBefore + 1);
+    assertThat(getCommercialState(tenantId))
+        .containsEntry("commercialState", expectedCommercialState);
+  }
+
+  private void assertConcurrentConflictingMutation(
+      String action,
+      Map<String, Object> winnerRequest,
+      Map<String, Object> loserRequest,
+      String expectedCommercialState)
+      throws Exception {
+    Long tenantId = createTenant("M10ACF", "GROWTH", "DUE");
+    createSubscription(
+        tenantId, subscriptionPayload("GROWTH", "MONTHLY", 75_000L, "ACTIVE", "INR"));
+    assertConcurrentConflictForTenant(
+        tenantId, action, winnerRequest, loserRequest, expectedCommercialState);
+  }
+
+  private void assertConcurrentConflictingMutation(
+      Long tenantId,
+      String action,
+      Map<String, Object> winnerRequest,
+      Map<String, Object> loserRequest,
+      String expectedCommercialState)
+      throws Exception {
+    assertConcurrentConflictForTenant(
+        tenantId, action, winnerRequest, loserRequest, expectedCommercialState);
+  }
+
+  private void assertConcurrentConflictForTenant(
+      Long tenantId,
+      String action,
+      Map<String, Object> winnerRequest,
+      Map<String, Object> loserRequest,
+      String expectedCommercialState)
+      throws Exception {
+    long auditBefore = countCommercialLifecycleAuditEvents(tenantId);
+    List<ResponseEntity<Map>> responses =
+        concurrentPostCommercialActions(tenantId, action, winnerRequest, loserRequest);
+    assertThat(responses).hasSize(2);
+    assertThat(responses.stream().map(ResponseEntity::getStatusCode))
+        .containsExactlyInAnyOrder(HttpStatus.OK, HttpStatus.CONFLICT);
+    assertThat(countCommercialLifecycleAuditEvents(tenantId)).isEqualTo(auditBefore + 1);
+    assertThat(getCommercialState(tenantId))
+        .containsEntry("commercialState", expectedCommercialState);
+  }
+
+  private List<ResponseEntity<Map>> concurrentPostCommercialActions(
+      Long tenantId, String action, Map<String, Object> first, Map<String, Object> second)
+      throws Exception {
+    CountDownLatch ready = new CountDownLatch(2);
+    CountDownLatch start = new CountDownLatch(1);
+    ExecutorService executor = Executors.newFixedThreadPool(2);
+    try {
+      List<Callable<ResponseEntity<Map>>> calls =
+          List.of(
+              concurrentCommercialCall(tenantId, action, first, ready, start),
+              concurrentCommercialCall(tenantId, action, second, ready, start));
+      List<Future<ResponseEntity<Map>>> futures = new ArrayList<>();
+      for (Callable<ResponseEntity<Map>> call : calls) {
+        futures.add(executor.submit(call));
+      }
+      assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
+      start.countDown();
+      List<ResponseEntity<Map>> responses = new ArrayList<>();
+      for (Future<ResponseEntity<Map>> future : futures) {
+        responses.add(future.get(15, TimeUnit.SECONDS));
+      }
+      return responses;
+    } finally {
+      executor.shutdownNow();
+    }
+  }
+
+  private Callable<ResponseEntity<Map>> concurrentCommercialCall(
+      Long tenantId,
+      String action,
+      Map<String, Object> request,
+      CountDownLatch ready,
+      CountDownLatch start) {
+    return () -> {
+      ready.countDown();
+      assertThat(start.await(5, TimeUnit.SECONDS)).isTrue();
+      return postCommercialActionRaw(tenantId, action, request);
+    };
   }
 
   private Map<String, Object> addClientPayload(

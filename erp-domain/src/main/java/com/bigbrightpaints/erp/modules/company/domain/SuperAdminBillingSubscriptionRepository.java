@@ -28,6 +28,13 @@ public interface SuperAdminBillingSubscriptionRepository
   Optional<SuperAdminBillingSubscription> findTopByCompanyIdOrderByCreatedAtDescIdDesc(
       Long companyId);
 
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
+  @Query(
+      "select s from SuperAdminBillingSubscription s join fetch s.company where s.company.id ="
+          + " :companyId order by s.createdAt desc, s.id desc")
+  List<SuperAdminBillingSubscription> lockByCompanyIdOrderByCreatedAtDesc(
+      @Param("companyId") Long companyId);
+
   @Query(
       "select s from SuperAdminBillingSubscription s where s.status in ('TRIAL', 'MANUAL',"
           + " 'ACTIVE', 'CANCELED', 'ARCHIVED')")

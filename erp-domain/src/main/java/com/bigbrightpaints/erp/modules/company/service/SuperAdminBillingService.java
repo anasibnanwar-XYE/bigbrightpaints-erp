@@ -145,7 +145,7 @@ public class SuperAdminBillingService {
 
   @Transactional
   public SuperAdminBillingDtos.SubscriptionResponse getSubscription(Long companyId) {
-    SuperAdminBillingSubscription subscription = latestSubscription(companyId);
+    SuperAdminBillingSubscription subscription = latestSubscriptionForUpdate(companyId);
     applyDueScheduledCommercialState(subscription, CompanyTime.now(subscription.getCompany()));
     return toSubscriptionResponse(
         subscription,
@@ -205,8 +205,8 @@ public class SuperAdminBillingService {
 
   @Transactional
   public SuperAdminBillingDtos.CommercialStateResponse getCommercialState(Long companyId) {
-    Company company = lockCompany(companyId);
-    SuperAdminBillingSubscription subscription = latestSubscription(companyId);
+    SuperAdminBillingSubscription subscription = latestSubscriptionForUpdate(companyId);
+    Company company = subscription.getCompany();
     Instant now = CompanyTime.now(company);
     applyDueScheduledCommercialState(subscription, now);
     String commercialState = resolveCommercialState(company);
@@ -228,7 +228,7 @@ public class SuperAdminBillingService {
   @Transactional
   public SuperAdminBillingDtos.CommercialStateResponse startGrace(
       Long companyId, SuperAdminBillingDtos.CommercialStateActionRequest request) {
-    SuperAdminBillingSubscription subscription = latestSubscription(companyId);
+    SuperAdminBillingSubscription subscription = latestSubscriptionForUpdate(companyId);
     applyDueScheduledCommercialState(subscription, CompanyTime.now(subscription.getCompany()));
     requireNoPendingTerminalAction(subscription, "GRACE");
     Instant effectiveAt = resolveEffectiveAt(subscription.getCompany(), request);
@@ -255,7 +255,7 @@ public class SuperAdminBillingService {
   @Transactional
   public SuperAdminBillingDtos.CommercialStateResponse suspendReadOnly(
       Long companyId, SuperAdminBillingDtos.CommercialStateActionRequest request) {
-    SuperAdminBillingSubscription subscription = latestSubscription(companyId);
+    SuperAdminBillingSubscription subscription = latestSubscriptionForUpdate(companyId);
     applyDueScheduledCommercialState(subscription, CompanyTime.now(subscription.getCompany()));
     requireNoPendingTerminalAction(subscription, "SUSPEND_READ_ONLY");
     Instant effectiveAt = resolveEffectiveAt(subscription.getCompany(), request);
@@ -276,7 +276,7 @@ public class SuperAdminBillingService {
   @Transactional
   public SuperAdminBillingDtos.CommercialStateResponse suspendBlocked(
       Long companyId, SuperAdminBillingDtos.CommercialStateActionRequest request) {
-    SuperAdminBillingSubscription subscription = latestSubscription(companyId);
+    SuperAdminBillingSubscription subscription = latestSubscriptionForUpdate(companyId);
     applyDueScheduledCommercialState(subscription, CompanyTime.now(subscription.getCompany()));
     requireNoPendingTerminalAction(subscription, "SUSPEND_BLOCKED");
     Instant effectiveAt = resolveEffectiveAt(subscription.getCompany(), request);
@@ -297,7 +297,7 @@ public class SuperAdminBillingService {
   @Transactional
   public SuperAdminBillingDtos.CommercialStateResponse resume(
       Long companyId, SuperAdminBillingDtos.CommercialStateActionRequest request) {
-    SuperAdminBillingSubscription subscription = latestSubscription(companyId);
+    SuperAdminBillingSubscription subscription = latestSubscriptionForUpdate(companyId);
     applyDueScheduledCommercialState(subscription, CompanyTime.now(subscription.getCompany()));
     requireNoPendingTerminalAction(subscription, "RESUME");
     Instant effectiveAt = resolveEffectiveAt(subscription.getCompany(), request);
@@ -319,7 +319,7 @@ public class SuperAdminBillingService {
   @Transactional
   public SuperAdminBillingDtos.CommercialStateResponse cancel(
       Long companyId, SuperAdminBillingDtos.CommercialStateActionRequest request) {
-    SuperAdminBillingSubscription subscription = latestSubscription(companyId);
+    SuperAdminBillingSubscription subscription = latestSubscriptionForUpdate(companyId);
     Instant now = CompanyTime.now(subscription.getCompany());
     applyDueScheduledCommercialState(subscription, now);
     Instant effectiveAt =
@@ -343,7 +343,7 @@ public class SuperAdminBillingService {
   @Transactional
   public SuperAdminBillingDtos.CommercialStateResponse archive(
       Long companyId, SuperAdminBillingDtos.CommercialStateActionRequest request) {
-    SuperAdminBillingSubscription subscription = latestSubscription(companyId);
+    SuperAdminBillingSubscription subscription = latestSubscriptionForUpdate(companyId);
     Instant now = CompanyTime.now(subscription.getCompany());
     applyDueScheduledCommercialState(subscription, now);
     Instant effectiveAt =
@@ -373,9 +373,10 @@ public class SuperAdminBillingService {
         .findTopByCompanyIdOrderByCreatedAtDescIdDesc(company.getId())
         .map(
             subscription -> {
-              applyDueScheduledCommercialState(subscription, CompanyTime.now(company));
               long balance = balance(company.getId());
-              String status = deriveBillingStatus(subscription, balance, CompanyTime.now(company));
+              String status =
+                  deriveBillingStatus(
+                      subscription, balance, CompanyTime.now(subscription.getCompany()));
               return new SuperAdminBillingDtos.BillingStatusSummary(
                   status,
                   balance,
@@ -552,6 +553,15 @@ public class SuperAdminBillingService {
     return subscriptionRepository
         .findTopByCompanyIdOrderByCreatedAtDescIdDesc(companyId)
         .orElseThrow(() -> invalidInput("Tenant does not have a billing subscription"));
+  }
+
+  private SuperAdminBillingSubscription latestSubscriptionForUpdate(Long companyId) {
+    List<SuperAdminBillingSubscription> subscriptions =
+        subscriptionRepository.lockByCompanyIdOrderByCreatedAtDesc(companyId);
+    if (subscriptions.isEmpty()) {
+      throw invalidInput("Tenant does not have a billing subscription");
+    }
+    return subscriptions.get(0);
   }
 
   @Scheduled(fixedDelayString = "${erp.superadmin.billing.lifecycle-sweep-ms:60000}")
