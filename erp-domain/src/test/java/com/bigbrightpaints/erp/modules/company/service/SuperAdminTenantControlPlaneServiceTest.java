@@ -166,6 +166,7 @@ class SuperAdminTenantControlPlaneServiceTest {
     assertThat(response.quotaMaxApiRequests()).isZero();
     assertThat(response.quotaMaxStorageBytes()).isZero();
     assertThat(response.quotaMaxConcurrentRequests()).isZero();
+    assertThat(response.burstRequestsPerMinute()).isZero();
     verify(tenantRuntimeEnforcementService)
         .updatePolicy("ACME", null, "ERP37_LIMITS_UPDATE", 0, null, 0, "super-admin@bbp.com");
   }
@@ -189,6 +190,7 @@ class SuperAdminTenantControlPlaneServiceTest {
         service.updateLimits(7L, null, null, null, Long.MAX_VALUE, null, null, true);
 
     assertThat(response.quotaMaxConcurrentRequests()).isEqualTo(Long.MAX_VALUE);
+    assertThat(response.burstRequestsPerMinute()).isZero();
     assertThat(response.quotaHardLimitEnabled()).isTrue();
     assertThat(response.quotaSoftLimitEnabled()).isFalse();
     verify(tenantRuntimeEnforcementService)
@@ -200,6 +202,21 @@ class SuperAdminTenantControlPlaneServiceTest {
             null,
             null,
             "super-admin@bbp.com");
+  }
+
+  @Test
+  void updateLimits_returnsBurstRequestsPerMinuteReadback() {
+    Company company = company(7L, "ACME");
+    when(companyRepository.findById(7L)).thenReturn(Optional.of(company));
+    when(companyRepository.save(company)).thenReturn(company);
+    when(tenantRuntimeEnforcementService.snapshot("ACME")).thenReturn(runtimeSnapshot(25));
+
+    SuperAdminTenantLimitsDto response =
+        service.updateLimits(7L, null, null, null, null, 25L, null, null);
+
+    assertThat(response.burstRequestsPerMinute()).isEqualTo(25);
+    verify(tenantRuntimeEnforcementService)
+        .updatePolicy("ACME", null, "ERP37_LIMITS_UPDATE", null, 25, null, "super-admin@bbp.com");
   }
 
   @Test
@@ -937,6 +954,7 @@ class SuperAdminTenantControlPlaneServiceTest {
     assertThat(detail.overview().health().status()).isEqualTo("BLOCKED");
     assertThat(detail.plan().planId()).isEqualTo("TRIAL");
     assertThat(detail.plan().limits().quotaMaxActiveUsers()).isEqualTo(120);
+    assertThat(detail.plan().limits().burstRequestsPerMinute()).isZero();
     assertThat(detail.billing().billingStatus()).isEqualTo("MANUAL");
     assertThat(detail.support().eventCount()).isEqualTo(3);
     assertThat(detail.bugs().tabState().state()).isEqualTo("EMPTY");
@@ -1434,6 +1452,31 @@ class SuperAdminTenantControlPlaneServiceTest {
         25,
         1,
         64);
+  }
+
+  private TenantRuntimeEnforcementService.TenantRuntimeSnapshot runtimeSnapshot(
+      int burstRequestsPerMinute) {
+    return new TenantRuntimeEnforcementService.TenantRuntimeSnapshot(
+        "ACME",
+        TenantRuntimeEnforcementService.TenantRuntimeState.ACTIVE,
+        "POLICY_ACTIVE",
+        "policy",
+        Instant.parse("2026-03-26T09:00:00Z"),
+        8,
+        burstRequestsPerMinute,
+        10,
+        new TenantRuntimeEnforcementService.TenantRuntimeMetrics(
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0L,
+            Instant.parse("2026-03-26T09:00:00Z"),
+            Instant.parse("2026-03-26T09:01:00Z"),
+            Instant.parse("2026-03-26T09:01:00Z"),
+            Instant.parse("2026-03-26T09:00:00Z")));
   }
 
   private SuperAdminTenantControlPlaneService serviceWithRealCompanyMetricsProducer() {

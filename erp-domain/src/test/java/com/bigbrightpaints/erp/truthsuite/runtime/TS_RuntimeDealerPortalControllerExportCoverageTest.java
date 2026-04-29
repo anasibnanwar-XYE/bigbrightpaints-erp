@@ -137,7 +137,8 @@ class TS_RuntimeDealerPortalControllerExportCoverageTest {
     TenantRuntimeEnforcementInterceptor interceptor =
         new TenantRuntimeEnforcementInterceptor(
             org.mockito.Mockito.mock(CompanyContextService.class),
-            tenantRuntimeRequestAdmissionService);
+            tenantRuntimeRequestAdmissionService,
+            new com.fasterxml.jackson.databind.ObjectMapper().findAndRegisterModules());
     MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/portal/dashboard");
     request.setAttribute(TenantRuntimeRequestAttributes.CANONICAL_ADMISSION_APPLIED, Boolean.TRUE);
 

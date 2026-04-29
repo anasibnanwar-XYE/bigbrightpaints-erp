@@ -158,10 +158,55 @@ class TenantRuntimeEnforcementAuthIT extends AbstractIntegrationTest {
     assertThat(secondCall.getStatusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
     assertControlledRuntimeError(
         secondCall, "TENANT_REQUEST_RATE_EXCEEDED", "Tenant request rate quota exceeded");
+    assertRateLimitMetadata(secondCall, "1");
     Map<String, String> metadata =
         awaitAccessDeniedMetadata(
             String.valueOf(snapshot.get("auditChainId")), "TENANT_REQUEST_RATE_EXCEEDED");
     assertThat(metadata).containsEntry("limitType", "BURST_REQUESTS_PER_MINUTE");
+  }
+
+  @Test
+  void monthlyApiQuotaBlocksActualAuthenticatedTraffic_withRetryResetMetadata()
+      throws InterruptedException {
+    Scenario scenario = seedScenario("MONTHLY");
+    String token = login(scenario.email(), scenario.companyCode());
+
+    Map<String, Object> snapshot =
+        updateRuntimePolicy(
+            scenario.companyCode(),
+            Map.of(
+                "quotaMaxConcurrentRequests", 50L,
+                "quotaMaxApiRequests", 3L,
+                "burstRequestsPerMinute", 50L,
+                "quotaMaxActiveUsers", 500L));
+
+    ResponseEntity<Map> blockedCall = null;
+    int allowedBeforeBlock = 0;
+    for (int i = 0; i < 8; i++) {
+      ResponseEntity<Map> candidate =
+          rest.exchange(
+              "/api/v1/auth/me",
+              HttpMethod.GET,
+              new HttpEntity<>(authenticatedHeaders(token, scenario.companyCode())),
+              Map.class);
+      if (candidate.getStatusCode() == HttpStatus.TOO_MANY_REQUESTS) {
+        blockedCall = candidate;
+        break;
+      }
+      assertThat(candidate.getStatusCode()).isEqualTo(HttpStatus.OK);
+      allowedBeforeBlock++;
+    }
+
+    assertThat(allowedBeforeBlock).isPositive();
+    assertThat(blockedCall).isNotNull();
+    assertThat(blockedCall.getStatusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
+    assertControlledRuntimeError(
+        blockedCall, "TENANT_MONTHLY_API_QUOTA_EXHAUSTED", "Tenant monthly API quota exhausted");
+    assertRateLimitMetadata(blockedCall, "3");
+    Map<String, String> metadata =
+        awaitAccessDeniedMetadata(
+            String.valueOf(snapshot.get("auditChainId")), "TENANT_MONTHLY_API_QUOTA_EXHAUSTED");
+    assertThat(metadata).containsEntry("limitType", "MONTHLY_API_CALLS");
   }
 
   private void assertControlledRuntimeError(
@@ -176,6 +221,19 @@ class TenantRuntimeEnforcementAuthIT extends AbstractIntegrationTest {
     assertThat(error).containsEntry("code", expectedCode);
     assertThat(error).containsEntry("message", expectedMessage);
     assertThat(error).containsKey("traceId");
+  }
+
+  private void assertRateLimitMetadata(ResponseEntity<Map> response, String expectedLimit) {
+    assertThat(response.getHeaders().getFirst("Retry-After")).isNotBlank();
+    assertThat(response.getHeaders().getFirst("X-RateLimit-Limit")).isEqualTo(expectedLimit);
+    assertThat(response.getHeaders().getFirst("X-RateLimit-Remaining")).isEqualTo("0");
+    assertThat(response.getHeaders().getFirst("X-RateLimit-Reset")).isNotBlank();
+    Object payload = response.getBody().get("data");
+    assertThat(payload).isInstanceOf(Map.class);
+    @SuppressWarnings("unchecked")
+    Map<String, Object> error = (Map<String, Object>) payload;
+    assertThat(error).containsKey("retryAfterSeconds");
+    assertThat(error).containsKey("resetAtEpochSecond");
   }
 
   private void assertLifecycleRestricted(

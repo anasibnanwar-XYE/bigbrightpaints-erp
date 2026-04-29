@@ -106,6 +106,7 @@ public record SuperAdminTenantDetailDto(
       long quotaMaxApiRequests,
       long quotaMaxStorageBytes,
       long quotaMaxConcurrentRequests,
+      long burstRequestsPerMinute,
       boolean quotaSoftLimitEnabled,
       boolean quotaHardLimitEnabled) {}
 

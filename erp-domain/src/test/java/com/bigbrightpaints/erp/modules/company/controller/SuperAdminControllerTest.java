@@ -161,7 +161,7 @@ class SuperAdminControllerTest {
             new SuperAdminTenantDetailDto.Onboarding(
                 "SME", "admin@acme.com", 91L, true, Instant.parse("2026-03-26T09:30:00Z")),
             new MainAdminSummaryDto(91L, "admin@acme.com", "Main Admin", true, true),
-            new SuperAdminTenantDetailDto.Limits(10, 20, 30, 4, true, false),
+            new SuperAdminTenantDetailDto.Limits(10, 20, 30, 4, 5, true, false),
             new SuperAdminTenantDetailDto.Usage(
                 2, 40, 1, 250, 200, 1, Instant.parse("2026-03-26T11:00:00Z")),
             new SuperAdminTenantDetailDto.SupportContext("note", Set.of("URGENT")),
@@ -181,7 +181,7 @@ class SuperAdminControllerTest {
                 "ACTIVE", "ok")))
         .thenReturn(new CompanyLifecycleStateDto(7L, "ACME", "SUSPENDED", "ACTIVE", "ok"));
     when(controlPlaneService.updateLimits(7L, 10L, 20L, 30L, 4L, 5L, true, false))
-        .thenReturn(new SuperAdminTenantLimitsDto(7L, "ACME", 10, 20, 30, 4, true, false));
+        .thenReturn(new SuperAdminTenantLimitsDto(7L, "ACME", 10, 20, 30, 4, 5, true, false));
     when(controlPlaneService.updateModules(7L, Set.of("ACCOUNTING", "SALES")))
         .thenReturn(new CompanyEnabledModulesDto(7L, "ACME", Set.of("ACCOUNTING", "SALES")));
     SuperAdminTenantEntitlementsDto entitlements = entitlements();

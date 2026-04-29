@@ -738,6 +738,7 @@ public class SuperAdminTenantControlPlaneService {
         company.getQuotaMaxApiRequests(),
         company.getQuotaMaxStorageBytes(),
         company.getQuotaMaxConcurrentRequests(),
+        currentBurstRequestsPerMinute(company),
         company.isQuotaSoftLimitEnabled(),
         company.isQuotaHardLimitEnabled());
   }
@@ -1041,6 +1042,7 @@ public class SuperAdminTenantControlPlaneService {
             metrics.quotaMaxApiRequests(),
             metrics.quotaMaxStorageBytes(),
             metrics.quotaMaxConcurrentRequests(),
+            currentBurstRequestsPerMinute(company),
             metrics.quotaSoftLimitEnabled(),
             metrics.quotaHardLimitEnabled());
     SuperAdminTenantEntitlementsDto.PlanSummary planSummary =
@@ -2110,6 +2112,14 @@ public class SuperAdminTenantControlPlaneService {
       return Integer.MAX_VALUE;
     }
     return value < 0L ? 0 : (int) value;
+  }
+
+  private long currentBurstRequestsPerMinute(Company company) {
+    if (company == null || !StringUtils.hasText(company.getCode())) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState(
+          "Tenant runtime policy snapshot requires a company code");
+    }
+    return tenantRuntimeEnforcementService.snapshot(company.getCode()).maxRequestsPerMinute();
   }
 
   private void assertTenantExclusiveUsers(

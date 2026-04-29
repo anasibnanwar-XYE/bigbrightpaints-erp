@@ -453,6 +453,20 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
         "#/components/schemas/TenantLimitsUpdateRequest",
         "200",
         "#/components/schemas/ApiResponseSuperAdminTenantLimitsDto");
+    assertThat(
+            root.path("components")
+                .path("schemas")
+                .path("SuperAdminTenantLimitsDto")
+                .path("properties")
+                .has("burstRequestsPerMinute"))
+        .isTrue();
+    assertThat(
+            root.path("components")
+                .path("schemas")
+                .path("Limits")
+                .path("properties")
+                .has("burstRequestsPerMinute"))
+        .isTrue();
     assertOperationContract(
         root,
         "/api/v1/superadmin/tenants/{id}/modules",
