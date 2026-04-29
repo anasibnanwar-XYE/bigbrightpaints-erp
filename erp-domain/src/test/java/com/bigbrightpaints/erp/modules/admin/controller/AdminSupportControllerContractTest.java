@@ -59,6 +59,8 @@ class AdminSupportControllerContractTest {
             null,
             null,
             null,
+            null,
+            null,
             List.of());
     when(service.listAllTenantTickets()).thenReturn(List.of(ticket));
 
