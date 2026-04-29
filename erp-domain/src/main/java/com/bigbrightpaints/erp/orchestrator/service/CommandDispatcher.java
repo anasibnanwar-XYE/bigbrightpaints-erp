@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import com.bigbrightpaints.erp.modules.company.service.TenantRealActionUsageService;
 import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService.InventoryReservationResult;
 import com.bigbrightpaints.erp.orchestrator.config.OrchestratorFeatureFlags;
 import com.bigbrightpaints.erp.orchestrator.dto.ApproveOrderRequest;
@@ -34,6 +35,7 @@ public class CommandDispatcher {
   private final PolicyEnforcer policyEnforcer;
   private final OrchestratorIdempotencyService idempotencyService;
   private final OrchestratorFeatureFlags featureFlags;
+  private final TenantRealActionUsageService realActionUsageService;
 
   public CommandDispatcher(
       WorkflowService workflowService,
@@ -42,7 +44,8 @@ public class CommandDispatcher {
       TraceService traceService,
       PolicyEnforcer policyEnforcer,
       OrchestratorIdempotencyService idempotencyService,
-      OrchestratorFeatureFlags featureFlags) {
+      OrchestratorFeatureFlags featureFlags,
+      TenantRealActionUsageService realActionUsageService) {
     this.workflowService = workflowService;
     this.integrationCoordinator = integrationCoordinator;
     this.eventPublisherService = eventPublisherService;
@@ -50,6 +53,7 @@ public class CommandDispatcher {
     this.policyEnforcer = policyEnforcer;
     this.idempotencyService = idempotencyService;
     this.featureFlags = featureFlags;
+    this.realActionUsageService = realActionUsageService;
   }
 
   @Transactional
@@ -67,6 +71,7 @@ public class CommandDispatcher {
     String canonicalIdempotencyKey = leaseEnvelope.canonicalIdempotencyKey();
     return executeWithLease(
         lease,
+        companyId,
         () -> {
           String traceId = lease.traceId();
           InventoryReservationResult reservation =
@@ -128,6 +133,7 @@ public class CommandDispatcher {
     String canonicalIdempotencyKey = leaseEnvelope.canonicalIdempotencyKey();
     return executeWithLease(
         lease,
+        companyId,
         () -> {
           String traceId = lease.traceId();
           IntegrationCoordinator.AutoApprovalResult result =
@@ -187,6 +193,7 @@ public class CommandDispatcher {
     String canonicalIdempotencyKey = leaseEnvelope.canonicalIdempotencyKey();
     return executeWithLease(
         lease,
+        companyId,
         () -> {
           String traceId = lease.traceId();
           IntegrationCoordinator.AutoApprovalResult result =
@@ -397,12 +404,16 @@ public class CommandDispatcher {
   }
 
   private String executeWithLease(
-      OrchestratorIdempotencyService.CommandLease lease, CommandExecution execution) {
+      OrchestratorIdempotencyService.CommandLease lease,
+      String companyId,
+      CommandExecution execution) {
     if (!lease.shouldExecute()) {
       return lease.traceId();
     }
+    realActionUsageService.enforceJobSubmissionAllowed(companyId);
     try {
       String traceId = execution.execute();
+      realActionUsageService.recordJobSubmission(companyId);
       idempotencyService.markSuccess(lease.command());
       return traceId;
     } catch (RuntimeException ex) {
@@ -443,7 +454,7 @@ public class CommandDispatcher {
       throw new OrchestratorFeatureDisabledException(disabledMessage, canonicalPath);
     }
     ensurePositivePostingAmount(lease.command(), postingAmount, operation);
-    return executeWithLease(lease, execution);
+    return executeWithLease(lease, companyId, execution);
   }
 
   private void ensurePositivePostingAmount(

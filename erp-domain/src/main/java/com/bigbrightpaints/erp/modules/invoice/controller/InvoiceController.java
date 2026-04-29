@@ -15,6 +15,9 @@ import com.bigbrightpaints.erp.core.audit.AuditEvent;
 import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.notification.EmailService;
 import com.bigbrightpaints.erp.core.security.PortalRoleActionMatrix;
+import com.bigbrightpaints.erp.modules.company.domain.Company;
+import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
+import com.bigbrightpaints.erp.modules.company.service.TenantRealActionUsageService;
 import com.bigbrightpaints.erp.modules.invoice.dto.InvoiceDto;
 import com.bigbrightpaints.erp.modules.invoice.service.InvoicePdfService;
 import com.bigbrightpaints.erp.modules.invoice.service.InvoiceService;
@@ -34,16 +37,22 @@ public class InvoiceController {
   private final InvoicePdfService invoicePdfService;
   private final EmailService emailService;
   private final AuditService auditService;
+  private final CompanyContextService companyContextService;
+  private final TenantRealActionUsageService realActionUsageService;
 
   public InvoiceController(
       InvoiceService invoiceService,
       InvoicePdfService invoicePdfService,
       EmailService emailService,
-      AuditService auditService) {
+      AuditService auditService,
+      CompanyContextService companyContextService,
+      TenantRealActionUsageService realActionUsageService) {
     this.invoiceService = invoiceService;
     this.invoicePdfService = invoicePdfService;
     this.emailService = emailService;
     this.auditService = auditService;
+    this.companyContextService = companyContextService;
+    this.realActionUsageService = realActionUsageService;
   }
 
   @GetMapping
@@ -81,6 +90,7 @@ public class InvoiceController {
 
   @PostMapping("/{id}/email")
   public ResponseEntity<ApiResponse<String>> sendInvoiceEmail(@PathVariable Long id) {
+    Company company = companyContextService.requireCurrentCompany();
     // Get invoice with dealer email from service
     var invoiceWithEmail = invoiceService.getInvoiceWithDealerEmail(id);
     InvoiceDto invoice = invoiceWithEmail.invoice();
@@ -93,6 +103,7 @@ public class InvoiceController {
               ApiResponse.failure(
                   "Dealer email not configured for invoice " + invoice.invoiceNumber()));
     }
+    realActionUsageService.enforceBusinessEmailAllowed(company);
 
     InvoicePdfService.PdfDocument pdf = invoicePdfService.renderInvoicePdf(id);
 
@@ -112,6 +123,7 @@ public class InvoiceController {
         totalAmount,
         companyName,
         pdf.content());
+    realActionUsageService.recordBusinessEmail(company);
 
     return ResponseEntity.ok(ApiResponse.success("Invoice email sent to " + dealerEmail));
   }

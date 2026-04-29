@@ -46,6 +46,7 @@ import com.bigbrightpaints.erp.modules.accounting.dto.OpeningBalanceImportRespon
 import com.bigbrightpaints.erp.modules.accounting.dto.OpeningBalanceImportResponse.ImportError;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
+import com.bigbrightpaints.erp.modules.company.service.TenantRealActionUsageService;
 
 @Service
 public class OpeningBalanceImportService {
@@ -72,6 +73,7 @@ public class OpeningBalanceImportService {
   private final TransactionTemplate transactionTemplate;
   private final IdempotencyReservationService idempotencyReservationService =
       new IdempotencyReservationService();
+  private final TenantRealActionUsageService realActionUsageService;
 
   public OpeningBalanceImportService(
       CompanyContextService companyContextService,
@@ -82,7 +84,8 @@ public class OpeningBalanceImportService {
       AuditService auditService,
       ObjectMapper objectMapper,
       CompanyClock companyClock,
-      PlatformTransactionManager transactionManager) {
+      PlatformTransactionManager transactionManager,
+      TenantRealActionUsageService realActionUsageService) {
     this.companyContextService = companyContextService;
     this.accountRepository = accountRepository;
     this.accountingFacade = accountingFacade;
@@ -92,6 +95,7 @@ public class OpeningBalanceImportService {
     this.objectMapper = objectMapper;
     this.companyClock = companyClock;
     this.transactionTemplate = new TransactionTemplate(transactionManager);
+    this.realActionUsageService = realActionUsageService;
   }
 
   public OpeningBalanceImportResponse importOpeningBalances(MultipartFile file) {
@@ -103,6 +107,7 @@ public class OpeningBalanceImportService {
     String fileHash = resolveFileHash(file);
     String idempotencyKey = normalizeIdempotencyKey(fileHash);
     String referenceNumber = resolveImportReference(company, fileHash);
+    long storageBytes = safeFileSize(file);
 
     OpeningBalanceImport existing =
         openingBalanceImportRepository
@@ -121,6 +126,7 @@ public class OpeningBalanceImportService {
               "Opening balance import already processed for this file")
           .withDetail("referenceNumber", referenceNumber);
     }
+    realActionUsageService.enforceStorageWriteAllowed(company, storageBytes);
 
     try {
       OpeningBalanceImportResponse response =
@@ -131,6 +137,7 @@ public class OpeningBalanceImportService {
       if (response == null) {
         throw ValidationUtils.invalidState("Opening balance import failed to return a response");
       }
+      realActionUsageService.recordStorageWrite(company, storageBytes);
       return response;
     } catch (RuntimeException ex) {
       if (!isDataIntegrityViolation(ex)) {
@@ -143,6 +150,10 @@ public class OpeningBalanceImportService {
       assertIdempotencyMatch(concurrent, fileHash, idempotencyKey);
       return toResponse(concurrent);
     }
+  }
+
+  private long safeFileSize(MultipartFile file) {
+    return file == null ? 0L : Math.max(file.getSize(), 0L);
   }
 
   private OpeningBalanceImportResponse importOpeningBalancesInternal(

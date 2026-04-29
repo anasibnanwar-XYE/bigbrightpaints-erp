@@ -56,6 +56,7 @@ import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
+import com.bigbrightpaints.erp.modules.company.service.TenantRealActionUsageService;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatch;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatchRepository;
@@ -98,6 +99,7 @@ class OpeningStockImportServiceTest {
   @Mock private AuditService auditService;
   @Mock private com.bigbrightpaints.erp.core.util.CompanyClock companyClock;
   @Mock private org.springframework.core.env.Environment environment;
+  @Mock private TenantRealActionUsageService realActionUsageService;
 
   private OpeningStockImportService service;
   private Company company;
@@ -124,6 +126,7 @@ class OpeningStockImportServiceTest {
             companyClock,
             environment,
             new ResourcelessTransactionManager(),
+            realActionUsageService,
             true);
 
     company = new Company();
@@ -1134,6 +1137,7 @@ class OpeningStockImportServiceTest {
             companyClock,
             environment,
             new ResourcelessTransactionManager(),
+            realActionUsageService,
             true);
 
     String serialized =
@@ -1198,6 +1202,7 @@ class OpeningStockImportServiceTest {
             companyClock,
             environment,
             new ResourcelessTransactionManager(),
+            realActionUsageService,
             false);
 
     MockMultipartFile file =
@@ -1243,6 +1248,7 @@ class OpeningStockImportServiceTest {
             companyClock,
             environment,
             new ResourcelessTransactionManager(),
+            realActionUsageService,
             false);
     String csv =
         String.join(

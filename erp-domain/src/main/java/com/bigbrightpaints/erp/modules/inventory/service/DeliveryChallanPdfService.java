@@ -16,6 +16,7 @@ import com.openhtmltopdf.pdfboxout.PdfRendererBuilder;
 
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
+import com.bigbrightpaints.erp.modules.company.service.TenantRealActionUsageService;
 import com.bigbrightpaints.erp.modules.inventory.domain.PackagingSlip;
 import com.bigbrightpaints.erp.modules.inventory.domain.PackagingSlipLine;
 import com.bigbrightpaints.erp.modules.inventory.domain.PackagingSlipRepository;
@@ -28,18 +29,22 @@ public class DeliveryChallanPdfService {
   private final CompanyContextService companyContextService;
   private final PackagingSlipRepository packagingSlipRepository;
   private final TemplateEngine templateEngine;
+  private final TenantRealActionUsageService realActionUsageService;
 
   public DeliveryChallanPdfService(
       CompanyContextService companyContextService,
       PackagingSlipRepository packagingSlipRepository,
-      TemplateEngine templateEngine) {
+      TemplateEngine templateEngine,
+      TenantRealActionUsageService realActionUsageService) {
     this.companyContextService = companyContextService;
     this.packagingSlipRepository = packagingSlipRepository;
     this.templateEngine = templateEngine;
+    this.realActionUsageService = realActionUsageService;
   }
 
   public PdfDocument renderDeliveryChallanPdf(Long packagingSlipId) {
     Company company = companyContextService.requireCurrentCompany();
+    realActionUsageService.enforcePdfExportAllowed(company);
     PackagingSlip slip =
         packagingSlipRepository
             .findByIdAndCompany(packagingSlipId, company)
@@ -89,6 +94,7 @@ public class DeliveryChallanPdfService {
     context.setVariable("challan", view);
     String html = templateEngine.process("delivery-challan-template", context);
     byte[] pdf = renderPdf(html);
+    realActionUsageService.recordPdfExport(company);
     String fileName =
         "delivery-challan-"
             + (slip.getSlipNumber() != null ? slip.getSlipNumber() : slip.getId())

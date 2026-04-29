@@ -25,6 +25,7 @@ import org.thymeleaf.templateresolver.ClassLoaderTemplateResolver;
 
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
+import com.bigbrightpaints.erp.modules.company.service.TenantRealActionUsageService;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatch;
 import com.bigbrightpaints.erp.modules.inventory.domain.PackagingSlip;
@@ -42,6 +43,7 @@ class DeliveryChallanPdfServiceTest {
   @Mock private PackagingSlipRepository packagingSlipRepository;
 
   @Mock private TemplateEngine templateEngine;
+  @Mock private TenantRealActionUsageService realActionUsageService;
 
   private DeliveryChallanPdfService service;
 
@@ -49,7 +51,7 @@ class DeliveryChallanPdfServiceTest {
   void setUp() {
     service =
         new DeliveryChallanPdfService(
-            companyContextService, packagingSlipRepository, templateEngine);
+            companyContextService, packagingSlipRepository, templateEngine, realActionUsageService);
   }
 
   @Test
@@ -128,7 +130,10 @@ class DeliveryChallanPdfServiceTest {
 
     DeliveryChallanPdfService realService =
         new DeliveryChallanPdfService(
-            companyContextService, packagingSlipRepository, stubTemplateEngine);
+            companyContextService,
+            packagingSlipRepository,
+            stubTemplateEngine,
+            realActionUsageService);
 
     DeliveryChallanPdfService.PdfDocument pdf = realService.renderDeliveryChallanPdf(18L);
 
@@ -155,7 +160,10 @@ class DeliveryChallanPdfServiceTest {
 
     DeliveryChallanPdfService realService =
         new DeliveryChallanPdfService(
-            companyContextService, packagingSlipRepository, stubTemplateEngine);
+            companyContextService,
+            packagingSlipRepository,
+            stubTemplateEngine,
+            realActionUsageService);
 
     DeliveryChallanPdfService.PdfDocument pdf = realService.renderDeliveryChallanPdf(19L);
 
@@ -175,7 +183,10 @@ class DeliveryChallanPdfServiceTest {
 
     DeliveryChallanPdfService realService =
         new DeliveryChallanPdfService(
-            companyContextService, packagingSlipRepository, templateEngine());
+            companyContextService,
+            packagingSlipRepository,
+            templateEngine(),
+            realActionUsageService);
 
     DeliveryChallanPdfService.PdfDocument pdf = realService.renderDeliveryChallanPdf(20L);
     String text = extractText(pdf.content());

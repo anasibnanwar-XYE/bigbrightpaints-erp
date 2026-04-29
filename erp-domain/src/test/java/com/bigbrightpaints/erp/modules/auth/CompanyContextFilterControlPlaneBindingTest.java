@@ -587,6 +587,19 @@ class CompanyContextFilterControlPlaneBindingTest {
         filter, "isTenantBusinessRequestBlockedForSuperAdmin", path);
   }
 
+  private Long extractCompanyId(String path) {
+    for (String method : List.of("GET", "PUT", "POST")) {
+      Object binding =
+          com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+              filter, "resolveCompanyBoundControlBinding", path, method);
+      if (binding != null) {
+        return com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            binding, "companyId");
+      }
+    }
+    return null;
+  }
+
   private void authenticate(String email, Set<String> authorities, Set<String> companyCodes) {
     UserAccount user = new UserAccount(email, "hash", "Operator");
     if (!companyCodes.isEmpty()) {

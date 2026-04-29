@@ -35,6 +35,7 @@ import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.accounting.service.ReferenceNumberService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
+import com.bigbrightpaints.erp.modules.company.service.TenantRealActionUsageService;
 import com.bigbrightpaints.erp.modules.inventory.domain.InventoryBatchSource;
 import com.bigbrightpaints.erp.modules.inventory.domain.InventoryReference;
 import com.bigbrightpaints.erp.modules.inventory.domain.MaterialType;
@@ -82,6 +83,7 @@ public class RawMaterialService {
   private final Environment environment;
   private final TransactionTemplate transactionTemplate;
   private final boolean rawMaterialIntakeEnabled;
+  private final TenantRealActionUsageService realActionUsageService;
 
   @Autowired(required = false)
   private InventoryPhysicalCountService inventoryPhysicalCountService;
@@ -104,6 +106,7 @@ public class RawMaterialService {
       AuditService auditService,
       Environment environment,
       PlatformTransactionManager transactionManager,
+      TenantRealActionUsageService realActionUsageService,
       @Value("${erp.raw-material.intake.enabled:false}") boolean rawMaterialIntakeEnabled) {
     this.rawMaterialRepository = rawMaterialRepository;
     this.batchRepository = batchRepository;
@@ -122,6 +125,7 @@ public class RawMaterialService {
     this.auditService = auditService;
     this.environment = environment;
     this.transactionTemplate = new TransactionTemplate(transactionManager);
+    this.realActionUsageService = realActionUsageService;
     this.rawMaterialIntakeEnabled = rawMaterialIntakeEnabled;
   }
 
@@ -196,7 +200,24 @@ public class RawMaterialService {
                 () ->
                     com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
                         "Raw material not found"));
+    long releasedBytes = estimateRawMaterialStorageBytes(material);
     rawMaterialRepository.delete(material);
+    realActionUsageService.recordStorageDelete(company, releasedBytes);
+  }
+
+  private long estimateRawMaterialStorageBytes(RawMaterial material) {
+    if (material == null) {
+      return 0L;
+    }
+    long bytes = 1L;
+    bytes += stringBytes(material.getName());
+    bytes += stringBytes(material.getSku());
+    bytes += stringBytes(material.getUnitType());
+    return bytes;
+  }
+
+  private long stringBytes(String value) {
+    return value == null ? 0L : value.getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
   }
 
   public StockSummaryDto summarizeStock() {

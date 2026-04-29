@@ -31,45 +31,55 @@ public interface TenantUsageRollupRepository extends JpaRepository<TenantUsageRo
   @Query(
       value =
           """
-          INSERT INTO tenant_usage_rollups (
-              company_id,
-              company_code,
-              dimension,
-              period_type,
-              period_start_at,
-              period_end_at,
-              tenant_timezone,
-              usage_count,
-              usage_bytes,
-              source,
-              closed,
-              created_at,
-              updated_at
-          ) VALUES (
-              :companyId,
-              :companyCode,
-              :dimension,
-              :periodType,
-              :periodStartAt,
-              :periodEndAt,
-              :tenantTimezone,
-              :countDelta,
-              :bytesDelta,
-              'COUNTER',
-              FALSE,
-              now(),
-              now()
-          )
-          ON CONFLICT (company_id, dimension, period_type, period_start_at)
-          DO UPDATE SET
-              company_code = EXCLUDED.company_code,
-              period_end_at = EXCLUDED.period_end_at,
-              tenant_timezone = EXCLUDED.tenant_timezone,
-              usage_count = tenant_usage_rollups.usage_count + EXCLUDED.usage_count,
-              usage_bytes = tenant_usage_rollups.usage_bytes + EXCLUDED.usage_bytes,
-              source = 'COUNTER',
-              updated_at = now()
-          """,
+INSERT INTO tenant_usage_rollups (
+    company_id,
+    company_code,
+    dimension,
+    period_type,
+    period_start_at,
+    period_end_at,
+    tenant_timezone,
+    usage_count,
+    usage_bytes,
+    source,
+    closed,
+    created_at,
+    updated_at
+) VALUES (
+    :companyId,
+    :companyCode,
+    :dimension,
+    :periodType,
+    :periodStartAt,
+    :periodEndAt,
+    :tenantTimezone,
+    GREATEST(:countDelta, 0),
+    GREATEST(:bytesDelta, 0),
+    'COUNTER',
+    FALSE,
+    now(),
+    now()
+)
+ON CONFLICT (company_id, dimension, period_type, period_start_at)
+DO UPDATE SET
+    company_code = EXCLUDED.company_code,
+    period_end_at = EXCLUDED.period_end_at,
+    tenant_timezone = EXCLUDED.tenant_timezone,
+    usage_count = CASE
+        WHEN :countDelta < 0 THEN GREATEST(0, tenant_usage_rollups.usage_count + :countDelta)
+        WHEN tenant_usage_rollups.usage_count > 9223372036854775807 - :countDelta
+            THEN 9223372036854775807
+        ELSE tenant_usage_rollups.usage_count + :countDelta
+    END,
+    usage_bytes = CASE
+        WHEN :bytesDelta < 0 THEN GREATEST(0, tenant_usage_rollups.usage_bytes + :bytesDelta)
+        WHEN tenant_usage_rollups.usage_bytes > 9223372036854775807 - :bytesDelta
+            THEN 9223372036854775807
+        ELSE tenant_usage_rollups.usage_bytes + :bytesDelta
+    END,
+    source = 'COUNTER',
+    updated_at = now()
+""",
       nativeQuery = true)
   void incrementCounter(
       @Param("companyId") Long companyId,

@@ -14,6 +14,8 @@ import org.mockito.ArgumentCaptor;
 import com.bigbrightpaints.erp.core.audit.AuditEvent;
 import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.notification.EmailService;
+import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
+import com.bigbrightpaints.erp.modules.company.service.TenantRealActionUsageService;
 import com.bigbrightpaints.erp.modules.invoice.controller.InvoiceController;
 import com.bigbrightpaints.erp.modules.invoice.service.InvoicePdfService;
 import com.bigbrightpaints.erp.modules.invoice.service.InvoiceService;
@@ -28,7 +30,13 @@ class TS_RuntimeInvoiceControllerExportCoverageTest {
     EmailService emailService = org.mockito.Mockito.mock(EmailService.class);
     AuditService auditService = org.mockito.Mockito.mock(AuditService.class);
     InvoiceController controller =
-        new InvoiceController(invoiceService, invoicePdfService, emailService, auditService);
+        new InvoiceController(
+            invoiceService,
+            invoicePdfService,
+            emailService,
+            auditService,
+            org.mockito.Mockito.mock(CompanyContextService.class),
+            org.mockito.Mockito.mock(TenantRealActionUsageService.class));
 
     when(invoicePdfService.renderInvoicePdf(42L))
         .thenReturn(new InvoicePdfService.PdfDocument("invoice-42.pdf", "pdf".getBytes()));
@@ -52,7 +60,13 @@ class TS_RuntimeInvoiceControllerExportCoverageTest {
     EmailService emailService = org.mockito.Mockito.mock(EmailService.class);
     AuditService auditService = org.mockito.Mockito.mock(AuditService.class);
     InvoiceController controller =
-        new InvoiceController(invoiceService, invoicePdfService, emailService, auditService);
+        new InvoiceController(
+            invoiceService,
+            invoicePdfService,
+            emailService,
+            auditService,
+            org.mockito.Mockito.mock(CompanyContextService.class),
+            org.mockito.Mockito.mock(TenantRealActionUsageService.class));
 
     when(invoicePdfService.renderInvoicePdf(null))
         .thenReturn(new InvoicePdfService.PdfDocument(null, new byte[0]));

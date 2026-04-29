@@ -1,6 +1,7 @@
 package com.bigbrightpaints.erp.modules.company.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
@@ -21,6 +22,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import com.bigbrightpaints.erp.core.audit.AuditLogRepository;
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
@@ -58,7 +60,6 @@ class TenantUsageRollupServiceTest {
     Company company = company(7L, "ACME", "Asia/Kolkata");
     when(companyRepository.findById(7L)).thenReturn(Optional.of(company));
     when(userAccountRepository.countByCompany_IdAndEnabledTrue(7L)).thenReturn(8L);
-    when(auditLogRepository.estimateAuditStorageBytesByCompanyId(7L)).thenReturn(2048L);
 
     SuperAdminUsageDtos.TenantUsage usage = service.getTenantUsage(7L, entitlementLimits());
 
@@ -86,7 +87,7 @@ class TenantUsageRollupServiceTest {
         .singleElement()
         .satisfies(
             dimension -> {
-              assertThat(dimension.used()).isEqualTo(2048L);
+              assertThat(dimension.used()).isZero();
               assertThat(dimension.limit()).isEqualTo(4096L);
               assertThat(dimension.accountingMode()).isEqualTo("SNAPSHOT");
               assertThat(dimension.unit()).isEqualTo("BYTES");
@@ -190,7 +191,6 @@ class TenantUsageRollupServiceTest {
     company.setQuotaSoftLimitEnabled(true);
     when(companyRepository.findById(7L)).thenReturn(Optional.of(company));
     when(userAccountRepository.countByCompany_IdAndEnabledTrue(7L)).thenReturn(9L);
-    when(auditLogRepository.estimateAuditStorageBytesByCompanyId(7L)).thenReturn(819L);
     rollups.add(monthlyRollup(company, "EMAILS", 12L, 0L));
     rollups.add(monthlyRollup(company, "JOBS", 11L, 0L));
 
@@ -311,6 +311,70 @@ class TenantUsageRollupServiceTest {
             anyString(),
             anyLong(),
             anyLong());
+  }
+
+  @Test
+  void storageWriteAndDeleteAdjustRealStorageBytesWithoutAuditLogEstimation() {
+    Company company = company(7L, "ACME", "UTC");
+
+    service.recordStorageWrite(company, 2048L);
+    service.recordStorageDelete(company, 512L);
+
+    verify(rollupRepository)
+        .incrementCounter(
+            eq(7L),
+            eq("ACME"),
+            eq("STORAGE"),
+            eq("DAILY"),
+            any(Instant.class),
+            any(Instant.class),
+            eq("UTC"),
+            eq(0L),
+            eq(2048L));
+    verify(rollupRepository)
+        .incrementCounter(
+            eq(7L),
+            eq("ACME"),
+            eq("STORAGE"),
+            eq("MONTHLY"),
+            any(Instant.class),
+            any(Instant.class),
+            eq("UTC"),
+            eq(0L),
+            eq(-512L));
+  }
+
+  @Test
+  void enforceQuotaActionSaturatesOverflowProjectionIntoBlockedDecision() {
+    Company company = company(7L, "ACME", "UTC");
+    when(companyRepository.findById(7L)).thenReturn(Optional.of(company));
+    rollups.add(monthlyRollup(company, "PDF_EXPORTS", Long.MAX_VALUE - 5L, 0L));
+
+    SuperAdminUsageDtos.QuotaActionResult result =
+        service.enforceQuotaAction(
+            7L,
+            new SuperAdminUsageDtos.QuotaActionRequest("PDF_EXPORTS", 10L, null, null, true),
+            quotaLimits(10L, 1000L, 100L, Long.MAX_VALUE - 100L, 10L, 10L));
+
+    assertThat(result.accepted()).isFalse();
+    assertThat(result.decision()).isEqualTo("BLOCKED");
+    assertThat(result.usedAfter()).isEqualTo(Long.MAX_VALUE);
+  }
+
+  @Test
+  void enforceQuotaActionRejectsUnsafeRequestedUnitsBeforeProjection() {
+    Company company = company(7L, "ACME", "UTC");
+    when(companyRepository.findById(7L)).thenReturn(Optional.of(company));
+
+    assertThatThrownBy(
+            () ->
+                service.enforceQuotaAction(
+                    7L,
+                    new SuperAdminUsageDtos.QuotaActionRequest(
+                        "PDF_EXPORTS", Long.MAX_VALUE, null, null, true),
+                    quotaLimits(10L, 1000L, 100L, 10L, 10L, 10L)))
+        .isInstanceOf(ApplicationException.class)
+        .hasMessageContaining("safe projection bound");
   }
 
   private void wireRepositoryStore() {

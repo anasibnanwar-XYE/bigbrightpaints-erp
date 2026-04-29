@@ -33,6 +33,7 @@ import com.bigbrightpaints.erp.modules.company.dto.SuperAdminUsageDtos;
 public class TenantUsageRollupService {
 
   private static final long PERCENT_SCALE = 100L;
+  private static final long MAX_ACTION_UNITS = Long.MAX_VALUE / 2L;
   private static final int WARNING_THRESHOLD_PERCENT = 80;
   private static final String DEFAULT_TIMEZONE = "UTC";
   private static final Set<String> COUNTED_EMAIL_CATEGORIES = Set.of("BUSINESS");
@@ -115,6 +116,22 @@ public class TenantUsageRollupService {
   @Transactional
   public void recordJobSubmission(Company company) {
     incrementCounter(company, UsageDimension.JOBS, 1L, 0L);
+  }
+
+  @Transactional
+  public void recordStorageWrite(Company company, long bytes) {
+    if (bytes <= 0L) {
+      return;
+    }
+    incrementCounter(company, UsageDimension.STORAGE, 0L, bytes);
+  }
+
+  @Transactional
+  public void recordStorageDelete(Company company, long bytes) {
+    if (bytes <= 0L) {
+      return;
+    }
+    incrementCounter(company, UsageDimension.STORAGE, 0L, -bytes);
   }
 
   @Transactional
@@ -202,7 +219,7 @@ public class TenantUsageRollupService {
     long usedBefore = currentUsed(dimension, rollups);
     long requestedUnits = requestedUnits(dimension, request);
     long effectiveIncrement = countedEmail ? requestedUnits : 0L;
-    long usedAfter = usedBefore + effectiveIncrement;
+    long usedAfter = saturatedAdd(usedBefore, effectiveIncrement);
     long limit = limits.getOrDefault(dimension, 0L);
     SuperAdminUsageDtos.QuotaDimensionPolicy beforePolicy =
         quotaPolicy(dimension, company, usedBefore, limit);
@@ -224,7 +241,7 @@ public class TenantUsageRollupService {
     boolean usageRecorded = false;
     if (decision.accepted() && effectiveIncrement > 0L && !request.dryRun()) {
       recordAcceptedCounter(company, dimension, requestedUnits, request.bytes());
-      usageRecorded = dimension.isCounter();
+      usageRecorded = dimension.isCounter() || dimension == UsageDimension.STORAGE;
     }
     SuperAdminUsageDtos.QuotaDimensionPolicy afterPolicy =
         quotaPolicy(dimension, company, usedAfter, limit);
@@ -346,8 +363,8 @@ public class TenantUsageRollupService {
         period.startAt(),
         period.endAt(),
         period.timezone(),
-        Math.max(countDelta, 0L),
-        Math.max(bytesDelta, 0L));
+        countDelta,
+        bytesDelta);
   }
 
   private void refreshCurrentWindows(Company company) {
@@ -355,7 +372,7 @@ public class TenantUsageRollupService {
       PeriodWindow period = periodWindow(company, periodType);
       upsertSnapshot(company, UsageDimension.USERS, period, activeUserCount(company.getId()), 0L);
       upsertSnapshot(
-          company, UsageDimension.STORAGE, period, 0L, auditStorageBytes(company.getId()));
+          company, UsageDimension.STORAGE, period, 0L, currentStorageBytes(company, period));
       for (UsageDimension dimension : UsageDimension.counterDimensions()) {
         ensureCounter(company, dimension, period);
       }
@@ -452,8 +469,9 @@ public class TenantUsageRollupService {
   private SuperAdminUsageDtos.QuotaDimensionPolicy quotaPolicy(
       UsageDimension dimension, Company company, long used, long limit) {
     long graceAllowance = graceAllowance(dimension, limit);
-    long graceStartAt = limit <= 0L || graceAllowance == 0L ? 0L : limit + 1L;
-    long graceEndAt = limit <= 0L || graceAllowance == 0L ? 0L : limit + graceAllowance;
+    long graceStartAt = limit <= 0L || graceAllowance == 0L ? 0L : saturatedAdd(limit, 1L);
+    long graceEndAt =
+        limit <= 0L || graceAllowance == 0L ? 0L : saturatedAdd(limit, graceAllowance);
     long hardBlockAt = hardBlockAt(dimension, limit);
     return new SuperAdminUsageDtos.QuotaDimensionPolicy(
         dimension.name(),
@@ -556,14 +574,14 @@ public class TenantUsageRollupService {
     if (limit <= 0L || !dimension.hasGrace()) {
       return 0L;
     }
-    return Math.max(1L, (limit + 9L) / 10L);
+    return Math.max(1L, (limit / 10L) + (limit % 10L == 0L ? 0L : 1L));
   }
 
   private long hardBlockAt(UsageDimension dimension, long limit) {
     if (limit <= 0L) {
       return 0L;
     }
-    return limit + graceAllowance(dimension, limit) + 1L;
+    return saturatedAdd(saturatedAdd(limit, graceAllowance(dimension, limit)), 1L);
   }
 
   private String loweredLimitBehavior(UsageDimension dimension, long used, long limit) {
@@ -611,12 +629,18 @@ public class TenantUsageRollupService {
     if (units <= 0L) {
       throw ValidationUtils.invalidInput("Quota action units must be positive");
     }
+    if (units > MAX_ACTION_UNITS) {
+      throw ValidationUtils.invalidInput("Quota action units exceed the safe projection bound");
+    }
+    if (request.bytes() != null && request.bytes() > MAX_ACTION_UNITS) {
+      throw ValidationUtils.invalidInput("Quota action bytes exceed the safe projection bound");
+    }
     return units;
   }
 
   private void recordAcceptedCounter(
       Company company, UsageDimension dimension, long requestedUnits, Long requestedBytes) {
-    if (!dimension.isCounter()) {
+    if (!dimension.isCounter() && dimension != UsageDimension.STORAGE) {
       return;
     }
     long bytesDelta =
@@ -753,6 +777,20 @@ public class TenantUsageRollupService {
         : auditLogRepository.estimateAuditStorageBytesByCompanyId(companyId);
   }
 
+  private long currentStorageBytes(Company company, PeriodWindow period) {
+    if (company == null || company.getId() == null || period == null) {
+      return 0L;
+    }
+    return rollupRepository
+        .findByCompany_IdAndDimensionAndPeriodTypeAndPeriodStartAt(
+            company.getId(),
+            UsageDimension.STORAGE.name(),
+            period.periodType().name(),
+            period.startAt())
+        .map(TenantUsageRollup::getUsageBytes)
+        .orElse(0L);
+  }
+
   private long usedValue(UsageDimension dimension, TenantUsageRollup rollup) {
     if (rollup == null) {
       return 0L;
@@ -763,6 +801,9 @@ public class TenantUsageRollupService {
   private long percentage(long used, long limit) {
     if (used <= 0L || limit <= 0L) {
       return 0L;
+    }
+    if (used > Long.MAX_VALUE / PERCENT_SCALE) {
+      return PERCENT_SCALE;
     }
     return Math.min(PERCENT_SCALE, (used * PERCENT_SCALE) / limit);
   }
@@ -783,6 +824,16 @@ public class TenantUsageRollupService {
 
   private long nonNegative(long value) {
     return Math.max(value, 0L);
+  }
+
+  private long saturatedAdd(long left, long right) {
+    if (right > 0L && left > Long.MAX_VALUE - right) {
+      return Long.MAX_VALUE;
+    }
+    if (right < 0L && left < Long.MIN_VALUE - right) {
+      return Long.MIN_VALUE;
+    }
+    return left + right;
   }
 
   private String timezone(Company company) {

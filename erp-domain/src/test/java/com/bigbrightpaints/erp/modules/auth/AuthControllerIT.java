@@ -562,7 +562,7 @@ public class AuthControllerIT extends AbstractIntegrationTest {
     ResponseEntity<Map> meResponse = me(corridorToken);
     assertThat(meResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
     Map<?, ?> meData = (Map<?, ?>) meResponse.getBody().get("data");
-    assertThat(meData).containsEntry("mustChangePassword", true);
+    assertThat(meData.get("mustChangePassword")).isEqualTo(true);
   }
 
   @Test

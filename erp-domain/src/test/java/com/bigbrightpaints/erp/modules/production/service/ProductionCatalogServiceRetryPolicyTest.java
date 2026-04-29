@@ -33,6 +33,7 @@ import com.bigbrightpaints.erp.modules.accounting.service.CompanyDefaultAccounts
 import com.bigbrightpaints.erp.modules.accounting.service.CompanyScopedAccountingLookupService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
+import com.bigbrightpaints.erp.modules.company.service.TenantRealActionUsageService;
 import com.bigbrightpaints.erp.modules.factory.domain.PackagingSizeMappingRepository;
 import com.bigbrightpaints.erp.modules.factory.domain.PackingRecordRepository;
 import com.bigbrightpaints.erp.modules.factory.domain.ProductionLogMaterialRepository;
@@ -86,6 +87,7 @@ class ProductionCatalogServiceRetryPolicyTest {
   @Mock private AuditService auditService;
   @Mock private SkuReadinessService skuReadinessService;
   @Mock private PlatformTransactionManager transactionManager;
+  @Mock private TenantRealActionUsageService realActionUsageService;
 
   private ProductionCatalogService service;
 
@@ -116,7 +118,8 @@ class ProductionCatalogServiceRetryPolicyTest {
             catalogImportRepository,
             auditService,
             skuReadinessService,
-            transactionManager);
+            transactionManager,
+            realActionUsageService);
   }
 
   @Test

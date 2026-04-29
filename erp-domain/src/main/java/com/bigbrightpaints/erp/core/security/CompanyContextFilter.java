@@ -636,10 +636,10 @@ public class CompanyContextFilter extends OncePerRequestFilter {
       data.put("limitValue", admission.limitValue());
     }
     if (admission.retryAfterSeconds() != null) {
-      data.put("retryAfterSeconds", admission.retryAfterSeconds());
+      data.put("retryAfterSeconds", Long.toString(admission.retryAfterSeconds()));
     }
     if (admission.resetAtEpochSecond() != null) {
-      data.put("resetAtEpochSecond", admission.resetAtEpochSecond());
+      data.put("resetAtEpochSecond", Long.toString(admission.resetAtEpochSecond()));
     }
     if (admission.statusCode() == 429) {
       writeRateLimitHeaders(response, admission);
