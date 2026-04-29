@@ -29,6 +29,7 @@ import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketStatus;
 import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketTimelineEntry;
 import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketTimelineRepository;
 import com.bigbrightpaints.erp.modules.admin.dto.SuperAdminSupportTicketDtos;
+import com.bigbrightpaints.erp.modules.company.domain.Company;
 
 @Service
 public class SupportTicketLifecycleSupport {
@@ -38,8 +39,11 @@ public class SupportTicketLifecycleSupport {
   private static final String EVENT_STATUS_CHANGED = "STATUS_CHANGED";
   private static final String EVENT_SLA_BREACHED = "SLA_BREACHED";
   private static final String EVENT_FEATURE_CONVERTED = "FEATURE_CONVERTED_TO_INCIDENT";
+  private static final String EVENT_SLA_POLICY_RECALCULATED = "SLA_POLICY_RECALCULATED";
   private static final Set<SupportTicketStatus> ACTIVE_STATUSES =
       Set.of(SupportTicketStatus.OPEN, SupportTicketStatus.IN_PROGRESS);
+  private static final Set<SupportTicketCategory> SLA_CATEGORIES =
+      Set.of(SupportTicketCategory.SUPPORT, SupportTicketCategory.BUG);
 
   private final SupportTicketRepository supportTicketRepository;
   private final SupportTicketTimelineRepository timelineRepository;
@@ -78,6 +82,30 @@ public class SupportTicketLifecycleSupport {
     ticket.setResolutionDueAt(effectiveBase.plus(resolutionWindow(tier, priority)));
     ticket.setSlaStatus(SupportTicketSlaStatus.PENDING);
     ticket.setBreachedAt(null);
+  }
+
+  @Transactional
+  public int recalculateActiveTenantTicketsForSupportTierChange(
+      Company company, String oldSupportTier, String newSupportTier, Long planAuditEventId) {
+    if (company == null) {
+      throw new ApplicationException(
+          ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD, "company is required");
+    }
+    String normalizedOldTier = normalizeTier(oldSupportTier);
+    String normalizedNewTier = normalizeTier(newSupportTier);
+    if (normalizedOldTier.equals(normalizedNewTier)) {
+      return 0;
+    }
+    List<SupportTicket> tickets =
+        supportTicketRepository.findByCompanyAndStatusInAndCategoryInOrderByIdAsc(
+            company, ACTIVE_STATUSES, SLA_CATEGORIES);
+    int recalculated = 0;
+    for (SupportTicket ticket : tickets) {
+      if (recalculateTicketSla(ticket, normalizedOldTier, normalizedNewTier, planAuditEventId)) {
+        recalculated++;
+      }
+    }
+    return recalculated;
   }
 
   @Transactional
@@ -308,6 +336,89 @@ public class SupportTicketLifecycleSupport {
     timelineRepository.saveAndFlush(entry);
   }
 
+  private boolean recalculateTicketSla(
+      SupportTicket ticket, String oldSupportTier, String newSupportTier, Long planAuditEventId) {
+    if (ticket.getCategory() == SupportTicketCategory.FEATURE_REQUEST
+        || !ACTIVE_STATUSES.contains(ticket.getStatus())) {
+      return false;
+    }
+    String oldPolicyId = safe(ticket.getSlaPolicyId());
+    String oldTier = safe(ticket.getSlaSupportTier());
+    Instant oldFirstResponseDueAt = ticket.getFirstResponseDueAt();
+    Instant oldResolutionDueAt = ticket.getResolutionDueAt();
+
+    initializeSla(ticket, slaBaseTime(ticket));
+    if (ticket.getFirstRespondedAt() != null) {
+      ticket.setSlaStatus(SupportTicketSlaStatus.RESPONDED);
+    }
+    boolean changed =
+        !oldPolicyId.equals(safe(ticket.getSlaPolicyId()))
+            || !oldTier.equals(safe(ticket.getSlaSupportTier()))
+            || !java.util.Objects.equals(oldFirstResponseDueAt, ticket.getFirstResponseDueAt())
+            || !java.util.Objects.equals(oldResolutionDueAt, ticket.getResolutionDueAt());
+    if (!changed) {
+      return false;
+    }
+    Long auditEventId =
+        audit(
+            ticket,
+            "support-ticket-sla-policy-recalculated",
+            Map.of(
+                "oldPolicyId",
+                oldPolicyId,
+                "newPolicyId",
+                safe(ticket.getSlaPolicyId()),
+                "oldSupportTier",
+                oldTier,
+                "newSupportTier",
+                safe(ticket.getSlaSupportTier()),
+                "oldFirstResponseDueAt",
+                instantString(oldFirstResponseDueAt),
+                "newFirstResponseDueAt",
+                instantString(ticket.getFirstResponseDueAt()),
+                "oldResolutionDueAt",
+                instantString(oldResolutionDueAt),
+                "newResolutionDueAt",
+                instantString(ticket.getResolutionDueAt()),
+                "planAuditEventId",
+                planAuditEventId == null ? "" : String.valueOf(planAuditEventId)));
+    supportTicketRepository.saveAndFlush(ticket);
+    appendTimeline(
+        ticket,
+        EVENT_SLA_POLICY_RECALCULATED,
+        statusName(ticket.getStatus()),
+        statusName(ticket.getStatus()),
+        categoryName(ticket.getCategory()),
+        categoryName(ticket.getCategory()),
+        "policy "
+            + oldPolicyId
+            + " -> "
+            + safe(ticket.getSlaPolicyId())
+            + "; tier "
+            + oldSupportTier
+            + " -> "
+            + newSupportTier
+            + "; firstResponseDueAt "
+            + instantString(oldFirstResponseDueAt)
+            + " -> "
+            + instantString(ticket.getFirstResponseDueAt())
+            + "; resolutionDueAt "
+            + instantString(oldResolutionDueAt)
+            + " -> "
+            + instantString(ticket.getResolutionDueAt()),
+        auditEventId);
+    return true;
+  }
+
+  private Instant slaBaseTime(SupportTicket ticket) {
+    if (ticket.getConvertedToIncidentAt() != null) {
+      return ticket.getConvertedToIncidentAt();
+    }
+    return ticket.getCreatedAt() != null
+        ? ticket.getCreatedAt()
+        : CompanyTime.now(ticket.getCompany());
+  }
+
   private Long audit(SupportTicket ticket, String reason, Map<String, String> metadata) {
     java.util.Map<String, String> auditMetadata = new java.util.LinkedHashMap<>();
     auditMetadata.put("reason", reason);
@@ -352,6 +463,10 @@ public class SupportTicketLifecycleSupport {
   private String normalizeTier(SupportTicket ticket) {
     String tier =
         ticket.getCompany() == null ? null : ticket.getCompany().getCommercialSupportTier();
+    return normalizeTier(tier);
+  }
+
+  private String normalizeTier(String tier) {
     return StringUtils.hasText(tier) ? tier.trim().toUpperCase(Locale.ROOT) : "STANDARD";
   }
 
@@ -402,6 +517,10 @@ public class SupportTicketLifecycleSupport {
 
   private String categoryName(SupportTicketCategory category) {
     return category == null ? null : category.name();
+  }
+
+  private String instantString(Instant instant) {
+    return instant == null ? "" : instant.toString();
   }
 
   private String safe(String value) {

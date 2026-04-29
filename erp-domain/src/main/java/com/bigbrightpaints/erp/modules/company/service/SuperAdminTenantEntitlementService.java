@@ -21,6 +21,7 @@ import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.config.SystemSetting;
 import com.bigbrightpaints.erp.core.config.SystemSettingsRepository;
 import com.bigbrightpaints.erp.core.util.CompanyTime;
+import com.bigbrightpaints.erp.modules.admin.service.SupportTicketLifecycleSupport;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyModule;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
@@ -57,6 +58,7 @@ public class SuperAdminTenantEntitlementService {
   private final SuperAdminPlanTemplateRepository planTemplateRepository;
   private final SystemSettingsRepository systemSettingsRepository;
   private final TenantRuntimeEnforcementService tenantRuntimeEnforcementService;
+  private final SupportTicketLifecycleSupport supportTicketLifecycleSupport;
   private final AuditService auditService;
 
   public SuperAdminTenantEntitlementService(
@@ -64,11 +66,13 @@ public class SuperAdminTenantEntitlementService {
       SuperAdminPlanTemplateRepository planTemplateRepository,
       SystemSettingsRepository systemSettingsRepository,
       TenantRuntimeEnforcementService tenantRuntimeEnforcementService,
+      SupportTicketLifecycleSupport supportTicketLifecycleSupport,
       AuditService auditService) {
     this.companyRepository = companyRepository;
     this.planTemplateRepository = planTemplateRepository;
     this.systemSettingsRepository = systemSettingsRepository;
     this.tenantRuntimeEnforcementService = tenantRuntimeEnforcementService;
+    this.supportTicketLifecycleSupport = supportTicketLifecycleSupport;
     this.auditService = auditService;
   }
 
@@ -126,6 +130,8 @@ public class SuperAdminTenantEntitlementService {
                 Boolean.toString(repriceApplied),
                 "reasonDetail",
                 safeReason(request.reason())));
+    supportTicketLifecycleSupport.recalculateActiveTenantTicketsForSupportTierChange(
+        company, oldSupportTier, plan.supportTier(), auditEventId);
     return buildEntitlements(company, auditEventId, repriceApplied, plan);
   }
 

@@ -70,6 +70,13 @@ class SupportTicketControllerIT extends AbstractIntegrationTest {
         "Support Super Admin",
         ROOT_TENANT,
         List.of("ROLE_SUPER_ADMIN"));
+    companyRepository
+        .findByCodeIgnoreCase(TENANT_A)
+        .ifPresent(
+            company -> {
+              company.setCommercialSupportTier("STANDARD");
+              companyRepository.saveAndFlush(company);
+            });
   }
 
   @Test
@@ -954,6 +961,127 @@ class SupportTicketControllerIT extends AbstractIntegrationTest {
   }
 
   @Test
+  void tenantPlanSupportTierChangeRecalculatesActiveSupportAndBugTicketSlaOnly() {
+    Company company = companyRepository.findByCodeIgnoreCase(TENANT_A).orElseThrow();
+    company.setCommercialSupportTier("STANDARD");
+    companyRepository.saveAndFlush(company);
+
+    String marker = "m11-sla-tier-" + System.nanoTime();
+    String tenantToken = login(ADMIN_A_EMAIL, TENANT_A);
+    String superAdminToken = login(SUPER_ADMIN_EMAIL, ROOT_TENANT);
+    Long supportTicket = createTenantTicket(tenantToken, "SUPPORT", "NORMAL", marker + "-support");
+    Long bugTicket = createTenantTicket(tenantToken, "BUG", "HIGH", marker + "-bug");
+    Long featureTicket =
+        createTenantTicket(tenantToken, "FEATURE_REQUEST", "LOW", marker + "-feature");
+    Long resolvedTicket =
+        createTenantTicket(tenantToken, "SUPPORT", "URGENT", marker + "-resolved");
+
+    ResponseEntity<Map> bugInProgress =
+        rest.exchange(
+            "/api/v1/superadmin/support/tickets/" + bugTicket + "/status",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of("status", "IN_PROGRESS", "reason", "Active bug triage"),
+                authHeaders(superAdminToken, ROOT_TENANT)),
+            Map.class);
+    assertThat(bugInProgress.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+    ResponseEntity<Map> internalNote =
+        rest.exchange(
+            "/api/v1/superadmin/support/tickets/" + supportTicket + "/internal-notes",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of("content", "Internal note before support tier upgrade " + marker),
+                authHeaders(superAdminToken, ROOT_TENANT)),
+            Map.class);
+    assertThat(internalNote.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(
+            nestedMap(data(superAdminDetail(supportTicket, superAdminToken)), "sla")
+                .get("firstRespondedAt"))
+        .isNull();
+
+    ResponseEntity<Map> platformReply =
+        rest.exchange(
+            "/api/v1/superadmin/support/tickets/" + supportTicket + "/messages",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of("content", "Platform reply before support tier upgrade " + marker),
+                authHeaders(superAdminToken, ROOT_TENANT)),
+            Map.class);
+    assertThat(platformReply.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+    Map<String, Object> supportBefore = data(superAdminDetail(supportTicket, superAdminToken));
+    Map<String, Object> bugBefore = data(superAdminDetail(bugTicket, superAdminToken));
+    Map<String, Object> featureBefore = data(superAdminDetail(featureTicket, superAdminToken));
+    ResponseEntity<Map> resolved =
+        rest.exchange(
+            "/api/v1/superadmin/support/tickets/" + resolvedTicket + "/status",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of("status", "RESOLVED", "reason", "Resolved before plan assignment"),
+                authHeaders(superAdminToken, ROOT_TENANT)),
+            Map.class);
+    assertThat(resolved.getStatusCode()).isEqualTo(HttpStatus.OK);
+    Map<String, Object> resolvedBefore = data(superAdminDetail(resolvedTicket, superAdminToken));
+    Map<String, Object> supportSlaBefore = nestedMap(supportBefore, "sla");
+    Map<String, Object> bugSlaBefore = nestedMap(bugBefore, "sla");
+    Map<String, Object> featureSlaBefore = nestedMap(featureBefore, "sla");
+    Map<String, Object> resolvedSlaBefore = nestedMap(resolvedBefore, "sla");
+    Object firstRespondedAtBefore = supportSlaBefore.get("firstRespondedAt");
+    assertThat(firstRespondedAtBefore).isNotNull();
+    assertThat(supportSlaBefore.get("policyId")).isEqualTo("STANDARD-NORMAL");
+    assertThat(bugSlaBefore.get("policyId")).isEqualTo("STANDARD-HIGH");
+    assertThat(featureSlaBefore.get("status")).isEqualTo("NOT_APPLICABLE");
+    assertThat(resolvedSlaBefore.get("status")).isEqualTo("RESOLVED");
+
+    ResponseEntity<Map> assignment =
+        rest.exchange(
+            "/api/v1/superadmin/tenants/" + company.getId() + "/plan",
+            HttpMethod.PUT,
+            new HttpEntity<>(
+                dedicatedCustomPlanPayload(), authHeaders(superAdminToken, ROOT_TENANT)),
+            Map.class);
+    assertThat(assignment.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(nestedMap(data(assignment), "plan").get("supportTier")).isEqualTo("DEDICATED");
+    assertThat(data(assignment).get("auditEventId")).isNotNull();
+
+    Map<String, Object> supportAfter = data(superAdminDetail(supportTicket, superAdminToken));
+    Map<String, Object> bugAfter = data(superAdminDetail(bugTicket, superAdminToken));
+    Map<String, Object> featureAfter = data(superAdminDetail(featureTicket, superAdminToken));
+    Map<String, Object> resolvedAfter = data(superAdminDetail(resolvedTicket, superAdminToken));
+    Map<String, Object> supportSlaAfter = nestedMap(supportAfter, "sla");
+    Map<String, Object> bugSlaAfter = nestedMap(bugAfter, "sla");
+    Map<String, Object> featureSlaAfter = nestedMap(featureAfter, "sla");
+    Map<String, Object> resolvedSlaAfter = nestedMap(resolvedAfter, "sla");
+
+    assertThat(supportSlaAfter.get("policyId")).isEqualTo("DEDICATED-NORMAL");
+    assertThat(supportSlaAfter.get("supportTier")).isEqualTo("DEDICATED");
+    assertThat(supportSlaAfter.get("firstResponseDueAt"))
+        .isNotEqualTo(supportSlaBefore.get("firstResponseDueAt"));
+    assertThat(supportSlaAfter.get("resolutionDueAt"))
+        .isNotEqualTo(supportSlaBefore.get("resolutionDueAt"));
+    assertThat(supportSlaAfter.get("firstRespondedAt")).isEqualTo(firstRespondedAtBefore);
+    assertThat(supportSlaAfter.get("status")).isEqualTo("RESPONDED");
+    assertThat(bugSlaAfter.get("policyId")).isEqualTo("DEDICATED-HIGH");
+    assertThat(bugSlaAfter.get("supportTier")).isEqualTo("DEDICATED");
+    assertThat(bugSlaAfter.get("firstResponseDueAt"))
+        .isNotEqualTo(bugSlaBefore.get("firstResponseDueAt"));
+    assertThat(bugSlaAfter.get("resolutionDueAt"))
+        .isNotEqualTo(bugSlaBefore.get("resolutionDueAt"));
+    assertThat(featureSlaAfter).isEqualTo(featureSlaBefore);
+    assertThat(resolvedSlaAfter).isEqualTo(resolvedSlaBefore);
+
+    assertTimelineEvents(supportAfter, "SLA_POLICY_RECALCULATED");
+    assertTimelineEvents(bugAfter, "SLA_POLICY_RECALCULATED");
+    assertThat(firstTimelineAudit(supportAfter, "SLA_POLICY_RECALCULATED")).isNotNull();
+    assertThat(firstTimelineAudit(bugAfter, "SLA_POLICY_RECALCULATED")).isNotNull();
+    assertThat(firstTimelineNote(supportAfter, "SLA_POLICY_RECALCULATED"))
+        .contains("STANDARD-NORMAL", "DEDICATED-NORMAL", "firstResponseDueAt", "resolutionDueAt");
+    assertThat(timelineEvents(featureAfter)).doesNotContain("SLA_POLICY_RECALCULATED");
+    assertThat(timelineEvents(resolvedAfter)).doesNotContain("SLA_POLICY_RECALCULATED");
+  }
+
+  @Test
   void featureRequestsStatusTimelineAndExplicitIncidentConversionAreAudited() {
     String marker = "m11-feature-" + System.nanoTime();
     String tenantToken = login(ADMIN_A_EMAIL, TENANT_A);
@@ -1079,6 +1207,70 @@ class SupportTicketControllerIT extends AbstractIntegrationTest {
     return supportTicketRepository.save(ticket).getId();
   }
 
+  private Long createTenantTicket(
+      String tenantToken, String category, String priority, String subject) {
+    ResponseEntity<Map> response =
+        rest.exchange(
+            "/api/v1/admin/support/tickets",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of(
+                    "category",
+                    category,
+                    "priority",
+                    priority,
+                    "subject",
+                    subject,
+                    "description",
+                    "SLA recalculation regression coverage"),
+                authHeaders(tenantToken, TENANT_A)),
+            Map.class);
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+    return Long.parseLong(String.valueOf(data(response).get("id")));
+  }
+
+  private Map<String, Object> dedicatedCustomPlanPayload() {
+    return Map.of(
+        "customPlan",
+        Map.of(
+            "displayName",
+            "Dedicated SLA Plan",
+            "cadence",
+            "CUSTOM",
+            "priceMinorUnits",
+            0,
+            "currency",
+            "INR",
+            "trialDurationDays",
+            0,
+            "supportTier",
+            "DEDICATED",
+            "featureFlags",
+            Map.of("PRODUCTION", true, "PORTAL", true, "PURCHASING", true, "REPORTS", true),
+            "defaultLimits",
+            Map.of(
+                "maxActiveUsers",
+                25,
+                "maxApiRequests",
+                250_000,
+                "maxStorageBytes",
+                10_000_000,
+                "maxPdfExports",
+                1_000,
+                "maxEmails",
+                1_000,
+                "maxJobs",
+                1_000,
+                "burstRequestsPerMinute",
+                300,
+                "maxConcurrentRequests",
+                25)),
+        "repriceSubscription",
+        false,
+        "reason",
+        "upgrade support tier for SLA recalculation regression");
+  }
+
   private void postMessage(String path, String content, String token, String companyCode) {
     ResponseEntity<Map> response =
         rest.exchange(
@@ -1130,6 +1322,18 @@ class SupportTicketControllerIT extends AbstractIntegrationTest {
             .filter(java.util.Objects::nonNull)
             .findFirst()
             .orElse(null);
+  }
+
+  @SuppressWarnings("unchecked")
+  private String firstTimelineNote(Map<String, Object> ticketData, String eventType) {
+    Object timeline = ticketData.get("timeline");
+    assertThat(timeline).isInstanceOf(List.class);
+    return ((List<Map<String, Object>>) timeline)
+        .stream()
+            .filter(entry -> eventType.equals(entry.get("eventType")))
+            .map(entry -> String.valueOf(entry.get("note")))
+            .findFirst()
+            .orElse("");
   }
 
   private Set<String> subjectsFromListResponse(ResponseEntity<Map> response) {
