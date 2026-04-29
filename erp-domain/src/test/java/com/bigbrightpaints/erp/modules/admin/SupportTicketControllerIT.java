@@ -165,14 +165,18 @@ class SupportTicketControllerIT extends AbstractIntegrationTest {
     assertThat(bugReport).containsEntry("environment", "prod");
     assertThat(bugReport).containsEntry("release", "erp-domain@2026.04");
     assertThat(bugReport).containsEntry("traceId", "trace-m12-bug-001");
-    @SuppressWarnings("unchecked")
-    Map<String, Object> safeMetadata = (Map<String, Object>) bugReport.get("safeSentryMetadata");
-    assertThat(safeMetadata).containsKeys("tenantHash", "actorHash", "route", "status", "outcome");
-    assertThat(safeMetadata).doesNotContainEntry("tenant", TENANT_A);
+    assertThat(bugReport).doesNotContainKey("safeSentryMetadata");
 
     Long ticketId = Long.parseLong(String.valueOf(data.get("id")));
     Map<String, Object> superAdminData = data(superAdminDetail(ticketId, superAdminToken));
-    assertThat(superAdminData.get("bugReport")).isNotNull();
+    @SuppressWarnings("unchecked")
+    Map<String, Object> superAdminBugReport = (Map<String, Object>) superAdminData.get("bugReport");
+    assertThat(superAdminBugReport).isNotNull();
+    @SuppressWarnings("unchecked")
+    Map<String, Object> safeMetadata =
+        (Map<String, Object>) superAdminBugReport.get("safeSentryMetadata");
+    assertThat(safeMetadata).containsKeys("tenantHash", "actorHash", "route", "status", "outcome");
+    assertThat(safeMetadata).doesNotContainEntry("tenant", TENANT_A);
 
     ResponseEntity<Map> invalidMetadata =
         rest.exchange(
@@ -191,6 +195,60 @@ class SupportTicketControllerIT extends AbstractIntegrationTest {
                 authHeaders(tenantToken, TENANT_A)),
             Map.class);
     assertThat(invalidMetadata.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+    ResponseEntity<Map> emailProbe =
+        rest.exchange(
+            "/api/v1/admin/support/tickets",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of(
+                    "category",
+                    "BUG",
+                    "subject",
+                    marker + "-email",
+                    "description",
+                    "Metadata should reject synthetic email canary",
+                    "environment",
+                    "privacy-probe@example.invalid"),
+                authHeaders(tenantToken, TENANT_A)),
+            Map.class);
+    assertThat(emailProbe.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+    ResponseEntity<Map> tenantCodeProbe =
+        rest.exchange(
+            "/api/v1/admin/support/tickets",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of(
+                    "category",
+                    "BUG",
+                    "subject",
+                    marker + "-tenant-code",
+                    "description",
+                    "Metadata should reject tenant code canary",
+                    "metadata",
+                    Map.of("component", "TENANT-RAW")),
+                authHeaders(tenantToken, TENANT_A)),
+            Map.class);
+    assertThat(tenantCodeProbe.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+    ResponseEntity<Map> privateCanaryProbe =
+        rest.exchange(
+            "/api/v1/admin/support/tickets",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of(
+                    "category",
+                    "BUG",
+                    "subject",
+                    marker + "-private-canary",
+                    "description",
+                    "Metadata should reject private canary text",
+                    "metadata",
+                    Map.of("outcome", "tenant-private-canary")),
+                authHeaders(tenantToken, TENANT_A)),
+            Map.class);
+    assertThat(privateCanaryProbe.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
   }
 
   @Test
@@ -235,6 +293,40 @@ class SupportTicketControllerIT extends AbstractIntegrationTest {
     assertThat(data.get("auditEventId")).isNotNull();
     assertThat(supportTicketRepository.findById(ticketId).orElseThrow().getSentryIssueId())
         .isEqualTo("ERP-123");
+
+    ResponseEntity<Map> tenantDetail =
+        rest.exchange(
+            "/api/v1/admin/support/tickets/" + ticketId,
+            HttpMethod.GET,
+            new HttpEntity<>(authHeaders(tenantToken, TENANT_A)),
+            Map.class);
+    assertThat(tenantDetail.getStatusCode()).isEqualTo(HttpStatus.OK);
+    Map<String, Object> tenantDetailData = data(tenantDetail);
+    assertThat(tenantDetailData).doesNotContainKey("sentry");
+    assertThat(String.valueOf(tenantDetailData)).doesNotContain("ERP-123", "safeMetadata");
+
+    ResponseEntity<Map> tenantList =
+        rest.exchange(
+            "/api/v1/admin/support/tickets",
+            HttpMethod.GET,
+            new HttpEntity<>(authHeaders(tenantToken, TENANT_A)),
+            Map.class);
+    assertThat(tenantList.getStatusCode()).isEqualTo(HttpStatus.OK);
+    Map<String, Object> listTicket = ticketFromListResponse(tenantList, ticketId);
+    assertThat(listTicket).doesNotContainKey("sentry");
+    assertThat(String.valueOf(listTicket)).doesNotContain("ERP-123", "safeMetadata");
+
+    ResponseEntity<Map> platformDetail =
+        rest.exchange(
+            "/api/v1/superadmin/support/tickets/" + ticketId,
+            HttpMethod.GET,
+            new HttpEntity<>(authHeaders(superAdminToken, ROOT_TENANT)),
+            Map.class);
+    assertThat(platformDetail.getStatusCode()).isEqualTo(HttpStatus.OK);
+    @SuppressWarnings("unchecked")
+    Map<String, Object> platformSentry = (Map<String, Object>) data(platformDetail).get("sentry");
+    assertThat(platformSentry).containsEntry("issueId", "ERP-123");
+    assertThat(platformSentry).containsKey("safeMetadata");
   }
 
   @Test

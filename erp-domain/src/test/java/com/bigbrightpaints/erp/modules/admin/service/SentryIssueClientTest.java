@@ -77,6 +77,35 @@ class SentryIssueClientTest {
     assertThatThrownBy(() -> client.fetchIssue("ERP-123")).isInstanceOf(ApplicationException.class);
   }
 
+  @Test
+  void fetchIssueRejectsMalformedOrWrongOrgProviderPermalink() {
+    installCompanyTime(Instant.parse("2026-04-29T12:03:00Z"));
+    assertUnsafeProviderPermalinkRejected(
+        "https://evil.example/organizations/bbp-test/issues/ERP-123/");
+    assertUnsafeProviderPermalinkRejected(
+        "https://sentry.io/organizations/other-org/issues/ERP-123/");
+    assertUnsafeProviderPermalinkRejected("not a url");
+  }
+
+  private void assertUnsafeProviderPermalinkRejected(String unsafePermalink) {
+    SentryIssueProperties properties = configuredProperties();
+    RestTemplateBuilder builder = Mockito.mock(RestTemplateBuilder.class);
+    RestTemplate restTemplate = Mockito.mock(RestTemplate.class);
+    when(builder.build()).thenReturn(restTemplate);
+    when(restTemplate.exchange(
+            any(String.class), eq(HttpMethod.GET), any(HttpEntity.class), eq(String.class)))
+        .thenReturn(
+            ResponseEntity.ok(
+                "{\"id\":\"ERP-123\",\"status\":\"unresolved\",\"permalink\":\""
+                    + unsafePermalink
+                    + "\",\"project\":{\"slug\":\"erp-test\"}}"));
+
+    SentryIssueClient client = new SentryIssueClient(properties, builder, new ObjectMapper());
+
+    assertThatThrownBy(() -> client.fetchIssue("ERP-123"))
+        .isInstanceOf(ApplicationException.class);
+  }
+
   private SentryIssueProperties configuredProperties() {
     SentryIssueProperties properties = new SentryIssueProperties();
     properties.setEnabled(true);

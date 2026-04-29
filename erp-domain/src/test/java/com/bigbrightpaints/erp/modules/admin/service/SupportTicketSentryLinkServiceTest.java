@@ -143,6 +143,23 @@ class SupportTicketSentryLinkServiceTest {
     assertThat(response.auditEventId()).isEqualTo(9001L);
   }
 
+  @Test
+  void responseRejectsUnsafeStoredSentryMetadataValues() {
+    SupportTicket ticket = ticket(104L);
+    ticket.setSentryIssueId("ERP-104");
+    ticket.setBugEnvironment("privacy-probe@example.invalid");
+    ticket.setBugRelease("ACME-01");
+    ticket.setBugTraceId("trace-104");
+    ticket.setBugMetadataJson(
+        "{\"route\":\"/api/v1/superadmin/support/tickets/{ticketId}\","
+            + "\"status\":\"5xx\","
+            + "\"component\":\"tenant-private-canary\"}");
+
+    assertThatThrownBy(() -> service.response(ticket, 9002L))
+        .isInstanceOf(ApplicationException.class)
+        .hasMessageContaining("Stored bug metadata violates current privacy contract");
+  }
+
   private SupportTicket ticket(Long id) {
     Company company = new Company();
     ReflectionTestUtils.setField(company, "id", 71L);

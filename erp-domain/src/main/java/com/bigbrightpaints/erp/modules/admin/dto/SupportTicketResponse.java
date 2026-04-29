@@ -5,10 +5,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+
 import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketCategory;
 import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketPriority;
 import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketStatus;
 
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public record SupportTicketResponse(
     Long id,
     UUID publicId,
@@ -33,6 +36,7 @@ public record SupportTicketResponse(
     Instant updatedAt,
     List<SupportTicketMessageResponse> messages) {
 
+  @JsonInclude(JsonInclude.Include.NON_NULL)
   public record BugReport(
       String reproductionSteps,
       String environment,
@@ -41,6 +45,7 @@ public record SupportTicketResponse(
       Map<String, String> metadata,
       Map<String, String> safeSentryMetadata) {}
 
+  @JsonInclude(JsonInclude.Include.NON_NULL)
   public record SentryLink(
       String issueId,
       String issueUrl,

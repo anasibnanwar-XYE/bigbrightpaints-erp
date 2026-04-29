@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.admin.service;
 
+import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -68,7 +69,7 @@ public class SentryIssueClient {
               url, HttpMethod.GET, new HttpEntity<>(defaultHeaders()), String.class);
       JsonNode root = requireBody(response.getBody());
       validateConfiguredProject(root);
-      String permalink = root.path("permalink").asText(localIssueUrl(issueId));
+      String permalink = requireProviderPermalink(root.path("permalink").asText(null));
       String status = normalizeStatus(root.path("status").asText(null));
       return new SentryIssueResult(issueId, permalink, status, CompanyTime.now());
     } catch (HttpStatusCodeException ex) {
@@ -121,6 +122,33 @@ public class SentryIssueClient {
             ErrorCode.INTEGRATION_INVALID_RESPONSE,
             "Sentry issue does not belong to the configured project");
       }
+    }
+  }
+
+  private String requireProviderPermalink(String providerPermalink) {
+    if (!StringUtils.hasText(providerPermalink)) {
+      throw new ApplicationException(
+          ErrorCode.INTEGRATION_INVALID_RESPONSE, "Sentry issue response missing permalink");
+    }
+    try {
+      URI uri = URI.create(providerPermalink.trim());
+      String scheme = uri.getScheme();
+      String host = uri.getHost();
+      String path = uri.getPath();
+      String expectedPrefix =
+          "/organizations/" + sentryIssueProperties.getOrg().trim() + "/issues/";
+      if ("https".equalsIgnoreCase(scheme)
+          && "sentry.io".equalsIgnoreCase(host)
+          && StringUtils.hasText(path)
+          && path.startsWith(expectedPrefix)) {
+        return uri.toString();
+      }
+      throw new ApplicationException(
+          ErrorCode.INTEGRATION_INVALID_RESPONSE,
+          "Sentry issue permalink is outside the configured organization");
+    } catch (IllegalArgumentException ex) {
+      throw new ApplicationException(
+          ErrorCode.INTEGRATION_INVALID_RESPONSE, "Sentry issue permalink is invalid", ex);
     }
   }
 

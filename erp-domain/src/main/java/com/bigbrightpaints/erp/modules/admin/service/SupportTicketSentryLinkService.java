@@ -20,7 +20,6 @@ import com.bigbrightpaints.erp.modules.admin.domain.SupportTicket;
 import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketCategory;
 import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketRepository;
 import com.bigbrightpaints.erp.modules.admin.dto.SuperAdminSupportTicketDtos;
-import com.bigbrightpaints.erp.modules.admin.dto.SupportTicketResponse;
 
 @Service
 public class SupportTicketSentryLinkService {
@@ -109,19 +108,6 @@ public class SupportTicketSentryLinkService {
         ticket.getSentryLastError(),
         bugReportMetadataSanitizer.safeSentryMetadata(ticket),
         auditEventId);
-  }
-
-  public SupportTicketResponse.SentryLink responseForTenant(SupportTicket ticket) {
-    return new SupportTicketResponse.SentryLink(
-        ticket.getSentryIssueId(),
-        ticket.getSentryIssueUrl(),
-        ticket.getSentryIssueStatus(),
-        ticket.getSentryLinkedAt(),
-        ticket.getSentrySyncedAt(),
-        ticket.getSentryLastSyncAt(),
-        ticket.getSentryLastError(),
-        bugReportMetadataSanitizer.safeSentryMetadata(ticket),
-        null);
   }
 
   private SupportTicket requireBugTicket(Long ticketId) {

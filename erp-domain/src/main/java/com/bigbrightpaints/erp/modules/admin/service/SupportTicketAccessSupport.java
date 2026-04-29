@@ -211,8 +211,8 @@ public class SupportTicketAccessSupport {
                   ticket.getGithubIssueState(),
                   ticket.getGithubSyncedAt(),
                   ticket.getGithubLastError(),
-                  bugReportMetadataSanitizer.bugReport(ticket),
-                  sentryLink(ticket),
+                  bugReportMetadataSanitizer.tenantBugReport(ticket),
+                  null,
                   ticket.getResolvedAt(),
                   ticket.getResolvedNotificationSentAt(),
                   ticket.getCreatedAt(),
@@ -220,22 +220,6 @@ public class SupportTicketAccessSupport {
                   customerMessagePreview(ticket, false));
             })
         .toList();
-  }
-
-  private SupportTicketResponse.SentryLink sentryLink(SupportTicket ticket) {
-    if (!StringUtils.hasText(ticket.getSentryIssueId())) {
-      return null;
-    }
-    return new SupportTicketResponse.SentryLink(
-        ticket.getSentryIssueId(),
-        ticket.getSentryIssueUrl(),
-        ticket.getSentryIssueStatus(),
-        ticket.getSentryLinkedAt(),
-        ticket.getSentrySyncedAt(),
-        ticket.getSentryLastSyncAt(),
-        ticket.getSentryLastError(),
-        bugReportMetadataSanitizer.safeSentryMetadata(ticket),
-        null);
   }
 
   public List<SupportTicketMessageResponse> customerMessagePreview(
