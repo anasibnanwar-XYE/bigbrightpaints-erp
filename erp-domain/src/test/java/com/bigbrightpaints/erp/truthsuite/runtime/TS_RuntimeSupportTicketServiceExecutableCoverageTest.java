@@ -14,6 +14,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -62,6 +63,9 @@ class TS_RuntimeSupportTicketServiceExecutableCoverageTest {
     AuditLog auditLog = new AuditLog();
     auditLog.setId(9901L);
     when(auditService.logAuthSuccessRequired(any(), any(), any(), any())).thenReturn(auditLog);
+    when(supportTicketMessageRepository.findByTicketAndVisibilityOrderByCreatedAtAscIdAsc(
+            any(), any(), any()))
+        .thenReturn(new PageImpl<>(List.of()));
     SupportTicketAccessSupport supportTicketAccessSupport =
         new SupportTicketAccessSupport(
             supportTicketRepository,
