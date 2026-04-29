@@ -206,6 +206,166 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
   }
 
   @Test
+  void infraCostSnapshotsScoreTenantsFromAggregateUsageAndAuditCorrectionsArchive() {
+    String adminToken = loginToken(ADMIN_EMAIL, COMPANY_CODE);
+    ResponseEntity<Map> forbidden =
+        rest.exchange(
+            "/api/v1/superadmin/infra/costs/snapshots",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                infraCostPayload("APP_SERVER", 1_000L, "Initial safe platform cost"),
+                headers(adminToken, COMPANY_CODE)),
+            Map.class);
+    assertThat(forbidden.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+
+    String superAdminToken = loginToken(SUPER_ADMIN_EMAIL, ROOT_COMPANY_CODE);
+    HttpHeaders superAdminHeaders = headers(superAdminToken, ROOT_COMPANY_CODE);
+    List<String> components =
+        List.of("APP_SERVER", "DATABASE", "STORAGE", "EMAIL", "BACKUP", "MONITORING");
+    Long firstSnapshotId = null;
+    for (String component : components) {
+      ResponseEntity<Map> create =
+          rest.exchange(
+              "/api/v1/superadmin/infra/costs/snapshots",
+              HttpMethod.POST,
+              new HttpEntity<>(
+                  infraCostPayload(component, 1_000L, "Initial safe platform cost"),
+                  superAdminHeaders),
+              Map.class);
+      assertThat(create.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+      @SuppressWarnings("unchecked")
+      Map<String, Object> snapshot = (Map<String, Object>) create.getBody().get("data");
+      assertThat(snapshot)
+          .containsEntry("component", component)
+          .containsEntry("amountMinorUnits", 1_000)
+          .containsEntry("currency", "INR")
+          .containsEntry("status", "ACTIVE")
+          .containsEntry("correctionCount", 0);
+      assertInfraCostAuditReason(
+          (Number) snapshot.get("auditEventId"), "infra-cost-snapshot-created");
+      if (firstSnapshotId == null) {
+        firstSnapshotId = ((Number) snapshot.get("snapshotId")).longValue();
+      }
+    }
+
+    ResponseEntity<Map> invalidAmount =
+        rest.exchange(
+            "/api/v1/superadmin/infra/costs/snapshots",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                infraCostPayload("APP_SERVER", -1L, "Invalid amount probe"), superAdminHeaders),
+            Map.class);
+    assertThat(invalidAmount.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+    ResponseEntity<Map> privateTextProbe =
+        rest.exchange(
+            "/api/v1/superadmin/infra/costs/snapshots",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                infraCostPayload("APP_SERVER", 1_000L, "Contains invoice private data"),
+                superAdminHeaders),
+            Map.class);
+    assertThat(privateTextProbe.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+    ResponseEntity<Map> correction =
+        rest.exchange(
+            "/api/v1/superadmin/infra/costs/snapshots/" + firstSnapshotId,
+            HttpMethod.PUT,
+            new HttpEntity<>(
+                infraCostPayload("APP_SERVER", 1_500L, "Corrected safe platform cost"),
+                superAdminHeaders),
+            Map.class);
+    assertThat(correction.getStatusCode()).isEqualTo(HttpStatus.OK);
+    @SuppressWarnings("unchecked")
+    Map<String, Object> corrected = (Map<String, Object>) correction.getBody().get("data");
+    assertThat(corrected)
+        .containsEntry("amountMinorUnits", 1_500)
+        .containsEntry("correctionCount", 1)
+        .containsEntry("status", "ACTIVE");
+    assertInfraCostAuditReason(
+        (Number) corrected.get("auditEventId"), "infra-cost-snapshot-corrected");
+
+    ResponseEntity<Map> corrections =
+        rest.exchange(
+            "/api/v1/superadmin/infra/costs/snapshots/" + firstSnapshotId + "/corrections",
+            HttpMethod.GET,
+            new HttpEntity<>(superAdminHeaders),
+            Map.class);
+    assertThat(corrections.getStatusCode()).isEqualTo(HttpStatus.OK);
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> correctionRows =
+        (List<Map<String, Object>>) corrections.getBody().get("data");
+    assertThat(correctionRows).hasSize(1);
+    assertThat(correctionRows.getFirst())
+        .containsEntry("previousAmountMinorUnits", 1_000)
+        .containsEntry("newAmountMinorUnits", 1_500);
+
+    ResponseEntity<Map> dashboard =
+        rest.exchange(
+            "/api/v1/superadmin/infra/costs?currency=INR",
+            HttpMethod.GET,
+            new HttpEntity<>(superAdminHeaders),
+            Map.class);
+    assertThat(dashboard.getStatusCode()).isEqualTo(HttpStatus.OK);
+    @SuppressWarnings("unchecked")
+    Map<String, Object> data = (Map<String, Object>) dashboard.getBody().get("data");
+    assertThat(data).containsEntry("currency", "INR").containsEntry("totalCostMinorUnits", 6_500);
+    assertThat(data.get("latestComponentCosts").toString())
+        .contains("APP_SERVER", "DATABASE", "STORAGE", "EMAIL", "BACKUP", "MONITORING");
+    assertThat(data.get("aggregateUsage").toString()).contains("USERS", "STORAGE", "API_CALLS");
+    assertThat(data.get("tenantCostScores").toString())
+        .contains("tenantCode", "costScoreBasisPoints");
+    @SuppressWarnings("unchecked")
+    Map<String, Object> privacy = (Map<String, Object>) data.get("privacy");
+    assertThat(privacy).containsEntry("aggregateUsageOnly", true);
+    assertThat(dashboard.getBody().toString().toLowerCase(Locale.ROOT))
+        .doesNotContain(
+            "admin123",
+            "bearer ",
+            "password",
+            "token",
+            "invoice",
+            "ledger",
+            "inventory",
+            "salary",
+            "vendor",
+            "customer",
+            "gst return");
+
+    ResponseEntity<Map> archive =
+        rest.exchange(
+            "/api/v1/superadmin/infra/costs/snapshots/" + firstSnapshotId + "/archive",
+            HttpMethod.POST,
+            new HttpEntity<>(Map.of("reason", "Archive safe obsolete cost"), superAdminHeaders),
+            Map.class);
+    assertThat(archive.getStatusCode()).isEqualTo(HttpStatus.OK);
+    @SuppressWarnings("unchecked")
+    Map<String, Object> archived = (Map<String, Object>) archive.getBody().get("data");
+    assertThat(archived).containsEntry("status", "ARCHIVED");
+    assertInfraCostAuditReason(
+        (Number) archived.get("auditEventId"), "infra-cost-snapshot-archived");
+
+    ResponseEntity<Map> activeList =
+        rest.exchange(
+            "/api/v1/superadmin/infra/costs/snapshots?currency=INR",
+            HttpMethod.GET,
+            new HttpEntity<>(superAdminHeaders),
+            Map.class);
+    assertThat(activeList.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(activeList.getBody().get("data").toString())
+        .doesNotContain("snapshotId=" + firstSnapshotId);
+
+    ResponseEntity<Map> includeArchived =
+        rest.exchange(
+            "/api/v1/superadmin/infra/costs/snapshots?currency=INR&includeArchived=true",
+            HttpMethod.GET,
+            new HttpEntity<>(superAdminHeaders),
+            Map.class);
+    assertThat(includeArchived.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(includeArchived.getBody().get("data").toString()).contains("ARCHIVED");
+  }
+
+  @Test
   void addClientOptionsAndDraftCreateAreStrictAndBranchFree() {
     String superAdminToken = loginToken(SUPER_ADMIN_EMAIL, ROOT_COMPANY_CODE);
     HttpHeaders superAdminHeaders = headers(superAdminToken, ROOT_COMPANY_CODE);
@@ -1725,6 +1885,39 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
         Map.of("notes", "safe note", "tags", List.of("M4")),
         "createMode",
         createMode);
+  }
+
+  private Map<String, Object> infraCostPayload(
+      String component, long amountMinorUnits, String reason) {
+    return Map.of(
+        "component",
+        component,
+        "periodStartAt",
+        "2026-04-01T00:00:00Z",
+        "periodEndAt",
+        "2026-05-01T00:00:00Z",
+        "amountMinorUnits",
+        amountMinorUnits,
+        "currency",
+        "INR",
+        "source",
+        "Manual platform estimate",
+        "reason",
+        reason,
+        "notes",
+        "Safe aggregate infra cost");
+  }
+
+  private void assertInfraCostAuditReason(Number auditEventId, String expectedReason) {
+    assertThat(auditEventId).isNotNull();
+    Integer matches =
+        jdbcTemplate.queryForObject(
+            "select count(*) from audit_log_metadata where audit_log_id = ? and metadata_key ="
+                + " 'reason' and metadata_value = ?",
+            Integer.class,
+            auditEventId.longValue(),
+            expectedReason);
+    assertThat(matches).isEqualTo(1);
   }
 
   private String maxLengthCompanyCode() {

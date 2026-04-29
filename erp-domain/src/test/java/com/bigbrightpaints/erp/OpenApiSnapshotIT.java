@@ -548,6 +548,52 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
         "#/components/schemas/ApiResponseSuperAdminPlatformHealthDto");
     assertOperationContract(
         root,
+        "/api/v1/superadmin/infra/costs",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseDashboard");
+    assertQueryParameter(root, "/api/v1/superadmin/infra/costs", "get", "currency");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/infra/costs/snapshots",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseListSnapshotResponse");
+    assertQueryParameter(root, "/api/v1/superadmin/infra/costs/snapshots", "get", "currency");
+    assertQueryParameter(
+        root, "/api/v1/superadmin/infra/costs/snapshots", "get", "includeArchived");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/infra/costs/snapshots",
+        "post",
+        "#/components/schemas/SnapshotRequest",
+        "201",
+        "#/components/schemas/ApiResponseSnapshotResponse");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/infra/costs/snapshots/{snapshotId}",
+        "put",
+        "#/components/schemas/SnapshotRequest",
+        "200",
+        "#/components/schemas/ApiResponseSnapshotResponse");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/infra/costs/snapshots/{snapshotId}/corrections",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseListCorrectionResponse");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/infra/costs/snapshots/{snapshotId}/archive",
+        "post",
+        "#/components/schemas/ArchiveRequest",
+        "200",
+        "#/components/schemas/ApiResponseSnapshotResponse");
+    assertOperationContract(
+        root,
         "/api/v1/superadmin/support/tickets/{ticketId}",
         "get",
         null,
@@ -894,6 +940,12 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
             "POST /api/v1/superadmin/support/tickets/{ticketId}/status",
             "POST /api/v1/superadmin/support/tickets/sla/refresh",
             "GET /api/v1/superadmin/infra/health",
+            "GET /api/v1/superadmin/infra/costs",
+            "GET /api/v1/superadmin/infra/costs/snapshots",
+            "POST /api/v1/superadmin/infra/costs/snapshots",
+            "PUT /api/v1/superadmin/infra/costs/snapshots/{snapshotId}",
+            "GET /api/v1/superadmin/infra/costs/snapshots/{snapshotId}/corrections",
+            "POST /api/v1/superadmin/infra/costs/snapshots/{snapshotId}/archive",
             "GET /api/v1/superadmin/tenants/coa-templates",
             "GET /api/v1/superadmin/settings",
             "PUT /api/v1/superadmin/settings",
