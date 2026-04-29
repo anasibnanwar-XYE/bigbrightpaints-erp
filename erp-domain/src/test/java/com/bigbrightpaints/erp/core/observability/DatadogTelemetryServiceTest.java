@@ -83,6 +83,58 @@ class DatadogTelemetryServiceTest {
   }
 
   @Test
+  void unmatchedRouteTemplateCollapsesSuperAdminPathSegments() {
+    DatadogTelemetryService service = service(new SimpleMeterRegistry(), properties("set"));
+    MockHttpServletRequest request =
+        new MockHttpServletRequest(
+            "GET", "/api/v1/superadmin/tenants/ACME-01/company-CODE-123/support/private-record");
+    request.addHeader("X-Company-Code", "ACME-01");
+
+    Map<String, String> tags = service.safeTags(request, 404, false);
+
+    assertThat(tags).containsEntry("route", "/api/v1/superadmin/{unmatched}");
+    assertThat(tags.toString()).doesNotContain("ACME-01", "company-CODE-123", "private-record");
+    assertThat(tags.get("tenant_hash")).hasSize(16).doesNotContain("ACME");
+  }
+
+  @Test
+  void missingMeterRegistryIsReportedAsDegradedAndDoesNotIncrementRecordedMetrics() {
+    DatadogTelemetryService service = service(null, properties("set"));
+    MockHttpServletRequest request =
+        new MockHttpServletRequest("GET", "/api/v1/superadmin/tenants/ACME-01/status");
+
+    assertThat(service.status().status()).isEqualTo("LOCAL_TELEMETRY_REGISTRY_MISSING");
+
+    service.recordSuperAdminRequest(request, 200, 500_000L, false);
+
+    DatadogTelemetryService.DatadogTelemetryStatus status = service.status();
+    assertThat(status.mode()).isEqualTo("DEGRADED");
+    assertThat(status.degradedMode()).isTrue();
+    assertThat(status.lastErrorCode()).isEqualTo("LOCAL_TELEMETRY_REGISTRY_MISSING");
+    assertThat(status.recordedRequests()).isZero();
+    assertThat(status.degradedEvents()).isEqualTo(1);
+    assertThat(status.lastRequest().route()).isEqualTo("/api/v1/superadmin/{unmatched}");
+    assertThat(status.toString()).doesNotContain("ACME-01");
+  }
+
+  @Test
+  void recordedMetricCountOnlyIncrementsAfterRegistryEmission() {
+    DatadogTelemetryService service = service(new SimpleMeterRegistry(), properties("set"));
+    MockHttpServletRequest request =
+        new MockHttpServletRequest("GET", "/api/v1/superadmin/dashboard");
+    request.setAttribute(
+        HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE, "/api/v1/superadmin/dashboard");
+
+    service.recordSuperAdminRequest(request, 200, 500_000L, false);
+
+    DatadogTelemetryService.DatadogTelemetryStatus status = service.status();
+    assertThat(status.mode()).isEqualTo("ENABLED");
+    assertThat(status.recordedRequests()).isEqualTo(1);
+    assertThat(status.degradedEvents()).isZero();
+    assertThat(status.lastRequest().route()).isEqualTo("/api/v1/superadmin/dashboard");
+  }
+
+  @Test
   void localMetricFailureIsDegradedAndDoesNotEscapeRecorder() {
     MeterRegistry brokenRegistry = Mockito.mock(MeterRegistry.class);
     DatadogTelemetryService service = service(brokenRegistry, properties("set"));
@@ -97,6 +149,7 @@ class DatadogTelemetryServiceTest {
     assertThat(status.degradedMode()).isTrue();
     assertThat(status.lastErrorCode()).isEqualTo("LOCAL_TELEMETRY_DEGRADED");
     assertThat(status.lastRequest().route()).isEqualTo("/api/v1/superadmin/tenants/{id}");
+    assertThat(status.recordedRequests()).isZero();
   }
 
   @SuppressWarnings("unchecked")

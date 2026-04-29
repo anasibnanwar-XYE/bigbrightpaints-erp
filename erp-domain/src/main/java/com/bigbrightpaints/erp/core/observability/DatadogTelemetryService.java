@@ -79,14 +79,18 @@ public class DatadogTelemetryService {
     try {
       Map<String, String> tags = safeTags(request, statusCode, failed);
       MeterRegistry registry = meterRegistryProvider.getIfAvailable();
-      if (registry != null) {
-        Iterable<Tag> micrometerTags = toTags(tags);
-        Counter.builder(REQUEST_COUNTER).tags(micrometerTags).register(registry).increment();
-        Timer.builder(REQUEST_TIMER)
-            .tags(micrometerTags)
-            .register(registry)
-            .record(Math.max(0L, durationNanos), TimeUnit.NANOSECONDS);
+      if (registry == null) {
+        degradedEvents.incrementAndGet();
+        lastErrorCode = "LOCAL_TELEMETRY_REGISTRY_MISSING";
+        lastRequest = snapshot(tags, RequestTraceContext.traceId(), lastErrorCode);
+        return;
       }
+      Iterable<Tag> micrometerTags = toTags(tags);
+      Counter.builder(REQUEST_COUNTER).tags(micrometerTags).register(registry).increment();
+      Timer.builder(REQUEST_TIMER)
+          .tags(micrometerTags)
+          .register(registry)
+          .record(Math.max(0L, durationNanos), TimeUnit.NANOSECONDS);
       recordedRequests.incrementAndGet();
       lastErrorCode = null;
       lastRequest = snapshot(tags, RequestTraceContext.traceId(), null);
@@ -99,7 +103,10 @@ public class DatadogTelemetryService {
 
   public DatadogTelemetryStatus status() {
     boolean configured = properties.isApiKeyConfigured();
-    boolean degraded = !properties.isEnabled() || !configured || StringUtils.hasText(lastErrorCode);
+    String registryError = registryErrorCode();
+    String effectiveErrorCode = StringUtils.hasText(lastErrorCode) ? lastErrorCode : registryError;
+    boolean degraded =
+        !properties.isEnabled() || !configured || StringUtils.hasText(effectiveErrorCode);
     String mode;
     String status;
     if (!properties.isEnabled()) {
@@ -108,9 +115,9 @@ public class DatadogTelemetryService {
     } else if (!configured) {
       mode = "DEGRADED";
       status = "DEGRADED_NO_API_KEY";
-    } else if (StringUtils.hasText(lastErrorCode)) {
+    } else if (StringUtils.hasText(effectiveErrorCode)) {
       mode = "DEGRADED";
-      status = lastErrorCode;
+      status = effectiveErrorCode;
     } else {
       mode = "ENABLED";
       status = "LOCAL_SAFE_TELEMETRY_READY";
@@ -126,7 +133,7 @@ public class DatadogTelemetryService {
         SAFE_TAG_KEYS,
         FORBIDDEN_TAG_POLICY,
         lastRequest,
-        lastErrorCode,
+        effectiveErrorCode,
         recordedRequests.get(),
         degradedEvents.get());
   }
@@ -188,6 +195,9 @@ public class DatadogTelemetryService {
     if (!StringUtils.hasText(requestUri)) {
       return "/api/v1/superadmin/{unmatched}";
     }
+    if (requestUri.startsWith("/api/v1/superadmin")) {
+      return "/api/v1/superadmin/{unmatched}";
+    }
     String[] parts = requestUri.split("/");
     List<String> scrubbed = new ArrayList<>();
     for (String part : parts) {
@@ -206,6 +216,19 @@ public class DatadogTelemetryService {
         || lower.matches("\\d+")
         || lower.matches("[0-9a-f]{8}-[0-9a-f-]{27,}")
         || TelemetryPrivacySanitizer.containsForbiddenText(lower);
+  }
+
+  private String registryErrorCode() {
+    if (!properties.isEnabled()) {
+      return null;
+    }
+    try {
+      return meterRegistryProvider.getIfAvailable() == null
+          ? "LOCAL_TELEMETRY_REGISTRY_MISSING"
+          : null;
+    } catch (RuntimeException ex) {
+      return "LOCAL_TELEMETRY_PROVIDER_UNAVAILABLE";
+    }
   }
 
   private String statusClass(int statusCode) {
