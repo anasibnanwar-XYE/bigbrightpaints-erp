@@ -10,6 +10,7 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import com.bigbrightpaints.erp.core.config.EmailProperties;
 import com.bigbrightpaints.erp.core.config.GitHubProperties;
 import com.bigbrightpaints.erp.core.config.SentryIssueProperties;
+import com.bigbrightpaints.erp.core.observability.DatadogTelemetryProperties;
 import com.bigbrightpaints.erp.core.security.JwtProperties;
 
 @SpringBootApplication
@@ -17,7 +18,8 @@ import com.bigbrightpaints.erp.core.security.JwtProperties;
   JwtProperties.class,
   EmailProperties.class,
   GitHubProperties.class,
-  SentryIssueProperties.class
+  SentryIssueProperties.class,
+  DatadogTelemetryProperties.class
 })
 @ComponentScan(
     basePackages = {

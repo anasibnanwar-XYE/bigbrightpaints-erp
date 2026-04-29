@@ -23,6 +23,7 @@ import com.bigbrightpaints.erp.core.audit.AuditLog;
 import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
+import com.bigbrightpaints.erp.core.observability.TelemetryPrivacySanitizer;
 import com.bigbrightpaints.erp.core.security.SecurityActorResolver;
 import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.modules.admin.domain.SupportTicket;
@@ -422,6 +423,7 @@ public class SupportTicketAccessSupport {
       throw new ApplicationException(
           ErrorCode.VALIDATION_OUT_OF_RANGE, fieldName + " exceeds max length " + maxLength);
     }
+    TelemetryPrivacySanitizer.rejectForbiddenFreeText(fieldName, trimmed);
     return trimmed;
   }
 

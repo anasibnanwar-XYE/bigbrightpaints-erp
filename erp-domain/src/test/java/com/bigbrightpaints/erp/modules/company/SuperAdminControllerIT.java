@@ -116,6 +116,31 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
   }
 
   @Test
+  void datadogStatusUsesCredentialSafeDegradedMode() {
+    String superAdminToken = loginToken(SUPER_ADMIN_EMAIL, ROOT_COMPANY_CODE);
+    ResponseEntity<Map> response =
+        rest.exchange(
+            "/api/v1/superadmin/observability/datadog/status",
+            HttpMethod.GET,
+            new HttpEntity<>(headers(superAdminToken, ROOT_COMPANY_CODE)),
+            Map.class);
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(response.getBody()).isNotNull();
+    @SuppressWarnings("unchecked")
+    Map<String, Object> data = (Map<String, Object>) response.getBody().get("data");
+    assertThat(data)
+        .containsEntry("provider", "DATADOG")
+        .containsEntry("credentialsExposed", false)
+        .containsEntry("requiredForCoreFlows", false);
+    assertThat(data.get("safeTagKeys").toString())
+        .contains("route", "status_class", "actor_role", "actor_hash", "tenant_hash")
+        .doesNotContain("request_body", "query_string", "email");
+    assertThat(data.toString().toLowerCase(Locale.ROOT))
+        .doesNotContain("dd_api_key", "sentry_auth_token", "bearer ", "admin123");
+  }
+
+  @Test
   void addClientOptionsAndDraftCreateAreStrictAndBranchFree() {
     String superAdminToken = loginToken(SUPER_ADMIN_EMAIL, ROOT_COMPANY_CODE);
     HttpHeaders superAdminHeaders = headers(superAdminToken, ROOT_COMPANY_CODE);

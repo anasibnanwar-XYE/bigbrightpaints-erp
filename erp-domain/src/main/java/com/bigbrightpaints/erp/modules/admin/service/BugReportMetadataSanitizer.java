@@ -18,6 +18,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
+import com.bigbrightpaints.erp.core.observability.TelemetryPrivacySanitizer;
 import com.bigbrightpaints.erp.modules.admin.domain.SupportTicket;
 import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketCategory;
 import com.bigbrightpaints.erp.modules.admin.dto.SupportTicketCreateRequest;
@@ -227,6 +228,7 @@ public class BugReportMetadataSanitizer {
   }
 
   private void rejectForbiddenValue(String field, String value) {
+    TelemetryPrivacySanitizer.rejectForbiddenFreeText(field, value);
     String lower = value.toLowerCase(Locale.ROOT);
     boolean forbidden = FORBIDDEN_VALUE_FRAGMENTS.stream().anyMatch(lower::contains);
     if (forbidden) {

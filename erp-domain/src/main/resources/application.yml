@@ -169,6 +169,13 @@ erp:
       org: ${SENTRY_ORG:}
       project: ${SENTRY_PROJECT:}
       host: https://sentry.io
+  datadog:
+    telemetry:
+      enabled: ${ERP_DATADOG_TELEMETRY_ENABLED:true}
+      api-key: ${DD_API_KEY:}
+      site: ${DD_SITE:us5.datadoghq.com}
+      environment: ${DD_ENV:${SPRING_PROFILES_ACTIVE:dev}}
+      release: ${DD_VERSION:erp-domain@${project.version:unknown}}
 
 sentry:
   dsn: ${SENTRY_DSN:}
