@@ -75,6 +75,42 @@ public class SupportTicket extends VersionedEntity {
   @Column(name = "github_last_sync_at")
   private Instant githubLastSyncAt;
 
+  @Column(name = "bug_reproduction_steps", columnDefinition = "TEXT")
+  private String bugReproductionSteps;
+
+  @Column(name = "bug_environment", length = 64)
+  private String bugEnvironment;
+
+  @Column(name = "bug_release", length = 128)
+  private String bugRelease;
+
+  @Column(name = "bug_trace_id", length = 128)
+  private String bugTraceId;
+
+  @Column(name = "bug_metadata_json", columnDefinition = "TEXT")
+  private String bugMetadataJson;
+
+  @Column(name = "sentry_issue_id", length = 128)
+  private String sentryIssueId;
+
+  @Column(name = "sentry_issue_url", length = 512)
+  private String sentryIssueUrl;
+
+  @Column(name = "sentry_issue_status", length = 64)
+  private String sentryIssueStatus;
+
+  @Column(name = "sentry_linked_at")
+  private Instant sentryLinkedAt;
+
+  @Column(name = "sentry_synced_at")
+  private Instant sentrySyncedAt;
+
+  @Column(name = "sentry_last_sync_at")
+  private Instant sentryLastSyncAt;
+
+  @Column(name = "sentry_last_error", columnDefinition = "TEXT")
+  private String sentryLastError;
+
   @Column(name = "resolved_at")
   private Instant resolvedAt;
 
@@ -253,6 +289,102 @@ public class SupportTicket extends VersionedEntity {
 
   public void setGithubLastSyncAt(Instant githubLastSyncAt) {
     this.githubLastSyncAt = githubLastSyncAt;
+  }
+
+  public String getBugReproductionSteps() {
+    return bugReproductionSteps;
+  }
+
+  public void setBugReproductionSteps(String bugReproductionSteps) {
+    this.bugReproductionSteps = bugReproductionSteps;
+  }
+
+  public String getBugEnvironment() {
+    return bugEnvironment;
+  }
+
+  public void setBugEnvironment(String bugEnvironment) {
+    this.bugEnvironment = bugEnvironment;
+  }
+
+  public String getBugRelease() {
+    return bugRelease;
+  }
+
+  public void setBugRelease(String bugRelease) {
+    this.bugRelease = bugRelease;
+  }
+
+  public String getBugTraceId() {
+    return bugTraceId;
+  }
+
+  public void setBugTraceId(String bugTraceId) {
+    this.bugTraceId = bugTraceId;
+  }
+
+  public String getBugMetadataJson() {
+    return bugMetadataJson;
+  }
+
+  public void setBugMetadataJson(String bugMetadataJson) {
+    this.bugMetadataJson = bugMetadataJson;
+  }
+
+  public String getSentryIssueId() {
+    return sentryIssueId;
+  }
+
+  public void setSentryIssueId(String sentryIssueId) {
+    this.sentryIssueId = sentryIssueId;
+  }
+
+  public String getSentryIssueUrl() {
+    return sentryIssueUrl;
+  }
+
+  public void setSentryIssueUrl(String sentryIssueUrl) {
+    this.sentryIssueUrl = sentryIssueUrl;
+  }
+
+  public String getSentryIssueStatus() {
+    return sentryIssueStatus;
+  }
+
+  public void setSentryIssueStatus(String sentryIssueStatus) {
+    this.sentryIssueStatus = sentryIssueStatus;
+  }
+
+  public Instant getSentryLinkedAt() {
+    return sentryLinkedAt;
+  }
+
+  public void setSentryLinkedAt(Instant sentryLinkedAt) {
+    this.sentryLinkedAt = sentryLinkedAt;
+  }
+
+  public Instant getSentrySyncedAt() {
+    return sentrySyncedAt;
+  }
+
+  public void setSentrySyncedAt(Instant sentrySyncedAt) {
+    this.sentrySyncedAt = sentrySyncedAt;
+  }
+
+  public Instant getSentryLastSyncAt() {
+    return sentryLastSyncAt;
+  }
+
+  public void setSentryLastSyncAt(Instant sentryLastSyncAt) {
+    this.sentryLastSyncAt = sentryLastSyncAt;
+  }
+
+  public String getSentryLastError() {
+    return sentryLastError;
+  }
+
+  public void setSentryLastError(String sentryLastError) {
+    this.sentryLastError = sentryLastError;
   }
 
   public Instant getResolvedAt() {

@@ -118,6 +118,126 @@ class SupportTicketControllerIT extends AbstractIntegrationTest {
   }
 
   @Test
+  void bugReportCreateStoresBoundedMetadataAndRejectsPrivatePayloadMetadata() {
+    String tenantToken = login(ADMIN_A_EMAIL, TENANT_A);
+    String superAdminToken = login(SUPER_ADMIN_EMAIL, ROOT_TENANT);
+    String marker = "m12-bug-" + System.nanoTime();
+    ResponseEntity<Map> createResponse =
+        rest.exchange(
+            "/api/v1/admin/support/tickets",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of(
+                    "category",
+                    "BUG",
+                    "priority",
+                    "HIGH",
+                    "subject",
+                    marker,
+                    "description",
+                    "Checkout failed after clicking save",
+                    "reproductionSteps",
+                    "Open checkout and click save",
+                    "environment",
+                    "prod",
+                    "release",
+                    "erp-domain@2026.04",
+                    "traceId",
+                    "trace-m12-bug-001",
+                    "metadata",
+                    Map.of(
+                        "route",
+                        "/api/v1/superadmin/support/tickets/{ticketId}",
+                        "status",
+                        "5xx",
+                        "outcome",
+                        "error",
+                        "component",
+                        "support")),
+                authHeaders(tenantToken, TENANT_A)),
+            Map.class);
+
+    assertThat(createResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    Map<String, Object> data = data(createResponse);
+    assertThat(data.get("category")).isEqualTo("BUG");
+    @SuppressWarnings("unchecked")
+    Map<String, Object> bugReport = (Map<String, Object>) data.get("bugReport");
+    assertThat(bugReport).containsEntry("environment", "prod");
+    assertThat(bugReport).containsEntry("release", "erp-domain@2026.04");
+    assertThat(bugReport).containsEntry("traceId", "trace-m12-bug-001");
+    @SuppressWarnings("unchecked")
+    Map<String, Object> safeMetadata = (Map<String, Object>) bugReport.get("safeSentryMetadata");
+    assertThat(safeMetadata).containsKeys("tenantHash", "actorHash", "route", "status", "outcome");
+    assertThat(safeMetadata).doesNotContainEntry("tenant", TENANT_A);
+
+    Long ticketId = Long.parseLong(String.valueOf(data.get("id")));
+    Map<String, Object> superAdminData = data(superAdminDetail(ticketId, superAdminToken));
+    assertThat(superAdminData.get("bugReport")).isNotNull();
+
+    ResponseEntity<Map> invalidMetadata =
+        rest.exchange(
+            "/api/v1/admin/support/tickets",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of(
+                    "category",
+                    "BUG",
+                    "subject",
+                    marker + "-bad",
+                    "description",
+                    "Metadata should be rejected",
+                    "metadata",
+                    Map.of("requestBody", "{\"password\":\"not-allowed\"}")),
+                authHeaders(tenantToken, TENANT_A)),
+            Map.class);
+    assertThat(invalidMetadata.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+  }
+
+  @Test
+  void superAdminSentryLinkRejectsUrlAndClientCredentialOverride() {
+    String tenantToken = login(ADMIN_A_EMAIL, TENANT_A);
+    String superAdminToken = login(SUPER_ADMIN_EMAIL, ROOT_TENANT);
+    Long ticketId =
+        createTenantTicket(tenantToken, "BUG", "HIGH", "m12-sentry-link-" + System.nanoTime());
+
+    ResponseEntity<Map> urlProbe =
+        rest.exchange(
+            "/api/v1/superadmin/support/tickets/" + ticketId + "/sentry/link",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of("issueId", "https://evil.example/internal"),
+                authHeaders(superAdminToken, ROOT_TENANT)),
+            Map.class);
+    assertThat(urlProbe.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+    ResponseEntity<Map> overrideProbe =
+        rest.exchange(
+            "/api/v1/superadmin/support/tickets/" + ticketId + "/sentry/link",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of("issueId", "ERP-123", "authToken", "client-supplied-token"),
+                authHeaders(superAdminToken, ROOT_TENANT)),
+            Map.class);
+    assertThat(overrideProbe.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+    ResponseEntity<Map> linkResponse =
+        rest.exchange(
+            "/api/v1/superadmin/support/tickets/" + ticketId + "/sentry/link",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                Map.of("issueId", "ERP-123"), authHeaders(superAdminToken, ROOT_TENANT)),
+            Map.class);
+    assertThat(linkResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    Map<String, Object> data = data(linkResponse);
+    assertThat(data.get("issueId")).isEqualTo("ERP-123");
+    assertThat(data.get("status")).isEqualTo("LINKED");
+    assertThat(String.valueOf(data.get("issueUrl"))).contains("sentry.io").doesNotContain("token");
+    assertThat(data.get("auditEventId")).isNotNull();
+    assertThat(supportTicketRepository.findById(ticketId).orElseThrow().getSentryIssueId())
+        .isEqualTo("ERP-123");
+  }
+
+  @Test
   void dealerCreate_persistsAndReturnsApiEnvelope() {
     String token = login(DEALER_A_EMAIL, TENANT_A);
     HttpHeaders headers = authHeaders(token, TENANT_A);

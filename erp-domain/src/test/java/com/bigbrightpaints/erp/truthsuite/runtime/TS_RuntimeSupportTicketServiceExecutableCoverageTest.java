@@ -29,6 +29,7 @@ import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketStatus;
 import com.bigbrightpaints.erp.modules.admin.dto.SupportTicketCreateRequest;
 import com.bigbrightpaints.erp.modules.admin.dto.SupportTicketResponse;
 import com.bigbrightpaints.erp.modules.admin.service.AdminSupportService;
+import com.bigbrightpaints.erp.modules.admin.service.BugReportMetadataSanitizer;
 import com.bigbrightpaints.erp.modules.admin.service.DealerPortalSupportTicketService;
 import com.bigbrightpaints.erp.modules.admin.service.SupportTicketAccessSupport;
 import com.bigbrightpaints.erp.modules.admin.service.SupportTicketGitHubSyncService;
@@ -47,6 +48,7 @@ class TS_RuntimeSupportTicketServiceExecutableCoverageTest {
   private CompanyContextService companyContextService;
   private SupportTicketGitHubSyncService supportTicketGitHubSyncService;
   private SupportTicketLifecycleSupport supportTicketLifecycleSupport;
+  private BugReportMetadataSanitizer bugReportMetadataSanitizer;
   private AuditService auditService;
   private AdminSupportService adminSupportService;
   private DealerPortalSupportTicketService dealerPortalSupportTicketService;
@@ -59,6 +61,7 @@ class TS_RuntimeSupportTicketServiceExecutableCoverageTest {
     companyContextService = Mockito.mock(CompanyContextService.class);
     supportTicketGitHubSyncService = Mockito.mock(SupportTicketGitHubSyncService.class);
     supportTicketLifecycleSupport = Mockito.mock(SupportTicketLifecycleSupport.class);
+    bugReportMetadataSanitizer = Mockito.mock(BugReportMetadataSanitizer.class);
     auditService = Mockito.mock(AuditService.class);
     AuditLog auditLog = new AuditLog();
     auditLog.setId(9901L);
@@ -72,7 +75,8 @@ class TS_RuntimeSupportTicketServiceExecutableCoverageTest {
             supportTicketMessageRepository,
             supportTicketGitHubSyncService,
             auditService,
-            supportTicketLifecycleSupport);
+            supportTicketLifecycleSupport,
+            bugReportMetadataSanitizer);
     adminSupportService =
         new AdminSupportService(
             supportTicketRepository, companyContextService, supportTicketAccessSupport);
@@ -107,7 +111,15 @@ class TS_RuntimeSupportTicketServiceExecutableCoverageTest {
     SupportTicketResponse response =
         adminSupportService.create(
             new SupportTicketCreateRequest(
-                "support", "normal", "Unable to export", "Export request fails with timeout"));
+                "support",
+                "normal",
+                "Unable to export",
+                "Export request fails with timeout",
+                null,
+                null,
+                null,
+                null,
+                null));
 
     assertThat(response.id()).isEqualTo(8801L);
     assertThat(response.userId()).isEqualTo(71L);
@@ -156,7 +168,12 @@ class TS_RuntimeSupportTicketServiceExecutableCoverageTest {
                 "support",
                 "normal",
                 "Invoice mismatch",
-                "Dealer cannot reconcile a settled invoice"));
+                "Dealer cannot reconcile a settled invoice",
+                null,
+                null,
+                null,
+                null,
+                null));
 
     assertThat(response.id()).isEqualTo(8802L);
     assertThat(response.userId()).isEqualTo(83L);

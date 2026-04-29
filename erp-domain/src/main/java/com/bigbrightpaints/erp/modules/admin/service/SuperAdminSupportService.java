@@ -38,14 +38,20 @@ public class SuperAdminSupportService {
   private final SupportTicketRepository supportTicketRepository;
   private final SupportTicketAccessSupport supportTicketAccessSupport;
   private final SupportTicketLifecycleSupport lifecycleSupport;
+  private final BugReportMetadataSanitizer bugReportMetadataSanitizer;
+  private final SupportTicketSentryLinkService sentryLinkService;
 
   public SuperAdminSupportService(
       SupportTicketRepository supportTicketRepository,
       SupportTicketAccessSupport supportTicketAccessSupport,
-      SupportTicketLifecycleSupport lifecycleSupport) {
+      SupportTicketLifecycleSupport lifecycleSupport,
+      BugReportMetadataSanitizer bugReportMetadataSanitizer,
+      SupportTicketSentryLinkService sentryLinkService) {
     this.supportTicketRepository = supportTicketRepository;
     this.supportTicketAccessSupport = supportTicketAccessSupport;
     this.lifecycleSupport = lifecycleSupport;
+    this.bugReportMetadataSanitizer = bugReportMetadataSanitizer;
+    this.sentryLinkService = sentryLinkService;
   }
 
   @Transactional(readOnly = true)
@@ -102,6 +108,8 @@ public class SuperAdminSupportService {
         lifecycleSupport.summary(ticket),
         supportTicketAccessSupport.customerMessagePreview(ticket, true),
         supportTicketAccessSupport.internalNotePreview(ticket),
+        bugReportMetadataSanitizer.bugReport(ticket),
+        sentryLinkService.response(ticket, null),
         ticket.getConvertedToIncidentAt(),
         lifecycleSupport.timeline(ticket));
   }
@@ -168,6 +176,17 @@ public class SuperAdminSupportService {
   @Transactional(readOnly = true)
   public List<SuperAdminSupportTicketDtos.TimelineItem> timeline(Long ticketId) {
     return lifecycleSupport.timeline(requireTicket(ticketId));
+  }
+
+  @Transactional
+  public SuperAdminSupportTicketDtos.SentryLinkResponse linkSentryIssue(
+      Long ticketId, SuperAdminSupportTicketDtos.SentryLinkRequest request) {
+    return sentryLinkService.link(ticketId, request);
+  }
+
+  @Transactional
+  public SuperAdminSupportTicketDtos.SentryLinkResponse syncSentryIssue(Long ticketId) {
+    return sentryLinkService.sync(ticketId);
   }
 
   private SupportTicket requireTicket(Long ticketId) {

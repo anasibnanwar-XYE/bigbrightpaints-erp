@@ -25,3 +25,10 @@ erp:
     token: ""
     repo-owner: ""
     repo-name: ""
+  sentry:
+    issue-link:
+      enabled: true
+      auth-token: "placeholder-sentry-token"
+      org: "bbp-test"
+      project: "erp-test"
+      host: "https://sentry.io"

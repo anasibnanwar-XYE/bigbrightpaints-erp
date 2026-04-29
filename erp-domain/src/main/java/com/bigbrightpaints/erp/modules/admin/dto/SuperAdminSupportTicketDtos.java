@@ -2,6 +2,7 @@ package com.bigbrightpaints.erp.modules.admin.dto;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketCategory;
@@ -50,6 +51,19 @@ public final class SuperAdminSupportTicketDtos {
       long totalBreachedTickets,
       List<Long> auditEventIds) {}
 
+  public record SentryLinkRequest(@NotBlank @Size(max = 128) String issueId) {}
+
+  public record SentryLinkResponse(
+      String issueId,
+      String issueUrl,
+      String status,
+      Instant linkedAt,
+      Instant syncedAt,
+      Instant lastSyncAt,
+      String lastError,
+      Map<String, String> safeMetadata,
+      Long auditEventId) {}
+
   public record QueueItem(
       Long ticketId,
       UUID publicId,
@@ -83,6 +97,8 @@ public final class SuperAdminSupportTicketDtos {
       SlaSummary sla,
       List<SupportTicketMessageResponse> messages,
       List<SupportTicketMessageResponse> internalNotes,
+      SupportTicketResponse.BugReport bugReport,
+      SentryLinkResponse sentry,
       Instant convertedToIncidentAt,
       List<TimelineItem> timeline) {}
 }

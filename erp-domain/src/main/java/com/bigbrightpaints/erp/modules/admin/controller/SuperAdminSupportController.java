@@ -116,6 +116,26 @@ public class SuperAdminSupportController {
             superAdminSupportService.timeline(ticketId)));
   }
 
+  @PostMapping("/{ticketId}/sentry/link")
+  public ResponseEntity<ApiResponse<SuperAdminSupportTicketDtos.SentryLinkResponse>>
+      linkSentryIssue(
+          @PathVariable Long ticketId,
+          @Valid @RequestBody SuperAdminSupportTicketDtos.SentryLinkRequest request) {
+    return ResponseEntity.ok(
+        ApiResponse.success(
+            "Super Admin bug Sentry issue linked",
+            superAdminSupportService.linkSentryIssue(ticketId, request)));
+  }
+
+  @PostMapping("/{ticketId}/sentry/sync")
+  public ResponseEntity<ApiResponse<SuperAdminSupportTicketDtos.SentryLinkResponse>>
+      syncSentryIssue(@PathVariable Long ticketId) {
+    return ResponseEntity.ok(
+        ApiResponse.success(
+            "Super Admin bug Sentry issue synced",
+            superAdminSupportService.syncSentryIssue(ticketId)));
+  }
+
   @PostMapping("/{ticketId}/internal-notes")
   public ResponseEntity<ApiResponse<SupportTicketMessageResponse>> addInternalNote(
       @PathVariable Long ticketId, @Valid @RequestBody SupportTicketMessageRequest request) {

@@ -162,10 +162,17 @@ erp:
     token: ${ERP_GITHUB_TOKEN:}
     repo-owner: ${ERP_GITHUB_REPO_OWNER:}
     repo-name: ${ERP_GITHUB_REPO_NAME:}
+  sentry:
+    issue-link:
+      enabled: ${ERP_SENTRY_ISSUE_LINK_ENABLED:true}
+      auth-token: ${SENTRY_AUTH_TOKEN:}
+      org: ${SENTRY_ORG:}
+      project: ${SENTRY_PROJECT:}
+      host: https://sentry.io
 
 sentry:
   dsn: ${SENTRY_DSN:}
-  send-default-pii: true
+  send-default-pii: false
   environment: ${SPRING_PROFILES_ACTIVE:dev}
   traces-sample-rate: ${SENTRY_TRACES_SAMPLE_RATE:0.1}
   logging:

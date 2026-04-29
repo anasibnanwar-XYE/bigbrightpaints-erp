@@ -54,18 +54,21 @@ public class SupportTicketAccessSupport {
   private final SupportTicketGitHubSyncService supportTicketGitHubSyncService;
   private final AuditService auditService;
   private final SupportTicketLifecycleSupport lifecycleSupport;
+  private final BugReportMetadataSanitizer bugReportMetadataSanitizer;
 
   public SupportTicketAccessSupport(
       SupportTicketRepository supportTicketRepository,
       SupportTicketMessageRepository supportTicketMessageRepository,
       SupportTicketGitHubSyncService supportTicketGitHubSyncService,
       AuditService auditService,
-      SupportTicketLifecycleSupport lifecycleSupport) {
+      SupportTicketLifecycleSupport lifecycleSupport,
+      BugReportMetadataSanitizer bugReportMetadataSanitizer) {
     this.supportTicketRepository = supportTicketRepository;
     this.supportTicketMessageRepository = supportTicketMessageRepository;
     this.supportTicketGitHubSyncService = supportTicketGitHubSyncService;
     this.auditService = auditService;
     this.lifecycleSupport = lifecycleSupport;
+    this.bugReportMetadataSanitizer = bugReportMetadataSanitizer;
   }
 
   @Transactional
@@ -79,6 +82,7 @@ public class SupportTicketAccessSupport {
     ticket.setPriority(parsePriority(request.priority()));
     ticket.setSubject(normalizeRequired(request.subject(), "subject", 255));
     ticket.setDescription(normalizeRequired(request.description(), "description", 4000));
+    bugReportMetadataSanitizer.applyBugReportFields(ticket, request);
     lifecycleSupport.initializeSla(ticket, CompanyTime.now(company));
 
     SupportTicket saved = supportTicketRepository.save(ticket);
@@ -206,6 +210,8 @@ public class SupportTicketAccessSupport {
                   ticket.getGithubIssueState(),
                   ticket.getGithubSyncedAt(),
                   ticket.getGithubLastError(),
+                  bugReportMetadataSanitizer.bugReport(ticket),
+                  sentryLink(ticket),
                   ticket.getResolvedAt(),
                   ticket.getResolvedNotificationSentAt(),
                   ticket.getCreatedAt(),
@@ -213,6 +219,22 @@ public class SupportTicketAccessSupport {
                   customerMessagePreview(ticket, false));
             })
         .toList();
+  }
+
+  private SupportTicketResponse.SentryLink sentryLink(SupportTicket ticket) {
+    if (!StringUtils.hasText(ticket.getSentryIssueId())) {
+      return null;
+    }
+    return new SupportTicketResponse.SentryLink(
+        ticket.getSentryIssueId(),
+        ticket.getSentryIssueUrl(),
+        ticket.getSentryIssueStatus(),
+        ticket.getSentryLinkedAt(),
+        ticket.getSentrySyncedAt(),
+        ticket.getSentryLastSyncAt(),
+        ticket.getSentryLastError(),
+        bugReportMetadataSanitizer.safeSentryMetadata(ticket),
+        null);
   }
 
   public List<SupportTicketMessageResponse> customerMessagePreview(
