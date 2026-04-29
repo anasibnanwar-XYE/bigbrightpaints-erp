@@ -1418,6 +1418,14 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
     JsonNode dashboardEnvelope =
         root.path("components").path("schemas").path("ApiResponseCompanySuperAdminDashboardDto");
     assertThat(dashboardEnvelope.path("properties").has("metadata")).isTrue();
+    JsonNode dashboardProperties =
+        root.path("components")
+            .path("schemas")
+            .path("CompanySuperAdminDashboardDto")
+            .path("properties");
+    assertThat(dashboardProperties.has("recurringRevenueByCurrency")).isTrue();
+    assertThat(dashboardProperties.has("recurringRevenueAggregationPolicy")).isTrue();
+    assertThat(dashboardProperties.has("recurringRevenueCurrencyCount")).isTrue();
     JsonNode metadataSchema = root.path("components").path("schemas").path("Metadata");
     assertThat(metadataSchema.path("properties").has("traceId")).isTrue();
     assertThat(metadataSchema.path("properties").has("correlationId")).isTrue();

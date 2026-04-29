@@ -1,6 +1,7 @@
 package com.bigbrightpaints.erp.modules.company.dto;
 
 import java.util.List;
+import java.util.Map;
 
 public record CompanySuperAdminDashboardDto(
     long totalClients,
@@ -13,6 +14,9 @@ public record CompanySuperAdminDashboardDto(
     long deactivatedTenants,
     long mrrMinorUnits,
     long arrMinorUnits,
+    Map<String, SuperAdminBillingDtos.CurrencyMetrics> recurringRevenueByCurrency,
+    String recurringRevenueAggregationPolicy,
+    int recurringRevenueCurrencyCount,
     long openSupportTickets,
     long openBugs,
     long totalActiveUsers,
@@ -50,6 +54,9 @@ public record CompanySuperAdminDashboardDto(
         suspendedTenants,
         deactivatedTenants,
         0,
+        0,
+        Map.of(),
+        "GROUPED_BY_CURRENCY",
         0,
         0,
         0,

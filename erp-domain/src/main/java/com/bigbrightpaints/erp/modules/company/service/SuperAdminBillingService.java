@@ -434,20 +434,6 @@ public class SuperAdminBillingService {
     return result;
   }
 
-  @Transactional
-  public long dashboardMrrMinorUnits() {
-    return getBillingMetrics().values().stream()
-        .mapToLong(SuperAdminBillingDtos.CurrencyMetrics::mrrMinorUnits)
-        .sum();
-  }
-
-  @Transactional
-  public long dashboardArrMinorUnits() {
-    return getBillingMetrics().values().stream()
-        .mapToLong(SuperAdminBillingDtos.CurrencyMetrics::arrMinorUnits)
-        .sum();
-  }
-
   private LedgerMutationResult createLedgerEntry(
       Long companyId,
       String entryType,

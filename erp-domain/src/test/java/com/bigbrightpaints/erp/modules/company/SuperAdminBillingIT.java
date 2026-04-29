@@ -302,6 +302,11 @@ class SuperAdminBillingIT extends AbstractIntegrationTest {
         canceledTenant,
         subscriptionPayload(
             "GROWTH", "MONTHLY", 77_777L, "CANCELED", "USD", dueAt, currentStart, currentEnd));
+    Long eurTenant = createTenant("M10EUR", "GROWTH", "MANUAL");
+    createSubscription(
+        eurTenant,
+        subscriptionPayload(
+            "GROWTH", "MONTHLY", 50_000L, "ACTIVE", "EUR", dueAt, currentStart, currentEnd));
 
     ResponseEntity<Map> response =
         rest.exchange(
@@ -322,6 +327,13 @@ class SuperAdminBillingIT extends AbstractIntegrationTest {
         .containsEntry("activeSubscriptionCount", 3)
         .containsEntry("excludedSubscriptionCount", 3)
         .containsEntry("annualToMonthlyRoundingPolicy", "HALF_UP_TO_MINOR_UNIT");
+    @SuppressWarnings("unchecked")
+    Map<String, Object> eur = (Map<String, Object>) metrics.get("EUR");
+    assertThat(eur)
+        .containsEntry("currency", "EUR")
+        .containsEntry("mrrMinorUnits", 50_000)
+        .containsEntry("arrMinorUnits", 600_000)
+        .containsEntry("activeSubscriptionCount", 1);
 
     ResponseEntity<Map> dashboard =
         rest.exchange(
@@ -332,10 +344,26 @@ class SuperAdminBillingIT extends AbstractIntegrationTest {
     assertThat(dashboard.getStatusCode()).isEqualTo(HttpStatus.OK);
     @SuppressWarnings("unchecked")
     Map<String, Object> dashboardData = (Map<String, Object>) dashboard.getBody().get("data");
-    assertThat(((Number) dashboardData.get("mrrMinorUnits")).longValue())
-        .isGreaterThanOrEqualTo(23_000L);
-    assertThat(((Number) dashboardData.get("arrMinorUnits")).longValue())
-        .isGreaterThanOrEqualTo(276_000L);
+    assertThat(dashboardData)
+        .containsEntry("recurringRevenueAggregationPolicy", "GROUPED_BY_CURRENCY");
+    assertThat(((Number) dashboardData.get("recurringRevenueCurrencyCount")).longValue())
+        .isGreaterThanOrEqualTo(2);
+    @SuppressWarnings("unchecked")
+    Map<String, Object> dashboardRevenue =
+        (Map<String, Object>) dashboardData.get("recurringRevenueByCurrency");
+    assertThat(dashboardRevenue).containsKeys("USD", "EUR");
+    @SuppressWarnings("unchecked")
+    Map<String, Object> dashboardUsd = (Map<String, Object>) dashboardRevenue.get("USD");
+    @SuppressWarnings("unchecked")
+    Map<String, Object> dashboardEur = (Map<String, Object>) dashboardRevenue.get("EUR");
+    assertThat(dashboardUsd)
+        .containsEntry("mrrMinorUnits", 23_000)
+        .containsEntry("arrMinorUnits", 276_000);
+    assertThat(dashboardEur)
+        .containsEntry("mrrMinorUnits", 50_000)
+        .containsEntry("arrMinorUnits", 600_000);
+    assertThat(((Number) dashboardData.get("mrrMinorUnits")).longValue()).isEqualTo(0L);
+    assertThat(((Number) dashboardData.get("arrMinorUnits")).longValue()).isEqualTo(0L);
   }
 
   @Test

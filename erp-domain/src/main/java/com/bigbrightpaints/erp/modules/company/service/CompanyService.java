@@ -8,6 +8,7 @@ import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.LongSupplier;
@@ -46,6 +47,7 @@ import com.bigbrightpaints.erp.modules.company.dto.CompanyRequest;
 import com.bigbrightpaints.erp.modules.company.dto.CompanySuperAdminDashboardDto;
 import com.bigbrightpaints.erp.modules.company.dto.CompanySupportWarningDto;
 import com.bigbrightpaints.erp.modules.company.dto.CompanyTenantMetricsDto;
+import com.bigbrightpaints.erp.modules.company.dto.SuperAdminBillingDtos;
 
 @Service
 public class CompanyService {
@@ -520,6 +522,16 @@ public class CompanyService {
         tenantOverview.stream()
             .mapToLong(CompanySuperAdminDashboardDto.TenantOverview::concurrentRequestQuota)
             .sum();
+    Map<String, SuperAdminBillingDtos.CurrencyMetrics> recurringRevenueByCurrency =
+        billingService.getBillingMetrics();
+    long recurringRevenueCurrencyCount =
+        recurringRevenueByCurrency.values().stream()
+            .filter(metrics -> metrics.activeSubscriptionCount() > 0)
+            .count();
+    long dashboardMrrMinorUnits =
+        recurringRevenueCurrencyCount == 1 ? singleCurrencyMrr(recurringRevenueByCurrency) : 0;
+    long dashboardArrMinorUnits =
+        recurringRevenueCurrencyCount == 1 ? singleCurrencyArr(recurringRevenueByCurrency) : 0;
     auditAuthorityDecision(true, SUPERADMIN_DASHBOARD_READ_REASON, null, authentication);
 
     return new CompanySuperAdminDashboardDto(
@@ -533,8 +545,11 @@ public class CompanyService {
         activeTenants,
         suspendedTenants,
         deactivatedTenants,
-        billingService == null ? 0 : billingService.dashboardMrrMinorUnits(),
-        billingService == null ? 0 : billingService.dashboardArrMinorUnits(),
+        dashboardMrrMinorUnits,
+        dashboardArrMinorUnits,
+        recurringRevenueByCurrency,
+        "GROUPED_BY_CURRENCY",
+        Math.toIntExact(recurringRevenueCurrencyCount),
         0,
         0,
         totalActiveUsers,
@@ -552,6 +567,24 @@ public class CompanyService {
         totalCurrentConcurrentRequests,
         totalConcurrentRequestQuota,
         tenantOverview);
+  }
+
+  private long singleCurrencyMrr(
+      Map<String, SuperAdminBillingDtos.CurrencyMetrics> recurringRevenueByCurrency) {
+    return recurringRevenueByCurrency.values().stream()
+        .filter(metrics -> metrics.activeSubscriptionCount() > 0)
+        .findFirst()
+        .map(SuperAdminBillingDtos.CurrencyMetrics::mrrMinorUnits)
+        .orElse(0L);
+  }
+
+  private long singleCurrencyArr(
+      Map<String, SuperAdminBillingDtos.CurrencyMetrics> recurringRevenueByCurrency) {
+    return recurringRevenueByCurrency.values().stream()
+        .filter(metrics -> metrics.activeSubscriptionCount() > 0)
+        .findFirst()
+        .map(SuperAdminBillingDtos.CurrencyMetrics::arrMinorUnits)
+        .orElse(0L);
   }
 
   @Transactional
