@@ -182,6 +182,12 @@ public class SuperAdminTenantControlPlaneService {
   @Transactional(readOnly = true)
   public PageResponse<SuperAdminTenantSummaryDto> listTenants(
       String statusFilter, String query, int page, int size, String sort) {
+    return listTenants(statusFilter, query, page, size, sort, true);
+  }
+
+  @Transactional(readOnly = true)
+  public PageResponse<SuperAdminTenantSummaryDto> listTenants(
+      String statusFilter, String query, int page, int size, String sort, boolean includeArchived) {
     int safePage = validatePage(page);
     int safeSize = validateSize(size);
     String normalizedStatus = normalizeStatusFilter(statusFilter);
@@ -190,6 +196,7 @@ public class SuperAdminTenantControlPlaneService {
     List<TenantListCandidate> candidates =
         companyRepository.findAll().stream()
             .map(this::toTenantListCandidate)
+            .filter(candidate -> includeArchived || !"ARCHIVED".equals(candidate.status()))
             .filter(candidate -> statusMatches(candidate, normalizedStatus))
             .filter(candidate -> searchMatches(candidate, normalizedQuery))
             .sorted(sortSpec.comparator())
@@ -1754,6 +1761,12 @@ public class SuperAdminTenantControlPlaneService {
     if (company != null
         && "SEED_FAILED".equals(normalizeCanonicalStatus(company.getLifecycleReason(), false))) {
       return "SEED_FAILED";
+    }
+    if (company != null) {
+      String commercialState = normalizeCanonicalStatus(company.getLifecycleReason(), false);
+      if (commercialState != null && !"SEED_FAILED".equals(commercialState)) {
+        return commercialState;
+      }
     }
     String metricsStatus =
         metrics == null ? null : normalizeCanonicalStatus(metrics.lifecycleState(), true);

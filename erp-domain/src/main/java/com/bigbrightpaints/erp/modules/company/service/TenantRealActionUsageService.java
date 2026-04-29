@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.company.service;
 
+import java.util.Locale;
 import java.util.Map;
 
 import org.springframework.stereotype.Service;
@@ -8,6 +9,7 @@ import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.validation.ValidationUtils;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
+import com.bigbrightpaints.erp.modules.company.domain.CompanyLifecycleState;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.modules.company.dto.SuperAdminTenantEntitlementsDto;
 import com.bigbrightpaints.erp.modules.company.dto.SuperAdminUsageDtos;
@@ -89,6 +91,7 @@ public class TenantRealActionUsageService {
     if (company == null || company.getId() == null) {
       throw ValidationUtils.invalidInput("Company is required for quota enforcement");
     }
+    enforceCommercialMutationAllowed(company, dimension);
     SuperAdminTenantEntitlementsDto entitlements =
         entitlementService.getEffectiveEntitlements(company.getId());
     if (entitlements == null || entitlements.limits() == null) {
@@ -112,5 +115,26 @@ public class TenantRealActionUsageService {
         .withDetail("requestedUnits", result.requestedUnits())
         .withDetail("limit", result.limit())
         .withDetail("stateBefore", result.stateBefore());
+  }
+
+  private void enforceCommercialMutationAllowed(Company company, String dimension) {
+    CompanyLifecycleState lifecycleState =
+        company.getLifecycleState() == null
+            ? CompanyLifecycleState.ACTIVE
+            : company.getLifecycleState();
+    if (lifecycleState == CompanyLifecycleState.ACTIVE) {
+      return;
+    }
+    String commercialState =
+        company.getLifecycleReason() == null || company.getLifecycleReason().isBlank()
+            ? lifecycleState.name()
+            : company.getLifecycleReason().trim().toUpperCase(Locale.ROOT);
+    throw new ApplicationException(
+            ErrorCode.BUSINESS_LIMIT_EXCEEDED,
+            "Tenant commercial state blocks write/background work")
+        .withDetail("reasonCode", "TENANT_COMMERCIAL_STATE_BLOCKED")
+        .withDetail("dimension", dimension)
+        .withDetail("commercialState", commercialState)
+        .withDetail("lifecycleState", lifecycleState.name());
   }
 }

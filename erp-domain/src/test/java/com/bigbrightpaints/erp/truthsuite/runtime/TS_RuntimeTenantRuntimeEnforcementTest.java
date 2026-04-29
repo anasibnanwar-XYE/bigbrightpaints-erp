@@ -11,7 +11,6 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
-import java.lang.reflect.Constructor;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.AfterEach;
@@ -119,10 +118,15 @@ class TS_RuntimeTenantRuntimeEnforcementTest {
   }
 
   @Test
-  void rejectsReadRequestWhenTenantLifecycleIsSuspended_beforeRuntimeAdmission() throws Exception {
+  void allowsReadRequestWhenTenantLifecycleIsSuspended_throughRuntimeAdmission() throws Exception {
     authenticateForCompany("actor@bbp.com", "ACME", "ROLE_ADMIN");
     when(companyService.resolveLifecycleStateByCode("ACME"))
         .thenReturn(CompanyLifecycleState.SUSPENDED);
+    TenantRuntimeEnforcementService.TenantRequestAdmission admission =
+        TenantRuntimeEnforcementService.TenantRequestAdmission.admitted("ACME", "chain-1");
+    when(tenantRuntimeRequestAdmissionService.beginRequest(
+            "ACME", "/api/v1/private", "GET", "actor@bbp.com", false))
+        .thenReturn(admission);
 
     MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/private");
     request.setAttribute("jwtClaims", claims("ACME", null));
@@ -130,9 +134,10 @@ class TS_RuntimeTenantRuntimeEnforcementTest {
 
     filter.doFilter(request, response, new MockFilterChain());
 
-    assertThat(response.getStatus()).isEqualTo(403);
-    verify(tenantRuntimeRequestAdmissionService, never())
-        .beginRequest(anyString(), anyString(), anyString(), anyString(), anyBoolean());
+    assertThat(response.getStatus()).isEqualTo(200);
+    verify(tenantRuntimeRequestAdmissionService)
+        .beginRequest("ACME", "/api/v1/private", "GET", "actor@bbp.com", false);
+    verify(tenantRuntimeRequestAdmissionService).completeRequest(admission, 200);
   }
 
   @Test
@@ -249,39 +254,10 @@ class TS_RuntimeTenantRuntimeEnforcementTest {
 
   private TenantRuntimeEnforcementService.TenantRequestAdmission admission(
       boolean admitted, String companyCode, int statusCode, String message) throws Exception {
-    Class<?> countersClass =
-        Class.forName(TenantRuntimeEnforcementService.class.getName() + "$TenantRuntimeCounters");
-    Constructor<?> countersConstructor = countersClass.getDeclaredConstructor();
-    countersConstructor.setAccessible(true);
-    Object counters = admitted ? countersConstructor.newInstance() : null;
-
-    Constructor<TenantRuntimeEnforcementService.TenantRequestAdmission> constructor =
-        TenantRuntimeEnforcementService.TenantRequestAdmission.class.getDeclaredConstructor(
-            boolean.class,
-            String.class,
-            String.class,
-            countersClass,
-            int.class,
-            String.class,
-            boolean.class,
-            String.class,
-            String.class,
-            String.class,
-            String.class,
-            String.class);
-    constructor.setAccessible(true);
-    return constructor.newInstance(
-        admitted,
-        companyCode,
-        "audit-chain",
-        counters,
-        statusCode,
-        message,
-        false,
-        null,
-        null,
-        null,
-        null,
-        null);
+    if (admitted) {
+      return TenantRuntimeEnforcementService.TenantRequestAdmission.admitted(
+          companyCode, "audit-chain");
+    }
+    return TenantRuntimeEnforcementService.TenantRequestAdmission.notTracked();
   }
 }

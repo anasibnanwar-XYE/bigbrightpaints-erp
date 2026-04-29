@@ -85,7 +85,16 @@ public class SuperAdminController {
       @RequestParam(value = "q", required = false) String query,
       @RequestParam(value = "page", defaultValue = "0") int page,
       @RequestParam(value = "size", defaultValue = "20") int size,
-      @RequestParam(value = "sort", defaultValue = "companyCode,asc") String sort) {
+      @RequestParam(value = "sort", defaultValue = "companyCode,asc") String sort,
+      @RequestParam(value = "includeArchived", defaultValue = "false") boolean includeArchived) {
+    return ResponseEntity.ok(
+        ApiResponse.success(
+            "Superadmin tenant list fetched",
+            controlPlaneService.listTenants(status, query, page, size, sort, includeArchived)));
+  }
+
+  public ResponseEntity<ApiResponse<PageResponse<SuperAdminTenantSummaryDto>>> listTenants(
+      String status, String query, int page, int size, String sort) {
     return ResponseEntity.ok(
         ApiResponse.success(
             "Superadmin tenant list fetched",
@@ -172,6 +181,66 @@ public class SuperAdminController {
       @PathVariable("id") Long tenantId) {
     return ResponseEntity.ok(
         ApiResponse.success("Tenant billing ledger fetched", billingService.getLedger(tenantId)));
+  }
+
+  @GetMapping("/tenants/{id}/commercial-state")
+  public ResponseEntity<ApiResponse<SuperAdminBillingDtos.CommercialStateResponse>>
+      getCommercialState(@PathVariable("id") Long tenantId) {
+    return ResponseEntity.ok(
+        ApiResponse.success(
+            "Tenant commercial state fetched", billingService.getCommercialState(tenantId)));
+  }
+
+  @PostMapping("/tenants/{id}/suspension/grace")
+  public ResponseEntity<ApiResponse<SuperAdminBillingDtos.CommercialStateResponse>> startGrace(
+      @PathVariable("id") Long tenantId,
+      @Valid @RequestBody SuperAdminBillingDtos.CommercialStateActionRequest request) {
+    return ResponseEntity.ok(
+        ApiResponse.success(
+            "Tenant billing grace started", billingService.startGrace(tenantId, request)));
+  }
+
+  @PostMapping("/tenants/{id}/suspension/read-only")
+  public ResponseEntity<ApiResponse<SuperAdminBillingDtos.CommercialStateResponse>> suspendReadOnly(
+      @PathVariable("id") Long tenantId,
+      @Valid @RequestBody SuperAdminBillingDtos.CommercialStateActionRequest request) {
+    return ResponseEntity.ok(
+        ApiResponse.success(
+            "Tenant read-only suspension applied",
+            billingService.suspendReadOnly(tenantId, request)));
+  }
+
+  @PostMapping("/tenants/{id}/suspension/blocked")
+  public ResponseEntity<ApiResponse<SuperAdminBillingDtos.CommercialStateResponse>> suspendBlocked(
+      @PathVariable("id") Long tenantId,
+      @Valid @RequestBody SuperAdminBillingDtos.CommercialStateActionRequest request) {
+    return ResponseEntity.ok(
+        ApiResponse.success(
+            "Tenant blocked suspension applied", billingService.suspendBlocked(tenantId, request)));
+  }
+
+  @PostMapping("/tenants/{id}/resume")
+  public ResponseEntity<ApiResponse<SuperAdminBillingDtos.CommercialStateResponse>> resumeTenant(
+      @PathVariable("id") Long tenantId,
+      @Valid @RequestBody SuperAdminBillingDtos.CommercialStateActionRequest request) {
+    return ResponseEntity.ok(
+        ApiResponse.success("Tenant resumed", billingService.resume(tenantId, request)));
+  }
+
+  @PostMapping("/tenants/{id}/cancel")
+  public ResponseEntity<ApiResponse<SuperAdminBillingDtos.CommercialStateResponse>> cancelTenant(
+      @PathVariable("id") Long tenantId,
+      @Valid @RequestBody SuperAdminBillingDtos.CommercialStateActionRequest request) {
+    return ResponseEntity.ok(
+        ApiResponse.success("Tenant canceled", billingService.cancel(tenantId, request)));
+  }
+
+  @PostMapping("/tenants/{id}/archive")
+  public ResponseEntity<ApiResponse<SuperAdminBillingDtos.CommercialStateResponse>> archiveTenant(
+      @PathVariable("id") Long tenantId,
+      @Valid @RequestBody SuperAdminBillingDtos.CommercialStateActionRequest request) {
+    return ResponseEntity.ok(
+        ApiResponse.success("Tenant archived", billingService.archive(tenantId, request)));
   }
 
   @GetMapping("/billing/metrics")

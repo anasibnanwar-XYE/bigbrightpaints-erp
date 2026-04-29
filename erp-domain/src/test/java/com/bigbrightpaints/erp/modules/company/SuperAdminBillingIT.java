@@ -2,6 +2,7 @@ package com.bigbrightpaints.erp.modules.company;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -251,6 +252,141 @@ class SuperAdminBillingIT extends AbstractIntegrationTest {
         .isGreaterThanOrEqualTo(240_000L);
   }
 
+  @Test
+  void commercialStateSuspensionResumeCancelArchiveMatrixIsAuditedAndListAware() {
+    Long tenantId = createTenant("M10SUS", "GROWTH", "DUE");
+    createSubscription(
+        tenantId,
+        subscriptionPayload("GROWTH", "MONTHLY", 75_000L, "ACTIVE", "INR", "2026-05-15T00:00:00Z"));
+    postLedger(
+        tenantId,
+        "invoices",
+        ledgerPayload(tenantId, "suspension-invoice", 75_000L, "INR", "Suspension invoice"));
+
+    Map<String, Object> grace =
+        postCommercialAction(
+            tenantId,
+            "suspension/grace",
+            Map.of("reason", "Payment due reminder", "graceUntilAt", "2026-05-20T00:00:00Z"));
+    assertCommercialState(grace, "GRACE", "ACTIVE", "ACTIVE", "GRACE");
+    assertThat(grace).containsEntry("safeReadsAllowed", true).containsEntry("writesAllowed", true);
+    assertAuditReason((Number) grace.get("auditEventId"), "commercial-state-grace-started");
+
+    Map<String, Object> readOnly =
+        postCommercialAction(
+            tenantId,
+            "suspension/read-only",
+            Map.of("reason", "Grace expired read only", "effectiveAt", "2026-05-21T00:00:00Z"));
+    assertCommercialState(readOnly, "SUSPENDED_READ_ONLY", "SUSPENDED", "HOLD", "OVERDUE");
+    assertThat(readOnly)
+        .containsEntry("loginAllowed", true)
+        .containsEntry("safeReadsAllowed", true)
+        .containsEntry("writesAllowed", false)
+        .containsEntry("backgroundWorkAllowed", false);
+    assertAuditReason(
+        (Number) readOnly.get("auditEventId"), "commercial-state-suspended-read-only");
+
+    Map<String, Object> blocked =
+        postCommercialAction(
+            tenantId,
+            "suspension/blocked",
+            Map.of("reason", "Payment still overdue", "effectiveAt", "2026-05-21T00:00:00Z"));
+    assertCommercialState(blocked, "SUSPENDED_BLOCKED", "SUSPENDED", "BLOCKED", "OVERDUE");
+    assertThat(blocked)
+        .containsEntry("loginAllowed", false)
+        .containsEntry("safeReadsAllowed", false)
+        .containsEntry("writesAllowed", false)
+        .containsEntry("backgroundWorkAllowed", false);
+
+    postLedger(
+        tenantId,
+        "payments",
+        ledgerPayload(tenantId, "suspension-payment", 75_000L, "INR", "Suspension payment"));
+    Map<String, Object> resumed =
+        postCommercialAction(tenantId, "resume", Map.of("reason", "Payment promise accepted"));
+    assertCommercialState(resumed, "ACTIVE", "ACTIVE", "ACTIVE", "PAID");
+    assertThat(resumed)
+        .containsEntry("writesAllowed", true)
+        .containsEntry("backgroundWorkAllowed", true);
+
+    Instant cancelEffectiveAt = Instant.parse("2026-06-01T00:00:00Z");
+    Map<String, Object> canceled =
+        postCommercialAction(
+            tenantId,
+            "cancel",
+            Map.of(
+                "reason",
+                "Customer requested cancellation",
+                "effectiveAt",
+                cancelEffectiveAt.toString()));
+    assertCommercialState(canceled, "CANCELED", "DEACTIVATED", "BLOCKED", "CANCELED");
+    assertThat(canceled).containsEntry("effectiveAt", cancelEffectiveAt.toString());
+    assertAuditReason((Number) canceled.get("auditEventId"), "commercial-state-canceled");
+
+    Map<String, Object> archived =
+        postCommercialAction(tenantId, "archive", Map.of("reason", "History-only archive"));
+    assertCommercialState(archived, "ARCHIVED", "DEACTIVATED", "BLOCKED", "ARCHIVED");
+    assertThat(archived).containsEntry("defaultListIncluded", false);
+
+    ResponseEntity<Map> defaultList =
+        rest.exchange(
+            "/api/v1/superadmin/tenants?q=" + archived.get("tenantCode"),
+            HttpMethod.GET,
+            new HttpEntity<>(superAdminHeaders),
+            Map.class);
+    assertThat(defaultList.getStatusCode()).isEqualTo(HttpStatus.OK);
+    @SuppressWarnings("unchecked")
+    Map<String, Object> defaultPage = (Map<String, Object>) defaultList.getBody().get("data");
+    assertThat(defaultPage.get("totalElements")).isEqualTo(0);
+
+    ResponseEntity<Map> includeArchivedList =
+        rest.exchange(
+            "/api/v1/superadmin/tenants?q=" + archived.get("tenantCode") + "&includeArchived=true",
+            HttpMethod.GET,
+            new HttpEntity<>(superAdminHeaders),
+            Map.class);
+    assertThat(includeArchivedList.getStatusCode()).isEqualTo(HttpStatus.OK);
+    @SuppressWarnings("unchecked")
+    Map<String, Object> archivedPage =
+        (Map<String, Object>) includeArchivedList.getBody().get("data");
+    assertThat(archivedPage.get("totalElements")).isEqualTo(1);
+  }
+
+  @Test
+  void billingStatusBoundaryDrivesGraceThenOverdueWithoutTimezoneDrift() {
+    Long tenantId = createTenant("M10TIM", "STARTER", "DUE");
+    createSubscription(
+        tenantId,
+        subscriptionPayload(
+            "STARTER", "MONTHLY", 10_000L, "ACTIVE", "INR", "2026-05-15T00:00:00Z"));
+    postLedger(
+        tenantId,
+        "invoices",
+        ledgerPayload(tenantId, "boundary", 10_000L, "INR", "Boundary invoice"));
+
+    Map<String, Object> oneInstantBefore =
+        postCommercialAction(
+            tenantId,
+            "suspension/grace",
+            Map.of(
+                "reason",
+                "Boundary check",
+                "effectiveAt",
+                "2026-05-19T23:59:59Z",
+                "graceUntilAt",
+                "2026-05-20T00:00:00Z"));
+    assertThat(oneInstantBefore).containsEntry("billingStatus", "GRACE");
+
+    Map<String, Object> atBoundary =
+        postCommercialAction(
+            tenantId,
+            "suspension/blocked",
+            Map.of("reason", "Boundary reached", "effectiveAt", "2026-05-20T00:00:00Z"));
+    assertThat(atBoundary)
+        .containsEntry("billingStatus", "OVERDUE")
+        .containsEntry("commercialState", "SUSPENDED_BLOCKED");
+  }
+
   private Long createTenant(String prefix, String planId, String billingStatus) {
     String code =
         (prefix + Long.toString(System.nanoTime(), 36) + "ZZZZZZZZ")
@@ -409,6 +545,34 @@ class SuperAdminBillingIT extends AbstractIntegrationTest {
         HttpMethod.POST,
         new HttpEntity<>(request, superAdminHeaders),
         Map.class);
+  }
+
+  private Map<String, Object> postCommercialAction(
+      Long tenantId, String action, Map<String, Object> request) {
+    ResponseEntity<Map> response =
+        rest.exchange(
+            "/api/v1/superadmin/tenants/" + tenantId + "/" + action,
+            HttpMethod.POST,
+            new HttpEntity<>(request, superAdminHeaders),
+            Map.class);
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+    @SuppressWarnings("unchecked")
+    Map<String, Object> data = (Map<String, Object>) response.getBody().get("data");
+    return data;
+  }
+
+  private void assertCommercialState(
+      Map<String, Object> data,
+      String commercialState,
+      String lifecycleState,
+      String runtimeState,
+      String billingStatus) {
+    assertThat(data)
+        .containsEntry("commercialState", commercialState)
+        .containsEntry("lifecycleState", lifecycleState)
+        .containsEntry("runtimeState", runtimeState)
+        .containsEntry("billingStatus", billingStatus);
+    assertThat(data).containsKeys("tenantId", "tenantCode", "reason", "auditEventId");
   }
 
   private HttpHeaders headers(String token) {

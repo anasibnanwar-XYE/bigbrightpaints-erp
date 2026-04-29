@@ -7,6 +7,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -220,7 +221,8 @@ public class TenantRuntimeEnforcementService {
     }
 
     TenantRuntimeRejection stateRejection =
-        stateRejection(policy, normalizedCompany, false, "POST");
+        stateRejection(
+            policy, normalizedCompany, false, authOperationAdmissionMethod(policy, operation));
     if (stateRejection != null) {
       incrementRejectedCount(usageCounters);
       auditRejection(stateRejection, actor, scope, "POST");
@@ -858,6 +860,18 @@ public class TenantRuntimeEnforcementService {
       case "GET", "HEAD", "OPTIONS", "TRACE" -> false;
       default -> true;
     };
+  }
+
+  private String authOperationAdmissionMethod(TenantRuntimePolicy policy, String operation) {
+    String normalized = normalizeUpperToken(operation, "UNKNOWN");
+    boolean readOnlyCommercialHold =
+        safePolicyState(policy) == TenantRuntimeState.HOLD
+            && Set.of("SUSPENDED_READ_ONLY", "BILLING_READ_ONLY")
+                .contains(safePolicyReasonCode(policy));
+    return readOnlyCommercialHold
+            && Set.of("LOGIN", "REFRESH_TOKEN", "AUTH_ME").contains(normalized)
+        ? "GET"
+        : "POST";
   }
 
   private boolean isTenantRuntimePolicyControlRequest(

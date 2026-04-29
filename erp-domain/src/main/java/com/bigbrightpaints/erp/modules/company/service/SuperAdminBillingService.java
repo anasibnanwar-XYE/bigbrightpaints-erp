@@ -24,6 +24,7 @@ import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.modules.auth.domain.UserPrincipal;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
+import com.bigbrightpaints.erp.modules.company.domain.CompanyLifecycleState;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.modules.company.domain.SuperAdminBillingLedgerEntry;
 import com.bigbrightpaints.erp.modules.company.domain.SuperAdminBillingLedgerEntryRepository;
@@ -47,16 +48,19 @@ public class SuperAdminBillingService {
   private final SuperAdminBillingSubscriptionRepository subscriptionRepository;
   private final SuperAdminBillingLedgerEntryRepository ledgerEntryRepository;
   private final AuditService auditService;
+  private final TenantRuntimeEnforcementService tenantRuntimeEnforcementService;
 
   public SuperAdminBillingService(
       CompanyRepository companyRepository,
       SuperAdminBillingSubscriptionRepository subscriptionRepository,
       SuperAdminBillingLedgerEntryRepository ledgerEntryRepository,
-      AuditService auditService) {
+      AuditService auditService,
+      TenantRuntimeEnforcementService tenantRuntimeEnforcementService) {
     this.companyRepository = companyRepository;
     this.subscriptionRepository = subscriptionRepository;
     this.ledgerEntryRepository = ledgerEntryRepository;
     this.auditService = auditService;
+    this.tenantRuntimeEnforcementService = tenantRuntimeEnforcementService;
   }
 
   @Transactional
@@ -190,6 +194,145 @@ public class SuperAdminBillingService {
         billingStatus,
         entries,
         privacy());
+  }
+
+  @Transactional(readOnly = true)
+  public SuperAdminBillingDtos.CommercialStateResponse getCommercialState(Long companyId) {
+    Company company = lockCompany(companyId);
+    SuperAdminBillingSubscription subscription = latestSubscription(companyId);
+    String commercialState = resolveCommercialState(company);
+    String billingStatus =
+        deriveBillingStatus(subscription, balance(companyId), CompanyTime.now(company));
+    return commercialStateResponse(
+        company,
+        subscription,
+        commercialState,
+        billingStatus,
+        accessRuntimeState(commercialState),
+        safeReason(company.getLifecycleReason()),
+        effectiveAtFor(commercialState, subscription, CompanyTime.now(company)),
+        null);
+  }
+
+  @Transactional
+  public SuperAdminBillingDtos.CommercialStateResponse startGrace(
+      Long companyId, SuperAdminBillingDtos.CommercialStateActionRequest request) {
+    SuperAdminBillingSubscription subscription = latestSubscription(companyId);
+    Instant effectiveAt = resolveEffectiveAt(subscription.getCompany(), request);
+    Instant graceUntilAt =
+        request != null && request.graceUntilAt() != null
+            ? request.graceUntilAt()
+            : subscription.getGraceUntilAt();
+    if (graceUntilAt == null || !graceUntilAt.isAfter(effectiveAt)) {
+      throw invalidInput("graceUntilAt must be after the grace effective time");
+    }
+    subscription.setGraceUntilAt(graceUntilAt);
+    subscriptionRepository.saveAndFlush(subscription);
+    return applyCommercialState(
+        subscription,
+        "GRACE",
+        CompanyLifecycleState.ACTIVE,
+        TenantRuntimeEnforcementService.TenantRuntimeState.ACTIVE,
+        "GRACE",
+        "commercial-state-grace-started",
+        request,
+        effectiveAt,
+        graceUntilAt);
+  }
+
+  @Transactional
+  public SuperAdminBillingDtos.CommercialStateResponse suspendReadOnly(
+      Long companyId, SuperAdminBillingDtos.CommercialStateActionRequest request) {
+    SuperAdminBillingSubscription subscription = latestSubscription(companyId);
+    Instant effectiveAt = resolveEffectiveAt(subscription.getCompany(), request);
+    String billingStatus = deriveBillingStatus(subscription, balance(companyId), effectiveAt);
+    return applyCommercialState(
+        subscription,
+        "SUSPENDED_READ_ONLY",
+        CompanyLifecycleState.SUSPENDED,
+        TenantRuntimeEnforcementService.TenantRuntimeState.HOLD,
+        billingStatus,
+        "commercial-state-suspended-read-only",
+        request,
+        effectiveAt,
+        subscription.getGraceUntilAt());
+  }
+
+  @Transactional
+  public SuperAdminBillingDtos.CommercialStateResponse suspendBlocked(
+      Long companyId, SuperAdminBillingDtos.CommercialStateActionRequest request) {
+    SuperAdminBillingSubscription subscription = latestSubscription(companyId);
+    Instant effectiveAt = resolveEffectiveAt(subscription.getCompany(), request);
+    String billingStatus = deriveBillingStatus(subscription, balance(companyId), effectiveAt);
+    return applyCommercialState(
+        subscription,
+        "SUSPENDED_BLOCKED",
+        CompanyLifecycleState.SUSPENDED,
+        TenantRuntimeEnforcementService.TenantRuntimeState.BLOCKED,
+        billingStatus,
+        "commercial-state-suspended-blocked",
+        request,
+        effectiveAt,
+        subscription.getGraceUntilAt());
+  }
+
+  @Transactional
+  public SuperAdminBillingDtos.CommercialStateResponse resume(
+      Long companyId, SuperAdminBillingDtos.CommercialStateActionRequest request) {
+    SuperAdminBillingSubscription subscription = latestSubscription(companyId);
+    Instant effectiveAt = resolveEffectiveAt(subscription.getCompany(), request);
+    String billingStatus = deriveBillingStatus(subscription, balance(companyId), effectiveAt);
+    String activeState = "TRIAL".equals(billingStatus) ? "TRIAL_ACTIVE" : "ACTIVE";
+    return applyCommercialState(
+        subscription,
+        activeState,
+        CompanyLifecycleState.ACTIVE,
+        TenantRuntimeEnforcementService.TenantRuntimeState.ACTIVE,
+        billingStatus,
+        "commercial-state-resumed",
+        request,
+        effectiveAt,
+        subscription.getGraceUntilAt());
+  }
+
+  @Transactional
+  public SuperAdminBillingDtos.CommercialStateResponse cancel(
+      Long companyId, SuperAdminBillingDtos.CommercialStateActionRequest request) {
+    SuperAdminBillingSubscription subscription = latestSubscription(companyId);
+    Instant effectiveAt = resolveEffectiveAt(subscription.getCompany(), request);
+    subscription.setStatus("CANCELED");
+    subscription.setCanceledAt(effectiveAt);
+    subscriptionRepository.saveAndFlush(subscription);
+    return applyCommercialState(
+        subscription,
+        "CANCELED",
+        CompanyLifecycleState.DEACTIVATED,
+        TenantRuntimeEnforcementService.TenantRuntimeState.BLOCKED,
+        "CANCELED",
+        "commercial-state-canceled",
+        request,
+        effectiveAt,
+        subscription.getGraceUntilAt());
+  }
+
+  @Transactional
+  public SuperAdminBillingDtos.CommercialStateResponse archive(
+      Long companyId, SuperAdminBillingDtos.CommercialStateActionRequest request) {
+    SuperAdminBillingSubscription subscription = latestSubscription(companyId);
+    Instant effectiveAt = resolveEffectiveAt(subscription.getCompany(), request);
+    subscription.setStatus("ARCHIVED");
+    subscription.setArchivedAt(effectiveAt);
+    subscriptionRepository.saveAndFlush(subscription);
+    return applyCommercialState(
+        subscription,
+        "ARCHIVED",
+        CompanyLifecycleState.DEACTIVATED,
+        TenantRuntimeEnforcementService.TenantRuntimeState.BLOCKED,
+        "ARCHIVED",
+        "commercial-state-archived",
+        request,
+        effectiveAt,
+        subscription.getGraceUntilAt());
   }
 
   @Transactional(readOnly = true)
@@ -342,6 +485,196 @@ public class SuperAdminBillingService {
     return subscriptionRepository
         .findTopByCompanyIdOrderByCreatedAtDescIdDesc(companyId)
         .orElseThrow(() -> invalidInput("Tenant does not have a billing subscription"));
+  }
+
+  private SuperAdminBillingDtos.CommercialStateResponse applyCommercialState(
+      SuperAdminBillingSubscription subscription,
+      String commercialState,
+      CompanyLifecycleState lifecycleState,
+      TenantRuntimeEnforcementService.TenantRuntimeState runtimeState,
+      String billingStatus,
+      String auditReason,
+      SuperAdminBillingDtos.CommercialStateActionRequest request,
+      Instant effectiveAt,
+      Instant graceUntilAt) {
+    Company company = subscription.getCompany();
+    String previousCommercialState = resolveCommercialState(company);
+    String previousBillingStatus = companyBillingStatusOrManual(company);
+    CompanyLifecycleState previousLifecycle =
+        company.getLifecycleState() == null
+            ? CompanyLifecycleState.ACTIVE
+            : company.getLifecycleState();
+    company.setLifecycleState(lifecycleState);
+    company.setLifecycleReason(commercialState);
+    company.setCommercialBillingStatus(billingStatus);
+    companyRepository.saveAndFlush(company);
+    tenantRuntimeEnforcementService.updatePolicy(
+        company.getCode(),
+        runtimeState,
+        commercialState,
+        safeRuntimeLimit(company.getQuotaMaxConcurrentRequests()),
+        safeRuntimeLimit(company.getQuotaMaxApiRequests()),
+        safeRuntimeLimit(company.getQuotaMaxActiveUsers()),
+        currentActor());
+    Long auditEventId =
+        auditRequired(
+            company,
+            auditReason,
+            Map.ofEntries(
+                Map.entry("oldCommercialState", previousCommercialState),
+                Map.entry("newCommercialState", commercialState),
+                Map.entry("oldBillingStatus", previousBillingStatus),
+                Map.entry("newBillingStatus", billingStatus),
+                Map.entry("oldLifecycleState", previousLifecycle.name()),
+                Map.entry("newLifecycleState", lifecycleState.name()),
+                Map.entry("runtimeState", runtimeState.name()),
+                Map.entry("effectiveAt", effectiveAt.toString()),
+                Map.entry("subscriptionId", String.valueOf(subscription.getId())),
+                Map.entry("reasonDetail", safeReason(request == null ? null : request.reason()))));
+    subscription.setAuditEventId(auditEventId);
+    subscriptionRepository.saveAndFlush(subscription);
+    return commercialStateResponse(
+        company,
+        subscription,
+        commercialState,
+        billingStatus,
+        runtimeState,
+        safeReason(request == null ? null : request.reason()),
+        effectiveAt,
+        auditEventId);
+  }
+
+  private SuperAdminBillingDtos.CommercialStateResponse commercialStateResponse(
+      Company company,
+      SuperAdminBillingSubscription subscription,
+      String commercialState,
+      String billingStatus,
+      TenantRuntimeEnforcementService.TenantRuntimeState runtimeState,
+      String reason,
+      Instant effectiveAt,
+      Long auditEventId) {
+    SuperAdminBillingDtos.AccessPolicy policy = accessPolicy(commercialState, runtimeState);
+    return new SuperAdminBillingDtos.CommercialStateResponse(
+        company.getId(),
+        company.getCode(),
+        subscription.getId(),
+        commercialState,
+        billingStatus,
+        company.getLifecycleState() == null
+            ? CompanyLifecycleState.ACTIVE.name()
+            : company.getLifecycleState().name(),
+        runtimeState.name(),
+        reason,
+        effectiveAt,
+        subscription.getGraceUntilAt(),
+        subscription.getCanceledAt(),
+        subscription.getArchivedAt(),
+        policy.loginAllowed(),
+        policy.safeReadsAllowed(),
+        policy.writesAllowed(),
+        policy.backgroundWorkAllowed(),
+        !"ARCHIVED".equals(commercialState),
+        auditEventId,
+        accessMatrix());
+  }
+
+  private Map<String, SuperAdminBillingDtos.AccessPolicy> accessMatrix() {
+    Map<String, SuperAdminBillingDtos.AccessPolicy> matrix = new LinkedHashMap<>();
+    matrix.put(
+        "GRACE",
+        new SuperAdminBillingDtos.AccessPolicy(
+            true, true, true, true, "ACTIVE", "resume or escalate after grace expiry"));
+    matrix.put(
+        "SUSPENDED_READ_ONLY",
+        new SuperAdminBillingDtos.AccessPolicy(
+            true, true, false, false, "HOLD", "resume or escalate to blocked"));
+    matrix.put(
+        "SUSPENDED_BLOCKED",
+        new SuperAdminBillingDtos.AccessPolicy(
+            false, false, false, false, "BLOCKED", "resume by Super Admin after resolution"));
+    matrix.put(
+        "CANCELED",
+        new SuperAdminBillingDtos.AccessPolicy(
+            false, false, false, false, "BLOCKED", "reactivation requires Super Admin resume"));
+    matrix.put(
+        "ARCHIVED",
+        new SuperAdminBillingDtos.AccessPolicy(
+            false, false, false, false, "BLOCKED", "history-only; no hard delete"));
+    return matrix;
+  }
+
+  private SuperAdminBillingDtos.AccessPolicy accessPolicy(
+      String commercialState, TenantRuntimeEnforcementService.TenantRuntimeState runtimeState) {
+    return accessMatrix()
+        .getOrDefault(
+            commercialState,
+            new SuperAdminBillingDtos.AccessPolicy(
+                true, true, true, true, runtimeState.name(), "normal active access"));
+  }
+
+  private String resolveCommercialState(Company company) {
+    if (company != null && StringUtils.hasText(company.getLifecycleReason())) {
+      String status = company.getLifecycleReason().trim().toUpperCase(Locale.ROOT);
+      if (Set.of(
+              "DRAFT",
+              "PENDING_ACTIVATION",
+              "SETUP_PENDING",
+              "TRIAL_ACTIVE",
+              "ACTIVE",
+              "GRACE",
+              "SUSPENDED_READ_ONLY",
+              "SUSPENDED_BLOCKED",
+              "CANCELED",
+              "ARCHIVED",
+              "SEED_FAILED")
+          .contains(status)) {
+        return status;
+      }
+    }
+    CompanyLifecycleState lifecycle =
+        company == null || company.getLifecycleState() == null
+            ? CompanyLifecycleState.ACTIVE
+            : company.getLifecycleState();
+    return switch (lifecycle) {
+      case ACTIVE -> "ACTIVE";
+      case SUSPENDED -> "SUSPENDED_BLOCKED";
+      case DEACTIVATED -> "ARCHIVED";
+    };
+  }
+
+  private TenantRuntimeEnforcementService.TenantRuntimeState accessRuntimeState(
+      String commercialState) {
+    return switch (commercialState) {
+      case "SUSPENDED_READ_ONLY" -> TenantRuntimeEnforcementService.TenantRuntimeState.HOLD;
+      case "SUSPENDED_BLOCKED", "CANCELED", "ARCHIVED" ->
+          TenantRuntimeEnforcementService.TenantRuntimeState.BLOCKED;
+      default -> TenantRuntimeEnforcementService.TenantRuntimeState.ACTIVE;
+    };
+  }
+
+  private Instant effectiveAtFor(
+      String commercialState, SuperAdminBillingSubscription subscription, Instant fallback) {
+    return switch (commercialState) {
+      case "CANCELED" ->
+          subscription.getCanceledAt() == null ? fallback : subscription.getCanceledAt();
+      case "ARCHIVED" ->
+          subscription.getArchivedAt() == null ? fallback : subscription.getArchivedAt();
+      default -> fallback;
+    };
+  }
+
+  private Instant resolveEffectiveAt(
+      Company company, SuperAdminBillingDtos.CommercialStateActionRequest request) {
+    return request != null && request.effectiveAt() != null
+        ? request.effectiveAt()
+        : CompanyTime.now(company);
+  }
+
+  private Integer safeRuntimeLimit(long value) {
+    if (value <= 0L) {
+      return null;
+    }
+    return value > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) value;
   }
 
   private Company lockCompany(Long companyId) {

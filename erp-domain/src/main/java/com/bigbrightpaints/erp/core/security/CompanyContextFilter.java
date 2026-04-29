@@ -319,9 +319,12 @@ public class CompanyContextFilter extends OncePerRequestFilter {
               response, "COMPANY_ACCESS_DENIED", "Access denied to company: " + companyCode);
           return;
         }
-        if (!lifecycleControlBypass && shouldDenyTenantRequestByLifecycle(lifecycleState)) {
+        if (!lifecycleControlBypass
+            && shouldDenyTenantRequestByLifecycle(lifecycleState, request.getMethod())) {
           writeAccessDenied(
-              response, "TENANT_LIFECYCLE_RESTRICTED", lifecycleDeniedMessage(lifecycleState));
+              response,
+              "TENANT_LIFECYCLE_RESTRICTED",
+              lifecycleDeniedMessage(lifecycleState, request.getMethod()));
           return;
         }
         if (!lifecycleControlBypass
@@ -792,6 +795,17 @@ public class CompanyContextFilter extends OncePerRequestFilter {
     return method.trim().toUpperCase(Locale.ROOT);
   }
 
+  private boolean isMutatingRequest(String method) {
+    String normalizedMethod = normalizeMethod(method);
+    if (normalizedMethod == null) {
+      return true;
+    }
+    return switch (normalizedMethod) {
+      case "GET", "HEAD", "OPTIONS", "TRACE" -> false;
+      default -> true;
+    };
+  }
+
   private static CompanyBoundControlRoute controlRoute(
       String method, String pathPattern, boolean tenantRuntimePolicyControl) {
     return new CompanyBoundControlRoute(
@@ -821,22 +835,26 @@ public class CompanyContextFilter extends OncePerRequestFilter {
     return normalizedPath;
   }
 
-  private boolean shouldDenyTenantRequestByLifecycle(CompanyLifecycleState lifecycleState) {
+  private boolean shouldDenyTenantRequestByLifecycle(
+      CompanyLifecycleState lifecycleState, String method) {
     CompanyLifecycleState resolvedState =
         lifecycleState == null ? CompanyLifecycleState.ACTIVE : lifecycleState;
     return switch (resolvedState) {
       case ACTIVE -> false;
-      case SUSPENDED -> true;
+      case SUSPENDED -> isMutatingRequest(method);
       case DEACTIVATED -> true;
     };
   }
 
-  private String lifecycleDeniedMessage(CompanyLifecycleState lifecycleState) {
+  private String lifecycleDeniedMessage(CompanyLifecycleState lifecycleState, String method) {
     CompanyLifecycleState resolvedState =
         lifecycleState == null ? CompanyLifecycleState.ACTIVE : lifecycleState;
     return switch (resolvedState) {
       case ACTIVE -> "Tenant lifecycle state allows access";
-      case SUSPENDED -> "Tenant is suspended";
+      case SUSPENDED ->
+          isMutatingRequest(method)
+              ? "Tenant is suspended in read-only mode"
+              : "Tenant suspended read-only access is allowed";
       case DEACTIVATED -> "Tenant is deactivated";
     };
   }

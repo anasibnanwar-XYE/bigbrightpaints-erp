@@ -46,6 +46,9 @@ public final class SuperAdminBillingDtos {
       @NotBlank @Size(max = 160) String idempotencyKey,
       @Size(max = 160) String externalReference) {}
 
+  public record CommercialStateActionRequest(
+      @NotBlank @Size(max = 300) String reason, Instant effectiveAt, Instant graceUntilAt) {}
+
   public record SubscriptionResponse(
       Long subscriptionId,
       Long tenantId,
@@ -108,6 +111,35 @@ public final class SuperAdminBillingDtos {
       Instant trialEndsAt,
       Long subscriptionId,
       int historyRows) {}
+
+  public record CommercialStateResponse(
+      Long tenantId,
+      String tenantCode,
+      Long subscriptionId,
+      String commercialState,
+      String billingStatus,
+      String lifecycleState,
+      String runtimeState,
+      String reason,
+      Instant effectiveAt,
+      Instant graceUntilAt,
+      Instant canceledAt,
+      Instant archivedAt,
+      boolean loginAllowed,
+      boolean safeReadsAllowed,
+      boolean writesAllowed,
+      boolean backgroundWorkAllowed,
+      boolean defaultListIncluded,
+      Long auditEventId,
+      Map<String, AccessPolicy> accessMatrix) {}
+
+  public record AccessPolicy(
+      boolean loginAllowed,
+      boolean safeReadsAllowed,
+      boolean writesAllowed,
+      boolean backgroundWorkAllowed,
+      String runtimeState,
+      String recoveryRule) {}
 
   public record BillingMetricsResponse(
       Instant calculatedAt, Map<String, CurrencyMetrics> currencies) {

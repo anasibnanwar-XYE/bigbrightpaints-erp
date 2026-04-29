@@ -1408,7 +1408,7 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
                   + status.toLowerCase(Locale.ROOT)
                   + "&q="
                   + code
-                  + "&page=0&size=20&sort=companyCode,asc",
+                  + "&page=0&size=20&sort=companyCode,asc&includeArchived=true",
               HttpMethod.GET,
               new HttpEntity<>(superAdminHeaders),
               Map.class);

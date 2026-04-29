@@ -230,12 +230,12 @@ class TenantRuntimeEnforcementServiceTest {
   }
 
   @Test
-  void holdTenant_rejectsNewRequests_withLockedStatusAndAuditFailure() {
+  void holdTenant_rejectsMutatingRequests_withLockedStatusAndAuditFailure() {
     TenantRuntimeEnforcementService.TenantRuntimeSnapshot holdSnapshot =
         service.holdTenant("ACME", "compliance_review", "ops@bbp.com");
 
     TenantRuntimeEnforcementService.TenantRequestAdmission rejected =
-        admissionService.beginRequest("ACME", "/api/v1/auth/me", "post", "actor@bbp.com");
+        admissionService.beginRequest("ACME", "/api/v1/private", "POST", "actor@bbp.com");
 
     assertThat(holdSnapshot.state())
         .isEqualTo(TenantRuntimeEnforcementService.TenantRuntimeState.HOLD);
@@ -246,6 +246,16 @@ class TenantRuntimeEnforcementServiceTest {
     assertThat(service.snapshot("ACME").metrics().rejectedRequests()).isEqualTo(1L);
     verify(auditService)
         .logAuthFailure(eq(AuditEvent.ACCESS_DENIED), eq("ACTOR@BBP.COM"), eq("ACME"), anyMap());
+  }
+
+  @Test
+  void holdTenant_allowsLoginAndRefreshForReadOnlySuspension() {
+    service.holdTenant("ACME", "billing_read_only", "ops@bbp.com");
+
+    admissionService.enforceAuthOperationAllowed("ACME", "owner@bbp.com", "LOGIN");
+    admissionService.enforceAuthOperationAllowed("ACME", "owner@bbp.com", "REFRESH_TOKEN");
+
+    assertThat(service.snapshot("ACME").metrics().rejectedRequests()).isEqualTo(0L);
   }
 
   @Test
@@ -414,12 +424,14 @@ class TenantRuntimeEnforcementServiceTest {
   }
 
   @Test
-  void enforceAuthOperationAllowed_onHeldTenantRejectsWithoutActiveUserLookup() {
+  void enforceAuthOperationAllowed_onHeldTenantRejectsUnsafeAuthMutationWithoutActiveUserLookup() {
     service.holdTenant("ACME", "compliance_pause", "ops@bbp.com");
     clearInvocations(userAccountRepository);
 
     assertThatThrownBy(
-            () -> admissionService.enforceAuthOperationAllowed("ACME", "actor@bbp.com", "login"))
+            () ->
+                admissionService.enforceAuthOperationAllowed(
+                    "ACME", "actor@bbp.com", "PASSWORD_CHANGE"))
         .isInstanceOf(AuthSecurityContractException.class)
         .satisfies(
             error -> {
