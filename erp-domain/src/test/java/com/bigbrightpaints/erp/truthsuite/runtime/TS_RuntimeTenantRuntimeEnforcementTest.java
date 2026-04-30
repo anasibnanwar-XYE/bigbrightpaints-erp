@@ -224,34 +224,6 @@ class TS_RuntimeTenantRuntimeEnforcementTest {
     verifyNoInteractions(tenantRuntimeRequestAdmissionService, companyService);
   }
 
-  @Test
-  void privateHelperMethods_coverCanonicalControlRequestBranches() {
-    assertThat(
-            (Boolean)
-                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-                    filter,
-                    "isLifecycleControlRequest",
-                    "/api/v1/superadmin/tenants/7/limits",
-                    "PUT"))
-        .isTrue();
-    assertThat(
-            (Boolean)
-                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-                    filter,
-                    "isLifecycleControlRequest",
-                    "/api/v1/superadmin/tenants/7/admins/3/email-change/confirm",
-                    "POST"))
-        .isTrue();
-    assertThat(
-            (Boolean)
-                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-                    filter,
-                    "isLifecycleControlRequest",
-                    "/api/v1/superadmin/tenants/7/limits",
-                    "PATCH"))
-        .isFalse();
-  }
-
   private Claims claims(String companyCode, String legacyCompanyId) {
     Claims claims = mock(Claims.class);
     when(claims.get("companyCode", String.class)).thenReturn(companyCode);

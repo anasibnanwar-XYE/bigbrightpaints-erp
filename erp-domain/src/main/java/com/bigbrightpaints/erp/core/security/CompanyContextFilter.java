@@ -308,12 +308,9 @@ public class CompanyContextFilter extends OncePerRequestFilter {
               response, "COMPANY_ACCESS_DENIED", "Access denied to company: " + companyCode);
           return;
         }
-        if (!lifecycleControlBypass
-            && shouldDenyTenantRequestByLifecycle(lifecycleState, request.getMethod())) {
+        if (!lifecycleControlBypass && shouldDenyTenantRequestByLifecycle(lifecycleState)) {
           writeAccessDenied(
-              response,
-              "TENANT_LIFECYCLE_RESTRICTED",
-              lifecycleDeniedMessage(lifecycleState, request.getMethod()));
+              response, "TENANT_LIFECYCLE_RESTRICTED", lifecycleDeniedMessage(lifecycleState));
           return;
         }
         if (!lifecycleControlRequest || tenantRuntimePolicyControlRequest) {
@@ -489,20 +486,6 @@ public class CompanyContextFilter extends OncePerRequestFilter {
       return new CompanyBoundControlBinding(companyId, route.tenantRuntimePolicyControl());
     }
     return null;
-  }
-
-  private Long extractCompanyIdFromControlPlanePath(String path) {
-    CompanyBoundControlBinding binding = resolveCompanyBoundControlBinding(path, null);
-    return binding == null ? null : binding.companyId();
-  }
-
-  private boolean isLifecycleControlRequest(String path, String method) {
-    return resolveCompanyBoundControlBinding(path, method) != null;
-  }
-
-  private boolean hasTenantRuntimePolicyControlAuthority(String path, String method) {
-    CompanyBoundControlBinding binding = resolveCompanyBoundControlBinding(path, method);
-    return binding != null && binding.tenantRuntimePolicyControl();
   }
 
   private String normalizeCompanyCode(String rawCompanyCode) {
@@ -739,8 +722,7 @@ public class CompanyContextFilter extends OncePerRequestFilter {
     return normalizedPath;
   }
 
-  private boolean shouldDenyTenantRequestByLifecycle(
-      CompanyLifecycleState lifecycleState, String method) {
+  private boolean shouldDenyTenantRequestByLifecycle(CompanyLifecycleState lifecycleState) {
     CompanyLifecycleState resolvedState =
         lifecycleState == null ? CompanyLifecycleState.ACTIVE : lifecycleState;
     return switch (resolvedState) {
@@ -750,23 +732,13 @@ public class CompanyContextFilter extends OncePerRequestFilter {
     };
   }
 
-  private String lifecycleDeniedMessage(CompanyLifecycleState lifecycleState, String method) {
+  private String lifecycleDeniedMessage(CompanyLifecycleState lifecycleState) {
     CompanyLifecycleState resolvedState =
         lifecycleState == null ? CompanyLifecycleState.ACTIVE : lifecycleState;
     return switch (resolvedState) {
       case ACTIVE -> "Tenant lifecycle state allows access";
       case SUSPENDED -> "Tenant is suspended";
       case DEACTIVATED -> "Tenant is deactivated";
-    };
-  }
-
-  private boolean isMutatingRequest(String method) {
-    if (!StringUtils.hasText(method)) {
-      return true;
-    }
-    return switch (method.trim().toUpperCase()) {
-      case "GET", "HEAD", "OPTIONS", "TRACE" -> false;
-      default -> true;
     };
   }
 }

@@ -128,7 +128,7 @@ Centralizes token digest computation. All token types (refresh, password-reset) 
 | `BlacklistedToken` | Per-JWT revocation record (tokenId, expiration, userId, reason) |
 | `UserTokenRevocation` | User-level revocation timestamp (revokedAt) |
 | `PasswordResetToken` | Password-reset token record (digest, user, expiresAt, used, deliveredAt) |
-| `MfaRecoveryCode` | Recovery code storage (embedded in UserAccount as hashed list) |
+| `MfaRecoveryCode` | First-class recovery-code rows with hashed single-use verifiers |
 | `UserPasswordHistory` | Password reuse prevention (stores BCrypt hashes of recent passwords) |
 
 ## JWT and Token Model

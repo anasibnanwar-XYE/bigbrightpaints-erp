@@ -253,8 +253,8 @@ class AdminUserServiceTest {
                           "platform-owner@example.com",
                           "Platform Owner",
                           List.of("ROLE_SUPER_ADMIN"))))
-          .isInstanceOf(ApplicationException.class)
-          .hasMessageContaining("Unsupported role for tenant-admin user management")
+          .isInstanceOf(AccessDeniedException.class)
+          .hasMessageContaining("SUPER_ADMIN authority required")
           .hasMessageContaining("ROLE_SUPER_ADMIN");
     } finally {
       SecurityContextHolder.clearContext();

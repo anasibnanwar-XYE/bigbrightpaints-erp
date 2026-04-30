@@ -421,22 +421,6 @@ class CompanyContextFilterControlPlaneBindingTest {
                 com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
                     filter, "isPlatformScopedRequestAllowed", "/api/v1/admin/audit/events"))
         .isFalse();
-    assertThat(
-            (Boolean)
-                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-                    filter,
-                    "hasTenantRuntimePolicyControlAuthority",
-                    "/api/v1/superadmin/tenants/42/limits",
-                    "PUT"))
-        .isTrue();
-    assertThat(
-            (Boolean)
-                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-                    filter,
-                    "isLifecycleControlRequest",
-                    "/api/v1/superadmin/tenants/coa-templates",
-                    "GET"))
-        .isFalse();
   }
 
   @Test
@@ -500,21 +484,6 @@ class CompanyContextFilterControlPlaneBindingTest {
   }
 
   @Test
-  void extractCompanyIdFromControlPlanePath_handlesCanonicalAndMalformedValues() {
-    assertThat(extractCompanyId(null)).isNull();
-    assertThat(extractCompanyId("   ")).isNull();
-    assertThat(extractCompanyId("/api/v1/private")).isNull();
-    assertThat(extractCompanyId("/api/v1/superadmin/tenants/not-a-number")).isNull();
-    assertThat(extractCompanyId("/api/v1/superadmin/tenants//limits")).isNull();
-    assertThat(extractCompanyId("/api/v1/superadmin/tenants/42")).isEqualTo(42L);
-    assertThat(extractCompanyId("/api/v1/superadmin/tenants/42/limits")).isEqualTo(42L);
-    assertThat(extractCompanyId("/api/v1/superadmin/tenants/42/support/admin-password-reset"))
-        .isEqualTo(42L);
-    assertThat(extractCompanyId("/api/v1/superadmin/tenants/42/review-intelligence"))
-        .isEqualTo(42L);
-  }
-
-  @Test
   void retiredSharedSupportPrefix_isNotClassifiedAsTenantBusinessKnowledge() {
     assertThat(isTenantBusinessRequestBlockedForSuperAdmin("/api/v1/support")).isFalse();
     assertThat(isTenantBusinessRequestBlockedForSuperAdmin("/api/v1/support/tickets")).isFalse();
@@ -526,12 +495,6 @@ class CompanyContextFilterControlPlaneBindingTest {
         .isTrue();
     assertThat(isTenantBusinessRequestBlockedForSuperAdmin("/api/v1/dealer-portal/support/tickets"))
         .isTrue();
-  }
-
-  private Long extractCompanyId(String path) {
-    return (Long)
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-            filter, "extractCompanyIdFromControlPlanePath", path);
   }
 
   private boolean isTenantBusinessRequestBlockedForSuperAdmin(String path) {

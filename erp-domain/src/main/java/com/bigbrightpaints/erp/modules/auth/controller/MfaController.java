@@ -155,7 +155,7 @@ public class MfaController {
       return ResponseEntity.ok(
           ApiResponse.success(
               "MFA recovery codes regenerated",
-              Map.of("regenerated", true, "recoveryCodes", recoveryCodes)));
+              Map.of("enabled", true, "regenerated", true, "recoveryCodes", recoveryCodes)));
     } catch (RuntimeException ex) {
       auditService.logAuthFailure(
           AuditEvent.MFA_FAILURE,

@@ -193,7 +193,7 @@ WHERE btrim(code_hash) <> ''
 ON CONFLICT DO NOTHING;
 
 UPDATE refresh_tokens
-SET token_digest = encode(digest(token, 'sha256'), 'hex')
+SET token_digest = encode(digest('refresh-token:' || token, 'sha256'), 'hex')
 WHERE token_digest IS NULL
   AND token IS NOT NULL
   AND btrim(token) <> '';
@@ -238,7 +238,7 @@ ALTER TABLE password_reset_tokens
     DROP CONSTRAINT IF EXISTS password_reset_tokens_token_key;
 
 UPDATE password_reset_tokens
-SET token_digest = encode(digest(token, 'sha256'), 'hex')
+SET token_digest = encode(digest('password-reset-token:' || token, 'sha256'), 'hex')
 WHERE token_digest IS NULL
   AND token IS NOT NULL
   AND btrim(token) <> '';

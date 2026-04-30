@@ -57,11 +57,13 @@ Last reviewed: 2026-04-30
   - `git diff --check`
   - `cd erp-domain && MIGRATION_SET=v2 mvn -q spotless:check`
   - `cd erp-domain && MIGRATION_SET=v2 mvn -q clean test-compile`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -q -Dtest=AdminUserServiceTest,TS_RuntimeCompanyContextFilterExecutableCoverageTest,TS_RuntimeTenantRuntimeEnforcementTest,CompanyContextFilterControlPlaneBindingTest,TS_IamCoreSchemaAndModelHardCutMigrationContractTest,MfaServiceTest,PasswordResetServiceTest test`
   - `cd erp-domain && MIGRATION_SET=v2 mvn -q -Djacoco.skip=true -Dtest=AdminUserServiceTest,MfaServiceTest,PasswordResetServiceTest,AuditServiceTest,JwtAuthenticationFilterRoleHierarchyTest,TS_RuntimePasswordResetServiceExecutableCoverageTest test`
   - `bash ci/lint-knowledgebase.sh`
+  - `bash ci/check-high-risk-changes.sh`
   - GitHub Actions CI for PR #197
 - Result summary:
-  - local formatting, compile/test-compile, docs lint, and selected non-Docker auth/admin tests passed
+  - local formatting, compile/test-compile, docs lint, high-risk change control, and selected non-Docker auth/admin/security/migration tests passed
   - Docker-backed OpenAPI/integration tests were verified in GitHub Actions
   - latest CI run passed including Compile Check, Access And Tenant Tests, Changed-Code Coverage, and PR Ship Gate
 - Artifacts/links:

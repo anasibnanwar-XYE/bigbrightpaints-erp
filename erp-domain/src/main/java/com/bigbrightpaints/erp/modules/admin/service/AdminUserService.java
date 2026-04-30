@@ -114,9 +114,7 @@ public class AdminUserService {
     Company company = companyContextService.requireCurrentCompany();
     List<UserAccount> users = userRepository.findByCompany_Id(company.getId());
     List<UserAccount> visibleUsers =
-        hasSuperAdminAuthority()
-            ? users
-            : users.stream().filter(user -> !isTenantAdminProtectedTarget(user)).toList();
+        users.stream().filter(user -> !isTenantAdminProtectedTarget(user)).toList();
     Map<String, Instant> lastLoginByEmail = resolveLastLoginByEmail(company.getId(), visibleUsers);
     return visibleUsers.stream()
         .map(user -> toDto(user, lastLoginByEmail.get(normalizeEmailKey(user.getEmail()))))
@@ -602,28 +600,15 @@ public class AdminUserService {
     return toDto(user, resolveLastLoginAt(user));
   }
 
-  private boolean hasSuperAdminAuthority() {
-    Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-    if (authentication == null || authentication.getAuthorities() == null) {
-      return false;
-    }
-    return authentication.getAuthorities().stream()
-        .anyMatch(authority -> SUPER_ADMIN_ROLE.equalsIgnoreCase(authority.getAuthority()));
-  }
-
   private List<String> validateAndNormalizeAssignableRoles(
       List<String> roles, Company actorCompany) {
     if (roles == null || roles.isEmpty()) {
       return List.of();
     }
-    boolean actorIsSuperAdmin = hasSuperAdminAuthority();
     Set<String> normalizedRoles = new LinkedHashSet<>(roles.size());
     for (String roleName : roles) {
       String normalizedRoleName = normalizeRequestedRoleName(roleName);
       if (requiresSuperAdminRoleAssignment(normalizedRoleName)) {
-        if (actorIsSuperAdmin) {
-          throw unsupportedRoleForTenantAdmin(normalizedRoleName);
-        }
         auditPrivilegedUserActionDenied(
             null,
             actorCompany,
@@ -887,10 +872,6 @@ public class AdminUserService {
   }
 
   private List<Company> resolveActorScopedTargetCompanies(UserAccount user, Company actorCompany) {
-    if (hasSuperAdminAuthority()) {
-      Company targetCompany = resolveTargetCompany(user, actorCompany);
-      return targetCompany == null ? List.of() : List.of(targetCompany);
-    }
     if (actorCompany == null || actorCompany.getId() == null) {
       return List.of();
     }

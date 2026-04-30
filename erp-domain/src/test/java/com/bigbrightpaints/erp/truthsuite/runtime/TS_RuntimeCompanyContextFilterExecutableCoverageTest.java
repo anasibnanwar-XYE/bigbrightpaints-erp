@@ -234,21 +234,7 @@ class TS_RuntimeCompanyContextFilterExecutableCoverageTest {
   }
 
   @Test
-  void helperMethods_coverCanonicalControlPathAndPathResolutionBranches() {
-    assertThat(invokeIsLifecycleControlRequest("/api/v1/superadmin/tenants/77", "GET")).isTrue();
-    assertThat(invokeIsLifecycleControlRequest("/api/v1/superadmin/tenants/77/lifecycle", "PUT"))
-        .isTrue();
-    assertThat(
-            invokeIsLifecycleControlRequest(
-                "/api/v1/superadmin/tenants/77/support/admin-password-reset", "POST"))
-        .isTrue();
-    assertThat(
-            invokeIsLifecycleControlRequest(
-                "/api/v1/superadmin/tenants/77/admins/9/email-change/request", "POST"))
-        .isTrue();
-    assertThat(invokeIsLifecycleControlRequest("/api/v1/superadmin/tenants/77", "POST")).isFalse();
-    assertThat(invokeIsLifecycleControlRequest("/api/v1/private", "POST")).isFalse();
-
+  void helperMethods_coverPathResolutionBranches() {
     assertThat(invokeResolveApplicationPath(null)).isNull();
     MockHttpServletRequest contextAware = request("PUT", "");
     contextAware.setContextPath("/erp");
@@ -283,22 +269,8 @@ class TS_RuntimeCompanyContextFilterExecutableCoverageTest {
         .isTrue();
     assertThat(invokeIsTenantAuditWorkflowRequest("/api/v1/admin/audit/events")).isTrue();
     assertThat(invokeIsTenantAuditWorkflowRequest("/api/v1/superadmin/settings")).isFalse();
-    assertThat(
-            invokeHasTenantRuntimePolicyControlAuthority(
-                "/api/v1/superadmin/tenants/77/limits", "PUT"))
-        .isTrue();
-    assertThat(
-            invokeExtractCompanyIdFromControlPlanePath(
-                "/api/v1/superadmin/tenants/not-a-number/limits"))
-        .isNull();
     assertThat(invokeSanitizeForLog("bad\nvalue\r")).isEqualTo("bad_value_");
     assertThat(invokeSanitizeForLog(null)).isNull();
-  }
-
-  private boolean invokeIsLifecycleControlRequest(String path, String method) {
-    return (Boolean)
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-            filter, "isLifecycleControlRequest", path, method);
   }
 
   private String invokeResolveApplicationPath(MockHttpServletRequest request) {
@@ -327,18 +299,6 @@ class TS_RuntimeCompanyContextFilterExecutableCoverageTest {
     return (Boolean)
         com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
             filter, "isTenantAuditWorkflowRequest", path);
-  }
-
-  private boolean invokeHasTenantRuntimePolicyControlAuthority(String path, String method) {
-    return (Boolean)
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-            filter, "hasTenantRuntimePolicyControlAuthority", path, method);
-  }
-
-  private Long invokeExtractCompanyIdFromControlPlanePath(String path) {
-    return (Long)
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-            filter, "extractCompanyIdFromControlPlanePath", path);
   }
 
   private String invokeSanitizeForLog(String value) {
