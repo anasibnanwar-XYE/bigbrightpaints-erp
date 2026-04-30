@@ -1,12 +1,13 @@
 # Routes
 
-Last reviewed: 2026-04-15
+Last reviewed: 2026-04-30
 
 | Route | Screen | Loader APIs | Primary actions | Guard |
 | --- | --- | --- | --- | --- |
 | `/tenant` | shell landing | `GET /api/v1/auth/me`, `GET /api/v1/admin/dashboard`, optional `GET /api/v1/changelog/latest-highlighted` | route to dashboard/users/approvals | tenant-admin session |
 | `/tenant/dashboard` | dashboard | `GET /api/v1/admin/dashboard` | view activity/approval/user/support/runtime summary | tenant-admin session |
 | `/tenant/users` | user list | `GET /api/v1/admin/users` | create, edit, status, lock/unlock, reset, MFA disable, revoke sessions | tenant-admin session |
+| `/tenant/users/new` | create user | `GET /api/v1/admin/users/assignable-roles` | `POST /api/v1/admin/users` | tenant-admin session |
 | `/tenant/users/:userId` | user detail/edit | `GET /api/v1/admin/users/{id}` | `PUT /api/v1/admin/users/{id}`, status/reset/MFA/lock/session actions | tenant-admin session |
 | `/tenant/approvals` | approval inbox | `GET /api/v1/admin/approvals` | open normalized approval detail | tenant-admin session |
 | `/tenant/approvals/:originType/:id` | approval detail | `GET /api/v1/admin/approvals` | `POST /api/v1/admin/approvals/{originType}/{id}/decisions` | tenant-admin session |
@@ -14,7 +15,7 @@ Last reviewed: 2026-04-15
 | `/tenant/support/tickets` | support list | `GET /api/v1/admin/support/tickets` | open ticket, create ticket | tenant-admin session |
 | `/tenant/support/tickets/new` | create support ticket | none beyond shell bootstrap | `POST /api/v1/admin/support/tickets` | tenant-admin session |
 | `/tenant/support/tickets/:ticketId` | support detail | `GET /api/v1/admin/support/tickets/{ticketId}` | read sync/error status | tenant-admin session |
-| `/tenant/settings` | self settings | `GET /api/v1/admin/self/settings`, `GET /api/v1/auth/me` | password change, MFA setup/activate/disable via auth APIs | tenant-admin session |
+| `/tenant/settings` | self settings | `GET /api/v1/admin/self/settings`, `GET /api/v1/auth/me`, `GET /api/v1/auth/me/security`, `GET /api/v1/auth/sessions` | profile/contact, password change, MFA setup/activate/disable/recovery-code rotation, session revocation | tenant-admin session |
 | `/tenant/changelog` | changelog list | `GET /api/v1/changelog?page=&size=` | read-only changelog entries | authenticated tenant session |
 
 Route rules:

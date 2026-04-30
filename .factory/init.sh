@@ -118,4 +118,4 @@ EOF
 fi
 
 cd "$ERP_DIR"
-MIGRATION_SET=v2 mvn -q -DskipTests -Djacoco.skip=true compile >/dev/null 2>&1 || true
+MIGRATION_SET=v2 mvn -q -DskipTests -Djacoco.skip=true -T8 compile >/dev/null 2>&1 || true

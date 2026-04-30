@@ -46,7 +46,7 @@ Each module section should include:
 - 2026-03-06 `controlled-auth-error-contracts`: supported auth/admin success payloads stay the same, but previously raw framework/servlet failure paths are now normalized into `ApiResponse` contracts. Lockout now returns `401` with `AUTH_005`, authenticated tenant-binding mismatches now return `403` `ApiResponse` envelopes with `AUTH_004` plus `reason` / `reasonDetail`, and tenant runtime hold/block/quota denials on login or authenticated auth requests now return controlled `ApiResponse` error bodies carrying their runtime denial codes (for example `TENANT_ON_HOLD`, `TENANT_BLOCKED`, `TENANT_REQUEST_RATE_EXCEEDED`).
 - 2026-03-06 `auth-compatibility-regression-handoff`: no auth/admin request or response shape changes were required. Login, refresh-token, logout, `/auth/me`, password-change, forgot/reset, admin user-control, and admin settings payloads remain frontend-safe; contract regression coverage was refreshed across those surfaces, and the published OpenAPI contract now matches the live `204 No Content` logout response so the `AuthControllerIT.refresh_token_revoked_after_logout` regression stays aligned with runtime behavior.
 - 2026-03-26 `auth-v2-hard-cut-canonicalization`: `POST /api/v1/auth/password/forgot` still masks unknown-user and disabled-user cases behind the generic success contract, but known scoped accounts now fail closed when reset-token storage or reset-email delivery/configuration fails. Frontend callers must treat forgot-password as a scoped recovery request that can return a real error instead of assuming `200 OK`.
-- 2026-04-28 `contract-routing-scrutiny-remediation`: retired `suspend`, `unsuspend`, and `DELETE /api/v1/admin/users/{id}` aliases are absent/non-mutating. Frontends must use `PUT /api/v1/admin/users/{id}/status`, `POST /api/v1/admin/users/{id}/lock`, `POST /api/v1/admin/users/{id}/unlock`, `PATCH /api/v1/admin/users/{id}/mfa/disable`, `DELETE /api/v1/admin/users/{id}/sessions`, and `POST /api/v1/admin/users/{id}/force-reset-password`.
+- 2026-03-07 `masked-admin-lock-scope-regression-fix`: admin user-management request and success-response payload shapes still did not change for `PATCH /api/v1/admin/users/{id}/{suspend|unsuspend}`, `PATCH /api/v1/admin/users/{id}/mfa/disable`, or `DELETE /api/v1/admin/users/{id}`. Tenant-admin foreign-target attempts on those paths still return the same masked `400 User not found` validation envelope as truly missing ids, but the backend now acquires pessimistic locks only through company-scoped lookup before falling back to a non-locking existence check for internal denial auditing, so no frontend code change is required.
 
 #### Endpoint Map
 
@@ -218,14 +218,14 @@ Password-policy failures currently surface as `VAL_001` with message prefix `Pas
 #### Current mission note
 
 - Dedicated review tracker: see `docs/frontend-update-v2/README.md` for the per-feature frontend follow-up matrix and explicit no-op entries for this mission.
-- 2026-03-06 `privileged-user-boundary-hardening`: tenant-boundary authorization and audit behavior were aligned for admin user-management operations. Current canonical operations are `POST /api/v1/admin/users/{id}/force-reset-password`, `PUT /api/v1/admin/users/{id}/status`, `POST /api/v1/admin/users/{id}/lock`, `POST /api/v1/admin/users/{id}/unlock`, `PATCH /api/v1/admin/users/{id}/mfa/disable`, and `DELETE /api/v1/admin/users/{id}/sessions`; platform super-admins stay on the canonical `/api/v1/superadmin/tenants/{id}/...` control plane instead of tenant-admin workflow prefixes.
+- 2026-03-06 `privileged-user-boundary-hardening`: no admin user-management request or response shape changes were required for `POST /api/v1/admin/users/{id}/force-reset-password`, `PUT /api/v1/admin/users/{id}/status`, `PATCH /api/v1/admin/users/{id}/{suspend|unsuspend}`, `PATCH /api/v1/admin/users/{id}/mfa/disable`, or `DELETE /api/v1/admin/users/{id}`. The feature aligned tenant-boundary authorization and audit behavior while preserving the existing frontend payloads for tenant-admin operators; platform super-admins stay on the canonical `/api/v1/superadmin/tenants/{id}/...` control plane instead of tenant-admin workflow prefixes.
 - 2026-03-06 `global-security-settings-authorization`: no admin settings request or response payload shapes changed, but `PUT /api/v1/admin/settings` requires `ROLE_SUPER_ADMIN` because it mutates platform-wide CORS, mail, export, and related global settings. Legacy admin/company runtime-policy aliases are retired from the published contract; tenant lifecycle and quota control now live on the superadmin tenant routes below.
-- 2026-03-06 `auth-compatibility-regression-handoff`: admin user-control no-content endpoints are documented as `204 No Content` for canonical operations; retired admin `suspend`, `unsuspend`, `DELETE /api/v1/admin/users/{id}`, and admin settings aliases are no longer published.
+- 2026-03-06 `auth-compatibility-regression-handoff`: no admin request or response payload shapes changed for `POST /api/v1/admin/users/{id}/force-reset-password`, `PUT /api/v1/admin/users/{id}/status`, `PATCH /api/v1/admin/users/{id}/{suspend|unsuspend}`, `PATCH /api/v1/admin/users/{id}/mfa/disable`, `DELETE /api/v1/admin/users/{id}`, `GET /api/v1/admin/settings`, and `PUT /api/v1/admin/settings`; the refreshed OpenAPI snapshot also documents the user-control no-content endpoints as `204 No Content` instead of stale `200` responses.
 - 2026-03-15 `lane01-canonicalize-company-runtime-writer`: both legacy public runtime-policy writers are retired from the published contract. Superadmin tenant quota/runtime control now lives on `PUT /api/v1/superadmin/tenants/{id}/limits`, and tenant detail/limits reads come from the superadmin tenant detail routes.
 - 2026-03-29 `erp-11-12-13-26-29-contract-closure`: the current backend does not expose dedicated UI fields for `sessionTimeoutMinutes`, `passwordMinLength`, `maxLoginAttempts`, or `mfaRequired`. Frontend/UAT should treat those as unsupported until a real backend contract lands, use the support endpoints under `/api/v1/superadmin/tenants/{id}/support/*`, create catalog records through `/api/v1/catalog/items`, and treat `/api/v1/raw-materials/intake` plus bulk-variant catalog routes as retired.
 - 2026-03-06 `tenant-lifecycle-rollout-safety-hardening`: no auth/admin/lifecycle request or response payload shapes changed. The current public lifecycle control plane is `PUT /api/v1/superadmin/tenants/{id}/lifecycle`; the backend continues to persist Flyway-v2-compatible lifecycle storage values (`ACTIVE`, `HOLD`, `BLOCKED`), and corrupted or unrecognized stored lifecycle values now fail closed instead of being treated as active.
-- 2026-03-07 `masked-admin-target-lookup-hardening`: tenant-admin attempts to canonical admin user-management mutation paths against a foreign-tenant user id return the same `400 User not found` validation envelope as a truly missing id. This masks foreign targets from enumeration while preserving internal `ACCESS_DENIED` audit evidence, and `POST /api/v1/admin/roles` remains request/response compatible while now enforcing the super-admin mutation boundary directly at the controller guard.
-- 2026-03-07 `masked-admin-lock-scope-regression-fix`: canonical masked foreign-target behavior no longer takes cross-tenant pessimistic locks before scope checks, so the frontend should continue treating foreign and missing targets identically.
+- 2026-03-07 `masked-admin-target-lookup-hardening`: admin user-management request and success-response payload shapes still did not change, but tenant-admin attempts to `POST /api/v1/admin/users/{id}/force-reset-password`, `PUT /api/v1/admin/users/{id}/status`, `PATCH /api/v1/admin/users/{id}/{suspend|unsuspend}`, `PATCH /api/v1/admin/users/{id}/mfa/disable`, or `DELETE /api/v1/admin/users/{id}` against a foreign-tenant user id now return the same `400 User not found` validation envelope as a truly missing id. This masks foreign targets from enumeration while preserving internal `ACCESS_DENIED` audit evidence, and `POST /api/v1/admin/roles` remains request/response compatible while now enforcing the super-admin mutation boundary directly at the controller guard.
+- 2026-03-07 `masked-admin-lock-scope-regression-fix`: no admin request or response payload shapes changed. The masked foreign-target behavior from `masked-admin-target-lookup-hardening` remains the same for tenant-admin `suspend`, `unsuspend`, `mfa/disable`, and `delete` actions, but those paths no longer take cross-tenant pessimistic locks before scope checks, so the frontend should continue treating foreign and missing targets identically and needs no migration.
 
 #### Endpoint Map
 
@@ -259,10 +259,10 @@ Password-policy failures currently surface as `VAL_001` with message prefix `Pas
 | PUT | `/api/v1/admin/users/{id}` | `ROLE_ADMIN` | `UpdateUserRequest` | `UserDto` |
 | PUT | `/api/v1/admin/users/{id}/status` | `ROLE_ADMIN` | `UpdateUserStatusRequest` | `UserDto` |
 | POST | `/api/v1/admin/users/{id}/force-reset-password` | `ROLE_ADMIN` | None | `ApiResponse<String>` (`"OK"`) |
-| POST | `/api/v1/admin/users/{id}/lock` | `ROLE_ADMIN` | None | `204 No Content` |
-| POST | `/api/v1/admin/users/{id}/unlock` | `ROLE_ADMIN` | None | `204 No Content` |
+| PATCH | `/api/v1/admin/users/{id}/suspend` | `ROLE_ADMIN` | None | `204 No Content` |
+| PATCH | `/api/v1/admin/users/{id}/unsuspend` | `ROLE_ADMIN` | None | `204 No Content` |
 | PATCH | `/api/v1/admin/users/{id}/mfa/disable` | `ROLE_ADMIN` | None | `204 No Content` |
-| DELETE | `/api/v1/admin/users/{id}/sessions` | `ROLE_ADMIN` | None | `204 No Content` |
+| DELETE | `/api/v1/admin/users/{id}` | `ROLE_ADMIN` | None | `204 No Content` |
 | GET | `/api/v1/admin/audit/events` | `ROLE_ADMIN` (tenant-scoped only) | Query: `from?`, `to?`, `module?`, `action?`, `status?`, `actor?`, `entityType?`, `reference?`, `page?`, `size?` | `PageResponse<AuditFeedItemDto>` |
 | GET | `/api/v1/admin/roles` | `ROLE_ADMIN` or `ROLE_SUPER_ADMIN` | None | `List<RoleDto>` |
 | GET | `/api/v1/admin/roles/{roleKey}` | `ROLE_ADMIN` or `ROLE_SUPER_ADMIN` | None | `RoleDto` |
@@ -314,7 +314,7 @@ Disabled module requests return `403` with `BUS_010` (`MODULE_DISABLED`). Runtim
    5. Use `PUT /api/v1/admin/users/{id}` for role/company updates.
    6. Use `PUT /api/v1/admin/users/{id}/status` with `{ enabled: boolean }` for explicit activation/deactivation.
    7. Use `POST /api/v1/admin/users/{id}/force-reset-password` to trigger a reset link for a target user.
-   8. Lock/unlock, session-revocation, and MFA-disable endpoints remain available for direct account operations; retired `suspend`, `unsuspend`, and `DELETE /api/v1/admin/users/{id}` aliases are absent.
+   8. Suspend/unsuspend and MFA-disable PATCH endpoints remain available for direct account operations.
 
 4. **Tenant lifecycle operations (superadmin)**
    1. Review status in `GET /api/v1/superadmin/tenants`.
@@ -333,10 +333,10 @@ Disabled module requests return `403` with `BUS_010` (`MODULE_DISABLED`). Runtim
 2. **Admin user lifecycle**
    - `enabled=true` -> `enabled=false` via `PUT /api/v1/admin/users/{id}/status` with `{ enabled: false }`
    - `enabled=false` -> `enabled=true` via `PUT /api/v1/admin/users/{id}/status` with `{ enabled: true }`
-   - `unlocked` -> `locked` via `POST /api/v1/admin/users/{id}/lock`
-   - `locked` -> `unlocked` via `POST /api/v1/admin/users/{id}/unlock`
+   - `enabled=true` -> `enabled=false` via `PATCH /api/v1/admin/users/{id}/suspend`
+   - `enabled=false` -> `enabled=true` via `PATCH /api/v1/admin/users/{id}/unsuspend`
    - `POST /api/v1/admin/users/{id}/force-reset-password` triggers reset email/token issuance for the target account without changing the enabled flag
-   - active sessions are revoked via `DELETE /api/v1/admin/users/{id}/sessions`
+   - `enabled=true|false` -> `DELETED` via `DELETE /api/v1/admin/users/{id}`
    - `MFA_ENABLED` -> `MFA_DISABLED` via `PATCH /api/v1/admin/users/{id}/mfa/disable`
 
 #### Error Codes / Error Handling
@@ -344,7 +344,7 @@ Disabled module requests return `403` with `BUS_010` (`MODULE_DISABLED`). Runtim
 | Error code / status | Meaning | Suggested frontend behavior |
 |---|---|---|
 | `AUTH_004` (`AUTH_INSUFFICIENT_PERMISSIONS`) / 403 | Caller lacks role (e.g., non-superadmin on control plane) | Route to access-denied state and hide privileged actions. |
-| `AUTH_006` (`AUTH_ACCOUNT_DISABLED`) / 401 | Disabled or inactive account state on authenticated/refresh/self-service paths after login | End the current session and route to support/admin contact without retry loops. Login itself remains generic invalid-credentials and must not show an account-disabled state. |
+| `AUTH_006` (`AUTH_ACCOUNT_DISABLED`) / 401 | Disabled user attempted auth/login or token refresh | Show account-disabled screen; block retry loops and route to support/admin contact. |
 | `BUS_010` (`MODULE_DISABLED`) / 403 | Tenant module disabled by gating policy | Show module-disabled empty state; hide create/write CTA. |
 | `VAL_001` (`VALIDATION_INVALID_INPUT`) / 400 | Invalid status filter, unknown tenant/user/company, missing lifecycle reason, invalid enabled modules payload | Inline validation + toast with backend message. |
 | `VAL_007` (`VALIDATION_INVALID_STATE`) / 400 or 409 | Invalid tenant lifecycle transition | Show state-transition-specific error and refresh tenant row status. |

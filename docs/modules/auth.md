@@ -1,6 +1,6 @@
 # Auth Module
 
-Last reviewed: 2026-03-30
+Last reviewed: 2026-04-30
 
 This packet documents the **auth module** (`modules/auth`) and the core security infrastructure that underpins the authentication corridor. It covers login, refresh, logout, MFA, password management, must-change-password enforcement, token/session revocation, JWT-based tenant scoping, and the key security filters in the request pipeline.
 
@@ -32,6 +32,10 @@ Core security infrastructure in `core/security/` owns the **request-pipeline enf
 | PATCH | `/api/v1/auth/me/contact` | Authenticated | Self-service secondary contact fields only |
 | GET | `/api/v1/auth/me/security` | Authenticated | Self-service MFA/password/session summary |
 | GET | `/api/v1/auth/me/security-events` | Authenticated | Self-service security history, paginated and redacted |
+| GET | `/api/v1/auth/sessions` | Authenticated | List current user's active sessions/devices |
+| DELETE | `/api/v1/auth/sessions/{sessionId}` | Authenticated | Revoke another current-user session |
+| DELETE | `/api/v1/auth/sessions/current` | Authenticated | Revoke current session |
+| DELETE | `/api/v1/auth/sessions` | Authenticated | Revoke all current-user sessions |
 | POST | `/api/v1/auth/password/change` | Authenticated | Authenticated password change (respects must-change-password skip) |
 | POST | `/api/v1/auth/password/forgot` | Public | Password-reset email dispatch (rate-limited, scope-aware) |
 | POST | `/api/v1/auth/password/reset` | Public | Token-based password reset with confirmation |
@@ -40,9 +44,11 @@ Core security infrastructure in `core/security/` owns the **request-pipeline enf
 
 | Method | Path | Auth | Purpose |
 | --- | --- | --- | --- |
+| GET | `/api/v1/auth/mfa` | Authenticated | Current user's MFA status |
 | POST | `/api/v1/auth/mfa/setup` | Authenticated | Begin TOTP enrollment (secret + QR URI + recovery codes) |
 | POST | `/api/v1/auth/mfa/activate` | Authenticated | Confirm TOTP enrollment with first valid code |
 | POST | `/api/v1/auth/mfa/disable` | Authenticated | Disable MFA (requires TOTP code or recovery code) |
+| POST | `/api/v1/auth/mfa/recovery-codes/regenerate` | Authenticated | Rotate recovery codes after fresh MFA proof |
 
 ### SuperAdminController — tenant admin support recovery
 

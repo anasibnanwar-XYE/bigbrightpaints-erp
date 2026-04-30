@@ -33,7 +33,7 @@ Environment variables, external dependencies, and setup notes.
 ## Runtime Notes
 
 - Use Flyway v2 only for this mission.
-- The approved mission-owned compose boundary is `15434` / `15673` / `18025` / `18081` / `19090`; repo executable manifests must not bind or health-check the old default boundary.
+- The approved repo-owned compose boundary is `5433` / `5672` / `8025` / `8081` / `9090`.
 - Host Postgres `5432` is off-limits for mission runtime work.
 - Run Maven from `erp-domain/` so `.mvn/settings.xml` and `.mvn/maven.config` resolve correctly.
 - Direct `docker compose up` for dependency services still parses the app service, so datasource, JWT, encryption, and audit-key env vars must be present even when only starting `db`, `rabbitmq`, or `mailhog`.
