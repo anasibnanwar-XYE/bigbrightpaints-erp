@@ -21,7 +21,9 @@ import com.bigbrightpaints.erp.modules.auth.service.MfaService;
 import com.bigbrightpaints.erp.modules.auth.service.MfaService.MfaEnrollment;
 import com.bigbrightpaints.erp.modules.auth.web.MfaActivateRequest;
 import com.bigbrightpaints.erp.modules.auth.web.MfaDisableRequest;
+import com.bigbrightpaints.erp.modules.auth.web.MfaRecoveryCodesResponse;
 import com.bigbrightpaints.erp.modules.auth.web.MfaSetupResponse;
+import com.bigbrightpaints.erp.modules.auth.web.MfaStatusResponse;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 
 import io.jsonwebtoken.Claims;
@@ -69,18 +71,18 @@ public class MfaController {
   }
 
   @GetMapping
-  public ResponseEntity<ApiResponse<Map<String, Object>>> status(
+  public ResponseEntity<ApiResponse<MfaStatusResponse>> status(
       @AuthenticationPrincipal UserPrincipal principal) {
     if (principal == null) {
       return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
           .body(ApiResponse.failure("Unauthenticated"));
     }
     return ResponseEntity.ok(
-        ApiResponse.success(Map.of("enabled", principal.getUser().isMfaEnabled())));
+        ApiResponse.success(new MfaStatusResponse(principal.getUser().isMfaEnabled())));
   }
 
   @PostMapping("/activate")
-  public ResponseEntity<ApiResponse<Map<String, Object>>> activate(
+  public ResponseEntity<ApiResponse<MfaStatusResponse>> activate(
       @AuthenticationPrincipal UserPrincipal principal,
       @Valid @RequestBody MfaActivateRequest request) {
     if (principal == null) {
@@ -94,7 +96,7 @@ public class MfaController {
           principal.getUsername(),
           resolveCompanyCode(principal),
           auditMetadata("mfa_enabled"));
-      return ResponseEntity.ok(ApiResponse.success("MFA enabled", Map.of("enabled", true)));
+      return ResponseEntity.ok(ApiResponse.success("MFA enabled", new MfaStatusResponse(true)));
     } catch (RuntimeException ex) {
       auditService.logAuthFailure(
           AuditEvent.MFA_FAILURE,
@@ -106,7 +108,7 @@ public class MfaController {
   }
 
   @PostMapping("/disable")
-  public ResponseEntity<ApiResponse<Map<String, Object>>> disable(
+  public ResponseEntity<ApiResponse<MfaStatusResponse>> disable(
       @AuthenticationPrincipal UserPrincipal principal,
       @Valid @RequestBody MfaDisableRequest request) {
     if (principal == null) {
@@ -120,7 +122,7 @@ public class MfaController {
           principal.getUsername(),
           resolveCompanyCode(principal),
           auditMetadata("mfa_disabled"));
-      return ResponseEntity.ok(ApiResponse.success("MFA disabled", Map.of("enabled", false)));
+      return ResponseEntity.ok(ApiResponse.success("MFA disabled", new MfaStatusResponse(false)));
     } catch (RuntimeException ex) {
       auditService.logAuthFailure(
           AuditEvent.MFA_FAILURE,
@@ -132,7 +134,7 @@ public class MfaController {
   }
 
   @PostMapping("/recovery-codes/regenerate")
-  public ResponseEntity<ApiResponse<Map<String, Object>>> regenerateRecoveryCodes(
+  public ResponseEntity<ApiResponse<MfaRecoveryCodesResponse>> regenerateRecoveryCodes(
       @AuthenticationPrincipal UserPrincipal principal,
       HttpServletRequest servletRequest,
       @Valid @RequestBody MfaDisableRequest request) {
@@ -154,8 +156,7 @@ public class MfaController {
           auditMetadata("mfa_recovery_codes_regenerated"));
       return ResponseEntity.ok(
           ApiResponse.success(
-              "MFA recovery codes regenerated",
-              Map.of("enabled", true, "recoveryCodes", recoveryCodes)));
+              "MFA recovery codes regenerated", new MfaRecoveryCodesResponse(true, recoveryCodes)));
     } catch (RuntimeException ex) {
       auditService.logAuthFailure(
           AuditEvent.MFA_FAILURE,

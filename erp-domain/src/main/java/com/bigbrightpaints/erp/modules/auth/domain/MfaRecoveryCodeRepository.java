@@ -14,15 +14,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import jakarta.persistence.LockModeType;
 
-/**
- * Repository for MFA recovery code operations.
- */
 @Repository
 public interface MfaRecoveryCodeRepository extends JpaRepository<MfaRecoveryCode, Long> {
 
-  /**
-   * Find all unused recovery codes for a user.
-   */
   @Query("SELECT rc FROM MfaRecoveryCode rc WHERE rc.user = :user AND rc.usedAt IS NULL")
   List<MfaRecoveryCode> findUnusedByUser(@Param("user") UserAccount user);
 
@@ -33,32 +27,20 @@ public interface MfaRecoveryCodeRepository extends JpaRepository<MfaRecoveryCode
   @Query("SELECT rc FROM MfaRecoveryCode rc WHERE rc.user = :user AND rc.usedAt IS NULL")
   List<MfaRecoveryCode> findUnusedByUserForUpdate(@Param("user") UserAccount user);
 
-  /**
-   * Find a specific unused recovery code by user and hash.
-   */
   @Query(
       "SELECT rc FROM MfaRecoveryCode rc WHERE rc.user = :user AND rc.codeHash = :codeHash AND"
           + " rc.usedAt IS NULL")
   Optional<MfaRecoveryCode> findUnusedByUserAndCodeHash(
       @Param("user") UserAccount user, @Param("codeHash") String codeHash);
 
-  /**
-   * Delete all recovery codes for a user (used when disabling MFA).
-   */
   @Modifying
   @Transactional
   @Query("DELETE FROM MfaRecoveryCode rc WHERE rc.user = :user")
   void deleteAllByUser(@Param("user") UserAccount user);
 
-  /**
-   * Count unused recovery codes for a user.
-   */
   @Query("SELECT COUNT(rc) FROM MfaRecoveryCode rc WHERE rc.user = :user AND rc.usedAt IS NULL")
   long countUnusedByUser(@Param("user") UserAccount user);
 
-  /**
-   * Clean up old used recovery codes (for maintenance).
-   */
   @Modifying
   @Transactional
   @Query("DELETE FROM MfaRecoveryCode rc WHERE rc.usedAt IS NOT NULL AND rc.usedAt < :cutoffDate")

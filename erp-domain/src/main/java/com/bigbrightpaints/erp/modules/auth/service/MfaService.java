@@ -119,7 +119,6 @@ public class MfaService {
     }
     String secret = generateSecret();
     List<String> recoveryCodes = generateRecoveryCodes();
-    // Encrypt the MFA secret before storing
     user.setMfaSecret(cryptoService.encrypt(secret));
     user.setMfaEnabled(false);
     userAccountRepository.save(user);
@@ -132,7 +131,6 @@ public class MfaService {
   public void activate(UserAccount user, String code) {
     requireUser(user);
     accountLockoutService.enforceUnlocked(user);
-    // Decrypt the MFA secret for validation
     String decryptedSecret = requireActiveSecret(user);
     if (!isValidTotp(decryptedSecret, code)) {
       accountLockoutService.recordFailure(user);
@@ -153,7 +151,6 @@ public class MfaService {
       return;
     }
     boolean cleared = false;
-    // Decrypt the MFA secret for validation
     String decryptedSecret = requireActiveSecret(user);
     if (isValidTotp(decryptedSecret, totpCode)) {
       cleared = true;
@@ -218,7 +215,6 @@ public class MfaService {
     }
     String normalizedTotp = normalizeCode(totpCode);
     String normalizedRecovery = normalizeCode(recoveryCode);
-    // Decrypt the MFA secret for validation
     String decryptedSecret = requireActiveSecret(user);
     if (StringUtils.hasText(normalizedTotp) && isValidTotp(decryptedSecret, normalizedTotp)) {
       return;

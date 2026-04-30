@@ -20,13 +20,12 @@ import org.springframework.security.config.annotation.method.configuration.Enabl
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
-
-import com.bigbrightpaints.erp.modules.auth.service.UserAccountDetailsService;
 
 @Configuration
 @EnableMethodSecurity
@@ -39,7 +38,7 @@ public class SecurityConfig {
   private final CompanyContextFilter companyContextFilter;
   private final MustChangePasswordCorridorFilter mustChangePasswordCorridorFilter;
   private final AuditAwareAccessDeniedHandler auditAwareAccessDeniedHandler;
-  private final UserAccountDetailsService userDetailsService;
+  private final UserDetailsService userDetailsService;
   private final Environment environment;
   private final boolean swaggerPublic;
 
@@ -50,7 +49,7 @@ public class SecurityConfig {
       CompanyContextFilter companyContextFilter,
       MustChangePasswordCorridorFilter mustChangePasswordCorridorFilter,
       AuditAwareAccessDeniedHandler auditAwareAccessDeniedHandler,
-      UserAccountDetailsService userDetailsService,
+      UserDetailsService userDetailsService,
       @Autowired(required = false) Environment environment,
       @Value("${erp.security.swagger-public:false}") boolean swaggerPublic) {
     this.jwtAuthenticationFilter = jwtAuthenticationFilter;
@@ -69,7 +68,7 @@ public class SecurityConfig {
       CompanyContextFilter companyContextFilter,
       MustChangePasswordCorridorFilter mustChangePasswordCorridorFilter,
       AuditAwareAccessDeniedHandler auditAwareAccessDeniedHandler,
-      UserAccountDetailsService userDetailsService,
+      UserDetailsService userDetailsService,
       boolean swaggerPublic) {
     this(
         jwtAuthenticationFilter,

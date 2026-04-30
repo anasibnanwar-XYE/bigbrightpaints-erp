@@ -14,14 +14,13 @@ import org.springframework.security.access.hierarchicalroles.RoleHierarchy;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import com.bigbrightpaints.erp.modules.auth.domain.UserPrincipal;
-import com.bigbrightpaints.erp.modules.auth.service.AuthSessionService;
-import com.bigbrightpaints.erp.modules.auth.service.UserAccountDetailsService;
 
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.ExpiredJwtException;
@@ -39,22 +38,22 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
   private static final Logger logger = LoggerFactory.getLogger(JwtAuthenticationFilter.class);
 
   private final JwtTokenService tokenService;
-  private final UserAccountDetailsService userDetailsService;
+  private final UserDetailsService userDetailsService;
   private final TokenBlacklistService blacklistService;
   private final ObjectProvider<RoleHierarchy> roleHierarchyProvider;
-  private final AuthSessionService authSessionService;
+  private final AuthSessionIntrospectionService authSessionIntrospectionService;
 
   public JwtAuthenticationFilter(
       JwtTokenService tokenService,
-      UserAccountDetailsService userDetailsService,
+      UserDetailsService userDetailsService,
       TokenBlacklistService blacklistService,
       ObjectProvider<RoleHierarchy> roleHierarchyProvider,
-      AuthSessionService authSessionService) {
+      AuthSessionIntrospectionService authSessionIntrospectionService) {
     this.tokenService = tokenService;
     this.userDetailsService = userDetailsService;
     this.blacklistService = blacklistService;
     this.roleHierarchyProvider = roleHierarchyProvider;
-    this.authSessionService = authSessionService;
+    this.authSessionIntrospectionService = authSessionIntrospectionService;
   }
 
   @Override
@@ -108,12 +107,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
       logger.warn("Attempted use of revoked user token");
       return;
     }
-    UUID sessionId = authSessionService.currentSessionIdFromClaims(claims);
+    UUID sessionId = authSessionIntrospectionService.currentSessionIdFromClaims(claims);
     if (sessionId == null) {
       logger.warn("Rejecting bearer token with missing or invalid session id");
       return;
     }
-    if (!authSessionService.isSessionActive(
+    if (!authSessionIntrospectionService.isSessionActive(
         UUID.fromString(userId), claims.get("companyCode", String.class), sessionId)) {
       logger.warn("Attempted use of inactive session token");
       return;

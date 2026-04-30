@@ -1,6 +1,6 @@
 package com.bigbrightpaints.erp.modules.auth.web;
 
-import org.springframework.util.StringUtils;
+import com.bigbrightpaints.erp.modules.auth.domain.MfaFactorTypes;
 
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Email;
@@ -21,8 +21,6 @@ public record LoginRequest(
 
   @AssertTrue(message = "Unsupported MFA factor type")
   public boolean hasSupportedFactorType() {
-    return !StringUtils.hasText(factorType)
-        || "totp".equalsIgnoreCase(factorType)
-        || "authenticator".equalsIgnoreCase(factorType);
+    return MfaFactorTypes.isSupportedTotpAlias(factorType);
   }
 }

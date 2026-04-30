@@ -26,6 +26,7 @@ import org.springframework.web.context.request.ServletRequestAttributes;
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserPrincipal;
+import com.bigbrightpaints.erp.modules.auth.service.IamCanonicalStorageService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 
@@ -35,6 +36,8 @@ class AuditServiceTest {
 
   private final AuditLogRepository auditLogRepository = mock(AuditLogRepository.class);
   private final CompanyRepository companyRepository = mock(CompanyRepository.class);
+  private final IamCanonicalStorageService iamCanonicalStorageService =
+      mock(IamCanonicalStorageService.class);
   private final AuditService auditService = createService();
 
   @AfterEach
@@ -83,9 +86,9 @@ class AuditServiceTest {
     when(request.getMethod()).thenReturn("POST");
     when(request.getRequestURI()).thenReturn("/api/v1/accounting/journal");
     RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
-    when(companyRepository.findByCodeIgnoreCase("42")).thenReturn(Optional.empty());
-    when(companyRepository.findById(42L)).thenReturn(Optional.of(companyWithId(42L, "COMP-42")));
-    CompanyContextHolder.setCompanyCode("42");
+    when(companyRepository.findByCodeIgnoreCase("COMP-42"))
+        .thenReturn(Optional.of(companyWithId(42L, "COMP-42")));
+    CompanyContextHolder.setCompanyCode("COMP-42");
 
     SecurityContext securityContext = SecurityContextHolder.createEmptyContext();
     securityContext.setAuthentication(
@@ -258,21 +261,19 @@ class AuditServiceTest {
   }
 
   @Test
-  void logEvent_numericRuntimeContextCodeIdCollisionFailsClosed() {
+  void logEvent_numericRuntimeContextUsesCodeOnly() {
     CompanyContextHolder.setCompanyCode("1001");
     when(companyRepository.findByCodeIgnoreCase("1001"))
         .thenReturn(Optional.of(companyWithId(77L, "1001")));
-    when(companyRepository.findById(1001L))
-        .thenReturn(Optional.of(companyWithId(1001L, "LEGACY-1001")));
 
     auditService.logEvent(
-        AuditEvent.DATA_READ, AuditStatus.SUCCESS, Map.of("source", "runtime-collision"));
+        AuditEvent.DATA_READ, AuditStatus.SUCCESS, Map.of("source", "runtime-code"));
 
     ArgumentCaptor<AuditLog> auditCaptor = ArgumentCaptor.forClass(AuditLog.class);
     verify(auditLogRepository).save(auditCaptor.capture());
     AuditLog saved = auditCaptor.getValue();
-    assertThat(saved.getCompanyId()).isNull();
-    verify(companyRepository).findById(1001L);
+    assertThat(saved.getCompanyId()).isEqualTo(77L);
+    verify(companyRepository, never()).findById(1001L);
   }
 
   @Test
@@ -347,25 +348,11 @@ class AuditServiceTest {
         .containsEntry("authCompanyResolution", "UNRESOLVED");
   }
 
-  @Test
-  void parseNumericToken_returnsNullWhenAllDigitValueOverflowsLong() {
-    Long parsed =
-        ReflectionTestUtils.invokeMethod(auditService, "parseNumericToken", "92233720368547758070");
-
-    assertThat(parsed).isNull();
-  }
-
-  @Test
-  void parseNumericToken_parsesTrimmedDigitValue() {
-    Long parsed = ReflectionTestUtils.invokeMethod(auditService, "parseNumericToken", " 42 ");
-
-    assertThat(parsed).isEqualTo(42L);
-  }
-
   private AuditService createService() {
     AuditService service = new AuditService();
     ReflectionTestUtils.setField(service, "auditLogRepository", auditLogRepository);
     ReflectionTestUtils.setField(service, "companyRepository", companyRepository);
+    ReflectionTestUtils.setField(service, "iamCanonicalStorageService", iamCanonicalStorageService);
     ReflectionTestUtils.setField(service, "self", service);
     when(auditLogRepository.save(any(AuditLog.class)))
         .thenAnswer(invocation -> invocation.getArgument(0));

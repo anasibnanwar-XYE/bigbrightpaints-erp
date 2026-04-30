@@ -4,7 +4,6 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -13,13 +12,14 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import com.bigbrightpaints.erp.core.idempotency.IdempotencyUtils;
+import com.bigbrightpaints.erp.core.security.AuthSessionIntrospectionService;
 import com.bigbrightpaints.erp.modules.auth.domain.RefreshTokenRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 
 import jakarta.servlet.http.HttpServletRequest;
 
 @Service
-public class AuthSessionService {
+public class AuthSessionService implements AuthSessionIntrospectionService {
 
   private static final int DEFAULT_SESSION_LIMIT = 25;
   private static final int MAX_DEVICE_LABEL_LENGTH = 80;
@@ -43,7 +43,7 @@ public class AuthSessionService {
   }
 
   @Transactional(readOnly = true)
-  public List<Map<String, Object>> listActiveSessions(UserAccount user, UUID currentSessionId) {
+  public List<ActiveSessionResponse> listActiveSessions(UserAccount user, UUID currentSessionId) {
     if (user == null || user.getPublicId() == null) {
       return List.of();
     }
@@ -68,20 +68,20 @@ public class AuthSessionService {
          limit ?
         """,
         rs -> {
-          java.util.ArrayList<Map<String, Object>> sessions = new java.util.ArrayList<>();
+          java.util.ArrayList<ActiveSessionResponse> sessions = new java.util.ArrayList<>();
           while (rs.next()) {
             UUID sessionId = rs.getObject("public_id", UUID.class);
             String deviceLabel = sanitizeDeviceLabel(rs.getString("device_label"));
             sessions.add(
-                Map.of(
-                    "sessionId", sessionId.toString(),
-                    "current", sessionId.equals(currentSessionId),
-                    "createdAt", rs.getTimestamp("issued_at").toInstant().toString(),
-                    "lastSeenAt", rs.getTimestamp("last_seen_at").toInstant().toString(),
-                    "expiresAt", rs.getTimestamp("expires_at").toInstant().toString(),
-                    "authScopeCode", rs.getString("auth_scope_code"),
-                    "deviceName", deviceLabel,
-                    "userAgent", deviceLabel));
+                new ActiveSessionResponse(
+                    sessionId.toString(),
+                    sessionId.equals(currentSessionId),
+                    rs.getTimestamp("issued_at").toInstant().toString(),
+                    rs.getTimestamp("last_seen_at").toInstant().toString(),
+                    rs.getTimestamp("expires_at").toInstant().toString(),
+                    rs.getString("auth_scope_code"),
+                    deviceLabel,
+                    deviceLabel));
           }
           return sessions;
         },
@@ -121,29 +121,7 @@ public class AuthSessionService {
     if (user == null || user.getPublicId() == null || parsedSessionId == null) {
       return false;
     }
-    List<String> digests =
-        jdbcTemplate.queryForList(
-            """
-            update iam_sessions s
-               set revoked_at = coalesce(s.revoked_at, ?),
-                   revoked_reason = ?,
-                   version = s.version + 1
-              from iam_accounts ia
-             where s.account_id = ia.id
-               and ia.public_id = ?
-               and s.public_id = ?
-               and s.revoked_at is null
-               and s.consumed_at is null
-             returning s.refresh_token_digest
-            """,
-            String.class,
-            Timestamp.from(Instant.now()),
-            safeReason(reason),
-            user.getPublicId(),
-            parsedSessionId);
-    digests.stream()
-        .filter(StringUtils::hasText)
-        .forEach(refreshTokenRepository::deleteByTokenDigest);
+    List<String> digests = revokeSessionRows(user.getPublicId(), parsedSessionId, reason);
     return !digests.isEmpty();
   }
 
@@ -152,29 +130,7 @@ public class AuthSessionService {
     if (userPublicId == null || sessionId == null) {
       return;
     }
-    List<String> digests =
-        jdbcTemplate.queryForList(
-            """
-            update iam_sessions s
-               set revoked_at = coalesce(s.revoked_at, ?),
-                   revoked_reason = ?,
-                   version = s.version + 1
-              from iam_accounts ia
-             where s.account_id = ia.id
-               and ia.public_id = ?
-               and s.public_id = ?
-               and s.revoked_at is null
-               and s.consumed_at is null
-             returning s.refresh_token_digest
-            """,
-            String.class,
-            Timestamp.from(Instant.now()),
-            safeReason(reason),
-            userPublicId,
-            sessionId);
-    digests.stream()
-        .filter(StringUtils::hasText)
-        .forEach(refreshTokenRepository::deleteByTokenDigest);
+    revokeSessionRows(userPublicId, sessionId, reason);
   }
 
   @Transactional
@@ -182,30 +138,58 @@ public class AuthSessionService {
     if (userPublicId == null) {
       return;
     }
+    revokeSessionRows(userPublicId, null, reason);
+  }
+
+  private List<String> revokeSessionRows(UUID userPublicId, UUID sessionId, String reason) {
+    Timestamp revokedAt = Timestamp.from(Instant.now());
+    String revokedReason = safeReason(reason);
     List<String> digests =
-        jdbcTemplate.queryForList(
-            """
-            update iam_sessions s
-               set revoked_at = coalesce(s.revoked_at, ?),
-                   revoked_reason = ?,
-                   version = s.version + 1
-              from iam_accounts ia
-             where s.account_id = ia.id
-               and ia.public_id = ?
-               and s.revoked_at is null
-               and s.consumed_at is null
-             returning s.refresh_token_digest
-            """,
-            String.class,
-            Timestamp.from(Instant.now()),
-            safeReason(reason),
-            userPublicId);
+        sessionId == null
+            ? jdbcTemplate.queryForList(
+                """
+                update iam_sessions s
+                   set revoked_at = coalesce(s.revoked_at, ?),
+                       revoked_reason = ?,
+                       version = s.version + 1
+                  from iam_accounts ia
+                 where s.account_id = ia.id
+                   and ia.public_id = ?
+                   and s.revoked_at is null
+                   and s.consumed_at is null
+                 returning s.refresh_token_digest
+                """,
+                String.class,
+                revokedAt,
+                revokedReason,
+                userPublicId)
+            : jdbcTemplate.queryForList(
+                """
+                update iam_sessions s
+                   set revoked_at = coalesce(s.revoked_at, ?),
+                       revoked_reason = ?,
+                       version = s.version + 1
+                  from iam_accounts ia
+                 where s.account_id = ia.id
+                   and ia.public_id = ?
+                   and s.public_id = ?
+                   and s.revoked_at is null
+                   and s.consumed_at is null
+                 returning s.refresh_token_digest
+                """,
+                String.class,
+                revokedAt,
+                revokedReason,
+                userPublicId,
+                sessionId);
     digests.stream()
         .filter(StringUtils::hasText)
         .forEach(refreshTokenRepository::deleteByTokenDigest);
+    return digests;
   }
 
   @Transactional(readOnly = true)
+  @Override
   public boolean isSessionActive(UUID userPublicId, String authScopeCode, UUID sessionId) {
     if (userPublicId == null || sessionId == null || !StringUtils.hasText(authScopeCode)) {
       return false;
@@ -262,6 +246,7 @@ public class AuthSessionService {
     return count != null && count > 0;
   }
 
+  @Override
   public UUID currentSessionIdFromClaims(io.jsonwebtoken.Claims claims) {
     if (claims == null) {
       return null;

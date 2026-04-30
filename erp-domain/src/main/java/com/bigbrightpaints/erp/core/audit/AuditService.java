@@ -27,10 +27,6 @@ import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 
 import jakarta.servlet.http.HttpServletRequest;
 
-/**
- * Service for comprehensive audit logging.
- * Logs are written asynchronously to avoid impacting performance.
- */
 @Service
 public class AuditService {
 
@@ -49,9 +45,6 @@ public class AuditService {
    */
   @Autowired @Lazy private AuditService self;
 
-  /**
-   * Logs an audit event with full context.
-   */
   public void logEvent(AuditEvent event, AuditStatus status, Map<String, String> metadata) {
     Map<String, String> requestContext = captureRequestContextMetadata();
     self.logEventAsync(event, status, metadata, null, null, requestContext);
@@ -110,10 +103,10 @@ public class AuditService {
       String companyCodeOverride,
       Map<String, String> requestContext) {
     try {
+      metadata = metadata == null ? null : new HashMap<>(metadata);
       AuditLog.Builder builder =
           new AuditLog.Builder().eventType(event).status(status).timestamp(LocalDateTime.now());
 
-      // Add user context
       boolean hasUsernameOverride = StringUtils.hasText(usernameOverride);
       String resolvedUsername = normalizeToken(usernameOverride);
       String resolvedUserId = extractMetadataActorPublicId(metadata);
@@ -140,28 +133,23 @@ public class AuditService {
         builder.userId(resolvedUserId);
       }
 
-      // Add company context
       String companyToken;
-      boolean allowNumericIdFallback;
       if (AUTH_COMPANY_UNRESOLVED_SENTINEL.equals(companyCodeOverride)) {
         companyToken = null;
-        allowNumericIdFallback = false;
       } else if (companyCodeOverride != null && !companyCodeOverride.isBlank()) {
         companyToken = companyCodeOverride;
-        allowNumericIdFallback = false;
       } else {
         companyToken = CompanyContextHolder.getCompanyCode();
-        allowNumericIdFallback = true;
       }
-      Long companyId = resolveCompanyId(companyToken, allowNumericIdFallback);
+      Long companyId = resolveCompanyId(companyToken);
       if (companyId != null) {
         builder.companyId(companyId);
       } else if (companyToken != null) {
-        if (!allowNumericIdFallback && metadata != null) {
+        if (metadata != null) {
           metadata.putIfAbsent("authCompanyToken", companyToken.trim());
           metadata.put("authCompanyResolution", "UNRESOLVED");
         }
-        logger.warn("Unable to resolve company token");
+        logger.warn("Unable to resolve company code");
       }
 
       if (requestContext != null && !requestContext.isEmpty()) {
@@ -177,7 +165,6 @@ public class AuditService {
         }
       }
 
-      // Add metadata
       if (metadata != null && !metadata.isEmpty()) {
         builder.metadata(metadata);
       }
@@ -336,88 +323,44 @@ public class AuditService {
     return context;
   }
 
-  private Long resolveCompanyId(String companyToken, boolean allowNumericIdFallback) {
+  private Long resolveCompanyId(String companyToken) {
     if (companyToken == null || companyToken.isBlank()) {
       return null;
     }
     String normalizedToken = companyToken.trim();
-    Long numericToken = parseNumericToken(normalizedToken);
-    Company byCode = companyRepository.findByCodeIgnoreCase(normalizedToken).orElse(null);
-    if (byCode != null) {
-      if (allowNumericIdFallback && numericToken != null) {
-        Long idCandidate =
-            companyRepository.findById(numericToken).map(Company::getId).orElse(null);
-        if (idCandidate != null && !byCode.getId().equals(idCandidate)) {
-          logger.warn(
-              "Ambiguous numeric company token maps to code-id {} and entity-id {}; failing"
-                  + " closed",
-              byCode.getId(),
-              idCandidate);
-          return null;
-        }
-      }
-      return byCode.getId();
-    }
-    if (!allowNumericIdFallback) {
-      return null;
-    }
-    if (numericToken == null) {
-      return null;
-    }
-    return companyRepository.findById(numericToken).map(Company::getId).orElse(null);
+    return companyRepository.findByCodeIgnoreCase(normalizedToken).map(Company::getId).orElse(null);
   }
 
-  /**
-   * Logs a successful event.
-   */
   public void logSuccess(AuditEvent event) {
     self.logEvent(event, AuditStatus.SUCCESS, null);
   }
 
-  /**
-   * Logs a successful event with metadata.
-   */
   public void logSuccess(AuditEvent event, Map<String, String> metadata) {
     self.logEvent(event, AuditStatus.SUCCESS, metadata);
   }
 
-  /**
-   * Logs a failed event.
-   */
   public void logFailure(AuditEvent event, String reason) {
     Map<String, String> metadata = new HashMap<>();
     metadata.put("reason", safeString(reason));
     self.logEvent(event, AuditStatus.FAILURE, metadata);
   }
 
-  /**
-   * Logs a failed event with metadata.
-   */
   public void logFailure(AuditEvent event, Map<String, String> metadata) {
     self.logEvent(event, AuditStatus.FAILURE, metadata);
   }
 
-  /**
-   * Logs a warning event.
-   */
   public void logWarning(AuditEvent event, String message) {
     Map<String, String> metadata = new HashMap<>();
     metadata.put("message", safeString(message));
     self.logEvent(event, AuditStatus.WARNING, metadata);
   }
 
-  /**
-   * Logs an informational event.
-   */
   public void logInfo(AuditEvent event, String message) {
     Map<String, String> metadata = new HashMap<>();
     metadata.put("message", safeString(message));
     self.logEvent(event, AuditStatus.INFO, metadata);
   }
 
-  /**
-   * Logs a security alert.
-   */
   public void logSecurityAlert(String alertType, String description, Map<String, String> details) {
     Map<String, String> metadata = new java.util.HashMap<>();
     metadata.put("alertType", alertType);
@@ -428,9 +371,6 @@ public class AuditService {
     self.logEvent(AuditEvent.SECURITY_ALERT, AuditStatus.WARNING, metadata);
   }
 
-  /**
-   * Logs data access event.
-   */
   public void logDataAccess(String resourceType, String resourceId, String operation) {
     String normalizedOperation = operation == null ? "" : operation.trim();
     if (normalizedOperation.isEmpty()) {
@@ -453,9 +393,6 @@ public class AuditService {
     self.logEvent(event, AuditStatus.SUCCESS, metadata);
   }
 
-  /**
-   * Logs sensitive data access.
-   */
   public void logSensitiveDataAccess(String dataType, String reason) {
     Map<String, String> metadata = new HashMap<>();
     metadata.put("dataType", safeString(dataType));
@@ -491,24 +428,6 @@ public class AuditService {
     return AUTH_COMPANY_UNRESOLVED_SENTINEL;
   }
 
-  private Long parseNumericToken(String value) {
-    if (value == null || value.isBlank()) {
-      return null;
-    }
-    String normalized = value.trim();
-    if (!normalized.chars().allMatch(Character::isDigit)) {
-      return null;
-    }
-    try {
-      return Long.parseLong(normalized);
-    } catch (NumberFormatException ex) {
-      return null;
-    }
-  }
-
-  /**
-   * Gets the client IP address, handling proxy headers.
-   */
   private String getClientIpAddress(HttpServletRequest request) {
     if (request == null) {
       return null;

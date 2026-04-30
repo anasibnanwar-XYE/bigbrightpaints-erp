@@ -31,11 +31,13 @@ import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserPrincipal;
+import com.bigbrightpaints.erp.modules.auth.service.ActiveSessionResponse;
 import com.bigbrightpaints.erp.modules.auth.service.AuthService;
 import com.bigbrightpaints.erp.modules.auth.service.AuthSessionService;
 import com.bigbrightpaints.erp.modules.auth.service.IamCanonicalStorageService;
 import com.bigbrightpaints.erp.modules.auth.service.PasswordResetService;
 import com.bigbrightpaints.erp.modules.auth.service.PasswordService;
+import com.bigbrightpaints.erp.modules.auth.service.SecurityEventResponse;
 import com.bigbrightpaints.erp.modules.auth.web.AuthResponse;
 import com.bigbrightpaints.erp.modules.auth.web.ChangePasswordRequest;
 import com.bigbrightpaints.erp.modules.auth.web.ForgotPasswordRequest;
@@ -106,14 +108,8 @@ public class AuthController {
     if (httpRequest != null && httpRequest.getParameterMap().containsKey("refreshToken")) {
       return ResponseEntity.badRequest().build();
     }
-    String accessToken = null;
-    if (authentication != null) {
-      Object credentials = authentication.getCredentials();
-      if (credentials instanceof String token && !token.isBlank()) {
-        accessToken = token;
-      }
-    }
-    authService.logout(request == null ? null : request.refreshToken(), accessToken);
+    authService.logout(
+        request == null ? null : request.refreshToken(), accessToken(authentication));
     return ResponseEntity.noContent().build();
   }
 
@@ -232,7 +228,7 @@ public class AuthController {
 
   @GetMapping("/me/security-events")
   @PreAuthorize("isAuthenticated()")
-  public ResponseEntity<ApiResponse<PageResponse<Map<String, Object>>>> securityEvents(
+  public ResponseEntity<ApiResponse<PageResponse<SecurityEventResponse>>> securityEvents(
       @AuthenticationPrincipal UserPrincipal principal,
       @RequestParam(required = false) String type,
       @RequestParam(defaultValue = "0") int page,
@@ -250,7 +246,7 @@ public class AuthController {
 
   @GetMapping("/sessions")
   @PreAuthorize("isAuthenticated()")
-  public ResponseEntity<ApiResponse<List<Map<String, Object>>>> sessions(
+  public ResponseEntity<ApiResponse<List<ActiveSessionResponse>>> sessions(
       @AuthenticationPrincipal UserPrincipal principal, HttpServletRequest request) {
     if (principal == null) {
       return ResponseEntity.status(401).body(ApiResponse.failure("Unauthenticated"));

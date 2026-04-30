@@ -58,7 +58,6 @@ class TS_RuntimePasswordResetServiceExecutableCoverageTest {
     stubIssuedResetToken(tokenRepository, 11L);
 
     invokeRequest(service, "corr-support-123", null, null);
-    invokeRequest(service, "   ", "req-fallback-123", null);
     invokeRequest(service, "bad|pattern", null, null);
     invokeRequest(service, "x".repeat(129), null, null);
     invokeRequest(service, "corr-newline\nsegment", null, null);

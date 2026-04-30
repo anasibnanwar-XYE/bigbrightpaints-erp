@@ -2,6 +2,8 @@ package com.bigbrightpaints.erp.modules.auth.web;
 
 import org.springframework.util.StringUtils;
 
+import com.bigbrightpaints.erp.modules.auth.domain.MfaFactorTypes;
+
 import jakarta.validation.constraints.AssertTrue;
 
 public record MfaDisableRequest(String code, String recoveryCode, String factorType) {
@@ -13,8 +15,6 @@ public record MfaDisableRequest(String code, String recoveryCode, String factorT
 
   @AssertTrue(message = "Unsupported MFA factor type")
   public boolean hasSupportedFactorType() {
-    return !StringUtils.hasText(factorType)
-        || "totp".equalsIgnoreCase(factorType)
-        || "authenticator".equalsIgnoreCase(factorType);
+    return MfaFactorTypes.isSupportedTotpAlias(factorType);
   }
 }

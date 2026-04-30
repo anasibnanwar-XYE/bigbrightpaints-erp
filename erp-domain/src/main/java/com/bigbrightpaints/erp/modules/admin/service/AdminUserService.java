@@ -36,6 +36,7 @@ import com.bigbrightpaints.erp.modules.auth.service.IamCanonicalStorageService;
 import com.bigbrightpaints.erp.modules.auth.service.PasswordResetService;
 import com.bigbrightpaints.erp.modules.auth.service.RefreshTokenService;
 import com.bigbrightpaints.erp.modules.auth.service.ScopedAccountBootstrapService;
+import com.bigbrightpaints.erp.modules.auth.service.SecurityEventResponse;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.rbac.domain.Role;
@@ -324,8 +325,7 @@ public class AdminUserService {
     userRepository.save(user);
     iamCanonicalStorageService.syncUser(user);
     passwordResetService.invalidateOutstandingResetTokens(user);
-    tokenBlacklistService.revokeAllUserTokens(user.getPublicId().toString());
-    refreshTokenService.revokeAllForUser(user.getPublicId());
+    revokeUserTokens(user);
     auditUserAccountAction(
         AuditEvent.USER_LOCKED,
         user,
@@ -371,8 +371,7 @@ public class AdminUserService {
     mfaRecoveryCodeRepository.deleteAllByUser(user);
     userRepository.save(user);
     iamCanonicalStorageService.syncUser(user);
-    tokenBlacklistService.revokeAllUserTokens(user.getPublicId().toString());
-    refreshTokenService.revokeAllForUser(user.getPublicId());
+    revokeUserTokens(user);
     auditUserAccountAction(
         AuditEvent.MFA_DISABLED,
         user,
@@ -391,8 +390,7 @@ public class AdminUserService {
             "admin-revoke-sessions-out-of-scope",
             true,
             OutOfScopeResponseMode.MASK_AS_MISSING);
-    tokenBlacklistService.revokeAllUserTokens(user.getPublicId().toString());
-    refreshTokenService.revokeAllForUser(user.getPublicId());
+    revokeUserTokens(user);
     Map<String, String> securityMetadata = new LinkedHashMap<>();
     securityMetadata.put("operation", "admin_revoke_user_sessions");
     securityMetadata.put("reason", "admin_revoke_user_sessions");
@@ -416,7 +414,7 @@ public class AdminUserService {
   }
 
   @Transactional(readOnly = true)
-  public List<Map<String, Object>> listSecurityEvents(Long userId, String type) {
+  public List<SecurityEventResponse> listSecurityEvents(Long userId, String type) {
     Company company = companyContextService.requireCurrentCompany();
     UserAccount user =
         resolveScopedUserForAdminAction(
@@ -425,7 +423,7 @@ public class AdminUserService {
             "admin-read-security-events-out-of-scope",
             false,
             OutOfScopeResponseMode.ACCESS_DENIED);
-    List<Map<String, Object>> events =
+    List<SecurityEventResponse> events =
         iamCanonicalStorageService.listSecurityEvents(user, type, 100);
     auditSecurityEventRead(user, company, type);
     return events;
@@ -589,8 +587,7 @@ public class AdminUserService {
 
     if (!enabled) {
       passwordResetService.invalidateOutstandingResetTokens(user);
-      tokenBlacklistService.revokeAllUserTokens(user.getPublicId().toString());
-      refreshTokenService.revokeAllForUser(user.getPublicId());
+      revokeUserTokens(user);
       emailService.sendUserSuspendedEmail(user.getEmail(), user.getDisplayName());
     }
 
@@ -652,6 +649,11 @@ public class AdminUserService {
       return normalized;
     }
     return "ROLE_" + normalized;
+  }
+
+  private void revokeUserTokens(UserAccount user) {
+    tokenBlacklistService.revokeAllUserTokens(user.getPublicId().toString());
+    refreshTokenService.revokeAllForUser(user.getPublicId());
   }
 
   private boolean requiresSuperAdminRoleAssignment(String normalizedRoleName) {

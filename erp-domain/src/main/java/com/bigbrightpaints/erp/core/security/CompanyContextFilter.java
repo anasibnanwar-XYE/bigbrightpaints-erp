@@ -537,7 +537,7 @@ public class CompanyContextFilter extends OncePerRequestFilter {
   private void writeAccessDenied(HttpServletResponse response, String reason, String reasonDetail)
       throws IOException {
     String userMessage = "Access denied";
-    Map<String, Object> data = new LinkedHashMap<>();
+    Map<String, String> data = new LinkedHashMap<>();
     data.put("code", ErrorCode.AUTH_INSUFFICIENT_PERMISSIONS.getCode());
     data.put("message", userMessage);
     data.put("reason", reason);
@@ -549,7 +549,7 @@ public class CompanyContextFilter extends OncePerRequestFilter {
   private void writeServiceUnavailable(
       HttpServletResponse response, String reason, String reasonDetail) throws IOException {
     String userMessage = ErrorCode.SYSTEM_SERVICE_UNAVAILABLE.getDefaultMessage();
-    Map<String, Object> data = new LinkedHashMap<>();
+    Map<String, String> data = new LinkedHashMap<>();
     data.put("code", ErrorCode.SYSTEM_SERVICE_UNAVAILABLE.getCode());
     data.put("message", userMessage);
     data.put("reason", reason);
@@ -564,7 +564,7 @@ public class CompanyContextFilter extends OncePerRequestFilter {
       throws IOException {
     String message =
         StringUtils.hasText(admission.message()) ? admission.message() : "Access denied";
-    Map<String, Object> data = new LinkedHashMap<>();
+    Map<String, String> data = new LinkedHashMap<>();
     data.put(
         "code",
         StringUtils.hasText(admission.reasonCode())
@@ -594,7 +594,7 @@ public class CompanyContextFilter extends OncePerRequestFilter {
   }
 
   private void writeControlledError(
-      HttpServletResponse response, int status, String message, Map<String, Object> data)
+      HttpServletResponse response, int status, String message, Map<String, String> data)
       throws IOException {
     response.setStatus(status);
     response.setContentType("application/json");

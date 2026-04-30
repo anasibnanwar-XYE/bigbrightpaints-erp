@@ -12,8 +12,6 @@ public class PasswordPolicy {
   private static final int MIN_CODE_POINTS = 10;
   private static final int MAX_CODE_POINTS = 128;
 
-  // Basic policy: 10-128 NFC-normalized code points, includes upper, lower, digit, symbol, no
-  // whitespace
   public List<String> validate(String password) {
     List<String> violations = new ArrayList<>();
     if (password == null) {

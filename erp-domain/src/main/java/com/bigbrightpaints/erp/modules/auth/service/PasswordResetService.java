@@ -41,12 +41,9 @@ import jakarta.servlet.http.HttpServletRequest;
 public class PasswordResetService {
 
   private static final Logger log = LoggerFactory.getLogger(PasswordResetService.class);
-  // 1 hour
   private static final long RESET_TOKEN_TTL_SECONDS = 3600;
   private static final String RESET_POLICY_SCOPE = "SCOPED_ACCOUNT";
   private static final String CORRELATION_ID_HEADER = "X-Correlation-Id";
-  private static final String REQUEST_ID_HEADER = "X-Request-Id";
-  private static final String TRACE_ID_HEADER = "X-Trace-Id";
   private static final String COMPANY_CODE_HEADER = "X-Company-Code";
   private static final int MAX_CORRELATION_ID_LENGTH = 128;
   private static final Pattern SAFE_CORRELATION_ID_PATTERN =
@@ -252,9 +249,6 @@ public class PasswordResetService {
     try {
       ensureRequiredResetEmailDelivery();
       issuedResetToken = issueResetToken(user, correlationId, maskedEmail);
-      if (issuedResetToken == null) {
-        return false;
-      }
       emailService.sendPasswordResetEmailRequired(
           user.getEmail(),
           user.getDisplayName(),
@@ -302,9 +296,6 @@ public class PasswordResetService {
     IssuedResetToken issuedResetToken =
         tokenLifecycleTransactionTemplate.execute(
             status -> issueResetTokenWithinActiveTransaction(user, correlationId, maskedEmail));
-    if (issuedResetToken == null) {
-      return null;
-    }
     if (issuedResetToken == null || !StringUtils.hasText(issuedResetToken.rawToken())) {
       throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState(
           "Failed to persist password reset token");
@@ -638,11 +629,7 @@ public class PasswordResetService {
       return UUID.randomUUID().toString();
     }
     HttpServletRequest request = attributes.getRequest();
-    String headerCorrelationId =
-        firstNonBlank(
-            request.getHeader(CORRELATION_ID_HEADER),
-            request.getHeader(REQUEST_ID_HEADER),
-            request.getHeader(TRACE_ID_HEADER));
+    String headerCorrelationId = firstNonBlank(request.getHeader(CORRELATION_ID_HEADER));
     String sanitizedCorrelationId = sanitizeCorrelationId(headerCorrelationId);
     if (sanitizedCorrelationId != null) {
       return sanitizedCorrelationId;
