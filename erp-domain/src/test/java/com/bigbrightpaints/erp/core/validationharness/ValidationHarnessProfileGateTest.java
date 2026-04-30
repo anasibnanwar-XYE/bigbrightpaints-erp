@@ -1,6 +1,7 @@
 package com.bigbrightpaints.erp.core.validationharness;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
 
 import java.time.Instant;
 import java.util.Map;
@@ -9,6 +10,8 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.annotation.Profile;
 import org.springframework.mock.env.MockEnvironment;
+
+import com.bigbrightpaints.erp.core.audit.AuditService;
 
 @Tag("critical")
 class ValidationHarnessProfileGateTest {
@@ -23,6 +26,8 @@ class ValidationHarnessProfileGateTest {
         .containsExactly("validation-harness");
     assertThat(ValidationFaultHealthIndicator.class.getAnnotation(Profile.class).value())
         .containsExactly("validation-harness");
+    assertThat(ValidationSecurityAlertTriggerService.class.getAnnotation(Profile.class).value())
+        .containsExactly("validation-harness");
   }
 
   @Test
@@ -32,7 +37,11 @@ class ValidationHarnessProfileGateTest {
     MockEnvironment environment = new MockEnvironment();
     environment.setActiveProfiles("prod", "flyway-v2", "validation-harness");
     ValidationHarnessController controller =
-        new ValidationHarnessController(faultInjectionService, timeControlService, environment);
+        new ValidationHarnessController(
+            faultInjectionService,
+            timeControlService,
+            new ValidationSecurityAlertTriggerService(mock(AuditService.class)),
+            environment);
 
     controller.freezeTime(
         new ValidationHarnessController.TimeControlRequest(

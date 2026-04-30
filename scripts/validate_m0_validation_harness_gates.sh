@@ -50,10 +50,12 @@ assert_profile_gates() {
   require_file "$harness_dir/ValidationFaultInjectionService.java"
   require_file "$harness_dir/ValidationTimeControlService.java"
   require_file "$harness_dir/ValidationFaultHealthIndicator.java"
+  require_file "$harness_dir/ValidationSecurityAlertTriggerService.java"
   require_contains "$harness_dir/ValidationHarnessController.java" '@Profile("validation-harness")'
   require_contains "$harness_dir/ValidationFaultInjectionService.java" '@Profile("validation-harness")'
   require_contains "$harness_dir/ValidationTimeControlService.java" '@Profile("validation-harness")'
   require_contains "$harness_dir/ValidationFaultHealthIndicator.java" '@Profile("validation-harness")'
+  require_contains "$harness_dir/ValidationSecurityAlertTriggerService.java" '@Profile("validation-harness")'
   require_contains "$security" 'Profiles.of("validation-harness")'
   require_contains "$security" '"/api/v1/validation/harness/**"'
   require_contains "$clock" 'ValidationTimeControlService'

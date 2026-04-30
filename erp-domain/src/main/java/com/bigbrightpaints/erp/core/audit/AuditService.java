@@ -564,13 +564,35 @@ public class AuditService {
   }
 
   public void logSecurityAlert(String alertType, String description, Map<String, String> details) {
+    Map<String, String> metadata = securityAlertMetadata(alertType, description, details);
+    self.logEvent(AuditEvent.SECURITY_ALERT, AuditStatus.WARNING, metadata);
+  }
+
+  @Transactional
+  public AuditLog logSecurityAlertNow(
+      String alertType, String description, Map<String, String> details) {
+    AuditLog auditLog =
+        buildAuditLog(
+            AuditEvent.SECURITY_ALERT,
+            AuditStatus.WARNING,
+            securityAlertMetadata(alertType, description, details),
+            null,
+            null,
+            captureRequestContextMetadata());
+    AuditLog saved = auditLogRepository.saveAndFlush(auditLog);
+    logger.debug("Security alert logged synchronously: {}", alertType);
+    return saved;
+  }
+
+  private Map<String, String> securityAlertMetadata(
+      String alertType, String description, Map<String, String> details) {
     Map<String, String> metadata = new java.util.HashMap<>();
-    metadata.put("alertType", alertType);
-    metadata.put("description", description);
+    metadata.put("alertType", safeString(alertType));
+    metadata.put("description", safeString(description));
     if (details != null) {
       metadata.putAll(details);
     }
-    self.logEvent(AuditEvent.SECURITY_ALERT, AuditStatus.WARNING, metadata);
+    return metadata;
   }
 
   public void logDataAccess(String resourceType, String resourceId, String operation) {
