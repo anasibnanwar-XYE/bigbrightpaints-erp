@@ -114,7 +114,8 @@ class AuthServiceAuditAttributionTest {
             authScopeService,
             iamCanonicalStorageService,
             accountLockoutService,
-            authSessionService);
+            authSessionService,
+            new PasswordPolicy());
   }
 
   @Test
@@ -142,6 +143,26 @@ class AuthServiceAuditAttributionTest {
             argThat(
                 (Map<String, String> map) ->
                     map != null && "Invalid credentials".equals(map.get("reason"))));
+  }
+
+  @Test
+  void loginNormalizesPasswordBeforeVerification() {
+    LoginRequest request =
+        new LoginRequest("user@example.com", "Cafe\u0301Pass1!", "ACME", null, null);
+    UserAccount user = new UserAccount("user@example.com", "ACME", "hash", "User");
+    user.setEnabled(true);
+
+    when(authScopeService.requireScopeCode("ACME")).thenReturn("ACME");
+    when(userAccountRepository.findByEmailIgnoreCaseAndAuthScopeCodeIgnoreCase(
+            "user@example.com", "ACME"))
+        .thenReturn(Optional.of(user));
+    when(passwordEncoder.matches("Caf\u00e9Pass1!", "hash")).thenReturn(false);
+
+    assertThatThrownBy(() -> authService.login(request))
+        .isInstanceOf(ApplicationException.class)
+        .hasMessageContaining("Invalid credentials");
+
+    verify(passwordEncoder).matches("Caf\u00e9Pass1!", "hash");
   }
 
   @Test

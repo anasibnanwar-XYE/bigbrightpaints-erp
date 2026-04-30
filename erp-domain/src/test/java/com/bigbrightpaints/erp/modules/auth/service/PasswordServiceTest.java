@@ -178,6 +178,23 @@ class PasswordServiceTest {
     verify(userAccountRepository).save(user);
   }
 
+  @Test
+  void changePasswordNormalizesCurrentPasswordBeforeVerification() {
+    UserAccount user = userWithPassword("Caf\u00e9Pass1!");
+    when(passwordHistoryRepository.findTop5ByUserOrderByChangedAtDesc(user))
+        .thenReturn(Collections.emptyList());
+    when(passwordHistoryRepository.findByUserOrderByChangedAtDesc(user))
+        .thenReturn(new ArrayList<>());
+
+    ChangePasswordRequest request =
+        new ChangePasswordRequest("Cafe\u0301Pass1!", "NewPassword1!", "NewPassword1!");
+
+    passwordService.changePassword(user, request);
+
+    assertTrue(passwordEncoder.matches("NewPassword1!", user.getPasswordHash()));
+    verify(userAccountRepository).save(user);
+  }
+
   private UserAccount userWithPassword(String rawPassword) {
     return new UserAccount("user@bbp.dev", "BBP", passwordEncoder.encode(rawPassword), "User");
   }

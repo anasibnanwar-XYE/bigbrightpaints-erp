@@ -55,6 +55,7 @@ public class AuthService {
   private final IamCanonicalStorageService iamCanonicalStorageService;
   private final AccountLockoutService accountLockoutService;
   private final AuthSessionService authSessionService;
+  private final PasswordPolicy passwordPolicy;
 
   public AuthService(
       JwtTokenService tokenService,
@@ -70,7 +71,8 @@ public class AuthService {
       AuthScopeService authScopeService,
       IamCanonicalStorageService iamCanonicalStorageService,
       AccountLockoutService accountLockoutService,
-      AuthSessionService authSessionService) {
+      AuthSessionService authSessionService,
+      PasswordPolicy passwordPolicy) {
     this.tokenService = tokenService;
     this.refreshTokenService = refreshTokenService;
     this.userAccountRepository = userAccountRepository;
@@ -85,6 +87,7 @@ public class AuthService {
     this.iamCanonicalStorageService = iamCanonicalStorageService;
     this.accountLockoutService = accountLockoutService;
     this.authSessionService = authSessionService;
+    this.passwordPolicy = passwordPolicy;
   }
 
   public AuthResponse login(LoginRequest request) {
@@ -99,7 +102,8 @@ public class AuthService {
       user = requireScopedAccount(request.email(), scopeCode);
       ensureEnabledForLogin(user);
       accountLockoutService.enforceUnlocked(user);
-      if (!passwordEncoder.matches(request.password(), user.getPasswordHash())) {
+      if (!passwordEncoder.matches(
+          passwordPolicy.normalize(request.password()), user.getPasswordHash())) {
         failedSecretValidation = true;
         accountLockoutService.recordFailure(user);
         throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(

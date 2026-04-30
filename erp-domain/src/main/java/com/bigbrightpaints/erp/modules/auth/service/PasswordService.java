@@ -57,7 +57,8 @@ public class PasswordService {
     validateNewPasswordCandidate(normalizedNewPassword, normalizedConfirmPassword);
     // If forced change is required, skip current password check to avoid blocking on temp passwords
     if (!user.isMustChangePassword()) {
-      if (!passwordEncoder.matches(request.currentPassword(), user.getPasswordHash())) {
+      if (!passwordEncoder.matches(
+          passwordPolicy.normalize(request.currentPassword()), user.getPasswordHash())) {
         throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
             "Current password is incorrect");
       }
