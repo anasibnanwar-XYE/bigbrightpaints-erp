@@ -47,6 +47,30 @@ Last reviewed: 2026-04-02
   - keep request state from the create response, approval inbox, and download
     contract instead of inventing client-side history filters
 
+## Super Admin list behavior
+
+Super Admin list screens are server-backed. Persist filters in the URL, reset
+`page=0` when filters change, and render backend totals/page metadata instead of
+client-only totals.
+
+| Screen | Endpoint | Query contract |
+| --- | --- | --- |
+| Clients | `GET /api/v1/superadmin/tenants` | `status`, `q`, `page`, `size`, `sort`, `includeArchived` |
+| Support/SLA/bugs | `GET /api/v1/superadmin/support/tickets` | `status`, `category`, `slaStatus`, `q`, `page`, `size`, `sort` |
+| Ticket messages | `GET /api/v1/superadmin/support/tickets/{ticketId}/messages` | `page`, `size`, `includeInternal` |
+| Platform audit | `GET /api/v1/superadmin/audit/platform-events` | `from`, `to`, `module`, `action`, `status`, `actor`, `entityType`, `reference`, `tenantId`, `category`, `page`, `size` |
+| Security audit | `GET /api/v1/superadmin/audit/security-events` | `from`, `to`, `action`, `status`, `actor`, `entityType`, `reference`, `tenantId`, `category`, `page`, `size` |
+| Suspicious events | `GET /api/v1/superadmin/audit/suspicious-events` | `from`, `to`, `status`, `actor`, `reference`, `tenantId`, `page`, `size` |
+| Usage history | `GET /api/v1/superadmin/tenants/{id}/usage/history` | `periodType` |
+| Plan templates/plans | `GET /api/v1/superadmin/plan-templates`, `GET /api/v1/superadmin/plans` | `includeArchived`; detail also accepts `version` and `includeArchived` |
+| Infra cost snapshots | `GET /api/v1/superadmin/infra/costs/snapshots` | `currency`, `includeArchived` |
+
+Unsupported Super Admin filters, invalid enum values, invalid sort fields, page
+values below zero, or sizes above the backend maximum are explicit validation
+errors with field details and trace IDs. The frontend should show the field
+error, reset to a documented default, and not send hidden local-only filters as
+if they were server filters.
+
 Example paginated response:
 
 ```json

@@ -62,6 +62,31 @@ Recommended client behavior:
   setup, or onboarding bootstrap is incomplete, the UI must block downstream
   actions instead of allowing partial entry.
 
+## Super Admin control-plane rules
+
+- Super Admin success and failure responses use the same `ApiResponse` envelope
+  shape as the rest of the frontend contract.
+- Every Super Admin screen must preserve the response trace/correlation
+  identifier in the visible error state or support-copy action.
+- Unknown query filters, invalid enum values, invalid sort fields, forbidden
+  body fields, malformed JSON, unsupported media types, and over-size payloads
+  are explicit `400`/`405`/`406`/`413`/`415` failures. Do not silently drop
+  unknown inputs or retry against retired routes.
+- `409` on tenant creation, plan mutation, billing ledger writes, activation
+  actions, support messages, Sentry links, or lifecycle actions means the
+  backend found a conflict, replay, or illegal transition. Re-fetch the current
+  resource and show the deterministic state instead of creating another side
+  effect.
+- `429` can mean platform burst throttling, public-auth throttling, tenant
+  monthly API quota, or concurrent-request enforcement. Use retry/reset
+  metadata when present and keep non-idempotent mutation buttons disabled until
+  the backend allows retry.
+- Super Admin examples must use placeholders such as `<ACCESS_TOKEN_REDACTED>`,
+  `<PASSWORD_REDACTED>`, `<ACTIVATION_URL_REDACTED>`, `<SENTRY_ISSUE_ID>`, and
+  `<TRACE_ID>`. Do not paste real tokens, passwords, activation/reset links,
+  Sentry/Datadog credentials, SMTP credentials, database secrets, private
+  tenant payloads, or `.env` values into docs, logs, screenshots, or tickets.
+
 ## Error payload expectations
 
 Frontend should expect `ApiResponse.failure(...)` style payloads with error

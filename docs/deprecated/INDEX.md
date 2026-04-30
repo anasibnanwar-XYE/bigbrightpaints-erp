@@ -23,6 +23,7 @@ Each entry follows this pattern:
 
 | Surface | Status | Replacement |
 | --- | --- | --- |
+| Legacy flat Super Admin tenant onboarding (`POST /api/v1/superadmin/tenants/onboard`) | Retired (V1 hard cut) | Use `GET /api/v1/superadmin/tenants/new` plus `POST /api/v1/superadmin/tenants` with `createMode=DRAFT` or `SEND_ACTIVATION` |
 | Legacy super-admin forgot-password alias (`POST /api/v1/superadmin/tenants/{id}/support/admin-password-reset`) | Deprecated (V157 hard cut) | Use `POST /api/v1/auth/password/forgot` for standard password reset flow |
 | Email-only recovery identity (without companyCode) | Deprecated | Require `email + companyCode` for identity verification |
 

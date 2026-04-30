@@ -24,8 +24,13 @@ This packet describes the canonical behavior for tenant and admin management aft
 - Tenant limit and quota mutation
 - Support warnings and context operations
 - Platform changelog publishing
+- Platform support/SLA/bug/Sentry, infra health/cost, usage/billing, audit,
+  suspicious-event remediation, profile/session, settings, and observability
+  status operations
 
 All control-plane behavior stays under `/api/v1/superadmin/**`.
+Control-plane responses are safe summaries only; they must not include tenant
+business records, token values, provider credentials, or `.env` values.
 
 ## Actors
 
@@ -40,15 +45,43 @@ All control-plane behavior stays under `/api/v1/superadmin/**`.
 
 ### Superadmin control-plane entrypoints
 
-- `GET /api/v1/superadmin/tenants`
-- `GET /api/v1/superadmin/tenants/{id}`
-- `PUT /api/v1/superadmin/tenants/{id}/lifecycle`
-- `PUT /api/v1/superadmin/tenants/{id}/limits`
-- `PUT /api/v1/superadmin/tenants/{id}/modules`
-- `POST /api/v1/superadmin/tenants/{id}/support/warnings`
-- `PUT /api/v1/superadmin/tenants/{id}/support/context`
-- `POST /api/v1/superadmin/changelog`
-- `POST /api/v1/superadmin/notify`
+- Shell/profile/settings: `/api/v1/superadmin/dashboard`,
+  `/api/v1/superadmin/profile/**`, `/api/v1/superadmin/settings`,
+  `/api/v1/superadmin/roles/**`, `/api/v1/superadmin/changelog/**`, and
+  `/api/v1/superadmin/notify`.
+- Add Client and activation:
+  `GET /api/v1/superadmin/tenants/new`,
+  `GET /api/v1/superadmin/tenants/coa-templates`,
+  `POST /api/v1/superadmin/tenants`,
+  `/api/v1/superadmin/tenants/{id}/activation/{send,resend,copy,expire}`,
+  plus owner handoff routes `/api/v1/auth/activation/**` and `/api/v1/setup/**`.
+- Tenant profile, plans, quotas, usage, billing, and lifecycle:
+  `/api/v1/superadmin/tenants`,
+  `/api/v1/superadmin/tenants/{id}`,
+  `/api/v1/superadmin/tenants/{id}/plan`,
+  `/api/v1/superadmin/tenants/{id}/entitlements/**`,
+  `/api/v1/superadmin/tenants/{id}/usage/**`,
+  `/api/v1/superadmin/tenants/{id}/billing/**`,
+  `/api/v1/superadmin/tenants/{id}/suspension/**`,
+  `/api/v1/superadmin/tenants/{id}/resume`,
+  `/api/v1/superadmin/tenants/{id}/cancel`,
+  `/api/v1/superadmin/tenants/{id}/archive`,
+  `/api/v1/superadmin/tenants/{id}/commercial-state`,
+  `/api/v1/superadmin/tenants/{id}/limits`,
+  `/api/v1/superadmin/tenants/{id}/modules`,
+  `/api/v1/superadmin/tenants/{id}/quota-check`, and
+  `/api/v1/superadmin/tenants/{id}/quota-policy`.
+- Support, SLA, bugs, observability, infra, and audit:
+  `/api/v1/superadmin/support/tickets/**`,
+  `/api/v1/superadmin/observability/datadog/status`,
+  `/api/v1/superadmin/infra/**`, and `/api/v1/superadmin/audit/**`.
+
+The executable route/payload/error checklist is
+[`docs/frontend-portals/superadmin/api-contracts.md`](../frontend-portals/superadmin/api-contracts.md).
+All list routes validate unknown filters, enum values, sort fields, page/size,
+and forbidden body fields explicitly instead of ignoring stale frontend state.
+Every accepted mutation must produce privacy-safe audit evidence with a
+trace/correlation ID.
 
 ### Retired Superadmin routes
 

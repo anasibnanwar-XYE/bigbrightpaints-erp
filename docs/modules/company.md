@@ -24,24 +24,32 @@ The company module owns the **tenant lifecycle and runtime enforcement** surface
 | GET | `/api/v1/companies` | `ROLE_SUPER_ADMIN`, `ROLE_ADMIN`, `ROLE_ACCOUNTING`, `ROLE_SALES` | List companies (super-admin: all; tenant users: own company only) |
 | DELETE | `/api/v1/companies/{id}` | `ROLE_ADMIN` | Currently always denies deletion — companies cannot be deleted |
 
-### SuperAdminController — `/api/v1/superadmin`
+### SuperAdmin control plane — `/api/v1/superadmin`
 
 All endpoints require `ROLE_SUPER_ADMIN`.
 
-| Method | Path | Purpose |
-| --- | --- | --- |
-| GET | `/api/v1/superadmin/dashboard` | Super-admin dashboard metrics |
-| GET | `/api/v1/superadmin/tenants` | List tenants (optional `?status=` filter) |
-| GET | `/api/v1/superadmin/tenants/{id}` | Tenant detail |
-| PUT | `/api/v1/superadmin/tenants/{id}/lifecycle` | Update tenant lifecycle state |
-| PUT | `/api/v1/superadmin/tenants/{id}/limits` | Update tenant usage limits |
-| PUT | `/api/v1/superadmin/tenants/{id}/modules` | Update enabled modules for tenant |
-| POST | `/api/v1/superadmin/tenants/{id}/support/warnings` | Issue support warning |
-| PUT | `/api/v1/superadmin/tenants/{id}/support/context` | Update support notes and tags |
-| POST | `/api/v1/superadmin/tenants/{id}/force-logout` | Force-logout all tenant users |
-| PUT | `/api/v1/superadmin/tenants/{id}/admins/main` | Replace main admin |
-| POST | `/api/v1/superadmin/tenants/{id}/admins/{adminId}/email-change/request` | Request admin email change |
-| POST | `/api/v1/superadmin/tenants/{id}/admins/{adminId}/email-change/confirm` | Confirm admin email change |
+The final V1 surface is documented for frontend consumers in
+[`docs/frontend-portals/superadmin/api-contracts.md`](../frontend-portals/superadmin/api-contracts.md)
+and is generated in `openapi.json`. Company-owned Super Admin routes include:
+
+| Route family | Purpose |
+| --- | --- |
+| `GET /api/v1/superadmin/dashboard` | Platform aggregate dashboard; no private tenant business rows |
+| `GET, POST /api/v1/superadmin/tenants` | Paginated/filtered tenant list and strict Add Client create payload |
+| `GET /api/v1/superadmin/tenants/new` | Add Client option schema for company, owner, commercial, quotas, modules, support, create modes, and seed policy |
+| `GET /api/v1/superadmin/tenants/{id}` | State-aware tenant profile tabs as summaries only |
+| `/api/v1/superadmin/tenants/{id}/activation/{send,resend,copy,expire}` | Digest-token activation actions; link values are only at explicit copy/delivery boundaries and must be redacted in evidence |
+| `/api/v1/superadmin/tenants/{id}/seed-status/**` and `/accounting-mappings/{mappingKey}` | Seed readiness, repair, and locked mapping controls |
+| `/api/v1/superadmin/tenants/{id}/plan`, `/entitlements/**`, `/limits`, `/modules`, `/quota-check`, `/quota-policy` | Plan assignment, effective entitlement source metadata, quotas, rate limits, and module gates |
+| `/api/v1/superadmin/tenants/{id}/billing/**` plus `/billing/metrics` | Subscription, immutable manual billing ledger, MRR/ARR summaries, and balance actions |
+| `/api/v1/superadmin/tenants/{id}/suspension/**`, `/resume`, `/cancel`, `/archive`, `/commercial-state`, `/lifecycle` | Commercial/lifecycle access matrix and legacy lifecycle compatibility endpoint |
+| `/api/v1/superadmin/support/tickets/**` | Support queue, customer-visible messages, internal notes, SLA refresh, feature/incident conversion, and Sentry link/sync |
+| `/api/v1/superadmin/audit/**`, `/infra/**`, `/observability/datadog/status` | Privacy-safe audit/security events, infra health/cost, and safe observability status |
+| `/api/v1/superadmin/profile/**`, `/settings`, `/roles/**`, `/changelog/**`, `/notify` | Platform operator profile, settings, role catalog, release notes, and notification utility |
+
+All list routes use documented query parameters and explicit validation for
+unknown filters, invalid enums, invalid sort fields, and oversized pages. All
+accepted mutations write privacy-safe audit evidence with trace/correlation IDs.
 
 ### SuperAdminTenantOnboardingController — `/api/v1/superadmin/tenants`
 
@@ -188,6 +196,21 @@ Super-admin users are **explicitly blocked** from tenant business endpoints (sal
 The old flat onboarding route is not a current workflow. `POST /api/v1/superadmin/tenants/onboard` is retired, returns `410 Gone`, is hidden from OpenAPI/current frontend contracts, and must not be documented as a create-tenant API.
 
 V1 tenant creation is the Add Client + activation workflow: Super Admin prepares a draft or pending tenant, activation handles owner credential setup, and setup finishes through the V1 owner setup corridor. The support admin-password-reset route is also retired (`410 Gone`); use activation/password recovery flows instead of platform-issued credential resets.
+
+The current V1 status vocabulary separates tenant lifecycle, activation,
+onboarding, billing, and suspension state. Super Admin summaries may show
+`DRAFT`, `PENDING_ACTIVATION`, `SETUP_PENDING`, `TRIAL_ACTIVE`, `ACTIVE`,
+`GRACE`, `SUSPENDED_READ_ONLY`, `SUSPENDED_BLOCKED`, `CANCELED`, `ARCHIVED`,
+and `SEED_FAILED` as documented list/profile states. Owner setup uses only
+company details, GST, accounting defaults, optional team invite, and finish;
+location setup is outside this V1 corridor.
+
+Super Admin summaries must stay privacy-safe. They may expose tenant identity
+markers, owner contact markers, plan/billing/usage summaries, support/SLA/bug
+metadata, seed readiness, trace IDs, and audit IDs. They must not expose tenant
+invoices, ledger lines, inventory rows, salaries, vendors/customers, files, GST
+returns, request/response bodies, raw logs, token values, password hashes,
+provider credentials, or `.env` values.
 
 ## Cross-Module Boundaries
 
