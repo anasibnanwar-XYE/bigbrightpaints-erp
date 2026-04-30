@@ -1,6 +1,7 @@
 package com.bigbrightpaints.erp.modules.admin.service;
 
 import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.math.RoundingMode;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -77,12 +78,13 @@ public class SuperAdminInfraCostService {
   public SuperAdminInfraCostDto.Dashboard dashboard(String currency) {
     String normalizedCurrency = normalizeCurrency(defaultCurrency(currency));
     List<SuperAdminInfraCostSnapshot> latest = latestComponentSnapshots(normalizedCurrency);
-    long totalCost = latest.stream().mapToLong(this::amount).sum();
+    long totalCost = totalCost(latest);
     SuperAdminUsageDtos.PlatformUsage platformUsage = tenantUsageRollupService.getPlatformUsage();
     List<SuperAdminInfraCostDto.UsageAggregate> aggregateUsage =
         platformUsage.totals().stream().map(this::toAggregate).toList();
     List<TenantWeight> weights = tenantWeights(platformUsage.tenants());
-    long totalWeight = weights.stream().mapToLong(TenantWeight::weight).sum();
+    BigInteger totalWeight =
+        weights.stream().map(TenantWeight::weight).reduce(BigInteger.ZERO, BigInteger::add);
     int tenantCount = weights.size();
     List<SuperAdminInfraCostDto.TenantCostScore> tenantScores =
         weights.stream()
@@ -266,6 +268,11 @@ public class SuperAdminInfraCostService {
     if (amount == null || amount < 0) {
       throw invalidInput("amountMinorUnits must be zero or greater");
     }
+    if (amount > SuperAdminInfraCostDto.MAX_SNAPSHOT_AMOUNT_MINOR_UNITS) {
+      throw invalidInput(
+          "amountMinorUnits must be at most "
+              + SuperAdminInfraCostDto.MAX_SNAPSHOT_AMOUNT_MINOR_UNITS);
+    }
     return new SnapshotValues(
         component,
         periodStartAt,
@@ -290,11 +297,11 @@ public class SuperAdminInfraCostService {
   private List<TenantWeight> tenantWeights(List<SuperAdminUsageDtos.TenantSummary> tenants) {
     List<TenantWeight> weights = new ArrayList<>();
     for (SuperAdminUsageDtos.TenantSummary tenant : tenants) {
-      long weight = 0L;
+      BigInteger weight = BigInteger.ZERO;
       List<SuperAdminInfraCostDto.UsageAggregate> basis = new ArrayList<>();
       for (SuperAdminUsageDtos.DimensionUsage dimension : tenant.dimensions()) {
         long units = safeUsageUnits(dimension);
-        weight += units;
+        weight = weight.add(BigInteger.valueOf(units));
         basis.add(
             new SuperAdminInfraCostDto.UsageAggregate(
                 dimension.dimension(), dimension.unit(), dimension.used(), 1L));
@@ -307,20 +314,20 @@ public class SuperAdminInfraCostService {
   }
 
   private SuperAdminInfraCostDto.TenantCostScore toScore(
-      TenantWeight weight, long totalWeight, int tenantCount, long totalCost) {
+      TenantWeight weight, BigInteger totalWeight, int tenantCount, long totalCost) {
     long scoreBasisPoints;
-    if (totalWeight <= 0 && tenantCount > 0) {
+    if (totalWeight.signum() <= 0 && tenantCount > 0) {
       scoreBasisPoints =
           BigDecimal.valueOf(10_000L)
               .divide(BigDecimal.valueOf(tenantCount), 0, RoundingMode.HALF_UP)
               .longValue();
-    } else if (totalWeight <= 0) {
+    } else if (totalWeight.signum() <= 0) {
       scoreBasisPoints = 0L;
     } else {
       scoreBasisPoints =
-          BigDecimal.valueOf(weight.weight())
+          new BigDecimal(weight.weight())
               .multiply(BigDecimal.valueOf(10_000L))
-              .divide(BigDecimal.valueOf(totalWeight), 0, RoundingMode.HALF_UP)
+              .divide(new BigDecimal(totalWeight), 0, RoundingMode.HALF_UP)
               .longValue();
     }
     long estimatedCost =
@@ -332,7 +339,7 @@ public class SuperAdminInfraCostService {
         weight.tenantId(),
         weight.tenantCode(),
         weight.status(),
-        weight.weight(),
+        safeLong(weight.weight()),
         scoreBasisPoints,
         estimatedCost,
         weight.usageBasis());
@@ -483,6 +490,30 @@ public class SuperAdminInfraCostService {
     return value;
   }
 
+  private long totalCost(List<SuperAdminInfraCostSnapshot> latest) {
+    long total = 0L;
+    for (SuperAdminInfraCostSnapshot snapshot : latest) {
+      long amount = amount(snapshot);
+      if (amount > SuperAdminInfraCostDto.MAX_SNAPSHOT_AMOUNT_MINOR_UNITS) {
+        throw new ApplicationException(
+            ErrorCode.BUSINESS_INVALID_STATE, "Cost snapshot amount exceeds supported maximum");
+      }
+      try {
+        total = Math.addExact(total, amount);
+      } catch (ArithmeticException ex) {
+        throw new ApplicationException(
+            ErrorCode.BUSINESS_INVALID_STATE, "Cost snapshot total exceeds supported maximum");
+      }
+    }
+    return total;
+  }
+
+  private long safeLong(BigInteger value) {
+    return value.compareTo(BigInteger.valueOf(Long.MAX_VALUE)) > 0
+        ? Long.MAX_VALUE
+        : value.longValue();
+  }
+
   private ApplicationException invalidInput(String message) {
     return new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, message);
   }
@@ -512,6 +543,6 @@ public class SuperAdminInfraCostService {
       Long tenantId,
       String tenantCode,
       String status,
-      long weight,
+      BigInteger weight,
       List<SuperAdminInfraCostDto.UsageAggregate> usageBasis) {}
 }

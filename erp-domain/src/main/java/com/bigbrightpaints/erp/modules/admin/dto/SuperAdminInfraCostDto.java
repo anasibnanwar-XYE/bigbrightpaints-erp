@@ -3,10 +3,14 @@ package com.bigbrightpaints.erp.modules.admin.dto;
 import java.time.Instant;
 import java.util.List;
 
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 
 public final class SuperAdminInfraCostDto {
+
+  public static final long MAX_SNAPSHOT_AMOUNT_MINOR_UNITS = Long.MAX_VALUE / 6L;
 
   private SuperAdminInfraCostDto() {}
 
@@ -14,7 +18,7 @@ public final class SuperAdminInfraCostDto {
       @NotBlank String component,
       @NotNull Instant periodStartAt,
       @NotNull Instant periodEndAt,
-      @NotNull Long amountMinorUnits,
+      @NotNull @Min(0) @Max(MAX_SNAPSHOT_AMOUNT_MINOR_UNITS) Long amountMinorUnits,
       @NotBlank String currency,
       @NotBlank String source,
       @NotBlank String reason,

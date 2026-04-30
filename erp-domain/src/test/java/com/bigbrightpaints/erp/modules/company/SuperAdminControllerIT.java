@@ -28,6 +28,7 @@ import org.springframework.mail.MailSendException;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 
+import com.bigbrightpaints.erp.modules.admin.dto.SuperAdminInfraCostDto;
 import com.bigbrightpaints.erp.modules.auth.service.AuthTokenDigests;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyLifecycleState;
@@ -363,6 +364,130 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
             Map.class);
     assertThat(includeArchived.getStatusCode()).isEqualTo(HttpStatus.OK);
     assertThat(includeArchived.getBody().get("data").toString()).contains("ARCHIVED");
+  }
+
+  @Test
+  void infraCostSnapshotsRejectOverflowProneCreateAndCorrectionBeforePersistence() {
+    String superAdminToken = loginToken(SUPER_ADMIN_EMAIL, ROOT_COMPANY_CODE);
+    HttpHeaders superAdminHeaders = headers(superAdminToken, ROOT_COMPANY_CODE);
+
+    ResponseEntity<Map> overflowCreate =
+        rest.exchange(
+            "/api/v1/superadmin/infra/costs/snapshots",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                infraCostPayload("DATABASE", Long.MAX_VALUE, "Unsupported high value probe", "EUR"),
+                superAdminHeaders),
+            Map.class);
+    assertThat(overflowCreate.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(
+            countRows(
+                "select count(*) from super_admin_infra_cost_snapshots where amount_minor_units ="
+                    + " ?",
+                Long.MAX_VALUE))
+        .isZero();
+
+    ResponseEntity<Map> validCreate =
+        rest.exchange(
+            "/api/v1/superadmin/infra/costs/snapshots",
+            HttpMethod.POST,
+            new HttpEntity<>(
+                infraCostPayload("DATABASE", 1_000L, "Initial supported platform cost", "EUR"),
+                superAdminHeaders),
+            Map.class);
+    assertThat(validCreate.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+    @SuppressWarnings("unchecked")
+    Map<String, Object> snapshot = (Map<String, Object>) validCreate.getBody().get("data");
+    Long snapshotId = ((Number) snapshot.get("snapshotId")).longValue();
+
+    ResponseEntity<Map> overflowCorrection =
+        rest.exchange(
+            "/api/v1/superadmin/infra/costs/snapshots/" + snapshotId,
+            HttpMethod.PUT,
+            new HttpEntity<>(
+                infraCostPayload(
+                    "DATABASE", Long.MAX_VALUE, "Unsupported correction high value", "EUR"),
+                superAdminHeaders),
+            Map.class);
+    assertThat(overflowCorrection.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+    ResponseEntity<Map> corrections =
+        rest.exchange(
+            "/api/v1/superadmin/infra/costs/snapshots/" + snapshotId + "/corrections",
+            HttpMethod.GET,
+            new HttpEntity<>(superAdminHeaders),
+            Map.class);
+    assertThat(corrections.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat((List<?>) corrections.getBody().get("data")).isEmpty();
+
+    ResponseEntity<Map> activeList =
+        rest.exchange(
+            "/api/v1/superadmin/infra/costs/snapshots?currency=EUR",
+            HttpMethod.GET,
+            new HttpEntity<>(superAdminHeaders),
+            Map.class);
+    assertThat(activeList.getStatusCode()).isEqualTo(HttpStatus.OK);
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> snapshots =
+        (List<Map<String, Object>>) activeList.getBody().get("data");
+    Map<String, Object> unchanged =
+        snapshots.stream()
+            .filter(row -> snapshotId.equals(((Number) row.get("snapshotId")).longValue()))
+            .findFirst()
+            .orElseThrow();
+    assertThat(unchanged)
+        .containsEntry("amountMinorUnits", 1_000)
+        .containsEntry("correctionCount", 0);
+  }
+
+  @Test
+  void infraCostDashboardKeepsMaxSafeSnapshotTotalsAndTenantEstimatesNonNegative() {
+    String superAdminToken = loginToken(SUPER_ADMIN_EMAIL, ROOT_COMPANY_CODE);
+    HttpHeaders superAdminHeaders = headers(superAdminToken, ROOT_COMPANY_CODE);
+    List<String> components =
+        List.of("APP_SERVER", "DATABASE", "STORAGE", "EMAIL", "BACKUP", "MONITORING");
+    long maxSafeAmount = SuperAdminInfraCostDto.MAX_SNAPSHOT_AMOUNT_MINOR_UNITS;
+    long expectedTotal = maxSafeAmount * components.size();
+
+    for (String component : components) {
+      ResponseEntity<Map> create =
+          rest.exchange(
+              "/api/v1/superadmin/infra/costs/snapshots",
+              HttpMethod.POST,
+              new HttpEntity<>(
+                  infraCostPayload(component, maxSafeAmount, "Accepted maximum safe cost", "GBP"),
+                  superAdminHeaders),
+              Map.class);
+      assertThat(create.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+      @SuppressWarnings("unchecked")
+      Map<String, Object> snapshot = (Map<String, Object>) create.getBody().get("data");
+      assertThat(snapshot).containsEntry("amountMinorUnits", maxSafeAmount);
+    }
+
+    ResponseEntity<Map> dashboard =
+        rest.exchange(
+            "/api/v1/superadmin/infra/costs?currency=GBP",
+            HttpMethod.GET,
+            new HttpEntity<>(superAdminHeaders),
+            Map.class);
+    assertThat(dashboard.getStatusCode()).isEqualTo(HttpStatus.OK);
+    @SuppressWarnings("unchecked")
+    Map<String, Object> data = (Map<String, Object>) dashboard.getBody().get("data");
+    assertThat(data)
+        .containsEntry("currency", "GBP")
+        .containsEntry("totalCostMinorUnits", expectedTotal);
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> tenantScores =
+        (List<Map<String, Object>>) data.get("tenantCostScores");
+    assertThat(tenantScores).isNotEmpty();
+    for (Map<String, Object> score : tenantScores) {
+      long aggregateUsageUnits = ((Number) score.get("aggregateUsageUnits")).longValue();
+      long basisPoints = ((Number) score.get("costScoreBasisPoints")).longValue();
+      long estimatedCost = ((Number) score.get("estimatedCostMinorUnits")).longValue();
+      assertThat(aggregateUsageUnits).isGreaterThanOrEqualTo(0L);
+      assertThat(basisPoints).isBetween(0L, 10_000L);
+      assertThat(estimatedCost).isBetween(0L, expectedTotal);
+    }
   }
 
   @Test
@@ -1889,6 +2014,11 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
 
   private Map<String, Object> infraCostPayload(
       String component, long amountMinorUnits, String reason) {
+    return infraCostPayload(component, amountMinorUnits, reason, "INR");
+  }
+
+  private Map<String, Object> infraCostPayload(
+      String component, long amountMinorUnits, String reason, String currency) {
     return Map.of(
         "component",
         component,
@@ -1899,7 +2029,7 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
         "amountMinorUnits",
         amountMinorUnits,
         "currency",
-        "INR",
+        currency,
         "source",
         "Manual platform estimate",
         "reason",

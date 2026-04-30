@@ -571,6 +571,14 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
         "#/components/schemas/SnapshotRequest",
         "201",
         "#/components/schemas/ApiResponseSnapshotResponse");
+    assertThat(
+            root.path("paths")
+                .path("/api/v1/superadmin/infra/costs/snapshots")
+                .path("post")
+                .path("responses")
+                .has("200"))
+        .withFailMessage("Snapshot creation must document 201 Created, not contradictory 200 OK")
+        .isFalse();
     assertOperationContract(
         root,
         "/api/v1/superadmin/infra/costs/snapshots/{snapshotId}",

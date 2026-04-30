@@ -44,6 +44,7 @@ public class SuperAdminInfraCostController {
   }
 
   @PostMapping("/snapshots")
+  @ResponseStatus(HttpStatus.CREATED)
   public ResponseEntity<ApiResponse<SuperAdminInfraCostDto.SnapshotResponse>> createSnapshot(
       @Valid @RequestBody SuperAdminInfraCostDto.SnapshotRequest request) {
     return ResponseEntity.status(HttpStatus.CREATED)
