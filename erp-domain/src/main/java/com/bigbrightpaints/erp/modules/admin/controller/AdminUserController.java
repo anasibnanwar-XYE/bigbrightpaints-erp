@@ -1,6 +1,7 @@
 package com.bigbrightpaints.erp.modules.admin.controller;
 
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -12,7 +13,6 @@ import com.bigbrightpaints.erp.modules.admin.dto.CreateUserRequest;
 import com.bigbrightpaints.erp.modules.admin.dto.UpdateUserRequest;
 import com.bigbrightpaints.erp.modules.admin.dto.UserDto;
 import com.bigbrightpaints.erp.modules.admin.service.AdminUserService;
-import com.bigbrightpaints.erp.modules.auth.service.SecurityEventResponse;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 
 import jakarta.validation.Valid;
@@ -98,7 +98,7 @@ public class AdminUserController {
   }
 
   @GetMapping("/{userId}/security-events")
-  public ResponseEntity<ApiResponse<List<SecurityEventResponse>>> securityEvents(
+  public ResponseEntity<ApiResponse<List<Map<String, Object>>>> securityEvents(
       @PathVariable Long userId, @RequestParam(required = false) String type) {
     return ResponseEntity.ok(
         ApiResponse.success(adminUserService.listSecurityEvents(userId, type)));

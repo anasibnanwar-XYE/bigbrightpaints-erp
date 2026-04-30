@@ -21,7 +21,6 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import com.bigbrightpaints.erp.modules.auth.domain.MfaFactorTypes;
 import com.bigbrightpaints.erp.modules.auth.domain.RefreshToken;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
@@ -30,6 +29,7 @@ import com.bigbrightpaints.erp.shared.dto.PageResponse;
 @Service
 public class IamCanonicalStorageService {
 
+  private static final String TOTP = "TOTP";
   private static final Set<String> SENSITIVE_METADATA_KEYS =
       Set.of(
           "password",
@@ -433,15 +433,15 @@ public class IamCanonicalStorageService {
   }
 
   @Transactional(readOnly = true)
-  public List<SecurityEventResponse> listSecurityEvents(
+  public List<Map<String, Object>> listSecurityEvents(
       UserAccount user, String eventTypeFilter, int limit) {
     return querySecurityEvents(user, eventTypeFilter, 0, limit).content();
   }
 
   @Transactional(readOnly = true)
-  public PageResponse<SecurityEventResponse> listSelfSecurityEvents(
+  public PageResponse<Map<String, Object>> listSelfSecurityEvents(
       UserAccount user, String eventTypeFilter, int page, int size) {
-    PageResponse<SecurityEventResponse> events =
+    PageResponse<Map<String, Object>> events =
         querySecurityEvents(user, eventTypeFilter, page, size);
     return new PageResponse<>(
         events.content().stream().map(this::toSelfSecurityEvent).toList(),
@@ -451,7 +451,7 @@ public class IamCanonicalStorageService {
         events.size());
   }
 
-  private PageResponse<SecurityEventResponse> querySecurityEvents(
+  private PageResponse<Map<String, Object>> querySecurityEvents(
       UserAccount user, String eventTypeFilter, int page, int size) {
     int safePage = Math.max(page, 0);
     int safeSize = Math.max(1, Math.min(size, 100));
@@ -497,7 +497,7 @@ public class IamCanonicalStorageService {
             normalizedFilter,
             normalizedFilter,
             prefixFilter);
-    List<SecurityEventResponse> events =
+    List<Map<String, Object>> events =
         jdbcTemplate.query(
             """
             select e.event_type,
@@ -547,9 +547,10 @@ public class IamCanonicalStorageService {
     return PageResponse.of(events, total == null ? 0 : total, safePage, safeSize);
   }
 
-  private SecurityEventResponse mapSecurityEventRow(ResultSet rs, String normalizedScope)
+  private Map<String, Object> mapSecurityEventRow(ResultSet rs, String normalizedScope)
       throws SQLException {
     Map<String, String> metadata = fromJsonMap(rs.getString("metadata_json"));
+    Map<String, Object> row = new LinkedHashMap<>();
     String eventType = rs.getString("event_type");
     String joinedCompanyCode = rs.getString("company_code");
     String eventAuthScopeCode = rs.getString("auth_scope_code");
@@ -564,13 +565,14 @@ public class IamCanonicalStorageService {
             eventAuthScopeCode,
             accountAuthScopeCode,
             normalizedScope);
-    Timestamp occurredAt = rs.getTimestamp("occurred_at");
-    return new SecurityEventResponse(
-        eventType,
-        eventType,
-        firstNonBlank(metadata.get("actor"), metadata.get("actorUserId")),
-        firstNonBlank(metadata.get("targetUserId"), null),
-        firstNonBlank(metadata.get("sessionId"), metadata.get("sessionReference")),
+    row.put("type", eventType);
+    row.put("eventType", eventType);
+    row.put("actor", firstNonBlank(metadata.get("actor"), metadata.get("actorUserId")));
+    row.put("targetUserId", firstNonBlank(metadata.get("targetUserId"), null));
+    row.put(
+        "sessionId", firstNonBlank(metadata.get("sessionId"), metadata.get("sessionReference")));
+    row.put(
+        "companyCode",
         firstSafeScopeEvidence(
             metadata.get("companyCode"),
             metadata.get("tenantScope"),
@@ -579,12 +581,14 @@ public class IamCanonicalStorageService {
             joinedCompanyCode,
             eventAuthScopeCode,
             accountAuthScopeCode,
-            normalizedScope),
-        resolvedAuthScopeCode,
-        rs.getString("outcome"),
-        firstNonBlank(rs.getString("reason"), metadata.get("reason")),
-        occurredAt == null ? null : occurredAt.toInstant().toString(),
-        securityEventMetadata(metadata));
+            normalizedScope));
+    row.put("authScopeCode", resolvedAuthScopeCode);
+    row.put("outcome", rs.getString("outcome"));
+    row.put("reason", firstNonBlank(rs.getString("reason"), metadata.get("reason")));
+    Timestamp occurredAt = rs.getTimestamp("occurred_at");
+    row.put("createdAt", occurredAt == null ? null : occurredAt.toInstant().toString());
+    row.put("metadata", securityEventMetadata(metadata));
+    return row;
   }
 
   private void upsertAccount(UserAccount user) {
@@ -730,7 +734,7 @@ public class IamCanonicalStorageService {
              and factor_type = ?
           """,
           user.getId(),
-          MfaFactorTypes.TOTP);
+          TOTP);
       return;
     }
     jdbcTemplate.update(
@@ -758,7 +762,7 @@ public class IamCanonicalStorageService {
                 disabled_at = null,
                 version = iam_mfa_factors.version + 1
         """,
-        MfaFactorTypes.TOTP,
+        TOTP,
         user.getMfaSecret(),
         user.isMfaEnabled() ? "ACTIVE" : "PENDING",
         user.isMfaEnabled() ? timestampNow() : null,
@@ -937,39 +941,34 @@ public class IamCanonicalStorageService {
         : null;
   }
 
-  private SecurityEventResponse toSelfSecurityEvent(SecurityEventResponse event) {
-    return new SecurityEventResponse(
-        event.type(),
-        event.eventType(),
-        null,
-        null,
-        null,
-        event.companyCode(),
-        event.authScopeCode(),
-        event.outcome(),
-        event.reason(),
-        event.createdAt(),
-        selfSecurityEventMetadata(event.metadata()));
-  }
-
-  private Map<String, String> selfSecurityEventMetadata(Map<String, String> metadata) {
-    if (metadata == null || metadata.isEmpty()) {
-      return Map.of();
+  private Map<String, Object> toSelfSecurityEvent(Map<String, Object> event) {
+    Map<String, Object> selfEvent = new LinkedHashMap<>();
+    selfEvent.put("type", event.get("type"));
+    selfEvent.put("eventType", event.get("eventType"));
+    selfEvent.put("companyCode", event.get("companyCode"));
+    selfEvent.put("authScopeCode", event.get("authScopeCode"));
+    selfEvent.put("outcome", event.get("outcome"));
+    selfEvent.put("reason", event.get("reason"));
+    selfEvent.put("createdAt", event.get("createdAt"));
+    Object metadata = event.get("metadata");
+    if (metadata instanceof Map<?, ?> metadataMap) {
+      Map<String, String> safeMetadata = new LinkedHashMap<>();
+      copyStringMetadata(metadataMap, safeMetadata, "operation");
+      copyStringMetadata(metadataMap, safeMetadata, "reason");
+      copyStringMetadata(metadataMap, safeMetadata, "outcome");
+      copyStringMetadata(metadataMap, safeMetadata, "action");
+      copyStringMetadata(metadataMap, safeMetadata, "changedFields");
+      selfEvent.put("metadata", safeMetadata);
+    } else {
+      selfEvent.put("metadata", Map.of());
     }
-    Map<String, String> safeMetadata = new LinkedHashMap<>();
-    copyStringMetadata(metadata, safeMetadata, "operation");
-    copyStringMetadata(metadata, safeMetadata, "reason");
-    copyStringMetadata(metadata, safeMetadata, "outcome");
-    copyStringMetadata(metadata, safeMetadata, "action");
-    copyStringMetadata(metadata, safeMetadata, "changedFields");
-    return safeMetadata;
+    return selfEvent;
   }
 
-  private void copyStringMetadata(
-      Map<String, String> metadata, Map<String, String> target, String key) {
-    String value = metadata.get(key);
-    if (StringUtils.hasText(value)) {
-      target.put(key, value);
+  private void copyStringMetadata(Map<?, ?> metadata, Map<String, String> target, String key) {
+    Object value = metadata.get(key);
+    if (value instanceof String stringValue && StringUtils.hasText(stringValue)) {
+      target.put(key, stringValue);
     }
   }
 
@@ -1020,7 +1019,7 @@ public class IamCanonicalStorageService {
     try {
       return objectMapper.writeValueAsString(metadata == null ? Map.of() : metadata);
     } catch (JsonProcessingException ex) {
-      throw new IllegalStateException("IAM metadata JSON serialization failed", ex);
+      return "{}";
     }
   }
 

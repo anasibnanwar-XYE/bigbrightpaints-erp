@@ -36,7 +36,6 @@ import com.bigbrightpaints.erp.modules.auth.service.IamCanonicalStorageService;
 import com.bigbrightpaints.erp.modules.auth.service.PasswordResetService;
 import com.bigbrightpaints.erp.modules.auth.service.RefreshTokenService;
 import com.bigbrightpaints.erp.modules.auth.service.ScopedAccountBootstrapService;
-import com.bigbrightpaints.erp.modules.auth.service.SecurityEventResponse;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.rbac.domain.Role;
@@ -414,7 +413,7 @@ public class AdminUserService {
   }
 
   @Transactional(readOnly = true)
-  public List<SecurityEventResponse> listSecurityEvents(Long userId, String type) {
+  public List<Map<String, Object>> listSecurityEvents(Long userId, String type) {
     Company company = companyContextService.requireCurrentCompany();
     UserAccount user =
         resolveScopedUserForAdminAction(
@@ -423,7 +422,7 @@ public class AdminUserService {
             "admin-read-security-events-out-of-scope",
             false,
             OutOfScopeResponseMode.ACCESS_DENIED);
-    List<SecurityEventResponse> events =
+    List<Map<String, Object>> events =
         iamCanonicalStorageService.listSecurityEvents(user, type, 100);
     auditSecurityEventRead(user, company, type);
     return events;

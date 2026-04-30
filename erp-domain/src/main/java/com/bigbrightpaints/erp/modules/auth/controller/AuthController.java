@@ -37,7 +37,6 @@ import com.bigbrightpaints.erp.modules.auth.service.AuthSessionService;
 import com.bigbrightpaints.erp.modules.auth.service.IamCanonicalStorageService;
 import com.bigbrightpaints.erp.modules.auth.service.PasswordResetService;
 import com.bigbrightpaints.erp.modules.auth.service.PasswordService;
-import com.bigbrightpaints.erp.modules.auth.service.SecurityEventResponse;
 import com.bigbrightpaints.erp.modules.auth.web.AuthResponse;
 import com.bigbrightpaints.erp.modules.auth.web.ChangePasswordRequest;
 import com.bigbrightpaints.erp.modules.auth.web.ForgotPasswordRequest;
@@ -228,7 +227,7 @@ public class AuthController {
 
   @GetMapping("/me/security-events")
   @PreAuthorize("isAuthenticated()")
-  public ResponseEntity<ApiResponse<PageResponse<SecurityEventResponse>>> securityEvents(
+  public ResponseEntity<ApiResponse<PageResponse<Map<String, Object>>>> securityEvents(
       @AuthenticationPrincipal UserPrincipal principal,
       @RequestParam(required = false) String type,
       @RequestParam(defaultValue = "0") int page,
