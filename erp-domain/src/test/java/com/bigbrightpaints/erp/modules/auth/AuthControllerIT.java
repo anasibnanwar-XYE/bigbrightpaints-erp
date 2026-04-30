@@ -926,6 +926,24 @@ public class AuthControllerIT extends AbstractIntegrationTest {
     assertThat(responseData(boundedSizeResponse))
         .containsEntry("size", 100)
         .containsEntry("totalElements", 3);
+
+    ResponseEntity<Map> boundedLimitResponse =
+        rest.exchange(
+            "/api/v1/auth/me/security-events?type=PAGE_SESSION&limit=500",
+            HttpMethod.GET,
+            new HttpEntity<>(bearer(accessToken)),
+            Map.class);
+    assertThat(boundedLimitResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(responseData(boundedLimitResponse)).containsEntry("size", 100);
+
+    ResponseEntity<Map> sizePrecedenceResponse =
+        rest.exchange(
+            "/api/v1/auth/me/security-events?type=PAGE_SESSION&size=2&limit=500",
+            HttpMethod.GET,
+            new HttpEntity<>(bearer(accessToken)),
+            Map.class);
+    assertThat(sizePrecedenceResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(responseData(sizePrecedenceResponse)).containsEntry("size", 2);
   }
 
   @Test

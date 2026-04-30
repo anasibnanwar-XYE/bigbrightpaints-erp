@@ -314,7 +314,9 @@ public class MfaService {
   }
 
   private void replaceRecoveryCodes(UserAccount user, List<String> recoveryCodes) {
+    mfaRecoveryCodeRepository.findUnusedByUserForUpdate(user);
     mfaRecoveryCodeRepository.deleteAllByUser(user);
+    mfaRecoveryCodeRepository.flush();
     if (recoveryCodes == null || recoveryCodes.isEmpty()) {
       return;
     }
@@ -323,6 +325,7 @@ public class MfaService {
             .map(code -> new MfaRecoveryCode(user, passwordEncoder.encode(code)))
             .toList();
     mfaRecoveryCodeRepository.saveAll(hashedCodes);
+    mfaRecoveryCodeRepository.flush();
   }
 
   private void revokeActiveSessions(UserAccount user) {

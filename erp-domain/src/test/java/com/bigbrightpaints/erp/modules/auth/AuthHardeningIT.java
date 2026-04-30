@@ -25,6 +25,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
 
+import com.bigbrightpaints.erp.core.security.JwtProperties;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
@@ -39,11 +40,12 @@ public class AuthHardeningIT extends AbstractIntegrationTest {
   private static final String COMPANY = "AUTHLOCK";
   private static final String USER_EMAIL = "lockout@bbp.com";
   private static final String PASSWORD = "Passw0rd!";
-  private static final String TEST_JWT_SECRET = "test-secret-should-be-at-least-32-bytes-long-1234";
 
   @Autowired private TestRestTemplate rest;
 
   @Autowired private UserAccountRepository userAccountRepository;
+
+  @Autowired private JwtProperties jwtProperties;
 
   @BeforeEach
   void setup() {
@@ -267,7 +269,7 @@ public class AuthHardeningIT extends AbstractIntegrationTest {
 
   private String signedAccessTokenWithoutJwtId(UserAccount user) {
     Instant now = Instant.now();
-    Key signingKey = Keys.hmacShaKeyFor(TEST_JWT_SECRET.getBytes(StandardCharsets.UTF_8));
+    Key signingKey = Keys.hmacShaKeyFor(jwtProperties.getSecret().getBytes(StandardCharsets.UTF_8));
     return Jwts.builder()
         .setSubject(user.getPublicId().toString())
         .claim("companyCode", COMPANY)

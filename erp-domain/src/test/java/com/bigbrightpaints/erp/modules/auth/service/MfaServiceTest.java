@@ -99,6 +99,8 @@ class MfaServiceTest {
 
     assertThat(enrollment.qrUri()).contains("user");
     assertThat(enrollment.qrUri()).contains("MOCK");
+    verify(mfaRecoveryCodeRepository).findUnusedByUserForUpdate(user);
+    verify(mfaRecoveryCodeRepository, times(2)).flush();
   }
 
   @Test
@@ -247,6 +249,12 @@ class MfaServiceTest {
 
     assertThat(regeneratedCodes).hasSize(8);
     verify(repository).lockById(42L);
+    org.mockito.InOrder verifierReplacement = inOrder(mfaRecoveryCodeRepository);
+    verifierReplacement.verify(mfaRecoveryCodeRepository).findUnusedByUserForUpdate(lockedUser);
+    verifierReplacement.verify(mfaRecoveryCodeRepository).deleteAllByUser(lockedUser);
+    verifierReplacement.verify(mfaRecoveryCodeRepository).flush();
+    verifierReplacement.verify(mfaRecoveryCodeRepository).saveAll(anyList());
+    verifierReplacement.verify(mfaRecoveryCodeRepository).flush();
     verify(mfaRecoveryCodeRepository).deleteAllByUser(lockedUser);
     verify(mfaRecoveryCodeRepository).saveAll(anyList());
     verify(repository).save(lockedUser);

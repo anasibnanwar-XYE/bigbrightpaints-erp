@@ -198,11 +198,7 @@ public class AuthController {
                   "secondaryEmail",
                   new FieldChange(beforeSecondaryEmail, user.getSecondaryEmail()),
                   "phoneSecondary",
-                  new FieldChange(beforePhoneSecondary, user.getPhoneSecondary()),
-                  "secondaryEmailVerified",
-                  new FieldChange("false", "false"),
-                  "phoneSecondaryVerified",
-                  new FieldChange("false", "false"))));
+                  new FieldChange(beforePhoneSecondary, user.getPhoneSecondary()))));
     }
     return ResponseEntity.ok(ApiResponse.success(toContactResponse(user)));
   }
@@ -235,11 +231,16 @@ public class AuthController {
     if (principal == null) {
       return ResponseEntity.status(401).body(ApiResponse.failure("Unauthenticated"));
     }
-    int requestedSize = size != null ? size : (limit != null ? limit : 50);
+    int requestedSize = boundedSecurityEventSize(size, limit);
     return ResponseEntity.ok(
         ApiResponse.success(
             iamCanonicalStorageService.listSelfSecurityEvents(
                 principal.getUser(), type, page, requestedSize)));
+  }
+
+  private int boundedSecurityEventSize(Integer size, Integer limit) {
+    int requestedSize = size != null ? size : (limit != null ? limit : 50);
+    return Math.max(1, Math.min(requestedSize, 100));
   }
 
   @GetMapping("/sessions")

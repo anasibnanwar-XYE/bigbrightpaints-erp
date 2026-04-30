@@ -50,6 +50,9 @@ class TS_IamCoreSchemaAndModelHardCutMigrationContractTest {
     TruthSuiteFileAssert.assertContains(
         V2_MIGRATION,
         "CONSTRAINT chk_iam_sessions_digest_length CHECK (length(refresh_token_digest) = 64)",
+        "CONSTRAINT fk_iam_sessions_account_device FOREIGN KEY (account_id, device_id)",
+        "CONSTRAINT uq_iam_devices_account_id_id UNIQUE (account_id, id)",
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_mfa_recovery_codes_user_unused_hash",
         "CONSTRAINT chk_refresh_tokens_token_digest_length CHECK (length(token_digest) = 64)",
         "CONSTRAINT chk_password_reset_tokens_token_digest_length CHECK (length(token_digest) ="
             + " 64)");

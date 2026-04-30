@@ -94,13 +94,14 @@ CREATE TABLE IF NOT EXISTS iam_devices (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     last_seen_at TIMESTAMPTZ,
     version BIGINT NOT NULL DEFAULT 0,
-    CONSTRAINT uq_iam_devices_public_id UNIQUE (public_id)
+    CONSTRAINT uq_iam_devices_public_id UNIQUE (public_id),
+    CONSTRAINT uq_iam_devices_account_id_id UNIQUE (account_id, id)
 );
 
 CREATE TABLE IF NOT EXISTS iam_sessions (
     id BIGSERIAL PRIMARY KEY,
     account_id BIGINT NOT NULL REFERENCES iam_accounts(id) ON DELETE CASCADE,
-    device_id BIGINT REFERENCES iam_devices(id) ON DELETE SET NULL,
+    device_id BIGINT,
     public_id UUID NOT NULL DEFAULT gen_random_uuid(),
     refresh_token_digest VARCHAR(64) NOT NULL,
     auth_scope_code VARCHAR(64) NOT NULL,
@@ -113,6 +114,8 @@ CREATE TABLE IF NOT EXISTS iam_sessions (
     version BIGINT NOT NULL DEFAULT 0,
     CONSTRAINT uq_iam_sessions_public_id UNIQUE (public_id),
     CONSTRAINT uq_iam_sessions_refresh_token_digest UNIQUE (refresh_token_digest),
+    CONSTRAINT fk_iam_sessions_account_device FOREIGN KEY (account_id, device_id)
+        REFERENCES iam_devices(account_id, id),
     CONSTRAINT chk_iam_sessions_digest_length CHECK (length(refresh_token_digest) = 64),
     CONSTRAINT chk_iam_sessions_scope_present CHECK (btrim(auth_scope_code) <> '')
 );
@@ -191,6 +194,10 @@ FROM app_users u
 CROSS JOIN LATERAL regexp_split_to_table(COALESCE(u.mfa_recovery_codes, ''), ',') AS code_hash
 WHERE btrim(code_hash) <> ''
 ON CONFLICT DO NOTHING;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_mfa_recovery_codes_user_unused_hash
+    ON mfa_recovery_codes (user_id, code_hash)
+    WHERE used_at IS NULL;
 
 UPDATE refresh_tokens
 SET token_digest = encode(digest('refresh-token:' || token, 'sha256'), 'hex')
