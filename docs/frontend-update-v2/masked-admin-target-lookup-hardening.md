@@ -6,7 +6,7 @@
 ## Notes
 
 - No request-body or success-response payload shapes changed.
-- For tenant-admin initiated privileged user-control actions (`force-reset-password`, status enable/disable, lock/unlock, session revoke, and MFA disable), a foreign-tenant user id returns the same `400 User not found` validation envelope as a truly missing id. Retired `suspend`, `unsuspend`, and `DELETE /api/v1/admin/users/{userId}` aliases are absent/non-mutating.
+- For tenant-admin initiated privileged user-control actions (`force-reset-password`, status enable/disable, suspend, unsuspend, MFA disable, delete), a foreign-tenant user id now returns the same `400 User not found` validation envelope as a truly missing id.
 - This is intentional masking to keep foreign users indistinguishable from nonexistent targets on auth-sensitive admin endpoints.
 - `POST /api/v1/superadmin/roles` remains a super-admin-only mutation path; authenticated non-superadmin callers are denied at the controller boundary, and denial audits include `targetRole` metadata.
 - No frontend code change is required if the UI already treats missing and foreign targets as the same generic missing-user case; review should not rely on distinguishing those cases.

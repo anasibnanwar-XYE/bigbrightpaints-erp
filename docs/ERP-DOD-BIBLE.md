@@ -290,7 +290,8 @@ Authenticate a user and establish tenant context so they can access company-scop
 
 | Failure Type | Response | Retriable | User Impact |
 |--------------|----------|-----------|-------------|
-| Invalid credentials, unknown account, or disabled account on login | 400 INVALID_INPUT | No | Generic error (no account-state leak) |
+| Invalid credentials | 400 INVALID_INPUT | No | Generic error (no leak) |
+| Account disabled | AUTH_ACCOUNT_DISABLED | No | Clear error message |
 | Account locked | LockedException | No | "Account locked until {timestamp}" |
 | MFA required | MfaRequiredException | No | "Multi-factor authentication required" |
 | MFA invalid | InvalidMfaException | No | "Invalid MFA verifier" |
@@ -376,7 +377,7 @@ A login/tenant selection flow is considered complete when:
 
 #### Must-Change-Password Corridor
 - **Scenario**: Admin provisions user with `mustChangePassword=true`
-- **Behavior**: `MustChangePasswordCorridorFilter` restricts access to: `/auth/me`, `/auth/password/change`, `/auth/logout`, `/auth/refresh-token`.
+- **Behavior**: `MustChangePasswordCorridorFilter` restricts access to: `/auth/me`, `/auth/profile`, `/auth/password/change`, `/auth/logout`, `/auth/refresh-token`.
 - **All other endpoints**: Return 403 with `PASSWORD_CHANGE_REQUIRED`.
 
 #### Tenant Lifecycle Transition During Active Session
@@ -432,6 +433,8 @@ A login/tenant selection flow is considered complete when:
 | `/api/v1/auth/mfa/setup` | POST | Authenticated | `MfaController` |
 | `/api/v1/auth/mfa/activate` | POST | Authenticated | `MfaController` |
 | `/api/v1/auth/mfa/disable` | POST | Authenticated | `MfaController` |
+| `/api/v1/auth/profile` | GET | Authenticated | `UserProfileController` |
+| `/api/v1/auth/profile` | PUT | Authenticated | `UserProfileController` |
 | `/api/v1/companies` | GET | `ROLE_SUPER_ADMIN` or `ROLE_ADMIN` or `ROLE_ACCOUNTING` or `ROLE_SALES` | `CompanyController` |
 | `/api/v1/companies/{id}` | DELETE | `ROLE_ADMIN` (always denied) | `CompanyController` |
 | `/api/v1/superadmin/**` | Various | `ROLE_SUPER_ADMIN` | `SuperAdminController` |
@@ -641,7 +644,7 @@ rbac ──→ core/security (CompanyContextHolder — ThreadLocal read)
 
 #### Shared Entity Risks
 
-- **`UserAccount`**: Mutated by auth (login, lockout, password), admin Users & Access controls (list/read/detail/create/update allowed identity fields, status disable/reactivate, lock/unlock, force password reset, MFA reset/disable, session revocation, role assignment, and security-event review), and company (tenant provisioning). No single module owner.
+- **`UserAccount`**: Mutated by auth (login, lockout, password), admin (user CRUD), company (tenant provisioning). No single module owner.
 - **`Company`**: Mutated by company (lifecycle, limits, modules), auth (during onboarding). Company module is primary owner.
 - **`Role`/`Permission`**: Mutated by rbac (synchronization), read by auth (every login). RBAC module is primary owner.
 
@@ -754,8 +757,8 @@ Allow administrators to provision user accounts, assign roles, and manage the fu
 
 | Actor | Role | Portal | Capability in This Flow |
 |-------|------|--------|------------------------|
-| Super Admin | `ROLE_SUPER_ADMIN` | Platform control plane | Tenant onboarding/lifecycle/limits/modules/support through `/api/v1/superadmin/**`; not a tenant Users & Access actor on `/api/v1/admin/users/**` |
-| Admin | `ROLE_ADMIN` | Admin portal | Canonical Users & Access within own tenant: list/read/detail/create/update allowed identity fields, status disable/reactivate, lock/unlock, force password reset, MFA reset/disable, session revocation, role assignment, and security-event review under actor/tenant policy; cannot assign protected roles or transfer users to other companies |
+| Super Admin | `ROLE_SUPER_ADMIN` | Platform control plane | Full user CRUD across all tenants; can assign any role including ROLE_ADMIN and ROLE_SUPER_ADMIN; can transfer users between companies |
+| Admin | `ROLE_ADMIN` | Admin portal | User CRUD within own tenant only; cannot assign ROLE_ADMIN or ROLE_SUPER_ADMIN; cannot transfer users to other companies |
 | Accounting | `ROLE_ACCOUNTING` | Admin portal | No user management capability (read-only viewer of own profile) |
 | Factory | `ROLE_FACTORY` | Admin portal | No user management capability |
 | Sales | `ROLE_SALES` | Admin portal | No user management capability |
@@ -774,7 +777,7 @@ Allow administrators to provision user accounts, assign roles, and manage the fu
 ### E. Trigger
 - **User-initiated**: Admin/Super Admin creates a new user via Admin portal (`POST /api/v1/admin/users`)
 - **User-initiated**: Admin/Super Admin updates user details, roles, status (`PUT /api/v1/admin/users/{id}`)
-- **User-initiated**: Tenant admin updates status, locks/unlocks accounts, resets MFA, revokes sessions, or sends reset links through canonical `/api/v1/admin/users/**` controls
+- **User-initiated**: Admin/Super Admin suspends/unsuspends/deletes user (`PATCH/DELETE /api/v1/admin/users/{id}`)
 - **System-initiated**: Tenant onboarding auto-provisions initial admin via `TenantAdminProvisioningService.provisionInitialAdmin()`
 - **System-initiated**: Role synchronization at startup via `RoleService.synchronizeSystemRoles()`
 
@@ -796,7 +799,7 @@ Allow administrators to provision user accounts, assign roles, and manage the fu
 | `displayName` | String | Yes | `@NotBlank` | Always required |
 | `companyId` | Long | No | Must be active company for non-SUPER_ADMIN | Triggers company transfer if changed |
 | `roles` | List\<String\> | No | Each must be valid role name | Replaces all roles (not additive) |
-| `enabled` | Boolean | No | — | Toggles canonical active/disabled state |
+| `enabled` | Boolean | No | — | Toggles user active/suspended state |
 
 #### UpdateUserStatusRequest (`PUT /api/v1/admin/users/{id}/status`)
 
@@ -850,22 +853,36 @@ Allow administrators to provision user accounts, assign roles, and manage the fu
    g. If any permission-affecting change: revokes all JWT tokens and refresh tokens (forces re-authentication)
    h. Logs `USER_UPDATED` audit event
 
-#### User Status, Lock, and Session Controls (Canonical Path)
+#### User Suspension (Canonical Path)
 
-1. Admin calls `PUT /api/v1/admin/users/{userId}/status` with `enabled=true|false`
-2. `AdminUserService.updateUserStatus()`:
-   a. Resolves user within tenant scope
-   b. Checks the target is not the protected main admin before disable
-   c. Checks tenant user quota before enabling
-   d. Updates `enabled`, revokes tokens on disable, and logs `USER_ACTIVATED` or `USER_DEACTIVATED`
-3. Admin calls `POST /api/v1/admin/users/{userId}/lock` or `POST /api/v1/admin/users/{userId}/unlock`
-4. `AdminUserService.lockUser()` / `unlockUser()`:
-   a. Resolves the user with tenant-scoped pessimistic lock
-   b. Sets or clears lock state, revoking sessions on lock
-   c. Logs `USER_LOCKED` or `USER_UNLOCKED`
-5. Admin calls `DELETE /api/v1/admin/users/{userId}/sessions` to revoke active sessions without changing the user's lifecycle status
+1. Admin calls `PATCH /api/v1/admin/users/{id}/suspend`
+2. `AdminUserService.suspend()`:
+   a. Resolves user with pessimistic lock (`lockById` or `lockByIdAndCompanyId`)
+   b. Validates user is within company scope (non-SUPER_ADMIN)
+   c. Checks user is not the protected main admin (`assertNotProtectedMainAdmin()`)
+   d. Sets `enabled=false`, revokes all tokens
+   e. Sends suspension email
+   f. Logs `USER_DEACTIVATED` audit event
 
-Retired `suspend`, `unsuspend`, and `DELETE /api/v1/admin/users/{userId}` aliases are absent/non-mutating.
+#### User Unsuspension (Canonical Path)
+
+1. Admin calls `PATCH /api/v1/admin/users/{id}/unsuspend`
+2. `AdminUserService.unsuspend()`:
+   a. Resolves user with pessimistic lock
+   b. Checks tenant user quota allows additional enabled users
+   c. Sets `enabled=true`
+   d. Logs `USER_ACTIVATED` audit event
+
+#### User Deletion (Canonical Path)
+
+1. Admin calls `DELETE /api/v1/admin/users/{id}`
+2. `AdminUserService.deleteUser()`:
+   a. Resolves user with pessimistic lock
+   b. Checks user is not the protected main admin
+   c. Revokes all JWT and refresh tokens
+   d. Deletes user from `app_users`
+   e. Sends deletion email
+   f. Logs `USER_DELETED` audit event
 
 #### Role Synchronization (System Path)
 
@@ -883,8 +900,9 @@ Retired `suspend`, `unsuspend`, and `DELETE /api/v1/admin/users/{userId}` aliase
 |-------|-----------|---------------|---------------------|-------------|
 | **Active** | `true` | `null` | `false` | Normal operational state |
 | **Must-Change-Password** | `true` | `null` | `true` | Newly provisioned; forced password change on next login |
-| **Disabled** | `false` | `null` | — | Admin-disabled through the canonical status route; all tokens revoked |
+| **Suspended** | `false` | `null` | — | Admin-disabled; all tokens revoked |
 | **Locked** | `true` | future | — | Auto-locked due to failed login attempts (auth module) |
+| **Deleted** | — | — | — | Permanently removed from `app_users` |
 
 #### User Lifecycle Transitions
 
@@ -901,14 +919,14 @@ Retired `suspend`, `unsuspend`, and `DELETE /api/v1/admin/users/{userId}` aliase
                                     ┌─────────│  Active   │──────────┐
                                     │          └──────────┘          │
                                     │                                │
-                         set enabled=false                 failed login
+                              suspend()                       failed login
                                     │                         (by AuthService)
                                     ▼                                │
-                              ┌──────────┐                         ▼
-                              │ Disabled │                   ┌───────────┐
-                              └──────────┘                   │  Locked   │
+                              ┌───────────┐                         ▼
+                              │ Suspended │                   ┌───────────┐
+                              └───────────┘                   │  Locked   │
                                     │                         └───────────┘
-                          set enabled=true                         │
+                               unsuspend()                         │
                                     │                     lockout expires
                                     │                           or
                                     │                      successful login
@@ -916,9 +934,14 @@ Retired `suspend`, `unsuspend`, and `DELETE /api/v1/admin/users/{userId}` aliase
                               ┌──────────┐◄──────────────────────┘
                               │  Active  │
                               └──────────┘
+                                    │
+                              deleteUser()
+                                    │
+                                    ▼
+                              [Deleted]
 ```
 
-**Irreversible transitions**: Must-Change-Password → Active (password change cannot be undone), Not Exists → Must-Change-Password (creation). Retired `suspend`, `unsuspend`, and `DELETE /api/v1/admin/users/{userId}` aliases are not part of the canonical lifecycle.
+**Irreversible transitions**: Must-Change-Password → Active (password change cannot be undone), Not Exists → Must-Change-Password (creation), Active/Suspended → Deleted (permanent).
 
 #### Role Assignment States
 
@@ -940,7 +963,7 @@ Roles are a `Set<Role>` on `UserAccount` (no explicit state machine). Role chang
 | V-UR-07 | `roles` | ROLE_ADMIN and ROLE_SUPER_ADMIN require SUPER_ADMIN authority | `ACCESS_DENIED` | `AdminUserService.assertActorCanAssignRoles()` |
 | V-UR-08 | `roles` | Each role name must be a known `SystemRole` or existing custom role | `INVALID_INPUT` | `RoleService.ensureRoleExists()` |
 | V-UR-09 | user quota | Enabling user must not exceed tenant's `quotaMaxActiveUsers` | `BUSINESS_LIMIT_EXCEEDED` | `TenantRuntimePolicyService.assertCanAddEnabledUser()` |
-| V-UR-10 | main admin | Cannot disable or otherwise retire the tenant's main admin user through tenant-admin account controls | `INVALID_STATE` | `AdminUserService.assertNotProtectedMainAdmin()` |
+| V-UR-10 | main admin | Cannot disable, suspend, or delete the tenant's main admin user | `INVALID_STATE` | `AdminUserService.assertNotProtectedMainAdmin()` |
 | V-UR-11 | company scope | Non-SUPER_ADMIN can only manage users within own company | `ACCESS_DENIED` / `INVALID_INPUT` | `AdminUserService.resolveScopedUserForAdminAction()` |
 | V-UR-12 | company transfer | Email must not already exist in target company scope | `INVALID_INPUT` | `AdminUserService.assertScopedEmailAvailableForTransfer()` |
 | V-UR-13 | role mutation | Only SUPER_ADMIN can mutate shared system role definitions | `ACCESS_DENIED` | `RoleService.enforceSuperAdminForSharedRoleMutation()` |
@@ -952,10 +975,9 @@ Roles are a `Set<Role>` on `UserAccount` (no explicit state machine). Role chang
 | **User Create** | `UserAccount` saved to `app_users`; `user_roles` join entries created; `USER_CREATED` audit event logged; credential email sent (async after commit); if ROLE_DEALER: `Dealer` entity + `Account` (receivable) auto-created |
 | **User Update (roles)** | `user_roles` cleared and re-created; all JWT tokens revoked (`TokenBlacklistService`); all refresh tokens revoked (`RefreshTokenService`); `USER_UPDATED` audit event |
 | **User Update (company transfer)** | `auth_scope_code` updated; JWT/refresh tokens revoked; `USER_UPDATED` audit event |
-| **User Status Disable** | `enabled=false`; all JWT tokens revoked; all refresh tokens revoked; status email/audit path used; `USER_DEACTIVATED` audit event |
-| **User Status Enable** | `enabled=true`; quota check; `USER_ACTIVATED` audit event |
-| **User Lock** | lock state set; all JWT/refresh tokens revoked; `USER_LOCKED` audit event |
-| **User Unlock** | lock state cleared; `USER_UNLOCKED` audit event |
+| **User Suspend** | `enabled=false`; all JWT tokens revoked; all refresh tokens revoked; suspension email sent; `USER_DEACTIVATED` audit event |
+| **User Unsuspend** | `enabled=true`; quota check; `USER_ACTIVATED` audit event |
+| **User Delete** | All tokens revoked; `UserAccount` deleted from `app_users`; deletion email sent; `USER_DELETED` audit event |
 | **Force Reset Password** | Password reset token created; reset email sent; `PASSWORD_RESET_REQUESTED` audit event |
 | **Disable MFA** | `mfa_secret`, `mfa_recovery_codes` cleared; all tokens revoked; `MFA_DISABLED` audit event |
 | **Role Sync** | `Role` and `Permission` entities created/updated to match `SystemRole` enum definitions |
@@ -997,8 +1019,9 @@ All user management operations produce audit events via `AuditService`:
 |-----------|------------|--------------|
 | `USER_CREATED` | After successful user provisioning | `provisioningMode=CANONICAL_EMAIL_BOOTSTRAP`, `targetUserEmail` |
 | `USER_UPDATED` | After user detail/role/status change | `targetUserEmail`, `displayName` |
-| `USER_ACTIVATED` | User enabled | `targetUserId`, `previousEnabled`, `enabled` |
-| `USER_DEACTIVATED` | User disabled | `targetUserId`, `previousEnabled`, `enabled` |
+| `USER_ACTIVATED` | User enabled/unsuspended | `targetUserId`, `previousEnabled`, `enabled` |
+| `USER_DEACTIVATED` | User disabled/suspended | `targetUserId`, `previousEnabled`, `enabled` |
+| `USER_DELETED` | After user permanently deleted | `targetUserId`, `targetUserEmail` |
 | `PASSWORD_RESET_REQUESTED` | Admin triggers force reset | `targetUserId` |
 | `MFA_DISABLED` | Admin disables user MFA | `targetUserId` |
 | `ACCESS_DENIED` | Failed role assignment or cross-scope access attempt | `reason`, `targetRole`, `targetCompanyCode` |
@@ -1036,21 +1059,21 @@ All user management operations produce audit events via `AuditService`:
 | **Role deletion with assigned users**: Role removed from user set | Not a "delete role" — roles are just detached from user; `Role` entity persists |
 | **Duplicate email across tenants**: Same email in different companies | Allowed — uniqueness is per `(email, auth_scope_code)` pair |
 | **Concurrent permission changes**: Two admins update same user | Pessimistic locking (`lockById`/`lockByIdAndCompanyId`) serializes updates |
-| **User creation during HOLD state**: Tenant on hold | Hold state only gates specific paths (portal, reports, demo); canonical Users & Access controls remain allowed under tenant-admin policy |
+| **User creation during HOLD state**: Tenant on hold | Hold state only gates specific paths (portal, reports, demo); user CRUD still allowed |
 | **Assign ROLE_DEALER to existing user**: User already exists as non-dealer | `createDealerForUser()` checks for existing Dealer by email; creates if missing, links if found |
 | **Transfer user to company at quota**: Target company has max users | `assertCanAddEnabledUser()` rejects transfer if quota would be exceeded |
-| **Main admin retirement**: Attempt to disable the main admin | `assertNotProtectedMainAdmin()` blocks with "Replace the tenant main admin first" |
+| **Last admin deletion**: Attempt to delete the main admin | `assertNotProtectedMainAdmin()` blocks with "Replace the tenant main admin first" |
 | **Role name normalization**: Request sends "admin" instead of "ROLE_ADMIN" | `normalizeRequestedRoleName()` auto-prefixes "ROLE_" if it matches a `SystemRole` |
 | **SALES retired permission**: `dispatch.confirm` on SALES role | `retiredPermissions` mechanism removes it during sync; SALES can no longer confirm dispatches |
 
 ### S. Non-Negotiables
 
 1. **Only SUPER_ADMIN can assign ROLE_ADMIN and ROLE_SUPER_ADMIN** — enforced at both `AdminUserService` and `RoleService` levels with audit logging
-2. **Tenant isolation is absolute** — non-SUPER_ADMIN admins cannot see or modify users in other companies; out-of-scope attempts are masked as "User not found" or `ACCESS_DENIED`
+2. **Tenant isolation is absolute** — non-SUPER_ADMIN admins cannot see, modify, or delete users in other companies; out-of-scope attempts are masked as "User not found" or `ACCESS_DENIED`
 3. **Role changes force re-authentication** — all JWT and refresh tokens are revoked when roles, company, or enabled status change
-4. **Main admin is protected** — the tenant's `mainAdminUserId` user cannot be disabled or otherwise retired without first transferring main admin status
+4. **Main admin is undeletable** — the tenant's `mainAdminUserId` user cannot be disabled, suspended, or deleted without first transferring main admin status
 5. **User quota is fail-closed** — if both soft and hard limits are disabled, hard limit is automatically re-enabled
-6. **Pessimistic locking on user mutations** — canonical status, lock/unlock, role, and security-profile changes use scoped locking to prevent concurrent modifications
+6. **Pessimistic locking on user mutations** — suspend, unsuspend, and delete use `PESSIMISTIC_WRITE` lock to prevent concurrent modifications
 7. **Email uniqueness per scope** — the `(email, auth_scope_code)` unique constraint in the database is the final authority; application-level checks are a guard, not the enforcement mechanism
 8. **Credential delivery after commit** — credential emails are scheduled via `TransactionSynchronization.afterCommit()` so failure never rolls back the user creation
 
@@ -1067,11 +1090,11 @@ All endpoints require `ROLE_ADMIN` tenant-admin authority and explicitly block `
 | `POST` | `/api/v1/admin/users` | ADMIN (tenant-admin only) | Create new user |
 | `PUT` | `/api/v1/admin/users/{id}` | ADMIN (tenant-admin only) | Update user (name, company, roles, enabled) |
 | `PUT` | `/api/v1/admin/users/{id}/status` | ADMIN (tenant-admin only) | Enable/disable user |
-| `POST` | `/api/v1/admin/users/{userId}/lock` | ADMIN (tenant-admin only) | Lock user |
-| `POST` | `/api/v1/admin/users/{userId}/unlock` | ADMIN (tenant-admin only) | Unlock user |
+| `PATCH` | `/api/v1/admin/users/{id}/suspend` | ADMIN (tenant-admin only) | Suspend user |
+| `PATCH` | `/api/v1/admin/users/{id}/unsuspend` | ADMIN (tenant-admin only) | Unsuspend user |
 | `PATCH` | `/api/v1/admin/users/{id}/mfa/disable` | ADMIN (tenant-admin only) | Disable MFA for user |
 | `POST` | `/api/v1/admin/users/{id}/force-reset-password` | ADMIN (tenant-admin only) | Force password reset |
-| `DELETE` | `/api/v1/admin/users/{userId}/sessions` | ADMIN (tenant-admin only) | Revoke user sessions |
+| `DELETE` | `/api/v1/admin/users/{id}` | ADMIN (tenant-admin only) | Delete user permanently |
 
 ##### RoleController (`/api/v1/superadmin/roles`)
 All endpoints require `ROLE_SUPER_ADMIN`.
@@ -1086,7 +1109,7 @@ All endpoints require `ROLE_SUPER_ADMIN`.
 
 | Service | Module | Responsibility |
 |---------|--------|---------------|
-| `AdminUserService` | admin | Canonical Users & Access lifecycle controls, role assignment, scope enforcement, token revocation |
+| `AdminUserService` | admin | User lifecycle CRUD, role assignment, scope enforcement, token revocation |
 | `ScopedAccountBootstrapService` | auth | Low-level account provisioning with email delivery |
 | `TenantAdminProvisioningService` | auth | Initial admin provisioning during tenant onboarding |
 | `RoleService` | rbac | Role CRUD, permission synchronization, system role management |
@@ -1094,7 +1117,7 @@ All endpoints require `ROLE_SUPER_ADMIN`.
 | `TenantRuntimePolicyService` | admin | User quota enforcement |
 | `TokenBlacklistService` | core/security | JWT revocation on role/status changes |
 | `RefreshTokenService` | auth | Refresh token revocation |
-| `EmailService` | core/notification | Credential and status-change emails |
+| `EmailService` | core/notification | Credential, suspension, deletion emails |
 
 #### Database Tables
 
@@ -1166,7 +1189,7 @@ TenantAdminProvisioningService.provisionInitialAdmin()
   → Company.setOnboardingAdminUserId()
 ```
 
-**Note**: This is a separate entry point from `AdminUserService.createUser()` used only during tenant onboarding. It directly sets `Company.mainAdminUserId` which protects this user from tenant-admin retirement.
+**Note**: This is a separate entry point from `AdminUserService.createUser()` used only during tenant onboarding. It directly sets `Company.mainAdminUserId` which protects this user from deletion.
 
 #### `[DEAD-CODE]` Observations
 
@@ -1193,7 +1216,7 @@ admin module
   → core/security: AdminUserService → SecurityActorResolver (audit actor)
   → core/audit: AdminUserService → AuditService (event logging)
   → core/audit: AdminUserService → AuditLogRepository (last login lookup)
-  → core/notification: AdminUserService → EmailService (credential/status-change emails)
+  → core/notification: AdminUserService → EmailService (credential/suspension/deletion emails)
   → sales module: AdminUserService → DealerRepository (dealer auto-creation)
   → sales module: AdminUserService → AccountRepository (receivable account creation)
   → accounting module: AdminUserService → AccountRepository (receivable account creation)
@@ -1241,12 +1264,12 @@ auth module (TenantAdminProvisioningService)
 
 | Dimension | Score | Rationale |
 |-----------|-------|-----------|
-| Completeness | 4/5 | Canonical create/update/status/lock/session/MFA lifecycle, role assignment, dealer auto-provisioning |
+| Completeness | 4/5 | Full CRUD lifecycle, role assignment, dealer auto-provisioning, MFA management |
 | Correctness | 4/5 | Proper tenant isolation, quota enforcement, main admin protection, pessimistic locking |
 | Auditability | 4/5 | All operations logged with metadata, actor, tenant scope, and target user |
 | Security | 3/5 | Good role guards but cross-module repository access violates module boundaries |
 | Architecture | 2/5 | `AdminUserService` is a 740-line god class touching 14+ external dependencies across 6 modules |
-| Edge Case Handling | 4/5 | Handles self-deactivation, protected main admin, duplicate emails, concurrent modifications |
+| Edge Case Handling | 4/5 | Handles self-deactivation, last admin, duplicate emails, concurrent modifications |
 
 **Justification**: The flow is functionally complete and secure at the API level. The primary gap is architectural — `AdminUserService` violates module encapsulation by directly accessing repositories from auth, sales, accounting, and company modules. These should be facade-based interactions.
 
@@ -1260,11 +1283,11 @@ auth module (TenantAdminProvisioningService)
 | 4 | ROLE_ADMIN cannot assign ROLE_ADMIN or ROLE_SUPER_ADMIN | ✅ Pass |
 | 5 | Non-SUPER_ADMIN cannot manage users outside their company | ✅ Pass |
 | 6 | Role changes revoke all active JWT and refresh tokens | ✅ Pass |
-| 7 | Tenant main admin cannot be disabled or retired through tenant-admin account controls | ✅ Pass |
+| 7 | Tenant main admin cannot be disabled/suspended/deleted | ✅ Pass |
 | 8 | User quota is enforced before enabling new users | ✅ Pass |
 | 9 | ROLE_DEALER auto-creates Dealer entity with receivable account | ✅ Pass |
 | 10 | All user management operations produce audit events | ✅ Pass |
-| 11 | Canonical status and lock/unlock lifecycle works correctly | ✅ Pass |
+| 11 | Suspend/unsuspend lifecycle works correctly | ✅ Pass |
 | 12 | Company transfer validates email uniqueness in target scope | ✅ Pass |
 | 13 | System roles synchronized from enum to database | ✅ Pass |
 | 14 | Pessimistic locking prevents concurrent user mutations | ✅ Pass |
@@ -1279,7 +1302,7 @@ auth module (TenantAdminProvisioningService)
 
 #### D-UR-002: AdminUserService Decomposition
 **Question**: Should `AdminUserService` be decomposed into smaller, module-aligned services (e.g., `UserProvisioningService`, `UserLifecycleService`)?
-**Context**: Single service handles creation, updates, status changes, lock/unlock, MFA, password reset, dealer auto-creation, and company transfer. Violates single responsibility.
+**Context**: Single service handles creation, updates, suspension, deletion, MFA, password reset, dealer auto-creation, and company transfer. Violates single responsibility.
 **Owner**: Founder
 
 #### D-UR-003: Role Assignment API Semantics
@@ -1297,12 +1320,17 @@ auth module (TenantAdminProvisioningService)
 **Context**: `SystemRole.SALES` has `dispatch.confirm` in `retiredPermissions`. Sales users can no longer confirm dispatches. Only users with `portal:factory` or `portal:accounting` + `dispatch.confirm` can.
 **Owner**: Founder (confirmation only)
 
-#### D-UR-006: Dealer Auto-Creation Side Effect
+#### D-UR-006: User Deletion vs Deactivation
+**Question**: Should user deletion be hard delete (current) or soft delete?
+**Context**: `deleteUser()` permanently removes the `UserAccount` row. This breaks audit trail references and any FK references from other modules. Soft delete (archive) would preserve referential integrity.
+**Owner**: Founder
+
+#### D-UR-007: Dealer Auto-Creation Side Effect
 **Question**: Is the dealer auto-creation side effect on ROLE_DEALER assignment the intended design?
 **Context**: When a user is assigned `ROLE_DEALER`, the system auto-creates a `Dealer` entity with a generated code and receivable account. This tightly couples user management to the sales module and accounting module.
 **Owner**: Founder
 
-#### D-UR-007: Tenant Runtime Policy Module Location
+#### D-UR-008: Tenant Runtime Policy Module Location
 **Question**: Should `TenantRuntimePolicyService` remain in the admin module?
 **Context**: It reads `UserAccountRepository` from the auth module to count active users — a cross-module repository access violation. Moving it to a shared/tenant module or providing a facade in the auth module would be cleaner.
 **Owner**: Founder
