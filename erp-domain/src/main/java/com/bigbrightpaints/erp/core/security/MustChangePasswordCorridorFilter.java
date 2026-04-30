@@ -1,6 +1,8 @@
 package com.bigbrightpaints.erp.core.security;
 
 import java.io.IOException;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Set;
 
 import org.springframework.security.authentication.AnonymousAuthenticationToken;
@@ -47,9 +49,10 @@ public class MustChangePasswordCorridorFilter extends OncePerRequestFilter {
       return;
     }
 
-    PasswordChangeRequiredData data =
-        new PasswordChangeRequiredData(
-            ErrorCode.AUTH_INSUFFICIENT_PERMISSIONS.getCode(), "PASSWORD_CHANGE_REQUIRED", true);
+    Map<String, Object> data = new LinkedHashMap<>();
+    data.put("code", ErrorCode.AUTH_INSUFFICIENT_PERMISSIONS.getCode());
+    data.put("reason", "PASSWORD_CHANGE_REQUIRED");
+    data.put("mustChangePassword", true);
 
     response.setStatus(HttpServletResponse.SC_FORBIDDEN);
     response.setContentType("application/json");
@@ -57,9 +60,6 @@ public class MustChangePasswordCorridorFilter extends OncePerRequestFilter {
     objectMapper.writeValue(
         response.getWriter(), ApiResponse.failure(PASSWORD_CHANGE_REQUIRED_MESSAGE, data));
   }
-
-  private record PasswordChangeRequiredData(
-      String code, String reason, boolean mustChangePassword) {}
 
   private boolean requiresPasswordChange() {
     Authentication authentication = SecurityContextHolder.getContext().getAuthentication();

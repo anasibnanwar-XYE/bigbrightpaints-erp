@@ -894,8 +894,8 @@ public class IamCanonicalStorageService {
       Map<String, String> parsed =
           objectMapper.readValue(metadataJson, new TypeReference<Map<String, String>>() {});
       return redactMetadata(parsed);
-    } catch (JsonProcessingException ex) {
-      throw new IllegalStateException("Stored IAM metadata JSON is invalid", ex);
+    } catch (Exception ex) {
+      return Map.of();
     }
   }
 
