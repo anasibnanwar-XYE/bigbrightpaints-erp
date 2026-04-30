@@ -16,6 +16,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import urllib.error
@@ -458,13 +459,6 @@ def milestone_seal(mission_dir: Path, current_report: Path | None) -> dict[str, 
             or s.get("blockingIssues", 0)
             or s.get("unresolvedGaps", 0)
         ]
-        if prefix == "M15":
-            # M15 is the in-progress final seal; the current report is the user-testing artifact.
-            # Existing failed M15 scrutiny from the previous round is reported as rejection proof
-            # rather than accepted as a sealed artifact.
-            sealed = bool(current_report)
-        else:
-            sealed = bool(user) and bool(scrutiny) and not failed_inputs
         milestone_assertions = {
             aid: {
                 "status": meta.get("status"),
@@ -474,6 +468,24 @@ def milestone_seal(mission_dir: Path, current_report: Path | None) -> dict[str, 
             for aid, meta in assertions.items()
             if isinstance(meta, dict) and str(meta.get("validatedAtMilestone", "")).startswith(prefix)
         }
+        non_passed_assertions = sorted(k for k, v in milestone_assertions.items() if v.get("status") != "passed")
+        missing_assertion_hashes = sorted(k for k, v in milestone_assertions.items() if v.get("status") == "passed" and not v.get("evidenceHash"))
+        artifacts = [artifact_record(p, mission_dir) for p in (scrutiny + user)[:12] if p.exists()]
+        rejection_reasons = []
+        if not scrutiny:
+            rejection_reasons.append("missing_scrutiny_evidence")
+        if not user:
+            rejection_reasons.append("missing_user_testing_evidence")
+        if failed_inputs:
+            rejection_reasons.append("failed_or_unresolved_evidence")
+        if prefix == "M15":
+            if non_passed_assertions:
+                rejection_reasons.append("non_passed_assertions")
+            if missing_assertion_hashes:
+                rejection_reasons.append("missing_assertion_evidence_hash")
+            if len(artifacts) < len((scrutiny + user)[:12]):
+                rejection_reasons.append("missing_artifact_hash")
+        sealed = bool(user) and bool(scrutiny) and not failed_inputs if prefix != "M15" else not rejection_reasons
         found[prefix] = {
             "directories": [d.name for d in dirs],
             "scrutinyEvidenceCount": len(scrutiny),
@@ -481,14 +493,49 @@ def milestone_seal(mission_dir: Path, current_report: Path | None) -> dict[str, 
             "sampleEvidence": [str(p.relative_to(mission_dir)) for p in (scrutiny + user)[:8]],
             "statusInputs": status_inputs[:12],
             "failedOrUnresolvedEvidenceRejected": failed_inputs[:8],
+            "sealRejectedBecause": rejection_reasons,
             "assertionStatusSummary": {
                 "passed": sum(1 for v in milestone_assertions.values() if v.get("status") == "passed"),
-                "nonPassed": sorted(k for k, v in milestone_assertions.items() if v.get("status") != "passed")[:20],
+                "nonPassed": non_passed_assertions[:20],
+                "missingEvidenceHash": missing_assertion_hashes[:20],
             },
-            "artifactHashes": [artifact_record(p, mission_dir) for p in (scrutiny + user)[:12] if p.exists()],
+            "artifactHashes": artifacts,
             "sealed": sealed,
         }
     return found
+
+
+def dry_run_self_test() -> dict[str, Any]:
+    """Exercise M15 seal rules without requiring a running backend."""
+    with tempfile.TemporaryDirectory(prefix="m15-seal-self-test-") as tmp:
+        root = Path(tmp)
+        (root / "validation/M15-docs-final-validation/scrutiny").mkdir(parents=True)
+        (root / "validation/M15-docs-final-validation/user-testing/flows").mkdir(parents=True)
+        evidence = root / "validation/M15-docs-final-validation/user-testing/flows/current.json"
+        evidence.write_text(json.dumps({"status": "pass"}), encoding="utf-8")
+        (root / "validation-state.json").write_text(json.dumps({
+            "assertions": {
+                "VAL-M15-SAMPLE": {
+                    "status": "passed",
+                    "evidence": "validation/M15-docs-final-validation/user-testing/flows/current.json",
+                    "validatedAtMilestone": "M15-docs-final-validation",
+                }
+            }
+        }), encoding="utf-8")
+        synthesis = root / "validation/M15-docs-final-validation/scrutiny/synthesis.json"
+        synthesis.write_text(json.dumps({"status": "fail", "blockingIssues": [{"severity": "blocking"}]}), encoding="utf-8")
+        failed = milestone_seal(root, evidence)["M15"]
+        synthesis.write_text(json.dumps({"status": "pass", "blockingIssues": [], "unresolvedGaps": []}), encoding="utf-8")
+        passed = milestone_seal(root, evidence)["M15"]
+    if failed["sealed"]:
+        raise HarnessError("dry-run self-test expected failed M15 synthesis to reject the seal")
+    if not passed["sealed"]:
+        raise HarnessError(f"dry-run self-test expected passing M15 evidence to seal; reasons={passed['sealRejectedBecause']}")
+    return {
+        "failedSynthesisSealed": failed["sealed"],
+        "failedSynthesisRejectedBecause": failed["sealRejectedBecause"],
+        "passingEvidenceSealed": passed["sealed"],
+    }
 
 
 def collect_scan_targets(mission_dir: Path, current_report: Path) -> dict[str, list[Path]]:
@@ -551,7 +598,8 @@ def write_report(report_path: Path, report: dict[str, Any]) -> None:
 
 def main() -> None:
     if "--dry-run" in sys.argv:
-        note("dry_run=true coverage=full_lifecycle,repeated_isolation,concurrency,idempotency,milestone_seal,secret_scan")
+        self_test = dry_run_self_test()
+        note(f"dry_run=true coverage=full_lifecycle,repeated_isolation,concurrency,idempotency,milestone_seal,secret_scan self_test={json.dumps(self_test, sort_keys=True)}")
         return
     mission_dir = Path(os.environ.get("MISSION_DIR", str(DEFAULT_MISSION_DIR)))
     evidence_dir = Path(os.environ.get("M15_EVIDENCE_DIR", str(mission_dir / "evidence/M15-docs-final-validation/m15-final-e2e-seal")))
@@ -664,7 +712,13 @@ def main() -> None:
     }
     write_report(report_path, report)
     seal = milestone_seal(mission_dir, report_path)
-    report["testedAssertions"].append({"id": "VAL-MILESTONE-001", "status": "pass", "reason": "M0-M14 milestone directories include review and curl/user-testing evidence; M15 current final E2E evidence path is included for the final validator seal.", "evidence": seal})
+    seal_passed = bool(seal.get("M15", {}).get("sealed"))
+    report["testedAssertions"].append({
+        "id": "VAL-MILESTONE-001",
+        "status": "pass" if seal_passed else "fail",
+        "reason": "M0-M15 milestone directories must include passing review and curl/user-testing evidence with no failed inputs, unresolved gaps, non-passing assertions, or missing artifact hashes before the final validator seal can pass.",
+        "evidence": seal,
+    })
     scan_targets = collect_scan_targets(mission_dir, report_path)
     secret_scan = scan_files(scan_targets)
     report["testedAssertions"].append({"id": "VAL-CROSS-012", "status": "pass" if secret_scan["passed"] else "fail", "reason": "Final validation artifacts, reports, OpenAPI, validation state, and sampled milestone reports were scanned for token/password/activation/provider credential patterns.", "evidence": secret_scan})
@@ -672,6 +726,11 @@ def main() -> None:
     if not secret_scan["passed"]:
         write_report(report_path, report)
         fail(f"secret scan findings: {secret_scan['findings']}")
+    if not seal_passed:
+        report["status"] = "fail"
+        write_report(report_path, report)
+        rejected = {key: value.get("sealRejectedBecause", []) for key, value in seal.items() if not value.get("sealed")}
+        fail(f"milestone seal rejected: {json.dumps(rejected, sort_keys=True)}")
     write_report(report_path, report)
     note(f"report={report_path}")
     note(f"assertions={','.join(ASSERTIONS)} status=pass secrets=redacted")
