@@ -186,6 +186,48 @@ def artifact_record(path: Path, base: Path) -> dict[str, Any]:
     }
 
 
+def mission_feature_milestones(mission_dir: Path) -> set[str]:
+    payload = safe_read_json(mission_dir / "features.json")
+    if not isinstance(payload, dict):
+        return set()
+    milestones: set[str] = set()
+    for feature in payload.get("features") or []:
+        if not isinstance(feature, dict):
+            continue
+        milestone = feature.get("milestone")
+        if isinstance(milestone, str) and milestone:
+            milestones.add(milestone)
+    return milestones
+
+
+def synthesis_status(path: Path, mission_dir: Path, scope: str) -> dict[str, Any] | None:
+    payload = safe_read_json(path)
+    if not isinstance(payload, dict):
+        return None
+    blocking = len(payload.get("blockingIssues") or [])
+    unresolved = len(payload.get("unresolvedGaps") or payload.get("gaps") or [])
+    status = payload.get("status")
+    passed = str(status or "").lower() in {"pass", "passed", "success", "completed"} and not blocking and not unresolved
+    return {
+        "path": str(path.relative_to(mission_dir)),
+        "status": status,
+        "blockingIssues": blocking,
+        "unresolvedGaps": unresolved,
+        "hash": sha256_file(path),
+        "scope": scope,
+        "passed": passed,
+    }
+
+
+def actionable_failed_inputs(status_inputs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        s for s in status_inputs
+        if str(s.get("status", "")).lower() not in {"pass", "passed", "success", "completed"}
+        or s.get("blockingIssues", 0)
+        or s.get("unresolvedGaps", 0)
+    ]
+
+
 def provenance(mission_dir: Path) -> dict[str, Any]:
     commands = {
         "pwd": ["pwd"],
@@ -426,6 +468,7 @@ def milestone_seal(mission_dir: Path, current_report: Path | None) -> dict[str, 
     validation_root = mission_dir / "validation"
     validation_state = safe_read_json(mission_dir / "validation-state.json") or {}
     assertions = validation_state.get("assertions", {}) if isinstance(validation_state, dict) else {}
+    feature_milestones = mission_feature_milestones(mission_dir)
     milestones = [f"M{i}" for i in range(0, 16)]
     found: dict[str, Any] = {}
     for prefix in milestones:
@@ -433,32 +476,38 @@ def milestone_seal(mission_dir: Path, current_report: Path | None) -> dict[str, 
             p for p in validation_root.iterdir()
             if p.is_dir() and (p.name == prefix or p.name.startswith(prefix + "-"))
         ] if validation_root.exists() else []
+        current_dirs = [d for d in dirs if d.name in feature_milestones]
+        historical_dirs = [d for d in dirs if d.name not in feature_milestones]
+        gating_dirs = current_dirs if current_dirs else dirs
         scrutiny = []
         user = []
+        gating_scrutiny = []
+        gating_user = []
         status_inputs: list[dict[str, Any]] = []
-        for directory in dirs:
+        historical_status_inputs: list[dict[str, Any]] = []
+        for directory in gating_dirs:
             for p in directory.glob("scrutiny/**/*.json"):
                 scrutiny.append(p)
+                gating_scrutiny.append(p)
             for p in directory.glob("user-testing/**/*.json"):
                 user.append(p)
+                gating_user.append(p)
             for synthesis in list(directory.glob("scrutiny/synthesis.json")) + list(directory.glob("user-testing/synthesis.json")):
-                payload = safe_read_json(synthesis)
-                if isinstance(payload, dict):
-                    status_inputs.append({
-                        "path": str(synthesis.relative_to(mission_dir)),
-                        "status": payload.get("status"),
-                        "blockingIssues": len(payload.get("blockingIssues") or []),
-                        "unresolvedGaps": len(payload.get("unresolvedGaps") or payload.get("gaps") or []),
-                        "hash": sha256_file(synthesis),
-                    })
+                record = synthesis_status(synthesis, mission_dir, "current_gating")
+                if record:
+                    status_inputs.append(record)
+        for directory in historical_dirs if current_dirs else []:
+            for synthesis in list(directory.glob("scrutiny/synthesis.json")) + list(directory.glob("user-testing/synthesis.json")):
+                record = synthesis_status(synthesis, mission_dir, "historical_non_gating")
+                if record:
+                    record["nonGatingReason"] = "superseded_by_current_feature_milestone_evidence"
+                    historical_status_inputs.append(record)
         if prefix == "M15" and current_report is not None:
             user.append(current_report)
-        failed_inputs = [
-            s for s in status_inputs
-            if str(s.get("status", "")).lower() not in {"pass", "passed", "success", "completed"}
-            or s.get("blockingIssues", 0)
-            or s.get("unresolvedGaps", 0)
-        ]
+            gating_user.append(current_report)
+        failed_inputs = actionable_failed_inputs(status_inputs)
+        historical_failed_inputs = actionable_failed_inputs(historical_status_inputs)
+        authoritative_pass = bool(gating_scrutiny) and bool(gating_user) and not failed_inputs
         milestone_assertions = {
             aid: {
                 "status": meta.get("status"),
@@ -471,13 +520,22 @@ def milestone_seal(mission_dir: Path, current_report: Path | None) -> dict[str, 
         non_passed_assertions = sorted(k for k, v in milestone_assertions.items() if v.get("status") != "passed")
         missing_assertion_hashes = sorted(k for k, v in milestone_assertions.items() if v.get("status") == "passed" and not v.get("evidenceHash"))
         artifacts = [artifact_record(p, mission_dir) for p in (scrutiny + user)[:12] if p.exists()]
+        historical_policy = {
+            "mode": "current_feature_milestones_are_authoritative",
+            "currentGatingDirectories": [d.name for d in gating_dirs],
+            "historicalNonGatingDirectories": [d.name for d in historical_dirs] if current_dirs else [],
+            "historicalFailedOrUnresolvedEvidenceClassifiedNonGating": historical_failed_inputs[:8] if authoritative_pass else [],
+            "historicalFailedOrUnresolvedEvidenceActionable": [] if authoritative_pass else historical_failed_inputs[:8],
+        }
         rejection_reasons = []
-        if not scrutiny:
+        if not gating_scrutiny:
             rejection_reasons.append("missing_scrutiny_evidence")
-        if not user:
+        if not gating_user:
             rejection_reasons.append("missing_user_testing_evidence")
         if failed_inputs:
             rejection_reasons.append("failed_or_unresolved_evidence")
+        if historical_failed_inputs and not authoritative_pass:
+            rejection_reasons.append("historical_failed_without_superseding_authoritative_pass")
         if prefix == "M15":
             if non_passed_assertions:
                 rejection_reasons.append("non_passed_assertions")
@@ -492,6 +550,7 @@ def milestone_seal(mission_dir: Path, current_report: Path | None) -> dict[str, 
             "userTestingEvidenceCount": len(user),
             "sampleEvidence": [str(p.relative_to(mission_dir)) for p in (scrutiny + user)[:8]],
             "statusInputs": status_inputs[:12],
+            "historicalEvidencePolicy": historical_policy,
             "failedOrUnresolvedEvidenceRejected": failed_inputs[:8],
             "sealRejectedBecause": rejection_reasons,
             "assertionStatusSummary": {
