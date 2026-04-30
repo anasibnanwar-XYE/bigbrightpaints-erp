@@ -4,6 +4,7 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -43,7 +44,7 @@ public class AuthSessionService implements AuthSessionIntrospectionService {
   }
 
   @Transactional(readOnly = true)
-  public List<ActiveSessionResponse> listActiveSessions(UserAccount user, UUID currentSessionId) {
+  public List<Map<String, Object>> listActiveSessions(UserAccount user, UUID currentSessionId) {
     if (user == null || user.getPublicId() == null) {
       return List.of();
     }
@@ -68,20 +69,20 @@ public class AuthSessionService implements AuthSessionIntrospectionService {
          limit ?
         """,
         rs -> {
-          java.util.ArrayList<ActiveSessionResponse> sessions = new java.util.ArrayList<>();
+          java.util.ArrayList<Map<String, Object>> sessions = new java.util.ArrayList<>();
           while (rs.next()) {
             UUID sessionId = rs.getObject("public_id", UUID.class);
             String deviceLabel = sanitizeDeviceLabel(rs.getString("device_label"));
             sessions.add(
-                new ActiveSessionResponse(
-                    sessionId.toString(),
-                    sessionId.equals(currentSessionId),
-                    rs.getTimestamp("issued_at").toInstant().toString(),
-                    rs.getTimestamp("last_seen_at").toInstant().toString(),
-                    rs.getTimestamp("expires_at").toInstant().toString(),
-                    rs.getString("auth_scope_code"),
-                    deviceLabel,
-                    deviceLabel));
+                Map.of(
+                    "sessionId", sessionId.toString(),
+                    "current", sessionId.equals(currentSessionId),
+                    "createdAt", rs.getTimestamp("issued_at").toInstant().toString(),
+                    "lastSeenAt", rs.getTimestamp("last_seen_at").toInstant().toString(),
+                    "expiresAt", rs.getTimestamp("expires_at").toInstant().toString(),
+                    "authScopeCode", rs.getString("auth_scope_code"),
+                    "deviceName", deviceLabel,
+                    "userAgent", deviceLabel));
           }
           return sessions;
         },

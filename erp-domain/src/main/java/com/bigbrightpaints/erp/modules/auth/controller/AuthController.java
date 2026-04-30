@@ -31,7 +31,6 @@ import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserPrincipal;
-import com.bigbrightpaints.erp.modules.auth.service.ActiveSessionResponse;
 import com.bigbrightpaints.erp.modules.auth.service.AuthService;
 import com.bigbrightpaints.erp.modules.auth.service.AuthSessionService;
 import com.bigbrightpaints.erp.modules.auth.service.IamCanonicalStorageService;
@@ -245,7 +244,7 @@ public class AuthController {
 
   @GetMapping("/sessions")
   @PreAuthorize("isAuthenticated()")
-  public ResponseEntity<ApiResponse<List<ActiveSessionResponse>>> sessions(
+  public ResponseEntity<ApiResponse<List<Map<String, Object>>>> sessions(
       @AuthenticationPrincipal UserPrincipal principal, HttpServletRequest request) {
     if (principal == null) {
       return ResponseEntity.status(401).body(ApiResponse.failure("Unauthenticated"));
