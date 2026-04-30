@@ -383,7 +383,15 @@ class AuditReadAdaptersIT extends AbstractIntegrationTest {
                       "identifier",
                       "198.51.100.10",
                       "reasonText",
-                      "request body included invoice payload"));
+                      "request body included invoice payload",
+                      "reason",
+                      "reviewed by platform operator",
+                      "reasonCategory",
+                      "OPERATOR_NOTE",
+                      "reasonDigest",
+                      "abcdef123456abcdef123456",
+                      "reasonPresent",
+                      "true"));
             });
     saveAuditLog(
         tenant.getId(),
@@ -407,7 +415,11 @@ class AuditReadAdaptersIT extends AbstractIntegrationTest {
         .satisfies(
             item -> {
               assertThat(item.metadata().get("identifier")).startsWith("hash:");
-              assertThat(item.metadata()).containsEntry("reasonText", "[REDACTED]");
+              assertThat(item.metadata()).doesNotContainKey("reasonText");
+              assertThat(item.metadata()).containsEntry("reason", "[REDACTED]");
+              assertThat(item.metadata()).containsEntry("reasonCategory", "OPERATOR_NOTE");
+              assertThat(item.metadata()).containsEntry("reasonDigest", "abcdef123456abcdef123456");
+              assertThat(item.metadata()).containsEntry("reasonPresent", "true");
               assertThat(item.metadata().toString()).doesNotContain("198.51.100.10", "invoice");
             });
   }

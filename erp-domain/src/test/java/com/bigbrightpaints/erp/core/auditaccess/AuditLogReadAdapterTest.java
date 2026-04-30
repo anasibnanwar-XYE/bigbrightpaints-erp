@@ -218,7 +218,15 @@ class AuditLogReadAdapterTest {
             "requestBody",
             "private invoice ledger payload",
             "reasonText",
-            "contains invoice canary"));
+            "contains invoice canary",
+            "reason",
+            "reviewed by platform operator",
+            "reasonCategory",
+            "OPERATOR_NOTE",
+            "reasonDigest",
+            "abcdef123456abcdef123456",
+            "reasonPresent",
+            "true"));
     when(auditLogRepository.findAll(
             org.mockito.ArgumentMatchers.<Specification<AuditLog>>any(), any(Pageable.class)))
         .thenReturn(new PageImpl<>(java.util.List.of(auditLog)));
@@ -234,7 +242,11 @@ class AuditLogReadAdapterTest {
               assertThat(item.metadata()).containsEntry("alertType", "BRUTE_FORCE_ATTACK");
               assertThat(item.metadata().get("identifier")).startsWith("hash:");
               assertThat(item.metadata()).doesNotContainKeys("password", "requestBody");
-              assertThat(item.metadata()).containsEntry("reasonText", "[REDACTED]");
+              assertThat(item.metadata()).doesNotContainKey("reasonText");
+              assertThat(item.metadata()).containsEntry("reason", "[REDACTED]");
+              assertThat(item.metadata()).containsEntry("reasonCategory", "OPERATOR_NOTE");
+              assertThat(item.metadata()).containsEntry("reasonDigest", "abcdef123456abcdef123456");
+              assertThat(item.metadata()).containsEntry("reasonPresent", "true");
             });
   }
 }

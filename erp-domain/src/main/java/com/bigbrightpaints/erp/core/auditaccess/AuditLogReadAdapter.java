@@ -11,6 +11,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import org.springframework.data.domain.Page;
@@ -83,9 +84,12 @@ public class AuditLogReadAdapter {
           "newStatus",
           "operation",
           "orderNumber",
+          "previousAuditEventId",
           "previousStatus",
           "reason",
-          "reasonText",
+          "reasonCategory",
+          "reasonDigest",
+          "reasonPresent",
           "reference",
           "referenceNumber",
           "remediationId",
@@ -121,6 +125,7 @@ public class AuditLogReadAdapter {
           "privatekey");
   private static final Set<String> HASHED_METADATA_KEYS =
       Set.of("identifier", "ipAddress", "userAgent", "username", "email");
+  private static final Pattern SAFE_REASON_CODE = Pattern.compile("[A-Za-z0-9_.:-]{1,80}");
   private static final Set<String> FORBIDDEN_VALUE_MARKERS =
       Set.of(
           "password",
@@ -656,6 +661,9 @@ public class AuditLogReadAdapter {
     }
     String lowerValue = trimmed.toLowerCase(Locale.ROOT);
     if (FORBIDDEN_VALUE_MARKERS.stream().anyMatch(lowerValue::contains)) {
+      return "[REDACTED]";
+    }
+    if ("reason".equals(key) && !SAFE_REASON_CODE.matcher(trimmed).matches()) {
       return "[REDACTED]";
     }
     if (HASHED_METADATA_KEYS.contains(key)) {

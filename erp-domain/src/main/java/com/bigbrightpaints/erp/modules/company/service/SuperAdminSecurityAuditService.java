@@ -1,9 +1,13 @@
 package com.bigbrightpaints.erp.modules.company.service;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -167,9 +171,10 @@ public class SuperAdminSecurityAuditService {
 
   private SuperAdminSecurityAuditDtos.RemediationResponse transition(
       Long eventId, String nextStatus, SuperAdminSecurityAuditDtos.RemediationRequest request) {
+    String actor = currentActor();
     AuditLog event =
         auditLogRepository
-            .findById(eventId)
+            .lockByIdWithMetadata(eventId)
             .orElseThrow(
                 () ->
                     new ApplicationException(
@@ -190,38 +195,65 @@ public class SuperAdminSecurityAuditService {
                   created.setSeverity(severity(event));
                   return remediationRepository.saveAndFlush(created);
                 });
+    if (isRetry(remediation, nextStatus, reason)) {
+      return toResponse(remediation);
+    }
     String previousStatus = remediation.getStatus();
-    remediation.setStatus(nextStatus);
-    remediation.setSeverity(severity(event));
-    remediation.setReason(reason);
-    remediation.setUpdatedBy(currentActor());
+    Long previousAuditEventId = remediation.getLastAuditEventId();
     Long auditEventId =
         auditRequired(
             "security-event-remediation-" + nextStatus.toLowerCase(Locale.ROOT),
-            Map.of(
-                "resourceType",
-                "SECURITY_EVENT",
-                "resourceId",
-                String.valueOf(eventId),
-                "remediationId",
-                String.valueOf(remediation.getId()),
-                "previousStatus",
+            remediationAuditMetadata(
+                eventId,
+                remediation.getId(),
                 previousStatus,
-                "newStatus",
                 nextStatus,
-                "reasonText",
-                reason));
+                previousAuditEventId,
+                reason),
+            actor);
+    remediation.setStatus(nextStatus);
+    remediation.setSeverity(severity(event));
+    remediation.setReason(reason);
+    remediation.setUpdatedBy(actor);
     remediation.setLastAuditEventId(auditEventId);
     return toResponse(remediationRepository.saveAndFlush(remediation));
   }
 
-  private Long auditRequired(String reason, Map<String, String> metadata) {
+  private boolean isRetry(
+      SuperAdminSecurityRemediation remediation, String nextStatus, String normalizedReason) {
+    return remediation.getLastAuditEventId() != null
+        && Objects.equals(nextStatus, remediation.getStatus())
+        && Objects.equals(normalizedReason, normalizeReason(remediation.getReason()));
+  }
+
+  private Map<String, String> remediationAuditMetadata(
+      Long eventId,
+      Long remediationId,
+      String previousStatus,
+      String nextStatus,
+      Long previousAuditEventId,
+      String normalizedReason) {
+    Map<String, String> metadata = new LinkedHashMap<>();
+    metadata.put("resourceType", "SECURITY_EVENT");
+    metadata.put("resourceId", String.valueOf(eventId));
+    metadata.put("remediationId", String.valueOf(remediationId));
+    metadata.put("previousStatus", previousStatus);
+    metadata.put("newStatus", nextStatus);
+    metadata.put("reasonCategory", "OPERATOR_NOTE");
+    metadata.put("reasonPresent", "true");
+    metadata.put("reasonDigest", reasonDigest(normalizedReason));
+    if (previousAuditEventId != null) {
+      metadata.put("previousAuditEventId", String.valueOf(previousAuditEventId));
+    }
+    return metadata;
+  }
+
+  private Long auditRequired(String reason, Map<String, String> metadata, String actor) {
     Map<String, String> auditMetadata = new LinkedHashMap<>();
     auditMetadata.put("operation", reason);
     auditMetadata.putAll(metadata);
     AuditLog auditLog =
-        auditService.logAuthSuccessRequired(
-            AuditEvent.CONFIGURATION_CHANGED, currentActor(), null, auditMetadata);
+        auditService.logAuthSuccessRequired(AuditEvent.CONFIGURATION_CHANGED, actor, null, auditMetadata);
     if (auditLog == null || auditLog.getId() == null) {
       throw new ApplicationException(
           ErrorCode.BUSINESS_INVALID_STATE, "Security remediation audit event was not persisted");
@@ -239,7 +271,7 @@ public class SuperAdminSecurityAuditService {
         remediation.getAuditEventId(),
         remediation.getStatus(),
         remediation.getSeverity(),
-        remediation.getReason(),
+        StringUtils.hasText(remediation.getReason()) ? "OPERATOR_NOTE_PRESENT" : null,
         remediation.getUpdatedBy(),
         remediation.getCreatedAt(),
         remediation.getUpdatedAt(),
@@ -284,7 +316,7 @@ public class SuperAdminSecurityAuditService {
       throw new ApplicationException(
           ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD, "reason is required");
     }
-    String reason = rawReason.trim();
+    String reason = normalizeReason(rawReason);
     if (reason.length() > 300) {
       throw new ApplicationException(
           ErrorCode.VALIDATION_OUT_OF_RANGE, "reason must be at most 300 characters");
@@ -308,5 +340,26 @@ public class SuperAdminSecurityAuditService {
           "Authenticated Super Admin actor is required for security remediation");
     }
     return actor;
+  }
+
+  private String normalizeReason(String rawReason) {
+    if (!StringUtils.hasText(rawReason)) {
+      return null;
+    }
+    return rawReason.trim().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+  }
+
+  private String reasonDigest(String normalizedReason) {
+    try {
+      MessageDigest digest = MessageDigest.getInstance("SHA-256");
+      byte[] bytes = digest.digest(normalizedReason.getBytes(StandardCharsets.UTF_8));
+      StringBuilder hex = new StringBuilder();
+      for (int i = 0; i < 12; i++) {
+        hex.append(String.format("%02x", bytes[i]));
+      }
+      return hex.toString();
+    } catch (NoSuchAlgorithmException ex) {
+      throw new IllegalStateException("SHA-256 digest unavailable", ex);
+    }
   }
 }

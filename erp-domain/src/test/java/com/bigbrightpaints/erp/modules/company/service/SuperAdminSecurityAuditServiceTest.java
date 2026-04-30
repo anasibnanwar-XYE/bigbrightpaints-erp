@@ -17,6 +17,7 @@ import java.util.Optional;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.security.authentication.TestingAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 
@@ -99,6 +100,8 @@ class SuperAdminSecurityAuditServiceTest {
               assertThat(event.actorIdentifier()).startsWith("hash:");
               assertThat(event.actorIdentifier()).doesNotContain("root-superadmin");
               assertThat(event.remediation().status()).isEqualTo("ACKNOWLEDGED");
+              assertThat(event.remediation().reason()).isEqualTo("OPERATOR_NOTE_PRESENT");
+              assertThat(event.remediation().reason()).doesNotContain("reviewed");
               assertThat(event.metadata()).containsEntry("alertType", "BRUTE_FORCE_ATTACK");
             });
   }
@@ -114,7 +117,7 @@ class SuperAdminSecurityAuditServiceTest {
         new SuperAdminSecurityAuditService(
             auditAccessService, auditLogRepository, remediationRepository, auditService);
     AuditLog securityAlert = auditLog(101L, AuditEvent.SECURITY_ALERT);
-    when(auditLogRepository.findById(101L)).thenReturn(Optional.of(securityAlert));
+    when(auditLogRepository.lockByIdWithMetadata(101L)).thenReturn(Optional.of(securityAlert));
     SuperAdminSecurityRemediation remediation = remediation(5L, 101L, "ACKNOWLEDGED", null);
     when(remediationRepository.lockByAuditEventId(101L)).thenReturn(Optional.of(remediation));
     AuditLog auditEvidence = new AuditLog();
@@ -125,11 +128,91 @@ class SuperAdminSecurityAuditServiceTest {
     authenticateSuperAdmin();
 
     SuperAdminSecurityAuditDtos.RemediationResponse response =
-        service.resolve(101L, new SuperAdminSecurityAuditDtos.RemediationRequest("reviewed"));
+        service.resolve(
+            101L,
+            new SuperAdminSecurityAuditDtos.RemediationRequest(
+                "Reviewed by platform operator with private context"));
+
+    assertThat(response.status()).isEqualTo("RESOLVED");
+    assertThat(response.reason()).isEqualTo("OPERATOR_NOTE_PRESENT");
+    assertThat(response.auditEventId()).isEqualTo(777L);
+    ArgumentCaptor<Map<String, String>> metadataCaptor = metadataCaptor();
+    verify(auditService).logAuthSuccessRequired(any(), any(), any(), metadataCaptor.capture());
+    assertThat(metadataCaptor.getValue())
+        .containsEntry("reasonCategory", "OPERATOR_NOTE")
+        .containsEntry("reasonPresent", "true")
+        .containsKeys("reasonDigest")
+        .doesNotContainKeys("reasonText");
+    assertThat(metadataCaptor.getValue().toString())
+        .doesNotContain("Reviewed by platform operator", "private context");
+  }
+
+  @Test
+  void exactRetryReturnsExistingAuditBackedRemediationWithoutDuplicateAudit() {
+    AuditLogRepository auditLogRepository = mock(AuditLogRepository.class);
+    SuperAdminSecurityRemediationRepository remediationRepository =
+        mock(SuperAdminSecurityRemediationRepository.class);
+    AuditService auditService = mock(AuditService.class);
+    SuperAdminSecurityAuditService service =
+        new SuperAdminSecurityAuditService(
+            mock(AuditAccessService.class),
+            auditLogRepository,
+            remediationRepository,
+            auditService);
+    AuditLog securityAlert = auditLog(101L, AuditEvent.SECURITY_ALERT);
+    when(auditLogRepository.lockByIdWithMetadata(101L)).thenReturn(Optional.of(securityAlert));
+    SuperAdminSecurityRemediation remediation = remediation(5L, 101L, "RESOLVED", 777L);
+    remediation.setReason("reviewed by operator");
+    when(remediationRepository.lockByAuditEventId(101L)).thenReturn(Optional.of(remediation));
+    authenticateSuperAdmin();
+
+    SuperAdminSecurityAuditDtos.RemediationResponse response =
+        service.resolve(
+            101L, new SuperAdminSecurityAuditDtos.RemediationRequest("  Reviewed   By Operator  "));
 
     assertThat(response.status()).isEqualTo("RESOLVED");
     assertThat(response.auditEventId()).isEqualTo(777L);
-    verify(auditService).logAuthSuccessRequired(any(), any(), any(), any());
+    verify(auditService, never()).logAuthSuccessRequired(any(), any(), any(), any());
+    verify(remediationRepository, never()).saveAndFlush(any(SuperAdminSecurityRemediation.class));
+  }
+
+  @Test
+  void sameStatusReasonCorrectionAppendsOneAuditEventAndPreservesPreviousEvidenceReference() {
+    AuditLogRepository auditLogRepository = mock(AuditLogRepository.class);
+    SuperAdminSecurityRemediationRepository remediationRepository =
+        mock(SuperAdminSecurityRemediationRepository.class);
+    AuditService auditService = mock(AuditService.class);
+    SuperAdminSecurityAuditService service =
+        new SuperAdminSecurityAuditService(
+            mock(AuditAccessService.class),
+            auditLogRepository,
+            remediationRepository,
+            auditService);
+    AuditLog securityAlert = auditLog(101L, AuditEvent.SECURITY_ALERT);
+    when(auditLogRepository.lockByIdWithMetadata(101L)).thenReturn(Optional.of(securityAlert));
+    SuperAdminSecurityRemediation remediation = remediation(5L, 101L, "RESOLVED", 777L);
+    remediation.setReason("first operator note");
+    when(remediationRepository.lockByAuditEventId(101L)).thenReturn(Optional.of(remediation));
+    AuditLog auditEvidence = new AuditLog();
+    auditEvidence.setId(778L);
+    when(auditService.logAuthSuccessRequired(any(), any(), any(), any())).thenReturn(auditEvidence);
+    when(remediationRepository.saveAndFlush(any(SuperAdminSecurityRemediation.class)))
+        .thenAnswer(invocation -> invocation.getArgument(0));
+    authenticateSuperAdmin();
+
+    SuperAdminSecurityAuditDtos.RemediationResponse response =
+        service.resolve(101L, new SuperAdminSecurityAuditDtos.RemediationRequest("corrected note"));
+
+    assertThat(response.status()).isEqualTo("RESOLVED");
+    assertThat(response.auditEventId()).isEqualTo(778L);
+    ArgumentCaptor<Map<String, String>> metadataCaptor = metadataCaptor();
+    verify(auditService).logAuthSuccessRequired(any(), any(), any(), metadataCaptor.capture());
+    assertThat(metadataCaptor.getValue())
+        .containsEntry("previousAuditEventId", "777")
+        .containsEntry("previousStatus", "RESOLVED")
+        .containsEntry("newStatus", "RESOLVED")
+        .containsKeys("reasonDigest")
+        .doesNotContainKeys("reasonText");
   }
 
   @Test
@@ -145,7 +228,7 @@ class SuperAdminSecurityAuditServiceTest {
             remediationRepository,
             auditService);
     AuditLog securityAlert = auditLog(101L, AuditEvent.SECURITY_ALERT);
-    when(auditLogRepository.findById(101L)).thenReturn(Optional.of(securityAlert));
+    when(auditLogRepository.lockByIdWithMetadata(101L)).thenReturn(Optional.of(securityAlert));
     SuperAdminSecurityRemediation remediation = remediation(5L, 101L, "ACKNOWLEDGED", null);
     when(remediationRepository.lockByAuditEventId(101L)).thenReturn(Optional.of(remediation));
     when(auditService.logAuthSuccessRequired(any(), any(), any(), any()))
@@ -155,10 +238,43 @@ class SuperAdminSecurityAuditServiceTest {
     assertThatThrownBy(
             () ->
                 service.resolve(
-                    101L, new SuperAdminSecurityAuditDtos.RemediationRequest("reviewed")))
+                    101L, new SuperAdminSecurityAuditDtos.RemediationRequest("closed by operator")))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("required audit signing unavailable");
 
+    assertThat(remediation.getStatus()).isEqualTo("ACKNOWLEDGED");
+    assertThat(remediation.getLastAuditEventId()).isNull();
+    verify(remediationRepository, never()).saveAndFlush(any(SuperAdminSecurityRemediation.class));
+  }
+
+  @Test
+  void resolveNullRequiredAuditResultDoesNotPersistRemediationTransition() {
+    AuditLogRepository auditLogRepository = mock(AuditLogRepository.class);
+    SuperAdminSecurityRemediationRepository remediationRepository =
+        mock(SuperAdminSecurityRemediationRepository.class);
+    AuditService auditService = mock(AuditService.class);
+    SuperAdminSecurityAuditService service =
+        new SuperAdminSecurityAuditService(
+            mock(AuditAccessService.class),
+            auditLogRepository,
+            remediationRepository,
+            auditService);
+    AuditLog securityAlert = auditLog(101L, AuditEvent.SECURITY_ALERT);
+    when(auditLogRepository.lockByIdWithMetadata(101L)).thenReturn(Optional.of(securityAlert));
+    SuperAdminSecurityRemediation remediation = remediation(5L, 101L, "ACKNOWLEDGED", null);
+    when(remediationRepository.lockByAuditEventId(101L)).thenReturn(Optional.of(remediation));
+    when(auditService.logAuthSuccessRequired(any(), any(), any(), any())).thenReturn(null);
+    authenticateSuperAdmin();
+
+    assertThatThrownBy(
+            () ->
+                service.resolve(
+                    101L, new SuperAdminSecurityAuditDtos.RemediationRequest("closed by operator")))
+        .isInstanceOf(ApplicationException.class)
+        .hasMessageContaining("Security remediation audit event was not persisted");
+
+    assertThat(remediation.getStatus()).isEqualTo("ACKNOWLEDGED");
+    assertThat(remediation.getLastAuditEventId()).isNull();
     verify(remediationRepository, never()).saveAndFlush(any(SuperAdminSecurityRemediation.class));
   }
 
@@ -175,7 +291,7 @@ class SuperAdminSecurityAuditServiceTest {
             remediationRepository,
             auditService);
     AuditLog securityAlert = auditLog(101L, AuditEvent.SECURITY_ALERT);
-    when(auditLogRepository.findById(101L)).thenReturn(Optional.of(securityAlert));
+    when(auditLogRepository.lockByIdWithMetadata(101L)).thenReturn(Optional.of(securityAlert));
     SuperAdminSecurityRemediation remediation = remediation(5L, 101L, "ACKNOWLEDGED", null);
     when(remediationRepository.lockByAuditEventId(101L)).thenReturn(Optional.of(remediation));
     AuditLog auditEvidence = new AuditLog();
@@ -205,12 +321,16 @@ class SuperAdminSecurityAuditServiceTest {
 
   @Test
   void remediationReasonRejectsSecretAndPrivateTenantBusinessCanaries() {
+    AuditLogRepository auditLogRepository = mock(AuditLogRepository.class);
     SuperAdminSecurityAuditService service =
         new SuperAdminSecurityAuditService(
             mock(AuditAccessService.class),
-            mock(AuditLogRepository.class),
+            auditLogRepository,
             mock(SuperAdminSecurityRemediationRepository.class),
             mock(AuditService.class));
+    when(auditLogRepository.lockByIdWithMetadata(101L))
+        .thenReturn(Optional.of(auditLog(101L, AuditEvent.SECURITY_ALERT)));
+    authenticateSuperAdmin();
 
     assertThatThrownBy(
             () ->
@@ -253,5 +373,10 @@ class SuperAdminSecurityAuditServiceTest {
       throw new AssertionError(ex);
     }
     return remediation;
+  }
+
+  @SuppressWarnings("unchecked")
+  private ArgumentCaptor<Map<String, String>> metadataCaptor() {
+    return ArgumentCaptor.forClass((Class<Map<String, String>>) (Class<?>) Map.class);
   }
 }
