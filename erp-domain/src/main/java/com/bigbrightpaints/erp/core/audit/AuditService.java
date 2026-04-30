@@ -1,13 +1,20 @@
 package com.bigbrightpaints.erp.core.audit;
 
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.HashMap;
+import java.util.HexFormat;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.UUID;
+
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.security.core.Authentication;
@@ -20,6 +27,8 @@ import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
+import com.bigbrightpaints.erp.core.validationharness.ValidationFaultInjectionService;
+import com.bigbrightpaints.erp.core.validationharness.ValidationFaultKind;
 import com.bigbrightpaints.erp.modules.auth.domain.UserPrincipal;
 import com.bigbrightpaints.erp.modules.auth.service.IamCanonicalStorageService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
@@ -37,6 +46,12 @@ public class AuditService {
   @Autowired private AuditLogRepository auditLogRepository;
   @Autowired private CompanyRepository companyRepository;
   @Autowired private IamCanonicalStorageService iamCanonicalStorageService;
+
+  @Autowired(required = false)
+  private ValidationFaultInjectionService validationFaultInjectionService;
+
+  @Value("${erp.security.audit.private-key:}")
+  private String auditPrivateKey;
 
   /**
    * Self-reference to ensure @Async/@Transactional proxies apply even when calling from within this class.
@@ -89,6 +104,9 @@ public class AuditService {
     String usernameOverride = normalizeAuthUsernameOverride(username, authMetadata);
     enrichAuthMetadataWithAuthenticatedActorPublicId(authMetadata, usernameOverride);
     String companyCodeOverride = normalizeAuthCompanyOverride(companyCode, authMetadata);
+    signRequiredAuditMetadata(
+        event, AuditStatus.SUCCESS, usernameOverride, companyCodeOverride, authMetadata);
+    requireAuditPersistenceAvailable();
     return logRequiredEventInternal(
         event,
         AuditStatus.SUCCESS,
@@ -96,6 +114,85 @@ public class AuditService {
         usernameOverride,
         companyCodeOverride,
         captureRequestContextMetadata());
+  }
+
+  private void requireAuditPersistenceAvailable() {
+    if (isValidationFaultEnabled(ValidationFaultKind.AUDIT_FAILURE)) {
+      throw new IllegalStateException("required audit persistence unavailable");
+    }
+  }
+
+  private void signRequiredAuditMetadata(
+      AuditEvent event,
+      AuditStatus status,
+      String usernameOverride,
+      String companyCodeOverride,
+      Map<String, String> metadata) {
+    if (isValidationFaultEnabled(ValidationFaultKind.AUDIT_SIGNING_FAILURE)) {
+      throw new IllegalStateException("required audit signing unavailable");
+    }
+    String normalizedKey = auditPrivateKey == null ? "" : auditPrivateKey.strip();
+    if (!StringUtils.hasText(normalizedKey)) {
+      return;
+    }
+    metadata.put("auditSignatureAlgorithm", "HMAC_SHA256");
+    metadata.put(
+        "auditSignature",
+        hmacSha256(
+            normalizedKey,
+            canonicalRequiredAuditPayload(
+                event, status, usernameOverride, companyCodeOverride, metadata)));
+  }
+
+  private boolean isValidationFaultEnabled(ValidationFaultKind kind) {
+    try {
+      return validationFaultInjectionService != null
+          && validationFaultInjectionService.isEnabled(kind);
+    } catch (RuntimeException ex) {
+      logger.debug("Ignoring validation fault lookup failure for required audit", ex);
+      return false;
+    }
+  }
+
+  private String canonicalRequiredAuditPayload(
+      AuditEvent event,
+      AuditStatus status,
+      String usernameOverride,
+      String companyCodeOverride,
+      Map<String, String> metadata) {
+    Map<String, String> canonicalMetadata = new TreeMap<>();
+    if (metadata != null) {
+      metadata.forEach(
+          (key, value) -> {
+            if (!"auditSignature".equals(key)) {
+              canonicalMetadata.put(key, value == null ? "" : value);
+            }
+          });
+    }
+    return "event="
+        + (event == null ? "" : event.name())
+        + "\nstatus="
+        + (status == null ? "" : status.name())
+        + "\nactor="
+        + safeCanonicalValue(usernameOverride)
+        + "\ncompany="
+        + safeCanonicalValue(companyCodeOverride)
+        + "\nmetadata="
+        + canonicalMetadata;
+  }
+
+  private String safeCanonicalValue(String value) {
+    return value == null ? "" : value.trim();
+  }
+
+  private String hmacSha256(String key, String payload) {
+    try {
+      Mac mac = Mac.getInstance("HmacSHA256");
+      mac.init(new SecretKeySpec(key.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+      return HexFormat.of().formatHex(mac.doFinal(payload.getBytes(StandardCharsets.UTF_8)));
+    } catch (Exception ex) {
+      throw new IllegalStateException("required audit signing unavailable", ex);
+    }
   }
 
   @Async
@@ -431,12 +528,23 @@ public class AuditService {
   }
 
   private Long resolveNumericCompanyId(String companyToken) {
+    Long companyId = parseNumericToken(companyToken);
+    if (companyId == null || companyId <= 0) {
+      return null;
+    }
+    return companyRepository.findById(companyId).map(Company::getId).orElse(null);
+  }
+
+  private Long parseNumericToken(String companyToken) {
+    if (!StringUtils.hasText(companyToken)) {
+      return null;
+    }
+    String normalizedToken = companyToken.trim();
+    if (!normalizedToken.chars().allMatch(Character::isDigit)) {
+      return null;
+    }
     try {
-      long companyId = Long.parseLong(companyToken);
-      if (companyId <= 0) {
-        return null;
-      }
-      return companyRepository.findById(companyId).map(Company::getId).orElse(null);
+      return Long.parseLong(normalizedToken);
     } catch (NumberFormatException ex) {
       return null;
     }

@@ -2,6 +2,7 @@ package com.bigbrightpaints.erp.core.audit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
@@ -24,6 +25,8 @@ import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
+import com.bigbrightpaints.erp.core.validationharness.ValidationFaultInjectionService;
+import com.bigbrightpaints.erp.core.validationharness.ValidationFaultKind;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserPrincipal;
 import com.bigbrightpaints.erp.modules.auth.service.IamCanonicalStorageService;
@@ -369,6 +372,86 @@ class AuditServiceTest {
         .containsEntry("authCompanyResolution", "UNRESOLVED");
   }
 
+  @Test
+  void logAuthSuccessRequired_signsWithConfiguredAuditKeyBeforePersistence() {
+    Company company = companyWithId(88L, "COMP-A");
+    when(companyRepository.findByCodeIgnoreCase("COMP-A")).thenReturn(Optional.of(company));
+    ReflectionTestUtils.setField(auditService, "auditPrivateKey", "required-audit-fixture-key");
+
+    auditService.logAuthSuccessRequired(
+        AuditEvent.CONFIGURATION_CHANGED,
+        "super-admin@bbp.com",
+        "COMP-A",
+        Map.of("operation", "tenant-created-draft"));
+
+    ArgumentCaptor<AuditLog> auditCaptor = ArgumentCaptor.forClass(AuditLog.class);
+    verify(auditLogRepository).saveAndFlush(auditCaptor.capture());
+    AuditLog saved = auditCaptor.getValue();
+    assertThat(saved.getMetadata())
+        .containsEntry("auditSignatureAlgorithm", "HMAC_SHA256")
+        .containsKey("auditSignature")
+        .containsEntry("operation", "tenant-created-draft");
+    assertThat(saved.getMetadata().get("auditSignature")).hasSize(64);
+  }
+
+  @Test
+  void logAuthSuccessRequired_signingFaultFailsBeforeAuditPersistence() {
+    ValidationFaultInjectionService faultInjectionService = new ValidationFaultInjectionService();
+    faultInjectionService.setFault(
+        ValidationFaultKind.AUDIT_SIGNING_FAILURE, true, "m14-audit-signing-fault", "fixture");
+    ReflectionTestUtils.setField(
+        auditService, "validationFaultInjectionService", faultInjectionService);
+    ReflectionTestUtils.setField(auditService, "auditPrivateKey", "required-audit-fixture-key");
+
+    assertThatThrownBy(
+            () ->
+                auditService.logAuthSuccessRequired(
+                    AuditEvent.CONFIGURATION_CHANGED,
+                    "super-admin@bbp.com",
+                    "COMP-A",
+                    Map.of("operation", "tenant-created-draft")))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("required audit signing unavailable");
+
+    verify(auditLogRepository, never()).saveAndFlush(any());
+  }
+
+  @Test
+  void logAuthSuccessRequired_persistenceFaultFailsBeforeAuditRepositoryWrite() {
+    ValidationFaultInjectionService faultInjectionService = new ValidationFaultInjectionService();
+    faultInjectionService.setFault(
+        ValidationFaultKind.AUDIT_FAILURE, true, "m14-audit-persistence-fault", "fixture");
+    ReflectionTestUtils.setField(
+        auditService, "validationFaultInjectionService", faultInjectionService);
+
+    assertThatThrownBy(
+            () ->
+                auditService.logAuthSuccessRequired(
+                    AuditEvent.CONFIGURATION_CHANGED,
+                    "super-admin@bbp.com",
+                    "COMP-A",
+                    Map.of("operation", "tenant-created-draft")))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("required audit persistence unavailable");
+
+    verify(auditLogRepository, never()).saveAndFlush(any());
+  }
+
+  @Test
+  void parseNumericToken_returnsNullWhenAllDigitValueOverflowsLong() {
+    Long parsed =
+        ReflectionTestUtils.invokeMethod(auditService, "parseNumericToken", "92233720368547758070");
+
+    assertThat(parsed).isNull();
+  }
+
+  @Test
+  void parseNumericToken_parsesTrimmedDigitValue() {
+    Long parsed = ReflectionTestUtils.invokeMethod(auditService, "parseNumericToken", " 42 ");
+
+    assertThat(parsed).isEqualTo(42L);
+  }
+
   private AuditService createService() {
     AuditService service = new AuditService();
     ReflectionTestUtils.setField(service, "auditLogRepository", auditLogRepository);
@@ -376,6 +459,8 @@ class AuditServiceTest {
     ReflectionTestUtils.setField(service, "iamCanonicalStorageService", iamCanonicalStorageService);
     ReflectionTestUtils.setField(service, "self", service);
     when(auditLogRepository.save(any(AuditLog.class)))
+        .thenAnswer(invocation -> invocation.getArgument(0));
+    when(auditLogRepository.saveAndFlush(any(AuditLog.class)))
         .thenAnswer(invocation -> invocation.getArgument(0));
     return service;
   }

@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -121,8 +122,7 @@ class SuperAdminSecurityAuditServiceTest {
     when(auditService.logAuthSuccessRequired(any(), any(), any(), any())).thenReturn(auditEvidence);
     when(remediationRepository.saveAndFlush(any(SuperAdminSecurityRemediation.class)))
         .thenAnswer(invocation -> invocation.getArgument(0));
-    SecurityContextHolder.getContext()
-        .setAuthentication(new TestingAuthenticationToken("root-superadmin@example.test", "n/a"));
+    authenticateSuperAdmin();
 
     SuperAdminSecurityAuditDtos.RemediationResponse response =
         service.resolve(101L, new SuperAdminSecurityAuditDtos.RemediationRequest("reviewed"));
@@ -130,6 +130,77 @@ class SuperAdminSecurityAuditServiceTest {
     assertThat(response.status()).isEqualTo("RESOLVED");
     assertThat(response.auditEventId()).isEqualTo(777L);
     verify(auditService).logAuthSuccessRequired(any(), any(), any(), any());
+  }
+
+  @Test
+  void resolveAuditFailureDoesNotPersistRemediationTransition() {
+    AuditLogRepository auditLogRepository = mock(AuditLogRepository.class);
+    SuperAdminSecurityRemediationRepository remediationRepository =
+        mock(SuperAdminSecurityRemediationRepository.class);
+    AuditService auditService = mock(AuditService.class);
+    SuperAdminSecurityAuditService service =
+        new SuperAdminSecurityAuditService(
+            mock(AuditAccessService.class),
+            auditLogRepository,
+            remediationRepository,
+            auditService);
+    AuditLog securityAlert = auditLog(101L, AuditEvent.SECURITY_ALERT);
+    when(auditLogRepository.findById(101L)).thenReturn(Optional.of(securityAlert));
+    SuperAdminSecurityRemediation remediation = remediation(5L, 101L, "ACKNOWLEDGED", null);
+    when(remediationRepository.lockByAuditEventId(101L)).thenReturn(Optional.of(remediation));
+    when(auditService.logAuthSuccessRequired(any(), any(), any(), any()))
+        .thenThrow(new IllegalStateException("required audit signing unavailable"));
+    authenticateSuperAdmin();
+
+    assertThatThrownBy(
+            () ->
+                service.resolve(
+                    101L, new SuperAdminSecurityAuditDtos.RemediationRequest("reviewed")))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("required audit signing unavailable");
+
+    verify(remediationRepository, never()).saveAndFlush(any(SuperAdminSecurityRemediation.class));
+  }
+
+  @Test
+  void resolveRecoveryAfterAuditFailureCreatesExactlyOneAuditBackedTransition() {
+    AuditLogRepository auditLogRepository = mock(AuditLogRepository.class);
+    SuperAdminSecurityRemediationRepository remediationRepository =
+        mock(SuperAdminSecurityRemediationRepository.class);
+    AuditService auditService = mock(AuditService.class);
+    SuperAdminSecurityAuditService service =
+        new SuperAdminSecurityAuditService(
+            mock(AuditAccessService.class),
+            auditLogRepository,
+            remediationRepository,
+            auditService);
+    AuditLog securityAlert = auditLog(101L, AuditEvent.SECURITY_ALERT);
+    when(auditLogRepository.findById(101L)).thenReturn(Optional.of(securityAlert));
+    SuperAdminSecurityRemediation remediation = remediation(5L, 101L, "ACKNOWLEDGED", null);
+    when(remediationRepository.lockByAuditEventId(101L)).thenReturn(Optional.of(remediation));
+    AuditLog auditEvidence = new AuditLog();
+    auditEvidence.setId(778L);
+    when(auditService.logAuthSuccessRequired(any(), any(), any(), any()))
+        .thenThrow(new IllegalStateException("required audit persistence unavailable"))
+        .thenReturn(auditEvidence);
+    when(remediationRepository.saveAndFlush(any(SuperAdminSecurityRemediation.class)))
+        .thenAnswer(invocation -> invocation.getArgument(0));
+    authenticateSuperAdmin();
+
+    assertThatThrownBy(
+            () ->
+                service.resolve(
+                    101L, new SuperAdminSecurityAuditDtos.RemediationRequest("reviewed")))
+        .isInstanceOf(IllegalStateException.class);
+    remediation.setStatus("ACKNOWLEDGED");
+    remediation.setLastAuditEventId(null);
+
+    SuperAdminSecurityAuditDtos.RemediationResponse response =
+        service.resolve(101L, new SuperAdminSecurityAuditDtos.RemediationRequest("reviewed"));
+
+    assertThat(response.status()).isEqualTo("RESOLVED");
+    assertThat(response.auditEventId()).isEqualTo(778L);
+    verify(remediationRepository).saveAndFlush(remediation);
   }
 
   @Test
@@ -158,6 +229,11 @@ class SuperAdminSecurityAuditServiceTest {
     auditLog.setStatus(AuditStatus.WARNING);
     auditLog.setMetadata(new HashMap<>());
     return auditLog;
+  }
+
+  private void authenticateSuperAdmin() {
+    SecurityContextHolder.getContext()
+        .setAuthentication(new TestingAuthenticationToken("root-superadmin@example.test", "n/a"));
   }
 
   private SuperAdminSecurityRemediation remediation(

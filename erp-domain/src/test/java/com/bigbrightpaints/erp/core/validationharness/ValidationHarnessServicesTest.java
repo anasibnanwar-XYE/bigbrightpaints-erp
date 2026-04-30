@@ -31,6 +31,7 @@ class ValidationHarnessServicesTest {
         .extracting(ValidationFaultInjectionService.FaultState::code)
         .containsExactly(
             "audit-failure",
+            "audit-signing-failure",
             "datadog-failure",
             "health-degraded",
             "partial-seed-failure",
