@@ -10,6 +10,7 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
+import com.bigbrightpaints.erp.core.audit.AuditEvent;
 import com.bigbrightpaints.erp.core.audit.AuditLog;
 import com.bigbrightpaints.erp.core.security.AuthScopeService;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
@@ -50,6 +51,24 @@ public class AuditVisibilityPolicy {
       }
       return cb.or(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
     };
+  }
+
+  public Specification<AuditLog> platformSecurityVisibility() {
+    return platformVisibility()
+        .or(
+            (root, query, cb) ->
+                root.get("eventType")
+                    .in(
+                        AuditEvent.LOGIN_SUCCESS,
+                        AuditEvent.LOGIN_FAILURE,
+                        AuditEvent.LOGOUT,
+                        AuditEvent.TOKEN_REFRESH,
+                        AuditEvent.TOKEN_REVOKED,
+                        AuditEvent.PASSWORD_CHANGED,
+                        AuditEvent.PASSWORD_RESET_REQUESTED,
+                        AuditEvent.PASSWORD_RESET_COMPLETED,
+                        AuditEvent.ACCESS_DENIED,
+                        AuditEvent.SECURITY_ALERT));
   }
 
   public Map<Long, String> resolveCompanyCodes(Collection<Long> companyIds) {

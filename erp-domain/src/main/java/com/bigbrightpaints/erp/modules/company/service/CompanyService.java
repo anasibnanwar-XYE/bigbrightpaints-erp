@@ -90,9 +90,10 @@ public class CompanyService {
   private final AuthScopeService authScopeService;
   private final SuperAdminBillingService billingService;
   private final SupportTicketRepository supportTicketRepository;
+  private final SuperAdminSecurityAuditService securityAuditService;
 
   public CompanyService(CompanyRepository repository) {
-    this(repository, null, null, null, null, null, null, null, null, null, null);
+    this(repository, null, null, null, null, null, null, null, null, null, null, null);
   }
 
   public CompanyService(
@@ -105,6 +106,7 @@ public class CompanyService {
         auditService,
         userAccountRepository,
         auditLogRepository,
+        null,
         null,
         null,
         null,
@@ -126,6 +128,7 @@ public class CompanyService {
         userAccountRepository,
         auditLogRepository,
         tenantRuntimeEnforcementService,
+        null,
         null,
         null,
         null,
@@ -155,6 +158,7 @@ public class CompanyService {
         passwordResetService,
         authScopeService,
         null,
+        null,
         null);
   }
 
@@ -170,7 +174,8 @@ public class CompanyService {
       PasswordResetService passwordResetService,
       AuthScopeService authScopeService,
       SuperAdminBillingService billingService,
-      SupportTicketRepository supportTicketRepository) {
+      SupportTicketRepository supportTicketRepository,
+      SuperAdminSecurityAuditService securityAuditService) {
     this.repository = repository;
     this.auditService = auditService;
     this.userAccountRepository = userAccountRepository;
@@ -182,6 +187,7 @@ public class CompanyService {
     this.authScopeService = authScopeService;
     this.billingService = billingService;
     this.supportTicketRepository = supportTicketRepository;
+    this.securityAuditService = securityAuditService;
   }
 
   public List<CompanyDto> findAll() {
@@ -585,7 +591,20 @@ public class CompanyService {
         tenantOverview.stream().filter(tenant -> tenant.apiErrorRateInBasisPoints() > 0).count(),
         totalCurrentConcurrentRequests,
         totalConcurrentRequestQuota,
+        securitySummary(),
         tenantOverview);
+  }
+
+  private CompanySuperAdminDashboardDto.SecuritySummary securitySummary() {
+    if (securityAuditService == null) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState(
+          "Super Admin security audit service unavailable");
+    }
+    return new CompanySuperAdminDashboardDto.SecuritySummary(
+        securityAuditService.countSecurityEvents(),
+        securityAuditService.countSuspiciousEvents(),
+        securityAuditService.countOpenRemediations(),
+        securityAuditService.countResolvedRemediations());
   }
 
   private long singleCurrencyMrr(

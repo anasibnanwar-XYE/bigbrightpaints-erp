@@ -15,6 +15,7 @@ import org.junit.jupiter.api.Test;
 import com.bigbrightpaints.erp.core.auditaccess.AuditAccessService;
 import com.bigbrightpaints.erp.core.auditaccess.AuditFeedFilter;
 import com.bigbrightpaints.erp.core.auditaccess.dto.AuditFeedItemDto;
+import com.bigbrightpaints.erp.modules.company.service.SuperAdminSecurityAuditService;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 import com.bigbrightpaints.erp.shared.dto.PageResponse;
 
@@ -23,17 +24,22 @@ class SuperAdminAuditControllerTest {
   @Test
   void listPlatformEvents_delegatesToPlatformFeed() {
     AuditAccessService auditAccessService = mock(AuditAccessService.class);
-    SuperAdminAuditController controller = new SuperAdminAuditController(auditAccessService);
+    SuperAdminSecurityAuditService securityAuditService =
+        mock(SuperAdminSecurityAuditService.class);
+    SuperAdminAuditController controller =
+        new SuperAdminAuditController(auditAccessService, securityAuditService);
     AuditFeedFilter expectedFilter =
         new AuditFeedFilter(
             LocalDate.of(2026, 3, 1),
             LocalDate.of(2026, 3, 31),
-            null,
+            "SECURITY",
             "CONFIGURATION_CHANGED",
             "SUCCESS",
             "root-superadmin@bbp.com",
             null,
             null,
+            7L,
+            "SECURITY",
             0,
             50);
     PageResponse<AuditFeedItemDto> expected =
@@ -70,11 +76,14 @@ class SuperAdminAuditControllerTest {
             .listPlatformEvents(
                 "2026-03-01",
                 "2026-03-31",
+                "SECURITY",
                 "CONFIGURATION_CHANGED",
                 "SUCCESS",
                 "root-superadmin@bbp.com",
                 null,
                 null,
+                7L,
+                "SECURITY",
                 0,
                 50)
             .getBody();

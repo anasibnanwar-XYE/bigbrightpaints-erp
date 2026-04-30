@@ -48,6 +48,7 @@ import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.auth.service.PasswordResetService;
 import com.bigbrightpaints.erp.modules.auth.service.TenantAdminProvisioningService;
+import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketRepository;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyLifecycleState;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
@@ -83,6 +84,12 @@ class CompanyServiceTest {
 
   @Mock private AuthScopeService authScopeService;
 
+  @Mock private SuperAdminBillingService billingService;
+
+  @Mock private SupportTicketRepository supportTicketRepository;
+
+  @Mock private SuperAdminSecurityAuditService securityAuditService;
+
   private TenantLifecycleService tenantLifecycleService;
 
   private CompanyService companyService;
@@ -90,6 +97,12 @@ class CompanyServiceTest {
   @BeforeEach
   void setUp() {
     lenient().when(companyClock.now(any())).thenReturn(Instant.parse("2026-03-18T06:30:00Z"));
+    lenient().when(billingService.getBillingMetrics()).thenReturn(Map.of());
+    lenient().when(supportTicketRepository.countByCategoryAndStatusIn(any(), any())).thenReturn(0L);
+    lenient().when(securityAuditService.countSecurityEvents()).thenReturn(0L);
+    lenient().when(securityAuditService.countSuspiciousEvents()).thenReturn(0L);
+    lenient().when(securityAuditService.countOpenRemediations()).thenReturn(0L);
+    lenient().when(securityAuditService.countResolvedRemediations()).thenReturn(0L);
     new CompanyTime(companyClock);
     tenantLifecycleService = new TenantLifecycleService(auditService);
     companyService =
@@ -102,7 +115,10 @@ class CompanyServiceTest {
             tenantAdminProvisioningService,
             tenantLifecycleService,
             passwordResetService,
-            authScopeService);
+            authScopeService,
+            billingService,
+            supportTicketRepository,
+            securityAuditService);
   }
 
   @AfterEach
@@ -1614,6 +1630,7 @@ class CompanyServiceTest {
     assertThat(dashboard.totalActiveUsers()).isEqualTo(20L);
     assertThat(dashboard.totalAuditStorageBytes()).isEqualTo(420L);
     assertThat(dashboard.totalCurrentConcurrentRequests()).isEqualTo(6L);
+    assertThat(dashboard.security().securityEvents()).isZero();
     assertThat(dashboard.tenants()).hasSize(2);
   }
 

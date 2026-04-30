@@ -130,6 +130,10 @@ public interface AuditLogRepository
           + "ORDER BY al.timestamp DESC")
   List<AuditLog> findSecurityAlerts(@Param("since") LocalDateTime since);
 
+  long countByEventType(AuditEvent eventType);
+
+  long countByEventTypeIn(List<AuditEvent> eventTypes);
+
   /**
    * Find audit logs by trace ID.
    */

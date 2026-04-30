@@ -193,4 +193,48 @@ class AuditLogReadAdapterTest {
         .singleElement()
         .satisfies(item -> assertThat(item.subjectIdentifier()).isEqualTo(subjectPublicId));
   }
+
+  @Test
+  void queryPlatformFeed_allowlistsBoundsAndPseudonymizesMetadata() {
+    AuditLogRepository auditLogRepository = mock(AuditLogRepository.class);
+    AuditVisibilityPolicy auditVisibilityPolicy = mock(AuditVisibilityPolicy.class);
+    AuditLogReadAdapter adapter =
+        new AuditLogReadAdapter(
+            auditLogRepository, new AuditEventClassifier(), auditVisibilityPolicy);
+    Specification<com.bigbrightpaints.erp.core.audit.AuditLog> allowAll =
+        (root, query, cb) -> cb.conjunction();
+    when(auditVisibilityPolicy.platformVisibility()).thenReturn(allowAll);
+
+    AuditLog auditLog = new AuditLog();
+    auditLog.setRequestPath("/api/v1/auth/login");
+    auditLog.setMetadata(
+        Map.of(
+            "alertType",
+            "BRUTE_FORCE_ATTACK",
+            "identifier",
+            "192.0.2.10",
+            "password",
+            "never-return",
+            "requestBody",
+            "private invoice ledger payload",
+            "reasonText",
+            "contains invoice canary"));
+    when(auditLogRepository.findAll(
+            org.mockito.ArgumentMatchers.<Specification<AuditLog>>any(), any(Pageable.class)))
+        .thenReturn(new PageImpl<>(java.util.List.of(auditLog)));
+
+    AuditFeedSlice slice =
+        adapter.queryPlatformFeed(
+            new AuditFeedFilter(null, null, null, null, null, null, null, null, 0, 50));
+
+    assertThat(slice.items())
+        .singleElement()
+        .satisfies(
+            item -> {
+              assertThat(item.metadata()).containsEntry("alertType", "BRUTE_FORCE_ATTACK");
+              assertThat(item.metadata().get("identifier")).startsWith("hash:");
+              assertThat(item.metadata()).doesNotContainKeys("password", "requestBody");
+              assertThat(item.metadata()).containsEntry("reasonText", "[REDACTED]");
+            });
+  }
 }

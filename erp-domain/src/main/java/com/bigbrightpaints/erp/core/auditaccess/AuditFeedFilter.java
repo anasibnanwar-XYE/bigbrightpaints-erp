@@ -13,11 +13,27 @@ public record AuditFeedFilter(
     String actor,
     String entityType,
     String reference,
+    Long tenantId,
+    String category,
     int page,
     int size) {
 
   private static final int MAX_PAGE_SIZE = 200;
   private static final int MAX_MERGE_WINDOW = 5000;
+
+  public AuditFeedFilter(
+      LocalDate from,
+      LocalDate to,
+      String module,
+      String action,
+      String status,
+      String actor,
+      String entityType,
+      String reference,
+      int page,
+      int size) {
+    this(from, to, module, action, status, actor, entityType, reference, null, null, page, size);
+  }
 
   public int safePage() {
     return Math.max(page, 0);
@@ -61,6 +77,10 @@ public record AuditFeedFilter(
 
   public String normalizedReference() {
     return normalize(reference);
+  }
+
+  public String normalizedCategory() {
+    return normalize(category);
   }
 
   private static String normalize(String value) {

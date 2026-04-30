@@ -30,6 +30,7 @@ public record CompanySuperAdminDashboardDto(
     long riskClients,
     long totalCurrentConcurrentRequests,
     long totalConcurrentRequestQuota,
+    SecuritySummary security,
     List<TenantOverview> tenants) {
 
   public CompanySuperAdminDashboardDto(
@@ -75,7 +76,18 @@ public record CompanySuperAdminDashboardDto(
             : tenants.stream().filter(tenant -> tenant.apiErrorRateInBasisPoints() > 0).count(),
         totalCurrentConcurrentRequests,
         totalConcurrentRequestQuota,
+        SecuritySummary.empty(),
         tenants);
+  }
+
+  public record SecuritySummary(
+      long securityEvents,
+      long suspiciousEvents,
+      long openRemediations,
+      long resolvedRemediations) {
+    public static SecuritySummary empty() {
+      return new SecuritySummary(0, 0, 0, 0);
+    }
   }
 
   public record TenantOverview(

@@ -15,6 +15,9 @@ public interface AuditAccessService {
 
   PageResponse<AuditFeedItemDto> queryPlatformFeed(AuditFeedFilter filter);
 
+  PageResponse<AuditFeedItemDto> queryPlatformSecurityFeed(
+      AuditFeedFilter filter, boolean suspiciousOnly);
+
   PageResponse<AccountingTransactionAuditListItemDto> queryAccountingTransactions(
       LocalDate from,
       LocalDate to,

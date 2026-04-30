@@ -69,6 +69,14 @@ public class DefaultAuditAccessService implements AuditAccessService {
   }
 
   @Override
+  public PageResponse<AuditFeedItemDto> queryPlatformSecurityFeed(
+      AuditFeedFilter filter, boolean suspiciousOnly) {
+    AuditFeedSlice feed = auditLogReadAdapter.queryPlatformSecurityFeed(filter, suspiciousOnly);
+    return PageResponse.of(
+        feed.items(), feed.totalElements(), filter.safePage(), filter.safeSize());
+  }
+
+  @Override
   public PageResponse<AccountingTransactionAuditListItemDto> queryAccountingTransactions(
       LocalDate from,
       LocalDate to,
