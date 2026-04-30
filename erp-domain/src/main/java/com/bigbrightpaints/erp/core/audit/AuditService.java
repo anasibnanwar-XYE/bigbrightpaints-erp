@@ -104,9 +104,6 @@ public class AuditService {
     String usernameOverride = normalizeAuthUsernameOverride(username, authMetadata);
     enrichAuthMetadataWithAuthenticatedActorPublicId(authMetadata, usernameOverride);
     String companyCodeOverride = normalizeAuthCompanyOverride(companyCode, authMetadata);
-    signRequiredAuditMetadata(
-        event, AuditStatus.SUCCESS, usernameOverride, companyCodeOverride, authMetadata);
-    requireAuditPersistenceAvailable();
     return logRequiredEventInternal(
         event,
         AuditStatus.SUCCESS,
@@ -308,7 +305,7 @@ public class AuditService {
       String usernameOverride,
       String companyCodeOverride,
       Map<String, String> requestContext) {
-    metadata = metadata == null ? null : new HashMap<>(metadata);
+    metadata = metadata == null ? new HashMap<>() : new HashMap<>(metadata);
     AuditLog.Builder builder =
         new AuditLog.Builder().eventType(event).status(status).timestamp(LocalDateTime.now());
 
@@ -370,13 +367,22 @@ public class AuditService {
       }
     }
 
-    if (metadata != null && !metadata.isEmpty()) {
+    signRequiredAuditMetadata(event, status, usernameOverride, companyCodeOverride, metadata);
+    requireAuditPersistenceAvailable();
+
+    if (!metadata.isEmpty()) {
       builder.metadata(metadata);
     }
 
     AuditLog auditLog = auditLogRepository.saveAndFlush(builder.build());
     iamCanonicalStorageService.recordSecurityEvent(
-        event.name(), iamOutcome(status), metadata, resolvedUserId, resolvedUsername, companyId, companyToken);
+        event.name(),
+        iamOutcome(status),
+        metadata,
+        resolvedUserId,
+        resolvedUsername,
+        companyId,
+        companyToken);
     logger.debug("Required audit event logged: {} - Status: {}", event, status);
     return auditLog;
   }
@@ -524,30 +530,7 @@ public class AuditService {
     return companyRepository
         .findByCodeIgnoreCase(normalizedToken)
         .map(Company::getId)
-        .orElseGet(() -> resolveNumericCompanyId(normalizedToken));
-  }
-
-  private Long resolveNumericCompanyId(String companyToken) {
-    Long companyId = parseNumericToken(companyToken);
-    if (companyId == null || companyId <= 0) {
-      return null;
-    }
-    return companyRepository.findById(companyId).map(Company::getId).orElse(null);
-  }
-
-  private Long parseNumericToken(String companyToken) {
-    if (!StringUtils.hasText(companyToken)) {
-      return null;
-    }
-    String normalizedToken = companyToken.trim();
-    if (!normalizedToken.chars().allMatch(Character::isDigit)) {
-      return null;
-    }
-    try {
-      return Long.parseLong(normalizedToken);
-    } catch (NumberFormatException ex) {
-      return null;
-    }
+        .orElse(null);
   }
 
   public void logSuccess(AuditEvent event) {
