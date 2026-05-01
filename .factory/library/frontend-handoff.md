@@ -42,6 +42,14 @@ the canonical API contract. Use the generated `openapi.json` and the docs under
   billing, support, audit, infra, settings, profile, and changelog screens are
   documented in `docs/frontend-portals/superadmin/**`.
 
+## Minimal Current Endpoint Table
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET | `/api/v1/auth/me` | Canonical frontend identity bootstrap |
+| PUT | `/api/v1/superadmin/tenants/{id}/lifecycle` | Super Admin tenant lifecycle update |
+| PUT | `/api/v1/superadmin/tenants/{id}/limits` | Super Admin tenant runtime limits update |
+
 ## Retired Surfaces
 
 Do not build new UI against these routes or payload shapes:
