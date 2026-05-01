@@ -222,10 +222,10 @@ class CompanyServiceTest {
   }
 
   @Test
-  void failClosedRuntimeLimit_defaultsZeroAndCapsOverflow() {
-    assertThat(TenantBootstrapDefaults.failClosedRuntimeLimit(0L)).isEqualTo(1);
-    assertThat(TenantBootstrapDefaults.failClosedRuntimeLimit(7L)).isEqualTo(7);
-    assertThat(TenantBootstrapDefaults.failClosedRuntimeLimit((long) Integer.MAX_VALUE + 10L))
+  void runtimeLimitFromQuota_preservesZeroUnlimitedAndCapsOverflow() {
+    assertThat(TenantBootstrapDefaults.runtimeLimitFromQuota(0L)).isZero();
+    assertThat(TenantBootstrapDefaults.runtimeLimitFromQuota(7L)).isEqualTo(7);
+    assertThat(TenantBootstrapDefaults.runtimeLimitFromQuota((long) Integer.MAX_VALUE + 10L))
         .isEqualTo(Integer.MAX_VALUE);
   }
 
@@ -252,7 +252,7 @@ class CompanyServiceTest {
             "ACME",
             TenantRuntimeEnforcementService.TenantRuntimeState.ACTIVE,
             "fallback-sync",
-            1,
+            0,
             77,
             Integer.MAX_VALUE,
             "tester@bbp.com");
@@ -699,7 +699,7 @@ class CompanyServiceTest {
   }
 
   @Test
-  void create_initializesRuntimePolicyWithFailClosedMinimumsWhenQuotasAreUnset() {
+  void create_initializesRuntimePolicyWithUnlimitedRuntimeLimitsWhenQuotasAreUnset() {
     authenticateAs("ROLE_SUPER_ADMIN");
     CompanyRequest request = new CompanyRequest("Acme", "ACME", "UTC", null);
     when(authScopeService.isPlatformScope("ACME")).thenReturn(false);
@@ -720,9 +720,9 @@ class CompanyServiceTest {
             "ACME",
             TenantRuntimeEnforcementService.TenantRuntimeState.ACTIVE,
             "tenant-runtime-policy-sync",
-            1,
-            1,
-            1,
+            0,
+            0,
+            0,
             "tester@bbp.com");
   }
 

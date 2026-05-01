@@ -2,12 +2,15 @@ package com.bigbrightpaints.erp.core.security;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.time.Instant;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -145,6 +148,26 @@ class ControlPlaneRateLimitFilterTest {
     assertThat(second.getStatus()).isEqualTo(200);
     assertThat(third.getStatus()).isEqualTo(429);
     assertThat(passed).hasValue(2);
+  }
+
+  @Test
+  void cleanupOldWindowsParsesWindowMinuteInsteadOfMatchingClientText() {
+    ControlPlaneRateLimitFilter filter =
+        new ControlPlaneRateLimitFilter(objectMapper, null, true, true, 1, 100);
+    long currentMinute = Instant.now().getEpochSecond() / 60;
+    long oldMinute = currentMinute - 1;
+    String oldKeyWithCurrentMinuteInClient =
+        "public-auth:" + oldMinute + ":POST:/api/v1/auth/login:2001:db8:" + currentMinute + ":1";
+    String currentKey = "public-auth:" + currentMinute + ":POST:/api/v1/auth/login:2001:db8::2";
+    @SuppressWarnings("unchecked")
+    ConcurrentHashMap<String, AtomicInteger> counters =
+        (ConcurrentHashMap<String, AtomicInteger>) ReflectionTestUtils.getField(filter, "counters");
+    counters.put(oldKeyWithCurrentMinuteInClient, new AtomicInteger(1));
+    counters.put(currentKey, new AtomicInteger(1));
+
+    ReflectionTestUtils.invokeMethod(filter, "cleanupOldWindows", currentMinute);
+
+    assertThat(counters).containsOnlyKeys(currentKey);
   }
 
   private MockHttpServletResponse invoke(

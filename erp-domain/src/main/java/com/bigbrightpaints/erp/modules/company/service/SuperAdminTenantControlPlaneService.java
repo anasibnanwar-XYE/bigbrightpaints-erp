@@ -413,6 +413,7 @@ public class SuperAdminTenantControlPlaneService {
       company.setSupportTags(request.support().tags());
       company.setActivationStatus("NOT_SENT");
       Company savedCompany = companyRepository.saveAndFlush(company);
+      seedRuntimePolicyForNewTenant(savedCompany);
 
       UserAccount owner =
           createPendingOwner(savedCompany, ownerEmail, request.owner().displayName());
@@ -1644,6 +1645,17 @@ public class SuperAdminTenantControlPlaneService {
         auditEventId);
   }
 
+  private void seedRuntimePolicyForNewTenant(Company company) {
+    tenantRuntimeEnforcementService.updatePolicy(
+        company.getCode(),
+        null,
+        "ADD_CLIENT_CREATE",
+        safeInteger(company.getQuotaMaxConcurrentRequests()),
+        0,
+        safeInteger(company.getQuotaMaxActiveUsers()),
+        currentActor());
+  }
+
   private List<SuperAdminTenantDetailDto.SupportTimelineEvent> buildSupportTimeline(
       Company company) {
     List<SuperAdminTenantDetailDto.SupportTimelineEvent> timeline = new ArrayList<>();
@@ -1850,7 +1862,7 @@ public class SuperAdminTenantControlPlaneService {
       String normalizedStatus, List<String> searchTokens, boolean includeArchived) {
     return (root, criteriaQuery, criteriaBuilder) -> {
       List<Predicate> predicates = new ArrayList<>();
-      if (!includeArchived) {
+      if (shouldExcludeArchivedRows(normalizedStatus, includeArchived)) {
         predicates.add(criteriaBuilder.not(statusPredicate(root, criteriaBuilder, "ARCHIVED")));
       }
       if (StringUtils.hasText(normalizedStatus)) {
@@ -1906,6 +1918,10 @@ public class SuperAdminTenantControlPlaneService {
                   lifecycleEquals(root, criteriaBuilder, CompanyLifecycleState.DEACTIVATED)));
       default -> reasonMatches;
     };
+  }
+
+  private boolean shouldExcludeArchivedRows(String normalizedStatus, boolean includeArchived) {
+    return !includeArchived && !"ARCHIVED".equals(normalizedStatus);
   }
 
   private Predicate draftStatusPredicate(

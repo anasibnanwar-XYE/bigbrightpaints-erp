@@ -1080,9 +1080,9 @@ public class CompanyService {
             company.getCode(),
             runtimeState,
             effectiveReason,
-            TenantBootstrapDefaults.failClosedRuntimeLimit(company.getQuotaMaxConcurrentRequests()),
-            TenantBootstrapDefaults.failClosedRuntimeLimit(company.getQuotaMaxApiRequests()),
-            TenantBootstrapDefaults.failClosedRuntimeLimit(company.getQuotaMaxActiveUsers()),
+            TenantBootstrapDefaults.runtimeLimitFromQuota(company.getQuotaMaxConcurrentRequests()),
+            TenantBootstrapDefaults.runtimeLimitFromQuota(company.getQuotaMaxApiRequests()),
+            TenantBootstrapDefaults.runtimeLimitFromQuota(company.getQuotaMaxActiveUsers()),
             resolveActor(authentication));
   }
 
@@ -1096,8 +1096,8 @@ public class CompanyService {
   }
 
   private Integer safeRuntimeLimit(long value) {
-    if (value <= 0L) {
-      return null;
+    if (value < 0L) {
+      return 0;
     }
     return value > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) value;
   }

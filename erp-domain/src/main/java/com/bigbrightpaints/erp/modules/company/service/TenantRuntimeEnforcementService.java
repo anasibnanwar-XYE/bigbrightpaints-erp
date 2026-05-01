@@ -45,6 +45,7 @@ import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 public class TenantRuntimeEnforcementService {
 
   private static final int MIN_LIMIT = 1;
+  private static final int UNLIMITED_LIMIT = 0;
   private static final String DEFAULT_REASON = "POLICY_ACTIVE";
   private static final String DEFAULT_POLICY_REFERENCE = "bootstrap";
   private static final String UNKNOWN_ACTOR = "UNKNOWN_AUTH_ACTOR";
@@ -139,7 +140,7 @@ public class TenantRuntimeEnforcementService {
     long minuteBucket = CompanyTime.now().getEpochSecond() / 60L;
     int requestsInMinute = incrementMinuteCount(usageCounters, minuteBucket);
     int maxRequestsPerMinute = policy.effectiveMaxRequestsPerMinute(defaultMaxRequestsPerMinute);
-    if (requestsInMinute > maxRequestsPerMinute) {
+    if (isLimited(maxRequestsPerMinute) && requestsInMinute > maxRequestsPerMinute) {
       incrementRejectedCount(usageCounters);
       long resetAtEpochSecond = (minuteBucket + 1L) * 60L;
       TenantRuntimeRejection rejection =
@@ -161,7 +162,7 @@ public class TenantRuntimeEnforcementService {
 
     int inFlightNow = usageCounters.inFlightRequests.incrementAndGet();
     int maxConcurrentRequests = policy.effectiveMaxConcurrentRequests(defaultMaxConcurrentRequests);
-    if (inFlightNow > maxConcurrentRequests) {
+    if (isLimited(maxConcurrentRequests) && inFlightNow > maxConcurrentRequests) {
       usageCounters.inFlightRequests.decrementAndGet();
       incrementRejectedCount(usageCounters);
       TenantRuntimeRejection rejection =
@@ -267,7 +268,7 @@ public class TenantRuntimeEnforcementService {
       throw rejection.asAuthSecurityContractException();
     }
     int maxActiveUsers = policy.effectiveMaxActiveUsers(defaultMaxActiveUsers);
-    if (activeUsers > maxActiveUsers) {
+    if (isLimited(maxActiveUsers) && activeUsers > maxActiveUsers) {
       incrementRejectedCount(usageCounters);
       TenantRuntimeRejection rejection =
           new TenantRuntimeRejection(
@@ -319,13 +320,13 @@ public class TenantRuntimeEnforcementService {
           Instant now = CompanyTime.now();
           TenantRuntimePolicy updated = copyPolicy(current);
           if (maxConcurrentRequests != null) {
-            updated.maxConcurrentRequests = sanitizeLimit(maxConcurrentRequests);
+            updated.maxConcurrentRequests = normalizeRuntimeLimit(maxConcurrentRequests);
           }
           if (maxRequestsPerMinute != null) {
-            updated.maxRequestsPerMinute = sanitizeLimit(maxRequestsPerMinute);
+            updated.maxRequestsPerMinute = normalizeRuntimeLimit(maxRequestsPerMinute);
           }
           if (maxActiveUsers != null) {
-            updated.maxActiveUsers = sanitizeLimit(maxActiveUsers);
+            updated.maxActiveUsers = normalizeRuntimeLimit(maxActiveUsers);
           }
           updated.reasonCode = normalizedReason;
           updated.updatedAt = now;
@@ -376,13 +377,13 @@ public class TenantRuntimeEnforcementService {
             updated.state = targetState;
           }
           if (maxConcurrentRequests != null) {
-            updated.maxConcurrentRequests = sanitizeLimit(maxConcurrentRequests);
+            updated.maxConcurrentRequests = normalizeRuntimeLimit(maxConcurrentRequests);
           }
           if (maxRequestsPerMinute != null) {
-            updated.maxRequestsPerMinute = sanitizeLimit(maxRequestsPerMinute);
+            updated.maxRequestsPerMinute = normalizeRuntimeLimit(maxRequestsPerMinute);
           }
           if (maxActiveUsers != null) {
-            updated.maxActiveUsers = sanitizeLimit(maxActiveUsers);
+            updated.maxActiveUsers = normalizeRuntimeLimit(maxActiveUsers);
           }
           updated.reasonCode = normalizedReason;
           updated.updatedAt = now;
@@ -686,9 +687,9 @@ public class TenantRuntimeEnforcementService {
     return new TenantRuntimePolicy(
         normalizeState(persistedState),
         normalizedReason,
-        parsePositiveInt(persistedMaxConcurrent, defaultMaxConcurrentRequests),
-        parsePositiveInt(persistedMaxPerMinute, defaultMaxRequestsPerMinute),
-        parsePositiveInt(persistedMaxActiveUsers, defaultMaxActiveUsers),
+        parseRuntimeLimit(persistedMaxConcurrent, defaultMaxConcurrentRequests),
+        parseRuntimeLimit(persistedMaxPerMinute, defaultMaxRequestsPerMinute),
+        parseRuntimeLimit(persistedMaxActiveUsers, defaultMaxActiveUsers),
         normalizedPolicyReference,
         parseInstantOrNull(persistedUpdatedAt),
         0L);
@@ -1170,9 +1171,10 @@ public class TenantRuntimeEnforcementService {
     TenantRuntimeState state = normalizeState(persistedState);
     String reason = StringUtils.hasText(persistedReason) ? persistedReason.trim() : DEFAULT_REASON;
     int maxConcurrentRequests =
-        parsePositiveInt(persistedMaxConcurrent, defaultMaxConcurrentRequests);
-    int maxRequestsPerMinute = parsePositiveInt(persistedMaxPerMinute, defaultMaxRequestsPerMinute);
-    int maxActiveUsers = parsePositiveInt(persistedMaxActiveUsers, defaultMaxActiveUsers);
+        parseRuntimeLimit(persistedMaxConcurrent, defaultMaxConcurrentRequests);
+    int maxRequestsPerMinute =
+        parseRuntimeLimit(persistedMaxPerMinute, defaultMaxRequestsPerMinute);
+    int maxActiveUsers = parseRuntimeLimit(persistedMaxActiveUsers, defaultMaxActiveUsers);
     String auditChainId =
         StringUtils.hasText(persistedPolicyReference)
             ? persistedPolicyReference.trim()
@@ -1214,7 +1216,7 @@ public class TenantRuntimeEnforcementService {
     };
   }
 
-  private int parsePositiveInt(String rawValue, int fallback) {
+  private int parseRuntimeLimit(String rawValue, int fallback) {
     if (!StringUtils.hasText(rawValue)) {
       return fallback;
     }
@@ -1224,7 +1226,7 @@ public class TenantRuntimeEnforcementService {
     }
     try {
       int parsed = Integer.parseInt(normalized);
-      return parsed > 0 ? parsed : fallback;
+      return parsed >= 0 ? parsed : fallback;
     } catch (NumberFormatException ex) {
       return fallback;
     }
@@ -1510,6 +1512,18 @@ public class TenantRuntimeEnforcementService {
     return Math.max(MIN_LIMIT, limit);
   }
 
+  private int normalizeRuntimeLimit(int limit) {
+    if (limit < UNLIMITED_LIMIT) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          "Runtime limits must be greater than or equal to 0");
+    }
+    return limit;
+  }
+
+  private boolean isLimited(int limit) {
+    return limit > UNLIMITED_LIMIT;
+  }
+
   public enum TenantRuntimeState {
     ACTIVE,
     HOLD,
@@ -1779,15 +1793,21 @@ public class TenantRuntimeEnforcementService {
     }
 
     private int effectiveMaxConcurrentRequests(int fallback) {
-      return Math.max(MIN_LIMIT, maxConcurrentRequests > 0 ? maxConcurrentRequests : fallback);
+      return maxConcurrentRequests == UNLIMITED_LIMIT
+          ? UNLIMITED_LIMIT
+          : Math.max(MIN_LIMIT, maxConcurrentRequests > 0 ? maxConcurrentRequests : fallback);
     }
 
     private int effectiveMaxRequestsPerMinute(int fallback) {
-      return Math.max(MIN_LIMIT, maxRequestsPerMinute > 0 ? maxRequestsPerMinute : fallback);
+      return maxRequestsPerMinute == UNLIMITED_LIMIT
+          ? UNLIMITED_LIMIT
+          : Math.max(MIN_LIMIT, maxRequestsPerMinute > 0 ? maxRequestsPerMinute : fallback);
     }
 
     private int effectiveMaxActiveUsers(int fallback) {
-      return Math.max(MIN_LIMIT, maxActiveUsers > 0 ? maxActiveUsers : fallback);
+      return maxActiveUsers == UNLIMITED_LIMIT
+          ? UNLIMITED_LIMIT
+          : Math.max(MIN_LIMIT, maxActiveUsers > 0 ? maxActiveUsers : fallback);
     }
   }
 

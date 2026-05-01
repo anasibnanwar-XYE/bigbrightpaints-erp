@@ -73,7 +73,7 @@ Two important deployment boundaries fall out of that layout:
 
 ### Secret posture strengths
 
-- `docker-compose.yml` refuses to start the app unless `JWT_SECRET` and `ERP_SECURITY_ENCRYPTION_KEY` are provided.
+- `docker-compose.yml` refuses to render the app service unless `JWT_SECRET`, `ERP_SECURITY_ENCRYPTION_KEY`, and `ERP_SECURITY_AUDIT_PRIVATE_KEY` are provided.
 - `JwtProperties` hard-fails non-test runtime when the JWT secret is missing, shorter than 32 bytes, or still using a known placeholder.
 - `CryptoService` hard-fails if `erp.security.encryption.key` is absent.
 - `SmtpPropertiesValidator` fail-closes production boots (`prod & !seed`) when SMTP host/user/password are missing and SMTP auth is enabled.
@@ -81,7 +81,6 @@ Two important deployment boundaries fall out of that layout:
 
 ### Secret posture gaps
 
-- `docker-compose.yml` gives `ERP_SECURITY_AUDIT_PRIVATE_KEY` a default of `dev-audit-private-key`, while `EnterpriseAuditTrailService` only checks for non-blank input. A production-like deployment launched from Compose without overriding that value would share a static audit-signing secret.
 - `production.env.template` still uses placeholder DB, SMTP, JWT, encryption, license, GitHub, and audit values, and keeps RabbitMQ at `guest/guest`. The posture is template-driven rather than secret-manager-driven.
 - Secret distribution is plain env-file / process-environment based. There is no repository evidence of Docker secrets, Vault/KMS integration, or per-service secret scoping.
 - `ERP_ENVIRONMENT_VALIDATION_ENABLED` defaults to `false` in `docker-compose.yml` even though `production.env.template` sets it to `true`. If an operator reuses Compose defaults outside a tightly controlled local environment, configuration safety checks start from the relaxed posture.
@@ -195,7 +194,6 @@ The degraded-state implication is not just “some probes failed.” It changes 
 
 | Severity | Category | Finding | Evidence | Why it matters |
 | --- | --- | --- | --- | --- |
-| high | security / integrity | Compose defaults `ERP_SECURITY_AUDIT_PRIVATE_KEY` to `dev-audit-private-key`, while `EnterpriseAuditTrailService` only checks that the value is non-blank. | `docker-compose.yml`, `EnterpriseAuditTrailService` | A production-like deployment launched from Compose without overriding this value would share a static audit-signing secret across environments, weakening trust in signed audit payloads. |
 | high | observability / runtime drift | Repository guidance disagrees on the canonical health probe: some surfaces still probe `8081`, but prod config and live management health are on `9090`. | `README.md`, `.factory/services.yaml`, `docs/developer-guide.md`, `erp-domain/scripts/ops_smoke.sh`, runtime curls | Health automation and incident triage can fail or flap even when the service is otherwise up, because the wrong port is being probed. |
 | medium | deployment boundary | The image exposes only `8081`; the management port `9090` is configured in Spring and Compose but not declared in the Docker image metadata. | `erp-domain/Dockerfile`, `application-prod.yml`, `docker-compose.yml` | Platforms that depend on image metadata or default port discovery can miss the management surface entirely, silently removing health/metrics access. |
 | medium | security / protocol | Compose defaults disable environment validation and therefore loosen CORS acceptance for private-network HTTP origins; prod template expects validation on. | `docker-compose.yml`, `production.env.template`, `SystemSettingsService`, `SystemSettingsServiceCorsTest` | Reusing local Compose defaults in a shared or semi-production environment can weaken origin hardening and allow unsafe operational shortcuts to persist unnoticed. |

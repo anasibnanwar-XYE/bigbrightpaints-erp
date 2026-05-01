@@ -621,7 +621,7 @@ public class SuperAdminBillingService {
         TenantRuntimeEnforcementService.TenantRuntimeState.BLOCKED,
         terminalState,
         safeRuntimeLimit(company.getQuotaMaxConcurrentRequests()),
-        safeRuntimeLimit(company.getQuotaMaxApiRequests()),
+        currentBurstRequestsPerMinute(company),
         safeRuntimeLimit(company.getQuotaMaxActiveUsers()),
         "commercial-lifecycle-scheduler");
     Long auditEventId =
@@ -836,7 +836,7 @@ public class SuperAdminBillingService {
         runtimeState,
         commercialState,
         safeRuntimeLimit(company.getQuotaMaxConcurrentRequests()),
-        safeRuntimeLimit(company.getQuotaMaxApiRequests()),
+        currentBurstRequestsPerMinute(company),
         safeRuntimeLimit(company.getQuotaMaxActiveUsers()),
         currentActor());
     Long auditEventId =
@@ -1001,10 +1001,17 @@ public class SuperAdminBillingService {
   }
 
   private Integer safeRuntimeLimit(long value) {
-    if (value <= 0L) {
-      return null;
+    if (value < 0L) {
+      return 0;
     }
     return value > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) value;
+  }
+
+  private Integer currentBurstRequestsPerMinute(Company company) {
+    if (company == null || !StringUtils.hasText(company.getCode())) {
+      throw invalidInput("Company code is required for runtime policy sync");
+    }
+    return tenantRuntimeEnforcementService.snapshot(company.getCode()).maxRequestsPerMinute();
   }
 
   private Company lockCompany(Long companyId) {

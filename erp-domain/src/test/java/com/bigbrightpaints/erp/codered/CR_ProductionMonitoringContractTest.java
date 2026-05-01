@@ -82,6 +82,15 @@ class CR_ProductionMonitoringContractTest {
     assertThat(composeFile)
         .contains("SERVER_PORT: 8081")
         .contains("MANAGEMENT_SERVER_PORT: 9090")
+        .contains("JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required for app runtime}")
+        .contains(
+            "ERP_SECURITY_ENCRYPTION_KEY:"
+                + " ${ERP_SECURITY_ENCRYPTION_KEY:?ERP_SECURITY_ENCRYPTION_KEY is required for app"
+                + " runtime}")
+        .contains(
+            "ERP_SECURITY_AUDIT_PRIVATE_KEY:"
+                + " ${ERP_SECURITY_AUDIT_PRIVATE_KEY:?ERP_SECURITY_AUDIT_PRIVATE_KEY is required"
+                + " for app runtime}")
         .contains(
             "ERP_ENVIRONMENT_VALIDATION_HEALTH_INDICATOR_SKIP_WHEN_VALIDATION_DISABLED:"
                 + " ${ERP_ENVIRONMENT_VALIDATION_HEALTH_INDICATOR_SKIP_WHEN_VALIDATION_DISABLED:-false}")

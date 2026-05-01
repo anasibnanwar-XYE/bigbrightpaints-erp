@@ -200,8 +200,7 @@ class SuperAdminTenantControlPlaneServiceTest {
     when(companyRepository.findById(7L)).thenReturn(Optional.of(company));
     when(companyRepository.save(company)).thenReturn(company);
 
-    SuperAdminTenantLimitsDto response =
-        service.updateLimits(7L, 0L, 0L, 0L, 0L, null, true, false);
+    SuperAdminTenantLimitsDto response = service.updateLimits(7L, 0L, 0L, 0L, 0L, 0L, true, false);
 
     assertThat(response.quotaMaxActiveUsers()).isZero();
     assertThat(response.quotaMaxApiRequests()).isZero();
@@ -209,7 +208,7 @@ class SuperAdminTenantControlPlaneServiceTest {
     assertThat(response.quotaMaxConcurrentRequests()).isZero();
     assertThat(response.burstRequestsPerMinute()).isZero();
     verify(tenantRuntimeEnforcementService)
-        .updatePolicy("ACME", null, "ERP37_LIMITS_UPDATE", 0, null, 0, "super-admin@bbp.com");
+        .updatePolicy("ACME", null, "ERP37_LIMITS_UPDATE", 0, 0, 0, "super-admin@bbp.com");
   }
 
   @Test
@@ -332,6 +331,8 @@ class SuperAdminTenantControlPlaneServiceTest {
     assertThat(response.activation().redactedFields())
         .contains("secretMaterial", "activationLink", "credentialMaterial");
     assertThat(response.auditEventId()).isEqualTo(501L);
+    verify(tenantRuntimeEnforcementService)
+        .updatePolicy("ACME-M4", null, "ADD_CLIENT_CREATE", 8, 0, 10, "super-admin@bbp.com");
     verify(tenantDefaultSeedingService).seedDefaultsFailClosed(any(Company.class));
     verify(emailService, never())
         .sendTenantActivationEmailRequired(any(), any(), any(), any(), any(), any());
@@ -385,6 +386,8 @@ class SuperAdminTenantControlPlaneServiceTest {
     assertThat(response.activation().tokenId()).isEqualTo(701L);
     assertThat(response.activation().sentAt()).isNotNull();
     assertThat(response.activation().expiresAt()).isNotNull();
+    verify(tenantRuntimeEnforcementService)
+        .updatePolicy("ACME-M4", null, "ADD_CLIENT_CREATE", 8, 0, 10, "super-admin@bbp.com");
     verify(tenantDefaultSeedingService).seedDefaultsFailClosed(any(Company.class));
     verify(emailService)
         .sendTenantActivationEmailRequired(
@@ -884,6 +887,22 @@ class SuperAdminTenantControlPlaneServiceTest {
             excludeArchivedSpecification.toPredicate(
                 criteria.root(), criteria.query(), criteria.criteriaBuilder()))
         .isSameAs(criteria.predicate());
+  }
+
+  @Test
+  void shouldExcludeArchivedRowsKeepsExplicitArchivedStatusReachable() {
+    assertThat(
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.<Boolean>invokeMethod(
+                service, "shouldExcludeArchivedRows", "ARCHIVED", false))
+        .isFalse();
+    assertThat(
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.<Boolean>invokeMethod(
+                service, "shouldExcludeArchivedRows", "ACTIVE", false))
+        .isTrue();
+    assertThat(
+            com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.<Boolean>invokeMethod(
+                service, "shouldExcludeArchivedRows", "ACTIVE", true))
+        .isFalse();
   }
 
   @Test

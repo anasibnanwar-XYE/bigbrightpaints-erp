@@ -174,8 +174,23 @@ public class ControlPlaneRateLimitFilter extends OncePerRequestFilter {
   }
 
   private void cleanupOldWindows(long currentMinute) {
-    String currentToken = ":" + currentMinute + ":";
-    counters.keySet().removeIf(key -> !key.contains(currentToken));
+    counters.keySet().removeIf(key -> counterWindowMinute(key) != currentMinute);
+  }
+
+  private long counterWindowMinute(String counterKey) {
+    if (!StringUtils.hasText(counterKey)) {
+      return Long.MIN_VALUE;
+    }
+    int firstSeparator = counterKey.indexOf(':');
+    int secondSeparator = firstSeparator >= 0 ? counterKey.indexOf(':', firstSeparator + 1) : -1;
+    if (firstSeparator < 0 || secondSeparator <= firstSeparator + 1) {
+      return Long.MIN_VALUE;
+    }
+    try {
+      return Long.parseLong(counterKey.substring(firstSeparator + 1, secondSeparator));
+    } catch (NumberFormatException ex) {
+      return Long.MIN_VALUE;
+    }
   }
 
   private String resolveClientKey(HttpServletRequest request) {

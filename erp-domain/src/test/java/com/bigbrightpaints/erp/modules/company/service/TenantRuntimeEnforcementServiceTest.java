@@ -172,8 +172,9 @@ class TenantRuntimeEnforcementServiceTest {
   }
 
   @Test
-  void parsePositiveInt_returnsFallbackWhenValueOverflowsInteger() {
-    Integer parsed = ReflectionTestUtils.invokeMethod(service, "parsePositiveInt", "2147483648", 3);
+  void parseRuntimeLimit_returnsFallbackWhenValueOverflowsInteger() {
+    Integer parsed =
+        ReflectionTestUtils.invokeMethod(service, "parseRuntimeLimit", "2147483648", 3);
 
     assertThat(parsed).isEqualTo(3);
   }
@@ -1444,23 +1445,51 @@ class TenantRuntimeEnforcementServiceTest {
   }
 
   @Test
-  void updateAndResumeTransitions_refreshAuditChain_andSanitizeLimits() {
+  void updateAndResumeTransitions_refreshAuditChain_andPreserveUnlimitedLimits() {
     TenantRuntimeEnforcementService.TenantRuntimeSnapshot held =
         service.holdTenant("ACME", "maintenance", "ops@bbp.com");
     TenantRuntimeEnforcementService.TenantRuntimeSnapshot updated =
-        service.updateQuotas("ACME", 0, -5, null, "ratchet", "ops@bbp.com");
+        service.updateQuotas("ACME", 0, 0, null, "ratchet", "ops@bbp.com");
     TenantRuntimeEnforcementService.TenantRuntimeSnapshot resumed =
         service.resumeTenant("ACME", "ops@bbp.com");
 
     assertThat(held.state()).isEqualTo(TenantRuntimeEnforcementService.TenantRuntimeState.HOLD);
-    assertThat(updated.maxConcurrentRequests()).isEqualTo(1);
-    assertThat(updated.maxRequestsPerMinute()).isEqualTo(1);
+    assertThat(updated.maxConcurrentRequests()).isZero();
+    assertThat(updated.maxRequestsPerMinute()).isZero();
     assertThat(updated.maxActiveUsers()).isEqualTo(3);
     assertThat(updated.reasonCode()).isEqualTo("RATCHET");
     assertThat(resumed.state())
         .isEqualTo(TenantRuntimeEnforcementService.TenantRuntimeState.ACTIVE);
     assertThat(resumed.reasonCode()).isEqualTo("POLICY_ACTIVE");
     assertThat(resumed.auditChainId()).isNotEqualTo(held.auditChainId());
+  }
+
+  @Test
+  void updateQuotas_rejectsNegativeRuntimeLimits() {
+    assertThatThrownBy(() -> service.updateQuotas("ACME", -1, null, null, "bad", "ops@bbp.com"))
+        .hasMessageContaining("Runtime limits must be greater than or equal to 0");
+  }
+
+  @Test
+  void beginRequest_skipsRateAndConcurrencyChecksForUnlimitedZeroLimits() {
+    service.updateQuotas("ACME", 0, 0, 0, "unlimited", "ops@bbp.com");
+
+    TenantRuntimeEnforcementService.TenantRequestAdmission first =
+        admissionService.beginRequest("ACME", "/api/v1/private", "GET", "actor@bbp.com");
+    TenantRuntimeEnforcementService.TenantRequestAdmission second =
+        admissionService.beginRequest("ACME", "/api/v1/private", "GET", "actor@bbp.com");
+    TenantRuntimeEnforcementService.TenantRequestAdmission third =
+        admissionService.beginRequest("ACME", "/api/v1/private", "GET", "actor@bbp.com");
+    TenantRuntimeEnforcementService.TenantRequestAdmission fourth =
+        admissionService.beginRequest("ACME", "/api/v1/private", "GET", "actor@bbp.com");
+
+    assertThat(first.isAdmitted()).isTrue();
+    assertThat(second.isAdmitted()).isTrue();
+    assertThat(third.isAdmitted()).isTrue();
+    assertThat(fourth.isAdmitted()).isTrue();
+    assertThat(service.snapshot("ACME").maxConcurrentRequests()).isZero();
+    assertThat(service.snapshot("ACME").maxRequestsPerMinute()).isZero();
+    assertThat(service.snapshot("ACME").maxActiveUsers()).isZero();
   }
 
   @Test
@@ -1699,9 +1728,9 @@ class TenantRuntimeEnforcementServiceTest {
     assertThat(invokeNormalizeState("mystery"))
         .isEqualTo(TenantRuntimeEnforcementService.TenantRuntimeState.BLOCKED);
 
-    assertThat(invokeParsePositiveInt("12", 5)).isEqualTo(12);
-    assertThat(invokeParsePositiveInt("0", 5)).isEqualTo(5);
-    assertThat(invokeParsePositiveInt("bad", 5)).isEqualTo(5);
+    assertThat(invokeParseRuntimeLimit("12", 5)).isEqualTo(12);
+    assertThat(invokeParseRuntimeLimit("0", 5)).isZero();
+    assertThat(invokeParseRuntimeLimit("bad", 5)).isEqualTo(5);
 
     assertThat(invokeParseInstantOrNull("bad-instant")).isNull();
     Object missingPolicy =
@@ -2330,10 +2359,10 @@ class TenantRuntimeEnforcementServiceTest {
     return state;
   }
 
-  private int invokeParsePositiveInt(String rawValue, int fallback) {
+  private int invokeParseRuntimeLimit(String rawValue, int fallback) {
     Integer value =
         com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-            service, "parsePositiveInt", rawValue, fallback);
+            service, "parseRuntimeLimit", rawValue, fallback);
     assertThat(value).isNotNull();
     return value;
   }

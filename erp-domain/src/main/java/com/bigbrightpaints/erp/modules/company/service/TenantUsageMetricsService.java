@@ -8,10 +8,17 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.SimpleTransactionStatus;
+import org.springframework.transaction.support.TransactionCallback;
+import org.springframework.transaction.support.TransactionOperations;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.StringUtils;
 
 import com.bigbrightpaints.erp.core.config.SystemSetting;
@@ -21,31 +28,64 @@ import com.bigbrightpaints.erp.core.validation.ValidationUtils;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 
+import jakarta.annotation.PreDestroy;
+
 @Service
 public class TenantUsageMetricsService {
 
+  private static final Logger log = LoggerFactory.getLogger(TenantUsageMetricsService.class);
+
   private static final String API_CALL_COUNT_PREFIX = "tenant.usage.api-call-count.";
   private static final String LAST_ACTIVITY_AT_PREFIX = "tenant.usage.last-activity-at.";
+  private static final TransactionOperations DIRECT_TRANSACTION =
+      new TransactionOperations() {
+        @Override
+        public <T> T execute(TransactionCallback<T> action) {
+          return action.doInTransaction(new SimpleTransactionStatus());
+        }
+      };
 
   private final ConcurrentMap<String, PendingTenantUsage> pendingUsageByCompanyCode =
       new ConcurrentHashMap<>();
   private final CompanyRepository companyRepository;
   private final SystemSettingsRepository systemSettingsRepository;
   private final TenantUsageRollupService tenantUsageRollupService;
+  private final TransactionOperations tenantFlushTransaction;
 
-  public TenantUsageMetricsService(
+  TenantUsageMetricsService(
       CompanyRepository companyRepository, SystemSettingsRepository systemSettingsRepository) {
-    this(companyRepository, systemSettingsRepository, null);
+    this(companyRepository, systemSettingsRepository, null, DIRECT_TRANSACTION);
+  }
+
+  TenantUsageMetricsService(
+      CompanyRepository companyRepository,
+      SystemSettingsRepository systemSettingsRepository,
+      TenantUsageRollupService tenantUsageRollupService) {
+    this(companyRepository, systemSettingsRepository, tenantUsageRollupService, DIRECT_TRANSACTION);
   }
 
   @Autowired
   public TenantUsageMetricsService(
       CompanyRepository companyRepository,
       SystemSettingsRepository systemSettingsRepository,
-      TenantUsageRollupService tenantUsageRollupService) {
+      TenantUsageRollupService tenantUsageRollupService,
+      PlatformTransactionManager transactionManager) {
+    this(
+        companyRepository,
+        systemSettingsRepository,
+        tenantUsageRollupService,
+        tenantFlushTransaction(transactionManager));
+  }
+
+  TenantUsageMetricsService(
+      CompanyRepository companyRepository,
+      SystemSettingsRepository systemSettingsRepository,
+      TenantUsageRollupService tenantUsageRollupService,
+      TransactionOperations tenantFlushTransaction) {
     this.companyRepository = companyRepository;
     this.systemSettingsRepository = systemSettingsRepository;
     this.tenantUsageRollupService = tenantUsageRollupService;
+    this.tenantFlushTransaction = tenantFlushTransaction;
   }
 
   public void recordApiCall(String companyCode) {
@@ -53,17 +93,43 @@ public class TenantUsageMetricsService {
     if (!StringUtils.hasText(normalizedCompanyCode)) {
       return;
     }
-    pendingUsageByCompanyCode
-        .computeIfAbsent(normalizedCompanyCode, ignored -> new PendingTenantUsage())
-        .record(CompanyTime.now());
+    Instant occurredAt = CompanyTime.now();
+    pendingUsageByCompanyCode.compute(
+        normalizedCompanyCode,
+        (ignored, pendingUsage) -> {
+          PendingTenantUsage usage = pendingUsage == null ? new PendingTenantUsage() : pendingUsage;
+          usage.record(occurredAt);
+          return usage;
+        });
   }
 
   @Scheduled(fixedDelayString = "${erp.tenant.usage.flush-ms:30000}")
-  @Transactional
   public void flushPendingMetrics() {
+    RuntimeException firstFailure = null;
     for (Map.Entry<String, PendingTenantUsage> pendingEntry :
         pendingUsageByCompanyCode.entrySet()) {
-      flushPendingMetrics(pendingEntry.getKey(), pendingEntry.getValue());
+      try {
+        flushPendingMetrics(pendingEntry.getKey(), pendingEntry.getValue());
+      } catch (RuntimeException ex) {
+        if (firstFailure == null) {
+          firstFailure = ex;
+        }
+      }
+    }
+    if (firstFailure != null) {
+      throw firstFailure;
+    }
+  }
+
+  @PreDestroy
+  public void flushPendingMetricsBeforeShutdown() {
+    try {
+      flushPendingMetrics();
+    } catch (RuntimeException ex) {
+      log.warn(
+          "Unable to flush pending tenant usage metrics during shutdown: {}: {}",
+          ex.getClass().getSimpleName(),
+          ex.getMessage());
     }
   }
 
@@ -73,29 +139,47 @@ public class TenantUsageMetricsService {
     }
     PendingTenantUsage.DrainedUsage drainedUsage = pendingUsage.drain();
     if (drainedUsage.apiCalls() <= 0L) {
+      removeIdleBucket(companyCode, pendingUsage);
       return;
     }
     try {
-      Optional<Company> companyOptional = companyRepository.findByCodeIgnoreCase(companyCode);
-      if (companyOptional.isEmpty()) {
-        return;
-      }
-      Company company = companyOptional.get();
-      Long companyId = company.getId();
-      if (companyId == null) {
-        return;
-      }
-      systemSettingsRepository.incrementLongSettingBy(
-          apiCallCountKey(companyId), drainedUsage.apiCalls());
-      if (tenantUsageRollupService != null) {
-        tenantUsageRollupService.recordApiCalls(company, drainedUsage.apiCalls());
-      }
-      if (drainedUsage.lastActivityAt() != null) {
-        persistSetting(lastActivityAtKey(companyId), drainedUsage.lastActivityAt().toString());
-      }
+      tenantFlushTransaction.execute(
+          status -> {
+            persistDrainedUsage(companyCode, drainedUsage);
+            return null;
+          });
+      removeIdleBucket(companyCode, pendingUsage);
     } catch (RuntimeException ex) {
       pendingUsage.restore(drainedUsage);
       throw ex;
+    }
+  }
+
+  private void removeIdleBucket(String companyCode, PendingTenantUsage pendingUsage) {
+    pendingUsageByCompanyCode.computeIfPresent(
+        companyCode,
+        (ignored, currentUsage) ->
+            currentUsage == pendingUsage && currentUsage.isEmpty() ? null : currentUsage);
+  }
+
+  private void persistDrainedUsage(
+      String companyCode, PendingTenantUsage.DrainedUsage drainedUsage) {
+    Optional<Company> companyOptional = companyRepository.findByCodeIgnoreCase(companyCode);
+    if (companyOptional.isEmpty()) {
+      return;
+    }
+    Company company = companyOptional.get();
+    Long companyId = company.getId();
+    if (companyId == null) {
+      return;
+    }
+    systemSettingsRepository.incrementLongSettingBy(
+        apiCallCountKey(companyId), drainedUsage.apiCalls());
+    if (tenantUsageRollupService != null) {
+      tenantUsageRollupService.recordApiCalls(company, drainedUsage.apiCalls());
+    }
+    if (drainedUsage.lastActivityAt() != null) {
+      persistSetting(lastActivityAtKey(companyId), drainedUsage.lastActivityAt().toString());
     }
   }
 
@@ -154,6 +238,13 @@ public class TenantUsageMetricsService {
         : null;
   }
 
+  private static TransactionOperations tenantFlushTransaction(
+      PlatformTransactionManager transactionManager) {
+    TransactionTemplate transactionTemplate = new TransactionTemplate(transactionManager);
+    transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+    return transactionTemplate;
+  }
+
   private static final class PendingTenantUsage {
     private final AtomicLong apiCalls = new AtomicLong();
     private final AtomicReference<Instant> lastActivityAt = new AtomicReference<>();
@@ -169,6 +260,10 @@ public class TenantUsageMetricsService {
 
     private DrainedUsage drain() {
       return new DrainedUsage(apiCalls.getAndSet(0L), lastActivityAt.getAndSet(null));
+    }
+
+    private boolean isEmpty() {
+      return apiCalls.get() <= 0L && lastActivityAt.get() == null;
     }
 
     private void restore(DrainedUsage drainedUsage) {

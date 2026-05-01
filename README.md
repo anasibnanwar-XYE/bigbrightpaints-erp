@@ -99,6 +99,8 @@ Install these before running locally:
    SPRING_DATASOURCE_URL='jdbc:postgresql://db:5432/erp_domain' \
    SPRING_DATASOURCE_USERNAME='erp' \
    SPRING_DATASOURCE_PASSWORD='replace-with-local-db-password' \
+   JWT_SECRET='local-dev-jwt-secret-32-bytes-min-20260502' \
+   ERP_SECURITY_ENCRYPTION_KEY='local-dev-encryption-key-32b-20260502' \
    ERP_CORS_ALLOWED_ORIGINS='https://app.bigbrightpaints.com' \
    ERP_CORS_ALLOW_TAILSCALE_HTTP_ORIGINS='true' \
    DB_PORT=5433 \
@@ -191,6 +193,9 @@ docker build -t erp-test -f erp-domain/Dockerfile .
    ```bash
    docker compose up -d --build
    ```
+   `docker compose config` and app startup fail fast if `JWT_SECRET`,
+   `ERP_SECURITY_ENCRYPTION_KEY`, or `ERP_SECURITY_AUDIT_PRIVATE_KEY` are not
+   supplied.
 4. Verify health:
    ```bash
    curl -sf http://localhost:8081/actuator/health

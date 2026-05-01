@@ -120,6 +120,29 @@ class SuperAdminTenantEntitlementServiceTest {
   }
 
   @Test
+  void assignPlanPreservesZeroRuntimeLimitsAsUnlimited() {
+    Company company = company();
+    when(companyRepository.findById(7L)).thenReturn(Optional.of(company));
+    when(companyRepository.saveAndFlush(company)).thenReturn(company);
+    SuperAdminPlanTemplate enterprise = plan("ENTERPRISE", "Enterprise", 9_999_900L, "DEDICATED");
+    enterprise.setMaxActiveUsers(0L);
+    enterprise.setBurstRequestsPerMinute(0L);
+    enterprise.setMaxConcurrentRequests(0L);
+    when(planTemplateRepository.findByStableIdIgnoreCaseOrderByTemplateVersionDesc("ENTERPRISE"))
+        .thenReturn(java.util.List.of(enterprise));
+
+    SuperAdminTenantEntitlementsDto response =
+        service.assignPlan(
+            7L, new SuperAdminTenantPlanAssignmentRequest("enterprise", null, false, "upgrade"));
+
+    assertThat(response.limits().get("maxActiveUsers").effectiveValue()).isZero();
+    assertThat(response.limits().get("burstRequestsPerMinute").effectiveValue()).isZero();
+    assertThat(response.limits().get("maxConcurrentRequests").effectiveValue()).isZero();
+    verify(tenantRuntimeEnforcementService)
+        .updatePolicy("ACME", null, "TENANT_ENTITLEMENTS_UPDATE", 0, 0, 0, "super-admin@bbp.com");
+  }
+
+  @Test
   void customPlanAndOverridesDriveFeatureAccessWithoutPlanNameChecks() {
     Company company = company();
     when(companyRepository.findById(7L)).thenReturn(Optional.of(company));

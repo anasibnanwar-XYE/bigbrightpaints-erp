@@ -88,24 +88,43 @@ require_base_compose_render_without_datadog_key() {
   local compose_stdout compose_stderr
   compose_stdout="$(mktemp)"
   compose_stderr="$(mktemp)"
+  local jwt_secret="validation-jwt-secret-validation-jwt-secret"
+  local encryption_key="validation-encryption-key-32-bytes!!"
+  local audit_private_key="validation-audit-private-key-not-for-release"
 
   if ! (
     cd "$ROOT" &&
-      env -u DD_API_KEY COMPOSE_DISABLE_ENV_FILE=1 docker compose config >"$compose_stdout" 2>"$compose_stderr"
+      env \
+        -u DD_API_KEY \
+        COMPOSE_DISABLE_ENV_FILE=1 \
+        JWT_SECRET="$jwt_secret" \
+        ERP_SECURITY_ENCRYPTION_KEY="$encryption_key" \
+        ERP_SECURITY_AUDIT_PRIVATE_KEY="$audit_private_key" \
+        docker compose config >"$compose_stdout" 2>"$compose_stderr"
   ); then
     fail "base docker compose config must render with DD_API_KEY unset and Datadog profile disabled"
   fi
 
   if ! (
     cd "$ROOT" &&
-      COMPOSE_DISABLE_ENV_FILE=1 DD_API_KEY="" docker compose config >"$compose_stdout" 2>"$compose_stderr"
+      COMPOSE_DISABLE_ENV_FILE=1 \
+        DD_API_KEY="" \
+        JWT_SECRET="$jwt_secret" \
+        ERP_SECURITY_ENCRYPTION_KEY="$encryption_key" \
+        ERP_SECURITY_AUDIT_PRIVATE_KEY="$audit_private_key" \
+        docker compose config >"$compose_stdout" 2>"$compose_stderr"
   ); then
     fail "base docker compose config must render with DD_API_KEY empty and Datadog profile disabled"
   fi
 
   if ! (
     cd "$ROOT" &&
-      COMPOSE_DISABLE_ENV_FILE=1 DD_API_KEY="synthetic-validation-key" docker compose --profile datadog config >"$compose_stdout" 2>"$compose_stderr"
+      COMPOSE_DISABLE_ENV_FILE=1 \
+        DD_API_KEY="synthetic-validation-key" \
+        JWT_SECRET="$jwt_secret" \
+        ERP_SECURITY_ENCRYPTION_KEY="$encryption_key" \
+        ERP_SECURITY_AUDIT_PRIVATE_KEY="$audit_private_key" \
+        docker compose --profile datadog config >"$compose_stdout" 2>"$compose_stderr"
   ); then
     fail "Datadog-profile docker compose config must render when DD_API_KEY is supplied server-side"
   fi
