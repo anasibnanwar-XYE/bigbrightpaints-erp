@@ -129,6 +129,13 @@ public class TenantOnboardingService {
 
   private AccountingPeriod ensureInitialAccountingPeriod(Company company) {
     LocalDate effectiveDate = CompanyTime.today(company);
+    ensureAccountingPeriod(company, effectiveDate.minusMonths(1));
+    AccountingPeriod defaultPeriod = ensureAccountingPeriod(company, effectiveDate);
+    ensureAccountingPeriod(company, effectiveDate.plusMonths(1));
+    return defaultPeriod;
+  }
+
+  private AccountingPeriod ensureAccountingPeriod(Company company, LocalDate effectiveDate) {
     int year = effectiveDate.getYear();
     int month = effectiveDate.getMonthValue();
     return accountingPeriodRepository
