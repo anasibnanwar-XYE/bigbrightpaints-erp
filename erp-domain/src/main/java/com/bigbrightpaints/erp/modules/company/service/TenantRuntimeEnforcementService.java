@@ -64,6 +64,8 @@ public class TenantRuntimeEnforcementService {
   private final long persistedPolicyCacheTtlMillis;
   private final ConcurrentMap<String, TenantRuntimePolicy> policies = new ConcurrentHashMap<>();
   private final ConcurrentMap<String, TenantRuntimeCounters> counters = new ConcurrentHashMap<>();
+  private final ConcurrentMap<String, TenantMonthlyQuotaPolicy> monthlyQuotaPolicies =
+      new ConcurrentHashMap<>();
 
   @Autowired
   public TenantRuntimeEnforcementService(
@@ -134,17 +136,6 @@ public class TenantRuntimeEnforcementService {
       return TenantRequestAdmission.rejected(stateRejection);
     }
 
-    TenantRuntimeQuotaRejection monthlyQuotaRejection =
-        monthlyApiQuotaRejection(normalizedCompany, policy);
-    if (monthlyQuotaRejection != null) {
-      incrementRejectedCount(usageCounters);
-      auditRejection(monthlyQuotaRejection.rejection(), actor, requestPath, requestMethod);
-      return TenantRequestAdmission.rejected(
-          monthlyQuotaRejection.rejection(),
-          monthlyQuotaRejection.retryAfterSeconds(),
-          monthlyQuotaRejection.resetAtEpochSecond());
-    }
-
     long minuteBucket = CompanyTime.now().getEpochSecond() / 60L;
     int requestsInMinute = incrementMinuteCount(usageCounters, minuteBucket);
     int maxRequestsPerMinute = policy.effectiveMaxRequestsPerMinute(defaultMaxRequestsPerMinute);
@@ -188,6 +179,19 @@ public class TenantRuntimeEnforcementService {
       auditRejection(rejection, actor, requestPath, requestMethod);
       return TenantRequestAdmission.rejected(
           rejection, 1L, CompanyTime.now().getEpochSecond() + 1L);
+    }
+
+    TenantRuntimeQuotaRejection monthlyQuotaRejection =
+        reserveMonthlyApiQuota(normalizedCompany, policy, usageCounters);
+    if (monthlyQuotaRejection != null) {
+      usageCounters.inFlightRequests.decrementAndGet();
+      releaseMinuteCount(usageCounters, minuteBucket);
+      incrementRejectedCount(usageCounters);
+      auditRejection(monthlyQuotaRejection.rejection(), actor, requestPath, requestMethod);
+      return TenantRequestAdmission.rejected(
+          monthlyQuotaRejection.rejection(),
+          monthlyQuotaRejection.retryAfterSeconds(),
+          monthlyQuotaRejection.resetAtEpochSecond());
     }
 
     usageCounters.totalRequests.incrementAndGet();
@@ -438,6 +442,7 @@ public class TenantRuntimeEnforcementService {
       return;
     }
     policies.remove(normalizedCompany);
+    monthlyQuotaPolicies.remove(normalizedCompany);
   }
 
   private void persistPolicy(Company company, TenantRuntimePolicy policy) {
@@ -774,32 +779,64 @@ public class TenantRuntimeEnforcementService {
     return null;
   }
 
-  private TenantRuntimeQuotaRejection monthlyApiQuotaRejection(
-      String companyCode, TenantRuntimePolicy policy) {
+  private TenantRuntimeQuotaRejection reserveMonthlyApiQuota(
+      String companyCode, TenantRuntimePolicy policy, TenantRuntimeCounters counters) {
     if (!StringUtils.hasText(companyCode)) {
       return null;
     }
-    Company company;
+    TenantMonthlyQuotaPolicy quotaPolicy;
     try {
-      company = companyRepository.findByCodeIgnoreCase(companyCode.trim()).orElse(null);
-    } catch (RuntimeException ex) {
+      quotaPolicy = monthlyQuotaPolicyFor(companyCode);
+    } catch (TenantRuntimeAdmissionFailure failure) {
+      return new TenantRuntimeQuotaRejection(failure.rejection(), null, null);
+    }
+    if (!quotaPolicy.hardLimitEnabled()
+        || quotaPolicy.maxMonthlyApiRequests() <= 0L
+        || counters == null) {
+      return null;
+    }
+    synchronized (counters.monthlyApiLock) {
+      TenantRuntimeQuotaRejection initializationFailure =
+          initializeMonthlyApiUsageWindow(companyCode, quotaPolicy, counters);
+      if (initializationFailure != null) {
+        return initializationFailure;
+      }
+      long used = Math.max(0L, counters.monthlyApiRequestCount.get());
+      long projectedUsed = saturatingIncrement(used);
+      long monthlyLimit = quotaPolicy.maxMonthlyApiRequests();
+      long hardBlockAt = monthlyHardBlockAt(monthlyLimit);
+      if (projectedUsed < hardBlockAt) {
+        counters.monthlyApiRequestCount.incrementAndGet();
+        return null;
+      }
       TenantRuntimeRejection rejection =
-          unavailableRejection(
+          new TenantRuntimeRejection(
               companyCode,
-              "TENANT_COMPANY_LOOKUP_UNAVAILABLE",
-              "Tenant company lookup is unavailable");
-      return new TenantRuntimeQuotaRejection(rejection, null, null);
+              policy.state,
+              policy.reasonCode,
+              policy.auditChainId,
+              HttpStatus.TOO_MANY_REQUESTS,
+              "TENANT_MONTHLY_API_QUOTA_EXHAUSTED",
+              "Tenant monthly API quota exhausted",
+              "MONTHLY_API_CALLS",
+              Long.toString(projectedUsed),
+              Long.toString(monthlyLimit));
+      long resetAtEpochSecond = counters.monthlyApiWindowEndEpochSecond;
+      return new TenantRuntimeQuotaRejection(
+          rejection, retryAfterSeconds(resetAtEpochSecond), resetAtEpochSecond);
     }
-    if (company == null || company.getId() == null) {
-      return new TenantRuntimeQuotaRejection(tenantNotFoundRejection(companyCode), null, null);
-    }
-    long monthlyLimit = Math.max(0L, company.getQuotaMaxApiRequests());
-    if (monthlyLimit <= 0L || !company.isQuotaHardLimitEnabled()) {
+  }
+
+  private TenantRuntimeQuotaRejection initializeMonthlyApiUsageWindow(
+      String companyCode, TenantMonthlyQuotaPolicy quotaPolicy, TenantRuntimeCounters counters) {
+    long nowEpochSecond = CompanyTime.now().getEpochSecond();
+    if (counters.monthlyApiWindowEndEpochSecond > nowEpochSecond
+        && counters.monthlyApiWindowStartEpochSecond > 0L) {
       return null;
     }
     TenantUsageRollupService.MonthlyApiUsage monthlyUsage;
     try {
-      monthlyUsage = tenantUsageRollupService.getCurrentMonthlyApiUsage(company);
+      monthlyUsage = tenantUsageRollupService.getCurrentMonthlyApiUsage(quotaPolicy.company());
     } catch (RuntimeException ex) {
       TenantRuntimeRejection rejection =
           unavailableRejection(
@@ -808,7 +845,9 @@ public class TenantRuntimeEnforcementService {
               "Tenant monthly API quota is unavailable");
       return new TenantRuntimeQuotaRejection(rejection, null, null);
     }
-    if (monthlyUsage == null || monthlyUsage.periodEndAt() == null) {
+    if (monthlyUsage == null
+        || monthlyUsage.periodStartAt() == null
+        || monthlyUsage.periodEndAt() == null) {
       TenantRuntimeRejection rejection =
           unavailableRejection(
               companyCode,
@@ -816,27 +855,53 @@ public class TenantRuntimeEnforcementService {
               "Tenant monthly API quota is unavailable");
       return new TenantRuntimeQuotaRejection(rejection, null, null);
     }
-    long used = Math.max(0L, monthlyUsage.used());
-    long projectedUsed = used + 1L;
-    long hardBlockAt = monthlyHardBlockAt(monthlyLimit);
-    if (projectedUsed < hardBlockAt) {
-      return null;
+    counters.monthlyApiWindowStartEpochSecond = monthlyUsage.periodStartAt().getEpochSecond();
+    counters.monthlyApiWindowEndEpochSecond = monthlyUsage.periodEndAt().getEpochSecond();
+    counters.monthlyApiRequestCount.set(Math.max(0L, monthlyUsage.used()));
+    return null;
+  }
+
+  private TenantMonthlyQuotaPolicy monthlyQuotaPolicyFor(String companyCode) {
+    TenantMonthlyQuotaPolicy current = monthlyQuotaPolicies.get(companyCode);
+    long nowMillis = System.currentTimeMillis();
+    if (current != null && current.refreshAfterEpochMillis() > nowMillis) {
+      return current;
     }
-    long resetAtEpochSecond = monthlyUsage.periodEndAt().getEpochSecond();
-    TenantRuntimeRejection rejection =
-        new TenantRuntimeRejection(
-            companyCode,
-            policy.state,
-            policy.reasonCode,
-            policy.auditChainId,
-            HttpStatus.TOO_MANY_REQUESTS,
-            "TENANT_MONTHLY_API_QUOTA_EXHAUSTED",
-            "Tenant monthly API quota exhausted",
-            "MONTHLY_API_CALLS",
-            Long.toString(projectedUsed),
-            Long.toString(monthlyLimit));
-    return new TenantRuntimeQuotaRejection(
-        rejection, retryAfterSeconds(resetAtEpochSecond), resetAtEpochSecond);
+    return withPolicyMutationLock(
+        companyCode,
+        () -> {
+          TenantMonthlyQuotaPolicy cached = monthlyQuotaPolicies.get(companyCode);
+          long refreshCheckAt = System.currentTimeMillis();
+          if (cached != null && cached.refreshAfterEpochMillis() > refreshCheckAt) {
+            return cached;
+          }
+          Company company;
+          try {
+            company = companyRepository.findByCodeIgnoreCase(companyCode.trim()).orElse(null);
+          } catch (RuntimeException ex) {
+            throw new TenantRuntimeAdmissionFailure(
+                unavailableRejection(
+                    companyCode,
+                    "TENANT_COMPANY_LOOKUP_UNAVAILABLE",
+                    "Tenant company lookup is unavailable"),
+                ex);
+          }
+          if (company == null || company.getId() == null) {
+            throw new TenantRuntimeAdmissionFailure(tenantNotFoundRejection(companyCode));
+          }
+          TenantMonthlyQuotaPolicy resolved =
+              new TenantMonthlyQuotaPolicy(
+                  company,
+                  Math.max(0L, company.getQuotaMaxApiRequests()),
+                  company.isQuotaHardLimitEnabled(),
+                  refreshCheckAt + persistedPolicyCacheTtlMillis);
+          monthlyQuotaPolicies.put(companyCode, resolved);
+          return resolved;
+        });
+  }
+
+  private long saturatingIncrement(long value) {
+    return value == Long.MAX_VALUE ? Long.MAX_VALUE : value + 1L;
   }
 
   private long monthlyHardBlockAt(long monthlyLimit) {
@@ -971,6 +1036,12 @@ public class TenantRuntimeEnforcementService {
         usageCounters.minuteRejectedCount.set(0);
       }
       return usageCounters.minuteRequestCount.incrementAndGet();
+    }
+  }
+
+  private void releaseMinuteCount(TenantRuntimeCounters usageCounters, long minuteBucket) {
+    if (usageCounters.minuteBucket.get() == minuteBucket) {
+      usageCounters.minuteRequestCount.updateAndGet(value -> Math.max(0, value - 1));
     }
   }
 
@@ -1721,6 +1792,7 @@ public class TenantRuntimeEnforcementService {
   }
 
   private static final class TenantRuntimeCounters {
+    private final Object monthlyApiLock = new Object();
     private final AtomicInteger inFlightRequests = new AtomicInteger(0);
     private final AtomicLong totalRequests = new AtomicLong(0);
     private final AtomicLong rejectedRequests = new AtomicLong(0);
@@ -1728,7 +1800,16 @@ public class TenantRuntimeEnforcementService {
     private final AtomicLong minuteBucket = new AtomicLong(0);
     private final AtomicInteger minuteRequestCount = new AtomicInteger(0);
     private final AtomicInteger minuteRejectedCount = new AtomicInteger(0);
+    private final AtomicLong monthlyApiRequestCount = new AtomicLong(0);
+    private volatile long monthlyApiWindowStartEpochSecond = 0L;
+    private volatile long monthlyApiWindowEndEpochSecond = 0L;
   }
+
+  private record TenantMonthlyQuotaPolicy(
+      Company company,
+      long maxMonthlyApiRequests,
+      boolean hardLimitEnabled,
+      long refreshAfterEpochMillis) {}
 
   private record TenantRuntimeRejection(
       String companyCode,

@@ -84,6 +84,14 @@ public class TenantUsageRollupService {
     incrementCounter(company, UsageDimension.API_CALLS, 1L, 0L);
   }
 
+  @Transactional
+  public void recordApiCalls(Company company, long count) {
+    if (count <= 0L) {
+      return;
+    }
+    incrementCounter(company, UsageDimension.API_CALLS, count, 0L);
+  }
+
   @Transactional(readOnly = true)
   public MonthlyApiUsage getCurrentMonthlyApiUsage(Company company) {
     if (company == null || company.getId() == null) {

@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -23,6 +24,11 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -688,7 +694,8 @@ class SuperAdminTenantControlPlaneServiceTest {
     beta.setName("Beta");
     beta.setTimezone("UTC");
     beta.setLifecycleState(CompanyLifecycleState.SUSPENDED);
-    when(companyRepository.findAll()).thenReturn(java.util.List.of(beta, alpha));
+    whenTenantListPages(
+        companyPage(List.of(alpha), 0, 100, 1), companyPage(List.of(alpha, beta), 0, 100, 2));
     when(companyService.getTenantMetricsForSuperAdmin(1L)).thenReturn(metrics(alpha, "ACTIVE"));
     when(companyService.getTenantMetricsForSuperAdmin(2L)).thenReturn(metrics(beta, "SUSPENDED"));
     when(auditLogRepository.findTop1ByCompanyIdOrderByTimestampDesc(any(Long.class)))
@@ -727,7 +734,10 @@ class SuperAdminTenantControlPlaneServiceTest {
     beta.setOnboardingAdminEmail("Owner@Beta.example");
     Company gamma = company(3L, "GAMMA");
     gamma.setName("Gamma Paints");
-    when(companyRepository.findAll()).thenReturn(java.util.List.of(gamma, beta, alpha));
+    whenTenantListPages(
+        companyPage(List.of(alpha), 0, 10, 1),
+        companyPage(List.of(beta), 0, 10, 1),
+        companyPage(List.of(gamma), 1, 1, 2));
     when(companyService.getTenantMetricsForSuperAdmin(1L)).thenReturn(metrics(alpha, "ACTIVE"));
     when(companyService.getTenantMetricsForSuperAdmin(2L)).thenReturn(metrics(beta, "ACTIVE"));
     when(companyService.getTenantMetricsForSuperAdmin(3L)).thenReturn(metrics(gamma, "ACTIVE"));
@@ -791,7 +801,17 @@ class SuperAdminTenantControlPlaneServiceTest {
       companies.add(company);
       when(companyRepository.findById(company.getId())).thenReturn(Optional.of(company));
     }
-    when(companyRepository.findAll()).thenReturn(companies);
+    AtomicInteger tenantListCall = new AtomicInteger();
+    when(companyRepository.findAll(any(Specification.class), any(Pageable.class)))
+        .thenAnswer(
+            invocation -> {
+              Pageable pageable = invocation.getArgument(1);
+              int call = tenantListCall.getAndIncrement();
+              if (call == 0) {
+                return new PageImpl<>(companies, pageable, companies.size());
+              }
+              return new PageImpl<>(List.of(companies.get(call - 1)), pageable, 1L);
+            });
     when(auditLogRepository.findTop1ByCompanyIdOrderByTimestampDesc(any(Long.class)))
         .thenReturn(Optional.empty());
 
@@ -826,15 +846,7 @@ class SuperAdminTenantControlPlaneServiceTest {
 
   @Test
   void listTenants_returnsEmptyPageWhenPageOffsetWouldOverflowIntegerArithmetic() {
-    Company alpha = company(1L, "ALPHA");
-    alpha.setName("Alpha Paints");
-    Company beta = company(2L, "BETA");
-    beta.setName("Beta Coatings");
-    when(companyRepository.findAll()).thenReturn(java.util.List.of(beta, alpha));
-    when(companyService.getTenantMetricsForSuperAdmin(1L)).thenReturn(metrics(alpha, "ACTIVE"));
-    when(companyService.getTenantMetricsForSuperAdmin(2L)).thenReturn(metrics(beta, "ACTIVE"));
-    when(auditLogRepository.findTop1ByCompanyIdOrderByTimestampDesc(any(Long.class)))
-        .thenReturn(Optional.empty());
+    when(companyRepository.count(any(Specification.class))).thenReturn(2L);
 
     PageResponse<SuperAdminTenantSummaryDto> result =
         service.listTenants(null, null, Integer.MAX_VALUE, 100, "companyCode,asc");
@@ -1429,6 +1441,17 @@ class SuperAdminTenantControlPlaneServiceTest {
     company.setTimezone("UTC");
     company.setStateCode("KA");
     return company;
+  }
+
+  @SafeVarargs
+  @SuppressWarnings({"unchecked", "rawtypes"})
+  private final void whenTenantListPages(Page<Company> first, Page<Company>... additionalPages) {
+    when(companyRepository.findAll(any(Specification.class), any(Pageable.class)))
+        .thenReturn(first, additionalPages);
+  }
+
+  private Page<Company> companyPage(List<Company> content, int page, int size, long totalElements) {
+    return new PageImpl<>(content, PageRequest.of(page, size), totalElements);
   }
 
   private Role role(String name) {

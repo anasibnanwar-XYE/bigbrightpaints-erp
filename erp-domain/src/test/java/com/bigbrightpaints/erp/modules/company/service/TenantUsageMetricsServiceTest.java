@@ -2,7 +2,6 @@ package com.bigbrightpaints.erp.modules.company.service;
 
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -37,7 +36,7 @@ class TenantUsageMetricsServiceTest {
   @Mock private TenantUsageRollupService tenantUsageRollupService;
 
   @Test
-  void recordApiCall_concurrentTraffic_usesAtomicIncrementPerCall() throws Exception {
+  void recordApiCall_concurrentTraffic_buffersAndFlushesOneBoundedWrite() throws Exception {
     TenantUsageMetricsService service =
         new TenantUsageMetricsService(
             companyRepository, systemSettingsRepository, tenantUsageRollupService);
@@ -72,10 +71,15 @@ class TenantUsageMetricsServiceTest {
       executor.awaitTermination(5, TimeUnit.SECONDS);
     }
 
-    verify(systemSettingsRepository, times(calls))
-        .incrementLongSetting("tenant.usage.api-call-count.42");
-    verify(tenantUsageRollupService, times(calls)).recordApiCall(company);
-    verify(systemSettingsRepository, times(calls))
+    verifyNoInteractions(systemSettingsRepository);
+    verifyNoInteractions(tenantUsageRollupService);
+
+    service.flushPendingMetrics();
+
+    verify(systemSettingsRepository)
+        .incrementLongSettingBy("tenant.usage.api-call-count.42", calls);
+    verify(tenantUsageRollupService).recordApiCalls(company, calls);
+    verify(systemSettingsRepository)
         .save(
             argThat(
                 setting ->
@@ -95,6 +99,7 @@ class TenantUsageMetricsServiceTest {
     when(companyRepository.findByCodeIgnoreCase("NOPE")).thenReturn(Optional.empty());
 
     service.recordApiCall("NOPE");
+    service.flushPendingMetrics();
 
     verifyNoInteractions(systemSettingsRepository);
   }

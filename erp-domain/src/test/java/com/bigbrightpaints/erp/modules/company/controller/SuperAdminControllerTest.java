@@ -33,6 +33,7 @@ import com.bigbrightpaints.erp.modules.company.dto.SuperAdminTenantPlanAssignmen
 import com.bigbrightpaints.erp.modules.company.dto.SuperAdminTenantSummaryDto;
 import com.bigbrightpaints.erp.modules.company.dto.SuperAdminTenantSupportContextDto;
 import com.bigbrightpaints.erp.modules.company.service.CompanyService;
+import com.bigbrightpaints.erp.modules.company.service.SuperAdminBillingService;
 import com.bigbrightpaints.erp.modules.company.service.SuperAdminTenantControlPlaneService;
 import com.bigbrightpaints.erp.modules.company.service.SuperAdminTenantEntitlementService;
 import com.bigbrightpaints.erp.modules.company.service.SuperAdminUsageService;
@@ -48,6 +49,7 @@ class SuperAdminControllerTest {
   @Mock private SuperAdminTenantEntitlementService entitlementService;
   @Mock private TenantUsageRollupService tenantUsageRollupService;
   @Mock private SuperAdminUsageService superAdminUsageService;
+  @Mock private SuperAdminBillingService billingService;
 
   private SuperAdminController controller;
 
@@ -59,7 +61,8 @@ class SuperAdminControllerTest {
             controlPlaneService,
             entitlementService,
             tenantUsageRollupService,
-            superAdminUsageService);
+            superAdminUsageService,
+            billingService);
   }
 
   @Test
@@ -81,7 +84,7 @@ class SuperAdminControllerTest {
                     new CompanySuperAdminDashboardDto.TenantOverview(
                         7L, "ACME", "Acme", "KA", "ACTIVE", null, 2, 10, 200, 400, 1, 4, 40, 2000,
                         1, 250, true, false, 2000, 5000, 2500))));
-    when(controlPlaneService.listTenants("ACTIVE", "acme", 0, 20, "companyCode,asc"))
+    when(controlPlaneService.listTenants("ACTIVE", "acme", 0, 20, "companyCode,asc", false))
         .thenReturn(
             PageResponse.of(
                 List.of(
@@ -255,7 +258,7 @@ class SuperAdminControllerTest {
 
     assertSuccess(controller.dashboard().getBody(), "Superadmin dashboard fetched");
     assertSuccess(
-        controller.listTenants("ACTIVE", "acme", 0, 20, "companyCode,asc").getBody(),
+        controller.listTenants("ACTIVE", "acme", 0, 20, "companyCode,asc", false).getBody(),
         "Superadmin tenant list fetched");
     assertSuccess(controller.addClientOptions().getBody(), "Add Client options fetched");
     assertThat(controller.createTenant(createRequest).getStatusCode().value()).isEqualTo(201);

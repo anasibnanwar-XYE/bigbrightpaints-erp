@@ -55,21 +55,6 @@ public class SuperAdminController {
     this.billingService = billingService;
   }
 
-  public SuperAdminController(
-      CompanyService companyService,
-      SuperAdminTenantControlPlaneService controlPlaneService,
-      SuperAdminTenantEntitlementService entitlementService,
-      TenantUsageRollupService tenantUsageRollupService,
-      SuperAdminUsageService superAdminUsageService) {
-    this(
-        companyService,
-        controlPlaneService,
-        entitlementService,
-        tenantUsageRollupService,
-        superAdminUsageService,
-        null);
-  }
-
   @GetMapping("/dashboard")
   public ResponseEntity<ApiResponse<CompanySuperAdminDashboardDto>> dashboard() {
     return ResponseEntity.ok(
@@ -89,14 +74,6 @@ public class SuperAdminController {
         ApiResponse.success(
             "Superadmin tenant list fetched",
             controlPlaneService.listTenants(status, query, page, size, sort, includeArchived)));
-  }
-
-  public ResponseEntity<ApiResponse<PageResponse<SuperAdminTenantSummaryDto>>> listTenants(
-      String status, String query, int page, int size, String sort) {
-    return ResponseEntity.ok(
-        ApiResponse.success(
-            "Superadmin tenant list fetched",
-            controlPlaneService.listTenants(status, query, page, size, sort)));
   }
 
   @GetMapping("/tenants/new")

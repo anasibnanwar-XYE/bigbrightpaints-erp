@@ -13,6 +13,7 @@ import com.bigbrightpaints.erp.modules.company.controller.SuperAdminController;
 import com.bigbrightpaints.erp.modules.company.dto.CompanyLifecycleStateDto;
 import com.bigbrightpaints.erp.modules.company.dto.CompanyLifecycleStateRequest;
 import com.bigbrightpaints.erp.modules.company.service.CompanyService;
+import com.bigbrightpaints.erp.modules.company.service.SuperAdminBillingService;
 import com.bigbrightpaints.erp.modules.company.service.SuperAdminTenantControlPlaneService;
 import com.bigbrightpaints.erp.modules.company.service.SuperAdminTenantEntitlementService;
 import com.bigbrightpaints.erp.modules.company.service.SuperAdminUsageService;
@@ -36,7 +37,8 @@ class TS_RuntimeCompanyControllerExecutableCoverageTest {
             controlPlaneService,
             entitlementService,
             mock(TenantUsageRollupService.class),
-            mock(SuperAdminUsageService.class));
+            mock(SuperAdminUsageService.class),
+            mock(SuperAdminBillingService.class));
     CompanyLifecycleStateRequest request =
         new CompanyLifecycleStateRequest("SUSPENDED", "reconciliation");
     CompanyLifecycleStateDto responseDto =

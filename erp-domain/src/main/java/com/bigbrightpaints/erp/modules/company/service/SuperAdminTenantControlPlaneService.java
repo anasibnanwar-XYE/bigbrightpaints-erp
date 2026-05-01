@@ -19,6 +19,11 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.locks.ReentrantLock;
 
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -61,6 +66,12 @@ import com.bigbrightpaints.erp.modules.rbac.domain.RoleRepository;
 import com.bigbrightpaints.erp.shared.dto.PageResponse;
 
 import jakarta.persistence.EntityNotFoundException;
+import jakarta.persistence.criteria.CriteriaBuilder;
+import jakarta.persistence.criteria.CriteriaQuery;
+import jakarta.persistence.criteria.Expression;
+import jakarta.persistence.criteria.Predicate;
+import jakarta.persistence.criteria.Root;
+import jakarta.persistence.criteria.Subquery;
 
 @Service
 public class SuperAdminTenantControlPlaneService {
@@ -186,31 +197,18 @@ public class SuperAdminTenantControlPlaneService {
     int safePage = validatePage(page);
     int safeSize = validateSize(size);
     String normalizedStatus = normalizeStatusFilter(statusFilter);
-    String normalizedQuery = normalizeSearchQuery(query);
+    List<String> searchTokens = searchTokens(query);
     SortSpec sortSpec = parseSort(sort);
-    List<TenantListCandidate> candidates =
-        companyRepository.findAll().stream()
-            .map(this::toTenantListCandidate)
-            .filter(candidate -> includeArchived || !"ARCHIVED".equals(candidate.status()))
-            .filter(candidate -> statusMatches(candidate, normalizedStatus))
-            .filter(candidate -> searchMatches(candidate, normalizedQuery))
-            .sorted(sortSpec.comparator())
-            .toList();
-    long requestedOffset = (long) safePage * safeSize;
-    int start = requestedOffset >= candidates.size() ? candidates.size() : (int) requestedOffset;
-    int end = (int) Math.min(requestedOffset + safeSize, (long) candidates.size());
+    Pageable pageable = PageRequest.of(safePage, safeSize, sortSpec.sort());
+    Specification<Company> specification =
+        tenantListSpecification(normalizedStatus, searchTokens, includeArchived);
+    if (pageable.getOffset() > Integer.MAX_VALUE) {
+      return PageResponse.of(List.of(), companyRepository.count(specification), safePage, safeSize);
+    }
+    Page<Company> companies = companyRepository.findAll(specification, pageable);
     List<SuperAdminTenantSummaryDto> content =
-        candidates.subList(start, end).stream()
-            .map(
-                candidate ->
-                    toSummary(
-                        candidate.company(),
-                        candidate.metrics(),
-                        candidate.mainAdmin(),
-                        candidate.lastActivityAt(),
-                        candidate.status()))
-            .toList();
-    return PageResponse.of(content, candidates.size(), safePage, safeSize);
+        companies.getContent().stream().map(this::toSummary).toList();
+    return PageResponse.of(content, companies.getTotalElements(), safePage, safeSize);
   }
 
   @Transactional
@@ -581,7 +579,6 @@ public class SuperAdminTenantControlPlaneService {
     if (owner.getCompany() == null || !company.getId().equals(owner.getCompany().getId())) {
       throw invalidActivationToken();
     }
-    owner.setEnabled(true);
     passwordService.resetPassword(owner, request.newPassword(), request.confirmPassword());
     owner.setEnabled(true);
     owner.setMustChangePassword(false);
@@ -974,14 +971,6 @@ public class SuperAdminTenantControlPlaneService {
         savedAdmin.getEmail(),
         changeRequest.getVerifiedAt(),
         changeRequest.getConfirmedAt());
-  }
-
-  private TenantListCandidate toTenantListCandidate(Company company) {
-    CompanyTenantMetricsDto metrics = buildMetrics(company);
-    UserAccount mainAdmin = resolveMainAdmin(company);
-    Instant lastActivityAt = resolveLastActivityAt(company.getId());
-    return new TenantListCandidate(
-        company, metrics, mainAdmin, lastActivityAt, resolveTenantStatus(company, metrics));
   }
 
   private SuperAdminTenantSummaryDto toSummary(Company company) {
@@ -1846,13 +1835,6 @@ public class SuperAdminTenantControlPlaneService {
             + " or SEED_FAILED");
   }
 
-  private boolean statusMatches(TenantListCandidate candidate, String normalizedStatus) {
-    if (!StringUtils.hasText(normalizedStatus)) {
-      return true;
-    }
-    return normalizedStatus.equals(candidate.status());
-  }
-
   private String normalizeCanonicalStatus(String rawStatus) {
     if (!StringUtils.hasText(rawStatus)) {
       return null;
@@ -1864,41 +1846,175 @@ public class SuperAdminTenantControlPlaneService {
     return null;
   }
 
-  private String normalizeSearchQuery(String query) {
+  private Specification<Company> tenantListSpecification(
+      String normalizedStatus, List<String> searchTokens, boolean includeArchived) {
+    return (root, criteriaQuery, criteriaBuilder) -> {
+      List<Predicate> predicates = new ArrayList<>();
+      if (!includeArchived) {
+        predicates.add(criteriaBuilder.not(statusPredicate(root, criteriaBuilder, "ARCHIVED")));
+      }
+      if (StringUtils.hasText(normalizedStatus)) {
+        predicates.add(statusPredicate(root, criteriaBuilder, normalizedStatus));
+      }
+      for (String searchToken : searchTokens) {
+        predicates.add(searchTokenPredicate(root, criteriaQuery, criteriaBuilder, searchToken));
+      }
+      return predicates.isEmpty()
+          ? criteriaBuilder.conjunction()
+          : criteriaBuilder.and(predicates.toArray(Predicate[]::new));
+    };
+  }
+
+  private Predicate statusPredicate(
+      Root<Company> root, CriteriaBuilder criteriaBuilder, String normalizedStatus) {
+    Expression<String> upperReason = upperText(root.get("lifecycleReason"), criteriaBuilder);
+    Predicate reasonMatches = criteriaBuilder.equal(upperReason, normalizedStatus);
+    Predicate noCanonicalReason = noCanonicalLifecycleReason(root, criteriaBuilder);
+    Predicate activeLifecycle =
+        lifecycleEquals(root, criteriaBuilder, CompanyLifecycleState.ACTIVE);
+    Predicate activeOnboardingBase = criteriaBuilder.and(noCanonicalReason, activeLifecycle);
+    Predicate draft = draftStatusPredicate(root, criteriaBuilder, activeOnboardingBase);
+    Predicate pendingActivation =
+        pendingActivationStatusPredicate(root, criteriaBuilder, activeOnboardingBase);
+    Predicate setupPending =
+        setupPendingStatusPredicate(
+            root, criteriaBuilder, activeOnboardingBase, draft, pendingActivation);
+    return switch (normalizedStatus) {
+      case "DRAFT" -> criteriaBuilder.or(reasonMatches, draft);
+      case "PENDING_ACTIVATION" -> criteriaBuilder.or(reasonMatches, pendingActivation);
+      case "SETUP_PENDING" -> criteriaBuilder.or(reasonMatches, setupPending);
+      case "ACTIVE" ->
+          criteriaBuilder.or(
+              reasonMatches,
+              criteriaBuilder.and(
+                  noCanonicalReason,
+                  activeLifecycle,
+                  criteriaBuilder.not(draft),
+                  criteriaBuilder.not(pendingActivation),
+                  criteriaBuilder.not(setupPending)));
+      case "SUSPENDED_BLOCKED" ->
+          criteriaBuilder.or(
+              reasonMatches,
+              criteriaBuilder.and(
+                  noCanonicalReason,
+                  lifecycleEquals(root, criteriaBuilder, CompanyLifecycleState.SUSPENDED)));
+      case "ARCHIVED" ->
+          criteriaBuilder.or(
+              reasonMatches,
+              criteriaBuilder.and(
+                  noCanonicalReason,
+                  lifecycleEquals(root, criteriaBuilder, CompanyLifecycleState.DEACTIVATED)));
+      default -> reasonMatches;
+    };
+  }
+
+  private Predicate draftStatusPredicate(
+      Root<Company> root, CriteriaBuilder criteriaBuilder, Predicate activeOnboardingBase) {
+    Expression<String> activationStatus = upperText(root.get("activationStatus"), criteriaBuilder);
+    return criteriaBuilder.and(
+        activeOnboardingBase,
+        criteriaBuilder.isNull(root.get("onboardingCompletedAt")),
+        criteriaBuilder.isNotNull(root.get("onboardingAdminEmail")),
+        criteriaBuilder.or(
+            criteriaBuilder.isNull(root.get("activationStatus")),
+            criteriaBuilder.equal(activationStatus, "NOT_SENT")));
+  }
+
+  private Predicate pendingActivationStatusPredicate(
+      Root<Company> root, CriteriaBuilder criteriaBuilder, Predicate activeOnboardingBase) {
+    Expression<String> activationStatus = upperText(root.get("activationStatus"), criteriaBuilder);
+    return criteriaBuilder.and(
+        activeOnboardingBase,
+        criteriaBuilder.isNull(root.get("onboardingCompletedAt")),
+        criteriaBuilder.or(
+            criteriaBuilder.isNotNull(root.get("onboardingCredentialsEmailedAt")),
+            criteriaBuilder.isNotNull(root.get("activationSentAt")),
+            activationStatus.in(Set.of("SENT", "EXPIRED", "SUPERSEDED"))));
+  }
+
+  private Predicate setupPendingStatusPredicate(
+      Root<Company> root,
+      CriteriaBuilder criteriaBuilder,
+      Predicate activeOnboardingBase,
+      Predicate draft,
+      Predicate pendingActivation) {
+    Expression<String> activationStatus = upperText(root.get("activationStatus"), criteriaBuilder);
+    return criteriaBuilder.and(
+        activeOnboardingBase,
+        criteriaBuilder.isNull(root.get("onboardingCompletedAt")),
+        criteriaBuilder.or(
+            criteriaBuilder.equal(activationStatus, "USED"),
+            criteriaBuilder.and(
+                criteriaBuilder.isNotNull(root.get("onboardingAdminUserId")),
+                criteriaBuilder.not(draft),
+                criteriaBuilder.not(pendingActivation))));
+  }
+
+  private Predicate noCanonicalLifecycleReason(
+      Root<Company> root, CriteriaBuilder criteriaBuilder) {
+    Expression<String> upperReason = upperText(root.get("lifecycleReason"), criteriaBuilder);
+    return criteriaBuilder.or(
+        criteriaBuilder.isNull(root.get("lifecycleReason")),
+        criteriaBuilder.not(upperReason.in(CANONICAL_TENANT_STATUSES)));
+  }
+
+  private Predicate lifecycleEquals(
+      Root<Company> root, CriteriaBuilder criteriaBuilder, CompanyLifecycleState lifecycleState) {
+    return criteriaBuilder.equal(root.get("lifecycleState"), lifecycleState);
+  }
+
+  private Expression<String> upperText(Expression<String> value, CriteriaBuilder criteriaBuilder) {
+    return criteriaBuilder.upper(criteriaBuilder.coalesce(value, ""));
+  }
+
+  private Predicate searchTokenPredicate(
+      Root<Company> root,
+      CriteriaQuery<?> criteriaQuery,
+      CriteriaBuilder criteriaBuilder,
+      String searchToken) {
+    String likeToken = "%" + searchToken.toLowerCase(Locale.ROOT) + "%";
+    Predicate companyFields =
+        criteriaBuilder.or(
+            containsToken(root.get("name"), criteriaBuilder, likeToken),
+            containsToken(root.get("code"), criteriaBuilder, likeToken),
+            containsToken(root.get("onboardingAdminEmail"), criteriaBuilder, likeToken));
+    Subquery<Integer> mainAdminMatch = criteriaQuery.subquery(Integer.class);
+    Root<UserAccount> user = mainAdminMatch.from(UserAccount.class);
+    mainAdminMatch
+        .select(criteriaBuilder.literal(1))
+        .where(
+            criteriaBuilder.and(
+                criteriaBuilder.equal(user.get("id"), root.get("mainAdminUserId")),
+                criteriaBuilder.or(
+                    containsToken(user.get("email"), criteriaBuilder, likeToken),
+                    containsToken(user.get("displayName"), criteriaBuilder, likeToken))));
+    return criteriaBuilder.or(companyFields, criteriaBuilder.exists(mainAdminMatch));
+  }
+
+  private Predicate containsToken(
+      Expression<String> value, CriteriaBuilder criteriaBuilder, String likeToken) {
+    return criteriaBuilder.like(
+        criteriaBuilder.lower(criteriaBuilder.coalesce(value, "")), likeToken);
+  }
+
+  private List<String> searchTokens(String query) {
     if (!StringUtils.hasText(query)) {
-      return null;
+      return List.of();
     }
-    return normalizeSearchText(query);
-  }
-
-  private boolean searchMatches(TenantListCandidate candidate, String normalizedQuery) {
-    if (!StringUtils.hasText(normalizedQuery)) {
-      return true;
-    }
-    Company company = candidate.company();
-    UserAccount mainAdmin = candidate.mainAdmin();
-    return containsNormalized(company.getName(), normalizedQuery)
-        || containsNormalized(company.getCode(), normalizedQuery)
-        || containsNormalized(company.getOnboardingAdminEmail(), normalizedQuery)
-        || (mainAdmin != null && containsNormalized(mainAdmin.getEmail(), normalizedQuery))
-        || (mainAdmin != null && containsNormalized(mainAdmin.getDisplayName(), normalizedQuery));
-  }
-
-  private boolean containsNormalized(String value, String normalizedQuery) {
-    return StringUtils.hasText(value) && normalizeSearchText(value).contains(normalizedQuery);
-  }
-
-  private String normalizeSearchText(String value) {
-    if (!StringUtils.hasText(value)) {
-      return "";
-    }
-    StringBuilder normalized = new StringBuilder();
-    for (char ch : value.trim().toLowerCase(Locale.ROOT).toCharArray()) {
+    List<String> tokens = new ArrayList<>();
+    StringBuilder current = new StringBuilder();
+    for (char ch : query.trim().toLowerCase(Locale.ROOT).toCharArray()) {
       if (Character.isLetterOrDigit(ch)) {
-        normalized.append(ch);
+        current.append(ch);
+      } else if (current.length() > 0) {
+        tokens.add(current.toString());
+        current.setLength(0);
       }
     }
-    return normalized.toString();
+    if (current.length() > 0) {
+      tokens.add(current.toString());
+    }
+    return tokens;
   }
 
   private int validatePage(int page) {
@@ -1926,42 +2042,23 @@ public class SuperAdminTenantControlPlaneService {
       throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
           "sort must use '<field>,asc' or '<field>,desc'");
     }
-    Comparator<TenantListCandidate> comparator =
+    String property =
         switch (field) {
-          case "companyCode", "code" ->
-              Comparator.comparing(
-                  candidate -> safeLower(candidate.company().getCode()), Comparator.naturalOrder());
-          case "companyName", "name" ->
-              Comparator.comparing(
-                  candidate -> safeLower(candidate.company().getName()), Comparator.naturalOrder());
-          case "status" ->
-              Comparator.comparing(TenantListCandidate::status, Comparator.naturalOrder());
-          case "plan" ->
-              Comparator.comparing(
-                  candidate -> resolvePlanId(candidate.company()), Comparator.naturalOrder());
-          case "billingStatus" ->
-              Comparator.comparing(
-                  candidate -> resolveBillingStatus(candidate.status()), Comparator.naturalOrder());
-          case "lastActivityAt" ->
-              Comparator.comparing(
-                  TenantListCandidate::lastActivityAt,
-                  Comparator.nullsLast(Comparator.naturalOrder()));
-          case "health" ->
-              Comparator.comparingInt(
-                  candidate -> healthSummary(candidate.status(), candidate.metrics()).riskScore());
+          case "companyCode", "code" -> "code";
+          case "companyName", "name" -> "name";
+          case "plan" -> "commercialPlanId";
+          case "billingStatus" -> "commercialBillingStatus";
           default ->
               throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
-                  "sort field must be one of companyCode, companyName, status, plan,"
-                      + " billingStatus, lastActivityAt, or health");
+                  "sort field must be one of companyCode, companyName, plan, or billingStatus");
         };
-    Comparator<TenantListCandidate> stableComparator =
-        comparator.thenComparing(
-            candidate -> safeLower(candidate.company().getCode()), Comparator.naturalOrder());
-    return new SortSpec("desc".equals(direction) ? stableComparator.reversed() : stableComparator);
-  }
-
-  private String safeLower(String value) {
-    return StringUtils.hasText(value) ? value.trim().toLowerCase(Locale.ROOT) : "";
+    Sort.Direction sortDirection =
+        "desc".equals(direction) ? Sort.Direction.DESC : Sort.Direction.ASC;
+    Sort sortOrder = Sort.by(sortDirection, property);
+    if (!"code".equals(property)) {
+      sortOrder = sortOrder.and(Sort.by(Sort.Direction.ASC, "code"));
+    }
+    return new SortSpec(sortOrder);
   }
 
   private String resolvePlanId(Company company) {
@@ -2248,14 +2345,7 @@ public class SuperAdminTenantControlPlaneService {
     return null;
   }
 
-  private record TenantListCandidate(
-      Company company,
-      CompanyTenantMetricsDto metrics,
-      UserAccount mainAdmin,
-      Instant lastActivityAt,
-      String status) {}
-
-  private record SortSpec(Comparator<TenantListCandidate> comparator) {}
+  private record SortSpec(Sort sort) {}
 
   private static final class AddClientCreateLock {
     private final ReentrantLock lock = new ReentrantLock();
