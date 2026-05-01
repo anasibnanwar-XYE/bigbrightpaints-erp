@@ -69,8 +69,15 @@ FIELD_DECL_RE = re.compile(
 LOCAL_DECL_RE = re.compile(r"^\s*(?:final\s+)?[\w<>\[\].,@? ]+\s+\w+\s*(?:=\s*.+)?;$")
 RECORD_COMPONENT_RE = re.compile(r"^\s*(?:@[\w.()\", =]+\s+)?[\w<>\[\], ?.]+\s+\w+\s*\)?$")
 QUERY_TEXT_RE = re.compile(
-    r"^\s*(?:and|or|select|from|where|group by|order by|having|coalesce)\b",
+    r"^\s*(?:"
+    r"and|or|select|from|where|group by|order by|having|coalesce|insert\s+into|values|"
+    r"on\s+conflict|do\s+update|case|when|then|else|end"
+    r")\b",
     re.IGNORECASE,
+)
+SQL_CLOSING_FRAGMENT_RE = re.compile(r"^\)+(?:::\w+)?[,]?$")
+ANNOTATION_ARGUMENT_FRAGMENT_RE = re.compile(
+    r"^\s*\w+\s*=\s*(?:true|false|\".*\"|\w+)\)?[,]?$"
 )
 BARE_IDENTIFIER_RE = re.compile(r"^\s*[A-Za-z_][A-Za-z0-9_]*\s*$")
 METHOD_DECL_OPEN_RE = re.compile(
@@ -221,11 +228,19 @@ def is_structural_source_line(
         return True
     if stripped.startswith("@"):
         return True
+    if ANNOTATION_ARGUMENT_FRAGMENT_RE.match(stripped):
+        return True
     if stripped in {"try {", "else {", "} else {", "finally {", "} finally {", "})", "});"}:
         return True
     if stripped in {"{", "}", ";", "};"}:
         return True
     if stripped in {"try {", "})", "}),"}:
+        return True
+    if stripped.startswith("extends ") and stripped.endswith("{"):
+        return True
+    if stripped.startswith(("&&", "||")):
+        return True
+    if stripped.startswith("case ") and stripped.endswith("->"):
         return True
     if TYPE_DECL_RE.match(stripped):
         return True
@@ -243,6 +258,8 @@ def is_structural_source_line(
         return True
     if QUERY_TEXT_RE.match(stripped):
         return True
+    if SQL_CLOSING_FRAGMENT_RE.match(stripped):
+        return True
     if BARE_IDENTIFIER_RE.match(stripped):
         return True
     if stripped.startswith("+ ") or stripped.startswith("+\"") or stripped.startswith("+\"") or stripped.startswith("+ ("):
@@ -254,6 +271,10 @@ def is_structural_source_line(
     if stripped.endswith("=") and previous_text and " class " not in previous_text:
         return True
     if stripped.startswith("\"") and prev_stripped.endswith("="):
+        return True
+    if stripped.startswith("new ") and prev_stripped.endswith("="):
+        return True
+    if stripped.startswith("for (") and not stripped.endswith(")") and not stripped.endswith(") {"):
         return True
     if stripped.endswith(",") and not stripped.startswith(CONTROL_FLOW_PREFIXES) and "->" not in stripped:
         return True

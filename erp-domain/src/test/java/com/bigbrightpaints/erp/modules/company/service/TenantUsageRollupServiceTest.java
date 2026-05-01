@@ -135,6 +135,51 @@ class TenantUsageRollupServiceTest {
   }
 
   @Test
+  void recordApiCalls_batchesPositiveCountsAndIgnoresNonPositiveCounts() {
+    Company company = company(7L, "ACME", "Asia/Kolkata");
+
+    service.recordApiCalls(company, 0L);
+    service.recordApiCalls(company, -3L);
+
+    verify(rollupRepository, never())
+        .incrementCounter(
+            anyLong(),
+            anyString(),
+            eq("API_CALLS"),
+            anyString(),
+            any(Instant.class),
+            any(Instant.class),
+            anyString(),
+            anyLong(),
+            anyLong());
+
+    service.recordApiCalls(company, 13L);
+
+    verify(rollupRepository)
+        .incrementCounter(
+            eq(7L),
+            eq("ACME"),
+            eq("API_CALLS"),
+            eq("DAILY"),
+            eq(Instant.parse("2026-03-31T18:30:00Z")),
+            eq(Instant.parse("2026-04-01T18:30:00Z")),
+            eq("Asia/Kolkata"),
+            eq(13L),
+            eq(0L));
+    verify(rollupRepository)
+        .incrementCounter(
+            eq(7L),
+            eq("ACME"),
+            eq("API_CALLS"),
+            eq("MONTHLY"),
+            eq(Instant.parse("2026-03-31T18:30:00Z")),
+            eq(Instant.parse("2026-04-30T18:30:00Z")),
+            eq("Asia/Kolkata"),
+            eq(13L),
+            eq(0L));
+  }
+
+  @Test
   void currentMonthlyApiUsageReturnsDurableCounterAndResetBoundary() {
     Company company = company(7L, "ACME", "Asia/Kolkata");
     rollups.add(

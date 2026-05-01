@@ -8,6 +8,7 @@ import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -511,6 +512,192 @@ class TenantRuntimeEnforcementServiceTest {
     assertThat(service.snapshot("ACME").metrics().minuteRequestCount()).isZero();
     verify(auditService)
         .logAuthFailure(eq(AuditEvent.ACCESS_DENIED), eq("ACTOR@BBP.COM"), eq("ACME"), anyMap());
+  }
+
+  @Test
+  void beginRequest_allowsMonthlyApiQuotaWithinGraceAndCachesRollupUsageWindow() {
+    Company acme = companiesByCode.get("ACME");
+    acme.setQuotaMaxApiRequests(10L);
+    when(tenantUsageRollupService.getCurrentMonthlyApiUsage(acme))
+        .thenReturn(
+            new TenantUsageRollupService.MonthlyApiUsage(
+                2L, Instant.parse("2026-01-01T00:00:00Z"), Instant.parse("2026-02-01T00:00:00Z")));
+
+    TenantRuntimeEnforcementService.TenantRequestAdmission first =
+        admissionService.beginRequest("ACME", "/api/v1/private", "GET", "actor@bbp.com");
+    admissionService.completeRequest(first, 200);
+    clearInvocations(companyRepository, tenantUsageRollupService);
+    TenantRuntimeEnforcementService.TenantRequestAdmission second =
+        admissionService.beginRequest("ACME", "/api/v1/private", "GET", "actor@bbp.com");
+    admissionService.completeRequest(second, 200);
+
+    assertThat(first.isAdmitted()).isTrue();
+    assertThat(second.isAdmitted()).isTrue();
+    verifyNoInteractions(companyRepository, tenantUsageRollupService);
+    assertThat(service.snapshot("ACME").metrics().minuteRequestCount()).isEqualTo(2);
+  }
+
+  @Test
+  void beginRequest_skipsMonthlyUsageLookupWhenHardLimitDisabled() {
+    Company acme = companiesByCode.get("ACME");
+    acme.setQuotaMaxApiRequests(1L);
+    ReflectionTestUtils.setField(acme, "quotaHardLimitEnabled", Boolean.FALSE);
+
+    TenantRuntimeEnforcementService.TenantRequestAdmission admission =
+        admissionService.beginRequest("ACME", "/api/v1/private", "GET", "actor@bbp.com");
+    admissionService.completeRequest(admission, 200);
+
+    assertThat(admission.isAdmitted()).isTrue();
+    verify(tenantUsageRollupService, times(0)).getCurrentMonthlyApiUsage(acme);
+  }
+
+  @Test
+  void beginRequest_skipsMonthlyUsageLookupWhenMonthlyLimitIsZero() {
+    Company acme = companiesByCode.get("ACME");
+    acme.setQuotaMaxApiRequests(0L);
+
+    TenantRuntimeEnforcementService.TenantRequestAdmission admission =
+        admissionService.beginRequest("ACME", "/api/v1/private", "GET", "actor@bbp.com");
+    admissionService.completeRequest(admission, 200);
+
+    assertThat(admission.isAdmitted()).isTrue();
+    verify(tenantUsageRollupService, times(0)).getCurrentMonthlyApiUsage(acme);
+  }
+
+  @Test
+  void beginRequest_failsClosedWhenMonthlyUsageLookupThrows() {
+    Company acme = companiesByCode.get("ACME");
+    acme.setQuotaMaxApiRequests(2L);
+    when(tenantUsageRollupService.getCurrentMonthlyApiUsage(acme))
+        .thenThrow(new RuntimeException("rollup-unavailable"));
+
+    TenantRuntimeEnforcementService.TenantRequestAdmission denied =
+        admissionService.beginRequest("ACME", "/api/v1/private", "GET", "actor@bbp.com");
+
+    assertThat(denied.isAdmitted()).isFalse();
+    assertThat(denied.statusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE.value());
+    assertThat(denied.reasonCode()).isEqualTo("TENANT_MONTHLY_API_QUOTA_UNAVAILABLE");
+    assertThat(service.snapshot("ACME").metrics().minuteRequestCount()).isZero();
+  }
+
+  @Test
+  void beginRequest_failsClosedWhenMonthlyUsageWindowIsIncomplete() {
+    Company acme = companiesByCode.get("ACME");
+    acme.setQuotaMaxApiRequests(2L);
+    when(tenantUsageRollupService.getCurrentMonthlyApiUsage(acme))
+        .thenReturn(
+            new TenantUsageRollupService.MonthlyApiUsage(
+                0L, null, Instant.parse("2026-02-01T00:00:00Z")));
+
+    TenantRuntimeEnforcementService.TenantRequestAdmission denied =
+        admissionService.beginRequest("ACME", "/api/v1/private", "GET", "actor@bbp.com");
+
+    assertThat(denied.isAdmitted()).isFalse();
+    assertThat(denied.statusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE.value());
+    assertThat(denied.reasonCode()).isEqualTo("TENANT_MONTHLY_API_QUOTA_UNAVAILABLE");
+  }
+
+  @Test
+  void beginRequest_failsClosedWhenMonthlyUsageSnapshotIsNullOrMissingEnd() {
+    Company acme = companiesByCode.get("ACME");
+    Company bravo = companiesByCode.get("BRAVO");
+    acme.setQuotaMaxApiRequests(2L);
+    bravo.setQuotaMaxApiRequests(2L);
+    when(tenantUsageRollupService.getCurrentMonthlyApiUsage(acme)).thenReturn(null);
+    when(tenantUsageRollupService.getCurrentMonthlyApiUsage(bravo))
+        .thenReturn(
+            new TenantUsageRollupService.MonthlyApiUsage(
+                0L, Instant.parse("2026-01-01T00:00:00Z"), null));
+
+    TenantRuntimeEnforcementService.TenantRequestAdmission nullSnapshot =
+        admissionService.beginRequest("ACME", "/api/v1/private", "GET", "actor@bbp.com");
+    TenantRuntimeEnforcementService.TenantRequestAdmission missingEnd =
+        admissionService.beginRequest("BRAVO", "/api/v1/private", "GET", "actor@bbp.com");
+
+    assertThat(nullSnapshot.isAdmitted()).isFalse();
+    assertThat(nullSnapshot.reasonCode()).isEqualTo("TENANT_MONTHLY_API_QUOTA_UNAVAILABLE");
+    assertThat(missingEnd.isAdmitted()).isFalse();
+    assertThat(missingEnd.reasonCode()).isEqualTo("TENANT_MONTHLY_API_QUOTA_UNAVAILABLE");
+  }
+
+  @Test
+  void beginRequest_failsClosedWhenMonthlyQuotaPolicyCompanyLookupFails() throws Exception {
+    setFreshActivePolicy("ACME");
+    when(companyRepository.findByCodeIgnoreCase("ACME"))
+        .thenThrow(new RuntimeException("company-lookup-unavailable"));
+
+    TenantRuntimeEnforcementService.TenantRequestAdmission denied =
+        admissionService.beginRequest("ACME", "/api/v1/private", "GET", "actor@bbp.com");
+
+    assertThat(denied.isAdmitted()).isFalse();
+    assertThat(denied.statusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE.value());
+    assertThat(denied.reasonCode()).isEqualTo("TENANT_COMPANY_LOOKUP_UNAVAILABLE");
+  }
+
+  @Test
+  void beginRequest_failsClosedWhenMonthlyQuotaPolicyTenantIsMissing() throws Exception {
+    setFreshActivePolicy("ACME");
+    companiesByCode.remove("ACME");
+
+    TenantRuntimeEnforcementService.TenantRequestAdmission denied =
+        admissionService.beginRequest("ACME", "/api/v1/private", "GET", "actor@bbp.com");
+
+    assertThat(denied.isAdmitted()).isFalse();
+    assertThat(denied.statusCode()).isEqualTo(HttpStatus.FORBIDDEN.value());
+    assertThat(denied.reasonCode()).isEqualTo("TENANT_NOT_FOUND");
+  }
+
+  @Test
+  void beginRequest_failsClosedWhenMonthlyQuotaPolicyTenantIdIsMissing() throws Exception {
+    setFreshActivePolicy("NOID");
+    companiesByCode.put("NOID", company(null, "NOID"));
+
+    TenantRuntimeEnforcementService.TenantRequestAdmission denied =
+        admissionService.beginRequest("NOID", "/api/v1/private", "GET", "actor@bbp.com");
+
+    assertThat(denied.isAdmitted()).isFalse();
+    assertThat(denied.statusCode()).isEqualTo(HttpStatus.FORBIDDEN.value());
+    assertThat(denied.reasonCode()).isEqualTo("TENANT_NOT_FOUND");
+  }
+
+  @Test
+  void monthlyQuotaPolicyForUsesFreshInnerCacheInsideMutationLock() throws Exception {
+    Object freshPolicy =
+        tenantMonthlyQuotaPolicy(
+            companiesByCode.get("ACME"), 10L, true, System.currentTimeMillis() + 60_000L);
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    ConcurrentMap<String, Object> monthlyQuotaPolicies =
+        org.mockito.Mockito.mock(ConcurrentMap.class);
+    when(monthlyQuotaPolicies.get("ACME")).thenReturn(null, freshPolicy);
+    ReflectionTestUtils.setField(service, "monthlyQuotaPolicies", monthlyQuotaPolicies);
+
+    Object resolved =
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "monthlyQuotaPolicyFor", "ACME");
+
+    assertThat(resolved).isSameAs(freshPolicy);
+    verifyNoInteractions(companyRepository);
+  }
+
+  @Test
+  void monthlyQuotaHelpersCoverSaturationAndMinuteReleaseMiss() throws Exception {
+    long saturated =
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "saturatingIncrement", Long.MAX_VALUE);
+    assertThat(saturated).isEqualTo(Long.MAX_VALUE);
+
+    TenantRuntimeEnforcementService.TenantRequestAdmission admission =
+        admissionService.beginRequest("ACME", "/api/v1/private", "GET", "actor@bbp.com");
+    admissionService.completeRequest(admission, 200);
+    @SuppressWarnings("unchecked")
+    ConcurrentMap<String, Object> counters =
+        (ConcurrentMap<String, Object>) ReflectionTestUtils.getField(service, "counters");
+    Object acmeCounters = counters.get("ACME");
+
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+        service, "releaseMinuteCount", acmeCounters, -1L);
+
+    assertThat(service.snapshot("ACME").metrics().minuteRequestCount()).isEqualTo(1);
   }
 
   @Test
@@ -1931,6 +2118,24 @@ class TenantRuntimeEnforcementServiceTest {
         .hasMessageContaining("Tenant company lookup is unavailable");
   }
 
+  private void setFreshActivePolicy(String companyCode) throws Exception {
+    @SuppressWarnings("unchecked")
+    ConcurrentMap<String, Object> policies =
+        (ConcurrentMap<String, Object>) ReflectionTestUtils.getField(service, "policies");
+    assertThat(policies).isNotNull();
+    policies.put(
+        companyCode,
+        tenantRuntimePolicy(
+            TenantRuntimeEnforcementService.TenantRuntimeState.ACTIVE,
+            "POLICY_ACTIVE",
+            3,
+            3,
+            3,
+            "fresh-policy",
+            Instant.parse("2026-01-01T00:00:00Z"),
+            System.currentTimeMillis() + 60_000L));
+  }
+
   private Company company(Long id, String code) {
     Company company = new Company();
     ReflectionTestUtils.setField(company, "id", id);
@@ -2012,6 +2217,22 @@ class TenantRuntimeEnforcementServiceTest {
         auditChainId,
         updatedAt,
         refreshAfterEpochMillis);
+  }
+
+  private Object tenantMonthlyQuotaPolicy(
+      Company company,
+      long maxMonthlyApiRequests,
+      boolean hardLimitEnabled,
+      long refreshAfterMillis)
+      throws Exception {
+    Class<?> policyClass =
+        Class.forName(
+            TenantRuntimeEnforcementService.class.getName() + "$TenantMonthlyQuotaPolicy");
+    Constructor<?> constructor =
+        policyClass.getDeclaredConstructor(Company.class, long.class, boolean.class, long.class);
+    constructor.setAccessible(true);
+    return constructor.newInstance(
+        company, maxMonthlyApiRequests, hardLimitEnabled, refreshAfterMillis);
   }
 
   private Object tenantRuntimeRejection(

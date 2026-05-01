@@ -12,6 +12,7 @@ import static org.mockito.Mockito.when;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -79,6 +80,12 @@ import com.bigbrightpaints.erp.modules.rbac.domain.RoleRepository;
 import com.bigbrightpaints.erp.shared.dto.PageResponse;
 
 import jakarta.persistence.EntityNotFoundException;
+import jakarta.persistence.criteria.CriteriaBuilder;
+import jakarta.persistence.criteria.CriteriaQuery;
+import jakarta.persistence.criteria.Expression;
+import jakarta.persistence.criteria.Path;
+import jakarta.persistence.criteria.Predicate;
+import jakarta.persistence.criteria.Root;
 
 @ExtendWith(MockitoExtension.class)
 class SuperAdminTenantControlPlaneServiceTest {
@@ -845,6 +852,76 @@ class SuperAdminTenantControlPlaneServiceTest {
   }
 
   @Test
+  void listTenants_acceptsBoundedDbBackedPlanAndBillingSortFields() {
+    whenTenantListPages(companyPage(List.of(), 0, 5, 0), companyPage(List.of(), 0, 5, 0));
+
+    PageResponse<SuperAdminTenantSummaryDto> byPlan =
+        service.listTenants(null, null, 0, 5, "plan,desc");
+    PageResponse<SuperAdminTenantSummaryDto> byBillingStatus =
+        service.listTenants(null, null, 0, 5, "billingStatus,asc");
+
+    assertThat(byPlan.content()).isEmpty();
+    assertThat(byBillingStatus.content()).isEmpty();
+  }
+
+  @Test
+  void tenantListSpecificationBuildsEmptyAndArchivedPredicatesWithoutInMemoryFiltering() {
+    CriteriaHarness criteria = criteriaHarness();
+    @SuppressWarnings("unchecked")
+    Specification<Company> emptySpecification =
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "tenantListSpecification", null, List.of(), true);
+    @SuppressWarnings("unchecked")
+    Specification<Company> excludeArchivedSpecification =
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "tenantListSpecification", null, List.of(), false);
+
+    assertThat(
+            emptySpecification.toPredicate(
+                criteria.root(), criteria.query(), criteria.criteriaBuilder()))
+        .isSameAs(criteria.predicate());
+    assertThat(
+            excludeArchivedSpecification.toPredicate(
+                criteria.root(), criteria.query(), criteria.criteriaBuilder()))
+        .isSameAs(criteria.predicate());
+  }
+
+  @Test
+  void statusPredicateCoversCanonicalStatusBranches() {
+    CriteriaHarness criteria = criteriaHarness();
+
+    for (String status :
+        List.of(
+            "DRAFT",
+            "PENDING_ACTIVATION",
+            "SETUP_PENDING",
+            "ACTIVE",
+            "SUSPENDED_BLOCKED",
+            "ARCHIVED",
+            "TRIAL_ACTIVE")) {
+      Predicate predicate =
+          com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+              service, "statusPredicate", criteria.root(), criteria.criteriaBuilder(), status);
+      assertThat(predicate).isSameAs(criteria.predicate());
+    }
+  }
+
+  @Test
+  void searchTokensDropsRepeatedSeparatorsWithoutEmptyTokens() {
+    @SuppressWarnings("unchecked")
+    List<String> tokens =
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "searchTokens", "  alpha--beta!!  ");
+    @SuppressWarnings("unchecked")
+    List<String> emptyTokens =
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "searchTokens", " -- !! ");
+
+    assertThat(tokens).containsExactly("alpha", "beta");
+    assertThat(emptyTokens).isEmpty();
+  }
+
+  @Test
   void listTenants_returnsEmptyPageWhenPageOffsetWouldOverflowIntegerArithmetic() {
     when(companyRepository.count(any(Specification.class))).thenReturn(2L);
 
@@ -1432,6 +1509,61 @@ class SuperAdminTenantControlPlaneServiceTest {
     verify(iamCanonicalStorageService).syncUser(admin);
     verify(tenantAdminEmailChangeRequestRepository).save(request);
   }
+
+  @SuppressWarnings({"unchecked", "rawtypes"})
+  private CriteriaHarness criteriaHarness() {
+    Root<Company> root = org.mockito.Mockito.mock(Root.class);
+    CriteriaQuery<Object> query = org.mockito.Mockito.mock(CriteriaQuery.class);
+    Path<Object> path = org.mockito.Mockito.mock(Path.class);
+    Expression<String> textExpression = org.mockito.Mockito.mock(Expression.class);
+    Predicate predicate = org.mockito.Mockito.mock(Predicate.class);
+    CriteriaBuilder criteriaBuilder =
+        org.mockito.Mockito.mock(
+            CriteriaBuilder.class,
+            invocation ->
+                Predicate.class.isAssignableFrom(invocation.getMethod().getReturnType())
+                    ? predicate
+                    : org.mockito.Answers.RETURNS_DEFAULTS.answer(invocation));
+
+    lenient().when(root.get(anyString())).thenReturn(path);
+    lenient()
+        .when(criteriaBuilder.coalesce(any(Expression.class), anyString()))
+        .thenReturn(textExpression);
+    lenient().when(criteriaBuilder.upper(any(Expression.class))).thenReturn(textExpression);
+    lenient().when(criteriaBuilder.equal(any(), any())).thenReturn(predicate);
+    lenient().when(criteriaBuilder.and(any(Predicate[].class))).thenReturn(predicate);
+    lenient()
+        .when(criteriaBuilder.and(any(Predicate.class), any(Predicate.class)))
+        .thenReturn(predicate);
+    lenient()
+        .when(
+            criteriaBuilder.and(
+                any(Predicate.class),
+                any(Predicate.class),
+                any(Predicate.class),
+                any(Predicate.class),
+                any(Predicate.class)))
+        .thenReturn(predicate);
+    lenient().when(criteriaBuilder.or(any(Predicate[].class))).thenReturn(predicate);
+    lenient()
+        .when(criteriaBuilder.or(any(Predicate.class), any(Predicate.class)))
+        .thenReturn(predicate);
+    lenient()
+        .when(criteriaBuilder.or(any(Predicate.class), any(Predicate.class), any(Predicate.class)))
+        .thenReturn(predicate);
+    lenient().when(criteriaBuilder.not(any(Predicate.class))).thenReturn(predicate);
+    lenient().when(criteriaBuilder.isNull(any())).thenReturn(predicate);
+    lenient().when(criteriaBuilder.isNotNull(any())).thenReturn(predicate);
+    lenient().when(criteriaBuilder.conjunction()).thenReturn(predicate);
+    lenient().when(textExpression.in(any(Collection.class))).thenReturn(predicate);
+    return new CriteriaHarness(root, query, criteriaBuilder, predicate);
+  }
+
+  private record CriteriaHarness(
+      Root<Company> root,
+      CriteriaQuery<Object> query,
+      CriteriaBuilder criteriaBuilder,
+      Predicate predicate) {}
 
   private Company company(Long id, String code) {
     Company company = new Company();
