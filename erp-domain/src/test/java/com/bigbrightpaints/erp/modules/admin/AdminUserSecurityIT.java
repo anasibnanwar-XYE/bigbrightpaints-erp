@@ -1,11 +1,16 @@
 package com.bigbrightpaints.erp.modules.admin;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
@@ -21,6 +26,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.mock.mockito.SpyBean;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -28,9 +34,18 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.jdbc.core.JdbcTemplate;
 
+import com.bigbrightpaints.erp.core.audit.AuditEvent;
+import com.bigbrightpaints.erp.core.audit.AuditLog;
+import com.bigbrightpaints.erp.core.audit.AuditLogRepository;
+import com.bigbrightpaints.erp.core.notification.EmailService;
 import com.bigbrightpaints.erp.core.security.AuthScopeService;
+import com.bigbrightpaints.erp.modules.auth.domain.MfaRecoveryCode;
+import com.bigbrightpaints.erp.modules.auth.domain.MfaRecoveryCodeRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
+import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
+import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
 
@@ -51,7 +66,17 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
 
   @Autowired private CompanyRepository companyRepository;
 
+  @Autowired private UserAccountRepository userAccountRepository;
+
+  @Autowired private MfaRecoveryCodeRepository mfaRecoveryCodeRepository;
+
+  @Autowired private AuditLogRepository auditLogRepository;
+
   @Autowired private DataSource dataSource;
+
+  @Autowired private JdbcTemplate jdbcTemplate;
+
+  @SpyBean private EmailService emailService;
 
   private UserAccount tenantSuperAdminUser;
   private UserAccount otherCompanyUser;
@@ -100,6 +125,39 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
     ResponseEntity<Map> response =
         rest.exchange("/api/v1/admin/users", HttpMethod.GET, new HttpEntity<>(headers), Map.class);
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+  }
+
+  @Test
+  void canonical_admin_identity_expansion_routes_are_routable_after_hard_cut() {
+    String token = login(ADMIN_EMAIL, ADMIN_PASSWORD, COMPANY);
+    HttpHeaders headers = new HttpHeaders();
+    headers.setBearerAuth(token);
+
+    long targetUserId = otherCompanyUser.getId();
+    assertRoutePresent(
+        "/api/v1/admin/users/" + targetUserId + "/lock",
+        HttpMethod.POST,
+        new HttpEntity<>(headers));
+    assertRoutePresent(
+        "/api/v1/admin/users/" + targetUserId + "/unlock",
+        HttpMethod.POST,
+        new HttpEntity<>(headers));
+    assertRoutePresent(
+        "/api/v1/admin/users/" + targetUserId + "/sessions",
+        HttpMethod.DELETE,
+        new HttpEntity<>(headers));
+    assertRoutePresent(
+        "/api/v1/admin/users/" + targetUserId + "/security-events",
+        HttpMethod.GET,
+        new HttpEntity<>(headers));
+
+    ResponseEntity<Map> assignableRoles =
+        rest.exchange(
+            "/api/v1/admin/users/assignable-roles",
+            HttpMethod.GET,
+            new HttpEntity<>(headers),
+            Map.class);
+    assertThat(assignableRoles.getStatusCode()).isEqualTo(HttpStatus.OK);
   }
 
   @Test
@@ -263,33 +321,33 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
             Map.class);
     assertMaskedMissingUserContractPair(foreignForceReset, missingForceReset);
 
-    ResponseEntity<Map> foreignSuspend =
+    ResponseEntity<Map> foreignLock =
         rest.exchange(
-            "/api/v1/admin/users/" + otherCompanyUser.getId() + "/suspend",
-            HttpMethod.PATCH,
+            "/api/v1/admin/users/" + otherCompanyUser.getId() + "/lock",
+            HttpMethod.POST,
             new HttpEntity<>(headers),
             Map.class);
-    ResponseEntity<Map> missingSuspend =
+    ResponseEntity<Map> missingLock =
         rest.exchange(
-            "/api/v1/admin/users/" + missingUserId + "/suspend",
-            HttpMethod.PATCH,
+            "/api/v1/admin/users/" + missingUserId + "/lock",
+            HttpMethod.POST,
             new HttpEntity<>(headers),
             Map.class);
-    assertMaskedMissingUserContractPair(foreignSuspend, missingSuspend);
+    assertMaskedMissingUserContractPair(foreignLock, missingLock);
 
-    ResponseEntity<Map> foreignUnsuspend =
+    ResponseEntity<Map> foreignUnlock =
         rest.exchange(
-            "/api/v1/admin/users/" + otherCompanyUser.getId() + "/unsuspend",
-            HttpMethod.PATCH,
+            "/api/v1/admin/users/" + otherCompanyUser.getId() + "/unlock",
+            HttpMethod.POST,
             new HttpEntity<>(headers),
             Map.class);
-    ResponseEntity<Map> missingUnsuspend =
+    ResponseEntity<Map> missingUnlock =
         rest.exchange(
-            "/api/v1/admin/users/" + missingUserId + "/unsuspend",
-            HttpMethod.PATCH,
+            "/api/v1/admin/users/" + missingUserId + "/unlock",
+            HttpMethod.POST,
             new HttpEntity<>(headers),
             Map.class);
-    assertMaskedMissingUserContractPair(foreignUnsuspend, missingUnsuspend);
+    assertMaskedMissingUserContractPair(foreignUnlock, missingUnlock);
 
     ResponseEntity<Map> foreignDisableMfa =
         rest.exchange(
@@ -305,19 +363,19 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
             Map.class);
     assertMaskedMissingUserContractPair(foreignDisableMfa, missingDisableMfa);
 
-    ResponseEntity<Map> foreignDelete =
+    ResponseEntity<Map> foreignRevokeSessions =
         rest.exchange(
-            "/api/v1/admin/users/" + otherCompanyUser.getId(),
+            "/api/v1/admin/users/" + otherCompanyUser.getId() + "/sessions",
             HttpMethod.DELETE,
             new HttpEntity<>(headers),
             Map.class);
-    ResponseEntity<Map> missingDelete =
+    ResponseEntity<Map> missingRevokeSessions =
         rest.exchange(
-            "/api/v1/admin/users/" + missingUserId,
+            "/api/v1/admin/users/" + missingUserId + "/sessions",
             HttpMethod.DELETE,
             new HttpEntity<>(headers),
             Map.class);
-    assertMaskedMissingUserContractPair(foreignDelete, missingDelete);
+    assertMaskedMissingUserContractPair(foreignRevokeSessions, missingRevokeSessions);
 
     ResponseEntity<Map> foreignStatus =
         rest.exchange(
@@ -335,6 +393,40 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
   }
 
   @Test
+  void tenant_admin_foreign_and_missing_denial_audits_keep_only_attempt_metadata()
+      throws InterruptedException {
+    String token = login(ADMIN_EMAIL, ADMIN_PASSWORD, COMPANY);
+    long foreignUserId = otherCompanyUser.getId();
+    long missingUserId = foreignUserId + 10_000L;
+    HttpHeaders headers = new HttpHeaders();
+    headers.setBearerAuth(token);
+
+    ResponseEntity<Map> foreignResponse =
+        rest.exchange(
+            "/api/v1/admin/users/" + foreignUserId + "/force-reset-password",
+            HttpMethod.POST,
+            new HttpEntity<>(headers),
+            Map.class);
+    ResponseEntity<Map> missingResponse =
+        rest.exchange(
+            "/api/v1/admin/users/" + missingUserId + "/force-reset-password",
+            HttpMethod.POST,
+            new HttpEntity<>(headers),
+            Map.class);
+    assertMaskedMissingUserContractPair(foreignResponse, missingResponse);
+
+    AuditLog foreignAudit =
+        awaitAdminAccessDeniedAudit(
+            ADMIN_EMAIL, foreignUserId, "admin-force-reset-password-out-of-scope");
+    AuditLog missingAudit =
+        awaitAdminAccessDeniedAudit(
+            ADMIN_EMAIL, missingUserId, "admin-force-reset-password-out-of-scope");
+
+    assertAttemptOnlyDeniedAudit(foreignAudit, String.valueOf(foreignUserId));
+    assertAttemptOnlyDeniedAudit(missingAudit, String.valueOf(missingUserId));
+  }
+
+  @Test
   void tenant_admin_foreign_row_lock_does_not_block_masked_user_operations() throws Exception {
     String token = login(ADMIN_EMAIL, ADMIN_PASSWORD, COMPANY);
     HttpHeaders headers = new HttpHeaders();
@@ -346,8 +438,8 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
           executeWithTimeout(
               () ->
                   rest.exchange(
-                      "/api/v1/admin/users/" + otherCompanyUser.getId() + "/suspend",
-                      HttpMethod.PATCH,
+                      "/api/v1/admin/users/" + otherCompanyUser.getId() + "/lock",
+                      HttpMethod.POST,
                       new HttpEntity<>(headers),
                       Map.class),
               Duration.ofSeconds(2)));
@@ -356,8 +448,8 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
           executeWithTimeout(
               () ->
                   rest.exchange(
-                      "/api/v1/admin/users/" + otherCompanyUser.getId() + "/unsuspend",
-                      HttpMethod.PATCH,
+                      "/api/v1/admin/users/" + otherCompanyUser.getId() + "/unlock",
+                      HttpMethod.POST,
                       new HttpEntity<>(headers),
                       Map.class),
               Duration.ofSeconds(2)));
@@ -376,7 +468,7 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
           executeWithTimeout(
               () ->
                   rest.exchange(
-                      "/api/v1/admin/users/" + otherCompanyUser.getId(),
+                      "/api/v1/admin/users/" + otherCompanyUser.getId() + "/sessions",
                       HttpMethod.DELETE,
                       new HttpEntity<>(headers),
                       Map.class),
@@ -410,17 +502,35 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
     HttpHeaders headers = new HttpHeaders();
     headers.setBearerAuth(token);
 
+    assertThat(
+            rest.exchange(
+                    "/api/v1/admin/users/" + otherCompanyUser.getId() + "/suspend",
+                    HttpMethod.PATCH,
+                    new HttpEntity<>(headers),
+                    Map.class)
+                .getStatusCode())
+        .isIn(HttpStatus.NOT_FOUND, HttpStatus.METHOD_NOT_ALLOWED);
+
+    assertThat(
+            rest.exchange(
+                    "/api/v1/admin/users/" + otherCompanyUser.getId() + "/unsuspend",
+                    HttpMethod.PATCH,
+                    new HttpEntity<>(headers),
+                    Map.class)
+                .getStatusCode())
+        .isIn(HttpStatus.NOT_FOUND, HttpStatus.METHOD_NOT_ALLOWED);
+
     assertPlatformOnlyAccessDenied(
         rest.exchange(
-            "/api/v1/admin/users/" + otherCompanyUser.getId() + "/suspend",
-            HttpMethod.PATCH,
+            "/api/v1/admin/users/" + otherCompanyUser.getId() + "/lock",
+            HttpMethod.POST,
             new HttpEntity<>(headers),
             Map.class));
 
     assertPlatformOnlyAccessDenied(
         rest.exchange(
-            "/api/v1/admin/users/" + otherCompanyUser.getId() + "/unsuspend",
-            HttpMethod.PATCH,
+            "/api/v1/admin/users/" + otherCompanyUser.getId() + "/unlock",
+            HttpMethod.POST,
             new HttpEntity<>(headers),
             Map.class));
 
@@ -431,12 +541,48 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
             new HttpEntity<>(headers),
             Map.class));
 
-    assertPlatformOnlyAccessDenied(
-        rest.exchange(
-            "/api/v1/admin/users/" + otherCompanyUser.getId(),
-            HttpMethod.DELETE,
-            new HttpEntity<>(headers),
-            Map.class));
+    assertThat(
+            rest.exchange(
+                    "/api/v1/admin/users/" + otherCompanyUser.getId(),
+                    HttpMethod.DELETE,
+                    new HttpEntity<>(headers),
+                    Map.class)
+                .getStatusCode())
+        .isIn(HttpStatus.NOT_FOUND, HttpStatus.METHOD_NOT_ALLOWED);
+  }
+
+  @Test
+  void retired_admin_user_aliases_are_absent_and_non_mutating_for_every_actor_role() {
+    UserAccount mustChangeUser =
+        dataSeeder.ensureUser(
+            "must-change-retired-admin@bbp.com",
+            "MustChange123!",
+            "Must Change Retired",
+            COMPANY,
+            List.of("ROLE_SALES"));
+    mustChangeUser.setMustChangePassword(true);
+    userAccountRepository.save(mustChangeUser);
+
+    List<HttpHeaders> actorHeaders =
+        List.of(
+            new HttpHeaders(),
+            bearerHeaders(login(DEALER_EMAIL, DEALER_PASSWORD, COMPANY)),
+            bearerHeaders(login(ADMIN_EMAIL, ADMIN_PASSWORD, COMPANY)),
+            bearerHeaders(login(SUPER_ADMIN_EMAIL, SUPER_ADMIN_PASSWORD, COMPANY)),
+            bearerHeaders(login("must-change-retired-admin@bbp.com", "MustChange123!", COMPANY)));
+
+    for (HttpHeaders headers : actorHeaders) {
+      assertRetiredAdminAliasAbsentAndNonMutating(
+          "/api/v1/admin/users/" + otherCompanyUser.getId() + "/suspend",
+          HttpMethod.PATCH,
+          headers);
+      assertRetiredAdminAliasAbsentAndNonMutating(
+          "/api/v1/admin/users/" + otherCompanyUser.getId() + "/unsuspend",
+          HttpMethod.PATCH,
+          headers);
+      assertRetiredAdminAliasAbsentAndNonMutating(
+          "/api/v1/admin/users/" + otherCompanyUser.getId(), HttpMethod.DELETE, headers);
+    }
   }
 
   @Test
@@ -557,6 +703,66 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
   }
 
   @Test
+  void tenant_main_admin_is_excluded_from_list_and_denied_for_management_actions() {
+    UserAccount mainAdminTarget =
+        dataSeeder.ensureUser(
+            "main-admin-protected@bbp.com",
+            "MainAdmin123!",
+            "Main Admin Protected",
+            COMPANY,
+            List.of("ROLE_SALES"));
+    Company company = companyRepository.findByCodeIgnoreCase(COMPANY).orElseThrow();
+    company.setMainAdminUserId(mainAdminTarget.getId());
+    companyRepository.saveAndFlush(company);
+
+    String token = login(ADMIN_EMAIL, ADMIN_PASSWORD, COMPANY);
+    HttpHeaders headers = bearerHeaders(token);
+    HttpHeaders jsonHeaders = bearerHeaders(token);
+    jsonHeaders.setContentType(MediaType.APPLICATION_JSON);
+
+    ResponseEntity<Map> listResponse =
+        rest.exchange("/api/v1/admin/users", HttpMethod.GET, new HttpEntity<>(headers), Map.class);
+    assertThat(listResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> users =
+        (List<Map<String, Object>>) listResponse.getBody().get("data");
+    assertThat(users)
+        .noneMatch(
+            row ->
+                "main-admin-protected@bbp.com".equalsIgnoreCase(String.valueOf(row.get("email"))));
+
+    assertAccessDeniedEnvelopeAndReturn(
+        rest.exchange(
+            "/api/v1/admin/users/" + mainAdminTarget.getId(),
+            HttpMethod.GET,
+            new HttpEntity<>(headers),
+            Map.class));
+    assertAccessDeniedEnvelopeAndReturn(
+        rest.exchange(
+            "/api/v1/admin/users/" + mainAdminTarget.getId(),
+            HttpMethod.PUT,
+            new HttpEntity<>(Map.of("displayName", "Mutated Main Admin"), jsonHeaders),
+            Map.class));
+    assertAccessDeniedEnvelopeAndReturn(
+        rest.exchange(
+            "/api/v1/admin/users/" + mainAdminTarget.getId() + "/status",
+            HttpMethod.PUT,
+            new HttpEntity<>(Map.of("enabled", false), jsonHeaders),
+            Map.class));
+    assertAccessDeniedEnvelopeAndReturn(
+        rest.exchange(
+            "/api/v1/admin/users/" + mainAdminTarget.getId() + "/lock",
+            HttpMethod.POST,
+            new HttpEntity<>(headers),
+            Map.class));
+
+    UserAccount afterDenied = userAccountRepository.findById(mainAdminTarget.getId()).orElseThrow();
+    assertThat(afterDenied.getDisplayName()).isEqualTo("Main Admin Protected");
+    assertThat(afterDenied.isEnabled()).isTrue();
+    assertThat(afterDenied.getLockedUntil()).isNull();
+  }
+
+  @Test
   void admin_user_detail_blocks_same_tenant_super_admin_target() {
     String token = login(ADMIN_EMAIL, ADMIN_PASSWORD, COMPANY);
     long missingUserId = tenantSuperAdminUser.getId() + 10_000L;
@@ -584,7 +790,7 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
   }
 
   @Test
-  void tenant_admin_force_reset_masks_same_tenant_super_admin_target_as_missing() {
+  void tenant_admin_force_reset_denies_same_tenant_super_admin_target_as_protected() {
     String token = login(ADMIN_EMAIL, ADMIN_PASSWORD, COMPANY);
     long missingUserId = tenantSuperAdminUser.getId() + 10_000L;
     HttpHeaders headers = new HttpHeaders();
@@ -603,7 +809,395 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
             new HttpEntity<>(headers),
             Map.class);
 
-    assertMaskedMissingUserContractPair(privilegedResponse, missingResponse);
+    assertAccessDeniedEnvelopeAndReturn(privilegedResponse);
+    assertMaskedMissingUserContract(missingResponse);
+  }
+
+  @Test
+  void tenant_admin_reset_mfa_clears_only_mfa_state_revokes_sessions_and_audits()
+      throws InterruptedException {
+    String targetEmail = "admin-mfa-reset-target@bbp.com";
+    String targetPassword = "MfaReset123!";
+    UserAccount targetUser =
+        dataSeeder.ensureUser(
+            targetEmail, targetPassword, "Admin MFA Reset Target", COMPANY, List.of("ROLE_SALES"));
+    targetUser.setEnabled(true);
+    targetUser.setMustChangePassword(false);
+    targetUser.setFailedLoginAttempts(0);
+    targetUser.setLockedUntil(null);
+    targetUser.setMfaEnabled(false);
+    targetUser.setMfaSecret(null);
+    UserAccount savedTarget = userAccountRepository.saveAndFlush(targetUser);
+    mfaRecoveryCodeRepository.deleteAllByUser(savedTarget);
+
+    Map<String, Object> preResetLogin = loginPayload(targetEmail, targetPassword, COMPANY);
+    String preResetAccess = preResetLogin.get("accessToken").toString();
+    String preResetRefresh = preResetLogin.get("refreshToken").toString();
+
+    savedTarget.setMfaEnabled(true);
+    savedTarget.setMfaSecret("encrypted-secret-for-admin-reset");
+    userAccountRepository.saveAndFlush(savedTarget);
+    mfaRecoveryCodeRepository.saveAndFlush(
+        new MfaRecoveryCode(savedTarget, "hash-admin-reset-recovery-code"));
+    assertThat(mfaRecoveryCodeRepository.countUnusedByUser(savedTarget)).isEqualTo(1);
+
+    String adminToken = login(ADMIN_EMAIL, ADMIN_PASSWORD, COMPANY);
+    ResponseEntity<Map> resetResponse =
+        rest.exchange(
+            "/api/v1/admin/users/" + savedTarget.getId() + "/mfa/disable",
+            HttpMethod.PATCH,
+            new HttpEntity<>(bearerHeaders(adminToken)),
+            Map.class);
+
+    assertThat(resetResponse.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+    assertThat(String.valueOf(resetResponse.getBody()))
+        .doesNotContain("mfaSecret")
+        .doesNotContain("qrUri")
+        .doesNotContain("recoveryCode")
+        .doesNotContain("hash-admin-reset");
+
+    UserAccount afterReset = userAccountRepository.findById(savedTarget.getId()).orElseThrow();
+    assertThat(afterReset.isMfaEnabled()).isFalse();
+    assertThat(afterReset.getMfaSecret()).isNull();
+    assertThat(mfaRecoveryCodeRepository.countUnusedByUser(afterReset)).isZero();
+    assertThat(afterReset.isEnabled()).isTrue();
+    assertThat(afterReset.isMustChangePassword()).isFalse();
+    assertThat(afterReset.getCompany().getCode()).isEqualTo(COMPANY);
+    assertThat(afterReset.getRoles()).extracting("name").contains("ROLE_SALES");
+
+    ResponseEntity<Map> oldAccessResponse =
+        rest.exchange(
+            "/api/v1/auth/me",
+            HttpMethod.GET,
+            new HttpEntity<>(bearerHeaders(preResetAccess)),
+            Map.class);
+    assertThat(oldAccessResponse.getStatusCode())
+        .isIn(HttpStatus.UNAUTHORIZED, HttpStatus.FORBIDDEN);
+
+    ResponseEntity<Map> oldRefreshResponse =
+        rest.postForEntity(
+            "/api/v1/auth/refresh-token",
+            Map.of("refreshToken", preResetRefresh, "companyCode", COMPANY),
+            Map.class);
+    assertThat(oldRefreshResponse.getStatusCode())
+        .isIn(HttpStatus.BAD_REQUEST, HttpStatus.UNAUTHORIZED);
+
+    Map<String, Object> freshLogin = loginPayload(targetEmail, targetPassword, COMPANY);
+    assertThat(freshLogin.get("accessToken").toString()).isNotBlank();
+
+    AuditLog resetAudit = awaitMfaDisabledAudit(ADMIN_EMAIL, savedTarget.getId());
+    assertThat(resetAudit.getCompanyId())
+        .isEqualTo(companyRepository.findByCodeIgnoreCase(COMPANY).orElseThrow().getId());
+    assertThat(resetAudit.getMetadata())
+        .containsEntry("action", "admin_disable_mfa")
+        .containsEntry("targetUserId", String.valueOf(savedTarget.getId()))
+        .containsEntry("tenantScope", COMPANY);
+    assertThat(resetAudit.getMetadata().toString())
+        .doesNotContain("encrypted-secret-for-admin-reset")
+        .doesNotContain("hash-admin-reset")
+        .doesNotContain("qrUri")
+        .doesNotContain("recoveryCode");
+  }
+
+  @Test
+  void tenant_admin_reset_mfa_denies_protected_target_without_changing_mfa_state() {
+    tenantSuperAdminUser.setMfaEnabled(true);
+    tenantSuperAdminUser.setMfaSecret("protected-admin-mfa-secret");
+    UserAccount protectedTarget = userAccountRepository.saveAndFlush(tenantSuperAdminUser);
+    mfaRecoveryCodeRepository.deleteAllByUser(protectedTarget);
+    mfaRecoveryCodeRepository.saveAndFlush(new MfaRecoveryCode(protectedTarget, "protected-hash"));
+    long missingUserId = protectedTarget.getId() + 10_000L;
+
+    String token = login(ADMIN_EMAIL, ADMIN_PASSWORD, COMPANY);
+    HttpHeaders headers = bearerHeaders(token);
+
+    ResponseEntity<Map> protectedResponse =
+        rest.exchange(
+            "/api/v1/admin/users/" + protectedTarget.getId() + "/mfa/disable",
+            HttpMethod.PATCH,
+            new HttpEntity<>(headers),
+            Map.class);
+    ResponseEntity<Map> missingResponse =
+        rest.exchange(
+            "/api/v1/admin/users/" + missingUserId + "/mfa/disable",
+            HttpMethod.PATCH,
+            new HttpEntity<>(headers),
+            Map.class);
+
+    assertAccessDeniedEnvelopeAndReturn(protectedResponse);
+    assertMaskedMissingUserContract(missingResponse);
+    UserAccount afterDenied = userAccountRepository.findById(protectedTarget.getId()).orElseThrow();
+    assertThat(afterDenied.isMfaEnabled()).isTrue();
+    assertThat(afterDenied.getMfaSecret()).isEqualTo("protected-admin-mfa-secret");
+    assertThat(mfaRecoveryCodeRepository.countUnusedByUser(afterDenied)).isEqualTo(1);
+  }
+
+  @Test
+  void tenant_admin_revokes_only_target_sessions_and_exposes_redacted_session_events()
+      throws InterruptedException {
+    String targetEmail = "admin-session-target@bbp.com";
+    String targetPassword = "SessionTarget123!";
+    UserAccount targetUser =
+        dataSeeder.ensureUser(
+            targetEmail, targetPassword, "Admin Session Target", COMPANY, List.of("ROLE_SALES"));
+    targetUser.setEnabled(true);
+    targetUser.setMustChangePassword(false);
+    targetUser.setFailedLoginAttempts(0);
+    targetUser.setLockedUntil(null);
+    UserAccount savedTarget = userAccountRepository.saveAndFlush(targetUser);
+
+    String unrelatedEmail = "admin-session-unrelated@bbp.com";
+    String unrelatedPassword = "SessionOther123!";
+    UserAccount unrelatedUser =
+        dataSeeder.ensureUser(
+            unrelatedEmail,
+            unrelatedPassword,
+            "Admin Session Unrelated",
+            COMPANY,
+            List.of("ROLE_SALES"));
+    unrelatedUser.setEnabled(true);
+    unrelatedUser.setMustChangePassword(false);
+    userAccountRepository.saveAndFlush(unrelatedUser);
+
+    Map<String, Object> targetLoginA = loginPayload(targetEmail, targetPassword, COMPANY);
+    Map<String, Object> targetLoginB = loginPayload(targetEmail, targetPassword, COMPANY);
+    Map<String, Object> unrelatedLogin = loginPayload(unrelatedEmail, unrelatedPassword, COMPANY);
+    Map<String, Object> adminLogin = loginPayload(ADMIN_EMAIL, ADMIN_PASSWORD, COMPANY);
+    String targetAccessA = targetLoginA.get("accessToken").toString();
+    String targetAccessB = targetLoginB.get("accessToken").toString();
+    String targetRefreshA = targetLoginA.get("refreshToken").toString();
+    String targetRefreshB = targetLoginB.get("refreshToken").toString();
+    String unrelatedAccess = unrelatedLogin.get("accessToken").toString();
+    String unrelatedRefresh = unrelatedLogin.get("refreshToken").toString();
+    String adminAccess = adminLogin.get("accessToken").toString();
+
+    ResponseEntity<Map> revokeResponse =
+        rest.exchange(
+            "/api/v1/admin/users/" + savedTarget.getId() + "/sessions",
+            HttpMethod.DELETE,
+            new HttpEntity<>(bearerHeaders(adminAccess)),
+            Map.class);
+
+    assertThat(revokeResponse.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+    assertThat(String.valueOf(revokeResponse.getBody()))
+        .doesNotContain(targetRefreshA)
+        .doesNotContain(targetRefreshB)
+        .doesNotContain("refreshTokenDigest")
+        .doesNotContain("accessToken");
+
+    assertThat(me(targetAccessA).getStatusCode())
+        .isIn(HttpStatus.UNAUTHORIZED, HttpStatus.FORBIDDEN);
+    assertThat(me(targetAccessB).getStatusCode())
+        .isIn(HttpStatus.UNAUTHORIZED, HttpStatus.FORBIDDEN);
+    assertThat(refresh(targetRefreshA).getStatusCode())
+        .isIn(HttpStatus.BAD_REQUEST, HttpStatus.UNAUTHORIZED);
+    assertThat(refresh(targetRefreshB).getStatusCode())
+        .isIn(HttpStatus.BAD_REQUEST, HttpStatus.UNAUTHORIZED);
+    assertThat(me(adminAccess).getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(me(unrelatedAccess).getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(refresh(unrelatedRefresh).getStatusCode()).isEqualTo(HttpStatus.OK);
+
+    Integer remainingActiveTargetSessions =
+        jdbcTemplate.queryForObject(
+            """
+            select count(*)
+              from iam_sessions s
+              join iam_accounts ia on ia.id = s.account_id
+             where ia.public_id = ?
+               and s.revoked_at is null
+               and s.consumed_at is null
+            """,
+            Integer.class,
+            savedTarget.getPublicId());
+    assertThat(remainingActiveTargetSessions).isZero();
+
+    ResponseEntity<Map> eventsResponse =
+        rest.exchange(
+            "/api/v1/admin/users/" + savedTarget.getId() + "/security-events?type=SESSION",
+            HttpMethod.GET,
+            new HttpEntity<>(bearerHeaders(adminAccess)),
+            Map.class);
+    assertThat(eventsResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(eventsResponse.getBody()).isNotNull();
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> events =
+        (List<Map<String, Object>>) eventsResponse.getBody().get("data");
+    assertThat(events)
+        .anySatisfy(
+            event -> {
+              assertThat(event.get("type")).isEqualTo("ADMIN_SESSION_REVOKE");
+              assertThat(event.get("targetUserId")).isEqualTo(String.valueOf(savedTarget.getId()));
+              assertThat(event.get("companyCode")).isEqualTo(COMPANY);
+              assertThat(event.get("outcome")).isEqualTo("SUCCESS");
+            });
+    assertThat(eventsResponse.getBody().toString())
+        .doesNotContain(targetRefreshA)
+        .doesNotContain(targetRefreshB)
+        .doesNotContain(unrelatedRefresh)
+        .doesNotContain("refreshTokenDigest")
+        .doesNotContain("accessToken")
+        .doesNotContain("passwordHash")
+        .doesNotContain("mfaSecret")
+        .doesNotContain("recoveryCode");
+
+    AuditLog readAudit =
+        awaitAuditLog(
+            AuditEvent.AUDIT_LOG_ACCESSED,
+            ADMIN_EMAIL,
+            String.valueOf(savedTarget.getId()),
+            "admin_read_security_events");
+    assertThat(readAudit.getMetadata())
+        .containsEntry("targetUserId", String.valueOf(savedTarget.getId()))
+        .containsEntry("tenantScope", COMPANY)
+        .containsEntry("action", "admin_read_security_events");
+  }
+
+  @Test
+  void tenant_admin_session_revocation_denies_protected_target_without_revoking_sessions() {
+    String protectedEmail = "protected-admin-session-revoke@bbp.com";
+    String protectedPassword = "ProtectedAdmin123!";
+    UserAccount protectedTarget =
+        dataSeeder.ensureUser(
+            protectedEmail,
+            protectedPassword,
+            "Protected Admin Session Revoke",
+            COMPANY,
+            List.of("ROLE_ADMIN"));
+    protectedTarget.setEnabled(true);
+    protectedTarget.setMustChangePassword(false);
+    protectedTarget.setFailedLoginAttempts(0);
+    protectedTarget.setLockedUntil(null);
+    protectedTarget = userAccountRepository.saveAndFlush(protectedTarget);
+    Map<String, Object> protectedLogin = loginPayload(protectedEmail, protectedPassword, COMPANY);
+    String protectedAccess = protectedLogin.get("accessToken").toString();
+    String protectedRefresh = protectedLogin.get("refreshToken").toString();
+    long missingUserId = protectedTarget.getId() + 10_000L;
+
+    String adminToken = login(ADMIN_EMAIL, ADMIN_PASSWORD, COMPANY);
+    HttpHeaders headers = bearerHeaders(adminToken);
+
+    ResponseEntity<Map> protectedResponse =
+        rest.exchange(
+            "/api/v1/admin/users/" + protectedTarget.getId() + "/sessions",
+            HttpMethod.DELETE,
+            new HttpEntity<>(headers),
+            Map.class);
+    ResponseEntity<Map> missingResponse =
+        rest.exchange(
+            "/api/v1/admin/users/" + missingUserId + "/sessions",
+            HttpMethod.DELETE,
+            new HttpEntity<>(headers),
+            Map.class);
+
+    assertAccessDeniedEnvelopeAndReturn(protectedResponse);
+    assertMaskedMissingUserContract(missingResponse);
+    assertThat(me(protectedAccess).getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(refresh(protectedRefresh).getStatusCode()).isEqualTo(HttpStatus.OK);
+  }
+
+  @Test
+  void tenant_admin_force_reset_revokes_sessions_and_confines_target_to_reset_corridor() {
+    String targetEmail = "force-reset-target@bbp.com";
+    String targetPassword = "ForceReset123!";
+    UserAccount targetUser =
+        dataSeeder.ensureUser(
+            targetEmail, targetPassword, "Force Reset Target", COMPANY, List.of("ROLE_SALES"));
+    targetUser.setEnabled(true);
+    targetUser.setMustChangePassword(false);
+    targetUser.setFailedLoginAttempts(0);
+    targetUser.setLockedUntil(null);
+    userAccountRepository.saveAndFlush(targetUser);
+
+    Map<String, Object> preResetLogin = loginPayload(targetEmail, targetPassword, COMPANY);
+    String preResetAccess = preResetLogin.get("accessToken").toString();
+    String preResetRefresh = preResetLogin.get("refreshToken").toString();
+
+    List<String> deliveredTokens = Collections.synchronizedList(new ArrayList<>());
+    doAnswer(
+            invocation -> {
+              deliveredTokens.add(invocation.getArgument(2, String.class));
+              return null;
+            })
+        .when(emailService)
+        .sendPasswordResetEmailRequired(
+            eq(targetEmail), eq("Force Reset Target"), anyString(), eq(COMPANY));
+
+    String adminToken = login(ADMIN_EMAIL, ADMIN_PASSWORD, COMPANY);
+    ResponseEntity<Map> forceResetResponse =
+        rest.exchange(
+            "/api/v1/admin/users/" + targetUser.getId() + "/force-reset-password",
+            HttpMethod.POST,
+            new HttpEntity<>(bearerHeaders(adminToken)),
+            Map.class);
+
+    assertThat(forceResetResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    assertThat(forceResetResponse.getBody()).isNotNull();
+    assertThat(deliveredTokens).hasSize(1);
+    assertThat(forceResetResponse.getBody().toString())
+        .doesNotContain("accessToken")
+        .doesNotContain("refreshToken")
+        .doesNotContain(deliveredTokens.getFirst());
+    assertThat(
+            userAccountRepository.findById(targetUser.getId()).orElseThrow().isMustChangePassword())
+        .isTrue();
+
+    ResponseEntity<Map> oldAccessResponse =
+        rest.exchange(
+            "/api/v1/auth/me",
+            HttpMethod.GET,
+            new HttpEntity<>(bearerHeaders(preResetAccess)),
+            Map.class);
+    assertThat(oldAccessResponse.getStatusCode())
+        .isIn(HttpStatus.UNAUTHORIZED, HttpStatus.FORBIDDEN);
+
+    ResponseEntity<Map> oldRefreshResponse =
+        rest.postForEntity(
+            "/api/v1/auth/refresh-token",
+            Map.of("refreshToken", preResetRefresh, "companyCode", COMPANY),
+            Map.class);
+    assertThat(oldRefreshResponse.getStatusCode())
+        .isIn(HttpStatus.BAD_REQUEST, HttpStatus.UNAUTHORIZED);
+
+    Map<String, Object> corridorLogin = loginPayload(targetEmail, targetPassword, COMPANY);
+    assertThat(corridorLogin.get("mustChangePassword")).isEqualTo(Boolean.TRUE);
+    String corridorAccess = corridorLogin.get("accessToken").toString();
+    ResponseEntity<Map> protectedResponse =
+        rest.exchange(
+            "/api/v1/admin/users",
+            HttpMethod.GET,
+            new HttpEntity<>(bearerHeaders(corridorAccess)),
+            Map.class);
+    assertThat(protectedResponse.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+    assertThat(String.valueOf(protectedResponse.getBody())).contains("PASSWORD_CHANGE_REQUIRED");
+
+    ResponseEntity<Map> resetResponse =
+        rest.postForEntity(
+            "/api/v1/auth/password/reset",
+            Map.of(
+                "token",
+                deliveredTokens.getFirst(),
+                "newPassword",
+                "ForceReset456!",
+                "confirmPassword",
+                "ForceReset456!"),
+            Map.class);
+    assertThat(resetResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+    ResponseEntity<Map> replayResponse =
+        rest.postForEntity(
+            "/api/v1/auth/password/reset",
+            Map.of(
+                "token",
+                deliveredTokens.getFirst(),
+                "newPassword",
+                "ForceReset789!",
+                "confirmPassword",
+                "ForceReset789!"),
+            Map.class);
+    assertThat(replayResponse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+    Map<String, Object> freshLogin = loginPayload(targetEmail, "ForceReset456!", COMPANY);
+    assertThat(freshLogin.get("mustChangePassword")).isEqualTo(Boolean.FALSE);
   }
 
   @Test
@@ -750,6 +1344,10 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
   }
 
   private String login(String email, String password, String companyCode) {
+    return loginPayload(email, password, companyCode).get("accessToken").toString();
+  }
+
+  private Map<String, Object> loginPayload(String email, String password, String companyCode) {
     Map<String, Object> body =
         Map.of(
             "email", email,
@@ -759,9 +1357,45 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
     assertThat(loginResp.getStatusCode()).isEqualTo(HttpStatus.OK);
     Map<String, Object> payload = loginResp.getBody();
     assertThat(payload).isNotNull();
-    String token = payload.get("accessToken").toString();
-    assertThat(token).isNotBlank();
-    return token;
+    assertThat(payload.get("accessToken").toString()).isNotBlank();
+    return payload;
+  }
+
+  private ResponseEntity<Map> me(String accessToken) {
+    return rest.exchange(
+        "/api/v1/auth/me", HttpMethod.GET, new HttpEntity<>(bearerHeaders(accessToken)), Map.class);
+  }
+
+  private ResponseEntity<Map> refresh(String refreshToken) {
+    return rest.postForEntity(
+        "/api/v1/auth/refresh-token",
+        Map.of("refreshToken", refreshToken, "companyCode", COMPANY),
+        Map.class);
+  }
+
+  private HttpHeaders bearerHeaders(String token) {
+    HttpHeaders headers = new HttpHeaders();
+    headers.setBearerAuth(token);
+    return headers;
+  }
+
+  private void assertRetiredAdminAliasAbsentAndNonMutating(
+      String path, HttpMethod method, HttpHeaders headers) {
+    boolean enabledBefore =
+        userAccountRepository.findById(otherCompanyUser.getId()).orElseThrow().isEnabled();
+    ResponseEntity<Map> response =
+        rest.exchange(path, method, new HttpEntity<>(headers), Map.class);
+    assertThat(response.getStatusCode())
+        .as("%s %s returned body %s", method, path, response.getBody())
+        .isIn(HttpStatus.NOT_FOUND, HttpStatus.METHOD_NOT_ALLOWED);
+    assertThat(userAccountRepository.findById(otherCompanyUser.getId()))
+        .hasValueSatisfying(user -> assertThat(user.isEnabled()).isEqualTo(enabledBefore));
+  }
+
+  private void assertRoutePresent(String path, HttpMethod method, HttpEntity<?> entity) {
+    ResponseEntity<Map> response = rest.exchange(path, method, entity, Map.class);
+    assertThat(response.getStatusCode())
+        .isNotIn(HttpStatus.NOT_FOUND, HttpStatus.METHOD_NOT_ALLOWED);
   }
 
   private void assertMaskedMissingUserContractPair(
@@ -793,6 +1427,58 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
   @SuppressWarnings("unchecked")
   private void assertPlatformOnlyAccessDenied(ResponseEntity<Map> response) {
     assertPlatformOnlyAccessDeniedAndReturn(response);
+  }
+
+  private AuditLog awaitMfaDisabledAudit(String actorUsername, Long targetUserId)
+      throws InterruptedException {
+    return awaitAuditLog(
+        AuditEvent.MFA_DISABLED, actorUsername, String.valueOf(targetUserId), "admin_disable_mfa");
+  }
+
+  private AuditLog awaitAdminAccessDeniedAudit(
+      String actorUsername, Long attemptedTargetId, String reason) throws InterruptedException {
+    for (int i = 0; i < 30; i++) {
+      List<AuditLog> logs =
+          auditLogRepository.findByEventTypeWithMetadataOrderByTimestampDesc(
+              AuditEvent.ACCESS_DENIED);
+      for (AuditLog log : logs) {
+        if (actorUsername.equalsIgnoreCase(log.getUsername())
+            && String.valueOf(attemptedTargetId).equals(log.getMetadata().get("attemptedTargetId"))
+            && reason.equals(log.getMetadata().get("reason"))) {
+          return log;
+        }
+      }
+      Thread.sleep(100);
+    }
+    throw new AssertionError(
+        "ACCESS_DENIED audit event not found for attempted target " + attemptedTargetId);
+  }
+
+  private void assertAttemptOnlyDeniedAudit(AuditLog auditLog, String attemptedTargetId) {
+    assertThat(auditLog.getMetadata())
+        .containsEntry("actor", ADMIN_EMAIL)
+        .containsEntry("tenantScope", COMPANY)
+        .containsEntry("attemptedTargetId", attemptedTargetId)
+        .containsEntry("targetResolution", "MISSING_OR_OUT_OF_SCOPE")
+        .doesNotContainKeys("targetUserId", "targetUserPublicId", "targetCompanyCode");
+  }
+
+  private AuditLog awaitAuditLog(
+      AuditEvent event, String actorUsername, String targetUserId, String action)
+      throws InterruptedException {
+    for (int i = 0; i < 30; i++) {
+      List<AuditLog> logs =
+          auditLogRepository.findByEventTypeWithMetadataOrderByTimestampDesc(event);
+      for (AuditLog log : logs) {
+        if (actorUsername.equalsIgnoreCase(log.getUsername())
+            && String.valueOf(targetUserId).equals(log.getMetadata().get("targetUserId"))
+            && action.equals(log.getMetadata().get("action"))) {
+          return log;
+        }
+      }
+      Thread.sleep(100);
+    }
+    throw new AssertionError(event + " audit event not found for target " + targetUserId);
   }
 
   @SuppressWarnings("unchecked")

@@ -22,10 +22,10 @@ Last reviewed: 2026-04-15
 | User create | `POST /api/v1/admin/users` | `CreateUserRequest` | `ApiResponse<UserDto>` | `ROLE_ADMIN` |
 | User update | `PUT /api/v1/admin/users/{id}` | `UpdateUserRequest` | `ApiResponse<UserDto>` | `ROLE_ADMIN` |
 | User status | `PUT /api/v1/admin/users/{userId}/status` | `UpdateUserStatusRequest` | `ApiResponse<UserDto>` | `ROLE_ADMIN` |
-| User suspend | `PATCH /api/v1/admin/users/{id}/suspend` | — | `204 No Content` | `ROLE_ADMIN` |
-| User unsuspend | `PATCH /api/v1/admin/users/{id}/unsuspend` | — | `204 No Content` | `ROLE_ADMIN` |
+| User lock | `POST /api/v1/admin/users/{userId}/lock` | — | `204 No Content` | `ROLE_ADMIN` |
+| User unlock | `POST /api/v1/admin/users/{userId}/unlock` | — | `204 No Content` | `ROLE_ADMIN` |
 | User MFA disable | `PATCH /api/v1/admin/users/{id}/mfa/disable` | — | `204 No Content` | `ROLE_ADMIN` |
-| User delete | `DELETE /api/v1/admin/users/{id}` | — | `204 No Content` | `ROLE_ADMIN` |
+| User sessions revoke | `DELETE /api/v1/admin/users/{userId}/sessions` | — | `204 No Content` | `ROLE_ADMIN` |
 | Force password reset | `POST /api/v1/admin/users/{userId}/force-reset-password` | — | `ApiResponse<String>` | `ROLE_ADMIN` |
 | Tenant audit feed | `GET /api/v1/admin/audit/events` | — | `ApiResponse<PageResponse<AuditFeedItemDto>>` | `ROLE_ADMIN` |
 | Internal support list | `GET /api/v1/admin/support/tickets` | — | `ApiResponse<SupportTicketListResponse>` | `ROLE_ADMIN` |

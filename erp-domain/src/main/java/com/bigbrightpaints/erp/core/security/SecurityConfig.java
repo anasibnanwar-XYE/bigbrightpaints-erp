@@ -20,12 +20,12 @@ import org.springframework.security.config.annotation.method.configuration.Enabl
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
-
-import com.bigbrightpaints.erp.modules.auth.service.UserAccountDetailsService;
+import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 
 @Configuration
 @EnableMethodSecurity
@@ -38,7 +38,7 @@ public class SecurityConfig {
   private final CompanyContextFilter companyContextFilter;
   private final MustChangePasswordCorridorFilter mustChangePasswordCorridorFilter;
   private final AuditAwareAccessDeniedHandler auditAwareAccessDeniedHandler;
-  private final UserAccountDetailsService userDetailsService;
+  private final UserDetailsService userDetailsService;
   private final Environment environment;
   private final boolean swaggerPublic;
 
@@ -49,7 +49,7 @@ public class SecurityConfig {
       CompanyContextFilter companyContextFilter,
       MustChangePasswordCorridorFilter mustChangePasswordCorridorFilter,
       AuditAwareAccessDeniedHandler auditAwareAccessDeniedHandler,
-      UserAccountDetailsService userDetailsService,
+      UserDetailsService userDetailsService,
       @Autowired(required = false) Environment environment,
       @Value("${erp.security.swagger-public:false}") boolean swaggerPublic) {
     this.jwtAuthenticationFilter = jwtAuthenticationFilter;
@@ -68,7 +68,7 @@ public class SecurityConfig {
       CompanyContextFilter companyContextFilter,
       MustChangePasswordCorridorFilter mustChangePasswordCorridorFilter,
       AuditAwareAccessDeniedHandler auditAwareAccessDeniedHandler,
-      UserAccountDetailsService userDetailsService,
+      UserDetailsService userDetailsService,
       boolean swaggerPublic) {
     this(
         jwtAuthenticationFilter,
@@ -113,6 +113,14 @@ public class SecurityConfig {
                   .permitAll()
                   // Keep retired tenant-admin hosts unresolved (dispatcher 404) for every caller.
                   .requestMatchers(RetiredTenantAdminHostPaths.requestMatchers())
+                  .permitAll()
+                  // Keep retired auth aliases unresolved (dispatcher 404/405) for every caller.
+                  .requestMatchers(
+                      new AntPathRequestMatcher("/api/v1/auth/profile"),
+                      new AntPathRequestMatcher("/api/v1/auth/password/forgot/superadmin", "POST"),
+                      new AntPathRequestMatcher("/api/v1/admin/users/*/suspend", "PATCH"),
+                      new AntPathRequestMatcher("/api/v1/admin/users/*/unsuspend", "PATCH"),
+                      new AntPathRequestMatcher("/api/v1/admin/users/*", "DELETE"))
                   .permitAll();
               if (isSwaggerAllowed()) {
                 registry

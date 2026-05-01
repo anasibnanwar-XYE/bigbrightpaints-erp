@@ -20,6 +20,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
+import com.bigbrightpaints.erp.modules.auth.service.IamCanonicalStorageService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.rbac.domain.Role;
 import com.bigbrightpaints.erp.modules.rbac.domain.RoleRepository;
@@ -33,6 +34,8 @@ class DataInitializerSecurityTest {
   @Mock private UserAccountRepository userRepository;
 
   @Mock private PasswordEncoder passwordEncoder;
+
+  @Mock private IamCanonicalStorageService iamCanonicalStorageService;
 
   @Test
   void dataInitializer_skipsDevAdminBootstrapWhenEmailBlank() {
@@ -212,6 +215,7 @@ class DataInitializerSecurityTest {
                     "seedRolesAndUsers",
                     roleRepository,
                     userRepository,
+                    iamCanonicalStorageService,
                     passwordEncoder,
                     company,
                     "mock.admin@bbp.com",
@@ -231,6 +235,7 @@ class DataInitializerSecurityTest {
         "seedRolesAndUsers",
         roleRepository,
         userRepository,
+        iamCanonicalStorageService,
         passwordEncoder,
         company("MOCK"),
         "   ",
@@ -262,6 +267,7 @@ class DataInitializerSecurityTest {
         "seedRolesAndUsers",
         roleRepository,
         userRepository,
+        iamCanonicalStorageService,
         passwordEncoder,
         company,
         " mock.admin@bbp.com ",
@@ -369,6 +375,7 @@ class DataInitializerSecurityTest {
         "seedRolesAndUsers",
         roleRepository,
         userRepository,
+        iamCanonicalStorageService,
         passwordEncoder,
         company,
         "mock.admin@bbp.com",

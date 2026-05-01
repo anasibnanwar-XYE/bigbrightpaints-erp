@@ -1,6 +1,5 @@
 package com.bigbrightpaints.erp.modules.auth.service;
 
-import java.time.Duration;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.Locale;
@@ -9,9 +8,9 @@ import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.security.authentication.LockedException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.bigbrightpaints.erp.core.audit.AuditEvent;
 import com.bigbrightpaints.erp.core.audit.AuditService;
@@ -40,8 +39,6 @@ import io.jsonwebtoken.Claims;
 public class AuthService {
 
   private static final Logger log = LoggerFactory.getLogger(AuthService.class);
-  private static final int MAX_FAILED_ATTEMPTS = 5;
-  private static final Duration LOCKOUT_DURATION = Duration.ofMinutes(15);
   private static final String SUPER_ADMIN_ROLE = "ROLE_SUPER_ADMIN";
 
   private final JwtTokenService tokenService;
@@ -55,6 +52,10 @@ public class AuthService {
   private final TenantRuntimeRequestAdmissionService tenantRuntimeRequestAdmissionService;
   private final PasswordEncoder passwordEncoder;
   private final AuthScopeService authScopeService;
+  private final IamCanonicalStorageService iamCanonicalStorageService;
+  private final AccountLockoutService accountLockoutService;
+  private final AuthSessionService authSessionService;
+  private final PasswordPolicy passwordPolicy;
 
   public AuthService(
       JwtTokenService tokenService,
@@ -67,7 +68,11 @@ public class AuthService {
       AuditService auditService,
       TenantRuntimeRequestAdmissionService tenantRuntimeRequestAdmissionService,
       PasswordEncoder passwordEncoder,
-      AuthScopeService authScopeService) {
+      AuthScopeService authScopeService,
+      IamCanonicalStorageService iamCanonicalStorageService,
+      AccountLockoutService accountLockoutService,
+      AuthSessionService authSessionService,
+      PasswordPolicy passwordPolicy) {
     this.tokenService = tokenService;
     this.refreshTokenService = refreshTokenService;
     this.userAccountRepository = userAccountRepository;
@@ -79,19 +84,28 @@ public class AuthService {
     this.tenantRuntimeRequestAdmissionService = tenantRuntimeRequestAdmissionService;
     this.passwordEncoder = passwordEncoder;
     this.authScopeService = authScopeService;
+    this.iamCanonicalStorageService = iamCanonicalStorageService;
+    this.accountLockoutService = accountLockoutService;
+    this.authSessionService = authSessionService;
+    this.passwordPolicy = passwordPolicy;
   }
 
   public AuthResponse login(LoginRequest request) {
+    return login(request, null);
+  }
+
+  public AuthResponse login(LoginRequest request, SessionDeviceMetadata deviceMetadata) {
     UserAccount user = null;
     boolean failedSecretValidation = false;
     try {
       String scopeCode = authScopeService.requireScopeCode(request.companyCode());
       user = requireScopedAccount(request.email(), scopeCode);
-      ensureEnabledForAuthentication(user);
-      enforceLock(user);
-      if (!passwordEncoder.matches(request.password(), user.getPasswordHash())) {
+      ensureEnabledForLogin(user);
+      accountLockoutService.enforceUnlocked(user);
+      if (!passwordEncoder.matches(
+          passwordPolicy.normalize(request.password()), user.getPasswordHash())) {
         failedSecretValidation = true;
-        registerFailure(user);
+        accountLockoutService.recordFailure(user);
         throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
             "Invalid credentials");
       }
@@ -100,8 +114,19 @@ public class AuthService {
         tenantRuntimeRequestAdmissionService.enforceAuthOperationAllowed(
             company.getCode(), user.getEmail(), "LOGIN");
       }
+      boolean mfaChallengeActive = user.isMfaEnabled();
       mfaService.verifyDuringLogin(user, request.mfaCode(), request.recoveryCode());
-      resetLock(user);
+      if (mfaChallengeActive) {
+        Map<String, String> mfaMetadata = new HashMap<>();
+        mfaMetadata.put("operation", "mfa_login_verification");
+        mfaMetadata.put("companyCode", scopeCode);
+        if (user.getPublicId() != null) {
+          mfaMetadata.put("actorPublicId", user.getPublicId().toString());
+        }
+        auditService.logAuthSuccess(
+            AuditEvent.MFA_SUCCESS, user.getEmail(), scopeCode, mfaMetadata);
+      }
+      accountLockoutService.resetFailures(user);
       Map<String, String> successMetadata = new HashMap<>();
       successMetadata.put("companyCode", scopeCode);
       if (user.getPublicId() != null) {
@@ -113,26 +138,37 @@ public class AuthService {
       claims.put("name", user.getDisplayName());
       claims.put("email", user.getEmail());
       Instant issuedAt = Instant.now();
-      String accessToken =
-          tokenService.generateAccessToken(
-              user.getPublicId().toString(), scopeCode, claims, issuedAt);
-      String refreshToken =
-          refreshTokenService.issue(
+      RefreshTokenService.IssuedRefreshToken issuedRefreshToken =
+          refreshTokenService.issueSession(
               user.getPublicId(),
               scopeCode,
               issuedAt,
-              issuedAt.plusSeconds(properties.getRefreshTokenTtlSeconds()));
+              issuedAt.plusSeconds(properties.getRefreshTokenTtlSeconds()),
+              deviceMetadata,
+              null);
+      claims.put("sid", issuedRefreshToken.sessionPublicId().toString());
+      String accessToken =
+          tokenService.generateAccessToken(
+              user.getPublicId().toString(), scopeCode, claims, issuedAt);
       return new AuthResponse(
           "Bearer",
           accessToken,
-          refreshToken,
+          issuedRefreshToken.refreshToken(),
           properties.getAccessTokenTtlSeconds(),
           scopeCode,
           user.getDisplayName(),
           user.isMustChangePassword());
     } catch (RuntimeException ex) {
       if (user != null && isMfaFailure(ex) && !failedSecretValidation) {
-        registerFailure(user);
+        accountLockoutService.recordFailure(user);
+        Map<String, String> mfaFailureMetadata = new HashMap<>();
+        mfaFailureMetadata.put("operation", "mfa_login_verification");
+        mfaFailureMetadata.put("reason", "invalid_or_missing_mfa_verifier");
+        if (user.getPublicId() != null) {
+          mfaFailureMetadata.put("actorPublicId", user.getPublicId().toString());
+        }
+        auditService.logAuthFailure(
+            AuditEvent.MFA_FAILURE, user.getEmail(), user.getAuthScopeCode(), mfaFailureMetadata);
       }
       String reason = ex.getMessage();
       if (reason == null || reason.isBlank()) {
@@ -153,52 +189,76 @@ public class AuthService {
   }
 
   public AuthResponse refresh(RefreshTokenRequest request) {
+    return refresh(request, null);
+  }
+
+  @Transactional(noRollbackFor = ApplicationException.class)
+  public AuthResponse refresh(RefreshTokenRequest request, SessionDeviceMetadata deviceMetadata) {
     String requestedScopeCode = authScopeService.requireScopeCode(request.companyCode());
-    RefreshTokenService.TokenRecord record =
+    RefreshTokenService.TokenRecord inspectedRecord =
         refreshTokenService
-            .consume(request.refreshToken())
-            .orElseThrow(
-                () ->
-                    com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
-                        "Invalid refresh token"));
-    if (!requestedScopeCode.equalsIgnoreCase(record.authScopeCode())) {
-      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
-          "Invalid refresh token");
-    }
-    String accountKey = record.userPublicId().toString();
-    if (tokenBlacklistService.isUserTokenRevoked(accountKey, record.issuedAt())) {
+            .inspect(request.refreshToken(), requestedScopeCode)
+            .orElseGet(
+                () -> {
+                  refreshTokenService.consume(request.refreshToken(), requestedScopeCode);
+                  throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+                      "Invalid refresh token");
+                });
+    String accountKey = inspectedRecord.userPublicId().toString();
+    if (tokenBlacklistService.isUserTokenRevoked(accountKey, inspectedRecord.issuedAt())) {
       throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
           "Refresh token revoked");
     }
     UserAccount user =
         userAccountRepository
-            .findByPublicId(record.userPublicId())
+            .findByPublicId(inspectedRecord.userPublicId())
             .orElseThrow(
                 () ->
                     com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
                         "User not found"));
     ensureEnabledForAuthentication(user);
-    enforceLock(user);
+    accountLockoutService.enforceUnlocked(user);
     Company company = resolveCompanyForScope(user, requestedScopeCode);
     if (company != null) {
       tenantRuntimeRequestAdmissionService.enforceAuthOperationAllowed(
           company.getCode(), user.getEmail(), "REFRESH_TOKEN");
     }
-    Map<String, Object> claims = Map.of("name", user.getDisplayName());
+    RefreshTokenService.TokenRecord record =
+        refreshTokenService
+            .consume(request.refreshToken(), requestedScopeCode)
+            .orElseThrow(
+                () ->
+                    com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+                        "Invalid refresh token"));
+    Map<String, Object> claims = new HashMap<>();
+    claims.put("name", user.getDisplayName());
+    claims.put("email", user.getEmail());
     Instant issuedAt = Instant.now();
-    String accessToken =
-        tokenService.generateAccessToken(
-            user.getPublicId().toString(), requestedScopeCode, claims, issuedAt);
-    String refreshToken =
-        refreshTokenService.issue(
+    RefreshTokenService.IssuedRefreshToken issuedRefreshToken =
+        refreshTokenService.issueSession(
             user.getPublicId(),
             requestedScopeCode,
             issuedAt,
-            issuedAt.plusSeconds(properties.getRefreshTokenTtlSeconds()));
+            issuedAt.plusSeconds(properties.getRefreshTokenTtlSeconds()),
+            deviceMetadata,
+            record.refreshTokenDigest());
+    auditSessionEvent(
+        AuditEvent.TOKEN_REFRESH,
+        user,
+        requestedScopeCode,
+        Map.of(
+            "operation",
+            "refresh_rotation",
+            "sessionId",
+            issuedRefreshToken.sessionPublicId().toString()));
+    claims.put("sid", issuedRefreshToken.sessionPublicId().toString());
+    String accessToken =
+        tokenService.generateAccessToken(
+            user.getPublicId().toString(), requestedScopeCode, claims, issuedAt);
     return new AuthResponse(
         "Bearer",
         accessToken,
-        refreshToken,
+        issuedRefreshToken.refreshToken(),
         properties.getAccessTokenTtlSeconds(),
         requestedScopeCode,
         user.getDisplayName(),
@@ -249,26 +309,102 @@ public class AuthService {
     }
   }
 
+  private void ensureEnabledForLogin(UserAccount user) {
+    if (user == null || !user.isEnabled()) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          "Invalid credentials");
+    }
+  }
+
   public void logout(String refreshToken, String accessToken) {
     Claims accessTokenClaims = parseLogoutClaims(accessToken);
     UUID tokenUserPublicId = extractTokenSubject(accessTokenClaims);
+    UUID currentSessionId = authSessionService.currentSessionIdFromClaims(accessTokenClaims);
+    String authScopeCode =
+        accessTokenClaims == null ? null : accessTokenClaims.get("companyCode", String.class);
 
-    if (tokenUserPublicId != null) {
-      revokeActiveSessions(tokenUserPublicId);
+    if (tokenUserPublicId != null && currentSessionId != null) {
+      if (refreshToken != null
+          && !refreshToken.isBlank()
+          && !authSessionService.refreshTokenBelongsToSession(
+              refreshToken, tokenUserPublicId, currentSessionId, authScopeCode)) {
+        log.info(
+            "Ignoring stale refresh token during logout (actor={}, sessionId={})",
+            tokenUserPublicId,
+            currentSessionId);
+      }
+      authSessionService.revokeCurrentSession(tokenUserPublicId, currentSessionId, "logout");
     } else if (refreshToken != null && !refreshToken.isBlank()) {
       refreshTokenService.revoke(refreshToken);
     }
 
     blacklistAccessToken(accessTokenClaims, tokenUserPublicId);
+    auditSessionEventByPublicId(
+        AuditEvent.LOGOUT,
+        tokenUserPublicId,
+        authScopeCode,
+        Map.of(
+            "operation",
+            "logout",
+            "reason",
+            "logout",
+            "sessionId",
+            currentSessionId == null ? "unknown" : currentSessionId.toString()));
   }
 
-  private void revokeActiveSessions(UUID userPublicId) {
+  public void revokeAllSessionsForAccessToken(String accessToken, String reason) {
+    Claims accessTokenClaims = parseLogoutClaims(accessToken);
+    UUID tokenUserPublicId = extractTokenSubject(accessTokenClaims);
+    String authScopeCode =
+        accessTokenClaims == null ? null : accessTokenClaims.get("companyCode", String.class);
+    if (tokenUserPublicId != null) {
+      revokeActiveSessions(tokenUserPublicId, reason);
+    }
+    blacklistAccessToken(accessTokenClaims, tokenUserPublicId);
+    auditSessionEventByPublicId(
+        AuditEvent.TOKEN_REVOKED,
+        tokenUserPublicId,
+        authScopeCode,
+        Map.of(
+            "operation",
+            "self_revoke_all_sessions",
+            "reason",
+            reason == null ? "self_revoke_all" : reason));
+  }
+
+  private void revokeActiveSessions(UUID userPublicId, String reason) {
     if (userPublicId == null) {
       return;
     }
     String accountKey = userPublicId.toString();
     tokenBlacklistService.revokeAllUserTokens(accountKey);
     refreshTokenService.revokeAllForUser(userPublicId);
+    iamCanonicalStorageService.markAllSessionsRevoked(userPublicId, reason);
+  }
+
+  private void auditSessionEventByPublicId(
+      AuditEvent event, UUID userPublicId, String authScopeCode, Map<String, String> metadata) {
+    if (userPublicId == null) {
+      return;
+    }
+    userAccountRepository
+        .findByPublicId(userPublicId)
+        .ifPresent(user -> auditSessionEvent(event, user, authScopeCode, metadata));
+  }
+
+  private void auditSessionEvent(
+      AuditEvent event, UserAccount user, String authScopeCode, Map<String, String> metadata) {
+    if (user == null || user.getPublicId() == null) {
+      return;
+    }
+    Map<String, String> auditMetadata = new HashMap<>();
+    if (metadata != null) {
+      auditMetadata.putAll(metadata);
+    }
+    auditMetadata.put("actorPublicId", user.getPublicId().toString());
+    auditMetadata.put("targetUserId", String.valueOf(user.getId()));
+    auditMetadata.put("companyCode", authScopeCode);
+    auditService.logAuthSuccess(event, user.getEmail(), authScopeCode, auditMetadata);
   }
 
   private Claims parseLogoutClaims(String accessToken) {
@@ -327,31 +463,6 @@ public class AuthService {
           IdempotencyUtils.sha256Hex(tokenId, 12),
           expiration,
           ex);
-    }
-  }
-
-  private void enforceLock(UserAccount user) {
-    if (user.getLockedUntil() != null && user.getLockedUntil().isAfter(Instant.now())) {
-      throw new LockedException("Account locked until " + user.getLockedUntil());
-    }
-  }
-
-  private void resetLock(UserAccount user) {
-    user.setFailedLoginAttempts(0);
-    user.setLockedUntil(null);
-    userAccountRepository.save(user);
-  }
-
-  private void registerFailure(UserAccount user) {
-    int attempts = user.getFailedLoginAttempts() + 1;
-    user.setFailedLoginAttempts(attempts);
-    boolean locked = attempts >= MAX_FAILED_ATTEMPTS;
-    if (attempts >= MAX_FAILED_ATTEMPTS) {
-      user.setLockedUntil(Instant.now().plus(LOCKOUT_DURATION));
-    }
-    userAccountRepository.save(user);
-    if (locked) {
-      revokeActiveSessions(user.getPublicId());
     }
   }
 

@@ -61,28 +61,79 @@ class AuthDisabledUserTokenIT extends AbstractIntegrationTest {
   }
 
   @Test
-  void disabledUser_cannotLoginAndReceivesAuthDisabledErrorCode() {
+  void disabledUnknownAndWrongPasswordLoginFailures_shareGenericInvalidCredentialsEnvelope() {
+    Map<String, Object> wrongPasswordRequest =
+        Map.of(
+            "email", USER_EMAIL,
+            "password", "wrong-password",
+            "companyCode", COMPANY_CODE);
+    ResponseEntity<Map> wrongPasswordResponse =
+        rest.postForEntity("/api/v1/auth/login", wrongPasswordRequest, Map.class);
+
+    Map<String, Object> unknownUserRequest =
+        Map.of(
+            "email", "unknown-disabled-matrix@bbp.com",
+            "password", USER_PASSWORD,
+            "companyCode", COMPANY_CODE);
+    ResponseEntity<Map> unknownUserResponse =
+        rest.postForEntity("/api/v1/auth/login", unknownUserRequest, Map.class);
+
     UserAccount user = scopedUser();
     user.setEnabled(false);
     userAccountRepository.save(user);
 
-    Map<String, Object> request =
+    Map<String, Object> disabledUserRequest =
         Map.of(
             "email", USER_EMAIL,
             "password", USER_PASSWORD,
             "companyCode", COMPANY_CODE);
 
-    ResponseEntity<Map> loginResponse =
-        rest.postForEntity("/api/v1/auth/login", request, Map.class);
+    ResponseEntity<Map> disabledUserResponse =
+        rest.postForEntity("/api/v1/auth/login", disabledUserRequest, Map.class);
 
-    assertThat(loginResponse.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+    assertGenericInvalidCredentials(wrongPasswordResponse);
+    assertGenericInvalidCredentials(unknownUserResponse);
+    assertGenericInvalidCredentials(disabledUserResponse);
+    assertThat(disabledUserResponse.getStatusCode())
+        .isEqualTo(wrongPasswordResponse.getStatusCode());
+    assertThat(disabledUserResponse.getStatusCode()).isEqualTo(unknownUserResponse.getStatusCode());
+    assertThat(sanitizedFailureShape(disabledUserResponse))
+        .isEqualTo(sanitizedFailureShape(wrongPasswordResponse))
+        .isEqualTo(sanitizedFailureShape(unknownUserResponse));
+  }
+
+  private void assertGenericInvalidCredentials(ResponseEntity<Map> loginResponse) {
+    assertThat(loginResponse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
     assertThat(loginResponse.getBody()).isNotNull();
+    assertThat(loginResponse.getBody()).containsEntry("success", false);
+    assertThat(loginResponse.getBody()).containsEntry("message", "Invalid credentials");
+    assertThat(loginResponse.getBody()).doesNotContainKeys("accessToken", "refreshToken");
     Object data = loginResponse.getBody().get("data");
     assertThat(data).isInstanceOf(Map.class);
     Map<?, ?> error = (Map<?, ?>) data;
-    assertThat(error.get("code")).isEqualTo("AUTH_006");
-    assertThat(error.get("message")).isEqualTo("Account is disabled");
-    assertThat(loginResponse.getBody().get("message")).isEqualTo("Account is disabled");
+    assertThat(error.get("code")).isEqualTo("VAL_001");
+    assertThat(error.get("message")).isEqualTo("Invalid credentials");
+    assertThat(error.get("reason")).isEqualTo("Invalid credentials");
+    assertThat(error.containsKey("traceId")).isTrue();
+    assertThat(error.containsKey("accessToken")).isFalse();
+    assertThat(error.containsKey("refreshToken")).isFalse();
+    assertThat(loginResponse.getBody().toString())
+        .doesNotContain("AUTH_006")
+        .doesNotContain("AUTH_ACCOUNT_DISABLED")
+        .doesNotContain("Account is disabled");
+  }
+
+  private Map<String, Object> sanitizedFailureShape(ResponseEntity<Map> loginResponse) {
+    Map<?, ?> body = loginResponse.getBody();
+    Map<?, ?> data = (Map<?, ?>) body.get("data");
+    return Map.of(
+        "status", loginResponse.getStatusCode().value(),
+        "success", body.get("success"),
+        "message", body.get("message"),
+        "code", data.get("code"),
+        "errorMessage", data.get("message"),
+        "reason", data.get("reason"),
+        "path", data.get("path"));
   }
 
   @Test

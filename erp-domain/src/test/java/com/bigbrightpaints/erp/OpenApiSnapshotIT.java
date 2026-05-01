@@ -61,9 +61,38 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
         "#/components/schemas/RefreshTokenRequest",
         "200",
         "#/components/schemas/AuthResponse");
-    assertOperationContract(root, "/api/v1/auth/logout", "post", null, "204", null);
+    assertOperationContract(
+        root, "/api/v1/auth/logout", "post", "#/components/schemas/LogoutRequest", "204", null);
     assertOperationContract(
         root, "/api/v1/auth/me", "get", null, "200", "#/components/schemas/ApiResponseMeResponse");
+    assertOperationContract(
+        root,
+        "/api/v1/auth/me/profile",
+        "patch",
+        "#/components/schemas/SelfProfileRequest",
+        "200",
+        "#/components/schemas/ApiResponseSelfProfileResponse");
+    assertOperationContract(
+        root,
+        "/api/v1/auth/me/contact",
+        "patch",
+        "#/components/schemas/SelfContactRequest",
+        "200",
+        "#/components/schemas/ApiResponseSelfContactResponse");
+    assertOperationContract(
+        root,
+        "/api/v1/auth/me/security",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseSelfSecuritySummaryResponse");
+    assertOperationContract(
+        root,
+        "/api/v1/auth/me/security-events",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponsePageResponseMapStringObject");
     assertOperationContract(
         root,
         "/api/v1/auth/password/change",
@@ -86,11 +115,39 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
         "#/components/schemas/ResetPasswordRequest",
         "200",
         "#/components/schemas/ApiResponseString");
+    assertOperationContract(
+        root,
+        "/api/v1/auth/mfa",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseMapStringObject");
+    assertOperationContract(
+        root,
+        "/api/v1/auth/mfa/recovery-codes/regenerate",
+        "post",
+        "#/components/schemas/MfaDisableRequest",
+        "200",
+        "#/components/schemas/ApiResponseMapStringObject");
+    assertOperationContract(
+        root,
+        "/api/v1/auth/sessions",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseListMapStringObject");
+    assertOperationContract(root, "/api/v1/auth/sessions/{sessionId}", "delete", null, "204", null);
+    assertOperationContract(root, "/api/v1/auth/sessions/current", "delete", null, "204", null);
+    assertOperationContract(root, "/api/v1/auth/sessions", "delete", null, "204", null);
     assertOperationMissing(root, "/api/v1/auth/profile", "get");
+    assertOperationMissing(root, "/api/v1/auth/profile", "post");
     assertOperationMissing(root, "/api/v1/auth/profile", "put");
-    assertThat(root.path("components").path("schemas").has("ProfileResponse")).isFalse();
-    assertThat(root.path("components").path("schemas").has("UpdateProfileRequest")).isFalse();
-    assertThat(root.path("components").path("schemas").has("ApiResponseProfileResponse")).isFalse();
+    assertOperationMissing(root, "/api/v1/auth/profile", "patch");
+    assertOperationMissing(root, "/api/v1/auth/profile", "delete");
+    assertThat(root.path("components").path("schemas").has("SelfProfileResponse")).isTrue();
+    assertThat(root.path("components").path("schemas").has("SelfProfileRequest")).isTrue();
+    assertThat(root.path("components").path("schemas").has("ApiResponseSelfProfileResponse"))
+        .isTrue();
 
     assertOperationContract(
         root,
@@ -365,10 +422,28 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
         "#/components/schemas/UpdateUserStatusRequest",
         "200",
         "#/components/schemas/ApiResponseUserDto");
-    assertOperationContract(root, "/api/v1/admin/users/{id}/suspend", "patch", null, "204", null);
-    assertOperationContract(root, "/api/v1/admin/users/{id}/unsuspend", "patch", null, "204", null);
+    assertOperationContract(root, "/api/v1/admin/users/{userId}/lock", "post", null, "204", null);
+    assertOperationContract(root, "/api/v1/admin/users/{userId}/unlock", "post", null, "204", null);
+    assertOperationMissing(root, "/api/v1/admin/users/{id}/suspend", "patch");
+    assertOperationMissing(root, "/api/v1/admin/users/{id}/unsuspend", "patch");
     assertOperationContract(
         root, "/api/v1/admin/users/{id}/mfa/disable", "patch", null, "204", null);
+    assertOperationContract(
+        root, "/api/v1/admin/users/{userId}/sessions", "delete", null, "204", null);
+    assertOperationContract(
+        root,
+        "/api/v1/admin/users/{userId}/security-events",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseListMapStringObject");
+    assertOperationContract(
+        root,
+        "/api/v1/admin/users/assignable-roles",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseListString");
     assertOperationContract(
         root,
         "/api/v1/admin/users/{id}",
@@ -383,7 +458,7 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
         "#/components/schemas/UpdateUserRequest",
         "200",
         "#/components/schemas/ApiResponseUserDto");
-    assertOperationContract(root, "/api/v1/admin/users/{id}", "delete", null, "204", null);
+    assertOperationMissing(root, "/api/v1/admin/users/{id}", "delete");
 
     assertOperationContract(
         root,

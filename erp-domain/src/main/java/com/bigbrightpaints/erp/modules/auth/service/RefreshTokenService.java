@@ -19,9 +19,13 @@ public class RefreshTokenService {
   private static final Logger logger = LoggerFactory.getLogger(RefreshTokenService.class);
 
   private final RefreshTokenRepository refreshTokenRepository;
+  private final IamCanonicalStorageService iamCanonicalStorageService;
 
-  public RefreshTokenService(RefreshTokenRepository refreshTokenRepository) {
+  public RefreshTokenService(
+      RefreshTokenRepository refreshTokenRepository,
+      IamCanonicalStorageService iamCanonicalStorageService) {
     this.refreshTokenRepository = refreshTokenRepository;
+    this.iamCanonicalStorageService = iamCanonicalStorageService;
   }
 
   @Transactional
@@ -32,7 +36,20 @@ public class RefreshTokenService {
   @Transactional
   public String issue(
       UUID userPublicId, String authScopeCode, Instant issuedAt, Instant expiresAt) {
+    return issueSession(userPublicId, authScopeCode, issuedAt, expiresAt, null, null)
+        .refreshToken();
+  }
+
+  @Transactional
+  public IssuedRefreshToken issueSession(
+      UUID userPublicId,
+      String authScopeCode,
+      Instant issuedAt,
+      Instant expiresAt,
+      SessionDeviceMetadata metadata,
+      String previousRefreshTokenDigest) {
     String token = UUID.randomUUID().toString();
+    UUID sessionPublicId = UUID.randomUUID();
     RefreshToken record =
         RefreshToken.digestOnly(
             AuthTokenDigests.refreshTokenDigest(token),
@@ -40,32 +57,92 @@ public class RefreshTokenService {
             authScopeCode,
             issuedAt,
             expiresAt);
-    refreshTokenRepository.save(record);
-    return token;
+    RefreshToken saved = refreshTokenRepository.save(record);
+    UUID savedSessionId =
+        iamCanonicalStorageService.recordSessionIssued(
+            saved, sessionPublicId, previousRefreshTokenDigest, metadata);
+    return new IssuedRefreshToken(token, savedSessionId);
   }
 
   @Transactional
   public Optional<TokenRecord> consume(String refreshToken) {
+    return consume(refreshToken, null);
+  }
+
+  @Transactional
+  public Optional<TokenRecord> consume(String refreshToken, String requiredAuthScopeCode) {
     if (refreshToken == null || refreshToken.isBlank()) {
       return Optional.empty();
     }
     String tokenDigest = AuthTokenDigests.refreshTokenDigest(refreshToken);
     Optional<RefreshToken> record = refreshTokenRepository.findForUpdateByTokenDigest(tokenDigest);
     if (record.isEmpty()) {
+      iamCanonicalStorageService
+          .markRefreshReplayCompromised(tokenDigest)
+          .forEach(refreshTokenRepository::deleteByTokenDigest);
       return Optional.empty();
     }
     RefreshToken stored = record.get();
+    if (requiredAuthScopeCode != null
+        && !requiredAuthScopeCode.equalsIgnoreCase(stored.getAuthScopeCode())) {
+      return Optional.empty();
+    }
     if (stored.isExpired(Instant.now())) {
+      refreshTokenRepository.delete(stored);
+      iamCanonicalStorageService.markSessionRevoked(tokenDigest, "expired");
+      return Optional.empty();
+    }
+    boolean canonicalAccount =
+        iamCanonicalStorageService.hasCanonicalAccount(stored.getUserPublicId());
+    if (canonicalAccount && !iamCanonicalStorageService.isRefreshSessionActive(stored)) {
+      iamCanonicalStorageService
+          .markRefreshReplayCompromised(tokenDigest)
+          .forEach(refreshTokenRepository::deleteByTokenDigest);
       refreshTokenRepository.delete(stored);
       return Optional.empty();
     }
-    refreshTokenRepository.delete(stored);
+    iamCanonicalStorageService.markSessionConsumed(tokenDigest);
+    if (!canonicalAccount) {
+      refreshTokenRepository.delete(stored);
+    }
     return Optional.of(
         new TokenRecord(
             stored.getUserPublicId(),
             stored.getAuthScopeCode(),
             stored.getIssuedAt(),
-            stored.getExpiresAt()));
+            stored.getExpiresAt(),
+            stored.getTokenDigest()));
+  }
+
+  @Transactional(readOnly = true)
+  public Optional<TokenRecord> inspect(String refreshToken, String requiredAuthScopeCode) {
+    if (refreshToken == null || refreshToken.isBlank()) {
+      return Optional.empty();
+    }
+    String tokenDigest = AuthTokenDigests.refreshTokenDigest(refreshToken);
+    Optional<RefreshToken> record = refreshTokenRepository.findByTokenDigest(tokenDigest);
+    if (record.isEmpty()) {
+      return Optional.empty();
+    }
+    RefreshToken stored = record.get();
+    if (requiredAuthScopeCode != null
+        && !requiredAuthScopeCode.equalsIgnoreCase(stored.getAuthScopeCode())) {
+      return Optional.empty();
+    }
+    if (stored.isExpired(Instant.now())) {
+      return Optional.empty();
+    }
+    if (iamCanonicalStorageService.hasCanonicalAccount(stored.getUserPublicId())
+        && !iamCanonicalStorageService.isRefreshSessionActive(stored)) {
+      return Optional.empty();
+    }
+    return Optional.of(
+        new TokenRecord(
+            stored.getUserPublicId(),
+            stored.getAuthScopeCode(),
+            stored.getIssuedAt(),
+            stored.getExpiresAt(),
+            stored.getTokenDigest()));
   }
 
   @Transactional
@@ -74,6 +151,7 @@ public class RefreshTokenService {
       return;
     }
     String tokenDigest = AuthTokenDigests.refreshTokenDigest(refreshToken);
+    iamCanonicalStorageService.markSessionRevoked(tokenDigest, "revoked");
     refreshTokenRepository.deleteByTokenDigest(tokenDigest);
   }
 
@@ -82,6 +160,7 @@ public class RefreshTokenService {
     if (userPublicId == null) {
       return;
     }
+    iamCanonicalStorageService.markAllSessionsRevoked(userPublicId, "revoked_all");
     refreshTokenRepository.deleteByUserPublicId(userPublicId);
   }
 
@@ -95,5 +174,11 @@ public class RefreshTokenService {
   }
 
   public record TokenRecord(
-      UUID userPublicId, String authScopeCode, Instant issuedAt, Instant expiresAt) {}
+      UUID userPublicId,
+      String authScopeCode,
+      Instant issuedAt,
+      Instant expiresAt,
+      String refreshTokenDigest) {}
+
+  public record IssuedRefreshToken(String refreshToken, UUID sessionPublicId) {}
 }

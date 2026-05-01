@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
@@ -18,6 +19,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
@@ -35,7 +37,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriod;
-import com.bigbrightpaints.erp.modules.accounting.service.AccountingPeriodService;
+import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.auth.service.TenantAdminProvisioningService;
@@ -52,7 +54,7 @@ class TenantOnboardingServiceTest {
   @Mock private CompanyRepository companyRepository;
   @Mock private UserAccountRepository userAccountRepository;
   @Mock private AccountRepository accountRepository;
-  @Mock private AccountingPeriodService accountingPeriodService;
+  @Mock private AccountingPeriodRepository accountingPeriodRepository;
   @Mock private CoATemplateService coATemplateService;
   @Mock private SystemSettingsRepository systemSettingsRepository;
   @Mock private TenantAdminProvisioningService tenantAdminProvisioningService;
@@ -112,7 +114,7 @@ class TenantOnboardingServiceTest {
             companyRepository,
             userAccountRepository,
             accountRepository,
-            accountingPeriodService,
+            accountingPeriodRepository,
             coATemplateService,
             systemSettingsRepository,
             tenantAdminProvisioningService,
@@ -184,9 +186,7 @@ class TenantOnboardingServiceTest {
               }
               return account;
             });
-    AccountingPeriod period = new AccountingPeriod();
-    ReflectionTestUtils.setField(period, "id", 77L);
-    when(accountingPeriodService.ensurePeriod(any(Company.class), any())).thenReturn(period);
+    stubInitialAccountingPeriod(77L);
     when(systemSettingsRepository.existsById(anyString())).thenReturn(false);
     UserAccount provisionedAdmin = new UserAccount("admin@mock.com", "MOCK", "hash", "Mock Admin");
     ReflectionTestUtils.setField(provisionedAdmin, "id", 501L);
@@ -278,9 +278,7 @@ class TenantOnboardingServiceTest {
               }
               return account;
             });
-    AccountingPeriod period = new AccountingPeriod();
-    ReflectionTestUtils.setField(period, "id", 88L);
-    when(accountingPeriodService.ensurePeriod(any(Company.class), any())).thenReturn(period);
+    stubInitialAccountingPeriod(88L);
     when(systemSettingsRepository.existsById(anyString())).thenReturn(false);
     UserAccount provisionedAdmin =
         new UserAccount("admin@defaulted.com", "DEFAULTED", "hash", "Defaulted Admin");
@@ -322,7 +320,7 @@ class TenantOnboardingServiceTest {
             companyRepository,
             userAccountRepository,
             accountRepository,
-            accountingPeriodService,
+            accountingPeriodRepository,
             coATemplateService,
             systemSettingsRepository,
             tenantAdminProvisioningService,
@@ -417,9 +415,7 @@ class TenantOnboardingServiceTest {
               createdAccounts.add(account);
               return account;
             });
-    AccountingPeriod period = new AccountingPeriod();
-    ReflectionTestUtils.setField(period, "id", 77L);
-    when(accountingPeriodService.ensurePeriod(any(Company.class), any())).thenReturn(period);
+    stubInitialAccountingPeriod(77L);
     when(systemSettingsRepository.existsById(anyString())).thenReturn(false);
     UserAccount provisionedAdmin = new UserAccount("admin@mock.com", "MOCK", "hash", "Mock Admin");
     ReflectionTestUtils.setField(provisionedAdmin, "id", 502L);
@@ -539,9 +535,7 @@ class TenantOnboardingServiceTest {
               }
               return account;
             });
-    AccountingPeriod period = new AccountingPeriod();
-    ReflectionTestUtils.setField(period, "id", 78L);
-    when(accountingPeriodService.ensurePeriod(any(Company.class), any())).thenReturn(period);
+    stubInitialAccountingPeriod(78L);
     when(systemSettingsRepository.existsById(anyString())).thenReturn(false);
     UserAccount provisionedAdmin = new UserAccount("admin@zero.com", "ZERO", "hash", "Zero Admin");
     ReflectionTestUtils.setField(provisionedAdmin, "id", 503L);
@@ -708,11 +702,20 @@ class TenantOnboardingServiceTest {
         companyRepository,
         userAccountRepository,
         accountRepository,
-        accountingPeriodService,
+        accountingPeriodRepository,
         coATemplateService,
         systemSettingsRepository,
         tenantAdminProvisioningService,
         authScopeService,
         tenantRuntimeEnforcementService);
+  }
+
+  private void stubInitialAccountingPeriod(Long id) {
+    AccountingPeriod period = new AccountingPeriod();
+    ReflectionTestUtils.setField(period, "id", id);
+    when(accountingPeriodRepository.findByCompanyAndYearAndMonth(
+            any(Company.class), anyInt(), anyInt()))
+        .thenReturn(Optional.empty());
+    when(accountingPeriodRepository.save(any(AccountingPeriod.class))).thenReturn(period);
   }
 }

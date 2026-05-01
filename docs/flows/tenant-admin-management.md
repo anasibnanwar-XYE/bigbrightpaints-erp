@@ -58,9 +58,10 @@ All control-plane behavior stays under `/api/v1/superadmin/**`.
 | --- | --- |
 | Dashboard | `GET /api/v1/admin/dashboard` |
 | User list/create | `GET, POST /api/v1/admin/users` |
-| User detail/update/delete | `GET, PUT, DELETE /api/v1/admin/users/{id}` |
+| User detail/update | `GET, PUT /api/v1/admin/users/{id}` |
 | User status | `PUT /api/v1/admin/users/{userId}/status` |
-| User suspend/unsuspend | `PATCH /api/v1/admin/users/{id}/suspend`, `PATCH /api/v1/admin/users/{id}/unsuspend` |
+| User lock/unlock | `POST /api/v1/admin/users/{userId}/lock`, `POST /api/v1/admin/users/{userId}/unlock` |
+| User sessions revoke | `DELETE /api/v1/admin/users/{userId}/sessions` |
 | User MFA disable | `PATCH /api/v1/admin/users/{id}/mfa/disable` |
 | User reset link | `POST /api/v1/admin/users/{userId}/force-reset-password` |
 | Approval inbox | `GET /api/v1/admin/approvals` |
@@ -126,7 +127,7 @@ GET /api/v1/admin/dashboard
 ```text
 Create -> validate fixed role set -> provision scoped account -> optional dealer provisioning for ROLE_DEALER
 Update -> validate fixed role set -> apply display/role changes -> revoke tokens when role set changes
-Disable/Suspend/Delete/MFA disable -> scoped target checks -> revoke sessions/tokens where required -> audit
+Status disable, lock/unlock, session revoke, and MFA disable -> scoped target checks -> revoke sessions/tokens where required -> audit
 Force reset link -> scoped target checks -> password reset token + mail dispatch -> audit
 ```
 

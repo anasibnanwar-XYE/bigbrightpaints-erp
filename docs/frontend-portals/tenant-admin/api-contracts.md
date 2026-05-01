@@ -1,6 +1,6 @@
 # API Contracts
 
-Last reviewed: 2026-04-15
+Last reviewed: 2026-04-28
 
 ## Shared transport rules
 
@@ -14,14 +14,36 @@ Last reviewed: 2026-04-15
 Tenant-admin settings/self flows build on auth-owned self-service APIs:
 
 - `GET /api/v1/auth/me`
+- `PATCH /api/v1/auth/me/profile`
+- `PATCH /api/v1/auth/me/contact`
+- `GET /api/v1/auth/me/security`
+- `GET /api/v1/auth/me/security-events?page=0&size=50`
 - `POST /api/v1/auth/password/change`
 - `POST /api/v1/auth/password/forgot`
 - `POST /api/v1/auth/password/reset`
+- `GET /api/v1/auth/mfa`
 - `POST /api/v1/auth/mfa/setup`
 - `POST /api/v1/auth/mfa/activate`
 - `POST /api/v1/auth/mfa/disable`
+- `POST /api/v1/auth/mfa/recovery-codes/regenerate`
+- `GET /api/v1/auth/sessions`
+- `DELETE /api/v1/auth/sessions/{sessionId}`
+- `DELETE /api/v1/auth/sessions/current`
+- `DELETE /api/v1/auth/sessions`
 
 If `mustChangePassword=true` in `/auth/me`, frontend must route to password change before normal tenant-admin routes.
+
+Self-service boundaries:
+
+- Profile/contact routes are self-only and field-allowlisted; do not use them for email, tenant,
+  role, status, or admin target mutations.
+- Security summary/history are stable-subject-bound and privacy-safe; do not expect actor IDs,
+  target user IDs, session IDs, tokens, token digests, MFA secrets, recovery codes, or password
+  hashes.
+- Session routes are current-principal-only. Tenant-admin user session revocation for target users
+  remains `DELETE /api/v1/admin/users/{userId}/sessions`.
+- Retired aliases such as `/api/v1/auth/profile` and
+  `/api/v1/auth/password/forgot/superadmin` are absent/non-mutating; do not call them.
 
 ## Dashboard
 
@@ -105,16 +127,16 @@ Returns updated `UserDto`.
 
 ### Mutations returning `204 No Content`
 
-- `PATCH /api/v1/admin/users/{id}/suspend`
-- `PATCH /api/v1/admin/users/{id}/unsuspend`
+- `POST /api/v1/admin/users/{userId}/lock`
+- `POST /api/v1/admin/users/{userId}/unlock`
 - `PATCH /api/v1/admin/users/{id}/mfa/disable`
-- `DELETE /api/v1/admin/users/{id}`
+- `DELETE /api/v1/admin/users/{userId}/sessions`
 
 Frontend rule: re-fetch list/detail after these actions.
 
 Mutation scope boundary:
 
-- Tenant-admin user-management mutations (`status`, `suspend`, `unsuspend`, `mfa disable`, `delete`, `force-reset-password`) do not operate on `ROLE_ADMIN` or `ROLE_SUPER_ADMIN` targets.
+- Tenant-admin user-management mutations (`status`, `lock`, `unlock`, `mfa disable`, `sessions revoke`, `force-reset-password`) do not operate on `ROLE_ADMIN` or `ROLE_SUPER_ADMIN` targets.
 
 ### `POST /api/v1/admin/users/{userId}/force-reset-password`
 

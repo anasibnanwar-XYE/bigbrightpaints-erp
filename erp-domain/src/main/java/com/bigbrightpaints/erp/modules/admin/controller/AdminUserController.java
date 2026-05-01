@@ -1,6 +1,7 @@
 package com.bigbrightpaints.erp.modules.admin.controller;
 
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -68,17 +69,17 @@ public class AdminUserController {
             adminUserService.updateUserStatus(userId, request.enabled().booleanValue())));
   }
 
-  @PatchMapping("/{id}/suspend")
+  @PostMapping("/{userId}/lock")
   @ResponseStatus(HttpStatus.NO_CONTENT)
-  public ResponseEntity<Void> suspend(@PathVariable Long id) {
-    adminUserService.suspend(id);
+  public ResponseEntity<Void> lock(@PathVariable Long userId) {
+    adminUserService.lockUser(userId);
     return ResponseEntity.noContent().build();
   }
 
-  @PatchMapping("/{id}/unsuspend")
+  @PostMapping("/{userId}/unlock")
   @ResponseStatus(HttpStatus.NO_CONTENT)
-  public ResponseEntity<Void> unsuspend(@PathVariable Long id) {
-    adminUserService.unsuspend(id);
+  public ResponseEntity<Void> unlock(@PathVariable Long userId) {
+    adminUserService.unlockUser(userId);
     return ResponseEntity.noContent().build();
   }
 
@@ -89,10 +90,22 @@ public class AdminUserController {
     return ResponseEntity.noContent().build();
   }
 
-  @DeleteMapping("/{id}")
+  @DeleteMapping("/{userId}/sessions")
   @ResponseStatus(HttpStatus.NO_CONTENT)
-  public ResponseEntity<Void> delete(@PathVariable Long id) {
-    adminUserService.deleteUser(id);
+  public ResponseEntity<Void> revokeSessions(@PathVariable Long userId) {
+    adminUserService.revokeUserSessions(userId);
     return ResponseEntity.noContent().build();
+  }
+
+  @GetMapping("/{userId}/security-events")
+  public ResponseEntity<ApiResponse<List<Map<String, Object>>>> securityEvents(
+      @PathVariable Long userId, @RequestParam(required = false) String type) {
+    return ResponseEntity.ok(
+        ApiResponse.success(adminUserService.listSecurityEvents(userId, type)));
+  }
+
+  @GetMapping("/assignable-roles")
+  public ResponseEntity<ApiResponse<List<String>>> assignableRoles() {
+    return ResponseEntity.ok(ApiResponse.success(adminUserService.assignableRoles()));
   }
 }

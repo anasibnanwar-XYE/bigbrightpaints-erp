@@ -2,6 +2,7 @@ package com.bigbrightpaints.erp.core.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
@@ -22,7 +23,8 @@ import com.bigbrightpaints.erp.core.fixture.E2eFixtureCatalog;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
-import com.bigbrightpaints.erp.modules.accounting.service.AccountingPeriodService;
+import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriod;
+import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodRepository;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
@@ -40,7 +42,7 @@ import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
 @ExtendWith(MockitoExtension.class)
 class CriticalFixtureServiceTest {
 
-  @Mock private AccountingPeriodService accountingPeriodService;
+  @Mock private AccountingPeriodRepository accountingPeriodRepository;
   @Mock private AccountRepository accountRepository;
   @Mock private DealerRepository dealerRepository;
   @Mock private SupplierRepository supplierRepository;
@@ -56,7 +58,7 @@ class CriticalFixtureServiceTest {
   void setUp() {
     fixtureService =
         new CriticalFixtureService(
-            accountingPeriodService,
+            accountingPeriodRepository,
             accountRepository,
             dealerRepository,
             supplierRepository,
@@ -66,6 +68,14 @@ class CriticalFixtureServiceTest {
             finishedGoodBatchRepository,
             companyRepository);
 
+    org.mockito.Mockito.lenient()
+        .when(
+            accountingPeriodRepository.findByCompanyAndYearAndMonth(
+                any(Company.class), anyInt(), anyInt()))
+        .thenReturn(Optional.empty());
+    org.mockito.Mockito.lenient()
+        .when(accountingPeriodRepository.save(any(AccountingPeriod.class)))
+        .thenAnswer(invocation -> invocation.getArgument(0, AccountingPeriod.class));
     org.mockito.Mockito.lenient()
         .when(companyRepository.save(any(Company.class)))
         .thenAnswer(invocation -> invocation.getArgument(0, Company.class));

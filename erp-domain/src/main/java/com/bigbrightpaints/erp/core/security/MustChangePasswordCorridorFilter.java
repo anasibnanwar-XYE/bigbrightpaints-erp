@@ -31,7 +31,8 @@ public class MustChangePasswordCorridorFilter extends OncePerRequestFilter {
   private static final Set<String> READ_ONLY_CORRIDOR_PATHS = Set.of("/api/v1/auth/me");
   private static final Set<String> MUTATING_CORRIDOR_PATHS =
       Set.of("/api/v1/auth/password/change", "/api/v1/auth/logout", "/api/v1/auth/refresh-token");
-  private static final Set<String> RETIRED_AUTH_SURFACES = Set.of("/api/v1/auth/profile");
+  private static final Set<String> RETIRED_AUTH_SURFACES =
+      Set.of("/api/v1/auth/profile", "/api/v1/auth/password/forgot/superadmin");
 
   private final ObjectMapper objectMapper;
 
@@ -85,7 +86,8 @@ public class MustChangePasswordCorridorFilter extends OncePerRequestFilter {
     if (!StringUtils.hasText(normalizedPath)) {
       return false;
     }
-    if (RETIRED_AUTH_SURFACES.contains(normalizedPath) || isRetiredAdminHostPath(normalizedPath)) {
+    if (RETIRED_AUTH_SURFACES.contains(normalizedPath)
+        || isRetiredAdminHostPath(request, normalizedPath)) {
       return true;
     }
 
@@ -99,8 +101,9 @@ public class MustChangePasswordCorridorFilter extends OncePerRequestFilter {
     return false;
   }
 
-  private boolean isRetiredAdminHostPath(String normalizedPath) {
-    return RetiredTenantAdminHostPaths.matchesNormalizedPath(normalizedPath);
+  private boolean isRetiredAdminHostPath(HttpServletRequest request, String normalizedPath) {
+    return RetiredTenantAdminHostPaths.matchesNormalizedPath(
+        normalizedPath, request == null ? null : request.getMethod());
   }
 
   private String resolveApplicationPath(HttpServletRequest request) {

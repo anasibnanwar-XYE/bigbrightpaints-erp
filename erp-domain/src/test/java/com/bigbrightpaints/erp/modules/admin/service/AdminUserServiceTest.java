@@ -8,7 +8,6 @@ import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -39,13 +38,13 @@ import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.notification.EmailService;
 import com.bigbrightpaints.erp.core.security.AuthScopeService;
 import com.bigbrightpaints.erp.core.security.TokenBlacklistService;
-import com.bigbrightpaints.erp.modules.accounting.domain.Account;
-import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.admin.dto.CreateUserRequest;
 import com.bigbrightpaints.erp.modules.admin.dto.UpdateUserRequest;
 import com.bigbrightpaints.erp.modules.admin.dto.UserDto;
+import com.bigbrightpaints.erp.modules.auth.domain.MfaRecoveryCodeRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
+import com.bigbrightpaints.erp.modules.auth.service.IamCanonicalStorageService;
 import com.bigbrightpaints.erp.modules.auth.service.PasswordResetService;
 import com.bigbrightpaints.erp.modules.auth.service.RefreshTokenService;
 import com.bigbrightpaints.erp.modules.auth.service.ScopedAccountBootstrapService;
@@ -68,11 +67,12 @@ class AdminUserServiceTest {
   @Mock private TokenBlacklistService tokenBlacklistService;
   @Mock private RefreshTokenService refreshTokenService;
   @Mock private PasswordResetService passwordResetService;
+  @Mock private MfaRecoveryCodeRepository mfaRecoveryCodeRepository;
   @Mock private AuditService auditService;
   @Mock private AuditLogRepository auditLogRepository;
   @Mock private DealerRepository dealerRepository;
-  @Mock private AccountRepository accountRepository;
   @Mock private TenantRuntimePolicyService tenantRuntimePolicyService;
+  @Mock private IamCanonicalStorageService iamCanonicalStorageService;
 
   private AdminUserService service;
   private Company company;
@@ -82,7 +82,11 @@ class AdminUserServiceTest {
   void setUp() {
     scopedAccountBootstrapService =
         new ScopedAccountBootstrapService(
-            userRepository, passwordEncoder, emailService, authScopeService);
+            userRepository,
+            passwordEncoder,
+            emailService,
+            authScopeService,
+            iamCanonicalStorageService);
     service =
         new AdminUserService(
             userRepository,
@@ -93,11 +97,12 @@ class AdminUserServiceTest {
             refreshTokenService,
             passwordResetService,
             scopedAccountBootstrapService,
+            mfaRecoveryCodeRepository,
             auditService,
             auditLogRepository,
             dealerRepository,
-            accountRepository,
-            tenantRuntimePolicyService);
+            tenantRuntimePolicyService,
+            iamCanonicalStorageService);
     company = new Company();
     ReflectionTestUtils.setField(company, "id", 1L);
     company.setCode("TEST");
@@ -137,13 +142,10 @@ class AdminUserServiceTest {
     lenient()
         .when(dealerRepository.save(any(Dealer.class)))
         .thenAnswer(invocation -> invocation.getArgument(0));
-    lenient()
-        .when(accountRepository.save(any(Account.class)))
-        .thenAnswer(invocation -> invocation.getArgument(0));
   }
 
   @Test
-  void createUser_relinksExistingDealerByEmailAndReactivatesReceivableAccount() {
+  void createUser_linksExistingDealerByEmailWithoutMutatingCommercialFields() {
     Dealer existingDealer = new Dealer();
     existingDealer.setCompany(company);
     ReflectionTestUtils.setField(existingDealer, "id", 44L);
@@ -151,12 +153,7 @@ class AdminUserServiceTest {
     existingDealer.setName("Legacy Dealer");
     existingDealer.setStatus("INACTIVE");
     existingDealer.setEmail("dealer@example.com");
-
-    Account receivable = new Account();
-    receivable.setCompany(company);
-    receivable.setCode("AR-LEGACY44");
-    receivable.setActive(false);
-    existingDealer.setReceivableAccount(receivable);
+    existingDealer.setCreditLimit(new java.math.BigDecimal("125.00"));
 
     when(dealerRepository.findByCompanyAndPortalUserEmail(company, "dealer@example.com"))
         .thenReturn(Optional.empty());
@@ -170,11 +167,12 @@ class AdminUserServiceTest {
     verify(dealerRepository).save(dealerCaptor.capture());
     Dealer savedDealer = dealerCaptor.getValue();
     assertThat(savedDealer.getId()).isEqualTo(44L);
-    assertThat(savedDealer.getStatus()).isEqualTo("ACTIVE");
+    assertThat(savedDealer.getStatus()).isEqualTo("INACTIVE");
+    assertThat(savedDealer.getCode()).isEqualTo("LEGACY44");
+    assertThat(savedDealer.getName()).isEqualTo("Legacy Dealer");
+    assertThat(savedDealer.getCreditLimit()).isEqualByComparingTo("125.00");
     assertThat(savedDealer.getPortalUser()).isNotNull();
     assertThat(savedDealer.getPortalUser().getEmail()).isEqualTo("dealer@example.com");
-    assertThat(receivable.isActive()).isTrue();
-    verify(accountRepository).save(receivable);
   }
 
   @Test
@@ -186,12 +184,6 @@ class AdminUserServiceTest {
     existingDealer.setName("Blocked Dealer");
     existingDealer.setStatus("BLOCKED");
     existingDealer.setEmail("blocked-dealer@example.com");
-
-    Account receivable = new Account();
-    receivable.setCompany(company);
-    receivable.setCode("AR-BLOCKED45");
-    receivable.setActive(false);
-    existingDealer.setReceivableAccount(receivable);
 
     when(dealerRepository.findByCompanyAndPortalUserEmail(company, "blocked-dealer@example.com"))
         .thenReturn(Optional.empty());
@@ -209,8 +201,6 @@ class AdminUserServiceTest {
     assertThat(savedDealer.getStatus()).isEqualTo("BLOCKED");
     assertThat(savedDealer.getPortalUser()).isNotNull();
     assertThat(savedDealer.getPortalUser().getEmail()).isEqualTo("blocked-dealer@example.com");
-    assertThat(receivable.isActive()).isTrue();
-    verify(accountRepository).save(receivable);
   }
 
   @Test
@@ -263,8 +253,8 @@ class AdminUserServiceTest {
                           "platform-owner@example.com",
                           "Platform Owner",
                           List.of("ROLE_SUPER_ADMIN"))))
-          .isInstanceOf(ApplicationException.class)
-          .hasMessageContaining("Unsupported role for tenant-admin user management")
+          .isInstanceOf(AccessDeniedException.class)
+          .hasMessageContaining("SUPER_ADMIN authority required")
           .hasMessageContaining("ROLE_SUPER_ADMIN");
     } finally {
       SecurityContextHolder.clearContext();
@@ -336,12 +326,18 @@ class AdminUserServiceTest {
     existingDealer.setName("Active Dealer");
     existingDealer.setEmail("dealer-active@example.com");
 
-    Account receivable = new Account();
-    receivable.setCompany(company);
-    receivable.setCode("AR-ACTIVE55");
-    receivable.setActive(true);
-    existingDealer.setReceivableAccount(receivable);
+    UserAccount existingScopedDealer =
+        new UserAccount("dealer-active@example.com", "TEST", "hash", "Dealer Active");
+    ReflectionTestUtils.setField(existingScopedDealer, "id", 55L);
+    existingScopedDealer.setCompany(company);
+    Role dealerRole = new Role();
+    dealerRole.setName("ROLE_DEALER");
+    existingScopedDealer.addRole(dealerRole);
+    existingDealer.setPortalUser(existingScopedDealer);
 
+    when(userRepository.findByEmailIgnoreCaseAndAuthScopeCodeIgnoreCase(
+            "dealer-active@example.com", "TEST"))
+        .thenReturn(Optional.of(existingScopedDealer));
     when(dealerRepository.findByCompanyAndPortalUserEmail(company, "dealer-active@example.com"))
         .thenReturn(Optional.of(existingDealer));
 
@@ -349,8 +345,7 @@ class AdminUserServiceTest {
         new CreateUserRequest(
             "dealer-active@example.com", "Dealer Active", List.of("ROLE_DEALER")));
 
-    verify(dealerRepository, times(1)).save(any(Dealer.class));
-    verify(accountRepository, never()).save(any(Account.class));
+    verify(dealerRepository, never()).save(any(Dealer.class));
   }
 
   @Test
@@ -371,11 +366,6 @@ class AdminUserServiceTest {
     existingDealer.setStatus("ACTIVE");
     existingDealer.setEmail("sales-first@example.com");
     existingDealer.setPortalUser(existingScopedDealer);
-    Account receivable = new Account();
-    receivable.setCompany(company);
-    receivable.setCode("AR-ACTIVE57");
-    receivable.setActive(true);
-    existingDealer.setReceivableAccount(receivable);
 
     when(userRepository.findByEmailIgnoreCaseAndAuthScopeCodeIgnoreCase(
             "sales-first@example.com", "TEST"))
@@ -396,8 +386,7 @@ class AdminUserServiceTest {
     verify(userRepository, never()).save(any(UserAccount.class));
     verify(emailService, never())
         .sendUserCredentialsEmailRequired(anyString(), anyString(), anyString(), anyString());
-    verify(dealerRepository, times(1)).save(any(Dealer.class));
-    verify(accountRepository, never()).save(any(Account.class));
+    verify(dealerRepository, never()).save(any(Dealer.class));
   }
 
   @Test
@@ -431,20 +420,17 @@ class AdminUserServiceTest {
   }
 
   @Test
-  void createUser_normalizedDealerRoleStillTriggersDealerProvisioning() {
+  void createUser_normalizedDealerRoleDoesNotCreateDealerCommercialRecords() {
     when(dealerRepository.findByCompanyAndPortalUserEmail(company, "dealer-normalized@example.com"))
         .thenReturn(Optional.empty());
     when(dealerRepository.findByCompanyAndEmailIgnoreCase(company, "dealer-normalized@example.com"))
-        .thenReturn(Optional.empty());
-    when(dealerRepository.findByCompanyAndCodeIgnoreCase(any(Company.class), anyString()))
         .thenReturn(Optional.empty());
 
     service.createUser(
         new CreateUserRequest(
             "dealer-normalized@example.com", "Dealer Normalized", List.of(" dealer ")));
 
-    verify(dealerRepository, times(2)).save(any(Dealer.class));
-    verify(accountRepository).save(any(Account.class));
+    verify(dealerRepository, never()).save(any(Dealer.class));
   }
 
   @Test
@@ -603,9 +589,18 @@ class AdminUserServiceTest {
         .isInstanceOf(AccessDeniedException.class)
         .hasMessageContaining("Target user is out of scope for this operation");
 
+    ArgumentCaptor<Map<String, String>> metadataCaptor = ArgumentCaptor.forClass(Map.class);
     verify(auditService)
         .logAuthFailure(
-            eq(AuditEvent.ACCESS_DENIED), eq("UNKNOWN_AUTH_ACTOR"), eq("TEST"), any(Map.class));
+            eq(AuditEvent.ACCESS_DENIED),
+            eq("UNKNOWN_AUTH_ACTOR"),
+            eq("TEST"),
+            metadataCaptor.capture());
+    assertThat(metadataCaptor.getValue())
+        .containsEntry("attemptedTargetId", "305")
+        .containsEntry("targetResolution", "MISSING_OR_OUT_OF_SCOPE")
+        .containsEntry("tenantScope", "TEST")
+        .doesNotContainKeys("targetUserId", "targetUserPublicId", "targetCompanyCode");
   }
 
   @Test
@@ -624,9 +619,19 @@ class AdminUserServiceTest {
         .isInstanceOf(AccessDeniedException.class)
         .hasMessageContaining("Target user is out of scope for this operation");
 
+    ArgumentCaptor<Map<String, String>> metadataCaptor = ArgumentCaptor.forClass(Map.class);
     verify(auditService)
         .logAuthFailure(
-            eq(AuditEvent.ACCESS_DENIED), eq("UNKNOWN_AUTH_ACTOR"), eq("TEST"), any(Map.class));
+            eq(AuditEvent.ACCESS_DENIED),
+            eq("UNKNOWN_AUTH_ACTOR"),
+            eq("TEST"),
+            metadataCaptor.capture());
+    assertThat(metadataCaptor.getValue())
+        .containsEntry("targetUserId", "399")
+        .containsEntry("targetUserPublicId", tenantSuperAdmin.getPublicId().toString())
+        .containsEntry("targetCompanyCode", "TEST")
+        .containsEntry("targetResolution", "PROTECTED_TARGET")
+        .doesNotContainKey("attemptedTargetId");
   }
 
   @Test
@@ -637,9 +642,17 @@ class AdminUserServiceTest {
         .isInstanceOf(AccessDeniedException.class)
         .hasMessageContaining("Target user is out of scope for this operation");
 
+    ArgumentCaptor<Map<String, String>> metadataCaptor = ArgumentCaptor.forClass(Map.class);
     verify(auditService)
         .logAuthFailure(
-            eq(AuditEvent.ACCESS_DENIED), eq("UNKNOWN_AUTH_ACTOR"), eq("TEST"), any(Map.class));
+            eq(AuditEvent.ACCESS_DENIED),
+            eq("UNKNOWN_AUTH_ACTOR"),
+            eq("TEST"),
+            metadataCaptor.capture());
+    assertThat(metadataCaptor.getValue())
+        .containsEntry("attemptedTargetId", "999")
+        .containsEntry("targetResolution", "MISSING_OR_OUT_OF_SCOPE")
+        .doesNotContainKeys("targetUserId", "targetUserPublicId", "targetCompanyCode");
   }
 
   @Test
@@ -713,7 +726,7 @@ class AdminUserServiceTest {
 
     service.forceResetPassword(304L);
 
-    verify(passwordResetService).requestResetByAdmin(user);
+    verify(passwordResetService).requestForceResetByAdmin(user);
     verify(auditService)
         .logAuthSuccess(
             eq(AuditEvent.PASSWORD_RESET_REQUESTED),
@@ -742,14 +755,21 @@ class AdminUserServiceTest {
     verify(userRepository, never()).lockById(311L);
     verify(userRepository, never()).lockByIdAndCompanyId(311L, 1L);
     verify(passwordResetService, never()).requestResetByAdmin(any(UserAccount.class));
+    ArgumentCaptor<Map<String, String>> metadataCaptor = ArgumentCaptor.forClass(Map.class);
     verify(auditService)
         .logAuthFailure(
-            eq(AuditEvent.ACCESS_DENIED), eq("UNKNOWN_AUTH_ACTOR"), eq("TEST"), any(Map.class));
+            eq(AuditEvent.ACCESS_DENIED),
+            eq("UNKNOWN_AUTH_ACTOR"),
+            eq("TEST"),
+            metadataCaptor.capture());
+    assertThat(metadataCaptor.getValue())
+        .containsEntry("attemptedTargetId", "311")
+        .containsEntry("targetResolution", "MISSING_OR_OUT_OF_SCOPE")
+        .doesNotContainKeys("targetUserId", "targetUserPublicId", "targetCompanyCode");
   }
 
   @Test
-  void
-      forceResetPassword_sameTenantProtectedRole_forTenantAdmin_masksTargetAsMissingWithoutLocking() {
+  void forceResetPassword_sameTenantProtectedRole_forTenantAdmin_returnsProtectedTargetDenial() {
     UserAccount protectedUser =
         new UserAccount("tenant-admin-protected@example.com", "hash", "Tenant Admin");
     ReflectionTestUtils.setField(protectedUser, "id", 313L);
@@ -761,16 +781,25 @@ class AdminUserServiceTest {
     when(userRepository.findById(313L)).thenReturn(Optional.of(protectedUser));
 
     assertThatThrownBy(() -> service.forceResetPassword(313L))
-        .isInstanceOf(ApplicationException.class)
-        .hasMessageContaining("User not found");
+        .isInstanceOf(AccessDeniedException.class)
+        .hasMessageContaining("Target user is out of scope for this operation");
 
     verify(userRepository).findById(313L);
     verify(userRepository, never()).lockById(313L);
     verify(userRepository, never()).lockByIdAndCompanyId(313L, 1L);
     verify(passwordResetService, never()).requestResetByAdmin(any(UserAccount.class));
+    ArgumentCaptor<Map<String, String>> metadataCaptor = ArgumentCaptor.forClass(Map.class);
     verify(auditService)
         .logAuthFailure(
-            eq(AuditEvent.ACCESS_DENIED), eq("UNKNOWN_AUTH_ACTOR"), eq("TEST"), any(Map.class));
+            eq(AuditEvent.ACCESS_DENIED),
+            eq("UNKNOWN_AUTH_ACTOR"),
+            eq("TEST"),
+            metadataCaptor.capture());
+    assertThat(metadataCaptor.getValue())
+        .containsEntry("targetUserId", "313")
+        .containsEntry("targetUserPublicId", protectedUser.getPublicId().toString())
+        .containsEntry("targetCompanyCode", "TEST")
+        .containsEntry("targetResolution", "PROTECTED_TARGET");
   }
 
   @Test
@@ -799,7 +828,7 @@ class AdminUserServiceTest {
   }
 
   @Test
-  void updateUser_allowsSuperAdminToTargetForeignTenantUser() {
+  void updateUser_rejectsSuperAdminDirectServiceCrossTenantTargetResolution() {
     Company foreignCompany = new Company();
     ReflectionTestUtils.setField(foreignCompany, "id", 21L);
     foreignCompany.setCode("FOREIGN");
@@ -818,19 +847,18 @@ class AdminUserServiceTest {
                 "n/a",
                 List.of(new SimpleGrantedAuthority("ROLE_SUPER_ADMIN"))));
     when(userRepository.findById(305L)).thenReturn(Optional.of(foreignUser));
-    when(auditLogRepository
-            .findFirstByEventTypeAndCompanyIdAndUsernameIgnoreCaseOrderByTimestampDesc(
-                AuditEvent.LOGIN_SUCCESS, foreignCompany.getId(), "foreign-user@example.com"))
-        .thenReturn(Optional.empty());
 
     try {
-      var response = service.updateUser(305L, new UpdateUserRequest("Foreign User Updated", null));
-      assertThat(response.displayName()).isEqualTo("Foreign User Updated");
+      assertThatThrownBy(
+              () -> service.updateUser(305L, new UpdateUserRequest("Foreign User Updated", null)))
+          .isInstanceOf(AccessDeniedException.class)
+          .hasMessageContaining("Target user is out of scope for this operation");
     } finally {
       SecurityContextHolder.clearContext();
     }
 
     verify(userRepository).findById(305L);
+    verify(userRepository, never()).save(any(UserAccount.class));
     verify(userRepository, never()).lockByIdAndCompanyId(eq(305L), any());
   }
 
@@ -937,7 +965,7 @@ class AdminUserServiceTest {
   }
 
   @Test
-  void suspend_crossTenantUser_forTenantAdmin_usesScopedLockAndMasksTargetAsMissing() {
+  void lockUser_crossTenantUser_forTenantAdmin_usesScopedLockAndMasksTargetAsMissing() {
     Company foreignCompany = new Company();
     ReflectionTestUtils.setField(foreignCompany, "id", 21L);
     foreignCompany.setCode("FOREIGN");
@@ -949,7 +977,7 @@ class AdminUserServiceTest {
     when(userRepository.lockByIdAndCompanyId(306L, 1L)).thenReturn(Optional.empty());
     when(userRepository.findById(306L)).thenReturn(Optional.of(foreignUser));
 
-    assertThatThrownBy(() -> service.suspend(306L))
+    assertThatThrownBy(() -> service.lockUser(306L))
         .isInstanceOf(ApplicationException.class)
         .hasMessageContaining("User not found");
 
@@ -962,7 +990,7 @@ class AdminUserServiceTest {
   }
 
   @Test
-  void unsuspend_crossTenantUser_forTenantAdmin_usesScopedLockAndMasksTargetAsMissing() {
+  void unlockUser_crossTenantUser_forTenantAdmin_usesScopedLockAndMasksTargetAsMissing() {
     Company foreignCompany = new Company();
     ReflectionTestUtils.setField(foreignCompany, "id", 21L);
     foreignCompany.setCode("FOREIGN");
@@ -974,7 +1002,7 @@ class AdminUserServiceTest {
     when(userRepository.lockByIdAndCompanyId(308L, 1L)).thenReturn(Optional.empty());
     when(userRepository.findById(308L)).thenReturn(Optional.of(foreignUser));
 
-    assertThatThrownBy(() -> service.unsuspend(308L))
+    assertThatThrownBy(() -> service.unlockUser(308L))
         .isInstanceOf(ApplicationException.class)
         .hasMessageContaining("User not found");
 
@@ -987,7 +1015,7 @@ class AdminUserServiceTest {
   }
 
   @Test
-  void deleteUser_crossTenantUser_forTenantAdmin_usesScopedLockAndMasksTargetAsMissing() {
+  void revokeUserSessions_crossTenantUser_forTenantAdmin_usesScopedLockAndMasksTargetAsMissing() {
     Company foreignCompany = new Company();
     ReflectionTestUtils.setField(foreignCompany, "id", 21L);
     foreignCompany.setCode("FOREIGN");
@@ -999,7 +1027,7 @@ class AdminUserServiceTest {
     when(userRepository.lockByIdAndCompanyId(309L, 1L)).thenReturn(Optional.empty());
     when(userRepository.findById(309L)).thenReturn(Optional.of(foreignUser));
 
-    assertThatThrownBy(() -> service.deleteUser(309L))
+    assertThatThrownBy(() -> service.revokeUserSessions(309L))
         .isInstanceOf(ApplicationException.class)
         .hasMessageContaining("User not found");
 
@@ -1008,7 +1036,8 @@ class AdminUserServiceTest {
     verify(auditService)
         .logAuthFailure(
             eq(AuditEvent.ACCESS_DENIED), eq("UNKNOWN_AUTH_ACTOR"), eq("TEST"), any(Map.class));
-    verify(userRepository, never()).delete(any(UserAccount.class));
+    verify(tokenBlacklistService, never()).revokeAllUserTokens(anyString());
+    verify(refreshTokenService, never()).revokeAllForUser(any());
   }
 
   @Test
@@ -1037,7 +1066,40 @@ class AdminUserServiceTest {
   }
 
   @Test
-  void suspend_allowsSuperAdminToTargetForeignTenantUser() {
+  void disableMfa_clearsOnlyMfaStateAndRevokesSessionsWithoutCredentialResetMutation() {
+    UserAccount user = new UserAccount("mfa-reset-target@example.com", "hash", "MFA Reset Target");
+    ReflectionTestUtils.setField(user, "id", 311L);
+    user.setCompany(company);
+    user.setEnabled(true);
+    user.setMustChangePassword(false);
+    user.setMfaEnabled(true);
+    user.setMfaSecret("encrypted-mfa-secret");
+    Role sales = new Role();
+    sales.setName("ROLE_SALES");
+    user.addRole(sales);
+
+    when(userRepository.lockByIdAndCompanyId(311L, 1L)).thenReturn(Optional.of(user));
+    when(userRepository.save(any(UserAccount.class)))
+        .thenAnswer(invocation -> invocation.getArgument(0));
+
+    service.disableMfa(311L);
+
+    assertThat(user.isMfaEnabled()).isFalse();
+    assertThat(user.getMfaSecret()).isNull();
+    assertThat(user.isEnabled()).isTrue();
+    assertThat(user.isMustChangePassword()).isFalse();
+    assertThat(user.getRoles()).extracting(Role::getName).containsExactly("ROLE_SALES");
+    verify(mfaRecoveryCodeRepository).deleteAllByUser(user);
+    verify(tokenBlacklistService).revokeAllUserTokens(user.getPublicId().toString());
+    verify(refreshTokenService).revokeAllForUser(user.getPublicId());
+    verify(passwordResetService, never()).invalidateOutstandingResetTokens(user);
+    verify(auditService)
+        .logAuthSuccess(
+            eq(AuditEvent.MFA_DISABLED), eq("UNKNOWN_AUTH_ACTOR"), eq("TEST"), any(Map.class));
+  }
+
+  @Test
+  void lockUser_rejectsSuperAdminDirectServiceCrossTenantTargetResolution() {
     Company foreignCompany = new Company();
     ReflectionTestUtils.setField(foreignCompany, "id", 21L);
     foreignCompany.setCode("FOREIGN");
@@ -1052,39 +1114,51 @@ class AdminUserServiceTest {
                 "super-admin@bbp.com",
                 "n/a",
                 List.of(new SimpleGrantedAuthority("ROLE_SUPER_ADMIN"))));
-    when(userRepository.lockById(307L)).thenReturn(Optional.of(foreignUser));
-    when(userRepository.save(any(UserAccount.class)))
-        .thenAnswer(invocation -> invocation.getArgument(0));
+    when(userRepository.lockByIdAndCompanyId(307L, 1L)).thenReturn(Optional.empty());
+    when(userRepository.findById(307L)).thenReturn(Optional.of(foreignUser));
 
     try {
-      service.suspend(307L);
+      assertThatThrownBy(() -> service.lockUser(307L))
+          .isInstanceOf(ApplicationException.class)
+          .hasMessageContaining("User not found");
     } finally {
       SecurityContextHolder.clearContext();
     }
 
-    assertThat(foreignUser.isEnabled()).isFalse();
-    verify(tokenBlacklistService).revokeAllUserTokens(foreignUser.getPublicId().toString());
-    verify(refreshTokenService).revokeAllForUser(foreignUser.getPublicId());
+    assertThat(foreignUser.getLockedUntil()).isNull();
+    verify(userRepository).lockByIdAndCompanyId(307L, 1L);
+    verify(userRepository, never()).lockById(307L);
+    verify(userRepository, never()).save(any(UserAccount.class));
+    verify(tokenBlacklistService, never()).revokeAllUserTokens(anyString());
+    verify(refreshTokenService, never()).revokeAllForUser(any());
   }
 
   @Test
-  void helper_createDealerForUser_buildsFreshDealerAndReceivableWhenNoDealerExists() {
+  void helper_linkExistingDealerIdentityReference_linksOnlyExistingDealerPortalUser() {
     UserAccount user = new UserAccount("fresh-dealer@example.com", "TEST", "hash", "Fresh Dealer");
+    ReflectionTestUtils.setField(user, "id", 909L);
     Company tenant = new Company();
     ReflectionTestUtils.setField(tenant, "id", 8L);
     tenant.setCode("TEST");
+    Dealer dealer = new Dealer();
+    ReflectionTestUtils.setField(dealer, "id", 709L);
+    dealer.setCompany(tenant);
+    dealer.setCode("COMM709");
+    dealer.setName("Commercial Dealer");
+    dealer.setStatus("INACTIVE");
     when(dealerRepository.findByCompanyAndPortalUserEmail(tenant, user.getEmail()))
         .thenReturn(Optional.empty());
     when(dealerRepository.findByCompanyAndEmailIgnoreCase(tenant, user.getEmail()))
-        .thenReturn(Optional.empty());
-    when(dealerRepository.findByCompanyAndCodeIgnoreCase(any(Company.class), anyString()))
-        .thenReturn(Optional.empty());
+        .thenReturn(Optional.of(dealer));
 
     com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-        service, "createDealerForUser", user, tenant);
+        service, "linkExistingDealerIdentityReference", user, tenant);
 
-    verify(dealerRepository, times(2)).save(any(Dealer.class));
-    verify(accountRepository).save(any(Account.class));
+    assertThat(dealer.getPortalUser()).isEqualTo(user);
+    assertThat(dealer.getCode()).isEqualTo("COMM709");
+    assertThat(dealer.getName()).isEqualTo("Commercial Dealer");
+    assertThat(dealer.getStatus()).isEqualTo("INACTIVE");
+    verify(dealerRepository).save(dealer);
   }
 
   @Test

@@ -19,10 +19,7 @@ public class RefreshToken {
   @GeneratedValue(strategy = GenerationType.IDENTITY)
   private Long id;
 
-  @Column(name = "token", length = 255)
-  private String token;
-
-  @Column(name = "token_digest", length = 64)
+  @Column(name = "token_digest", nullable = false, length = 64)
   private String tokenDigest;
 
   @Column(name = "user_public_id", nullable = false)
@@ -40,13 +37,11 @@ public class RefreshToken {
   protected RefreshToken() {}
 
   public RefreshToken(
-      String token,
       String tokenDigest,
       UUID userPublicId,
       String authScopeCode,
       Instant issuedAt,
       Instant expiresAt) {
-    this.token = token;
     this.tokenDigest = tokenDigest;
     this.userPublicId = userPublicId;
     this.authScopeCode = authScopeCode;
@@ -60,15 +55,11 @@ public class RefreshToken {
       String authScopeCode,
       Instant issuedAt,
       Instant expiresAt) {
-    return new RefreshToken(null, tokenDigest, userPublicId, authScopeCode, issuedAt, expiresAt);
+    return new RefreshToken(tokenDigest, userPublicId, authScopeCode, issuedAt, expiresAt);
   }
 
   public Long getId() {
     return id;
-  }
-
-  public String getToken() {
-    return token;
   }
 
   public String getTokenDigest() {
@@ -93,13 +84,5 @@ public class RefreshToken {
 
   public boolean isExpired(Instant now) {
     return expiresAt.isBefore(now);
-  }
-
-  public void migrateToDigest(String newTokenDigest) {
-    if (token == null || token.isBlank() || tokenDigest != null) {
-      return;
-    }
-    this.tokenDigest = newTokenDigest;
-    this.token = null;
   }
 }

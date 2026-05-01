@@ -1,96 +1,78 @@
 # R2 Checkpoint
 
-Last reviewed: 2026-04-26
+Last reviewed: 2026-05-01
 
 ## Scope
-- Feature: `default-account-clear-semantics-followup-hardcut`
-- Branch: refactor/accounting-centralization-20260420 (base: origin/main)
-- PR: pending
+- Feature: `identity-account-hardcut-20260427` / PR #197
+- Branch: codex identity-account-hardcut-20260427
+- PR: https://github.com/evilfps/bigbrightpaints-erp/pull/197
 - Review candidate:
-  - add explicit `clearAccountFields` semantics to the existing accounting default-account update route so validators can intentionally clear a configured default without treating omitted/null account IDs as accidental mutation intent
-  - keep default-account updates company-scoped through the existing `CompanyContextService` + company-scoped account lookup owner
-  - audit default-account update/clear outcomes through accounting business audit events
-  - seed and verify deterministic MOCK/RIVAL inventory, COGS, revenue, discount, and tax default-account baselines for validation runtime dispatch/invoice proofs
-  - preserve downstream fail-closed configuration readiness when a required default is intentionally cleared
-- Why this is R2: this packet changes high-risk accounting configuration behavior in `CompanyDefaultAccountsService`, validation seeding, and the validation runtime reset script.
+  - hard-cuts identity/account storage to IAM-backed accounts, sessions, MFA factors, security events, and password reset/change flows
+  - retires duplicate identity/profile/admin-user aliases and keeps canonical `/api/v1/auth/**`, `/api/v1/auth/mfa/**`, and `/api/v1/admin/users/**` surfaces documented
+  - adds V190 IAM schema migration plus focused auth/admin/security regression coverage
+- Why this is R2: this PR changes high-risk auth/session/MFA behavior and a Flyway v2 migration; incorrect behavior could break login/session revocation, expose tenant/account security data, or fail schema rollout.
 
 ## Risk Trigger
 - Triggered by:
-  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/CompanyDefaultAccountsService.java`
-  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/AccountingComplianceAuditService.java`
-  - `erp-domain/src/main/java/com/bigbrightpaints/erp/core/config/ValidationSeedDataInitializer.java`
-  - `erp-domain/src/main/resources/db/migration_v2/V184__accounting_truth_rls_hard_cut.sql`
-  - `erp-domain/src/main/resources/db/migration_v2/V185__accounting_rls_fail_closed_session_binding.sql`
-  - `erp-domain/src/main/resources/db/migration_v2/V186__account_code_case_insensitive_uniqueness.sql`
-  - `erp-domain/src/main/resources/db/migration_v2/V187__dealer_receipt_payment_event_hard_cut.sql`
-  - `erp-domain/src/main/resources/db/migration_v2/V188__supplier_auto_settlement_due_date_support.sql`
-  - `erp-domain/src/main/resources/db/migration_v2/V189__reconciliation_discrepancy_resolution_alignment.sql`
-  - `scripts/reset_final_validation_runtime.sh`
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/**`
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/admin/**`
+  - `erp-domain/src/main/resources/db/migration_v2/V190__iam_core_schema_and_model_hard_cut.sql`
+  - auth/admin integration and unit tests under `erp-domain/src/test/java`
 - Contract surfaces affected:
-  - PUT /api/v1/accounting/default-accounts
-  - GET /api/v1/accounting/default-accounts
-  - GET /api/v1/accounting/configuration/health
-  - validation runtime reset fixture verification for seeded default-account readiness
+  - login, refresh, logout, password reset/change, MFA, My Account profile/contact/security/session APIs, tenant-admin user controls, OpenAPI, endpoint inventories, migration/rollback runbooks
 - Failure mode if wrong:
-  - omitted/null fields could still be mistaken for explicit clears, or explicit clears could mutate unrelated default-account slots
-  - runtime validation could start without required dispatch/invoice defaults, forcing manual setup drift
-  - downstream dispatch/invoice accounting readiness could stay healthy after a required default is cleared instead of failing closed
-  - default-account changes could lose audit visibility or cross company boundaries
+  - sessions or refresh tokens are not revoked correctly
+  - IAM migration fails or preserves invalid token/session rows
+  - tenant-admin users can infer or mutate out-of-scope identities
+  - frontend callers use retired aliases or stale response contracts
 
 ## Approval Authority
 - Mode: orchestrator
-- Approver: Droid mission orchestrator
-- Canary owner: Droid mission orchestrator
-- Approval status: branch-local integration candidate pending PR review
-- Basis: this is a hard-cut accounting configuration hardening that adds an explicit clear path and deterministic validation defaults without widening tenant, auth, accounting posting, report, export, or payment semantics.
+- Approver: Droid
+- Canary owner: Droid
+- Approval status: approved for PR review after passing CI
+- Basis: this is a pre-release hard-cut that narrows identity/account behavior, removes retired aliases, and does not intentionally widen privileges or tenant boundaries.
 
 ## Escalation Decision
 - Human escalation required: no
-- Reason: this packet only makes existing accounting default-account mutation intent explicit, adds runtime fixture verification, and does not widen privileges, change tenant boundaries, or introduce destructive migration behavior.
+- Reason: the packet consolidates and hardens existing auth/admin behavior for a pre-release system; escalate if scope expands into new privileges, tenant-boundary widening, or destructive production-data migration assumptions.
 
 ## Rollback Owner
-- Owner: Droid mission orchestrator
+- Owner: Droid / PR owner
 - Rollback method:
-  - before merge: revert the packet if default-account update/clear semantics or validation runtime readiness regress
-  - after merge: revert packet and rerun focused default-account, accounting proof, runtime reset, OpenAPI, compile, High-Risk Change Control, and PR parity checks
+  - before merge: revert PR #197 or this branch, then rerun compile, focused auth/admin tests, Spotless, knowledgebase lint, high-risk change control, OpenAPI guard, and CI
+  - after merge: revert through a follow-up PR and rerun the same validation lane plus migration rollback checks from `docs/runbooks/rollback.md`
 - Rollback trigger:
-  - `clearAccountFields` cannot intentionally clear a requested default-account slot, or it clears unrelated slots
-  - omitted/null account ID fields start clearing defaults without explicit clear intent
-  - reset validation runtime no longer starts with MOCK/RIVAL ready default-account baselines
-  - configuration health stays healthy after a required default is cleared
-  - default-account public contract or audit behavior drifts from the scoped packet intent
-  - policy gate fails after integrating this packet
+  - V190 migration fails in CI or staging
+  - login/refresh/logout/session revocation regressions appear
+  - retired auth/admin aliases become routable or mutating
+  - tenant-admin controls can access privileged or foreign-tenant targets
 
 ## Expiry
-- Valid until: 2026-05-03
-- Re-evaluate if: scope expands beyond default-account clear semantics and validation runtime seeding into broader auth, tenant isolation, payment semantics, destructive migrations, or accounting posting redesign.
+- Valid until: 2026-05-07
+- Re-evaluate if: the PR adds new public auth routes, role-policy redesign, broader session-store behavior, destructive data migration assumptions, or tenant-boundary changes.
 
 ## Verification Evidence
-- Scope-to-evidence mapping:
-  - Explicit clear semantics: `CompanyDefaultAccountsRequest.clearAccountFields` and `CompanyDefaultAccountsService` clear only requested slots, reject set+clear conflicts, and keep null/omitted IDs as no-op partial update semantics.
-  - Runtime baseline: `ValidationSeedDataInitializer` creates company-scoped MOCK/RIVAL inventory, COGS, revenue, discount, and tax defaults; `scripts/reset_final_validation_runtime.sh` now verifies those slots and account types.
-  - Auditability: `AccountingComplianceAuditService` records `DEFAULT_ACCOUNTS_CLEARED` / `DEFAULT_ACCOUNTS_UPDATED` business audit events with before/after default-account state.
-  - Fail-closed proof: compose-backed curl cleared MOCK `taxAccountId`, observed configuration health fail closed, restored the same tax account, and observed health recover.
-  - Migration governance: Flyway v2 schema changes `V184` through `V189` are covered by the migration and rollback runbooks, and the new PR lane must be validated with high-risk and PR parity checks against the remote default branch.
 - Commands run:
-  - `cd erp-domain && MIGRATION_SET=v2 mvn -q -Djacoco.skip=true -Dtest='CompanyDefaultAccountsServiceTest,AccountControllerTest,ValidationSeedDataInitializerTest' test`
-  - `cd erp-domain && MIGRATION_SET=v2 mvn -q -Djacoco.skip=true -Derp.openapi.snapshot.verify=true -Derp.openapi.snapshot.refresh=true -Dtest=OpenApiSnapshotIT test`
-  - `bash scripts/reset_final_validation_runtime.sh`
-  - `commands.strict-runtime-smoke-check`
-  - `curl` runtime probes for GET defaults, PUT clear `taxAccountId`, configuration health fail-closed, PUT restore, and audit row inspection
-  - `cd erp-domain && MIGRATION_SET=v2 mvn -q -Djacoco.skip=true -Dtest='JournalEntryE2ETest,AccountingEndpointContractTest,SettlementControllerIdempotencyHeaderParityTest,CriticalAccountingAxesIT,TS_RuntimeAccountingReplayConflictExecutableCoverageTest,CR_ManualJournalSafetyTest,CR_DealerReceiptSettlementAuditTrailTest,CR_PurchasingToApAccountingTest,CR_SalesReturnCreditNoteIdempotencyTest,NumberSequenceServiceIntegrationTest,ReferenceNumberServiceTest,TS_RuntimeReferenceNumberServiceExecutableCoverageTest,InvoiceServiceTest,AccountingServiceTest#dealerReceiptService_routesLiveReceiptFlowThroughJournalEntryService+creditDebitNoteService_routesLiveCreditNoteFlowThroughJournalEntryService+inventoryAccountingService_routesLiveLandedCostFlowThroughJournalEntryService' test`
-  - `cd erp-domain && MIGRATION_SET=v2 mvn -q -Djacoco.skip=true -Dtest='CriticalAccountingAxesIT,AccountingEndpointContractTest,SettlementControllerIdempotencyHeaderParityTest,ReconciliationControlsIT' test`
-  - `cd erp-domain && MIGRATION_SET=v2 mvn -q -DskipTests compile`
-  - `cd erp-domain && MIGRATION_SET=v2 mvn -q spotless:check -DspotlessFiles='src/main/java/com/bigbrightpaints/erp/modules/accounting/dto/CompanyDefaultAccountsRequest.java,src/main/java/com/bigbrightpaints/erp/modules/accounting/controller/AccountController.java,src/main/java/com/bigbrightpaints/erp/modules/accounting/service/AccountResolutionOwnerService.java,src/main/java/com/bigbrightpaints/erp/modules/accounting/service/CompanyDefaultAccountsService.java,src/main/java/com/bigbrightpaints/erp/modules/accounting/service/AccountingComplianceAuditService.java,src/main/java/com/bigbrightpaints/erp/core/config/ValidationSeedDataInitializer.java,src/test/java/com/bigbrightpaints/erp/modules/accounting/controller/AccountControllerTest.java,src/test/java/com/bigbrightpaints/erp/modules/accounting/service/CompanyDefaultAccountsServiceTest.java'`
-  - `bash ci/check-high-risk-changes.sh`
-  - `python3 scripts/pr_ci_parity.py --base origin/main --head HEAD`
   - `git diff --check`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -q spotless:check`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -q clean test-compile`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -q -Dtest=AuditServiceTest test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -q -Dtest=AuditServiceTest,TenantOnboardingServiceTest test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -q -Dtest=AuditServiceTest,TenantOnboardingServiceTest,CriticalFixtureServiceTest test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -q -Dtest=PasswordServiceTest,AuthServiceAuditAttributionTest test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -q -Dtest=MfaServiceTest,TS_IamCoreSchemaAndModelHardCutMigrationContractTest test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -q -Dtest=AdminUserServiceTest,TS_RuntimeCompanyContextFilterExecutableCoverageTest,TS_RuntimeTenantRuntimeEnforcementTest,CompanyContextFilterControlPlaneBindingTest,TS_IamCoreSchemaAndModelHardCutMigrationContractTest,MfaServiceTest,PasswordResetServiceTest test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -q -Djacoco.skip=true -Dtest=AdminUserServiceTest,MfaServiceTest,PasswordResetServiceTest,AuditServiceTest,JwtAuthenticationFilterRoleHierarchyTest,TS_RuntimePasswordResetServiceExecutableCoverageTest test`
+  - `bash ci/lint-knowledgebase.sh`
+  - `bash ci/check-high-risk-changes.sh`
+  - GitHub Actions CI for PR #197
 - Result summary:
-  - focused default-account/controller/validation-seed tests passed
-  - OpenAPI snapshot refreshed and exposes optional `clearAccountFields`
-  - runtime reset verified actors, tenant fixtures, dealers, finance/UAT fixtures, and the new default-account baseline checks
-  - runtime clear proof showed baseline health `healthy=true`, clear response `taxAccountId=null`, health after clear `healthy=false`, restore response `taxAccountId=7`, restored health `healthy=true`
-  - audit DB inspection showed one `DEFAULT_ACCOUNTS_CLEARED` and one `DEFAULT_ACCOUNTS_UPDATED` event for `COMPANY_DEFAULT_ACCOUNTS`
-  - targeted accounting proof, baseline test pack, compile, scoped spotless check, and diff whitespace check passed
-- Artifact note:
-  - inline evidence in this checkpoint records the Maven proof, runtime reset, curl clear/restore, audit inspection, and OpenAPI observations for the scoped default-account clear semantics packet.
+  - local formatting, compile/test-compile, docs lint, high-risk change control, and selected non-Docker auth/admin/security/migration tests passed
+  - Docker-backed OpenAPI/integration tests were verified in GitHub Actions
+  - latest CI run passed including Compile Check, Access And Tenant Tests, Changed-Code Coverage, and PR Ship Gate
+- Artifacts/links:
+  - PR: https://github.com/evilfps/bigbrightpaints-erp/pull/197
+  - CI run: https://github.com/evilfps/bigbrightpaints-erp/actions/runs/25162444152
+  - frontend handoff: `docs/frontend-portals/tenant-admin/identity-iam-handoff-2026-04-30.md`
+  - migration and rollback docs: `docs/runbooks/migrations.md`, `docs/runbooks/rollback.md`

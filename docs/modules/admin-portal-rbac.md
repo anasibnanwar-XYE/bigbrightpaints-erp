@@ -53,11 +53,13 @@ Boundary rules:
 - `POST /api/v1/admin/users`
 - `PUT /api/v1/admin/users/{id}`
 - `PUT /api/v1/admin/users/{userId}/status`
-- `PATCH /api/v1/admin/users/{id}/suspend`
-- `PATCH /api/v1/admin/users/{id}/unsuspend`
+- `POST /api/v1/admin/users/{userId}/lock`
+- `POST /api/v1/admin/users/{userId}/unlock`
 - `PATCH /api/v1/admin/users/{id}/mfa/disable`
 - `POST /api/v1/admin/users/{userId}/force-reset-password`
-- `DELETE /api/v1/admin/users/{id}`
+- `DELETE /api/v1/admin/users/{userId}/sessions`
+- `GET /api/v1/admin/users/{userId}/security-events`
+- `GET /api/v1/admin/users/assignable-roles`
 - Auth: `ROLE_ADMIN`
 
 ### AdminApprovalController

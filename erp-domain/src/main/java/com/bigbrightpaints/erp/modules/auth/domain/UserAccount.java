@@ -1,10 +1,7 @@
 package com.bigbrightpaints.erp.modules.auth.domain;
 
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
@@ -66,9 +63,6 @@ public class UserAccount extends VersionedEntity {
 
   @Column(name = "mfa_enabled", nullable = false)
   private boolean mfaEnabled = false;
-
-  @Column(name = "mfa_recovery_codes")
-  private String mfaRecoveryCodes;
 
   @Column(name = "preferred_name")
   private String preferredName;
@@ -281,29 +275,6 @@ public class UserAccount extends VersionedEntity {
 
   public void setMfaEnabled(boolean mfaEnabled) {
     this.mfaEnabled = mfaEnabled;
-  }
-
-  public List<String> getMfaRecoveryCodeHashes() {
-    if (mfaRecoveryCodes == null || mfaRecoveryCodes.isBlank()) {
-      return new ArrayList<>();
-    }
-    return new ArrayList<>(
-        Arrays.stream(mfaRecoveryCodes.split(",")).filter(entry -> !entry.isBlank()).toList());
-  }
-
-  public void setMfaRecoveryCodeHashes(List<String> hashes) {
-    if (hashes == null || hashes.isEmpty()) {
-      this.mfaRecoveryCodes = null;
-    } else {
-      this.mfaRecoveryCodes = String.join(",", hashes);
-    }
-  }
-
-  public void removeRecoveryCodeHash(String hash) {
-    List<String> hashes = getMfaRecoveryCodeHashes();
-    if (hashes.remove(hash)) {
-      setMfaRecoveryCodeHashes(hashes);
-    }
   }
 
   public Instant getCreatedAt() {

@@ -53,6 +53,26 @@ class PasswordPolicyTest {
   }
 
   @Test
+  void validate_over128CodePoints_returnsLengthViolation() {
+    String overlong = "A" + "a".repeat(126) + "1!!";
+
+    List<String> violations = policy.validate(overlong);
+
+    assertThat(overlong.codePointCount(0, overlong.length())).isEqualTo(130);
+    assertThat(violations).contains("Must be at most 128 characters long");
+  }
+
+  @Test
+  void validate_appliesNfcBeforeCountingCodePoints() {
+    String decomposed = "Cafe\u0301Pass1!";
+
+    List<String> violations = policy.validate(decomposed);
+
+    assertThat(policy.normalize(decomposed)).isEqualTo("Caf\u00e9Pass1!");
+    assertThat(violations).isEmpty();
+  }
+
+  @Test
   void validate_strongPassword_returnsNoViolations() {
     List<String> violations = policy.validate("Abcdef1!23");
     assertThat(violations).isEmpty();

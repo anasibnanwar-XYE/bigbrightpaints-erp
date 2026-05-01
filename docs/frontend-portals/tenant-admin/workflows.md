@@ -19,7 +19,7 @@ Last reviewed: 2026-04-15
 1. List users from `GET /api/v1/admin/users`.
 2. Create users via `POST /api/v1/admin/users` with fixed assignable role set.
 3. Update detail via `PUT /api/v1/admin/users/{id}`.
-4. Use explicit lifecycle actions for status/suspend/unsuspend/MFA disable/delete/reset-link.
+4. Use explicit lifecycle actions for status, lock/unlock, MFA disable, session revocation, and reset-link.
 5. Re-fetch after no-content mutations.
 
 ## Approval decisions

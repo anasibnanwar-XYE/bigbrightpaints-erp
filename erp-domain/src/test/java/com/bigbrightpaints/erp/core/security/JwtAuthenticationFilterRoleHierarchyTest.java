@@ -14,6 +14,7 @@ import java.time.Instant;
 import java.util.Collection;
 import java.util.Date;
 import java.util.List;
+import java.util.UUID;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -33,6 +34,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserPrincipal;
+import com.bigbrightpaints.erp.modules.auth.service.AuthSessionService;
 import com.bigbrightpaints.erp.modules.auth.service.UserAccountDetailsService;
 import com.bigbrightpaints.erp.modules.rbac.domain.Role;
 
@@ -47,6 +49,12 @@ import jakarta.servlet.ServletException;
 @ExtendWith(MockitoExtension.class)
 class JwtAuthenticationFilterRoleHierarchyTest {
 
+  private static final String USER_PUBLIC_ID = "11111111-1111-1111-1111-111111111111";
+  private static final UUID USER_PUBLIC_UUID = UUID.fromString(USER_PUBLIC_ID);
+  private static final String SESSION_PUBLIC_ID = "22222222-2222-2222-2222-222222222222";
+  private static final UUID SESSION_PUBLIC_UUID = UUID.fromString(SESSION_PUBLIC_ID);
+  private static final String COMPANY_CODE = "ACME";
+
   @Mock private JwtTokenService tokenService;
 
   @Mock private UserAccountDetailsService userDetailsService;
@@ -54,6 +62,8 @@ class JwtAuthenticationFilterRoleHierarchyTest {
   @Mock private TokenBlacklistService blacklistService;
 
   @Mock private ObjectProvider<RoleHierarchy> roleHierarchyProvider;
+
+  @Mock private AuthSessionService authSessionService;
 
   @Mock private FilterChain filterChain;
 
@@ -63,7 +73,11 @@ class JwtAuthenticationFilterRoleHierarchyTest {
   void setUp() {
     filter =
         new JwtAuthenticationFilter(
-            tokenService, userDetailsService, blacklistService, roleHierarchyProvider);
+            tokenService,
+            userDetailsService,
+            blacklistService,
+            roleHierarchyProvider,
+            authSessionService);
   }
 
   @AfterEach
@@ -74,12 +88,13 @@ class JwtAuthenticationFilterRoleHierarchyTest {
   @Test
   void doFilter_usesDirectAuthoritiesWhenRoleHierarchyIsUnavailable()
       throws ServletException, IOException {
-    Claims claims = claims("user@bbp.com", "jti-1", Instant.parse("2026-01-01T00:00:00Z"));
+    Claims claims = claims(USER_PUBLIC_ID, "jti-1", Instant.parse("2026-01-01T00:00:00Z"));
     UserPrincipal principal = principalWithRole("user@bbp.com", "ROLE_SUPER_ADMIN");
     when(tokenService.parse("valid-token")).thenReturn(claims);
     when(blacklistService.isTokenBlacklisted("jti-1")).thenReturn(false);
-    when(blacklistService.isUserTokenRevoked(eq("user@bbp.com"), any())).thenReturn(false);
-    when(userDetailsService.loadUserByUsername("user@bbp.com")).thenReturn(principal);
+    when(blacklistService.isUserTokenRevoked(eq(USER_PUBLIC_ID), any())).thenReturn(false);
+    stubActiveSession(claims);
+    when(userDetailsService.loadUserByUsername(USER_PUBLIC_ID)).thenReturn(principal);
     when(roleHierarchyProvider.getIfAvailable()).thenReturn(null);
 
     MockHttpServletRequest request = requestWithBearer("valid-token");
@@ -99,14 +114,15 @@ class JwtAuthenticationFilterRoleHierarchyTest {
   @Test
   void doFilter_expandsAuthoritiesWhenRoleHierarchyIsAvailable()
       throws ServletException, IOException {
-    Claims claims = claims("user@bbp.com", "jti-2", Instant.parse("2026-01-01T00:00:00Z"));
+    Claims claims = claims(USER_PUBLIC_ID, "jti-2", Instant.parse("2026-01-01T00:00:00Z"));
     UserPrincipal principal = principalWithRole("user@bbp.com", "ROLE_SUPER_ADMIN");
     RoleHierarchy roleHierarchy = mock(RoleHierarchy.class);
     Collection<? extends GrantedAuthority> directAuthorities = principal.getAuthorities();
     when(tokenService.parse("valid-token")).thenReturn(claims);
     when(blacklistService.isTokenBlacklisted("jti-2")).thenReturn(false);
-    when(blacklistService.isUserTokenRevoked(eq("user@bbp.com"), any())).thenReturn(false);
-    when(userDetailsService.loadUserByUsername("user@bbp.com")).thenReturn(principal);
+    when(blacklistService.isUserTokenRevoked(eq(USER_PUBLIC_ID), any())).thenReturn(false);
+    stubActiveSession(claims);
+    when(userDetailsService.loadUserByUsername(USER_PUBLIC_ID)).thenReturn(principal);
     when(roleHierarchyProvider.getIfAvailable()).thenReturn(roleHierarchy);
     when(roleHierarchy.getReachableGrantedAuthorities(anyCollection()))
         .thenAnswer(
@@ -132,13 +148,14 @@ class JwtAuthenticationFilterRoleHierarchyTest {
 
   @Test
   void doFilter_skipsAuthenticationForLockedUser() throws ServletException, IOException {
-    Claims claims = claims("user@bbp.com", "jti-3", Instant.parse("2026-01-01T00:00:00Z"));
+    Claims claims = claims(USER_PUBLIC_ID, "jti-3", Instant.parse("2026-01-01T00:00:00Z"));
     UserPrincipal principal = principalWithRole("user@bbp.com", "ROLE_ADMIN");
     principal.getUser().setLockedUntil(Instant.now().plusSeconds(300));
     when(tokenService.parse("valid-token")).thenReturn(claims);
     when(blacklistService.isTokenBlacklisted("jti-3")).thenReturn(false);
-    when(blacklistService.isUserTokenRevoked(eq("user@bbp.com"), any())).thenReturn(false);
-    when(userDetailsService.loadUserByUsername("user@bbp.com")).thenReturn(principal);
+    when(blacklistService.isUserTokenRevoked(eq(USER_PUBLIC_ID), any())).thenReturn(false);
+    stubActiveSession(claims);
+    when(userDetailsService.loadUserByUsername(USER_PUBLIC_ID)).thenReturn(principal);
 
     MockHttpServletRequest request = requestWithBearer("valid-token");
     MockHttpServletResponse response = new MockHttpServletResponse();
@@ -167,10 +184,10 @@ class JwtAuthenticationFilterRoleHierarchyTest {
 
   @Test
   void doFilter_skipsAuthenticationForRevokedUserToken() throws ServletException, IOException {
-    Claims claims = claims("user@bbp.com", "jti-5", Instant.parse("2026-01-01T00:00:00Z"));
+    Claims claims = claims(USER_PUBLIC_ID, "jti-5", Instant.parse("2026-01-01T00:00:00Z"));
     when(tokenService.parse("valid-token")).thenReturn(claims);
     when(blacklistService.isTokenBlacklisted("jti-5")).thenReturn(false);
-    when(blacklistService.isUserTokenRevoked(eq("user@bbp.com"), any())).thenReturn(true);
+    when(blacklistService.isUserTokenRevoked(eq(USER_PUBLIC_ID), any())).thenReturn(true);
 
     MockHttpServletRequest request = requestWithBearer("valid-token");
     MockHttpServletResponse response = new MockHttpServletResponse();
@@ -184,13 +201,14 @@ class JwtAuthenticationFilterRoleHierarchyTest {
 
   @Test
   void doFilter_skipsAuthenticationForDisabledUser() throws ServletException, IOException {
-    Claims claims = claims("user@bbp.com", "jti-6", Instant.parse("2026-01-01T00:00:00Z"));
+    Claims claims = claims(USER_PUBLIC_ID, "jti-6", Instant.parse("2026-01-01T00:00:00Z"));
     UserPrincipal principal = principalWithRole("user@bbp.com", "ROLE_ADMIN");
     principal.getUser().setEnabled(false);
     when(tokenService.parse("valid-token")).thenReturn(claims);
     when(blacklistService.isTokenBlacklisted("jti-6")).thenReturn(false);
-    when(blacklistService.isUserTokenRevoked(eq("user@bbp.com"), any())).thenReturn(false);
-    when(userDetailsService.loadUserByUsername("user@bbp.com")).thenReturn(principal);
+    when(blacklistService.isUserTokenRevoked(eq(USER_PUBLIC_ID), any())).thenReturn(false);
+    stubActiveSession(claims);
+    when(userDetailsService.loadUserByUsername(USER_PUBLIC_ID)).thenReturn(principal);
 
     MockHttpServletRequest request = requestWithBearer("valid-token");
     MockHttpServletResponse response = new MockHttpServletResponse();
@@ -198,6 +216,42 @@ class JwtAuthenticationFilterRoleHierarchyTest {
     filter.doFilter(request, response, filterChain);
 
     assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+    verify(filterChain).doFilter(request, response);
+  }
+
+  @Test
+  void doFilter_skipsAuthenticationWhenSessionIdClaimIsMissing()
+      throws ServletException, IOException {
+    Claims claims = claimsWithoutSid("jti-no-sid", Instant.parse("2026-01-01T00:00:00Z"));
+    when(tokenService.parse("valid-token")).thenReturn(claims);
+
+    MockHttpServletRequest request = requestWithBearer("valid-token");
+    MockHttpServletResponse response = new MockHttpServletResponse();
+
+    filter.doFilter(request, response, filterChain);
+
+    assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+    verifyNoInteractions(userDetailsService, roleHierarchyProvider, authSessionService);
+    verify(filterChain).doFilter(request, response);
+  }
+
+  @Test
+  void doFilter_skipsAuthenticationWhenSessionIsInactive() throws ServletException, IOException {
+    Claims claims = claims(USER_PUBLIC_ID, "jti-inactive", Instant.parse("2026-01-01T00:00:00Z"));
+    when(tokenService.parse("valid-token")).thenReturn(claims);
+    when(blacklistService.isTokenBlacklisted("jti-inactive")).thenReturn(false);
+    when(blacklistService.isUserTokenRevoked(eq(USER_PUBLIC_ID), any())).thenReturn(false);
+    when(authSessionService.currentSessionIdFromClaims(claims)).thenReturn(SESSION_PUBLIC_UUID);
+    when(authSessionService.isSessionActive(USER_PUBLIC_UUID, COMPANY_CODE, SESSION_PUBLIC_UUID))
+        .thenReturn(false);
+
+    MockHttpServletRequest request = requestWithBearer("valid-token");
+    MockHttpServletResponse response = new MockHttpServletResponse();
+
+    filter.doFilter(request, response, filterChain);
+
+    assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+    verifyNoInteractions(userDetailsService, roleHierarchyProvider);
     verify(filterChain).doFilter(request, response);
   }
 
@@ -305,14 +359,29 @@ class JwtAuthenticationFilterRoleHierarchyTest {
     Claims claims = mock(Claims.class);
     when(claims.getSubject()).thenReturn(subject);
     when(claims.getId()).thenReturn(tokenId);
+    when(claims.get("companyCode", String.class)).thenReturn(COMPANY_CODE);
+    when(claims.get("sid", String.class)).thenReturn(SESSION_PUBLIC_ID);
+    when(claims.getExpiration()).thenReturn(Date.from(issuedAt.plusSeconds(300)));
     when(claims.getIssuedAt()).thenReturn(Date.from(issuedAt));
     return claims;
   }
 
   private Claims claimsWithId(String tokenId) {
+    return claims(USER_PUBLIC_ID, tokenId, Instant.parse("2026-01-01T00:00:00Z"));
+  }
+
+  private Claims claimsWithoutSid(String tokenId, Instant issuedAt) {
     Claims claims = mock(Claims.class);
+    when(claims.getSubject()).thenReturn(USER_PUBLIC_ID);
     when(claims.getId()).thenReturn(tokenId);
+    when(claims.get("companyCode", String.class)).thenReturn(COMPANY_CODE);
     return claims;
+  }
+
+  private void stubActiveSession(Claims claims) {
+    when(authSessionService.currentSessionIdFromClaims(claims)).thenReturn(SESSION_PUBLIC_UUID);
+    when(authSessionService.isSessionActive(USER_PUBLIC_UUID, COMPANY_CODE, SESSION_PUBLIC_UUID))
+        .thenReturn(true);
   }
 
   private UserPrincipal principalWithRole(String email, String roleName) {

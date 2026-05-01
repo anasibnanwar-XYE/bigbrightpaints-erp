@@ -1,6 +1,6 @@
 # Auth Module
 
-Last reviewed: 2026-03-30
+Last reviewed: 2026-04-30
 
 This packet documents the **auth module** (`modules/auth`) and the core security infrastructure that underpins the authentication corridor. It covers login, refresh, logout, MFA, password management, must-change-password enforcement, token/session revocation, JWT-based tenant scoping, and the key security filters in the request pipeline.
 
@@ -28,6 +28,14 @@ Core security infrastructure in `core/security/` owns the **request-pipeline enf
 | POST | `/api/v1/auth/refresh-token` | Public | Refresh-token rotation, new access/refresh pair |
 | POST | `/api/v1/auth/logout` | Authenticated | Revoke sessions and blacklist access token |
 | GET | `/api/v1/auth/me` | Authenticated | Current user identity, roles, permissions, must-change-password flag |
+| PATCH | `/api/v1/auth/me/profile` | Authenticated | Self-service profile display fields only |
+| PATCH | `/api/v1/auth/me/contact` | Authenticated | Self-service secondary contact fields only |
+| GET | `/api/v1/auth/me/security` | Authenticated | Self-service MFA/password/session summary |
+| GET | `/api/v1/auth/me/security-events` | Authenticated | Self-service security history, paginated and redacted |
+| GET | `/api/v1/auth/sessions` | Authenticated | List current user's active sessions/devices |
+| DELETE | `/api/v1/auth/sessions/{sessionId}` | Authenticated | Revoke another current-user session |
+| DELETE | `/api/v1/auth/sessions/current` | Authenticated | Revoke current session |
+| DELETE | `/api/v1/auth/sessions` | Authenticated | Revoke all current-user sessions |
 | POST | `/api/v1/auth/password/change` | Authenticated | Authenticated password change (respects must-change-password skip) |
 | POST | `/api/v1/auth/password/forgot` | Public | Password-reset email dispatch (rate-limited, scope-aware) |
 | POST | `/api/v1/auth/password/reset` | Public | Token-based password reset with confirmation |
@@ -36,9 +44,11 @@ Core security infrastructure in `core/security/` owns the **request-pipeline enf
 
 | Method | Path | Auth | Purpose |
 | --- | --- | --- | --- |
+| GET | `/api/v1/auth/mfa` | Authenticated | Current user's MFA status |
 | POST | `/api/v1/auth/mfa/setup` | Authenticated | Begin TOTP enrollment (secret + QR URI + recovery codes) |
 | POST | `/api/v1/auth/mfa/activate` | Authenticated | Confirm TOTP enrollment with first valid code |
 | POST | `/api/v1/auth/mfa/disable` | Authenticated | Disable MFA (requires TOTP code or recovery code) |
+| POST | `/api/v1/auth/mfa/recovery-codes/regenerate` | Authenticated | Rotate recovery codes after fresh MFA proof |
 
 ### SuperAdminController — tenant admin support recovery
 
@@ -118,7 +128,7 @@ Centralizes token digest computation. All token types (refresh, password-reset) 
 | `BlacklistedToken` | Per-JWT revocation record (tokenId, expiration, userId, reason) |
 | `UserTokenRevocation` | User-level revocation timestamp (revokedAt) |
 | `PasswordResetToken` | Password-reset token record (digest, user, expiresAt, used, deliveredAt) |
-| `MfaRecoveryCode` | Recovery code storage (embedded in UserAccount as hashed list) |
+| `MfaRecoveryCode` | First-class recovery-code rows with hashed single-use verifiers |
 | `UserPasswordHistory` | Password reuse prevention (stores BCrypt hashes of recent passwords) |
 
 ## JWT and Token Model
@@ -227,6 +237,23 @@ Both `MfaRequiredException` and `InvalidMfaException` count as failed login atte
 - **Account lockout** (5 failed attempts): revokes all active tokens + refresh tokens.
 - **Admin force-logout** (`SuperAdminController`): revokes all user tokens + refresh tokens.
 - **Admin force-reset-password**: revokes all user tokens + refresh tokens.
+
+## My Account Security History
+
+`GET /api/v1/auth/me/security-events` returns the current user's security
+history as `ApiResponse<PageResponse<SelfSecurityEvent>>`. Query parameters:
+
+- `type` filters event types before SQL ordering and pagination. `SESSION`
+  includes session, token, logout, and login-success events; other values match
+  event-type prefixes.
+- `page` is zero-based and defaults to `0`.
+- `size` defaults to `50` and is clamped to `1..100`; `limit` is accepted as a
+  size alias when `size` is omitted.
+
+Rows are ordered deterministically by `occurred_at desc, id desc`, scoped by the
+authenticated account's stable public subject and auth scope, and expose only
+privacy-safe fields. Self rows omit actor IDs, target user IDs, session IDs,
+token/reset/MFA/recovery-code/hash material, and unrelated tenant/user data.
 
 ### Revocation Checking
 

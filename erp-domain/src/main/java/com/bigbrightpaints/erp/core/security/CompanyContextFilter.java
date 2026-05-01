@@ -143,13 +143,9 @@ public class CompanyContextFilter extends OncePerRequestFilter {
         TenantRuntimeEnforcementService.TenantRequestAdmission.notTracked();
     try {
       String runtimePath = normalizePath(resolveApplicationPath(request));
-      if (isRetiredAdminHostPath(runtimePath)) {
+      if (isRetiredAdminHostPath(request, runtimePath)) {
         // Retired host paths are intentionally unresolved by handlers and should return 404
         // consistently, independent of auth/company-context binding.
-        filterChain.doFilter(request, response);
-        return;
-      }
-      if (isPublicPasswordResetRequest(runtimePath, request.getMethod())) {
         filterChain.doFilter(request, response);
         return;
       }
@@ -176,6 +172,10 @@ public class CompanyContextFilter extends OncePerRequestFilter {
             response,
             "COMPANY_CONTEXT_LEGACY_HEADER_UNSUPPORTED",
             "Use X-Company-Code for company context binding");
+        return;
+      }
+      if (isPublicPasswordResetRequest(runtimePath, request.getMethod())) {
+        filterChain.doFilter(request, response);
         return;
       }
       String headerCompanyCode = request.getHeader("X-Company-Code");
@@ -308,12 +308,9 @@ public class CompanyContextFilter extends OncePerRequestFilter {
               response, "COMPANY_ACCESS_DENIED", "Access denied to company: " + companyCode);
           return;
         }
-        if (!lifecycleControlBypass
-            && shouldDenyTenantRequestByLifecycle(lifecycleState, request.getMethod())) {
+        if (!lifecycleControlBypass && shouldDenyTenantRequestByLifecycle(lifecycleState)) {
           writeAccessDenied(
-              response,
-              "TENANT_LIFECYCLE_RESTRICTED",
-              lifecycleDeniedMessage(lifecycleState, request.getMethod()));
+              response, "TENANT_LIFECYCLE_RESTRICTED", lifecycleDeniedMessage(lifecycleState));
           return;
         }
         if (!lifecycleControlRequest || tenantRuntimePolicyControlRequest) {
@@ -491,20 +488,6 @@ public class CompanyContextFilter extends OncePerRequestFilter {
     return null;
   }
 
-  private Long extractCompanyIdFromControlPlanePath(String path) {
-    CompanyBoundControlBinding binding = resolveCompanyBoundControlBinding(path, null);
-    return binding == null ? null : binding.companyId();
-  }
-
-  private boolean isLifecycleControlRequest(String path, String method) {
-    return resolveCompanyBoundControlBinding(path, method) != null;
-  }
-
-  private boolean hasTenantRuntimePolicyControlAuthority(String path, String method) {
-    CompanyBoundControlBinding binding = resolveCompanyBoundControlBinding(path, method);
-    return binding != null && binding.tenantRuntimePolicyControl();
-  }
-
   private String normalizeCompanyCode(String rawCompanyCode) {
     if (!StringUtils.hasText(rawCompanyCode)) {
       return null;
@@ -537,7 +520,7 @@ public class CompanyContextFilter extends OncePerRequestFilter {
   private void writeAccessDenied(HttpServletResponse response, String reason, String reasonDetail)
       throws IOException {
     String userMessage = "Access denied";
-    Map<String, Object> data = new LinkedHashMap<>();
+    Map<String, String> data = new LinkedHashMap<>();
     data.put("code", ErrorCode.AUTH_INSUFFICIENT_PERMISSIONS.getCode());
     data.put("message", userMessage);
     data.put("reason", reason);
@@ -549,7 +532,7 @@ public class CompanyContextFilter extends OncePerRequestFilter {
   private void writeServiceUnavailable(
       HttpServletResponse response, String reason, String reasonDetail) throws IOException {
     String userMessage = ErrorCode.SYSTEM_SERVICE_UNAVAILABLE.getDefaultMessage();
-    Map<String, Object> data = new LinkedHashMap<>();
+    Map<String, String> data = new LinkedHashMap<>();
     data.put("code", ErrorCode.SYSTEM_SERVICE_UNAVAILABLE.getCode());
     data.put("message", userMessage);
     data.put("reason", reason);
@@ -564,7 +547,7 @@ public class CompanyContextFilter extends OncePerRequestFilter {
       throws IOException {
     String message =
         StringUtils.hasText(admission.message()) ? admission.message() : "Access denied";
-    Map<String, Object> data = new LinkedHashMap<>();
+    Map<String, String> data = new LinkedHashMap<>();
     data.put(
         "code",
         StringUtils.hasText(admission.reasonCode())
@@ -594,7 +577,7 @@ public class CompanyContextFilter extends OncePerRequestFilter {
   }
 
   private void writeControlledError(
-      HttpServletResponse response, int status, String message, Map<String, Object> data)
+      HttpServletResponse response, int status, String message, Map<String, String> data)
       throws IOException {
     response.setStatus(status);
     response.setContentType("application/json");
@@ -675,7 +658,7 @@ public class CompanyContextFilter extends OncePerRequestFilter {
     if (normalizedPath.equals("/api/v1/companies")) {
       return true;
     }
-    if (isRetiredAdminHostPath(normalizedPath)) {
+    if (RetiredTenantAdminHostPaths.matchesNormalizedPath(normalizedPath)) {
       // Let retired admin hosts fall through to dispatcher 404 uniformly.
       return true;
     }
@@ -685,8 +668,9 @@ public class CompanyContextFilter extends OncePerRequestFilter {
         || normalizedPath.startsWith("/api/v1/superadmin/");
   }
 
-  private boolean isRetiredAdminHostPath(String normalizedPath) {
-    return RetiredTenantAdminHostPaths.matchesNormalizedPath(normalizedPath);
+  private boolean isRetiredAdminHostPath(HttpServletRequest request, String normalizedPath) {
+    return RetiredTenantAdminHostPaths.matchesNormalizedPath(
+        normalizedPath, request == null ? null : request.getMethod());
   }
 
   private boolean isSuperadminPlatformScopeOnlyHostPath(String path) {
@@ -738,8 +722,7 @@ public class CompanyContextFilter extends OncePerRequestFilter {
     return normalizedPath;
   }
 
-  private boolean shouldDenyTenantRequestByLifecycle(
-      CompanyLifecycleState lifecycleState, String method) {
+  private boolean shouldDenyTenantRequestByLifecycle(CompanyLifecycleState lifecycleState) {
     CompanyLifecycleState resolvedState =
         lifecycleState == null ? CompanyLifecycleState.ACTIVE : lifecycleState;
     return switch (resolvedState) {
@@ -749,23 +732,13 @@ public class CompanyContextFilter extends OncePerRequestFilter {
     };
   }
 
-  private String lifecycleDeniedMessage(CompanyLifecycleState lifecycleState, String method) {
+  private String lifecycleDeniedMessage(CompanyLifecycleState lifecycleState) {
     CompanyLifecycleState resolvedState =
         lifecycleState == null ? CompanyLifecycleState.ACTIVE : lifecycleState;
     return switch (resolvedState) {
       case ACTIVE -> "Tenant lifecycle state allows access";
       case SUSPENDED -> "Tenant is suspended";
       case DEACTIVATED -> "Tenant is deactivated";
-    };
-  }
-
-  private boolean isMutatingRequest(String method) {
-    if (!StringUtils.hasText(method)) {
-      return true;
-    }
-    return switch (method.trim().toUpperCase()) {
-      case "GET", "HEAD", "OPTIONS", "TRACE" -> false;
-      default -> true;
     };
   }
 }

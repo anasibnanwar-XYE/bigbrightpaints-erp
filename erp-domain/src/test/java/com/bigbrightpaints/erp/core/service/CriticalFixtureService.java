@@ -1,6 +1,7 @@
 package com.bigbrightpaints.erp.core.service;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -14,7 +15,10 @@ import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
-import com.bigbrightpaints.erp.modules.accounting.service.AccountingPeriodService;
+import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriod;
+import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodStatus;
+import com.bigbrightpaints.erp.modules.accounting.domain.CostingMethod;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
@@ -34,7 +38,7 @@ import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
 @Profile({"test", "mock", "dev"})
 public class CriticalFixtureService {
 
-  private final AccountingPeriodService accountingPeriodService;
+  private final AccountingPeriodRepository accountingPeriodRepository;
   private final AccountRepository accountRepository;
   private final DealerRepository dealerRepository;
   private final SupplierRepository supplierRepository;
@@ -45,7 +49,7 @@ public class CriticalFixtureService {
   private final CompanyRepository companyRepository;
 
   public CriticalFixtureService(
-      AccountingPeriodService accountingPeriodService,
+      AccountingPeriodRepository accountingPeriodRepository,
       AccountRepository accountRepository,
       DealerRepository dealerRepository,
       SupplierRepository supplierRepository,
@@ -54,7 +58,7 @@ public class CriticalFixtureService {
       FinishedGoodRepository finishedGoodRepository,
       FinishedGoodBatchRepository finishedGoodBatchRepository,
       CompanyRepository companyRepository) {
-    this.accountingPeriodService = accountingPeriodService;
+    this.accountingPeriodRepository = accountingPeriodRepository;
     this.accountRepository = accountRepository;
     this.dealerRepository = dealerRepository;
     this.supplierRepository = supplierRepository;
@@ -78,7 +82,10 @@ public class CriticalFixtureService {
     }
     companyRepository.save(company);
 
-    accountingPeriodService.ensurePeriod(company, CompanyTime.today(company));
+    LocalDate today = CompanyTime.today(company);
+    ensureFixturePeriod(company, today.minusMonths(1));
+    ensureFixturePeriod(company, today);
+    ensureFixturePeriod(company, today.plusMonths(1));
 
     Map<String, Account> accounts = ensureAccounts(company);
     Dealer dealer = ensureDealer(company, accounts.get("AR"));
@@ -116,6 +123,27 @@ public class CriticalFixtureService {
       supplier.setPayableAccount(accounts.get("AP"));
       supplierRepository.save(supplier);
     }
+  }
+
+  private AccountingPeriod ensureFixturePeriod(Company company, LocalDate referenceDate) {
+    LocalDate effectiveDate = referenceDate != null ? referenceDate : LocalDate.now();
+    int year = effectiveDate.getYear();
+    int month = effectiveDate.getMonthValue();
+    return accountingPeriodRepository
+        .findByCompanyAndYearAndMonth(company, year, month)
+        .orElseGet(
+            () -> {
+              LocalDate startDate = effectiveDate.withDayOfMonth(1);
+              AccountingPeriod period = new AccountingPeriod();
+              period.setCompany(company);
+              period.setYear(year);
+              period.setMonth(month);
+              period.setStartDate(startDate);
+              period.setEndDate(startDate.plusMonths(1).minusDays(1));
+              period.setCostingMethod(CostingMethod.FIFO);
+              period.setStatus(AccountingPeriodStatus.OPEN);
+              return accountingPeriodRepository.save(period);
+            });
   }
 
   private Map<String, Account> ensureAccounts(Company company) {

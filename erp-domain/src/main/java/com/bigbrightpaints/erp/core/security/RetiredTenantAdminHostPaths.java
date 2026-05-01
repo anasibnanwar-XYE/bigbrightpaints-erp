@@ -35,6 +35,41 @@ public final class RetiredTenantAdminHostPaths {
         || normalizedPath.startsWith(ADMIN_NOTIFY + "/");
   }
 
+  public static boolean matchesNormalizedPath(String normalizedPath, String method) {
+    if (matchesNormalizedPath(normalizedPath)) {
+      return true;
+    }
+    if (normalizedPath == null || normalizedPath.isBlank() || method == null) {
+      return false;
+    }
+    String normalizedMethod = method.trim().toUpperCase(java.util.Locale.ROOT);
+    if ("PATCH".equals(normalizedMethod)
+        && (isAdminUserChildAlias(normalizedPath, "suspend")
+            || isAdminUserChildAlias(normalizedPath, "unsuspend"))) {
+      return true;
+    }
+    return "DELETE".equals(normalizedMethod) && isAdminUserDetailPath(normalizedPath);
+  }
+
+  private static boolean isAdminUserChildAlias(String normalizedPath, String alias) {
+    String prefix = "/api/v1/admin/users/";
+    return normalizedPath.startsWith(prefix)
+        && normalizedPath.endsWith("/" + alias)
+        && normalizedPath
+                .substring(prefix.length(), normalizedPath.length() - alias.length() - 1)
+                .indexOf('/')
+            < 0;
+  }
+
+  private static boolean isAdminUserDetailPath(String normalizedPath) {
+    String prefix = "/api/v1/admin/users/";
+    if (!normalizedPath.startsWith(prefix)) {
+      return false;
+    }
+    String remainder = normalizedPath.substring(prefix.length());
+    return !remainder.isBlank() && remainder.indexOf('/') < 0;
+  }
+
   public static String[] requestMatchers() {
     return REQUEST_MATCHERS.clone();
   }

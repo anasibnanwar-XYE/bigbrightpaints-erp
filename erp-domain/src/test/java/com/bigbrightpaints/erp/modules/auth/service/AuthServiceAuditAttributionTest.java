@@ -26,6 +26,10 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.TransactionStatus;
+import org.springframework.transaction.support.SimpleTransactionStatus;
 
 import com.bigbrightpaints.erp.core.audit.AuditEvent;
 import com.bigbrightpaints.erp.core.audit.AuditService;
@@ -66,11 +70,35 @@ class AuthServiceAuditAttributionTest {
   @Mock private TenantRuntimeRequestAdmissionService tenantRuntimeRequestAdmissionService;
   @Mock private PasswordEncoder passwordEncoder;
   @Mock private AuthScopeService authScopeService;
+  @Mock private IamCanonicalStorageService iamCanonicalStorageService;
+  @Mock private AuthSessionService authSessionService;
+  private AccountLockoutService accountLockoutService;
+
+  private final PlatformTransactionManager transactionManager =
+      new PlatformTransactionManager() {
+        @Override
+        public TransactionStatus getTransaction(TransactionDefinition definition) {
+          return new SimpleTransactionStatus();
+        }
+
+        @Override
+        public void commit(TransactionStatus status) {}
+
+        @Override
+        public void rollback(TransactionStatus status) {}
+      };
 
   private AuthService authService;
 
   @BeforeEach
   void setup() {
+    accountLockoutService =
+        new AccountLockoutService(
+            userAccountRepository,
+            tokenBlacklistService,
+            refreshTokenService,
+            iamCanonicalStorageService,
+            transactionManager);
     authService =
         new AuthService(
             tokenService,
@@ -83,7 +111,11 @@ class AuthServiceAuditAttributionTest {
             auditService,
             tenantRuntimeRequestAdmissionService,
             passwordEncoder,
-            authScopeService);
+            authScopeService,
+            iamCanonicalStorageService,
+            accountLockoutService,
+            authSessionService,
+            new PasswordPolicy());
   }
 
   @Test
@@ -111,6 +143,26 @@ class AuthServiceAuditAttributionTest {
             argThat(
                 (Map<String, String> map) ->
                     map != null && "Invalid credentials".equals(map.get("reason"))));
+  }
+
+  @Test
+  void loginNormalizesPasswordBeforeVerification() {
+    LoginRequest request =
+        new LoginRequest("user@example.com", "Cafe\u0301Pass1!", "ACME", null, null);
+    UserAccount user = new UserAccount("user@example.com", "ACME", "hash", "User");
+    user.setEnabled(true);
+
+    when(authScopeService.requireScopeCode("ACME")).thenReturn("ACME");
+    when(userAccountRepository.findByEmailIgnoreCaseAndAuthScopeCodeIgnoreCase(
+            "user@example.com", "ACME"))
+        .thenReturn(Optional.of(user));
+    when(passwordEncoder.matches("Caf\u00e9Pass1!", "hash")).thenReturn(false);
+
+    assertThatThrownBy(() -> authService.login(request))
+        .isInstanceOf(ApplicationException.class)
+        .hasMessageContaining("Invalid credentials");
+
+    verify(passwordEncoder).matches("Caf\u00e9Pass1!", "hash");
   }
 
   @Test
@@ -195,9 +247,14 @@ class AuthServiceAuditAttributionTest {
     when(tokenService.generateAccessToken(
             eq(user.getPublicId().toString()), eq("PLATFORM"), any(Map.class), any(Instant.class)))
         .thenReturn("access-new");
-    when(refreshTokenService.issue(
-            eq(user.getPublicId()), eq("PLATFORM"), any(Instant.class), any(Instant.class)))
-        .thenReturn("refresh-new");
+    when(refreshTokenService.issueSession(
+            eq(user.getPublicId()),
+            eq("PLATFORM"),
+            any(Instant.class),
+            any(Instant.class),
+            any(),
+            any()))
+        .thenReturn(new RefreshTokenService.IssuedRefreshToken("refresh-new", UUID.randomUUID()));
     when(properties.getRefreshTokenTtlSeconds()).thenReturn(3600L);
     when(properties.getAccessTokenTtlSeconds()).thenReturn(900L);
 
@@ -237,11 +294,12 @@ class AuthServiceAuditAttributionTest {
     UserAccount user = userWithCompany("user@example.com", "ACME");
     RefreshTokenService.TokenRecord record =
         new RefreshTokenService.TokenRecord(
-            user.getPublicId(), "ACME", issuedAt, issuedAt.plus(1, ChronoUnit.DAYS));
+            user.getPublicId(), "ACME", issuedAt, issuedAt.plus(1, ChronoUnit.DAYS), "digest-old");
 
     when(authScopeService.requireScopeCode("acme")).thenReturn("ACME");
     when(authScopeService.isPlatformScope("ACME")).thenReturn(false);
-    when(refreshTokenService.consume("refresh-old")).thenReturn(Optional.of(record));
+    when(refreshTokenService.inspect("refresh-old", "ACME")).thenReturn(Optional.of(record));
+    when(refreshTokenService.consume("refresh-old", "ACME")).thenReturn(Optional.of(record));
     when(tokenBlacklistService.isUserTokenRevoked(user.getPublicId().toString(), issuedAt))
         .thenReturn(false);
     when(userAccountRepository.findByPublicId(user.getPublicId())).thenReturn(Optional.of(user));
@@ -253,9 +311,14 @@ class AuthServiceAuditAttributionTest {
                     claims != null && user.getDisplayName().equals(claims.get("name"))),
             any(Instant.class)))
         .thenReturn("access-new");
-    when(refreshTokenService.issue(
-            eq(user.getPublicId()), eq("ACME"), any(Instant.class), any(Instant.class)))
-        .thenReturn("refresh-new");
+    when(refreshTokenService.issueSession(
+            eq(user.getPublicId()),
+            eq("ACME"),
+            any(Instant.class),
+            any(Instant.class),
+            any(),
+            eq("digest-old")))
+        .thenReturn(new RefreshTokenService.IssuedRefreshToken("refresh-new", UUID.randomUUID()));
     when(properties.getRefreshTokenTtlSeconds()).thenReturn(3600L);
     when(properties.getAccessTokenTtlSeconds()).thenReturn(900L);
 
@@ -276,10 +339,10 @@ class AuthServiceAuditAttributionTest {
     UUID userPublicId = UUID.randomUUID();
     RefreshTokenService.TokenRecord record =
         new RefreshTokenService.TokenRecord(
-            userPublicId, "ACME", issuedAt, issuedAt.plus(1, ChronoUnit.DAYS));
+            userPublicId, "ACME", issuedAt, issuedAt.plus(1, ChronoUnit.DAYS), "digest-old");
 
     when(authScopeService.requireScopeCode("ACME")).thenReturn("ACME");
-    when(refreshTokenService.consume("refresh-old")).thenReturn(Optional.of(record));
+    when(refreshTokenService.inspect("refresh-old", "ACME")).thenReturn(Optional.of(record));
     when(tokenBlacklistService.isUserTokenRevoked(userPublicId.toString(), issuedAt))
         .thenReturn(true);
 
@@ -290,14 +353,8 @@ class AuthServiceAuditAttributionTest {
 
   @Test
   void refreshRejectsWhenRequestedScopeDoesNotMatchStoredScope() {
-    Instant issuedAt = Instant.parse("2026-01-01T00:00:00Z");
-    UUID userPublicId = UUID.randomUUID();
-    RefreshTokenService.TokenRecord record =
-        new RefreshTokenService.TokenRecord(
-            userPublicId, "BBB", issuedAt, issuedAt.plus(1, ChronoUnit.DAYS));
-
     when(authScopeService.requireScopeCode("ACME")).thenReturn("ACME");
-    when(refreshTokenService.consume("refresh-old")).thenReturn(Optional.of(record));
+    when(refreshTokenService.inspect("refresh-old", "ACME")).thenReturn(Optional.empty());
 
     assertThatThrownBy(() -> authService.refresh(new RefreshTokenRequest("refresh-old", "ACME")))
         .isInstanceOf(ApplicationException.class)
@@ -317,8 +374,8 @@ class AuthServiceAuditAttributionTest {
 
     authService.logout("   ", "access-token");
 
-    verify(tokenBlacklistService).revokeAllUserTokens(userPublicId.toString());
-    verify(refreshTokenService).revokeAllForUser(userPublicId);
+    verify(tokenBlacklistService, never()).revokeAllUserTokens(userPublicId.toString());
+    verify(refreshTokenService, never()).revokeAllForUser(userPublicId);
     verify(tokenBlacklistService)
         .blacklistToken("jti-logout", expiresAt, userPublicId.toString(), "logout");
   }
@@ -348,8 +405,8 @@ class AuthServiceAuditAttributionTest {
       logAppender.stop();
     }
 
-    verify(tokenBlacklistService).revokeAllUserTokens(userPublicId.toString());
-    verify(refreshTokenService).revokeAllForUser(userPublicId);
+    verify(tokenBlacklistService, never()).revokeAllUserTokens(userPublicId.toString());
+    verify(refreshTokenService, never()).revokeAllForUser(userPublicId);
     assertThat(logAppender.list)
         .anySatisfy(
             event -> {
@@ -357,6 +414,29 @@ class AuthServiceAuditAttributionTest {
               assertThat(event.getFormattedMessage())
                   .contains("Failed to blacklist access token during logout");
             });
+  }
+
+  @Test
+  void logoutIgnoresStaleOptionalRefreshTokenAndRevokesCurrentSession() {
+    Claims claims = org.mockito.Mockito.mock(Claims.class);
+    Instant expiresAt = Instant.parse("2026-01-01T00:05:00Z");
+    UUID userPublicId = UUID.randomUUID();
+    UUID sessionPublicId = UUID.randomUUID();
+    when(tokenService.parse("access-token")).thenReturn(claims);
+    when(claims.getSubject()).thenReturn(userPublicId.toString());
+    when(claims.getId()).thenReturn("jti-logout");
+    when(claims.getExpiration()).thenReturn(Date.from(expiresAt));
+    when(claims.get("companyCode", String.class)).thenReturn("ACME");
+    when(authSessionService.currentSessionIdFromClaims(claims)).thenReturn(sessionPublicId);
+    when(authSessionService.refreshTokenBelongsToSession(
+            "stale-refresh", userPublicId, sessionPublicId, "ACME"))
+        .thenReturn(false);
+
+    authService.logout("stale-refresh", "access-token");
+
+    verify(authSessionService).revokeCurrentSession(userPublicId, sessionPublicId, "logout");
+    verify(tokenBlacklistService)
+        .blacklistToken("jti-logout", expiresAt, userPublicId.toString(), "logout");
   }
 
   @Test
@@ -417,9 +497,14 @@ class AuthServiceAuditAttributionTest {
       when(tokenService.generateAccessToken(
               eq(user.getPublicId().toString()), eq("ACME"), any(Map.class), any(Instant.class)))
           .thenReturn("access-new");
-      when(refreshTokenService.issue(
-              eq(user.getPublicId()), eq("ACME"), any(Instant.class), any(Instant.class)))
-          .thenReturn("refresh-new");
+      when(refreshTokenService.issueSession(
+              eq(user.getPublicId()),
+              eq("ACME"),
+              any(Instant.class),
+              any(Instant.class),
+              any(),
+              any()))
+          .thenReturn(new RefreshTokenService.IssuedRefreshToken("refresh-new", UUID.randomUUID()));
       when(properties.getRefreshTokenTtlSeconds()).thenReturn(3600L);
       when(properties.getAccessTokenTtlSeconds()).thenReturn(900L);
 

@@ -29,6 +29,7 @@ class ScopedAccountBootstrapServiceTest {
   @Mock private PasswordEncoder passwordEncoder;
   @Mock private EmailService emailService;
   @Mock private AuthScopeService authScopeService;
+  @Mock private IamCanonicalStorageService iamCanonicalStorageService;
 
   private ScopedAccountBootstrapService scopedAccountBootstrapService;
 
@@ -36,7 +37,11 @@ class ScopedAccountBootstrapServiceTest {
   void setUp() {
     scopedAccountBootstrapService =
         new ScopedAccountBootstrapService(
-            userAccountRepository, passwordEncoder, emailService, authScopeService);
+            userAccountRepository,
+            passwordEncoder,
+            emailService,
+            authScopeService,
+            iamCanonicalStorageService);
   }
 
   @Test

@@ -6,9 +6,9 @@ import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
 import java.security.SecureRandom;
 import java.time.Clock;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 
@@ -25,6 +25,9 @@ import org.springframework.web.util.UriUtils;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.security.CryptoService;
+import com.bigbrightpaints.erp.core.security.TokenBlacklistService;
+import com.bigbrightpaints.erp.modules.auth.domain.MfaRecoveryCode;
+import com.bigbrightpaints.erp.modules.auth.domain.MfaRecoveryCodeRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.auth.exception.InvalidMfaException;
@@ -47,8 +50,13 @@ public class MfaService {
   private static final int[] BASE32_LOOKUP = buildLookup();
 
   private final UserAccountRepository userAccountRepository;
+  private final MfaRecoveryCodeRepository mfaRecoveryCodeRepository;
   private final PasswordEncoder passwordEncoder;
   private final CryptoService cryptoService;
+  private final TokenBlacklistService tokenBlacklistService;
+  private final RefreshTokenService refreshTokenService;
+  private final IamCanonicalStorageService iamCanonicalStorageService;
+  private final AccountLockoutService accountLockoutService;
   private final SecureRandom secureRandom = new SecureRandom();
   private final Clock clock;
   private final String issuer;
@@ -56,56 +64,93 @@ public class MfaService {
   @Autowired
   public MfaService(
       UserAccountRepository userAccountRepository,
+      MfaRecoveryCodeRepository mfaRecoveryCodeRepository,
       PasswordEncoder passwordEncoder,
       CryptoService cryptoService,
+      TokenBlacklistService tokenBlacklistService,
+      RefreshTokenService refreshTokenService,
+      IamCanonicalStorageService iamCanonicalStorageService,
+      AccountLockoutService accountLockoutService,
       @Value("${security.mfa.issuer:BigBright ERP}") String issuer) {
-    this(userAccountRepository, passwordEncoder, cryptoService, issuer, Clock.systemUTC());
+    this(
+        userAccountRepository,
+        mfaRecoveryCodeRepository,
+        passwordEncoder,
+        cryptoService,
+        tokenBlacklistService,
+        refreshTokenService,
+        iamCanonicalStorageService,
+        accountLockoutService,
+        issuer,
+        Clock.systemUTC());
   }
 
   MfaService(
       UserAccountRepository userAccountRepository,
+      MfaRecoveryCodeRepository mfaRecoveryCodeRepository,
       PasswordEncoder passwordEncoder,
       CryptoService cryptoService,
+      TokenBlacklistService tokenBlacklistService,
+      RefreshTokenService refreshTokenService,
+      IamCanonicalStorageService iamCanonicalStorageService,
+      AccountLockoutService accountLockoutService,
       String issuer,
       Clock clock) {
     this.userAccountRepository = userAccountRepository;
+    this.mfaRecoveryCodeRepository = mfaRecoveryCodeRepository;
     this.passwordEncoder = passwordEncoder;
     this.cryptoService = cryptoService;
+    this.tokenBlacklistService = tokenBlacklistService;
+    this.refreshTokenService = refreshTokenService;
+    this.iamCanonicalStorageService = iamCanonicalStorageService;
+    this.accountLockoutService = accountLockoutService;
     this.issuer = issuer;
     this.clock = clock;
   }
 
   @Transactional
   public MfaEnrollment beginEnrollment(UserAccount user) {
+    requireUser(user);
+    accountLockoutService.enforceUnlocked(user);
+    if (user.isMfaEnabled()) {
+      throw new ApplicationException(
+          ErrorCode.VALIDATION_INVALID_INPUT,
+          "MFA is already enabled; use a verified MFA profile-change flow");
+    }
     String secret = generateSecret();
     List<String> recoveryCodes = generateRecoveryCodes();
-    List<String> hashed = recoveryCodes.stream().map(passwordEncoder::encode).toList();
-    // Encrypt the MFA secret before storing
     user.setMfaSecret(cryptoService.encrypt(secret));
     user.setMfaEnabled(false);
-    user.setMfaRecoveryCodeHashes(hashed);
     userAccountRepository.save(user);
+    replaceRecoveryCodes(user, recoveryCodes);
+    iamCanonicalStorageService.syncUser(user);
     return new MfaEnrollment(secret, buildOtpAuthUri(user, secret), recoveryCodes);
   }
 
   @Transactional
   public void activate(UserAccount user, String code) {
-    // Decrypt the MFA secret for validation
+    requireUser(user);
+    accountLockoutService.enforceUnlocked(user);
     String decryptedSecret = requireActiveSecret(user);
     if (!isValidTotp(decryptedSecret, code)) {
+      accountLockoutService.recordFailure(user);
       throw new ApplicationException(ErrorCode.AUTH_MFA_INVALID, "Invalid MFA code");
     }
+    accountLockoutService.resetFailures(user);
     user.setMfaEnabled(true);
     userAccountRepository.save(user);
+    iamCanonicalStorageService.syncUser(user);
+    revokeActiveSessions(user);
   }
 
   @Transactional
   public void disable(UserAccount user, String totpCode, String recoveryCode) {
+    requireUser(user);
+    accountLockoutService.enforceUnlocked(user);
     if (!user.isMfaEnabled()) {
       return;
     }
     boolean cleared = false;
-    // Decrypt the MFA secret for validation
     String decryptedSecret = requireActiveSecret(user);
     if (isValidTotp(decryptedSecret, totpCode)) {
       cleared = true;
@@ -113,20 +158,63 @@ public class MfaService {
       cleared = true;
     }
     if (!cleared) {
+      accountLockoutService.recordFailure(user);
       throw new ApplicationException(ErrorCode.AUTH_MFA_INVALID, "Invalid MFA verification data");
     }
+    accountLockoutService.resetFailures(user);
     clearMfa(user);
     userAccountRepository.save(user);
+    iamCanonicalStorageService.syncUser(user);
+    revokeActiveSessions(user);
+  }
+
+  @Transactional(dontRollbackOn = ApplicationException.class)
+  public List<String> regenerateRecoveryCodes(
+      UserAccount user, String totpCode, String recoveryCode) {
+    return regenerateRecoveryCodes(user, totpCode, recoveryCode, null);
+  }
+
+  @Transactional(dontRollbackOn = ApplicationException.class)
+  public List<String> regenerateRecoveryCodes(
+      UserAccount user, String totpCode, String recoveryCode, Instant authenticatedTokenIssuedAt) {
+    UserAccount lockedUser = lockUserForRecoveryRegeneration(user);
+    accountLockoutService.enforceUnlocked(lockedUser);
+    enforceTokenStillActive(lockedUser, authenticatedTokenIssuedAt);
+    if (!lockedUser.isMfaEnabled()) {
+      throw new ApplicationException(
+          ErrorCode.VALIDATION_INVALID_INPUT, "MFA must be enabled to regenerate recovery codes");
+    }
+    String decryptedSecret = requireActiveSecret(lockedUser);
+    boolean verified = false;
+    String normalizedTotp = normalizeCode(totpCode);
+    String normalizedRecovery = normalizeCode(recoveryCode);
+    if (StringUtils.hasText(normalizedTotp) && isValidTotp(decryptedSecret, normalizedTotp)) {
+      verified = true;
+    } else if (StringUtils.hasText(normalizedRecovery)
+        && consumeRecoveryCode(lockedUser, normalizedRecovery)) {
+      verified = true;
+    }
+    if (!verified) {
+      accountLockoutService.recordFailureOnLockedAccount(lockedUser);
+      throw new ApplicationException(ErrorCode.AUTH_MFA_INVALID, "Invalid MFA verification data");
+    }
+    accountLockoutService.resetFailures(lockedUser);
+    List<String> recoveryCodes = generateRecoveryCodes();
+    replaceRecoveryCodes(lockedUser, recoveryCodes);
+    userAccountRepository.save(lockedUser);
+    iamCanonicalStorageService.syncUser(lockedUser);
+    revokeActiveSessions(lockedUser);
+    return recoveryCodes;
   }
 
   @Transactional
   public void verifyDuringLogin(UserAccount user, String totpCode, String recoveryCode) {
+    requireUser(user);
     if (!user.isMfaEnabled()) {
       return;
     }
     String normalizedTotp = normalizeCode(totpCode);
     String normalizedRecovery = normalizeCode(recoveryCode);
-    // Decrypt the MFA secret for validation
     String decryptedSecret = requireActiveSecret(user);
     if (StringUtils.hasText(normalizedTotp) && isValidTotp(decryptedSecret, normalizedTotp)) {
       return;
@@ -147,6 +235,12 @@ public class MfaService {
           ErrorCode.VALIDATION_INVALID_INPUT, "MFA enrollment is inactive for this user");
     }
     return cryptoService.decrypt(user.getMfaSecret());
+  }
+
+  private void requireUser(UserAccount user) {
+    if (user == null) {
+      throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "User is required");
+    }
   }
 
   private String normalizeCode(String code) {
@@ -183,17 +277,63 @@ public class MfaService {
     if (!StringUtils.hasText(candidate)) {
       return false;
     }
-    List<String> hashes = new ArrayList<>(user.getMfaRecoveryCodeHashes());
-    Iterator<String> iterator = hashes.iterator();
-    while (iterator.hasNext()) {
-      String hash = iterator.next();
-      if (passwordEncoder.matches(candidate, hash)) {
-        iterator.remove();
-        user.setMfaRecoveryCodeHashes(hashes);
+    List<MfaRecoveryCode> codes = mfaRecoveryCodeRepository.findUnusedByUserForUpdate(user);
+    for (MfaRecoveryCode code : codes) {
+      if (passwordEncoder.matches(candidate, code.getCodeHash())) {
+        code.markAsUsed();
+        mfaRecoveryCodeRepository.save(code);
         return true;
       }
     }
     return false;
+  }
+
+  private UserAccount lockUserForRecoveryRegeneration(UserAccount user) {
+    if (user == null || user.getId() == null) {
+      throw new ApplicationException(
+          ErrorCode.VALIDATION_INVALID_INPUT, "MFA must be enabled to regenerate recovery codes");
+    }
+    return userAccountRepository
+        .lockById(user.getId())
+        .orElseThrow(
+            () ->
+                new ApplicationException(
+                    ErrorCode.VALIDATION_INVALID_INPUT,
+                    "MFA must be enabled to regenerate recovery codes"));
+  }
+
+  private void enforceTokenStillActive(UserAccount user, Instant authenticatedTokenIssuedAt) {
+    if (user == null || user.getPublicId() == null || authenticatedTokenIssuedAt == null) {
+      return;
+    }
+    if (tokenBlacklistService.isUserTokenRevoked(
+        user.getPublicId().toString(), authenticatedTokenIssuedAt)) {
+      throw new ApplicationException(
+          ErrorCode.AUTH_SESSION_EXPIRED, ErrorCode.AUTH_SESSION_EXPIRED.getDefaultMessage());
+    }
+  }
+
+  private void replaceRecoveryCodes(UserAccount user, List<String> recoveryCodes) {
+    mfaRecoveryCodeRepository.findUnusedByUserForUpdate(user);
+    mfaRecoveryCodeRepository.deleteAllByUser(user);
+    mfaRecoveryCodeRepository.flush();
+    if (recoveryCodes == null || recoveryCodes.isEmpty()) {
+      return;
+    }
+    List<MfaRecoveryCode> hashedCodes =
+        recoveryCodes.stream()
+            .map(code -> new MfaRecoveryCode(user, passwordEncoder.encode(code)))
+            .toList();
+    mfaRecoveryCodeRepository.saveAll(hashedCodes);
+    mfaRecoveryCodeRepository.flush();
+  }
+
+  private void revokeActiveSessions(UserAccount user) {
+    if (user == null || user.getPublicId() == null) {
+      return;
+    }
+    tokenBlacklistService.revokeAllUserTokens(user.getPublicId().toString());
+    refreshTokenService.revokeAllForUser(user.getPublicId());
   }
 
   private boolean isValidTotp(String secret, String code) {
@@ -259,7 +399,7 @@ public class MfaService {
   private void clearMfa(UserAccount user) {
     user.setMfaEnabled(false);
     user.setMfaSecret(null);
-    user.setMfaRecoveryCodeHashes(List.of());
+    mfaRecoveryCodeRepository.deleteAllByUser(user);
   }
 
   public record MfaEnrollment(String secret, String qrUri, List<String> recoveryCodes) {}

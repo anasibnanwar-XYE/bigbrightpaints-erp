@@ -1,6 +1,6 @@
 # Tenant Admin Portal
 
-Last reviewed: 2026-04-15
+Last reviewed: 2026-04-30
 
 ## Purpose
 
@@ -40,3 +40,8 @@ Still-live legacy admin insight reads:
 - Always bootstrap with `GET /api/v1/auth/me`.
 - Treat `mustChangePassword=true` as a blocking corridor state.
 - Persist tenant scope as `companyCode` and send `X-Company-Code`.
+
+## Current identity/IAM handoff
+
+- [Identity/IAM frontend handoff](./identity-iam-handoff-2026-04-30.md) is the current tenant-admin
+  frontend contract for My Account, MFA, sessions, and admin user-control routes.

@@ -34,6 +34,7 @@ import com.bigbrightpaints.erp.modules.auth.domain.PasswordResetToken;
 import com.bigbrightpaints.erp.modules.auth.domain.PasswordResetTokenRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
+import com.bigbrightpaints.erp.modules.auth.service.IamCanonicalStorageService;
 import com.bigbrightpaints.erp.modules.auth.service.PasswordResetService;
 import com.bigbrightpaints.erp.modules.auth.service.PasswordService;
 import com.bigbrightpaints.erp.modules.auth.service.RefreshTokenService;
@@ -57,7 +58,6 @@ class TS_RuntimePasswordResetServiceExecutableCoverageTest {
     stubIssuedResetToken(tokenRepository, 11L);
 
     invokeRequest(service, "corr-support-123", null, null);
-    invokeRequest(service, "   ", "req-fallback-123", null);
     invokeRequest(service, "bad|pattern", null, null);
     invokeRequest(service, "x".repeat(129), null, null);
     invokeRequest(service, "corr-newline\nsegment", null, null);
@@ -247,6 +247,7 @@ class TS_RuntimePasswordResetServiceExecutableCoverageTest {
         mock(TokenBlacklistService.class),
         mock(RefreshTokenService.class),
         authScopeService,
+        mock(IamCanonicalStorageService.class),
         new ResourcelessTransactionManager());
   }
 

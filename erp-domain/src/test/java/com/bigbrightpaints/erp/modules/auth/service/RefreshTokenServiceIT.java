@@ -13,7 +13,7 @@ import com.bigbrightpaints.erp.modules.auth.domain.RefreshToken;
 import com.bigbrightpaints.erp.modules.auth.domain.RefreshTokenRepository;
 import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
 
-class RefreshTokenServiceTest extends AbstractIntegrationTest {
+class RefreshTokenServiceIT extends AbstractIntegrationTest {
 
   @Autowired private RefreshTokenService refreshTokenService;
   @Autowired private RefreshTokenRepository refreshTokenRepository;
@@ -30,7 +30,6 @@ class RefreshTokenServiceTest extends AbstractIntegrationTest {
     String token = refreshTokenService.issue(userPublicId, "ACME", expiresAt);
 
     RefreshToken stored = refreshTokenRepository.findAll().getFirst();
-    assertThat(stored.getToken()).isNull();
     assertThat(stored.getTokenDigest()).isNotNull();
     assertThat(stored.getUserPublicId()).isEqualTo(userPublicId);
     assertThat(stored.getAuthScopeCode()).isEqualTo("ACME");

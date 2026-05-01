@@ -47,8 +47,6 @@ Use the common auth/self-service stack:
 - `POST /api/v1/auth/refresh-token`
 - `POST /api/v1/auth/logout`
 - `GET /api/v1/auth/me`
-- `GET /api/v1/auth/profile`
-- `PUT /api/v1/auth/profile`
 - `POST /api/v1/auth/password/change`
 - `POST /api/v1/auth/password/forgot`
 - `POST /api/v1/auth/password/reset`

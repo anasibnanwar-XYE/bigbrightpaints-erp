@@ -8,14 +8,14 @@
 4. Assert tenant navigation renders.
 5. If `mustChangePassword=true`, assert redirect into the password-change flow instead of normal shell landing.
 
-## Journey 2: Create, suspend, and unsuspend a user
+## Journey 2: Create, lock, and unlock a user
 
 1. Visit `/tenant/users`.
 2. Create a user from `/tenant/users/new`.
 3. Assert the new row appears with the expected email and roles.
-4. Trigger suspend and assert the backend returns `204`.
-5. Re-fetch and assert the user row shows disabled state.
-6. Trigger unsuspend and assert the row returns to enabled state.
+4. Trigger lock and assert `POST /api/v1/admin/users/{userId}/lock` returns `204`.
+5. Re-fetch and assert the user row shows locked state where surfaced by the UI.
+6. Trigger unlock and assert `POST /api/v1/admin/users/{userId}/unlock` returns `204`.
 
 ## Journey 3: Send forced reset link and disable MFA
 

@@ -211,6 +211,47 @@ class EmailServiceTest {
   }
 
   @Test
+  void sendPasswordResetEmailRequired_usesOnlyConfiguredCanonicalBaseUrl() throws Exception {
+    emailProperties.setBaseUrl(" https://app.bigbrightpaints.example/ ");
+    JavaMailSender localMailSender = org.mockito.Mockito.mock(JavaMailSender.class);
+    ClassLoaderTemplateResolver resolver = new ClassLoaderTemplateResolver();
+    resolver.setPrefix("templates/");
+    resolver.setSuffix(".html");
+    resolver.setTemplateMode(TemplateMode.HTML);
+    resolver.setCharacterEncoding("UTF-8");
+    resolver.setCacheable(false);
+    SpringTemplateEngine localTemplateEngine = new SpringTemplateEngine();
+    localTemplateEngine.setTemplateResolver(resolver);
+    EmailService localEmailService =
+        new EmailService(localMailSender, emailProperties, localTemplateEngine);
+    MimeMessage mimeMessage = new MimeMessage(Session.getInstance(new Properties()));
+    doAnswer(
+            invocation -> {
+              MimeMessagePreparator preparator = invocation.getArgument(0);
+              preparator.prepare(mimeMessage);
+              return null;
+            })
+        .when(localMailSender)
+        .send(any(MimeMessagePreparator.class));
+
+    assertThatCode(
+            () ->
+                localEmailService.sendPasswordResetEmailRequired(
+                    "user@example.com", "User", "reset-123", "ACME"))
+        .doesNotThrowAnyException();
+
+    Object content = mimeMessage.getContent();
+    assertThat(content).isInstanceOf(MimeMultipart.class);
+    Object bodyContent = ((MimeMultipart) content).getBodyPart(0).getContent();
+    String body =
+        bodyContent instanceof MimeMultipart multipart
+            ? (String) multipart.getBodyPart(0).getContent()
+            : (String) bodyContent;
+    assertThat(body).contains("https://app.bigbrightpaints.example/reset-password?token=reset-123");
+    assertThat(body).doesNotContain("https://app.bigbrightpaints.example//reset-password");
+  }
+
+  @Test
   void sendHtmlEmailRequired_throwsWhenGlobalMailDeliveryDisabled() {
     emailProperties.setEnabled(false);
 

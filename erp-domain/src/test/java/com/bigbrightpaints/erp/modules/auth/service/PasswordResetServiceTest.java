@@ -6,8 +6,10 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -25,10 +27,14 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.batch.support.transaction.ResourcelessTransactionManager;
+import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 
 import com.bigbrightpaints.erp.core.audit.AuditEvent;
 import com.bigbrightpaints.erp.core.audit.AuditLogRepository;
@@ -60,6 +66,7 @@ class PasswordResetServiceTest {
   @Mock private TokenBlacklistService tokenBlacklistService;
   @Mock private RefreshTokenService refreshTokenService;
   @Mock private AuthScopeService authScopeService;
+  @Mock private IamCanonicalStorageService iamCanonicalStorageService;
 
   private EmailProperties emailProperties;
   private PasswordResetService passwordResetService;
@@ -82,6 +89,7 @@ class PasswordResetServiceTest {
             tokenBlacklistService,
             refreshTokenService,
             authScopeService,
+            iamCanonicalStorageService,
             new ResourcelessTransactionManager());
     lenient()
         .when(authScopeService.requireScopeCode(anyString()))
@@ -178,6 +186,21 @@ class PasswordResetServiceTest {
     verify(emailService)
         .sendPasswordResetEmailRequired(
             eq("admin-reset@example.com"), eq("User"), anyString(), eq(TENANT_SCOPE));
+    verify(tokenBlacklistService).revokeAllUserTokens(user.getPublicId().toString());
+    verify(refreshTokenService).revokeAllForUser(user.getPublicId());
+  }
+
+  @Test
+  void requestForceResetByAdminMarksTargetMustChangeAndRevokesSessions() {
+    UserAccount user = enabledUser("admin-force-reset@example.com", TENANT_SCOPE);
+
+    passwordResetService.requestForceResetByAdmin(user);
+
+    assertEquals(true, user.isMustChangePassword());
+    verify(userAccountRepository).save(user);
+    verify(iamCanonicalStorageService).syncUser(user);
+    verify(tokenBlacklistService).revokeAllUserTokens(user.getPublicId().toString());
+    verify(refreshTokenService).revokeAllForUser(user.getPublicId());
   }
 
   @Test
@@ -287,7 +310,8 @@ class PasswordResetServiceTest {
             user,
             AuthTokenDigests.passwordResetTokenDigest(rawToken),
             Instant.now().plusSeconds(600));
-    when(tokenRepository.findByTokenDigest(AuthTokenDigests.passwordResetTokenDigest(rawToken)))
+    when(tokenRepository.findByTokenDigestForUpdate(
+            AuthTokenDigests.passwordResetTokenDigest(rawToken)))
         .thenReturn(Optional.of(token));
 
     passwordResetService.resetPassword(rawToken, "NewPass123", "NewPass123");
@@ -298,6 +322,108 @@ class PasswordResetServiceTest {
     verify(refreshTokenService).revokeAllForUser(user.getPublicId());
     verify(tokenRepository).save(token);
     verify(tokenRepository).deleteByUser(user);
+  }
+
+  @Test
+  void resetPasswordChecksRequestScopedAbuseLimitBeforeMissingTokenLookupCompletes() {
+    String rawToken = "missing-token";
+    when(tokenRepository.findByTokenDigestForUpdate(
+            AuthTokenDigests.passwordResetTokenDigest(rawToken)))
+        .thenReturn(Optional.empty());
+
+    assertThrows(
+        ApplicationException.class,
+        () -> passwordResetService.resetPassword(rawToken, "NewPass123!", "NewPass123!"));
+
+    InOrder inOrder = inOrder(securityMonitoringService, tokenRepository);
+    inOrder
+        .verify(securityMonitoringService)
+        .checkRateLimit(argThat(PasswordResetServiceTest::isResetPasswordRequestRateLimitKey));
+    inOrder.verify(tokenRepository).findByTokenDigestForUpdate(anyString());
+    verify(passwordService, never())
+        .resetPassword(any(UserAccount.class), anyString(), anyString());
+  }
+
+  @Test
+  void resetPasswordChecksRequestScopedAbuseLimitForExpiredAndReplayedTokens() {
+    UserAccount user = enabledUser("user@example.com", TENANT_SCOPE);
+    PasswordResetToken expiredToken =
+        PasswordResetToken.digestOnly(
+            user,
+            AuthTokenDigests.passwordResetTokenDigest("expired-token"),
+            Instant.now().minusSeconds(1));
+    PasswordResetToken replayedToken =
+        PasswordResetToken.digestOnly(
+            user,
+            AuthTokenDigests.passwordResetTokenDigest("replayed-token"),
+            Instant.now().plusSeconds(600));
+    replayedToken.markUsed();
+    when(tokenRepository.findByTokenDigestForUpdate(
+            AuthTokenDigests.passwordResetTokenDigest("expired-token")))
+        .thenReturn(Optional.of(expiredToken));
+    when(tokenRepository.findByTokenDigestForUpdate(
+            AuthTokenDigests.passwordResetTokenDigest("replayed-token")))
+        .thenReturn(Optional.of(replayedToken));
+
+    assertThrows(
+        ApplicationException.class,
+        () -> passwordResetService.resetPassword("expired-token", "NewPass123!", "NewPass123!"));
+    assertThrows(
+        ApplicationException.class,
+        () -> passwordResetService.resetPassword("replayed-token", "NewPass123!", "NewPass123!"));
+
+    verify(securityMonitoringService, times(2))
+        .checkRateLimit(argThat(PasswordResetServiceTest::isResetPasswordRequestRateLimitKey));
+    verify(passwordService, never())
+        .resetPassword(any(UserAccount.class), anyString(), anyString());
+  }
+
+  @Test
+  void resetPasswordRateLimitedInvalidAttemptStopsBeforeTokenLookup() {
+    when(securityMonitoringService.checkRateLimit(
+            argThat(PasswordResetServiceTest::isResetPasswordRequestRateLimitKey)))
+        .thenReturn(false);
+
+    ApplicationException exception =
+        assertThrows(
+            ApplicationException.class,
+            () ->
+                passwordResetService.resetPassword("missing-token", "NewPass123!", "NewPass123!"));
+
+    assertEquals(ErrorCode.SYSTEM_RATE_LIMIT_EXCEEDED, exception.getErrorCode());
+    verify(tokenRepository, never()).findByTokenDigestForUpdate(anyString());
+    verify(passwordService, never())
+        .resetPassword(any(UserAccount.class), anyString(), anyString());
+  }
+
+  @Test
+  void resetPasswordRequestRateLimitUsesTrustedRemoteAddressInsteadOfForwardedHeader() {
+    when(tokenRepository.findByTokenDigestForUpdate(anyString())).thenReturn(Optional.empty());
+    MockHttpServletRequest request = new MockHttpServletRequest();
+    request.setRemoteAddr("203.0.113.10");
+    try {
+      request.addHeader("X-Forwarded-For", "198.51.100.1");
+      RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
+      assertThrows(
+          ApplicationException.class,
+          () -> passwordResetService.resetPassword("missing-1", "NewPass123!", "NewPass123!"));
+
+      request.removeHeader("X-Forwarded-For");
+      request.addHeader("X-Forwarded-For", "198.51.100.2");
+      assertThrows(
+          ApplicationException.class,
+          () -> passwordResetService.resetPassword("missing-2", "NewPass123!", "NewPass123!"));
+    } finally {
+      RequestContextHolder.resetRequestAttributes();
+    }
+
+    ArgumentCaptor<String> keys = ArgumentCaptor.forClass(String.class);
+    verify(securityMonitoringService, times(2))
+        .checkRateLimit(argThat(PasswordResetServiceTest::isResetPasswordRequestRateLimitKey));
+    verify(securityMonitoringService, times(2)).checkRateLimit(keys.capture());
+    org.assertj.core.api.Assertions.assertThat(keys.getAllValues()).hasSize(2);
+    org.assertj.core.api.Assertions.assertThat(keys.getAllValues().get(1))
+        .isEqualTo(keys.getAllValues().get(0));
   }
 
   @Test
@@ -388,6 +514,7 @@ class PasswordResetServiceTest {
             tokenBlacklistService,
             refreshTokenService,
             authScopeService,
+            iamCanonicalStorageService,
             new ResourcelessTransactionManager());
 
     for (int attempt = 0; attempt < 3; attempt++) {
@@ -423,7 +550,8 @@ class PasswordResetServiceTest {
             user,
             AuthTokenDigests.passwordResetTokenDigest("raw-token"),
             Instant.now().plusSeconds(600));
-    when(tokenRepository.findByTokenDigest(AuthTokenDigests.passwordResetTokenDigest("raw-token")))
+    when(tokenRepository.findByTokenDigestForUpdate(
+            AuthTokenDigests.passwordResetTokenDigest("raw-token")))
         .thenReturn(Optional.of(token));
 
     assertThrows(
@@ -497,5 +625,9 @@ class PasswordResetServiceTest {
     UserAccount user = new UserAccount(email, scopeCode, "hash", "User");
     user.setEnabled(true);
     return user;
+  }
+
+  private static boolean isResetPasswordRequestRateLimitKey(String key) {
+    return key != null && key.startsWith("password-reset:reset_password:request:");
   }
 }

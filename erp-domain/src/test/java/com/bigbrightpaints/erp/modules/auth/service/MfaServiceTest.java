@@ -8,13 +8,19 @@ import static org.mockito.Mockito.*;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.List;
+import java.util.Optional;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.security.CryptoService;
+import com.bigbrightpaints.erp.core.security.TokenBlacklistService;
+import com.bigbrightpaints.erp.modules.auth.domain.MfaRecoveryCode;
+import com.bigbrightpaints.erp.modules.auth.domain.MfaRecoveryCodeRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.auth.exception.InvalidMfaException;
@@ -24,20 +30,41 @@ import com.bigbrightpaints.erp.test.support.TotpTestUtils;
 class MfaServiceTest {
 
   private UserAccountRepository repository;
+  private MfaRecoveryCodeRepository mfaRecoveryCodeRepository;
   private PasswordEncoder passwordEncoder;
   private Clock clock;
   private CryptoService cryptoService;
+  private TokenBlacklistService tokenBlacklistService;
+  private RefreshTokenService refreshTokenService;
+  private IamCanonicalStorageService iamCanonicalStorageService;
+  private AccountLockoutService accountLockoutService;
   private MfaService mfaService;
 
   @BeforeEach
   void setUp() {
     repository = mock(UserAccountRepository.class);
+    mfaRecoveryCodeRepository = mock(MfaRecoveryCodeRepository.class);
     passwordEncoder = mock(PasswordEncoder.class);
     cryptoService = mock(CryptoService.class);
+    tokenBlacklistService = mock(TokenBlacklistService.class);
+    refreshTokenService = mock(RefreshTokenService.class);
+    iamCanonicalStorageService = mock(IamCanonicalStorageService.class);
+    accountLockoutService = mock(AccountLockoutService.class);
     clock = Clock.fixed(Instant.parse("2024-01-01T00:00:00Z"), ZoneOffset.UTC);
     when(cryptoService.encrypt(anyString())).thenAnswer(invocation -> invocation.getArgument(0));
     when(cryptoService.decrypt(anyString())).thenAnswer(invocation -> invocation.getArgument(0));
-    mfaService = new MfaService(repository, passwordEncoder, cryptoService, "BigBright ERP", clock);
+    mfaService =
+        new MfaService(
+            repository,
+            mfaRecoveryCodeRepository,
+            passwordEncoder,
+            cryptoService,
+            tokenBlacklistService,
+            refreshTokenService,
+            iamCanonicalStorageService,
+            accountLockoutService,
+            "BigBright ERP",
+            clock);
   }
 
   @Test
@@ -72,32 +99,66 @@ class MfaServiceTest {
 
     assertThat(enrollment.qrUri()).contains("user");
     assertThat(enrollment.qrUri()).contains("MOCK");
+    verify(mfaRecoveryCodeRepository).findUnusedByUserForUpdate(user);
+    verify(mfaRecoveryCodeRepository, times(2)).flush();
+  }
+
+  @Test
+  void beginEnrollment_rejectsEnabledMfaWithoutDowngradingState() {
+    UserAccount user = userWithSecret();
+    String originalSecret = user.getMfaSecret();
+
+    assertThrows(ApplicationException.class, () -> mfaService.beginEnrollment(user));
+
+    assertThat(user.isMfaEnabled()).isTrue();
+    assertThat(user.getMfaSecret()).isEqualTo(originalSecret);
+    verifyNoInteractions(repository);
+    verifyNoInteractions(mfaRecoveryCodeRepository);
+  }
+
+  @Test
+  void userScopedOperationsRejectNullUserWithValidationError() {
+    assertThat(assertThrows(ApplicationException.class, () -> mfaService.beginEnrollment(null)))
+        .hasMessage("User is required");
+    assertThat(assertThrows(ApplicationException.class, () -> mfaService.activate(null, "000000")))
+        .hasMessage("User is required");
+    assertThat(assertThrows(ApplicationException.class, () -> mfaService.disable(null, null, null)))
+        .hasMessage("User is required");
+    assertThat(
+            assertThrows(
+                ApplicationException.class, () -> mfaService.verifyDuringLogin(null, null, null)))
+        .hasMessage("User is required");
   }
 
   @Test
   void disable_acceptsRecoveryCodeAndClearsEnrollment() {
     UserAccount user = userWithSecret();
-    user.setMfaRecoveryCodeHashes(java.util.List.of("hash-1"));
+    MfaRecoveryCode code = new MfaRecoveryCode(user, "hash-1");
+    when(mfaRecoveryCodeRepository.findUnusedByUserForUpdate(user))
+        .thenReturn(java.util.List.of(code));
     when(passwordEncoder.matches("RECOVERY1", "hash-1")).thenReturn(true);
 
     mfaService.disable(user, null, "RECOVERY1");
 
     assertThat(user.isMfaEnabled()).isFalse();
     assertThat(user.getMfaSecret()).isNull();
-    assertThat(user.getMfaRecoveryCodeHashes()).isEmpty();
+    verify(mfaRecoveryCodeRepository).deleteAllByUser(user);
     verify(repository).save(user);
   }
 
   @Test
   void verifyDuringLogin_acceptsRecoveryCodeAndPersistsConsumption() {
     UserAccount user = userWithSecret();
-    user.setMfaRecoveryCodeHashes(java.util.List.of("hash-1"));
+    MfaRecoveryCode code = new MfaRecoveryCode(user, "hash-1");
+    when(mfaRecoveryCodeRepository.findUnusedByUserForUpdate(user))
+        .thenReturn(java.util.List.of(code));
     when(passwordEncoder.matches("RECOVERY1", "hash-1")).thenReturn(true);
 
     assertDoesNotThrow(() -> mfaService.verifyDuringLogin(user, null, " RECOVERY1 "));
 
     verify(repository).save(user);
-    assertThat(user.getMfaRecoveryCodeHashes()).isEmpty();
+    verify(mfaRecoveryCodeRepository).save(code);
+    assertThat(code.isUsed()).isTrue();
   }
 
   @Test
@@ -109,16 +170,137 @@ class MfaServiceTest {
   }
 
   @Test
+  void verifyDuringLogin_acceptsOnlyCurrentOrAdjacentTotpWindow() {
+    UserAccount user = userWithSecret();
+    String previousStep =
+        TotpTestUtils.generateCode(user.getMfaSecret(), clock.instant().minusSeconds(30));
+    String currentStep = TotpTestUtils.generateCode(user.getMfaSecret(), clock.instant());
+    String nextStep =
+        TotpTestUtils.generateCode(user.getMfaSecret(), clock.instant().plusSeconds(30));
+    String tooOld =
+        TotpTestUtils.generateCode(user.getMfaSecret(), clock.instant().minusSeconds(60));
+    String tooNew =
+        TotpTestUtils.generateCode(user.getMfaSecret(), clock.instant().plusSeconds(60));
+
+    assertDoesNotThrow(() -> mfaService.verifyDuringLogin(user, previousStep, null));
+    assertDoesNotThrow(() -> mfaService.verifyDuringLogin(user, currentStep, null));
+    assertDoesNotThrow(() -> mfaService.verifyDuringLogin(user, nextStep, null));
+    assertThrows(InvalidMfaException.class, () -> mfaService.verifyDuringLogin(user, tooOld, null));
+    assertThrows(InvalidMfaException.class, () -> mfaService.verifyDuringLogin(user, tooNew, null));
+  }
+
+  @Test
   void activate_requiresValidTotp() {
     UserAccount user = userWithSecret();
 
     assertThrows(ApplicationException.class, () -> mfaService.activate(user, "000000"));
+    verify(accountLockoutService).recordFailure(user);
+  }
+
+  @Test
+  void disable_recordsCanonicalFailureForInvalidVerifier() {
+    UserAccount user = userWithSecret();
+
+    assertThrows(ApplicationException.class, () -> mfaService.disable(user, "000000", null));
+
+    verify(accountLockoutService).recordFailure(user);
+    verify(mfaRecoveryCodeRepository, never()).deleteAllByUser(user);
+  }
+
+  @Test
+  void activate_revokesPreChangeSessionsAfterSuccessfulActivation() {
+    UserAccount user = userWithPendingSecret();
+    String code = TotpTestUtils.generateCode(user.getMfaSecret(), clock.instant());
+
+    mfaService.activate(user, code);
+
+    assertThat(user.isMfaEnabled()).isTrue();
+    verify(tokenBlacklistService).revokeAllUserTokens(user.getPublicId().toString());
+    verify(refreshTokenService).revokeAllForUser(user.getPublicId());
+  }
+
+  @Test
+  void disable_revokesPreChangeSessionsAfterSuccessfulDisable() {
+    UserAccount user = userWithSecret();
+    String code = TotpTestUtils.generateCode(user.getMfaSecret(), clock.instant());
+
+    mfaService.disable(user, code, null);
+
+    assertThat(user.isMfaEnabled()).isFalse();
+    verify(tokenBlacklistService).revokeAllUserTokens(user.getPublicId().toString());
+    verify(refreshTokenService).revokeAllForUser(user.getPublicId());
+  }
+
+  @Test
+  void regenerateRecoveryCodes_locksAndUsesManagedAccountBeforeReplacingVerifiers() {
+    UserAccount requestUser = userWithSecret();
+    UserAccount lockedUser = userWithSecret();
+    lockedUser.setMfaSecret("JBSWY3DPEHPK3PXP");
+    requestUser.setMfaSecret("AAAAAAAAAAAAAAAA");
+    ReflectionTestUtils.setField(requestUser, "id", 42L);
+    ReflectionTestUtils.setField(lockedUser, "id", 42L);
+    when(repository.lockById(42L)).thenReturn(Optional.of(lockedUser));
+    when(passwordEncoder.encode(anyString())).thenReturn("hashed-recovery-code");
+
+    String code = TotpTestUtils.generateCode(lockedUser.getMfaSecret(), clock.instant());
+
+    List<String> regeneratedCodes =
+        mfaService.regenerateRecoveryCodes(requestUser, code, null, clock.instant());
+
+    assertThat(regeneratedCodes).hasSize(8);
+    verify(repository).lockById(42L);
+    org.mockito.InOrder verifierReplacement = inOrder(mfaRecoveryCodeRepository);
+    verifierReplacement.verify(mfaRecoveryCodeRepository).findUnusedByUserForUpdate(lockedUser);
+    verifierReplacement.verify(mfaRecoveryCodeRepository).deleteAllByUser(lockedUser);
+    verifierReplacement.verify(mfaRecoveryCodeRepository).flush();
+    verifierReplacement.verify(mfaRecoveryCodeRepository).saveAll(anyList());
+    verifierReplacement.verify(mfaRecoveryCodeRepository).flush();
+    verify(mfaRecoveryCodeRepository).deleteAllByUser(lockedUser);
+    verify(mfaRecoveryCodeRepository).saveAll(anyList());
+    verify(repository).save(lockedUser);
+    verify(iamCanonicalStorageService).syncUser(lockedUser);
+    verify(tokenBlacklistService).revokeAllUserTokens(lockedUser.getPublicId().toString());
+    verify(refreshTokenService).revokeAllForUser(lockedUser.getPublicId());
+    verify(repository, never()).save(requestUser);
+  }
+
+  @Test
+  void regenerateRecoveryCodes_rejectsStaleTokenBeforeVerifierValidation() {
+    UserAccount requestUser = userWithSecret();
+    UserAccount lockedUser = userWithSecret();
+    ReflectionTestUtils.setField(requestUser, "id", 43L);
+    ReflectionTestUtils.setField(lockedUser, "id", 43L);
+    Instant tokenIssuedAt = clock.instant();
+    when(repository.lockById(43L)).thenReturn(Optional.of(lockedUser));
+    when(tokenBlacklistService.isUserTokenRevoked(
+            lockedUser.getPublicId().toString(), tokenIssuedAt))
+        .thenReturn(true);
+
+    assertThrows(
+        ApplicationException.class,
+        () ->
+            mfaService.regenerateRecoveryCodes(requestUser, "000000", "RECOVERY1", tokenIssuedAt));
+
+    verify(repository).lockById(43L);
+    verify(tokenBlacklistService)
+        .isUserTokenRevoked(lockedUser.getPublicId().toString(), tokenIssuedAt);
+    verifyNoInteractions(mfaRecoveryCodeRepository);
+    verify(cryptoService, never()).decrypt(anyString());
+    verify(accountLockoutService, never()).recordFailure(any());
+    verify(repository, never()).save(any(UserAccount.class));
+    verify(iamCanonicalStorageService, never()).syncUser(any(UserAccount.class));
   }
 
   private UserAccount userWithSecret() {
     UserAccount user = new UserAccount("user@bbp.dev", "hash", "User");
     user.setMfaSecret("JBSWY3DPEHPK3PXP");
     user.setMfaEnabled(true);
+    return user;
+  }
+
+  private UserAccount userWithPendingSecret() {
+    UserAccount user = userWithSecret();
+    user.setMfaEnabled(false);
     return user;
   }
 }

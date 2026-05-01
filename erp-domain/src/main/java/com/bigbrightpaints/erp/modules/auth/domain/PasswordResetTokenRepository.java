@@ -3,13 +3,20 @@ package com.bigbrightpaints.erp.modules.auth.domain;
 import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import jakarta.persistence.LockModeType;
+
 public interface PasswordResetTokenRepository extends JpaRepository<PasswordResetToken, Long> {
 
   Optional<PasswordResetToken> findByTokenDigest(String tokenDigest);
+
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
+  @Query("select t from PasswordResetToken t where t.tokenDigest = :tokenDigest")
+  Optional<PasswordResetToken> findByTokenDigestForUpdate(@Param("tokenDigest") String tokenDigest);
 
   @Modifying
   @Query("delete from PasswordResetToken t where t.tokenDigest = :tokenDigest")

@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.time.Instant;
 import java.util.Collection;
 import java.util.Date;
+import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,13 +14,13 @@ import org.springframework.security.access.hierarchicalroles.RoleHierarchy;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import com.bigbrightpaints.erp.modules.auth.domain.UserPrincipal;
-import com.bigbrightpaints.erp.modules.auth.service.UserAccountDetailsService;
 
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.ExpiredJwtException;
@@ -37,19 +38,22 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
   private static final Logger logger = LoggerFactory.getLogger(JwtAuthenticationFilter.class);
 
   private final JwtTokenService tokenService;
-  private final UserAccountDetailsService userDetailsService;
+  private final UserDetailsService userDetailsService;
   private final TokenBlacklistService blacklistService;
   private final ObjectProvider<RoleHierarchy> roleHierarchyProvider;
+  private final AuthSessionIntrospectionService authSessionIntrospectionService;
 
   public JwtAuthenticationFilter(
       JwtTokenService tokenService,
-      UserAccountDetailsService userDetailsService,
+      UserDetailsService userDetailsService,
       TokenBlacklistService blacklistService,
-      ObjectProvider<RoleHierarchy> roleHierarchyProvider) {
+      ObjectProvider<RoleHierarchy> roleHierarchyProvider,
+      AuthSessionIntrospectionService authSessionIntrospectionService) {
     this.tokenService = tokenService;
     this.userDetailsService = userDetailsService;
     this.blacklistService = blacklistService;
     this.roleHierarchyProvider = roleHierarchyProvider;
+    this.authSessionIntrospectionService = authSessionIntrospectionService;
   }
 
   @Override
@@ -71,7 +75,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
       } catch (UnsupportedJwtException e) {
         logger.warn("Unsupported JWT token");
       } catch (Exception e) {
-        logger.error("JWT authentication error", e);
+        logger.warn("JWT authentication failed: {}", e.getClass().getSimpleName());
       }
     }
     filterChain.doFilter(request, response);
@@ -87,6 +91,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
   private void installAuthentication(ValidatedToken validatedToken, HttpServletRequest request) {
     Claims claims = validatedToken.claims();
+    if (!hasRequiredClaims(claims)) {
+      logger.warn("Rejecting bearer token with missing required claims");
+      return;
+    }
     String tokenId = claims.getId();
     if (tokenId != null && blacklistService.isTokenBlacklisted(tokenId)) {
       logger.warn("Attempted use of blacklisted token");
@@ -97,6 +105,16 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     Instant issuedAt = resolveTokenIssuedAt(claims);
     if (issuedAt != null && blacklistService.isUserTokenRevoked(userId, issuedAt)) {
       logger.warn("Attempted use of revoked user token");
+      return;
+    }
+    UUID sessionId = authSessionIntrospectionService.currentSessionIdFromClaims(claims);
+    if (sessionId == null) {
+      logger.warn("Rejecting bearer token with missing or invalid session id");
+      return;
+    }
+    if (!authSessionIntrospectionService.isSessionActive(
+        UUID.fromString(userId), claims.get("companyCode", String.class), sessionId)) {
+      logger.warn("Attempted use of inactive session token");
       return;
     }
 
@@ -116,6 +134,37 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             principal, validatedToken.rawToken(), effectiveAuthorities);
     authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
     SecurityContextHolder.getContext().setAuthentication(authentication);
+  }
+
+  private boolean hasRequiredClaims(Claims claims) {
+    if (claims == null) {
+      return false;
+    }
+    if (!StringUtils.hasText(claims.getSubject()) || !isUuid(claims.getSubject())) {
+      return false;
+    }
+    if (!StringUtils.hasText(claims.getId())) {
+      return false;
+    }
+    if (!StringUtils.hasText(claims.get("companyCode", String.class))) {
+      return false;
+    }
+    if (!StringUtils.hasText(claims.get("sid", String.class))) {
+      return false;
+    }
+    if (claims.getExpiration() == null) {
+      return false;
+    }
+    return resolveTokenIssuedAt(claims) != null;
+  }
+
+  private boolean isUuid(String value) {
+    try {
+      UUID.fromString(value);
+      return true;
+    } catch (IllegalArgumentException ex) {
+      return false;
+    }
   }
 
   private Collection<? extends GrantedAuthority> resolveAuthorities(UserPrincipal principal) {

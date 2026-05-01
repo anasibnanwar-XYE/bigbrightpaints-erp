@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.admin.service;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.LinkedHashMap;
@@ -25,12 +26,13 @@ import com.bigbrightpaints.erp.core.notification.EmailService;
 import com.bigbrightpaints.erp.core.security.AccessDeniedAuditMarker;
 import com.bigbrightpaints.erp.core.security.SecurityActorResolver;
 import com.bigbrightpaints.erp.core.security.TokenBlacklistService;
-import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.admin.dto.CreateUserRequest;
 import com.bigbrightpaints.erp.modules.admin.dto.UpdateUserRequest;
 import com.bigbrightpaints.erp.modules.admin.dto.UserDto;
+import com.bigbrightpaints.erp.modules.auth.domain.MfaRecoveryCodeRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
+import com.bigbrightpaints.erp.modules.auth.service.IamCanonicalStorageService;
 import com.bigbrightpaints.erp.modules.auth.service.PasswordResetService;
 import com.bigbrightpaints.erp.modules.auth.service.RefreshTokenService;
 import com.bigbrightpaints.erp.modules.auth.service.ScopedAccountBootstrapService;
@@ -41,7 +43,6 @@ import com.bigbrightpaints.erp.modules.rbac.domain.SystemRole;
 import com.bigbrightpaints.erp.modules.rbac.service.RoleService;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
-import com.bigbrightpaints.erp.modules.sales.util.DealerProvisioningSupport;
 
 @Service
 public class AdminUserService {
@@ -60,6 +61,8 @@ public class AdminUserService {
   private static final String OUT_OF_SCOPE_MESSAGE =
       "Target user is out of scope for this operation";
   private static final String USER_NOT_FOUND_MESSAGE = "User not found";
+  private static final String TARGET_RESOLUTION_MISSING_OR_OUT_OF_SCOPE = "MISSING_OR_OUT_OF_SCOPE";
+  private static final String TARGET_RESOLUTION_PROTECTED_TARGET = "PROTECTED_TARGET";
 
   private final UserAccountRepository userRepository;
   private final CompanyContextService companyContextService;
@@ -69,11 +72,12 @@ public class AdminUserService {
   private final RefreshTokenService refreshTokenService;
   private final PasswordResetService passwordResetService;
   private final ScopedAccountBootstrapService scopedAccountBootstrapService;
+  private final MfaRecoveryCodeRepository mfaRecoveryCodeRepository;
   private final AuditService auditService;
   private final AuditLogRepository auditLogRepository;
   private final DealerRepository dealerRepository;
-  private final AccountRepository accountRepository;
   private final TenantRuntimePolicyService tenantRuntimePolicyService;
+  private final IamCanonicalStorageService iamCanonicalStorageService;
 
   public AdminUserService(
       UserAccountRepository userRepository,
@@ -84,11 +88,12 @@ public class AdminUserService {
       RefreshTokenService refreshTokenService,
       PasswordResetService passwordResetService,
       ScopedAccountBootstrapService scopedAccountBootstrapService,
+      MfaRecoveryCodeRepository mfaRecoveryCodeRepository,
       AuditService auditService,
       AuditLogRepository auditLogRepository,
       DealerRepository dealerRepository,
-      AccountRepository accountRepository,
-      TenantRuntimePolicyService tenantRuntimePolicyService) {
+      TenantRuntimePolicyService tenantRuntimePolicyService,
+      IamCanonicalStorageService iamCanonicalStorageService) {
     this.userRepository = userRepository;
     this.companyContextService = companyContextService;
     this.roleService = roleService;
@@ -97,20 +102,19 @@ public class AdminUserService {
     this.refreshTokenService = refreshTokenService;
     this.passwordResetService = passwordResetService;
     this.scopedAccountBootstrapService = scopedAccountBootstrapService;
+    this.mfaRecoveryCodeRepository = mfaRecoveryCodeRepository;
     this.auditService = auditService;
     this.auditLogRepository = auditLogRepository;
     this.dealerRepository = dealerRepository;
-    this.accountRepository = accountRepository;
     this.tenantRuntimePolicyService = tenantRuntimePolicyService;
+    this.iamCanonicalStorageService = iamCanonicalStorageService;
   }
 
   public List<UserDto> listUsers() {
     Company company = companyContextService.requireCurrentCompany();
     List<UserAccount> users = userRepository.findByCompany_Id(company.getId());
     List<UserAccount> visibleUsers =
-        hasSuperAdminAuthority()
-            ? users
-            : users.stream().filter(user -> !isTenantAdminProtectedTarget(user)).toList();
+        users.stream().filter(user -> !isTenantAdminProtectedTarget(user)).toList();
     Map<String, Instant> lastLoginByEmail = resolveLastLoginByEmail(company.getId(), visibleUsers);
     return visibleUsers.stream()
         .map(user -> toDto(user, lastLoginByEmail.get(normalizeEmailKey(user.getEmail()))))
@@ -127,6 +131,14 @@ public class AdminUserService {
             false,
             OutOfScopeResponseMode.ACCESS_DENIED);
     return toDto(user, resolveLastLoginAt(user));
+  }
+
+  public void assertReadableUser(Long id) {
+    getUser(id);
+  }
+
+  public List<String> assignableRoles() {
+    return TENANT_ASSIGNABLE_ROLE_ORDER;
   }
 
   @Transactional
@@ -146,9 +158,8 @@ public class AdminUserService {
                       company, request.email(), request.displayName(), user.getRoles());
                 });
 
-    // Auto-create Dealer entity if user has ROLE_DEALER
     if (isDealerUser) {
-      createDealerForUser(saved, company);
+      linkExistingDealerIdentityReference(saved, company);
     }
 
     auditUserAccountAction(
@@ -199,46 +210,27 @@ public class AdminUserService {
         "User already exists for scope: " + scopeCode);
   }
 
-  private void createDealerForUser(UserAccount user, Company company) {
-    Dealer dealer =
-        dealerRepository
-            .findByCompanyAndPortalUserEmail(company, user.getEmail())
-            .or(() -> dealerRepository.findByCompanyAndEmailIgnoreCase(company, user.getEmail()))
-            .orElseGet(
-                () -> {
-                  Dealer fresh = new Dealer();
-                  fresh.setCompany(company);
-                  fresh.setName(user.getDisplayName());
-                  fresh.setCode(
-                      DealerProvisioningSupport.generateDealerCode(
-                          user.getDisplayName(), company, dealerRepository));
-                  return fresh;
-                });
+  private void linkExistingDealerIdentityReference(UserAccount user, Company company) {
+    dealerRepository
+        .findByCompanyAndPortalUserEmail(company, user.getEmail())
+        .or(() -> dealerRepository.findByCompanyAndEmailIgnoreCase(company, user.getEmail()))
+        .ifPresent(dealer -> linkDealerPortalUser(dealer, user));
+  }
 
-    if (!StringUtils.hasText(dealer.getCode())) {
-      dealer.setCode(
-          DealerProvisioningSupport.generateDealerCode(
-              user.getDisplayName(), company, dealerRepository));
+  private void linkDealerPortalUser(Dealer dealer, UserAccount user) {
+    UserAccount existingPortalUser = dealer.getPortalUser();
+    if (existingPortalUser != null
+        && existingPortalUser.getId() != null
+        && user.getId() != null
+        && !existingPortalUser.getId().equals(user.getId())) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          "Dealer identity link is already assigned");
     }
-    if (!StringUtils.hasText(dealer.getName())) {
-      dealer.setName(user.getDisplayName());
-    }
-    dealer.setEmail(user.getEmail());
-    dealer.setPortalUser(user);
-    dealer.setStatus(DealerProvisioningSupport.resolveStatusForOnboarding(dealer.getStatus()));
-    dealer = dealerRepository.save(dealer);
-
-    if (dealer.getReceivableAccount() == null) {
-      dealer.setReceivableAccount(
-          DealerProvisioningSupport.createReceivableAccount(company, dealer, accountRepository));
-      dealerRepository.save(dealer);
+    if (existingPortalUser != null && Objects.equals(existingPortalUser.getId(), user.getId())) {
       return;
     }
-
-    if (!dealer.getReceivableAccount().isActive()) {
-      dealer.getReceivableAccount().setActive(true);
-      accountRepository.save(dealer.getReceivableAccount());
-    }
+    dealer.setPortalUser(user);
+    dealerRepository.save(dealer);
   }
 
   @Transactional
@@ -272,6 +264,7 @@ public class AdminUserService {
       tokenBlacklistService.revokeAllUserTokens(user.getPublicId().toString());
       refreshTokenService.revokeAllForUser(user.getPublicId());
     }
+    iamCanonicalStorageService.syncUser(user);
     auditUserAccountAction(
         AuditEvent.USER_UPDATED,
         user,
@@ -279,8 +272,7 @@ public class AdminUserService {
         "admin_user_update",
         Map.of(
             "displayNameChanged", Boolean.toString(displayNameChanged),
-            "rolesChanged", Boolean.toString(roleAssignmentChanged),
-            "displayName", user.getDisplayName()));
+            "rolesChanged", Boolean.toString(roleAssignmentChanged)));
     return toDto(user, resolveLastLoginAt(user));
   }
 
@@ -294,7 +286,7 @@ public class AdminUserService {
             "admin-force-reset-password-out-of-scope",
             false,
             OutOfScopeResponseMode.MASK_AS_MISSING);
-    passwordResetService.requestResetByAdmin(targetUser);
+    passwordResetService.requestForceResetByAdmin(targetUser);
     auditUserAccountAction(
         AuditEvent.PASSWORD_RESET_REQUESTED,
         targetUser,
@@ -317,51 +309,47 @@ public class AdminUserService {
   }
 
   @Transactional
-  public void suspend(Long id) {
+  public void lockUser(Long userId) {
     Company company = companyContextService.requireCurrentCompany();
     UserAccount user =
         resolveScopedUserForAdminAction(
-            id,
+            userId,
             company,
-            "admin-suspend-user-out-of-scope",
+            "admin-lock-user-out-of-scope",
             true,
             OutOfScopeResponseMode.MASK_AS_MISSING);
-    updateUserStatusInternal(user, false, company, "ADMIN_USER_SUSPEND");
-  }
-
-  @Transactional
-  public void unsuspend(Long id) {
-    Company company = companyContextService.requireCurrentCompany();
-    UserAccount user =
-        resolveScopedUserForAdminAction(
-            id,
-            company,
-            "admin-unsuspend-user-out-of-scope",
-            true,
-            OutOfScopeResponseMode.MASK_AS_MISSING);
-    updateUserStatusInternal(user, true, company, "ADMIN_USER_UNSUSPEND");
-  }
-
-  @Transactional
-  public void deleteUser(Long id) {
-    Company company = companyContextService.requireCurrentCompany();
-    UserAccount user =
-        resolveScopedUserForAdminAction(
-            id,
-            company,
-            "admin-delete-user-out-of-scope",
-            true,
-            OutOfScopeResponseMode.MASK_AS_MISSING);
-    assertNotProtectedMainAdmin(user, company, "delete");
-    tokenBlacklistService.revokeAllUserTokens(user.getPublicId().toString());
-    refreshTokenService.revokeAllForUser(user.getPublicId());
-    userRepository.delete(user);
-    emailService.sendUserDeletedEmail(user.getEmail(), user.getDisplayName());
+    user.setLockedUntil(Instant.now().plus(Duration.ofDays(36500)));
+    userRepository.save(user);
+    iamCanonicalStorageService.syncUser(user);
+    passwordResetService.invalidateOutstandingResetTokens(user);
+    revokeUserTokens(user);
     auditUserAccountAction(
-        AuditEvent.USER_DELETED,
+        AuditEvent.USER_LOCKED,
         user,
         company,
-        "admin_user_delete",
+        "admin_lock_user",
+        Map.of("targetUserId", String.valueOf(user.getId())));
+  }
+
+  @Transactional
+  public void unlockUser(Long userId) {
+    Company company = companyContextService.requireCurrentCompany();
+    UserAccount user =
+        resolveScopedUserForAdminAction(
+            userId,
+            company,
+            "admin-unlock-user-out-of-scope",
+            true,
+            OutOfScopeResponseMode.MASK_AS_MISSING);
+    user.setLockedUntil(null);
+    user.setFailedLoginAttempts(0);
+    userRepository.save(user);
+    iamCanonicalStorageService.syncUser(user);
+    auditUserAccountAction(
+        AuditEvent.USER_UNLOCKED,
+        user,
+        company,
+        "admin_unlock_user",
         Map.of("targetUserId", String.valueOf(user.getId())));
   }
 
@@ -377,10 +365,10 @@ public class AdminUserService {
             OutOfScopeResponseMode.MASK_AS_MISSING);
     user.setMfaEnabled(false);
     user.setMfaSecret(null);
-    user.setMfaRecoveryCodeHashes(List.of());
+    mfaRecoveryCodeRepository.deleteAllByUser(user);
     userRepository.save(user);
-    tokenBlacklistService.revokeAllUserTokens(user.getPublicId().toString());
-    refreshTokenService.revokeAllForUser(user.getPublicId());
+    iamCanonicalStorageService.syncUser(user);
+    revokeUserTokens(user);
     auditUserAccountAction(
         AuditEvent.MFA_DISABLED,
         user,
@@ -389,48 +377,103 @@ public class AdminUserService {
         Map.of("targetUserId", String.valueOf(user.getId())));
   }
 
+  @Transactional
+  public void revokeUserSessions(Long userId) {
+    Company company = companyContextService.requireCurrentCompany();
+    UserAccount user =
+        resolveScopedUserForAdminAction(
+            userId,
+            company,
+            "admin-revoke-sessions-out-of-scope",
+            true,
+            OutOfScopeResponseMode.MASK_AS_MISSING);
+    revokeUserTokens(user);
+    Map<String, String> securityMetadata = new LinkedHashMap<>();
+    securityMetadata.put("operation", "admin_revoke_user_sessions");
+    securityMetadata.put("reason", "admin_revoke_user_sessions");
+    securityMetadata.put("actor", resolveAuditActor());
+    securityMetadata.put("targetUserId", String.valueOf(user.getId()));
+    securityMetadata.put("tenantScope", company.getCode());
+    iamCanonicalStorageService.recordSecurityEvent(
+        "ADMIN_SESSION_REVOKE",
+        "SUCCESS",
+        securityMetadata,
+        user.getPublicId().toString(),
+        user.getEmail(),
+        company.getId(),
+        company.getCode());
+    auditUserAccountAction(
+        AuditEvent.TOKEN_REVOKED,
+        user,
+        company,
+        "admin_revoke_user_sessions",
+        Map.of("targetUserId", String.valueOf(user.getId())));
+  }
+
+  @Transactional(readOnly = true)
+  public List<Map<String, Object>> listSecurityEvents(Long userId, String type) {
+    Company company = companyContextService.requireCurrentCompany();
+    UserAccount user =
+        resolveScopedUserForAdminAction(
+            userId,
+            company,
+            "admin-read-security-events-out-of-scope",
+            false,
+            OutOfScopeResponseMode.ACCESS_DENIED);
+    List<Map<String, Object>> events =
+        iamCanonicalStorageService.listSecurityEvents(user, type, 100);
+    auditSecurityEventRead(user, company, type);
+    return events;
+  }
+
+  private void auditSecurityEventRead(UserAccount user, Company company, String type) {
+    Map<String, String> metadata = new LinkedHashMap<>();
+    metadata.put("targetUserId", user != null ? String.valueOf(user.getId()) : "UNKNOWN");
+    metadata.put("action", "admin_read_security_events");
+    metadata.put("tenantScope", company != null ? company.getCode() : "GLOBAL");
+    metadata.put("eventTypeFilter", StringUtils.hasText(type) ? type.trim() : "ALL");
+    auditUserAccountAction(
+        AuditEvent.AUDIT_LOG_ACCESSED, user, company, "admin_read_security_events", metadata);
+  }
+
   private UserAccount resolveScopedUserForAdminAction(
       Long userId,
       Company activeCompany,
       String denialReason,
       boolean lockTarget,
       OutOfScopeResponseMode outOfScopeResponseMode) {
-    boolean superAdmin = hasSuperAdminAuthority();
     java.util.Optional<UserAccount> candidate =
         lockTarget
-            ? resolveLockedAdminActionTarget(userId, activeCompany, superAdmin)
+            ? resolveLockedAdminActionTarget(userId, activeCompany)
             : userRepository.findById(userId);
     UserAccount user = candidate.orElse(null);
     if (user == null) {
-      if (!superAdmin && outOfScopeResponseMode == OutOfScopeResponseMode.ACCESS_DENIED) {
-        auditPrivilegedUserActionDenied(
-            null,
-            activeCompany,
-            denialReason,
-            Map.of(
-                "targetUserId",
-                String.valueOf(userId),
-                "targetResolution",
-                "MISSING_OR_OUT_OF_SCOPE"));
+      if (outOfScopeResponseMode == OutOfScopeResponseMode.ACCESS_DENIED) {
+        auditUnresolvedTargetDenied(userId, activeCompany, denialReason);
         throw new AccessDeniedException(OUT_OF_SCOPE_MESSAGE);
       }
-      if (!superAdmin && lockTarget) {
+      if (lockTarget) {
         return userRepository
             .findById(userId)
             .map(
                 outOfScopeUser ->
                     handleOutOfScopeAdminAction(
-                        outOfScopeUser, activeCompany, denialReason, outOfScopeResponseMode))
+                        outOfScopeUser,
+                        activeCompany,
+                        denialReason,
+                        outOfScopeResponseMode,
+                        userId,
+                        Map.of()))
             .orElseThrow(
-                () ->
-                    com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
-                        USER_NOT_FOUND_MESSAGE));
+                () -> {
+                  auditUnresolvedTargetDenied(userId, activeCompany, denialReason);
+                  return com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+                      USER_NOT_FOUND_MESSAGE);
+                });
       }
+      auditUnresolvedTargetDenied(userId, activeCompany, denialReason);
       throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
           USER_NOT_FOUND_MESSAGE);
-    }
-    if (superAdmin) {
-      return user;
     }
     if (isUserWithinCompanyScope(user, activeCompany)) {
       if (isTenantAdminProtectedTarget(user)) {
@@ -438,17 +481,18 @@ public class AdminUserService {
             user,
             activeCompany,
             denialReason,
-            outOfScopeResponseMode,
-            Map.of("targetResolution", "PROTECTED_ROLE_TARGET"));
+            OutOfScopeResponseMode.ACCESS_DENIED,
+            Map.of("targetResolution", TARGET_RESOLUTION_PROTECTED_TARGET));
       }
       return user;
     }
-    return handleOutOfScopeAdminAction(user, activeCompany, denialReason, outOfScopeResponseMode);
+    return handleOutOfScopeAdminAction(
+        user, activeCompany, denialReason, outOfScopeResponseMode, userId, Map.of());
   }
 
   private java.util.Optional<UserAccount> resolveLockedAdminActionTarget(
-      Long userId, Company activeCompany, boolean superAdmin) {
-    if (superAdmin || activeCompany == null || activeCompany.getId() == null) {
+      Long userId, Company activeCompany) {
+    if (activeCompany == null || activeCompany.getId() == null) {
       return userRepository.lockById(userId);
     }
     return userRepository.lockByIdAndCompanyId(userId, activeCompany.getId());
@@ -469,12 +513,52 @@ public class AdminUserService {
       String denialReason,
       OutOfScopeResponseMode outOfScopeResponseMode,
       Map<String, String> extraMetadata) {
-    auditPrivilegedUserActionDenied(user, activeCompany, denialReason, extraMetadata);
+    return handleOutOfScopeAdminAction(
+        user,
+        activeCompany,
+        denialReason,
+        outOfScopeResponseMode,
+        user != null ? user.getId() : null,
+        extraMetadata);
+  }
+
+  private UserAccount handleOutOfScopeAdminAction(
+      UserAccount user,
+      Company activeCompany,
+      String denialReason,
+      OutOfScopeResponseMode outOfScopeResponseMode,
+      Long attemptedTargetId,
+      Map<String, String> extraMetadata) {
+    Map<String, String> metadata = new LinkedHashMap<>();
+    if (extraMetadata != null && !extraMetadata.isEmpty()) {
+      metadata.putAll(extraMetadata);
+    }
+    UserAccount auditTarget = user;
+    if (!isUserWithinCompanyScope(user, activeCompany)) {
+      auditTarget = null;
+      metadata.putAll(safeAttemptedTargetMetadata(attemptedTargetId));
+    }
+    auditPrivilegedUserActionDenied(auditTarget, activeCompany, denialReason, metadata);
     if (outOfScopeResponseMode == OutOfScopeResponseMode.MASK_AS_MISSING) {
       throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
           USER_NOT_FOUND_MESSAGE);
     }
     throw new AccessDeniedException(OUT_OF_SCOPE_MESSAGE);
+  }
+
+  private void auditUnresolvedTargetDenied(
+      Long attemptedTargetId, Company actorCompany, String denialReason) {
+    auditPrivilegedUserActionDenied(
+        null, actorCompany, denialReason, safeAttemptedTargetMetadata(attemptedTargetId));
+  }
+
+  private Map<String, String> safeAttemptedTargetMetadata(Long attemptedTargetId) {
+    Map<String, String> metadata = new LinkedHashMap<>();
+    if (attemptedTargetId != null) {
+      metadata.put("attemptedTargetId", String.valueOf(attemptedTargetId));
+    }
+    metadata.put("targetResolution", TARGET_RESOLUTION_MISSING_OR_OUT_OF_SCOPE);
+    return metadata;
   }
 
   private enum OutOfScopeResponseMode {
@@ -496,10 +580,11 @@ public class AdminUserService {
     }
     user.setEnabled(enabled);
     userRepository.save(user);
+    iamCanonicalStorageService.syncUser(user);
 
     if (!enabled) {
-      tokenBlacklistService.revokeAllUserTokens(user.getPublicId().toString());
-      refreshTokenService.revokeAllForUser(user.getPublicId());
+      passwordResetService.invalidateOutstandingResetTokens(user);
+      revokeUserTokens(user);
       emailService.sendUserSuspendedEmail(user.getEmail(), user.getDisplayName());
     }
 
@@ -515,28 +600,15 @@ public class AdminUserService {
     return toDto(user, resolveLastLoginAt(user));
   }
 
-  private boolean hasSuperAdminAuthority() {
-    Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-    if (authentication == null || authentication.getAuthorities() == null) {
-      return false;
-    }
-    return authentication.getAuthorities().stream()
-        .anyMatch(authority -> SUPER_ADMIN_ROLE.equalsIgnoreCase(authority.getAuthority()));
-  }
-
   private List<String> validateAndNormalizeAssignableRoles(
       List<String> roles, Company actorCompany) {
     if (roles == null || roles.isEmpty()) {
       return List.of();
     }
-    boolean actorIsSuperAdmin = hasSuperAdminAuthority();
     Set<String> normalizedRoles = new LinkedHashSet<>(roles.size());
     for (String roleName : roles) {
       String normalizedRoleName = normalizeRequestedRoleName(roleName);
       if (requiresSuperAdminRoleAssignment(normalizedRoleName)) {
-        if (actorIsSuperAdmin) {
-          throw unsupportedRoleForTenantAdmin(normalizedRoleName);
-        }
         auditPrivilegedUserActionDenied(
             null,
             actorCompany,
@@ -561,6 +633,11 @@ public class AdminUserService {
       return normalized;
     }
     return "ROLE_" + normalized;
+  }
+
+  private void revokeUserTokens(UserAccount user) {
+    tokenBlacklistService.revokeAllUserTokens(user.getPublicId().toString());
+    refreshTokenService.revokeAllForUser(user.getPublicId());
   }
 
   private boolean requiresSuperAdminRoleAssignment(String normalizedRoleName) {
@@ -664,7 +741,11 @@ public class AdminUserService {
     String actor = resolveAuditActor();
     String targetCompanyCodes = resolveTargetCompanyCodes(targetUser);
     auditMetadata.put("actor", actor);
-    auditMetadata.put("targetUserEmail", targetUser != null ? targetUser.getEmail() : "UNKNOWN");
+    auditMetadata.put(
+        "targetUserId", targetUser != null ? String.valueOf(targetUser.getId()) : "UNKNOWN");
+    if (targetUser != null && targetUser.getPublicId() != null) {
+      auditMetadata.put("targetUserPublicId", targetUser.getPublicId().toString());
+    }
     auditMetadata.put("action", action);
     auditMetadata.put("tenantScope", actorCompany != null ? actorCompany.getCode() : "GLOBAL");
     if (StringUtils.hasText(targetCompanyCodes)) {
@@ -686,7 +767,16 @@ public class AdminUserService {
   }
 
   private boolean isTenantAdminProtectedTarget(UserAccount user) {
-    if (user == null || user.getRoles() == null || user.getRoles().isEmpty()) {
+    if (user == null) {
+      return false;
+    }
+    if (user.getId() != null
+        && user.getCompany() != null
+        && user.getCompany().getMainAdminUserId() != null
+        && user.getId().equals(user.getCompany().getMainAdminUserId())) {
+      return true;
+    }
+    if (user.getRoles() == null || user.getRoles().isEmpty()) {
       return false;
     }
     return user.getRoles().stream()
@@ -750,8 +840,8 @@ public class AdminUserService {
       if (targetUser.getId() != null) {
         metadata.put("targetUserId", String.valueOf(targetUser.getId()));
       }
-      if (StringUtils.hasText(targetUser.getEmail())) {
-        metadata.put("targetUserEmail", targetUser.getEmail());
+      if (targetUser.getPublicId() != null) {
+        metadata.put("targetUserPublicId", targetUser.getPublicId().toString());
       }
       String targetCompanyCodes = resolveTargetCompanyCodes(targetUser);
       if (StringUtils.hasText(targetCompanyCodes)) {
@@ -782,10 +872,6 @@ public class AdminUserService {
   }
 
   private List<Company> resolveActorScopedTargetCompanies(UserAccount user, Company actorCompany) {
-    if (hasSuperAdminAuthority()) {
-      Company targetCompany = resolveTargetCompany(user, actorCompany);
-      return targetCompany == null ? List.of() : List.of(targetCompany);
-    }
     if (actorCompany == null || actorCompany.getId() == null) {
       return List.of();
     }

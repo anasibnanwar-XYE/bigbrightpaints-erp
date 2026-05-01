@@ -95,6 +95,28 @@ class CR_ActuatorProdHardeningIT extends AbstractIntegrationTest {
   }
 
   @Test
+  @DisplayName("Prod denies sensitive actuator management endpoints")
+  void prodSensitiveActuatorEndpointsAreNotExposed() {
+    for (String path :
+        java.util.List.of(
+            "/actuator/env",
+            "/actuator/configprops",
+            "/actuator/heapdump",
+            "/actuator/threaddump",
+            "/actuator/logfile",
+            "/actuator/loggers")) {
+      ResponseEntity<String> response = rest.getForEntity(managementUrl(path), String.class);
+      String body = response.getBody() == null ? "" : response.getBody();
+
+      assertThat(response.getStatusCode()).isIn(HttpStatus.NOT_FOUND, HttpStatus.FORBIDDEN);
+      assertThat(body).doesNotContain("test-audit-signing-key");
+      assertThat(body).doesNotContain("12345678901234567890123456789012");
+      assertThat(body).doesNotContain("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx");
+      assertThat(body).doesNotContain("test-smtp-password");
+    }
+  }
+
+  @Test
   @DisplayName("Prod validation-disabled runtime still executes health indicators without bypass")
   void prodValidationDisabledRuntimeStillExecutesHealthIndicatorsWithoutBypass() {
     Map<String, Object> requiredConfigDetails = requiredConfigHealthIndicator.health().getDetails();

@@ -107,9 +107,9 @@ Use this map to navigate every active portal contract surface from this README.
 
 | Folder | Owns | Must not own |
 |---|---|---|
-| `superadmin` | tenant onboarding, COA template selection, lifecycle, limits, modules, support recovery, platform changelog | tenant user CRUD, accounting execution, factory execution, dealer self-service |
+| `superadmin` | tenant onboarding, COA template selection, lifecycle, limits, modules, support recovery, platform changelog | tenant Users & Access lifecycle controls, accounting execution, factory execution, dealer self-service |
 | `tenant-admin` | session bootstrap, user lifecycle, export approvals, support tickets, tenant changelog | superadmin control plane, accounting journals/reconciliation, factory dispatch execution |
-| `accounting` | COA, default accounts, GST or tax setup, product-account readiness, journals, reversals, reconciliation, period close, opening stock, AR/AP settlement, reports | tenant onboarding, tenant user CRUD, dispatch confirm |
+| `accounting` | COA, default accounts, GST or tax setup, product-account readiness, journals, reversals, reconciliation, period close, opening stock, AR/AP settlement, reports | tenant onboarding, tenant Users & Access lifecycle controls, dispatch confirm |
 | `sales` | dealer master, sales orders, reservation visibility, credit escalation, commercial dashboards | dispatch confirm, production or packing, accounting correction |
 | `factory` | production, packing, packaging mappings, batch lineage, dispatch preparation, dispatch confirm | COA/default accounts/tax setup, settlements, tenant administration |
 | `dealer-client` | dealer dashboard, orders, invoices, ledger, aging, support, credit requests | internal sales editing, factory execution, accounting correction, admin approvals |
