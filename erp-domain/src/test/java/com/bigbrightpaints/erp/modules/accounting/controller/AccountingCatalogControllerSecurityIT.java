@@ -29,6 +29,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
+import com.bigbrightpaints.erp.modules.company.domain.CompanyModule;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial;
@@ -74,6 +75,7 @@ class AccountingCatalogControllerSecurityIT extends AbstractIntegrationTest {
   @BeforeEach
   void setUp() {
     company = dataSeeder.ensureCompany(COMPANY_CODE, "Catalog Surface Retirement Co");
+    company = enableModule(company, CompanyModule.MANUFACTURING);
     inventoryAccount = ensureAccount("INV", "Inventory", AccountType.ASSET);
     cogsAccount = ensureAccount("COGS", "COGS", AccountType.COGS);
     revenueAccount = ensureAccount("REV", "Revenue", AccountType.REVENUE);

@@ -25,6 +25,7 @@ Last reviewed: 2026-05-01
   - entitlement-aware integration fixtures now write the same current-state feature override settings used by runtime module gates, so HR, reports, manufacturing, and portal tests no longer rely on stale `enabledModules`-only state
   - dealer invoice PDF export now runs in a writable transaction because PDF generation records tenant usage; this preserves the canonical quota/audit side effect instead of bypassing it
   - retired raw-material intake route coverage accepts framework-level retired-route outcomes (`404` or `405`) and does not add a compatibility handler for the old intake workflow
+  - post-CI Finance/Accounting shard remediation aligns accounting/report integration tests with current entitlement and settings contracts: manufacturing/reporting flows enable `MANUFACTURING` or `REPORTS_ADVANCED` through the canonical entitlement-aware helper, Super Admin settings mutations use the grouped `workflow` payload, and retired report aliases reach dispatcher 404 only after the report module gate is explicitly enabled
 - Commands run:
   - `cd erp-domain && MIGRATION_SET=v2 mvn -q -DskipTests test-compile`
   - `cd erp-domain && MIGRATION_SET=v2 mvn -q spotless:apply && MIGRATION_SET=v2 mvn -q spotless:check`
@@ -49,6 +50,9 @@ Last reviewed: 2026-05-01
   - `MIGRATION_SET=v2 DOCKER_HOST=unix:///Users/anas/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock bash scripts/run_test_manifest.sh --profile pr-fast --label auth-tenant --maven-arg -Dtest.groups= --manifest ci/pr_manifests/pr_auth_tenant.txt`
   - `MIGRATION_SET=v2 DOCKER_HOST=unix:///Users/anas/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock bash scripts/run_test_manifest.sh --profile codered --label codered-access --manifest ci/pr_manifests/pr_codered_access.txt`
   - `MIGRATION_SET=v2 DOCKER_HOST=unix:///Users/anas/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock bash scripts/run_test_manifest.sh --profile pr-fast --label business-slice --maven-arg -Dtest.groups= --manifest ci/pr_manifests/pr_business_slice.txt`
+  - `MIGRATION_SET=v2 DOCKER_HOST=unix:///Users/anas/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock mvn -q -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=AccountingCatalogControllerSecurityIT,ReportExportApprovalIT test`
+  - `MIGRATION_SET=v2 DOCKER_HOST=unix:///Users/anas/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock mvn -q -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=ReportInventoryParityIT,ReportControllerRouteContractIT test`
+  - `MIGRATION_SET=v2 DOCKER_HOST=unix:///Users/anas/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock bash scripts/run_test_manifest.sh --profile pr-fast --label accounting --maven-arg -Dtest.groups= --manifest ci/pr_manifests/pr_accounting.txt`
 - Result summary:
   - focused auth/company/Super Admin/OpenAPI/runtime pack reported 213 tests run, 0 failures/errors/skips
   - focused IAM digest/migration pack reported 11 tests run, 0 failures/errors/skips after fixing the Gate Core findings
@@ -58,6 +62,8 @@ Last reviewed: 2026-05-01
   - post-CI Access/Tenant manifest rerun reported 159 tests run, 0 failures/errors/skips after canonical status and entitlement fixture fixes
   - post-CI CODE-RED Access manifest rerun reported 13 tests run, 0 failures/errors/skips after actuator and HR module-gate expectation updates
   - post-CI Workflow Integration manifest rerun reported 337 tests run, 0 failures/errors/skips after tenant usage rollup upserts, dealer PDF transaction, manufacturing entitlement, and retired-route assertion fixes
+  - post-CI Finance/Accounting focused rerun reported `AccountingCatalogControllerSecurityIT` 8 tests and `ReportExportApprovalIT` 7 tests with 0 failures/errors/skips; the report focused rerun passed `ReportInventoryParityIT` and `ReportControllerRouteContractIT`
+  - post-CI Finance/Accounting manifest rerun reported 360 tests run, 0 failures/errors/skips after entitlement-aware report/accounting fixture updates
   - OpenAPI drift guard, accounting portal scope guard, knowledgebase lint, high-risk guard, Spotless, conflict-marker scan, whitespace diff check, and Gate Core front-door catalog/flaky guards passed
   - no bearer tokens, passwords, activation links, reset links, token digests, provider credentials, or `.env` values were printed in evidence
 

@@ -27,6 +27,7 @@ import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandl
 
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
+import com.bigbrightpaints.erp.modules.company.domain.CompanyModule;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
@@ -64,7 +65,10 @@ class ReportControllerRouteContractIT extends AbstractIntegrationTest {
     dataSeeder.ensureUser(
         SALES_EMAIL, PASSWORD, "Report Sales", COMPANY_CODE, List.of("ROLE_SALES"));
 
-    Company company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
+    Company company =
+        enableModule(
+            companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow(),
+            CompanyModule.REPORTS_ADVANCED);
     dealer =
         dealerRepository
             .findByCompanyAndCodeIgnoreCase(company, "REPORT-DEALER")

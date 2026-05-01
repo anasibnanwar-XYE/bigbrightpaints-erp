@@ -22,6 +22,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 
 import com.bigbrightpaints.erp.modules.company.domain.Company;
+import com.bigbrightpaints.erp.modules.company.domain.CompanyModule;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatch;
@@ -59,6 +60,7 @@ class ReportInventoryParityIT extends AbstractIntegrationTest {
         COMPANY_CODE,
         List.of("ROLE_ACCOUNTING"));
     company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
+    company = enableModule(company, CompanyModule.REPORTS_ADVANCED);
   }
 
   @Test
