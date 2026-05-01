@@ -21,8 +21,6 @@ import com.bigbrightpaints.erp.core.audit.AuditLog;
 import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
 import com.bigbrightpaints.erp.core.util.CompanyTime;
-import com.bigbrightpaints.erp.modules.admin.dto.CreateUserRequest;
-import com.bigbrightpaints.erp.modules.admin.service.AdminUserService;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserPrincipal;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
@@ -46,17 +44,17 @@ public class OwnerSetupService {
   private static final Set<String> TENANT_INVITE_ROLE_SET = Set.copyOf(TENANT_INVITE_ROLE_OPTIONS);
 
   private final CompanyRepository companyRepository;
-  private final AdminUserService adminUserService;
+  private final OwnerSetupTeamInvitePort teamInvitePort;
   private final AuditService auditService;
   private final TenantDefaultSeedingService tenantDefaultSeedingService;
 
   public OwnerSetupService(
       CompanyRepository companyRepository,
-      AdminUserService adminUserService,
+      OwnerSetupTeamInvitePort teamInvitePort,
       AuditService auditService,
       TenantDefaultSeedingService tenantDefaultSeedingService) {
     this.companyRepository = companyRepository;
-    this.adminUserService = adminUserService;
+    this.teamInvitePort = teamInvitePort;
     this.auditService = auditService;
     this.tenantDefaultSeedingService = tenantDefaultSeedingService;
   }
@@ -167,7 +165,7 @@ public class OwnerSetupService {
       throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
           "Provide at least one invitation or set skip=true");
     }
-    List<CreateUserRequest> inviteRequests = new ArrayList<>();
+    List<OwnerSetupTeamInvitePort.TeamInvitation> inviteRequests = new ArrayList<>();
     for (int index = 0; index < invitations.size(); index++) {
       OwnerSetupInviteTeamRequest.Invitation invitation = invitations.get(index);
       if (invitation == null) {
@@ -175,7 +173,7 @@ public class OwnerSetupService {
             "invitations[" + index + "] is required");
       }
       inviteRequests.add(
-          new CreateUserRequest(
+          new OwnerSetupTeamInvitePort.TeamInvitation(
               invitation.email(),
               invitation.displayName(),
               List.of(normalizeInviteRole(invitation.role()))));
@@ -183,8 +181,8 @@ public class OwnerSetupService {
     if (company.getSetupInviteTeamCompletedAt() != null) {
       return toStatus(company, null);
     }
-    for (CreateUserRequest inviteRequest : inviteRequests) {
-      adminUserService.createUser(inviteRequest);
+    for (OwnerSetupTeamInvitePort.TeamInvitation inviteRequest : inviteRequests) {
+      teamInvitePort.createTenantUser(inviteRequest);
     }
     Instant now = CompanyTime.now(company);
     company.setSetupInviteTeamCompletedAt(now);

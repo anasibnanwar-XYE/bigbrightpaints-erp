@@ -38,6 +38,7 @@ import com.bigbrightpaints.erp.modules.auth.service.RefreshTokenService;
 import com.bigbrightpaints.erp.modules.auth.service.ScopedAccountBootstrapService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
+import com.bigbrightpaints.erp.modules.company.service.OwnerSetupTeamInvitePort;
 import com.bigbrightpaints.erp.modules.rbac.domain.Role;
 import com.bigbrightpaints.erp.modules.rbac.domain.SystemRole;
 import com.bigbrightpaints.erp.modules.rbac.service.RoleService;
@@ -45,7 +46,7 @@ import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
 
 @Service
-public class AdminUserService {
+public class AdminUserService implements OwnerSetupTeamInvitePort {
   private static final String SUPER_ADMIN_ROLE = SystemRole.SUPER_ADMIN.getRoleName();
   private static final String DEALER_ROLE = SystemRole.DEALER.getRoleName();
   private static final List<String> TENANT_ASSIGNABLE_ROLE_ORDER =
@@ -170,6 +171,17 @@ public class AdminUserService {
         Map.of("provisioningMode", "CANONICAL_EMAIL_BOOTSTRAP"));
     Instant lastLoginAt = resolveLastLoginAt(saved);
     return toDto(saved, lastLoginAt);
+  }
+
+  @Override
+  @Transactional
+  public void createTenantUser(TeamInvitation invitation) {
+    if (invitation == null) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          "Team invitation is required");
+    }
+    createUser(
+        new CreateUserRequest(invitation.email(), invitation.displayName(), invitation.roles()));
   }
 
   private java.util.Optional<UserAccount> resolveScopedDealerConvergenceAccount(

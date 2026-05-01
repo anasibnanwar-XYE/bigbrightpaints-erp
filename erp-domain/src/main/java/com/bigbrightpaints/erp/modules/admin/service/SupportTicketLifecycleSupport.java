@@ -30,9 +30,10 @@ import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketTimelineEntry;
 import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketTimelineRepository;
 import com.bigbrightpaints.erp.modules.admin.dto.SuperAdminSupportTicketDtos;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
+import com.bigbrightpaints.erp.modules.company.service.TenantSupportControlPort;
 
 @Service
-public class SupportTicketLifecycleSupport {
+public class SupportTicketLifecycleSupport implements TenantSupportControlPort {
 
   private static final String EVENT_CREATED = "TICKET_CREATED";
   private static final String EVENT_FIRST_RESPONSE = "FIRST_RESPONSE";
@@ -85,6 +86,7 @@ public class SupportTicketLifecycleSupport {
   }
 
   @Transactional
+  @Override
   public int recalculateActiveTenantTicketsForSupportTierChange(
       Company company, String oldSupportTier, String newSupportTier, Long planAuditEventId) {
     if (company == null) {
@@ -106,6 +108,26 @@ public class SupportTicketLifecycleSupport {
       }
     }
     return recalculated;
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public long countOpenSupportTickets() {
+    List<SupportTicketStatus> activeStatuses =
+        List.of(SupportTicketStatus.OPEN, SupportTicketStatus.IN_PROGRESS);
+    return supportTicketRepository.countByCategoryAndStatusIn(
+            SupportTicketCategory.SUPPORT, activeStatuses)
+        + supportTicketRepository.countByCategoryAndStatusIn(
+            SupportTicketCategory.FEATURE_REQUEST, activeStatuses);
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public long countOpenBugs() {
+    List<SupportTicketStatus> activeStatuses =
+        List.of(SupportTicketStatus.OPEN, SupportTicketStatus.IN_PROGRESS);
+    return supportTicketRepository.countByCategoryAndStatusIn(
+        SupportTicketCategory.BUG, activeStatuses);
   }
 
   @Transactional

@@ -17,6 +17,7 @@ Last reviewed: 2026-05-01
   - required IAM security-event writes now share the caller transaction and resolve existing accounts read-only, preventing password-change required-audit deadlocks against the caller's own canonical IAM account update
   - digest-token truth coverage now asserts the locked digest lookup used by reset-token consumption
   - code review found stale current-route documentation for retired auth profile; the DoD map now points at canonical self-profile/contact/security routes, and retired auth alias security/corridor shortcuts were removed instead of preserved
+  - PR CI found a new `company->admin` module-boundary edge; company now depends on company-owned owner-invite/support-control ports, and the admin module implements those ports without adding an architecture allowlist entry
   - `openapi.json` was regenerated from `OpenApiSnapshotIT`; removed Super Admin flat onboarding/support reset and plan-template alias routes are absent, while the Super Admin plans route is canonical
   - `docs/endpoint-inventory.md` was regenerated from `openapi.json` and now reports 362 paths, 428 operations, sha256 `43a4225c802b908590f39f91bdbd803139e8ad464d76d7c271b61fc541f11891`
   - frontend/API/module/workflow/runbook/code-review docs and `.factory` handoffs now point at Add Client, activation/setup, Super Admin plans, and current route behavior instead of old compatibility surfaces
@@ -33,11 +34,14 @@ Last reviewed: 2026-05-01
   - `cd erp-domain && MIGRATION_SET=v2 DOCKER_HOST=unix:///Users/anas/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock mvn -q -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=AuditServiceTest,CompanyServiceTest,SuperAdminTenantControlPlaneServiceTest,SuperAdminControllerTest,TenantOnboardingControllerTest,AuthTenantAuthorityIT,OpenApiSnapshotIT,TS_RuntimeCompanyContextFilterExecutableCoverageTest,TS_RuntimeCompanyControllerExecutableCoverageTest test`
   - `cd erp-domain && MIGRATION_SET=v2 DOCKER_HOST=unix:///Users/anas/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock mvn -q -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=TS_AuthDigestTokenStorageGuardTest,IamCoreSchemaAndModelHardCutMigrationIT test`
   - `cd erp-domain && MIGRATION_SET=v2 DOCKER_HOST=unix:///Users/anas/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock mvn -q -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=AuthControllerIT,OpenApiSnapshotIT,IdentityRouteInventoryContractTest test`
+  - `bash ci/check-architecture.sh`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -q -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=CompanyServiceTest,SuperAdminTenantEntitlementServiceTest test`
   - `MIGRATION_SET=v2 DOCKER_HOST=unix:///Users/anas/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock GATE_CANONICAL_BASE_REF=main bash scripts/gate_core.sh`
 - Result summary:
   - focused auth/company/Super Admin/OpenAPI/runtime pack reported 213 tests run, 0 failures/errors/skips
   - focused IAM digest/migration pack reported 11 tests run, 0 failures/errors/skips after fixing the Gate Core findings
   - focused auth route/OpenAPI inventory pack reported 43 tests run, 0 failures/errors/skips after resolving the code review blocker
+  - module-boundary fix pack reported `CompanyServiceTest` and `SuperAdminTenantEntitlementServiceTest` green, and `ci/check-architecture.sh` passed with no `company->admin` edge
   - Gate Core reported 416 tests run, 0 failures/errors/skips; module coverage passed with line ratio `0.9611307420494699` and branch ratio `0.8980891719745223`
   - OpenAPI drift guard, accounting portal scope guard, knowledgebase lint, high-risk guard, Spotless, conflict-marker scan, whitespace diff check, and Gate Core front-door catalog/flaky guards passed
   - no bearer tokens, passwords, activation links, reset links, token digests, provider credentials, or `.env` values were printed in evidence

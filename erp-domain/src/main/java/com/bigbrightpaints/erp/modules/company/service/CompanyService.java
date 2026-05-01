@@ -30,9 +30,6 @@ import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.security.AuthScopeService;
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
 import com.bigbrightpaints.erp.core.util.CompanyTime;
-import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketCategory;
-import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketRepository;
-import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketStatus;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserPrincipal;
 import com.bigbrightpaints.erp.modules.auth.service.PasswordResetService;
@@ -89,7 +86,7 @@ public class CompanyService {
   private final PasswordResetService passwordResetService;
   private final AuthScopeService authScopeService;
   private final SuperAdminBillingService billingService;
-  private final SupportTicketRepository supportTicketRepository;
+  private final TenantSupportControlPort tenantSupportControlPort;
   private final SuperAdminSecurityAuditService securityAuditService;
 
   public CompanyService(CompanyRepository repository) {
@@ -174,7 +171,7 @@ public class CompanyService {
       PasswordResetService passwordResetService,
       AuthScopeService authScopeService,
       SuperAdminBillingService billingService,
-      SupportTicketRepository supportTicketRepository,
+      TenantSupportControlPort tenantSupportControlPort,
       SuperAdminSecurityAuditService securityAuditService) {
     this.repository = repository;
     this.auditService = auditService;
@@ -186,7 +183,7 @@ public class CompanyService {
     this.passwordResetService = passwordResetService;
     this.authScopeService = authScopeService;
     this.billingService = billingService;
-    this.supportTicketRepository = supportTicketRepository;
+    this.tenantSupportControlPort = tenantSupportControlPort;
     this.securityAuditService = securityAuditService;
   }
 
@@ -546,16 +543,12 @@ public class CompanyService {
         recurringRevenueCurrencyCount == 1 ? singleCurrencyMrr(recurringRevenueByCurrency) : 0;
     long dashboardArrMinorUnits =
         recurringRevenueCurrencyCount == 1 ? singleCurrencyArr(recurringRevenueByCurrency) : 0;
-    List<SupportTicketStatus> activeSupportStatuses =
-        List.of(SupportTicketStatus.OPEN, SupportTicketStatus.IN_PROGRESS);
-    long openSupportTickets =
-        supportTicketRepository.countByCategoryAndStatusIn(
-                SupportTicketCategory.SUPPORT, activeSupportStatuses)
-            + supportTicketRepository.countByCategoryAndStatusIn(
-                SupportTicketCategory.FEATURE_REQUEST, activeSupportStatuses);
-    long openBugs =
-        supportTicketRepository.countByCategoryAndStatusIn(
-            SupportTicketCategory.BUG, activeSupportStatuses);
+    if (tenantSupportControlPort == null) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState(
+          "Tenant support metrics service unavailable");
+    }
+    long openSupportTickets = tenantSupportControlPort.countOpenSupportTickets();
+    long openBugs = tenantSupportControlPort.countOpenBugs();
     auditAuthorityDecision(true, SUPERADMIN_DASHBOARD_READ_REASON, null, authentication);
 
     return new CompanySuperAdminDashboardDto(

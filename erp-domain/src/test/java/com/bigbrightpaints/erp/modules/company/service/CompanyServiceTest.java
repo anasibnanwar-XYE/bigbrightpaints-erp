@@ -45,7 +45,6 @@ import com.bigbrightpaints.erp.core.security.AuthScopeService;
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.core.util.CompanyTime;
-import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.auth.service.PasswordResetService;
@@ -87,7 +86,7 @@ class CompanyServiceTest {
 
   @Mock private SuperAdminBillingService billingService;
 
-  @Mock private SupportTicketRepository supportTicketRepository;
+  @Mock private TenantSupportControlPort tenantSupportControlPort;
 
   @Mock private SuperAdminSecurityAuditService securityAuditService;
 
@@ -99,7 +98,8 @@ class CompanyServiceTest {
   void setUp() {
     lenient().when(companyClock.now(any())).thenReturn(Instant.parse("2026-03-18T06:30:00Z"));
     lenient().when(billingService.getBillingMetrics()).thenReturn(Map.of());
-    lenient().when(supportTicketRepository.countByCategoryAndStatusIn(any(), any())).thenReturn(0L);
+    lenient().when(tenantSupportControlPort.countOpenSupportTickets()).thenReturn(0L);
+    lenient().when(tenantSupportControlPort.countOpenBugs()).thenReturn(0L);
     lenient().when(securityAuditService.countSecurityEvents()).thenReturn(0L);
     lenient().when(securityAuditService.countSuspiciousEvents()).thenReturn(0L);
     lenient().when(securityAuditService.countOpenRemediations()).thenReturn(0L);
@@ -121,7 +121,7 @@ class CompanyServiceTest {
             passwordResetService,
             authScopeService,
             billingService,
-            supportTicketRepository,
+            tenantSupportControlPort,
             securityAuditService);
   }
 

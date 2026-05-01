@@ -28,7 +28,6 @@ import com.bigbrightpaints.erp.core.audit.AuditLog;
 import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.config.SystemSetting;
 import com.bigbrightpaints.erp.core.config.SystemSettingsRepository;
-import com.bigbrightpaints.erp.modules.admin.service.SupportTicketLifecycleSupport;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyModule;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
@@ -47,7 +46,7 @@ class SuperAdminTenantEntitlementServiceTest {
   @Mock private SuperAdminPlanTemplateRepository planTemplateRepository;
   @Mock private SystemSettingsRepository systemSettingsRepository;
   @Mock private TenantRuntimeEnforcementService tenantRuntimeEnforcementService;
-  @Mock private SupportTicketLifecycleSupport supportTicketLifecycleSupport;
+  @Mock private TenantSupportControlPort tenantSupportControlPort;
   @Mock private AuditService auditService;
 
   private final Map<String, SystemSetting> settings = new HashMap<>();
@@ -61,7 +60,7 @@ class SuperAdminTenantEntitlementServiceTest {
             planTemplateRepository,
             systemSettingsRepository,
             tenantRuntimeEnforcementService,
-            supportTicketLifecycleSupport,
+            tenantSupportControlPort,
             auditService);
     when(systemSettingsRepository.save(any(SystemSetting.class)))
         .thenAnswer(
@@ -116,7 +115,7 @@ class SuperAdminTenantEntitlementServiceTest {
         .updatePolicy(
             "ACME", null, "TENANT_ENTITLEMENTS_UPDATE", 25, 300, 50, "super-admin@bbp.com");
     verify(tenantRuntimeEnforcementService).invalidatePolicyCache("ACME");
-    verify(supportTicketLifecycleSupport)
+    verify(tenantSupportControlPort)
         .recalculateActiveTenantTicketsForSupportTierChange(company, "STANDARD", "PRIORITY", 701L);
   }
 
