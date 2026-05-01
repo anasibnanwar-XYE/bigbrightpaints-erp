@@ -50,8 +50,7 @@ class TenantRuntimeEnforcementInterceptorTest {
 
   @Test
   void preHandle_bypassesWhenPathIsNotEnforced() throws Exception {
-    interceptor =
-        newInterceptor();
+    interceptor = newInterceptor();
     MockHttpServletRequest request =
         new MockHttpServletRequest("GET", "/api/v1/superadmin/settings");
 
@@ -63,8 +62,7 @@ class TenantRuntimeEnforcementInterceptorTest {
 
   @Test
   void preHandle_bypassesWhenPathIsBlank() throws Exception {
-    interceptor =
-        newInterceptor();
+    interceptor = newInterceptor();
     MockHttpServletRequest request = new MockHttpServletRequest();
     request.setMethod("GET");
     request.setRequestURI("   ");
@@ -78,8 +76,7 @@ class TenantRuntimeEnforcementInterceptorTest {
   @Test
   void preHandle_skipsLegacyPortalRuntimeChecks_whenCanonicalAdmissionAlreadyApplied()
       throws Exception {
-    interceptor =
-        newInterceptor();
+    interceptor = newInterceptor();
     MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/portal/dashboard");
     request.setAttribute(TenantRuntimeRequestAttributes.CANONICAL_ADMISSION_APPLIED, Boolean.TRUE);
 
@@ -91,8 +88,7 @@ class TenantRuntimeEnforcementInterceptorTest {
 
   @Test
   void preHandle_usesCanonicalRuntimeServiceWhenFilterDidNotTrackRequest() throws Exception {
-    interceptor =
-        newInterceptor();
+    interceptor = newInterceptor();
     Company company = company(55L, "ACME");
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
     TenantRuntimeEnforcementService.TenantRequestAdmission admission =
@@ -115,8 +111,7 @@ class TenantRuntimeEnforcementInterceptorTest {
 
   @Test
   void preHandle_passesTrimmedAuthenticatedActorToFallbackAdmission() throws Exception {
-    interceptor =
-        newInterceptor();
+    interceptor = newInterceptor();
     Company company = company(55L, "ACME");
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
     TenantRuntimeEnforcementService.TenantRequestAdmission admission =
@@ -141,8 +136,7 @@ class TenantRuntimeEnforcementInterceptorTest {
 
   @Test
   void preHandle_usesNullActorWhenAuthenticationNameIsBlank() throws Exception {
-    interceptor =
-        newInterceptor();
+    interceptor = newInterceptor();
     Company company = company(55L, "ACME");
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
     TenantRuntimeEnforcementService.TenantRequestAdmission admission =
@@ -167,8 +161,7 @@ class TenantRuntimeEnforcementInterceptorTest {
 
   @Test
   void preHandle_translatesNullAdmissionIntoUnavailablePortalContract() {
-    interceptor =
-        newInterceptor();
+    interceptor = newInterceptor();
     Company company = company(55L, "ACME");
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
     when(tenantRuntimeRequestAdmissionService.beginRequest(any(), any(), any(), any(), eq(false)))
@@ -194,8 +187,7 @@ class TenantRuntimeEnforcementInterceptorTest {
 
   @Test
   void preHandle_translatesCanonicalStateRejectionIntoPortalContract() {
-    interceptor =
-        newInterceptor();
+    interceptor = newInterceptor();
     Company company = company(55L, "ACME");
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
     TenantRuntimeEnforcementService.TenantRequestAdmission rejected =
@@ -247,8 +239,7 @@ class TenantRuntimeEnforcementInterceptorTest {
 
   @Test
   void preHandle_treatsTenantStateLimitTypeAsInvalidStateContract() {
-    interceptor =
-        newInterceptor();
+    interceptor = newInterceptor();
     Company company = company(55L, "ACME");
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
     TenantRuntimeEnforcementService.TenantRequestAdmission rejected =
@@ -287,8 +278,7 @@ class TenantRuntimeEnforcementInterceptorTest {
 
   @Test
   void preHandle_writesCanonicalQuotaResponse_whenQuotaValuesAreBlankOrInvalid() throws Exception {
-    interceptor =
-        newInterceptor();
+    interceptor = newInterceptor();
     Company company = company(55L, "ACME");
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
     TenantRuntimeEnforcementService.TenantRequestAdmission rejected =
@@ -327,8 +317,7 @@ class TenantRuntimeEnforcementInterceptorTest {
 
   @Test
   void preHandle_writesCanonicalQuotaResponseWithRetryAndResetMetadata() throws Exception {
-    interceptor =
-        newInterceptor();
+    interceptor = newInterceptor();
     Company company = company(55L, "ACME");
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
     TenantRuntimeEnforcementService.TenantRequestAdmission rejected =
@@ -375,8 +364,7 @@ class TenantRuntimeEnforcementInterceptorTest {
 
   @Test
   void admissionException_treatsBlankCompanyAndPathAsNulls() {
-    interceptor =
-        newInterceptor();
+    interceptor = newInterceptor();
 
     RuntimeException exception =
         com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
@@ -392,8 +380,7 @@ class TenantRuntimeEnforcementInterceptorTest {
 
   @Test
   void admissionException_usesAdmissionCompanyAndStateDetailsWithoutSnapshotLookup() {
-    interceptor =
-        newInterceptor();
+    interceptor = newInterceptor();
     TenantRuntimeEnforcementService.TenantRequestAdmission rejected =
         admission(
             false,
@@ -424,8 +411,7 @@ class TenantRuntimeEnforcementInterceptorTest {
 
   @Test
   void admissionException_leavesFallbackStateDetailsNullWhenAdmissionMetadataIsBlank() {
-    interceptor =
-        newInterceptor();
+    interceptor = newInterceptor();
     TenantRuntimeEnforcementService.TenantRequestAdmission rejected =
         admission(
             false,
@@ -457,8 +443,7 @@ class TenantRuntimeEnforcementInterceptorTest {
 
   @Test
   void admissionException_usesSnapshotReasonWhenAdmissionReasonIsMissing() {
-    interceptor =
-        newInterceptor();
+    interceptor = newInterceptor();
     TenantRuntimeEnforcementService.TenantRequestAdmission rejected =
         admission(
             false,
@@ -503,8 +488,7 @@ class TenantRuntimeEnforcementInterceptorTest {
 
   @Test
   void admissionException_prefersAdmissionMetadataOverChangedSnapshot() {
-    interceptor =
-        newInterceptor();
+    interceptor = newInterceptor();
     TenantRuntimeEnforcementService.TenantRequestAdmission rejected =
         admission(
             false,
@@ -536,8 +520,7 @@ class TenantRuntimeEnforcementInterceptorTest {
 
   @Test
   void admissionException_degradesToNullFallbackStateDetailsWhenSnapshotLookupFails() {
-    interceptor =
-        newInterceptor();
+    interceptor = newInterceptor();
     TenantRuntimeEnforcementService.TenantRequestAdmission rejected =
         admission(
             false,
@@ -571,8 +554,7 @@ class TenantRuntimeEnforcementInterceptorTest {
 
   @Test
   void afterCompletion_ignoresRequestsWithoutInterceptorFallbackAdmission() {
-    interceptor =
-        newInterceptor();
+    interceptor = newInterceptor();
     MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/portal/dashboard");
 
     interceptor.afterCompletion(request, new MockHttpServletResponse(), new Object(), null);

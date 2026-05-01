@@ -236,15 +236,19 @@ Password-policy failures currently surface as `VAL_001` with message prefix `Pas
 | GET | `/api/v1/superadmin/dashboard` | `ROLE_SUPER_ADMIN` | None | `SuperAdminDashboardDto` |
 | GET | `/api/v1/superadmin/audit/platform-events` | `ROLE_SUPER_ADMIN` | Query: `from?`, `to?`, `action?`, `status?`, `actor?`, `entityType?`, `reference?`, `page?`, `size?` | `PageResponse<AuditFeedItemDto>` |
 | GET | `/api/v1/superadmin/tenants` | `ROLE_SUPER_ADMIN` | Optional query: `status` | `List<SuperAdminTenantSummaryDto>` |
+| GET | `/api/v1/superadmin/tenants/new` | `ROLE_SUPER_ADMIN` | None | `SuperAdminAddClientOptionsDto` |
 | GET | `/api/v1/superadmin/tenants/coa-templates` | `ROLE_SUPER_ADMIN` | None | `List<CoATemplateDto>` |
-| POST | `/api/v1/superadmin/tenants/onboard` | `ROLE_SUPER_ADMIN` | `TenantOnboardingRequest` | `TenantOnboardingResponse` |
+| POST | `/api/v1/superadmin/tenants` | `ROLE_SUPER_ADMIN` | `SuperAdminAddClientCreateRequest` | `SuperAdminAddClientCreateResponse` |
 | GET | `/api/v1/superadmin/tenants/{id}` | `ROLE_SUPER_ADMIN` | None | `SuperAdminTenantDetailDto` |
 | PUT | `/api/v1/superadmin/tenants/{id}/lifecycle` | `ROLE_SUPER_ADMIN` | `CompanyLifecycleStateRequest` | `CompanyLifecycleStateDto` |
 | PUT | `/api/v1/superadmin/tenants/{id}/limits` | `ROLE_SUPER_ADMIN` | `TenantLimitsUpdateRequest` | `SuperAdminTenantLimitsDto` |
 | PUT | `/api/v1/superadmin/tenants/{id}/modules` | `ROLE_SUPER_ADMIN` | `TenantModulesUpdateRequest` | `CompanyEnabledModulesDto` |
 | POST | `/api/v1/superadmin/tenants/{id}/support/warnings` | `ROLE_SUPER_ADMIN` | `TenantSupportWarningRequest` | `CompanySupportWarningDto` |
-| POST | `/api/v1/superadmin/tenants/{id}/support/admin-password-reset` | `ROLE_SUPER_ADMIN` | `TenantAdminPasswordResetRequest` | `CompanyAdminCredentialResetDto` |
 | PUT | `/api/v1/superadmin/tenants/{id}/support/context` | `ROLE_SUPER_ADMIN` | `TenantSupportContextUpdateRequest` | `SuperAdminTenantSupportContextDto` |
+| POST | `/api/v1/superadmin/tenants/{id}/activation/send` | `ROLE_SUPER_ADMIN` | None | activation delivery metadata |
+| POST | `/api/v1/superadmin/tenants/{id}/activation/resend` | `ROLE_SUPER_ADMIN` | None | activation delivery metadata |
+| POST | `/api/v1/superadmin/tenants/{id}/activation/copy` | `ROLE_SUPER_ADMIN` | None | explicit copy-link payload; redact in evidence |
+| POST | `/api/v1/superadmin/tenants/{id}/activation/expire` | `ROLE_SUPER_ADMIN` | None | activation expiry metadata |
 | POST | `/api/v1/superadmin/tenants/{id}/force-logout` | `ROLE_SUPER_ADMIN` | Optional `TenantForceLogoutRequest` | `SuperAdminTenantForceLogoutDto` |
 | PUT | `/api/v1/superadmin/tenants/{id}/admins/main` | `ROLE_SUPER_ADMIN` | `TenantMainAdminUpdateRequest` | `MainAdminSummaryDto` |
 | POST | `/api/v1/superadmin/tenants/{id}/admins/{adminId}/email-change/request` | `ROLE_SUPER_ADMIN` | `TenantAdminEmailChangeRequest` | `SuperAdminTenantAdminEmailChangeRequestDto` |
@@ -300,10 +304,10 @@ Disabled module requests return `403` with `BUS_010` (`MODULE_DISABLED`). Runtim
    5. Navigate to module surfaces; if a module is disabled (`BUS_010`), show module-disabled state.
 
 2. **Superadmin tenant creation with CoA template**
-   1. Load templates with `GET /api/v1/superadmin/tenants/coa-templates`.
-   2. Submit `POST /api/v1/superadmin/tenants/onboard` with selected `coaTemplateCode`.
-   3. Backend creates company, admin user, default accounting period, and 50-100 CoA accounts.
-   4. Show bootstrap success details only; credentials are emailed directly to the tenant admin and are never returned in the API payload.
+   1. Load Add Client options with `GET /api/v1/superadmin/tenants/new`.
+   2. Load templates with `GET /api/v1/superadmin/tenants/coa-templates`.
+   3. Submit `POST /api/v1/superadmin/tenants` with selected `coaTemplateCode` and `createMode`.
+   4. For `SEND_ACTIVATION`, owner credential setup moves through activation email and `/api/v1/setup/**`; credentials are never returned in the API payload.
    5. Optionally configure enabled modules via `PUT /api/v1/superadmin/tenants/{id}/modules`.
 
 3. **User creation with role assignment**
@@ -391,19 +395,14 @@ Disabled module requests return `403` with `BUS_010` (`MODULE_DISABLED`). Runtim
   - `name`, `description`
   - `accountCount` (50-100)
 
-- `TenantOnboardingRequest`
-  - `name`, `code`, `timezone` (required)
-  - `defaultGstRate?: number (0..100)`
-  - `maxActiveUsers?`, `maxApiRequests?`, `maxStorageBytes?`, `maxConcurrentUsers?` (>=0)
-  - `softLimitEnabled?`, `hardLimitEnabled?`
-  - `firstAdminEmail` (required email), `firstAdminDisplayName?`
-  - `coaTemplateCode` (required)
+- `SuperAdminAddClientCreateRequest`
+  - `company`, `owner`, `commercial`, `quotas`, `modules`, `support`, and `createMode`
+  - `company.coaTemplateCode` selects the seed template
+  - `createMode` is `DRAFT` or `SEND_ACTIVATION`
 
-- `TenantOnboardingResponse`
-  - `companyId`, `companyCode`, `templateCode`
-  - `bootstrapMode`, `seededChartOfAccounts`
-  - `accountsCreated`, `accountingPeriodId`, `defaultAccountingPeriodCreated`
-  - `adminEmail`, `tenantAdminProvisioned`, `systemSettingsInitialized`
+- `SuperAdminAddClientCreateResponse`
+  - safe company, owner, quota, activation, and seed-status metadata
+  - never includes passwords, raw activation/reset tokens, or secret material
 
 - `CreateUserRequest`
   - `email` (required email)

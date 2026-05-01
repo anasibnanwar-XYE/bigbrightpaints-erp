@@ -7,7 +7,7 @@ This review covers tenant onboarding, company CRUD/configuration, lifecycle tran
 Primary evidence:
 
 - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/company/controller/{CompanyController,SuperAdminController,SuperAdminTenantOnboardingController}.java`
-- `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/company/service/{CompanyService,TenantOnboardingService,TenantLifecycleService,SuperAdminService,ModuleGatingInterceptor,ModuleGatingService,TenantRuntimeEnforcementService,TenantUsageMetricsService,TenantUsageMetricsInterceptor}.java`
+- `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/company/service/{CompanyService,SuperAdminTenantControlPlaneService,TenantDefaultSeedingService,OwnerSetupService,TenantLifecycleService,SuperAdminService,ModuleGatingInterceptor,ModuleGatingService,TenantRuntimeEnforcementService,TenantUsageMetricsService,TenantUsageMetricsInterceptor}.java`
 - `erp-domain/src/main/java/com/bigbrightpaints/erp/core/security/{CompanyContextFilter,SecurityConfig,TenantRuntimeEnforcementService}.java`
 - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/admin/{controller/AdminSettingsController.java,service/TenantRuntimePolicyService.java}`
 - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/service/{AuthService,TenantAdminProvisioningService}.java`
@@ -21,7 +21,7 @@ Primary evidence:
 
 | Surface | Entrypoints | Controller | Notes |
 | --- | --- | --- | --- |
-| Tenant bootstrap templates | `GET /api/v1/superadmin/tenants/coa-templates` | `SuperAdminTenantOnboardingController` | Lists seed templates. The flat `POST /api/v1/superadmin/tenants/onboard` bootstrap route is retired in favor of the V1 Add Client activation flow. |
+| Tenant bootstrap templates | `GET /api/v1/superadmin/tenants/coa-templates` | `SuperAdminTenantOnboardingController` | Lists seed templates for the V1 Add Client activation flow. |
 | Company directory and control plane | `GET /api/v1/companies` | `CompanyController` | Tenant creation moved to the super-admin onboarding flow. The old `/api/v1/companies/{id}` delete surface is retired and no longer has a live operation contract. |
 | Canonical super-admin company controls | `PUT /api/v1/superadmin/tenants/{id}/lifecycle`, `PUT /api/v1/superadmin/tenants/{id}/limits`, `PUT /api/v1/superadmin/tenants/{id}/modules`, `POST /api/v1/auth/password/forgot`, `POST /api/v1/superadmin/tenants/{id}/support/warnings`, `PUT /api/v1/superadmin/tenants/{id}/support/context`, `POST /api/v1/superadmin/tenants/{id}/force-logout` | `SuperAdminController` | The live contract is tenant-id under `/api/v1/superadmin/tenants/**`; company-id control-plane aliases are retired from the canonical surface. |
 | Super-admin operations hub | `GET /api/v1/superadmin/dashboard`, `GET /api/v1/superadmin/tenants`, `GET /api/v1/superadmin/tenants/{id}` | `SuperAdminController` | Platform dashboard and tenant-detail reads stay here; lifecycle and support mutations use the canonical tenant-control endpoints above. |
@@ -34,7 +34,7 @@ Primary evidence:
 | `companies` row | `Company.java`, `V19__company_lifecycle_state.sql`, `V20__company_quota_controls.sql`, `V25__module_gating_and_period_costing_method.sql` | Name/code/timezone/stateCode, lifecycle state, enabled modules, stored quota envelope, default accounts. |
 | `app_users.company_id` | `UserAccount.java`, `AuthService.resolveCompanyForScope(...)` | Single-company binding and login target selection for each scoped account. |
 | `coa_templates` | `V24__tenant_onboarding_coa_templates.sql`, `CoATemplateService` | Bootstrap template catalog. |
-| Accounts + accounting periods | `TenantOnboardingService`, `AccountRepository`, `AccountingPeriodService` | Onboarding side effects create 63-91 accounts plus an open period. |
+| Accounts + accounting periods | `TenantDefaultSeedingService`, setup mappings, `AccountRepository`, `AccountingPeriodService` | Seed/status side effects create and repair the default accounting baseline. |
 | `system_settings` generic KV | `TenantRuntimePolicyService`, `TenantRuntimeEnforcementService`, `TenantUsageMetricsService` | Runtime policy, runtime counters, usage counters, onboarding defaults (`auto-approval.enabled`, `period-lock.enforced`). |
 | `audit_logs` | `AuditService`, `AuditLogRepository`, `CompanyService.getTenantMetrics(...)` | Tenant metrics, dashboard summaries, support/lifecycle audit breadcrumbs. |
 
@@ -42,18 +42,16 @@ Primary evidence:
 
 ### 1. Tenant onboarding
 
-`SuperAdminTenantOnboardingController.onboardTenant(...)` hands off to `TenantOnboardingService.onboardTenant(...)`.
+`SuperAdminController.createTenant(...)` hands off to `SuperAdminTenantControlPlaneService.createAddClient(...)`.
 
 Narrative chain:
 
-1. Validate and normalize `code` and `firstAdminEmail`.
-2. `CoATemplateService.requireActiveTemplate(...)` resolves a template from `coa_templates`.
-3. `TenantOnboardingService.resolveTemplateBlueprints(...)` expands the template into 63-91 in-memory account blueprints.
-4. Persist a new `Company` row.
-5. Persist the template accounts, wire default account ids back onto the `Company`, and create an open accounting period.
-6. Provision a first admin user with `ROLE_ADMIN`, bind the account to the new company scope, generate temporary credentials internally, and require credential email delivery to the target user.
-7. Seed global system settings (`auto-approval.enabled`, `period-lock.enforced`) if missing.
-8. Return `TenantOnboardingResponse` with explicit `bootstrapMode`, `seededChartOfAccounts`, `defaultAccountingPeriodCreated`, `tenantAdminProvisioned`, and `adminEmail` fields only.
+1. Validate and normalize the Add Client company, owner, commercial, quota, module, support, and create-mode payload.
+2. `CoATemplateService` resolves the requested template from `coa_templates`.
+3. Persist a new `Company` row and state metadata.
+4. Create the owner account through canonical scoped-account/activation services.
+5. Run default seed/status work through `TenantDefaultSeedingService`.
+6. Return `SuperAdminAddClientCreateResponse` with safe company, owner, quota, activation, and seed-status metadata only.
 
 Important invariants:
 
@@ -71,7 +69,7 @@ Side effects:
 
 `CompanyService` still contains some tenant-control mutations internally, but the published control-plane contract is the super-admin tenant family.
 
-- `POST /api/v1/superadmin/tenants/onboard` is retired and hidden from the live contract; future tenant creation uses the V1 Add Client activation flow.
+- Tenant creation uses `POST /api/v1/superadmin/tenants`; stale flat-onboarding URLs are unmapped.
 - `PUT /api/v1/superadmin/tenants/{id}/modules` calls `CompanyService.updateEnabledModules(...)`.
 - `PUT /api/v1/superadmin/tenants/{id}/lifecycle`, `PUT /api/v1/superadmin/tenants/{id}/limits`, `PUT /api/v1/superadmin/tenants/{id}/modules`, `POST /api/v1/superadmin/tenants/{id}/support/warnings`, `PUT /api/v1/superadmin/tenants/{id}/support/context`, and `POST /api/v1/superadmin/tenants/{id}/force-logout` are the current-state control mutations.
 
@@ -210,8 +208,8 @@ This path only creates a response DTO plus audit metadata. It does **not** persi
 | Severity | Category | Finding | Evidence | Why it matters |
 | --- | --- | --- | --- | --- |
 | high | integrity / migrations | Database lifecycle constraint still allows `ACTIVE/HOLD/BLOCKED`, while the Java enum and DTOs use `ACTIVE/SUSPENDED/DEACTIVATED`. | `V19__company_lifecycle_state.sql`, `CompanyLifecycleState.java` | Super-admin suspend/deactivate flows can fail against migrated databases or drift between old and new lifecycle vocabularies. |
-| high | governance / integrity | The quota envelope stored on `Company` is not the same model used by live runtime admission. | `CompanyService.create/update`, `TenantOnboardingService.createCompany`, `CompanyService.getTenantMetrics`, `TenantRuntimeEnforcementService.loadPersistedPolicy(...)`, no main-code callers for `CompanyService.isRuntimeAccessAllowed(...)` | Operators can configure quotas in company CRUD and dashboards, but request admission still follows separate `tenant.runtime.*` settings and defaults. |
-| low | resolved hard-cut cleanup | Auth V2 onboarding no longer returns plaintext password fields, and credential email delivery is required before success is returned. | `TenantOnboardingResponse.java`, `ScopedAccountBootstrapService`, `TenantOnboardingControllerTest` | This earlier privacy finding is resolved on the current branch and retained here only for traceability. |
+| high | governance / integrity | The quota envelope stored on `Company` must stay aligned with live runtime admission. | `SuperAdminTenantControlPlaneService.createAddClient/updateLimits`, `CompanyService.getTenantMetrics`, `TenantRuntimeEnforcementService.loadPersistedPolicy(...)` | Operators configure quotas through Add Client and tenant limits; request admission must read the same current-state policy model. |
+| low | resolved hard-cut cleanup | Auth V2 onboarding no longer returns plaintext password fields, and the old onboarding DTO/service stack is deleted. | `SuperAdminAddClientCreateResponse`, `ScopedAccountBootstrapService`, `TenantOnboardingControllerTest` | This earlier privacy finding is resolved on the current branch and retained here only for traceability. |
 | medium | design / protocol | Historical company-id control paths and alias families still leave behind implementation seams next to the published `/api/v1/superadmin/tenants/{id}/...` control plane. | `CompanyContextFilter.isLifecycleControlRequest(...)`, `CompanyController`, `SuperAdminController`, `openapi.json` | Audit scope, runtime-policy bypass, and request-company binding can still drift if retired company-id paths are treated as live again. |
 | medium | observability | Usage and runtime dashboards are backed by different counters and different interceptors. | `CompanyService.getTenantMetrics(...)`, `SuperAdminService.getTenantUsage(...)`, `TenantUsageMetricsService`, `TenantRuntimePolicyService`, `TenantRuntimeEnforcementInterceptor` | Historical tenant-metrics and usage surfaces can disagree under load or after denials because they do not share one source of truth; the retired dashboard aliases are intentionally out of contract. |
 | high | cache invalidation / runtime policy drift | A retired company-id runtime-policy mutation seam can still miss immediate policy-cache invalidation because `CompanyContextFilter` no longer calls `beginRequest()` on lifecycle-control paths, so `TenantRuntimeEnforcementService.completeRequest()` sees `TenantRequestAdmission.notTracked()` instead of a tracked policy-control request. | PR review on `CompanyContextFilter.beginRequest()/completeRequest()`, `TenantRuntimeEnforcementService.completeRequest(...)`, retired company-scoped runtime-policy seam | If that internal seam is reused without a published contract refresh, a node can keep enforcing stale policy for roughly the cache TTL instead of the new setting. |

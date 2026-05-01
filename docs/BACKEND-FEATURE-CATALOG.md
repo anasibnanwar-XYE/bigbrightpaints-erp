@@ -39,7 +39,7 @@ These features support the entire backend and are consumed by all domain areas.
 | Surface | Status | Replacement |
 | --- | --- | --- |
 | Legacy flat Super Admin tenant onboarding | Retired (V1 hard cut) | Use `GET /api/v1/superadmin/tenants/new` plus `POST /api/v1/superadmin/tenants` with `createMode=DRAFT` or `SEND_ACTIVATION` |
-| Legacy super-admin forgot-password alias (`POST /api/v1/superadmin/tenants/{id}/support/admin-password-reset`) | Deprecated (V157 hard cut) | Use `POST /api/v1/auth/password/forgot` |
+| Platform-issued Super Admin support password reset | Removed from current API contract | Use activation or scoped auth password recovery |
 | Email-only recovery identity (without companyCode) | Deprecated | Require `email + companyCode` for identity verification |
 | `/api/v1/support/**` (shared host) | Deprecated | Use host-specific paths: `/api/v1/portal/support/tickets` or `/api/v1/dealer-portal/support/tickets` |
 

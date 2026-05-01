@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
@@ -44,11 +45,11 @@ import com.bigbrightpaints.erp.core.security.AuthScopeService;
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.core.util.CompanyTime;
+import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.auth.service.PasswordResetService;
 import com.bigbrightpaints.erp.modules.auth.service.TenantAdminProvisioningService;
-import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketRepository;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyLifecycleState;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
@@ -103,6 +104,9 @@ class CompanyServiceTest {
     lenient().when(securityAuditService.countSuspiciousEvents()).thenReturn(0L);
     lenient().when(securityAuditService.countOpenRemediations()).thenReturn(0L);
     lenient().when(securityAuditService.countResolvedRemediations()).thenReturn(0L);
+    lenient()
+        .when(tenantRuntimeEnforcementService.snapshot(anyString()))
+        .thenAnswer(invocation -> runtimeSnapshot(invocation.getArgument(0), 0));
     new CompanyTime(companyClock);
     tenantLifecycleService = new TenantLifecycleService(auditService);
     companyService =
@@ -1004,7 +1008,7 @@ class CompanyServiceTest {
     when(userAccountRepository.countByCompany_IdAndEnabledTrue(1L)).thenReturn(3L);
     when(auditLogRepository.countApiActivityByCompanyId(1L)).thenReturn(20L);
     when(auditLogRepository.countApiFailureActivityByCompanyId(1L)).thenReturn(5L);
-    when(auditLogRepository.countDistinctSessionActivityByCompanyId(1L)).thenReturn(2L);
+    when(tenantRuntimeEnforcementService.snapshot("ACME")).thenReturn(runtimeSnapshot("ACME", 2));
     when(auditLogRepository.estimateAuditStorageBytesByCompanyId(1L)).thenReturn(4_096L);
 
     CompanyTenantMetricsDto metrics = companyService.getTenantMetrics(1L);
@@ -1108,7 +1112,7 @@ class CompanyServiceTest {
     configureHardLimitEnvelope(company);
     company.setQuotaMaxConcurrentRequests(1L);
     when(repository.findById(1L)).thenReturn(Optional.of(company));
-    when(auditLogRepository.countDistinctSessionActivityByCompanyId(1L)).thenReturn(2L);
+    when(tenantRuntimeEnforcementService.snapshot("ACME")).thenReturn(runtimeSnapshot("ACME", 2));
 
     assertThat(companyService.isRuntimeAccessAllowed(1L)).isFalse();
   }
@@ -1121,8 +1125,8 @@ class CompanyServiceTest {
     when(userAccountRepository.countByCompany_IdAndEnabledTrue(1L)).thenReturn(50L);
     when(auditLogRepository.countApiActivityByCompanyId(1L)).thenReturn(20L);
     when(auditLogRepository.estimateAuditStorageBytesByCompanyId(1L)).thenReturn(10_000L);
-    when(auditLogRepository.countDistinctSessionActivityByCompanyId(1L))
-        .thenThrow(new RuntimeException("session-telemetry-down"));
+    when(tenantRuntimeEnforcementService.snapshot("ACME"))
+        .thenThrow(new RuntimeException("runtime-telemetry-down"));
 
     assertThat(companyService.isRuntimeAccessAllowed(1L)).isFalse();
   }
@@ -1279,7 +1283,7 @@ class CompanyServiceTest {
     when(userAccountRepository.countByCompany_IdAndEnabledTrue(1L)).thenReturn(50L);
     when(auditLogRepository.countApiActivityByCompanyId(1L)).thenReturn(20L);
     when(auditLogRepository.estimateAuditStorageBytesByCompanyId(1L)).thenReturn(10_000L);
-    when(auditLogRepository.countDistinctSessionActivityByCompanyId(1L)).thenReturn(5L);
+    when(tenantRuntimeEnforcementService.snapshot("ACME")).thenReturn(runtimeSnapshot("ACME", 5));
 
     assertThat(companyService.isRuntimeAccessAllowed(1L)).isTrue();
   }
@@ -1617,8 +1621,8 @@ class CompanyServiceTest {
     when(auditLogRepository.countApiActivityByCompanyId(11L)).thenReturn(110L);
     when(auditLogRepository.countApiFailureActivityByCompanyId(10L)).thenReturn(3L);
     when(auditLogRepository.countApiFailureActivityByCompanyId(11L)).thenReturn(6L);
-    when(auditLogRepository.countDistinctSessionActivityByCompanyId(10L)).thenReturn(2L);
-    when(auditLogRepository.countDistinctSessionActivityByCompanyId(11L)).thenReturn(4L);
+    when(tenantRuntimeEnforcementService.snapshot("ALPHA")).thenReturn(runtimeSnapshot("ALPHA", 2));
+    when(tenantRuntimeEnforcementService.snapshot("BETA")).thenReturn(runtimeSnapshot("BETA", 4));
     when(auditLogRepository.estimateAuditStorageBytesByCompanyId(10L)).thenReturn(120L);
     when(auditLogRepository.estimateAuditStorageBytesByCompanyId(11L)).thenReturn(300L);
 
@@ -1799,6 +1803,32 @@ class CompanyServiceTest {
     company.setQuotaMaxApiRequests(100L);
     company.setQuotaMaxStorageBytes(100_000L);
     company.setQuotaMaxConcurrentRequests(100L);
+  }
+
+  private TenantRuntimeEnforcementService.TenantRuntimeSnapshot runtimeSnapshot(
+      String companyCode, int inFlightRequests) {
+    Instant capturedAt = Instant.parse("2026-03-18T06:30:00Z");
+    return new TenantRuntimeEnforcementService.TenantRuntimeSnapshot(
+        companyCode,
+        TenantRuntimeEnforcementService.TenantRuntimeState.ACTIVE,
+        null,
+        "audit-chain",
+        capturedAt,
+        100,
+        100,
+        100,
+        new TenantRuntimeEnforcementService.TenantRuntimeMetrics(
+            0,
+            0,
+            0,
+            inFlightRequests,
+            0,
+            0,
+            0,
+            capturedAt,
+            capturedAt.plusSeconds(60),
+            capturedAt.plusSeconds(60),
+            capturedAt));
   }
 
   private Company company(Long id, String code) {

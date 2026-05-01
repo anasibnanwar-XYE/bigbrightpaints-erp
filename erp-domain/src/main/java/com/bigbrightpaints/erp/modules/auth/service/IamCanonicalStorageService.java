@@ -13,7 +13,6 @@ import java.util.UUID;
 
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
@@ -390,7 +389,7 @@ public class IamCanonicalStorageService {
     return activeDigests;
   }
 
-  @Transactional(propagation = Propagation.REQUIRES_NEW)
+  @Transactional
   public void recordSecurityEvent(
       String eventType,
       String outcome,
@@ -826,7 +825,6 @@ public class IamCanonicalStorageService {
   private Long resolveAccountId(String userId, String username, String authScopeCode) {
     UUID publicId = parseUuid(userId);
     if (publicId != null) {
-      ensureAccountForPublicId(publicId);
       Long byPublicId =
           jdbcTemplate.query(
               "select id from iam_accounts where public_id = ?",

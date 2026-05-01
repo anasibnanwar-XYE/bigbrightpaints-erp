@@ -253,7 +253,8 @@ public class SuperAdminSecurityAuditService {
     auditMetadata.put("operation", reason);
     auditMetadata.putAll(metadata);
     AuditLog auditLog =
-        auditService.logAuthSuccessRequired(AuditEvent.CONFIGURATION_CHANGED, actor, null, auditMetadata);
+        auditService.logAuthSuccessRequired(
+            AuditEvent.CONFIGURATION_CHANGED, actor, null, auditMetadata);
     if (auditLog == null || auditLog.getId() == null) {
       throw new ApplicationException(
           ErrorCode.BUSINESS_INVALID_STATE, "Security remediation audit event was not persisted");

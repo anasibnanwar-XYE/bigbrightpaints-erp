@@ -235,14 +235,13 @@ class TS_RuntimeCompanyContextFilterExecutableCoverageTest {
 
   @Test
   void helperMethods_coverCanonicalControlBindingAndPathResolutionBranches() {
-    assertThat(invokeIsCompanyBoundControlRequest("/api/v1/superadmin/tenants/77", "GET"))
-        .isTrue();
+    assertThat(invokeIsCompanyBoundControlRequest("/api/v1/superadmin/tenants/77", "GET")).isTrue();
     assertThat(invokeIsCompanyBoundControlRequest("/api/v1/superadmin/tenants/77/lifecycle", "PUT"))
         .isTrue();
     assertThat(
             invokeIsCompanyBoundControlRequest(
                 "/api/v1/superadmin/tenants/77/support/admin-password-reset", "POST"))
-        .as("retired support reset is harmless/410, not runtime lifecycle-control")
+        .as("removed support reset is not runtime lifecycle-control")
         .isFalse();
     assertThat(
             invokeIsCompanyBoundControlRequest(
@@ -383,7 +382,9 @@ class TS_RuntimeCompanyContextFilterExecutableCoverageTest {
               String.class,
               String.class,
               String.class,
-              String.class);
+              String.class,
+              Long.class,
+              Long.class);
       constructor.setAccessible(true);
       return constructor.newInstance(
           admitted,
@@ -393,6 +394,8 @@ class TS_RuntimeCompanyContextFilterExecutableCoverageTest {
           statusCode,
           message,
           false,
+          null,
+          null,
           null,
           null,
           null,

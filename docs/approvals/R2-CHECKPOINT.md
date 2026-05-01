@@ -2,6 +2,46 @@
 
 Last reviewed: 2026-05-01
 
+## Addendum — `pr198-rebase-on-pr197-hard-cut`
+
+- Scope: PR #198 Super Admin/control-plane rebase onto PR #197 IAM/auth mainline, including removed flat onboarding/support-reset handlers, Add Client current-state docs, OpenAPI snapshot/inventory refresh, and hard-cut cleanup of the unused `TenantOnboardingService`/DTO/test stack.
+- Risk trigger: touches high-risk auth/company/control-plane code, route security behavior, OpenAPI/frontend contracts, and CI test manifests under `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/company/**`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/**`, `erp-domain/src/main/java/com/bigbrightpaints/erp/core/audit/**`, `erp-domain/src/test/java/**`, `openapi.json`, `ci/pr_manifests/**`, and canonical docs.
+- Approval mode: orchestrator; human escalation required: no.
+- Escalation decision: no privilege widening, tenant-boundary expansion, destructive migration, or compatibility shim was introduced. The rebase keeps PR #197 IAM/auth/session/reset behavior canonical and removes stale PR #198 route/service compatibility instead of preserving it.
+- Rollback owner: Droid / PR owner.
+- Rollback method: revert this integration patch or re-run the PR #198 rebase branch from current `main`, then rerun compile, Spotless, OpenAPI refresh/guard, high-risk guard, knowledgebase lint, and the focused auth/company/Super Admin test pack below.
+- Expiry: 2026-05-08.
+- Verification evidence:
+  - flat `POST /api/v1/superadmin/tenants/onboard` handler, support admin-password-reset handler, retired route error helper, old onboarding DTOs, old onboarding service, and old onboarding service tests are deleted
+  - stale route probes now assert hard-cut framework behavior (`405` for the flat onboarding collision, `404` for the removed support-reset URL) with no tenant/user/password/email side effects
+  - required IAM security-event writes now share the caller transaction and resolve existing accounts read-only, preventing password-change required-audit deadlocks against the caller's own canonical IAM account update
+  - digest-token truth coverage now asserts the locked digest lookup used by reset-token consumption
+  - code review found stale current-route documentation for retired auth profile; the DoD map now points at canonical self-profile/contact/security routes, and retired auth alias security/corridor shortcuts were removed instead of preserved
+  - `openapi.json` was regenerated from `OpenApiSnapshotIT`; removed Super Admin flat onboarding/support reset and plan-template alias routes are absent, while the Super Admin plans route is canonical
+  - `docs/endpoint-inventory.md` was regenerated from `openapi.json` and now reports 362 paths, 428 operations, sha256 `43a4225c802b908590f39f91bdbd803139e8ad464d76d7c271b61fc541f11891`
+  - frontend/API/module/workflow/runbook/code-review docs and `.factory` handoffs now point at Add Client, activation/setup, Super Admin plans, and current route behavior instead of old compatibility surfaces
+- Commands run:
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -q -DskipTests test-compile`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -q spotless:apply && MIGRATION_SET=v2 mvn -q spotless:check`
+  - `cd erp-domain && MIGRATION_SET=v2 DOCKER_HOST=unix:///Users/anas/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock mvn -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=OpenApiSnapshotIT -Derp.openapi.snapshot.verify=true -Derp.openapi.snapshot.refresh=true test`
+  - `bash scripts/guard_openapi_contract_drift.sh`
+  - `bash scripts/guard_accounting_portal_scope_contract.sh`
+  - `bash ci/lint-knowledgebase.sh`
+  - `bash ci/check-high-risk-changes.sh`
+  - `git diff --check`
+  - `rg -n "^(<<<<<<<|=======|>>>>>>>)" erp-domain/src/main/java erp-domain/src/test/java docs .factory openapi.json ci`
+  - `cd erp-domain && MIGRATION_SET=v2 DOCKER_HOST=unix:///Users/anas/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock mvn -q -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=AuditServiceTest,CompanyServiceTest,SuperAdminTenantControlPlaneServiceTest,SuperAdminControllerTest,TenantOnboardingControllerTest,AuthTenantAuthorityIT,OpenApiSnapshotIT,TS_RuntimeCompanyContextFilterExecutableCoverageTest,TS_RuntimeCompanyControllerExecutableCoverageTest test`
+  - `cd erp-domain && MIGRATION_SET=v2 DOCKER_HOST=unix:///Users/anas/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock mvn -q -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=TS_AuthDigestTokenStorageGuardTest,IamCoreSchemaAndModelHardCutMigrationIT test`
+  - `cd erp-domain && MIGRATION_SET=v2 DOCKER_HOST=unix:///Users/anas/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock mvn -q -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=AuthControllerIT,OpenApiSnapshotIT,IdentityRouteInventoryContractTest test`
+  - `MIGRATION_SET=v2 DOCKER_HOST=unix:///Users/anas/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock GATE_CANONICAL_BASE_REF=main bash scripts/gate_core.sh`
+- Result summary:
+  - focused auth/company/Super Admin/OpenAPI/runtime pack reported 213 tests run, 0 failures/errors/skips
+  - focused IAM digest/migration pack reported 11 tests run, 0 failures/errors/skips after fixing the Gate Core findings
+  - focused auth route/OpenAPI inventory pack reported 43 tests run, 0 failures/errors/skips after resolving the code review blocker
+  - Gate Core reported 416 tests run, 0 failures/errors/skips; module coverage passed with line ratio `0.9611307420494699` and branch ratio `0.8980891719745223`
+  - OpenAPI drift guard, accounting portal scope guard, knowledgebase lint, high-risk guard, Spotless, conflict-marker scan, whitespace diff check, and Gate Core front-door catalog/flaky guards passed
+  - no bearer tokens, passwords, activation links, reset links, token digests, provider credentials, or `.env` values were printed in evidence
+
 ## Addendum — `m6-owner-setup-corridor`
 
 - Scope: owner first-login setup corridor after activation, including setup step persistence on companies, tenant-workflow setup-required gating, owner/admin setup APIs, invite-role bounds, and OpenAPI/test coverage.
@@ -167,8 +207,8 @@ Last reviewed: 2026-05-01
   - `cd erp-domain && MIGRATION_SET=v2 mvn -q spotless:check`
   - `cd erp-domain && MIGRATION_SET=v2 mvn -q clean test-compile`
   - `cd erp-domain && MIGRATION_SET=v2 mvn -q -Dtest=AuditServiceTest test`
-  - `cd erp-domain && MIGRATION_SET=v2 mvn -q -Dtest=AuditServiceTest,TenantOnboardingServiceTest test`
-  - `cd erp-domain && MIGRATION_SET=v2 mvn -q -Dtest=AuditServiceTest,TenantOnboardingServiceTest,CriticalFixtureServiceTest test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -q -Dtest=AuditServiceTest,TenantOnboardingControllerTest test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -q -Dtest=AuditServiceTest,TenantOnboardingControllerTest,CriticalFixtureServiceTest test`
   - `cd erp-domain && MIGRATION_SET=v2 mvn -q -Dtest=PasswordServiceTest,AuthServiceAuditAttributionTest test`
   - `cd erp-domain && MIGRATION_SET=v2 mvn -q -Dtest=MfaServiceTest,TS_IamCoreSchemaAndModelHardCutMigrationContractTest test`
   - `cd erp-domain && MIGRATION_SET=v2 mvn -q -Dtest=AdminUserServiceTest,TS_RuntimeCompanyContextFilterExecutableCoverageTest,TS_RuntimeTenantRuntimeEnforcementTest,CompanyContextFilterControlPlaneBindingTest,TS_IamCoreSchemaAndModelHardCutMigrationContractTest,MfaServiceTest,PasswordResetServiceTest test`

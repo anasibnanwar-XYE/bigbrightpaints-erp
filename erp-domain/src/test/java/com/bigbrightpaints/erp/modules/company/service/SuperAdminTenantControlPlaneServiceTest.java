@@ -3,6 +3,7 @@ package com.bigbrightpaints.erp.modules.company.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
@@ -131,6 +132,9 @@ class SuperAdminTenantControlPlaneServiceTest {
     lenient()
         .when(tenantDefaultSeedingService.seedDefaultsFailClosed(any(Company.class)))
         .thenReturn(TenantDefaultSeedingService.SeedAttempt.ready(null));
+    lenient()
+        .when(tenantRuntimeEnforcementService.snapshot(anyString()))
+        .thenReturn(runtimeSnapshot(0));
     lenient()
         .when(tenantEntitlementService.planSummaryFor(any(Company.class)))
         .thenAnswer(
@@ -705,6 +709,12 @@ class SuperAdminTenantControlPlaneServiceTest {
   void listTenants_rejectsUnknownLifecycleFilter() {
     assertThatThrownBy(() -> service.listTenants("legacy"))
         .hasMessageContaining("status filter must be one of");
+    assertThatThrownBy(() -> service.listTenants("SUSPENDED"))
+        .hasMessageContaining("status filter must be one of")
+        .hasMessageNotContaining("legacy aliases");
+    assertThatThrownBy(() -> service.listTenants("DEACTIVATED"))
+        .hasMessageContaining("status filter must be one of")
+        .hasMessageNotContaining("legacy aliases");
   }
 
   @Test

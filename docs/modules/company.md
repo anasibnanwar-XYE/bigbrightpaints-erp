@@ -2,11 +2,11 @@
 
 Last reviewed: 2026-03-30
 
-This packet documents the **company module** (`modules/company`) and the tenant-runtime infrastructure it owns. It covers tenant lifecycle, runtime admission, module gating, super-admin control-plane operations, company-context resolution, usage-enforcement surfaces, and the retired legacy onboarding boundary.
+This packet documents the **company module** (`modules/company`) and the tenant-runtime infrastructure it owns. It covers tenant lifecycle, runtime admission, module gating, super-admin control-plane operations, company-context resolution, usage-enforcement surfaces, and the V1 Add Client activation boundary.
 
 ## Ownership Summary
 
-The company module owns the **tenant lifecycle and runtime enforcement** surface: company CRUD, tenant lifecycle transitions, runtime request admission, per-tenant quota enforcement, module gating, super-admin control-plane operations, company-context resolution, and legacy onboarding retirement.
+The company module owns the **tenant lifecycle and runtime enforcement** surface: company CRUD, tenant lifecycle transitions, runtime request admission, per-tenant quota enforcement, module gating, super-admin control-plane operations, company-context resolution, and V1 Add Client activation.
 
 | Area | Package |
 | --- | --- |
@@ -42,7 +42,7 @@ and is generated in `openapi.json`. Company-owned Super Admin routes include:
 | `/api/v1/superadmin/tenants/{id}/seed-status/**` and `/accounting-mappings/{mappingKey}` | Seed readiness, repair, and locked mapping controls |
 | `/api/v1/superadmin/tenants/{id}/plan`, `/entitlements/**`, `/limits`, `/modules`, `/quota-check`, `/quota-policy` | Plan assignment, effective entitlement source metadata, quotas, rate limits, and module gates |
 | `/api/v1/superadmin/tenants/{id}/billing/**` plus `/billing/metrics` | Subscription, immutable manual billing ledger, MRR/ARR summaries, and balance actions |
-| `/api/v1/superadmin/tenants/{id}/suspension/**`, `/resume`, `/cancel`, `/archive`, `/commercial-state`, `/lifecycle` | Commercial/lifecycle access matrix and legacy lifecycle compatibility endpoint |
+| `/api/v1/superadmin/tenants/{id}/suspension/**`, `/resume`, `/cancel`, `/archive`, `/commercial-state`, `/lifecycle` | Commercial/lifecycle access matrix and current lifecycle update endpoint |
 | `/api/v1/superadmin/support/tickets/**` | Support queue, customer-visible messages, internal notes, SLA refresh, feature/incident conversion, and Sentry link/sync |
 | `/api/v1/superadmin/audit/**`, `/infra/**`, `/observability/datadog/status` | Privacy-safe audit/security events, infra health/cost, and safe observability status |
 | `/api/v1/superadmin/profile/**`, `/settings`, `/roles/**`, `/changelog/**`, `/notify` | Platform operator profile, settings, role catalog, release notes, and notification utility |
@@ -56,13 +56,6 @@ accepted mutations write privacy-safe audit evidence with trace/correlation IDs.
 | Method | Path | Auth | Purpose |
 | --- | --- | --- | --- |
 | GET | `/api/v1/superadmin/tenants/coa-templates` | `ROLE_SUPER_ADMIN` | List available chart-of-accounts templates |
-
-### Retired Super Admin routes
-
-| Method | Path | Runtime behavior | Replacement workflow |
-| --- | --- | --- | --- |
-| POST | `/api/v1/superadmin/tenants/onboard` | Retired; returns `410 Gone` and is hidden from OpenAPI/current frontend contracts | Use the V1 Add Client + activation workflow for draft/pending tenants |
-| POST | `/api/v1/superadmin/tenants/{id}/support/admin-password-reset` | Retired; returns `410 Gone` and sends no credential/reset email | Use the V1 activation/password recovery flow; tenant-scoped admins use the scoped auth reset surfaces |
 
 ## Key Services
 
@@ -131,13 +124,13 @@ Runtime policies are persisted to the `system_settings` table with keys like `te
 
 A thin facade over `TenantRuntimeEnforcementService` that provides the entry point for runtime filters, interceptors, and auth flows. It prevents direct coupling between the filter chain and the enforcement policy service.
 
-### TenantOnboardingService
+### Add Client and Owner Setup Services
 
-Backs the legacy flat tenant creation implementation that is no longer exposed as the current Super Admin contract. The old one-shot flow created a company, seeded accounting defaults, and created an admin account in a single request; it is retained only as internal implementation history while V1 moves tenant creation to Add Client + activation states.
+`SuperAdminTenantControlPlaneService` backs Add Client creation, activation actions, tenant profile summaries, quotas, billing, support, and audit-safe control-plane operations. `TenantDefaultSeedingService` owns default seed execution/status, and `OwnerSetupService` owns the owner setup corridor under `/api/v1/setup/**`. Tenant creation is stateful: draft or pending activation first, owner credential setup through activation, then setup completion through `/api/v1/setup/**`.
 
 ### SuperAdminTenantControlPlaneService
 
-The super-admin control plane for tenant management. Provides tenant listing/detail, lifecycle transitions, usage-limit updates, module management, support operations (warnings and notes/tags), session management (force-logout, main-admin replacement), and admin email changes with verification tokens. Platform support password reset is retired and returns `410 Gone`.
+The super-admin control plane for tenant management. Provides tenant listing/detail, lifecycle transitions, usage-limit updates, module management, support operations (warnings and notes/tags), session management (force-logout, main-admin replacement), and admin email changes with verification tokens. Platform-issued support password reset is not a current route; use activation or scoped auth password recovery.
 
 ### ModuleGatingService
 
@@ -193,9 +186,7 @@ Super-admin users are **explicitly blocked** from tenant business endpoints (sal
 
 ### V1 Add Client / Activation Boundary
 
-The old flat onboarding route is not a current workflow. `POST /api/v1/superadmin/tenants/onboard` is retired, returns `410 Gone`, is hidden from OpenAPI/current frontend contracts, and must not be documented as a create-tenant API.
-
-V1 tenant creation is the Add Client + activation workflow: Super Admin prepares a draft or pending tenant, activation handles owner credential setup, and setup finishes through the V1 owner setup corridor. The support admin-password-reset route is also retired (`410 Gone`); use activation/password recovery flows instead of platform-issued credential resets.
+Tenant creation uses the Add Client + activation workflow: Super Admin prepares a draft or pending tenant, activation handles owner credential setup, and setup finishes through the V1 owner setup corridor. The historical flat onboarding and platform-issued support password-reset URLs are not mapped in the current API contract; stale clients receive `404` or `405` depending on whether the removed URL collides with a surviving route template.
 
 The current V1 status vocabulary separates tenant lifecycle, activation,
 onboarding, billing, and suspension state. Super Admin summaries may show
@@ -218,8 +209,8 @@ provider credentials, or `.env` values.
 | --- | --- | --- |
 | company → auth | dependency | Super-admin control plane calls `TokenBlacklistService` and `RefreshTokenService` for force-logout |
 | company → auth | dependency | `TenantRuntimeRequestAdmissionService` is called by `AuthService` for login/refresh admission |
-| company → auth | dependency | Legacy `TenantOnboardingService` created `UserAccount` entities for the retired flat onboarding flow |
-| company → accounting | dependency | Legacy `TenantOnboardingService` seeded chart of accounts and default period for the retired flat onboarding flow |
+| company → auth | dependency | Add Client and owner setup use canonical auth/account services for activation, scoped account setup, session revocation, and password recovery |
+| company → accounting | dependency | `TenantDefaultSeedingService` and setup mappings seed and repair accounting defaults through the current seed-status corridor |
 | company → core/security | dependency | `CompanyContextFilter` enforces lifecycle and runtime admission |
 | company → core/config | dependency | `TenantRuntimeEnforcementService` persists policies via `SystemSettingsRepository` |
 

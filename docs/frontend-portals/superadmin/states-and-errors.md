@@ -76,7 +76,7 @@ Example failure shape:
 | invalid sort field | `400` | reset sort to documented default |
 | page below zero or size above max | `400` | reset to `page=0` and a documented bounded size |
 | forbidden body field such as role/authority/tenant override in profile | `400` or `403` | block submission and highlight forbidden field |
-| retired route call | `404` or `410` | show stale-client upgrade message; do not retry alternate legacy routes |
+| removed route call | `404` or `405` | show stale-client upgrade message; do not retry alternate historical routes |
 | duplicate tenant, plan, or billing idempotency key conflict | `409` | show already-exists or replay state without duplicating side effects |
 | burst/platform rate limit | `429` | read retry/reset metadata when present and disable retry button until allowed |
 

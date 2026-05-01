@@ -395,8 +395,7 @@ public class CompanyService {
     long apiActivity = resolveRuntimeMetricFailClosed(() -> countApiActivity(companyId));
     long storageBytes = resolveRuntimeMetricFailClosed(() -> estimateAuditStorageBytes(companyId));
     long concurrentRequests =
-        resolveRuntimeMetricFailClosed(
-            () -> resolveCurrentConcurrentRequests(company.getCode(), companyId));
+        resolveRuntimeMetricFailClosed(() -> resolveCurrentConcurrentRequests(company.getCode()));
     if (isRuntimeMetricUnavailable(activeUsers)
         || isRuntimeMetricUnavailable(apiActivity)
         || isRuntimeMetricUnavailable(storageBytes)
@@ -766,7 +765,7 @@ public class CompanyService {
     long apiErrorCount = countApiFailureActivity(companyId);
     long apiErrorRateInBasisPoints =
         calculateErrorRateInBasisPoints(apiActivityCount, apiErrorCount);
-    long currentConcurrentRequests = resolveCurrentConcurrentRequests(company.getCode(), companyId);
+    long currentConcurrentRequests = resolveCurrentConcurrentRequests(company.getCode());
     long auditStorageBytes = estimateAuditStorageBytes(companyId);
     return new CompanyTenantMetricsDto(
         company.getId(),
@@ -879,14 +878,14 @@ public class CompanyService {
     String normalized = lifecycleReason.trim().toUpperCase(Locale.ROOT).replace('-', '_');
     normalized = normalized.replaceAll("[^A-Z0-9]+", "_").replaceAll("_+", "_");
     return switch (normalized) {
-      case "TRIAL", "TRIAL_ACTIVE" -> "TRIAL_ACTIVE";
+      case "TRIAL_ACTIVE" -> "TRIAL_ACTIVE";
       case "SETUP_PENDING" -> "SETUP_PENDING";
-      case "GRACE", "BILLING_GRACE", "PAYMENT_GRACE" -> "GRACE";
-      case "READ_ONLY", "SUSPENDED_READ_ONLY" -> "SUSPENDED_READ_ONLY";
-      case "SUSPENDED_BLOCKED", "BLOCKED" -> "SUSPENDED_BLOCKED";
-      case "CANCELED", "CANCELLED" -> "CANCELED";
-      case "ARCHIVED", "DEACTIVATED" -> "ARCHIVED";
-      case "SEED_FAILED", "SETUP_FAILED", "SEEDING_FAILED" -> "SEED_FAILED";
+      case "GRACE" -> "GRACE";
+      case "SUSPENDED_READ_ONLY" -> "SUSPENDED_READ_ONLY";
+      case "SUSPENDED_BLOCKED" -> "SUSPENDED_BLOCKED";
+      case "CANCELED" -> "CANCELED";
+      case "ARCHIVED" -> "ARCHIVED";
+      case "SEED_FAILED" -> "SEED_FAILED";
       default -> null;
     };
   }
@@ -896,15 +895,12 @@ public class CompanyService {
   }
 
   private boolean isSuspendedTenantStatus(String status) {
-    return "SUSPENDED".equalsIgnoreCase(status)
-        || "SUSPENDED_READ_ONLY".equalsIgnoreCase(status)
+    return "SUSPENDED_READ_ONLY".equalsIgnoreCase(status)
         || "SUSPENDED_BLOCKED".equalsIgnoreCase(status);
   }
 
   private boolean isDeactivatedTenantStatus(String status) {
-    return "DEACTIVATED".equalsIgnoreCase(status)
-        || "CANCELED".equalsIgnoreCase(status)
-        || "ARCHIVED".equalsIgnoreCase(status);
+    return "CANCELED".equalsIgnoreCase(status) || "ARCHIVED".equalsIgnoreCase(status);
   }
 
   private void requireMembershipById(Long companyId, Set<Company> allowedCompanies) {
@@ -1388,13 +1384,6 @@ public class CompanyService {
     return auditLogRepository.countApiFailureActivityByCompanyId(companyId);
   }
 
-  private long countDistinctSessionActivity(Long companyId) {
-    if (auditLogRepository == null || companyId == null) {
-      return 0L;
-    }
-    return auditLogRepository.countDistinctSessionActivityByCompanyId(companyId);
-  }
-
   private long estimateAuditStorageBytes(Long companyId) {
     if (auditLogRepository == null || companyId == null) {
       return 0L;
@@ -1509,18 +1498,15 @@ public class CompanyService {
         && company.getQuotaMaxConcurrentRequests() > 0L;
   }
 
-  private long resolveCurrentConcurrentRequests(String companyCode, Long companyId) {
-    if (tenantRuntimeEnforcementService != null && StringUtils.hasText(companyCode)) {
-      try {
-        return tenantRuntimeEnforcementService.snapshot(companyCode).metrics().inFlightRequests();
-      } catch (RuntimeException ex) {
-        log.debug(
-            "Falling back to session-based concurrent request telemetry for company {}",
-            companyCode,
-            ex);
-      }
+  private long resolveCurrentConcurrentRequests(String companyCode) {
+    if (!StringUtils.hasText(companyCode)) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState(
+          "Tenant runtime telemetry requires company code");
     }
-    return countDistinctSessionActivity(companyId);
+    return requireTenantRuntimeEnforcementService()
+        .snapshot(companyCode)
+        .metrics()
+        .inFlightRequests();
   }
 
   private boolean hasRuntimeQuotaTelemetryDependencies() {

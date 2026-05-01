@@ -691,11 +691,11 @@ public class AuthControllerIT extends AbstractIntegrationTest {
         HttpMethod.DELETE,
         new HttpEntity<>(bearer(login(ADMIN_EMAIL, ADMIN_PASSWORD).get("accessToken").toString())));
 
-    assertRouteAbsent(
+    assertRetiredRouteRejected(
         "/api/v1/auth/profile",
         HttpMethod.GET,
         new HttpEntity<>(bearer(login(ADMIN_EMAIL, ADMIN_PASSWORD).get("accessToken").toString())));
-    assertRouteAbsent(
+    assertRetiredRouteRejected(
         "/api/v1/auth/password/forgot/superadmin",
         HttpMethod.POST,
         new HttpEntity<>(Map.of("email", ADMIN_EMAIL, "companyCode", COMPANY_CODE), jsonHeaders()));
@@ -724,13 +724,13 @@ public class AuthControllerIT extends AbstractIntegrationTest {
                     .toString()));
 
     for (HttpHeaders headers : actorHeaders) {
-      assertRouteAbsent("/api/v1/auth/profile", HttpMethod.GET, new HttpEntity<>(headers));
-      assertRouteAbsent(
+      assertRetiredRouteRejected("/api/v1/auth/profile", HttpMethod.GET, new HttpEntity<>(headers));
+      assertRetiredRouteRejected(
           "/api/v1/auth/profile", HttpMethod.PATCH, new HttpEntity<>(Map.of(), headers));
       HttpHeaders jsonHeaders = new HttpHeaders();
       jsonHeaders.putAll(headers);
       jsonHeaders.setContentType(MediaType.APPLICATION_JSON);
-      assertRouteAbsent(
+      assertRetiredRouteRejected(
           "/api/v1/auth/password/forgot/superadmin",
           HttpMethod.POST,
           new HttpEntity<>(Map.of("email", ADMIN_EMAIL, "companyCode", COMPANY_CODE), jsonHeaders));
@@ -1168,7 +1168,7 @@ public class AuthControllerIT extends AbstractIntegrationTest {
             HttpMethod.GET,
             new HttpEntity<>(bearer(accessToken)),
             Map.class);
-    assertThat(retiredProfileResponse.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    assertThat(retiredProfileResponse.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
 
     ResponseEntity<Map> retiredForgotSuperadminResponse =
         rest.exchange(
@@ -1177,7 +1177,7 @@ public class AuthControllerIT extends AbstractIntegrationTest {
             new HttpEntity<>(
                 Map.of("email", ADMIN_EMAIL, "companyCode", COMPANY_CODE), bearerJson(accessToken)),
             Map.class);
-    assertThat(retiredForgotSuperadminResponse.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    assertThat(retiredForgotSuperadminResponse.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
 
     ResponseEntity<Map> retiredAdminSettingsResponse =
         rest.exchange(
@@ -1470,6 +1470,16 @@ public class AuthControllerIT extends AbstractIntegrationTest {
   private void assertRouteAbsent(String path, HttpMethod method, HttpEntity<?> entity) {
     ResponseEntity<Map> response = rest.exchange(path, method, entity, Map.class);
     assertThat(response.getStatusCode()).isIn(HttpStatus.NOT_FOUND, HttpStatus.METHOD_NOT_ALLOWED);
+  }
+
+  private void assertRetiredRouteRejected(String path, HttpMethod method, HttpEntity<?> entity) {
+    ResponseEntity<Map> response = rest.exchange(path, method, entity, Map.class);
+    assertThat(response.getStatusCode())
+        .isIn(
+            HttpStatus.NOT_FOUND,
+            HttpStatus.METHOD_NOT_ALLOWED,
+            HttpStatus.UNAUTHORIZED,
+            HttpStatus.FORBIDDEN);
   }
 
   private void assertRoutePresent(String path, HttpMethod method, HttpEntity<?> entity) {

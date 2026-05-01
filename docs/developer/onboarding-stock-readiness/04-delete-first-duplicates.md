@@ -13,7 +13,7 @@ This file records the seams that are already retired or must stay retired in the
 
 ### Keep
 
-- `POST /api/v1/superadmin/tenants/onboard`
+- `POST /api/v1/superadmin/tenants`
 
 ## 2. Retired Stock-Bearing Setup Hosts
 

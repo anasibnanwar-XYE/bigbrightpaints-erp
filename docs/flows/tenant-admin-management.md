@@ -83,12 +83,9 @@ and forbidden body fields explicitly instead of ignoring stale frontend state.
 Every accepted mutation must produce privacy-safe audit evidence with a
 trace/correlation ID.
 
-### Retired Superadmin routes
+### Removed Superadmin routes
 
-These routes are not active workflows, are hidden from current OpenAPI/frontend contracts, and return `410 Gone` with no credential or email side effects:
-
-- Retired `POST /api/v1/superadmin/tenants/onboard` — use the V1 Add Client + activation workflow for tenant creation.
-- Retired `POST /api/v1/superadmin/tenants/{id}/support/admin-password-reset` — use the V1 activation/password recovery flow instead of platform-issued credential resets.
+Historical flat onboarding and platform-issued support password-reset URLs are not active workflows and are not mapped in the current OpenAPI/frontend contract. Stale clients receive `404` or `405` depending on whether the removed URL collides with a surviving route template. Use V1 Add Client + activation for tenant creation and activation/password recovery for credential setup.
 
 ### Tenant-admin product entrypoints
 

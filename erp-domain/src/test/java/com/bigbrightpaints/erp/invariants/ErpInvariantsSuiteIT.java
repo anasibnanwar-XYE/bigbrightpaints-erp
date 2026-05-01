@@ -1576,25 +1576,65 @@ public class ErpInvariantsSuiteIT extends AbstractIntegrationTest {
     String tenantAdminEmail = "cross.admin." + deterministicSequence + "@example.com";
 
     Map<String, Object> onboardReq = new HashMap<>();
-    onboardReq.put("name", "Cross Tenant " + deterministicSequence);
-    onboardReq.put("code", onboardedCompanyCode);
-    onboardReq.put("timezone", "UTC");
-    onboardReq.put("firstAdminEmail", tenantAdminEmail);
-    onboardReq.put("firstAdminDisplayName", "Cross Admin");
-    onboardReq.put("coaTemplateCode", "MANUFACTURING");
-    onboardReq.put("maxActiveUsers", 10L);
-    onboardReq.put("maxApiRequests", 1000L);
-    onboardReq.put("maxStorageBytes", 1_000_000_000L);
-    onboardReq.put("maxConcurrentRequests", 10L);
+    onboardReq.put(
+        "company",
+        Map.of(
+            "name",
+            "Cross Tenant " + deterministicSequence,
+            "code",
+            onboardedCompanyCode,
+            "timezone",
+            "UTC",
+            "stateCode",
+            "KA",
+            "baseCurrency",
+            "INR",
+            "defaultGstRate",
+            18,
+            "coaTemplateCode",
+            "MANUFACTURING"));
+    onboardReq.put("owner", Map.of("email", tenantAdminEmail, "displayName", "Cross Admin"));
+    onboardReq.put(
+        "commercial",
+        Map.of(
+            "planId",
+            "TRIAL",
+            "billingStatus",
+            "MANUAL",
+            "trialDays",
+            14,
+            "supportTier",
+            "STANDARD"));
+    onboardReq.put(
+        "quotas",
+        Map.of(
+            "maxActiveUsers",
+            10L,
+            "maxApiRequests",
+            1000L,
+            "maxStorageBytes",
+            1_000_000_000L,
+            "maxConcurrentRequests",
+            10L,
+            "softLimitEnabled",
+            false,
+            "hardLimitEnabled",
+            true));
+    onboardReq.put(
+        "modules",
+        Map.of("enabled", List.of("MANUFACTURING", "PURCHASING", "PORTAL", "REPORTS_ADVANCED")));
+    onboardReq.put(
+        "support", Map.of("notes", "cross-module invariant", "tags", List.of("INVARIANT")));
+    onboardReq.put("createMode", "DRAFT");
 
     ResponseEntity<Map> onboardResp =
         rest.exchange(
-            "/api/v1/superadmin/tenants/onboard",
+            "/api/v1/superadmin/tenants",
             HttpMethod.POST,
             new HttpEntity<>(onboardReq, rootHeaders(rootToken)),
             Map.class);
     Map<?, ?> onboardData = requireData(onboardResp, "tenant onboarding");
-    assertThat(onboardData.get("companyCode")).isEqualTo(onboardedCompanyCode);
+    assertThat(onboardData.get("tenantCode")).isEqualTo(onboardedCompanyCode);
 
     Company tenantCompany =
         companyRepository

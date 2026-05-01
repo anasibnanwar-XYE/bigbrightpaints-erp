@@ -121,7 +121,7 @@ class TS_AuthDigestTokenStorageGuardTest {
     TruthSuiteFileAssert.assertContainsInOrder(
         PASSWORD_RESET_SERVICE,
         "String tokenDigest = AuthTokenDigests.passwordResetTokenDigest(tokenValue);",
-        ".findByTokenDigest(tokenDigest)");
+        ".findByTokenDigestForUpdate(tokenDigest)");
     TruthSuiteFileAssert.assertContainsInOrder(
         PASSWORD_RESET_SERVICE,
         "String token = generateToken();",

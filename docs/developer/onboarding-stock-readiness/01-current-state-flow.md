@@ -6,9 +6,9 @@ This document records the surviving setup journey after the ERP-38 hard-cut clea
 
 ```mermaid
 flowchart LR
-    SA["Super-admin onboarding screen"] --> ONB["POST /api/v1/superadmin/tenants/onboard"]
-    ONB --> TOS["TenantOnboardingService"]
-    TOS --> BOOT["Company + COA + OPEN-BAL + open period + first admin"]
+    SA["Super-admin Add Client screen"] --> ONB["POST /api/v1/superadmin/tenants"]
+    ONB --> CP["SuperAdminTenantControlPlaneService"]
+    CP --> BOOT["Company + activation + seed/status + owner setup"]
 
     DEF["Company defaults screen"] --> DACC["GET/PUT /api/v1/accounting/default-accounts"]
 
@@ -36,12 +36,12 @@ flowchart LR
 
 ### Canonical route
 
-- `POST /api/v1/superadmin/tenants/onboard`
+- `POST /api/v1/superadmin/tenants`
 
 ### Owner
 
-- controller: `SuperAdminTenantOnboardingController`
-- service: `TenantOnboardingService`
+- controller: `SuperAdminController`
+- service: `SuperAdminTenantControlPlaneService`
 
 ### What it seeds
 

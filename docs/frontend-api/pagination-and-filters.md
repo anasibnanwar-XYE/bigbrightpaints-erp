@@ -62,7 +62,7 @@ client-only totals.
 | Security audit | `GET /api/v1/superadmin/audit/security-events` | `from`, `to`, `action`, `status`, `actor`, `entityType`, `reference`, `tenantId`, `category`, `page`, `size` |
 | Suspicious events | `GET /api/v1/superadmin/audit/suspicious-events` | `from`, `to`, `status`, `actor`, `reference`, `tenantId`, `page`, `size` |
 | Usage history | `GET /api/v1/superadmin/tenants/{id}/usage/history` | `periodType` |
-| Plan templates/plans | `GET /api/v1/superadmin/plan-templates`, `GET /api/v1/superadmin/plans` | `includeArchived`; detail also accepts `version` and `includeArchived` |
+| Plans | `GET /api/v1/superadmin/plans` | `includeArchived`; detail also accepts `version` and `includeArchived` |
 | Infra cost snapshots | `GET /api/v1/superadmin/infra/costs/snapshots` | `currency`, `includeArchived` |
 
 Unsupported Super Admin filters, invalid enum values, invalid sort fields, page

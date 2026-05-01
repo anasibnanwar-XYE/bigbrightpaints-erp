@@ -179,7 +179,7 @@ The flow is complete when:
 
 | Path | Status | Replacement |
 | --- | --- | --- |
-| Legacy super-admin forgot-password alias | Deprecated (V157 hard cut) | Use `POST /api/v1/auth/password/forgot` |
+| Platform-issued Super Admin support reset | Removed from current API contract | Use activation or scoped auth password recovery |
 | Email-only recovery identity | Deprecated | Require `email + companyCode` |
 | `companyId` auth alias | Deprecated | Use `companyCode` claim in JWT |
 

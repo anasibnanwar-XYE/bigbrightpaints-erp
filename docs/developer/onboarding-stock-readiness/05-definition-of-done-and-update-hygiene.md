@@ -37,7 +37,7 @@ Keep first-time setup and execution handoff explicit:
 ### Canonical hosts
 
 - one canonical tenant bootstrap path:
-  - `POST /api/v1/superadmin/tenants/onboard`
+  - `POST /api/v1/superadmin/tenants`
 - one canonical stock-bearing item setup path:
   - `POST /api/v1/catalog/items`
 - one canonical opening-stock path:

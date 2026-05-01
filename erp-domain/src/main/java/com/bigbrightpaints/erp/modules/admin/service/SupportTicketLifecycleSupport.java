@@ -145,8 +145,7 @@ public class SupportTicketLifecycleSupport {
   }
 
   @Transactional
-  public void changeStatus(
-      SupportTicket ticket, SupportTicketStatus newStatus, String reason) {
+  public void changeStatus(SupportTicket ticket, SupportTicketStatus newStatus, String reason) {
     SupportTicketStatus previousStatus = ticket.getStatus();
     if (previousStatus == newStatus) {
       return;

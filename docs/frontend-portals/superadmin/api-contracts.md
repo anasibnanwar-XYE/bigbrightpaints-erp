@@ -123,7 +123,7 @@ Activation evidence may show `messageId=<MAILHOG_MESSAGE_ID>` and `activationUrl
 | --- | --- | --- | --- |
 | GET | `/api/v1/superadmin/tenants` | client list | `status`, `q`, `page`, `size`, `sort`, `includeArchived` |
 | GET | `/api/v1/superadmin/tenants/{id}` | state-aware profile tabs | path id |
-| PUT | `/api/v1/superadmin/tenants/{id}/lifecycle` | legacy lifecycle state update | `state`, `reason` |
+| PUT | `/api/v1/superadmin/tenants/{id}/lifecycle` | current lifecycle state update | `state`, `reason` |
 | PUT | `/api/v1/superadmin/tenants/{id}/limits` | direct runtime limits | quota and burst/concurrency fields |
 | PUT | `/api/v1/superadmin/tenants/{id}/modules` | full module replacement | `enabledModules[]` |
 | POST | `/api/v1/superadmin/tenants/{id}/force-logout` | revoke tenant sessions | optional `reason` |
@@ -140,12 +140,9 @@ Tenant profile data is summary-only: overview, onboarding, plan/limits, usage, b
 
 | Method | Path | Purpose | Request/query |
 | --- | --- | --- | --- |
-| GET, POST | `/api/v1/superadmin/plan-templates` | list/create plan templates | `includeArchived`; create fields include stable id, display name, cadence, price, currency, trial, support tier, default limits, feature flags |
-| GET, PUT | `/api/v1/superadmin/plan-templates/{stableId}` | read/update template/version | `version`, `includeArchived`; update includes reason/effective date |
-| POST | `/api/v1/superadmin/plan-templates/{stableId}/archive` | archive template | archive reason |
-| GET, POST | `/api/v1/superadmin/plans` | alias for plan-template collection | same as plan templates |
-| GET, PUT | `/api/v1/superadmin/plans/{stableId}` | alias for plan-template detail | same as plan templates |
-| POST | `/api/v1/superadmin/plans/{stableId}/archive` | alias archive | same as plan templates |
+| GET, POST | `/api/v1/superadmin/plans` | list/create plans | `includeArchived`; create fields include stable id, display name, cadence, price, currency, trial, support tier, default limits, feature flags |
+| GET, PUT | `/api/v1/superadmin/plans/{stableId}` | read/update plan version | `version`, `includeArchived`; update includes reason/effective date |
+| POST | `/api/v1/superadmin/plans/{stableId}/archive` | archive plan | archive reason |
 | PUT | `/api/v1/superadmin/tenants/{id}/plan` | assign plan/custom plan | `planId` or `customPlan`, `reason`, `repriceSubscription` |
 | GET | `/api/v1/superadmin/tenants/{id}/entitlements` | effective limits/features | path id |
 | PUT | `/api/v1/superadmin/tenants/{id}/entitlements/overrides` | add/update overrides | `features`, `limits`, `reason` |

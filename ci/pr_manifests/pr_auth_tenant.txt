@@ -22,7 +22,6 @@ com.bigbrightpaints.erp.modules.company.domain.TenantAdminEmailChangeRequestTest
 com.bigbrightpaints.erp.modules.company.domain.TenantSupportWarningTest
 com.bigbrightpaints.erp.modules.company.service.CompanyServiceTest
 com.bigbrightpaints.erp.modules.company.service.SuperAdminTenantControlPlaneServiceTest
-com.bigbrightpaints.erp.modules.company.service.TenantOnboardingServiceTest
 com.bigbrightpaints.erp.modules.company.service.TenantRuntimeEnforcementServiceTest
 com.bigbrightpaints.erp.modules.company.service.TenantRuntimeRequestAdmissionServiceTest
 com.bigbrightpaints.erp.core.config.SystemSettingsServiceCorsTest

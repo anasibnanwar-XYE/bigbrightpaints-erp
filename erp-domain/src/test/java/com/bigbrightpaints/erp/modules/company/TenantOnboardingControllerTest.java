@@ -50,7 +50,8 @@ class TenantOnboardingControllerTest extends AbstractIntegrationTest {
   }
 
   @Test
-  void retiredFlatOnboardingRoute_returnsGoneWithoutCreatingTenantOrSendingCredentials() {
+  void
+      removedFlatOnboardingRoute_returnsMethodNotAllowedWithoutCreatingTenantOrSendingCredentials() {
     String superAdminToken = loginToken(SUPER_ADMIN_EMAIL, ROOT_COMPANY_CODE);
     String companyCode = uniqueCode("RET");
     String adminEmail = "retired-onboard-" + UUID.randomUUID() + "@example.com";
@@ -76,10 +77,7 @@ class TenantOnboardingControllerTest extends AbstractIntegrationTest {
                 headers(superAdminToken, ROOT_COMPANY_CODE)),
             Map.class);
 
-    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.GONE);
-    assertThat(response.getBody()).isNotNull();
-    assertThat(response.getBody()).containsEntry("success", Boolean.FALSE);
-    assertThat(response.getBody().get("message").toString()).contains("retired");
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.METHOD_NOT_ALLOWED);
     assertThat(companyRepository.findByCodeIgnoreCase(companyCode)).isEmpty();
     assertThat(
             userAccountRepository.findByEmailIgnoreCaseAndAuthScopeCodeIgnoreCase(

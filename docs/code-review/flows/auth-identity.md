@@ -2,7 +2,7 @@
 
 ## Scope and evidence
 
-This review covers login, refresh, logout, `/me`, password change, public forgot/reset password, tenant-admin and super-admin reset paths, MFA setup/activation/disable/login challenges, disabled-user handling, and lockout behavior.
+This review covers login, refresh, logout, `/me`, password change, public forgot/reset password, tenant-admin reset-link issuance, removed super-admin reset paths, MFA setup/activation/disable/login challenges, disabled-user handling, and lockout behavior.
 
 Current-state note:
 
@@ -30,7 +30,7 @@ Primary evidence:
 | Public password reset | `POST /api/v1/auth/password/forgot`, `POST /api/v1/auth/password/reset` | `AuthController` | Public and explicitly bypass tenant binding; forgot-password requires `email + companyCode` and reset tokens are issued per scoped account. |
 | Self-service MFA | `POST /api/v1/auth/mfa/setup`, `POST /api/v1/auth/mfa/activate`, `POST /api/v1/auth/mfa/disable` | `MfaController` | Setup returns the raw secret, otpauth URI, and recovery codes; activation/disable verify TOTP or recovery code. |
 | Admin user reset / status / MFA override | `POST /api/v1/admin/users/{userId}/force-reset-password`, `PUT /api/v1/admin/users/{userId}/status`, `PATCH /api/v1/admin/users/{id}/mfa/disable` | `AdminUserController` | Tenant-admin surface only. Platform super admins must stay on `/api/v1/superadmin/tenants/**` support/control-plane routes. |
-| Super-admin support reset | `POST /api/v1/superadmin/tenants/{id}/support/admin-password-reset` | `SuperAdminController` | Retired; returns `410 Gone`, is hidden from current OpenAPI/frontend contracts, and sends no credential/reset email. Use the V1 activation/password recovery flow instead. |
+| Super-admin support reset | no current route | n/a | Platform-issued support reset is removed from the API contract. Use activation or scoped auth password recovery. |
 
 ## Endpoint-to-entity path
 
@@ -44,7 +44,7 @@ Primary evidence:
 | Password change | `AuthController.changePassword` -> `PasswordService.changePassword` | `app_users.password_hash`, `app_users.must_change_password`, `user_password_history` |
 | Public forgot/reset | `AuthController.{forgotPassword,resetPassword}` -> `PasswordResetService` -> `PasswordService.resetPassword` -> `TokenBlacklistService` + `RefreshTokenService` + `EmailService` | `password_reset_tokens`, `app_users`, `blacklisted_tokens`, `user_token_revocations`, `refresh_tokens` |
 | Admin link reset | `AdminUserController.forceResetPassword` -> `AdminUserService.forceResetPassword` -> `PasswordResetService.requestResetByAdmin` | `app_users`, `password_reset_tokens` |
-| Super-admin support reset | retired `SuperAdminController` handler returns `410 Gone` without invoking reset/provisioning services | No credential, token, email, session, or audit reset side effects |
+| Super-admin support reset | no mapped route; stale clients receive `404` before reset/provisioning services | No credential, token, email, session, or audit reset side effects |
 | MFA lifecycle | `MfaController` -> `MfaService` and `AdminUserController` -> `AdminUserService.disableMfa` | `app_users.mfa_secret`, `app_users.mfa_enabled`, `app_users.mfa_recovery_codes`; `mfa_recovery_codes` table exists but is not used by the live service path |
 
 ## 1. Login and token issuance narrative
@@ -102,9 +102,9 @@ There are three materially different reset/control paths:
 
 `POST /api/v1/admin/users/{userId}/force-reset-password` routes through `AdminUserService.forceResetPassword(...)`. On the live public surface this stays tenant-admin only; platform `ROLE_SUPER_ADMIN` callers are blocked from the `/api/v1/admin/users/**` workflow family and must not use tenant-admin reset paths as a platform control. The actual tenant-admin reset action is `PasswordResetService.requestResetByAdmin(...)`, which reuses the same scoped reset-link issuance service as public forgot-password. Disabled users are silently skipped; enabled users fail closed if the reset token cannot be stored or the email cannot be dispatched, and the service still audits `PASSWORD_RESET_REQUESTED`.
 
-### 6.2 Retired root-only super-admin tenant-admin support reset
+### 6.2 Removed root-only super-admin tenant-admin support reset
 
-`POST /api/v1/superadmin/tenants/{id}/support/admin-password-reset` is retired and is not the canonical platform recovery path. The hidden handler returns `410 Gone`, does not call reset/provisioning services, and sends no email or credential material. Current V1 recovery must use activation/password recovery workflows instead of a platform support credential-reset route.
+The old platform support reset URL is not mapped and is not the canonical platform recovery path. Stale clients receive `404` before reset/provisioning services, and no email or credential material is produced. Current V1 recovery uses activation/password recovery workflows instead of a platform support credential-reset route.
 
 ## 7. MFA lifecycle narrative
 

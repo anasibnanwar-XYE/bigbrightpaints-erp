@@ -20,8 +20,9 @@ A new tenant operator should be able to say:
 
 - screen owner: super-admin tenant onboarding screen
 - required APIs:
+  - `GET /api/v1/superadmin/tenants/new`
   - `GET /api/v1/superadmin/tenants/coa-templates`
-  - `POST /api/v1/superadmin/tenants/onboard`
+  - `POST /api/v1/superadmin/tenants`
 - success means:
   - company exists
   - chart is seeded

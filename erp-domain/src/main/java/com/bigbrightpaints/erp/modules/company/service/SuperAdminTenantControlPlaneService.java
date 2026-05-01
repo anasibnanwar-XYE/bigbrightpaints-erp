@@ -102,11 +102,6 @@ public class SuperAdminTenantControlPlaneService {
           "ARCHIVED",
           "SEED_FAILED");
 
-  private static final Map<String, String> LEGACY_STATUS_ALIASES =
-      Map.of(
-          "SUSPENDED", "SUSPENDED_BLOCKED",
-          "DEACTIVATED", "ARCHIVED");
-
   private final CompanyRepository companyRepository;
   private final UserAccountRepository userAccountRepository;
   private final AuditLogRepository auditLogRepository;
@@ -1760,17 +1755,17 @@ public class SuperAdminTenantControlPlaneService {
 
   private String resolveTenantStatus(Company company, CompanyTenantMetricsDto metrics) {
     if (company != null
-        && "SEED_FAILED".equals(normalizeCanonicalStatus(company.getLifecycleReason(), false))) {
+        && "SEED_FAILED".equals(normalizeCanonicalStatus(company.getLifecycleReason()))) {
       return "SEED_FAILED";
     }
     if (company != null) {
-      String commercialState = normalizeCanonicalStatus(company.getLifecycleReason(), false);
+      String commercialState = normalizeCanonicalStatus(company.getLifecycleReason());
       if (commercialState != null && !"SEED_FAILED".equals(commercialState)) {
         return commercialState;
       }
     }
     String metricsStatus =
-        metrics == null ? null : normalizeCanonicalStatus(metrics.lifecycleState(), true);
+        metrics == null ? null : normalizeCanonicalStatus(metrics.lifecycleState());
     String lifecycle =
         metrics == null || !StringUtils.hasText(metrics.lifecycleState())
             ? resolveLifecycle(company)
@@ -1842,33 +1837,23 @@ public class SuperAdminTenantControlPlaneService {
       return null;
     }
     String normalized = statusFilter.trim().toUpperCase(Locale.ROOT);
-    if (CANONICAL_TENANT_STATUSES.contains(normalized)
-        || LEGACY_STATUS_ALIASES.containsKey(normalized)) {
+    if (CANONICAL_TENANT_STATUSES.contains(normalized)) {
       return normalized;
     }
     throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
         "status filter must be one of DRAFT, PENDING_ACTIVATION, SETUP_PENDING, TRIAL_ACTIVE,"
             + " ACTIVE, GRACE, SUSPENDED_READ_ONLY, SUSPENDED_BLOCKED, CANCELED, ARCHIVED,"
-            + " SEED_FAILED, or legacy aliases SUSPENDED/DEACTIVATED");
+            + " or SEED_FAILED");
   }
 
   private boolean statusMatches(TenantListCandidate candidate, String normalizedStatus) {
     if (!StringUtils.hasText(normalizedStatus)) {
       return true;
     }
-    if ("SUSPENDED".equals(normalizedStatus)) {
-      return CompanyLifecycleState.SUSPENDED.name().equals(resolveLifecycle(candidate.company()))
-          || "SUSPENDED_READ_ONLY".equals(candidate.status())
-          || "SUSPENDED_BLOCKED".equals(candidate.status());
-    }
-    if ("DEACTIVATED".equals(normalizedStatus)) {
-      return CompanyLifecycleState.DEACTIVATED.name().equals(resolveLifecycle(candidate.company()))
-          || "ARCHIVED".equals(candidate.status());
-    }
     return normalizedStatus.equals(candidate.status());
   }
 
-  private String normalizeCanonicalStatus(String rawStatus, boolean allowLegacyAliases) {
+  private String normalizeCanonicalStatus(String rawStatus) {
     if (!StringUtils.hasText(rawStatus)) {
       return null;
     }
@@ -1876,7 +1861,7 @@ public class SuperAdminTenantControlPlaneService {
     if (CANONICAL_TENANT_STATUSES.contains(normalized)) {
       return normalized;
     }
-    return allowLegacyAliases ? LEGACY_STATUS_ALIASES.get(normalized) : null;
+    return null;
   }
 
   private String normalizeSearchQuery(String query) {
@@ -2035,7 +2020,7 @@ public class SuperAdminTenantControlPlaneService {
     }
     if ("SEED_FAILED".equals(status)) {
       return new SuperAdminTenantSummaryDto.HealthSummary(
-          "SETUP_FAILED", Math.max(80, errorRate / 100), "Tenant seed repair is required");
+          "SEED_FAILED", Math.max(80, errorRate / 100), "Tenant seed repair is required");
     }
     if ("GRACE".equals(status)) {
       return new SuperAdminTenantSummaryDto.HealthSummary(
@@ -2061,7 +2046,7 @@ public class SuperAdminTenantControlPlaneService {
 
   private SuperAdminTenantDetailDto.TabState tabStateForStatus(
       String status, String defaultState, String defaultMessage) {
-    String normalized = normalizeCanonicalStatus(status, false);
+    String normalized = normalizeCanonicalStatus(status);
     if (normalized == null) {
       return tabState(defaultState, defaultMessage);
     }
@@ -2205,9 +2190,6 @@ public class SuperAdminTenantControlPlaneService {
   }
 
   private void logAuditSuccess(Company company, String reason, Map<String, String> metadata) {
-    if (auditService == null) {
-      return;
-    }
     HashMap<String, String> auditMetadata = new HashMap<>();
     if (metadata != null) {
       auditMetadata.putAll(metadata);
@@ -2225,9 +2207,6 @@ public class SuperAdminTenantControlPlaneService {
   }
 
   private Long logAuditRequired(Company company, String reason, Map<String, String> metadata) {
-    if (auditService == null) {
-      return null;
-    }
     HashMap<String, String> auditMetadata = new HashMap<>();
     if (metadata != null) {
       auditMetadata.putAll(metadata);
@@ -2243,7 +2222,12 @@ public class SuperAdminTenantControlPlaneService {
     AuditLog auditLog =
         auditService.logAuthSuccessRequired(
             AuditEvent.CONFIGURATION_CHANGED, currentActor(), company.getCode(), auditMetadata);
-    return auditLog == null ? null : auditLog.getId();
+    if (auditLog == null || auditLog.getId() == null) {
+      throw new ApplicationException(
+          ErrorCode.BUSINESS_INVALID_STATE,
+          "Required tenant control-plane audit was not persisted");
+    }
+    return auditLog.getId();
   }
 
   private Instant toInstant(LocalDateTime timestamp) {

@@ -97,8 +97,7 @@ public class TenantRealActionUsageService {
     if (entitlements == null || entitlements.limits() == null) {
       throw ValidationUtils.invalidState("Tenant entitlements are required for quota enforcement");
     }
-    Map<String, SuperAdminTenantEntitlementsDto.LimitEntitlement> limits =
-        entitlements.limits();
+    Map<String, SuperAdminTenantEntitlementsDto.LimitEntitlement> limits = entitlements.limits();
     SuperAdminUsageDtos.QuotaActionResult result =
         usageRollupService.enforceQuotaAction(
             company.getId(),

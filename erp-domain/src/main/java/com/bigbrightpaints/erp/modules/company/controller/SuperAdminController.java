@@ -20,8 +20,6 @@ import com.bigbrightpaints.erp.modules.company.service.TenantUsageRollupService;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 import com.bigbrightpaints.erp.shared.dto.PageResponse;
 
-import io.swagger.v3.oas.annotations.Hidden;
-import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.Min;
@@ -458,19 +456,6 @@ public class SuperAdminController {
                 request.gracePeriodHours())));
   }
 
-  @Hidden
-  @PostMapping("/tenants/{id}/support/admin-password-reset")
-  public ResponseEntity<ApiResponse<Map<String, Object>>> retiredTenantAdminPasswordReset(
-      @PathVariable("id") Long tenantId,
-      @RequestBody(required = false) Object ignored,
-      HttpServletRequest request) {
-    return retiredRoute(
-        "retired-superadmin-admin-password-reset",
-        "Tenant admin credential reset is retired; use the V1 activation/password recovery flow",
-        request,
-        "/api/v1/superadmin/tenants/" + tenantId + "/support/admin-password-reset");
-  }
-
   @PutMapping("/tenants/{id}/support/context")
   public ResponseEntity<ApiResponse<SuperAdminTenantSupportContextDto>> updateSupportContext(
       @PathVariable("id") Long tenantId,
@@ -595,9 +580,4 @@ public class SuperAdminController {
 
   public record TenantAdminEmailChangeConfirmRequest(
       @NotNull Long requestId, @NotBlank @Size(max = 255) String verificationToken) {}
-
-  private ResponseEntity<ApiResponse<Map<String, Object>>> retiredRoute(
-      String code, String message, HttpServletRequest request, String fallbackPath) {
-    return SuperAdminRetiredRouteErrors.gone(code, message, request, fallbackPath);
-  }
 }

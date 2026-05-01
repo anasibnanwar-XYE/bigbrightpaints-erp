@@ -527,10 +527,7 @@ public class AuditService {
       return null;
     }
     String normalizedToken = companyToken.trim();
-    return companyRepository
-        .findByCodeIgnoreCase(normalizedToken)
-        .map(Company::getId)
-        .orElse(null);
+    return companyRepository.findByCodeIgnoreCase(normalizedToken).map(Company::getId).orElse(null);
   }
 
   public void logSuccess(AuditEvent event) {
@@ -571,15 +568,14 @@ public class AuditService {
   @Transactional
   public AuditLog logSecurityAlertNow(
       String alertType, String description, Map<String, String> details) {
-    AuditLog auditLog =
-        buildAuditLog(
+    AuditLog saved =
+        logRequiredEventInternal(
             AuditEvent.SECURITY_ALERT,
             AuditStatus.WARNING,
             securityAlertMetadata(alertType, description, details),
             null,
             null,
             captureRequestContextMetadata());
-    AuditLog saved = auditLogRepository.saveAndFlush(auditLog);
     logger.debug("Security alert logged synchronously: {}", alertType);
     return saved;
   }

@@ -25,7 +25,6 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
-import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 
 @Configuration
 @EnableMethodSecurity
@@ -123,14 +122,6 @@ public class SecurityConfig {
                   .permitAll()
                   // Keep retired tenant-admin hosts unresolved (dispatcher 404) for every caller.
                   .requestMatchers(RetiredTenantAdminHostPaths.requestMatchers())
-                  .permitAll()
-                  // Keep retired auth aliases unresolved (dispatcher 404/405) for every caller.
-                  .requestMatchers(
-                      new AntPathRequestMatcher("/api/v1/auth/profile"),
-                      new AntPathRequestMatcher("/api/v1/auth/password/forgot/superadmin", "POST"),
-                      new AntPathRequestMatcher("/api/v1/admin/users/*/suspend", "PATCH"),
-                      new AntPathRequestMatcher("/api/v1/admin/users/*/unsuspend", "PATCH"),
-                      new AntPathRequestMatcher("/api/v1/admin/users/*", "DELETE"))
                   .permitAll();
               if (isSwaggerAllowed()) {
                 registry

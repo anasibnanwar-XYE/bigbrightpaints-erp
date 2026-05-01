@@ -173,15 +173,7 @@ class SuperAdminTenantEntitlementServiceTest {
             "INR",
             0,
             "DEDICATED",
-            Map.of(
-                "PRODUCTION",
-                false,
-                "REPORTS",
-                true,
-                "ACCOUNTING",
-                true,
-                "CUSTOM_PLAN",
-                true),
+            Map.of("PRODUCTION", false, "REPORTS", true, "ACCOUNTING", true, "CUSTOM_PLAN", true),
             new SuperAdminTenantEntitlementLimitsRequest(3L, 4L, 5L, 6L, 7L, 8L, 9L, 10L));
 
     service.assignPlan(

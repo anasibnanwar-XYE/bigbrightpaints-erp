@@ -102,8 +102,7 @@ class SentryIssueClientTest {
 
     SentryIssueClient client = new SentryIssueClient(properties, builder, new ObjectMapper());
 
-    assertThatThrownBy(() -> client.fetchIssue("ERP-123"))
-        .isInstanceOf(ApplicationException.class);
+    assertThatThrownBy(() -> client.fetchIssue("ERP-123")).isInstanceOf(ApplicationException.class);
   }
 
   private SentryIssueProperties configuredProperties() {

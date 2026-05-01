@@ -214,7 +214,7 @@ public class TenantDefaultSeedingService {
             .replace('-', '_')
             .replaceAll("[^A-Z0-9]+", "_")
             .replaceAll("_+", "_");
-    return Set.of("SEED_FAILED", "SETUP_FAILED", "SEEDING_FAILED").contains(normalized);
+    return "SEED_FAILED".equals(normalized);
   }
 
   @Transactional

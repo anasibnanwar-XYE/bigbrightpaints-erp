@@ -26,11 +26,7 @@ public enum EntitlementFeature {
   private final boolean alwaysOn;
 
   EntitlementFeature(
-      String key,
-      CompanyModule module,
-      boolean runtimeGatable,
-      boolean mutable,
-      boolean alwaysOn) {
+      String key, CompanyModule module, boolean runtimeGatable, boolean mutable, boolean alwaysOn) {
     this.key = key;
     this.module = module;
     this.runtimeGatable = runtimeGatable;

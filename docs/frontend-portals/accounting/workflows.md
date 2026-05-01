@@ -2,12 +2,11 @@
 
 ## 1. Tenant Bootstrap To Accounting Readiness
 
-1. Superadmin loads `GET /api/v1/superadmin/tenants/coa-templates`, selects
-   `coaTemplateCode`, and completes `POST /api/v1/superadmin/tenants/onboard`.
-2. Accounting opens the portal only after onboarding returns:
-   `seededChartOfAccounts=true`,
-   `defaultAccountingPeriodCreated=true`, and
-   `tenantAdminProvisioned=true`.
+1. Superadmin loads `GET /api/v1/superadmin/tenants/new` and
+   `GET /api/v1/superadmin/tenants/coa-templates`, selects `coaTemplateCode`,
+   and creates the client with `POST /api/v1/superadmin/tenants`.
+2. Accounting opens the portal only after activation/setup and seed status show
+   the chart of accounts, default accounting period, and owner setup are ready.
 3. Accounting verifies `GET /api/v1/accounting/default-accounts` and GST or tax
    readiness before any inventory or journal workflow is enabled.
 4. If seeded COA, the default period, or tenant-admin bootstrap is missing,
