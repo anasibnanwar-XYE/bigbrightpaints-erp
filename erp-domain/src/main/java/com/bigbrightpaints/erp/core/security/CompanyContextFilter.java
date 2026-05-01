@@ -106,12 +106,15 @@ public class CompanyContextFilter extends OncePerRequestFilter {
           "/api/v1/admin/exports",
           "/api/v1/admin/notify",
           "/api/v1/admin/users");
-  private static final Set<String> PUBLIC_PASSWORD_RESET_ENDPOINTS =
-      Set.of(
-          "/api/v1/auth/password/forgot",
-          "/api/v1/auth/password/reset",
-          "/api/v1/auth/activation/verify",
-          "/api/v1/auth/activation/complete");
+  private static final Map<String, Set<String>> PUBLIC_AUTH_ENDPOINTS_BY_METHOD =
+      Map.of(
+          "GET",
+          Set.of("/api/v1/auth/activation/verify"),
+          "POST",
+          Set.of(
+              "/api/v1/auth/password/forgot",
+              "/api/v1/auth/password/reset",
+              "/api/v1/auth/activation/complete"));
 
   private record CompanyBoundControlRoute(
       String method, Pattern pattern, boolean tenantRuntimePolicyControl) {}
@@ -178,7 +181,7 @@ public class CompanyContextFilter extends OncePerRequestFilter {
             "Use X-Company-Code for company context binding");
         return;
       }
-      if (isPublicPasswordResetRequest(runtimePath, request.getMethod())) {
+      if (isPublicAuthFlowRequest(runtimePath, request.getMethod())) {
         filterChain.doFilter(request, response);
         return;
       }
@@ -723,12 +726,17 @@ public class CompanyContextFilter extends OncePerRequestFilter {
     return path.startsWith("/actuator") || path.startsWith("/swagger") || path.startsWith("/v3");
   }
 
-  private boolean isPublicPasswordResetRequest(String path, String method) {
-    if (!"POST".equalsIgnoreCase(method) || !StringUtils.hasText(path)) {
+  private boolean isPublicAuthFlowRequest(String path, String method) {
+    if (!StringUtils.hasText(path) || !StringUtils.hasText(method)) {
+      return false;
+    }
+    Set<String> publicPaths =
+        PUBLIC_AUTH_ENDPOINTS_BY_METHOD.get(method.trim().toUpperCase(Locale.ROOT));
+    if (publicPaths == null) {
       return false;
     }
     String normalizedPath = normalizePath(path);
-    return PUBLIC_PASSWORD_RESET_ENDPOINTS.contains(normalizedPath);
+    return publicPaths.contains(normalizedPath);
   }
 
   private boolean isTenantAuditWorkflowRequest(String path) {

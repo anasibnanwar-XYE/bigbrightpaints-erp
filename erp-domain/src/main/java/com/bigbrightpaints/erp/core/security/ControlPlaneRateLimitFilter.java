@@ -49,6 +49,7 @@ public class ControlPlaneRateLimitFilter extends OncePerRequestFilter {
   private final ObjectMapper objectMapper;
   private final AuditService auditService;
   private final boolean enabled;
+  private final boolean trustedProxyHeadersEnabled;
   private final int publicAuthRequestsPerMinute;
   private final int platformRequestsPerMinute;
   private final ConcurrentHashMap<String, AtomicInteger> counters = new ConcurrentHashMap<>();
@@ -59,6 +60,8 @@ public class ControlPlaneRateLimitFilter extends OncePerRequestFilter {
       ObjectMapper objectMapper,
       @Autowired(required = false) AuditService auditService,
       @Value("${erp.control-plane.rate-limit.enabled:true}") boolean enabled,
+      @Value("${erp.control-plane.rate-limit.trusted-proxy-headers-enabled:false}")
+          boolean trustedProxyHeadersEnabled,
       @Value("${erp.control-plane.rate-limit.public-auth-requests-per-minute:600}")
           int publicAuthRequestsPerMinute,
       @Value("${erp.control-plane.rate-limit.platform-requests-per-minute:1200}")
@@ -66,6 +69,7 @@ public class ControlPlaneRateLimitFilter extends OncePerRequestFilter {
     this.objectMapper = objectMapper;
     this.auditService = auditService;
     this.enabled = enabled;
+    this.trustedProxyHeadersEnabled = trustedProxyHeadersEnabled;
     this.publicAuthRequestsPerMinute = publicAuthRequestsPerMinute;
     this.platformRequestsPerMinute = platformRequestsPerMinute;
   }
@@ -175,8 +179,26 @@ public class ControlPlaneRateLimitFilter extends OncePerRequestFilter {
   }
 
   private String resolveClientKey(HttpServletRequest request) {
+    if (trustedProxyHeadersEnabled) {
+      String forwardedClient = firstForwardedForClient(request.getHeader("X-Forwarded-For"));
+      if (StringUtils.hasText(forwardedClient)) {
+        return forwardedClient;
+      }
+      String realIp = request.getHeader("X-Real-IP");
+      if (StringUtils.hasText(realIp)) {
+        return realIp.trim();
+      }
+    }
     String remoteAddress = request.getRemoteAddr();
     return StringUtils.hasText(remoteAddress) ? remoteAddress.trim() : "unknown-client";
+  }
+
+  private String firstForwardedForClient(String forwardedFor) {
+    if (!StringUtils.hasText(forwardedFor)) {
+      return null;
+    }
+    String firstHop = forwardedFor.split(",", 2)[0].trim();
+    return StringUtils.hasText(firstHop) && !"unknown".equalsIgnoreCase(firstHop) ? firstHop : null;
   }
 
   private String normalizePath(String requestUri, String contextPath) {

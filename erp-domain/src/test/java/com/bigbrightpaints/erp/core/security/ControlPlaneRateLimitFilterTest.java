@@ -3,6 +3,7 @@ package com.bigbrightpaints.erp.core.security;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
@@ -17,7 +18,7 @@ class ControlPlaneRateLimitFilterTest {
   @Test
   void publicAuthEndpointsReturnSafe429AfterConfiguredBurstLimit() throws Exception {
     ControlPlaneRateLimitFilter filter =
-        new ControlPlaneRateLimitFilter(objectMapper, null, true, 2, 100);
+        new ControlPlaneRateLimitFilter(objectMapper, null, true, false, 2, 100);
     AtomicInteger passed = new AtomicInteger();
 
     MockHttpServletResponse first = invoke(filter, "/api/v1/auth/login", passed);
@@ -39,7 +40,7 @@ class ControlPlaneRateLimitFilterTest {
   @Test
   void superAdminEndpointsUseSeparatePlatformLimit() throws Exception {
     ControlPlaneRateLimitFilter filter =
-        new ControlPlaneRateLimitFilter(objectMapper, null, true, 100, 1);
+        new ControlPlaneRateLimitFilter(objectMapper, null, true, false, 100, 1);
     AtomicInteger passed = new AtomicInteger();
 
     MockHttpServletResponse first = invoke(filter, "/api/v1/superadmin/dashboard", passed);
@@ -54,7 +55,7 @@ class ControlPlaneRateLimitFilterTest {
   @Test
   void disabledFilterDoesNotThrottleControlPlaneRequests() throws Exception {
     ControlPlaneRateLimitFilter filter =
-        new ControlPlaneRateLimitFilter(objectMapper, null, false, 1, 1);
+        new ControlPlaneRateLimitFilter(objectMapper, null, false, false, 1, 1);
     AtomicInteger passed = new AtomicInteger();
 
     invoke(filter, "/api/v1/auth/login", passed);
@@ -64,10 +65,102 @@ class ControlPlaneRateLimitFilterTest {
     assertThat(passed).hasValue(2);
   }
 
+  @Test
+  void trustedProxyHeadersDisabledKeysByRemoteAddress() throws Exception {
+    ControlPlaneRateLimitFilter filter =
+        new ControlPlaneRateLimitFilter(objectMapper, null, true, false, 1, 100);
+    AtomicInteger passed = new AtomicInteger();
+
+    MockHttpServletResponse first =
+        invoke(
+            filter,
+            "/api/v1/auth/login",
+            passed,
+            request -> request.addHeader("X-Forwarded-For", "198.51.100.1"));
+    MockHttpServletResponse second =
+        invoke(
+            filter,
+            "/api/v1/auth/login",
+            passed,
+            request -> request.addHeader("X-Forwarded-For", "198.51.100.2"));
+
+    assertThat(first.getStatus()).isEqualTo(200);
+    assertThat(second.getStatus()).isEqualTo(429);
+    assertThat(passed).hasValue(1);
+  }
+
+  @Test
+  void trustedProxyHeadersEnabledKeysByFirstForwardedForClient() throws Exception {
+    ControlPlaneRateLimitFilter filter =
+        new ControlPlaneRateLimitFilter(objectMapper, null, true, true, 1, 100);
+    AtomicInteger passed = new AtomicInteger();
+
+    MockHttpServletResponse first =
+        invoke(
+            filter,
+            "/api/v1/auth/login",
+            passed,
+            request -> request.addHeader("X-Forwarded-For", "198.51.100.1, 10.0.0.9"));
+    MockHttpServletResponse second =
+        invoke(
+            filter,
+            "/api/v1/auth/login",
+            passed,
+            request -> request.addHeader("X-Forwarded-For", "198.51.100.2, 10.0.0.9"));
+
+    assertThat(first.getStatus()).isEqualTo(200);
+    assertThat(second.getStatus()).isEqualTo(200);
+    assertThat(passed).hasValue(2);
+  }
+
+  @Test
+  void trustedProxyHeadersEnabledFallsBackToRealIpThenRemoteAddress() throws Exception {
+    ControlPlaneRateLimitFilter filter =
+        new ControlPlaneRateLimitFilter(objectMapper, null, true, true, 1, 100);
+    AtomicInteger passed = new AtomicInteger();
+
+    MockHttpServletResponse first =
+        invoke(
+            filter,
+            "/api/v1/auth/login",
+            passed,
+            request -> {
+              request.addHeader("X-Forwarded-For", "unknown");
+              request.addHeader("X-Real-IP", "198.51.100.3");
+            });
+    MockHttpServletResponse second =
+        invoke(
+            filter,
+            "/api/v1/auth/login",
+            passed,
+            request -> request.addHeader("X-Forwarded-For", "unknown"));
+    MockHttpServletResponse third =
+        invoke(
+            filter,
+            "/api/v1/auth/login",
+            passed,
+            request -> request.addHeader("X-Forwarded-For", "unknown"));
+
+    assertThat(first.getStatus()).isEqualTo(200);
+    assertThat(second.getStatus()).isEqualTo(200);
+    assertThat(third.getStatus()).isEqualTo(429);
+    assertThat(passed).hasValue(2);
+  }
+
   private MockHttpServletResponse invoke(
       ControlPlaneRateLimitFilter filter, String path, AtomicInteger passed) throws Exception {
+    return invoke(filter, path, passed, request -> {});
+  }
+
+  private MockHttpServletResponse invoke(
+      ControlPlaneRateLimitFilter filter,
+      String path,
+      AtomicInteger passed,
+      Consumer<MockHttpServletRequest> customizeRequest)
+      throws Exception {
     MockHttpServletRequest request = new MockHttpServletRequest("POST", path);
     request.setRemoteAddr("192.0.2.10");
+    customizeRequest.accept(request);
     MockHttpServletResponse response = new MockHttpServletResponse();
     filter.doFilter(
         request,
