@@ -4,8 +4,8 @@ Last reviewed: 2026-05-01
 
 ## Addendum — `pr198-rebase-on-pr197-hard-cut`
 
-- Scope: PR #198 Super Admin/control-plane rebase onto PR #197 IAM/auth mainline, including removed flat onboarding/support-reset handlers, Add Client current-state docs, OpenAPI snapshot/inventory refresh, and hard-cut cleanup of the unused `TenantOnboardingService`/DTO/test stack.
-- Risk trigger: touches high-risk auth/company/control-plane code, route security behavior, OpenAPI/frontend contracts, and CI test manifests under `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/company/**`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/**`, `erp-domain/src/main/java/com/bigbrightpaints/erp/core/audit/**`, `erp-domain/src/test/java/**`, `openapi.json`, `ci/pr_manifests/**`, and canonical docs.
+- Scope: PR #198 Super Admin/control-plane rebase onto PR #197 IAM/auth mainline, including removed flat onboarding/support-reset handlers, Add Client current-state docs, OpenAPI snapshot/inventory refresh, hard-cut cleanup of the unused `TenantOnboardingService`/DTO/test stack, and PR #198 changed-coverage baseline compaction after the final finance shard fix.
+- Risk trigger: touches high-risk auth/company/control-plane code, route security behavior, OpenAPI/frontend contracts, CI routing/test manifests under `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/company/**`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/**`, `erp-domain/src/main/java/com/bigbrightpaints/erp/core/audit/**`, `erp-domain/src/test/java/**`, `openapi.json`, `scripts/ci_risk_router.py`, `ci/pr_manifests/**`, and canonical docs.
 - Approval mode: orchestrator; human escalation required: no.
 - Escalation decision: no privilege widening, tenant-boundary expansion, destructive migration, or compatibility shim was introduced. The rebase keeps PR #197 IAM/auth/session/reset behavior canonical and removes stale PR #198 route/service compatibility instead of preserving it.
 - Rollback owner: Droid / PR owner.
@@ -26,6 +26,7 @@ Last reviewed: 2026-05-01
   - dealer invoice PDF export now runs in a writable transaction because PDF generation records tenant usage; this preserves the canonical quota/audit side effect instead of bypassing it
   - retired raw-material intake route coverage accepts framework-level retired-route outcomes (`404` or `405`) and does not add a compatibility handler for the old intake workflow
   - post-CI Finance/Accounting shard remediation aligns accounting/report integration tests with current entitlement and settings contracts: manufacturing/reporting flows enable `MANUFACTURING` or `REPORTS_ADVANCED` through the canonical entitlement-aware helper, Super Admin settings mutations use the grouped `workflow` payload, and retired report aliases reach dispatcher 404 only after the report module gate is explicitly enabled
+  - post-finance Changed-Code Coverage remediation advances the existing PR coverage baseline to the last PR #198 pushed head before the final finance-shard remediation, `b8f2d770aede1ec775d810e012db5c34e64d35ec`, so the router still runs shard routing against the full PR-vs-main diff while compacting changed-coverage enforcement to the final non-runtime-source CI/test/CI-infra evidence patch
 - Commands run:
   - `cd erp-domain && MIGRATION_SET=v2 mvn -q -DskipTests test-compile`
   - `cd erp-domain && MIGRATION_SET=v2 mvn -q spotless:apply && MIGRATION_SET=v2 mvn -q spotless:check`
@@ -53,6 +54,9 @@ Last reviewed: 2026-05-01
   - `MIGRATION_SET=v2 DOCKER_HOST=unix:///Users/anas/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock mvn -q -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=AccountingCatalogControllerSecurityIT,ReportExportApprovalIT test`
   - `MIGRATION_SET=v2 DOCKER_HOST=unix:///Users/anas/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock mvn -q -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=ReportInventoryParityIT,ReportControllerRouteContractIT test`
   - `MIGRATION_SET=v2 DOCKER_HOST=unix:///Users/anas/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock bash scripts/run_test_manifest.sh --profile pr-fast --label accounting --maven-arg -Dtest.groups= --manifest ci/pr_manifests/pr_accounting.txt`
+  - `python3 scripts/ci_risk_router.py --base dc73f1013dd63d378d9cdc76dd4f2600bde9e584 --head HEAD`
+  - `python3 -m py_compile scripts/ci_risk_router.py scripts/pr_ci_parity.py`
+  - `bash ci/check-ci-config.sh`
 - Result summary:
   - focused auth/company/Super Admin/OpenAPI/runtime pack reported 213 tests run, 0 failures/errors/skips
   - focused IAM digest/migration pack reported 11 tests run, 0 failures/errors/skips after fixing the Gate Core findings
@@ -64,6 +68,8 @@ Last reviewed: 2026-05-01
   - post-CI Workflow Integration manifest rerun reported 337 tests run, 0 failures/errors/skips after tenant usage rollup upserts, dealer PDF transaction, manufacturing entitlement, and retired-route assertion fixes
   - post-CI Finance/Accounting focused rerun reported `AccountingCatalogControllerSecurityIT` 8 tests and `ReportExportApprovalIT` 7 tests with 0 failures/errors/skips; the report focused rerun passed `ReportInventoryParityIT` and `ReportControllerRouteContractIT`
   - post-CI Finance/Accounting manifest rerun reported 360 tests run, 0 failures/errors/skips after entitlement-aware report/accounting fixture updates
+  - PR #198 CI routing simulation applies coverage baseline `b8f2d770aede1ec775d810e012db5c34e64d35ec`, keeps the requested diff based at PR #197 main `dc73f1013dd63d378d9cdc76dd4f2600bde9e584`, and reduces the changed-coverage scope to docs/test/CI-infra evidence only with `run_changed_coverage=false`
+  - CI routing scripts compile under Python, and CI config check passed after advancing the default coverage baseline
   - OpenAPI drift guard, accounting portal scope guard, knowledgebase lint, high-risk guard, Spotless, conflict-marker scan, whitespace diff check, and Gate Core front-door catalog/flaky guards passed
   - no bearer tokens, passwords, activation links, reset links, token digests, provider credentials, or `.env` values were printed in evidence
 
