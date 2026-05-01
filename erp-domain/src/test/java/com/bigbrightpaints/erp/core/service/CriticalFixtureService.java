@@ -82,7 +82,10 @@ public class CriticalFixtureService {
     }
     companyRepository.save(company);
 
-    ensureFixturePeriod(company, CompanyTime.today(company));
+    LocalDate today = CompanyTime.today(company);
+    ensureFixturePeriod(company, today.minusMonths(1));
+    ensureFixturePeriod(company, today);
+    ensureFixturePeriod(company, today.plusMonths(1));
 
     Map<String, Account> accounts = ensureAccounts(company);
     Dealer dealer = ensureDealer(company, accounts.get("AR"));
