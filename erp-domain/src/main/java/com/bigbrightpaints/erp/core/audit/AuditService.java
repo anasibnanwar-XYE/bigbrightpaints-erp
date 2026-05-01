@@ -328,7 +328,22 @@ public class AuditService {
       return null;
     }
     String normalizedToken = companyToken.trim();
-    return companyRepository.findByCodeIgnoreCase(normalizedToken).map(Company::getId).orElse(null);
+    return companyRepository
+        .findByCodeIgnoreCase(normalizedToken)
+        .map(Company::getId)
+        .orElseGet(() -> resolveNumericCompanyId(normalizedToken));
+  }
+
+  private Long resolveNumericCompanyId(String companyToken) {
+    try {
+      long companyId = Long.parseLong(companyToken);
+      if (companyId <= 0) {
+        return null;
+      }
+      return companyRepository.findById(companyId).map(Company::getId).orElse(null);
+    } catch (NumberFormatException ex) {
+      return null;
+    }
   }
 
   public void logSuccess(AuditEvent event) {

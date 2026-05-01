@@ -1,6 +1,6 @@
 # R2 Checkpoint
 
-Last reviewed: 2026-04-30
+Last reviewed: 2026-05-01
 
 ## Scope
 - Feature: `identity-account-hardcut-20260427` / PR #197
@@ -57,6 +57,7 @@ Last reviewed: 2026-04-30
   - `git diff --check`
   - `cd erp-domain && MIGRATION_SET=v2 mvn -q spotless:check`
   - `cd erp-domain && MIGRATION_SET=v2 mvn -q clean test-compile`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -q -Dtest=AuditServiceTest test`
   - `cd erp-domain && MIGRATION_SET=v2 mvn -q -Dtest=PasswordServiceTest,AuthServiceAuditAttributionTest test`
   - `cd erp-domain && MIGRATION_SET=v2 mvn -q -Dtest=MfaServiceTest,TS_IamCoreSchemaAndModelHardCutMigrationContractTest test`
   - `cd erp-domain && MIGRATION_SET=v2 mvn -q -Dtest=AdminUserServiceTest,TS_RuntimeCompanyContextFilterExecutableCoverageTest,TS_RuntimeTenantRuntimeEnforcementTest,CompanyContextFilterControlPlaneBindingTest,TS_IamCoreSchemaAndModelHardCutMigrationContractTest,MfaServiceTest,PasswordResetServiceTest test`
