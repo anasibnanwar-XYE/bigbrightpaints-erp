@@ -1651,7 +1651,7 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
 
     ResponseEntity<Map> tenantsResponse =
         rest.exchange(
-            "/api/v1/superadmin/tenants?status=SUSPENDED&q=acme&page=0&size=5&sort=companyCode,asc",
+            "/api/v1/superadmin/tenants?status=SUSPENDED_BLOCKED&q=acme&page=0&size=5&sort=companyCode,asc",
             HttpMethod.GET,
             new HttpEntity<>(superAdminHeaders),
             Map.class);

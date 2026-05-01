@@ -7,7 +7,6 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -240,8 +239,7 @@ public class PortalInsightsControllerIT extends AbstractIntegrationTest {
   @Test
   @SuppressWarnings("unchecked")
   void dashboardRedactsHrMetricsAndBlocksWorkforceWhenPayrollModulePaused() {
-    company.setEnabledModules(Set.of(CompanyModule.PORTAL.name()));
-    companyRepository.saveAndFlush(company);
+    company = disableModule(company, CompanyModule.HR_PAYROLL);
 
     HttpHeaders headers = authenticatedHeaders();
 

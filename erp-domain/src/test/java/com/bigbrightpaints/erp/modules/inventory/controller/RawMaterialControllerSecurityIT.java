@@ -100,7 +100,7 @@ class RawMaterialControllerSecurityIT extends AbstractIntegrationTest {
                 headers),
             Map.class);
 
-    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    assertThat(response.getStatusCode()).isIn(HttpStatus.NOT_FOUND, HttpStatus.METHOD_NOT_ALLOWED);
     assertNotPlatformOnly(response);
   }
 

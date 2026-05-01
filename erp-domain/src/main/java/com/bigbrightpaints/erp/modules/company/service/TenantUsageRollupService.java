@@ -11,7 +11,6 @@ import java.util.EnumMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -385,41 +384,27 @@ public class TenantUsageRollupService {
       PeriodWindow period,
       long usageCount,
       long usageBytes) {
-    Optional<TenantUsageRollup> existing =
-        rollupRepository.findByCompany_IdAndDimensionAndPeriodTypeAndPeriodStartAt(
-            company.getId(), dimension.name(), period.periodType().name(), period.startAt());
-    TenantUsageRollup rollup =
-        existing.orElseGet(
-            () ->
-                TenantUsageRollup.snapshot(
-                    company,
-                    dimension.name(),
-                    period.periodType().name(),
-                    period.startAt(),
-                    period.endAt(),
-                    period.timezone(),
-                    usageCount,
-                    usageBytes));
-    if (existing.isPresent()) {
-      rollup.updateSnapshot(usageCount, usageBytes, period.endAt(), period.timezone());
-    }
-    rollupRepository.save(rollup);
+    rollupRepository.upsertSnapshot(
+        company.getId(),
+        company.getCode(),
+        dimension.name(),
+        period.periodType().name(),
+        period.startAt(),
+        period.endAt(),
+        period.timezone(),
+        usageCount,
+        usageBytes);
   }
 
   private void ensureCounter(Company company, UsageDimension dimension, PeriodWindow period) {
-    Optional<TenantUsageRollup> existing =
-        rollupRepository.findByCompany_IdAndDimensionAndPeriodTypeAndPeriodStartAt(
-            company.getId(), dimension.name(), period.periodType().name(), period.startAt());
-    if (existing.isEmpty()) {
-      rollupRepository.save(
-          TenantUsageRollup.counter(
-              company,
-              dimension.name(),
-              period.periodType().name(),
-              period.startAt(),
-              period.endAt(),
-              period.timezone()));
-    }
+    rollupRepository.ensureCounter(
+        company.getId(),
+        company.getCode(),
+        dimension.name(),
+        period.periodType().name(),
+        period.startAt(),
+        period.endAt(),
+        period.timezone());
   }
 
   private void closeElapsedWindows(Company company) {

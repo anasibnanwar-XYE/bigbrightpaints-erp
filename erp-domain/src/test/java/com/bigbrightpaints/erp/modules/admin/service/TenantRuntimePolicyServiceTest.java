@@ -199,6 +199,8 @@ class TenantRuntimePolicyServiceTest {
       int blockedThisMinute,
       int inFlightRequests,
       long activeUsers) {
+    Instant metricsUpdatedAt =
+        updatedAt == null ? Instant.parse("2026-02-20T10:15:30Z") : updatedAt;
     return new TenantRuntimeEnforcementService.TenantRuntimeSnapshot(
         "ACME",
         state,
@@ -216,9 +218,9 @@ class TenantRuntimePolicyServiceTest {
             requestsThisMinute,
             blockedThisMinute,
             activeUsers,
-            updatedAt,
-            updatedAt.plusSeconds(60L),
-            updatedAt.plusSeconds(60L),
-            updatedAt));
+            metricsUpdatedAt,
+            metricsUpdatedAt.plusSeconds(60L),
+            metricsUpdatedAt.plusSeconds(60L),
+            metricsUpdatedAt));
   }
 }

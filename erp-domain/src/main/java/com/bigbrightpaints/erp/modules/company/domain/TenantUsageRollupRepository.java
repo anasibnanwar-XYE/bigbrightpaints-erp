@@ -91,4 +91,124 @@ DO UPDATE SET
       @Param("tenantTimezone") String tenantTimezone,
       @Param("countDelta") long countDelta,
       @Param("bytesDelta") long bytesDelta);
+
+  @Modifying(flushAutomatically = true, clearAutomatically = true)
+  @Transactional
+  @Query(
+      value =
+          """
+INSERT INTO tenant_usage_rollups (
+    company_id,
+    company_code,
+    dimension,
+    period_type,
+    period_start_at,
+    period_end_at,
+    tenant_timezone,
+    usage_count,
+    usage_bytes,
+    source,
+    closed,
+    closed_at,
+    created_at,
+    updated_at
+) VALUES (
+    :companyId,
+    :companyCode,
+    :dimension,
+    :periodType,
+    :periodStartAt,
+    :periodEndAt,
+    :tenantTimezone,
+    GREATEST(:usageCount, 0),
+    GREATEST(:usageBytes, 0),
+    'SNAPSHOT',
+    FALSE,
+    NULL,
+    now(),
+    now()
+)
+ON CONFLICT (company_id, dimension, period_type, period_start_at)
+DO UPDATE SET
+    company_code = EXCLUDED.company_code,
+    period_end_at = EXCLUDED.period_end_at,
+    tenant_timezone = EXCLUDED.tenant_timezone,
+    usage_count = GREATEST(:usageCount, 0),
+    usage_bytes = GREATEST(:usageBytes, 0),
+    source = 'SNAPSHOT',
+    closed = FALSE,
+    closed_at = NULL,
+    updated_at = now()
+""",
+      nativeQuery = true)
+  void upsertSnapshot(
+      @Param("companyId") Long companyId,
+      @Param("companyCode") String companyCode,
+      @Param("dimension") String dimension,
+      @Param("periodType") String periodType,
+      @Param("periodStartAt") Instant periodStartAt,
+      @Param("periodEndAt") Instant periodEndAt,
+      @Param("tenantTimezone") String tenantTimezone,
+      @Param("usageCount") long usageCount,
+      @Param("usageBytes") long usageBytes);
+
+  @Modifying(flushAutomatically = true, clearAutomatically = true)
+  @Transactional
+  @Query(
+      value =
+          """
+INSERT INTO tenant_usage_rollups (
+    company_id,
+    company_code,
+    dimension,
+    period_type,
+    period_start_at,
+    period_end_at,
+    tenant_timezone,
+    usage_count,
+    usage_bytes,
+    source,
+    closed,
+    created_at,
+    updated_at
+) VALUES (
+    :companyId,
+    :companyCode,
+    :dimension,
+    :periodType,
+    :periodStartAt,
+    :periodEndAt,
+    :tenantTimezone,
+    0,
+    0,
+    'COUNTER',
+    FALSE,
+    now(),
+    now()
+)
+ON CONFLICT (company_id, dimension, period_type, period_start_at)
+DO UPDATE SET
+    company_code = EXCLUDED.company_code,
+    period_end_at = EXCLUDED.period_end_at,
+    tenant_timezone = EXCLUDED.tenant_timezone,
+    source = 'COUNTER',
+    closed = FALSE,
+    closed_at = NULL,
+    updated_at = now()
+WHERE tenant_usage_rollups.company_code IS DISTINCT FROM EXCLUDED.company_code
+   OR tenant_usage_rollups.period_end_at IS DISTINCT FROM EXCLUDED.period_end_at
+   OR tenant_usage_rollups.tenant_timezone IS DISTINCT FROM EXCLUDED.tenant_timezone
+   OR tenant_usage_rollups.source IS DISTINCT FROM 'COUNTER'
+   OR tenant_usage_rollups.closed IS DISTINCT FROM FALSE
+   OR tenant_usage_rollups.closed_at IS NOT NULL
+""",
+      nativeQuery = true)
+  void ensureCounter(
+      @Param("companyId") Long companyId,
+      @Param("companyCode") String companyCode,
+      @Param("dimension") String dimension,
+      @Param("periodType") String periodType,
+      @Param("periodStartAt") Instant periodStartAt,
+      @Param("periodEndAt") Instant periodEndAt,
+      @Param("tenantTimezone") String tenantTimezone);
 }

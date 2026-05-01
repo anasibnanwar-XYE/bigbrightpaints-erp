@@ -392,6 +392,70 @@ class TenantUsageRollupServiceTest {
         .when(rollupRepository.saveAll(anyList()))
         .thenAnswer(invocation -> invocation.getArgument(0));
     lenient()
+        .doAnswer(
+            invocation -> {
+              Long companyId = invocation.getArgument(0);
+              String companyCode = invocation.getArgument(1);
+              String dimension = invocation.getArgument(2);
+              String periodType = invocation.getArgument(3);
+              Instant periodStartAt = invocation.getArgument(4);
+              Instant periodEndAt = invocation.getArgument(5);
+              String tenantTimezone = invocation.getArgument(6);
+              long usageCount = invocation.getArgument(7);
+              long usageBytes = invocation.getArgument(8);
+              upsertSnapshotInStore(
+                  companyId,
+                  companyCode,
+                  dimension,
+                  periodType,
+                  periodStartAt,
+                  periodEndAt,
+                  tenantTimezone,
+                  usageCount,
+                  usageBytes);
+              return null;
+            })
+        .when(rollupRepository)
+        .upsertSnapshot(
+            anyLong(),
+            anyString(),
+            anyString(),
+            anyString(),
+            any(Instant.class),
+            any(Instant.class),
+            anyString(),
+            anyLong(),
+            anyLong());
+    lenient()
+        .doAnswer(
+            invocation -> {
+              Long companyId = invocation.getArgument(0);
+              String companyCode = invocation.getArgument(1);
+              String dimension = invocation.getArgument(2);
+              String periodType = invocation.getArgument(3);
+              Instant periodStartAt = invocation.getArgument(4);
+              Instant periodEndAt = invocation.getArgument(5);
+              String tenantTimezone = invocation.getArgument(6);
+              ensureCounterInStore(
+                  companyId,
+                  companyCode,
+                  dimension,
+                  periodType,
+                  periodStartAt,
+                  periodEndAt,
+                  tenantTimezone);
+              return null;
+            })
+        .when(rollupRepository)
+        .ensureCounter(
+            anyLong(),
+            anyString(),
+            anyString(),
+            anyString(),
+            any(Instant.class),
+            any(Instant.class),
+            anyString());
+    lenient()
         .when(
             rollupRepository.findByCompany_IdAndDimensionAndPeriodTypeAndPeriodStartAt(
                 anyLong(), anyString(), anyString(), any(Instant.class)))
@@ -452,6 +516,67 @@ class TenantUsageRollupServiceTest {
                             .thenComparing(TenantUsageRollup::getDimension))
                     .limit(100)
                     .toList());
+  }
+
+  private void upsertSnapshotInStore(
+      Long companyId,
+      String companyCode,
+      String dimension,
+      String periodType,
+      Instant periodStartAt,
+      Instant periodEndAt,
+      String tenantTimezone,
+      long usageCount,
+      long usageBytes) {
+    Optional<TenantUsageRollup> existing =
+        findStoredRollup(companyId, dimension, periodType, periodStartAt);
+    if (existing.isPresent()) {
+      existing.get().updateSnapshot(usageCount, usageBytes, periodEndAt, tenantTimezone);
+      return;
+    }
+    rollups.add(
+        TenantUsageRollup.snapshot(
+            company(companyId, companyCode, tenantTimezone),
+            dimension,
+            periodType,
+            periodStartAt,
+            periodEndAt,
+            tenantTimezone,
+            usageCount,
+            usageBytes));
+  }
+
+  private void ensureCounterInStore(
+      Long companyId,
+      String companyCode,
+      String dimension,
+      String periodType,
+      Instant periodStartAt,
+      Instant periodEndAt,
+      String tenantTimezone) {
+    if (findStoredRollup(companyId, dimension, periodType, periodStartAt).isPresent()) {
+      return;
+    }
+    rollups.add(
+        TenantUsageRollup.counter(
+            company(companyId, companyCode, tenantTimezone),
+            dimension,
+            periodType,
+            periodStartAt,
+            periodEndAt,
+            tenantTimezone));
+  }
+
+  private Optional<TenantUsageRollup> findStoredRollup(
+      Long companyId, String dimension, String periodType, Instant periodStartAt) {
+    return rollups.stream()
+        .filter(
+            rollup ->
+                companyId.equals(rollup.getCompany().getId())
+                    && dimension.equals(rollup.getDimension())
+                    && periodType.equals(rollup.getPeriodType())
+                    && periodStartAt.equals(rollup.getPeriodStartAt()))
+        .findFirst();
   }
 
   private Map<String, SuperAdminTenantEntitlementsDto.LimitEntitlement> entitlementLimits() {
