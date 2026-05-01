@@ -18,7 +18,7 @@ public class AuthScopeService {
 
   public static final String KEY_PLATFORM_AUTH_CODE = "auth.platform.code";
   public static final String DEFAULT_PLATFORM_AUTH_CODE = "PLATFORM";
-  private static final String SAFE_SCOPE_CODE_PATTERN = "^[A-Z0-9][A-Z0-9_-]{2,31}$";
+  private static final String SAFE_SCOPE_CODE_PATTERN = "^[A-Z0-9][A-Z0-9_-]{1,31}$";
 
   private final SystemSettingsRepository settingsRepository;
   private final CompanyRepository companyRepository;
@@ -99,7 +99,7 @@ public class AuthScopeService {
     String normalized = normalizeScopeCode(authScopeCode);
     if (!normalized.matches(SAFE_SCOPE_CODE_PATTERN)) {
       throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
-          "companyCode must use 3 to 32 uppercase letters, digits, underscore, or hyphen");
+          "companyCode must use 2 to 32 uppercase letters, digits, underscore, or hyphen");
     }
     return normalized;
   }

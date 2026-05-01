@@ -52,6 +52,17 @@ class AuthScopeServiceTest {
   }
 
   @Test
+  void requireScopeCode_acceptsTwoCharacterTenantCode() {
+    assertThat(authScopeService.requireScopeCode(" in ")).isEqualTo("IN");
+  }
+
+  @Test
+  void requireScopeCode_rejectsSingleCharacterCode() {
+    assertThatThrownBy(() -> authScopeService.requireScopeCode("I"))
+        .hasMessageContaining("companyCode must use 2 to 32");
+  }
+
+  @Test
   void updatePlatformScopeCode_skipsUserRewriteWhenCodeIsUnchanged() {
     when(settingsRepository.findById(AuthScopeService.KEY_PLATFORM_AUTH_CODE))
         .thenReturn(
