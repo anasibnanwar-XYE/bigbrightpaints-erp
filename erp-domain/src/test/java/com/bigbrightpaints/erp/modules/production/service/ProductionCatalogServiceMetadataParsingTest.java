@@ -18,7 +18,7 @@ class ProductionCatalogServiceMetadataParsingTest {
     service =
         new ProductionCatalogService(
             null, null, null, null, null, null, null, null, null, null, null, null, null, null,
-            null, null, null, null, null, null, null, null, null, null);
+            null, null, null, null, null, null, null, null, null, null, null);
   }
 
   @Test

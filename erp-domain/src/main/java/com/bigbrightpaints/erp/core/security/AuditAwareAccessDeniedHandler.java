@@ -3,9 +3,8 @@ package com.bigbrightpaints.erp.core.security;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.UUID;
 
-import org.springframework.http.MediaType;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.web.access.AccessDeniedHandler;
 import org.springframework.stereotype.Component;
@@ -16,7 +15,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.bigbrightpaints.erp.core.audit.AuditEvent;
 import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
-import com.bigbrightpaints.erp.shared.dto.ApiResponse;
+import com.bigbrightpaints.erp.core.web.RequestTraceContext;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -30,17 +29,22 @@ public class AuditAwareAccessDeniedHandler implements AccessDeniedHandler {
 
   private final AuditService auditService;
   private final ObjectMapper objectMapper;
+  private final SecurityErrorResponseWriter responseWriter;
 
-  public AuditAwareAccessDeniedHandler(AuditService auditService, ObjectMapper objectMapper) {
+  public AuditAwareAccessDeniedHandler(
+      AuditService auditService,
+      ObjectMapper objectMapper,
+      SecurityErrorResponseWriter responseWriter) {
     this.auditService = auditService;
     this.objectMapper = objectMapper;
+    this.responseWriter = responseWriter;
   }
 
   @Override
   public void handle(
       HttpServletRequest request, HttpServletResponse response, AccessDeniedException ex)
       throws IOException {
-    String traceId = UUID.randomUUID().toString();
+    String traceId = RequestTraceContext.traceId();
     String userMessage =
         PortalRoleActionMatrix.resolveAccessDeniedMessage(
             org.springframework.security.core.context.SecurityContextHolder.getContext()
@@ -72,15 +76,12 @@ public class AuditAwareAccessDeniedHandler implements AccessDeniedHandler {
       AccessDeniedAuditMarker.markCurrentRequestAudited();
     }
 
-    Map<String, Object> data = new HashMap<>();
-    data.put("code", ErrorCode.AUTH_INSUFFICIENT_PERMISSIONS.getCode());
-    data.put("message", userMessage);
-    data.put("traceId", traceId);
-    ApiResponse<Map<String, Object>> body = ApiResponse.failure(userMessage, data);
-
-    response.setStatus(HttpServletResponse.SC_FORBIDDEN);
-    response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-    objectMapper.writeValue(response.getWriter(), body);
+    responseWriter.write(
+        request,
+        response,
+        HttpStatus.FORBIDDEN,
+        ErrorCode.AUTH_INSUFFICIENT_PERMISSIONS,
+        userMessage);
   }
 
   private boolean isSuperadminRoleMutationRequest(HttpServletRequest request) {

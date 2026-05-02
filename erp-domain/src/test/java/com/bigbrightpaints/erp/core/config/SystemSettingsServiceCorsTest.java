@@ -92,6 +92,38 @@ class SystemSettingsServiceCorsTest {
   }
 
   @Test
+  void corsConfigurationDoesNotUseCredentialedWildcardHeadersAndExposesTraceHeaders() {
+    SystemSettingsService service =
+        new SystemSettingsService(
+            new EmailProperties(),
+            settingsRepository,
+            authScopeService,
+            nonProdEnvironment,
+            "https://app.bigbrightpaints.com",
+            true,
+            false,
+            true,
+            true,
+            false);
+
+    CorsConfiguration configuration = service.buildCorsConfiguration();
+
+    assertThat(configuration.getAllowCredentials()).isTrue();
+    assertThat(configuration.getAllowedOrigins())
+        .containsExactly("https://app.bigbrightpaints.com");
+    assertThat(configuration.getAllowedHeaders())
+        .contains(
+            "Authorization",
+            "Content-Type",
+            "X-Company-Code",
+            "X-Company-Id",
+            "X-Correlation-ID",
+            "X-Trace-Id")
+        .doesNotContain("*");
+    assertThat(configuration.getExposedHeaders()).containsExactly("X-Trace-Id", "X-Correlation-ID");
+  }
+
+  @Test
   void rejectsPrivateNetworkHttpOriginsEvenWhenValidationDisabled() {
     assertThatThrownBy(
             () ->

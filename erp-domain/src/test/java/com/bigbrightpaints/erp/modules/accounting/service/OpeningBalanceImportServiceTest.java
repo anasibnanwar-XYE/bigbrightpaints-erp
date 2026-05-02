@@ -40,6 +40,7 @@ import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.OpeningBalanceImportResponse;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
+import com.bigbrightpaints.erp.modules.company.service.TenantRealActionUsageService;
 import com.bigbrightpaints.erp.test.support.ReflectionFieldAccess;
 
 @ExtendWith(MockitoExtension.class)
@@ -52,6 +53,7 @@ class OpeningBalanceImportServiceTest {
   @Mock private OpeningBalanceImportRepository openingBalanceImportRepository;
   @Mock private AuditService auditService;
   @Mock private com.bigbrightpaints.erp.core.util.CompanyClock companyClock;
+  @Mock private TenantRealActionUsageService realActionUsageService;
 
   private OpeningBalanceImportService service;
   private Company company;
@@ -68,7 +70,8 @@ class OpeningBalanceImportServiceTest {
             auditService,
             new ObjectMapper(),
             companyClock,
-            new ResourcelessTransactionManager());
+            new ResourcelessTransactionManager(),
+            realActionUsageService);
     company = new Company();
     company.setCode("ACME");
     when(companyContextService.requireCurrentCompany()).thenReturn(company);

@@ -45,6 +45,7 @@ import com.bigbrightpaints.erp.modules.auth.domain.PasswordResetToken;
 import com.bigbrightpaints.erp.modules.auth.domain.PasswordResetTokenRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
+import com.bigbrightpaints.erp.modules.auth.service.AuthTokenDigests;
 import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
 
 @Tag("critical")
@@ -190,7 +191,11 @@ class AuthPasswordResetPublicContractIT extends AbstractIntegrationTest {
     String preExistingToken = "preexisting-reset-token";
     passwordResetTokenRepository.saveAndFlush(
         PasswordResetToken.digestOnly(
-            user, passwordResetDigest(preExistingToken), Instant.now().plusSeconds(600)));
+            user,
+            passwordResetDigest(preExistingToken),
+            AuthTokenDigests.DIGEST_ALGORITHM,
+            AuthTokenDigests.DIGEST_VERSION,
+            Instant.now().plusSeconds(600)));
 
     doThrow(new DataAccessResourceFailureException("db unavailable"))
         .when(passwordResetTokenRepository)
@@ -245,19 +250,14 @@ class AuthPasswordResetPublicContractIT extends AbstractIntegrationTest {
 
   @Test
   void resetEndpoint_hasNoLegacyRawTokenColumnAndRejectsRawOnlyCandidates() {
-    String rawLegacyToken = "legacy-raw-reset-token";
+    String rawTokenCanary = "legacy-raw-reset-token";
     Integer rawTokenColumnCount =
         jdbcTemplate.queryForObject(
-            """
-            select count(*)
-              from information_schema.columns
-             where table_schema = 'public'
-               and table_name = 'password_reset_tokens'
-               and column_name = 'token'
-            """,
+            "select count(*) from information_schema.columns where table_name ="
+                + " 'password_reset_tokens' and column_name = 'token'",
             Integer.class);
 
-    ResponseEntity<Map> resetResponse = postReset(rawLegacyToken, "NewPass123!");
+    ResponseEntity<Map> resetResponse = postReset(rawTokenCanary, "NewPass123!");
 
     assertThat(rawTokenColumnCount).isZero();
     assertThat(resetResponse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
@@ -407,18 +407,23 @@ class AuthPasswordResetPublicContractIT extends AbstractIntegrationTest {
             Integer.class,
             user.getId(),
             digest);
-    Integer rawTokenRowCount =
+    Integer digestMetadataRowCount =
         jdbcTemplate.queryForObject(
-            """
-            select count(*)
-              from information_schema.columns
-             where table_schema = 'public'
-               and table_name = 'password_reset_tokens'
-               and column_name = 'token'
-            """,
+            "select count(*) from password_reset_tokens where user_id = ? and token_digest = ?"
+                + " and digest_algorithm = ? and digest_version = ?",
+            Integer.class,
+            user.getId(),
+            digest,
+            AuthTokenDigests.DIGEST_ALGORITHM,
+            AuthTokenDigests.DIGEST_VERSION);
+    Integer rawTokenColumnCount =
+        jdbcTemplate.queryForObject(
+            "select count(*) from information_schema.columns where table_name ="
+                + " 'password_reset_tokens' and column_name = 'token'",
             Integer.class);
     assertThat(digestRowCount).isEqualTo(1);
-    assertThat(rawTokenRowCount).isEqualTo(0);
+    assertThat(digestMetadataRowCount).isEqualTo(1);
+    assertThat(rawTokenColumnCount).isZero();
 
     ResponseEntity<Map> resetResponse = postReset(resetToken, "CanonReset123!");
     assertThat(resetResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -608,7 +613,11 @@ class AuthPasswordResetPublicContractIT extends AbstractIntegrationTest {
     jdbcTemplate.update("delete from password_reset_tokens where user_id = ?", user.getId());
     passwordResetTokenRepository.saveAndFlush(
         PasswordResetToken.digestOnly(
-            user, passwordResetDigest(token), Instant.now().plusSeconds(600)));
+            user,
+            passwordResetDigest(token),
+            AuthTokenDigests.DIGEST_ALGORITHM,
+            AuthTokenDigests.DIGEST_VERSION,
+            Instant.now().plusSeconds(600)));
     return token;
   }
 

@@ -14,20 +14,26 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import com.bigbrightpaints.erp.core.audit.AuditLog;
+import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.modules.admin.domain.SupportTicket;
 import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketCategory;
+import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketMessageRepository;
 import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketRepository;
 import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketStatus;
 import com.bigbrightpaints.erp.modules.admin.dto.SupportTicketCreateRequest;
 import com.bigbrightpaints.erp.modules.admin.dto.SupportTicketResponse;
 import com.bigbrightpaints.erp.modules.admin.service.AdminSupportService;
+import com.bigbrightpaints.erp.modules.admin.service.BugReportMetadataSanitizer;
 import com.bigbrightpaints.erp.modules.admin.service.DealerPortalSupportTicketService;
 import com.bigbrightpaints.erp.modules.admin.service.SupportTicketAccessSupport;
 import com.bigbrightpaints.erp.modules.admin.service.SupportTicketGitHubSyncService;
+import com.bigbrightpaints.erp.modules.admin.service.SupportTicketLifecycleSupport;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserPrincipal;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
@@ -38,8 +44,12 @@ import com.bigbrightpaints.erp.modules.rbac.domain.Role;
 class TS_RuntimeSupportTicketServiceExecutableCoverageTest {
 
   private SupportTicketRepository supportTicketRepository;
+  private SupportTicketMessageRepository supportTicketMessageRepository;
   private CompanyContextService companyContextService;
   private SupportTicketGitHubSyncService supportTicketGitHubSyncService;
+  private SupportTicketLifecycleSupport supportTicketLifecycleSupport;
+  private BugReportMetadataSanitizer bugReportMetadataSanitizer;
+  private AuditService auditService;
   private AdminSupportService adminSupportService;
   private DealerPortalSupportTicketService dealerPortalSupportTicketService;
   private Company company;
@@ -47,10 +57,26 @@ class TS_RuntimeSupportTicketServiceExecutableCoverageTest {
   @BeforeEach
   void setUp() {
     supportTicketRepository = Mockito.mock(SupportTicketRepository.class);
+    supportTicketMessageRepository = Mockito.mock(SupportTicketMessageRepository.class);
     companyContextService = Mockito.mock(CompanyContextService.class);
     supportTicketGitHubSyncService = Mockito.mock(SupportTicketGitHubSyncService.class);
+    supportTicketLifecycleSupport = Mockito.mock(SupportTicketLifecycleSupport.class);
+    bugReportMetadataSanitizer = Mockito.mock(BugReportMetadataSanitizer.class);
+    auditService = Mockito.mock(AuditService.class);
+    AuditLog auditLog = new AuditLog();
+    auditLog.setId(9901L);
+    when(auditService.logAuthSuccessRequired(any(), any(), any(), any())).thenReturn(auditLog);
+    when(supportTicketMessageRepository.findByTicketAndVisibilityOrderByCreatedAtAscIdAsc(
+            any(), any(), any()))
+        .thenReturn(new PageImpl<>(List.of()));
     SupportTicketAccessSupport supportTicketAccessSupport =
-        new SupportTicketAccessSupport(supportTicketRepository, supportTicketGitHubSyncService);
+        new SupportTicketAccessSupport(
+            supportTicketRepository,
+            supportTicketMessageRepository,
+            supportTicketGitHubSyncService,
+            auditService,
+            supportTicketLifecycleSupport,
+            bugReportMetadataSanitizer);
     adminSupportService =
         new AdminSupportService(
             supportTicketRepository, companyContextService, supportTicketAccessSupport);
@@ -85,7 +111,15 @@ class TS_RuntimeSupportTicketServiceExecutableCoverageTest {
     SupportTicketResponse response =
         adminSupportService.create(
             new SupportTicketCreateRequest(
-                "support", "Unable to export", "Export request fails with timeout"));
+                "support",
+                "normal",
+                "Unable to export",
+                "Export request fails with timeout",
+                null,
+                null,
+                null,
+                null,
+                null));
 
     assertThat(response.id()).isEqualTo(8801L);
     assertThat(response.userId()).isEqualTo(71L);
@@ -131,7 +165,15 @@ class TS_RuntimeSupportTicketServiceExecutableCoverageTest {
     SupportTicketResponse response =
         dealerPortalSupportTicketService.create(
             new SupportTicketCreateRequest(
-                "support", "Invoice mismatch", "Dealer cannot reconcile a settled invoice"));
+                "support",
+                "normal",
+                "Invoice mismatch",
+                "Dealer cannot reconcile a settled invoice",
+                null,
+                null,
+                null,
+                null,
+                null));
 
     assertThat(response.id()).isEqualTo(8802L);
     assertThat(response.userId()).isEqualTo(83L);

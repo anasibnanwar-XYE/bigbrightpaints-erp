@@ -53,6 +53,7 @@ import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
+import com.bigbrightpaints.erp.modules.company.service.TenantRealActionUsageService;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatch;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatchRepository;
@@ -102,6 +103,7 @@ public class OpeningStockImportService {
   private final boolean openingStockImportEnabled;
   private final Environment environment;
   private final TransactionTemplate transactionTemplate;
+  private final TenantRealActionUsageService realActionUsageService;
 
   public OpeningStockImportService(
       CompanyContextService companyContextService,
@@ -122,6 +124,7 @@ public class OpeningStockImportService {
       CompanyClock companyClock,
       Environment environment,
       PlatformTransactionManager transactionManager,
+      TenantRealActionUsageService realActionUsageService,
       @Value("${erp.inventory.opening-stock.enabled:false}") boolean openingStockImportEnabled) {
     this.companyContextService = companyContextService;
     this.rawMaterialRepository = rawMaterialRepository;
@@ -142,6 +145,7 @@ public class OpeningStockImportService {
     this.environment = environment;
     this.openingStockImportEnabled = openingStockImportEnabled;
     this.transactionTemplate = new TransactionTemplate(transactionManager);
+    this.realActionUsageService = realActionUsageService;
   }
 
   public OpeningStockImportResponse importOpeningStock(
@@ -153,6 +157,7 @@ public class OpeningStockImportService {
     String normalizedKey = normalizeIdempotencyKey(idempotencyKey);
     String normalizedBatchKey = normalizeOpeningStockBatchKey(openingStockBatchKey);
     String importReference = resolveImportReference(company, normalizedBatchKey);
+    long storageBytes = safeFileSize(file);
 
     OpeningStockImport existing =
         openingStockImportRepository
@@ -195,6 +200,7 @@ public class OpeningStockImportService {
         && !normalizedBatchKey.equals(contentReplay.getOpeningStockBatchKey())) {
       throw openingStockContentReplayConflict(contentReplay, normalizedKey, normalizedBatchKey);
     }
+    realActionUsageService.enforceStorageWriteAllowed(company, storageBytes);
 
     try {
       OpeningStockImportResponse response =
@@ -210,6 +216,7 @@ public class OpeningStockImportService {
       if (response == null) {
         throw ValidationUtils.invalidState("Opening stock import failed to return a response");
       }
+      realActionUsageService.recordStorageWrite(company, storageBytes);
       return response;
     } catch (RuntimeException ex) {
       if (!isDataIntegrityViolation(ex)) {
@@ -232,6 +239,10 @@ public class OpeningStockImportService {
       assertReplayMatch(concurrent, normalizedKey, normalizedBatchKey, contentFingerprint);
       return toResponse(concurrent);
     }
+  }
+
+  private long safeFileSize(MultipartFile file) {
+    return file == null ? 0L : Math.max(file.getSize(), 0L);
   }
 
   public OpeningStockImportResponse previewOpeningStock(

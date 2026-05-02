@@ -1,6 +1,8 @@
 package com.bigbrightpaints.erp.core.notification;
 
 import java.net.URI;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
@@ -14,6 +16,7 @@ import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.mail.javamail.MimeMessagePreparator;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
+import org.springframework.web.util.UriComponentsBuilder;
 import org.thymeleaf.context.Context;
 import org.thymeleaf.spring6.SpringTemplateEngine;
 
@@ -110,7 +113,7 @@ public class EmailService {
               + " erp.mail.send-password-reset=true");
     }
     String baseUrl = canonicalBaseUrl();
-    String resetLink = baseUrl + "/reset-password?token=" + resetToken;
+    String resetLink = buildPasswordResetLink(baseUrl, resetToken);
     String subject = "Reset your BigBright ERP password";
     Context context = new Context();
     context.setVariable("displayName", displayName);
@@ -158,6 +161,38 @@ public class EmailService {
     sendHtmlEmail(to, subject, "mail/password-reset-confirmed", context);
   }
 
+  public void sendTenantActivationEmailRequired(
+      String to,
+      String displayName,
+      String companyName,
+      String companyCode,
+      String activationToken,
+      Instant expiresAt) {
+    assertCredentialEmailDeliveryReady(to);
+    String activationLink = buildActivationLink(activationToken);
+    String safeDisplayName = StringUtils.hasText(displayName) ? displayName.trim() : "Owner";
+    String safeCompanyName = StringUtils.hasText(companyName) ? companyName.trim() : "your company";
+    String subject = "Activate your BigBright ERP client account";
+    String body =
+        "Hello "
+            + safeDisplayName
+            + ",\n\n"
+            + "Your BigBright ERP client account for "
+            + safeCompanyName
+            + " is ready for activation.\n"
+            + "Use this activation link to set your password and continue setup:\n"
+            + activationLink
+            + "\n\n"
+            + "This activation link expires at "
+            + formatUtcTimestamp(expiresAt)
+            + ".\n"
+            + "Company code: "
+            + (StringUtils.hasText(companyCode) ? companyCode.trim().toUpperCase() : "")
+            + "\n\n"
+            + "No password or temporary credential is included in this email.";
+    sendSimpleEmail(to, subject, body);
+  }
+
   public void sendAdminEmailChangeVerificationRequired(
       String to,
       String displayName,
@@ -188,6 +223,36 @@ public class EmailService {
       return null;
     }
     return UTC_EMAIL_TIMESTAMP_FORMAT.format(timestamp);
+  }
+
+  String buildPasswordResetLink(String resetToken) {
+    return buildPasswordResetLink(canonicalBaseUrl(), resetToken);
+  }
+
+  private String buildPasswordResetLink(String baseUrl, String resetToken) {
+    String encodedToken =
+        URLEncoder.encode(resetToken == null ? "" : resetToken, StandardCharsets.UTF_8)
+            .replace("+", "%20");
+    return UriComponentsBuilder.fromUriString(baseUrl)
+        .path("/reset-password")
+        .query("token=" + encodedToken)
+        .build(true)
+        .toUriString();
+  }
+
+  String buildActivationLink(String activationToken) {
+    String encodedToken =
+        URLEncoder.encode(activationToken == null ? "" : activationToken, StandardCharsets.UTF_8)
+            .replace("+", "%20");
+    return UriComponentsBuilder.fromUriString(properties.getBaseUrl())
+        .path("/activate-client")
+        .query("token=" + encodedToken)
+        .build(true)
+        .toUriString();
+  }
+
+  public String buildTenantActivationLink(String activationToken) {
+    return buildActivationLink(activationToken);
   }
 
   public void sendTemplatedEmail(String to, String subject, String templateName, Context context) {

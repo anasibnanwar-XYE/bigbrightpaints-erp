@@ -14,12 +14,15 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
 
+import com.bigbrightpaints.erp.core.config.SystemSetting;
+import com.bigbrightpaints.erp.core.config.SystemSettingsRepository;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.modules.accounting.service.CompanyDefaultAccountsService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyModule;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
+import com.bigbrightpaints.erp.modules.company.domain.EntitlementFeature;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatch;
@@ -70,6 +73,7 @@ public abstract class AbstractIntegrationTest {
   @Autowired protected TestDataSeeder dataSeeder;
 
   @Autowired protected CompanyRepository companyRepository;
+  @Autowired protected SystemSettingsRepository systemSettingsRepository;
   @Autowired protected CompanyContextService companyContextService;
   @Autowired protected CompanyDefaultAccountsService companyDefaultAccountsService;
   @Autowired protected FinishedGoodRepository finishedGoodRepository;
@@ -129,6 +133,22 @@ public abstract class AbstractIntegrationTest {
   }
 
   protected Company enableModule(Company company, CompanyModule module) {
+    return setModuleEnabled(company, module, true);
+  }
+
+  protected Company disableModule(String companyCode, CompanyModule module) {
+    Company company =
+        companyRepository
+            .findByCodeIgnoreCase(companyCode)
+            .orElseThrow(() -> new IllegalArgumentException("Company not found: " + companyCode));
+    return disableModule(company, module);
+  }
+
+  protected Company disableModule(Company company, CompanyModule module) {
+    return setModuleEnabled(company, module, false);
+  }
+
+  private Company setModuleEnabled(Company company, CompanyModule module, boolean enabled) {
     Company managedCompany = company;
     if (company.getId() != null) {
       managedCompany = companyRepository.findById(company.getId()).orElse(company);
@@ -136,9 +156,23 @@ public abstract class AbstractIntegrationTest {
       managedCompany = companyRepository.findByCodeIgnoreCase(company.getCode()).orElse(company);
     }
     Set<String> enabledModules = new LinkedHashSet<>(managedCompany.getEnabledModules());
-    enabledModules.add(module.name());
+    if (enabled) {
+      enabledModules.add(module.name());
+    } else {
+      enabledModules.remove(module.name());
+    }
     managedCompany.setEnabledModules(enabledModules);
-    return companyRepository.save(managedCompany);
+    Company saved = companyRepository.saveAndFlush(managedCompany);
+    if (module.isGatable() && saved.getId() != null) {
+      String featureKey = EntitlementFeature.keyForModule(module);
+      systemSettingsRepository.save(
+          new SystemSetting(
+              "ten.ent.fo." + saved.getId() + "." + featureKey, Boolean.toString(enabled)));
+      systemSettingsRepository.save(
+          new SystemSetting(
+              "ten.ent.fot." + saved.getId() + "." + featureKey, Instant.now().toString()));
+    }
+    return saved;
   }
 
   protected FinishedGoodDto createFinishedGoodForTest(FinishedGoodRequest request) {

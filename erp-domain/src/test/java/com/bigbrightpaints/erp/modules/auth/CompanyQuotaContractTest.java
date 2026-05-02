@@ -6,6 +6,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -194,13 +195,19 @@ class CompanyQuotaContractTest {
     when(userAccountRepository.countByCompany_IdAndEnabledTrue(1L)).thenReturn(4L);
     when(auditLogRepository.countApiActivityByCompanyId(1L)).thenReturn(80L);
     when(auditLogRepository.estimateAuditStorageBytesByCompanyId(1L)).thenReturn(3_000L);
-    when(auditLogRepository.countDistinctSessionActivityByCompanyId(1L)).thenReturn(2L);
+    TenantRuntimeEnforcementService tenantRuntimeEnforcementService =
+        mock(TenantRuntimeEnforcementService.class);
+    when(tenantRuntimeEnforcementService.snapshot("TENANT_A"))
+        .thenReturn(runtimeSnapshot("TENANT_A", 2), runtimeSnapshot("TENANT_A", 5));
     CompanyService service =
-        new CompanyService(repository, null, userAccountRepository, auditLogRepository);
+        new CompanyService(
+            repository,
+            null,
+            userAccountRepository,
+            auditLogRepository,
+            tenantRuntimeEnforcementService);
 
     assertThat(service.isRuntimeAccessAllowed(1L)).isTrue();
-
-    when(auditLogRepository.countDistinctSessionActivityByCompanyId(1L)).thenReturn(5L);
     assertThat(service.isRuntimeAccessAllowed(1L)).isFalse();
   }
 
@@ -215,7 +222,12 @@ class CompanyQuotaContractTest {
     company.setQuotaSoftLimitEnabled(true);
     company.setQuotaHardLimitEnabled(false);
     when(repository.findById(1L)).thenReturn(Optional.of(company));
-    CompanyService service = new CompanyService(repository);
+    TenantRuntimeEnforcementService tenantRuntimeEnforcementService =
+        mock(TenantRuntimeEnforcementService.class);
+    when(tenantRuntimeEnforcementService.snapshot("TENANT_A"))
+        .thenReturn(runtimeSnapshot("TENANT_A", 0));
+    CompanyService service =
+        new CompanyService(repository, null, null, null, tenantRuntimeEnforcementService);
 
     authenticateAs("ROLE_SUPER_ADMIN");
 
@@ -256,5 +268,31 @@ class CompanyQuotaContractTest {
     company.setCode(code);
     company.setTimezone("UTC");
     return company;
+  }
+
+  private TenantRuntimeEnforcementService.TenantRuntimeSnapshot runtimeSnapshot(
+      String companyCode, int inFlightRequests) {
+    Instant capturedAt = Instant.parse("2026-03-18T06:30:00Z");
+    return new TenantRuntimeEnforcementService.TenantRuntimeSnapshot(
+        companyCode,
+        TenantRuntimeEnforcementService.TenantRuntimeState.ACTIVE,
+        null,
+        "quota-contract-test",
+        capturedAt,
+        4,
+        100,
+        10,
+        new TenantRuntimeEnforcementService.TenantRuntimeMetrics(
+            0L,
+            0L,
+            0L,
+            inFlightRequests,
+            0,
+            0,
+            0L,
+            capturedAt,
+            capturedAt.plusSeconds(60),
+            capturedAt.plusSeconds(60),
+            capturedAt));
   }
 }

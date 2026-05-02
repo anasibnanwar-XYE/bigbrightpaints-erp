@@ -22,6 +22,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
+import com.bigbrightpaints.erp.modules.company.service.TenantRealActionUsageService;
 import com.bigbrightpaints.erp.modules.hr.dto.PayrollRunDto;
 import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService.InventoryReservationResult;
 import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService.InventoryShortage;
@@ -44,6 +45,7 @@ class CommandDispatcherTest {
   @Mock private TraceService traceService;
   @Mock private PolicyEnforcer policyEnforcer;
   @Mock private OrchestratorIdempotencyService idempotencyService;
+  @Mock private TenantRealActionUsageService realActionUsageService;
 
   private CommandDispatcher commandDispatcher;
   private OrchestratorFeatureFlags featureFlags;
@@ -59,7 +61,8 @@ class CommandDispatcherTest {
             traceService,
             policyEnforcer,
             idempotencyService,
-            featureFlags);
+            featureFlags,
+            realActionUsageService);
   }
 
   @Test
@@ -191,6 +194,47 @@ class CommandDispatcherTest {
   }
 
   @Test
+  void jobQuotaCountsOnlyExecutedCommandAndNotIdempotentReplay() {
+    CommandDispatcher quotaAwareDispatcher =
+        new CommandDispatcher(
+            workflowService,
+            integrationCoordinator,
+            eventPublisherService,
+            traceService,
+            policyEnforcer,
+            idempotencyService,
+            featureFlags,
+            realActionUsageService);
+    OrchestratorCommand command =
+        new OrchestratorCommand(
+            1L, "ORCH.ORDER.FULFILLMENT.UPDATE", "idem-job", "hash", "trace-job");
+    OrderFulfillmentRequest request = new OrderFulfillmentRequest("PROCESSING", "start");
+    when(idempotencyService.start(
+            ArgumentMatchers.eq("ORCH.ORDER.FULFILLMENT.UPDATE"),
+            ArgumentMatchers.eq("idem-job"),
+            ArgumentMatchers.any(),
+            ArgumentMatchers.any()))
+        .thenReturn(
+            new OrchestratorIdempotencyService.CommandLease("trace-job", command, true),
+            new OrchestratorIdempotencyService.CommandLease("trace-job", command, false));
+    when(integrationCoordinator.updateFulfillment(
+            "101", "PROCESSING", "COMP", "trace-job", "idem-job"))
+        .thenReturn(new IntegrationCoordinator.AutoApprovalResult("PROCESSING", false));
+
+    assertThat(
+            quotaAwareDispatcher.updateOrderFulfillment(
+                "101", request, "idem-job", "req-job", "COMP", "user-1"))
+        .isEqualTo("trace-job");
+    assertThat(
+            quotaAwareDispatcher.updateOrderFulfillment(
+                "101", request, "idem-job", "req-job", "COMP", "user-1"))
+        .isEqualTo("trace-job");
+
+    verify(realActionUsageService).enforceJobSubmissionAllowed("COMP");
+    verify(realActionUsageService).recordJobSubmission("COMP");
+  }
+
+  @Test
   void updateOrderFulfillmentMalformedOrderIdFailsBeforeOutboxAndTrace() {
     OrchestratorCommand command =
         new OrchestratorCommand(
@@ -268,7 +312,8 @@ class CommandDispatcherTest {
             traceService,
             policyEnforcer,
             idempotencyService,
-            new OrchestratorFeatureFlags(false, true));
+            new OrchestratorFeatureFlags(false, true),
+            realActionUsageService);
 
     OrchestratorCommand command =
         new OrchestratorCommand(1L, "ORCH.PAYROLL.RUN", "idem-3", "hash", "trace-789");

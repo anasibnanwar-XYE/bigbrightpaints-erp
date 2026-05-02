@@ -309,6 +309,8 @@ class PasswordResetServiceTest {
         PasswordResetToken.digestOnly(
             user,
             AuthTokenDigests.passwordResetTokenDigest(rawToken),
+            AuthTokenDigests.DIGEST_ALGORITHM,
+            AuthTokenDigests.DIGEST_VERSION,
             Instant.now().plusSeconds(600));
     when(tokenRepository.findByTokenDigestForUpdate(
             AuthTokenDigests.passwordResetTokenDigest(rawToken)))
@@ -351,11 +353,15 @@ class PasswordResetServiceTest {
         PasswordResetToken.digestOnly(
             user,
             AuthTokenDigests.passwordResetTokenDigest("expired-token"),
+            AuthTokenDigests.DIGEST_ALGORITHM,
+            AuthTokenDigests.DIGEST_VERSION,
             Instant.now().minusSeconds(1));
     PasswordResetToken replayedToken =
         PasswordResetToken.digestOnly(
             user,
             AuthTokenDigests.passwordResetTokenDigest("replayed-token"),
+            AuthTokenDigests.DIGEST_ALGORITHM,
+            AuthTokenDigests.DIGEST_VERSION,
             Instant.now().plusSeconds(600));
     replayedToken.markUsed();
     when(tokenRepository.findByTokenDigestForUpdate(
@@ -549,6 +555,8 @@ class PasswordResetServiceTest {
         PasswordResetToken.digestOnly(
             user,
             AuthTokenDigests.passwordResetTokenDigest("raw-token"),
+            AuthTokenDigests.DIGEST_ALGORITHM,
+            AuthTokenDigests.DIGEST_VERSION,
             Instant.now().plusSeconds(600));
     when(tokenRepository.findByTokenDigestForUpdate(
             AuthTokenDigests.passwordResetTokenDigest("raw-token")))

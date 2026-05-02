@@ -2,6 +2,7 @@ package com.bigbrightpaints.erp.core.audit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
@@ -9,8 +10,13 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.Optional;
+import java.util.TreeMap;
+
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -24,6 +30,8 @@ import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
+import com.bigbrightpaints.erp.core.validationharness.ValidationFaultInjectionService;
+import com.bigbrightpaints.erp.core.validationharness.ValidationFaultKind;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserPrincipal;
 import com.bigbrightpaints.erp.modules.auth.service.IamCanonicalStorageService;
@@ -200,7 +208,6 @@ class AuditServiceTest {
   @Test
   void logAuthFailure_unknownNumericCompanyCodeDoesNotPersistPhantomCompanyId() {
     when(companyRepository.findByCodeIgnoreCase("404")).thenReturn(Optional.empty());
-    when(companyRepository.findById(404L)).thenReturn(Optional.empty());
 
     auditService.logAuthFailure(
         AuditEvent.LOGIN_FAILURE,
@@ -216,11 +223,11 @@ class AuditServiceTest {
         .containsEntry("reason", "unknown-numeric-company")
         .containsEntry("authCompanyToken", "404")
         .containsEntry("authCompanyResolution", "UNRESOLVED");
-    verify(companyRepository).findById(404L);
+    verify(companyRepository, never()).findById(404L);
   }
 
   @Test
-  void logAuthFailure_unknownNumericCompanyCodeFallsBackToNumericCompanyId() {
+  void logAuthFailure_unknownNumericCompanyCodeStaysUnresolvedWhenRawIdExists() {
     when(companyRepository.findByCodeIgnoreCase("404")).thenReturn(Optional.empty());
     when(companyRepository.findById(404L))
         .thenReturn(Optional.of(companyWithId(404L, "LEGACY-404")));
@@ -234,16 +241,16 @@ class AuditServiceTest {
     ArgumentCaptor<AuditLog> auditCaptor = ArgumentCaptor.forClass(AuditLog.class);
     verify(auditLogRepository).save(auditCaptor.capture());
     AuditLog saved = auditCaptor.getValue();
-    assertThat(saved.getCompanyId()).isEqualTo(404L);
+    assertThat(saved.getCompanyId()).isNull();
     assertThat(saved.getMetadata())
         .containsEntry("reason", "unknown-numeric-company")
         .containsEntry("authCompanyToken", "404")
-        .doesNotContainKeys("authCompanyResolution");
-    verify(companyRepository).findById(404L);
+        .containsEntry("authCompanyResolution", "UNRESOLVED");
+    verify(companyRepository, never()).findById(404L);
   }
 
   @Test
-  void logAuthSuccess_unknownNumericCompanyCodeFallsBackToNumericCompanyId() {
+  void logAuthSuccess_unknownNumericCompanyCodeStaysUnresolvedWhenRawIdExists() {
     when(companyRepository.findByCodeIgnoreCase("505")).thenReturn(Optional.empty());
     when(companyRepository.findById(505L))
         .thenReturn(Optional.of(companyWithId(505L, "LEGACY-505")));
@@ -254,12 +261,12 @@ class AuditServiceTest {
     ArgumentCaptor<AuditLog> auditCaptor = ArgumentCaptor.forClass(AuditLog.class);
     verify(auditLogRepository).save(auditCaptor.capture());
     AuditLog saved = auditCaptor.getValue();
-    assertThat(saved.getCompanyId()).isEqualTo(505L);
+    assertThat(saved.getCompanyId()).isNull();
     assertThat(saved.getMetadata())
         .containsEntry("authChannel", "password")
         .containsEntry("authCompanyToken", "505")
-        .doesNotContainKeys("authCompanyResolution");
-    verify(companyRepository).findById(505L);
+        .containsEntry("authCompanyResolution", "UNRESOLVED");
+    verify(companyRepository, never()).findById(505L);
   }
 
   @Test
@@ -279,7 +286,7 @@ class AuditServiceTest {
   }
 
   @Test
-  void logEvent_numericRuntimeContextFallsBackToCompanyId() {
+  void logEvent_numericRuntimeContextStaysUnresolvedWhenCodeIsMissing() {
     CompanyContextHolder.setCompanyCode("1001");
     when(companyRepository.findByCodeIgnoreCase("1001")).thenReturn(Optional.empty());
     when(companyRepository.findById(1001L)).thenReturn(Optional.of(companyWithId(1001L, "COMP")));
@@ -290,11 +297,12 @@ class AuditServiceTest {
     ArgumentCaptor<AuditLog> auditCaptor = ArgumentCaptor.forClass(AuditLog.class);
     verify(auditLogRepository).save(auditCaptor.capture());
     AuditLog saved = auditCaptor.getValue();
-    assertThat(saved.getCompanyId()).isEqualTo(1001L);
+    assertThat(saved.getCompanyId()).isNull();
     assertThat(saved.getMetadata())
         .containsEntry("source", "runtime-numeric-id")
-        .doesNotContainKeys("authCompanyToken", "authCompanyResolution");
-    verify(companyRepository).findById(1001L);
+        .containsEntry("authCompanyToken", "1001")
+        .containsEntry("authCompanyResolution", "UNRESOLVED");
+    verify(companyRepository, never()).findById(1001L);
   }
 
   @Test
@@ -369,6 +377,105 @@ class AuditServiceTest {
         .containsEntry("authCompanyResolution", "UNRESOLVED");
   }
 
+  @Test
+  void logAuthSuccessRequired_signsWithConfiguredAuditKeyBeforePersistence() {
+    Company company = companyWithId(88L, "COMP-A");
+    when(companyRepository.findByCodeIgnoreCase("COMP-A")).thenReturn(Optional.of(company));
+    ReflectionTestUtils.setField(auditService, "auditPrivateKey", "required-audit-fixture-key");
+
+    auditService.logAuthSuccessRequired(
+        AuditEvent.CONFIGURATION_CHANGED,
+        "super-admin@bbp.com",
+        "COMP-A",
+        Map.of("operation", "tenant-created-draft"));
+
+    ArgumentCaptor<AuditLog> auditCaptor = ArgumentCaptor.forClass(AuditLog.class);
+    verify(auditLogRepository).saveAndFlush(auditCaptor.capture());
+    AuditLog saved = auditCaptor.getValue();
+    assertThat(saved.getMetadata())
+        .containsEntry("auditSignatureAlgorithm", "HMAC_SHA256")
+        .containsKey("auditSignature")
+        .containsEntry("operation", "tenant-created-draft");
+    assertThat(saved.getMetadata().get("auditSignature")).hasSize(64);
+  }
+
+  @Test
+  void logAuthSuccessRequired_unresolvedCompanyEnrichmentIsCoveredBySignature() {
+    when(companyRepository.findByCodeIgnoreCase("404")).thenReturn(Optional.empty());
+    ReflectionTestUtils.setField(auditService, "auditPrivateKey", "required-audit-fixture-key");
+
+    auditService.logAuthSuccessRequired(
+        AuditEvent.CONFIGURATION_CHANGED,
+        "super-admin@bbp.com",
+        "404",
+        Map.of("operation", "tenant-override-recovered"));
+
+    ArgumentCaptor<AuditLog> auditCaptor = ArgumentCaptor.forClass(AuditLog.class);
+    verify(auditLogRepository).saveAndFlush(auditCaptor.capture());
+    AuditLog saved = auditCaptor.getValue();
+    assertThat(saved.getCompanyId()).isNull();
+    assertThat(saved.getMetadata())
+        .containsEntry("operation", "tenant-override-recovered")
+        .containsEntry("authCompanyToken", "404")
+        .containsEntry("authCompanyResolution", "UNRESOLVED")
+        .containsEntry("auditSignatureAlgorithm", "HMAC_SHA256")
+        .containsKey("auditSignature");
+    assertThat(saved.getMetadata().get("auditSignature"))
+        .isEqualTo(
+            hmacSha256(
+                "required-audit-fixture-key",
+                canonicalRequiredAuditPayload(
+                    AuditEvent.CONFIGURATION_CHANGED,
+                    AuditStatus.SUCCESS,
+                    "super-admin@bbp.com",
+                    "404",
+                    saved.getMetadata())));
+    verify(companyRepository, never()).findById(404L);
+  }
+
+  @Test
+  void logAuthSuccessRequired_signingFaultFailsBeforeAuditPersistence() {
+    ValidationFaultInjectionService faultInjectionService = new ValidationFaultInjectionService();
+    faultInjectionService.setFault(
+        ValidationFaultKind.AUDIT_SIGNING_FAILURE, true, "m14-audit-signing-fault", "fixture");
+    ReflectionTestUtils.setField(
+        auditService, "validationFaultInjectionService", faultInjectionService);
+    ReflectionTestUtils.setField(auditService, "auditPrivateKey", "required-audit-fixture-key");
+
+    assertThatThrownBy(
+            () ->
+                auditService.logAuthSuccessRequired(
+                    AuditEvent.CONFIGURATION_CHANGED,
+                    "super-admin@bbp.com",
+                    "COMP-A",
+                    Map.of("operation", "tenant-created-draft")))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("required audit signing unavailable");
+
+    verify(auditLogRepository, never()).saveAndFlush(any());
+  }
+
+  @Test
+  void logAuthSuccessRequired_persistenceFaultFailsBeforeAuditRepositoryWrite() {
+    ValidationFaultInjectionService faultInjectionService = new ValidationFaultInjectionService();
+    faultInjectionService.setFault(
+        ValidationFaultKind.AUDIT_FAILURE, true, "m14-audit-persistence-fault", "fixture");
+    ReflectionTestUtils.setField(
+        auditService, "validationFaultInjectionService", faultInjectionService);
+
+    assertThatThrownBy(
+            () ->
+                auditService.logAuthSuccessRequired(
+                    AuditEvent.CONFIGURATION_CHANGED,
+                    "super-admin@bbp.com",
+                    "COMP-A",
+                    Map.of("operation", "tenant-created-draft")))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("required audit persistence unavailable");
+
+    verify(auditLogRepository, never()).saveAndFlush(any());
+  }
+
   private AuditService createService() {
     AuditService service = new AuditService();
     ReflectionTestUtils.setField(service, "auditLogRepository", auditLogRepository);
@@ -376,6 +483,8 @@ class AuditServiceTest {
     ReflectionTestUtils.setField(service, "iamCanonicalStorageService", iamCanonicalStorageService);
     ReflectionTestUtils.setField(service, "self", service);
     when(auditLogRepository.save(any(AuditLog.class)))
+        .thenAnswer(invocation -> invocation.getArgument(0));
+    when(auditLogRepository.saveAndFlush(any(AuditLog.class)))
         .thenAnswer(invocation -> invocation.getArgument(0));
     return service;
   }
@@ -385,5 +494,41 @@ class AuditServiceTest {
     company.setCode(code);
     ReflectionTestUtils.setField(company, "id", id);
     return company;
+  }
+
+  private String canonicalRequiredAuditPayload(
+      AuditEvent event,
+      AuditStatus status,
+      String usernameOverride,
+      String companyCodeOverride,
+      Map<String, String> metadata) {
+    Map<String, String> canonicalMetadata = new TreeMap<>();
+    metadata.forEach(
+        (key, value) -> {
+          if (!"auditSignature".equals(key)) {
+            canonicalMetadata.put(key, value == null ? "" : value);
+          }
+        });
+    return "event="
+        + event.name()
+        + "\nstatus="
+        + status.name()
+        + "\nactor="
+        + usernameOverride
+        + "\ncompany="
+        + companyCodeOverride
+        + "\nmetadata="
+        + canonicalMetadata;
+  }
+
+  private String hmacSha256(String key, String payload) {
+    try {
+      Mac mac = Mac.getInstance("HmacSHA256");
+      mac.init(new SecretKeySpec(key.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+      return java.util.HexFormat.of()
+          .formatHex(mac.doFinal(payload.getBytes(StandardCharsets.UTF_8)));
+    } catch (Exception ex) {
+      throw new AssertionError(ex);
+    }
   }
 }

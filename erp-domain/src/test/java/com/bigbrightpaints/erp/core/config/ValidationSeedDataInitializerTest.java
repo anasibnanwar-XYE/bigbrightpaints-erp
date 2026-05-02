@@ -44,6 +44,8 @@ import com.bigbrightpaints.erp.modules.auth.service.IamCanonicalStorageService;
 import com.bigbrightpaints.erp.modules.auth.service.PasswordPolicy;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
+import com.bigbrightpaints.erp.modules.company.domain.TenantUsageRollup;
+import com.bigbrightpaints.erp.modules.company.domain.TenantUsageRollupRepository;
 import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceRepository;
 import com.bigbrightpaints.erp.modules.rbac.domain.Role;
 import com.bigbrightpaints.erp.modules.rbac.domain.RoleRepository;
@@ -57,6 +59,7 @@ import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
 class ValidationSeedDataInitializerTest {
 
   @Mock private CompanyRepository companyRepository;
+  @Mock private TenantUsageRollupRepository tenantUsageRollupRepository;
   @Mock private RoleRepository roleRepository;
   @Mock private UserAccountRepository userAccountRepository;
   @Mock private MfaRecoveryCodeRepository mfaRecoveryCodeRepository;
@@ -130,6 +133,7 @@ class ValidationSeedDataInitializerTest {
     CommandLineRunner runner =
         initializer.seedValidationActors(
             companyRepository,
+            tenantUsageRollupRepository,
             roleRepository,
             userAccountRepository,
             mfaRecoveryCodeRepository,
@@ -153,6 +157,7 @@ class ValidationSeedDataInitializerTest {
 
     verifyNoInteractions(
         companyRepository,
+        tenantUsageRollupRepository,
         roleRepository,
         userAccountRepository,
         mfaRecoveryCodeRepository,
@@ -173,6 +178,7 @@ class ValidationSeedDataInitializerTest {
     CommandLineRunner runner =
         initializer.seedValidationActors(
             companyRepository,
+            tenantUsageRollupRepository,
             roleRepository,
             userAccountRepository,
             mfaRecoveryCodeRepository,
@@ -198,6 +204,7 @@ class ValidationSeedDataInitializerTest {
 
     verifyNoInteractions(
         companyRepository,
+        tenantUsageRollupRepository,
         roleRepository,
         userAccountRepository,
         mfaRecoveryCodeRepository,
@@ -215,6 +222,7 @@ class ValidationSeedDataInitializerTest {
     CommandLineRunner runner =
         initializer.seedValidationActors(
             companyRepository,
+            tenantUsageRollupRepository,
             roleRepository,
             userAccountRepository,
             mfaRecoveryCodeRepository,
@@ -254,6 +262,7 @@ class ValidationSeedDataInitializerTest {
     CommandLineRunner runner =
         initializer.seedValidationActors(
             companyRepository,
+            tenantUsageRollupRepository,
             roleRepository,
             userAccountRepository,
             mfaRecoveryCodeRepository,
@@ -367,6 +376,70 @@ class ValidationSeedDataInitializerTest {
     verify(supportTicketRepository).save(any(SupportTicket.class));
     verify(creditRequestRepository).save(any(CreditRequest.class));
     verify(authScopeService).getPlatformScopeCode();
+  }
+
+  @Test
+  void ensureClosedUsageHistoryFixturesSeedsDeterministicClosedDailyAndMonthlyRows() {
+    Company company = new Company();
+    company.setCode("MOCK");
+    company.setTimezone("UTC");
+    ReflectionTestUtils.setField(company, "id", 7L);
+    when(tenantUsageRollupRepository.findByCompany_IdAndDimensionAndPeriodTypeAndPeriodStartAt(
+            any(), anyString(), anyString(), any()))
+        .thenReturn(Optional.empty());
+    lenient()
+        .when(tenantUsageRollupRepository.save(any(TenantUsageRollup.class)))
+        .thenAnswer(invocation -> invocation.getArgument(0));
+
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+        initializer, "ensureClosedUsageHistoryFixtures", tenantUsageRollupRepository, company);
+
+    ArgumentCaptor<TenantUsageRollup> rollups = ArgumentCaptor.forClass(TenantUsageRollup.class);
+    verify(tenantUsageRollupRepository, times(12)).save(rollups.capture());
+
+    assertThat(rollups.getAllValues())
+        .extracting(TenantUsageRollup::getPeriodType)
+        .containsOnly("DAILY", "MONTHLY");
+    assertThat(rollups.getAllValues())
+        .extracting(TenantUsageRollup::getDimension)
+        .contains("USERS", "STORAGE", "API_CALLS", "PDF_EXPORTS", "EMAILS", "JOBS");
+    assertThat(rollups.getAllValues()).allSatisfy(rollup -> assertThat(rollup.isClosed()).isTrue());
+    assertThat(rollups.getAllValues())
+        .filteredOn(rollup -> "DAILY".equals(rollup.getPeriodType()))
+        .hasSize(6)
+        .allSatisfy(
+            rollup -> {
+              assertThat(rollup.getPeriodStartAt())
+                  .isEqualTo(Instant.parse("2026-04-28T00:00:00Z"));
+              assertThat(rollup.getPeriodEndAt()).isEqualTo(Instant.parse("2026-04-29T00:00:00Z"));
+              assertThat(rollup.getClosedAt()).isEqualTo(Instant.parse("2026-04-29T00:00:01Z"));
+            });
+    assertThat(rollups.getAllValues())
+        .filteredOn(rollup -> "MONTHLY".equals(rollup.getPeriodType()))
+        .hasSize(6)
+        .allSatisfy(
+            rollup -> {
+              assertThat(rollup.getPeriodStartAt())
+                  .isEqualTo(Instant.parse("2026-03-01T00:00:00Z"));
+              assertThat(rollup.getPeriodEndAt()).isEqualTo(Instant.parse("2026-04-01T00:00:00Z"));
+              assertThat(rollup.getClosedAt()).isEqualTo(Instant.parse("2026-04-01T00:00:01Z"));
+            });
+    assertThat(rollups.getAllValues())
+        .filteredOn(rollup -> "STORAGE".equals(rollup.getDimension()))
+        .allSatisfy(
+            rollup -> {
+              assertThat(rollup.getUsageCount()).isZero();
+              assertThat(rollup.getUsageBytes()).isPositive();
+              assertThat(rollup.getSource()).isEqualTo("SNAPSHOT");
+            });
+    assertThat(rollups.getAllValues())
+        .filteredOn(rollup -> "API_CALLS".equals(rollup.getDimension()))
+        .allSatisfy(
+            rollup -> {
+              assertThat(rollup.getUsageCount()).isPositive();
+              assertThat(rollup.getUsageBytes()).isZero();
+              assertThat(rollup.getSource()).isEqualTo("SNAPSHOT");
+            });
   }
 
   @Test

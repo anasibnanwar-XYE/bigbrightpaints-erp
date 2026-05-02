@@ -26,4 +26,26 @@ public interface SystemSettingsRepository extends JpaRepository<SystemSetting, S
           """,
       nativeQuery = true)
   void incrementLongSetting(@Param("key") String key);
+
+  @Modifying
+  @Transactional
+  @Query(
+      value =
+          """
+          INSERT INTO system_settings (setting_key, setting_value)
+          VALUES (:key, GREATEST(:delta, 0)::text)
+          ON CONFLICT (setting_key)
+          DO UPDATE SET setting_value = (
+              CASE
+                  WHEN trim(COALESCE(system_settings.setting_value, '')) ~ '^[0-9]+$'
+                      THEN LEAST(
+                          9223372036854775807,
+                          (trim(system_settings.setting_value))::numeric + GREATEST(:delta, 0)
+                      )
+                  ELSE GREATEST(:delta, 0)
+              END
+          )::text
+          """,
+      nativeQuery = true)
+  void incrementLongSettingBy(@Param("key") String key, @Param("delta") long delta);
 }

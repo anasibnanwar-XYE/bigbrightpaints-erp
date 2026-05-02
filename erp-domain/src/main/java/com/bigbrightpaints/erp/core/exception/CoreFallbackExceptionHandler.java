@@ -3,7 +3,6 @@ package com.bigbrightpaints.erp.core.exception;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,6 +31,7 @@ import com.bigbrightpaints.erp.core.security.AuditAwareAccessDeniedHandler;
 import com.bigbrightpaints.erp.core.security.PortalRoleActionMatrix;
 import com.bigbrightpaints.erp.core.security.RequestBodyCachingFilter;
 import com.bigbrightpaints.erp.core.security.SecurityActorResolver;
+import com.bigbrightpaints.erp.core.web.RequestTraceContext;
 import com.bigbrightpaints.erp.modules.auth.exception.InvalidMfaException;
 import com.bigbrightpaints.erp.modules.auth.exception.MfaRequiredException;
 import com.bigbrightpaints.erp.modules.auth.web.MfaChallengeResponse;
@@ -62,7 +62,7 @@ public class CoreFallbackExceptionHandler {
   @ExceptionHandler(CreditLimitExceededException.class)
   public ResponseEntity<ApiResponse<Map<String, Object>>> handleCreditLimitExceeded(
       CreditLimitExceededException ex, HttpServletRequest request) {
-    String traceId = UUID.randomUUID().toString();
+    String traceId = RequestTraceContext.traceId();
     logger.warn("Credit limit exceeded [{}]", traceId, ex);
     Map<String, Object> data = new HashMap<>();
     data.put("code", "CREDIT_LIMIT_EXCEEDED");
@@ -87,7 +87,7 @@ public class CoreFallbackExceptionHandler {
   @ExceptionHandler(InvalidMfaException.class)
   public ResponseEntity<ApiResponse<Map<String, Object>>> handleInvalidMfa(
       InvalidMfaException ex, HttpServletRequest request) {
-    String traceId = UUID.randomUUID().toString();
+    String traceId = RequestTraceContext.traceId();
     logger.warn("Invalid MFA attempt [{}]", traceId);
     Map<String, Object> data = new HashMap<>();
     data.put("code", ErrorCode.AUTH_MFA_INVALID.getCode());
@@ -100,7 +100,7 @@ public class CoreFallbackExceptionHandler {
   @ExceptionHandler(AuthenticationException.class)
   public ResponseEntity<ApiResponse<Map<String, Object>>> handleAuthenticationException(
       AuthenticationException ex, HttpServletRequest request) {
-    String traceId = UUID.randomUUID().toString();
+    String traceId = RequestTraceContext.traceId();
     logger.warn("Authentication failed [{}]", traceId);
     ErrorCode errorCode;
     HttpStatus status = HttpStatus.UNAUTHORIZED;
@@ -116,14 +116,16 @@ public class CoreFallbackExceptionHandler {
     Map<String, Object> data = new HashMap<>();
     data.put("code", errorCode.getCode());
     data.put("message", errorCode.getDefaultMessage());
+    data.put("reason", errorCode.getDefaultMessage());
     data.put("traceId", traceId);
+    data.put("path", request.getRequestURI());
     return ResponseEntity.status(status).body(ApiResponse.failure(responseMessage, data));
   }
 
   @ExceptionHandler(AuthSecurityContractException.class)
   public ResponseEntity<ApiResponse<Map<String, Object>>> handleAuthSecurityContract(
       AuthSecurityContractException ex, HttpServletRequest request) {
-    String traceId = UUID.randomUUID().toString();
+    String traceId = RequestTraceContext.traceId();
     logger.warn(
         "Auth/security contract failure [{}] - status: {}, code: {}",
         traceId,
@@ -141,7 +143,7 @@ public class CoreFallbackExceptionHandler {
   @ExceptionHandler(AccessDeniedException.class)
   public ResponseEntity<ApiResponse<Map<String, Object>>> handleAccessDenied(
       AccessDeniedException ex, HttpServletRequest request) {
-    String traceId = UUID.randomUUID().toString();
+    String traceId = RequestTraceContext.traceId();
     logger.warn("Access denied [{}]", traceId);
     if (auditService != null && !AccessDeniedAuditMarker.isCurrentRequestAlreadyAudited(request)) {
       Map<String, String> metadata = new HashMap<>();
@@ -173,7 +175,9 @@ public class CoreFallbackExceptionHandler {
     Map<String, Object> data = new HashMap<>();
     data.put("code", ErrorCode.AUTH_INSUFFICIENT_PERMISSIONS.getCode());
     data.put("message", userMessage);
+    data.put("reason", userMessage);
     data.put("traceId", traceId);
+    data.put("path", request.getRequestURI());
     return ResponseEntity.status(HttpStatus.FORBIDDEN).body(ApiResponse.failure(userMessage, data));
   }
 
@@ -184,7 +188,7 @@ public class CoreFallbackExceptionHandler {
   @ExceptionHandler(DataIntegrityViolationException.class)
   public ResponseEntity<ApiResponse<Map<String, Object>>> handleDataIntegrityViolation(
       DataIntegrityViolationException ex, HttpServletRequest request) {
-    String traceId = UUID.randomUUID().toString();
+    String traceId = RequestTraceContext.traceId();
     logger.error("Data integrity violation [{}]", traceId, ex);
     ErrorCode errorCode = ErrorCode.BUSINESS_CONSTRAINT_VIOLATION;
     String message = "Data constraint violation";
@@ -208,7 +212,7 @@ public class CoreFallbackExceptionHandler {
   @ExceptionHandler(IllegalStateException.class)
   public ResponseEntity<ApiResponse<Map<String, Object>>> handleIllegalState(
       IllegalStateException ex, HttpServletRequest request) {
-    String traceId = UUID.randomUUID().toString();
+    String traceId = RequestTraceContext.traceId();
     logger.warn("Illegal state [{}]", traceId);
     String userMessage = ErrorCode.BUSINESS_INVALID_STATE.getDefaultMessage();
     Map<String, Object> data = new HashMap<>();
@@ -221,7 +225,7 @@ public class CoreFallbackExceptionHandler {
   @ExceptionHandler(RuntimeException.class)
   public ResponseEntity<ApiResponse<Map<String, Object>>> handleRuntime(
       RuntimeException ex, HttpServletRequest request) {
-    String traceId = UUID.randomUUID().toString();
+    String traceId = RequestTraceContext.traceId();
     logger.error("Unexpected error [{}]", traceId, ex);
     Map<String, Object> data = new HashMap<>();
     data.put("code", ErrorCode.SYSTEM_INTERNAL_ERROR.getCode());
@@ -234,7 +238,7 @@ public class CoreFallbackExceptionHandler {
   @ExceptionHandler(Exception.class)
   public ResponseEntity<ApiResponse<Map<String, Object>>> handleGenericException(
       Exception ex, HttpServletRequest request) {
-    String traceId = UUID.randomUUID().toString();
+    String traceId = RequestTraceContext.traceId();
     logger.error("Unhandled exception [{}]", traceId, ex);
     Map<String, Object> data = new HashMap<>();
     data.put("code", ErrorCode.UNKNOWN_ERROR.getCode());

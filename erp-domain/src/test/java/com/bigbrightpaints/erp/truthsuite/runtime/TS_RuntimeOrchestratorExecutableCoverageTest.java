@@ -29,6 +29,7 @@ import com.bigbrightpaints.erp.modules.accounting.service.DealerLedgerService;
 import com.bigbrightpaints.erp.modules.accounting.service.StatementService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
+import com.bigbrightpaints.erp.modules.company.service.TenantRealActionUsageService;
 import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService.InventoryReservationResult;
 import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceRepository;
 import com.bigbrightpaints.erp.modules.invoice.service.InvoicePdfService;
@@ -107,7 +108,8 @@ class TS_RuntimeOrchestratorExecutableCoverageTest {
             traceService,
             policyEnforcer,
             idempotencyService,
-            featureFlags);
+            featureFlags,
+            mock(TenantRealActionUsageService.class));
 
     OrchestratorCommand orderCommand =
         new OrchestratorCommand(1L, "ORCH.ORDER.APPROVE", "idem-order", "hash", "trace-order");
@@ -326,7 +328,8 @@ class TS_RuntimeOrchestratorExecutableCoverageTest {
             traceService,
             policyEnforcer,
             idempotencyService,
-            featureFlags);
+            featureFlags,
+            mock(TenantRealActionUsageService.class));
 
     OrchestratorCommand failingApprove =
         new OrchestratorCommand(1L, "ORCH.ORDER.APPROVE", "   ", "hash", "trace-failing");
@@ -373,7 +376,8 @@ class TS_RuntimeOrchestratorExecutableCoverageTest {
             traceService,
             policyEnforcer,
             idempotencyService,
-            featureFlags);
+            featureFlags,
+            mock(TenantRealActionUsageService.class));
 
     OrchestratorCommand fulfillmentCommand =
         new OrchestratorCommand(
@@ -432,7 +436,8 @@ class TS_RuntimeOrchestratorExecutableCoverageTest {
             traceService,
             policyEnforcer,
             idempotencyService,
-            featureFlags);
+            featureFlags,
+            mock(TenantRealActionUsageService.class));
 
     OrchestratorCommand autoApproveCommand =
         new OrchestratorCommand(
@@ -481,7 +486,8 @@ class TS_RuntimeOrchestratorExecutableCoverageTest {
             traceService,
             policyEnforcer,
             idempotencyService,
-            featureFlags);
+            featureFlags,
+            mock(TenantRealActionUsageService.class));
 
     assertThat(
             java.util.Arrays.stream(CommandDispatcher.class.getDeclaredMethods())
@@ -521,7 +527,8 @@ class TS_RuntimeOrchestratorExecutableCoverageTest {
             mock(TraceService.class),
             new PolicyEnforcer(),
             mock(OrchestratorIdempotencyService.class),
-            mock(OrchestratorFeatureFlags.class));
+            mock(OrchestratorFeatureFlags.class),
+            mock(TenantRealActionUsageService.class));
 
     String hashInput = "X".repeat(160);
     String normalizedHashed =

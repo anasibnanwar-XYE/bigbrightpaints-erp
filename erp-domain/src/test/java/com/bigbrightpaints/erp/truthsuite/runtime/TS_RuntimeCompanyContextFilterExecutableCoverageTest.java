@@ -91,6 +91,24 @@ class TS_RuntimeCompanyContextFilterExecutableCoverageTest {
   }
 
   @Test
+  void doFilter_allowsActivationVerifyWithoutCompanyAdmissionEvenWhenRequestCarriesAuthState()
+      throws ServletException, IOException {
+    authenticate("admin@bbp.com", Set.of("ROLE_ADMIN"), Set.of("ACME"));
+    MockHttpServletRequest request = request("GET", "/api/v1/auth/activation/verify");
+    request.addHeader("X-Company-Code", "ACME");
+    request.setAttribute("jwtClaims", mock(Claims.class));
+    MockHttpServletResponse response = new MockHttpServletResponse();
+
+    filter.doFilter(request, response, filterChain);
+
+    assertThat(response.getStatus()).isEqualTo(200);
+    verifyNoInteractions(companyService);
+    verify(tenantRuntimeRequestAdmissionService)
+        .completeRequest(TenantRuntimeEnforcementService.TenantRequestAdmission.notTracked(), 200);
+    verify(filterChain).doFilter(request, response);
+  }
+
+  @Test
   void doFilter_allowsSuperAdminCanonicalTenantControlAdmissionForNonActiveTenant()
       throws ServletException, IOException {
     authenticate("ops@bbp.com", Set.of("ROLE_SUPER_ADMIN"), Set.of("ROOT"));
@@ -234,7 +252,23 @@ class TS_RuntimeCompanyContextFilterExecutableCoverageTest {
   }
 
   @Test
-  void helperMethods_coverPathResolutionBranches() {
+  void helperMethods_coverCanonicalControlBindingAndPathResolutionBranches() {
+    assertThat(invokeIsCompanyBoundControlRequest("/api/v1/superadmin/tenants/77", "GET")).isTrue();
+    assertThat(invokeIsCompanyBoundControlRequest("/api/v1/superadmin/tenants/77/lifecycle", "PUT"))
+        .isTrue();
+    assertThat(
+            invokeIsCompanyBoundControlRequest(
+                "/api/v1/superadmin/tenants/77/support/admin-password-reset", "POST"))
+        .as("removed support reset is not runtime lifecycle-control")
+        .isFalse();
+    assertThat(
+            invokeIsCompanyBoundControlRequest(
+                "/api/v1/superadmin/tenants/77/admins/9/email-change/request", "POST"))
+        .isTrue();
+    assertThat(invokeIsCompanyBoundControlRequest("/api/v1/superadmin/tenants/77", "POST"))
+        .isFalse();
+    assertThat(invokeIsCompanyBoundControlRequest("/api/v1/private", "POST")).isFalse();
+
     assertThat(invokeResolveApplicationPath(null)).isNull();
     MockHttpServletRequest contextAware = request("PUT", "");
     contextAware.setContextPath("/erp");
@@ -245,9 +279,12 @@ class TS_RuntimeCompanyContextFilterExecutableCoverageTest {
 
   @Test
   void helperMethods_coverPublicPasswordResetAndPathNormalizationBranches() {
-    assertThat(invokeIsPublicPasswordResetRequest("/api/v1/auth/password/forgot", "POST")).isTrue();
-    assertThat(invokeIsPublicPasswordResetRequest("/api/v1/auth/password/reset/", "POST")).isTrue();
-    assertThat(invokeIsPublicPasswordResetRequest("/api/v1/private", "POST")).isFalse();
+    assertThat(invokeIsPublicAuthFlowRequest("/api/v1/auth/password/forgot", "POST")).isTrue();
+    assertThat(invokeIsPublicAuthFlowRequest("/api/v1/auth/password/reset/", "POST")).isTrue();
+    assertThat(invokeIsPublicAuthFlowRequest("/api/v1/auth/activation/complete", "POST")).isTrue();
+    assertThat(invokeIsPublicAuthFlowRequest("/api/v1/auth/activation/verify", "GET")).isTrue();
+    assertThat(invokeIsPublicAuthFlowRequest("/api/v1/auth/activation/verify", "POST")).isFalse();
+    assertThat(invokeIsPublicAuthFlowRequest("/api/v1/private", "POST")).isFalse();
 
     assertThat(invokeNormalizePath(" /api/v1/superadmin/tenants/77/limits/// "))
         .isEqualTo("/api/v1/superadmin/tenants/77/limits");
@@ -278,10 +315,16 @@ class TS_RuntimeCompanyContextFilterExecutableCoverageTest {
         filter, "resolveApplicationPath", request);
   }
 
-  private boolean invokeIsPublicPasswordResetRequest(String path, String method) {
+  private boolean invokeIsPublicAuthFlowRequest(String path, String method) {
     return (Boolean)
         com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-            filter, "isPublicPasswordResetRequest", path, method);
+            filter, "isPublicAuthFlowRequest", path, method);
+  }
+
+  private boolean invokeIsCompanyBoundControlRequest(String path, String method) {
+    return com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            filter, "resolveCompanyBoundControlBinding", path, method)
+        != null;
   }
 
   private String invokeNormalizePath(String path) {
@@ -360,7 +403,9 @@ class TS_RuntimeCompanyContextFilterExecutableCoverageTest {
               String.class,
               String.class,
               String.class,
-              String.class);
+              String.class,
+              Long.class,
+              Long.class);
       constructor.setAccessible(true);
       return constructor.newInstance(
           admitted,
@@ -370,6 +415,8 @@ class TS_RuntimeCompanyContextFilterExecutableCoverageTest {
           statusCode,
           message,
           false,
+          null,
+          null,
           null,
           null,
           null,

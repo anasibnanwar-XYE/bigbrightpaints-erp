@@ -10,7 +10,9 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import org.junit.jupiter.api.Test;
@@ -139,6 +141,62 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
     assertOperationContract(root, "/api/v1/auth/sessions/{sessionId}", "delete", null, "204", null);
     assertOperationContract(root, "/api/v1/auth/sessions/current", "delete", null, "204", null);
     assertOperationContract(root, "/api/v1/auth/sessions", "delete", null, "204", null);
+    assertOperationContract(
+        root,
+        "/api/v1/auth/activation/verify",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseActivationVerifyResponse");
+    assertOperationContract(
+        root,
+        "/api/v1/auth/activation/complete",
+        "post",
+        "#/components/schemas/ActivationCompleteRequest",
+        "200",
+        "#/components/schemas/ApiResponseActivationCompleteResponse");
+    assertOperationContract(
+        root,
+        "/api/v1/setup/status",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseOwnerSetupStatusResponse");
+    assertOperationContract(
+        root,
+        "/api/v1/setup/company-details",
+        "put",
+        "#/components/schemas/OwnerSetupCompanyDetailsRequest",
+        "200",
+        "#/components/schemas/ApiResponseOwnerSetupStatusResponse");
+    assertOperationContract(
+        root,
+        "/api/v1/setup/gst",
+        "put",
+        "#/components/schemas/OwnerSetupGstRequest",
+        "200",
+        "#/components/schemas/ApiResponseOwnerSetupStatusResponse");
+    assertOperationContract(
+        root,
+        "/api/v1/setup/accounting",
+        "put",
+        "#/components/schemas/OwnerSetupAccountingRequest",
+        "200",
+        "#/components/schemas/ApiResponseOwnerSetupStatusResponse");
+    assertOperationContract(
+        root,
+        "/api/v1/setup/invite-team",
+        "post",
+        "#/components/schemas/OwnerSetupInviteTeamRequest",
+        "200",
+        "#/components/schemas/ApiResponseOwnerSetupStatusResponse");
+    assertOperationContract(
+        root,
+        "/api/v1/setup/finish",
+        "post",
+        "#/components/schemas/OwnerSetupFinishRequest",
+        "200",
+        "#/components/schemas/ApiResponseOwnerSetupStatusResponse");
     assertOperationMissing(root, "/api/v1/auth/profile", "get");
     assertOperationMissing(root, "/api/v1/auth/profile", "post");
     assertOperationMissing(root, "/api/v1/auth/profile", "put");
@@ -155,14 +213,49 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
         "get",
         null,
         "200",
-        "#/components/schemas/ApiResponseSystemSettingsDto");
+        "#/components/schemas/ApiResponseSuperAdminPlatformSettingsDto");
     assertOperationContract(
         root,
         "/api/v1/superadmin/settings",
         "put",
-        "#/components/schemas/SystemSettingsUpdateRequest",
+        "#/components/schemas/SuperAdminPlatformSettingsUpdateRequest",
         "200",
-        "#/components/schemas/ApiResponseSystemSettingsDto");
+        "#/components/schemas/ApiResponseSuperAdminPlatformSettingsDto");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/profile",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseSuperAdminProfileDto");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/profile",
+        "put",
+        "#/components/schemas/SuperAdminProfileUpdateRequest",
+        "200",
+        "#/components/schemas/ApiResponseSuperAdminProfileDto");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/profile/password",
+        "post",
+        "#/components/schemas/ChangePasswordRequest",
+        "200",
+        "#/components/schemas/ApiResponseSuperAdminPasswordChangeResponseDto");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/profile/sessions",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseListSuperAdminProfileSessionDto");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/profile/sessions/{sessionId}/revoke",
+        "post",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseSuperAdminSessionRevokeResponseDto");
     assertOperationContract(
         root,
         "/api/v1/superadmin/roles",
@@ -223,13 +316,7 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
         "200",
         "#/components/schemas/ApiResponseAdminSelfSettingsDto");
     assertOperationMissing(root, "/api/v1/admin/exports/pending", "get");
-    assertOperationContract(
-        root,
-        "/api/v1/superadmin/tenants/onboard",
-        "post",
-        "#/components/schemas/TenantOnboardingRequest",
-        "200",
-        "#/components/schemas/ApiResponseTenantOnboardingResponse");
+    assertOperationMissing(root, "/api/v1/superadmin/tenants/onboard", "post");
     assertOperationContract(
         root,
         "/api/v1/superadmin/dashboard",
@@ -243,8 +330,33 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
         "get",
         null,
         "200",
-        "#/components/schemas/ApiResponseListSuperAdminTenantSummaryDto");
+        "#/components/schemas/ApiResponsePageResponseSuperAdminTenantSummaryDto");
     assertQueryParameter(root, "/api/v1/superadmin/tenants", "get", "status");
+    assertQueryParameter(root, "/api/v1/superadmin/tenants", "get", "q");
+    assertQueryParameter(root, "/api/v1/superadmin/tenants", "get", "page");
+    assertQueryParameter(root, "/api/v1/superadmin/tenants", "get", "size");
+    assertQueryParameter(root, "/api/v1/superadmin/tenants", "get", "sort");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/tenants/new",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseSuperAdminAddClientOptionsDto");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/tenants",
+        "post",
+        "#/components/schemas/SuperAdminAddClientCreateRequest",
+        "201",
+        "#/components/schemas/ApiResponseSuperAdminAddClientCreateResponse");
+    JsonNode addClientCreateResponses =
+        root.path("paths").path("/api/v1/superadmin/tenants").path("post").path("responses");
+    assertThat(addClientCreateResponses.has("200"))
+        .withFailMessage(
+            "POST /api/v1/superadmin/tenants must not document a contradictory 200 success"
+                + " response when runtime creates clients with 201 Created")
+        .isFalse();
     assertOperationContract(
         root,
         "/api/v1/superadmin/tenants/{id}",
@@ -252,6 +364,81 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
         null,
         "200",
         "#/components/schemas/ApiResponseSuperAdminTenantDetailDto");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/usage",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponsePlatformUsage");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/tenants/{id}/usage",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseTenantUsage");
+    assertThat(
+            root.path("components")
+                .path("schemas")
+                .path("TenantUsage")
+                .path("properties")
+                .has("operationalDimensions"))
+        .withFailMessage(
+            "Tenant usage schema must expose operationalDimensions for runtime API window,"
+                + " rejected-request, and in-flight/concurrent readback")
+        .isTrue();
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/tenants/{id}/usage/history",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseTenantUsageHistory");
+    assertQueryParameter(
+        root, "/api/v1/superadmin/tenants/{id}/usage/history", "get", "periodType");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/tenants/{id}/quota-policy",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseTenantQuotaPolicy");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/tenants/{id}/quota-check",
+        "post",
+        "#/components/schemas/QuotaActionRequest",
+        "200",
+        "#/components/schemas/ApiResponseQuotaActionResult");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/tenants/{id}/activation/send",
+        "post",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseSuperAdminActivationActionResponse");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/tenants/{id}/activation/resend",
+        "post",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseSuperAdminActivationActionResponse");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/tenants/{id}/activation/copy",
+        "post",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseSuperAdminActivationCopyResponse");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/tenants/{id}/activation/expire",
+        "post",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseSuperAdminActivationActionResponse");
     assertOperationContract(
         root,
         "/api/v1/superadmin/tenants/{id}/lifecycle",
@@ -266,6 +453,20 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
         "#/components/schemas/TenantLimitsUpdateRequest",
         "200",
         "#/components/schemas/ApiResponseSuperAdminTenantLimitsDto");
+    assertThat(
+            root.path("components")
+                .path("schemas")
+                .path("SuperAdminTenantLimitsDto")
+                .path("properties")
+                .has("burstRequestsPerMinute"))
+        .isTrue();
+    assertThat(
+            root.path("components")
+                .path("schemas")
+                .path("Limits")
+                .path("properties")
+                .has("burstRequestsPerMinute"))
+        .isTrue();
     assertOperationContract(
         root,
         "/api/v1/superadmin/tenants/{id}/modules",
@@ -275,18 +476,41 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
         "#/components/schemas/ApiResponseCompanyEnabledModulesDto");
     assertOperationContract(
         root,
+        "/api/v1/superadmin/tenants/{id}/entitlements",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseSuperAdminTenantEntitlementsDto");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/tenants/{id}/plan",
+        "put",
+        "#/components/schemas/SuperAdminTenantPlanAssignmentRequest",
+        "200",
+        "#/components/schemas/ApiResponseSuperAdminTenantEntitlementsDto");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/tenants/{id}/entitlements/overrides",
+        "put",
+        "#/components/schemas/SuperAdminTenantEntitlementOverrideRequest",
+        "200",
+        "#/components/schemas/ApiResponseSuperAdminTenantEntitlementsDto");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/tenants/{id}/entitlements/overrides/{key}",
+        "delete",
+        "#/components/schemas/TenantEntitlementOverrideRemoveRequest",
+        "200",
+        "#/components/schemas/ApiResponseSuperAdminTenantEntitlementsDto");
+    assertOperationContract(
+        root,
         "/api/v1/superadmin/tenants/{id}/support/warnings",
         "post",
         "#/components/schemas/TenantSupportWarningRequest",
         "200",
         "#/components/schemas/ApiResponseCompanySupportWarningDto");
-    assertOperationContract(
-        root,
-        "/api/v1/superadmin/tenants/{id}/support/admin-password-reset",
-        "post",
-        "#/components/schemas/TenantAdminPasswordResetRequest",
-        "200",
-        "#/components/schemas/ApiResponseCompanyAdminCredentialResetDto");
+    assertOperationMissing(
+        root, "/api/v1/superadmin/tenants/{id}/support/admin-password-reset", "post");
     assertOperationContract(
         root,
         "/api/v1/superadmin/tenants/{id}/support/context",
@@ -294,6 +518,143 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
         "#/components/schemas/TenantSupportContextUpdateRequest",
         "200",
         "#/components/schemas/ApiResponseSuperAdminTenantSupportContextDto");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/support/tickets",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponsePageResponseQueueItem");
+    assertQueryParameter(root, "/api/v1/superadmin/support/tickets", "get", "status");
+    assertQueryParameter(root, "/api/v1/superadmin/support/tickets", "get", "q");
+    assertQueryParameter(root, "/api/v1/superadmin/support/tickets", "get", "page");
+    assertQueryParameter(root, "/api/v1/superadmin/support/tickets", "get", "size");
+    assertQueryParameter(root, "/api/v1/superadmin/support/tickets", "get", "sort");
+    assertQueryParameter(root, "/api/v1/superadmin/support/tickets", "get", "category");
+    assertQueryParameter(root, "/api/v1/superadmin/support/tickets", "get", "slaStatus");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/support/tickets/sla/refresh",
+        "post",
+        "#/components/schemas/SlaRefreshRequest",
+        "200",
+        "#/components/schemas/ApiResponseSlaRefreshResponse");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/infra/health",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseSuperAdminPlatformHealthDto");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/infra/costs",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseDashboard");
+    assertQueryParameter(root, "/api/v1/superadmin/infra/costs", "get", "currency");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/infra/costs/snapshots",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseListSnapshotResponse");
+    assertQueryParameter(root, "/api/v1/superadmin/infra/costs/snapshots", "get", "currency");
+    assertQueryParameter(
+        root, "/api/v1/superadmin/infra/costs/snapshots", "get", "includeArchived");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/infra/costs/snapshots",
+        "post",
+        "#/components/schemas/SnapshotRequest",
+        "201",
+        "#/components/schemas/ApiResponseSnapshotResponse");
+    assertThat(
+            root.path("paths")
+                .path("/api/v1/superadmin/infra/costs/snapshots")
+                .path("post")
+                .path("responses")
+                .has("200"))
+        .withFailMessage("Snapshot creation must document 201 Created, not contradictory 200 OK")
+        .isFalse();
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/infra/costs/snapshots/{snapshotId}",
+        "put",
+        "#/components/schemas/SnapshotRequest",
+        "200",
+        "#/components/schemas/ApiResponseSnapshotResponse");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/infra/costs/snapshots/{snapshotId}/corrections",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseListCorrectionResponse");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/infra/costs/snapshots/{snapshotId}/archive",
+        "post",
+        "#/components/schemas/ArchiveRequest",
+        "200",
+        "#/components/schemas/ApiResponseSnapshotResponse");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/support/tickets/{ticketId}",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseDetail");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/support/tickets/{ticketId}/messages",
+        "post",
+        "#/components/schemas/SupportTicketMessageRequest",
+        "200",
+        "#/components/schemas/ApiResponseSupportTicketMessageResponse");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/support/tickets/{ticketId}/messages",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponsePageResponseSupportTicketMessageResponse");
+    assertQueryParameter(
+        root, "/api/v1/superadmin/support/tickets/{ticketId}/messages", "get", "page");
+    assertQueryParameter(
+        root, "/api/v1/superadmin/support/tickets/{ticketId}/messages", "get", "size");
+    assertQueryParameter(
+        root, "/api/v1/superadmin/support/tickets/{ticketId}/messages", "get", "includeInternal");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/support/tickets/{ticketId}/internal-notes",
+        "post",
+        "#/components/schemas/SupportTicketMessageRequest",
+        "200",
+        "#/components/schemas/ApiResponseSupportTicketMessageResponse");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/support/tickets/{ticketId}/status",
+        "post",
+        "#/components/schemas/StatusUpdateRequest",
+        "200",
+        "#/components/schemas/ApiResponseDetail");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/support/tickets/{ticketId}/convert-to-incident",
+        "post",
+        "#/components/schemas/ConvertToIncidentRequest",
+        "200",
+        "#/components/schemas/ApiResponseDetail");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/support/tickets/{ticketId}/timeline",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseListTimelineItem");
     assertOperationContract(
         root,
         "/api/v1/superadmin/tenants/{id}/force-logout",
@@ -322,6 +683,49 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
         "#/components/schemas/TenantAdminEmailChangeConfirmRequest",
         "200",
         "#/components/schemas/ApiResponseSuperAdminTenantAdminEmailChangeConfirmationDto");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/plans",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseListSuperAdminPlanTemplateDto");
+    assertQueryParameter(root, "/api/v1/superadmin/plans", "get", "includeArchived");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/plans",
+        "post",
+        "#/components/schemas/SuperAdminPlanTemplateCreateRequest",
+        "201",
+        "#/components/schemas/ApiResponseSuperAdminPlanTemplateDto");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/plans/{stableId}",
+        "get",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseSuperAdminPlanTemplateDto");
+    assertQueryParameter(root, "/api/v1/superadmin/plans/{stableId}", "get", "version");
+    assertQueryParameter(root, "/api/v1/superadmin/plans/{stableId}", "get", "includeArchived");
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/plans/{stableId}",
+        "put",
+        "#/components/schemas/SuperAdminPlanTemplateUpdateRequest",
+        "200",
+        "#/components/schemas/ApiResponseSuperAdminPlanTemplateDto");
+    assertPlanDefaultLimitsRequestSchema(root);
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/plans/{stableId}/archive",
+        "post",
+        "#/components/schemas/SuperAdminPlanTemplateArchiveRequest",
+        "200",
+        "#/components/schemas/ApiResponseSuperAdminPlanTemplateDto");
+    assertThat(root.path("paths").has("/api/v1/superadmin/plan-templates")).isFalse();
+    assertThat(root.path("paths").has("/api/v1/superadmin/plan-templates/{stableId}")).isFalse();
+    assertThat(root.path("paths").has("/api/v1/superadmin/plan-templates/{stableId}/archive"))
+        .isFalse();
     assertOperationContract(
         root,
         "/api/v1/changelog",
@@ -388,7 +792,13 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
         "#/components/schemas/ChangelogEntryRequest",
         "200",
         "#/components/schemas/ApiResponseChangelogEntryResponse");
-    assertOperationContract(root, "/api/v1/superadmin/changelog/{id}", "delete", null, "204", null);
+    assertOperationContract(
+        root,
+        "/api/v1/superadmin/changelog/{id}",
+        "delete",
+        null,
+        "200",
+        "#/components/schemas/ApiResponseVoid");
     assertOperationMissing(root, "/api/v1/admin/tenant-runtime/metrics", "get");
     assertOperationMissing(root, "/api/v1/admin/tenant-runtime/policy", "put");
     assertOperationMissing(root, "/api/v1/admin/changelog", "post");
@@ -403,11 +813,14 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
     assertOperationMissing(root, "/api/v1/companies/{id}/support/warnings", "post");
     assertOperationMissing(root, "/api/v1/companies/superadmin/tenants", "post");
     assertOperationMissing(root, "/api/v1/companies/superadmin/tenants/{id}", "put");
-    assertOperationMissing(root, "/api/v1/superadmin/tenants/{id}/usage", "get");
     assertOperationMissing(root, "/api/v1/superadmin/tenants/{id}/activate", "post");
     assertOperationMissing(root, "/api/v1/superadmin/tenants/{id}/deactivate", "post");
     assertOperationMissing(root, "/api/v1/superadmin/tenants/{id}/suspend", "post");
     assertOperationMissing(root, "/api/v1/superadmin/tenants/{id}/lifecycle-state", "put");
+    assertSchemaPresence(root, "TenantOnboardingRequest", false);
+    assertSchemaPresence(root, "TenantOnboardingResponse", false);
+    assertSchemaPresence(root, "TenantAdminPasswordResetRequest", false);
+    assertSchemaPresence(root, "CompanyAdminCredentialResetDto", false);
     assertOperationContract(
         root,
         "/api/v1/admin/users/{userId}/force-reset-password",
@@ -490,11 +903,186 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
   }
 
   @Test
+  void superadmin_route_inventory_classifies_canonical_and_retired_v1_routes() throws IOException {
+    JsonNode root = fetchCurrentSpecNode();
+
+    List<String> canonicalRoutes =
+        List.of(
+            "GET /api/v1/superadmin/dashboard",
+            "GET /api/v1/superadmin/tenants",
+            "GET /api/v1/superadmin/tenants/new",
+            "POST /api/v1/superadmin/tenants",
+            "GET /api/v1/superadmin/tenants/{id}",
+            "GET /api/v1/superadmin/usage",
+            "GET /api/v1/superadmin/tenants/{id}/usage",
+            "GET /api/v1/superadmin/tenants/{id}/usage/history",
+            "GET /api/v1/superadmin/tenants/{id}/quota-policy",
+            "POST /api/v1/superadmin/tenants/{id}/quota-check",
+            "PUT /api/v1/superadmin/tenants/{id}/lifecycle",
+            "PUT /api/v1/superadmin/tenants/{id}/limits",
+            "PUT /api/v1/superadmin/tenants/{id}/modules",
+            "GET /api/v1/superadmin/tenants/{id}/entitlements",
+            "PUT /api/v1/superadmin/tenants/{id}/plan",
+            "PUT /api/v1/superadmin/tenants/{id}/entitlements/overrides",
+            "DELETE /api/v1/superadmin/tenants/{id}/entitlements/overrides/{key}",
+            "POST /api/v1/superadmin/tenants/{id}/support/warnings",
+            "PUT /api/v1/superadmin/tenants/{id}/support/context",
+            "GET /api/v1/superadmin/tenants/{id}/review-intelligence",
+            "PUT /api/v1/superadmin/tenants/{id}/review-intelligence",
+            "POST /api/v1/superadmin/tenants/{id}/force-logout",
+            "PUT /api/v1/superadmin/tenants/{id}/admins/main",
+            "POST /api/v1/superadmin/tenants/{id}/admins/{adminId}/email-change/request",
+            "POST /api/v1/superadmin/tenants/{id}/admins/{adminId}/email-change/confirm",
+            "GET /api/v1/superadmin/plans",
+            "POST /api/v1/superadmin/plans",
+            "GET /api/v1/superadmin/plans/{stableId}",
+            "PUT /api/v1/superadmin/plans/{stableId}",
+            "POST /api/v1/superadmin/plans/{stableId}/archive",
+            "GET /api/v1/superadmin/support/tickets",
+            "GET /api/v1/superadmin/support/tickets/{ticketId}",
+            "GET /api/v1/superadmin/support/tickets/{ticketId}/messages",
+            "GET /api/v1/superadmin/support/tickets/{ticketId}/timeline",
+            "POST /api/v1/superadmin/support/tickets/{ticketId}/convert-to-incident",
+            "POST /api/v1/superadmin/support/tickets/{ticketId}/internal-notes",
+            "POST /api/v1/superadmin/support/tickets/{ticketId}/messages",
+            "POST /api/v1/superadmin/support/tickets/{ticketId}/status",
+            "POST /api/v1/superadmin/support/tickets/sla/refresh",
+            "GET /api/v1/superadmin/infra/health",
+            "GET /api/v1/superadmin/infra/costs",
+            "GET /api/v1/superadmin/infra/costs/snapshots",
+            "POST /api/v1/superadmin/infra/costs/snapshots",
+            "PUT /api/v1/superadmin/infra/costs/snapshots/{snapshotId}",
+            "GET /api/v1/superadmin/infra/costs/snapshots/{snapshotId}/corrections",
+            "POST /api/v1/superadmin/infra/costs/snapshots/{snapshotId}/archive",
+            "GET /api/v1/superadmin/tenants/coa-templates",
+            "GET /api/v1/superadmin/settings",
+            "PUT /api/v1/superadmin/settings",
+            "GET /api/v1/superadmin/audit/platform-events",
+            "GET /api/v1/superadmin/audit/security-events",
+            "GET /api/v1/superadmin/audit/suspicious-events",
+            "POST /api/v1/superadmin/audit/suspicious-events/{eventId}/acknowledge",
+            "POST /api/v1/superadmin/audit/suspicious-events/{eventId}/resolve",
+            "POST /api/v1/superadmin/audit/suspicious-events/{eventId}/reopen",
+            "POST /api/v1/superadmin/changelog",
+            "PUT /api/v1/superadmin/changelog/{id}",
+            "DELETE /api/v1/superadmin/changelog/{id}",
+            "POST /api/v1/superadmin/notify",
+            "POST /api/v1/auth/login",
+            "POST /api/v1/auth/refresh-token",
+            "POST /api/v1/auth/logout",
+            "GET /api/v1/auth/me",
+            "POST /api/v1/auth/password/change",
+            "POST /api/v1/auth/password/forgot",
+            "POST /api/v1/auth/password/reset",
+            "GET /api/v1/setup/status",
+            "PUT /api/v1/setup/company-details",
+            "PUT /api/v1/setup/gst",
+            "PUT /api/v1/setup/accounting",
+            "POST /api/v1/setup/invite-team",
+            "POST /api/v1/setup/finish",
+            "POST /api/v1/auth/mfa/setup",
+            "POST /api/v1/auth/mfa/activate",
+            "POST /api/v1/auth/mfa/disable",
+            "GET /api/v1/admin/support/tickets",
+            "POST /api/v1/admin/support/tickets",
+            "GET /api/v1/admin/support/tickets/{ticketId}",
+            "GET /api/v1/portal/support/tickets",
+            "POST /api/v1/portal/support/tickets",
+            "GET /api/v1/portal/support/tickets/{ticketId}",
+            "GET /api/v1/dealer-portal/support/tickets",
+            "POST /api/v1/dealer-portal/support/tickets",
+            "GET /api/v1/dealer-portal/support/tickets/{ticketId}");
+    List<String> actualRoutes = extractOperationSignatures(root.toString());
+    assertThat(actualRoutes).containsAll(canonicalRoutes);
+
+    List<String> retiredRoutes =
+        List.of(
+            "post /api/v1/superadmin/tenants/onboard",
+            "post /api/v1/superadmin/tenants/{id}/support/admin-password-reset",
+            "post /api/v1/superadmin/tenants/{id}/activate",
+            "post /api/v1/superadmin/tenants/{id}/deactivate",
+            "post /api/v1/superadmin/tenants/{id}/suspend",
+            "put /api/v1/superadmin/tenants/{id}/lifecycle-state",
+            "post /api/v1/companies/{id}/support/admin-password-reset",
+            "post /api/v1/companies/superadmin/tenants",
+            "get /api/v1/auth/profile",
+            "put /api/v1/auth/profile",
+            "get /api/v1/support/tickets",
+            "post /api/v1/support/tickets");
+    retiredRoutes.forEach(
+        retired -> {
+          int separator = retired.indexOf(' ');
+          assertOperationMissing(
+              root, retired.substring(separator + 1), retired.substring(0, separator));
+        });
+
+    String specText = root.toString();
+    assertThat(specText)
+        .doesNotContain("temporaryPassword")
+        .doesNotContain("adminTemporaryPassword")
+        .doesNotContain("credentialsEmailSent")
+        .doesNotContain("TenantOnboardingRequest")
+        .doesNotContain("CompanyAdminCredentialResetDto");
+  }
+
+  @Test
+  void no_location_setup_scanner_is_scoped_to_v1_setup_contract() throws IOException {
+    JsonNode root = fetchCurrentSpecNode();
+
+    List<String> scopedOpenApiOperations =
+        List.of(
+            "GET /api/v1/superadmin/tenants/new",
+            "POST /api/v1/superadmin/tenants",
+            "GET /api/v1/superadmin/tenants",
+            "GET /api/v1/superadmin/tenants/{id}",
+            "GET /api/v1/setup/status",
+            "PUT /api/v1/setup/company-details",
+            "PUT /api/v1/setup/gst",
+            "PUT /api/v1/setup/accounting",
+            "POST /api/v1/setup/invite-team",
+            "POST /api/v1/setup/finish");
+    for (String signature : scopedOpenApiOperations) {
+      int separator = signature.indexOf(' ');
+      assertNoProhibitedSetupTerms(
+          collectOperationAndSchemaText(
+              root, signature.substring(separator + 1), signature.substring(0, separator)),
+          "OpenAPI V1 setup scope " + signature);
+    }
+
+    List.of(
+            "/api/v1/setup/branches",
+            "/api/v1/setup/warehouses",
+            "/api/v1/superadmin/tenants/{id}/branches",
+            "/api/v1/superadmin/tenants/{id}/warehouses",
+            "/api/v1/superadmin/tenants/{id}/setup/branches",
+            "/api/v1/superadmin/tenants/{id}/setup/warehouses")
+        .forEach(
+            path -> {
+              assertOperationMissing(root, path, "get");
+              assertOperationMissing(root, path, "post");
+              assertOperationMissing(root, path, "put");
+            });
+
+    List.of(
+            "docs/frontend-portals/superadmin/api-contracts.md",
+            "docs/frontend-portals/superadmin/workflows.md",
+            "docs/frontend-portals/superadmin/README.md")
+        .forEach(
+            docPath -> {
+              try {
+                assertNoProhibitedSetupTerms(readRepoFile(docPath), "docs example " + docPath);
+              } catch (IOException e) {
+                throw new IllegalStateException("Unable to scan " + docPath, e);
+              }
+            });
+  }
+
+  @Test
   void auth_and_tenant_control_docs_match_the_hard_cut_route_story() throws IOException {
     String modulesAuth = readRepoFile("docs/modules/auth.md");
     assertThat(modulesAuth).contains("`GET /api/v1/auth/me`");
     assertThat(modulesAuth)
-        .contains("`/api/v1/superadmin/tenants/{id}/support/admin-password-reset`");
+        .doesNotContain("`/api/v1/superadmin/tenants/{id}/support/admin-password-reset`");
     assertThat(modulesAuth)
         .doesNotContain("### UserProfileController — `/api/v1/auth/profile`")
         .doesNotContain("| GET | `/api/v1/auth/profile` |")
@@ -504,9 +1092,7 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
     String flowAuthIdentity = readRepoFile("docs/flows/auth-identity.md");
     assertThat(flowAuthIdentity).contains("| `/me` | GET | `/api/v1/auth/me` |");
     assertThat(flowAuthIdentity)
-        .contains(
-            "| Super-admin support reset | POST |"
-                + " `/api/v1/superadmin/tenants/{id}/support/admin-password-reset` |")
+        .doesNotContain("`/api/v1/superadmin/tenants/{id}/support/admin-password-reset`")
         .doesNotContain("| Profile read | GET | `/api/v1/auth/profile` |")
         .doesNotContain("| Profile update | PUT | `/api/v1/auth/profile` |")
         .doesNotContain("PUT `/api/v1/auth/profile`")
@@ -517,7 +1103,7 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
     assertThat(codeReviewControlPlane)
         .contains("`PUT /api/v1/superadmin/tenants/{id}/lifecycle`")
         .contains("`PUT /api/v1/superadmin/tenants/{id}/limits`")
-        .contains("`POST /api/v1/superadmin/tenants/{id}/support/admin-password-reset`")
+        .doesNotContain("`POST /api/v1/superadmin/tenants/{id}/support/admin-password-reset`")
         .doesNotContain("`GET /api/v1/admin/tenant-runtime/metrics`")
         .doesNotContain("`PUT /api/v1/admin/tenant-runtime/policy`")
         .doesNotContain("`PUT /api/v1/companies/{id}/tenant-runtime/policy`")
@@ -984,6 +1570,93 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
   }
 
   @Test
+  void superadmin_contract_documents_standard_envelope_errors_and_trace_metadata()
+      throws IOException {
+    JsonNode root = fetchCurrentSpecNode();
+    JsonNode dashboardEnvelope =
+        root.path("components").path("schemas").path("ApiResponseCompanySuperAdminDashboardDto");
+    assertThat(dashboardEnvelope.path("properties").has("metadata")).isTrue();
+    JsonNode dashboardProperties =
+        root.path("components")
+            .path("schemas")
+            .path("CompanySuperAdminDashboardDto")
+            .path("properties");
+    assertThat(dashboardProperties.has("recurringRevenueByCurrency")).isTrue();
+    assertThat(dashboardProperties.has("recurringRevenueAggregationPolicy")).isTrue();
+    assertThat(dashboardProperties.has("recurringRevenueCurrencyCount")).isTrue();
+    JsonNode metadataSchema = root.path("components").path("schemas").path("Metadata");
+    assertThat(metadataSchema.path("properties").has("traceId")).isTrue();
+    assertThat(metadataSchema.path("properties").has("correlationId")).isTrue();
+
+    root.path("paths")
+        .fields()
+        .forEachRemaining(
+            pathEntry -> {
+              if (!pathEntry.getKey().startsWith("/api/v1/superadmin")) {
+                return;
+              }
+              pathEntry
+                  .getValue()
+                  .fields()
+                  .forEachRemaining(
+                      methodEntry -> {
+                        if (!isHttpMethod(methodEntry.getKey())) {
+                          return;
+                        }
+                        JsonNode responses = methodEntry.getValue().path("responses");
+                        responses
+                            .fields()
+                            .forEachRemaining(
+                                responseEntry -> {
+                                  String responseCode = responseEntry.getKey();
+                                  if (!responseCode.startsWith("2")) {
+                                    return;
+                                  }
+                                  JsonNode content = responseEntry.getValue().path("content");
+                                  assertThat(content.isMissingNode() || content.isEmpty())
+                                      .as(
+                                          "Super Admin success response %s for %s %s must document"
+                                              + " an ApiResponse schema",
+                                          responseCode, methodEntry.getKey(), pathEntry.getKey())
+                                      .isFalse();
+                                  JsonNode schema = content.path("*/*").path("schema");
+                                  if (schema.isMissingNode()) {
+                                    schema = content.path("application/json").path("schema");
+                                  }
+                                  assertThat(schema.path("$ref").asText())
+                                      .as(
+                                          "Super Admin success response %s for %s %s must use"
+                                              + " ApiResponse schema",
+                                          responseCode, methodEntry.getKey(), pathEntry.getKey())
+                                      .startsWith("#/components/schemas/ApiResponse");
+                                });
+                        assertThat(responses.has("400"))
+                            .as(
+                                "400 response documented for %s %s",
+                                methodEntry.getKey(), pathEntry.getKey())
+                            .isTrue();
+                        assertThat(responses.has("403"))
+                            .as(
+                                "403 response documented for %s %s",
+                                methodEntry.getKey(), pathEntry.getKey())
+                            .isTrue();
+                        assertThat(responses.has("415"))
+                            .as(
+                                "415 response documented for %s %s",
+                                methodEntry.getKey(), pathEntry.getKey())
+                            .isTrue();
+                        assertThat(
+                                responses
+                                    .path("400")
+                                    .path("description")
+                                    .asText("")
+                                    .contains("metadata.traceId"))
+                            .isTrue();
+                      });
+            });
+  }
+
+  @Test
   void packing_contract_keeps_only_canonical_write_surface_and_header_only_idempotency()
       throws IOException {
     JsonNode root = fetchCurrentSpecNode();
@@ -1243,6 +1916,41 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
         .isEqualTo(expectedPresence);
   }
 
+  private void assertPlanDefaultLimitsRequestSchema(JsonNode root) {
+    JsonNode schemas = root.path("components").path("schemas");
+    JsonNode createRequest = schemas.path("SuperAdminPlanTemplateCreateRequest");
+    JsonNode updateRequest = schemas.path("SuperAdminPlanTemplateUpdateRequest");
+    String limitsRef = "#/components/schemas/SuperAdminPlanTemplateDefaultLimitsRequest";
+    assertThat(createRequest.path("properties").path("defaultLimits").path("$ref").asText())
+        .isEqualTo(limitsRef);
+    assertThat(updateRequest.path("properties").path("defaultLimits").path("$ref").asText())
+        .isEqualTo(limitsRef);
+
+    JsonNode requestLimits = schemas.path("SuperAdminPlanTemplateDefaultLimitsRequest");
+    JsonNode responseLimits = schemas.path("DefaultLimits");
+    assertThat(requestLimits.path("properties").has("zeroMeansUnlimited")).isFalse();
+    assertThat(responseLimits.path("properties").has("zeroMeansUnlimited")).isTrue();
+    assertThat(requestLimits.path("required").isArray()).isTrue();
+    List<String> requiredFields = new ArrayList<>();
+    requestLimits.path("required").forEach(node -> requiredFields.add(node.asText()));
+    List<String> limitFields =
+        List.of(
+            "maxActiveUsers",
+            "maxApiRequests",
+            "maxStorageBytes",
+            "maxPdfExports",
+            "maxEmails",
+            "maxJobs",
+            "burstRequestsPerMinute",
+            "maxConcurrentRequests");
+    assertThat(requiredFields).containsAll(limitFields);
+    limitFields.forEach(
+        field -> {
+          JsonNode property = requestLimits.path("properties").path(field);
+          assertThat(property.path("minimum").asInt()).as(field + " minimum").isZero();
+        });
+  }
+
   private static List<String> extractOperationSignatures(String spec) throws IOException {
     JsonNode root = CANONICAL_JSON.readTree(spec);
     JsonNode paths = root.get("paths");
@@ -1304,6 +2012,57 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
       return canonicalObject;
     }
     return node;
+  }
+
+  private String collectOperationAndSchemaText(JsonNode root, String path, String method)
+      throws IOException {
+    JsonNode operation = root.path("paths").path(path).path(method.toLowerCase());
+    assertThat(operation.isMissingNode())
+        .withFailMessage("Missing %s %s from generated OpenAPI spec", method.toUpperCase(), path)
+        .isFalse();
+    ObjectNode scoped = CANONICAL_JSON.createObjectNode();
+    scoped.set("operation", operation);
+    ObjectNode schemas = CANONICAL_JSON.createObjectNode();
+    collectReferencedSchemas(root, operation, new HashSet<>(), schemas);
+    scoped.set("schemas", schemas);
+    return CANONICAL_JSON.writeValueAsString(canonicalizeNode(scoped));
+  }
+
+  private static void collectReferencedSchemas(
+      JsonNode root, JsonNode node, Set<String> visitedSchemaNames, ObjectNode sink) {
+    if (node == null || node.isNull() || node.isMissingNode()) {
+      return;
+    }
+    if (node.isObject()) {
+      String ref = node.path("$ref").asText(null);
+      if (ref != null && ref.startsWith("#/components/schemas/")) {
+        String schemaName = ref.substring("#/components/schemas/".length());
+        if (visitedSchemaNames.add(schemaName)) {
+          JsonNode schema = root.path("components").path("schemas").path(schemaName);
+          sink.set(schemaName, schema);
+          collectReferencedSchemas(root, schema, visitedSchemaNames, sink);
+        }
+      }
+      node.fields()
+          .forEachRemaining(
+              entry -> collectReferencedSchemas(root, entry.getValue(), visitedSchemaNames, sink));
+      return;
+    }
+    if (node.isArray()) {
+      node.forEach(item -> collectReferencedSchemas(root, item, visitedSchemaNames, sink));
+    }
+  }
+
+  private static void assertNoProhibitedSetupTerms(String text, String scope) {
+    String normalized = text.toLowerCase(java.util.Locale.ROOT);
+    assertThat(normalized)
+        .withFailMessage(
+            "%s must not expose branch or warehouse setup terms. Scanner scope is V1 Add Client,"
+                + " owner setup, tenant profile summaries, OpenAPI operation schemas, and"
+                + " Super Admin frontend examples; unrelated ERP bank-branch fields and git"
+                + " branch provenance are intentionally excluded.",
+            scope)
+        .doesNotContain("branch", "warehouse");
   }
 
   private static String sha256Hex(String value) {

@@ -9,10 +9,18 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 
 import com.bigbrightpaints.erp.core.config.EmailProperties;
 import com.bigbrightpaints.erp.core.config.GitHubProperties;
+import com.bigbrightpaints.erp.core.config.SentryIssueProperties;
+import com.bigbrightpaints.erp.core.observability.DatadogTelemetryProperties;
 import com.bigbrightpaints.erp.core.security.JwtProperties;
 
 @SpringBootApplication
-@EnableConfigurationProperties({JwtProperties.class, EmailProperties.class, GitHubProperties.class})
+@EnableConfigurationProperties({
+  JwtProperties.class,
+  EmailProperties.class,
+  GitHubProperties.class,
+  SentryIssueProperties.class,
+  DatadogTelemetryProperties.class
+})
 @ComponentScan(
     basePackages = {
       "com.bigbrightpaints.erp.controller",

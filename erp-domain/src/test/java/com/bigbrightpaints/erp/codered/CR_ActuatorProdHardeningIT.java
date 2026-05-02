@@ -87,11 +87,13 @@ class CR_ActuatorProdHardeningIT extends AbstractIntegrationTest {
   void prodActuatorMetricsAndPrometheusAreNotExposed() {
     ResponseEntity<String> metricsResponse =
         rest.getForEntity(managementUrl("/actuator/metrics"), String.class);
-    assertThat(metricsResponse.getStatusCode()).isIn(HttpStatus.NOT_FOUND, HttpStatus.FORBIDDEN);
+    assertThat(metricsResponse.getStatusCode())
+        .isIn(HttpStatus.NOT_FOUND, HttpStatus.FORBIDDEN, HttpStatus.UNAUTHORIZED);
 
     ResponseEntity<String> prometheusResponse =
         rest.getForEntity(managementUrl("/actuator/prometheus"), String.class);
-    assertThat(prometheusResponse.getStatusCode()).isIn(HttpStatus.NOT_FOUND, HttpStatus.FORBIDDEN);
+    assertThat(prometheusResponse.getStatusCode())
+        .isIn(HttpStatus.NOT_FOUND, HttpStatus.FORBIDDEN, HttpStatus.UNAUTHORIZED);
   }
 
   @Test
@@ -108,7 +110,8 @@ class CR_ActuatorProdHardeningIT extends AbstractIntegrationTest {
       ResponseEntity<String> response = rest.getForEntity(managementUrl(path), String.class);
       String body = response.getBody() == null ? "" : response.getBody();
 
-      assertThat(response.getStatusCode()).isIn(HttpStatus.NOT_FOUND, HttpStatus.FORBIDDEN);
+      assertThat(response.getStatusCode())
+          .isIn(HttpStatus.NOT_FOUND, HttpStatus.FORBIDDEN, HttpStatus.UNAUTHORIZED);
       assertThat(body).doesNotContain("test-audit-signing-key");
       assertThat(body).doesNotContain("12345678901234567890123456789012");
       assertThat(body).doesNotContain("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx");

@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 
 import com.bigbrightpaints.erp.core.security.PortalRoleActionMatrix;
 import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketCategory;
+import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketPriority;
 import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketStatus;
 import com.bigbrightpaints.erp.modules.admin.dto.SupportTicketListResponse;
 import com.bigbrightpaints.erp.modules.admin.dto.SupportTicketResponse;
@@ -45,6 +46,7 @@ class AdminSupportControllerContractTest {
             7L,
             "admin@tenant-a.test",
             SupportTicketCategory.SUPPORT,
+            SupportTicketPriority.NORMAL,
             "Export blocked",
             "Approval completed but file not downloadable",
             SupportTicketStatus.OPEN,
@@ -56,7 +58,10 @@ class AdminSupportControllerContractTest {
             null,
             null,
             null,
-            null);
+            null,
+            null,
+            null,
+            List.of());
     when(service.listAllTenantTickets()).thenReturn(List.of(ticket));
 
     ResponseEntity<ApiResponse<SupportTicketListResponse>> response = controller.list();

@@ -1,9 +1,12 @@
 package com.bigbrightpaints.erp.modules.company.service;
 
+import java.security.SecureRandom;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -11,18 +14,32 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.locks.ReentrantLock;
 
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.StringUtils;
 
 import com.bigbrightpaints.erp.core.audit.AuditEvent;
 import com.bigbrightpaints.erp.core.audit.AuditLog;
 import com.bigbrightpaints.erp.core.audit.AuditLogRepository;
 import com.bigbrightpaints.erp.core.audit.AuditService;
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.notification.EmailService;
 import com.bigbrightpaints.erp.core.security.TokenBlacklistService;
 import com.bigbrightpaints.erp.core.util.CompanyTime;
@@ -30,22 +47,71 @@ import com.bigbrightpaints.erp.modules.auth.domain.PasswordResetTokenRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserPrincipal;
+import com.bigbrightpaints.erp.modules.auth.service.AuthTokenDigests;
 import com.bigbrightpaints.erp.modules.auth.service.IamCanonicalStorageService;
+import com.bigbrightpaints.erp.modules.auth.service.PasswordService;
 import com.bigbrightpaints.erp.modules.auth.service.RefreshTokenService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyLifecycleState;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
+import com.bigbrightpaints.erp.modules.company.domain.TenantActivationToken;
+import com.bigbrightpaints.erp.modules.company.domain.TenantActivationTokenRepository;
 import com.bigbrightpaints.erp.modules.company.domain.TenantAdminEmailChangeRequest;
 import com.bigbrightpaints.erp.modules.company.domain.TenantAdminEmailChangeRequestRepository;
 import com.bigbrightpaints.erp.modules.company.domain.TenantSupportWarning;
 import com.bigbrightpaints.erp.modules.company.domain.TenantSupportWarningRepository;
 import com.bigbrightpaints.erp.modules.company.dto.*;
 import com.bigbrightpaints.erp.modules.rbac.domain.Role;
+import com.bigbrightpaints.erp.modules.rbac.domain.RoleRepository;
+import com.bigbrightpaints.erp.shared.dto.PageResponse;
 
 import jakarta.persistence.EntityNotFoundException;
+import jakarta.persistence.criteria.CriteriaBuilder;
+import jakarta.persistence.criteria.CriteriaQuery;
+import jakarta.persistence.criteria.Expression;
+import jakarta.persistence.criteria.Predicate;
+import jakarta.persistence.criteria.Root;
+import jakarta.persistence.criteria.Subquery;
 
 @Service
 public class SuperAdminTenantControlPlaneService {
+
+  private static final SecureRandom ACTIVATION_RANDOM = new SecureRandom();
+  private static final ConcurrentMap<String, AddClientCreateLock> ADD_CLIENT_CREATE_LOCKS =
+      new ConcurrentHashMap<>();
+
+  private static final Set<String> ADD_CLIENT_PLAN_IDS =
+      Set.of("TRIAL", "STARTER", "GROWTH", "ENTERPRISE", "CUSTOM");
+  private static final Set<String> ADD_CLIENT_BILLING_STATUSES =
+      Set.of("TRIAL", "MANUAL", "PAID", "DUE");
+  private static final Set<String> ADD_CLIENT_SUPPORT_TIERS =
+      Set.of("STANDARD", "PRIORITY", "DEDICATED");
+  private static final Set<String> ADD_CLIENT_MODULES =
+      Set.of(
+          "ACCOUNTING",
+          "SALES",
+          "INVENTORY",
+          "PURCHASING",
+          "PRODUCTION",
+          "HR",
+          "REPORTS",
+          "PORTAL");
+  private static final Set<String> ADD_CLIENT_COA_TEMPLATES =
+      Set.of("SME", "DISTRIBUTION", "MANUFACTURING");
+
+  private static final Set<String> CANONICAL_TENANT_STATUSES =
+      Set.of(
+          "DRAFT",
+          "PENDING_ACTIVATION",
+          "SETUP_PENDING",
+          "TRIAL_ACTIVE",
+          "ACTIVE",
+          "GRACE",
+          "SUSPENDED_READ_ONLY",
+          "SUSPENDED_BLOCKED",
+          "CANCELED",
+          "ARCHIVED",
+          "SEED_FAILED");
 
   private final CompanyRepository companyRepository;
   private final UserAccountRepository userAccountRepository;
@@ -56,11 +122,18 @@ public class SuperAdminTenantControlPlaneService {
   private final RefreshTokenService refreshTokenService;
   private final TenantSupportWarningRepository tenantSupportWarningRepository;
   private final TenantAdminEmailChangeRequestRepository tenantAdminEmailChangeRequestRepository;
+  private final TenantActivationTokenRepository tenantActivationTokenRepository;
   private final TenantRuntimeEnforcementService tenantRuntimeEnforcementService;
   private final TenantReviewIntelligenceToggleService tenantReviewIntelligenceToggleService;
   private final CompanyService companyService;
   private final IamCanonicalStorageService iamCanonicalStorageService;
   private final PasswordResetTokenRepository passwordResetTokenRepository;
+  private final RoleRepository roleRepository;
+  private final PasswordEncoder passwordEncoder;
+  private final PasswordService passwordService;
+  private final TenantDefaultSeedingService tenantDefaultSeedingService;
+  private final SuperAdminTenantEntitlementService tenantEntitlementService;
+  private final SuperAdminBillingService billingService;
 
   public SuperAdminTenantControlPlaneService(
       CompanyRepository companyRepository,
@@ -72,11 +145,18 @@ public class SuperAdminTenantControlPlaneService {
       RefreshTokenService refreshTokenService,
       TenantSupportWarningRepository tenantSupportWarningRepository,
       TenantAdminEmailChangeRequestRepository tenantAdminEmailChangeRequestRepository,
+      TenantActivationTokenRepository tenantActivationTokenRepository,
       TenantRuntimeEnforcementService tenantRuntimeEnforcementService,
       TenantReviewIntelligenceToggleService tenantReviewIntelligenceToggleService,
       CompanyService companyService,
       IamCanonicalStorageService iamCanonicalStorageService,
-      PasswordResetTokenRepository passwordResetTokenRepository) {
+      PasswordResetTokenRepository passwordResetTokenRepository,
+      RoleRepository roleRepository,
+      PasswordEncoder passwordEncoder,
+      PasswordService passwordService,
+      TenantDefaultSeedingService tenantDefaultSeedingService,
+      SuperAdminTenantEntitlementService tenantEntitlementService,
+      SuperAdminBillingService billingService) {
     this.companyRepository = companyRepository;
     this.userAccountRepository = userAccountRepository;
     this.auditLogRepository = auditLogRepository;
@@ -86,28 +166,449 @@ public class SuperAdminTenantControlPlaneService {
     this.refreshTokenService = refreshTokenService;
     this.tenantSupportWarningRepository = tenantSupportWarningRepository;
     this.tenantAdminEmailChangeRequestRepository = tenantAdminEmailChangeRequestRepository;
+    this.tenantActivationTokenRepository = tenantActivationTokenRepository;
     this.tenantRuntimeEnforcementService = tenantRuntimeEnforcementService;
     this.tenantReviewIntelligenceToggleService = tenantReviewIntelligenceToggleService;
     this.companyService = companyService;
     this.iamCanonicalStorageService = iamCanonicalStorageService;
     this.passwordResetTokenRepository = passwordResetTokenRepository;
+    this.roleRepository = roleRepository;
+    this.passwordEncoder = passwordEncoder;
+    this.passwordService = passwordService;
+    this.tenantDefaultSeedingService = tenantDefaultSeedingService;
+    this.tenantEntitlementService = tenantEntitlementService;
+    this.billingService = billingService;
   }
 
   @Transactional(readOnly = true)
   public List<SuperAdminTenantSummaryDto> listTenants(String statusFilter) {
-    String normalizedStatus = normalizeLifecycleFilter(statusFilter);
-    return companyRepository.findAll().stream()
-        .sorted(Comparator.comparing(Company::getCode, String.CASE_INSENSITIVE_ORDER))
-        .filter(
-            company ->
-                normalizedStatus == null || normalizedStatus.equals(resolveLifecycle(company)))
-        .map(this::toSummary)
-        .toList();
+    return listTenants(statusFilter, null, 0, 100, "companyCode,asc").content();
   }
 
   @Transactional(readOnly = true)
+  public PageResponse<SuperAdminTenantSummaryDto> listTenants(
+      String statusFilter, String query, int page, int size, String sort) {
+    return listTenants(statusFilter, query, page, size, sort, true);
+  }
+
+  @Transactional(readOnly = true)
+  public PageResponse<SuperAdminTenantSummaryDto> listTenants(
+      String statusFilter, String query, int page, int size, String sort, boolean includeArchived) {
+    int safePage = validatePage(page);
+    int safeSize = validateSize(size);
+    String normalizedStatus = normalizeStatusFilter(statusFilter);
+    List<String> searchTokens = searchTokens(query);
+    SortSpec sortSpec = parseSort(sort);
+    Pageable pageable = PageRequest.of(safePage, safeSize, sortSpec.sort());
+    Specification<Company> specification =
+        tenantListSpecification(normalizedStatus, searchTokens, includeArchived);
+    if (pageable.getOffset() > Integer.MAX_VALUE) {
+      return PageResponse.of(List.of(), companyRepository.count(specification), safePage, safeSize);
+    }
+    Page<Company> companies = companyRepository.findAll(specification, pageable);
+    List<SuperAdminTenantSummaryDto> content =
+        companies.getContent().stream().map(this::toSummary).toList();
+    return PageResponse.of(content, companies.getTotalElements(), safePage, safeSize);
+  }
+
+  @Transactional
   public SuperAdminTenantDetailDto getTenantDetail(Long companyId) {
+    billingService.applyDueScheduledCommercialStateForTenant(companyId);
     return toDetail(requireCompany(companyId));
+  }
+
+  public SuperAdminAddClientOptionsDto getAddClientOptions() {
+    return new SuperAdminAddClientOptionsDto(
+        section(
+            "company",
+            "Company",
+            field(
+                "name",
+                "text",
+                true,
+                null,
+                List.of(),
+                List.of(),
+                "Required; 160 characters or fewer"),
+            field(
+                "code",
+                "code",
+                true,
+                null,
+                List.of(),
+                List.of(),
+                "Required; uppercase letters, numbers, underscore, or hyphen"),
+            field("timezone", "timezone", true, "Asia/Kolkata", List.of(), List.of(), "IANA zone"),
+            field("stateCode", "text", false, null, List.of(), List.of(), "Two-letter GST state"),
+            field("baseCurrency", "enum", true, "INR", List.of("INR"), List.of(), "ISO currency"),
+            field("defaultGstRate", "decimal", false, "18.00", List.of(), List.of(), "0 to 100"),
+            field(
+                "coaTemplateCode",
+                "enum",
+                false,
+                "SME",
+                List.of("SME", "DISTRIBUTION", "MANUFACTURING"),
+                List.of(),
+                "Default accounting template")),
+        section(
+            "owner",
+            "Owner",
+            field("email", "email", true, null, List.of(), List.of(), "Valid owner email"),
+            field("displayName", "text", true, null, List.of(), List.of(), "Owner full name"),
+            field("phone", "phone", false, null, List.of(), List.of(), "Optional phone marker")),
+        section(
+            "commercial",
+            "Commercial",
+            field(
+                "planId",
+                "enum",
+                true,
+                "TRIAL",
+                List.of("TRIAL", "STARTER", "GROWTH", "ENTERPRISE", "CUSTOM"),
+                List.of(),
+                "Plan template id"),
+            field(
+                "billingStatus",
+                "enum",
+                true,
+                "MANUAL",
+                List.of("TRIAL", "MANUAL", "PAID", "DUE"),
+                List.of("planId"),
+                "Initial billing state"),
+            field("trialDays", "number", false, 14, List.of(), List.of("planId"), "0 or greater"),
+            field(
+                "supportTier",
+                "enum",
+                true,
+                "STANDARD",
+                List.of("STANDARD", "PRIORITY", "DEDICATED"),
+                List.of("planId"),
+                "Support tier")),
+        section(
+            "quotas",
+            "Quotas",
+            field("maxActiveUsers", "number", false, 10, List.of(), List.of(), "0 means unlimited"),
+            field(
+                "maxApiRequests",
+                "number",
+                false,
+                10000,
+                List.of(),
+                List.of(),
+                "Monthly API quota; 0 means unlimited"),
+            field(
+                "maxStorageBytes",
+                "number",
+                false,
+                1073741824L,
+                List.of(),
+                List.of(),
+                "Storage quota; 0 means unlimited"),
+            field(
+                "maxConcurrentRequests",
+                "number",
+                false,
+                8,
+                List.of(),
+                List.of(),
+                "Concurrent request cap; 0 means unlimited"),
+            field("softLimitEnabled", "boolean", false, false, List.of(), List.of(), "Warn first"),
+            field("hardLimitEnabled", "boolean", false, true, List.of(), List.of(), "Fail closed")),
+        section(
+            "modules",
+            "Modules",
+            field(
+                "enabled",
+                "multi-select",
+                true,
+                List.of("ACCOUNTING", "SALES", "INVENTORY"),
+                List.of(
+                    "ACCOUNTING",
+                    "SALES",
+                    "INVENTORY",
+                    "PURCHASING",
+                    "PRODUCTION",
+                    "HR",
+                    "REPORTS",
+                    "PORTAL"),
+                List.of(),
+                "Select enabled V1 modules")),
+        section(
+            "support",
+            "Support",
+            field("notes", "textarea", false, null, List.of(), List.of(), "Platform-only note"),
+            field("tags", "tags", false, List.of(), List.of(), List.of(), "Uppercase safe tags")),
+        List.of(
+            new SuperAdminAddClientOptionsDto.CreateModeOption(
+                "DRAFT",
+                "Create as Draft",
+                "Create the client without sending activation email",
+                new SuperAdminAddClientOptionsDto.ActivationEffect("DRAFT", "NOT_SENT", false)),
+            new SuperAdminAddClientOptionsDto.CreateModeOption(
+                "SEND_ACTIVATION",
+                "Create and Send Activation Email",
+                "Create the client, issue a digest-only activation token, and send one email",
+                new SuperAdminAddClientOptionsDto.ActivationEffect(
+                    "PENDING_ACTIVATION", "SENT", true))),
+        draftSeedPolicy());
+  }
+
+  @Transactional
+  public SuperAdminAddClientCreateResponse createAddClient(
+      SuperAdminAddClientCreateRequest request) {
+    if (request == null) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          "Add Client payload is required");
+    }
+    validateCreatePayloadShape(request);
+    String companyCode = normalizeCreateCode(request.company().code());
+    String ownerEmail = normalizeRequiredEmail(request.owner().email(), "owner.email");
+    validateOwnerEmailFormat(ownerEmail);
+    validateCreatePayloadSemantics(request);
+    List<HeldAddClientCreateLock> createLocks =
+        acquireAddClientCreateLocks(companyCode, ownerEmail);
+    boolean releaseLocksInFinally = true;
+    try {
+      if (TransactionSynchronizationManager.isSynchronizationActive()) {
+        releaseLocksInFinally = false;
+        TransactionSynchronizationManager.registerSynchronization(
+            new TransactionSynchronization() {
+              @Override
+              public void afterCompletion(int status) {
+                releaseAddClientCreateLocks(createLocks);
+              }
+            });
+      }
+      if (companyRepository.findByCodeIgnoreCase(companyCode).isPresent()) {
+        throw duplicateConflict("Company code already exists", "company.code");
+      }
+      if (userAccountRepository.existsByEmailIgnoreCase(ownerEmail)) {
+        throw duplicateConflict("Owner email already exists", "owner.email");
+      }
+
+      Company company = new Company();
+      company.setName(request.company().name().trim());
+      company.setCode(companyCode);
+      company.setTimezone(request.company().timezone().trim());
+      company.setStateCode(normalizeOptionalUpper(request.company().stateCode()));
+      company.setBaseCurrency(request.company().baseCurrency().trim().toUpperCase(Locale.ROOT));
+      company.setDefaultGstRate(request.company().defaultGstRate());
+      company.setOnboardingCoaTemplateCode(
+          normalizeOptionalUpper(request.company().coaTemplateCode()));
+      company.setOnboardingAdminEmail(ownerEmail);
+      company.setCommercialPlanId(request.commercial().planId().trim().toUpperCase(Locale.ROOT));
+      company.setCommercialBillingStatus(
+          request.commercial().billingStatus().trim().toUpperCase(Locale.ROOT));
+      company.setCommercialSupportTier(
+          request.commercial().supportTier().trim().toUpperCase(Locale.ROOT));
+      company.setCommercialTrialEndsAt(resolveTrialEndsAt(request.commercial().trialDays()));
+      company.setQuotaMaxActiveUsers(request.quotas().maxActiveUsers());
+      company.setQuotaMaxApiRequests(request.quotas().maxApiRequests());
+      company.setQuotaMaxStorageBytes(request.quotas().maxStorageBytes());
+      company.setQuotaMaxConcurrentRequests(request.quotas().maxConcurrentRequests());
+      company.setQuotaSoftLimitEnabled(request.quotas().softLimitEnabled());
+      company.setQuotaHardLimitEnabled(request.quotas().hardLimitEnabled());
+      company.setEnabledModules(normalizeModules(request.modules().enabled()));
+      company.setSupportNotes(request.support().notes());
+      company.setSupportTags(request.support().tags());
+      company.setActivationStatus("NOT_SENT");
+      Company savedCompany = companyRepository.saveAndFlush(company);
+      seedRuntimePolicyForNewTenant(savedCompany);
+
+      UserAccount owner =
+          createPendingOwner(savedCompany, ownerEmail, request.owner().displayName());
+      savedCompany.setMainAdminUserId(owner.getId());
+      savedCompany.setOnboardingAdminUserId(owner.getId());
+      TenantDefaultSeedingService.SeedAttempt seedAttempt =
+          tenantDefaultSeedingService.seedDefaultsFailClosed(savedCompany);
+      if (!seedAttempt.ready()) {
+        markSeedFailedRecoverable(savedCompany);
+        companyRepository.saveAndFlush(savedCompany);
+        return addClientResponse(savedCompany, owner, null, seedAttempt.auditEventId());
+      }
+
+      ActivationIssue activationIssue = null;
+      if (request.createMode() == SuperAdminAddClientCreateRequest.CreateMode.SEND_ACTIVATION) {
+        activationIssue = issueActivation(savedCompany, owner, true);
+        savedCompany.setOnboardingCredentialsEmailedAt(activationIssue.sentAt());
+        savedCompany.setActivationStatus("SENT");
+        savedCompany.setActivationSentAt(activationIssue.sentAt());
+        savedCompany.setActivationExpiresAt(activationIssue.expiresAt());
+      }
+      companyRepository.saveAndFlush(savedCompany);
+
+      Long auditEventId =
+          logAuditRequired(
+              savedCompany,
+              request.createMode() == SuperAdminAddClientCreateRequest.CreateMode.DRAFT
+                  ? "tenant-created-draft"
+                  : "tenant-created-pending-activation",
+              Map.of(
+                  "createMode",
+                  request.createMode().name(),
+                  "activationStatus",
+                  savedCompany.getActivationStatus(),
+                  "ownerUserId",
+                  String.valueOf(owner.getId()),
+                  "planId",
+                  savedCompany.getCommercialPlanId()));
+      if (activationIssue != null) {
+        deliverActivationEmailRequired(savedCompany, owner, activationIssue);
+      }
+
+      return addClientResponse(savedCompany, owner, activationIssue, auditEventId);
+    } catch (DataIntegrityViolationException ex) {
+      throw duplicateConflict("Duplicate Add Client tenant code or owner email", "createRequest");
+    } finally {
+      if (releaseLocksInFinally) {
+        releaseAddClientCreateLocks(createLocks);
+      }
+    }
+  }
+
+  @Transactional(noRollbackFor = ApplicationException.class)
+  public SuperAdminActivationActionResponse sendActivation(Long companyId) {
+    Company company = companyRepository.lockById(companyId).orElseThrow(() -> notFound("Company"));
+    requireActivationState(company, Set.of("NOT_SENT"), "send activation");
+    requireSeedReadyForActivation(company);
+    UserAccount owner = requireActivationOwner(company);
+    ActivationIssue activationIssue = issueActivation(company, owner, true);
+    company.setOnboardingCredentialsEmailedAt(activationIssue.sentAt());
+    company.setActivationStatus("SENT");
+    company.setActivationSentAt(activationIssue.sentAt());
+    company.setActivationExpiresAt(activationIssue.expiresAt());
+    companyRepository.saveAndFlush(company);
+    Long auditEventId =
+        logAuditRequired(
+            company,
+            "tenant-activation-sent",
+            activationAuditMetadata("SEND", activationIssue, "EMAIL_SENT"));
+    deliverActivationEmailRequired(company, owner, activationIssue);
+    return activationActionResponse(company, activationIssue, "EMAIL_SENT", auditEventId);
+  }
+
+  @Transactional(noRollbackFor = ApplicationException.class)
+  public SuperAdminActivationActionResponse resendActivation(Long companyId) {
+    Company company = companyRepository.lockById(companyId).orElseThrow(() -> notFound("Company"));
+    requireActivationState(company, Set.of("SENT", "EXPIRED", "SUPERSEDED"), "resend activation");
+    requireSeedReadyForActivation(company);
+    UserAccount owner = requireActivationOwner(company);
+    ActivationIssue activationIssue = issueActivation(company, owner, true);
+    company.setOnboardingCredentialsEmailedAt(activationIssue.sentAt());
+    company.setActivationStatus("SENT");
+    company.setActivationSentAt(activationIssue.sentAt());
+    company.setActivationExpiresAt(activationIssue.expiresAt());
+    companyRepository.saveAndFlush(company);
+    Long auditEventId =
+        logAuditRequired(
+            company,
+            "tenant-activation-resent",
+            activationAuditMetadata("RESEND", activationIssue, "EMAIL_SENT"));
+    deliverActivationEmailRequired(company, owner, activationIssue);
+    return activationActionResponse(company, activationIssue, "EMAIL_SENT", auditEventId);
+  }
+
+  @Transactional
+  public SuperAdminActivationCopyResponse copyActivationLink(Long companyId) {
+    Company company = companyRepository.lockById(companyId).orElseThrow(() -> notFound("Company"));
+    requireActivationState(company, Set.of("SENT", "SUPERSEDED"), "copy activation link");
+    UserAccount owner = requireActivationOwner(company);
+    ActivationIssue activationIssue = issueActivation(company, owner, false);
+    company.setActivationStatus("SENT");
+    company.setActivationExpiresAt(activationIssue.expiresAt());
+    companyRepository.saveAndFlush(company);
+    Long auditEventId =
+        logAuditRequired(
+            company,
+            "tenant-activation-link-copied",
+            activationAuditMetadata("COPY", activationIssue, "COPY_LINK"));
+    return new SuperAdminActivationCopyResponse(
+        company.getId(),
+        company.getCode(),
+        company.getActivationStatus(),
+        activationIssue.expiresAt(),
+        activationIssue.tokenId(),
+        activationIssue.activationUrl(),
+        auditEventId,
+        activationRedactedFields());
+  }
+
+  @Transactional
+  public SuperAdminActivationActionResponse expireActivation(Long companyId) {
+    Company company = companyRepository.lockById(companyId).orElseThrow(() -> notFound("Company"));
+    requireActivationState(company, Set.of("SENT", "SUPERSEDED"), "expire activation");
+    TenantActivationToken currentToken = requireCurrentActivationToken(company);
+    Instant now = CompanyTime.now(company);
+    currentToken.markExpired(now);
+    tenantActivationTokenRepository.saveAndFlush(currentToken);
+    company.setActivationStatus("EXPIRED");
+    company.setActivationExpiresAt(now);
+    companyRepository.saveAndFlush(company);
+    ActivationIssue activationIssue =
+        new ActivationIssue(currentToken.getId(), currentToken.getSentAt(), now, null, null);
+    Long auditEventId =
+        logAuditRequired(
+            company,
+            "tenant-activation-expired",
+            activationAuditMetadata("EXPIRE", activationIssue, "EXPIRED"));
+    return activationActionResponse(company, activationIssue, "EXPIRED", auditEventId);
+  }
+
+  @Transactional(readOnly = true)
+  public ActivationVerifyResponse verifyActivation(String tokenValue) {
+    TenantActivationToken token = requireUsableActivationToken(tokenValue);
+    Company company = token.getCompany();
+    UserAccount owner = token.getOwnerUser();
+    return new ActivationVerifyResponse(
+        company.getCode(),
+        company.getName(),
+        owner.getDisplayName(),
+        token.getExpiresAt(),
+        ownerSetupSteps(company),
+        activationRedactedFields());
+  }
+
+  @Transactional
+  public ActivationCompleteResponse completeActivation(ActivationCompleteRequest request) {
+    if (request == null) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          "Activation payload is required");
+    }
+    TenantActivationToken token = requireUsableActivationToken(request.token());
+    Company company = token.getCompany();
+    UserAccount owner = token.getOwnerUser();
+    if (owner.getCompany() == null || !company.getId().equals(owner.getCompany().getId())) {
+      throw invalidActivationToken();
+    }
+    passwordService.resetPassword(owner, request.newPassword(), request.confirmPassword());
+    owner.setEnabled(true);
+    owner.setMustChangePassword(false);
+    userAccountRepository.saveAndFlush(owner);
+    Instant now = CompanyTime.now(company);
+    token.markUsed(now);
+    tenantActivationTokenRepository.saveAndFlush(token);
+    company.setActivationStatus("USED");
+    company.setActivationExpiresAt(token.getExpiresAt());
+    company.setOnboardingAdminUserId(owner.getId());
+    companyRepository.saveAndFlush(company);
+    Long auditEventId =
+        logAuditRequired(
+            company,
+            "tenant-activation-completed",
+            activationAuditMetadata(
+                "COMPLETE",
+                new ActivationIssue(
+                    token.getId(), token.getSentAt(), token.getExpiresAt(), null, null),
+                "USED"));
+    return new ActivationCompleteResponse(
+        company.getId(),
+        company.getCode(),
+        owner.getId(),
+        "ACTIVE",
+        "SETUP_PENDING",
+        now,
+        ownerSetupSteps(company),
+        activationRedactedFields());
   }
 
   @Transactional
@@ -178,6 +679,7 @@ public class SuperAdminTenantControlPlaneService {
       Long quotaMaxApiRequests,
       Long quotaMaxStorageBytes,
       Long quotaMaxConcurrentRequests,
+      Long burstRequestsPerMinute,
       Boolean quotaSoftLimitEnabled,
       Boolean quotaHardLimitEnabled) {
     Company company = requireCompany(companyId);
@@ -185,6 +687,7 @@ public class SuperAdminTenantControlPlaneService {
         && quotaMaxApiRequests == null
         && quotaMaxStorageBytes == null
         && quotaMaxConcurrentRequests == null
+        && burstRequestsPerMinute == null
         && quotaSoftLimitEnabled == null
         && quotaHardLimitEnabled == null) {
       throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
@@ -209,14 +712,20 @@ public class SuperAdminTenantControlPlaneService {
       company.setQuotaHardLimitEnabled(quotaHardLimitEnabled);
     }
     companyRepository.save(company);
-    tenantRuntimeEnforcementService.updatePolicy(
-        company.getCode(),
-        null,
-        "ERP37_LIMITS_UPDATE",
-        safeInteger(company.getQuotaMaxConcurrentRequests()),
-        safeInteger(company.getQuotaMaxApiRequests()),
-        safeInteger(company.getQuotaMaxActiveUsers()),
-        currentActor());
+    if (quotaMaxConcurrentRequests != null
+        || burstRequestsPerMinute != null
+        || quotaMaxActiveUsers != null) {
+      tenantRuntimeEnforcementService.updatePolicy(
+          company.getCode(),
+          null,
+          "ERP37_LIMITS_UPDATE",
+          quotaMaxConcurrentRequests == null
+              ? null
+              : safeInteger(company.getQuotaMaxConcurrentRequests()),
+          burstRequestsPerMinute == null ? null : safeInteger(burstRequestsPerMinute),
+          quotaMaxActiveUsers == null ? null : safeInteger(company.getQuotaMaxActiveUsers()),
+          currentActor());
+    }
     logAuditSuccess(
         company,
         "tenant-limits-updated",
@@ -224,7 +733,8 @@ public class SuperAdminTenantControlPlaneService {
             "quotaMaxActiveUsers", String.valueOf(company.getQuotaMaxActiveUsers()),
             "quotaMaxApiRequests", String.valueOf(company.getQuotaMaxApiRequests()),
             "quotaMaxStorageBytes", String.valueOf(company.getQuotaMaxStorageBytes()),
-            "quotaMaxConcurrentRequests", String.valueOf(company.getQuotaMaxConcurrentRequests())));
+            "quotaMaxConcurrentRequests", String.valueOf(company.getQuotaMaxConcurrentRequests()),
+            "burstRequestsPerMinute", String.valueOf(burstRequestsPerMinute)));
     return new SuperAdminTenantLimitsDto(
         company.getId(),
         company.getCode(),
@@ -232,6 +742,7 @@ public class SuperAdminTenantControlPlaneService {
         company.getQuotaMaxApiRequests(),
         company.getQuotaMaxStorageBytes(),
         company.getQuotaMaxConcurrentRequests(),
+        currentBurstRequestsPerMinute(company),
         company.isQuotaSoftLimitEnabled(),
         company.isQuotaHardLimitEnabled());
   }
@@ -275,6 +786,28 @@ public class SuperAdminTenantControlPlaneService {
     logAuditSuccess(company, "tenant-review-intelligence-toggle-updated", metadata);
     return new SuperAdminTenantReviewIntelligenceToggleDto(
         company.getId(), company.getCode(), snapshot.enabled(), snapshot.updatedAt());
+  }
+
+  @Transactional(readOnly = true)
+  public TenantSeedStatusDto getSeedStatus(Long companyId) {
+    return tenantDefaultSeedingService.getSeedStatus(companyId);
+  }
+
+  @Transactional
+  public TenantSeedStatusDto repairSeedStatus(Long companyId) {
+    return tenantDefaultSeedingService.repairSeedStatus(companyId);
+  }
+
+  @Transactional
+  public TenantSeedStatusDto rejectCoreMappingDelete(Long companyId, String mappingKey) {
+    return tenantDefaultSeedingService.rejectCoreMappingDelete(companyId, mappingKey);
+  }
+
+  @Transactional
+  public TenantSeedStatusDto rejectCoreMappingRemap(
+      Long companyId, String mappingKey, Long requestedAccountId) {
+    return tenantDefaultSeedingService.rejectCoreMappingRemap(
+        companyId, mappingKey, requestedAccountId);
   }
 
   @Transactional
@@ -443,13 +976,44 @@ public class SuperAdminTenantControlPlaneService {
 
   private SuperAdminTenantSummaryDto toSummary(Company company) {
     CompanyTenantMetricsDto metrics = buildMetrics(company);
+    return toSummary(
+        company,
+        metrics,
+        resolveMainAdmin(company),
+        resolveLastActivityAt(company.getId()),
+        resolveTenantStatus(company, metrics));
+  }
+
+  private SuperAdminTenantSummaryDto toSummary(
+      Company company,
+      CompanyTenantMetricsDto metrics,
+      UserAccount mainAdmin,
+      Instant lastActivityAt,
+      String status) {
+    SuperAdminTenantSummaryDto.UsageSummary usage =
+        new SuperAdminTenantSummaryDto.UsageSummary(
+            metrics.activeUserCount(),
+            metrics.quotaMaxActiveUsers(),
+            metrics.apiActivityCount(),
+            metrics.quotaMaxApiRequests(),
+            metrics.auditStorageBytes(),
+            metrics.quotaMaxStorageBytes(),
+            metrics.currentConcurrentRequests(),
+            metrics.quotaMaxConcurrentRequests());
+    SuperAdminTenantSummaryDto.HealthSummary health = healthSummary(status, metrics);
+    SuperAdminBillingDtos.BillingStatusSummary billingSummary = billingSummary(company, status);
     return new SuperAdminTenantSummaryDto(
         company.getId(),
         company.getCode(),
         company.getName(),
         company.getTimezone(),
+        status,
+        resolvePlanId(company),
+        billingSummary.billingStatus(),
+        usage,
+        billingSummary.trialEndsAt(),
+        health,
         metrics.lifecycleState(),
-        metrics.lifecycleReason(),
         metrics.activeUserCount(),
         metrics.quotaMaxActiveUsers(),
         metrics.apiActivityCount(),
@@ -459,38 +1023,29 @@ public class SuperAdminTenantControlPlaneService {
         metrics.currentConcurrentRequests(),
         metrics.quotaMaxConcurrentRequests(),
         company.getEnabledModules(),
-        toMainAdminSummary(company, resolveMainAdmin(company)),
-        resolveLastActivityAt(company.getId()));
+        toMainAdminSummary(company, mainAdmin),
+        lastActivityAt);
   }
 
   private SuperAdminTenantDetailDto toDetail(Company company) {
     CompanyTenantMetricsDto metrics = buildMetrics(company);
     UserAccount mainAdmin = resolveMainAdmin(company);
-    return new SuperAdminTenantDetailDto(
-        company.getId(),
-        company.getCode(),
-        company.getName(),
-        company.getTimezone(),
-        company.getStateCode(),
-        resolveLifecycle(company),
-        company.getLifecycleReason(),
-        company.getEnabledModules(),
-        new SuperAdminTenantDetailDto.Onboarding(
-            company.getOnboardingCoaTemplateCode(),
-            company.getOnboardingAdminEmail(),
-            company.getOnboardingAdminUserId(),
-            company.getOnboardingAdminUserId() != null,
-            company.getOnboardingCredentialsEmailedAt() != null,
-            company.getOnboardingCredentialsEmailedAt(),
-            company.getOnboardingCompletedAt()),
-        toMainAdminSummary(company, mainAdmin),
+    Instant lastActivityAt = resolveLastActivityAt(company.getId());
+    String status = resolveTenantStatus(company, metrics);
+    SuperAdminTenantSummaryDto.HealthSummary health = healthSummary(status, metrics);
+    SuperAdminTenantDetailDto.Limits limits =
         new SuperAdminTenantDetailDto.Limits(
             metrics.quotaMaxActiveUsers(),
             metrics.quotaMaxApiRequests(),
             metrics.quotaMaxStorageBytes(),
             metrics.quotaMaxConcurrentRequests(),
+            currentBurstRequestsPerMinute(company),
             metrics.quotaSoftLimitEnabled(),
-            metrics.quotaHardLimitEnabled()),
+            metrics.quotaHardLimitEnabled());
+    SuperAdminTenantEntitlementsDto.PlanSummary planSummary =
+        tenantEntitlementService.planSummaryFor(company);
+    SuperAdminBillingDtos.BillingStatusSummary billingSummary = billingSummary(company, status);
+    SuperAdminTenantDetailDto.Usage usage =
         new SuperAdminTenantDetailDto.Usage(
             metrics.activeUserCount(),
             metrics.apiActivityCount(),
@@ -498,16 +1053,607 @@ public class SuperAdminTenantControlPlaneService {
             metrics.apiErrorRateInBasisPoints(),
             metrics.auditStorageBytes(),
             metrics.currentConcurrentRequests(),
-            resolveLastActivityAt(company.getId())),
+            lastActivityAt);
+    List<SuperAdminTenantDetailDto.SupportTimelineEvent> supportTimeline =
+        buildSupportTimeline(company);
+    MainAdminSummaryDto mainAdminSummary = toMainAdminSummary(company, mainAdmin);
+    return new SuperAdminTenantDetailDto(
+        company.getId(),
+        company.getCode(),
+        company.getName(),
+        company.getTimezone(),
+        company.getStateCode(),
+        resolveLifecycle(company),
+        company.getEnabledModules(),
+        new SuperAdminTenantDetailDto.Onboarding(
+            company.getOnboardingCoaTemplateCode(),
+            company.getOnboardingAdminEmail(),
+            company.getOnboardingAdminUserId(),
+            company.getOnboardingAdminUserId() != null,
+            company.getOnboardingCompletedAt()),
+        mainAdminSummary,
+        limits,
+        usage,
         new SuperAdminTenantDetailDto.SupportContext(
             company.getSupportNotes(), company.getSupportTags()),
-        buildSupportTimeline(company),
+        supportTimeline,
         new SuperAdminTenantDetailDto.AvailableActions(
-            true, true, true, true, true, true, true, true));
+            true, true, true, true, true, true, true, true),
+        status,
+        new SuperAdminTenantDetailDto.Overview(
+            company.getId(),
+            company.getCode(),
+            company.getName(),
+            company.getTimezone(),
+            company.getStateCode(),
+            status,
+            resolveLifecycle(company),
+            billingSummary.billingStatus(),
+            health,
+            mainAdminSummary,
+            lastActivityAt,
+            tabStateForStatus(status, "AVAILABLE", "Overview summary is available")),
+        new SuperAdminTenantDetailDto.PlanSummary(
+            planSummary.planId(),
+            planSummary.displayName(),
+            planSummary.supportTier(),
+            limits,
+            tabStateForStatus(status, "AVAILABLE", "Plan limits summary is available")),
+        new SuperAdminTenantDetailDto.BillingSummary(
+            billingSummary.billingStatus(),
+            billingSummary.balanceDueMinorUnits(),
+            billingSummary.currency(),
+            billingSummary.trialEndsAt(),
+            tabStateForStatus(
+                status,
+                billingSummary.historyRows() > 0 ? "AVAILABLE" : "EMPTY",
+                billingSummary.historyRows() > 0
+                    ? "Platform billing summary is available"
+                    : "No platform billing records yet")),
+        new SuperAdminTenantDetailDto.SupportSummary(
+            company.getSupportTags(),
+            supportTimeline.size(),
+            tabState("AVAILABLE", "Support summary is available for " + status)),
+        new SuperAdminTenantDetailDto.BugsSummary(
+            0, 0, tabState("EMPTY", "No bug reports yet for " + status)),
+        new SuperAdminTenantDetailDto.AuditSummary(
+            supportTimeline.size(),
+            lastActivityAt,
+            tabState("AVAILABLE", "Audit summary is available for " + status)),
+        new SuperAdminTenantDetailDto.SettingsSummary(
+            company.getTimezone(),
+            company.getEnabledModules(),
+            tabStateForStatus(status, "AVAILABLE", "Settings summary is available")));
   }
 
   private CompanyTenantMetricsDto buildMetrics(Company company) {
     return companyService.getTenantMetricsForSuperAdmin(company.getId());
+  }
+
+  private SuperAdminAddClientOptionsDto.Section section(
+      String key, String title, SuperAdminAddClientOptionsDto.Field... fields) {
+    return new SuperAdminAddClientOptionsDto.Section(key, title, List.of(fields));
+  }
+
+  private SuperAdminAddClientOptionsDto.Field field(
+      String key,
+      String type,
+      boolean required,
+      Object defaultValue,
+      List<String> enumValues,
+      List<String> dependencies,
+      String validationHint) {
+    return new SuperAdminAddClientOptionsDto.Field(
+        key, type, required, defaultValue, enumValues, dependencies, validationHint);
+  }
+
+  private SuperAdminAddClientOptionsDto.SeedPolicy draftSeedPolicy() {
+    return new SuperAdminAddClientOptionsDto.SeedPolicy(
+        "M4_DRAFT_SEED_POLICY_V1",
+        true,
+        List.of(
+            new SuperAdminAddClientOptionsDto.SeedCategory(
+                "company_record",
+                "Company record",
+                "COMPLETE",
+                true,
+                "Company identity and commercial metadata are captured at create time"),
+            new SuperAdminAddClientOptionsDto.SeedCategory(
+                "owner_profile",
+                "Owner profile",
+                "COMPLETE",
+                true,
+                "Pending owner account metadata is captured without a usable password"),
+            new SuperAdminAddClientOptionsDto.SeedCategory(
+                "commercial_policy",
+                "Commercial policy",
+                "COMPLETE",
+                true,
+                "Plan, billing status, support tier, modules, and quotas are captured"),
+            new SuperAdminAddClientOptionsDto.SeedCategory(
+                "accounting_defaults",
+                "Accounting defaults",
+                "COMPLETE",
+                true,
+                "Default chart of accounts and core accounting mappings are seeded during Add"
+                    + " Client creation"),
+            new SuperAdminAddClientOptionsDto.SeedCategory(
+                "gst_defaults",
+                "GST defaults",
+                "COMPLETE",
+                true,
+                "GST or non-GST defaults are seeded during Add Client creation and repaired during"
+                    + " owner setup"),
+            new SuperAdminAddClientOptionsDto.SeedCategory(
+                "role_templates",
+                "Role templates",
+                "COMPLETE",
+                true,
+                "Tenant owner/admin/staff role-template metadata is available after default"
+                    + " seeding")),
+        "Activation may be sent only after company, owner, commercial policy, and default seed"
+            + " categories are COMPLETE; owner setup can repair the same idempotent defaults before"
+            + " accounting is confirmed.");
+  }
+
+  private void validateCreatePayloadShape(SuperAdminAddClientCreateRequest request) {
+    if (request.company() == null) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          "company is required");
+    }
+    if (request.owner() == null) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          "owner is required");
+    }
+    if (request.commercial() == null) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          "commercial is required");
+    }
+    if (request.quotas() == null) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          "quotas is required");
+    }
+    if (request.modules() == null) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          "modules is required");
+    }
+    if (request.support() == null) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          "support is required");
+    }
+    if (request.createMode() == null) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          "createMode is required");
+    }
+  }
+
+  private void validateCreatePayloadSemantics(SuperAdminAddClientCreateRequest request) {
+    requireText(request.company().name(), "company.name");
+    requireText(request.company().timezone(), "company.timezone");
+    requireAllowedUpper(request.company().baseCurrency(), "company.baseCurrency", Set.of("INR"));
+    requireOptionalAllowedUpper(
+        request.company().coaTemplateCode(), "company.coaTemplateCode", ADD_CLIENT_COA_TEMPLATES);
+    requireText(request.owner().displayName(), "owner.displayName");
+    requireAllowedUpper(request.commercial().planId(), "commercial.planId", ADD_CLIENT_PLAN_IDS);
+    requireAllowedUpper(
+        request.commercial().billingStatus(),
+        "commercial.billingStatus",
+        ADD_CLIENT_BILLING_STATUSES);
+    requireAllowedUpper(
+        request.commercial().supportTier(), "commercial.supportTier", ADD_CLIENT_SUPPORT_TIERS);
+    requireNonNegative(request.quotas().maxActiveUsers(), "quotas.maxActiveUsers");
+    requireNonNegative(request.quotas().maxApiRequests(), "quotas.maxApiRequests");
+    requireNonNegative(request.quotas().maxStorageBytes(), "quotas.maxStorageBytes");
+    requireNonNegative(request.quotas().maxConcurrentRequests(), "quotas.maxConcurrentRequests");
+    Set<String> modules = request.modules().enabled();
+    if (modules == null || modules.isEmpty()) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          "modules.enabled must include at least one module");
+    }
+    for (String module : modules) {
+      requireAllowedUpper(module, "modules.enabled", ADD_CLIENT_MODULES);
+    }
+  }
+
+  private List<HeldAddClientCreateLock> acquireAddClientCreateLocks(
+      String companyCode, String ownerEmail) {
+    List<String> keys =
+        List.of("company:" + companyCode, "owner-email:" + ownerEmail).stream().sorted().toList();
+    List<HeldAddClientCreateLock> locks = new ArrayList<>();
+    for (String key : keys) {
+      AddClientCreateLock lock =
+          ADD_CLIENT_CREATE_LOCKS.compute(
+              key,
+              (ignored, existing) -> {
+                AddClientCreateLock retained =
+                    existing == null ? new AddClientCreateLock() : existing;
+                retained.retain();
+                return retained;
+              });
+      lock.lock();
+      locks.add(new HeldAddClientCreateLock(key, lock));
+    }
+    return locks;
+  }
+
+  private void releaseAddClientCreateLocks(List<HeldAddClientCreateLock> locks) {
+    for (int index = locks.size() - 1; index >= 0; index--) {
+      HeldAddClientCreateLock held = locks.get(index);
+      held.lock().unlock();
+      ADD_CLIENT_CREATE_LOCKS.computeIfPresent(
+          held.key(),
+          (ignored, existing) -> {
+            if (existing != held.lock()) {
+              return existing;
+            }
+            existing.releaseReservation();
+            return existing.canRemove() ? null : existing;
+          });
+    }
+  }
+
+  private ApplicationException duplicateConflict(String message, String field) {
+    return new ApplicationException(ErrorCode.BUSINESS_DUPLICATE_ENTRY, message)
+        .withDetail("field", field);
+  }
+
+  private void requireText(String value, String fieldName) {
+    if (!StringUtils.hasText(value)) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          fieldName + " is required");
+    }
+  }
+
+  private void requireAllowedUpper(String value, String fieldName, Set<String> allowed) {
+    requireText(value, fieldName);
+    String normalized = value.trim().toUpperCase(Locale.ROOT);
+    if (!allowed.contains(normalized)) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          fieldName + " must be one of " + allowed);
+    }
+  }
+
+  private void requireOptionalAllowedUpper(String value, String fieldName, Set<String> allowed) {
+    if (!StringUtils.hasText(value)) {
+      return;
+    }
+    requireAllowedUpper(value, fieldName, allowed);
+  }
+
+  private void requireNonNegative(Long value, String fieldName) {
+    if (value != null && value < 0) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          fieldName + " must be greater than or equal to 0");
+    }
+  }
+
+  private void validateOwnerEmailFormat(String ownerEmail) {
+    if (!ownerEmail.matches("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$")) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          "owner.email must be a valid email address");
+    }
+  }
+
+  private Set<String> normalizeModules(Set<String> modules) {
+    return modules.stream()
+        .map(module -> module.trim().toUpperCase(Locale.ROOT))
+        .collect(java.util.stream.Collectors.toSet());
+  }
+
+  private String normalizeOptionalUpper(String value) {
+    return StringUtils.hasText(value) ? value.trim().toUpperCase(Locale.ROOT) : value;
+  }
+
+  private Instant resolveTrialEndsAt(Integer trialDays) {
+    if (trialDays == null || trialDays <= 0) {
+      return null;
+    }
+    return Instant.now().plus(trialDays, ChronoUnit.DAYS);
+  }
+
+  private String normalizeCreateCode(String code) {
+    if (!StringUtils.hasText(code)) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          "company.code is required");
+    }
+    String normalized = code.trim().toUpperCase(Locale.ROOT);
+    if (normalized.length() < 2 || normalized.length() > 32) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          "company.code must be between 2 and 32 characters");
+    }
+    if (!normalized.matches("^[A-Z0-9][A-Z0-9_-]*$")) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          "company.code must be uppercase code-safe");
+    }
+    return normalized;
+  }
+
+  private UserAccount createPendingOwner(Company company, String ownerEmail, String displayName) {
+    Role adminRole =
+        roleRepository
+            .findByName("ROLE_ADMIN")
+            .orElseThrow(
+                () ->
+                    com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState(
+                        "ROLE_ADMIN must exist before Add Client creation"));
+    UserAccount owner =
+        new UserAccount(
+            ownerEmail,
+            company.getCode(),
+            passwordEncoder.encode("activation-pending-" + UUID.randomUUID()),
+            StringUtils.hasText(displayName) ? displayName.trim() : "Tenant Owner");
+    owner.setCompany(company);
+    owner.setEnabled(false);
+    owner.setMustChangePassword(true);
+    owner.addRole(adminRole);
+    UserAccount saved = userAccountRepository.saveAndFlush(owner);
+    iamCanonicalStorageService.syncUser(saved);
+    return saved;
+  }
+
+  private ActivationIssue issueActivation(
+      Company company, UserAccount owner, boolean markForEmailDelivery) {
+    Instant now = CompanyTime.now(company);
+    Instant expiresAt = now.plus(72, ChronoUnit.HOURS);
+    supersedeActiveActivationTokens(company, now);
+    String rawToken = newActivationToken();
+    TenantActivationToken activationToken =
+        tenantActivationTokenRepository.saveAndFlush(
+            TenantActivationToken.digestOnly(
+                company,
+                owner,
+                AuthTokenDigests.tenantActivationTokenDigest(rawToken),
+                AuthTokenDigests.DIGEST_ALGORITHM,
+                AuthTokenDigests.DIGEST_VERSION,
+                now,
+                expiresAt));
+    String activationUrl = emailService.buildTenantActivationLink(rawToken);
+    if (markForEmailDelivery) {
+      activationToken.markSent(now);
+    }
+    tenantActivationTokenRepository.saveAndFlush(activationToken);
+    return new ActivationIssue(
+        activationToken.getId(),
+        markForEmailDelivery ? now : null,
+        expiresAt,
+        activationUrl,
+        rawToken);
+  }
+
+  private void deliverActivationEmailRequired(
+      Company company, UserAccount owner, ActivationIssue activationIssue) {
+    if (activationIssue == null || !StringUtils.hasText(activationIssue.rawToken())) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState(
+          "Activation token material is required for email delivery");
+    }
+    Runnable delivery =
+        () ->
+            emailService.sendTenantActivationEmailRequired(
+                owner.getEmail(),
+                owner.getDisplayName(),
+                company.getName(),
+                company.getCode(),
+                activationIssue.rawToken(),
+                activationIssue.expiresAt());
+    if (TransactionSynchronizationManager.isSynchronizationActive()
+        && TransactionSynchronizationManager.isActualTransactionActive()) {
+      TransactionSynchronizationManager.registerSynchronization(
+          new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+              delivery.run();
+            }
+          });
+      return;
+    }
+    delivery.run();
+  }
+
+  private void supersedeActiveActivationTokens(Company company, Instant supersededAt) {
+    if (company == null || company.getId() == null) {
+      return;
+    }
+    for (TenantActivationToken existingToken :
+        tenantActivationTokenRepository.lockByCompanyId(company.getId())) {
+      if (existingToken == null) {
+        continue;
+      }
+      if (Set.of("ISSUED", "SENT").contains(normalizeActivationStatus(existingToken.getStatus()))) {
+        existingToken.markSuperseded(supersededAt);
+        tenantActivationTokenRepository.saveAndFlush(existingToken);
+      }
+    }
+  }
+
+  private UserAccount requireActivationOwner(Company company) {
+    if (company == null || company.getId() == null || company.getOnboardingAdminUserId() == null) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState(
+          "Tenant owner must exist before activation");
+    }
+    UserAccount owner =
+        userAccountRepository
+            .lockByIdAndCompanyId(company.getOnboardingAdminUserId(), company.getId())
+            .orElseThrow(() -> invalidActivationState("Tenant owner not found for activation"));
+    assertTenantExclusiveUser(company, owner, "tenant activation");
+    return owner;
+  }
+
+  private TenantActivationToken requireCurrentActivationToken(Company company) {
+    if (company == null || company.getId() == null) {
+      throw invalidActivationToken();
+    }
+    return tenantActivationTokenRepository
+        .findTopByCompany_IdAndStatusInOrderByCreatedAtDesc(
+            company.getId(), Set.of("ISSUED", "SENT"))
+        .orElseThrow(() -> invalidActivationState("No usable activation token is available"));
+  }
+
+  private TenantActivationToken requireUsableActivationToken(String tokenValue) {
+    if (!StringUtils.hasText(tokenValue) || tokenValue.length() > 512) {
+      throw invalidActivationToken();
+    }
+    TenantActivationToken token =
+        tenantActivationTokenRepository
+            .findByTokenDigest(AuthTokenDigests.tenantActivationTokenDigest(tokenValue.trim()))
+            .orElseThrow(this::invalidActivationToken);
+    Instant now = CompanyTime.now(token.getCompany());
+    String status = normalizeActivationStatus(token.getStatus());
+    if (!Set.of("ISSUED", "SENT").contains(status)) {
+      throw invalidActivationToken();
+    }
+    if (token.getExpiresAt() == null || !token.getExpiresAt().isAfter(now)) {
+      throw invalidActivationToken();
+    }
+    if (token.getCompany() == null
+        || !"SENT".equals(normalizeActivationStatus(token.getCompany().getActivationStatus()))) {
+      throw invalidActivationToken();
+    }
+    return token;
+  }
+
+  private void requireActivationState(
+      Company company, Set<String> allowedStatuses, String actionDescription) {
+    String status =
+        normalizeActivationStatus(company == null ? null : company.getActivationStatus());
+    if (!allowedStatuses.contains(status)) {
+      throw invalidActivationState(
+          "Cannot " + actionDescription + " while activation is " + status);
+    }
+  }
+
+  private ApplicationException invalidActivationToken() {
+    return com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+        "Invalid or expired activation token");
+  }
+
+  private ApplicationException invalidActivationState(String message) {
+    return new ApplicationException(ErrorCode.BUSINESS_INVALID_STATE, message);
+  }
+
+  private void requireSeedReadyForActivation(Company company) {
+    TenantDefaultSeedingService.SeedAttempt seedAttempt =
+        tenantDefaultSeedingService.seedDefaultsFailClosed(company);
+    if (seedAttempt.ready()) {
+      return;
+    }
+    markSeedFailedRecoverable(company);
+    companyRepository.saveAndFlush(company);
+    throw new ApplicationException(
+            ErrorCode.BUSINESS_INVALID_STATE,
+            "Tenant default seeding repair is required before activation")
+        .withDetail("seedStatus", "SEED_FAILED")
+        .withDetail("auditEventId", seedAttempt.auditEventId());
+  }
+
+  private void markSeedFailedRecoverable(Company company) {
+    company.setLifecycleReason("SEED_FAILED");
+    company.setActivationStatus("NOT_SENT");
+    company.setActivationSentAt(null);
+    company.setActivationExpiresAt(null);
+    company.setOnboardingCredentialsEmailedAt(null);
+  }
+
+  private ApplicationException notFound(String entityName) {
+    return new ApplicationException(ErrorCode.BUSINESS_ENTITY_NOT_FOUND, entityName + " not found");
+  }
+
+  private SuperAdminActivationActionResponse activationActionResponse(
+      Company company, ActivationIssue activationIssue, String deliveryStatus, Long auditEventId) {
+    return new SuperAdminActivationActionResponse(
+        company.getId(),
+        company.getCode(),
+        company.getActivationStatus(),
+        company.getActivationSentAt(),
+        company.getActivationExpiresAt(),
+        activationIssue == null ? null : activationIssue.tokenId(),
+        deliveryStatus,
+        auditEventId,
+        activationRedactedFields());
+  }
+
+  private Map<String, String> activationAuditMetadata(
+      String action, ActivationIssue activationIssue, String outcome) {
+    Map<String, String> metadata = new HashMap<>();
+    metadata.put("activationAction", action);
+    metadata.put("activationOutcome", outcome);
+    if (activationIssue != null && activationIssue.tokenId() != null) {
+      metadata.put("activationTokenId", String.valueOf(activationIssue.tokenId()));
+    }
+    if (activationIssue != null && activationIssue.expiresAt() != null) {
+      metadata.put("activationExpiresAt", activationIssue.expiresAt().toString());
+    }
+    metadata.put("redactedFields", String.join(",", activationRedactedFields()));
+    return metadata;
+  }
+
+  private List<String> activationRedactedFields() {
+    return List.of("activationToken", "activationLink", "tokenDigest", "password");
+  }
+
+  private List<String> ownerSetupSteps(Company company) {
+    boolean gstEnabled =
+        company != null
+            && company.getDefaultGstRate() != null
+            && company.getDefaultGstRate().compareTo(java.math.BigDecimal.ZERO) > 0;
+    List<String> steps = new ArrayList<>();
+    steps.add("company-details");
+    if (gstEnabled) {
+      steps.add("gst");
+    }
+    steps.add("accounting");
+    steps.add("invite-team");
+    steps.add("finish");
+    return List.copyOf(steps);
+  }
+
+  private String newActivationToken() {
+    byte[] bytes = new byte[32];
+    ACTIVATION_RANDOM.nextBytes(bytes);
+    return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+  }
+
+  private SuperAdminAddClientCreateResponse addClientResponse(
+      Company company, UserAccount owner, ActivationIssue activationIssue, Long auditEventId) {
+    boolean sent = activationIssue != null;
+    return new SuperAdminAddClientCreateResponse(
+        company.getId(),
+        company.getCode(),
+        company.getName(),
+        resolveTenantStatus(company, buildMetrics(company)),
+        new SuperAdminAddClientCreateResponse.Owner(
+            owner.getId(), owner.getEmail(), owner.getDisplayName(), "PENDING_ACTIVATION"),
+        company.getCommercialPlanId(),
+        company.getCommercialBillingStatus(),
+        company.getCommercialTrialEndsAt(),
+        company.getCommercialSupportTier(),
+        new SuperAdminAddClientCreateResponse.Quotas(
+            company.getQuotaMaxActiveUsers(),
+            company.getQuotaMaxApiRequests(),
+            company.getQuotaMaxStorageBytes(),
+            company.getQuotaMaxConcurrentRequests(),
+            company.isQuotaSoftLimitEnabled(),
+            company.isQuotaHardLimitEnabled()),
+        company.getEnabledModules(),
+        new SuperAdminAddClientCreateResponse.Activation(
+            sent ? "SENT" : "NOT_SENT",
+            sent ? activationIssue.sentAt() : null,
+            sent ? activationIssue.expiresAt() : null,
+            sent ? activationIssue.tokenId() : null,
+            sent ? "EMAIL_SENT" : "NOT_SENT",
+            List.of("secretMaterial", "activationLink", "credentialMaterial")),
+        draftSeedPolicy(),
+        auditEventId);
+  }
+
+  private void seedRuntimePolicyForNewTenant(Company company) {
+    tenantRuntimeEnforcementService.updatePolicy(
+        company.getCode(),
+        null,
+        "ADD_CLIENT_CREATE",
+        safeInteger(company.getQuotaMaxConcurrentRequests()),
+        0,
+        safeInteger(company.getQuotaMaxActiveUsers()),
+        currentActor());
   }
 
   private List<SuperAdminTenantDetailDto.SupportTimelineEvent> buildSupportTimeline(
@@ -519,7 +1665,8 @@ public class SuperAdminTenantControlPlaneService {
           new SuperAdminTenantDetailDto.SupportTimelineEvent(
               "WARNING",
               warning.getWarningCategory(),
-              warning.getMessage(),
+              warning.getRequestedLifecycleState(),
+              warning.getWarningCategory(),
               warning.getIssuedBy(),
               warning.getIssuedAt()));
     }
@@ -529,7 +1676,8 @@ public class SuperAdminTenantControlPlaneService {
           new SuperAdminTenantDetailDto.SupportTimelineEvent(
               "AUDIT",
               auditLog.getEventType().name(),
-              auditMessage(auditLog),
+              auditStatus(auditLog),
+              auditLog.getEventType().name(),
               StringUtils.hasText(auditLog.getUsername()) ? auditLog.getUsername() : "system",
               toInstant(auditLog.getTimestamp())));
     }
@@ -541,15 +1689,8 @@ public class SuperAdminTenantControlPlaneService {
     return timeline.size() > 50 ? timeline.subList(0, 50) : timeline;
   }
 
-  private String auditMessage(AuditLog auditLog) {
-    if (auditLog.getMetadata() != null
-        && StringUtils.hasText(auditLog.getMetadata().get("reason"))) {
-      return auditLog.getMetadata().get("reason");
-    }
-    if (StringUtils.hasText(auditLog.getErrorMessage())) {
-      return auditLog.getErrorMessage();
-    }
-    return auditLog.getEventType().name();
+  private String auditStatus(AuditLog auditLog) {
+    return auditLog.getStatus() == null ? "SUCCESS" : auditLog.getStatus().name();
   }
 
   private MainAdminSummaryDto toMainAdminSummary(Company company, UserAccount mainAdmin) {
@@ -613,6 +1754,77 @@ public class SuperAdminTenantControlPlaneService {
         : company.getLifecycleState().name();
   }
 
+  private String resolveTenantStatus(Company company, CompanyTenantMetricsDto metrics) {
+    if (company != null
+        && "SEED_FAILED".equals(normalizeCanonicalStatus(company.getLifecycleReason()))) {
+      return "SEED_FAILED";
+    }
+    if (company != null) {
+      String commercialState = normalizeCanonicalStatus(company.getLifecycleReason());
+      if (commercialState != null && !"SEED_FAILED".equals(commercialState)) {
+        return commercialState;
+      }
+    }
+    String metricsStatus =
+        metrics == null ? null : normalizeCanonicalStatus(metrics.lifecycleState());
+    String lifecycle =
+        metrics == null || !StringUtils.hasText(metrics.lifecycleState())
+            ? resolveLifecycle(company)
+            : metrics.lifecycleState().trim().toUpperCase(Locale.ROOT);
+    if (CompanyLifecycleState.SUSPENDED.name().equals(lifecycle)) {
+      return "SUSPENDED_BLOCKED";
+    }
+    if (CompanyLifecycleState.DEACTIVATED.name().equals(lifecycle)) {
+      return "ARCHIVED";
+    }
+    String onboardingStatus = resolveOnboardingTenantStatus(company);
+    if (onboardingStatus != null) {
+      return onboardingStatus;
+    }
+    if (metricsStatus != null
+        && !"ACTIVE".equals(metricsStatus)
+        && !"TRIAL_ACTIVE".equals(metricsStatus)) {
+      return metricsStatus;
+    }
+    return metricsStatus == null ? "ACTIVE" : metricsStatus;
+  }
+
+  private String resolveOnboardingTenantStatus(Company company) {
+    if (company != null
+        && company.getOnboardingCompletedAt() == null
+        && "USED".equals(normalizeActivationStatus(company.getActivationStatus()))) {
+      return "SETUP_PENDING";
+    }
+    if (company != null
+        && company.getOnboardingCompletedAt() == null
+        && (company.getOnboardingCredentialsEmailedAt() != null
+            || company.getActivationSentAt() != null
+            || Set.of("SENT", "EXPIRED", "SUPERSEDED")
+                .contains(normalizeActivationStatus(company.getActivationStatus())))) {
+      return "PENDING_ACTIVATION";
+    }
+    if (company != null && company.getOnboardingCompletedAt() == null) {
+      String activationStatus = normalizeActivationStatus(company.getActivationStatus());
+      if (StringUtils.hasText(company.getOnboardingAdminEmail())
+          && (!StringUtils.hasText(activationStatus) || "NOT_SENT".equals(activationStatus))) {
+        return "DRAFT";
+      }
+    }
+    if (company != null
+        && company.getOnboardingAdminUserId() != null
+        && company.getOnboardingCompletedAt() == null) {
+      return "SETUP_PENDING";
+    }
+    return null;
+  }
+
+  private String normalizeActivationStatus(String activationStatus) {
+    if (!StringUtils.hasText(activationStatus)) {
+      return "NOT_SENT";
+    }
+    return activationStatus.trim().toUpperCase(Locale.ROOT);
+  }
+
   private Instant resolveLastActivityAt(Long companyId) {
     return auditLogRepository
         .findTop1ByCompanyIdOrderByTimestampDesc(companyId)
@@ -621,18 +1833,355 @@ public class SuperAdminTenantControlPlaneService {
         .orElse(null);
   }
 
-  private String normalizeLifecycleFilter(String statusFilter) {
+  private String normalizeStatusFilter(String statusFilter) {
     if (!StringUtils.hasText(statusFilter)) {
       return null;
     }
     String normalized = statusFilter.trim().toUpperCase(Locale.ROOT);
-    if (normalized.equals(CompanyLifecycleState.ACTIVE.name())
-        || normalized.equals(CompanyLifecycleState.SUSPENDED.name())
-        || normalized.equals(CompanyLifecycleState.DEACTIVATED.name())) {
+    if (CANONICAL_TENANT_STATUSES.contains(normalized)) {
       return normalized;
     }
     throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
-        "status filter must be ACTIVE, SUSPENDED, or DEACTIVATED");
+        "status filter must be one of DRAFT, PENDING_ACTIVATION, SETUP_PENDING, TRIAL_ACTIVE,"
+            + " ACTIVE, GRACE, SUSPENDED_READ_ONLY, SUSPENDED_BLOCKED, CANCELED, ARCHIVED,"
+            + " or SEED_FAILED");
+  }
+
+  private String normalizeCanonicalStatus(String rawStatus) {
+    if (!StringUtils.hasText(rawStatus)) {
+      return null;
+    }
+    String normalized = rawStatus.trim().toUpperCase(Locale.ROOT);
+    if (CANONICAL_TENANT_STATUSES.contains(normalized)) {
+      return normalized;
+    }
+    return null;
+  }
+
+  private Specification<Company> tenantListSpecification(
+      String normalizedStatus, List<String> searchTokens, boolean includeArchived) {
+    return (root, criteriaQuery, criteriaBuilder) -> {
+      List<Predicate> predicates = new ArrayList<>();
+      if (shouldExcludeArchivedRows(normalizedStatus, includeArchived)) {
+        predicates.add(criteriaBuilder.not(statusPredicate(root, criteriaBuilder, "ARCHIVED")));
+      }
+      if (StringUtils.hasText(normalizedStatus)) {
+        predicates.add(statusPredicate(root, criteriaBuilder, normalizedStatus));
+      }
+      for (String searchToken : searchTokens) {
+        predicates.add(searchTokenPredicate(root, criteriaQuery, criteriaBuilder, searchToken));
+      }
+      return predicates.isEmpty()
+          ? criteriaBuilder.conjunction()
+          : criteriaBuilder.and(predicates.toArray(Predicate[]::new));
+    };
+  }
+
+  private Predicate statusPredicate(
+      Root<Company> root, CriteriaBuilder criteriaBuilder, String normalizedStatus) {
+    Expression<String> upperReason = upperText(root.get("lifecycleReason"), criteriaBuilder);
+    Predicate reasonMatches = criteriaBuilder.equal(upperReason, normalizedStatus);
+    Predicate noCanonicalReason = noCanonicalLifecycleReason(root, criteriaBuilder);
+    Predicate activeLifecycle =
+        lifecycleEquals(root, criteriaBuilder, CompanyLifecycleState.ACTIVE);
+    Predicate activeOnboardingBase = criteriaBuilder.and(noCanonicalReason, activeLifecycle);
+    Predicate draft = draftStatusPredicate(root, criteriaBuilder, activeOnboardingBase);
+    Predicate pendingActivation =
+        pendingActivationStatusPredicate(root, criteriaBuilder, activeOnboardingBase);
+    Predicate setupPending =
+        setupPendingStatusPredicate(
+            root, criteriaBuilder, activeOnboardingBase, draft, pendingActivation);
+    return switch (normalizedStatus) {
+      case "DRAFT" -> criteriaBuilder.or(reasonMatches, draft);
+      case "PENDING_ACTIVATION" -> criteriaBuilder.or(reasonMatches, pendingActivation);
+      case "SETUP_PENDING" -> criteriaBuilder.or(reasonMatches, setupPending);
+      case "ACTIVE" ->
+          criteriaBuilder.or(
+              reasonMatches,
+              criteriaBuilder.and(
+                  noCanonicalReason,
+                  activeLifecycle,
+                  criteriaBuilder.not(draft),
+                  criteriaBuilder.not(pendingActivation),
+                  criteriaBuilder.not(setupPending)));
+      case "SUSPENDED_BLOCKED" ->
+          criteriaBuilder.or(
+              reasonMatches,
+              criteriaBuilder.and(
+                  noCanonicalReason,
+                  lifecycleEquals(root, criteriaBuilder, CompanyLifecycleState.SUSPENDED)));
+      case "ARCHIVED" ->
+          criteriaBuilder.or(
+              reasonMatches,
+              criteriaBuilder.and(
+                  noCanonicalReason,
+                  lifecycleEquals(root, criteriaBuilder, CompanyLifecycleState.DEACTIVATED)));
+      default -> reasonMatches;
+    };
+  }
+
+  private boolean shouldExcludeArchivedRows(String normalizedStatus, boolean includeArchived) {
+    return !includeArchived && !"ARCHIVED".equals(normalizedStatus);
+  }
+
+  private Predicate draftStatusPredicate(
+      Root<Company> root, CriteriaBuilder criteriaBuilder, Predicate activeOnboardingBase) {
+    Expression<String> activationStatus = upperText(root.get("activationStatus"), criteriaBuilder);
+    return criteriaBuilder.and(
+        activeOnboardingBase,
+        criteriaBuilder.isNull(root.get("onboardingCompletedAt")),
+        criteriaBuilder.isNotNull(root.get("onboardingAdminEmail")),
+        criteriaBuilder.or(
+            criteriaBuilder.isNull(root.get("activationStatus")),
+            criteriaBuilder.equal(activationStatus, "NOT_SENT")));
+  }
+
+  private Predicate pendingActivationStatusPredicate(
+      Root<Company> root, CriteriaBuilder criteriaBuilder, Predicate activeOnboardingBase) {
+    Expression<String> activationStatus = upperText(root.get("activationStatus"), criteriaBuilder);
+    return criteriaBuilder.and(
+        activeOnboardingBase,
+        criteriaBuilder.isNull(root.get("onboardingCompletedAt")),
+        criteriaBuilder.or(
+            criteriaBuilder.isNotNull(root.get("onboardingCredentialsEmailedAt")),
+            criteriaBuilder.isNotNull(root.get("activationSentAt")),
+            activationStatus.in(Set.of("SENT", "EXPIRED", "SUPERSEDED"))));
+  }
+
+  private Predicate setupPendingStatusPredicate(
+      Root<Company> root,
+      CriteriaBuilder criteriaBuilder,
+      Predicate activeOnboardingBase,
+      Predicate draft,
+      Predicate pendingActivation) {
+    Expression<String> activationStatus = upperText(root.get("activationStatus"), criteriaBuilder);
+    return criteriaBuilder.and(
+        activeOnboardingBase,
+        criteriaBuilder.isNull(root.get("onboardingCompletedAt")),
+        criteriaBuilder.or(
+            criteriaBuilder.equal(activationStatus, "USED"),
+            criteriaBuilder.and(
+                criteriaBuilder.isNotNull(root.get("onboardingAdminUserId")),
+                criteriaBuilder.not(draft),
+                criteriaBuilder.not(pendingActivation))));
+  }
+
+  private Predicate noCanonicalLifecycleReason(
+      Root<Company> root, CriteriaBuilder criteriaBuilder) {
+    Expression<String> upperReason = upperText(root.get("lifecycleReason"), criteriaBuilder);
+    return criteriaBuilder.or(
+        criteriaBuilder.isNull(root.get("lifecycleReason")),
+        criteriaBuilder.not(upperReason.in(CANONICAL_TENANT_STATUSES)));
+  }
+
+  private Predicate lifecycleEquals(
+      Root<Company> root, CriteriaBuilder criteriaBuilder, CompanyLifecycleState lifecycleState) {
+    return criteriaBuilder.equal(root.get("lifecycleState"), lifecycleState);
+  }
+
+  private Expression<String> upperText(Expression<String> value, CriteriaBuilder criteriaBuilder) {
+    return criteriaBuilder.upper(criteriaBuilder.coalesce(value, ""));
+  }
+
+  private Predicate searchTokenPredicate(
+      Root<Company> root,
+      CriteriaQuery<?> criteriaQuery,
+      CriteriaBuilder criteriaBuilder,
+      String searchToken) {
+    String likeToken = "%" + searchToken.toLowerCase(Locale.ROOT) + "%";
+    Predicate companyFields =
+        criteriaBuilder.or(
+            containsToken(root.get("name"), criteriaBuilder, likeToken),
+            containsToken(root.get("code"), criteriaBuilder, likeToken),
+            containsToken(root.get("onboardingAdminEmail"), criteriaBuilder, likeToken));
+    Subquery<Integer> mainAdminMatch = criteriaQuery.subquery(Integer.class);
+    Root<UserAccount> user = mainAdminMatch.from(UserAccount.class);
+    mainAdminMatch
+        .select(criteriaBuilder.literal(1))
+        .where(
+            criteriaBuilder.and(
+                criteriaBuilder.equal(user.get("id"), root.get("mainAdminUserId")),
+                criteriaBuilder.or(
+                    containsToken(user.get("email"), criteriaBuilder, likeToken),
+                    containsToken(user.get("displayName"), criteriaBuilder, likeToken))));
+    return criteriaBuilder.or(companyFields, criteriaBuilder.exists(mainAdminMatch));
+  }
+
+  private Predicate containsToken(
+      Expression<String> value, CriteriaBuilder criteriaBuilder, String likeToken) {
+    return criteriaBuilder.like(
+        criteriaBuilder.lower(criteriaBuilder.coalesce(value, "")), likeToken);
+  }
+
+  private List<String> searchTokens(String query) {
+    if (!StringUtils.hasText(query)) {
+      return List.of();
+    }
+    List<String> tokens = new ArrayList<>();
+    StringBuilder current = new StringBuilder();
+    for (char ch : query.trim().toLowerCase(Locale.ROOT).toCharArray()) {
+      if (Character.isLetterOrDigit(ch)) {
+        current.append(ch);
+      } else if (current.length() > 0) {
+        tokens.add(current.toString());
+        current.setLength(0);
+      }
+    }
+    if (current.length() > 0) {
+      tokens.add(current.toString());
+    }
+    return tokens;
+  }
+
+  private int validatePage(int page) {
+    if (page < 0) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          "page must be greater than or equal to 0");
+    }
+    return page;
+  }
+
+  private int validateSize(int size) {
+    if (size < 1 || size > 100) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          "size must be between 1 and 100");
+    }
+    return size;
+  }
+
+  private SortSpec parseSort(String sort) {
+    String raw = StringUtils.hasText(sort) ? sort.trim() : "companyCode,asc";
+    String[] parts = raw.split(",", -1);
+    String field = parts[0].trim();
+    String direction = parts.length > 1 ? parts[1].trim().toLowerCase(Locale.ROOT) : "asc";
+    if (parts.length > 2 || !Set.of("asc", "desc").contains(direction)) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          "sort must use '<field>,asc' or '<field>,desc'");
+    }
+    String property =
+        switch (field) {
+          case "companyCode", "code" -> "code";
+          case "companyName", "name" -> "name";
+          case "plan" -> "commercialPlanId";
+          case "billingStatus" -> "commercialBillingStatus";
+          default ->
+              throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+                  "sort field must be one of companyCode, companyName, plan, or billingStatus");
+        };
+    Sort.Direction sortDirection =
+        "desc".equals(direction) ? Sort.Direction.DESC : Sort.Direction.ASC;
+    Sort sortOrder = Sort.by(sortDirection, property);
+    if (!"code".equals(property)) {
+      sortOrder = sortOrder.and(Sort.by(Sort.Direction.ASC, "code"));
+    }
+    return new SortSpec(sortOrder);
+  }
+
+  private String resolvePlanId(Company company) {
+    return company == null || !StringUtils.hasText(company.getCommercialPlanId())
+        ? "TRIAL"
+        : company.getCommercialPlanId();
+  }
+
+  private String resolveBillingStatus(String status) {
+    if ("ARCHIVED".equals(status)) {
+      return "ARCHIVED";
+    }
+    if ("CANCELED".equals(status)) {
+      return "CANCELED";
+    }
+    if ("GRACE".equals(status)) {
+      return "GRACE";
+    }
+    if ("TRIAL_ACTIVE".equals(status)) {
+      return "TRIAL";
+    }
+    return "MANUAL";
+  }
+
+  private String resolveBillingStatus(Company company, String status) {
+    if (company != null && StringUtils.hasText(company.getCommercialBillingStatus())) {
+      return company.getCommercialBillingStatus();
+    }
+    return resolveBillingStatus(status);
+  }
+
+  private SuperAdminBillingDtos.BillingStatusSummary billingSummary(
+      Company company, String status) {
+    return billingService.billingSummaryFor(company);
+  }
+
+  private Instant resolveTrialEndsAt(Company company, String status) {
+    return company == null ? null : company.getCommercialTrialEndsAt();
+  }
+
+  private SuperAdminTenantSummaryDto.HealthSummary healthSummary(
+      String status, CompanyTenantMetricsDto metrics) {
+    int errorRate =
+        metrics == null ? 0 : (int) Math.min(metrics.apiErrorRateInBasisPoints(), 10000);
+    if ("SUSPENDED_BLOCKED".equals(status)
+        || "ARCHIVED".equals(status)
+        || "CANCELED".equals(status)) {
+      return new SuperAdminTenantSummaryDto.HealthSummary(
+          "BLOCKED",
+          Math.max(75, errorRate / 100),
+          "Tenant access is restricted by lifecycle status");
+    }
+    if ("SUSPENDED_READ_ONLY".equals(status)) {
+      return new SuperAdminTenantSummaryDto.HealthSummary(
+          "READ_ONLY", Math.max(60, errorRate / 100), "Tenant writes are restricted");
+    }
+    if ("SEED_FAILED".equals(status)) {
+      return new SuperAdminTenantSummaryDto.HealthSummary(
+          "SEED_FAILED", Math.max(80, errorRate / 100), "Tenant seed repair is required");
+    }
+    if ("GRACE".equals(status)) {
+      return new SuperAdminTenantSummaryDto.HealthSummary(
+          "AT_RISK", Math.max(50, errorRate / 100), "Tenant is in billing grace");
+    }
+    if ("DRAFT".equals(status)
+        || "PENDING_ACTIVATION".equals(status)
+        || "SETUP_PENDING".equals(status)) {
+      return new SuperAdminTenantSummaryDto.HealthSummary(
+          "SETUP_REQUIRED", Math.max(25, errorRate / 100), "Tenant setup is not complete");
+    }
+    if (errorRate >= 500) {
+      return new SuperAdminTenantSummaryDto.HealthSummary(
+          "DEGRADED", errorRate / 100, "API error rate needs review");
+    }
+    return new SuperAdminTenantSummaryDto.HealthSummary(
+        "HEALTHY", errorRate / 100, "No platform risk signals");
+  }
+
+  private SuperAdminTenantDetailDto.TabState tabState(String state, String message) {
+    return new SuperAdminTenantDetailDto.TabState(state, message);
+  }
+
+  private SuperAdminTenantDetailDto.TabState tabStateForStatus(
+      String status, String defaultState, String defaultMessage) {
+    String normalized = normalizeCanonicalStatus(status);
+    if (normalized == null) {
+      return tabState(defaultState, defaultMessage);
+    }
+    return switch (normalized) {
+      case "DRAFT" ->
+          tabState(
+              "PENDING_SETUP", "DRAFT tenant needs activation before this summary is actionable");
+      case "PENDING_ACTIVATION" ->
+          tabState(
+              "PENDING_ACTIVATION", "PENDING_ACTIVATION tenant is waiting for owner activation");
+      case "SETUP_PENDING" ->
+          tabState("SETUP_REQUIRED", "SETUP_PENDING tenant is completing first-login setup");
+      case "SEED_FAILED" ->
+          tabState("ACTION_REQUIRED", "SEED_FAILED tenant needs seed repair before normal use");
+      case "GRACE" -> tabState("ACTION_REQUIRED", "GRACE tenant needs billing follow-up");
+      case "SUSPENDED_READ_ONLY" ->
+          tabState("READ_ONLY", "SUSPENDED_READ_ONLY tenant permits safe reads only");
+      case "SUSPENDED_BLOCKED" -> tabState("BLOCKED", "SUSPENDED_BLOCKED tenant access is blocked");
+      case "CANCELED" -> tabState("CANCELED", "CANCELED tenant is no longer billable");
+      case "ARCHIVED" -> tabState("ARCHIVED", "ARCHIVED tenant is preserved for history");
+      default -> tabState(defaultState, defaultMessage + " for " + normalized);
+    };
   }
 
   private String normalizeRequiredEmail(String email, String fieldName) {
@@ -640,7 +2189,12 @@ public class SuperAdminTenantControlPlaneService {
       throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
           fieldName + " is required");
     }
-    return email.trim().toLowerCase(Locale.ROOT);
+    String normalized = email.trim().toLowerCase(Locale.ROOT);
+    if (normalized.length() > 255) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+          fieldName + " must be at most 255 characters");
+    }
+    return normalized;
   }
 
   private String normalizeOptionalReason(String value, String fallback) {
@@ -685,6 +2239,14 @@ public class SuperAdminTenantControlPlaneService {
       return Integer.MAX_VALUE;
     }
     return value < 0L ? 0 : (int) value;
+  }
+
+  private long currentBurstRequestsPerMinute(Company company) {
+    if (company == null || !StringUtils.hasText(company.getCode())) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState(
+          "Tenant runtime policy snapshot requires a company code");
+    }
+    return tenantRuntimeEnforcementService.snapshot(company.getCode()).maxRequestsPerMinute();
   }
 
   private void assertTenantExclusiveUsers(
@@ -741,9 +2303,6 @@ public class SuperAdminTenantControlPlaneService {
   }
 
   private void logAuditSuccess(Company company, String reason, Map<String, String> metadata) {
-    if (auditService == null) {
-      return;
-    }
     HashMap<String, String> auditMetadata = new HashMap<>();
     if (metadata != null) {
       auditMetadata.putAll(metadata);
@@ -758,6 +2317,30 @@ public class SuperAdminTenantControlPlaneService {
     auditMetadata.put("targetCompanyId", String.valueOf(company.getId()));
     auditService.logAuthSuccess(
         AuditEvent.CONFIGURATION_CHANGED, currentActor(), company.getCode(), auditMetadata);
+  }
+
+  private Long logAuditRequired(Company company, String reason, Map<String, String> metadata) {
+    HashMap<String, String> auditMetadata = new HashMap<>();
+    if (metadata != null) {
+      auditMetadata.putAll(metadata);
+    }
+    auditMetadata.put("actor", currentActor());
+    String actorPublicId = currentActorPublicId();
+    if (StringUtils.hasText(actorPublicId)) {
+      auditMetadata.put("actorPublicId", actorPublicId);
+    }
+    auditMetadata.put("reason", reason);
+    auditMetadata.put("targetCompanyCode", company.getCode());
+    auditMetadata.put("targetCompanyId", String.valueOf(company.getId()));
+    AuditLog auditLog =
+        auditService.logAuthSuccessRequired(
+            AuditEvent.CONFIGURATION_CHANGED, currentActor(), company.getCode(), auditMetadata);
+    if (auditLog == null || auditLog.getId() == null) {
+      throw new ApplicationException(
+          ErrorCode.BUSINESS_INVALID_STATE,
+          "Required tenant control-plane audit was not persisted");
+    }
+    return auditLog.getId();
   }
 
   private Instant toInstant(LocalDateTime timestamp) {
@@ -777,4 +2360,39 @@ public class SuperAdminTenantControlPlaneService {
     }
     return null;
   }
+
+  private record SortSpec(Sort sort) {}
+
+  private static final class AddClientCreateLock {
+    private final ReentrantLock lock = new ReentrantLock();
+    private int reservations;
+
+    private void retain() {
+      reservations++;
+    }
+
+    private void lock() {
+      lock.lock();
+    }
+
+    private void unlock() {
+      lock.unlock();
+    }
+
+    private void releaseReservation() {
+      reservations--;
+      if (reservations < 0) {
+        throw new IllegalStateException("Add Client create lock reservations underflow");
+      }
+    }
+
+    private boolean canRemove() {
+      return reservations == 0 && !lock.isLocked();
+    }
+  }
+
+  private record HeldAddClientCreateLock(String key, AddClientCreateLock lock) {}
+
+  private record ActivationIssue(
+      Long tokenId, Instant sentAt, Instant expiresAt, String activationUrl, String rawToken) {}
 }

@@ -4,24 +4,22 @@ This file inventories the controllers and services that own the current setup jo
 
 ## Tenant Bootstrap
 
-### `SuperAdminTenantOnboardingController`
+### `SuperAdminController` and `SuperAdminTenantOnboardingController`
 
 - canonical routes:
+  - `GET /api/v1/superadmin/tenants/new`
   - `GET /api/v1/superadmin/tenants/coa-templates`
-  - `POST /api/v1/superadmin/tenants/onboard`
+  - `POST /api/v1/superadmin/tenants`
 - purpose:
-  - expose the only seeded tenant bootstrap flow
+  - expose Add Client creation, template discovery, and activation/setup handoff
 
-### `TenantOnboardingService`
+### `SuperAdminTenantControlPlaneService`, `TenantDefaultSeedingService`, `OwnerSetupService`
 
 - purpose:
-  - create company
-  - seed chart of accounts
-  - seed `OPEN-BAL`
-  - set default account pointers
-  - provision the first admin
-  - ensure an open accounting period
-  - initialize default system settings
+  - create draft or pending-activation tenants
+  - create owner activation/setup state through canonical auth services
+  - seed/status chart of accounts, `OPEN-BAL`, default account pointers, and open accounting period
+  - expose owner setup under `/api/v1/setup/**`
 
 ### `CompanyController`
 
@@ -43,7 +41,7 @@ This file inventories the controllers and services that own the current setup jo
   - `PUT /api/v1/superadmin/tenants/{id}/limits`
   - `PUT /api/v1/superadmin/tenants/{id}/modules`
   - `POST /api/v1/superadmin/tenants/{id}/support/warnings`
-  - `POST /api/v1/superadmin/tenants/{id}/support/admin-password-reset`
+  - `/api/v1/superadmin/tenants/{id}/activation/{send,resend,copy,expire}`
 
 ## Company Defaults
 

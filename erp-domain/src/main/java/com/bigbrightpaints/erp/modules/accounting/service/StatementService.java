@@ -34,6 +34,7 @@ import com.bigbrightpaints.erp.modules.accounting.dto.StatementTransactionDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.SupplierBalanceView;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
+import com.bigbrightpaints.erp.modules.company.service.TenantRealActionUsageService;
 import com.bigbrightpaints.erp.modules.purchasing.domain.Supplier;
 import com.bigbrightpaints.erp.modules.purchasing.domain.SupplierRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
@@ -49,6 +50,7 @@ public class StatementService {
   private final SupplierLedgerRepository supplierLedgerRepository;
   private final PartnerSettlementAllocationRepository settlementAllocationRepository;
   private final CompanyClock companyClock;
+  private final TenantRealActionUsageService realActionUsageService;
 
   public StatementService(
       CompanyContextService companyContextService,
@@ -57,7 +59,8 @@ public class StatementService {
       DealerLedgerRepository dealerLedgerRepository,
       SupplierLedgerRepository supplierLedgerRepository,
       PartnerSettlementAllocationRepository settlementAllocationRepository,
-      CompanyClock companyClock) {
+      CompanyClock companyClock,
+      TenantRealActionUsageService realActionUsageService) {
     this.companyContextService = companyContextService;
     this.dealerRepository = dealerRepository;
     this.supplierRepository = supplierRepository;
@@ -65,6 +68,7 @@ public class StatementService {
     this.supplierLedgerRepository = supplierLedgerRepository;
     this.settlementAllocationRepository = settlementAllocationRepository;
     this.companyClock = companyClock;
+    this.realActionUsageService = realActionUsageService;
   }
 
   public PartnerStatementResponse dealerStatement(Long dealerId, LocalDate from, LocalDate to) {
@@ -535,23 +539,48 @@ public class StatementService {
   }
 
   public byte[] dealerStatementPdf(Long dealerId, LocalDate from, LocalDate to) {
-    PartnerStatementResponse stmt = dealerStatement(dealerId, from, to);
-    return buildStatementPdf("Dealer Statement", stmt);
+    return renderQuotaTrackedPdf(
+        () -> {
+          PartnerStatementResponse stmt = dealerStatement(dealerId, from, to);
+          return buildStatementPdf("Dealer Statement", stmt);
+        });
   }
 
   public byte[] supplierStatementPdf(Long supplierId, LocalDate from, LocalDate to) {
-    PartnerStatementResponse stmt = supplierStatement(supplierId, from, to);
-    return buildStatementPdf("Supplier Statement", stmt);
+    return renderQuotaTrackedPdf(
+        () -> {
+          PartnerStatementResponse stmt = supplierStatement(supplierId, from, to);
+          return buildStatementPdf("Supplier Statement", stmt);
+        });
   }
 
   public byte[] dealerAgingPdf(Long dealerId, LocalDate asOf, String buckets) {
-    AgingSummaryResponse aging = dealerAging(dealerId, asOf, buckets);
-    return buildAgingPdf("Dealer Aging", aging);
+    return renderQuotaTrackedPdf(
+        () -> {
+          AgingSummaryResponse aging = dealerAging(dealerId, asOf, buckets);
+          return buildAgingPdf("Dealer Aging", aging);
+        });
   }
 
   public byte[] supplierAgingPdf(Long supplierId, LocalDate asOf, String buckets) {
-    AgingSummaryResponse aging = supplierAging(supplierId, asOf, buckets);
-    return buildAgingPdf("Supplier Aging", aging);
+    return renderQuotaTrackedPdf(
+        () -> {
+          AgingSummaryResponse aging = supplierAging(supplierId, asOf, buckets);
+          return buildAgingPdf("Supplier Aging", aging);
+        });
+  }
+
+  private byte[] renderQuotaTrackedPdf(PdfRenderAction renderAction) {
+    Company company = companyContextService.requireCurrentCompany();
+    realActionUsageService.enforcePdfExportAllowed(company);
+    byte[] pdf = renderAction.render();
+    realActionUsageService.recordPdfExport(company);
+    return pdf;
+  }
+
+  @FunctionalInterface
+  private interface PdfRenderAction {
+    byte[] render();
   }
 
   private List<int[]> parseBuckets(String bucketParam) {

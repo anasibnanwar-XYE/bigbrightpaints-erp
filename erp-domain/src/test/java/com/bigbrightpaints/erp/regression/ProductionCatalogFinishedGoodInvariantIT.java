@@ -28,6 +28,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
+import com.bigbrightpaints.erp.modules.company.domain.CompanyModule;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodRepository;
@@ -90,6 +91,7 @@ class ProductionCatalogFinishedGoodInvariantIT extends AbstractIntegrationTest {
     company.setDefaultTaxAccountId(taxAccount.getId());
     company.setGstOutputTaxAccountId(taxAccount.getId());
     companyRepository.save(company);
+    company = enableModule(company, CompanyModule.MANUFACTURING);
 
     adminEmail = "catalog-ready-" + companyCode.toLowerCase() + "@bbp.com";
     dataSeeder.ensureUser(

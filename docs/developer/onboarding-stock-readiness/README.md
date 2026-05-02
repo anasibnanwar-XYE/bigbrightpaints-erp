@@ -6,7 +6,7 @@ This folder is the developer-facing packet for the current setup journey from te
 
 Use this doc set to understand the surviving runtime truth:
 
-- tenant bootstrap is canonical on `POST /api/v1/superadmin/tenants/onboard`
+- tenant bootstrap is canonical on `POST /api/v1/superadmin/tenants` through Add Client plus activation/setup
 - company defaults required for stock-bearing work are explicit follow-up setup, not hidden repair
 - stock-bearing item entry is canonical on `POST /api/v1/catalog/items`
 - readiness is explicit per SKU as `catalog`, `inventory`, `production`, and `sales`
@@ -40,7 +40,7 @@ This packet is hard-cut.
 
 ## Current-State Contract
 
-- `POST /api/v1/superadmin/tenants/onboard` seeds the tenant, chart of accounts, open period, first admin, and `OPEN-BAL`
+- `POST /api/v1/superadmin/tenants` creates the tenant and owner activation state; current seed/setup status owns the chart of accounts, open period, owner setup, and `OPEN-BAL`
 - `GET/PUT /api/v1/accounting/default-accounts` owns tenant stock-bearing default-account completion
 - `GET/POST /api/v1/catalog/brands`, `GET /api/v1/catalog/items`, and `POST /api/v1/catalog/items` are the surviving operator-facing setup routes for brand selection and stock-bearing item creation
 - `GET /api/v1/catalog/items` and `GET /api/v1/catalog/items/{itemId}` with `includeReadiness=true` keep readiness visible before factory execution

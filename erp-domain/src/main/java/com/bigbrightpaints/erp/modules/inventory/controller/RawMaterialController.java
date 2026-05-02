@@ -15,6 +15,7 @@ import com.bigbrightpaints.erp.modules.inventory.dto.InventoryExpiringBatchDto;
 import com.bigbrightpaints.erp.modules.inventory.dto.InventoryStockSnapshot;
 import com.bigbrightpaints.erp.modules.inventory.dto.RawMaterialAdjustmentDto;
 import com.bigbrightpaints.erp.modules.inventory.dto.RawMaterialAdjustmentRequest;
+import com.bigbrightpaints.erp.modules.inventory.dto.RawMaterialDto;
 import com.bigbrightpaints.erp.modules.inventory.dto.RawMaterialStockEntryDto;
 import com.bigbrightpaints.erp.modules.inventory.service.InventoryBatchQueryService;
 import com.bigbrightpaints.erp.modules.inventory.service.RawMaterialService;
@@ -43,6 +44,18 @@ public class RawMaterialController {
     this.rawMaterialService = rawMaterialService;
     this.inventoryBatchQueryService = inventoryBatchQueryService;
     this.validator = validator;
+  }
+
+  @GetMapping("/raw-materials")
+  public ResponseEntity<ApiResponse<List<RawMaterialDto>>> listRawMaterials() {
+    return ResponseEntity.ok(ApiResponse.success(rawMaterialService.listRawMaterials()));
+  }
+
+  @DeleteMapping("/raw-materials/{id}")
+  @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
+  public ResponseEntity<ApiResponse<Void>> deleteRawMaterial(@PathVariable Long id) {
+    rawMaterialService.deleteRawMaterial(id);
+    return ResponseEntity.ok(ApiResponse.success("Raw material deleted", null));
   }
 
   @GetMapping("/raw-materials/stock")

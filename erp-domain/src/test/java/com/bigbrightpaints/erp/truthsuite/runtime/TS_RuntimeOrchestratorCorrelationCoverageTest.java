@@ -30,6 +30,7 @@ import com.bigbrightpaints.erp.modules.accounting.service.AccountingService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
+import com.bigbrightpaints.erp.modules.company.service.TenantRealActionUsageService;
 import com.bigbrightpaints.erp.modules.factory.service.FactoryService;
 import com.bigbrightpaints.erp.modules.hr.service.HrService;
 import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService;
@@ -115,7 +116,8 @@ class TS_RuntimeOrchestratorCorrelationCoverageTest {
             traceService,
             new PolicyEnforcer(),
             mock(OrchestratorIdempotencyService.class),
-            new OrchestratorFeatureFlags(true, true));
+            new OrchestratorFeatureFlags(true, true),
+            mock(TenantRealActionUsageService.class));
 
     Map<String, Object> summary = dispatcher.traceSummary(" trace-summary ");
 

@@ -16,6 +16,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 
+import com.bigbrightpaints.erp.core.web.ApiTraceFilter;
 import com.bigbrightpaints.erp.modules.admin.domain.SupportTicket;
 import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketCategory;
 import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketRepository;
@@ -137,10 +138,17 @@ class SuperAdminTenantWorkflowIsolationIT extends AbstractIntegrationTest {
         rest.exchange(
             "/api/v1/admin/approvals",
             HttpMethod.GET,
-            new HttpEntity<>(jsonHeaders(superAdminToken, TENANT_A)),
+            new HttpEntity<>(
+                jsonHeaders(
+                    superAdminToken,
+                    TENANT_A,
+                    "trace-admin-approval-denial-m2",
+                    "corr-admin-approval-denial-m2")),
             Map.class);
     assertThat(deniedResponse.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
     assertForbiddenReason(deniedResponse, "SUPER_ADMIN_PLATFORM_ONLY");
+    assertTraceMetadata(
+        deniedResponse, "trace-admin-approval-denial-m2", "corr-admin-approval-denial-m2");
   }
 
   @Test
@@ -246,10 +254,21 @@ class SuperAdminTenantWorkflowIsolationIT extends AbstractIntegrationTest {
   }
 
   private HttpHeaders jsonHeaders(String token, String companyCode) {
+    return jsonHeaders(token, companyCode, null, null);
+  }
+
+  private HttpHeaders jsonHeaders(
+      String token, String companyCode, String traceId, String correlationId) {
     HttpHeaders headers = new HttpHeaders();
     headers.setContentType(MediaType.APPLICATION_JSON);
     headers.setBearerAuth(token);
     headers.set("X-Company-Code", companyCode);
+    if (traceId != null) {
+      headers.set(ApiTraceFilter.TRACE_HEADER, traceId);
+    }
+    if (correlationId != null) {
+      headers.set(ApiTraceFilter.CORRELATION_HEADER, correlationId);
+    }
     return headers;
   }
 
@@ -263,5 +282,22 @@ class SuperAdminTenantWorkflowIsolationIT extends AbstractIntegrationTest {
     assertThat(error).isNotNull();
     assertThat(error.get("code")).isEqualTo("AUTH_004");
     assertThat(error.get("reason")).isEqualTo(expectedReason);
+  }
+
+  @SuppressWarnings("unchecked")
+  private void assertTraceMetadata(
+      ResponseEntity<Map> response, String expectedTraceId, String expectedCorrelationId) {
+    assertThat(response.getHeaders().getFirst(ApiTraceFilter.TRACE_HEADER))
+        .isEqualTo(expectedTraceId);
+    assertThat(response.getHeaders().getFirst(ApiTraceFilter.CORRELATION_HEADER))
+        .isEqualTo(expectedCorrelationId);
+    Map<String, Object> body = response.getBody();
+    assertThat(body).isNotNull();
+    Map<String, Object> metadata = (Map<String, Object>) body.get("metadata");
+    assertThat(metadata)
+        .containsEntry("traceId", expectedTraceId)
+        .containsEntry("correlationId", expectedCorrelationId);
+    Map<String, Object> error = (Map<String, Object>) body.get("data");
+    assertThat(error).containsEntry("traceId", expectedTraceId);
   }
 }

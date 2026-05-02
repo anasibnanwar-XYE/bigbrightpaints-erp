@@ -21,6 +21,23 @@ public abstract class AuditControllerSupport {
       String reference,
       int page,
       int size) {
+    return buildFilter(
+        from, to, module, action, status, actor, entityType, reference, null, null, page, size);
+  }
+
+  protected AuditFeedFilter buildFilter(
+      String from,
+      String to,
+      String module,
+      String action,
+      String status,
+      String actor,
+      String entityType,
+      String reference,
+      Long tenantId,
+      String category,
+      int page,
+      int size) {
     return new AuditFeedFilter(
         parseOptionalDate(from, "from"),
         parseOptionalDate(to, "to"),
@@ -30,6 +47,8 @@ public abstract class AuditControllerSupport {
         actor,
         entityType,
         reference,
+        tenantId,
+        category,
         page,
         size);
   }

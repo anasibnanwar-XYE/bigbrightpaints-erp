@@ -52,6 +52,7 @@ import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyService;
 import com.bigbrightpaints.erp.modules.company.service.TenantRuntimeEnforcementService;
 import com.bigbrightpaints.erp.modules.company.service.TenantRuntimeRequestAdmissionService;
+import com.bigbrightpaints.erp.modules.company.service.TenantUsageRollupService;
 import com.bigbrightpaints.erp.modules.rbac.domain.Role;
 import com.bigbrightpaints.erp.modules.rbac.domain.RoleRepository;
 import com.bigbrightpaints.erp.modules.rbac.service.RoleService;
@@ -236,6 +237,7 @@ class TS_RuntimeTenantPolicyControlExecutableCoverageTest {
             systemSettingsRepository,
             userAccountRepository,
             auditService,
+            mock(TenantUsageRollupService.class),
             100,
             100,
             100,
@@ -594,6 +596,17 @@ class TS_RuntimeTenantPolicyControlExecutableCoverageTest {
         10,
         100,
         50,
-        new TenantRuntimeEnforcementService.TenantRuntimeMetrics(0, 0, 0, 0, 0, 0, 0));
+        new TenantRuntimeEnforcementService.TenantRuntimeMetrics(
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            Instant.parse("2026-01-01T00:00:00Z"),
+            Instant.parse("2026-01-01T00:01:00Z"),
+            Instant.parse("2026-01-01T00:01:00Z"),
+            Instant.parse("2026-01-01T00:00:00Z")));
   }
 }

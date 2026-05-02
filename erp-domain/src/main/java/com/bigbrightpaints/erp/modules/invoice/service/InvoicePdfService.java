@@ -15,6 +15,7 @@ import com.openhtmltopdf.pdfboxout.PdfRendererBuilder;
 
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
+import com.bigbrightpaints.erp.modules.company.service.TenantRealActionUsageService;
 import com.bigbrightpaints.erp.modules.invoice.domain.Invoice;
 import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceLine;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
@@ -26,19 +27,23 @@ public class InvoicePdfService {
   private final CompanyContextService companyContextService;
   private final CompanyScopedInvoiceLookupService invoiceLookupService;
   private final TemplateEngine templateEngine;
+  private final TenantRealActionUsageService realActionUsageService;
 
   public InvoicePdfService(
       CompanyContextService companyContextService,
       CompanyScopedInvoiceLookupService invoiceLookupService,
-      TemplateEngine templateEngine) {
+      TemplateEngine templateEngine,
+      TenantRealActionUsageService realActionUsageService) {
     this.companyContextService = companyContextService;
     this.invoiceLookupService = invoiceLookupService;
     this.templateEngine = templateEngine;
+    this.realActionUsageService = realActionUsageService;
   }
 
-  @Transactional(readOnly = true)
+  @Transactional
   public PdfDocument renderInvoicePdf(Long invoiceId) {
     Company company = companyContextService.requireCurrentCompany();
+    realActionUsageService.enforcePdfExportAllowed(company);
     Invoice invoice = invoiceLookupService.requireInvoicePdf(company, invoiceId);
     Dealer dealer = invoice.getDealer();
     SalesOrder order = invoice.getSalesOrder();
@@ -81,6 +86,7 @@ public class InvoicePdfService {
 
     String html = templateEngine.process("invoice-template", context);
     byte[] pdf = renderPdf(html);
+    realActionUsageService.recordPdfExport(company);
 
     String fileName =
         "invoice-"

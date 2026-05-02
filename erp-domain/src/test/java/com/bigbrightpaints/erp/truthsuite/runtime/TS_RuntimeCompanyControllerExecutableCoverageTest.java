@@ -10,11 +10,14 @@ import org.junit.jupiter.api.Test;
 import org.springframework.http.ResponseEntity;
 
 import com.bigbrightpaints.erp.modules.company.controller.SuperAdminController;
-import com.bigbrightpaints.erp.modules.company.dto.CompanyAdminCredentialResetDto;
 import com.bigbrightpaints.erp.modules.company.dto.CompanyLifecycleStateDto;
 import com.bigbrightpaints.erp.modules.company.dto.CompanyLifecycleStateRequest;
 import com.bigbrightpaints.erp.modules.company.service.CompanyService;
+import com.bigbrightpaints.erp.modules.company.service.SuperAdminBillingService;
 import com.bigbrightpaints.erp.modules.company.service.SuperAdminTenantControlPlaneService;
+import com.bigbrightpaints.erp.modules.company.service.SuperAdminTenantEntitlementService;
+import com.bigbrightpaints.erp.modules.company.service.SuperAdminUsageService;
+import com.bigbrightpaints.erp.modules.company.service.TenantUsageRollupService;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 
 @Tag("critical")
@@ -26,7 +29,16 @@ class TS_RuntimeCompanyControllerExecutableCoverageTest {
     CompanyService companyService = mock(CompanyService.class);
     SuperAdminTenantControlPlaneService controlPlaneService =
         mock(SuperAdminTenantControlPlaneService.class);
-    SuperAdminController controller = new SuperAdminController(companyService, controlPlaneService);
+    SuperAdminTenantEntitlementService entitlementService =
+        mock(SuperAdminTenantEntitlementService.class);
+    SuperAdminController controller =
+        new SuperAdminController(
+            companyService,
+            controlPlaneService,
+            entitlementService,
+            mock(TenantUsageRollupService.class),
+            mock(SuperAdminUsageService.class),
+            mock(SuperAdminBillingService.class));
     CompanyLifecycleStateRequest request =
         new CompanyLifecycleStateRequest("SUSPENDED", "reconciliation");
     CompanyLifecycleStateDto responseDto =
@@ -41,28 +53,5 @@ class TS_RuntimeCompanyControllerExecutableCoverageTest {
     assertThat(response.getBody().success()).isTrue();
     assertThat(response.getBody().data()).isEqualTo(responseDto);
     verify(controlPlaneService).updateLifecycleState(42L, request);
-  }
-
-  @Test
-  void canonicalAdminPasswordReset_delegatesAndReturnsResponseEnvelope() {
-    CompanyService companyService = mock(CompanyService.class);
-    SuperAdminTenantControlPlaneService controlPlaneService =
-        mock(SuperAdminTenantControlPlaneService.class);
-    SuperAdminController controller = new SuperAdminController(companyService, controlPlaneService);
-    SuperAdminController.TenantAdminPasswordResetRequest request =
-        new SuperAdminController.TenantAdminPasswordResetRequest("admin@ske.com", null);
-    CompanyAdminCredentialResetDto payload =
-        new CompanyAdminCredentialResetDto(42L, "SKE", "admin@ske.com", "reset-link-emailed");
-    when(controlPlaneService.resetTenantAdminPassword(42L, "admin@ske.com", null))
-        .thenReturn(payload);
-
-    ResponseEntity<ApiResponse<CompanyAdminCredentialResetDto>> response =
-        controller.resetTenantAdminPassword(42L, request);
-
-    assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
-    assertThat(response.getBody()).isNotNull();
-    assertThat(response.getBody().success()).isTrue();
-    assertThat(response.getBody().data()).isEqualTo(payload);
-    verify(controlPlaneService).resetTenantAdminPassword(42L, "admin@ske.com", null);
   }
 }

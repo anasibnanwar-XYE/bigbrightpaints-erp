@@ -2,11 +2,11 @@
 
 Last reviewed: 2026-03-30
 
-This packet documents the **company module** (`modules/company`) and the tenant-runtime infrastructure it owns. It covers tenant lifecycle, runtime admission, module gating, tenant onboarding, super-admin control-plane operations, company-context resolution, and usage-enforcement surfaces.
+This packet documents the **company module** (`modules/company`) and the tenant-runtime infrastructure it owns. It covers tenant lifecycle, runtime admission, module gating, super-admin control-plane operations, company-context resolution, usage-enforcement surfaces, and the V1 Add Client activation boundary.
 
 ## Ownership Summary
 
-The company module owns the **tenant lifecycle and runtime enforcement** surface: company CRUD, tenant lifecycle transitions, runtime request admission, per-tenant quota enforcement, module gating, super-admin control-plane operations, tenant onboarding, and company-context resolution.
+The company module owns the **tenant lifecycle and runtime enforcement** surface: company CRUD, tenant lifecycle transitions, runtime request admission, per-tenant quota enforcement, module gating, super-admin control-plane operations, company-context resolution, and V1 Add Client activation.
 
 | Area | Package |
 | --- | --- |
@@ -24,32 +24,38 @@ The company module owns the **tenant lifecycle and runtime enforcement** surface
 | GET | `/api/v1/companies` | `ROLE_SUPER_ADMIN`, `ROLE_ADMIN`, `ROLE_ACCOUNTING`, `ROLE_SALES` | List companies (super-admin: all; tenant users: own company only) |
 | DELETE | `/api/v1/companies/{id}` | `ROLE_ADMIN` | Currently always denies deletion — companies cannot be deleted |
 
-### SuperAdminController — `/api/v1/superadmin`
+### SuperAdmin control plane — `/api/v1/superadmin`
 
 All endpoints require `ROLE_SUPER_ADMIN`.
 
-| Method | Path | Purpose |
-| --- | --- | --- |
-| GET | `/api/v1/superadmin/dashboard` | Super-admin dashboard metrics |
-| GET | `/api/v1/superadmin/tenants` | List tenants (optional `?status=` filter) |
-| GET | `/api/v1/superadmin/tenants/{id}` | Tenant detail |
-| PUT | `/api/v1/superadmin/tenants/{id}/lifecycle` | Update tenant lifecycle state |
-| PUT | `/api/v1/superadmin/tenants/{id}/limits` | Update tenant usage limits |
-| PUT | `/api/v1/superadmin/tenants/{id}/modules` | Update enabled modules for tenant |
-| POST | `/api/v1/superadmin/tenants/{id}/support/warnings` | Issue support warning |
-| POST | `/api/v1/superadmin/tenants/{id}/support/admin-password-reset` | Force-reset tenant admin password |
-| PUT | `/api/v1/superadmin/tenants/{id}/support/context` | Update support notes and tags |
-| POST | `/api/v1/superadmin/tenants/{id}/force-logout` | Force-logout all tenant users |
-| PUT | `/api/v1/superadmin/tenants/{id}/admins/main` | Replace main admin |
-| POST | `/api/v1/superadmin/tenants/{id}/admins/{adminId}/email-change/request` | Request admin email change |
-| POST | `/api/v1/superadmin/tenants/{id}/admins/{adminId}/email-change/confirm` | Confirm admin email change |
+The final V1 surface is documented for frontend consumers in
+[`docs/frontend-portals/superadmin/api-contracts.md`](../frontend-portals/superadmin/api-contracts.md)
+and is generated in `openapi.json`. Company-owned Super Admin routes include:
+
+| Route family | Purpose |
+| --- | --- |
+| `GET /api/v1/superadmin/dashboard` | Platform aggregate dashboard; no private tenant business rows |
+| `GET, POST /api/v1/superadmin/tenants` | Paginated/filtered tenant list and strict Add Client create payload |
+| `GET /api/v1/superadmin/tenants/new` | Add Client option schema for company, owner, commercial, quotas, modules, support, create modes, and seed policy |
+| `GET /api/v1/superadmin/tenants/{id}` | State-aware tenant profile tabs as summaries only |
+| `/api/v1/superadmin/tenants/{id}/activation/{send,resend,copy,expire}` | Digest-token activation actions; link values are only at explicit copy/delivery boundaries and must be redacted in evidence |
+| `/api/v1/superadmin/tenants/{id}/seed-status/**` and `/accounting-mappings/{mappingKey}` | Seed readiness, repair, and locked mapping controls |
+| `/api/v1/superadmin/tenants/{id}/plan`, `/entitlements/**`, `/limits`, `/modules`, `/quota-check`, `/quota-policy` | Plan assignment, effective entitlement source metadata, quotas, rate limits, and module gates |
+| `/api/v1/superadmin/tenants/{id}/billing/**` plus `/billing/metrics` | Subscription, immutable manual billing ledger, MRR/ARR summaries, and balance actions |
+| `/api/v1/superadmin/tenants/{id}/suspension/**`, `/resume`, `/cancel`, `/archive`, `/commercial-state`, `/lifecycle` | Commercial/lifecycle access matrix and current lifecycle update endpoint |
+| `/api/v1/superadmin/support/tickets/**` | Support queue, customer-visible messages, internal notes, SLA refresh, feature/incident conversion, and Sentry link/sync |
+| `/api/v1/superadmin/audit/**`, `/infra/**`, `/observability/datadog/status` | Privacy-safe audit/security events, infra health/cost, and safe observability status |
+| `/api/v1/superadmin/profile/**`, `/settings`, `/roles/**`, `/changelog/**`, `/notify` | Platform operator profile, settings, role catalog, release notes, and notification utility |
+
+All list routes use documented query parameters and explicit validation for
+unknown filters, invalid enums, invalid sort fields, and oversized pages. All
+accepted mutations write privacy-safe audit evidence with trace/correlation IDs.
 
 ### SuperAdminTenantOnboardingController — `/api/v1/superadmin/tenants`
 
 | Method | Path | Auth | Purpose |
 | --- | --- | --- | --- |
 | GET | `/api/v1/superadmin/tenants/coa-templates` | `ROLE_SUPER_ADMIN` | List available chart-of-accounts templates |
-| POST | `/api/v1/superadmin/tenants/onboard` | `ROLE_SUPER_ADMIN` | Onboard new tenant (company + admin user + seeded CoA + default period) |
 
 ## Key Services
 
@@ -118,20 +124,13 @@ Runtime policies are persisted to the `system_settings` table with keys like `te
 
 A thin facade over `TenantRuntimeEnforcementService` that provides the entry point for runtime filters, interceptors, and auth flows. It prevents direct coupling between the filter chain and the enforcement policy service.
 
-### TenantOnboardingService
+### Add Client and Owner Setup Services
 
-Handles new-tenant creation:
-
-1. Validates the onboarding request (company code, name, admin email, password, CoA template).
-2. Creates the `Company` entity with `ACTIVE` lifecycle state.
-3. Seeds the chart of accounts from the selected template.
-4. Creates the tenant admin `UserAccount` with `ROLE_ADMIN`.
-5. Creates the default accounting period.
-6. Returns the onboarding result with company and admin details.
+`SuperAdminTenantControlPlaneService` backs Add Client creation, activation actions, tenant profile summaries, quotas, billing, support, and audit-safe control-plane operations. `TenantDefaultSeedingService` owns default seed execution/status, and `OwnerSetupService` owns the owner setup corridor under `/api/v1/setup/**`. Tenant creation is stateful: draft or pending activation first, owner credential setup through activation, then setup completion through `/api/v1/setup/**`.
 
 ### SuperAdminTenantControlPlaneService
 
-The super-admin control plane for tenant management. Provides tenant listing/detail, lifecycle transitions, usage-limit updates, module management, support operations (warnings, password resets, notes/tags), session management (force-logout, main-admin replacement), and admin email changes with verification tokens.
+The super-admin control plane for tenant management. Provides tenant listing/detail, lifecycle transitions, usage-limit updates, module management, support operations (warnings and notes/tags), session management (force-logout, main-admin replacement), and admin email changes with verification tokens. Platform-issued support password reset is not a current route; use activation or scoped auth password recovery.
 
 ### ModuleGatingService
 
@@ -185,18 +184,24 @@ Super-admin users authenticate with the platform scope code (default: `PLATFORM`
 
 Super-admin users are **explicitly blocked** from tenant business endpoints (sales, inventory, factory, purchasing, HR, portal, dealer-portal, etc.) by `CompanyContextFilter`.
 
-### Tenant Onboarding
+### V1 Add Client / Activation Boundary
 
-The onboarding flow creates a fully operational tenant in one transaction:
+Tenant creation uses the Add Client + activation workflow: Super Admin prepares a draft or pending tenant, activation handles owner credential setup, and setup finishes through the V1 owner setup corridor. The historical flat onboarding and platform-issued support password-reset URLs are not mapped in the current API contract; stale clients receive `404` or `405` depending on whether the removed URL collides with a surviving route template.
 
-1. Validate request: company code uniqueness, admin email format, CoA template selection.
-2. Create company: `Company` entity with `ACTIVE` lifecycle state and default module set.
-3. Seed chart of accounts from the selected `CoATemplate`.
-4. Create admin user: `UserAccount` with `ROLE_ADMIN`, scoped to the new company.
-5. Create default accounting period.
-6. Return result: company code, admin public ID, admin email.
+The current V1 status vocabulary separates tenant lifecycle, activation,
+onboarding, billing, and suspension state. Super Admin summaries may show
+`DRAFT`, `PENDING_ACTIVATION`, `SETUP_PENDING`, `TRIAL_ACTIVE`, `ACTIVE`,
+`GRACE`, `SUSPENDED_READ_ONLY`, `SUSPENDED_BLOCKED`, `CANCELED`, `ARCHIVED`,
+and `SEED_FAILED` as documented list/profile states. Owner setup uses only
+company details, GST, accounting defaults, optional team invite, and finish;
+location setup is outside this V1 corridor.
 
-Onboarding is accessible only to `ROLE_SUPER_ADMIN` via `POST /api/v1/superadmin/tenants/onboard`.
+Super Admin summaries must stay privacy-safe. They may expose tenant identity
+markers, owner contact markers, plan/billing/usage summaries, support/SLA/bug
+metadata, seed readiness, trace IDs, and audit IDs. They must not expose tenant
+invoices, ledger lines, inventory rows, salaries, vendors/customers, files, GST
+returns, request/response bodies, raw logs, token values, password hashes,
+provider credentials, or `.env` values.
 
 ## Cross-Module Boundaries
 
@@ -204,8 +209,8 @@ Onboarding is accessible only to `ROLE_SUPER_ADMIN` via `POST /api/v1/superadmin
 | --- | --- | --- |
 | company → auth | dependency | Super-admin control plane calls `TokenBlacklistService` and `RefreshTokenService` for force-logout |
 | company → auth | dependency | `TenantRuntimeRequestAdmissionService` is called by `AuthService` for login/refresh admission |
-| company → auth | dependency | `TenantOnboardingService` creates `UserAccount` entities |
-| company → accounting | dependency | `TenantOnboardingService` seeds chart of accounts and creates default period |
+| company → auth | dependency | Add Client and owner setup use canonical auth/account services for activation, scoped account setup, session revocation, and password recovery |
+| company → accounting | dependency | `TenantDefaultSeedingService` and setup mappings seed and repair accounting defaults through the current seed-status corridor |
 | company → core/security | dependency | `CompanyContextFilter` enforces lifecycle and runtime admission |
 | company → core/config | dependency | `TenantRuntimeEnforcementService` persists policies via `SystemSettingsRepository` |
 

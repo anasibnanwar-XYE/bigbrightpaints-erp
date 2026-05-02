@@ -190,18 +190,19 @@ Primary files:
 - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/AccountingFacade.java`
 - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/PayrollAccountingService.java`
 
-### 2.5 Tenant onboarding / lifecycle / runtime controls
+### 2.5 Add Client / lifecycle / runtime controls
 
 ```mermaid
 sequenceDiagram
-    participant SA as SuperAdminTenantOnboardingController
-    participant TO as TenantOnboardingService
+    participant SA as SuperAdminController
+    participant CP as SuperAdminTenantControlPlaneService
+    participant SEED as TenantDefaultSeedingService
     participant TL as TenantLifecycleService
     participant CF as CompanyContextFilter
     participant MG as ModuleGatingInterceptor
 
-    SA->>TO: onboardTenant()
-    TO->>TO: seed CoA + defaults + admin
+    SA->>CP: createAddClient()
+    CP->>SEED: seed/status current defaults
     TL->>TL: transition ACTIVE/SUSPENDED/DEACTIVATED
     CF->>CF: enforce tenant claim + lifecycle admission
     MG->>MG: enforce optional module gating
@@ -209,15 +210,18 @@ sequenceDiagram
 
 Evidence and invariants:
 
-- Onboarding seeds company, template accounts, default accounting pointers, first admin, and baseline period/settings (`TenantOnboardingService.onboardTenant`).
+- Add Client creates draft or pending-activation tenants, owner setup runs through activation plus `/api/v1/setup/**`, and seed/status work owns the accounting baseline (`SuperAdminTenantControlPlaneService.createAddClient`, `TenantDefaultSeedingService`, `OwnerSetupService`).
 - Lifecycle transitions are constrained (`ACTIVE <-> SUSPENDED`, irreversible from `DEACTIVATED`) and audited (`TenantLifecycleService.validateTransition`, `auditTransition`).
 - Request-path tenant enforcement blocks claim/header mismatches and enforces lifecycle read-only/deactivated behavior (`CompanyContextFilter`).
 - Optional module access is path-mapped and denied with `MODULE_DISABLED` when not enabled (`ModuleGatingInterceptor.resolveTargetModule`, `ModuleGatingService`).
 
 Primary files:
 
+- `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/company/controller/SuperAdminController.java`
 - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/company/controller/SuperAdminTenantOnboardingController.java`
-- `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/company/service/TenantOnboardingService.java`
+- `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/company/service/SuperAdminTenantControlPlaneService.java`
+- `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/company/service/TenantDefaultSeedingService.java`
+- `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/company/service/OwnerSetupService.java`
 - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/company/service/TenantLifecycleService.java`
 - `erp-domain/src/main/java/com/bigbrightpaints/erp/core/security/CompanyContextFilter.java`
 - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/company/service/ModuleGatingInterceptor.java`

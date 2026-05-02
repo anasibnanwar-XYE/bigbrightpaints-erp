@@ -100,3 +100,8 @@ artifacts/gate-release/predeploy-scans-upgrade-v2.txt
 # Python cache
 __pycache__/
 *.pyc
+
+# Local secrets
+.env
+.env.*
+!.env.example

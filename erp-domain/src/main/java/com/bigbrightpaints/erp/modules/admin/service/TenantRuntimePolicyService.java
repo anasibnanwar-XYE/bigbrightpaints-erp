@@ -53,14 +53,15 @@ public class TenantRuntimePolicyService {
             .TenantRuntimeSnapshot
         snapshot = tenantRuntimeEnforcementService.snapshot(company.getCode());
     long enabledUsers = snapshot.metrics().activeUsers();
-    if (enabledUsers >= snapshot.maxActiveUsers()) {
+    int maxActiveUsers = snapshot.maxActiveUsers();
+    if (maxActiveUsers > 0 && enabledUsers >= maxActiveUsers) {
       String message = "Active user quota exceeded for tenant " + company.getCode();
       auditUserQuotaDenied(company, snapshot, enabledUsers, operation, message);
       throw new ApplicationException(ErrorCode.BUSINESS_LIMIT_EXCEEDED, message)
           .withDetail("companyCode", company.getCode())
           .withDetail("operation", operation)
           .withDetail("enabledUsers", enabledUsers)
-          .withDetail("maxActiveUsers", snapshot.maxActiveUsers())
+          .withDetail("maxActiveUsers", maxActiveUsers)
           .withDetail("policyReference", snapshot.auditChainId());
     }
   }

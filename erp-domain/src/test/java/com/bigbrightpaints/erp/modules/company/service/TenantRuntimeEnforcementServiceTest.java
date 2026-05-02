@@ -8,6 +8,7 @@ import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -63,6 +64,8 @@ class TenantRuntimeEnforcementServiceTest {
 
   @Mock private AuditService auditService;
 
+  @Mock private TenantUsageRollupService tenantUsageRollupService;
+
   private final Map<String, Company> companiesByCode = new HashMap<>();
   private final Map<Long, Long> activeUsersByCompanyId = new HashMap<>();
   private final Map<String, String> persistedSettingsByKey = new HashMap<>();
@@ -77,8 +80,19 @@ class TenantRuntimeEnforcementServiceTest {
     ReflectionTestUtils.setField(CompanyTime.class, "companyClock", fixedClock);
 
     Company acme = company(1L, "ACME");
+    Company bravo = company(2L, "BRAVO");
     companiesByCode.put("ACME", acme);
+    companiesByCode.put("BRAVO", bravo);
     activeUsersByCompanyId.put(1L, 1L);
+    activeUsersByCompanyId.put(2L, 1L);
+    lenient()
+        .when(tenantUsageRollupService.getCurrentMonthlyApiUsage(any(Company.class)))
+        .thenAnswer(
+            invocation ->
+                new TenantUsageRollupService.MonthlyApiUsage(
+                    0L,
+                    Instant.parse("2026-01-01T00:00:00Z"),
+                    Instant.parse("2026-02-01T00:00:00Z")));
 
     service =
         new TenantRuntimeEnforcementService(
@@ -86,6 +100,7 @@ class TenantRuntimeEnforcementServiceTest {
             systemSettingsRepository,
             userAccountRepository,
             auditService,
+            tenantUsageRollupService,
             3,
             3,
             3,
@@ -157,8 +172,9 @@ class TenantRuntimeEnforcementServiceTest {
   }
 
   @Test
-  void parsePositiveInt_returnsFallbackWhenValueOverflowsInteger() {
-    Integer parsed = ReflectionTestUtils.invokeMethod(service, "parsePositiveInt", "2147483648", 3);
+  void parseRuntimeLimit_returnsFallbackWhenValueOverflowsInteger() {
+    Integer parsed =
+        ReflectionTestUtils.invokeMethod(service, "parseRuntimeLimit", "2147483648", 3);
 
     assertThat(parsed).isEqualTo(3);
   }
@@ -189,12 +205,39 @@ class TenantRuntimeEnforcementServiceTest {
   }
 
   @Test
-  void holdTenant_rejectsNewRequests_withLockedStatusAndAuditFailure() {
+  void snapshotExposesCurrentRuntimeWindowMetadataFromAdmissionCounters() {
+    TenantRuntimeEnforcementService.TenantRequestAdmission first =
+        admissionService.beginRequest("ACME", "/api/v1/private", "GET", "actor@bbp.com");
+    TenantRuntimeEnforcementService.TenantRequestAdmission second =
+        admissionService.beginRequest("ACME", "/api/v1/private", "GET", "actor@bbp.com");
+    TenantRuntimeEnforcementService.TenantRequestAdmission third =
+        admissionService.beginRequest("ACME", "/api/v1/private", "GET", "actor@bbp.com");
+    TenantRuntimeEnforcementService.TenantRequestAdmission rejected =
+        admissionService.beginRequest("ACME", "/api/v1/private", "GET", "actor@bbp.com");
+    admissionService.completeRequest(first, 200);
+    admissionService.completeRequest(second, 200);
+
+    TenantRuntimeEnforcementService.TenantRuntimeSnapshot snapshot = service.snapshot("ACME");
+
+    assertThat(third.isAdmitted()).isTrue();
+    assertThat(rejected.isAdmitted()).isFalse();
+    assertThat(snapshot.metrics().minuteRequestCount()).isEqualTo(4);
+    assertThat(snapshot.metrics().minuteRejectedCount()).isEqualTo(1);
+    assertThat(snapshot.metrics().inFlightRequests()).isEqualTo(1);
+    assertThat(snapshot.metrics().currentWindowStartAt()).isEqualTo("2026-01-01T00:00:00Z");
+    assertThat(snapshot.metrics().currentWindowEndAt()).isEqualTo("2026-01-01T00:01:00Z");
+    assertThat(snapshot.metrics().currentWindowResetAt()).isEqualTo("2026-01-01T00:01:00Z");
+    assertThat(snapshot.metrics().capturedAt()).isEqualTo("2026-01-01T00:00:10Z");
+    admissionService.completeRequest(third, 200);
+  }
+
+  @Test
+  void holdTenant_rejectsMutatingRequests_withLockedStatusAndAuditFailure() {
     TenantRuntimeEnforcementService.TenantRuntimeSnapshot holdSnapshot =
         service.holdTenant("ACME", "compliance_review", "ops@bbp.com");
 
     TenantRuntimeEnforcementService.TenantRequestAdmission rejected =
-        admissionService.beginRequest("ACME", "/api/v1/auth/me", "post", "actor@bbp.com");
+        admissionService.beginRequest("ACME", "/api/v1/private", "POST", "actor@bbp.com");
 
     assertThat(holdSnapshot.state())
         .isEqualTo(TenantRuntimeEnforcementService.TenantRuntimeState.HOLD);
@@ -205,6 +248,16 @@ class TenantRuntimeEnforcementServiceTest {
     assertThat(service.snapshot("ACME").metrics().rejectedRequests()).isEqualTo(1L);
     verify(auditService)
         .logAuthFailure(eq(AuditEvent.ACCESS_DENIED), eq("ACTOR@BBP.COM"), eq("ACME"), anyMap());
+  }
+
+  @Test
+  void holdTenant_allowsLoginAndRefreshForReadOnlySuspension() {
+    service.holdTenant("ACME", "billing_read_only", "ops@bbp.com");
+
+    admissionService.enforceAuthOperationAllowed("ACME", "owner@bbp.com", "LOGIN");
+    admissionService.enforceAuthOperationAllowed("ACME", "owner@bbp.com", "REFRESH_TOKEN");
+
+    assertThat(service.snapshot("ACME").metrics().rejectedRequests()).isEqualTo(0L);
   }
 
   @Test
@@ -373,12 +426,14 @@ class TenantRuntimeEnforcementServiceTest {
   }
 
   @Test
-  void enforceAuthOperationAllowed_onHeldTenantRejectsWithoutActiveUserLookup() {
+  void enforceAuthOperationAllowed_onHeldTenantRejectsUnsafeAuthMutationWithoutActiveUserLookup() {
     service.holdTenant("ACME", "compliance_pause", "ops@bbp.com");
     clearInvocations(userAccountRepository);
 
     assertThatThrownBy(
-            () -> admissionService.enforceAuthOperationAllowed("ACME", "actor@bbp.com", "login"))
+            () ->
+                admissionService.enforceAuthOperationAllowed(
+                    "ACME", "actor@bbp.com", "PASSWORD_CHANGE"))
         .isInstanceOf(AuthSecurityContractException.class)
         .satisfies(
             error -> {
@@ -425,10 +480,255 @@ class TenantRuntimeEnforcementServiceTest {
     assertThat(second.isAdmitted()).isFalse();
     assertThat(second.statusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS.value());
     assertThat(second.message()).isEqualTo("Tenant request rate quota exceeded");
+    assertThat(second.limitType()).isEqualTo("BURST_REQUESTS_PER_MINUTE");
+    assertThat(second.retryAfterSeconds()).isPositive();
+    assertThat(second.resetAtEpochSecond()).isGreaterThan(CompanyTime.now().getEpochSecond());
     assertThat(snapshot.metrics().totalRequests()).isEqualTo(1L);
     assertThat(snapshot.metrics().rejectedRequests()).isEqualTo(1L);
     assertThat(snapshot.metrics().minuteRequestCount()).isEqualTo(2);
     assertThat(snapshot.metrics().inFlightRequests()).isEqualTo(0);
+  }
+
+  @Test
+  void beginRequest_keepsMonthlyApiQuotaSeparateFromBurstAndReturnsPeriodResetMetadata() {
+    companiesByCode.get("ACME").setQuotaMaxApiRequests(2L);
+    service.updateQuotas("ACME", 10, 10, 10, "separate_api_quota", "ops@bbp.com");
+    when(tenantUsageRollupService.getCurrentMonthlyApiUsage(companiesByCode.get("ACME")))
+        .thenReturn(
+            new TenantUsageRollupService.MonthlyApiUsage(
+                3L, Instant.parse("2026-01-01T00:00:00Z"), Instant.parse("2026-02-01T00:00:00Z")));
+
+    TenantRuntimeEnforcementService.TenantRequestAdmission denied =
+        admissionService.beginRequest("ACME", "/api/v1/private", "GET", "actor@bbp.com");
+
+    assertThat(denied.isAdmitted()).isFalse();
+    assertThat(denied.statusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS.value());
+    assertThat(denied.reasonCode()).isEqualTo("TENANT_MONTHLY_API_QUOTA_EXHAUSTED");
+    assertThat(denied.limitType()).isEqualTo("MONTHLY_API_CALLS");
+    assertThat(denied.limitValue()).isEqualTo("2");
+    assertThat(denied.observedValue()).isEqualTo("4");
+    assertThat(denied.retryAfterSeconds()).isEqualTo(2_678_390L);
+    assertThat(denied.resetAtEpochSecond())
+        .isEqualTo(Instant.parse("2026-02-01T00:00:00Z").getEpochSecond());
+    assertThat(service.snapshot("ACME").metrics().minuteRequestCount()).isZero();
+    verify(auditService)
+        .logAuthFailure(eq(AuditEvent.ACCESS_DENIED), eq("ACTOR@BBP.COM"), eq("ACME"), anyMap());
+  }
+
+  @Test
+  void beginRequest_allowsMonthlyApiQuotaWithinGraceAndCachesRollupUsageWindow() {
+    Company acme = companiesByCode.get("ACME");
+    acme.setQuotaMaxApiRequests(10L);
+    when(tenantUsageRollupService.getCurrentMonthlyApiUsage(acme))
+        .thenReturn(
+            new TenantUsageRollupService.MonthlyApiUsage(
+                2L, Instant.parse("2026-01-01T00:00:00Z"), Instant.parse("2026-02-01T00:00:00Z")));
+
+    TenantRuntimeEnforcementService.TenantRequestAdmission first =
+        admissionService.beginRequest("ACME", "/api/v1/private", "GET", "actor@bbp.com");
+    admissionService.completeRequest(first, 200);
+    clearInvocations(companyRepository, tenantUsageRollupService);
+    TenantRuntimeEnforcementService.TenantRequestAdmission second =
+        admissionService.beginRequest("ACME", "/api/v1/private", "GET", "actor@bbp.com");
+    admissionService.completeRequest(second, 200);
+
+    assertThat(first.isAdmitted()).isTrue();
+    assertThat(second.isAdmitted()).isTrue();
+    verifyNoInteractions(companyRepository, tenantUsageRollupService);
+    assertThat(service.snapshot("ACME").metrics().minuteRequestCount()).isEqualTo(2);
+  }
+
+  @Test
+  void beginRequest_skipsMonthlyUsageLookupWhenHardLimitDisabled() {
+    Company acme = companiesByCode.get("ACME");
+    acme.setQuotaMaxApiRequests(1L);
+    ReflectionTestUtils.setField(acme, "quotaHardLimitEnabled", Boolean.FALSE);
+
+    TenantRuntimeEnforcementService.TenantRequestAdmission admission =
+        admissionService.beginRequest("ACME", "/api/v1/private", "GET", "actor@bbp.com");
+    admissionService.completeRequest(admission, 200);
+
+    assertThat(admission.isAdmitted()).isTrue();
+    verify(tenantUsageRollupService, times(0)).getCurrentMonthlyApiUsage(acme);
+  }
+
+  @Test
+  void beginRequest_skipsMonthlyUsageLookupWhenMonthlyLimitIsZero() {
+    Company acme = companiesByCode.get("ACME");
+    acme.setQuotaMaxApiRequests(0L);
+
+    TenantRuntimeEnforcementService.TenantRequestAdmission admission =
+        admissionService.beginRequest("ACME", "/api/v1/private", "GET", "actor@bbp.com");
+    admissionService.completeRequest(admission, 200);
+
+    assertThat(admission.isAdmitted()).isTrue();
+    verify(tenantUsageRollupService, times(0)).getCurrentMonthlyApiUsage(acme);
+  }
+
+  @Test
+  void beginRequest_failsClosedWhenMonthlyUsageLookupThrows() {
+    Company acme = companiesByCode.get("ACME");
+    acme.setQuotaMaxApiRequests(2L);
+    when(tenantUsageRollupService.getCurrentMonthlyApiUsage(acme))
+        .thenThrow(new RuntimeException("rollup-unavailable"));
+
+    TenantRuntimeEnforcementService.TenantRequestAdmission denied =
+        admissionService.beginRequest("ACME", "/api/v1/private", "GET", "actor@bbp.com");
+
+    assertThat(denied.isAdmitted()).isFalse();
+    assertThat(denied.statusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE.value());
+    assertThat(denied.reasonCode()).isEqualTo("TENANT_MONTHLY_API_QUOTA_UNAVAILABLE");
+    assertThat(service.snapshot("ACME").metrics().minuteRequestCount()).isZero();
+  }
+
+  @Test
+  void beginRequest_failsClosedWhenMonthlyUsageWindowIsIncomplete() {
+    Company acme = companiesByCode.get("ACME");
+    acme.setQuotaMaxApiRequests(2L);
+    when(tenantUsageRollupService.getCurrentMonthlyApiUsage(acme))
+        .thenReturn(
+            new TenantUsageRollupService.MonthlyApiUsage(
+                0L, null, Instant.parse("2026-02-01T00:00:00Z")));
+
+    TenantRuntimeEnforcementService.TenantRequestAdmission denied =
+        admissionService.beginRequest("ACME", "/api/v1/private", "GET", "actor@bbp.com");
+
+    assertThat(denied.isAdmitted()).isFalse();
+    assertThat(denied.statusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE.value());
+    assertThat(denied.reasonCode()).isEqualTo("TENANT_MONTHLY_API_QUOTA_UNAVAILABLE");
+  }
+
+  @Test
+  void beginRequest_failsClosedWhenMonthlyUsageSnapshotIsNullOrMissingEnd() {
+    Company acme = companiesByCode.get("ACME");
+    Company bravo = companiesByCode.get("BRAVO");
+    acme.setQuotaMaxApiRequests(2L);
+    bravo.setQuotaMaxApiRequests(2L);
+    when(tenantUsageRollupService.getCurrentMonthlyApiUsage(acme)).thenReturn(null);
+    when(tenantUsageRollupService.getCurrentMonthlyApiUsage(bravo))
+        .thenReturn(
+            new TenantUsageRollupService.MonthlyApiUsage(
+                0L, Instant.parse("2026-01-01T00:00:00Z"), null));
+
+    TenantRuntimeEnforcementService.TenantRequestAdmission nullSnapshot =
+        admissionService.beginRequest("ACME", "/api/v1/private", "GET", "actor@bbp.com");
+    TenantRuntimeEnforcementService.TenantRequestAdmission missingEnd =
+        admissionService.beginRequest("BRAVO", "/api/v1/private", "GET", "actor@bbp.com");
+
+    assertThat(nullSnapshot.isAdmitted()).isFalse();
+    assertThat(nullSnapshot.reasonCode()).isEqualTo("TENANT_MONTHLY_API_QUOTA_UNAVAILABLE");
+    assertThat(missingEnd.isAdmitted()).isFalse();
+    assertThat(missingEnd.reasonCode()).isEqualTo("TENANT_MONTHLY_API_QUOTA_UNAVAILABLE");
+  }
+
+  @Test
+  void beginRequest_failsClosedWhenMonthlyQuotaPolicyCompanyLookupFails() throws Exception {
+    setFreshActivePolicy("ACME");
+    when(companyRepository.findByCodeIgnoreCase("ACME"))
+        .thenThrow(new RuntimeException("company-lookup-unavailable"));
+
+    TenantRuntimeEnforcementService.TenantRequestAdmission denied =
+        admissionService.beginRequest("ACME", "/api/v1/private", "GET", "actor@bbp.com");
+
+    assertThat(denied.isAdmitted()).isFalse();
+    assertThat(denied.statusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE.value());
+    assertThat(denied.reasonCode()).isEqualTo("TENANT_COMPANY_LOOKUP_UNAVAILABLE");
+  }
+
+  @Test
+  void beginRequest_failsClosedWhenMonthlyQuotaPolicyTenantIsMissing() throws Exception {
+    setFreshActivePolicy("ACME");
+    companiesByCode.remove("ACME");
+
+    TenantRuntimeEnforcementService.TenantRequestAdmission denied =
+        admissionService.beginRequest("ACME", "/api/v1/private", "GET", "actor@bbp.com");
+
+    assertThat(denied.isAdmitted()).isFalse();
+    assertThat(denied.statusCode()).isEqualTo(HttpStatus.FORBIDDEN.value());
+    assertThat(denied.reasonCode()).isEqualTo("TENANT_NOT_FOUND");
+  }
+
+  @Test
+  void beginRequest_failsClosedWhenMonthlyQuotaPolicyTenantIdIsMissing() throws Exception {
+    setFreshActivePolicy("NOID");
+    companiesByCode.put("NOID", company(null, "NOID"));
+
+    TenantRuntimeEnforcementService.TenantRequestAdmission denied =
+        admissionService.beginRequest("NOID", "/api/v1/private", "GET", "actor@bbp.com");
+
+    assertThat(denied.isAdmitted()).isFalse();
+    assertThat(denied.statusCode()).isEqualTo(HttpStatus.FORBIDDEN.value());
+    assertThat(denied.reasonCode()).isEqualTo("TENANT_NOT_FOUND");
+  }
+
+  @Test
+  void monthlyQuotaPolicyForUsesFreshInnerCacheInsideMutationLock() throws Exception {
+    Object freshPolicy =
+        tenantMonthlyQuotaPolicy(
+            companiesByCode.get("ACME"), 10L, true, System.currentTimeMillis() + 60_000L);
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    ConcurrentMap<String, Object> monthlyQuotaPolicies =
+        org.mockito.Mockito.mock(ConcurrentMap.class);
+    when(monthlyQuotaPolicies.get("ACME")).thenReturn(null, freshPolicy);
+    ReflectionTestUtils.setField(service, "monthlyQuotaPolicies", monthlyQuotaPolicies);
+
+    Object resolved =
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "monthlyQuotaPolicyFor", "ACME");
+
+    assertThat(resolved).isSameAs(freshPolicy);
+    verifyNoInteractions(companyRepository);
+  }
+
+  @Test
+  void monthlyQuotaHelpersCoverSaturationAndMinuteReleaseMiss() throws Exception {
+    long saturated =
+        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            service, "saturatingIncrement", Long.MAX_VALUE);
+    assertThat(saturated).isEqualTo(Long.MAX_VALUE);
+
+    TenantRuntimeEnforcementService.TenantRequestAdmission admission =
+        admissionService.beginRequest("ACME", "/api/v1/private", "GET", "actor@bbp.com");
+    admissionService.completeRequest(admission, 200);
+    @SuppressWarnings("unchecked")
+    ConcurrentMap<String, Object> counters =
+        (ConcurrentMap<String, Object>) ReflectionTestUtils.getField(service, "counters");
+    Object acmeCounters = counters.get("ACME");
+
+    com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+        service, "releaseMinuteCount", acmeCounters, -1L);
+
+    assertThat(service.snapshot("ACME").metrics().minuteRequestCount()).isEqualTo(1);
+  }
+
+  @Test
+  void beginRequest_burstAndConcurrencyCountersAreTenantIsolated() {
+    service.updateQuotas("ACME", 1, 1, 10, "tight_acme", "ops@bbp.com");
+    service.updateQuotas("BRAVO", 1, 10, 10, "tight_bravo", "ops@bbp.com");
+
+    TenantRuntimeEnforcementService.TenantRequestAdmission acmeFirst =
+        admissionService.beginRequest("ACME", "/api/v1/private", "GET", "actor@bbp.com");
+    TenantRuntimeEnforcementService.TenantRequestAdmission acmeBurst =
+        admissionService.beginRequest("ACME", "/api/v1/private", "GET", "actor@bbp.com");
+    TenantRuntimeEnforcementService.TenantRequestAdmission bravoFirst =
+        admissionService.beginRequest("BRAVO", "/api/v1/private", "GET", "actor@bbp.com");
+    TenantRuntimeEnforcementService.TenantRequestAdmission bravoConcurrent =
+        admissionService.beginRequest("BRAVO", "/api/v1/private", "GET", "actor@bbp.com");
+
+    admissionService.completeRequest(acmeFirst, 200);
+    admissionService.completeRequest(bravoFirst, 200);
+
+    assertThat(acmeFirst.isAdmitted()).isTrue();
+    assertThat(acmeBurst.isAdmitted()).isFalse();
+    assertThat(acmeBurst.reasonCode()).isEqualTo("TENANT_REQUEST_RATE_EXCEEDED");
+    assertThat(acmeBurst.limitType()).isEqualTo("BURST_REQUESTS_PER_MINUTE");
+    assertThat(bravoFirst.isAdmitted()).isTrue();
+    assertThat(bravoConcurrent.isAdmitted()).isFalse();
+    assertThat(bravoConcurrent.reasonCode()).isEqualTo("TENANT_CONCURRENCY_EXCEEDED");
+    assertThat(bravoConcurrent.limitType()).isEqualTo("MAX_CONCURRENT_REQUESTS");
+    assertThat(bravoConcurrent.retryAfterSeconds()).isEqualTo(1L);
+    assertThat(service.snapshot("ACME").metrics().rejectedRequests()).isEqualTo(1L);
+    assertThat(service.snapshot("BRAVO").metrics().rejectedRequests()).isEqualTo(1L);
   }
 
   @Test
@@ -1145,23 +1445,51 @@ class TenantRuntimeEnforcementServiceTest {
   }
 
   @Test
-  void updateAndResumeTransitions_refreshAuditChain_andSanitizeLimits() {
+  void updateAndResumeTransitions_refreshAuditChain_andPreserveUnlimitedLimits() {
     TenantRuntimeEnforcementService.TenantRuntimeSnapshot held =
         service.holdTenant("ACME", "maintenance", "ops@bbp.com");
     TenantRuntimeEnforcementService.TenantRuntimeSnapshot updated =
-        service.updateQuotas("ACME", 0, -5, null, "ratchet", "ops@bbp.com");
+        service.updateQuotas("ACME", 0, 0, null, "ratchet", "ops@bbp.com");
     TenantRuntimeEnforcementService.TenantRuntimeSnapshot resumed =
         service.resumeTenant("ACME", "ops@bbp.com");
 
     assertThat(held.state()).isEqualTo(TenantRuntimeEnforcementService.TenantRuntimeState.HOLD);
-    assertThat(updated.maxConcurrentRequests()).isEqualTo(1);
-    assertThat(updated.maxRequestsPerMinute()).isEqualTo(1);
+    assertThat(updated.maxConcurrentRequests()).isZero();
+    assertThat(updated.maxRequestsPerMinute()).isZero();
     assertThat(updated.maxActiveUsers()).isEqualTo(3);
     assertThat(updated.reasonCode()).isEqualTo("RATCHET");
     assertThat(resumed.state())
         .isEqualTo(TenantRuntimeEnforcementService.TenantRuntimeState.ACTIVE);
     assertThat(resumed.reasonCode()).isEqualTo("POLICY_ACTIVE");
     assertThat(resumed.auditChainId()).isNotEqualTo(held.auditChainId());
+  }
+
+  @Test
+  void updateQuotas_rejectsNegativeRuntimeLimits() {
+    assertThatThrownBy(() -> service.updateQuotas("ACME", -1, null, null, "bad", "ops@bbp.com"))
+        .hasMessageContaining("Runtime limits must be greater than or equal to 0");
+  }
+
+  @Test
+  void beginRequest_skipsRateAndConcurrencyChecksForUnlimitedZeroLimits() {
+    service.updateQuotas("ACME", 0, 0, 0, "unlimited", "ops@bbp.com");
+
+    TenantRuntimeEnforcementService.TenantRequestAdmission first =
+        admissionService.beginRequest("ACME", "/api/v1/private", "GET", "actor@bbp.com");
+    TenantRuntimeEnforcementService.TenantRequestAdmission second =
+        admissionService.beginRequest("ACME", "/api/v1/private", "GET", "actor@bbp.com");
+    TenantRuntimeEnforcementService.TenantRequestAdmission third =
+        admissionService.beginRequest("ACME", "/api/v1/private", "GET", "actor@bbp.com");
+    TenantRuntimeEnforcementService.TenantRequestAdmission fourth =
+        admissionService.beginRequest("ACME", "/api/v1/private", "GET", "actor@bbp.com");
+
+    assertThat(first.isAdmitted()).isTrue();
+    assertThat(second.isAdmitted()).isTrue();
+    assertThat(third.isAdmitted()).isTrue();
+    assertThat(fourth.isAdmitted()).isTrue();
+    assertThat(service.snapshot("ACME").maxConcurrentRequests()).isZero();
+    assertThat(service.snapshot("ACME").maxRequestsPerMinute()).isZero();
+    assertThat(service.snapshot("ACME").maxActiveUsers()).isZero();
   }
 
   @Test
@@ -1400,9 +1728,9 @@ class TenantRuntimeEnforcementServiceTest {
     assertThat(invokeNormalizeState("mystery"))
         .isEqualTo(TenantRuntimeEnforcementService.TenantRuntimeState.BLOCKED);
 
-    assertThat(invokeParsePositiveInt("12", 5)).isEqualTo(12);
-    assertThat(invokeParsePositiveInt("0", 5)).isEqualTo(5);
-    assertThat(invokeParsePositiveInt("bad", 5)).isEqualTo(5);
+    assertThat(invokeParseRuntimeLimit("12", 5)).isEqualTo(12);
+    assertThat(invokeParseRuntimeLimit("0", 5)).isZero();
+    assertThat(invokeParseRuntimeLimit("bad", 5)).isEqualTo(5);
 
     assertThat(invokeParseInstantOrNull("bad-instant")).isNull();
     Object missingPolicy =
@@ -1819,6 +2147,24 @@ class TenantRuntimeEnforcementServiceTest {
         .hasMessageContaining("Tenant company lookup is unavailable");
   }
 
+  private void setFreshActivePolicy(String companyCode) throws Exception {
+    @SuppressWarnings("unchecked")
+    ConcurrentMap<String, Object> policies =
+        (ConcurrentMap<String, Object>) ReflectionTestUtils.getField(service, "policies");
+    assertThat(policies).isNotNull();
+    policies.put(
+        companyCode,
+        tenantRuntimePolicy(
+            TenantRuntimeEnforcementService.TenantRuntimeState.ACTIVE,
+            "POLICY_ACTIVE",
+            3,
+            3,
+            3,
+            "fresh-policy",
+            Instant.parse("2026-01-01T00:00:00Z"),
+            System.currentTimeMillis() + 60_000L));
+  }
+
   private Company company(Long id, String code) {
     Company company = new Company();
     ReflectionTestUtils.setField(company, "id", id);
@@ -1900,6 +2246,22 @@ class TenantRuntimeEnforcementServiceTest {
         auditChainId,
         updatedAt,
         refreshAfterEpochMillis);
+  }
+
+  private Object tenantMonthlyQuotaPolicy(
+      Company company,
+      long maxMonthlyApiRequests,
+      boolean hardLimitEnabled,
+      long refreshAfterMillis)
+      throws Exception {
+    Class<?> policyClass =
+        Class.forName(
+            TenantRuntimeEnforcementService.class.getName() + "$TenantMonthlyQuotaPolicy");
+    Constructor<?> constructor =
+        policyClass.getDeclaredConstructor(Company.class, long.class, boolean.class, long.class);
+    constructor.setAccessible(true);
+    return constructor.newInstance(
+        company, maxMonthlyApiRequests, hardLimitEnabled, refreshAfterMillis);
   }
 
   private Object tenantRuntimeRejection(
@@ -1997,10 +2359,10 @@ class TenantRuntimeEnforcementServiceTest {
     return state;
   }
 
-  private int invokeParsePositiveInt(String rawValue, int fallback) {
+  private int invokeParseRuntimeLimit(String rawValue, int fallback) {
     Integer value =
         com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-            service, "parsePositiveInt", rawValue, fallback);
+            service, "parseRuntimeLimit", rawValue, fallback);
     assertThat(value).isNotNull();
     return value;
   }

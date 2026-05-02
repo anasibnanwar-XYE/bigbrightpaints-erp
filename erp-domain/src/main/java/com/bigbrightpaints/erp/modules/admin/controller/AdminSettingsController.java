@@ -15,6 +15,8 @@ import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.config.SystemSettingsService;
 import com.bigbrightpaints.erp.core.security.PortalRoleActionMatrix;
 import com.bigbrightpaints.erp.core.security.SecurityActorResolver;
+import com.bigbrightpaints.erp.modules.admin.dto.SuperAdminPlatformSettingsDto;
+import com.bigbrightpaints.erp.modules.admin.dto.SuperAdminPlatformSettingsUpdateRequest;
 import com.bigbrightpaints.erp.modules.admin.dto.SystemSettingsDto;
 import com.bigbrightpaints.erp.modules.admin.dto.SystemSettingsUpdateRequest;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
@@ -40,22 +42,25 @@ public class AdminSettingsController {
 
   @GetMapping
   @PreAuthorize(PortalRoleActionMatrix.SUPER_ADMIN_ONLY)
-  public ApiResponse<SystemSettingsDto> getSettings() {
-    return ApiResponse.success("Settings fetched", systemSettingsService.snapshot());
+  public ApiResponse<SuperAdminPlatformSettingsDto> getSettings() {
+    return ApiResponse.success(
+        "Settings fetched", toSuperAdminSettings(systemSettingsService.snapshot()));
   }
 
   @PutMapping
   @PreAuthorize(PortalRoleActionMatrix.SUPER_ADMIN_ONLY)
-  public ApiResponse<SystemSettingsDto> updateSettings(
-      @Valid @RequestBody SystemSettingsUpdateRequest request) {
+  public ApiResponse<SuperAdminPlatformSettingsDto> updateSettings(
+      @Valid @RequestBody SuperAdminPlatformSettingsUpdateRequest request) {
     SystemSettingsDto before = systemSettingsService.snapshot();
-    SystemSettingsDto dto = systemSettingsService.update(request);
+    SystemSettingsDto dto = systemSettingsService.update(toFlatRequest(request));
     recordSettingsUpdateAudit(before, request, dto);
-    return ApiResponse.success("Settings updated", dto);
+    return ApiResponse.success("Settings updated", toSuperAdminSettings(dto));
   }
 
   private void recordSettingsUpdateAudit(
-      SystemSettingsDto before, SystemSettingsUpdateRequest request, SystemSettingsDto after) {
+      SystemSettingsDto before,
+      SuperAdminPlatformSettingsUpdateRequest request,
+      SystemSettingsDto after) {
     if (auditService == null) {
       return;
     }
@@ -66,23 +71,32 @@ public class AdminSettingsController {
       metadata.put("beforePeriodLockEnforced", Boolean.toString(before.periodLockEnforced()));
       metadata.put(
           "beforeExportApprovalRequired", Boolean.toString(before.exportApprovalRequired()));
-      metadata.put("beforePlatformAuthCode", before.platformAuthCode());
+      metadata.put("beforePlatformAuthCode", AUDIT_REDACTED);
     }
     metadata.put(
         "requestedAutoApprovalEnabled",
-        auditRequestedBoolean(request == null ? null : request.autoApprovalEnabled()));
+        auditRequestedBoolean(
+            request == null || request.workflow() == null
+                ? null
+                : request.workflow().autoApprovalEnabled()));
     metadata.put(
         "requestedPeriodLockEnforced",
-        auditRequestedBoolean(request == null ? null : request.periodLockEnforced()));
+        auditRequestedBoolean(
+            request == null || request.workflow() == null
+                ? null
+                : request.workflow().periodLockEnforced()));
     metadata.put(
         "requestedExportApprovalRequired",
-        auditRequestedBoolean(request == null ? null : request.exportApprovalRequired()));
+        auditRequestedBoolean(
+            request == null || request.workflow() == null
+                ? null
+                : request.workflow().exportApprovalRequired()));
     metadata.put("requestedPlatformAuthCode", auditRequestedPlatformAuthCode());
     if (after != null) {
       metadata.put("afterAutoApprovalEnabled", Boolean.toString(after.autoApprovalEnabled()));
       metadata.put("afterPeriodLockEnforced", Boolean.toString(after.periodLockEnforced()));
       metadata.put("afterExportApprovalRequired", Boolean.toString(after.exportApprovalRequired()));
-      metadata.put("afterPlatformAuthCode", after.platformAuthCode());
+      metadata.put("afterPlatformAuthCode", AUDIT_REDACTED);
     }
     String actor = SecurityActorResolver.resolveActorWithSystemProcessFallback();
     if (actor != null && !actor.isBlank()) {
@@ -97,5 +111,51 @@ public class AdminSettingsController {
 
   private String auditRequestedPlatformAuthCode() {
     return AUDIT_REDACTED;
+  }
+
+  private SuperAdminPlatformSettingsDto toSuperAdminSettings(SystemSettingsDto settings) {
+    return new SuperAdminPlatformSettingsDto(
+        new SuperAdminPlatformSettingsDto.Access(
+            settings.allowedOrigins(),
+            new SuperAdminPlatformSettingsDto.AuthCode(
+                settings.platformAuthCode() != null && !settings.platformAuthCode().isBlank(),
+                AUDIT_REDACTED,
+                "Changing the platform auth code updates platform-scoped login and rejects old"
+                    + " platform tokens; tenant login scopes are unaffected.")),
+        new SuperAdminPlatformSettingsDto.Mail(
+            settings.mailEnabled(),
+            settings.mailFromAddress(),
+            settings.mailBaseUrl(),
+            settings.sendCredentials(),
+            settings.sendPasswordReset()),
+        new SuperAdminPlatformSettingsDto.Workflow(
+            settings.autoApprovalEnabled(),
+            settings.periodLockEnforced(),
+            settings.exportApprovalRequired()),
+        new SuperAdminPlatformSettingsDto.Security(
+            "secret values are never returned; configured values use <redacted>",
+            "accepted settings mutations emit CONFIGURATION_CHANGED audit evidence"));
+  }
+
+  private SystemSettingsUpdateRequest toFlatRequest(
+      SuperAdminPlatformSettingsUpdateRequest request) {
+    if (request == null) {
+      return new SystemSettingsUpdateRequest(
+          null, null, null, null, null, null, null, null, null, null);
+    }
+    SuperAdminPlatformSettingsUpdateRequest.AccessUpdate access = request.access();
+    SuperAdminPlatformSettingsUpdateRequest.MailUpdate mail = request.mail();
+    SuperAdminPlatformSettingsUpdateRequest.WorkflowUpdate workflow = request.workflow();
+    return new SystemSettingsUpdateRequest(
+        access == null ? null : access.allowedOrigins(),
+        workflow == null ? null : workflow.autoApprovalEnabled(),
+        workflow == null ? null : workflow.periodLockEnforced(),
+        workflow == null ? null : workflow.exportApprovalRequired(),
+        access == null ? null : access.platformAuthCode(),
+        mail == null ? null : mail.enabled(),
+        mail == null ? null : mail.fromAddress(),
+        mail == null ? null : mail.baseUrl(),
+        mail == null ? null : mail.sendCredentials(),
+        mail == null ? null : mail.sendPasswordReset());
   }
 }

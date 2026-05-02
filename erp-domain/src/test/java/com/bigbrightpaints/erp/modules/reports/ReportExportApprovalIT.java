@@ -27,6 +27,7 @@ import com.bigbrightpaints.erp.modules.admin.domain.ExportRequestRepository;
 import com.bigbrightpaints.erp.modules.admin.dto.ExportApprovalStatus;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
+import com.bigbrightpaints.erp.modules.company.domain.CompanyModule;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
 
@@ -80,6 +81,7 @@ class ReportExportApprovalIT extends AbstractIntegrationTest {
         COMPANY_CODE,
         List.of("ROLE_ACCOUNTING"));
     company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
+    company = enableModule(company, CompanyModule.REPORTS_ADVANCED);
   }
 
   @Test
@@ -91,7 +93,8 @@ class ReportExportApprovalIT extends AbstractIntegrationTest {
             "/api/v1/superadmin/settings",
             HttpMethod.PUT,
             new HttpEntity<>(
-                Map.of("exportApprovalRequired", true), jsonHeaders(superAdminHeaders)),
+                Map.of("workflow", Map.of("exportApprovalRequired", true)),
+                jsonHeaders(superAdminHeaders)),
             Map.class);
     assertThat(enableGate.getStatusCode()).isEqualTo(HttpStatus.OK);
 
@@ -247,7 +250,8 @@ class ReportExportApprovalIT extends AbstractIntegrationTest {
             "/api/v1/superadmin/settings",
             HttpMethod.PUT,
             new HttpEntity<>(
-                Map.of("exportApprovalRequired", false), jsonHeaders(superAdminHeaders)),
+                Map.of("workflow", Map.of("exportApprovalRequired", false)),
+                jsonHeaders(superAdminHeaders)),
             Map.class);
     assertThat(settingResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
 
@@ -289,7 +293,8 @@ class ReportExportApprovalIT extends AbstractIntegrationTest {
             "/api/v1/superadmin/settings",
             HttpMethod.PUT,
             new HttpEntity<>(
-                Map.of("exportApprovalRequired", true), jsonHeaders(superAdminHeaders)),
+                Map.of("workflow", Map.of("exportApprovalRequired", true)),
+                jsonHeaders(superAdminHeaders)),
             Map.class);
     assertThat(enableGate.getStatusCode()).isEqualTo(HttpStatus.OK);
 

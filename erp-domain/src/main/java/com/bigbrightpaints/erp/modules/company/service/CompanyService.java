@@ -8,6 +8,7 @@ import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.LongSupplier;
@@ -46,6 +47,7 @@ import com.bigbrightpaints.erp.modules.company.dto.CompanyRequest;
 import com.bigbrightpaints.erp.modules.company.dto.CompanySuperAdminDashboardDto;
 import com.bigbrightpaints.erp.modules.company.dto.CompanySupportWarningDto;
 import com.bigbrightpaints.erp.modules.company.dto.CompanyTenantMetricsDto;
+import com.bigbrightpaints.erp.modules.company.dto.SuperAdminBillingDtos;
 
 @Service
 public class CompanyService {
@@ -83,9 +85,12 @@ public class CompanyService {
   private final TenantLifecycleService tenantLifecycleService;
   private final PasswordResetService passwordResetService;
   private final AuthScopeService authScopeService;
+  private final SuperAdminBillingService billingService;
+  private final TenantSupportControlPort tenantSupportControlPort;
+  private final SuperAdminSecurityAuditService securityAuditService;
 
   public CompanyService(CompanyRepository repository) {
-    this(repository, null, null, null, null, null, null, null, null);
+    this(repository, null, null, null, null, null, null, null, null, null, null, null);
   }
 
   public CompanyService(
@@ -98,6 +103,9 @@ public class CompanyService {
         auditService,
         userAccountRepository,
         auditLogRepository,
+        null,
+        null,
+        null,
         null,
         null,
         null,
@@ -120,6 +128,34 @@ public class CompanyService {
         null,
         null,
         null,
+        null,
+        null,
+        null,
+        null);
+  }
+
+  public CompanyService(
+      CompanyRepository repository,
+      AuditService auditService,
+      UserAccountRepository userAccountRepository,
+      AuditLogRepository auditLogRepository,
+      TenantRuntimeEnforcementService tenantRuntimeEnforcementService,
+      TenantAdminProvisioningService tenantAdminProvisioningService,
+      TenantLifecycleService tenantLifecycleService,
+      PasswordResetService passwordResetService,
+      AuthScopeService authScopeService) {
+    this(
+        repository,
+        auditService,
+        userAccountRepository,
+        auditLogRepository,
+        tenantRuntimeEnforcementService,
+        tenantAdminProvisioningService,
+        tenantLifecycleService,
+        passwordResetService,
+        authScopeService,
+        null,
+        null,
         null);
   }
 
@@ -133,7 +169,10 @@ public class CompanyService {
       TenantAdminProvisioningService tenantAdminProvisioningService,
       TenantLifecycleService tenantLifecycleService,
       PasswordResetService passwordResetService,
-      AuthScopeService authScopeService) {
+      AuthScopeService authScopeService,
+      SuperAdminBillingService billingService,
+      TenantSupportControlPort tenantSupportControlPort,
+      SuperAdminSecurityAuditService securityAuditService) {
     this.repository = repository;
     this.auditService = auditService;
     this.userAccountRepository = userAccountRepository;
@@ -143,6 +182,9 @@ public class CompanyService {
     this.tenantLifecycleService = tenantLifecycleService;
     this.passwordResetService = passwordResetService;
     this.authScopeService = authScopeService;
+    this.billingService = billingService;
+    this.tenantSupportControlPort = tenantSupportControlPort;
+    this.securityAuditService = securityAuditService;
   }
 
   public List<CompanyDto> findAll() {
@@ -350,8 +392,7 @@ public class CompanyService {
     long apiActivity = resolveRuntimeMetricFailClosed(() -> countApiActivity(companyId));
     long storageBytes = resolveRuntimeMetricFailClosed(() -> estimateAuditStorageBytes(companyId));
     long concurrentRequests =
-        resolveRuntimeMetricFailClosed(
-            () -> resolveCurrentConcurrentRequests(company.getCode(), companyId));
+        resolveRuntimeMetricFailClosed(() -> resolveCurrentConcurrentRequests(company.getCode()));
     if (isRuntimeMetricUnavailable(activeUsers)
         || isRuntimeMetricUnavailable(apiActivity)
         || isRuntimeMetricUnavailable(storageBytes)
@@ -379,6 +420,19 @@ public class CompanyService {
         .map(Company::getId)
         .map(this::resolveLifecycleStateById)
         .orElse(CompanyLifecycleState.DEACTIVATED);
+  }
+
+  public boolean isOwnerSetupRequiredByCode(String companyCode) {
+    if (!StringUtils.hasText(companyCode)) {
+      return false;
+    }
+    return repository
+        .findByCodeIgnoreCase(companyCode.trim())
+        .map(
+            company ->
+                company.getOnboardingCompletedAt() == null
+                    && "USED".equals(normalizeActivationStatus(company.getActivationStatus())))
+        .orElse(false);
   }
 
   public CompanyLifecycleState resolveLifecycleStateById(Long companyId) {
@@ -418,7 +472,7 @@ public class CompanyService {
                         "Company not found"));
     assertBoundControlPlaneCompanyMatchesTarget(company.getCode());
     auditAuthorityDecision(true, METRICS_READ_REASON, company.getCode(), authentication);
-    return buildTenantMetrics(company);
+    return buildTenantMetrics(company, false);
   }
 
   public CompanyTenantMetricsDto getTenantMetricsForSuperAdmin(Long companyId) {
@@ -431,7 +485,7 @@ public class CompanyService {
                     com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
                         "Company not found"));
     auditAuthorityDecision(true, METRICS_READ_REASON, company.getCode(), authentication);
-    return buildTenantMetrics(company);
+    return buildTenantMetrics(company, true);
   }
 
   public CompanySuperAdminDashboardDto getSuperAdminDashboard() {
@@ -445,15 +499,15 @@ public class CompanyService {
     long totalTenants = tenantOverview.size();
     long activeTenants =
         tenantOverview.stream()
-            .filter(tenant -> "ACTIVE".equalsIgnoreCase(tenant.lifecycleState()))
+            .filter(tenant -> isActiveTenantStatus(tenant.lifecycleState()))
             .count();
     long suspendedTenants =
         tenantOverview.stream()
-            .filter(tenant -> "SUSPENDED".equalsIgnoreCase(tenant.lifecycleState()))
+            .filter(tenant -> isSuspendedTenantStatus(tenant.lifecycleState()))
             .count();
     long deactivatedTenants =
         tenantOverview.stream()
-            .filter(tenant -> "DEACTIVATED".equalsIgnoreCase(tenant.lifecycleState()))
+            .filter(tenant -> isDeactivatedTenantStatus(tenant.lifecycleState()))
             .count();
     long totalActiveUsers =
         tenantOverview.stream()
@@ -479,20 +533,88 @@ public class CompanyService {
         tenantOverview.stream()
             .mapToLong(CompanySuperAdminDashboardDto.TenantOverview::concurrentRequestQuota)
             .sum();
+    Map<String, SuperAdminBillingDtos.CurrencyMetrics> recurringRevenueByCurrency =
+        billingService.getBillingMetrics();
+    long recurringRevenueCurrencyCount =
+        recurringRevenueByCurrency.values().stream()
+            .filter(metrics -> metrics.activeSubscriptionCount() > 0)
+            .count();
+    long dashboardMrrMinorUnits =
+        recurringRevenueCurrencyCount == 1 ? singleCurrencyMrr(recurringRevenueByCurrency) : 0;
+    long dashboardArrMinorUnits =
+        recurringRevenueCurrencyCount == 1 ? singleCurrencyArr(recurringRevenueByCurrency) : 0;
+    if (tenantSupportControlPort == null) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState(
+          "Tenant support metrics service unavailable");
+    }
+    long openSupportTickets = tenantSupportControlPort.countOpenSupportTickets();
+    long openBugs = tenantSupportControlPort.countOpenBugs();
     auditAuthorityDecision(true, SUPERADMIN_DASHBOARD_READ_REASON, null, authentication);
 
     return new CompanySuperAdminDashboardDto(
         totalTenants,
         activeTenants,
+        tenantOverview.stream()
+            .filter(tenant -> "TRIAL_ACTIVE".equals(tenant.lifecycleState()))
+            .count(),
+        suspendedTenants,
+        totalTenants,
+        activeTenants,
         suspendedTenants,
         deactivatedTenants,
+        dashboardMrrMinorUnits,
+        dashboardArrMinorUnits,
+        recurringRevenueByCurrency,
+        "GROUPED_BY_CURRENCY",
+        Math.toIntExact(recurringRevenueCurrencyCount),
+        openSupportTickets,
+        openBugs,
         totalActiveUsers,
         totalActiveUserQuota,
         totalAuditStorageBytes,
+        totalAuditStorageBytes,
         totalStorageQuotaBytes,
+        0,
+        0,
+        tenantOverview.stream()
+            .mapToLong(CompanySuperAdminDashboardDto.TenantOverview::apiErrorRateInBasisPoints)
+            .max()
+            .orElse(0),
+        tenantOverview.stream().filter(tenant -> tenant.apiErrorRateInBasisPoints() > 0).count(),
         totalCurrentConcurrentRequests,
         totalConcurrentRequestQuota,
+        securitySummary(),
         tenantOverview);
+  }
+
+  private CompanySuperAdminDashboardDto.SecuritySummary securitySummary() {
+    if (securityAuditService == null) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState(
+          "Super Admin security audit service unavailable");
+    }
+    return new CompanySuperAdminDashboardDto.SecuritySummary(
+        securityAuditService.countSecurityEvents(),
+        securityAuditService.countSuspiciousEvents(),
+        securityAuditService.countOpenRemediations(),
+        securityAuditService.countResolvedRemediations());
+  }
+
+  private long singleCurrencyMrr(
+      Map<String, SuperAdminBillingDtos.CurrencyMetrics> recurringRevenueByCurrency) {
+    return recurringRevenueByCurrency.values().stream()
+        .filter(metrics -> metrics.activeSubscriptionCount() > 0)
+        .findFirst()
+        .map(SuperAdminBillingDtos.CurrencyMetrics::mrrMinorUnits)
+        .orElse(0L);
+  }
+
+  private long singleCurrencyArr(
+      Map<String, SuperAdminBillingDtos.CurrencyMetrics> recurringRevenueByCurrency) {
+    return recurringRevenueByCurrency.values().stream()
+        .filter(metrics -> metrics.activeSubscriptionCount() > 0)
+        .findFirst()
+        .map(SuperAdminBillingDtos.CurrencyMetrics::arrMinorUnits)
+        .orElse(0L);
   }
 
   @Transactional
@@ -623,23 +745,25 @@ public class CompanyService {
         company.getId(), company.getCode(), resetEmail, "reset-link-emailed");
   }
 
-  private CompanyTenantMetricsDto buildTenantMetrics(Company company) {
+  private CompanyTenantMetricsDto buildTenantMetrics(Company company, boolean superAdminReadModel) {
     CompanyLifecycleState state =
         company.getLifecycleState() == null
             ? CompanyLifecycleState.ACTIVE
             : company.getLifecycleState();
+    String lifecycleState =
+        superAdminReadModel ? resolveSuperAdminTenantStatus(company, state) : state.name();
     Long companyId = company.getId();
     long activeUserCount = countActiveUsers(companyId);
     long apiActivityCount = countApiActivity(companyId);
     long apiErrorCount = countApiFailureActivity(companyId);
     long apiErrorRateInBasisPoints =
         calculateErrorRateInBasisPoints(apiActivityCount, apiErrorCount);
-    long currentConcurrentRequests = resolveCurrentConcurrentRequests(company.getCode(), companyId);
+    long currentConcurrentRequests = resolveCurrentConcurrentRequests(company.getCode());
     long auditStorageBytes = estimateAuditStorageBytes(companyId);
     return new CompanyTenantMetricsDto(
         company.getId(),
         company.getCode(),
-        state.name(),
+        lifecycleState,
         company.getLifecycleReason(),
         company.getQuotaMaxActiveUsers(),
         company.getQuotaMaxApiRequests(),
@@ -656,7 +780,7 @@ public class CompanyService {
   }
 
   private CompanySuperAdminDashboardDto.TenantOverview buildTenantOverview(Company company) {
-    CompanyTenantMetricsDto metrics = buildTenantMetrics(company);
+    CompanyTenantMetricsDto metrics = buildTenantMetrics(company, true);
     return new CompanySuperAdminDashboardDto.TenantOverview(
         metrics.companyId(),
         metrics.companyCode(),
@@ -681,6 +805,95 @@ public class CompanyService {
             metrics.auditStorageBytes(), metrics.quotaMaxStorageBytes()),
         calculateUtilizationInBasisPoints(
             metrics.currentConcurrentRequests(), metrics.quotaMaxConcurrentRequests()));
+  }
+
+  private String resolveSuperAdminTenantStatus(
+      Company company, CompanyLifecycleState lifecycleState) {
+    String reasonStatus =
+        normalizeSuperAdminStatusReason(company == null ? null : company.getLifecycleReason());
+    if ("SEED_FAILED".equals(reasonStatus)) {
+      return "SEED_FAILED";
+    }
+    String onboardingStatus = resolveOnboardingTenantStatus(company);
+    if (onboardingStatus != null) {
+      return onboardingStatus;
+    }
+    CompanyLifecycleState state =
+        lifecycleState == null ? CompanyLifecycleState.ACTIVE : lifecycleState;
+    return switch (state) {
+      case ACTIVE -> reasonStatus == null ? "ACTIVE" : reasonStatus;
+      case SUSPENDED ->
+          "SUSPENDED_READ_ONLY".equals(reasonStatus) ? "SUSPENDED_READ_ONLY" : "SUSPENDED_BLOCKED";
+      case DEACTIVATED -> "CANCELED".equals(reasonStatus) ? "CANCELED" : "ARCHIVED";
+    };
+  }
+
+  private String resolveOnboardingTenantStatus(Company company) {
+    if (company != null
+        && company.getOnboardingCompletedAt() == null
+        && "USED".equals(normalizeActivationStatus(company.getActivationStatus()))) {
+      return "SETUP_PENDING";
+    }
+    if (company != null
+        && company.getOnboardingCompletedAt() == null
+        && (company.getOnboardingCredentialsEmailedAt() != null
+            || company.getActivationSentAt() != null
+            || Set.of("SENT", "EXPIRED", "SUPERSEDED")
+                .contains(normalizeActivationStatus(company.getActivationStatus())))) {
+      return "PENDING_ACTIVATION";
+    }
+    if (company != null && company.getOnboardingCompletedAt() == null) {
+      String activationStatus = normalizeActivationStatus(company.getActivationStatus());
+      if (StringUtils.hasText(company.getOnboardingAdminEmail())
+          && (!StringUtils.hasText(activationStatus) || "NOT_SENT".equals(activationStatus))) {
+        return "DRAFT";
+      }
+    }
+    if (company != null
+        && company.getOnboardingAdminUserId() != null
+        && company.getOnboardingCompletedAt() == null) {
+      return "SETUP_PENDING";
+    }
+    return null;
+  }
+
+  private String normalizeActivationStatus(String activationStatus) {
+    if (!StringUtils.hasText(activationStatus)) {
+      return "NOT_SENT";
+    }
+    return activationStatus.trim().toUpperCase(Locale.ROOT);
+  }
+
+  private String normalizeSuperAdminStatusReason(String lifecycleReason) {
+    if (!StringUtils.hasText(lifecycleReason)) {
+      return null;
+    }
+    String normalized = lifecycleReason.trim().toUpperCase(Locale.ROOT).replace('-', '_');
+    normalized = normalized.replaceAll("[^A-Z0-9]+", "_").replaceAll("_+", "_");
+    return switch (normalized) {
+      case "TRIAL_ACTIVE" -> "TRIAL_ACTIVE";
+      case "SETUP_PENDING" -> "SETUP_PENDING";
+      case "GRACE" -> "GRACE";
+      case "SUSPENDED_READ_ONLY" -> "SUSPENDED_READ_ONLY";
+      case "SUSPENDED_BLOCKED" -> "SUSPENDED_BLOCKED";
+      case "CANCELED" -> "CANCELED";
+      case "ARCHIVED" -> "ARCHIVED";
+      case "SEED_FAILED" -> "SEED_FAILED";
+      default -> null;
+    };
+  }
+
+  private boolean isActiveTenantStatus(String status) {
+    return "ACTIVE".equalsIgnoreCase(status) || "TRIAL_ACTIVE".equalsIgnoreCase(status);
+  }
+
+  private boolean isSuspendedTenantStatus(String status) {
+    return "SUSPENDED_READ_ONLY".equalsIgnoreCase(status)
+        || "SUSPENDED_BLOCKED".equalsIgnoreCase(status);
+  }
+
+  private boolean isDeactivatedTenantStatus(String status) {
+    return "CANCELED".equalsIgnoreCase(status) || "ARCHIVED".equalsIgnoreCase(status);
   }
 
   private void requireMembershipById(Long companyId, Set<Company> allowedCompanies) {
@@ -867,9 +1080,9 @@ public class CompanyService {
             company.getCode(),
             runtimeState,
             effectiveReason,
-            TenantBootstrapDefaults.failClosedRuntimeLimit(company.getQuotaMaxConcurrentRequests()),
-            TenantBootstrapDefaults.failClosedRuntimeLimit(company.getQuotaMaxApiRequests()),
-            TenantBootstrapDefaults.failClosedRuntimeLimit(company.getQuotaMaxActiveUsers()),
+            TenantBootstrapDefaults.runtimeLimitFromQuota(company.getQuotaMaxConcurrentRequests()),
+            TenantBootstrapDefaults.runtimeLimitFromQuota(company.getQuotaMaxApiRequests()),
+            TenantBootstrapDefaults.runtimeLimitFromQuota(company.getQuotaMaxActiveUsers()),
             resolveActor(authentication));
   }
 
@@ -883,8 +1096,8 @@ public class CompanyService {
   }
 
   private Integer safeRuntimeLimit(long value) {
-    if (value <= 0L) {
-      return null;
+    if (value < 0L) {
+      return 0;
     }
     return value > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) value;
   }
@@ -1164,13 +1377,6 @@ public class CompanyService {
     return auditLogRepository.countApiFailureActivityByCompanyId(companyId);
   }
 
-  private long countDistinctSessionActivity(Long companyId) {
-    if (auditLogRepository == null || companyId == null) {
-      return 0L;
-    }
-    return auditLogRepository.countDistinctSessionActivityByCompanyId(companyId);
-  }
-
   private long estimateAuditStorageBytes(Long companyId) {
     if (auditLogRepository == null || companyId == null) {
       return 0L;
@@ -1285,18 +1491,15 @@ public class CompanyService {
         && company.getQuotaMaxConcurrentRequests() > 0L;
   }
 
-  private long resolveCurrentConcurrentRequests(String companyCode, Long companyId) {
-    if (tenantRuntimeEnforcementService != null && StringUtils.hasText(companyCode)) {
-      try {
-        return tenantRuntimeEnforcementService.snapshot(companyCode).metrics().inFlightRequests();
-      } catch (RuntimeException ex) {
-        log.debug(
-            "Falling back to session-based concurrent request telemetry for company {}",
-            companyCode,
-            ex);
-      }
+  private long resolveCurrentConcurrentRequests(String companyCode) {
+    if (!StringUtils.hasText(companyCode)) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState(
+          "Tenant runtime telemetry requires company code");
     }
-    return countDistinctSessionActivity(companyId);
+    return requireTenantRuntimeEnforcementService()
+        .snapshot(companyCode)
+        .metrics()
+        .inFlightRequests();
   }
 
   private boolean hasRuntimeQuotaTelemetryDependencies() {

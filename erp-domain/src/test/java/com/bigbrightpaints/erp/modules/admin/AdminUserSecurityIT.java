@@ -1314,7 +1314,7 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
         rest.exchange(
             "/api/v1/superadmin/settings",
             HttpMethod.PUT,
-            new HttpEntity<>(Map.of("exportApprovalRequired", true), headers),
+            new HttpEntity<>(Map.of("workflow", Map.of("exportApprovalRequired", true)), headers),
             Map.class);
 
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
@@ -1332,15 +1332,20 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
         rest.exchange(
             "/api/v1/superadmin/settings",
             HttpMethod.PUT,
-            new HttpEntity<>(Map.of("exportApprovalRequired", true), headers),
+            new HttpEntity<>(Map.of("workflow", Map.of("exportApprovalRequired", true)), headers),
             Map.class);
 
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
     assertThat(response.getBody()).isNotNull();
     assertThat(response.getBody().get("success")).isEqualTo(Boolean.TRUE);
-    Map<?, ?> data = (Map<?, ?>) response.getBody().get("data");
+    @SuppressWarnings("unchecked")
+    Map<String, Object> data = (Map<String, Object>) response.getBody().get("data");
     assertThat(data).isNotNull();
-    assertThat(data.get("exportApprovalRequired")).isEqualTo(Boolean.TRUE);
+    assertThat(data).containsKeys("access", "mail", "workflow", "security");
+    @SuppressWarnings("unchecked")
+    Map<String, Object> workflow = (Map<String, Object>) data.get("workflow");
+    assertThat(workflow).isNotNull();
+    assertThat(workflow.get("exportApprovalRequired")).isEqualTo(Boolean.TRUE);
   }
 
   private String login(String email, String password, String companyCode) {

@@ -43,6 +43,10 @@ import com.bigbrightpaints.erp.modules.auth.web.LoginRequest;
 import com.bigbrightpaints.erp.modules.auth.web.MeResponse;
 import com.bigbrightpaints.erp.modules.auth.web.RefreshTokenRequest;
 import com.bigbrightpaints.erp.modules.auth.web.ResetPasswordRequest;
+import com.bigbrightpaints.erp.modules.company.dto.ActivationCompleteRequest;
+import com.bigbrightpaints.erp.modules.company.dto.ActivationCompleteResponse;
+import com.bigbrightpaints.erp.modules.company.dto.ActivationVerifyResponse;
+import com.bigbrightpaints.erp.modules.company.service.SuperAdminTenantControlPlaneService;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 import com.bigbrightpaints.erp.shared.dto.PageResponse;
 
@@ -60,6 +64,7 @@ public class AuthController {
   private final AuthService authService;
   private final PasswordService passwordService;
   private final PasswordResetService passwordResetService;
+  private final SuperAdminTenantControlPlaneService tenantControlPlaneService;
   private final AuditService auditService;
   private final UserAccountRepository userAccountRepository;
   private final IamCanonicalStorageService iamCanonicalStorageService;
@@ -69,6 +74,7 @@ public class AuthController {
       AuthService authService,
       PasswordService passwordService,
       PasswordResetService passwordResetService,
+      SuperAdminTenantControlPlaneService tenantControlPlaneService,
       AuditService auditService,
       UserAccountRepository userAccountRepository,
       IamCanonicalStorageService iamCanonicalStorageService,
@@ -76,6 +82,7 @@ public class AuthController {
     this.authService = authService;
     this.passwordService = passwordService;
     this.passwordResetService = passwordResetService;
+    this.tenantControlPlaneService = tenantControlPlaneService;
     this.auditService = auditService;
     this.userAccountRepository = userAccountRepository;
     this.iamCanonicalStorageService = iamCanonicalStorageService;
@@ -136,6 +143,7 @@ public class AuthController {
             principal.getUsername(),
             principal.getUser().getDisplayName(),
             companyCode,
+            authService.scopeType(companyCode),
             principal.getUser().isMfaEnabled(),
             principal.getUser().isMustChangePassword(),
             roles,
@@ -341,6 +349,22 @@ public class AuthController {
     passwordResetService.resetPassword(
         request.token(), request.newPassword(), request.confirmPassword());
     return ResponseEntity.ok(ApiResponse.success("Password has been reset successfully", "OK"));
+  }
+
+  @GetMapping("/activation/verify")
+  public ResponseEntity<ApiResponse<ActivationVerifyResponse>> verifyActivation(
+      @RequestParam("token") String token) {
+    return ResponseEntity.ok(
+        ApiResponse.success(
+            "Activation token verified", tenantControlPlaneService.verifyActivation(token)));
+  }
+
+  @PostMapping("/activation/complete")
+  public ResponseEntity<ApiResponse<ActivationCompleteResponse>> completeActivation(
+      @Valid @RequestBody ActivationCompleteRequest request) {
+    return ResponseEntity.ok(
+        ApiResponse.success(
+            "Activation completed", tenantControlPlaneService.completeActivation(request)));
   }
 
   private String accessToken(Authentication authentication) {

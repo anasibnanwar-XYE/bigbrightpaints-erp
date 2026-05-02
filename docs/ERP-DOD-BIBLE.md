@@ -377,7 +377,7 @@ A login/tenant selection flow is considered complete when:
 
 #### Must-Change-Password Corridor
 - **Scenario**: Admin provisions user with `mustChangePassword=true`
-- **Behavior**: `MustChangePasswordCorridorFilter` restricts access to: `/auth/me`, `/auth/profile`, `/auth/password/change`, `/auth/logout`, `/auth/refresh-token`.
+- **Behavior**: `MustChangePasswordCorridorFilter` restricts access to: `/auth/me`, `/auth/password/change`, `/auth/logout`, `/auth/refresh-token`.
 - **All other endpoints**: Return 403 with `PASSWORD_CHANGE_REQUIRED`.
 
 #### Tenant Lifecycle Transition During Active Session
@@ -427,18 +427,20 @@ A login/tenant selection flow is considered complete when:
 | `/api/v1/auth/refresh-token` | POST | Public | `AuthController` |
 | `/api/v1/auth/logout` | POST | Authenticated | `AuthController` |
 | `/api/v1/auth/me` | GET | Authenticated | `AuthController` |
+| `/api/v1/auth/me/profile` | PATCH | Authenticated | `AuthController` |
+| `/api/v1/auth/me/contact` | PATCH | Authenticated | `AuthController` |
+| `/api/v1/auth/me/security` | GET | Authenticated | `AuthController` |
+| `/api/v1/auth/me/security-events` | GET | Authenticated | `AuthController` |
 | `/api/v1/auth/password/change` | POST | Authenticated | `AuthController` |
 | `/api/v1/auth/password/forgot` | POST | Public | `AuthController` |
 | `/api/v1/auth/password/reset` | POST | Public | `AuthController` |
 | `/api/v1/auth/mfa/setup` | POST | Authenticated | `MfaController` |
 | `/api/v1/auth/mfa/activate` | POST | Authenticated | `MfaController` |
 | `/api/v1/auth/mfa/disable` | POST | Authenticated | `MfaController` |
-| `/api/v1/auth/profile` | GET | Authenticated | `UserProfileController` |
-| `/api/v1/auth/profile` | PUT | Authenticated | `UserProfileController` |
 | `/api/v1/companies` | GET | `ROLE_SUPER_ADMIN` or `ROLE_ADMIN` or `ROLE_ACCOUNTING` or `ROLE_SALES` | `CompanyController` |
 | `/api/v1/companies/{id}` | DELETE | `ROLE_ADMIN` (always denied) | `CompanyController` |
 | `/api/v1/superadmin/**` | Various | `ROLE_SUPER_ADMIN` | `SuperAdminController` |
-| `/api/v1/superadmin/tenants/onboard` | POST | `ROLE_SUPER_ADMIN` | `SuperAdminTenantOnboardingController` |
+| `/api/v1/superadmin/tenants` | POST | `ROLE_SUPER_ADMIN` | `SuperAdminController` |
 
 #### Security Filter Chain (in order)
 1. `JwtAuthenticationFilter` — parse JWT, load `UserPrincipal`, check blacklist/revocation
@@ -467,7 +469,9 @@ A login/tenant selection flow is considered complete when:
 | `TenantRuntimeRequestAdmissionService` | Request admission wrapper |
 | `ModuleGatingService` | Module enabled checks |
 | `CompanyContextService` | Current company resolution |
-| `TenantOnboardingService` | Full tenant provisioning |
+| `SuperAdminTenantControlPlaneService` | Add Client, activation, tenant controls |
+| `TenantDefaultSeedingService` | Default seed/status work |
+| `OwnerSetupService` | Owner setup corridor |
 | `TenantLifecycleService` | Lifecycle state transitions |
 | `RoleService` | Role synchronization, permission management |
 
@@ -571,12 +575,13 @@ MfaController.activate() → MfaService.activate()
 
 #### [CANONICAL] Tenant Onboarding
 ```
-SuperAdminTenantOnboardingController.onboard()
-  → TenantOnboardingService.onboardTenant()
-    → createCompany() → createTemplateAccounts() → applyCompanyDefaultAccounts()
-    → TenantAdminProvisioningService.provisionInitialAdmin()
-    → AccountingPeriodService.ensurePeriod()
-    → initializeDefaultSystemSettings()
+SuperAdminController.createTenant()
+  → SuperAdminTenantControlPlaneService.createAddClient()
+    → create tenant draft/pending activation state
+    → create scoped owner account through canonical auth services
+    → issue activation when requested
+    → TenantDefaultSeedingService records seed/status truth
+    → OwnerSetupService completes `/api/v1/setup/**`
 ```
 
 #### [NON-CANONICAL] Admin-Initiated Password Reset

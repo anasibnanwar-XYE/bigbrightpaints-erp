@@ -5,7 +5,6 @@ import java.math.BigDecimal;
 final class TenantBootstrapDefaults {
 
   private static final BigDecimal DEFAULT_BOOTSTRAP_GST_RATE = BigDecimal.valueOf(18);
-  private static final int FAIL_CLOSED_RUNTIME_LIMIT = 1;
 
   private TenantBootstrapDefaults() {}
 
@@ -13,9 +12,9 @@ final class TenantBootstrapDefaults {
     return requestedDefaultGstRate == null ? DEFAULT_BOOTSTRAP_GST_RATE : requestedDefaultGstRate;
   }
 
-  static int failClosedRuntimeLimit(long configuredLimit) {
+  static int runtimeLimitFromQuota(long configuredLimit) {
     if (configuredLimit <= 0L) {
-      return FAIL_CLOSED_RUNTIME_LIMIT;
+      return 0;
     }
     return configuredLimit > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) configuredLimit;
   }

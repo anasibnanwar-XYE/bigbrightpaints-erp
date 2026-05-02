@@ -24,8 +24,8 @@ These features support the entire backend and are consumed by all domain areas.
 | Feature Family | Description | Owning Module | Key Entrypoints | Deeper Docs |
 | --- | --- | --- | --- | --- |
 | **Authentication & Identity** | Login, token refresh, logout, MFA, password reset, must-change-password corridor, session/token revocation, JWT tenant scoping | `auth` | `/api/v1/auth/**`, `/api/v1/auth/mfa/**` | [auth.md](modules/auth.md), [auth-identity flow](flows/auth-identity.md) |
-| **Tenant & Company Management** | Company CRUD, runtime admission, module gating, licensing checks, company-scoping assumptions, tenant lifecycle | `company` | `/api/v1/companies/**` | [company.md](modules/company.md), [tenant-admin-management flow](flows/tenant-admin-management.md) |
-| **Admin & Portal RBAC** | Admin user management, support tickets, export approvals, dealer portal host ownership, role-action matrices, RBAC enforcement | `admin`, `portal`, `rbac` | `/api/v1/admin/**`, `/api/v1/portal/**`, `/api/v1/superadmin/**` | [admin-portal-rbac.md](modules/admin-portal-rbac.md), [tenant-admin-management flow](flows/tenant-admin-management.md) |
+| **Tenant & Company Management** | Company CRUD, runtime admission, module gating, licensing checks, company-scoping assumptions, tenant lifecycle, and the Super Admin Add Client/activation control plane | `company` | `/api/v1/companies/**`, `/api/v1/superadmin/tenants/**`, `/api/v1/auth/activation/**`, `/api/v1/setup/**` | [company.md](modules/company.md), [tenant-admin-management flow](flows/tenant-admin-management.md), [Super Admin frontend contract](frontend-portals/superadmin/api-contracts.md) |
+| **Admin & Portal RBAC** | Admin user management, support tickets, export approvals, dealer portal host ownership, role-action matrices, RBAC enforcement, and platform Super Admin dashboard/profile/settings/support/audit/infra routes | `admin`, `portal`, `rbac` | `/api/v1/admin/**`, `/api/v1/portal/**`, `/api/v1/superadmin/**` | [admin-portal-rbac.md](modules/admin-portal-rbac.md), [tenant-admin-management flow](flows/tenant-admin-management.md), [Super Admin frontend contract](frontend-portals/superadmin/api-contracts.md) |
 | **Core Security & Error** | Security filter chain (JWT, company context, must-change-password), exception/error contract (ApplicationException, ErrorCode), fail-open vs fail-closed boundaries | cross-cutting | filter chain, exception handlers | [core-security-error.md](modules/core-security-error.md) |
 | **Core Audit, Runtime & Settings** | Platform audit, enterprise audit trail, accounting event store, runtime-gating split, global vs tenant settings risk | cross-cutting | audit listeners, runtime services | [core-audit-runtime-settings.md](modules/core-audit-runtime-settings.md), [ADR-004](adrs/ADR-004-layered-audit-surfaces.md) |
 | **Core Idempotency** | Shared idempotency infrastructure, module-local idempotency implementations, replay semantics | cross-cutting | Idempotency-Key header processing | [core-idempotency.md](modules/core-idempotency.md), [ADR-003](adrs/ADR-003-outbox-pattern-for-cross-module-events.md) |
@@ -38,7 +38,8 @@ These features support the entire backend and are consumed by all domain areas.
 
 | Surface | Status | Replacement |
 | --- | --- | --- |
-| Legacy super-admin forgot-password alias (`POST /api/v1/superadmin/tenants/{id}/support/admin-password-reset`) | Deprecated (V157 hard cut) | Use `POST /api/v1/auth/password/forgot` |
+| Legacy flat Super Admin tenant onboarding | Retired (V1 hard cut) | Use `GET /api/v1/superadmin/tenants/new` plus `POST /api/v1/superadmin/tenants` with `createMode=DRAFT` or `SEND_ACTIVATION` |
+| Platform-issued Super Admin support password reset | Removed from current API contract | Use activation or scoped auth password recovery |
 | Email-only recovery identity (without companyCode) | Deprecated | Require `email + companyCode` for identity verification |
 | `/api/v1/support/**` (shared host) | Deprecated | Use host-specific paths: `/api/v1/portal/support/tickets` or `/api/v1/dealer-portal/support/tickets` |
 

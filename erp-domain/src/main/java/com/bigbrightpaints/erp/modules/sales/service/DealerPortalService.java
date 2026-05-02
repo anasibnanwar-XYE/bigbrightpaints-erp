@@ -349,7 +349,7 @@ public class DealerPortalService {
     return result;
   }
 
-  @Transactional(readOnly = true)
+  @Transactional
   public InvoicePdfService.PdfDocument getMyInvoicePdf(Long invoiceId) {
     Dealer dealer = getCurrentDealer();
     Invoice invoice =

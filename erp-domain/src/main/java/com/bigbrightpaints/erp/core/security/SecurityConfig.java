@@ -25,7 +25,6 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
-import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 
 @Configuration
 @EnableMethodSecurity
@@ -38,6 +37,7 @@ public class SecurityConfig {
   private final CompanyContextFilter companyContextFilter;
   private final MustChangePasswordCorridorFilter mustChangePasswordCorridorFilter;
   private final AuditAwareAccessDeniedHandler auditAwareAccessDeniedHandler;
+  private final ApiAuthenticationEntryPoint apiAuthenticationEntryPoint;
   private final UserDetailsService userDetailsService;
   private final Environment environment;
   private final boolean swaggerPublic;
@@ -49,6 +49,7 @@ public class SecurityConfig {
       CompanyContextFilter companyContextFilter,
       MustChangePasswordCorridorFilter mustChangePasswordCorridorFilter,
       AuditAwareAccessDeniedHandler auditAwareAccessDeniedHandler,
+      ApiAuthenticationEntryPoint apiAuthenticationEntryPoint,
       UserDetailsService userDetailsService,
       @Autowired(required = false) Environment environment,
       @Value("${erp.security.swagger-public:false}") boolean swaggerPublic) {
@@ -57,6 +58,7 @@ public class SecurityConfig {
     this.companyContextFilter = companyContextFilter;
     this.mustChangePasswordCorridorFilter = mustChangePasswordCorridorFilter;
     this.auditAwareAccessDeniedHandler = auditAwareAccessDeniedHandler;
+    this.apiAuthenticationEntryPoint = apiAuthenticationEntryPoint;
     this.userDetailsService = userDetailsService;
     this.environment = environment;
     this.swaggerPublic = swaggerPublic;
@@ -68,6 +70,7 @@ public class SecurityConfig {
       CompanyContextFilter companyContextFilter,
       MustChangePasswordCorridorFilter mustChangePasswordCorridorFilter,
       AuditAwareAccessDeniedHandler auditAwareAccessDeniedHandler,
+      ApiAuthenticationEntryPoint apiAuthenticationEntryPoint,
       UserDetailsService userDetailsService,
       boolean swaggerPublic) {
     this(
@@ -76,6 +79,7 @@ public class SecurityConfig {
         companyContextFilter,
         mustChangePasswordCorridorFilter,
         auditAwareAccessDeniedHandler,
+        apiAuthenticationEntryPoint,
         userDetailsService,
         null,
         swaggerPublic);
@@ -97,7 +101,10 @@ public class SecurityConfig {
         .formLogin(AbstractHttpConfigurer::disable)
         .logout(AbstractHttpConfigurer::disable)
         .exceptionHandling(
-            exception -> exception.accessDeniedHandler(auditAwareAccessDeniedHandler))
+            exception ->
+                exception
+                    .authenticationEntryPoint(apiAuthenticationEntryPoint)
+                    .accessDeniedHandler(auditAwareAccessDeniedHandler))
         .sessionManagement(
             session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
         .authorizeHttpRequests(
@@ -109,23 +116,20 @@ public class SecurityConfig {
                       "/api/v1/auth/login",
                       "/api/v1/auth/refresh-token",
                       "/api/v1/auth/password/forgot",
-                      "/api/v1/auth/password/reset")
+                      "/api/v1/auth/password/reset",
+                      "/api/v1/auth/activation/verify",
+                      "/api/v1/auth/activation/complete")
                   .permitAll()
                   // Keep retired tenant-admin hosts unresolved (dispatcher 404) for every caller.
                   .requestMatchers(RetiredTenantAdminHostPaths.requestMatchers())
-                  .permitAll()
-                  // Keep retired auth aliases unresolved (dispatcher 404/405) for every caller.
-                  .requestMatchers(
-                      new AntPathRequestMatcher("/api/v1/auth/profile"),
-                      new AntPathRequestMatcher("/api/v1/auth/password/forgot/superadmin", "POST"),
-                      new AntPathRequestMatcher("/api/v1/admin/users/*/suspend", "PATCH"),
-                      new AntPathRequestMatcher("/api/v1/admin/users/*/unsuspend", "PATCH"),
-                      new AntPathRequestMatcher("/api/v1/admin/users/*", "DELETE"))
                   .permitAll();
               if (isSwaggerAllowed()) {
                 registry
                     .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/v3/api-docs.yaml")
                     .permitAll();
+              }
+              if (isValidationHarnessAllowed()) {
+                registry.requestMatchers("/api/v1/validation/harness/**").permitAll();
               }
               registry
                   .requestMatchers(
@@ -168,6 +172,10 @@ public class SecurityConfig {
       return false;
     }
     return true;
+  }
+
+  private boolean isValidationHarnessAllowed() {
+    return environment != null && environment.acceptsProfiles(Profiles.of("validation-harness"));
   }
 
   @Bean

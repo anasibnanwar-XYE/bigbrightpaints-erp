@@ -1,58 +1,60 @@
 # Workflows
 
-## Tenant onboarding
+Last reviewed: 2026-04-30
 
-1. Load `GET /api/v1/superadmin/tenants/coa-templates` before enabling submit.
-2. Collect tenant identity, timezone, quota defaults, first-admin identity, and `coaTemplateCode`.
-3. Submit `POST /api/v1/superadmin/tenants/onboard`.
-4. Treat the mutation as complete only when:
-   - `seededChartOfAccounts=true`
-   - `defaultAccountingPeriodCreated=true`
-   - `tenantAdminProvisioned=true`
-5. If `defaultGstRate=0`, do not expect retained GST input/output/payable
-   account bindings on the created tenant; non-GST onboarding clears those
-   company-level GST links.
-6. Redirect to `/platform/tenants/:tenantId` using the numeric tenant id from the
-   superadmin tenant list or tenant-detail response.
-7. Do not reuse that numeric tenant id as tenant-shell identity. Every
-   tenant-scoped shell still boots from `GET /api/v1/auth/me` and `companyCode`.
-8. Surface a warning banner if `systemSettingsInitialized=false` or any bootstrap truth flag is false.
+## Add Client
 
-## Lifecycle change
+1. Load `GET /api/v1/superadmin/tenants/new` before enabling submit.
+2. Collect only `company`, `owner`, `commercial`, `quotas`, `modules`, `support`, and `createMode`.
+3. Submit `POST /api/v1/superadmin/tenants`.
+4. Treat success as complete only when response `data.tenantId`, `data.status`, `data.activation`, and `data.auditEventId` are present.
+5. `createMode=DRAFT` must not show an email-sent state. `createMode=SEND_ACTIVATION` must show pending activation metadata and a redacted MailHog/message marker in validation environments.
+6. Redirect to `/platform/clients/:tenantId` using the numeric tenant id from the Super Admin response.
 
-1. Enter from tenant detail.
-2. Show current `lifecycleState` and `lifecycleReason`.
-3. Require a non-empty reason for every transition.
-4. Submit `PUT /api/v1/superadmin/tenants/{id}/lifecycle`.
-5. Re-fetch tenant detail and append the change to the support timeline view.
+## Activation actions
 
-## Limits and modules management
+1. Use tenant detail and seed status to decide whether activation actions are available.
+2. `POST /api/v1/superadmin/tenants/{id}/activation/send`, `resend`, `copy`, and `expire` are explicit operator actions.
+3. Copy-link is the only API action that may return a link, and UI/evidence must render it as `<ACTIVATION_URL_REDACTED>`.
+4. Send/resend proof uses email message id/subject only; never display token values or plaintext credentials.
+5. After every action, refresh tenant detail and audit tab.
 
-1. Load current `limits` and `enabledModules` from tenant detail.
-2. Edit quota values or module set in separate forms.
-3. Submit one mutation at a time.
-4. Re-fetch tenant detail after each mutation and discard stale form state.
+## Owner setup corridor
 
-## Support recovery
+1. Owner verifies activation through `GET /api/v1/auth/activation/verify?token=<REDACTED>`.
+2. Owner completes activation with `POST /api/v1/auth/activation/complete` using token and password fields; frontend never logs either value.
+3. Owner completes setup in order: status, company details, GST, accounting, optional invite team, finish.
+4. Setup payloads do not include location setup fields; V1 setup is company/accounting/GST/team only.
+5. Finish is idempotent and moves the tenant to trial/active according to commercial state.
 
-1. Open tenant detail `Support` tab.
-2. Review `supportContext`, `supportTimeline`, and `availableActions`.
-3. Use the least destructive action first:
-   - update support context
-   - issue warning
-   - reset tenant admin password
-   - force logout
-4. After mutation success, refresh tenant detail and keep the operator on the same tab.
+## Plan, entitlements, usage, and quotas
 
-## Main-admin replacement and email change
+1. Load plan templates and tenant entitlements before showing plan/limit forms.
+2. Plan assignment uses `PUT /api/v1/superadmin/tenants/{id}/plan` and may include `planId`, `customPlan`, `reason`, and `repriceSubscription`.
+3. Entitlement overrides use `PUT /api/v1/superadmin/tenants/{id}/entitlements/overrides`; removal uses `DELETE /api/v1/superadmin/tenants/{id}/entitlements/overrides/{key}` with a reason body when available.
+4. Usage pages distinguish monthly quota, burst rate limit, concurrent requests, rejected requests, jobs, PDFs, emails, users, and storage.
+5. `429` means rate or quota throttling; use retry/reset metadata when present and avoid duplicate mutation retries.
 
-1. Open tenant detail `Admin Access` tab.
-2. Replace main admin only with a deliberate chooser action.
-3. For email change, split UX into request and confirm steps.
-4. Do not collapse request and confirm into one submit because the backend requires both `requestId` and `verificationToken` at confirmation time.
+## Billing and lifecycle
 
-## Changelog publish
+1. Create/read subscription through `/billing/subscription` before posting ledger entries.
+2. Manual invoices/payments use `LedgerEntryRequest` with amount, currency, idempotency key, and reason.
+3. Adjustments use direction, amount, currency, idempotency key, and reason.
+4. Grace, read-only suspension, blocked suspension, resume, cancel, and archive use explicit reason payloads and write audit evidence.
+5. After mutation, refresh tenant detail, billing ledger, billing metrics, and audit tab.
 
-1. Create or edit entries in `/platform/changelog`.
-2. Validate semver before submit.
-3. Use soft-delete from the changelog list, not from tenant detail.
+## Support, SLA, bugs, and Sentry
+
+1. Queue filters use `status`, `category`, `slaStatus`, `q`, `page`, `size`, and `sort`.
+2. Ticket detail loads safe tenant summary, status, SLA, messages, timeline, bug/feature classification, and Sentry status.
+3. Customer-visible replies use `/messages`; internal notes use `/internal-notes` and must remain platform-only.
+4. Status changes and feature-to-incident conversion require explicit reason when the backend asks for it.
+5. Sentry link accepts an issue id, not an arbitrary URL or client-supplied credentials. Sync returns safe issue status/timestamps/errors only.
+
+## Audit, security, infra, and observability
+
+1. Platform/security/suspicious event lists preserve filters in the URL.
+2. Suspicious-event acknowledge/resolve/reopen actions require a remediation reason and refresh the dashboard/security counters.
+3. Infra health shows redacted component status only.
+4. Cost snapshots validate component, source, amount, currency, period, and reason; corrections are read-only history.
+5. Datadog status and Sentry links are server-side wrappers. UI must never ask for or display provider credentials.

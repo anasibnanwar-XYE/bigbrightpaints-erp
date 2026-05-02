@@ -13,6 +13,7 @@ import static org.mockito.Mockito.when;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import org.junit.jupiter.api.AfterEach;
@@ -28,12 +29,16 @@ import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import com.bigbrightpaints.erp.core.audit.AuditEvent;
+import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.security.AuthScopeService;
 import com.bigbrightpaints.erp.core.security.CompanyContextFilter;
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
+import com.bigbrightpaints.erp.core.web.RequestTraceContext;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserPrincipal;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
@@ -59,6 +64,8 @@ class CompanyContextFilterControlPlaneBindingTest {
 
   @Mock private AuthScopeService authScopeService;
 
+  @Mock private AuditService auditService;
+
   @Mock private FilterChain filterChain;
 
   private CompanyContextFilter filter;
@@ -78,6 +85,7 @@ class CompanyContextFilterControlPlaneBindingTest {
   void tearDown() {
     SecurityContextHolder.clearContext();
     CompanyContextHolder.clear();
+    RequestTraceContext.clear();
   }
 
   @Test
@@ -105,12 +113,9 @@ class CompanyContextFilterControlPlaneBindingTest {
   }
 
   @Test
-  void canonicalSupportResetRequest_bindsPathTargetCompany_andBypassesRuntimeAdmission()
+  void retiredSupportResetRequest_doesNotBindPathTargetCompany()
       throws ServletException, IOException {
     authenticate("root-superadmin@bbp.com", Set.of("ROLE_SUPER_ADMIN"), Set.of("ROOT"));
-    when(companyService.resolveCompanyCodeById(42L)).thenReturn("TENANT-A");
-    when(companyService.resolveLifecycleStateByCode("TENANT-A"))
-        .thenReturn(CompanyLifecycleState.ACTIVE);
 
     MockHttpServletRequest request =
         request("POST", "/api/v1/superadmin/tenants/42/support/admin-password-reset");
@@ -119,12 +124,9 @@ class CompanyContextFilterControlPlaneBindingTest {
 
     filter.doFilter(request, response, filterChain);
 
-    assertThat(response.getStatus()).isEqualTo(200);
-    verify(companyService).resolveCompanyCodeById(42L);
-    verify(companyService).resolveLifecycleStateByCode("TENANT-A");
-    verify(tenantRuntimeRequestAdmissionService, never())
-        .beginRequest(anyString(), anyString(), anyString(), anyString(), anyBoolean());
-    verify(filterChain).doFilter(request, response);
+    assertThat(response.getStatus()).isEqualTo(403);
+    verify(companyService, never()).resolveCompanyCodeById(42L);
+    verify(filterChain, never()).doFilter(request, response);
   }
 
   @Test
@@ -295,6 +297,37 @@ class CompanyContextFilterControlPlaneBindingTest {
   }
 
   @Test
+  void companyContextSpoofingDenial_usesRequestTraceAndWritesAuditEvidence()
+      throws ServletException, IOException {
+    ReflectionTestUtils.setField(filter, "auditService", auditService);
+    RequestTraceContext.start("trace-spoof-m2", "corr-spoof-m2");
+    authenticate("tenant-admin@bbp.com", Set.of("ROLE_ADMIN"), Set.of("TENANT-A"));
+    MockHttpServletRequest request = request("GET", "/api/v1/private");
+    request.setAttribute("jwtClaims", claimsFor("TENANT-A"));
+    request.addHeader("X-Company-Code", "TENANT-B");
+    MockHttpServletResponse response = new MockHttpServletResponse();
+
+    filter.doFilter(request, response, filterChain);
+
+    assertThat(response.getStatus()).isEqualTo(403);
+    assertThat(response.getContentAsString()).contains("trace-spoof-m2");
+    @SuppressWarnings("unchecked")
+    org.mockito.ArgumentCaptor<Map<String, String>> metadataCaptor =
+        org.mockito.ArgumentCaptor.forClass(Map.class);
+    verify(auditService)
+        .logAuthFailure(
+            org.mockito.ArgumentMatchers.eq(AuditEvent.ACCESS_DENIED),
+            org.mockito.ArgumentMatchers.eq("tenant-admin@bbp.com"),
+            org.mockito.ArgumentMatchers.eq("TENANT-B"),
+            metadataCaptor.capture());
+    assertThat(metadataCaptor.getValue())
+        .containsEntry("reason", "COMPANY_CONTEXT_MISMATCH")
+        .containsEntry("traceId", "trace-spoof-m2")
+        .containsEntry("correlationId", "corr-spoof-m2")
+        .containsEntry("deniedPath", "/api/v1/private");
+  }
+
+  @Test
   void companyScopedRequest_rejectsWhenRuntimeAdmissionServiceReturnsNull()
       throws ServletException, IOException {
     authenticate("tenant-admin@bbp.com", Set.of("ROLE_ADMIN"), Set.of("TENANT-A"));
@@ -443,6 +476,43 @@ class CompanyContextFilterControlPlaneBindingTest {
   }
 
   @Test
+  void platformWorkflowDenialAuditMetadata_usesRequestTraceAndCorrelation()
+      throws ServletException, IOException {
+    ReflectionTestUtils.setField(filter, "auditService", auditService);
+    RequestTraceContext.start("trace-platform-denial-m2", "corr-platform-denial-m2");
+    authenticate("root-superadmin@bbp.com", Set.of("ROLE_SUPER_ADMIN"), Set.of("TENANT-A"));
+    MockHttpServletRequest request = request("GET", "/api/v1/admin/support/tickets");
+    request.setAttribute("jwtClaims", claimsFor("TENANT-A"));
+    MockHttpServletResponse response = new MockHttpServletResponse();
+
+    filter.doFilter(request, response, filterChain);
+
+    assertThat(response.getStatus()).isEqualTo(403);
+    assertThat(response.getContentAsString())
+        .contains("SUPER_ADMIN_PLATFORM_ONLY")
+        .contains("trace-platform-denial-m2")
+        .contains("corr-platform-denial-m2");
+    @SuppressWarnings("unchecked")
+    org.mockito.ArgumentCaptor<Map<String, String>> metadataCaptor =
+        org.mockito.ArgumentCaptor.forClass(Map.class);
+    verify(auditService)
+        .logAuthFailure(
+            org.mockito.ArgumentMatchers.eq(AuditEvent.ACCESS_DENIED),
+            org.mockito.ArgumentMatchers.eq("root-superadmin@bbp.com"),
+            org.mockito.ArgumentMatchers.eq("TENANT-A"),
+            metadataCaptor.capture());
+    assertThat(metadataCaptor.getValue())
+        .containsEntry("reason", "SUPER_ADMIN_PLATFORM_ONLY")
+        .containsEntry("traceId", "trace-platform-denial-m2")
+        .containsEntry("correlationId", "corr-platform-denial-m2")
+        .containsEntry("deniedPath", "/api/v1/admin/support/tickets")
+        .containsEntry("deniedMethod", "GET")
+        .containsEntry("tenantScope", "TENANT-A");
+    verifyNoInteractions(companyService);
+    verify(filterChain, never()).doFilter(request, response);
+  }
+
+  @Test
   void superAdminPlatformScopeOnlyHost_checkInvokesPlatformScopeLookupOncePerRequest()
       throws ServletException, IOException {
     authenticate("root-superadmin@bbp.com", Set.of("ROLE_SUPER_ADMIN"), Set.of("TENANT-A"));
@@ -484,6 +554,21 @@ class CompanyContextFilterControlPlaneBindingTest {
   }
 
   @Test
+  void extractCompanyIdFromControlPlanePath_handlesCanonicalAndMalformedValues() {
+    assertThat(extractCompanyId(null)).isNull();
+    assertThat(extractCompanyId("   ")).isNull();
+    assertThat(extractCompanyId("/api/v1/private")).isNull();
+    assertThat(extractCompanyId("/api/v1/superadmin/tenants/not-a-number")).isNull();
+    assertThat(extractCompanyId("/api/v1/superadmin/tenants//limits")).isNull();
+    assertThat(extractCompanyId("/api/v1/superadmin/tenants/42")).isEqualTo(42L);
+    assertThat(extractCompanyId("/api/v1/superadmin/tenants/42/limits")).isEqualTo(42L);
+    assertThat(extractCompanyId("/api/v1/superadmin/tenants/42/support/admin-password-reset"))
+        .isNull();
+    assertThat(extractCompanyId("/api/v1/superadmin/tenants/42/review-intelligence"))
+        .isEqualTo(42L);
+  }
+
+  @Test
   void retiredSharedSupportPrefix_isNotClassifiedAsTenantBusinessKnowledge() {
     assertThat(isTenantBusinessRequestBlockedForSuperAdmin("/api/v1/support")).isFalse();
     assertThat(isTenantBusinessRequestBlockedForSuperAdmin("/api/v1/support/tickets")).isFalse();
@@ -500,6 +585,19 @@ class CompanyContextFilterControlPlaneBindingTest {
   private boolean isTenantBusinessRequestBlockedForSuperAdmin(String path) {
     return com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         filter, "isTenantBusinessRequestBlockedForSuperAdmin", path);
+  }
+
+  private Long extractCompanyId(String path) {
+    for (String method : List.of("GET", "PUT", "POST")) {
+      Object binding =
+          com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+              filter, "resolveCompanyBoundControlBinding", path, method);
+      if (binding != null) {
+        return com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+            binding, "companyId");
+      }
+    }
+    return null;
   }
 
   private void authenticate(String email, Set<String> authorities, Set<String> companyCodes) {

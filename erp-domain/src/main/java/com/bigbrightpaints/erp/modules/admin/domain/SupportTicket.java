@@ -50,6 +50,10 @@ public class SupportTicket extends VersionedEntity {
   private String description;
 
   @Enumerated(EnumType.STRING)
+  @Column(name = "priority", nullable = false, length = 32)
+  private SupportTicketPriority priority = SupportTicketPriority.NORMAL;
+
+  @Enumerated(EnumType.STRING)
   @Column(name = "status", nullable = false)
   private SupportTicketStatus status;
 
@@ -71,11 +75,72 @@ public class SupportTicket extends VersionedEntity {
   @Column(name = "github_last_sync_at")
   private Instant githubLastSyncAt;
 
+  @Column(name = "bug_reproduction_steps", columnDefinition = "TEXT")
+  private String bugReproductionSteps;
+
+  @Column(name = "bug_environment", length = 64)
+  private String bugEnvironment;
+
+  @Column(name = "bug_release", length = 128)
+  private String bugRelease;
+
+  @Column(name = "bug_trace_id", length = 128)
+  private String bugTraceId;
+
+  @Column(name = "bug_metadata_json", columnDefinition = "TEXT")
+  private String bugMetadataJson;
+
+  @Column(name = "sentry_issue_id", length = 128)
+  private String sentryIssueId;
+
+  @Column(name = "sentry_issue_url", length = 512)
+  private String sentryIssueUrl;
+
+  @Column(name = "sentry_issue_status", length = 64)
+  private String sentryIssueStatus;
+
+  @Column(name = "sentry_linked_at")
+  private Instant sentryLinkedAt;
+
+  @Column(name = "sentry_synced_at")
+  private Instant sentrySyncedAt;
+
+  @Column(name = "sentry_last_sync_at")
+  private Instant sentryLastSyncAt;
+
+  @Column(name = "sentry_last_error", columnDefinition = "TEXT")
+  private String sentryLastError;
+
   @Column(name = "resolved_at")
   private Instant resolvedAt;
 
   @Column(name = "resolved_notification_sent_at")
   private Instant resolvedNotificationSentAt;
+
+  @Column(name = "sla_policy_id", length = 64)
+  private String slaPolicyId;
+
+  @Column(name = "sla_support_tier", length = 32)
+  private String slaSupportTier;
+
+  @Column(name = "first_response_due_at")
+  private Instant firstResponseDueAt;
+
+  @Column(name = "resolution_due_at")
+  private Instant resolutionDueAt;
+
+  @Enumerated(EnumType.STRING)
+  @Column(name = "sla_status", nullable = false, length = 32)
+  private SupportTicketSlaStatus slaStatus = SupportTicketSlaStatus.PENDING;
+
+  @Column(name = "first_responded_at")
+  private Instant firstRespondedAt;
+
+  @Column(name = "breached_at")
+  private Instant breachedAt;
+
+  @Column(name = "converted_to_incident_at")
+  private Instant convertedToIncidentAt;
 
   @Column(name = "created_at", nullable = false)
   private Instant createdAt;
@@ -90,6 +155,15 @@ public class SupportTicket extends VersionedEntity {
     }
     if (status == null) {
       status = SupportTicketStatus.OPEN;
+    }
+    if (priority == null) {
+      priority = SupportTicketPriority.NORMAL;
+    }
+    if (slaStatus == null) {
+      slaStatus =
+          category == SupportTicketCategory.FEATURE_REQUEST
+              ? SupportTicketSlaStatus.NOT_APPLICABLE
+              : SupportTicketSlaStatus.PENDING;
     }
     Instant now = CompanyTime.now(company);
     if (createdAt == null) {
@@ -153,6 +227,14 @@ public class SupportTicket extends VersionedEntity {
     this.description = description;
   }
 
+  public SupportTicketPriority getPriority() {
+    return priority;
+  }
+
+  public void setPriority(SupportTicketPriority priority) {
+    this.priority = priority == null ? SupportTicketPriority.NORMAL : priority;
+  }
+
   public SupportTicketStatus getStatus() {
     return status;
   }
@@ -209,6 +291,102 @@ public class SupportTicket extends VersionedEntity {
     this.githubLastSyncAt = githubLastSyncAt;
   }
 
+  public String getBugReproductionSteps() {
+    return bugReproductionSteps;
+  }
+
+  public void setBugReproductionSteps(String bugReproductionSteps) {
+    this.bugReproductionSteps = bugReproductionSteps;
+  }
+
+  public String getBugEnvironment() {
+    return bugEnvironment;
+  }
+
+  public void setBugEnvironment(String bugEnvironment) {
+    this.bugEnvironment = bugEnvironment;
+  }
+
+  public String getBugRelease() {
+    return bugRelease;
+  }
+
+  public void setBugRelease(String bugRelease) {
+    this.bugRelease = bugRelease;
+  }
+
+  public String getBugTraceId() {
+    return bugTraceId;
+  }
+
+  public void setBugTraceId(String bugTraceId) {
+    this.bugTraceId = bugTraceId;
+  }
+
+  public String getBugMetadataJson() {
+    return bugMetadataJson;
+  }
+
+  public void setBugMetadataJson(String bugMetadataJson) {
+    this.bugMetadataJson = bugMetadataJson;
+  }
+
+  public String getSentryIssueId() {
+    return sentryIssueId;
+  }
+
+  public void setSentryIssueId(String sentryIssueId) {
+    this.sentryIssueId = sentryIssueId;
+  }
+
+  public String getSentryIssueUrl() {
+    return sentryIssueUrl;
+  }
+
+  public void setSentryIssueUrl(String sentryIssueUrl) {
+    this.sentryIssueUrl = sentryIssueUrl;
+  }
+
+  public String getSentryIssueStatus() {
+    return sentryIssueStatus;
+  }
+
+  public void setSentryIssueStatus(String sentryIssueStatus) {
+    this.sentryIssueStatus = sentryIssueStatus;
+  }
+
+  public Instant getSentryLinkedAt() {
+    return sentryLinkedAt;
+  }
+
+  public void setSentryLinkedAt(Instant sentryLinkedAt) {
+    this.sentryLinkedAt = sentryLinkedAt;
+  }
+
+  public Instant getSentrySyncedAt() {
+    return sentrySyncedAt;
+  }
+
+  public void setSentrySyncedAt(Instant sentrySyncedAt) {
+    this.sentrySyncedAt = sentrySyncedAt;
+  }
+
+  public Instant getSentryLastSyncAt() {
+    return sentryLastSyncAt;
+  }
+
+  public void setSentryLastSyncAt(Instant sentryLastSyncAt) {
+    this.sentryLastSyncAt = sentryLastSyncAt;
+  }
+
+  public String getSentryLastError() {
+    return sentryLastError;
+  }
+
+  public void setSentryLastError(String sentryLastError) {
+    this.sentryLastError = sentryLastError;
+  }
+
   public Instant getResolvedAt() {
     return resolvedAt;
   }
@@ -223,6 +401,70 @@ public class SupportTicket extends VersionedEntity {
 
   public void setResolvedNotificationSentAt(Instant resolvedNotificationSentAt) {
     this.resolvedNotificationSentAt = resolvedNotificationSentAt;
+  }
+
+  public String getSlaPolicyId() {
+    return slaPolicyId;
+  }
+
+  public void setSlaPolicyId(String slaPolicyId) {
+    this.slaPolicyId = slaPolicyId;
+  }
+
+  public String getSlaSupportTier() {
+    return slaSupportTier;
+  }
+
+  public void setSlaSupportTier(String slaSupportTier) {
+    this.slaSupportTier = slaSupportTier;
+  }
+
+  public Instant getFirstResponseDueAt() {
+    return firstResponseDueAt;
+  }
+
+  public void setFirstResponseDueAt(Instant firstResponseDueAt) {
+    this.firstResponseDueAt = firstResponseDueAt;
+  }
+
+  public Instant getResolutionDueAt() {
+    return resolutionDueAt;
+  }
+
+  public void setResolutionDueAt(Instant resolutionDueAt) {
+    this.resolutionDueAt = resolutionDueAt;
+  }
+
+  public SupportTicketSlaStatus getSlaStatus() {
+    return slaStatus;
+  }
+
+  public void setSlaStatus(SupportTicketSlaStatus slaStatus) {
+    this.slaStatus = slaStatus;
+  }
+
+  public Instant getFirstRespondedAt() {
+    return firstRespondedAt;
+  }
+
+  public void setFirstRespondedAt(Instant firstRespondedAt) {
+    this.firstRespondedAt = firstRespondedAt;
+  }
+
+  public Instant getBreachedAt() {
+    return breachedAt;
+  }
+
+  public void setBreachedAt(Instant breachedAt) {
+    this.breachedAt = breachedAt;
+  }
+
+  public Instant getConvertedToIncidentAt() {
+    return convertedToIncidentAt;
+  }
+
+  public void setConvertedToIncidentAt(Instant convertedToIncidentAt) {
+    this.convertedToIncidentAt = convertedToIncidentAt;
   }
 
   public Instant getCreatedAt() {

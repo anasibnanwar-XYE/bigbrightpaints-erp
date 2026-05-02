@@ -6,13 +6,13 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
 import org.springframework.lang.Nullable;
 import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -26,6 +26,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.bigbrightpaints.erp.core.audit.AuditEvent;
 import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
+import com.bigbrightpaints.erp.core.web.RequestTraceContext;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserPrincipal;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyLifecycleState;
@@ -47,7 +48,7 @@ public class CompanyContextFilter extends OncePerRequestFilter {
   private static final Set<String> TENANT_AUDIT_WORKFLOW_PREFIXES =
       Set.of("/api/v1/audit", "/api/v1/admin/audit");
   private static final Set<String> SUPERADMIN_TENANT_COLLECTION_EXCLUDED_PATHS =
-      Set.of("/api/v1/superadmin/tenants/coa-templates");
+      Set.of("/api/v1/superadmin/tenants/coa-templates", "/api/v1/superadmin/tenants/new");
   private static final List<CompanyBoundControlRoute> COMPANY_BOUND_CONTROL_ROUTES =
       List.of(
           controlRoute("GET", "^/api/v1/superadmin/tenants/([^/]+)$", false),
@@ -55,8 +56,6 @@ public class CompanyContextFilter extends OncePerRequestFilter {
           controlRoute("PUT", "^/api/v1/superadmin/tenants/([^/]+)/limits$", true),
           controlRoute("PUT", "^/api/v1/superadmin/tenants/([^/]+)/modules$", false),
           controlRoute("POST", "^/api/v1/superadmin/tenants/([^/]+)/support/warnings$", false),
-          controlRoute(
-              "POST", "^/api/v1/superadmin/tenants/([^/]+)/support/admin-password-reset$", false),
           controlRoute("PUT", "^/api/v1/superadmin/tenants/([^/]+)/support/context$", false),
           controlRoute("GET", "^/api/v1/superadmin/tenants/([^/]+)/review-intelligence$", false),
           controlRoute("PUT", "^/api/v1/superadmin/tenants/([^/]+)/review-intelligence$", false),
@@ -107,8 +106,15 @@ public class CompanyContextFilter extends OncePerRequestFilter {
           "/api/v1/admin/exports",
           "/api/v1/admin/notify",
           "/api/v1/admin/users");
-  private static final Set<String> PUBLIC_PASSWORD_RESET_ENDPOINTS =
-      Set.of("/api/v1/auth/password/forgot", "/api/v1/auth/password/reset");
+  private static final Map<String, Set<String>> PUBLIC_AUTH_ENDPOINTS_BY_METHOD =
+      Map.of(
+          "GET",
+          Set.of("/api/v1/auth/activation/verify"),
+          "POST",
+          Set.of(
+              "/api/v1/auth/password/forgot",
+              "/api/v1/auth/password/reset",
+              "/api/v1/auth/activation/complete"));
 
   private record CompanyBoundControlRoute(
       String method, Pattern pattern, boolean tenantRuntimePolicyControl) {}
@@ -169,12 +175,13 @@ public class CompanyContextFilter extends OncePerRequestFilter {
       String legacyHeaderCompanyId = request.getHeader("X-Company-Id");
       if (StringUtils.hasText(legacyHeaderCompanyId)) {
         writeAccessDenied(
+            request,
             response,
             "COMPANY_CONTEXT_LEGACY_HEADER_UNSUPPORTED",
             "Use X-Company-Code for company context binding");
         return;
       }
-      if (isPublicPasswordResetRequest(runtimePath, request.getMethod())) {
+      if (isPublicAuthFlowRequest(runtimePath, request.getMethod())) {
         filterChain.doFilter(request, response);
         return;
       }
@@ -188,7 +195,10 @@ public class CompanyContextFilter extends OncePerRequestFilter {
               "Rejecting authenticated request without company claim. path={}",
               sanitizeForLog(request.getRequestURI()));
           writeAccessDenied(
-              response, "COMPANY_CONTEXT_MISSING", "Authenticated token missing company context");
+              request,
+              response,
+              "COMPANY_CONTEXT_MISSING",
+              "Authenticated token missing company context");
           return;
         }
         if (StringUtils.hasText(requestedCompany)
@@ -197,6 +207,7 @@ public class CompanyContextFilter extends OncePerRequestFilter {
               "Rejecting company header mismatch. path={}",
               sanitizeForLog(request.getRequestURI()));
           writeAccessDenied(
+              request,
               response,
               "COMPANY_CONTEXT_MISMATCH",
               "Company header does not match authenticated company context");
@@ -207,7 +218,10 @@ public class CompanyContextFilter extends OncePerRequestFilter {
         // Do not allow unauthenticated requests to set tenant context via header.
         if (StringUtils.hasText(requestedCompany)) {
           writeAccessDenied(
-              response, "COMPANY_CONTEXT_AUTH_REQUIRED", "Access denied to company-scoped request");
+              request,
+              response,
+              "COMPANY_CONTEXT_AUTH_REQUIRED",
+              "Access denied to company-scoped request");
           return;
         }
         requestedCompany = null;
@@ -308,9 +322,21 @@ public class CompanyContextFilter extends OncePerRequestFilter {
               response, "COMPANY_ACCESS_DENIED", "Access denied to company: " + companyCode);
           return;
         }
-        if (!lifecycleControlBypass && shouldDenyTenantRequestByLifecycle(lifecycleState)) {
+        if (!lifecycleControlBypass
+            && shouldDenyTenantRequestByLifecycle(lifecycleState, request.getMethod())) {
           writeAccessDenied(
-              response, "TENANT_LIFECYCLE_RESTRICTED", lifecycleDeniedMessage(lifecycleState));
+              response,
+              "TENANT_LIFECYCLE_RESTRICTED",
+              lifecycleDeniedMessage(lifecycleState, request.getMethod()));
+          return;
+        }
+        if (!lifecycleControlBypass
+            && companyService.isOwnerSetupRequiredByCode(companyCode)
+            && !isSetupCorridorRequestAllowed(runtimePath)) {
+          writeAccessDenied(
+              response,
+              "TENANT_SETUP_REQUIRED",
+              "Tenant owner first-login setup must be completed before using tenant workflows");
           return;
         }
         if (!lifecycleControlRequest || tenantRuntimePolicyControlRequest) {
@@ -432,12 +458,47 @@ public class CompanyContextFilter extends OncePerRequestFilter {
     Map<String, String> metadata = new LinkedHashMap<>();
     metadata.put("actor", actor);
     metadata.put("reason", "SUPER_ADMIN_PLATFORM_ONLY");
+    metadata.put("traceId", RequestTraceContext.traceId());
+    metadata.put("correlationId", RequestTraceContext.correlationId());
     metadata.put(
         "deniedPath",
         StringUtils.hasText(normalizedPath)
             ? normalizedPath
             : normalizePath(resolveApplicationPath(request)));
     metadata.put("deniedMethod", request.getMethod());
+    if (StringUtils.hasText(tenantScope)) {
+      metadata.put("tenantScope", tenantScope.trim());
+    }
+    auditService.logAuthFailure(AuditEvent.ACCESS_DENIED, actor, tenantScope, metadata);
+    AccessDeniedAuditMarker.markCurrentRequestAudited();
+  }
+
+  private void auditCompanyContextDenied(
+      HttpServletRequest request, String reason, String reasonDetail) {
+    if (auditService == null || AccessDeniedAuditMarker.isCurrentRequestAlreadyAudited(request)) {
+      return;
+    }
+    String actor = SecurityActorResolver.resolveActorWithSystemProcessFallback();
+    String tenantScope = request == null ? null : request.getHeader("X-Company-Code");
+    if (!StringUtils.hasText(tenantScope)) {
+      tenantScope = AccessDeniedAuditMarker.resolveTenantScope(request);
+    }
+    Map<String, String> metadata = new LinkedHashMap<>();
+    metadata.put("actor", actor);
+    metadata.put("reason", reason);
+    metadata.put("reasonDetail", reasonDetail);
+    metadata.put("traceId", RequestTraceContext.traceId());
+    metadata.put("correlationId", RequestTraceContext.correlationId());
+    if (request != null) {
+      metadata.put("deniedPath", normalizePath(resolveApplicationPath(request)));
+      metadata.put("deniedMethod", request.getMethod());
+      if (StringUtils.hasText(request.getHeader("X-Company-Id"))) {
+        metadata.put("legacyCompanyIdHeaderPresent", "true");
+      }
+      if (StringUtils.hasText(request.getHeader("X-Company-Code"))) {
+        metadata.put("companyCodeHeaderPresent", "true");
+      }
+    }
     if (StringUtils.hasText(tenantScope)) {
       metadata.put("tenantScope", tenantScope.trim());
     }
@@ -525,8 +586,15 @@ public class CompanyContextFilter extends OncePerRequestFilter {
     data.put("message", userMessage);
     data.put("reason", reason);
     data.put("reasonDetail", reasonDetail);
-    data.put("traceId", UUID.randomUUID().toString());
+    data.put("traceId", RequestTraceContext.traceId());
     writeControlledError(response, HttpServletResponse.SC_FORBIDDEN, userMessage, data);
+  }
+
+  private void writeAccessDenied(
+      HttpServletRequest request, HttpServletResponse response, String reason, String reasonDetail)
+      throws IOException {
+    auditCompanyContextDenied(request, reason, reasonDetail);
+    writeAccessDenied(response, reason, reasonDetail);
   }
 
   private void writeServiceUnavailable(
@@ -537,7 +605,7 @@ public class CompanyContextFilter extends OncePerRequestFilter {
     data.put("message", userMessage);
     data.put("reason", reason);
     data.put("reasonDetail", reasonDetail);
-    data.put("traceId", UUID.randomUUID().toString());
+    data.put("traceId", RequestTraceContext.traceId());
     writeControlledError(response, HttpServletResponse.SC_SERVICE_UNAVAILABLE, userMessage, data);
   }
 
@@ -554,7 +622,7 @@ public class CompanyContextFilter extends OncePerRequestFilter {
             ? admission.reasonCode()
             : "TENANT_REQUEST_DENIED");
     data.put("message", message);
-    data.put("traceId", UUID.randomUUID().toString());
+    data.put("traceId", RequestTraceContext.traceId());
     if (StringUtils.hasText(admission.reasonCode())) {
       data.put("reason", admission.reasonCode());
     }
@@ -573,7 +641,31 @@ public class CompanyContextFilter extends OncePerRequestFilter {
     if (StringUtils.hasText(admission.limitValue())) {
       data.put("limitValue", admission.limitValue());
     }
+    if (admission.retryAfterSeconds() != null) {
+      data.put("retryAfterSeconds", Long.toString(admission.retryAfterSeconds()));
+    }
+    if (admission.resetAtEpochSecond() != null) {
+      data.put("resetAtEpochSecond", Long.toString(admission.resetAtEpochSecond()));
+    }
+    if (admission.statusCode() == 429) {
+      writeRateLimitHeaders(response, admission);
+    }
     writeControlledError(response, admission.statusCode(), message, data);
+  }
+
+  private void writeRateLimitHeaders(
+      HttpServletResponse response,
+      TenantRuntimeEnforcementService.TenantRequestAdmission admission) {
+    if (admission.retryAfterSeconds() != null) {
+      response.setHeader(HttpHeaders.RETRY_AFTER, Long.toString(admission.retryAfterSeconds()));
+    }
+    if (StringUtils.hasText(admission.limitValue())) {
+      response.setHeader("X-RateLimit-Limit", admission.limitValue().trim());
+    }
+    response.setHeader("X-RateLimit-Remaining", "0");
+    if (admission.resetAtEpochSecond() != null) {
+      response.setHeader("X-RateLimit-Reset", Long.toString(admission.resetAtEpochSecond()));
+    }
   }
 
   private void writeControlledError(
@@ -634,12 +726,17 @@ public class CompanyContextFilter extends OncePerRequestFilter {
     return path.startsWith("/actuator") || path.startsWith("/swagger") || path.startsWith("/v3");
   }
 
-  private boolean isPublicPasswordResetRequest(String path, String method) {
-    if (!"POST".equalsIgnoreCase(method) || !StringUtils.hasText(path)) {
+  private boolean isPublicAuthFlowRequest(String path, String method) {
+    if (!StringUtils.hasText(path) || !StringUtils.hasText(method)) {
+      return false;
+    }
+    Set<String> publicPaths =
+        PUBLIC_AUTH_ENDPOINTS_BY_METHOD.get(method.trim().toUpperCase(Locale.ROOT));
+    if (publicPaths == null) {
       return false;
     }
     String normalizedPath = normalizePath(path);
-    return PUBLIC_PASSWORD_RESET_ENDPOINTS.contains(normalizedPath);
+    return publicPaths.contains(normalizedPath);
   }
 
   private boolean isTenantAuditWorkflowRequest(String path) {
@@ -673,6 +770,17 @@ public class CompanyContextFilter extends OncePerRequestFilter {
         normalizedPath, request == null ? null : request.getMethod());
   }
 
+  private boolean isSetupCorridorRequestAllowed(String path) {
+    String normalizedPath = normalizePath(path);
+    if (!StringUtils.hasText(normalizedPath)) {
+      return false;
+    }
+    return normalizedPath.equals("/api/v1/auth/me")
+        || normalizedPath.equals("/api/v1/auth/logout")
+        || normalizedPath.equals("/api/v1/setup")
+        || normalizedPath.startsWith("/api/v1/setup/");
+  }
+
   private boolean isSuperadminPlatformScopeOnlyHostPath(String path) {
     String normalizedPath = normalizePath(path);
     if (!StringUtils.hasText(normalizedPath)) {
@@ -680,6 +788,8 @@ public class CompanyContextFilter extends OncePerRequestFilter {
     }
     return normalizedPath.equals("/api/v1/superadmin/settings")
         || normalizedPath.startsWith("/api/v1/superadmin/settings/")
+        || normalizedPath.equals("/api/v1/superadmin/profile")
+        || normalizedPath.startsWith("/api/v1/superadmin/profile/")
         || normalizedPath.equals("/api/v1/superadmin/roles")
         || normalizedPath.startsWith("/api/v1/superadmin/roles/")
         || normalizedPath.equals("/api/v1/superadmin/notify")
@@ -691,6 +801,17 @@ public class CompanyContextFilter extends OncePerRequestFilter {
       return null;
     }
     return method.trim().toUpperCase(Locale.ROOT);
+  }
+
+  private boolean isMutatingRequest(String method) {
+    String normalizedMethod = normalizeMethod(method);
+    if (normalizedMethod == null) {
+      return true;
+    }
+    return switch (normalizedMethod) {
+      case "GET", "HEAD", "OPTIONS", "TRACE" -> false;
+      default -> true;
+    };
   }
 
   private static CompanyBoundControlRoute controlRoute(
@@ -722,22 +843,26 @@ public class CompanyContextFilter extends OncePerRequestFilter {
     return normalizedPath;
   }
 
-  private boolean shouldDenyTenantRequestByLifecycle(CompanyLifecycleState lifecycleState) {
+  private boolean shouldDenyTenantRequestByLifecycle(
+      CompanyLifecycleState lifecycleState, String method) {
     CompanyLifecycleState resolvedState =
         lifecycleState == null ? CompanyLifecycleState.ACTIVE : lifecycleState;
     return switch (resolvedState) {
       case ACTIVE -> false;
-      case SUSPENDED -> true;
+      case SUSPENDED -> isMutatingRequest(method);
       case DEACTIVATED -> true;
     };
   }
 
-  private String lifecycleDeniedMessage(CompanyLifecycleState lifecycleState) {
+  private String lifecycleDeniedMessage(CompanyLifecycleState lifecycleState, String method) {
     CompanyLifecycleState resolvedState =
         lifecycleState == null ? CompanyLifecycleState.ACTIVE : lifecycleState;
     return switch (resolvedState) {
       case ACTIVE -> "Tenant lifecycle state allows access";
-      case SUSPENDED -> "Tenant is suspended";
+      case SUSPENDED ->
+          isMutatingRequest(method)
+              ? "Tenant is suspended in read-only mode"
+              : "Tenant suspended read-only access is allowed";
       case DEACTIVATED -> "Tenant is deactivated";
     };
   }

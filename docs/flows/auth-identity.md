@@ -34,7 +34,7 @@ This flow is **behavior-first** and **code-grounded**. Where the backend is inco
 | MFA activate | POST | `/api/v1/auth/mfa/activate` | Authenticated | Confirm TOTP enrollment |
 | MFA disable | POST | `/api/v1/auth/mfa/disable` | Authenticated | Disable MFA |
 | Admin force-reset | POST | `/api/v1/admin/users/{userId}/force-reset-password` | `ROLE_ADMIN` | Admin triggers password reset for user |
-| Super-admin support reset | POST | `/api/v1/superadmin/tenants/{id}/support/admin-password-reset` | `ROLE_SUPER_ADMIN` | Super-admin issues the canonical tenant-admin reset-link recovery action |
+| Super-admin support reset | — | — | Retired; use password recovery routes instead. |
 
 ---
 
@@ -179,7 +179,7 @@ The flow is complete when:
 
 | Path | Status | Replacement |
 | --- | --- | --- |
-| Legacy super-admin forgot-password alias | Deprecated (V157 hard cut) | Use `POST /api/v1/superadmin/tenants/{id}/support/admin-password-reset` |
+| Platform-issued Super Admin support reset | Removed from current API contract | Use activation or scoped auth password recovery |
 | Email-only recovery identity | Deprecated | Require `email + companyCode` |
 | `companyId` auth alias | Deprecated | Use `companyCode` claim in JWT |
 

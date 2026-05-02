@@ -77,7 +77,18 @@ class TenantRuntimeRequestAdmissionServiceTest {
             10,
             20,
             30,
-            new TenantRuntimeEnforcementService.TenantRuntimeMetrics(1L, 2L, 3L, 4, 5, 6, 7L));
+            new TenantRuntimeEnforcementService.TenantRuntimeMetrics(
+                1L,
+                2L,
+                3L,
+                4,
+                5,
+                6,
+                7L,
+                Instant.parse("2026-03-28T12:00:00Z"),
+                Instant.parse("2026-03-28T12:01:00Z"),
+                Instant.parse("2026-03-28T12:01:00Z"),
+                Instant.parse("2026-03-28T12:00:30Z")));
     when(tenantRuntimeEnforcementService.snapshot("ACME")).thenReturn(snapshot);
 
     assertThat(service.snapshot("ACME")).isSameAs(snapshot);

@@ -5,9 +5,9 @@ services:
     environment:
       POSTGRES_DB: erp_domain
       POSTGRES_USER: erp
-      POSTGRES_PASSWORD: ${SPRING_DATASOURCE_PASSWORD:?Set SPRING_DATASOURCE_PASSWORD before starting compose}
+      POSTGRES_PASSWORD: ${SPRING_DATASOURCE_PASSWORD:-erp}
     ports:
-      - "127.0.0.1:${DB_PORT:-5432}:5432"
+      - "127.0.0.1:${DB_PORT:-5433}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
@@ -20,8 +20,8 @@ services:
     image: rabbitmq:3-management-alpine
     container_name: erp_rabbit
     ports:
-      - "${RABBIT_PORT:-5672}:5672"
-      - "${RABBIT_MANAGEMENT_PORT:-15672}:15672"
+      - "127.0.0.1:${RABBIT_PORT:-5672}:5672"
+      - "127.0.0.1:${RABBIT_MANAGEMENT_PORT:-15672}:15672"
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
       interval: 5s
@@ -34,8 +34,8 @@ services:
     image: mailhog/mailhog:v1.0.1
     container_name: erp_mailhog
     ports:
-      - "${MAILHOG_SMTP_PORT:-1025}:1025"
-      - "${MAILHOG_UI_PORT:-8025}:8025"
+      - "127.0.0.1:${MAILHOG_SMTP_PORT:-1025}:1025"
+      - "127.0.0.1:${MAILHOG_UI_PORT:-8025}:8025"
 
   app:
     build:
@@ -51,17 +51,17 @@ services:
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod,flyway-v2}
       SERVER_PORT: 8081
       MANAGEMENT_SERVER_PORT: 9090
-      # Prod-like compose contract: provide datasource values explicitly via `.env` or shell env.
-      SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL:?Set SPRING_DATASOURCE_URL before starting the prod,flyway-v2 app}
-      SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME:?Set SPRING_DATASOURCE_USERNAME before starting the prod,flyway-v2 app}
-      SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD:?Set SPRING_DATASOURCE_PASSWORD before starting the prod,flyway-v2 app}
+      # Prod-like compose contract: provide secrets explicitly via `.env` or shell env.
+      SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL:-jdbc:postgresql://db:5432/erp_domain}
+      SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME:-erp}
+      SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD:-erp}
       SPRING_RABBITMQ_HOST: rabbitmq
       SPRING_RABBITMQ_PORT: 5672
-      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET to a 256-bit secret before starting}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required for app runtime}
       JWT_ACCESS_TTL: 900
       JWT_REFRESH_TTL: 2592000
-      ERP_SECURITY_ENCRYPTION_KEY: ${ERP_SECURITY_ENCRYPTION_KEY:?Set ERP_SECURITY_ENCRYPTION_KEY (32+ bytes) before starting}
-      ERP_SECURITY_AUDIT_PRIVATE_KEY: ${ERP_SECURITY_AUDIT_PRIVATE_KEY:?Set ERP_SECURITY_AUDIT_PRIVATE_KEY before starting}
+      ERP_SECURITY_ENCRYPTION_KEY: ${ERP_SECURITY_ENCRYPTION_KEY:?ERP_SECURITY_ENCRYPTION_KEY is required for app runtime}
+      ERP_SECURITY_AUDIT_PRIVATE_KEY: ${ERP_SECURITY_AUDIT_PRIVATE_KEY:?ERP_SECURITY_AUDIT_PRIVATE_KEY is required for app runtime}
       ERP_DISPATCH_DEBIT_ACCOUNT_ID: ${ERP_DISPATCH_DEBIT_ACCOUNT_ID:-0}
       ERP_DISPATCH_CREDIT_ACCOUNT_ID: ${ERP_DISPATCH_CREDIT_ACCOUNT_ID:-0}
       # Disable fail-fast config checks for local/dev unless explicitly enabled.
@@ -100,15 +100,15 @@ services:
       DD_TRACE_SAMPLE_RATE: ${DD_TRACE_SAMPLE_RATE:-0.2}
       DD_PROFILING_ENABLED: ${DD_PROFILING_ENABLED:-false}
     ports:
-      - "${APP_PORT:-8081}:8081"
-      - "${MANAGEMENT_PORT:-9090}:9090"
+      - "127.0.0.1:${APP_PORT:-8081}:8081"
+      - "127.0.0.1:${MANAGEMENT_PORT:-9090}:9090"
 
   datadog-agent:
     image: gcr.io/datadoghq/agent:7
     container_name: erp_datadog
     profiles: ["datadog"]
     environment:
-      DD_API_KEY: ${DD_API_KEY:?Set DD_API_KEY to enable Datadog}
+      DD_API_KEY: ${DD_API_KEY:-}
       DD_SITE: ${DD_SITE:-us5.datadoghq.com}
       DD_APM_ENABLED: "true"
       DD_APM_NON_LOCAL_TRAFFIC: "true"

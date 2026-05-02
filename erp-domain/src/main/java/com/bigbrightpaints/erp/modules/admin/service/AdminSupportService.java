@@ -6,12 +6,17 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.bigbrightpaints.erp.modules.admin.domain.SupportTicket;
+import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketMessageAuthorRole;
+import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketMessageVisibility;
 import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketRepository;
 import com.bigbrightpaints.erp.modules.admin.dto.SupportTicketCreateRequest;
+import com.bigbrightpaints.erp.modules.admin.dto.SupportTicketMessageRequest;
+import com.bigbrightpaints.erp.modules.admin.dto.SupportTicketMessageResponse;
 import com.bigbrightpaints.erp.modules.admin.dto.SupportTicketResponse;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
+import com.bigbrightpaints.erp.shared.dto.PageResponse;
 
 @Service
 public class AdminSupportService {
@@ -54,5 +59,33 @@ public class AdminSupportService {
             .findByCompanyAndId(company, resolvedTicketId)
             .orElseThrow(() -> supportTicketAccessSupport.notFound(resolvedTicketId));
     return supportTicketAccessSupport.toResponses(List.of(ticket), actor.getId()).getFirst();
+  }
+
+  @Transactional
+  public SupportTicketMessageResponse addMessage(
+      Long ticketId, SupportTicketMessageRequest request) {
+    Long resolvedTicketId = supportTicketAccessSupport.requireTicketId(ticketId);
+    Company company = companyContextService.requireCurrentCompany();
+    SupportTicket ticket =
+        supportTicketRepository
+            .findByCompanyAndId(company, resolvedTicketId)
+            .orElseThrow(() -> supportTicketAccessSupport.notFound(resolvedTicketId));
+    return supportTicketAccessSupport.addMessage(
+        ticket,
+        request,
+        SupportTicketMessageAuthorRole.TENANT,
+        SupportTicketMessageVisibility.CUSTOMER);
+  }
+
+  @Transactional(readOnly = true)
+  public PageResponse<SupportTicketMessageResponse> listMessages(
+      Long ticketId, int page, int size) {
+    Long resolvedTicketId = supportTicketAccessSupport.requireTicketId(ticketId);
+    Company company = companyContextService.requireCurrentCompany();
+    SupportTicket ticket =
+        supportTicketRepository
+            .findByCompanyAndId(company, resolvedTicketId)
+            .orElseThrow(() -> supportTicketAccessSupport.notFound(resolvedTicketId));
+    return supportTicketAccessSupport.listCustomerMessages(ticket, page, size, false);
   }
 }

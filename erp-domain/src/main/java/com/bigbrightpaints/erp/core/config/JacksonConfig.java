@@ -3,6 +3,8 @@ package com.bigbrightpaints.erp.core.config;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
@@ -15,6 +17,9 @@ public class JacksonConfig {
     ObjectMapper mapper = new ObjectMapper();
     mapper.registerModule(new JavaTimeModule());
     mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+    mapper.enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
+    mapper.enable(DeserializationFeature.FAIL_ON_NUMBERS_FOR_ENUMS);
+    mapper.enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION);
     return mapper;
   }
 }

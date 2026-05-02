@@ -9,6 +9,8 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 import com.bigbrightpaints.erp.core.config.EmailProperties;
 import com.bigbrightpaints.erp.core.config.GitHubProperties;
 import com.bigbrightpaints.erp.core.config.LicensingProperties;
+import com.bigbrightpaints.erp.core.config.SentryIssueProperties;
+import com.bigbrightpaints.erp.core.observability.DatadogTelemetryProperties;
 import com.bigbrightpaints.erp.core.security.JwtProperties;
 
 @SpringBootApplication
@@ -18,7 +20,9 @@ import com.bigbrightpaints.erp.core.security.JwtProperties;
   JwtProperties.class,
   EmailProperties.class,
   LicensingProperties.class,
-  GitHubProperties.class
+  GitHubProperties.class,
+  SentryIssueProperties.class,
+  DatadogTelemetryProperties.class
 })
 public class ErpDomainApplication {
 

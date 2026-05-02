@@ -40,6 +40,7 @@ import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.accounting.service.ReferenceNumberService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
+import com.bigbrightpaints.erp.modules.company.service.TenantRealActionUsageService;
 import com.bigbrightpaints.erp.modules.inventory.domain.InventoryReference;
 import com.bigbrightpaints.erp.modules.inventory.domain.MaterialType;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial;
@@ -78,6 +79,7 @@ class RawMaterialServiceReceiptContextTest {
   @Mock private CompanyScopedPurchasingLookupService purchasingLookupService;
   @Mock private AuditService auditService;
   @Mock private Environment environment;
+  @Mock private TenantRealActionUsageService realActionUsageService;
 
   private RawMaterialService rawMaterialService;
   private Company company;
@@ -105,6 +107,7 @@ class RawMaterialServiceReceiptContextTest {
             auditService,
             environment,
             new ResourcelessTransactionManager(),
+            realActionUsageService,
             false);
 
     company = new Company();

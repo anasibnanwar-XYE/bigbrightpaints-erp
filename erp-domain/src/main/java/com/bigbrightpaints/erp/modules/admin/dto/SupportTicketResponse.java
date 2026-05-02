@@ -1,11 +1,17 @@
 package com.bigbrightpaints.erp.modules.admin.dto;
 
 import java.time.Instant;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+
 import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketCategory;
+import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketPriority;
 import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketStatus;
 
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public record SupportTicketResponse(
     Long id,
     UUID publicId,
@@ -13,6 +19,7 @@ public record SupportTicketResponse(
     Long userId,
     String requesterEmail,
     SupportTicketCategory category,
+    SupportTicketPriority priority,
     String subject,
     String description,
     SupportTicketStatus status,
@@ -21,7 +28,32 @@ public record SupportTicketResponse(
     String githubIssueState,
     Instant githubSyncedAt,
     String githubLastError,
+    BugReport bugReport,
+    SentryLink sentry,
     Instant resolvedAt,
     Instant resolvedNotificationSentAt,
     Instant createdAt,
-    Instant updatedAt) {}
+    Instant updatedAt,
+    List<SupportTicketMessageResponse> messages) {
+
+  @JsonInclude(JsonInclude.Include.NON_NULL)
+  public record BugReport(
+      String reproductionSteps,
+      String environment,
+      String release,
+      String traceId,
+      Map<String, String> metadata,
+      Map<String, String> safeSentryMetadata) {}
+
+  @JsonInclude(JsonInclude.Include.NON_NULL)
+  public record SentryLink(
+      String issueId,
+      String issueUrl,
+      String status,
+      Instant linkedAt,
+      Instant syncedAt,
+      Instant lastSyncAt,
+      String lastError,
+      Map<String, String> safeMetadata,
+      Long auditEventId) {}
+}

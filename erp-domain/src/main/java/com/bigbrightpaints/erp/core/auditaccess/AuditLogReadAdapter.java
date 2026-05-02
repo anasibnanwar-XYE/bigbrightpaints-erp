@@ -11,6 +11,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import org.springframework.data.domain.Page;
@@ -25,6 +26,7 @@ import com.bigbrightpaints.erp.core.audit.AuditEvent;
 import com.bigbrightpaints.erp.core.audit.AuditLog;
 import com.bigbrightpaints.erp.core.audit.AuditLogRepository;
 import com.bigbrightpaints.erp.core.auditaccess.dto.AuditFeedItemDto;
+import com.bigbrightpaints.erp.core.observability.TelemetryPrivacySanitizer;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 
 import jakarta.persistence.criteria.CriteriaBuilder;
@@ -58,6 +60,91 @@ public class AuditLogReadAdapter {
           "orderNumber");
   private static final String ACCOUNTING_EVENT_TRAIL_OPERATION_KEY = "eventTrailOperation";
   private static final String NO_MODULE_MATCH = "__NO_MATCH__";
+  private static final Set<String> PLATFORM_METADATA_ALLOWLIST =
+      Set.of(
+          "action",
+          "alertType",
+          "amountMinorUnits",
+          "attempts",
+          "authActorResolution",
+          "authCompanyResolution",
+          "authCompanyToken",
+          "clientKeyHash",
+          "component",
+          "currency",
+          "description",
+          "entityId",
+          "entityType",
+          "featureKey",
+          "identifier",
+          "journalEntryId",
+          "journalReference",
+          "limit",
+          "module",
+          "newStatus",
+          "operation",
+          "orderNumber",
+          "previousAuditEventId",
+          "previousStatus",
+          "reason",
+          "reasonCategory",
+          "reasonDigest",
+          "reasonPresent",
+          "reference",
+          "referenceNumber",
+          "remediationId",
+          "remediationStatus",
+          "requests",
+          "resourceId",
+          "resourceType",
+          "score",
+          "source",
+          "subjectIdentifier",
+          "subjectPublicId",
+          "targetCompanyCode",
+          "targetCompanyId",
+          "threshold",
+          "ticketId");
+  private static final Set<String> SENSITIVE_METADATA_KEYS =
+      Set.of(
+          "password",
+          "token",
+          "secret",
+          "bearer",
+          "jwt",
+          "authorization",
+          "cookie",
+          "requestbody",
+          "responsebody",
+          "body",
+          "payload",
+          "stacktrace",
+          "apikey",
+          "api_key",
+          "dsn",
+          "privatekey");
+  private static final Set<String> HASHED_METADATA_KEYS =
+      Set.of("identifier", "ipAddress", "userAgent", "username", "email");
+  private static final Pattern SAFE_REASON_CODE = Pattern.compile("[A-Za-z0-9_.:-]{1,80}");
+  private static final Set<String> FORBIDDEN_VALUE_MARKERS =
+      Set.of(
+          "password",
+          "bearer ",
+          "jwt",
+          "secret",
+          "token=",
+          "authorization",
+          "request body",
+          "response body",
+          "invoice",
+          "ledger",
+          "inventory",
+          "salary",
+          "payroll",
+          "vendor",
+          "customer",
+          "gst return",
+          "file content");
 
   private final AuditLogRepository auditLogRepository;
   private final AuditEventClassifier auditEventClassifier;
@@ -107,11 +194,52 @@ public class AuditLogReadAdapter {
         Specification.where(auditVisibilityPolicy.platformVisibility())
             .and(byOccurredRange(filter.from(), filter.to()))
             .and(byModule(filter.normalizedModule()))
+            .and(byTenantId(filter.tenantId()))
+            .and(byCategory(filter.normalizedCategory()))
             .and(byActor(filter.normalizedActor()))
             .and(byStatus(filter.normalizedStatus()))
             .and(byAction(filter.normalizedAction()))
             .and(byEntityType(filter.normalizedEntityType()))
             .and(byReference(filter.normalizedReference()));
+    Page<AuditLog> page =
+        auditLogRepository.findAll(spec, PageRequest.of(safePage, safeSize, sort()));
+    List<AuditLog> logs = page.getContent();
+    Map<Long, String> companyCodes = resolveFallbackCompanyCodes(logs);
+    return new AuditFeedSlice(
+        logs.stream().map(log -> toDto(log, null, companyCodes)).toList(), page.getTotalElements());
+  }
+
+  @Transactional(readOnly = true)
+  public AuditFeedSlice queryPlatformSecurityFeed(AuditFeedFilter filter, boolean suspiciousOnly) {
+    AuditFeedFilter effectiveFilter =
+        new AuditFeedFilter(
+            filter.from(),
+            filter.to(),
+            suspiciousOnly ? "SECURITY" : filter.module(),
+            suspiciousOnly && !StringUtils.hasText(filter.action())
+                ? AuditEvent.SECURITY_ALERT.name()
+                : filter.action(),
+            filter.status(),
+            filter.actor(),
+            filter.entityType(),
+            filter.reference(),
+            filter.tenantId(),
+            filter.category(),
+            filter.page(),
+            filter.size());
+    int safePage = effectiveFilter.safePage();
+    int safeSize = effectiveFilter.safeSize();
+    Specification<AuditLog> spec =
+        Specification.where(auditVisibilityPolicy.platformSecurityVisibility())
+            .and(byOccurredRange(effectiveFilter.from(), effectiveFilter.to()))
+            .and(byTenantId(effectiveFilter.tenantId()))
+            .and(byModule(effectiveFilter.normalizedModule()))
+            .and(byCategory(effectiveFilter.normalizedCategory()))
+            .and(byActor(effectiveFilter.normalizedActor()))
+            .and(byStatus(effectiveFilter.normalizedStatus()))
+            .and(byAction(effectiveFilter.normalizedAction()))
+            .and(byEntityType(effectiveFilter.normalizedEntityType()))
+            .and(byReference(effectiveFilter.normalizedReference()));
     Page<AuditLog> page =
         auditLogRepository.findAll(spec, PageRequest.of(safePage, safeSize, sort()));
     List<AuditLog> logs = page.getContent();
@@ -254,6 +382,8 @@ public class AuditLogReadAdapter {
         }
         matches.add(
             cb.and(cb.not(knownPath), cb.not(resourceTypePresent), accountingFallbackMatch));
+      } else if ("SECURITY".equals(normalizedModule) && categoryMatch != null) {
+        matches.add(categoryMatch);
       } else if (categoryMatch != null) {
         Predicate fallbackCategoryMatch = categoryMatch;
         if ("SYSTEM".equals(normalizedModule)) {
@@ -262,6 +392,27 @@ public class AuditLogReadAdapter {
         matches.add(cb.and(cb.not(knownPath), cb.not(resourceTypePresent), fallbackCategoryMatch));
       }
       return cb.or(matches.toArray(Predicate[]::new));
+    };
+  }
+
+  private Specification<AuditLog> byTenantId(Long tenantId) {
+    if (tenantId == null) {
+      return null;
+    }
+    return (root, query, cb) -> cb.equal(root.get("companyId"), tenantId);
+  }
+
+  private Specification<AuditLog> byCategory(String category) {
+    if (!StringUtils.hasText(category)) {
+      return null;
+    }
+    String normalizedCategory = category.trim().toUpperCase(Locale.ROOT);
+    return (root, query, cb) -> {
+      Set<AuditEvent> categoryEvents = categoryEvents(normalizedCategory);
+      if (categoryEvents == null || categoryEvents.isEmpty()) {
+        return cb.disjunction();
+      }
+      return root.get("eventType").in(categoryEvents);
     };
   }
 
@@ -470,9 +621,57 @@ public class AuditLogReadAdapter {
   }
 
   private Map<String, String> metadata(AuditLog log) {
-    return log.getMetadata() == null
-        ? Map.of()
-        : Collections.unmodifiableMap(new LinkedHashMap<>(log.getMetadata()));
+    if (log.getMetadata() == null || log.getMetadata().isEmpty()) {
+      return Map.of();
+    }
+    Map<String, String> sanitized = new LinkedHashMap<>();
+    for (Map.Entry<String, String> entry : log.getMetadata().entrySet()) {
+      String key = entry.getKey();
+      if (!isAllowedMetadataKey(key)) {
+        continue;
+      }
+      String value = sanitizeMetadataValue(key, entry.getValue());
+      if (value != null || entry.getValue() == null) {
+        sanitized.put(key, value);
+      }
+    }
+    return Collections.unmodifiableMap(sanitized);
+  }
+
+  private boolean isAllowedMetadataKey(String key) {
+    if (!StringUtils.hasText(key)) {
+      return false;
+    }
+    String normalizedKey = key.trim();
+    String lowerKey = normalizedKey.toLowerCase(Locale.ROOT);
+    if (SENSITIVE_METADATA_KEYS.stream().anyMatch(lowerKey::contains)) {
+      return false;
+    }
+    return PLATFORM_METADATA_ALLOWLIST.contains(normalizedKey)
+        || HASHED_METADATA_KEYS.contains(normalizedKey);
+  }
+
+  private String sanitizeMetadataValue(String key, String value) {
+    if (value == null) {
+      return null;
+    }
+    String trimmed = value.trim();
+    if (!StringUtils.hasText(trimmed)) {
+      return "";
+    }
+    String lowerValue = trimmed.toLowerCase(Locale.ROOT);
+    if (FORBIDDEN_VALUE_MARKERS.stream().anyMatch(lowerValue::contains)) {
+      return "[REDACTED]";
+    }
+    if ("reason".equals(key) && !SAFE_REASON_CODE.matcher(trimmed).matches()) {
+      return "[REDACTED]";
+    }
+    if (HASHED_METADATA_KEYS.contains(key)) {
+      return "hash:"
+          + TelemetryPrivacySanitizer.pseudonymousHash(
+              "audit-metadata-" + key, trimmed.toLowerCase(Locale.ROOT));
+    }
+    return trimmed.length() > 160 ? trimmed.substring(0, 160) : trimmed;
   }
 
   private String firstNonBlank(String... values) {

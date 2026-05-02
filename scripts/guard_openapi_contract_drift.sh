@@ -50,12 +50,43 @@ if not isinstance(paths, dict):
     raise SystemExit(1)
 
 openapi_entries = set()
+superadmin_success_schema_errors = []
 for path, path_item in paths.items():
     if not isinstance(path_item, dict):
         continue
-    for method in path_item:
-        if method.lower() in http_methods:
-            openapi_entries.add((method.upper(), path))
+    for method, operation in path_item.items():
+        if method.lower() not in http_methods:
+            continue
+        openapi_entries.add((method.upper(), path))
+        if not path.startswith("/api/v1/superadmin") or not isinstance(operation, dict):
+            continue
+        responses = operation.get("responses")
+        if not isinstance(responses, dict):
+            superadmin_success_schema_errors.append(
+                f"{method.upper()} {path} has no responses object"
+            )
+            continue
+        for response_code, response in responses.items():
+            if not str(response_code).startswith("2"):
+                continue
+            content = response.get("content") if isinstance(response, dict) else None
+            if not isinstance(content, dict) or not content:
+                superadmin_success_schema_errors.append(
+                    f"{method.upper()} {path} response {response_code} has no schema content"
+                )
+                continue
+            schema = None
+            for media_type in ("*/*", "application/json"):
+                media = content.get(media_type)
+                if isinstance(media, dict):
+                    schema = media.get("schema")
+                    if isinstance(schema, dict):
+                        break
+            schema_ref = schema.get("$ref") if isinstance(schema, dict) else None
+            if not isinstance(schema_ref, str) or not schema_ref.startswith("#/components/schemas/ApiResponse"):
+                superadmin_success_schema_errors.append(
+                    f"{method.upper()} {path} response {response_code} uses non-ApiResponse schema"
+                )
 
 openapi_total_paths = len(paths)
 openapi_total_operations = len(openapi_entries)
@@ -121,6 +152,9 @@ if mode == "report":
     if extra_in_inventory:
         preview = ", ".join(f"{method} {path}" for method, path in extra_in_inventory[:5])
         print(f"[guard_openapi_contract_drift] extra_in_inventory={preview}")
+    if superadmin_success_schema_errors:
+        preview = "; ".join(superadmin_success_schema_errors[:5])
+        print(f"[guard_openapi_contract_drift] superadmin_success_schema_errors={preview}")
     raise SystemExit(0)
 
 errors = []
@@ -172,6 +206,13 @@ if missing_from_inventory:
 if extra_in_inventory:
     preview = ", ".join(f"{method} {path}" for method, path in extra_in_inventory[:5])
     errors.append(f"docs/endpoint-inventory.md contains endpoints absent from OpenAPI ({preview})")
+
+if superadmin_success_schema_errors:
+    preview = "; ".join(superadmin_success_schema_errors[:5])
+    errors.append(
+        "Super Admin 2xx responses must use non-empty ApiResponse schemas "
+        f"({preview})"
+    )
 
 if errors:
     print(

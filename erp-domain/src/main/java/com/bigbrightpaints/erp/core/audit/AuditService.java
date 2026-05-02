@@ -1,13 +1,20 @@
 package com.bigbrightpaints.erp.core.audit;
 
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.HashMap;
+import java.util.HexFormat;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.UUID;
+
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.security.core.Authentication;
@@ -20,6 +27,8 @@ import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
+import com.bigbrightpaints.erp.core.validationharness.ValidationFaultInjectionService;
+import com.bigbrightpaints.erp.core.validationharness.ValidationFaultKind;
 import com.bigbrightpaints.erp.modules.auth.domain.UserPrincipal;
 import com.bigbrightpaints.erp.modules.auth.service.IamCanonicalStorageService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
@@ -37,6 +46,12 @@ public class AuditService {
   @Autowired private AuditLogRepository auditLogRepository;
   @Autowired private CompanyRepository companyRepository;
   @Autowired private IamCanonicalStorageService iamCanonicalStorageService;
+
+  @Autowired(required = false)
+  private ValidationFaultInjectionService validationFaultInjectionService;
+
+  @Value("${erp.security.audit.private-key:}")
+  private String auditPrivateKey;
 
   /**
    * Self-reference to ensure @Async/@Transactional proxies apply even when calling from within this class.
@@ -80,6 +95,101 @@ public class AuditService {
         usernameOverride,
         companyCodeOverride,
         requestContext);
+  }
+
+  @Transactional
+  public AuditLog logAuthSuccessRequired(
+      AuditEvent event, String username, String companyCode, Map<String, String> metadata) {
+    Map<String, String> authMetadata = metadata != null ? new HashMap<>(metadata) : new HashMap<>();
+    String usernameOverride = normalizeAuthUsernameOverride(username, authMetadata);
+    enrichAuthMetadataWithAuthenticatedActorPublicId(authMetadata, usernameOverride);
+    String companyCodeOverride = normalizeAuthCompanyOverride(companyCode, authMetadata);
+    return logRequiredEventInternal(
+        event,
+        AuditStatus.SUCCESS,
+        authMetadata,
+        usernameOverride,
+        companyCodeOverride,
+        captureRequestContextMetadata());
+  }
+
+  private void requireAuditPersistenceAvailable() {
+    if (isValidationFaultEnabled(ValidationFaultKind.AUDIT_FAILURE)) {
+      throw new IllegalStateException("required audit persistence unavailable");
+    }
+  }
+
+  private void signRequiredAuditMetadata(
+      AuditEvent event,
+      AuditStatus status,
+      String usernameOverride,
+      String companyCodeOverride,
+      Map<String, String> metadata) {
+    if (isValidationFaultEnabled(ValidationFaultKind.AUDIT_SIGNING_FAILURE)) {
+      throw new IllegalStateException("required audit signing unavailable");
+    }
+    String normalizedKey = auditPrivateKey == null ? "" : auditPrivateKey.strip();
+    if (!StringUtils.hasText(normalizedKey)) {
+      return;
+    }
+    metadata.put("auditSignatureAlgorithm", "HMAC_SHA256");
+    metadata.put(
+        "auditSignature",
+        hmacSha256(
+            normalizedKey,
+            canonicalRequiredAuditPayload(
+                event, status, usernameOverride, companyCodeOverride, metadata)));
+  }
+
+  private boolean isValidationFaultEnabled(ValidationFaultKind kind) {
+    try {
+      return validationFaultInjectionService != null
+          && validationFaultInjectionService.isEnabled(kind);
+    } catch (RuntimeException ex) {
+      logger.debug("Ignoring validation fault lookup failure for required audit", ex);
+      return false;
+    }
+  }
+
+  private String canonicalRequiredAuditPayload(
+      AuditEvent event,
+      AuditStatus status,
+      String usernameOverride,
+      String companyCodeOverride,
+      Map<String, String> metadata) {
+    Map<String, String> canonicalMetadata = new TreeMap<>();
+    if (metadata != null) {
+      metadata.forEach(
+          (key, value) -> {
+            if (!"auditSignature".equals(key)) {
+              canonicalMetadata.put(key, value == null ? "" : value);
+            }
+          });
+    }
+    return "event="
+        + (event == null ? "" : event.name())
+        + "\nstatus="
+        + (status == null ? "" : status.name())
+        + "\nactor="
+        + safeCanonicalValue(usernameOverride)
+        + "\ncompany="
+        + safeCanonicalValue(companyCodeOverride)
+        + "\nmetadata="
+        + canonicalMetadata;
+  }
+
+  private String safeCanonicalValue(String value) {
+    return value == null ? "" : value.trim();
+  }
+
+  private String hmacSha256(String key, String payload) {
+    try {
+      Mac mac = Mac.getInstance("HmacSHA256");
+      mac.init(new SecretKeySpec(key.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+      return HexFormat.of().formatHex(mac.doFinal(payload.getBytes(StandardCharsets.UTF_8)));
+    } catch (Exception ex) {
+      throw new IllegalStateException("required audit signing unavailable", ex);
+    }
   }
 
   @Async
@@ -186,6 +296,95 @@ public class AuditService {
       // Don't let audit logging failures impact the main application
       logger.error("Failed to log audit event: {} - Status: {}", event, status, e);
     }
+  }
+
+  private AuditLog logRequiredEventInternal(
+      AuditEvent event,
+      AuditStatus status,
+      Map<String, String> metadata,
+      String usernameOverride,
+      String companyCodeOverride,
+      Map<String, String> requestContext) {
+    metadata = metadata == null ? new HashMap<>() : new HashMap<>(metadata);
+    AuditLog.Builder builder =
+        new AuditLog.Builder().eventType(event).status(status).timestamp(LocalDateTime.now());
+
+    boolean hasUsernameOverride = StringUtils.hasText(usernameOverride);
+    String resolvedUsername = normalizeToken(usernameOverride);
+    String resolvedUserId = extractMetadataActorPublicId(metadata);
+    if (!hasUsernameOverride) {
+      Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+      if (auth != null && auth.isAuthenticated()) {
+        if (!StringUtils.hasText(resolvedUsername)) {
+          resolvedUsername = normalizeToken(auth.getName());
+        }
+        if (!StringUtils.hasText(resolvedUserId)) {
+          resolvedUserId = resolveAuthenticatedPublicId(auth);
+        }
+        if (!StringUtils.hasText(resolvedUserId)) {
+          resolvedUserId = normalizeToken(auth.getName());
+        }
+      }
+    } else if (!StringUtils.hasText(resolvedUserId)) {
+      resolvedUserId = resolvedUsername;
+    }
+    if (StringUtils.hasText(resolvedUsername)) {
+      builder.username(resolvedUsername);
+    }
+    if (StringUtils.hasText(resolvedUserId)) {
+      builder.userId(resolvedUserId);
+    }
+
+    String companyToken;
+    if (AUTH_COMPANY_UNRESOLVED_SENTINEL.equals(companyCodeOverride)) {
+      companyToken = null;
+    } else if (companyCodeOverride != null && !companyCodeOverride.isBlank()) {
+      companyToken = companyCodeOverride;
+    } else {
+      companyToken = CompanyContextHolder.getCompanyCode();
+    }
+    Long companyId = resolveCompanyId(companyToken);
+    if (companyId != null) {
+      builder.companyId(companyId);
+    } else if (companyToken != null) {
+      if (metadata != null) {
+        metadata.putIfAbsent("authCompanyToken", companyToken.trim());
+        metadata.put("authCompanyResolution", "UNRESOLVED");
+      }
+      logger.warn("Unable to resolve company code");
+    }
+
+    if (requestContext != null && !requestContext.isEmpty()) {
+      builder
+          .ipAddress(requestContext.get("ipAddress"))
+          .userAgent(requestContext.get("userAgent"))
+          .requestMethod(requestContext.get("requestMethod"))
+          .requestPath(requestContext.get("requestPath"))
+          .sessionId(requestContext.get("sessionId"));
+      String traceId = requestContext.get("traceId");
+      if (traceId != null && !traceId.isBlank()) {
+        builder.traceId(traceId);
+      }
+    }
+
+    signRequiredAuditMetadata(event, status, usernameOverride, companyCodeOverride, metadata);
+    requireAuditPersistenceAvailable();
+
+    if (!metadata.isEmpty()) {
+      builder.metadata(metadata);
+    }
+
+    AuditLog auditLog = auditLogRepository.saveAndFlush(builder.build());
+    iamCanonicalStorageService.recordSecurityEvent(
+        event.name(),
+        iamOutcome(status),
+        metadata,
+        resolvedUserId,
+        resolvedUsername,
+        companyId,
+        companyToken);
+    logger.debug("Required audit event logged: {} - Status: {}", event, status);
+    return auditLog;
   }
 
   private String resolveAuthenticatedPublicId(Authentication authentication) {
@@ -328,22 +527,7 @@ public class AuditService {
       return null;
     }
     String normalizedToken = companyToken.trim();
-    return companyRepository
-        .findByCodeIgnoreCase(normalizedToken)
-        .map(Company::getId)
-        .orElseGet(() -> resolveNumericCompanyId(normalizedToken));
-  }
-
-  private Long resolveNumericCompanyId(String companyToken) {
-    try {
-      long companyId = Long.parseLong(companyToken);
-      if (companyId <= 0) {
-        return null;
-      }
-      return companyRepository.findById(companyId).map(Company::getId).orElse(null);
-    } catch (NumberFormatException ex) {
-      return null;
-    }
+    return companyRepository.findByCodeIgnoreCase(normalizedToken).map(Company::getId).orElse(null);
   }
 
   public void logSuccess(AuditEvent event) {
@@ -377,13 +561,34 @@ public class AuditService {
   }
 
   public void logSecurityAlert(String alertType, String description, Map<String, String> details) {
+    Map<String, String> metadata = securityAlertMetadata(alertType, description, details);
+    self.logEvent(AuditEvent.SECURITY_ALERT, AuditStatus.WARNING, metadata);
+  }
+
+  @Transactional
+  public AuditLog logSecurityAlertNow(
+      String alertType, String description, Map<String, String> details) {
+    AuditLog saved =
+        logRequiredEventInternal(
+            AuditEvent.SECURITY_ALERT,
+            AuditStatus.WARNING,
+            securityAlertMetadata(alertType, description, details),
+            null,
+            null,
+            captureRequestContextMetadata());
+    logger.debug("Security alert logged synchronously: {}", alertType);
+    return saved;
+  }
+
+  private Map<String, String> securityAlertMetadata(
+      String alertType, String description, Map<String, String> details) {
     Map<String, String> metadata = new java.util.HashMap<>();
-    metadata.put("alertType", alertType);
-    metadata.put("description", description);
+    metadata.put("alertType", safeString(alertType));
+    metadata.put("description", safeString(description));
     if (details != null) {
       metadata.putAll(details);
     }
-    self.logEvent(AuditEvent.SECURITY_ALERT, AuditStatus.WARNING, metadata);
+    return metadata;
   }
 
   public void logDataAccess(String resourceType, String resourceId, String operation) {

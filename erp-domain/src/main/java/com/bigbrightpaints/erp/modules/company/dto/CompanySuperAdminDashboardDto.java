@@ -1,26 +1,101 @@
 package com.bigbrightpaints.erp.modules.company.dto;
 
 import java.util.List;
+import java.util.Map;
 
 public record CompanySuperAdminDashboardDto(
+    long totalClients,
+    long activeClients,
+    long trialClients,
+    long suspendedClients,
     long totalTenants,
     long activeTenants,
     long suspendedTenants,
     long deactivatedTenants,
+    long mrrMinorUnits,
+    long arrMinorUnits,
+    Map<String, SuperAdminBillingDtos.CurrencyMetrics> recurringRevenueByCurrency,
+    String recurringRevenueAggregationPolicy,
+    int recurringRevenueCurrencyCount,
+    long openSupportTickets,
+    long openBugs,
     long totalActiveUsers,
     long totalActiveUserQuota,
     long totalAuditStorageBytes,
+    long storageBytes,
     long totalStorageQuotaBytes,
+    long serverCostMinorUnits,
+    long failedJobs,
+    long apiErrorHealthBasisPoints,
+    long riskClients,
     long totalCurrentConcurrentRequests,
     long totalConcurrentRequestQuota,
+    SecuritySummary security,
     List<TenantOverview> tenants) {
+
+  public CompanySuperAdminDashboardDto(
+      long totalTenants,
+      long activeTenants,
+      long suspendedTenants,
+      long deactivatedTenants,
+      long totalActiveUsers,
+      long totalActiveUserQuota,
+      long totalAuditStorageBytes,
+      long totalStorageQuotaBytes,
+      long totalCurrentConcurrentRequests,
+      long totalConcurrentRequestQuota,
+      List<TenantOverview> tenants) {
+    this(
+        totalTenants,
+        activeTenants,
+        0,
+        suspendedTenants,
+        totalTenants,
+        activeTenants,
+        suspendedTenants,
+        deactivatedTenants,
+        0,
+        0,
+        Map.of(),
+        "GROUPED_BY_CURRENCY",
+        0,
+        0,
+        0,
+        totalActiveUsers,
+        totalActiveUserQuota,
+        totalAuditStorageBytes,
+        totalAuditStorageBytes,
+        totalStorageQuotaBytes,
+        0,
+        0,
+        tenants == null
+            ? 0
+            : tenants.stream().mapToLong(TenantOverview::apiErrorRateInBasisPoints).max().orElse(0),
+        tenants == null
+            ? 0
+            : tenants.stream().filter(tenant -> tenant.apiErrorRateInBasisPoints() > 0).count(),
+        totalCurrentConcurrentRequests,
+        totalConcurrentRequestQuota,
+        SecuritySummary.empty(),
+        tenants);
+  }
+
+  public record SecuritySummary(
+      long securityEvents,
+      long suspiciousEvents,
+      long openRemediations,
+      long resolvedRemediations) {
+    public static SecuritySummary empty() {
+      return new SecuritySummary(0, 0, 0, 0);
+    }
+  }
+
   public record TenantOverview(
       Long companyId,
       String companyCode,
       String companyName,
       String region,
       String lifecycleState,
-      String lifecycleReason,
       long activeUsers,
       long activeUserQuota,
       long auditStorageBytes,
@@ -35,5 +110,50 @@ public record CompanySuperAdminDashboardDto(
       boolean quotaHardLimitEnabled,
       long activeUserUtilizationInBasisPoints,
       long auditStorageUtilizationInBasisPoints,
-      long concurrentRequestUtilizationInBasisPoints) {}
+      long concurrentRequestUtilizationInBasisPoints) {
+    public TenantOverview(
+        Long companyId,
+        String companyCode,
+        String companyName,
+        String region,
+        String lifecycleState,
+        String lifecycleReason,
+        long activeUsers,
+        long activeUserQuota,
+        long auditStorageBytes,
+        long storageQuotaBytes,
+        long currentConcurrentRequests,
+        long concurrentRequestQuota,
+        long apiActivityCount,
+        long apiRequestQuota,
+        long apiErrorCount,
+        long apiErrorRateInBasisPoints,
+        boolean quotaSoftLimitEnabled,
+        boolean quotaHardLimitEnabled,
+        long activeUserUtilizationInBasisPoints,
+        long auditStorageUtilizationInBasisPoints,
+        long concurrentRequestUtilizationInBasisPoints) {
+      this(
+          companyId,
+          companyCode,
+          companyName,
+          region,
+          lifecycleState,
+          activeUsers,
+          activeUserQuota,
+          auditStorageBytes,
+          storageQuotaBytes,
+          currentConcurrentRequests,
+          concurrentRequestQuota,
+          apiActivityCount,
+          apiRequestQuota,
+          apiErrorCount,
+          apiErrorRateInBasisPoints,
+          quotaSoftLimitEnabled,
+          quotaHardLimitEnabled,
+          activeUserUtilizationInBasisPoints,
+          auditStorageUtilizationInBasisPoints,
+          concurrentRequestUtilizationInBasisPoints);
+    }
+  }
 }

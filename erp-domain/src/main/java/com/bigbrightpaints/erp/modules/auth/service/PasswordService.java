@@ -1,13 +1,18 @@
 package com.bigbrightpaints.erp.modules.auth.service;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import com.bigbrightpaints.erp.core.audit.AuditEvent;
+import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.security.TokenBlacklistService;
+import com.bigbrightpaints.erp.core.web.RequestTraceContext;
 import com.bigbrightpaints.erp.modules.auth.domain.PasswordResetTokenRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
@@ -30,6 +35,7 @@ public class PasswordService {
   private final RefreshTokenService refreshTokenService;
   private final IamCanonicalStorageService iamCanonicalStorageService;
   private final PasswordResetTokenRepository passwordResetTokenRepository;
+  private final AuditService auditService;
 
   public PasswordService(
       UserAccountRepository userAccountRepository,
@@ -39,7 +45,8 @@ public class PasswordService {
       TokenBlacklistService tokenBlacklistService,
       RefreshTokenService refreshTokenService,
       IamCanonicalStorageService iamCanonicalStorageService,
-      PasswordResetTokenRepository passwordResetTokenRepository) {
+      PasswordResetTokenRepository passwordResetTokenRepository,
+      AuditService auditService) {
     this.userAccountRepository = userAccountRepository;
     this.passwordHistoryRepository = passwordHistoryRepository;
     this.passwordEncoder = passwordEncoder;
@@ -48,6 +55,7 @@ public class PasswordService {
     this.refreshTokenService = refreshTokenService;
     this.iamCanonicalStorageService = iamCanonicalStorageService;
     this.passwordResetTokenRepository = passwordResetTokenRepository;
+    this.auditService = auditService;
   }
 
   @Transactional
@@ -63,7 +71,7 @@ public class PasswordService {
             "Current password is incorrect");
       }
     }
-    applyNewPassword(user, normalizedNewPassword, true);
+    applyNewPassword(user, normalizedNewPassword, true, "password_change");
   }
 
   @Transactional
@@ -74,7 +82,7 @@ public class PasswordService {
       throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
           "Password confirmation does not match");
     }
-    applyNewPassword(user, normalizedNewPassword, false);
+    applyNewPassword(user, normalizedNewPassword, false, "password_reset");
   }
 
   private void validateNewPasswordCandidate(
@@ -91,7 +99,10 @@ public class PasswordService {
   }
 
   private void applyNewPassword(
-      UserAccount user, String newPassword, boolean invalidateOutstandingResetTokens) {
+      UserAccount user,
+      String newPassword,
+      boolean invalidateOutstandingResetTokens,
+      String operation) {
     List<String> violations = passwordPolicy.validate(newPassword);
     if (!violations.isEmpty()) {
       throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
@@ -110,15 +121,39 @@ public class PasswordService {
     if (invalidateOutstandingResetTokens) {
       invalidateOutstandingResetTokens(user);
     }
-    revokeExistingSessions(user);
+    revokeExistingSessions(user, operation);
   }
 
-  private void revokeExistingSessions(UserAccount user) {
+  private void revokeExistingSessions(UserAccount user, String operation) {
     if (user == null || user.getPublicId() == null) {
       return;
     }
     tokenBlacklistService.revokeAllUserTokens(user.getPublicId().toString());
     refreshTokenService.revokeAllForUser(user.getPublicId());
+    auditService.logAuthSuccessRequired(
+        AuditEvent.TOKEN_REVOKED,
+        user.getEmail(),
+        user.getAuthScopeCode(),
+        tokenRevocationMetadata(user, operation));
+  }
+
+  private Map<String, String> tokenRevocationMetadata(UserAccount user, String operation) {
+    Map<String, String> metadata = new LinkedHashMap<>();
+    metadata.put("operation", operation);
+    metadata.put("outcome", "all_user_sessions_revoked");
+    metadata.put("revocationScope", "all-user-sessions");
+    metadata.put("tokenMaterial", "redacted");
+    putIfText(metadata, "traceId", RequestTraceContext.traceId());
+    putIfText(metadata, "correlationId", RequestTraceContext.correlationId());
+    putIfText(metadata, "companyCode", user.getAuthScopeCode());
+    metadata.put("actorPublicId", user.getPublicId().toString());
+    return metadata;
+  }
+
+  private void putIfText(Map<String, String> metadata, String key, String value) {
+    if (StringUtils.hasText(value)) {
+      metadata.put(key, value);
+    }
   }
 
   private void ensureNotReused(UserAccount user, String candidate) {

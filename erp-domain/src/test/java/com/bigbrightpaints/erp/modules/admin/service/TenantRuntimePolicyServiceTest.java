@@ -174,6 +174,30 @@ class TenantRuntimePolicyServiceTest {
   }
 
   @Test
+  void assertCanAddEnabledUser_allowsWhenActiveUserQuotaIsUnlimited() {
+    when(tenantRuntimeEnforcementService.snapshot("ACME"))
+        .thenReturn(
+            snapshot(
+                TenantRuntimeEnforcementService.TenantRuntimeState.ACTIVE,
+                "POLICY_ACTIVE",
+                "policy-ref-unlimited",
+                Instant.parse("2026-02-20T10:15:30Z"),
+                0,
+                5000,
+                200,
+                0,
+                0,
+                0,
+                12L));
+
+    service.assertCanAddEnabledUser(company, "ADMIN_USER_CREATE");
+
+    verify(auditService, never())
+        .logFailure(
+            eq(AuditEvent.ACCESS_DENIED), org.mockito.ArgumentMatchers.<Map<String, String>>any());
+  }
+
+  @Test
   void assertCanAddEnabledUser_noopsWhenCompanyMissing() {
     service.assertCanAddEnabledUser(null, "ENABLE_USER");
 
@@ -199,6 +223,8 @@ class TenantRuntimePolicyServiceTest {
       int blockedThisMinute,
       int inFlightRequests,
       long activeUsers) {
+    Instant metricsUpdatedAt =
+        updatedAt == null ? Instant.parse("2026-02-20T10:15:30Z") : updatedAt;
     return new TenantRuntimeEnforcementService.TenantRuntimeSnapshot(
         "ACME",
         state,
@@ -215,6 +241,10 @@ class TenantRuntimePolicyServiceTest {
             inFlightRequests,
             requestsThisMinute,
             blockedThisMinute,
-            activeUsers));
+            activeUsers,
+            metricsUpdatedAt,
+            metricsUpdatedAt.plusSeconds(60L),
+            metricsUpdatedAt.plusSeconds(60L),
+            metricsUpdatedAt));
   }
 }

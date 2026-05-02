@@ -1,11 +1,11 @@
 # Endpoint Inventory (OpenAPI)
 
-> ⚠️ **REFERENCE ONLY**: This inventory is retained for review and governance cross-reference, but it is not the canonical API truth. Use repo-root `openapi.json`, [docs/frontend-api/README.md](frontend-api/README.md), and the module/flow packets linked from [docs/INDEX.md](INDEX.md) as the primary contract surfaces.
+> WARNING: **REFERENCE ONLY**: This inventory is retained for review and governance cross-reference, but it is not the canonical API truth. Use repo-root `openapi.json`, [docs/frontend-api/README.md](frontend-api/README.md), and the module/flow packets linked from [docs/INDEX.md](INDEX.md) as the primary contract surfaces.
 
-Last reviewed: 2026-04-28
+Last reviewed: 2026-05-01
 
 Source: `openapi.json`
-Updated: 2026-04-28
+Updated: 2026-05-01
 
 Related behavior contract:
 - `docs/ACCOUNTING_PORTAL_SCOPE_GUARDRAIL.md`
@@ -19,25 +19,25 @@ Portal scope guardrail:
 ## Canonical API contract gate
 
 - Canonical machine contract source: repo-root `openapi.json`.
-- OpenAPI snapshot: `openapi.json` (sha256 `8b0f97c5fa631dc765eadb3600c4ea539e9b0d2504d3314712c31636c8db4be5`)
-- OpenAPI total paths: `292`
-- OpenAPI total operations: `347`
+- OpenAPI snapshot: `openapi.json` (sha256 `43a4225c802b908590f39f91bdbd803139e8ad464d76d7c271b61fc541f11891`)
+- OpenAPI total paths: `362`
+- OpenAPI total operations: `428`
 - Guard remediation flow: if parity drifts, regenerate this inventory from canonical `openapi.json`, then rerun `bash scripts/guard_openapi_contract_drift.sh` and `bash scripts/guard_accounting_portal_scope_contract.sh`.
-- Hard-cut contract reminder: retired surfaces such as `/api/v1/auth/profile`, `/api/v1/accounting/journals/manual`, `/api/v1/accounting/journals/{entryId}/reverse`, and direct `/api/v1/accounting/periods/{periodId}/close` are intentionally absent from this inventory and must not be reintroduced in frontend or review docs.
+- Hard-cut contract reminder: retired surfaces such as `/api/v1/auth/profile`, `/api/v1/accounting/journals/manual`, `/api/v1/accounting/journals/{entryId}/reverse`, direct `/api/v1/accounting/periods/{periodId}/close`, removed Super Admin flat onboarding, and removed Super Admin support-reset routes are intentionally absent from this inventory and must not be reintroduced in frontend or review docs.
 
 ## Summary by module
 
 | Module | Path count | Examples |
 |---|---:|---|
 | `accounting` | 55 | /api/v1/accounting/accounts, /api/v1/accounting/accounts/tree, /api/v1/accounting/accounts/tree/{type} |
-| `admin` | 20 | /api/v1/admin/approvals, /api/v1/admin/approvals/{originType}/{id}/decisions, /api/v1/admin/audit/events |
+| `admin` | 18 | /api/v1/admin/approvals, /api/v1/admin/approvals/{originType}/{id}/decisions, /api/v1/admin/audit/events |
 | `audit` | 1 | /api/v1/audit/ml-events |
-| `auth` | 19 | /api/v1/auth/login, /api/v1/auth/logout, /api/v1/auth/me |
+| `auth` | 21 | /api/v1/auth/activation/complete, /api/v1/auth/activation/verify, /api/v1/auth/login |
 | `catalog` | 6 | /api/v1/catalog/brands, /api/v1/catalog/brands/{brandId}, /api/v1/catalog/import |
 | `changelog` | 2 | /api/v1/changelog, /api/v1/changelog/latest-highlighted |
 | `companies` | 1 | /api/v1/companies |
 | `credit` | 6 | /api/v1/credit/limit-requests, /api/v1/credit/limit-requests/{id}/approve, /api/v1/credit/limit-requests/{id}/reject |
-| `dealer-portal` | 9 | /api/v1/dealer-portal/aging, /api/v1/dealer-portal/credit-limit-requests, /api/v1/dealer-portal/dashboard |
+| `dealer-portal` | 10 | /api/v1/dealer-portal/aging, /api/v1/dealer-portal/credit-limit-requests, /api/v1/dealer-portal/dashboard |
 | `dealers` | 5 | /api/v1/dealers, /api/v1/dealers/import, /api/v1/dealers/search |
 | `demo` | 1 | /api/v1/demo/ping |
 | `dispatch` | 8 | /api/v1/dispatch/backorder/{slipId}/cancel, /api/v1/dispatch/confirm, /api/v1/dispatch/order/{orderId} |
@@ -46,17 +46,18 @@ Portal scope guardrail:
 | `finished-goods` | 6 | /api/v1/finished-goods, /api/v1/finished-goods/low-stock, /api/v1/finished-goods/stock-summary |
 | `hr` | 17 | /api/v1/hr/attendance/bulk-import, /api/v1/hr/attendance/bulk-mark, /api/v1/hr/attendance/date/{date} |
 | `integration` | 1 | /api/integration/health |
-| `inventory` | 5 | /api/v1/inventory/adjustments, /api/v1/inventory/batches/expiring-soon, /api/v1/inventory/batches/{id}/movements |
+| `inventory` | 6 | /api/v1/inventory/adjustments, /api/v1/inventory/batches/expiring-soon, /api/v1/inventory/batches/{id}/movements |
 | `invoices` | 4 | /api/v1/invoices, /api/v1/invoices/{id}, /api/v1/invoices/{id}/email |
 | `migration` | 1 | /api/v1/migration/tally-import |
 | `orchestrator` | 8 | /api/v1/orchestrator/dashboard/admin, /api/v1/orchestrator/dashboard/factory, /api/v1/orchestrator/dashboard/finance |
 | `payroll` | 13 | /api/v1/payroll/runs, /api/v1/payroll/runs/monthly, /api/v1/payroll/runs/weekly |
-| `portal` | 8 | /api/v1/portal/dashboard, /api/v1/portal/finance/aging, /api/v1/portal/finance/invoices |
+| `portal` | 9 | /api/v1/portal/dashboard, /api/v1/portal/finance/aging, /api/v1/portal/finance/invoices |
 | `purchasing` | 12 | /api/v1/purchasing/goods-receipts, /api/v1/purchasing/goods-receipts/{id}, /api/v1/purchasing/purchase-orders |
-| `raw-materials` | 3 | /api/v1/raw-materials/stock, /api/v1/raw-materials/stock/inventory, /api/v1/raw-materials/stock/low-stock |
+| `raw-materials` | 5 | /api/v1/raw-materials, /api/v1/raw-materials/stock, /api/v1/raw-materials/stock/inventory |
 | `reports` | 20 | /api/v1/reports/account-statement, /api/v1/reports/aged-debtors, /api/v1/reports/aging/receivables |
 | `sales` | 15 | /api/v1/sales/dashboard, /api/v1/sales/dealers, /api/v1/sales/dealers/search |
-| `superadmin` | 21 | /api/v1/superadmin/audit/platform-events, /api/v1/superadmin/changelog, /api/v1/superadmin/changelog/{id} |
+| `setup` | 6 | /api/v1/setup/accounting, /api/v1/setup/company-details, /api/v1/setup/finish |
+| `superadmin` | 80 | /api/v1/superadmin/audit/platform-events, /api/v1/superadmin/audit/security-events, /api/v1/superadmin/audit/suspicious-events |
 | `suppliers` | 6 | /api/v1/suppliers, /api/v1/suppliers/import, /api/v1/suppliers/{id} |
 
 ## `accounting`
@@ -123,12 +124,10 @@ Portal scope guardrail:
 - `POST` `/api/v1/admin/approvals/{originType}/{id}/decisions`
 - `GET` `/api/v1/admin/audit/events`
 - `GET` `/api/v1/admin/dashboard`
-- `GET, POST` `/api/v1/superadmin/roles`
-- `GET` `/api/v1/superadmin/roles/{roleKey}`
 - `GET` `/api/v1/admin/self/settings`
-- `GET, PUT` `/api/v1/superadmin/settings`
 - `GET, POST` `/api/v1/admin/support/tickets`
 - `GET` `/api/v1/admin/support/tickets/{ticketId}`
+- `GET, POST` `/api/v1/admin/support/tickets/{ticketId}/messages`
 - `GET, POST` `/api/v1/admin/users`
 - `GET` `/api/v1/admin/users/assignable-roles`
 - `GET, PUT` `/api/v1/admin/users/{id}`
@@ -146,6 +145,8 @@ Portal scope guardrail:
 
 ## `auth`
 
+- `POST` `/api/v1/auth/activation/complete`
+- `GET` `/api/v1/auth/activation/verify`
 - `POST` `/api/v1/auth/login`
 - `POST` `/api/v1/auth/logout`
 - `GET` `/api/v1/auth/me`
@@ -204,6 +205,7 @@ Portal scope guardrail:
 - `GET` `/api/v1/dealer-portal/orders`
 - `GET, POST` `/api/v1/dealer-portal/support/tickets`
 - `GET` `/api/v1/dealer-portal/support/tickets/{ticketId}`
+- `GET, POST` `/api/v1/dealer-portal/support/tickets/{ticketId}/messages`
 
 ## `dealers`
 
@@ -342,6 +344,7 @@ Portal scope guardrail:
 - `GET` `/api/v1/portal/operations`
 - `GET, POST` `/api/v1/portal/support/tickets`
 - `GET` `/api/v1/portal/support/tickets/{ticketId}`
+- `GET, POST` `/api/v1/portal/support/tickets/{ticketId}/messages`
 - `GET` `/api/v1/portal/workforce`
 
 ## `purchasing`
@@ -361,9 +364,11 @@ Portal scope guardrail:
 
 ## `raw-materials`
 
+- `GET` `/api/v1/raw-materials`
 - `GET` `/api/v1/raw-materials/stock`
 - `GET` `/api/v1/raw-materials/stock/inventory`
 - `GET` `/api/v1/raw-materials/stock/low-stock`
+- `DELETE` `/api/v1/raw-materials/{id}`
 
 ## `reports`
 
@@ -406,28 +411,97 @@ Portal scope guardrail:
 - `GET, POST` `/api/v1/sales/targets`
 - `PUT, DELETE` `/api/v1/sales/targets/{id}`
 
+## `setup`
+
+- `PUT` `/api/v1/setup/accounting`
+- `PUT` `/api/v1/setup/company-details`
+- `POST` `/api/v1/setup/finish`
+- `PUT` `/api/v1/setup/gst`
+- `POST` `/api/v1/setup/invite-team`
+- `GET` `/api/v1/setup/status`
+
 ## `superadmin`
 
 - `GET` `/api/v1/superadmin/audit/platform-events`
+- `GET` `/api/v1/superadmin/audit/security-events`
+- `GET` `/api/v1/superadmin/audit/suspicious-events`
+- `POST` `/api/v1/superadmin/audit/suspicious-events/{eventId}/acknowledge`
+- `POST` `/api/v1/superadmin/audit/suspicious-events/{eventId}/reopen`
+- `POST` `/api/v1/superadmin/audit/suspicious-events/{eventId}/resolve`
+- `GET` `/api/v1/superadmin/billing/metrics`
 - `POST` `/api/v1/superadmin/changelog`
 - `PUT, DELETE` `/api/v1/superadmin/changelog/{id}`
 - `GET` `/api/v1/superadmin/dashboard`
+- `GET` `/api/v1/superadmin/infra/costs`
+- `GET, POST` `/api/v1/superadmin/infra/costs/snapshots`
+- `PUT` `/api/v1/superadmin/infra/costs/snapshots/{snapshotId}`
+- `POST` `/api/v1/superadmin/infra/costs/snapshots/{snapshotId}/archive`
+- `GET` `/api/v1/superadmin/infra/costs/snapshots/{snapshotId}/corrections`
+- `GET` `/api/v1/superadmin/infra/health`
 - `POST` `/api/v1/superadmin/notify`
-- `GET` `/api/v1/superadmin/tenants`
+- `GET` `/api/v1/superadmin/observability/datadog/status`
+- `GET, POST` `/api/v1/superadmin/plans`
+- `GET, PUT` `/api/v1/superadmin/plans/{stableId}`
+- `POST` `/api/v1/superadmin/plans/{stableId}/archive`
+- `GET, PUT` `/api/v1/superadmin/profile`
+- `POST` `/api/v1/superadmin/profile/password`
+- `GET` `/api/v1/superadmin/profile/sessions`
+- `POST` `/api/v1/superadmin/profile/sessions/{sessionId}/revoke`
+- `GET, POST` `/api/v1/superadmin/roles`
+- `GET` `/api/v1/superadmin/roles/{roleKey}`
+- `GET, PUT` `/api/v1/superadmin/settings`
+- `GET` `/api/v1/superadmin/support/tickets`
+- `POST` `/api/v1/superadmin/support/tickets/sla/refresh`
+- `GET` `/api/v1/superadmin/support/tickets/{ticketId}`
+- `POST` `/api/v1/superadmin/support/tickets/{ticketId}/convert-to-incident`
+- `POST` `/api/v1/superadmin/support/tickets/{ticketId}/internal-notes`
+- `GET, POST` `/api/v1/superadmin/support/tickets/{ticketId}/messages`
+- `POST` `/api/v1/superadmin/support/tickets/{ticketId}/sentry/link`
+- `POST` `/api/v1/superadmin/support/tickets/{ticketId}/sentry/sync`
+- `POST` `/api/v1/superadmin/support/tickets/{ticketId}/status`
+- `GET` `/api/v1/superadmin/support/tickets/{ticketId}/timeline`
+- `GET, POST` `/api/v1/superadmin/tenants`
 - `GET` `/api/v1/superadmin/tenants/coa-templates`
-- `POST` `/api/v1/superadmin/tenants/onboard`
+- `GET` `/api/v1/superadmin/tenants/new`
 - `GET` `/api/v1/superadmin/tenants/{id}`
+- `PUT, DELETE` `/api/v1/superadmin/tenants/{id}/accounting-mappings/{mappingKey}`
+- `POST` `/api/v1/superadmin/tenants/{id}/activation/copy`
+- `POST` `/api/v1/superadmin/tenants/{id}/activation/expire`
+- `POST` `/api/v1/superadmin/tenants/{id}/activation/resend`
+- `POST` `/api/v1/superadmin/tenants/{id}/activation/send`
 - `PUT` `/api/v1/superadmin/tenants/{id}/admins/main`
 - `POST` `/api/v1/superadmin/tenants/{id}/admins/{adminId}/email-change/confirm`
 - `POST` `/api/v1/superadmin/tenants/{id}/admins/{adminId}/email-change/request`
+- `POST` `/api/v1/superadmin/tenants/{id}/archive`
+- `POST` `/api/v1/superadmin/tenants/{id}/billing/adjustments`
+- `POST` `/api/v1/superadmin/tenants/{id}/billing/invoices`
+- `GET` `/api/v1/superadmin/tenants/{id}/billing/ledger`
+- `POST` `/api/v1/superadmin/tenants/{id}/billing/payments`
+- `GET, POST` `/api/v1/superadmin/tenants/{id}/billing/subscription`
+- `POST` `/api/v1/superadmin/tenants/{id}/cancel`
+- `GET` `/api/v1/superadmin/tenants/{id}/commercial-state`
+- `GET` `/api/v1/superadmin/tenants/{id}/entitlements`
+- `PUT` `/api/v1/superadmin/tenants/{id}/entitlements/overrides`
+- `DELETE` `/api/v1/superadmin/tenants/{id}/entitlements/overrides/{key}`
 - `POST` `/api/v1/superadmin/tenants/{id}/force-logout`
 - `PUT` `/api/v1/superadmin/tenants/{id}/lifecycle`
 - `PUT` `/api/v1/superadmin/tenants/{id}/limits`
 - `PUT` `/api/v1/superadmin/tenants/{id}/modules`
+- `PUT` `/api/v1/superadmin/tenants/{id}/plan`
+- `POST` `/api/v1/superadmin/tenants/{id}/quota-check`
+- `GET` `/api/v1/superadmin/tenants/{id}/quota-policy`
+- `POST` `/api/v1/superadmin/tenants/{id}/resume`
 - `GET, PUT` `/api/v1/superadmin/tenants/{id}/review-intelligence`
-- `POST` `/api/v1/superadmin/tenants/{id}/support/admin-password-reset`
+- `GET` `/api/v1/superadmin/tenants/{id}/seed-status`
+- `POST` `/api/v1/superadmin/tenants/{id}/seed-status/repair`
 - `PUT` `/api/v1/superadmin/tenants/{id}/support/context`
 - `POST` `/api/v1/superadmin/tenants/{id}/support/warnings`
+- `POST` `/api/v1/superadmin/tenants/{id}/suspension/blocked`
+- `POST` `/api/v1/superadmin/tenants/{id}/suspension/grace`
+- `POST` `/api/v1/superadmin/tenants/{id}/suspension/read-only`
+- `GET` `/api/v1/superadmin/tenants/{id}/usage`
+- `GET` `/api/v1/superadmin/tenants/{id}/usage/history`
+- `GET` `/api/v1/superadmin/usage`
 
 ## `suppliers`
 

@@ -264,26 +264,49 @@ All three imports are designed for migration resilience:
 
 1. (Optional) List templates:
    - `GET /api/v1/superadmin/tenants/coa-templates`
-2. Create company and seed chart of accounts:
-   - `POST /api/v1/superadmin/tenants/onboard`
+2. Create company through Add Client:
+   - `GET /api/v1/superadmin/tenants/new`
+   - `POST /api/v1/superadmin/tenants`
 
 Example request:
 
 ```json
 {
-  "name": "Acme Paints Pvt Ltd",
-  "code": "ACME",
-  "timezone": "Asia/Kolkata",
-  "defaultGstRate": 18.0,
-  "maxActiveUsers": 100,
-  "maxApiRequests": 100000,
-  "maxStorageBytes": 10737418240,
-  "maxConcurrentUsers": 30,
-  "softLimitEnabled": true,
-  "hardLimitEnabled": true,
-  "firstAdminEmail": "admin@acmepaints.in",
-  "firstAdminDisplayName": "Acme Admin",
-  "coaTemplateCode": "MANUFACTURING"
+  "company": {
+    "name": "Acme Paints Pvt Ltd",
+    "code": "ACME",
+    "timezone": "Asia/Kolkata",
+    "stateCode": "KA",
+    "baseCurrency": "INR",
+    "defaultGstRate": 18.0,
+    "coaTemplateCode": "MANUFACTURING"
+  },
+  "owner": {
+    "email": "admin@acmepaints.in",
+    "displayName": "Acme Admin"
+  },
+  "commercial": {
+    "planId": "TRIAL",
+    "billingStatus": "MANUAL",
+    "trialDays": 14,
+    "supportTier": "STANDARD"
+  },
+  "quotas": {
+    "maxActiveUsers": 100,
+    "maxApiRequests": 100000,
+    "maxStorageBytes": 10737418240,
+    "maxConcurrentRequests": 30,
+    "softLimitEnabled": true,
+    "hardLimitEnabled": true
+  },
+  "modules": {
+    "enabled": ["MANUFACTURING", "PURCHASING", "PORTAL", "REPORTS_ADVANCED"]
+  },
+  "support": {
+    "notes": "Migration bootstrap",
+    "tags": ["MIGRATION"]
+  },
+  "createMode": "SEND_ACTIVATION"
 }
 ```
 

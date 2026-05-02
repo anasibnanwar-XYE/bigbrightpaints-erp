@@ -54,6 +54,7 @@ import com.bigbrightpaints.erp.modules.accounting.service.CompanyDefaultAccounts
 import com.bigbrightpaints.erp.modules.accounting.service.CompanyScopedAccountingLookupService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
+import com.bigbrightpaints.erp.modules.company.service.TenantRealActionUsageService;
 import com.bigbrightpaints.erp.modules.factory.domain.PackagingSizeMappingRepository;
 import com.bigbrightpaints.erp.modules.factory.domain.PackingRecordRepository;
 import com.bigbrightpaints.erp.modules.factory.domain.ProductionLogMaterialRepository;
@@ -158,6 +159,7 @@ public class ProductionCatalogService {
   private final TransactionTemplate rowTransactionTemplate;
   private final IdempotencyReservationService idempotencyReservationService =
       new IdempotencyReservationService();
+  private final TenantRealActionUsageService realActionUsageService;
 
   @Autowired
   public ProductionCatalogService(
@@ -184,7 +186,8 @@ public class ProductionCatalogService {
       CatalogImportRepository catalogImportRepository,
       AuditService auditService,
       SkuReadinessService skuReadinessService,
-      PlatformTransactionManager transactionManager) {
+      PlatformTransactionManager transactionManager,
+      TenantRealActionUsageService realActionUsageService) {
     this.companyContextService = companyContextService;
     this.brandRepository = brandRepository;
     this.productRepository = productRepository;
@@ -212,6 +215,7 @@ public class ProductionCatalogService {
     this.rowTransactionTemplate = new TransactionTemplate(transactionManager);
     this.rowTransactionTemplate.setPropagationBehavior(
         TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+    this.realActionUsageService = realActionUsageService;
   }
 
   public CatalogImportResponse importCatalog(MultipartFile file) {
@@ -230,6 +234,7 @@ public class ProductionCatalogService {
     }
     String fileHash = resolveFileHash(file);
     String normalizedKey = normalizeIdempotencyKey(idempotencyKey, fileHash);
+    long storageBytes = safeFileSize(file);
 
     CatalogImport existing =
         catalogImportRepository.findByCompanyAndIdempotencyKey(company, normalizedKey).orElse(null);
@@ -237,6 +242,7 @@ public class ProductionCatalogService {
       assertIdempotencyMatch(existing, fileHash, normalizedKey);
       return toResponse(existing);
     }
+    realActionUsageService.enforceStorageWriteAllowed(company, storageBytes);
 
     try {
       CatalogImportResponse response =
@@ -246,6 +252,7 @@ public class ProductionCatalogService {
         throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState(
             "Catalog import failed to return a response");
       }
+      realActionUsageService.recordStorageWrite(company, storageBytes);
       return response;
     } catch (RuntimeException ex) {
       if (!isDataIntegrityViolation(ex)) {
@@ -258,6 +265,10 @@ public class ProductionCatalogService {
       assertIdempotencyMatch(concurrent, fileHash, normalizedKey);
       return toResponse(concurrent);
     }
+  }
+
+  private long safeFileSize(MultipartFile file) {
+    return file == null ? 0L : Math.max(file.getSize(), 0L);
   }
 
   private CatalogImportResponse importCatalogInternal(

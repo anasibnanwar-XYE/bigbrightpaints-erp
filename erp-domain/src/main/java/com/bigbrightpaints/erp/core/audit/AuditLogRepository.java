@@ -9,9 +9,12 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+
+import jakarta.persistence.LockModeType;
 
 /**
  * Repository for audit log operations.
@@ -48,11 +51,19 @@ public interface AuditLogRepository
   @EntityGraph(attributePaths = "metadata")
   List<AuditLog> findByEventTypeOrderByTimestampDesc(AuditEvent eventType);
 
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
+  @EntityGraph(attributePaths = "metadata")
+  @Query("SELECT al FROM AuditLog al WHERE al.id = :id")
+  Optional<AuditLog> lockByIdWithMetadata(@Param("id") Long id);
+
   /**
    * Find latest event record for a username.
    */
   Optional<AuditLog> findFirstByEventTypeAndCompanyIdAndUsernameIgnoreCaseOrderByTimestampDesc(
       AuditEvent eventType, Long companyId, String username);
+
+  Optional<AuditLog> findFirstByEventTypeAndUsernameIgnoreCaseOrderByTimestampDesc(
+      AuditEvent eventType, String username);
 
   /**
    * Projection for batched username login lookups.
@@ -126,6 +137,10 @@ public interface AuditLogRepository
           + "AND al.timestamp > :since "
           + "ORDER BY al.timestamp DESC")
   List<AuditLog> findSecurityAlerts(@Param("since") LocalDateTime since);
+
+  long countByEventType(AuditEvent eventType);
+
+  long countByEventTypeIn(List<AuditEvent> eventTypes);
 
   /**
    * Find audit logs by trace ID.

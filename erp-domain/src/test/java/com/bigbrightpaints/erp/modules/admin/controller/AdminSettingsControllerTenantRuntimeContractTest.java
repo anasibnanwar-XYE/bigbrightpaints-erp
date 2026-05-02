@@ -16,8 +16,9 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import com.bigbrightpaints.erp.core.audit.AuditEvent;
 import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.config.SystemSettingsService;
+import com.bigbrightpaints.erp.modules.admin.dto.SuperAdminPlatformSettingsDto;
+import com.bigbrightpaints.erp.modules.admin.dto.SuperAdminPlatformSettingsUpdateRequest;
 import com.bigbrightpaints.erp.modules.admin.dto.SystemSettingsDto;
-import com.bigbrightpaints.erp.modules.admin.dto.SystemSettingsUpdateRequest;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 
 class AdminSettingsControllerTenantRuntimeContractTest {
@@ -26,7 +27,7 @@ class AdminSettingsControllerTenantRuntimeContractTest {
   void updateSettings_requiresSuperAdminAuthority() throws Exception {
     Method method =
         AdminSettingsController.class.getMethod(
-            "updateSettings", SystemSettingsUpdateRequest.class);
+            "updateSettings", SuperAdminPlatformSettingsUpdateRequest.class);
 
     PreAuthorize annotation = method.getAnnotation(PreAuthorize.class);
 
@@ -67,19 +68,32 @@ class AdminSettingsControllerTenantRuntimeContractTest {
 
     AdminSettingsController controller = new AdminSettingsController(systemSettingsService, null);
 
-    ApiResponse<SystemSettingsDto> response = controller.getSettings();
+    ApiResponse<SuperAdminPlatformSettingsDto> response = controller.getSettings();
 
     assertThat(response.success()).isTrue();
     assertThat(response.message()).isEqualTo("Settings fetched");
-    assertThat(response.data()).isEqualTo(snapshot);
+    assertThat(response.data().access().allowedOrigins()).isEqualTo(snapshot.allowedOrigins());
+    assertThat(response.data().access().authCode().value()).isEqualTo("<redacted>");
+    assertThat(response.data().workflow().autoApprovalEnabled()).isTrue();
     verify(systemSettingsService).snapshot();
   }
 
   @Test
   void updateSettings_delegatesToSettingsService() {
     SystemSettingsService systemSettingsService = mock(SystemSettingsService.class);
-    SystemSettingsUpdateRequest request =
-        new SystemSettingsUpdateRequest(
+    SuperAdminPlatformSettingsUpdateRequest request =
+        new SuperAdminPlatformSettingsUpdateRequest(
+            new SuperAdminPlatformSettingsUpdateRequest.AccessUpdate(
+                java.util.List.of("https://portal.bigbrightpaints.com"), "PLATFORM"),
+            new SuperAdminPlatformSettingsUpdateRequest.MailUpdate(
+                true,
+                "noreply@bigbrightpaints.com",
+                "https://mail.bigbrightpaints.com",
+                true,
+                false),
+            new SuperAdminPlatformSettingsUpdateRequest.WorkflowUpdate(false, true, true));
+    com.bigbrightpaints.erp.modules.admin.dto.SystemSettingsUpdateRequest flatRequest =
+        new com.bigbrightpaints.erp.modules.admin.dto.SystemSettingsUpdateRequest(
             java.util.List.of("https://portal.bigbrightpaints.com"),
             false,
             true,
@@ -102,16 +116,17 @@ class AdminSettingsControllerTenantRuntimeContractTest {
             "https://mail.bigbrightpaints.com",
             true,
             false);
-    when(systemSettingsService.update(request)).thenReturn(updated);
+    when(systemSettingsService.update(flatRequest)).thenReturn(updated);
 
     AdminSettingsController controller = new AdminSettingsController(systemSettingsService, null);
 
-    ApiResponse<SystemSettingsDto> response = controller.updateSettings(request);
+    ApiResponse<SuperAdminPlatformSettingsDto> response = controller.updateSettings(request);
 
     assertThat(response.success()).isTrue();
     assertThat(response.message()).isEqualTo("Settings updated");
-    assertThat(response.data()).isEqualTo(updated);
-    verify(systemSettingsService).update(request);
+    assertThat(response.data().access().authCode().value()).isEqualTo("<redacted>");
+    assertThat(response.data().mail().fromAddress()).isEqualTo(updated.mailFromAddress());
+    verify(systemSettingsService).update(flatRequest);
   }
 
   @Test
@@ -130,18 +145,17 @@ class AdminSettingsControllerTenantRuntimeContractTest {
             "https://mail.bigbrightpaints.com",
             false,
             true);
-    SystemSettingsUpdateRequest request =
-        new SystemSettingsUpdateRequest(
-            java.util.List.of("https://portal.bigbrightpaints.com"),
-            null,
-            null,
-            false,
-            "plat\nform",
-            true,
-            "noreply@bigbrightpaints.com",
-            "https://mail.bigbrightpaints.com",
-            true,
-            false);
+    SuperAdminPlatformSettingsUpdateRequest request =
+        new SuperAdminPlatformSettingsUpdateRequest(
+            new SuperAdminPlatformSettingsUpdateRequest.AccessUpdate(
+                java.util.List.of("https://portal.bigbrightpaints.com"), "PLATFORM"),
+            new SuperAdminPlatformSettingsUpdateRequest.MailUpdate(
+                true,
+                "noreply@bigbrightpaints.com",
+                "https://mail.bigbrightpaints.com",
+                true,
+                false),
+            new SuperAdminPlatformSettingsUpdateRequest.WorkflowUpdate(null, null, false));
     SystemSettingsDto after =
         new SystemSettingsDto(
             java.util.List.of("https://portal.bigbrightpaints.com"),
@@ -155,7 +169,10 @@ class AdminSettingsControllerTenantRuntimeContractTest {
             true,
             false);
     when(systemSettingsService.snapshot()).thenReturn(before);
-    when(systemSettingsService.update(request)).thenReturn(after);
+    when(systemSettingsService.update(
+            org.mockito.ArgumentMatchers.any(
+                com.bigbrightpaints.erp.modules.admin.dto.SystemSettingsUpdateRequest.class)))
+        .thenReturn(after);
 
     AdminSettingsController controller =
         new AdminSettingsController(systemSettingsService, auditService);
@@ -175,5 +192,7 @@ class AdminSettingsControllerTenantRuntimeContractTest {
     assertThat(metadata.get("requestedPeriodLockEnforced")).isEqualTo("<not_requested>");
     assertThat(metadata.get("requestedExportApprovalRequired")).isEqualTo("false");
     assertThat(metadata.get("requestedPlatformAuthCode")).isEqualTo("<redacted>");
+    assertThat(metadata.get("beforePlatformAuthCode")).isEqualTo("<redacted>");
+    assertThat(metadata.get("afterPlatformAuthCode")).isEqualTo("<redacted>");
   }
 }

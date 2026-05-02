@@ -18,6 +18,7 @@ import com.bigbrightpaints.erp.modules.accounting.service.StatementService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
+import com.bigbrightpaints.erp.modules.company.service.TenantRealActionUsageService;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
 
@@ -34,6 +35,7 @@ public class DunningService {
   private final StatementService statementService;
   private final CompanyClock companyClock;
   private final EmailService emailService;
+  private final TenantRealActionUsageService realActionUsageService;
 
   public DunningService(
       CompanyContextService companyContextService,
@@ -41,13 +43,15 @@ public class DunningService {
       DealerRepository dealerRepository,
       StatementService statementService,
       CompanyClock companyClock,
-      EmailService emailService) {
+      EmailService emailService,
+      TenantRealActionUsageService realActionUsageService) {
     this.companyContextService = companyContextService;
     this.companyRepository = companyRepository;
     this.dealerRepository = dealerRepository;
     this.statementService = statementService;
     this.companyClock = companyClock;
     this.emailService = emailService;
+    this.realActionUsageService = realActionUsageService;
   }
 
   @Transactional
@@ -146,11 +150,19 @@ public class DunningService {
             + "\n\n"
             + "Please arrange payment at the earliest or contact the accounts team.\n\n"
             + "Regards,\nBigBright ERP";
+    Company company = dealer.getCompany();
+    if (company == null) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState(
+          "Dealer company is required for dunning reminder quota enforcement");
+    }
+    realActionUsageService.enforceBusinessEmailAllowed(company);
     try {
       emailService.sendSimpleEmail(dealer.getEmail(), subject, body);
     } catch (RuntimeException ex) {
       log.warn("Failed to send dunning reminder email for dealer {}", dealer.getCode(), ex);
+      return;
     }
+    realActionUsageService.recordBusinessEmail(company);
   }
 
   private Dealer requireDealer(Company company, Long dealerId) {

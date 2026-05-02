@@ -21,6 +21,7 @@ import com.bigbrightpaints.erp.core.config.SystemSettingsRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyLifecycleState;
+import com.bigbrightpaints.erp.modules.company.domain.CompanyModule;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.modules.company.service.TenantRuntimeEnforcementService;
 import com.bigbrightpaints.erp.modules.factory.domain.ProductionLog;
@@ -91,6 +92,7 @@ class ReportControllerSecurityIT extends AbstractIntegrationTest {
             });
 
     Company companyA = companyRepository.findByCodeIgnoreCase(COMPANY_A_CODE).orElseThrow();
+    companyA = enableModule(companyA, CompanyModule.REPORTS_ADVANCED);
     companyA.setLifecycleState(CompanyLifecycleState.ACTIVE);
     companyA.setLifecycleReason(null);
     companyRepository.saveAndFlush(companyA);

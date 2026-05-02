@@ -351,6 +351,80 @@ class AuditReadAdaptersIT extends AbstractIntegrationTest {
   }
 
   @Test
+  void queryPlatformSecurityFeed_includesTenantLoginAndSuspiciousEventsWithSafeMetadata() {
+    Company tenant = dataSeeder.ensureCompany("ARDSEC", "Audit Security Tenant");
+    LocalDate day = LocalDate.of(2035, 3, 12);
+    AuditLog loginFailure =
+        saveAuditLog(
+            tenant.getId(),
+            AuditEvent.LOGIN_FAILURE,
+            day.atTime(9, 0),
+            log -> {
+              log.setRequestPath("/api/v1/auth/login");
+              log.setUsername("owner@ardsec.example");
+              log.setMetadata(
+                  Map.of(
+                      "username",
+                      "owner@ardsec.example",
+                      "subjectPublicId",
+                      "550e8400-e29b-41d4-a716-446655440000"));
+            });
+    AuditLog suspicious =
+        saveAuditLog(
+            tenant.getId(),
+            AuditEvent.SECURITY_ALERT,
+            day.atTime(9, 1),
+            log -> {
+              log.setRequestPath("/api/v1/auth/login");
+              log.setMetadata(
+                  Map.of(
+                      "alertType",
+                      "BRUTE_FORCE_ATTACK",
+                      "identifier",
+                      "198.51.100.10",
+                      "reasonText",
+                      "request body included invoice payload",
+                      "reason",
+                      "reviewed by platform operator",
+                      "reasonCategory",
+                      "OPERATOR_NOTE",
+                      "reasonDigest",
+                      "abcdef123456abcdef123456",
+                      "reasonPresent",
+                      "true"));
+            });
+    saveAuditLog(
+        tenant.getId(),
+        AuditEvent.DATA_READ,
+        day.atTime(9, 2),
+        log -> log.setRequestPath("/api/v1/private/invoices"));
+
+    AuditFeedSlice security =
+        auditLogReadAdapter.queryPlatformSecurityFeed(
+            filter(day, day, null, null, null, null, null, null), false);
+    AuditFeedSlice suspiciousOnly =
+        auditLogReadAdapter.queryPlatformSecurityFeed(
+            filter(day, day, null, null, null, null, null, null), true);
+
+    assertThat(sourceIds(security))
+        .containsExactlyInAnyOrder(loginFailure.getId(), suspicious.getId());
+    assertThat(sourceIds(suspiciousOnly)).containsExactly(suspicious.getId());
+    assertThat(security.items())
+        .filteredOn(item -> item.sourceId().equals(suspicious.getId()))
+        .singleElement()
+        .satisfies(
+            item -> {
+              assertThat(item.metadata().get("identifier")).startsWith("hash:");
+              assertThat(item.metadata()).doesNotContainKey("reasonText");
+              assertThat(item.metadata()).containsEntry("reason", "[REDACTED]");
+              assertThat(item.metadata()).containsEntry("reasonCategory", "OPERATOR_NOTE");
+              assertThat(item.metadata()).containsEntry("reasonDigest", "abcdef123456abcdef123456");
+              assertThat(item.metadata()).containsEntry("reasonPresent", "true");
+              assertThat(item.metadata().toString()).doesNotContain("198.51.100.10", "invoice");
+            });
+  }
+
+  @Test
   void businessAuditAdapter_filtersTenantAndAccountingFeeds() {
     Company company = dataSeeder.ensureCompany("ARDBIZ", "Audit Read Business");
     LocalDate dayOne = LocalDate.of(2035, 4, 1);

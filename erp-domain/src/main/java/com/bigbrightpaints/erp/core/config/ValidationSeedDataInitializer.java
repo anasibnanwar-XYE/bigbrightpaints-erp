@@ -39,6 +39,8 @@ import com.bigbrightpaints.erp.modules.auth.service.IamCanonicalStorageService;
 import com.bigbrightpaints.erp.modules.auth.service.PasswordPolicy;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
+import com.bigbrightpaints.erp.modules.company.domain.TenantUsageRollup;
+import com.bigbrightpaints.erp.modules.company.domain.TenantUsageRollupRepository;
 import com.bigbrightpaints.erp.modules.invoice.domain.Invoice;
 import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceLine;
 import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceRepository;
@@ -76,11 +78,111 @@ public class ValidationSeedDataInitializer {
   private static final String SEED_SUPPORT_SUBJECT = "Validation dealer support escalation";
   private static final String SEED_CREDIT_REASON = "Validation pending credit request";
   private static final Instant LOCKED_UNTIL_PLACEHOLDER = Instant.parse("2099-01-01T00:00:00Z");
+  private static final String VALIDATION_USAGE_TIMEZONE = "UTC";
+  private static final List<ValidationUsageHistoryFixture> VALIDATION_USAGE_HISTORY_FIXTURES =
+      List.of(
+          new ValidationUsageHistoryFixture(
+              "USERS",
+              "DAILY",
+              Instant.parse("2026-04-28T00:00:00Z"),
+              Instant.parse("2026-04-29T00:00:00Z"),
+              Instant.parse("2026-04-29T00:00:01Z"),
+              9L,
+              0L),
+          new ValidationUsageHistoryFixture(
+              "STORAGE",
+              "DAILY",
+              Instant.parse("2026-04-28T00:00:00Z"),
+              Instant.parse("2026-04-29T00:00:00Z"),
+              Instant.parse("2026-04-29T00:00:01Z"),
+              0L,
+              230L),
+          new ValidationUsageHistoryFixture(
+              "API_CALLS",
+              "DAILY",
+              Instant.parse("2026-04-28T00:00:00Z"),
+              Instant.parse("2026-04-29T00:00:00Z"),
+              Instant.parse("2026-04-29T00:00:01Z"),
+              72L,
+              0L),
+          new ValidationUsageHistoryFixture(
+              "PDF_EXPORTS",
+              "DAILY",
+              Instant.parse("2026-04-28T00:00:00Z"),
+              Instant.parse("2026-04-29T00:00:00Z"),
+              Instant.parse("2026-04-29T00:00:01Z"),
+              16L,
+              0L),
+          new ValidationUsageHistoryFixture(
+              "EMAILS",
+              "DAILY",
+              Instant.parse("2026-04-28T00:00:00Z"),
+              Instant.parse("2026-04-29T00:00:00Z"),
+              Instant.parse("2026-04-29T00:00:01Z"),
+              3L,
+              0L),
+          new ValidationUsageHistoryFixture(
+              "JOBS",
+              "DAILY",
+              Instant.parse("2026-04-28T00:00:00Z"),
+              Instant.parse("2026-04-29T00:00:00Z"),
+              Instant.parse("2026-04-29T00:00:01Z"),
+              3L,
+              0L),
+          new ValidationUsageHistoryFixture(
+              "USERS",
+              "MONTHLY",
+              Instant.parse("2026-03-01T00:00:00Z"),
+              Instant.parse("2026-04-01T00:00:00Z"),
+              Instant.parse("2026-04-01T00:00:01Z"),
+              8L,
+              0L),
+          new ValidationUsageHistoryFixture(
+              "STORAGE",
+              "MONTHLY",
+              Instant.parse("2026-03-01T00:00:00Z"),
+              Instant.parse("2026-04-01T00:00:00Z"),
+              Instant.parse("2026-04-01T00:00:01Z"),
+              0L,
+              2048L),
+          new ValidationUsageHistoryFixture(
+              "API_CALLS",
+              "MONTHLY",
+              Instant.parse("2026-03-01T00:00:00Z"),
+              Instant.parse("2026-04-01T00:00:00Z"),
+              Instant.parse("2026-04-01T00:00:01Z"),
+              140L,
+              0L),
+          new ValidationUsageHistoryFixture(
+              "PDF_EXPORTS",
+              "MONTHLY",
+              Instant.parse("2026-03-01T00:00:00Z"),
+              Instant.parse("2026-04-01T00:00:00Z"),
+              Instant.parse("2026-04-01T00:00:01Z"),
+              24L,
+              0L),
+          new ValidationUsageHistoryFixture(
+              "EMAILS",
+              "MONTHLY",
+              Instant.parse("2026-03-01T00:00:00Z"),
+              Instant.parse("2026-04-01T00:00:00Z"),
+              Instant.parse("2026-04-01T00:00:01Z"),
+              11L,
+              0L),
+          new ValidationUsageHistoryFixture(
+              "JOBS",
+              "MONTHLY",
+              Instant.parse("2026-03-01T00:00:00Z"),
+              Instant.parse("2026-04-01T00:00:00Z"),
+              Instant.parse("2026-04-01T00:00:01Z"),
+              7L,
+              0L));
 
   @Bean
   @Order(10)
   CommandLineRunner seedValidationActors(
       CompanyRepository companyRepository,
+      TenantUsageRollupRepository tenantUsageRollupRepository,
       RoleRepository roleRepository,
       UserAccountRepository userAccountRepository,
       MfaRecoveryCodeRepository mfaRecoveryCodeRepository,
@@ -305,6 +407,7 @@ public class ValidationSeedDataInitializer {
               "Rival Validation Dealer");
       ensureValidationInvoiceFixture(invoiceRepository, mockDealer, "VAL-MOCK-INV-001");
       ensureValidationInvoiceFixture(invoiceRepository, rivalDealer, "VAL-RIVAL-INV-001");
+      ensureClosedUsageHistoryFixtures(tenantUsageRollupRepository, mockCompany);
       ensurePendingExportRequest(exportRequestRepository, mockCompany, mockAdmin);
       ensurePendingSupportTicket(supportTicketRepository, mockCompany, dealerUser);
       ensurePendingCreditRequest(creditRequestRepository, mockCompany, mockDealer, dealerUser);
@@ -436,6 +539,10 @@ public class ValidationSeedDataInitializer {
           SEED_EXPORT_REPORT_TYPE,
           SEED_SUPPORT_SUBJECT,
           SEED_CREDIT_REASON);
+      log.info(
+          "Validation M9 closed usage history fixtures ready for company={} rows={}.",
+          mockCompany.getCode(),
+          VALIDATION_USAGE_HISTORY_FIXTURES.size());
       log.info(
           "Validation seed ready for companies [MOCK, RIVAL, HOLD, BLOCK, QUOTA] plus platform"
               + " scope {}.",
@@ -681,6 +788,37 @@ public class ValidationSeedDataInitializer {
         Instant.now().toString());
   }
 
+  private void ensureClosedUsageHistoryFixtures(
+      TenantUsageRollupRepository tenantUsageRollupRepository, Company company) {
+    if (tenantUsageRollupRepository == null || company == null || company.getId() == null) {
+      return;
+    }
+    for (ValidationUsageHistoryFixture fixture : VALIDATION_USAGE_HISTORY_FIXTURES) {
+      TenantUsageRollup rollup =
+          tenantUsageRollupRepository
+              .findByCompany_IdAndDimensionAndPeriodTypeAndPeriodStartAt(
+                  company.getId(), fixture.dimension(), fixture.periodType(), fixture.startAt())
+              .orElseGet(
+                  () ->
+                      newUsageHistoryRollup(
+                          company,
+                          fixture.dimension(),
+                          fixture.periodType(),
+                          fixture.startAt(),
+                          fixture.endAt()));
+      rollup.updateSnapshot(
+          fixture.usageCount(), fixture.usageBytes(), fixture.endAt(), VALIDATION_USAGE_TIMEZONE);
+      rollup.close(fixture.closedAt());
+      tenantUsageRollupRepository.save(rollup);
+    }
+  }
+
+  private TenantUsageRollup newUsageHistoryRollup(
+      Company company, String dimension, String periodType, Instant startAt, Instant endAt) {
+    return TenantUsageRollup.snapshot(
+        company, dimension, periodType, startAt, endAt, VALIDATION_USAGE_TIMEZONE, 0L, 0L);
+  }
+
   private void upsertRuntimeSetting(
       SystemSettingsRepository systemSettingsRepository, String key, String value) {
     if (value == null || value.isBlank()) {
@@ -858,4 +996,13 @@ public class ValidationSeedDataInitializer {
   private Long requesterId(UserAccount requester) {
     return requester.getId() != null ? requester.getId() : 0L;
   }
+
+  private record ValidationUsageHistoryFixture(
+      String dimension,
+      String periodType,
+      Instant startAt,
+      Instant endAt,
+      Instant closedAt,
+      long usageCount,
+      long usageBytes) {}
 }

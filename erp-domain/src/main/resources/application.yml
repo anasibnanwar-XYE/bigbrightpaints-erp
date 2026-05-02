@@ -162,10 +162,24 @@ erp:
     token: ${ERP_GITHUB_TOKEN:}
     repo-owner: ${ERP_GITHUB_REPO_OWNER:}
     repo-name: ${ERP_GITHUB_REPO_NAME:}
+  sentry:
+    issue-link:
+      enabled: ${ERP_SENTRY_ISSUE_LINK_ENABLED:true}
+      auth-token: ${SENTRY_AUTH_TOKEN:}
+      org: ${SENTRY_ORG:}
+      project: ${SENTRY_PROJECT:}
+      host: https://sentry.io
+  datadog:
+    telemetry:
+      enabled: ${ERP_DATADOG_TELEMETRY_ENABLED:true}
+      api-key: ${DD_API_KEY:}
+      site: ${DD_SITE:us5.datadoghq.com}
+      environment: ${DD_ENV:${SPRING_PROFILES_ACTIVE:dev}}
+      release: ${DD_VERSION:erp-domain@${project.version:unknown}}
 
 sentry:
   dsn: ${SENTRY_DSN:}
-  send-default-pii: true
+  send-default-pii: false
   environment: ${SPRING_PROFILES_ACTIVE:dev}
   traces-sample-rate: ${SENTRY_TRACES_SAMPLE_RATE:0.1}
   logging:
