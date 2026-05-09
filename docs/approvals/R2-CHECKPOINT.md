@@ -86,7 +86,7 @@ Last reviewed: 2026-05-14
 
 ## Addendum — `active-flyway-v2-hard-cut-baseline`
 
-- Scope: hard-cut schema-resource cleanup that removes the retired Flyway v1 tree, keeps `erp-domain/src/main/resources/db/migration_v2` as the only supported migration track, removes the retired Tally import table from the active v2 baseline, and renames journal reference mapping storage from `legacy_reference` to `reference_key`.
+- Scope: hard-cut schema-resource cleanup that removes the retired Flyway v1 tree, keeps `erp-domain/src/main/resources/db/migration_v2` as the only supported migration track, retires the Tally import table through a forward v2 migration while preserving historical migration files, and renames journal reference mapping storage from `legacy_reference` to `reference_key`.
 - Risk trigger: touches high-risk Flyway v2 schema under `erp-domain/src/main/resources/db/migration_v2/**` and removes the retired Flyway v1 migration tree.
 - Approval mode: orchestrator; human escalation required: no.
 - Escalation decision: no privilege widening, tenant-boundary expansion, or runtime fallback was introduced. This is a pre-release hard cut that removes an obsolete schema track and aligns the active v2 baseline with the current backend model.
@@ -95,7 +95,7 @@ Last reviewed: 2026-05-14
 - Expiry: 2026-05-16.
 - Verification evidence:
   - old Flyway v1 references are absent from runtime, test, script, and config paths after the earlier docs/tooling cleanup and this schema-resource slice
-  - `tally_imports` and `TallyImport` references are absent from current runtime/test/API surfaces outside files being removed in this branch
+  - `tally_imports` and `TallyImport` references are absent from current runtime/test/API surfaces outside historical and forward migration resources
   - Flyway v2 ownership, referential, and overlap guards pass against the reduced active migration track
   - staged whitespace check passes for the schema-resource slice
 - Commands run:
@@ -108,10 +108,10 @@ Last reviewed: 2026-05-14
 - Result summary:
   - staged whitespace check passed with no output
   - Flyway ownership guard passed with `[guard_flyway_v2_migration_ownership] OK`
-  - Flyway referential guard passed after checking 235 FK references against 214 PK/UNIQUE targets
-  - Flyway overlap scan reported 92 migrations and no duplicate table, constraint, or index findings
+  - Flyway referential guard passed after checking 237 FK references against 217 PK/UNIQUE targets
+  - Flyway overlap scan passed after scanning 95 migrations with no duplicate table, constraint, or index findings
   - old Flyway path scan returned no matches across runtime, test, script, and config paths
-  - Tally import scan returned no matches
+  - Tally import scan returned no runtime/test/API matches
 
 ## Addendum — `pr198-rebase-on-pr197-hard-cut`
 
@@ -320,16 +320,18 @@ Last reviewed: 2026-05-14
 
 ## Addendum — `journal-reference-key-forward-migration`
 
-- Scope: accounting journal reference mapping column canonicalization.
+- Scope: Flyway v2 checksum preservation for retired Tally import storage plus accounting journal reference mapping column canonicalization.
 - Risk trigger: touches Flyway v2 migration ownership under `erp-domain/src/main/resources/db/migration_v2/`.
 - Approval mode: orchestrator; human escalation required: no.
-- Escalation decision: no privilege widening, tenant-boundary change, destructive data rewrite, or rollback-blocking schema change was introduced. Historical migrations remain immutable; the `legacy_reference` to `reference_key` rename now lives in a forward migration so already-applied v2 databases avoid checksum drift.
+- Escalation decision: no privilege widening, tenant-boundary change, or rollback-blocking schema change was introduced. Historical migrations remain immutable; the `legacy_reference` to `reference_key` rename and retired `tally_imports` table removal now live in forward migrations so already-applied v2 databases avoid checksum drift.
 - Rollback owner: Droid mission orchestrator.
 - Rollback method: revert this packet and rerun migration validation, accounting shard tests, high-risk guard, Spotless, compile/test-compile, and PR CI.
 - Expiry: 2026-05-16.
 - Verification evidence:
   - `V2__accounting_core.sql` and `V8__idempotency_case_insensitive_lookup_indexes.sql` preserve the originally applied `legacy_reference` schema/index names
+  - `V37__tally_import_idempotency.sql` and `V184__accounting_truth_rls_hard_cut.sql` preserve applied migration contents instead of deleting or editing versioned scripts
   - `V204__journal_reference_mapping_reference_key.sql` performs the current-state rename and recreates canonical `reference_key` indexes
+  - `V205__drop_tally_imports_hard_cut.sql` performs the hard-cut Tally import table removal as a forward migration
   - current Java/JPA/repository code continues to target `reference_key`
 - Commands run:
   - `DOCKER_HOST=unix://${HOME}/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock MIGRATION_SET=v2 mvn -B -ntp -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=ReconciliationServiceTest,BankReconciliationSessionServiceTest test`
@@ -347,7 +349,7 @@ Last reviewed: 2026-05-14
   - `DOCKER_HOST=unix://${HOME}/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock MIGRATION_SET=v2 bash scripts/gate_fast.sh`
 - Result summary:
   - Targeted accounting reconciliation, catalog, and purchasing tests passed with 39, 8, 23, and 70 tests respectively.
-  - Flyway validated 93 migrations and a fresh Testcontainers PostgreSQL schema applied through `V204__journal_reference_mapping_reference_key.sql`.
+  - Flyway validated 95 migrations and a fresh Testcontainers PostgreSQL schema applied through `V205__drop_tally_imports_hard_cut.sql`.
   - High-risk, knowledgebase, OpenAPI drift, accounting portal scope, PR CI contract, Python compile, Spotless, and test-compile checks passed.
   - `gate_fast` passed with 904 tests, 0 failures/errors/skips; changed-files coverage recorded `threshold_gap_allowed=true` and `passes=true` for PR long-branch convergence parity.
 
