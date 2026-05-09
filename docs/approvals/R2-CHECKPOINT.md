@@ -30,6 +30,26 @@ Last reviewed: 2026-05-14
   - `bash ci/lint-knowledgebase.sh`
   - `cd erp-domain && MIGRATION_SET=v2 mvn -B -ntp spotless:check`
 
+## Addendum — `hard-cut-sales-order-status-canonicalization`
+
+- Scope: adds Flyway v2 forward migration `V207__canonicalize_sales_order_statuses.sql` to collapse retired sales-order status tokens into the current canonical lifecycle, updates the migration contract guard, and removes `BOOKED` from performance fixtures in favor of `CONFIRMED`.
+- Risk trigger: touches high-risk Flyway v2 schema under `erp-domain/src/main/resources/db/migration_v2/**` and sales/order-credit behavior fixtures.
+- Approval mode: orchestrator; human escalation required: no.
+- Escalation decision: no runtime compatibility path, fallback, or privilege/tenant-boundary change was introduced. Retired order statuses are handled once through forward data canonicalization so Java services keep one current-state lifecycle model.
+- Rollback owner: Droid / PR owner.
+- Rollback method: before merge, revert the status canonicalization commit and rerun Flyway v2 migration guards, targeted O2C/performance/accounting tests, compile, Spotless, high-risk guard, and whitespace checks.
+- Expiry: 2026-05-16.
+- Verification evidence:
+  - `BOOKED` canonicalizes to `CONFIRMED` so pending credit exposure remains represented by a current pending-exposure status.
+  - `SHIPPED` and `FULFILLED` canonicalize to `DISPATCHED`; `COMPLETED` canonicalizes to `SETTLED`, preventing retired terminal sales-order states from re-entering fulfillment.
+  - sales-order status history is canonicalized with the same mapping so frontend status history reads current lifecycle tokens.
+  - performance fixtures now seed `CONFIRMED`, and the reports performance fixture enables `REPORTS_ADVANCED` through the canonical module helper.
+- Commands run:
+  - `DOCKER_HOST=unix://${HOME}/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock MIGRATION_SET=v2 mvn -B -ntp -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=TS_PackagingSlipInvoiceLinkV2MigrationContractTest,AccountingCatalogControllerSecurityIT,PerformanceBudgetIT,PerformanceExplainIT test`
+- Result summary:
+  - first focused run applied 97 Flyway v2 migrations through V207 and exposed a pre-existing `PerformanceBudgetIT` fixture issue where `REPORTS_ADVANCED` was not enabled for the reports endpoint
+  - after enabling `REPORTS_ADVANCED` through the canonical test helper, the focused pack reported 14 tests run, 0 failures/errors/skips
+
 ## Addendum — `hard-cut-accounting-period-close-hook-cleanup`
 
 - Scope: removes the production test-only period-close hook layer from accounting period close and moves the concurrency pause into the period-close atomicity integration test with a test-local PostgreSQL trigger/advisory lock.
