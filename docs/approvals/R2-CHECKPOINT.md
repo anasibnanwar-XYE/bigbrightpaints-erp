@@ -298,15 +298,15 @@ Last reviewed: 2026-05-14
 - Scope: tenant usage metric persistence shutdown behavior.
 - Risk trigger: touches tenant/company usage accounting under `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/company/service/TenantUsageMetricsService.java`.
 - Approval mode: orchestrator; human escalation required: no.
-- Escalation decision: no privilege widening, tenant-boundary change, data migration, or billing model expansion was introduced. The change removes the shutdown-only best-effort database flush because JVM shutdown hook ordering can make the database unavailable first and stall CI/runtime shutdown. Scheduled and explicit tenant usage flush behavior remains canonical.
+- Escalation decision: no privilege widening, tenant-boundary change, data migration, or billing model expansion was introduced. The shutdown flush now runs through a bounded daemon worker so graceful runtime shutdown can persist buffered tenant usage without letting unavailable storage stall CI/runtime shutdown. Scheduled and explicit tenant usage flush behavior remains canonical.
 - Rollback owner: Droid mission orchestrator.
 - Rollback method: revert this packet and rerun the tenant usage metrics service test, high-risk guard, Spotless, compile/test-compile, and gate-fast.
 - Expiry: 2026-05-16.
 - Verification evidence:
-  - shutdown-only `@PreDestroy` database flush was removed from tenant usage metrics
-  - obsolete tests covering the removed shutdown-only flush were deleted
+  - `@PreDestroy` tenant usage flush is bounded to a short daemon-thread wait and cancels on timeout/failure
+  - shutdown tests cover both successful buffered metric persistence and unavailable-storage timeout behavior
   - scheduled and explicit `flushPendingMetrics()` persistence tests still cover counter persistence, rollup recording, retry restoration, and multi-tenant partial failure behavior
-  - this removes the shutdown hook path that waited on unavailable Testcontainers PostgreSQL connections after the truth-suite tests had already passed
+  - this preserves graceful shutdown persistence while removing the unbounded path that waited on unavailable Testcontainers PostgreSQL connections after the truth-suite tests had already passed
 - Commands run:
   - `git diff --check`
   - `cd erp-domain && MIGRATION_SET=v2 mvn -B -ntp -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=TenantUsageMetricsServiceTest test`
@@ -315,7 +315,7 @@ Last reviewed: 2026-05-14
   - `cd erp-domain && MIGRATION_SET=v2 mvn -B -ntp spotless:check`
   - `cd erp-domain && DOCKER_HOST=unix://${HOME}/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock MIGRATION_SET=v2 mvn -B -ntp -DskipTests test-compile`
 - Result summary:
-  - targeted tenant usage metrics suite reported 15 tests run, 0 failures/errors/skips
+  - targeted tenant usage metrics suite reported 17 tests run, 0 failures/errors/skips
   - high-risk guard, docs lint, Spotless, and test-compile passed
 
 ## Scope

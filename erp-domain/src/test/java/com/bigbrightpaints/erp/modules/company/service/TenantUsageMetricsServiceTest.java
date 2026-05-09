@@ -17,6 +17,7 @@ import static org.mockito.Mockito.when;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -350,6 +351,51 @@ class TenantUsageMetricsServiceTest {
         .incrementLongSettingBy("tenant.usage.api-call-count.43", 1L);
     verify(tenantUsageRollupService).recordApiCalls(acme, 1L);
     verify(tenantUsageRollupService).recordApiCalls(bravo, 1L);
+  }
+
+  @Test
+  void flushPendingMetricsBeforeShutdown_persistsBufferedUsageWhenStorageIsAvailable() {
+    TenantUsageMetricsService service =
+        new TenantUsageMetricsService(
+            companyRepository, systemSettingsRepository, tenantUsageRollupService);
+    Company company = company(42L, "ACME");
+    when(companyRepository.findByCodeIgnoreCase("ACME")).thenReturn(Optional.of(company));
+
+    service.recordApiCall("ACME");
+    service.flushPendingMetricsBeforeShutdown();
+
+    verify(systemSettingsRepository).incrementLongSettingBy("tenant.usage.api-call-count.42", 1L);
+    verify(tenantUsageRollupService).recordApiCalls(company, 1L);
+    assertThat(pendingUsageSize(service)).isZero();
+  }
+
+  @Test
+  void flushPendingMetricsBeforeShutdown_isBoundedWhenStorageIsUnavailable() {
+    TransactionOperations blockingTransaction =
+        new TransactionOperations() {
+          @Override
+          public <T> T execute(TransactionCallback<T> action) {
+            try {
+              Thread.sleep(TimeUnit.SECONDS.toMillis(10));
+            } catch (InterruptedException ex) {
+              Thread.currentThread().interrupt();
+            }
+            return null;
+          }
+        };
+    TenantUsageMetricsService service =
+        new TenantUsageMetricsService(
+            companyRepository,
+            systemSettingsRepository,
+            tenantUsageRollupService,
+            blockingTransaction);
+    service.recordApiCall("ACME");
+
+    long startedAt = System.nanoTime();
+    service.flushPendingMetricsBeforeShutdown();
+    Duration elapsed = Duration.ofNanos(System.nanoTime() - startedAt);
+
+    assertThat(elapsed).isLessThan(Duration.ofSeconds(3));
   }
 
   @Test

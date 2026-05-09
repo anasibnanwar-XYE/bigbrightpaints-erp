@@ -8,6 +8,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -17,6 +18,7 @@ import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -96,7 +98,11 @@ class CompanyServiceTest {
 
   @BeforeEach
   void setUp() {
-    lenient().when(companyClock.now(any())).thenReturn(Instant.parse("2026-03-18T06:30:00Z"));
+    Instant now = Instant.parse("2026-03-18T06:30:00Z");
+    lenient().when(companyClock.now(nullable(Company.class))).thenReturn(now);
+    lenient()
+        .when(companyClock.today(nullable(Company.class)))
+        .thenReturn(LocalDate.of(2026, 3, 18));
     lenient().when(billingService.getBillingMetrics()).thenReturn(Map.of());
     lenient().when(tenantSupportControlPort.countOpenSupportTickets()).thenReturn(0L);
     lenient().when(tenantSupportControlPort.countOpenBugs()).thenReturn(0L);

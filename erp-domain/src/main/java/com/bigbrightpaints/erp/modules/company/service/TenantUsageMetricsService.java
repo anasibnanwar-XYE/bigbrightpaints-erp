@@ -1,13 +1,22 @@
 package com.bigbrightpaints.erp.modules.company.service;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -26,11 +35,15 @@ import com.bigbrightpaints.erp.core.validation.ValidationUtils;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 
+import jakarta.annotation.PreDestroy;
+
 @Service
 public class TenantUsageMetricsService {
 
+  private static final Logger log = LoggerFactory.getLogger(TenantUsageMetricsService.class);
   private static final String API_CALL_COUNT_PREFIX = "tenant.usage.api-call-count.";
   private static final String LAST_ACTIVITY_AT_PREFIX = "tenant.usage.last-activity-at.";
+  private static final Duration SHUTDOWN_FLUSH_TIMEOUT = Duration.ofSeconds(2);
   private static final TransactionOperations DIRECT_TRANSACTION =
       new TransactionOperations() {
         @Override
@@ -112,6 +125,34 @@ public class TenantUsageMetricsService {
     }
     if (firstFailure != null) {
       throw firstFailure;
+    }
+  }
+
+  @PreDestroy
+  void flushPendingMetricsBeforeShutdown() {
+    if (pendingUsageByCompanyCode.isEmpty()) {
+      return;
+    }
+    ExecutorService shutdownFlushExecutor =
+        Executors.newSingleThreadExecutor(
+            runnable -> {
+              Thread thread = new Thread(runnable, "tenant-usage-shutdown-flush");
+              thread.setDaemon(true);
+              return thread;
+            });
+    Future<?> flush = shutdownFlushExecutor.submit((Runnable) this::flushPendingMetrics);
+    try {
+      flush.get(SHUTDOWN_FLUSH_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
+    } catch (InterruptedException ex) {
+      Thread.currentThread().interrupt();
+      flush.cancel(true);
+    } catch (TimeoutException ex) {
+      flush.cancel(true);
+      log.warn("Tenant usage shutdown flush timed out; pending metrics will rely on prior flushes");
+    } catch (ExecutionException ex) {
+      log.warn("Tenant usage shutdown flush skipped after persistence failure", ex.getCause());
+    } finally {
+      shutdownFlushExecutor.shutdownNow();
     }
   }
 
