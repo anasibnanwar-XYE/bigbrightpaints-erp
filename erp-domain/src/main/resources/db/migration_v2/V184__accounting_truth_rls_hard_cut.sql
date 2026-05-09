@@ -46,7 +46,6 @@ DECLARE
         'supplier_ledger_entries',
         'partner_settlement_allocations',
         'opening_balance_imports',
-        'tally_imports',
         'bank_reconciliation_sessions',
         'bank_reconciliation_items',
         'reconciliation_discrepancies',

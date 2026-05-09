@@ -16,6 +16,20 @@ Last reviewed: 2026-05-14
   - `bash ci/check-high-risk-changes.sh`
 - **Rollback strategy:** treat `V204` through `V206` as a coordinated app-and-schema cut. If rollout must be abandoned after execution, keep the compact PR199-compatible backend live or restore the affected database from a snapshot/PITR taken before `V204`; do not hand-recreate `legacy_reference`, `tally_imports`, or null out COGS links as a compatibility shortcut.
 
+## 2026-05-09 — `active-flyway-v2-hard-cut-baseline`
+
+- **Purpose:** remove the retired Flyway v1 migration tree and keep only the active `erp-domain/src/main/resources/db/migration_v2` track. The same schema slice removes the retired Tally import table from the current v2 baseline/RLS table list and renames the journal reference mapping key column from `legacy_reference` to `reference_key`.
+- **Release-guard posture:** this is a pre-release hard-cut baseline compaction. It is intentionally not checksum-compatible with already-applied local Flyway history for the edited v2 baseline files; internal environments should rebuild or restore from a clean v2 baseline rather than carrying repair shims.
+- **Forward plan:** apply the branch only with the current backend that reads `reference_key` and no longer exposes Tally import APIs. Recreate internal development/test databases from the active v2 track, then verify no runtime, test, script, or config path points at the retired migration classpath.
+- **Dry-run commands:**
+  - `git diff --cached --check`
+  - `bash scripts/guard_flyway_v2_migration_ownership.sh`
+  - `bash scripts/guard_flyway_v2_referential_contract.sh`
+  - `bash scripts/flyway_overlap_scan.sh`
+  - `rg -n --pcre2 "db/migration(?!_v2)|classpath:db/migration(?!_v2)" .github ci scripts erp-domain/src erp-domain/pom.xml`
+  - `rg -n "tally_import|TallyImport|tally-import" erp-domain/src/main erp-domain/src/test scripts ci .github openapi.json`
+- **Rollback strategy:** before merge, revert this schema-resource commit. After applying it to an internal database, restore from a pre-change snapshot/PITR or rebuild from the previous v2 baseline; do not reintroduce the v1 migration tree, Tally import table, or runtime compatibility aliases as a rollback shortcut.
+
 ## 2026-04-28 — `V190__iam_core_schema_and_model_hard_cut.sql`
 
 - **Purpose:** add the forward-only Flyway v2 IAM core schema/model hard cut. `V190` creates canonical IAM account, profile/contact, credential, MFA-factor, session/device, and security-event tables; backfills them from the existing scoped auth model; removes raw refresh/reset token columns; and removes the legacy delimited `app_users.mfa_recovery_codes` storage after copying verifier hashes into the canonical recovery-code table.

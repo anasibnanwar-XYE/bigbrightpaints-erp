@@ -16,6 +16,20 @@ Last reviewed: 2026-05-14
   - `cd erp-domain && MIGRATION_SET=v2 mvn -B -ntp -Djacoco.skip=true -DfailIfNoTests=false -DfailIfNoSpecifiedTests=false -Dtest=TS_PackagingSlipInvoiceLinkV2MigrationContractTest,CorrelationIdentifierSanitizerTest,TS_RuntimeOrchestratorExecutableCoverageTest,TS_RuntimeOrchestratorCorrelationCoverageTest,TS_RuntimeOrchestratorIdempotencyExecutableCoverageTest,TS_RuntimeTraceServiceExecutableCoverageTest test`
   - `bash ci/check-high-risk-changes.sh`
 
+## 2026-05-09 — `active-flyway-v2-hard-cut-baseline`
+
+- **Scope:** revert the Flyway baseline cleanup that deletes the retired v1 migration directory, removes the retired Tally import idempotency migration from the v2 track, drops `tally_imports` from the accounting RLS table list, and renames the journal reference mapping storage key to `reference_key`.
+- **Application rollback:** keep runtime and schema aligned. Do not redeploy code that expects `legacy_reference` or the Tally import API against the hard-cut schema, and do not deploy the hard-cut runtime against a database that still depends on the removed Tally table.
+- **Database rollback:** preferred path is snapshot/PITR restore or a clean rebuild from the previous v2 baseline. Flyway repair or ad hoc reverse SQL is intentionally unsupported for this baseline compaction because the product posture is one current-state schema track.
+- **Guard note:** the old Flyway v1 track is not part of current recovery. If rollback is required before merge, revert the commit; if rollback is required after internal application, restore/rebuild the database instead of adding compatibility migrations.
+- **Verification:** after restore or coordinated rollback, rerun:
+  - `git diff --check`
+  - `bash scripts/guard_flyway_v2_migration_ownership.sh`
+  - `bash scripts/guard_flyway_v2_referential_contract.sh`
+  - `bash scripts/flyway_overlap_scan.sh`
+  - `rg -n --pcre2 "db/migration(?!_v2)|classpath:db/migration(?!_v2)" .github ci scripts erp-domain/src erp-domain/pom.xml`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -q -DskipTests test-compile`
+
 ## 2026-04-28 — `iam-core-schema-and-model-hard-cut`
 
 - **Scope:** revert the IAM schema-core backend change together with `erp-domain/src/main/resources/db/migration_v2/V190__iam_core_schema_and_model_hard_cut.sql`.

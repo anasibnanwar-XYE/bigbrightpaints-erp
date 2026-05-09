@@ -1,2 +1,0 @@
-ALTER TABLE raw_material_purchases
-    ADD COLUMN IF NOT EXISTS tax_amount NUMERIC(18,2) NOT NULL DEFAULT 0;

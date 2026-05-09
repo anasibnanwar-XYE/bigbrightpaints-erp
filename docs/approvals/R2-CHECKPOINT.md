@@ -30,6 +30,35 @@ Last reviewed: 2026-05-14
   - `bash ci/lint-knowledgebase.sh`
   - `cd erp-domain && MIGRATION_SET=v2 mvn -B -ntp spotless:check`
 
+## Addendum — `active-flyway-v2-hard-cut-baseline`
+
+- Scope: hard-cut schema-resource cleanup that removes the retired Flyway v1 tree, keeps `erp-domain/src/main/resources/db/migration_v2` as the only supported migration track, removes the retired Tally import table from the active v2 baseline, and renames journal reference mapping storage from `legacy_reference` to `reference_key`.
+- Risk trigger: touches high-risk Flyway v2 schema under `erp-domain/src/main/resources/db/migration_v2/**` and removes the retired Flyway v1 migration tree.
+- Approval mode: orchestrator; human escalation required: no.
+- Escalation decision: no privilege widening, tenant-boundary expansion, or runtime fallback was introduced. This is a pre-release hard cut that removes an obsolete schema track and aligns the active v2 baseline with the current backend model.
+- Rollback owner: Droid / PR owner.
+- Rollback method: before merge, revert the schema-resource commit. After applying to an internal database, restore from a pre-change snapshot/PITR or rebuild from the previous v2 baseline; do not re-add the v1 migration tree or Tally import compatibility path.
+- Expiry: 2026-05-16.
+- Verification evidence:
+  - old Flyway v1 references are absent from runtime, test, script, and config paths after the earlier docs/tooling cleanup and this schema-resource slice
+  - `tally_imports` and `TallyImport` references are absent from current runtime/test/API surfaces outside files being removed in this branch
+  - Flyway v2 ownership, referential, and overlap guards pass against the reduced active migration track
+  - staged whitespace check passes for the schema-resource slice
+- Commands run:
+  - `git diff --cached --check`
+  - `bash scripts/guard_flyway_v2_migration_ownership.sh`
+  - `bash scripts/guard_flyway_v2_referential_contract.sh`
+  - `bash scripts/flyway_overlap_scan.sh`
+  - `rg -n --pcre2 "db/migration(?!_v2)|classpath:db/migration(?!_v2)" .github ci scripts erp-domain/src erp-domain/pom.xml`
+  - `rg -n "tally_import|TallyImport|tally-import" erp-domain/src/main erp-domain/src/test scripts ci .github openapi.json`
+- Result summary:
+  - staged whitespace check passed with no output
+  - Flyway ownership guard passed with `[guard_flyway_v2_migration_ownership] OK`
+  - Flyway referential guard passed after checking 235 FK references against 214 PK/UNIQUE targets
+  - Flyway overlap scan reported 92 migrations and no duplicate table, constraint, or index findings
+  - old Flyway path scan returned no matches across runtime, test, script, and config paths
+  - Tally import scan returned no matches
+
 ## Addendum — `pr198-rebase-on-pr197-hard-cut`
 
 - Scope: PR #198 Super Admin/control-plane rebase onto PR #197 IAM/auth mainline, including removed flat onboarding/support-reset handlers, Add Client current-state docs, OpenAPI snapshot/inventory refresh, hard-cut cleanup of the unused `TenantOnboardingService`/DTO/test stack, and PR #198 changed-coverage baseline compaction after the final finance shard fix.
