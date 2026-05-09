@@ -229,6 +229,29 @@ class ChangedFilesCoverageTest(unittest.TestCase):
         self.assertTrue(changed_files_coverage.is_structural_source_line('"Cannot auto-create packing slip"', False))
         self.assertTrue(changed_files_coverage.is_structural_source_line("try {", False))
         self.assertTrue(changed_files_coverage.is_structural_source_line("lines", False))
+        self.assertTrue(
+            changed_files_coverage.is_structural_source_line(
+                'uniqueConstraints = @UniqueConstraint(columnNames = {"company_id", "reference_key"}))',
+                False,
+                "@Table(",
+                "public class JournalReferenceMapping {",
+            )
+        )
+        self.assertTrue(
+            changed_files_coverage.is_structural_source_line(
+                ") {}",
+                False,
+                "    Long parentId",
+            )
+        )
+        self.assertTrue(
+            changed_files_coverage.is_structural_source_line(
+                'new TenantSeedStatusDto.DocumentPrefix("CREDIT_NOTE", "CRN-"),',
+                False,
+                'new TenantSeedStatusDto.DocumentPrefix("INVOICE", "INV-"),',
+                'new TenantSeedStatusDto.DocumentPrefix("PURCHASE_ORDER", "PO-"),',
+            )
+        )
         self.assertFalse(changed_files_coverage.is_structural_source_line("if (invoice == null) {", False))
         self.assertTrue(changed_files_coverage.is_structural_source_line("void save(Entity entity);", True))
         self.assertFalse(changed_files_coverage.is_structural_source_line("service.save(entity);", True))

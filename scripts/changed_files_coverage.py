@@ -77,7 +77,7 @@ QUERY_TEXT_RE = re.compile(
 )
 SQL_CLOSING_FRAGMENT_RE = re.compile(r"^\)+(?:::\w+)?[,]?$")
 ANNOTATION_ARGUMENT_FRAGMENT_RE = re.compile(
-    r"^\s*\w+\s*=\s*(?:true|false|\".*\"|\w+)\)?[,]?$"
+    r"^\s*\w+\s*=\s*(?:true|false|\".*\"|\w+|@[\w.]+\(.*)\)?[,]?$"
 )
 BARE_IDENTIFIER_RE = re.compile(r"^\s*[A-Za-z_][A-Za-z0-9_]*\s*$")
 METHOD_DECL_OPEN_RE = re.compile(
@@ -230,7 +230,7 @@ def is_structural_source_line(
         return True
     if ANNOTATION_ARGUMENT_FRAGMENT_RE.match(stripped):
         return True
-    if stripped in {"try {", "else {", "} else {", "finally {", "} finally {", "})", "});"}:
+    if stripped in {"try {", "else {", "} else {", "finally {", "} finally {", "})", ") {}", "});"}:
         return True
     if stripped in {"{", "}", ";", "};"}:
         return True
@@ -273,6 +273,10 @@ def is_structural_source_line(
     if stripped.startswith("\"") and prev_stripped.endswith("="):
         return True
     if stripped.startswith("new ") and prev_stripped.endswith("="):
+        return True
+    if stripped.startswith("new ") and stripped.endswith(",") and (
+        prev_stripped.endswith("(") or prev_stripped.endswith(",")
+    ):
         return True
     if stripped.startswith("for (") and not stripped.endswith(")") and not stripped.endswith(") {"):
         return True
