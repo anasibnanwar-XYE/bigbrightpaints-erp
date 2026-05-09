@@ -76,8 +76,8 @@ for endpoint in \
     "required endpoint evidence missing in openapi endpoint contract bullets: $endpoint"
 done
 
-require_literal "drive request-close, approve-close, and reject-close workflow" "$PORTAL_DOC" \
-  "accounting portal README must document maker-checker period-close ownership"
+require_literal "submit period-close requests and reflect tenant-admin approval outcomes" "$PORTAL_DOC" \
+  "accounting portal README must document tenant-admin period-close approval ownership"
 require_literal 'Direct `POST /api/v1/accounting/periods/{periodId}/close` is not a frontend' "$PORTAL_DOC" \
   "accounting portal README must reject direct close wiring"
 require_literal "review and import opening stock only after accounting readiness is complete" "$PORTAL_DOC" \
