@@ -371,7 +371,7 @@ echo "[gate-fast] run critical truth tests"
 (
   cd "$ROOT_DIR/erp-domain"
   rm -rf target/surefire-reports target/site/jacoco target/jacoco.exec
-  mvn -B -ntp -Pgate-fast test
+  mvn -B -ntp -Pgate-fast clean test
 )
 
 if [[ "$SYNC_PR_MODE" == "true" ]]; then
