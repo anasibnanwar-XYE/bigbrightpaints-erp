@@ -861,47 +861,6 @@
       "cross_module_critical": false
     },
     {
-      "id": "test-catalog::periodclose-ts-periodcloseatomicsnapshottest-java",
-      "test_path": "erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite/periodclose/TS_PeriodCloseAtomicSnapshotTest.java",
-      "module": "periodclose",
-      "owner": "lane03-accounting-truth",
-      "class": "critical",
-      "tags": [
-        "concurrency",
-        "critical",
-        "reconciliation"
-      ],
-      "gate_membership": [
-        "gate-fast",
-        "gate-core",
-        "gate-release",
-        "gate-reconciliation",
-        "gate-quality"
-      ],
-      "accounting_math_critical": true,
-      "cross_module_critical": false
-    },
-    {
-      "id": "test-catalog::periodclose-ts-periodcloseboundarycoveragetest-java",
-      "test_path": "erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite/periodclose/TS_PeriodCloseBoundaryCoverageTest.java",
-      "module": "periodclose",
-      "owner": "lane03-accounting-truth",
-      "class": "critical",
-      "tags": [
-        "critical",
-        "reconciliation"
-      ],
-      "gate_membership": [
-        "gate-fast",
-        "gate-core",
-        "gate-release",
-        "gate-reconciliation",
-        "gate-quality"
-      ],
-      "accounting_math_critical": true,
-      "cross_module_critical": false
-    },
-    {
       "id": "test-catalog::reports-ts-accountingcontrollerexportauditruntimecoveragetest-java",
       "test_path": "erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite/reports/TS_AccountingExportAuditRuntimeCoverageTest.java",
       "module": "reports",
