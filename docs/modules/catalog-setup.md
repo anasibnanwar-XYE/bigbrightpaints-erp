@@ -72,16 +72,6 @@ All catalog/setup endpoints live under a single host prefix:
 | `description` | String | Brand description |
 | `active` | boolean | Whether brand is active |
 
-**ProductionBrandDto** (extended brand listing with product count):
-
-| Field | Type | Notes |
-| --- | --- | --- |
-| `id` | Long | Internal ID |
-| `publicId` | UUID | External-facing ID |
-| `name` | String | Brand name |
-| `code` | String | Auto-generated brand code |
-| `productCount` | long | Number of products under this brand |
-
 ### 3.2 Item Payloads
 
 **CatalogItemRequest** (create/update item — external API DTO):
