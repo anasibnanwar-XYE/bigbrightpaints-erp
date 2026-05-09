@@ -134,7 +134,7 @@ class ManualJournalService {
         && StringUtils.hasText(created.referenceNumber())) {
       JournalReferenceMapping mapping =
           journalReplayService
-              .findLatestLegacyReferenceMapping(company, key)
+              .findLatestReferenceKeyMapping(company, key)
               .orElseThrow(
                   () ->
                       new ApplicationException(

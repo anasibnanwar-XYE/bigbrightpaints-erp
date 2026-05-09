@@ -160,18 +160,18 @@ class SalesJournalFacadeOperations {
     }
 
     String canonicalReference = SalesOrderReference.invoiceReference(orderNumber);
-    String aliasReference = null;
+    String alternateReference = null;
     if (StringUtils.hasText(referenceNumber)) {
-      aliasReference = referenceNumber.trim();
-      if (aliasReference.equalsIgnoreCase(canonicalReference)) {
-        aliasReference = null;
+      alternateReference = referenceNumber.trim();
+      if (alternateReference.equalsIgnoreCase(canonicalReference)) {
+        alternateReference = null;
       }
     }
 
     Optional<JournalEntry> existing =
         journalReferenceResolver.findExistingEntry(company, canonicalReference);
-    if (existing.isEmpty() && StringUtils.hasText(aliasReference)) {
-      existing = journalReferenceResolver.findExistingEntry(company, aliasReference);
+    if (existing.isEmpty() && StringUtils.hasText(alternateReference)) {
+      existing = journalReferenceResolver.findExistingEntry(company, alternateReference);
     }
     if (existing.isEmpty()) {
       boolean reservationLeader = reserveSalesJournalReference(company, canonicalReference);
@@ -260,7 +260,8 @@ class SalesJournalFacadeOperations {
       if (replay != null && replay.id() != null) {
         mappedEntry = accountingLookupService.requireJournalEntry(company, replay.id());
       }
-      ensureSalesJournalReferenceMapping(company, mappedEntry, canonicalReference, aliasReference);
+      ensureSalesJournalReferenceMapping(
+          company, mappedEntry, canonicalReference, alternateReference);
       return replay;
     }
 
@@ -269,20 +270,21 @@ class SalesJournalFacadeOperations {
     JournalEntryDto created = accountingService.createStandardJournal(request);
     if (created != null && created.id() != null) {
       JournalEntry entry = accountingLookupService.requireJournalEntry(company, created.id());
-      ensureSalesJournalReferenceMapping(company, entry, canonicalReference, aliasReference);
+      ensureSalesJournalReferenceMapping(company, entry, canonicalReference, alternateReference);
     }
     return created;
   }
 
   private void ensureSalesJournalReferenceMapping(
-      Company company, JournalEntry entry, String canonicalReference, String aliasReference) {
+      Company company, JournalEntry entry, String canonicalReference, String alternateReference) {
     if (company == null || entry == null || !StringUtils.hasText(canonicalReference)) {
       return;
     }
     String canonical = canonicalReference.trim();
     upsertJournalReferenceMapping(company, canonical, canonical, entry);
-    if (StringUtils.hasText(aliasReference) && !aliasReference.equalsIgnoreCase(canonical)) {
-      upsertJournalReferenceMapping(company, aliasReference, canonical, entry);
+    if (StringUtils.hasText(alternateReference)
+        && !alternateReference.equalsIgnoreCase(canonical)) {
+      upsertJournalReferenceMapping(company, alternateReference, canonical, entry);
     }
     String entryReference = entry.getReferenceNumber();
     if (StringUtils.hasText(entryReference) && !entryReference.equalsIgnoreCase(canonical)) {
@@ -291,17 +293,17 @@ class SalesJournalFacadeOperations {
   }
 
   void upsertJournalReferenceMapping(
-      Company company, String legacyReference, String canonicalReference, JournalEntry entry) {
+      Company company, String referenceKey, String canonicalReference, JournalEntry entry) {
     if (company == null
         || entry == null
-        || !StringUtils.hasText(legacyReference)
+        || !StringUtils.hasText(referenceKey)
         || !StringUtils.hasText(canonicalReference)) {
       return;
     }
-    String normalizedLegacy = legacyReference.trim();
+    String normalizedReferenceKey = referenceKey.trim();
     Optional<JournalReferenceMapping> existing =
         journalReferenceMappingRepository.findByCompanyAndReferenceKeyIgnoreCase(
-            company, normalizedLegacy);
+            company, normalizedReferenceKey);
     if (existing.isPresent()) {
       JournalReferenceMapping mapping = existing.get();
       if (mapping.getEntityId() == null
@@ -316,14 +318,14 @@ class SalesJournalFacadeOperations {
     }
     JournalReferenceMapping mapping = new JournalReferenceMapping();
     mapping.setCompany(company);
-    mapping.setLegacyReference(normalizedLegacy);
+    mapping.setReferenceKey(normalizedReferenceKey);
     mapping.setCanonicalReference(canonicalReference.trim());
     mapping.setEntityType("JOURNAL_ENTRY");
     mapping.setEntityId(entry.getId());
     try {
       journalReferenceMappingRepository.save(mapping);
     } catch (DataIntegrityViolationException ex) {
-      // Ignore concurrent insert attempts for the same legacy reference.
+      // Ignore concurrent insert attempts for the same reference key.
     }
   }
 

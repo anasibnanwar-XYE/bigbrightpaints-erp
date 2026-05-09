@@ -73,13 +73,13 @@ class SalesJournalFacadeOperationsTest {
 
   @Test
   void upsertJournalReferenceMapping_updatesExistingReservationWithoutEntityId() {
-    JournalReferenceMapping mapping = journalReferenceMapping("LEGACY-100", null, null);
+    JournalReferenceMapping mapping = journalReferenceMapping("REF-100", null, null);
     JournalEntry entry = journalEntry(1001L, "SALES-100");
     when(journalReferenceMappingRepository.findByCompanyAndReferenceKeyIgnoreCase(
-            eq(company), eq("LEGACY-100")))
+            eq(company), eq("REF-100")))
         .thenReturn(Optional.of(mapping));
 
-    operations.upsertJournalReferenceMapping(company, "LEGACY-100", "SALES-100", entry);
+    operations.upsertJournalReferenceMapping(company, "REF-100", "SALES-100", entry);
 
     assertThat(mapping.getCanonicalReference()).isEqualTo("SALES-100");
     assertThat(mapping.getEntityType()).isEqualTo("JOURNAL_ENTRY");
@@ -89,13 +89,13 @@ class SalesJournalFacadeOperationsTest {
 
   @Test
   void upsertJournalReferenceMapping_skipsConflictingExistingMapping() {
-    JournalReferenceMapping mapping = journalReferenceMapping("LEGACY-101", "OTHER-REF", 44L);
+    JournalReferenceMapping mapping = journalReferenceMapping("REF-101", "OTHER-REF", 44L);
     JournalEntry entry = journalEntry(1002L, "SALES-101");
     when(journalReferenceMappingRepository.findByCompanyAndReferenceKeyIgnoreCase(
-            eq(company), eq("LEGACY-101")))
+            eq(company), eq("REF-101")))
         .thenReturn(Optional.of(mapping));
 
-    operations.upsertJournalReferenceMapping(company, "LEGACY-101", "SALES-101", entry);
+    operations.upsertJournalReferenceMapping(company, "REF-101", "SALES-101", entry);
 
     assertThat(mapping.getCanonicalReference()).isEqualTo("OTHER-REF");
     assertThat(mapping.getEntityId()).isEqualTo(44L);
@@ -106,12 +106,12 @@ class SalesJournalFacadeOperationsTest {
   void upsertJournalReferenceMapping_ignoresConcurrentInsertViolation() {
     JournalEntry entry = journalEntry(1003L, "SALES-102");
     when(journalReferenceMappingRepository.findByCompanyAndReferenceKeyIgnoreCase(
-            eq(company), eq("LEGACY-102")))
+            eq(company), eq("REF-102")))
         .thenReturn(Optional.empty());
     when(journalReferenceMappingRepository.save(any(JournalReferenceMapping.class)))
         .thenThrow(new DataIntegrityViolationException("duplicate"));
 
-    operations.upsertJournalReferenceMapping(company, "LEGACY-102", "SALES-102", entry);
+    operations.upsertJournalReferenceMapping(company, "REF-102", "SALES-102", entry);
 
     verify(journalReferenceMappingRepository).save(any(JournalReferenceMapping.class));
   }
@@ -174,7 +174,7 @@ class SalesJournalFacadeOperationsTest {
   }
 
   @Test
-  void postSalesJournal_doesNotTreatCanonicalAliasAsSeparateLookup() {
+  void postSalesJournal_doesNotTreatCanonicalReferenceAsSeparateAlternateLookup() {
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
     when(journalReferenceMappingRepository.findByCompanyAndReferenceKeyIgnoreCase(any(), any()))
         .thenReturn(Optional.empty());
@@ -209,7 +209,7 @@ class SalesJournalFacadeOperationsTest {
   }
 
   @Test
-  void postSalesJournal_skipsAliasLookupWhenReferenceNumberIsBlank() {
+  void postSalesJournal_skipsAlternateLookupWhenReferenceNumberIsBlank() {
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
     when(journalReferenceMappingRepository.findByCompanyAndReferenceKeyIgnoreCase(any(), any()))
         .thenReturn(Optional.empty());
@@ -238,7 +238,7 @@ class SalesJournalFacadeOperationsTest {
         8L,
         "SO-778",
         LocalDate.of(2026, 4, 10),
-        "Blank alias journal",
+        "Blank alternate-reference journal",
         Map.of(88L, new BigDecimal("100.00")),
         null,
         new BigDecimal("100.00"),
@@ -249,7 +249,7 @@ class SalesJournalFacadeOperationsTest {
   }
 
   @Test
-  void postSalesJournal_looksUpDistinctTrimmedAliasReference() {
+  void postSalesJournal_looksUpDistinctTrimmedAlternateReference() {
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
     when(journalReferenceMappingRepository.findByCompanyAndReferenceKeyIgnoreCase(any(), any()))
         .thenReturn(Optional.empty());
@@ -263,10 +263,10 @@ class SalesJournalFacadeOperationsTest {
     when(salesLookupService.requireDealer(company, 9L)).thenReturn(dealer);
 
     String canonicalReference = SalesOrderReference.invoiceReference("SO-779");
-    JournalEntry existing = journalEntry(3002L, "LEG-779");
+    JournalEntry existing = journalEntry(3002L, "INV-779");
     when(journalReferenceResolver.findExistingEntry(company, canonicalReference))
         .thenReturn(Optional.empty());
-    when(journalReferenceResolver.findExistingEntry(company, "LEG-779"))
+    when(journalReferenceResolver.findExistingEntry(company, "INV-779"))
         .thenReturn(Optional.of(existing));
     when(accountingService.createStandardJournal(any())).thenReturn(null);
 
@@ -274,14 +274,14 @@ class SalesJournalFacadeOperationsTest {
         9L,
         "SO-779",
         LocalDate.of(2026, 4, 10),
-        "Distinct alias journal",
+        "Distinct alternate-reference journal",
         Map.of(89L, new BigDecimal("100.00")),
         null,
         new BigDecimal("100.00"),
-        "  LEG-779  ");
+        "  INV-779  ");
 
     verify(journalReferenceResolver).findExistingEntry(company, canonicalReference);
-    verify(journalReferenceResolver).findExistingEntry(company, "LEG-779");
+    verify(journalReferenceResolver).findExistingEntry(company, "INV-779");
   }
 
   private JournalEntry journalEntry(Long id, String referenceNumber) {
@@ -293,10 +293,10 @@ class SalesJournalFacadeOperationsTest {
   }
 
   private JournalReferenceMapping journalReferenceMapping(
-      String legacyReference, String canonicalReference, Long entityId) {
+      String referenceKey, String canonicalReference, Long entityId) {
     JournalReferenceMapping mapping = new JournalReferenceMapping();
     mapping.setCompany(company);
-    mapping.setLegacyReference(legacyReference);
+    mapping.setReferenceKey(referenceKey);
     mapping.setCanonicalReference(canonicalReference);
     mapping.setEntityType("JOURNAL_ENTRY");
     mapping.setEntityId(entityId);

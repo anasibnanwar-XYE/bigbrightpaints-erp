@@ -128,10 +128,10 @@ class AccountingDtoMapperService {
       return canonicalReference;
     }
     return mappings.stream()
-        .map(JournalReferenceMapping::getLegacyReference)
+        .map(JournalReferenceMapping::getReferenceKey)
         .filter(StringUtils::hasText)
         .map(String::trim)
-        .filter(legacyReference -> !legacyReference.equalsIgnoreCase(canonicalReference))
+        .filter(referenceKey -> !referenceKey.equalsIgnoreCase(canonicalReference))
         .sorted(
             Comparator.comparing(
                     (String reference) ->

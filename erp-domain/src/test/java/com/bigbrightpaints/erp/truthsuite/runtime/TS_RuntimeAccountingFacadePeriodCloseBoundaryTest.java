@@ -84,7 +84,7 @@ class TS_RuntimeAccountingFacadePeriodCloseBoundaryTest {
   }
 
   @Test
-  void postPurchaseJournal_ignoresLegacyPrefixedEntriesWithoutBaseReplay() {
+  void postPurchaseJournal_createsCanonicalReferenceWithoutPrefixReplayScan() {
     CompanyContextService companyContextService = mock(CompanyContextService.class);
     AccountingService accountingService = mock(AccountingService.class);
     JournalEntryRepository journalEntryRepository = mock(JournalEntryRepository.class);
@@ -181,7 +181,7 @@ class TS_RuntimeAccountingFacadePeriodCloseBoundaryTest {
                     88L,
                     "INV-100",
                     LocalDate.of(2026, 2, 21),
-                    "legacy replay",
+                    "canonical replay",
                     Map.of(201L, new BigDecimal("100.00")),
                     null,
                     new BigDecimal("100.00"),
@@ -237,7 +237,7 @@ class TS_RuntimeAccountingFacadePeriodCloseBoundaryTest {
     ReflectionTestUtils.setField(inventory, "id", 501L);
     when(accountingLookupService.requireAccount(company, 501L)).thenReturn(inventory);
 
-    String baseReference = "RMP-LEGACY-REF";
+    String baseReference = "RMP-CANONICAL-REF";
     when(referenceNumberService.purchaseReferenceKey(company, supplier, "INV-777"))
         .thenReturn(baseReference);
 
@@ -267,7 +267,7 @@ class TS_RuntimeAccountingFacadePeriodCloseBoundaryTest {
   }
 
   @Test
-  void postPurchaseJournal_withoutCanonicalLegacyEntry_createsNewJournal() {
+  void postPurchaseJournal_withoutCanonicalReferenceEntry_createsNewJournal() {
     CompanyContextService companyContextService = mock(CompanyContextService.class);
     AccountingService accountingService = mock(AccountingService.class);
     JournalEntryRepository journalEntryRepository = mock(JournalEntryRepository.class);

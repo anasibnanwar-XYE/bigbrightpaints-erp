@@ -13,13 +13,13 @@ import com.bigbrightpaints.erp.modules.company.domain.Company;
 public interface JournalReferenceMappingRepository
     extends JpaRepository<JournalReferenceMapping, Long> {
   Optional<JournalReferenceMapping> findByCompanyAndReferenceKeyIgnoreCase(
-      Company company, String legacyReference);
+      Company company, String referenceKey);
 
   Optional<JournalReferenceMapping> findByCompanyAndCanonicalReferenceIgnoreCase(
       Company company, String canonicalReference);
 
   List<JournalReferenceMapping> findAllByCompanyAndReferenceKeyIgnoreCase(
-      Company company, String legacyReference);
+      Company company, String referenceKey);
 
   List<JournalReferenceMapping> findAllByCompanyAndCanonicalReferenceIgnoreCase(
       Company company, String canonicalReference);
@@ -35,13 +35,13 @@ public interface JournalReferenceMappingRepository
               entity_type,
               created_at
           )
-          VALUES (:companyId, :legacyReference, :canonicalReference, :entityType, :createdAt)
+          VALUES (:companyId, :referenceKey, :canonicalReference, :entityType, :createdAt)
           ON CONFLICT (company_id, reference_key) DO NOTHING
           """,
       nativeQuery = true)
   int reserveManualReference(
       @Param("companyId") Long companyId,
-      @Param("legacyReference") String legacyReference,
+      @Param("referenceKey") String referenceKey,
       @Param("canonicalReference") String canonicalReference,
       @Param("entityType") String entityType,
       @Param("createdAt") java.time.Instant createdAt);
@@ -57,13 +57,13 @@ public interface JournalReferenceMappingRepository
               entity_type,
               created_at
           )
-          VALUES (:companyId, :legacyReference, :canonicalReference, :entityType, :createdAt)
+          VALUES (:companyId, :referenceKey, :canonicalReference, :entityType, :createdAt)
           ON CONFLICT (company_id, reference_key) DO NOTHING
           """,
       nativeQuery = true)
   int reserveReferenceMapping(
       @Param("companyId") Long companyId,
-      @Param("legacyReference") String legacyReference,
+      @Param("referenceKey") String referenceKey,
       @Param("canonicalReference") String canonicalReference,
       @Param("entityType") String entityType,
       @Param("createdAt") java.time.Instant createdAt);
