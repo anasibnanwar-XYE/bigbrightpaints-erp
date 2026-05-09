@@ -17,7 +17,7 @@ import com.bigbrightpaints.erp.modules.purchasing.service.SupplierApprovalPolicy
 import com.bigbrightpaints.erp.modules.purchasing.service.SupplierApprovalReasonCode;
 
 @Tag("critical")
-class TS_truthsuite_p2p_Approval_Test {
+class TS_P2PApprovalPolicyTest {
 
   @Test
   void approvalContractsFailClosedAndEnforceMakerChecker() {

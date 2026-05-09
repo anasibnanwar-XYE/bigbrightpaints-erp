@@ -23,7 +23,7 @@ class PackagingSizeParserTest {
   }
 
   @Test
-  void parseSizeInLitersAllowBareNumberSupportsLegacyPackingInput() {
+  void parseSizeInLitersAllowBareNumberSupportsCurrentPackingInput() {
     assertThat(PackagingSizeParser.parseSizeInLitersAllowBareNumber("1"))
         .isEqualByComparingTo(new BigDecimal("1"));
     assertThat(PackagingSizeParser.parseSizeInLitersAllowBareNumber("1L"))

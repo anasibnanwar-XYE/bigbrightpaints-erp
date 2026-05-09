@@ -462,13 +462,11 @@ public class InventoryValuationQueryService {
     if (itemMethod == null || itemMethod.isBlank()) {
       return "FIFO";
     }
-    String normalized = itemMethod.trim().toUpperCase(Locale.ROOT);
-    return switch (normalized) {
-      case "FIFO" -> "FIFO";
-      case "LIFO" -> "LIFO";
-      case "WAC", "WEIGHTED_AVERAGE", "WEIGHTED-AVERAGE" -> "WEIGHTED_AVERAGE";
-      default -> "FIFO";
-    };
+    CostingMethodUtils.FinishedGoodBatchSelectionMethod selectionMethod =
+        CostingMethodUtils.resolveFinishedGoodBatchSelectionMethod(itemMethod);
+    return selectionMethod == CostingMethodUtils.FinishedGoodBatchSelectionMethod.WAC
+        ? "WEIGHTED_AVERAGE"
+        : selectionMethod.name();
   }
 
   private String canonicalMethodLabel(CostingMethod method) {

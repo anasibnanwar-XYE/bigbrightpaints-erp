@@ -60,8 +60,16 @@ public class DeliveryChallanPdfService {
       throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState(
           "Delivery challan is available only for dispatched slips with shipped quantity");
     }
+    if (slip.getSlipNumber() == null || slip.getSlipNumber().isBlank()) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState(
+          "Delivery challan requires a slip number");
+    }
 
     SalesOrder order = slip.getSalesOrder();
+    if (order == null) {
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState(
+          "Delivery challan requires a sales order");
+    }
     Dealer dealer = order != null ? order.getDealer() : null;
     String timezone = company.getTimezone() != null ? company.getTimezone() : "UTC";
     LocalDate dispatchDate =
@@ -79,7 +87,7 @@ public class DeliveryChallanPdfService {
             normalizeTemplateText(
                 DispatchArtifactPaths.deliveryChallanNumber(slip.getSlipNumber())),
             normalizeTemplateText(slip.getSlipNumber()),
-            normalizeTemplateText(order != null ? order.getOrderNumber() : null),
+            normalizeTemplateText(order.getOrderNumber()),
             dispatchDate,
             normalizeTemplateText(dealer != null ? dealer.getName() : null),
             normalizeTemplateText(dealer != null ? dealer.getAddress() : null),
@@ -95,10 +103,7 @@ public class DeliveryChallanPdfService {
     String html = templateEngine.process("delivery-challan-template", context);
     byte[] pdf = renderPdf(html);
     realActionUsageService.recordPdfExport(company);
-    String fileName =
-        "delivery-challan-"
-            + (slip.getSlipNumber() != null ? slip.getSlipNumber() : slip.getId())
-            + ".pdf";
+    String fileName = "delivery-challan-" + slip.getSlipNumber() + ".pdf";
     return new PdfDocument(fileName, pdf);
   }
 
@@ -110,13 +115,14 @@ public class DeliveryChallanPdfService {
     }
     BigDecimal shipped = line.getShippedQuantity();
     if (shipped == null) {
-      shipped = line.getQuantity();
+      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState(
+          "Delivery challan line is missing shipped quantity");
     }
     return new DeliveryChallanLineView(
         normalizeTemplateText(line.getFinishedGoodBatch().getFinishedGood().getProductCode()),
         normalizeTemplateText(line.getFinishedGoodBatch().getFinishedGood().getName()),
         normalizeTemplateText(line.getFinishedGoodBatch().getBatchCode()),
-        shipped != null ? shipped : BigDecimal.ZERO,
+        shipped,
         normalizeTemplateText(line.getNotes()));
   }
 
@@ -146,11 +152,7 @@ public class DeliveryChallanPdfService {
       return false;
     }
     return slip.getLines().stream()
-        .map(
-            line -> {
-              BigDecimal shipped = line.getShippedQuantity();
-              return shipped != null ? shipped : line.getQuantity();
-            })
+        .map(PackagingSlipLine::getShippedQuantity)
         .filter(Objects::nonNull)
         .anyMatch(quantity -> quantity.compareTo(BigDecimal.ZERO) > 0);
   }

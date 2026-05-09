@@ -40,55 +40,6 @@ import com.bigbrightpaints.erp.modules.purchasing.dto.RawMaterialPurchaseRespons
 @Service
 public class PurchasingService {
 
-  /**
-   * Truth-suite marker snippets retained in this facade source for contract scans:
-   * String idempotencyKey = normalizeIdempotencyKey(request.idempotencyKey());
-   * "Idempotency key is required for goods receipts"
-   * goodsReceiptRepository.findWithLinesByCompanyAndIdempotencyKey(company, idempotencyKey)
-   * accountingPeriodService.requireOpenPeriod(company, receiptDate);
-   * assertIdempotencyMatch(existing, requestSignature, idempotencyKey);
-   * if (!isDataIntegrityViolation(ex)) {
-   * GoodsReceipt concurrent = goodsReceiptRepository.findWithLinesByCompanyAndIdempotencyKey(company, idempotencyKey)
-   * assertIdempotencyMatch(concurrent, requestSignature, idempotencyKey);
-   * RawMaterialService.ReceiptResult receiptResult = rawMaterialService.recordReceipt(rawMaterial.getId(), batchRequest, context);
-   * GoodsReceipt savedReceipt = goodsReceiptRepository.saveAndFlush(receipt);
-   * if (taxProvided && (lineRequest.taxRate() != null || lineRequest.taxInclusive() != null))
-   * taxAmount cannot be combined with line-level taxRate or taxInclusive
-   * if (Boolean.TRUE.equals(lineRequest.taxInclusive())
-   * Tax-inclusive purchase line requires a positive GST rate
-   * // Post journal FIRST to avoid orphan purchases if journal fails
-   * JournalEntryDto entry = postPurchaseEntry(
-   * request,
-   * supplier,
-   * inventoryDebits,
-   * taxAmount,
-   * totalAmount,
-   * referenceNumber,
-   * gstBreakdown);
-   * purchase.setJournalEntry(linkedJournal);
-   * purchase = purchaseRepository.save(purchase);
-   * purchase.setGoodsReceipt(goodsReceipt);
-   * movement.setJournalEntryId(entryId);
-   * goodsReceipt.setStatus("INVOICED");
-   * goodsReceiptRepository.save(goodsReceipt);
-   * purchaseOrderService.transitionStatus(purchaseOrder,
-   *         PurchaseOrderStatus.CLOSED,
-   *         "PURCHASE_ORDER_CLOSED",
-   *         "Purchase order closed after invoice posting");
-   * PurchaseTaxMode purchaseTaxMode = resolvePurchaseTaxMode(sortedLines, lockedMaterials);
-   * BigDecimal effectiveTaxRate = resolveLineTaxRateForMode(lineRequest, rawMaterial, company, purchaseTaxMode);
-   * enforcePurchaseTaxContract(purchaseTaxMode, providedTaxAmount, hasTaxableLines);
-   * "Purchase invoice cannot mix GST and non-GST materials"
-   * lineTax = currency(lineNet.multiply(effectiveTaxRate)
-   * .divide(new BigDecimal("100"), 6, RoundingMode.HALF_UP));
-   * BigDecimal allocatedTax = (i == computedLines.size() - 1)
-   * .divide(inventoryTotal, 6, RoundingMode.HALF_UP));
-   * if (lineRequest != null && lineRequest.taxRate() != null) {
-   * if (rawMaterial != null && rawMaterial.getGstRate() != null) {
-   * if (company != null && company.getDefaultGstRate() != null) {
-   * throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("GST rate must be zero or positive");
-   * return BigDecimal.ZERO;
-   */
   private final PurchaseOrderService purchaseOrderService;
 
   private final GoodsReceiptService goodsReceiptService;

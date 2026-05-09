@@ -383,7 +383,7 @@ Patterns appear across domains:
 ### 5.1 Internal event propagation
 
 - Inventory movement/value changes are emitted via Spring events and consumed by accounting listener (`InventoryMovementRecorder.publishMovementEventIfSupported`, `InventoryAccountingEventListener`).
-- Factory slip lifecycle visibility is surfaced by `FactorySlipEventListener`.
+- Factory slip lifecycle visibility is recorded on packing and dispatch records directly.
 
 ### 5.2 Orchestrator reliability layer
 

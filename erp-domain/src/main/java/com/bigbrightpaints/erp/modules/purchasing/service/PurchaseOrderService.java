@@ -325,9 +325,7 @@ public class PurchaseOrderService {
         StringUtils.hasText(reasonCode) ? reasonCode.trim().toUpperCase(Locale.ROOT) : null);
     history.setReason(clean(reason));
     history.setChangedBy(
-        StringUtils.hasText(actor)
-            ? actor.trim()
-            : SecurityActorResolver.resolveAuditActor());
+        StringUtils.hasText(actor) ? actor.trim() : SecurityActorResolver.resolveAuditActor());
     purchaseOrderStatusHistoryRepository.save(history);
   }
 

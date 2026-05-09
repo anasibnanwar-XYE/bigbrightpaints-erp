@@ -18,8 +18,8 @@ class TS_P2PPurchaseSettlementBoundaryTest {
       "src/main/java/com/bigbrightpaints/erp/modules/accounting/controller/SettlementController.java";
   private static final String ACCOUNTING_SERVICE =
       "src/main/java/com/bigbrightpaints/erp/modules/accounting/service/AccountingService.java";
-  private static final String PURCHASING_SERVICE =
-      "src/main/java/com/bigbrightpaints/erp/modules/purchasing/service/PurchasingService.java";
+  private static final String PURCHASE_INVOICE_ENGINE =
+      "src/main/java/com/bigbrightpaints/erp/modules/purchasing/service/PurchaseInvoiceEngine.java";
   private static final String SUPPLIER_SETTLEMENT_REQUEST =
       "src/main/java/com/bigbrightpaints/erp/modules/accounting/dto/PartnerSettlementRequest.java";
   private static final String RAW_MATERIAL_PURCHASE_REPOSITORY =
@@ -50,7 +50,7 @@ class TS_P2PPurchaseSettlementBoundaryTest {
   @Test
   void purchaseCreationFlowPostsPurchaseJournalOnly() {
     TruthSuiteFileAssert.assertContainsInOrder(
-        PURCHASING_SERVICE,
+        PURCHASE_INVOICE_ENGINE,
         "public RawMaterialPurchaseResponse createPurchase(RawMaterialPurchaseRequest request)",
         "JournalEntryDto entry = postPurchaseEntry(",
         "request,",
@@ -62,7 +62,7 @@ class TS_P2PPurchaseSettlementBoundaryTest {
         "gstBreakdown);",
         "purchase = purchaseRepository.save(purchase);");
 
-    String source = TruthSuiteFileAssert.read(PURCHASING_SERVICE);
+    String source = TruthSuiteFileAssert.read(PURCHASE_INVOICE_ENGINE);
     assertFalse(
         source.contains("settleSupplierInvoices("),
         "Purchase creation flow must not invoke supplier settlement path");

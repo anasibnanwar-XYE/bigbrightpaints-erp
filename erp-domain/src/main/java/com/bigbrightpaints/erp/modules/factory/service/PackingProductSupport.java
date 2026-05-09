@@ -86,9 +86,7 @@ public class PackingProductSupport {
   }
 
   public Long requireSemiFinishedAccountId(ProductionProduct product) {
-    Long accountId =
-        Optional.ofNullable(metadataLong(product, "semiFinishedAccountId"))
-            .orElse(metadataLong(product, "fgValuationAccountId"));
+    Long accountId = metadataLong(product, "semiFinishedAccountId");
     if (accountId == null) {
       throw new ApplicationException(
           ErrorCode.VALIDATION_INVALID_REFERENCE,

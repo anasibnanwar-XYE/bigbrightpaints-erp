@@ -239,7 +239,7 @@ class FactoryServiceTest {
   }
 
   @Test
-  void factoryService_noLongerExposesLegacyBatchLoggingSurface() {
+  void factoryServiceDoesNotExposeRetiredBatchLoggingSurface() {
     assertThat(Arrays.stream(FactoryService.class.getDeclaredMethods()).map(Method::getName))
         .doesNotContain(
             "listBatches",
@@ -248,7 +248,7 @@ class FactoryServiceTest {
             "createBatchWithNaturalKey",
             "resolveExistingBatch",
             "isBatchPayloadEquivalent",
-            "assertLegacyBatchLoggingAllowed",
+            "assertRetiredBatchLoggingAllowed",
             "registerFinishedGoodsBatch");
     assertThat(
             Files.exists(
@@ -263,7 +263,7 @@ class FactoryServiceTest {
   }
 
   @Test
-  void dashboard_countsLoggedBatchesWithoutLegacyBatchDtos() {
+  void dashboard_countsProductionLogsWithoutRetiredBatchDtos() {
     ProductionPlan completedPlan = new ProductionPlan();
     completedPlan.setStatus("COMPLETED");
     ProductionPlan pendingPlan = new ProductionPlan();

@@ -95,7 +95,10 @@ public class InventoryGlReconciliationIT extends AbstractIntegrationTest {
                             accountingService
                                 .createAccount(
                                     new AccountRequest(
-                                        "RM-INV", "Raw Material Inventory", AccountType.ASSET))
+                                        "RM-INV",
+                                        "Raw Material Inventory",
+                                        AccountType.ASSET,
+                                        null))
                                 .id())
                         .orElseThrow());
     Account payable = accountRepository.findByCompanyAndCodeIgnoreCase(company, "AP").orElseThrow();
@@ -164,7 +167,7 @@ public class InventoryGlReconciliationIT extends AbstractIntegrationTest {
                             accountingService
                                 .createAccount(
                                     new AccountRequest(
-                                        "OPEN-BAL", "Opening Balance", AccountType.EQUITY))
+                                        "OPEN-BAL", "Opening Balance", AccountType.EQUITY, null))
                                 .id())
                         .orElseThrow());
 
@@ -263,7 +266,7 @@ public class InventoryGlReconciliationIT extends AbstractIntegrationTest {
                             accountingService
                                 .createAccount(
                                     new AccountRequest(
-                                        "INV-VAR", "Inventory Variance", AccountType.EXPENSE))
+                                        "INV-VAR", "Inventory Variance", AccountType.EXPENSE, null))
                                 .id())
                         .orElseThrow());
     BigDecimal varianceBefore =

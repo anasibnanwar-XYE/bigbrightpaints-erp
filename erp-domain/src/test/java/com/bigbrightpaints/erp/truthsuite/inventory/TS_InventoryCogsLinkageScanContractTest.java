@@ -9,14 +9,14 @@ import com.bigbrightpaints.erp.truthsuite.support.TruthSuiteFileAssert;
 @Tag("reconciliation")
 class TS_InventoryCogsLinkageScanContractTest {
 
-  private static final String FG_SERVICE =
-      "src/main/java/com/bigbrightpaints/erp/modules/inventory/service/FinishedGoodsService.java";
+  private static final String DISPATCH_ENGINE =
+      "src/main/java/com/bigbrightpaints/erp/modules/inventory/service/FinishedGoodsDispatchEngine.java";
   private static final String SCAN_SQL = "../scripts/db_predeploy_scans.sql";
 
   @Test
   void dispatchMovementsCarryPackingSlipAndJournalReferences() {
     TruthSuiteFileAssert.assertContains(
-        FG_SERVICE,
+        DISPATCH_ENGINE,
         "movement.setPackingSlipId(packingSlipId);",
         "movement.setJournalEntryId(journalEntryId);",
         "findByFinishedGood_CompanyAndPackingSlipIdAndMovementTypeIgnoreCaseOrderByCreatedAtAsc(");

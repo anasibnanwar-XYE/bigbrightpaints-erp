@@ -7,7 +7,7 @@ import com.bigbrightpaints.erp.truthsuite.support.TruthSuiteFileAssert;
 
 @Tag("critical")
 @Tag("reconciliation")
-class TS_P2PPurchaseAuditTrailRepositoryCompatibilityTest {
+class TS_P2PPurchaseAuditTrailRepositoryContractTest {
 
   private static final String RAW_MATERIAL_PURCHASE_REPOSITORY =
       "src/main/java/com/bigbrightpaints/erp/modules/purchasing/domain/RawMaterialPurchaseRepository.java";

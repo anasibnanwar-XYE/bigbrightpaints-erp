@@ -54,12 +54,12 @@ public class RawMaterialPurchaseController {
   public ResponseEntity<ApiResponse<RawMaterialPurchaseResponse>> createPurchase(
       @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKeyHeader,
       @Parameter(hidden = true) @RequestHeader(value = "X-Idempotency-Key", required = false)
-          String legacyIdempotencyKeyHeader,
+          String retiredIdempotencyKeyHeader,
       @Valid @RequestBody RawMaterialPurchaseRequest request) {
     String idempotencyKey =
         resolveIdempotencyKey(
             idempotencyKeyHeader,
-            legacyIdempotencyKeyHeader,
+            retiredIdempotencyKeyHeader,
             "purchase invoices",
             CANONICAL_PURCHASE_INVOICE_PATH);
     return ResponseEntity.status(HttpStatus.CREATED)
@@ -74,12 +74,12 @@ public class RawMaterialPurchaseController {
   public ResponseEntity<ApiResponse<JournalEntryDto>> recordPurchaseReturn(
       @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKeyHeader,
       @Parameter(hidden = true) @RequestHeader(value = "X-Idempotency-Key", required = false)
-          String legacyIdempotencyKeyHeader,
+          String retiredIdempotencyKeyHeader,
       @Valid @RequestBody PurchaseReturnRequest request) {
     String idempotencyKey =
         resolveIdempotencyKey(
             idempotencyKeyHeader,
-            legacyIdempotencyKeyHeader,
+            retiredIdempotencyKeyHeader,
             "purchase returns",
             CANONICAL_PURCHASE_RETURN_PATH);
     return ResponseEntity.status(HttpStatus.CREATED)
@@ -100,11 +100,11 @@ public class RawMaterialPurchaseController {
 
   private String resolveIdempotencyKey(
       String idempotencyKeyHeader,
-      String legacyIdempotencyKeyHeader,
+      String retiredIdempotencyKeyHeader,
       String resourceDescription,
       String canonicalPath) {
-    if (StringUtils.hasText(legacyIdempotencyKeyHeader)) {
-      throw IdempotencyHeaderUtils.unsupportedLegacyHeader(
+    if (StringUtils.hasText(retiredIdempotencyKeyHeader)) {
+      throw IdempotencyHeaderUtils.unsupportedRetiredHeader(
           "X-Idempotency-Key", resourceDescription, canonicalPath);
     }
     return IdempotencyHeaderUtils.resolveHeaderKey(idempotencyKeyHeader);

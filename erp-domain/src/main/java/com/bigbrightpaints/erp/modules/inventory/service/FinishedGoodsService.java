@@ -24,18 +24,6 @@ public class FinishedGoodsService {
 
   private final FinishedGoodsWorkflowEngineService workflowEngine;
 
-  /**
-   * Truth-suite marker snippets retained in this facade source for contract scans:
-   * CostingMethodUtils.resolveFinishedGoodBatchSelectionMethod(
-   * CostingMethodUtils.isWeightedAverage(
-   * movement.setPackingSlipId(packingSlipId);
-   * movement.setJournalEntryId(journalEntryId);
-   * findByFinishedGood_CompanyAndPackingSlipIdAndMovementTypeIgnoreCaseOrderByCreatedAtAsc(
-   * if (!slip.getLines().isEmpty()) {
-   * if (slipLinesMatchOrder(slip, managedOrder)) {
-   * return new InventoryReservationResult(toSlipDto(slip), List.of());
-   * releaseReservationsForOrder(order.getId());
-   */
   public FinishedGoodsService(FinishedGoodsWorkflowEngineService workflowEngine) {
     this.workflowEngine = workflowEngine;
   }

@@ -75,7 +75,7 @@ class PackingControllerTest {
   }
 
   @Test
-  void recordPacking_requiresCanonicalHeaderEvenWhenRequestBodyCarriesLegacyIdempotencyKey() {
+  void recordPacking_requiresCanonicalHeaderEvenWhenRequestBodyCarriesRetiredIdempotencyKey() {
     PackingController controller = new PackingController(packingService, bulkPackingService);
 
     assertThatThrownBy(() -> controller.recordPacking(null, null, request("body-only-key")))
@@ -134,7 +134,7 @@ class PackingControllerTest {
                   .isEqualTo(
                       "X-Request-Id is not supported for packing records; use Idempotency-Key");
               assertThat(ex.getDetails())
-                  .containsEntry("legacyHeader", "X-Request-Id")
+                  .containsEntry("retiredHeader", "X-Request-Id")
                   .containsEntry("canonicalHeader", "Idempotency-Key")
                   .containsEntry("canonicalPath", "/api/v1/factory/packing-records");
             });

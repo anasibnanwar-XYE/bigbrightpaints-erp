@@ -16,15 +16,6 @@ public record DispatchConfirmationRequest(
     String vehicleNumber,
     String challanReference) {
 
-  public DispatchConfirmationRequest(
-      Long packagingSlipId,
-      List<LineConfirmation> lines,
-      String notes,
-      String confirmedBy,
-      Long overrideRequestId) {
-    this(packagingSlipId, lines, notes, confirmedBy, overrideRequestId, null, null, null, null);
-  }
-
   public record LineConfirmation(
       @NotNull Long lineId, @NotNull BigDecimal shippedQuantity, String notes) {}
 }

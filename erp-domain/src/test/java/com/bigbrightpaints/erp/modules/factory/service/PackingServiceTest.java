@@ -488,7 +488,7 @@ class PackingServiceTest {
   }
 
   @Test
-  void closeResidualWastage_usesMaterialCostFallbackWhenUnitCostMissing() {
+  void closeResidualWastage_usesMaterialCostWhenUnitCostMissing() {
     ProductionProduct product = new ProductionProduct();
     product.setSkuCode("SKU-1");
     product.setProductName("Primer");

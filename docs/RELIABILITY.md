@@ -46,7 +46,7 @@ The orchestrator publishes commands through an outbox pattern:
 Internal Spring events propagate cross-module side effects:
 
 - `InventoryMovementEvent` → `InventoryAccountingEventListener` for accounting integration.
-- `FactorySlipEventListener` for factory slip lifecycle visibility.
+- Factory slip lifecycle visibility is recorded on packing and dispatch records directly.
 - Event listeners execute within the originating transaction boundary by default; `@TransactionalEventListener` is used where after-commit semantics are required.
 
 ### 2.3 Dead-letter and failure routing

@@ -47,7 +47,6 @@ import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialAdjustmentRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatch;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatchRepository;
-import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialIntakeRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovement;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovementRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialRepository;
@@ -67,7 +66,6 @@ class RawMaterialServiceReceiptContextTest {
   @Mock private RawMaterialBatchRepository batchRepository;
   @Mock private RawMaterialMovementRepository movementRepository;
   @Mock private RawMaterialAdjustmentRepository rawMaterialAdjustmentRepository;
-  @Mock private RawMaterialIntakeRepository rawMaterialIntakeRepository;
   @Mock private CompanyContextService companyContextService;
   @Mock private ProductionProductRepository productionProductRepository;
   @Mock private ProductionBrandRepository productionBrandRepository;
@@ -94,7 +92,6 @@ class RawMaterialServiceReceiptContextTest {
             batchRepository,
             movementRepository,
             rawMaterialAdjustmentRepository,
-            rawMaterialIntakeRepository,
             companyContextService,
             productionProductRepository,
             productionBrandRepository,
@@ -107,8 +104,7 @@ class RawMaterialServiceReceiptContextTest {
             auditService,
             environment,
             new ResourcelessTransactionManager(),
-            realActionUsageService,
-            false);
+            realActionUsageService);
 
     company = new Company();
     ReflectionTestUtils.setField(company, "id", 1L);

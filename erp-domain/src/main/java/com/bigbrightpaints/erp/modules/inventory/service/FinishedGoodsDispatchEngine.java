@@ -761,9 +761,6 @@ public class FinishedGoodsDispatchEngine {
             .findByFinishedGood_CompanyAndPackingSlipIdAndMovementTypeIgnoreCaseOrderByCreatedAtAsc(
                 company, packingSlipId, "DISPATCH");
     if (movements.isEmpty()) {
-      movements = findLegacyDispatchMovements(company, packingSlipId);
-    }
-    if (movements.isEmpty()) {
       return;
     }
     List<InventoryMovement> toUpdate = new ArrayList<>();
@@ -927,26 +924,6 @@ public class FinishedGoodsDispatchEngine {
       return null;
     }
     return value.trim();
-  }
-
-  private List<InventoryMovement> findLegacyDispatchMovements(Company company, Long packingSlipId) {
-    if (company == null || packingSlipId == null) {
-      return List.of();
-    }
-    PackagingSlip slip =
-        packagingSlipRepository.findByIdAndCompany(packingSlipId, company).orElse(null);
-    if (slip == null || slip.getSalesOrder() == null || slip.getSalesOrder().getId() == null) {
-      return List.of();
-    }
-    Long salesOrderId = slip.getSalesOrder().getId();
-    List<PackagingSlip> slipsForOrder =
-        packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, salesOrderId);
-    if (slipsForOrder.size() != 1) {
-      return List.of();
-    }
-    return inventoryMovementRepository
-        .findByFinishedGood_CompanyAndReferenceTypeAndReferenceIdAndPackingSlipIdIsNullAndMovementTypeIgnoreCaseOrderByCreatedAtAsc(
-            company, InventoryReference.SALES_ORDER, salesOrderId.toString(), "DISPATCH");
   }
 
   private Map<Long, FinishedGood> lockFinishedGoodsInOrder(Company company, Set<Long> ids) {

@@ -256,9 +256,7 @@ public class ProductionLogService {
 
   private RawMaterial initializeSemiFinishedRawMaterial(
       Company company, ProductionProduct product, String semiSku) {
-    Long inventoryAccountId =
-        Optional.ofNullable(metadataLong(product, "semiFinishedAccountId"))
-            .orElse(metadataLong(product, "fgValuationAccountId"));
+    Long inventoryAccountId = metadataLong(product, "semiFinishedAccountId");
     if (inventoryAccountId == null) {
       throw new ApplicationException(
           ErrorCode.VALIDATION_INVALID_REFERENCE,

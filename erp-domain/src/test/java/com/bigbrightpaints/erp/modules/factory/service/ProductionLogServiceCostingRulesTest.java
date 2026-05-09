@@ -36,7 +36,6 @@ import com.bigbrightpaints.erp.modules.factory.domain.ProductionLog;
 import com.bigbrightpaints.erp.modules.factory.domain.ProductionLogRepository;
 import com.bigbrightpaints.erp.modules.factory.dto.ProductionLogDetailDto;
 import com.bigbrightpaints.erp.modules.inventory.domain.InventoryReference;
-import com.bigbrightpaints.erp.modules.inventory.domain.MaterialType;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatch;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatchRepository;
@@ -50,7 +49,7 @@ import com.bigbrightpaints.erp.modules.sales.service.CompanyScopedSalesLookupSer
 
 @Tag("critical")
 @ExtendWith(MockitoExtension.class)
-class ProductionLogServiceCostingFallbackTest {
+class ProductionLogServiceCostingRulesTest {
 
   @Mock private CompanyContextService companyContextService;
   @Mock private CompanyRepository companyRepository;
@@ -88,7 +87,7 @@ class ProductionLogServiceCostingFallbackTest {
   }
 
   @Test
-  void issueFromBatches_wacNullAverageFallsBackToBatchUnitCosts() {
+  void issueFromBatches_whenWacAverageIsUnavailableUsesBatchUnitCosts() {
     RawMaterial rawMaterial = new RawMaterial();
     rawMaterial.setName("RM-BASE");
     rawMaterial.setCostingMethod("WAC");
@@ -173,7 +172,7 @@ class ProductionLogServiceCostingFallbackTest {
   }
 
   @Test
-  void initializeSemiFinishedRawMaterial_usesFgValuationFallbackAccount() {
+  void initializeSemiFinishedRawMaterial_requiresSemiFinishedAccountMetadata() {
     Company company = new Company();
     ProductionProduct product = new ProductionProduct();
     product.setProductName("Primer");
@@ -181,21 +180,16 @@ class ProductionLogServiceCostingFallbackTest {
     product.setUnitOfMeasure("L");
     product.setMetadata(Map.of("fgValuationAccountId", "811"));
 
-    when(rawMaterialRepository.save(org.mockito.ArgumentMatchers.any(RawMaterial.class)))
-        .thenAnswer(invocation -> invocation.getArgument(0));
-
-    RawMaterial created =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-            productionLogService,
-            "initializeSemiFinishedRawMaterial",
-            company,
-            product,
-            "FG-PRIMER-BULK");
-
-    assertThat(created.getSku()).isEqualTo("FG-PRIMER-BULK");
-    assertThat(created.getInventoryAccountId()).isEqualTo(811L);
-    assertThat(created.getUnitType()).isEqualTo("L");
-    assertThat(created.getMaterialType()).isEqualTo(MaterialType.PRODUCTION);
+    assertThatThrownBy(
+            () ->
+                com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
+                    productionLogService,
+                    "initializeSemiFinishedRawMaterial",
+                    company,
+                    product,
+                    "FG-PRIMER-BULK"))
+        .isInstanceOf(com.bigbrightpaints.erp.core.exception.ApplicationException.class)
+        .hasMessageContaining("missing semi-finished account metadata");
   }
 
   @Test

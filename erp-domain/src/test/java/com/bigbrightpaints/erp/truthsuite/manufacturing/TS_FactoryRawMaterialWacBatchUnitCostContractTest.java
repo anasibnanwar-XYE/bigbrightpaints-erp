@@ -7,7 +7,7 @@ import com.bigbrightpaints.erp.truthsuite.support.TruthSuiteFileAssert;
 
 @Tag("critical")
 @Tag("reconciliation")
-class TS_FactoryRawMaterialWacFallbackContractTest {
+class TS_FactoryRawMaterialWacBatchUnitCostContractTest {
 
   private static final String PACKAGING_MATERIAL_SERVICE =
       "src/main/java/com/bigbrightpaints/erp/modules/factory/service/PackagingMaterialService.java";
@@ -15,13 +15,13 @@ class TS_FactoryRawMaterialWacFallbackContractTest {
       "src/main/java/com/bigbrightpaints/erp/modules/factory/service/ProductionLogService.java";
 
   @Test
-  void packagingAndProductionUseSharedWacSelectorWithNullFallback() {
-    assertWacNullFallbackPattern(PACKAGING_MATERIAL_SERVICE);
-    assertWacNullFallbackPattern(PRODUCTION_LOG_SERVICE);
+  void packagingAndProductionUseSharedWacSelectorWithBatchUnitCostRule() {
+    assertWacBatchUnitCostPattern(PACKAGING_MATERIAL_SERVICE);
+    assertWacBatchUnitCostPattern(PRODUCTION_LOG_SERVICE);
   }
 
   @Test
-  void packagingAndProductionFallbackToBatchCostWhenWacUnavailable() {
+  void packagingAndProductionUseBatchCostWhenWacUnavailable() {
     TruthSuiteFileAssert.assertContainsInOrder(
         PACKAGING_MATERIAL_SERVICE,
         "BigDecimal unitCost = weightedAverageCost != null",
@@ -32,7 +32,7 @@ class TS_FactoryRawMaterialWacFallbackContractTest {
         ": Optional.ofNullable(batch.getCostPerUnit()).orElse(BigDecimal.ZERO);");
   }
 
-  private void assertWacNullFallbackPattern(String relativePath) {
+  private void assertWacBatchUnitCostPattern(String relativePath) {
     TruthSuiteFileAssert.assertContainsInOrder(
         relativePath,
         "BigDecimal weightedAverageCost = CostingMethodUtils.selectWeightedAverageValue(",

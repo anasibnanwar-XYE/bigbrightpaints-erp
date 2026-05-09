@@ -18,7 +18,7 @@ import com.bigbrightpaints.erp.modules.invoice.service.SettlementApprovalDecisio
 import com.bigbrightpaints.erp.modules.invoice.service.SettlementApprovalReasonCode;
 
 @Tag("critical")
-class TS_truthsuite_p2p_Settlement_Test {
+class TS_P2PSettlementPolicyTest {
 
   private InvoiceSettlementPolicy policy;
   private Invoice invoice;

@@ -11,7 +11,6 @@ import java.util.Locale;
 import java.util.Map;
 
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.env.Environment;
 import org.springframework.core.env.Profiles;
 import org.springframework.stereotype.Service;
@@ -45,8 +44,6 @@ import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialAdjustmentLin
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialAdjustmentRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatch;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatchRepository;
-import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialIntakeRecord;
-import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialIntakeRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovement;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovementRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialRepository;
@@ -67,7 +64,6 @@ public class RawMaterialService {
   private final RawMaterialBatchRepository batchRepository;
   private final RawMaterialMovementRepository movementRepository;
   private final RawMaterialAdjustmentRepository rawMaterialAdjustmentRepository;
-  private final RawMaterialIntakeRepository rawMaterialIntakeRepository;
   private final CompanyContextService companyContextService;
   private final ProductionProductRepository productionProductRepository;
   private final ProductionBrandRepository productionBrandRepository;
@@ -82,7 +78,6 @@ public class RawMaterialService {
       new IdempotencyReservationService();
   private final Environment environment;
   private final TransactionTemplate transactionTemplate;
-  private final boolean rawMaterialIntakeEnabled;
   private final TenantRealActionUsageService realActionUsageService;
 
   @Autowired(required = false)
@@ -93,7 +88,6 @@ public class RawMaterialService {
       RawMaterialBatchRepository batchRepository,
       RawMaterialMovementRepository movementRepository,
       RawMaterialAdjustmentRepository rawMaterialAdjustmentRepository,
-      RawMaterialIntakeRepository rawMaterialIntakeRepository,
       CompanyContextService companyContextService,
       ProductionProductRepository productionProductRepository,
       ProductionBrandRepository productionBrandRepository,
@@ -106,13 +100,11 @@ public class RawMaterialService {
       AuditService auditService,
       Environment environment,
       PlatformTransactionManager transactionManager,
-      TenantRealActionUsageService realActionUsageService,
-      @Value("${erp.raw-material.intake.enabled:false}") boolean rawMaterialIntakeEnabled) {
+      TenantRealActionUsageService realActionUsageService) {
     this.rawMaterialRepository = rawMaterialRepository;
     this.batchRepository = batchRepository;
     this.movementRepository = movementRepository;
     this.rawMaterialAdjustmentRepository = rawMaterialAdjustmentRepository;
-    this.rawMaterialIntakeRepository = rawMaterialIntakeRepository;
     this.companyContextService = companyContextService;
     this.productionProductRepository = productionProductRepository;
     this.productionBrandRepository = productionBrandRepository;
@@ -126,7 +118,6 @@ public class RawMaterialService {
     this.environment = environment;
     this.transactionTemplate = new TransactionTemplate(transactionManager);
     this.realActionUsageService = realActionUsageService;
-    this.rawMaterialIntakeEnabled = rawMaterialIntakeEnabled;
   }
 
   public List<RawMaterialDto> listRawMaterials() {
@@ -296,58 +287,6 @@ public class RawMaterialService {
         .sorted(Comparator.comparing(RawMaterialBatch::getReceivedAt).reversed())
         .map(this::toBatchDto)
         .toList();
-  }
-
-  public RawMaterialBatchDto createBatch(
-      Long rawMaterialId, RawMaterialBatchRequest request, String idempotencyKey) {
-    if (!rawMaterialIntakeEnabled) {
-      throw new ApplicationException(
-              ErrorCode.BUSINESS_CONSTRAINT_VIOLATION,
-              "Manual raw material batch creation is disabled; use raw material purchases for"
-                  + " supplier receipts.")
-          .withDetail("endpoint", "/api/v1/purchasing/raw-material-purchases")
-          .withDetail("canonicalPath", "/api/v1/purchasing/raw-material-purchases")
-          .withDetail("setting", "erp.raw-material.intake.enabled");
-    }
-    if (request == null) {
-      throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
-          "Raw material batch request is required");
-    }
-    Company company = companyContextService.requireCurrentCompany();
-    String normalizedKey =
-        requireIdempotencyKey(idempotencyKey, "manual raw material batch creation");
-    String signature = buildManualIntakeSignature(rawMaterialId, request);
-
-    RawMaterialIntakeRecord existing =
-        rawMaterialIntakeRepository
-            .findByCompanyAndIdempotencyKey(company, normalizedKey)
-            .orElse(null);
-    if (existing != null) {
-      assertIdempotencyMatch(existing, signature, normalizedKey);
-      return resolveExistingBatch(existing, normalizedKey);
-    }
-    try {
-      RawMaterialBatchDto response =
-          transactionTemplate.execute(
-              status ->
-                  createManualIntakeInternal(
-                      company, rawMaterialId, request, normalizedKey, signature));
-      if (response == null) {
-        throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState(
-            "Manual raw material batch creation failed to return a batch");
-      }
-      return response;
-    } catch (RuntimeException ex) {
-      if (!idempotencyReservationService.isDataIntegrityViolation(ex)) {
-        throw ex;
-      }
-      RawMaterialIntakeRecord concurrent =
-          rawMaterialIntakeRepository
-              .findByCompanyAndIdempotencyKey(company, normalizedKey)
-              .orElseThrow(() -> ex);
-      assertIdempotencyMatch(concurrent, signature, normalizedKey);
-      return resolveExistingBatch(concurrent, normalizedKey);
-    }
   }
 
   @Transactional
@@ -1004,93 +943,8 @@ public class RawMaterialService {
     return material.getId() != null ? material.getId().toString() : "unknown";
   }
 
-  private RawMaterialBatchDto createManualIntakeInternal(
-      Company company,
-      Long rawMaterialId,
-      RawMaterialBatchRequest request,
-      String idempotencyKey,
-      String requestSignature) {
-    RawMaterialIntakeRecord record = new RawMaterialIntakeRecord();
-    record.setCompany(company);
-    record.setIdempotencyKey(idempotencyKey);
-    record.setIdempotencyHash(requestSignature);
-    record.setRawMaterialId(rawMaterialId);
-    record = rawMaterialIntakeRepository.saveAndFlush(record);
-
-    ReceiptResult receipt = recordReceipt(rawMaterialId, request, null);
-    RawMaterialBatch batch = receipt.batch();
-    record.setRawMaterialBatchId(batch != null ? batch.getId() : null);
-    record.setRawMaterialMovementId(receipt.movement() != null ? receipt.movement().getId() : null);
-    record.setJournalEntryId(receipt.journalEntryId());
-    rawMaterialIntakeRepository.save(record);
-
-    Map<String, String> auditMetadata = new HashMap<>();
-    auditMetadata.put("operation", "manual-raw-material-intake");
-    auditMetadata.put("idempotencyKey", idempotencyKey);
-    if (rawMaterialId != null) {
-      auditMetadata.put("rawMaterialId", rawMaterialId.toString());
-    }
-    if (batch != null && batch.getId() != null) {
-      auditMetadata.put("batchId", batch.getId().toString());
-    }
-    if (receipt.journalEntryId() != null) {
-      auditMetadata.put("journalEntryId", receipt.journalEntryId().toString());
-    }
-    auditService.logSuccess(AuditEvent.DATA_CREATE, auditMetadata);
-
-    return toBatchDto(batch);
-  }
-
-  private RawMaterialBatchDto resolveExistingBatch(
-      RawMaterialIntakeRecord record, String idempotencyKey) {
-    Long batchId = record.getRawMaterialBatchId();
-    if (batchId == null) {
-      throw new ApplicationException(
-              ErrorCode.CONCURRENCY_CONFLICT,
-              "Idempotency key already used but batch record is missing")
-          .withDetail("idempotencyKey", idempotencyKey);
-    }
-    RawMaterialBatch batch =
-        batchRepository
-            .findById(batchId)
-            .orElseThrow(
-                () ->
-                    com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState(
-                        "Raw material batch not found for idempotency key"));
-    return toBatchDto(batch);
-  }
-
-  private void assertIdempotencyMatch(
-      RawMaterialIntakeRecord record, String expectedSignature, String idempotencyKey) {
-    idempotencyReservationService.assertAndRepairSignature(
-        record,
-        idempotencyKey,
-        expectedSignature,
-        RawMaterialIntakeRecord::getIdempotencyHash,
-        RawMaterialIntakeRecord::setIdempotencyHash,
-        rawMaterialIntakeRepository::save);
-  }
-
   private String requireIdempotencyKey(String idempotencyKey, String label) {
     return idempotencyReservationService.requireKey(idempotencyKey, label);
-  }
-
-  private String buildManualIntakeSignature(Long rawMaterialId, RawMaterialBatchRequest request) {
-    IdempotencySignatureBuilder signature =
-        IdempotencySignatureBuilder.create().add(rawMaterialId != null ? rawMaterialId : "");
-    if (request == null) {
-      return signature.buildHash();
-    }
-    return signature
-        .addToken(request.batchCode())
-        .addAmount(request.quantity())
-        .addToken(request.unit())
-        .addAmount(request.costPerUnit())
-        .add(request.supplierId() != null ? request.supplierId() : "")
-        .add(request.manufacturingDate() != null ? request.manufacturingDate() : "")
-        .add(request.expiryDate() != null ? request.expiryDate() : "")
-        .addToken(request.notes())
-        .buildHash();
   }
 
   private java.time.Instant resolveManufacturedAt(Company company, LocalDate manufacturingDate) {

@@ -599,8 +599,8 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
   }
 
   @Test
-  @DisplayName("Raw material intake is disabled by default")
-  void rawMaterialIntakeDisabledByDefault() {
+  @DisplayName("Retired raw material intake route is removed")
+  void retiredRawMaterialIntakeRouteIsRemoved() {
     Long supplierId = createSupplier("Intake Supplier", "INTAKE-" + shortSuffix());
     Long rawMaterialId =
         createRawMaterial("Intake Raw Material", "RM-INTAKE-" + shortSuffix(), inventory.getId());
@@ -1470,19 +1470,22 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
   }
 
   @Test
-  @DisplayName("Purchase invoice rejects X-Idempotency-Key legacy header")
-  void purchaseInvoiceRejectsLegacyIdempotencyHeader() {
+  @DisplayName("Purchase invoice rejects X-Idempotency-Key retired header")
+  void purchaseInvoiceRejectsRetiredIdempotencyHeader() {
     LocalDate entryDate = TestDateUtils.safeDate(company);
-    Long supplierId = createSupplier("P2P Invoice Legacy Supplier", "INV-LEGACY-" + shortSuffix());
+    Long supplierId =
+        createSupplier("P2P Invoice Retired Header Supplier", "INV-RETIRED-" + shortSuffix());
     Long rawMaterialId =
         createRawMaterial(
-            "Invoice Legacy Material", "RM-INV-LEGACY-" + shortSuffix(), inventory.getId());
+            "Invoice Retired Header Material",
+            "RM-INV-RETIRED-" + shortSuffix(),
+            inventory.getId());
     BigDecimal quantity = new BigDecimal("4");
     BigDecimal unitCost = new BigDecimal("11.00");
     PurchaseWorkflowIds workflow =
         createPurchaseOrderAndReceipt(supplierId, rawMaterialId, quantity, unitCost, entryDate);
 
-    String invoiceNumber = "INV-LEGACY-" + shortSuffix();
+    String invoiceNumber = "INV-RETIRED-" + shortSuffix();
     Map<String, Object> purchaseReq = new HashMap<>();
     purchaseReq.put("supplierId", supplierId);
     purchaseReq.put("invoiceNumber", invoiceNumber);
@@ -1494,12 +1497,13 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
         List.of(
             Map.of("rawMaterialId", rawMaterialId, "quantity", quantity, "costPerUnit", unitCost)));
 
-    HttpHeaders legacyHeaders = headersWithLegacyIdempotencyKey("legacy-invoice-" + shortSuffix());
+    HttpHeaders retiredHeaders =
+        headersWithRetiredIdempotencyKey("retired-invoice-" + shortSuffix());
     ResponseEntity<Map> response =
         rest.exchange(
             "/api/v1/purchasing/raw-material-purchases",
             HttpMethod.POST,
-            new HttpEntity<>(purchaseReq, legacyHeaders),
+            new HttpEntity<>(purchaseReq, retiredHeaders),
             Map.class);
 
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
@@ -1590,13 +1594,14 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
   }
 
   @Test
-  @DisplayName("Purchase return rejects X-Idempotency-Key legacy header")
-  void purchaseReturnRejectsLegacyIdempotencyHeader() {
+  @DisplayName("Purchase return rejects X-Idempotency-Key retired header")
+  void purchaseReturnRejectsRetiredIdempotencyHeader() {
     LocalDate entryDate = TestDateUtils.safeDate(company);
-    Long supplierId = createSupplier("P2P Return Legacy Supplier", "RET-LEGACY-" + shortSuffix());
+    Long supplierId =
+        createSupplier("P2P Return Retired Header Supplier", "RET-RETIRED-" + shortSuffix());
     Long rawMaterialId =
         createRawMaterial(
-            "Return Legacy Material", "RM-RET-LEGACY-" + shortSuffix(), inventory.getId());
+            "Return Retired Header Material", "RM-RET-RETIRED-" + shortSuffix(), inventory.getId());
     BigDecimal purchaseQty = new BigDecimal("6");
     BigDecimal unitCost = new BigDecimal("7.00");
     PurchaseWorkflowIds workflow =
@@ -1604,7 +1609,7 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
 
     Map<String, Object> purchaseReq = new HashMap<>();
     purchaseReq.put("supplierId", supplierId);
-    purchaseReq.put("invoiceNumber", "INV-RET-LEGACY-" + shortSuffix());
+    purchaseReq.put("invoiceNumber", "INV-RET-RETIRED-" + shortSuffix());
     purchaseReq.put("invoiceDate", entryDate);
     purchaseReq.put("purchaseOrderId", workflow.purchaseOrderId());
     purchaseReq.put("goodsReceiptId", workflow.goodsReceiptId());
@@ -1625,7 +1630,8 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
         ((Number) ((Map<String, Object>) purchaseResp.getBody().get("data")).get("id")).longValue();
 
     RawMaterial beforeReturn = rawMaterialRepository.findById(rawMaterialId).orElseThrow();
-    HttpHeaders legacyHeaders = headersWithLegacyIdempotencyKey("legacy-return-" + shortSuffix());
+    HttpHeaders retiredHeaders =
+        headersWithRetiredIdempotencyKey("retired-return-" + shortSuffix());
     Map<String, Object> returnReq = new HashMap<>();
     returnReq.put("supplierId", supplierId);
     returnReq.put("purchaseId", purchaseId);
@@ -1633,13 +1639,13 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
     returnReq.put("quantity", BigDecimal.ONE);
     returnReq.put("unitCost", unitCost);
     returnReq.put("returnDate", entryDate);
-    returnReq.put("reason", "legacy header should fail");
+    returnReq.put("reason", "retired header should fail");
 
     ResponseEntity<Map> response =
         rest.exchange(
             "/api/v1/purchasing/raw-material-purchases/returns",
             HttpMethod.POST,
-            new HttpEntity<>(returnReq, legacyHeaders),
+            new HttpEntity<>(returnReq, retiredHeaders),
             Map.class);
 
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
@@ -2212,7 +2218,7 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
     return scoped;
   }
 
-  private HttpHeaders headersWithLegacyIdempotencyKey(String idempotencyKey) {
+  private HttpHeaders headersWithRetiredIdempotencyKey(String idempotencyKey) {
     HttpHeaders scoped = new HttpHeaders();
     scoped.putAll(headers);
     scoped.set("X-Idempotency-Key", idempotencyKey);

@@ -261,7 +261,7 @@ public class PurchaseReturnService {
         supplier.setStateCode(supplierStateCode);
       }
       GstService.GstBreakdown split =
-          splitTaxAmountSafe(lineNet, taxAmount, companyStateCode, supplierStateCode);
+          gstService.splitTaxAmount(lineNet, taxAmount, companyStateCode, supplierStateCode);
       gstBreakdown =
           new JournalCreationRequest.GstBreakdown(
               lineNet, split.cgst(), split.sgst(), split.igst());
@@ -323,7 +323,7 @@ public class PurchaseReturnService {
         supplier.setStateCode(supplierStateCode);
       }
       GstService.GstBreakdown split =
-          splitTaxAmountSafe(lineNet, taxAmount, companyStateCode, supplierStateCode);
+          gstService.splitTaxAmount(lineNet, taxAmount, companyStateCode, supplierStateCode);
       gstBreakdown =
           new JournalCreationRequest.GstBreakdown(
               lineNet, split.cgst(), split.sgst(), split.igst());
@@ -733,19 +733,6 @@ public class PurchaseReturnService {
     return prefix + " - " + material.getName() + " to " + supplier.getName();
   }
 
-  private GstService.GstBreakdown splitTaxAmountSafe(
-      BigDecimal taxableAmount,
-      BigDecimal taxAmount,
-      String sourceStateCode,
-      String supplierStateCode) {
-    GstService.GstBreakdown lineBreakdown =
-        gstService.splitTaxAmount(taxableAmount, taxAmount, sourceStateCode, supplierStateCode);
-    if (lineBreakdown != null) {
-      return lineBreakdown;
-    }
-    return fallbackTaxBreakdown(taxableAmount, taxAmount, sourceStateCode, supplierStateCode);
-  }
-
   private String resolveCompanyStateCode(Company company) {
     if (company == null) {
       return null;
@@ -774,23 +761,5 @@ public class PurchaseReturnService {
       return null;
     }
     return normalized.substring(0, 2);
-  }
-
-  private GstService.GstBreakdown fallbackTaxBreakdown(
-      BigDecimal taxableAmount,
-      BigDecimal taxAmount,
-      String sourceStateCode,
-      String supplierStateCode) {
-    GstService.TaxType taxType =
-        gstService.resolveTaxType(sourceStateCode, supplierStateCode, false);
-    if (taxType == GstService.TaxType.INTER_STATE) {
-      return new GstService.GstBreakdown(
-          currency(taxableAmount), BigDecimal.ZERO, BigDecimal.ZERO, currency(taxAmount), taxType);
-    }
-    BigDecimal roundedTax = currency(taxAmount);
-    BigDecimal cgst = currency(roundedTax.divide(new BigDecimal("2"), 6, RoundingMode.HALF_UP));
-    BigDecimal sgst = currency(roundedTax.subtract(cgst));
-    return new GstService.GstBreakdown(
-        currency(taxableAmount), cgst, sgst, BigDecimal.ZERO, taxType);
   }
 }

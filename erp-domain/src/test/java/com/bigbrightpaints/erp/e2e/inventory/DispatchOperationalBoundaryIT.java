@@ -392,6 +392,10 @@ class DispatchOperationalBoundaryIT extends AbstractIntegrationTest {
                         "factory-user",
                         false,
                         null,
+                        null,
+                        null,
+                        null,
+                        null,
                         null)))
         .isInstanceOf(ApplicationException.class)
         .hasMessageContaining("No shippable quantity available for dispatch");
@@ -434,6 +438,10 @@ class DispatchOperationalBoundaryIT extends AbstractIntegrationTest {
                 "Dispatch after pack",
                 "factory-user",
                 false,
+                null,
+                null,
+                null,
+                null,
                 null,
                 null));
     assertThat(response.dispatched()).isTrue();

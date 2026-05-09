@@ -11,10 +11,10 @@ class TS_CrossModuleLinkageContractTest {
 
   private static final String SALES_SERVICE =
       "src/main/java/com/bigbrightpaints/erp/modules/sales/service/SalesCoreEngine.java";
-  private static final String PURCHASING_SERVICE =
-      "src/main/java/com/bigbrightpaints/erp/modules/purchasing/service/PurchasingService.java";
-  private static final String PAYROLL_SERVICE =
-      "src/main/java/com/bigbrightpaints/erp/modules/hr/service/PayrollService.java";
+  private static final String PURCHASE_INVOICE_ENGINE =
+      "src/main/java/com/bigbrightpaints/erp/modules/purchasing/service/PurchaseInvoiceEngine.java";
+  private static final String PAYROLL_POSTING_SERVICE =
+      "src/main/java/com/bigbrightpaints/erp/modules/hr/service/PayrollPostingService.java";
   private static final String SCAN_SQL = "../scripts/db_predeploy_scans.sql";
 
   @Test
@@ -32,17 +32,17 @@ class TS_CrossModuleLinkageContractTest {
   @Test
   void p2pChainPersistsGrnPurchaseInvoiceAndJournalLinks() {
     TruthSuiteFileAssert.assertContains(
-        PURCHASING_SERVICE,
+        PURCHASE_INVOICE_ENGINE,
         "purchase.setJournalEntry(linkedJournal);",
         "purchase.setGoodsReceipt(goodsReceipt);",
-        "movement.setJournalEntryId(entryId);",
-        "goodsReceipt.setStatus(\"INVOICED\");");
+        "movement.setJournalEntryId(journalEntryId);",
+        "goodsReceipt.setStatus(GoodsReceiptStatus.INVOICED);");
   }
 
   @Test
   void payrollChainPersistsRunPostPaymentLinkage() {
     TruthSuiteFileAssert.assertContains(
-        PAYROLL_SERVICE,
+        PAYROLL_POSTING_SERVICE,
         "run.setJournalEntryId(journal.id());",
         "run.setStatus(PayrollRun.PayrollStatus.POSTED);",
         "if (run.getPaymentJournalEntryId() == null) {",

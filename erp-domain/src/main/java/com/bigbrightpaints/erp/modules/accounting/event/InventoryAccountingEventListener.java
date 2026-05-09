@@ -316,7 +316,7 @@ public class InventoryAccountingEventListener {
     if (event.referenceNumber() != null && !event.referenceNumber().isBlank()) {
       return "REVAL-" + event.referenceNumber();
     }
-    // Fallback: SHA-256 hash of all event fields (collision-resistant)
+    // Deterministic SHA-256 reference from all event fields.
     String eventFingerprint =
         String.format(
             "%d|%s|%s|%s|%s|%s|%s|%s|%s",
