@@ -313,7 +313,7 @@ Login and refresh both require a `companyCode` parameter. The user must exist wi
 
 | Boundary | Direction | Description |
 | --- | --- | --- |
-| auth → company | dependency | `AuthService` calls `TenantRuntimeRequestAdmissionService` for login/refresh admission checks |
+| auth → company | dependency | `AuthService` calls `TenantRuntimeEnforcementService` for login/refresh admission checks |
 | auth → company | dependency | `CompanyContextFilter` enforces tenant lifecycle and runtime admission on every request |
 | company → auth | dependency | `SuperAdminTenantControlPlaneService` calls `RefreshTokenService` and `TokenBlacklistService` for force-logout |
 | auth → rbac | read | `AuthService` reads user roles for JWT claims; `AuthController.me()` resolves permissions |

@@ -177,11 +177,10 @@ Runtime admission is implemented across three layers that operators must underst
 
 | Layer | Service | Scope | Where it runs |
 | --- | --- | --- | --- |
-| 1. CompanyContextFilter | `TenantRuntimeRequestAdmissionService` → `TenantRuntimeEnforcementService` | Every authenticated tenant-scoped request | Spring Security filter chain |
-| 2. Portal interceptor | `TenantRuntimeRequestAdmissionService` → `TenantRuntimeEnforcementService` | `/api/v1/reports/**`, `/api/v1/portal/**` | Spring MVC interceptor |
-| 3. Core security layer | `TenantRuntimeAccessService` | Same paths as layer 2 | Reads `system_settings` directly |
+| 1. CompanyContextFilter | `TenantRuntimeEnforcementService` | Every authenticated tenant-scoped request | Spring Security filter chain |
+| 2. Portal interceptor | `TenantRuntimeEnforcementService` | `/api/v1/reports/**`, `/api/v1/portal/**` when the filter did not already apply canonical admission | Spring MVC interceptor |
 
-**Layer 1 is the primary enforcement point.** Layer 2 covers paths outside the filter chain. Layer 3 is an independent enforcement service with its own cache and counters.
+**Layer 1 is the primary enforcement point.** Layer 2 covers portal/report paths that reach MVC without the filter's canonical admission marker. Both entry points share one policy/cache/counter owner.
 
 For the full architecture, coupling analysis, and risk assessment, see [core-audit-runtime-settings.md](../modules/core-audit-runtime-settings.md) §2.
 
@@ -247,13 +246,12 @@ Runtime enforcement counters (in-flight requests, rate-limit windows, security m
 
 The **policy** (state, quotas) is persisted and survives restarts. Only the **counters** are lost.
 
-### 4.3 Dual Enforcement Services Create Temporary Inconsistency
+### 4.3 Runtime Admission Cache Lag
 
-`TenantRuntimeEnforcementService` and `TenantRuntimeAccessService` maintain independent caches and counters with the same TTL (15 seconds). A policy change made through the super-admin API takes up to 15 seconds to be visible to both services. During this window:
+`TenantRuntimeEnforcementService` caches tenant runtime policies with a default TTL of 15 seconds. A policy change made through the super-admin API is visible immediately to the service instance that handled the mutation and after cache expiry on other application instances. During this window:
 
-- One service may enforce `ACTIVE` while the other still sees `HOLD`
-- In-flight request counts may differ between the two services
-- Retired per-code settings keys may cause different behavior if both retired and company-ID keys exist
+- Another application instance may briefly enforce the previous runtime state.
+- In-flight request counts remain instance-local and may differ between application instances.
 
 Operators should wait at least 15 seconds after a policy change before verifying its effect.
 

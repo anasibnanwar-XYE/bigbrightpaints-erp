@@ -120,9 +120,9 @@ Called during login and refresh to check tenant state and active-user quota. Rej
 **Policy persistence:**
 Runtime policies are persisted to the `system_settings` table with keys like `tenant.runtime.hold-state.{companyId}`, `tenant.runtime.max-concurrent-requests.{companyId}`, etc. On startup or cache expiry, policies are loaded from persistence. If persistence is unavailable during a cache refresh, the last-known in-memory policy is kept (request admission remains available during transient outages).
 
-### TenantRuntimeRequestAdmissionService
+### TenantRuntimeEnforcementService
 
-A thin facade over `TenantRuntimeEnforcementService` that provides the entry point for runtime filters, interceptors, and auth flows. It prevents direct coupling between the filter chain and the enforcement policy service.
+Canonical runtime policy, request-admission, auth-operation, counter, and snapshot owner. `CompanyContextFilter`, the portal/runtime interceptor, auth login/refresh, and super-admin runtime controls call this service directly.
 
 ### Add Client and Owner Setup Services
 
@@ -208,7 +208,7 @@ provider credentials, or `.env` values.
 | Boundary | Direction | Description |
 | --- | --- | --- |
 | company → auth | dependency | Super-admin control plane calls `TokenBlacklistService` and `RefreshTokenService` for force-logout |
-| company → auth | dependency | `TenantRuntimeRequestAdmissionService` is called by `AuthService` for login/refresh admission |
+| company → auth | dependency | `TenantRuntimeEnforcementService` is called by `AuthService` for login/refresh admission |
 | company → auth | dependency | Add Client and owner setup use canonical auth/account services for activation, scoped account setup, session revocation, and password recovery |
 | company → accounting | dependency | `TenantDefaultSeedingService` and setup mappings seed and repair accounting defaults through the current seed-status corridor |
 | company → core/security | dependency | `CompanyContextFilter` enforces lifecycle and runtime admission |

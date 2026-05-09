@@ -369,8 +369,7 @@ Incoming Request
   │     JwtAuthenticationFilter → CompanyContextFilter → MustChangePasswordCorridorFilter
   │
   ├─ Runtime gating                          [core-audit-runtime-settings.md §2]
-  │     TenantRuntimeRequestAdmissionService → TenantRuntimeEnforcementService
-  │     (TenantRuntimeAccessService for portal/reports)
+  │     TenantRuntimeEnforcementService
   │
   ├─ Controller resolves idempotency key     [This document §1]
   │     IdempotencyHeaderUtils / IdempotencyReservationService
@@ -392,7 +391,7 @@ Incoming Request
 
 | From | To | Relationship |
 | --- | --- | --- |
-| Security filter chain | Runtime gating | `CompanyContextFilter` calls `TenantRuntimeRequestAdmissionService` |
+| Security filter chain | Runtime gating | `CompanyContextFilter` calls `TenantRuntimeEnforcementService` |
 | Security filter chain | Error contract | Filters throw `AuthSecurityContractException` handled by fallback handler |
 | Security filter chain | Fail-open/fail-closed model | Authentication validation is fail-open (Spring Security rejects unauthenticated requests to protected endpoints); tenant isolation is fail-closed (any ambiguity → 403). See [core-security-error.md §3](core-security-error.md#3-fail-open-vs-fail-closed-summary) |
 | Error contract | Audit routing | `GlobalExceptionHandler` routes settlement failures to `AuditService` |

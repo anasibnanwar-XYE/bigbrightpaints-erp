@@ -112,7 +112,7 @@ All other endpoints require authentication. Swagger/OpenAPI access is further re
 4. For super-admin users on platform scope, allows control-plane operations but blocks tenant business workflows.
 5. Validates that the authenticated user's company matches the requested company code.
 6. Checks tenant lifecycle state and restricts write access for suspended tenants and all access for deactivated tenants.
-7. Runs tenant runtime admission via `TenantRuntimeRequestAdmissionService`.
+7. Runs tenant runtime admission via `TenantRuntimeEnforcementService`.
 8. Sets `CompanyContextHolder.setCompanyCode()` for downstream use.
 9. Clears `CompanyContextHolder` in the `finally` block.
 
@@ -371,9 +371,9 @@ Provides two levels of token revocation:
 
 Both are database-backed and survive server restarts. Cleanup runs hourly.
 
-### 4.3 TenantRuntimeRequestAdmissionService
+### 4.3 TenantRuntimeEnforcementService
 
-Called by `CompanyContextFilter` to run tenant runtime admission checks (rate limiting, usage constraints, etc.) before allowing the request to proceed. The admission service tracks request begin/complete lifecycle and returns structured denial reasons when admission fails.
+Called by `CompanyContextFilter`, `TenantRuntimeEnforcementInterceptor`, and `AuthService` to run tenant runtime admission checks (rate limiting, usage constraints, auth-operation quota, etc.) before allowing the request to proceed. The service tracks request begin/complete lifecycle and returns structured denial reasons when admission fails.
 
 > **Note:** The full runtime-gating model and admission details are documented in [core-audit-runtime-settings.md §2](core-audit-runtime-settings.md#2-runtime-gating-split).
 

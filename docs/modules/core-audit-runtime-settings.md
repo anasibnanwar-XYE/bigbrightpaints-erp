@@ -2,7 +2,7 @@
 
 Last reviewed: 2026-03-30
 
-This document describes the **audit-surface ownership model**, the **runtime-gating split** between company filters and admission services, and the **global-versus-tenant settings risk** that platform maintainers must understand. It extends the security filter chain and error contract documented in [core-security-error.md](core-security-error.md).
+This document describes the **audit-surface ownership model**, the **runtime-gating model** shared by filters, interceptors, and tenant policy services, and the **global-versus-tenant settings risk** that platform maintainers must understand. It extends the security filter chain and error contract documented in [core-security-error.md](core-security-error.md).
 
 > **Scope note:** This slice covers audit ownership, runtime-gating architecture, and settings scoping. Shared-versus-module-local idempotency behavior is documented in [core-idempotency.md](core-idempotency.md). Together the three slices form one coherent canonical reference for core platform contracts (see the reconciled contract table in [core-idempotency.md §5](core-idempotency.md#5-reconciled-core-platform-contract)).
 
@@ -19,9 +19,7 @@ This document describes the **audit-surface ownership model**, the **runtime-gat
 | Accounting audit read model | `modules/accounting/service/` | `AccountingAuditService` aggregates journals/events/doc links for digest/export queries (read-only, not a writer) |
 | Exception-to-audit routing | `core/exception/` | `AuditExceptionRoutingService` routes settlement failures and malformed requests to platform audit |
 | Journal posted audit listener | `core/audit/` | `JournalEntryPostedAuditListener` bridges accounting domain events to platform audit after commit |
-| Company runtime enforcement | `modules/company/service/` | `TenantRuntimeEnforcementService` owns policy mutation, quota enforcement, and snapshot logic |
-| Company runtime admission | `modules/company/service/` | `TenantRuntimeRequestAdmissionService` is the thin facade used by filters and auth flows |
-| Core tenant runtime access | `core/security/` | `TenantRuntimeAccessService` provides a second enforcement layer used by the portal interceptor |
+| Company runtime enforcement | `modules/company/service/` | `TenantRuntimeEnforcementService` owns policy mutation, admission, auth-operation quota checks, counters, and snapshots |
 | Portal runtime interceptor | `modules/portal/service/` | `TenantRuntimeEnforcementInterceptor` applies runtime gating to portal/reports paths |
 | Global settings | `core/config/` | `SystemSettingsService` owns runtime-tunable settings persisted in `system_settings` |
 | Accounting settings | `modules/accounting/service/` | `CompanyAccountingSettingsService` owns tenant-scoped payroll and tax account configuration |
@@ -81,7 +79,7 @@ This ownership split is an accepted architectural decision documented in [ADR-00
 | Retry | Up to `erp.audit.business.retry.max-attempts` (default: 4) with exponential backoff; persistent retries via scheduled job every 30 seconds |
 | Queue limits | In-memory overflow: `erp.audit.business.retry.max-queue-size` (default: 500); events exceeding this are dropped |
 
-**Key consumers:** Compliance officers, regulatory auditors, `TenantRuntimeAccessService` (runtime denial events), frontend via `EnterpriseAuditTrailController` (business event queries and ML interaction ingestion).
+**Key consumers:** Compliance officers, regulatory auditors, frontend via `EnterpriseAuditTrailController` (business event queries and ML interaction ingestion).
 
 **Query capabilities:**
 - Business events: filterable by date range, module, action, status, actor, and reference number
@@ -158,7 +156,7 @@ AccountingCoreEngine posts journal entry
 
 ## 2. Runtime-Gating Split
 
-Tenant runtime gating is implemented across **three layers** that must be understood together. The split exists because different enforcement points own different scopes and must not be collapsed into a single gate without careful consideration.
+Tenant runtime gating is implemented through two request entry points backed by one canonical policy service.
 
 ### 2.1 Layer 1: CompanyContextFilter (Request Pipeline)
 
@@ -166,12 +164,12 @@ Tenant runtime gating is implemented across **three layers** that must be unders
 
 **Scope:** Every authenticated, tenant-scoped request that passes through the Spring Security filter chain.
 
-**Responsibility:** Resolve company context, enforce tenant lifecycle restrictions, and delegate to `TenantRuntimeRequestAdmissionService` for runtime admission.
+**Responsibility:** Resolve company context, enforce tenant lifecycle restrictions, and call `TenantRuntimeEnforcementService` for runtime admission.
 
 **What it checks:**
 1. JWT `companyCode` claim vs `X-Company-Code` header consistency
 2. Tenant lifecycle state (`ACTIVE` / `SUSPENDED` / `DEACTIVATED`)
-3. Runtime admission via `TenantRuntimeRequestAdmissionService.beginRequest()`
+3. Runtime admission via `TenantRuntimeEnforcementService.admitRequest()`
 4. Super-admin control-plane vs tenant business path restrictions
 
 **Behavior:** Fail-closed — any ambiguity in company context or runtime state is rejected with 403.
@@ -192,7 +190,7 @@ Tenant runtime gating is implemented across **three layers** that must be unders
 3. Concurrent request limit: `maxConcurrentRequests` (default: 200)
 4. Auth-operation enforcement: active-user quota (`maxActiveUsers`, default: 500) during login/refresh
 
-**Access pattern:** Called by `TenantRuntimeRequestAdmissionService` (the facade), which is called by `CompanyContextFilter` and `AuthService`. The enforcement service is not called directly by filters.
+**Access pattern:** Called directly by `CompanyContextFilter`, `TenantRuntimeEnforcementInterceptor`, `AuthService`, super-admin control-plane services, and usage snapshot readers. There is no pass-through admission facade.
 
 **Policy persistence:** Runtime policies are persisted to `system_settings` with per-company keys:
 - `tenant.runtime.hold-state.{companyId}`
@@ -207,22 +205,7 @@ Tenant runtime gating is implemented across **three layers** that must be unders
 
 **Counters:** In-memory only (`ConcurrentHashMap` + `AtomicInteger`/`AtomicLong`). Do not survive restarts or share across instances. The policy itself (state, quotas) is persisted.
 
-### 2.3 Layer 3: TenantRuntimeAccessService (Core Security Layer)
-
-**Source:** [`core/security/TenantRuntimeAccessService.java`](../../erp-domain/src/main/java/com/bigbrightpaints/erp/core/security/TenantRuntimeAccessService.java)
-
-**Scope:** A second enforcement layer in `core/security/` that reads runtime policies directly from `system_settings` and maintains its own in-memory counters and cache.
-
-**Responsibility:** Provide runtime enforcement for paths that may not go through the `CompanyContextFilter` admission path (portal and reports paths via the interceptor).
-
-**What it checks:**
-1. Runtime state: `BLOCKED` (all requests) and `HOLD` (mutating requests)
-2. Per-minute rate limit
-3. Concurrent request limit
-
-**Key difference from Layer 2:** This service has its own policy cache, its own counters, and reads the same company-ID-scoped settings directly from `SystemSettingsRepository`. It also writes both platform audit entries (via `AuditService`) and enterprise audit trail entries (via `EnterpriseAuditTrailService`) for denials, whereas `TenantRuntimeEnforcementService` writes only platform audit entries.
-
-### 2.4 Layer 3.5: TenantRuntimeEnforcementInterceptor (Portal/Reports)
+### 2.3 Layer 3: TenantRuntimeEnforcementInterceptor (Portal/Reports)
 
 **Source:** [`modules/portal/service/TenantRuntimeEnforcementInterceptor.java`](../../erp-domain/src/main/java/com/bigbrightpaints/erp/modules/portal/service/TenantRuntimeEnforcementInterceptor.java)
 
@@ -232,28 +215,27 @@ Tenant runtime gating is implemented across **three layers** that must be unders
 - `/api/v1/reports/**`
 - `/api/v1/portal/**`
 
-**Behavior:** Skips if `TenantRuntimeRequestAttributes.CANONICAL_ADMISSION_APPLIED` is already set (meaning `CompanyContextFilter` already handled admission). Otherwise, calls `TenantRuntimeRequestAdmissionService` as the portal/reports admission path.
+**Behavior:** Skips if `TenantRuntimeRequestAttributes.CANONICAL_ADMISSION_APPLIED` is already set (meaning `CompanyContextFilter` already handled admission). Otherwise, calls `TenantRuntimeEnforcementService` as the portal/reports admission path.
 
-### 2.5 Admission Flow Diagram
+### 2.4 Admission Flow Diagram
 
 ```
 Incoming Request
   │
   ├─ CompanyContextFilter (Layer 1)
-  │     Resolves company, checks lifecycle, calls TenantRuntimeRequestAdmissionService
-  │     ├─ TenantRuntimeRequestAdmissionService → TenantRuntimeEnforcementService (Layer 2)
-  │     │     Checks runtime state, rate limit, concurrency
-  │     │     Returns: admitted / rejected / not-tracked
+  │     Resolves company, checks lifecycle, calls TenantRuntimeEnforcementService (Layer 2)
+  │     ├─ Checks runtime state, rate limit, concurrency
+  │     ├─ Returns: admitted / rejected / not-tracked
   │     └─ Sets CompanyContextHolder, proceeds or returns 403
   │
   ├─ TenantRuntimeEnforcementInterceptor (portal/reports only)
   │     If CANONICAL_ADMISSION_APPLIED is not set:
-  │     Calls TenantRuntimeRequestAdmissionService
+  │     Calls TenantRuntimeEnforcementService
   │
   └─ Controller / module code
 ```
 
-### 2.6 Runtime State vs Lifecycle State
+### 2.5 Runtime State vs Lifecycle State
 
 A tenant has **two independent state machines** that both affect request admission:
 
@@ -264,19 +246,17 @@ A tenant has **two independent state machines** that both affect request admissi
 
 A tenant can be `ACTIVE` in lifecycle but `HOLD` or `BLOCKED` in runtime. Both layers are checked independently. The runtime state is an operational control that can be changed instantly by super-admins without affecting the lifecycle state.
 
-### 2.7 Coupling Between Admission Services
+### 2.6 Runtime Admission Coupling
 
 The runtime-gating architecture has intentional coupling that maintainers must understand:
 
-1. **`CompanyContextFilter` depends on `TenantRuntimeRequestAdmissionService`** — not directly on `TenantRuntimeEnforcementService`. This indirection prevents the filter chain from binding to the policy service directly.
+1. **`CompanyContextFilter` depends directly on `TenantRuntimeEnforcementService`** for admission and completion tracking.
 
-2. **`TenantRuntimeRequestAdmissionService` is a thin facade** — it delegates entirely to `TenantRuntimeEnforcementService`. All policy logic lives in the enforcement service.
+2. **`TenantRuntimeEnforcementInterceptor` uses the same service** only when `CompanyContextFilter` did not already apply canonical admission.
 
-3. **`TenantRuntimeAccessService` is independent** — it reads policies directly from `system_settings`, maintains its own cache and counters, and is used by the portal interceptor as a separate enforcement path.
+3. **`AuthService` calls `TenantRuntimeEnforcementService.enforceAuthOperation()`** during login and refresh to check runtime state and active-user quota before issuing tokens.
 
-4. **Both enforcement services share the same `system_settings` persistence** — policy changes written by `TenantRuntimeEnforcementService` (via super-admin API) will eventually be visible to `TenantRuntimeAccessService` after cache TTL expiry (up to 15 seconds).
-
-5. **`AuthService` calls `TenantRuntimeRequestAdmissionService.enforceAuthOperationAllowed()`** — during login and refresh, the auth service checks tenant runtime state and active-user quota before issuing tokens.
+4. **Super-admin control-plane mutations and runtime admission share one cache and counter owner** in `TenantRuntimeEnforcementService`.
 
 ---
 
@@ -346,17 +326,14 @@ All global and tenant-scoped settings share the `system_settings` table. The dis
 - The super-admin control-plane API validates company existence before writing tenant-scoped settings.
 
 **Residual risk:**
-- Any code that reads from `SystemSettingsRepository` directly (without going through the typed services) must correctly construct or interpret setting keys. Incorrect key construction could read a global setting as tenant-scoped or vice versa.
-- `TenantRuntimeAccessService` reads settings directly from `SystemSettingsRepository` by constructing company-ID-scoped keys manually. If company-ID resolution is incorrect, it could read the wrong tenant's policy.
+- Any new code that reads from `SystemSettingsRepository` directly (without going through typed services) must correctly construct or interpret setting keys. Incorrect key construction could read a global setting as tenant-scoped or vice versa.
 
-### 3.3 Risk: Dual Enforcement Services
+### 3.3 Risk: Runtime Admission Cache Lag
 
-The existence of two independent runtime enforcement services (`TenantRuntimeEnforcementService` and `TenantRuntimeAccessService`) creates a temporary consistency gap:
+`TenantRuntimeEnforcementService` caches tenant runtime policies in memory with a TTL (default: 15 seconds). A policy change made through the super-admin API is visible immediately to the service instance that handled the mutation and after cache expiry on other application instances.
 
-1. **Cache desynchronization:** Both services maintain independent in-memory caches with the same TTL (15 seconds). A policy change written by `TenantRuntimeEnforcementService` takes up to 15 seconds to be visible to `TenantRuntimeAccessService`, and vice versa.
-2. **Counter divergence:** In-flight request counters are independent and in-memory. During normal operation, this means the same tenant may have different concurrent-request counts in the two services.
 **Mitigating factors:**
-- The portal interceptor (`TenantRuntimeEnforcementInterceptor`) checks `CANONICAL_ADMISSION_APPLIED` and skips if `CompanyContextFilter` already handled admission, reducing the chance of dual enforcement on the same request.
+- The portal interceptor (`TenantRuntimeEnforcementInterceptor`) checks `CANONICAL_ADMISSION_APPLIED` and skips if `CompanyContextFilter` already handled admission, reducing duplicate admission accounting on the same request.
 - Policy mutations go through `TenantRuntimeEnforcementService` (via the super-admin API), which writes company-ID-scoped keys exclusively.
 
 ### 3.4 Risk: In-Memory Counters Do Not Survive Restart
@@ -398,19 +375,17 @@ Listens for `AccountingEventStore.JournalEntryPostedEvent` (Spring application e
 
 ## 5. Current Limitations and Known Gaps
 
-1. **Dual runtime enforcement services:** `TenantRuntimeEnforcementService` and `TenantRuntimeAccessService` maintain independent caches and counters, creating a temporary consistency gap for policy changes and in-flight tracking. See section 3.3 for details.
+1. **Audit routing is narrow:** Only settlement failures and malformed requests are automatically routed from the global exception handler to audit. Other important failures (concurrency conflicts, credit-limit breaches, accounting posting failures) are not automatically captured.
 
-2. **Audit routing is narrow:** Only settlement failures and malformed requests are automatically routed from the global exception handler to audit. Other important failures (concurrency conflicts, credit-limit breaches, accounting posting failures) are not automatically captured.
+2. **Platform audit has no persistent retry:** If `AuditService` fails to write (e.g., database contention under load), the audit event is lost. The enterprise audit trail has persistent retry, but the platform audit does not.
 
-3. **Platform audit has no persistent retry:** If `AuditService` fails to write (e.g., database contention under load), the audit event is lost. The enterprise audit trail has persistent retry, but the platform audit does not.
+3. **Self-profile audit gap:** Self-profile mutations must stay on canonical My Account identity controls and emit audit evidence. Missing audit coverage remains a compliance risk and is classified as a **Bug to Fix Now** in the [Authoritative Recommendations Register](../RECOMMENDATIONS.md). See [`RECOMMENDATIONS.md`](../RECOMMENDATIONS.md) — Auth and Identity section for the full classification and rationale.
 
-4. **Self-profile audit gap:** Self-profile mutations must stay on canonical My Account identity controls and emit audit evidence. Missing audit coverage remains a compliance risk and is classified as a **Bug to Fix Now** in the [Authoritative Recommendations Register](../RECOMMENDATIONS.md). See [`RECOMMENDATIONS.md`](../RECOMMENDATIONS.md) — Auth and Identity section for the full classification and rationale.
+4. **Settings table has no schema-level scope isolation:** Global and tenant-scoped settings share the `system_settings` table with only key naming conventions to distinguish them. See section 3.2 for the risk analysis.
 
-5. **Settings table has no schema-level scope isolation:** Global and tenant-scoped settings share the `system_settings` table with only key naming conventions to distinguish them. See section 3.2 for the risk analysis.
+5. **In-memory counters reset on restart:** Concurrent-request and rate-limit counters are not persisted. A restart resets all quotas to zero. See section 3.4.
 
-6. **In-memory counters reset on restart:** Concurrent-request and rate-limit counters are not persisted. A restart resets all quotas to zero. See section 3.4.
-
-7. **Accounting-event ownership for idempotency is documented in the idempotency slice:** How `AccountingEventStore` participates in idempotency checks and the accounting idempotency delegation pattern are covered in [core-idempotency.md](core-idempotency.md) §2.7.
+6. **Accounting-event ownership for idempotency is documented in the idempotency slice:** How `AccountingEventStore` participates in idempotency checks and the accounting idempotency delegation pattern are covered in [core-idempotency.md](core-idempotency.md) §2.7.
 
 ---
 

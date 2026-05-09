@@ -148,11 +148,11 @@ These settings are scoped to individual tenants and are not directly tunable thr
 
 **Config defaults:** `erp.tenant.runtime.default-max-concurrent-requests=200`, `erp.tenant.runtime.default-max-requests-per-minute=5000`, `erp.tenant.runtime.default-max-active-users=500`
 
-**Cache TTL:** `erp.tenant.runtime.policy-cache-seconds=15` — both `TenantRuntimeEnforcementService` and `TenantRuntimeAccessService` cache policies in-memory with this TTL.
+**Cache TTL:** `erp.tenant.runtime.policy-cache-seconds=15` — `TenantRuntimeEnforcementService` caches policies in-memory with this TTL.
 
-**Managed by:** `TenantRuntimeEnforcementService` via the super-admin control-plane API. `TenantRuntimeAccessService` reads the same company-ID-scoped keys.
+**Managed by:** `TenantRuntimeEnforcementService` via the super-admin control-plane API. Request filters, portal/report interception, auth login/refresh checks, and super-admin usage snapshots use that same canonical service.
 
-**Detailed documentation:** See [core-audit-runtime-settings.md](../modules/core-audit-runtime-settings.md) §2–3 for the full runtime-gating architecture, dual-enforcement-service risk, and counter-reset caveats.
+**Detailed documentation:** See [core-audit-runtime-settings.md](../modules/core-audit-runtime-settings.md) §2–3 for the full runtime-gating architecture, cache-lag risk, and counter-reset caveats.
 
 ### 2.2 Module Gating (Per-Tenant)
 
@@ -401,7 +401,6 @@ Several services maintain in-memory state that is lost on application restart:
 | Service | In-Memory State | Impact of Reset |
 | --- | --- | --- |
 | `TenantRuntimeEnforcementService` | Concurrent-request counters, rate-limit windows | Quota counters reset; burst above intended limits possible |
-| `TenantRuntimeAccessService` | Same as above | Same as above |
 | `SecurityMonitoringService` | Failed-login counters, rate-limit counters, blocked IPs/users, suspicious-activity scores | All security tracking resets; temporary loss of brute-force protection |
 | `EnterpriseAuditTrailService` | In-memory retry overflow queue | Queued retry events are lost; persisted retries survive |
 

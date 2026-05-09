@@ -28,7 +28,7 @@ Tenant context is derived exclusively from the JWT `companyCode` claim, enforced
 4. **Unauthenticated requests cannot set tenant context.** If no JWT is present, the header is ignored.
 5. **Super admins operate in platform scope.** Super-admin requests to `/api/v1/superadmin/*` use a platform-scoped authentication model. Super admins are explicitly blocked from tenant business endpoints (sales, inventory, factory, purchasing, HR, etc.) and may only access lifecycle control-plane routes.
 6. **Company lifecycle gates requests.** `CompanyLifecycleState` is checked for every tenant-scoped request: `ACTIVE` allows full access, `SUSPENDED` allows reads only, `DEACTIVATED` denies all access.
-7. **Tenant runtime admission is enforced.** Beyond lifecycle state, `TenantRuntimeRequestAdmissionService` applies per-tenant runtime limits and module gating before admitting the request.
+7. **Tenant runtime admission is enforced.** Beyond lifecycle state, `TenantRuntimeEnforcementService` applies per-tenant runtime limits and module gating before admitting the request.
 
 ## Alternatives Rejected
 
