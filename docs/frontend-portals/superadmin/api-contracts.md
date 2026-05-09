@@ -55,7 +55,7 @@ Activation evidence may show `messageId=<MAILHOG_MESSAGE_ID>` and `activationUrl
 | GET | `/api/v1/superadmin/roles/{roleKey}` | role detail | path key |
 | POST | `/api/v1/superadmin/changelog` | create release note | `version`, `title`, `body`, `isHighlighted` |
 | PUT, DELETE | `/api/v1/superadmin/changelog/{id}` | update/delete release note | delete returns success envelope, not empty body |
-| POST | `/api/v1/superadmin/notify` | platform notification utility | `to`, `subject`, `body`; keep examples non-private |
+| POST | `/api/v1/superadmin/notify` | platform notification dispatch | `to`, `subject`, `body`; keep examples non-private |
 
 ### Add Client, activation, setup, and seed status
 

@@ -15,11 +15,11 @@ import jakarta.validation.Valid;
 @RestController
 @RequestMapping("/api/v1/superadmin")
 @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN')")
-public class AdminUtilityController {
+public class SuperAdminNotificationController {
 
   private final EmailService emailService;
 
-  public AdminUtilityController(EmailService emailService) {
+  public SuperAdminNotificationController(EmailService emailService) {
     this.emailService = emailService;
   }
 

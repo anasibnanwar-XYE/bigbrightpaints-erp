@@ -256,7 +256,7 @@ This is the canonical implementation order and status for the tenant-admin hard-
 
 - Canonical tenant-admin settings payload: `GET /api/v1/admin/self/settings`.
 - Self security and password/MFA flows remain auth-owned (`/api/v1/auth/**`).
-- Utility notify action moved to superadmin control-plane host (`POST /api/v1/superadmin/notify`).
+- Notification action moved to superadmin control-plane host (`POST /api/v1/superadmin/notify`).
 
 ### Slice 7: Documentation realignment (complete)
 

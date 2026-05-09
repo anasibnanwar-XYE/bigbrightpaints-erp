@@ -119,11 +119,11 @@ Notes:
 - This is a governance/system settings surface.
 - Tenant-admin portal settings UX should use `/api/v1/admin/self/settings` plus auth-owned self-service routes.
 
-### AdminUtilityController
+### SuperAdminNotificationController
 
 - `POST /api/v1/superadmin/notify`
 - Auth: `ROLE_SUPER_ADMIN`
-- Control-plane utility surface split out of settings controller (not part of tenant-admin product).
+- Control-plane notification surface split out of settings controller (not part of tenant-admin product).
 
 ### Changelog
 

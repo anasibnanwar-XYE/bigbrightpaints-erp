@@ -12,12 +12,14 @@ import com.bigbrightpaints.erp.core.notification.EmailService;
 import com.bigbrightpaints.erp.modules.admin.dto.AdminNotifyRequest;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 
-class AdminUtilityControllerContractTest {
+class SuperAdminNotificationControllerContractTest {
 
   @Test
   void classLevelMapping_and_authority_are_superadmin_only() {
-    RequestMapping mapping = AdminUtilityController.class.getAnnotation(RequestMapping.class);
-    PreAuthorize preAuthorize = AdminUtilityController.class.getAnnotation(PreAuthorize.class);
+    RequestMapping mapping =
+        SuperAdminNotificationController.class.getAnnotation(RequestMapping.class);
+    PreAuthorize preAuthorize =
+        SuperAdminNotificationController.class.getAnnotation(PreAuthorize.class);
 
     assertThat(mapping).isNotNull();
     assertThat(mapping.value()).containsExactly("/api/v1/superadmin");
@@ -28,7 +30,8 @@ class AdminUtilityControllerContractTest {
   @Test
   void notifyUser_dispatches_email_and_returns_success_contract() {
     EmailService emailService = mock(EmailService.class);
-    AdminUtilityController controller = new AdminUtilityController(emailService);
+    SuperAdminNotificationController controller =
+        new SuperAdminNotificationController(emailService);
     AdminNotifyRequest request =
         new AdminNotifyRequest(
             "admin.user@bigbrightpaints.com",

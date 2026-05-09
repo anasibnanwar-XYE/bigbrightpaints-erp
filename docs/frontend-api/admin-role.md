@@ -46,5 +46,5 @@ Last reviewed: 2026-04-15
 
 - `/api/v1/superadmin/roles/**` (RBAC catalog host)
 - `/api/v1/superadmin/settings` (governance/system settings host)
-- `/api/v1/superadmin/notify` (control-plane utility host)
+- `/api/v1/superadmin/notify` (control-plane notification host)
 - `/api/v1/superadmin/**` (control-plane ownership)
