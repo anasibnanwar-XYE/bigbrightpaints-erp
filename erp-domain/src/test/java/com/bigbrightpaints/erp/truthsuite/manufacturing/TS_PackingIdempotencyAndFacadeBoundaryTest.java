@@ -16,6 +16,8 @@ class TS_PackingIdempotencyAndFacadeBoundaryTest {
       "src/main/java/com/bigbrightpaints/erp/modules/factory/controller/PackingController.java";
   private static final String PACKING_SERVICE =
       "src/main/java/com/bigbrightpaints/erp/modules/factory/service/PackingService.java";
+  private static final String PACKING_JOURNAL_LINK_SERVICE =
+      "src/main/java/com/bigbrightpaints/erp/modules/factory/service/PackingJournalLinkService.java";
   private static final String DISPATCH_ENGINE =
       "src/main/java/com/bigbrightpaints/erp/modules/inventory/service/FinishedGoodsDispatchEngine.java";
 
@@ -50,8 +52,11 @@ class TS_PackingIdempotencyAndFacadeBoundaryTest {
         PACKING_SERVICE,
         "JournalEntryDto entry = accountingFacade.postPackingJournal(reference, packedDate, memo,"
             + " lines);",
-        "movement.setJournalEntryId(entry.id());",
-        "inventoryMovementRepository.save(movement);");
+        "packingJournalLinkService.linkPackagingMovementsToJournal(");
+    TruthSuiteFileAssert.assertContains(
+        PACKING_JOURNAL_LINK_SERVICE,
+        "movement.setJournalEntryId(journalEntryId);",
+        "inventoryMovementRepository.saveAll(toUpdate);");
   }
 
   @Test

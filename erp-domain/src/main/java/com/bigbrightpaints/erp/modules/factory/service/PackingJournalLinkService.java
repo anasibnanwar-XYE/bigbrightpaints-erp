@@ -16,12 +16,12 @@ import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovement;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovementRepository;
 
 @Service
-public class PackingJournalLinkHelper {
+public class PackingJournalLinkService {
 
   private final RawMaterialMovementRepository rawMaterialMovementRepository;
   private final InventoryMovementRepository inventoryMovementRepository;
 
-  public PackingJournalLinkHelper(
+  public PackingJournalLinkService(
       RawMaterialMovementRepository rawMaterialMovementRepository,
       InventoryMovementRepository inventoryMovementRepository) {
     this.rawMaterialMovementRepository = rawMaterialMovementRepository;
