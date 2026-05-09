@@ -12,6 +12,7 @@ import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountingTransactionAuditDetailDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountingTransactionAuditListItemDto;
+import com.bigbrightpaints.erp.modules.accounting.service.AccountingAuditTrailService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.shared.dto.PageResponse;
@@ -28,17 +29,17 @@ public class DefaultAuditAccessService implements AuditAccessService {
   private final CompanyContextService companyContextService;
   private final AuditLogReadAdapter auditLogReadAdapter;
   private final BusinessAuditReadAdapter businessAuditReadAdapter;
-  private final AccountingTransactionAuditReadAdapter accountingTransactionAuditReadAdapter;
+  private final AccountingAuditTrailService accountingAuditTrailService;
 
   public DefaultAuditAccessService(
       CompanyContextService companyContextService,
       AuditLogReadAdapter auditLogReadAdapter,
       BusinessAuditReadAdapter businessAuditReadAdapter,
-      AccountingTransactionAuditReadAdapter accountingTransactionAuditReadAdapter) {
+      AccountingAuditTrailService accountingAuditTrailService) {
     this.companyContextService = companyContextService;
     this.auditLogReadAdapter = auditLogReadAdapter;
     this.businessAuditReadAdapter = businessAuditReadAdapter;
-    this.accountingTransactionAuditReadAdapter = accountingTransactionAuditReadAdapter;
+    this.accountingAuditTrailService = accountingAuditTrailService;
   }
 
   @Override
@@ -85,13 +86,13 @@ public class DefaultAuditAccessService implements AuditAccessService {
       String reference,
       int page,
       int size) {
-    return accountingTransactionAuditReadAdapter.listTransactions(
+    return accountingAuditTrailService.listTransactions(
         from, to, module, status, reference, page, size);
   }
 
   @Override
   public AccountingTransactionAuditDetailDto getAccountingTransactionDetail(Long journalEntryId) {
-    return accountingTransactionAuditReadAdapter.transactionDetail(journalEntryId);
+    return accountingAuditTrailService.transactionDetail(journalEntryId);
   }
 
   private void validateMergedFeedWindow(AuditFeedFilter filter) {
