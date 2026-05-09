@@ -30,6 +30,29 @@ Last reviewed: 2026-05-14
   - `bash ci/lint-knowledgebase.sh`
   - `cd erp-domain && MIGRATION_SET=v2 mvn -B -ntp spotless:check`
 
+## Addendum — `hard-cut-orchestrator-idempotency-trace-cleanup`
+
+- Scope: removes the request-key fallback after orchestrator idempotency lease creation, requires the leased command to carry the canonical persisted idempotency key, and makes trace detail serialization fail closed instead of falling back to `Map.toString()`.
+- Risk trigger: touches high-risk orchestrator runtime code under `erp-domain/src/main/java/com/bigbrightpaints/erp/orchestrator/**` and runtime truth-suite coverage.
+- Approval mode: orchestrator; human escalation required: no.
+- Escalation decision: no API route, tenant boundary, privilege rule, persistence schema, or background execution behavior was widened. The cleanup removes fallback behavior and keeps one canonical persisted idempotency/trace JSON path.
+- Rollback owner: Droid / PR owner.
+- Rollback method: before merge, revert the orchestrator cleanup commits and rerun focused orchestrator runtime tests, compile, Spotless, high-risk guard, and whitespace checks.
+- Expiry: 2026-05-16.
+- Verification evidence:
+  - `CommandDispatcher` now derives downstream event/trace idempotency only from the leased `OrchestratorCommand`.
+  - missing or malformed leased command idempotency fails fast instead of falling back to the request argument.
+  - `TraceService` still serializes null details as `{}` but throws on serialization failure before saving an invalid non-JSON audit row.
+- Commands run:
+  - `MIGRATION_SET=v2 mvn -B -ntp -Djacoco.skip=true -DfailIfNoTests=false -Dtest=CommandDispatcherTest,TS_RuntimeOrchestratorExecutableCoverageTest test`
+  - `MIGRATION_SET=v2 mvn -B -ntp -Djacoco.skip=true -DfailIfNoTests=false -Dtest=TS_RuntimeTraceServiceExecutableCoverageTest,TS_RuntimeOrchestratorIdempotencyExecutableCoverageTest test`
+  - `MIGRATION_SET=v2 mvn -B -ntp spotless:check`
+  - `git diff --check`
+- Result summary:
+  - command dispatcher focused pack reported 16 tests run, 0 failures/errors/skips after fixture cleanup
+  - trace/idempotency focused pack reported 14 tests run, 0 failures/errors/skips
+  - Spotless and whitespace diff checks passed
+
 ## Addendum — `hard-cut-sales-order-status-canonicalization`
 
 - Scope: adds Flyway v2 forward migration `V207__canonicalize_sales_order_statuses.sql` to collapse retired sales-order status tokens into the current canonical lifecycle, updates the migration contract guard, and removes `BOOKED` from performance fixtures in favor of `CONFIRMED`.
