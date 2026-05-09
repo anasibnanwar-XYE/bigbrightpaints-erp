@@ -31,7 +31,6 @@ public class IntegrationCoordinator {
   private final OrderIntegrationCoordinator orderIntegrationCoordinator;
   private final PayrollIntegrationCoordinator payrollIntegrationCoordinator;
   private final DashboardIntegrationCoordinator dashboardIntegrationCoordinator;
-  private final IntegrationCoordinatorSupportService supportService;
 
   @Autowired
   public IntegrationCoordinator(
@@ -41,7 +40,6 @@ public class IntegrationCoordinator {
     this.orderIntegrationCoordinator = orderIntegrationCoordinator;
     this.payrollIntegrationCoordinator = payrollIntegrationCoordinator;
     this.dashboardIntegrationCoordinator = dashboardIntegrationCoordinator;
-    this.supportService = null;
   }
 
   public IntegrationCoordinator(
@@ -57,7 +55,8 @@ public class IntegrationCoordinator {
       CompanyClock companyClock,
       OrchestratorFeatureFlags featureFlags,
       PlatformTransactionManager txManager) {
-    this.supportService = new IntegrationCoordinatorSupportService(companyRepository);
+    IntegrationCoordinatorSupportService supportService =
+        new IntegrationCoordinatorSupportService(companyRepository);
     OrderSupportCoordinator orderSupportCoordinator =
         new OrderSupportCoordinator(
             salesService,
