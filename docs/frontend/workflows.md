@@ -84,8 +84,9 @@ Owner: accounting plus tenant-admin approval.
 2. Accounting requests close.
 3. Tenant-admin approval inbox shows the request.
 4. Tenant-admin approves or rejects.
-5. Accounting renders closed-period state, reopen controls, and reporting
-   outputs from the current period state.
+5. Accounting renders closed-period state and reporting outputs from the current
+   period state. Reopen controls are not part of the accounting UI; superadmin
+   owns reopen through control-plane workflows.
 
 Frontend rule: do not bypass period close with direct journal or report-export
 workarounds.

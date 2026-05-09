@@ -821,15 +821,12 @@ public class SalesReturnService {
       if (referenceId == null || referenceId.isEmpty()) {
         continue;
       }
-      if (!referenceId.equals(normalized) && !referenceId.startsWith(prefix)) {
+      if (!referenceId.startsWith(prefix)) {
         continue;
       }
       BigDecimal quantity =
           movement.getQuantity() != null ? movement.getQuantity() : BigDecimal.ZERO;
       totalsByFinishedGood.merge(finishedGood.getId(), quantity, BigDecimal::add);
-      if (referenceId.equals(normalized)) {
-        continue;
-      }
       String lineRemainder = referenceId.substring(prefix.length()).trim();
       int delimiter = lineRemainder.indexOf(SALES_RETURN_LINE_SEPARATOR);
       String lineIdText =
@@ -846,10 +843,6 @@ public class SalesReturnService {
       totalsByLine.merge(lineId, quantity, BigDecimal::add);
     }
     return new ReturnMovementSummary(totalsByLine, totalsByFinishedGood);
-  }
-
-  private String buildReturnReference(String invoiceNumber, Long invoiceLineId) {
-    return buildReturnReference(invoiceNumber, invoiceLineId, null);
   }
 
   private String buildReturnReference(String invoiceNumber, Long invoiceLineId, String returnKey) {
