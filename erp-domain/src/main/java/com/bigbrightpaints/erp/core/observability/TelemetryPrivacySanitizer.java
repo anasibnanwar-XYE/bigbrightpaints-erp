@@ -58,8 +58,8 @@ public final class TelemetryPrivacySanitizer {
     }
   }
 
-  public static String safeTagValue(String rawValue, String fallback) {
-    String value = StringUtils.hasText(rawValue) ? rawValue.trim() : fallback;
+  public static String safeTagValue(String rawValue, String defaultValue) {
+    String value = StringUtils.hasText(rawValue) ? rawValue.trim() : defaultValue;
     if (!StringUtils.hasText(value)) {
       value = "unknown";
     }

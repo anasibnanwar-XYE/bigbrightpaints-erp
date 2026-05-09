@@ -91,27 +91,24 @@ class TS_RuntimeTenantControlPlaneEnforcementTest {
   }
 
   @Test
-  void coreRuntimeAdmission_usesLegacyBlockedState_whenCompanyScopedPolicyIsMetadataOnly() {
+  void coreRuntimeAdmission_usesActiveDefault_whenCompanyScopedPolicyIsMetadataOnly() {
     com.bigbrightpaints.erp.core.security.TenantRuntimeAccessService coreRuntimeService =
         coreRuntimeService();
-    persistedSettingsByKey.put(legacyKey("acme", "state"), "BLOCKED");
     persistedSettingsByKey.put(keyPolicyReference(1L), "policy-v2");
     persistedSettingsByKey.put(keyPolicyUpdatedAt(1L), "2026-02-23T11:05:00Z");
 
-    com.bigbrightpaints.erp.core.security.TenantRuntimeAccessService.AccessHandle blocked =
+    com.bigbrightpaints.erp.core.security.TenantRuntimeAccessService.AccessHandle allowed =
         coreRuntimeService.acquire("ACME", new MockHttpServletRequest("GET", "/api/v1/private"));
 
-    assertThat(blocked.allowed()).isFalse();
-    assertThat(blocked.httpStatus()).isEqualTo(403);
-    assertThat(blocked.reasonCode()).isEqualTo("TENANT_BLOCKED");
+    assertThat(allowed.allowed()).isTrue();
+    allowed.close();
   }
 
   @Test
-  void coreRuntimeAdmission_invalidLegacyState_failsClosedToBlocked() {
+  void coreRuntimeAdmission_invalidCompanyScopedState_failsClosedToBlocked() {
     com.bigbrightpaints.erp.core.security.TenantRuntimeAccessService coreRuntimeService =
         coreRuntimeService();
-    persistedSettingsByKey.put(legacyKey("acme", "state"), "mystery");
-    persistedSettingsByKey.put(legacyKey("default", "state"), "ACTIVE");
+    persistedSettingsByKey.put(keyHoldState(1L), "mystery");
 
     com.bigbrightpaints.erp.core.security.TenantRuntimeAccessService.AccessHandle blocked =
         coreRuntimeService.acquire("ACME", new MockHttpServletRequest("GET", "/api/v1/private"));
@@ -122,27 +119,24 @@ class TS_RuntimeTenantControlPlaneEnforcementTest {
   }
 
   @Test
-  void
-      coreRuntimeAdmission_invalidLegacyDefaultState_failsClosedToBlocked_whenTenantStateMissing() {
+  void coreRuntimeAdmission_missingCompanyScopedState_usesActiveDefault() {
     com.bigbrightpaints.erp.core.security.TenantRuntimeAccessService coreRuntimeService =
         coreRuntimeService();
-    persistedSettingsByKey.put(legacyKey("default", "state"), "mystery");
 
-    com.bigbrightpaints.erp.core.security.TenantRuntimeAccessService.AccessHandle blocked =
+    com.bigbrightpaints.erp.core.security.TenantRuntimeAccessService.AccessHandle allowed =
         coreRuntimeService.acquire("ACME", new MockHttpServletRequest("GET", "/api/v1/private"));
 
-    assertThat(blocked.allowed()).isFalse();
-    assertThat(blocked.httpStatus()).isEqualTo(403);
-    assertThat(blocked.reasonCode()).isEqualTo("TENANT_BLOCKED");
+    assertThat(allowed.allowed()).isTrue();
+    allowed.close();
   }
 
   @Test
-  void coreRuntimeAdmission_denyPath_continuesWhenLegacyAuditWriteFails_andRestoresContext() {
+  void coreRuntimeAdmission_denyPath_continuesWhenPlatformAuditWriteFails_andRestoresContext() {
     com.bigbrightpaints.erp.core.security.TenantRuntimeAccessService coreRuntimeService =
         coreRuntimeService();
     persistedSettingsByKey.put(keyHoldState(1L), "BLOCKED");
     com.bigbrightpaints.erp.core.security.CompanyContextHolder.setCompanyCode("PREVIOUS_COMPANY");
-    doThrow(new RuntimeException("legacy-audit-down"))
+    doThrow(new RuntimeException("platform-audit-down"))
         .when(auditService)
         .logFailure(eq(com.bigbrightpaints.erp.core.audit.AuditEvent.ACCESS_DENIED), anyMap());
 
@@ -310,13 +304,9 @@ class TS_RuntimeTenantControlPlaneEnforcementTest {
   }
 
   @Test
-  void coreRuntimeAdmission_prefersCompanyScopedQuotasAndReason_overLegacyTenantCodeValues() {
+  void coreRuntimeAdmission_enforcesCompanyScopedQuotasAndReason() {
     com.bigbrightpaints.erp.core.security.TenantRuntimeAccessService coreRuntimeService =
         coreRuntimeService();
-    persistedSettingsByKey.put(legacyKey("acme", "state"), "ACTIVE");
-    persistedSettingsByKey.put(legacyKey("acme", "reason-code"), "LEGACY_REASON");
-    persistedSettingsByKey.put(legacyKey("acme", "quota.max-concurrent"), "1");
-    persistedSettingsByKey.put(legacyKey("acme", "quota.max-requests-per-minute"), "1");
     persistedSettingsByKey.put(keyHoldState(1L), "HOLD");
     persistedSettingsByKey.put(keyHoldReason(1L), "OPS_FREEZE");
     persistedSettingsByKey.put(keyMaxConcurrentRequests(1L), "7");
@@ -383,7 +373,7 @@ class TS_RuntimeTenantControlPlaneEnforcementTest {
   }
 
   @Test
-  void coreRuntimeAdmission_enforcesBlockedAndLegacyHoldReasonCodes() {
+  void coreRuntimeAdmission_enforcesBlockedAndIgnoresCodeScopedPolicyKeys() {
     com.bigbrightpaints.erp.core.security.TenantRuntimeAccessService coreRuntimeService =
         coreRuntimeService();
     persistedSettingsByKey.put(keyHoldState(1L), "BLOCKED");
@@ -394,14 +384,13 @@ class TS_RuntimeTenantControlPlaneEnforcementTest {
     assertThat(blocked.reasonCode()).isEqualTo("TENANT_BLOCKED");
 
     persistedSettingsByKey.put(keyHoldState(1L), "");
-    persistedSettingsByKey.put(legacyKey("acme", "state"), "HOLD");
+    persistedSettingsByKey.put("tenant.runtime.acme.state", "HOLD");
     com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
         coreRuntimeService, "evictPolicyCache", "ACME");
-    com.bigbrightpaints.erp.core.security.TenantRuntimeAccessService.AccessHandle hold =
+    com.bigbrightpaints.erp.core.security.TenantRuntimeAccessService.AccessHandle allowed =
         coreRuntimeService.acquire("ACME", new MockHttpServletRequest("POST", "/api/v1/private"));
-    assertThat(hold.allowed()).isFalse();
-    assertThat(hold.httpStatus()).isEqualTo(423);
-    assertThat(hold.reasonCode()).isEqualTo("TENANT_ON_HOLD");
+    assertThat(allowed.allowed()).isTrue();
+    allowed.close();
   }
 
   @Test
@@ -435,28 +424,6 @@ class TS_RuntimeTenantControlPlaneEnforcementTest {
     assertThat(secondDenied.allowed()).isFalse();
     assertThat(secondDenied.httpStatus()).isEqualTo(429);
     assertThat(secondDenied.reasonCode()).isEqualTo("TENANT_QUOTA_RATE_LIMIT");
-  }
-
-  @Test
-  void
-      coreRuntimeAdmission_snapshotFallsBackToLegacyTokenMetrics_whenCompanyScopedMetricsMissing() {
-    com.bigbrightpaints.erp.core.security.TenantRuntimeAccessService coreRuntimeService =
-        coreRuntimeService();
-    @SuppressWarnings("unchecked")
-    Map<String, Object> runtimeMetrics =
-        (Map<String, Object>) ReflectionTestUtils.getField(coreRuntimeService, "runtimeMetrics");
-    Object legacyMetrics =
-        com.bigbrightpaints.erp.test.support.ReflectionFieldAccess.invokeMethod(
-            coreRuntimeService, "createMetrics", "ACME");
-    runtimeMetrics.put("acme", legacyMetrics);
-
-    Optional<
-            com.bigbrightpaints.erp.core.security.TenantRuntimeAccessService
-                .TenantRuntimeMetricsSnapshot>
-        snapshot = coreRuntimeService.snapshot("ACME");
-
-    assertThat(snapshot).isPresent();
-    assertThat(snapshot.orElseThrow().totalRequests()).isZero();
   }
 
   @Test
@@ -651,9 +618,5 @@ class TS_RuntimeTenantControlPlaneEnforcementTest {
 
   private String keyPolicyUpdatedAt(long companyId) {
     return "tenant.runtime.policy-updated-at." + companyId;
-  }
-
-  private String legacyKey(String tenantCodeToken, String suffix) {
-    return "tenant.runtime." + tenantCodeToken + "." + suffix;
   }
 }

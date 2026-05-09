@@ -186,9 +186,9 @@ public class AuditEventClassifier {
     return StringUtils.hasText(value) ? value.trim() : null;
   }
 
-  private String normalizeOrDefault(String value, String fallback) {
+  private String normalizeOrDefault(String value, String defaultValue) {
     if (!StringUtils.hasText(value)) {
-      return fallback;
+      return defaultValue;
     }
     return value.trim().toUpperCase(Locale.ROOT);
   }

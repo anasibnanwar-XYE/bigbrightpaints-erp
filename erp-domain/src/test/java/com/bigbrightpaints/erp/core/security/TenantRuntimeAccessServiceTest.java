@@ -281,55 +281,15 @@ class TenantRuntimeAccessServiceTest {
   }
 
   @Test
-  void invalidLegacyState_failsClosedToBlocked_whenTenantStateIsPresentButInvalid() {
-    settings.put(legacyKey("acme", "state"), "mystery");
-    settings.put(legacyKey("default", "state"), "ACTIVE");
-
-    TenantRuntimeAccessService.AccessHandle accessHandle =
-        service.acquire("ACME", new MockHttpServletRequest("GET", "/api/v1/portal/dashboard"));
-
-    assertThat(accessHandle.allowed()).isFalse();
-    assertThat(accessHandle.httpStatus()).isEqualTo(403);
-    assertThat(accessHandle.reasonCode()).isEqualTo("TENANT_BLOCKED");
-  }
-
-  @Test
-  void invalidLegacyDefaultState_failsClosedToBlocked_whenTenantStateIsMissing() {
-    settings.put(legacyKey("default", "state"), "mystery");
-
-    TenantRuntimeAccessService.AccessHandle accessHandle =
-        service.acquire("ACME", new MockHttpServletRequest("GET", "/api/v1/portal/dashboard"));
-
-    assertThat(accessHandle.allowed()).isFalse();
-    assertThat(accessHandle.httpStatus()).isEqualTo(403);
-    assertThat(accessHandle.reasonCode()).isEqualTo("TENANT_BLOCKED");
-  }
-
-  @Test
-  void fallsBackToLegacyTenantCodeKeys_whenCompanyIdKeysAreAbsent() {
-    settings.put(legacyKey("acme", "state"), "HOLD");
-    settings.put(legacyKey("acme", "reason-code"), "LEGACY_HOLD");
-
-    TenantRuntimeAccessService.AccessHandle accessHandle =
-        service.acquire("ACME", new MockHttpServletRequest("POST", "/api/v1/private"));
-
-    assertThat(accessHandle.allowed()).isFalse();
-    assertThat(accessHandle.httpStatus()).isEqualTo(423);
-    assertThat(accessHandle.reasonCode()).isEqualTo("TENANT_ON_HOLD");
-  }
-
-  @Test
-  void metadataOnlyCompanyScopedKeys_doNotBypassLegacyBlockedState() {
-    settings.put(legacyKey("acme", "state"), "BLOCKED");
+  void metadataOnlyCompanyScopedKeys_useActiveDefaultWhenNoPolicyStateExists() {
     settings.put(keyPolicyReference(ACME_ID), "policy-v2");
     settings.put(keyPolicyUpdatedAt(ACME_ID), "2026-02-23T10:56:00Z");
 
     TenantRuntimeAccessService.AccessHandle accessHandle =
         service.acquire("ACME", new MockHttpServletRequest("GET", "/api/v1/private"));
 
-    assertThat(accessHandle.allowed()).isFalse();
-    assertThat(accessHandle.httpStatus()).isEqualTo(403);
-    assertThat(accessHandle.reasonCode()).isEqualTo("TENANT_BLOCKED");
+    assertThat(accessHandle.allowed()).isTrue();
+    accessHandle.close();
   }
 
   @Test
@@ -449,10 +409,10 @@ class TenantRuntimeAccessServiceTest {
   }
 
   @Test
-  void denyPath_continuesWhenLegacyAuditWriteFails_andRestoresContext() {
+  void denyPath_continuesWhenPlatformAuditWriteFails_andRestoresContext() {
     CompanyContextHolder.setCompanyCode("PREVIOUS_COMPANY");
     settings.put(keyHoldState(ACME_ID), "BLOCKED");
-    doThrow(new RuntimeException("legacy-audit-down"))
+    doThrow(new RuntimeException("platform-audit-down"))
         .when(auditService)
         .logFailure(eq(AuditEvent.ACCESS_DENIED), anyMap());
 
@@ -565,9 +525,5 @@ class TenantRuntimeAccessServiceTest {
 
   private String keyPolicyUpdatedAt(long companyId) {
     return "tenant.runtime.policy-updated-at." + companyId;
-  }
-
-  private String legacyKey(String tenantCodeToken, String suffix) {
-    return "tenant.runtime." + tenantCodeToken + "." + suffix;
   }
 }

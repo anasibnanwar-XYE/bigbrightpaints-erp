@@ -30,16 +30,16 @@ public final class IdempotencyHeaderUtils {
     return resolvedHeader;
   }
 
-  public static ApplicationException unsupportedLegacyHeader(
-      String legacyHeader, String resourceDescription, String canonicalPath) {
+  public static ApplicationException unsupportedRetiredHeader(
+      String retiredHeader, String resourceDescription, String canonicalPath) {
     return new ApplicationException(
             ErrorCode.VALIDATION_INVALID_INPUT,
-            legacyHeader
+            retiredHeader
                 + " is not supported for "
                 + resourceDescription
                 + "; use "
                 + CANONICAL_IDEMPOTENCY_HEADER)
-        .withDetail("legacyHeader", legacyHeader)
+        .withDetail("retiredHeader", retiredHeader)
         .withDetail("canonicalHeader", CANONICAL_IDEMPOTENCY_HEADER)
         .withDetail("canonicalPath", canonicalPath);
   }

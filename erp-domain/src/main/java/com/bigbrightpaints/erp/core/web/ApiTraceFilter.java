@@ -166,13 +166,13 @@ public class ApiTraceFilter extends OncePerRequestFilter {
         candidate, () -> UUID.randomUUID().toString());
   }
 
-  private String resolveCorrelationId(HttpServletRequest request, String fallbackTraceId) {
+  private String resolveCorrelationId(HttpServletRequest request, String generatedTraceId) {
     String candidate = firstHeader(request, CORRELATION_HEADER, "X-Correlation-Id", "X-Request-ID");
     try {
       String sanitized = CorrelationIdentifierSanitizer.sanitizeOptionalRequestId(candidate);
-      return StringUtils.hasText(sanitized) ? sanitized : fallbackTraceId;
+      return StringUtils.hasText(sanitized) ? sanitized : generatedTraceId;
     } catch (RuntimeException ex) {
-      return fallbackTraceId;
+      return generatedTraceId;
     }
   }
 

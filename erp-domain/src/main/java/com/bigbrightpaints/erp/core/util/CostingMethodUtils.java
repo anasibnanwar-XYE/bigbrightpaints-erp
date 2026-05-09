@@ -18,9 +18,7 @@ public final class CostingMethodUtils {
       return false;
     }
     String normalized = method.trim().toUpperCase(Locale.ROOT);
-    return "WAC".equals(normalized)
-        || "WEIGHTED_AVERAGE".equals(normalized)
-        || "WEIGHTED-AVERAGE".equals(normalized);
+    return "WAC".equals(normalized) || "WEIGHTED_AVERAGE".equals(normalized);
   }
 
   public static <T> T selectWeightedAverageValue(
@@ -35,7 +33,7 @@ public final class CostingMethodUtils {
     String normalized = method.trim().toUpperCase(Locale.ROOT);
     return switch (normalized) {
       case "FIFO" -> "FIFO";
-      case "WAC", "WEIGHTED_AVERAGE", "WEIGHTED-AVERAGE" -> "WAC";
+      case "WAC", "WEIGHTED_AVERAGE" -> "WAC";
       default -> throw new IllegalArgumentException("Unsupported costing method " + method);
     };
   }
@@ -48,7 +46,7 @@ public final class CostingMethodUtils {
     return switch (normalized) {
       case "FIFO" -> "FIFO";
       case "LIFO" -> "LIFO";
-      case "WAC", "WEIGHTED_AVERAGE", "WEIGHTED-AVERAGE" -> "WAC";
+      case "WAC", "WEIGHTED_AVERAGE" -> "WAC";
       default -> throw new IllegalArgumentException("Unsupported costing method " + method);
     };
   }
@@ -62,8 +60,8 @@ public final class CostingMethodUtils {
     return switch (normalized) {
       case "FIFO" -> "FIFO";
       case "LIFO" -> "LIFO";
-      case "WAC", "WEIGHTED_AVERAGE", "WEIGHTED-AVERAGE" -> "WAC";
-      default -> trimmed;
+      case "WAC", "WEIGHTED_AVERAGE" -> "WAC";
+      default -> throw new IllegalArgumentException("Unsupported costing method " + method);
     };
   }
 
@@ -75,13 +73,8 @@ public final class CostingMethodUtils {
     String normalized = trimmed.toUpperCase(Locale.ROOT);
     return switch (normalized) {
       case "FIFO" -> "FIFO";
-      case "WAC", "WEIGHTED_AVERAGE", "WEIGHTED-AVERAGE" -> "WAC";
-      default -> {
-        if (normalized.matches("[A-Z0-9_-]+")) {
-          yield trimmed;
-        }
-        throw new IllegalArgumentException("Unsupported costing method " + method);
-      }
+      case "WAC", "WEIGHTED_AVERAGE" -> "WAC";
+      default -> throw new IllegalArgumentException("Unsupported costing method " + method);
     };
   }
 
@@ -94,9 +87,10 @@ public final class CostingMethodUtils {
       return FinishedGoodBatchSelectionMethod.FIFO;
     }
     String normalized = method.trim().toUpperCase(Locale.ROOT);
-    if ("LIFO".equals(normalized)) {
-      return FinishedGoodBatchSelectionMethod.LIFO;
-    }
-    return FinishedGoodBatchSelectionMethod.FIFO;
+    return switch (normalized) {
+      case "FIFO" -> FinishedGoodBatchSelectionMethod.FIFO;
+      case "LIFO" -> FinishedGoodBatchSelectionMethod.LIFO;
+      default -> throw new IllegalArgumentException("Unsupported costing method " + method);
+    };
   }
 }

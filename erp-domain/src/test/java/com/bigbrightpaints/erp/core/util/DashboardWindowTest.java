@@ -131,7 +131,7 @@ class DashboardWindowTest {
   }
 
   @Test
-  void resolve_timezoneFallbackUsesFallback() {
+  void resolve_invalidTimezoneUsesDefaultTimezone() {
     DashboardWindow window = DashboardWindow.resolve("7d", null, "Not/AZone", "UTC");
     assertThat(window.zone()).isEqualTo(ZoneId.of("UTC"));
   }

@@ -139,7 +139,7 @@ public class ConfigurationHealthService {
       if (finishedGood != null) {
         checkFinishedGoodAccounts(company, finishedGood, issues);
       } else {
-        checkFinishedGoodMetadataFallback(company, product, sku, issues);
+        checkFinishedGoodMetadataAccounts(company, product, sku, issues);
       }
       checkProductionMetadata(company, product, sku, issues);
     }
@@ -242,7 +242,7 @@ public class ConfigurationHealthService {
     }
   }
 
-  private void checkFinishedGoodMetadataFallback(
+  private void checkFinishedGoodMetadataAccounts(
       Company company, ProductionProduct product, String sku, List<ConfigurationIssue> issues) {
     Long valuationAccountId = metadataLong(product, "fgValuationAccountId");
     Long revenueAccountId = metadataLong(product, "fgRevenueAccountId");

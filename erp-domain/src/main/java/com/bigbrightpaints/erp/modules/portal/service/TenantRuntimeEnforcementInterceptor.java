@@ -65,15 +65,14 @@ public class TenantRuntimeEnforcementInterceptor implements HandlerInterceptor {
       }
       throw admissionException(company.getCode(), path, admission);
     }
-    request.setAttribute(TenantRuntimeRequestAttributes.INTERCEPTOR_FALLBACK_ADMISSION, admission);
+    request.setAttribute(TenantRuntimeRequestAttributes.INTERCEPTOR_ADMISSION, admission);
     return true;
   }
 
   @Override
   public void afterCompletion(
       HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) {
-    Object admission =
-        request.getAttribute(TenantRuntimeRequestAttributes.INTERCEPTOR_FALLBACK_ADMISSION);
+    Object admission = request.getAttribute(TenantRuntimeRequestAttributes.INTERCEPTOR_ADMISSION);
     if (admission
         instanceof TenantRuntimeEnforcementService.TenantRequestAdmission trackedAdmission) {
       tenantRuntimeRequestAdmissionService.completeRequest(trackedAdmission, response.getStatus());
@@ -84,9 +83,7 @@ public class TenantRuntimeEnforcementInterceptor implements HandlerInterceptor {
     if (!StringUtils.hasText(path)) {
       return false;
     }
-    return path.startsWith("/api/v1/reports/")
-        || path.startsWith("/api/v1/portal/")
-        || path.startsWith("/api/v1/demo/");
+    return path.startsWith("/api/v1/reports/") || path.startsWith("/api/v1/portal/");
   }
 
   private RuntimeException admissionException(

@@ -8,7 +8,7 @@ import io.jsonwebtoken.Claims;
 import jakarta.servlet.http.HttpServletRequest;
 
 /**
- * Request-scoped marker that prevents duplicate ACCESS_DENIED audits across service and fallback
+ * Request-scoped marker that prevents duplicate ACCESS_DENIED audits across service and exception
  * layers in a single request.
  */
 public final class AccessDeniedAuditMarker {

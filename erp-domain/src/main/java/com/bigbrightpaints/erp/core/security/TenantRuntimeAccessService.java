@@ -43,8 +43,6 @@ public class TenantRuntimeAccessService {
   private static final int HTTP_STATUS_TENANT_LOCKED = 423;
   private static final int HTTP_STATUS_TOO_MANY_REQUESTS = 429;
   private static final String SETTINGS_PREFIX = "tenant.runtime.";
-  private static final String DEFAULT_TOKEN = "default";
-  private static final String LEGACY_SETTINGS_PREFIX = SETTINGS_PREFIX;
   private static final String KEY_HOLD_STATE_PREFIX = SETTINGS_PREFIX + "hold-state.";
   private static final String KEY_HOLD_REASON_PREFIX = SETTINGS_PREFIX + "hold-reason.";
   private static final String KEY_MAX_CONCURRENT_REQUESTS_PREFIX =
@@ -195,9 +193,6 @@ public class TenantRuntimeAccessService {
             .map(companyId -> runtimeMetrics.get(runtimeMetricsKey(companyId, tenantToken)))
             .orElse(null);
     if (metrics == null) {
-      metrics = runtimeMetrics.get(tenantToken);
-    }
-    if (metrics == null) {
       return Optional.empty();
     }
     return Optional.of(toSnapshot(metrics));
@@ -345,7 +340,7 @@ public class TenantRuntimeAccessService {
       CompanyContextHolder.setCompanyCode(company.getCode());
       auditService.logFailure(AuditEvent.ACCESS_DENIED, metadata);
     } catch (RuntimeException ex) {
-      log.warn("Unable to write legacy audit denial event for company {}", company.getCode(), ex);
+      log.warn("Unable to write platform audit denial event for company {}", company.getCode(), ex);
     } finally {
       restoreCompanyContext(previousCompany);
     }
@@ -368,39 +363,11 @@ public class TenantRuntimeAccessService {
     String reasonByCompanyId = setting(keyHoldReason(companyId));
     String maxConcurrentByCompanyId = setting(keyMaxConcurrentRequests(companyId));
     String maxRateByCompanyId = setting(keyMaxRequestsPerMinute(companyId));
-    String stateByLegacyCode = setting(legacyKey(tenantToken, "state"));
-    String reasonByLegacyCode = setting(legacyKey(tenantToken, "reason-code"));
-    String maxConcurrentByLegacyCode = setting(legacyKey(tenantToken, "quota.max-concurrent"));
-    String maxRateByLegacyCode = setting(legacyKey(tenantToken, "quota.max-requests-per-minute"));
 
-    TenantRuntimeState defaultState =
-        parseLegacyTenantState(
-            setting(legacyKey(DEFAULT_TOKEN, "state")), TenantRuntimeState.ACTIVE);
-    TenantRuntimeState legacyState = parseLegacyTenantState(stateByLegacyCode, defaultState);
-
-    int defaultConcurrent =
-        parseNonNegative(
-            setting(legacyKey(DEFAULT_TOKEN, "quota.max-concurrent")),
-            defaultMaxConcurrentRequests);
-    int legacyConcurrent = parseNonNegative(maxConcurrentByLegacyCode, defaultConcurrent);
-
-    int defaultRate =
-        parseNonNegative(
-            setting(legacyKey(DEFAULT_TOKEN, "quota.max-requests-per-minute")),
-            defaultMaxRequestsPerMinute);
-    int legacyRate = parseNonNegative(maxRateByLegacyCode, defaultRate);
-
-    TenantRuntimeState tenantState;
-    if (StringUtils.hasText(stateByCompanyId)) {
-      tenantState = TenantRuntimeState.parse(stateByCompanyId, TenantRuntimeState.BLOCKED);
-    } else {
-      tenantState = legacyState;
-    }
-
-    int maxConcurrent = parseNonNegative(maxConcurrentByCompanyId, legacyConcurrent);
-    int maxRate = parseNonNegative(maxRateByCompanyId, legacyRate);
-    String reasonCode =
-        trimToNull(StringUtils.hasText(reasonByCompanyId) ? reasonByCompanyId : reasonByLegacyCode);
+    TenantRuntimeState tenantState = parseTenantState(stateByCompanyId);
+    int maxConcurrent = parseNonNegative(maxConcurrentByCompanyId, defaultMaxConcurrentRequests);
+    int maxRate = parseNonNegative(maxRateByCompanyId, defaultMaxRequestsPerMinute);
+    String reasonCode = trimToNull(reasonByCompanyId);
 
     return new TenantRuntimePolicy(tenantState, reasonCode, maxConcurrent, maxRate);
   }
@@ -497,10 +464,6 @@ public class TenantRuntimeAccessService {
     }
   }
 
-  private String legacyKey(String tenantToken, String suffix) {
-    return LEGACY_SETTINGS_PREFIX + tenantToken + "." + suffix;
-  }
-
   private String keyHoldState(Long companyId) {
     return KEY_HOLD_STATE_PREFIX + companyId;
   }
@@ -541,22 +504,21 @@ public class TenantRuntimeAccessService {
     return trimmed.isEmpty() ? null : trimmed;
   }
 
-  private static int parseNonNegative(String raw, int fallback) {
+  private static int parseNonNegative(String raw, int defaultValue) {
     if (!StringUtils.hasText(raw)) {
-      return Math.max(fallback, 0);
+      return Math.max(defaultValue, 0);
     }
     try {
       int value = Integer.parseInt(raw.trim());
       return Math.max(value, 0);
     } catch (NumberFormatException ex) {
-      return Math.max(fallback, 0);
+      return Math.max(defaultValue, 0);
     }
   }
 
-  private static TenantRuntimeState parseLegacyTenantState(
-      String raw, TenantRuntimeState fallbackWhenMissing) {
+  private static TenantRuntimeState parseTenantState(String raw) {
     if (!StringUtils.hasText(raw)) {
-      return fallbackWhenMissing;
+      return TenantRuntimeState.ACTIVE;
     }
     return TenantRuntimeState.parse(raw, TenantRuntimeState.BLOCKED);
   }
@@ -631,14 +593,14 @@ public class TenantRuntimeAccessService {
     HOLD,
     BLOCKED;
 
-    static TenantRuntimeState parse(String raw, TenantRuntimeState fallback) {
+    static TenantRuntimeState parse(String raw, TenantRuntimeState defaultValue) {
       if (!StringUtils.hasText(raw)) {
-        return fallback;
+        return defaultValue;
       }
       try {
         return TenantRuntimeState.valueOf(raw.trim().toUpperCase(Locale.ROOT));
       } catch (IllegalArgumentException ex) {
-        return fallback;
+        return defaultValue;
       }
     }
   }

@@ -98,7 +98,7 @@ class AuditEventClassifierTest {
   }
 
   @Test
-  void moduleFor_prefersExplicitResourceTypeBeforeCategoryFallback() {
+  void moduleFor_prefersExplicitResourceTypeBeforeDerivedCategory() {
     AuditLog auditLog = new AuditLog();
     auditLog.setEventType(AuditEvent.ACCESS_GRANTED);
     auditLog.setResourceType("inventory_adjustment");
@@ -107,7 +107,7 @@ class AuditEventClassifierTest {
   }
 
   @Test
-  void moduleFor_fallsBackToDerivedCategoryWhenNoExplicitModuleHintExists() {
+  void moduleFor_usesDerivedCategoryWhenNoExplicitModuleHintExists() {
     AuditLog auditLog = new AuditLog();
     auditLog.setEventType(AuditEvent.ACCESS_GRANTED);
 
@@ -127,7 +127,7 @@ class AuditEventClassifierTest {
   }
 
   @Test
-  void isAccountingEvent_handlesNullAndTrailFailureFallbacks() {
+  void isAccountingEvent_handlesNullAndTrailFailureClassification() {
     AuditLog nonAccountingFailure = new AuditLog();
     nonAccountingFailure.setEventType(AuditEvent.INTEGRATION_FAILURE);
     nonAccountingFailure.setMetadata(Map.of());
@@ -168,7 +168,7 @@ class AuditEventClassifierTest {
   }
 
   @Test
-  void subjectIdentifier_supportsSubjectPublicIdFallback() {
+  void subjectIdentifier_supportsSubjectPublicId() {
     assertThat(
             classifier.subjectIdentifier(
                 Map.of("subjectPublicId", "550e8400-e29b-41d4-a716-446655440000")))

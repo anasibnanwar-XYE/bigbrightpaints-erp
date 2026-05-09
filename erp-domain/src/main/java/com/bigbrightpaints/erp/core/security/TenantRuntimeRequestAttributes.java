@@ -5,8 +5,8 @@ public final class TenantRuntimeRequestAttributes {
   public static final String CANONICAL_ADMISSION_APPLIED =
       TenantRuntimeRequestAttributes.class.getName() + ".canonicalAdmissionApplied";
 
-  public static final String INTERCEPTOR_FALLBACK_ADMISSION =
-      TenantRuntimeRequestAttributes.class.getName() + ".interceptorFallbackAdmission";
+  public static final String INTERCEPTOR_ADMISSION =
+      TenantRuntimeRequestAttributes.class.getName() + ".interceptorAdmission";
 
   private TenantRuntimeRequestAttributes() {}
 }

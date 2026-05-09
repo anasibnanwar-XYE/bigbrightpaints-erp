@@ -80,13 +80,13 @@ class AuditReadAdaptersIT extends AbstractIntegrationTest {
             AuditEvent.DATA_UPDATE,
             day.atTime(9, 5),
             log -> log.setRequestPath("/api/v1/companies/17"));
-    AuditLog securityFallback =
+    AuditLog securityCategoryLog =
         saveAuditLog(company.getId(), AuditEvent.ACCESS_DENIED, day.atTime(9, 6), log -> {});
-    AuditLog dataFallback =
+    AuditLog dataCategoryLog =
         saveAuditLog(company.getId(), AuditEvent.DATA_READ, day.atTime(9, 7), log -> {});
-    AuditLog complianceFallback =
+    AuditLog complianceCategoryLog =
         saveAuditLog(company.getId(), AuditEvent.AUDIT_LOG_EXPORTED, day.atTime(9, 8), log -> {});
-    AuditLog systemFallback =
+    AuditLog systemCategoryLog =
         saveAuditLog(company.getId(), AuditEvent.SYSTEM_SHUTDOWN, day.atTime(9, 9), log -> {});
     AuditLog systemIntegrationFailure =
         saveAuditLog(
@@ -94,7 +94,7 @@ class AuditReadAdaptersIT extends AbstractIntegrationTest {
             AuditEvent.INTEGRATION_FAILURE,
             day.atTime(9, 10),
             log -> log.setMetadata(Map.of()));
-    AuditLog accountingFallback =
+    AuditLog accountingCategoryLog =
         saveAuditLog(company.getId(), AuditEvent.PAYMENT_PROCESSED, day.atTime(9, 11), log -> {});
     AuditLog accountingTrailFailure =
         saveAuditLog(
@@ -102,7 +102,7 @@ class AuditReadAdaptersIT extends AbstractIntegrationTest {
             AuditEvent.INTEGRATION_FAILURE,
             day.atTime(9, 12),
             log -> log.setMetadata(Map.of("eventTrailOperation", "PAYROLL_POSTED")));
-    AuditLog businessFallback =
+    AuditLog businessCategoryLog =
         saveAuditLog(company.getId(), AuditEvent.REFERENCE_GENERATED, day.atTime(9, 13), log -> {});
     AuditLog resourceTypeData =
         saveAuditLog(
@@ -127,7 +127,7 @@ class AuditReadAdaptersIT extends AbstractIntegrationTest {
             sourceIds(
                 queryTenantLogs(company, day, day, "ACCOUNTING", null, null, null, null, null)))
         .containsExactlyInAnyOrder(
-            accountingPath.getId(), accountingFallback.getId(), accountingTrailFailure.getId());
+            accountingPath.getId(), accountingCategoryLog.getId(), accountingTrailFailure.getId());
     assertThat(sourceIds(queryTenantLogs(company, day, day, "AUTH", null, null, null, null, null)))
         .containsExactly(auth.getId());
     assertThat(
@@ -140,26 +140,26 @@ class AuditReadAdaptersIT extends AbstractIntegrationTest {
         .containsExactly(companies.getId());
     assertThat(
             sourceIds(queryTenantLogs(company, day, day, "SECURITY", null, null, null, null, null)))
-        .containsExactly(securityFallback.getId());
+        .containsExactly(securityCategoryLog.getId());
     assertThat(sourceIds(queryTenantLogs(company, day, day, "DATA", null, null, null, null, null)))
-        .containsExactlyInAnyOrder(dataFallback.getId(), resourceTypeData.getId());
+        .containsExactlyInAnyOrder(dataCategoryLog.getId(), resourceTypeData.getId());
     assertThat(
             sourceIds(
                 queryTenantLogs(company, day, day, "COMPLIANCE", null, null, null, null, null)))
-        .containsExactlyInAnyOrder(complianceFallback.getId(), metadataCompliance.getId());
+        .containsExactlyInAnyOrder(complianceCategoryLog.getId(), metadataCompliance.getId());
     assertThat(
             sourceIds(queryTenantLogs(company, day, day, "SYSTEM", null, null, null, null, null)))
-        .containsExactlyInAnyOrder(systemFallback.getId(), systemIntegrationFailure.getId());
+        .containsExactlyInAnyOrder(systemCategoryLog.getId(), systemIntegrationFailure.getId());
     assertThat(
             sourceIds(queryTenantLogs(company, day, day, "BUSINESS", null, null, null, null, null)))
-        .containsExactly(businessFallback.getId());
+        .containsExactly(businessCategoryLog.getId());
     assertThat(
             sourceIds(queryTenantLogs(company, day, day, "MYSTERY", null, null, null, null, null)))
         .isEmpty();
     assertThat(
             sourceIds(queryAccountingLogs(company, day, day, null, null, null, null, null, null)))
         .containsExactlyInAnyOrder(
-            accountingPath.getId(), accountingFallback.getId(), accountingTrailFailure.getId());
+            accountingPath.getId(), accountingCategoryLog.getId(), accountingTrailFailure.getId());
     assertThat(
             sourceIds(
                 queryAccountingLogs(company, day, day, "BUSINESS", null, null, null, null, null)))
@@ -243,7 +243,7 @@ class AuditReadAdaptersIT extends AbstractIntegrationTest {
   }
 
   @Test
-  void queryPlatformFeed_appliesVisibilityRulesAndCompanyCodeFallbacks() {
+  void queryPlatformFeed_appliesVisibilityRulesAndCompanyCodeResolution() {
     String platformCode = "PLATVIS" + Math.abs((int) (System.nanoTime() % 100000));
     authScopeService.updatePlatformScopeCode(platformCode);
     Company tenantA = dataSeeder.ensureCompany("PLATTA", "Platform Tenant A");
@@ -262,18 +262,6 @@ class AuditReadAdaptersIT extends AbstractIntegrationTest {
             AuditEvent.USER_CREATED,
             absentDay.atTime(9, 1),
             log -> log.setRequestPath("/api/v1/superadmin/users"));
-    AuditLog adminSettings =
-        saveAuditLog(
-            tenantA.getId(),
-            AuditEvent.CONFIGURATION_CHANGED,
-            absentDay.atTime(9, 2),
-            log -> log.setRequestPath("/api/v1/admin/settings/preferences"));
-    AuditLog adminRoles =
-        saveAuditLog(
-            tenantA.getId(),
-            AuditEvent.ACCESS_DENIED,
-            absentDay.atTime(9, 2, 30),
-            log -> log.setRequestPath("/api/v1/admin/roles"));
     AuditLog targetCompany =
         saveAuditLog(
             tenantB.getId(),
@@ -294,17 +282,10 @@ class AuditReadAdaptersIT extends AbstractIntegrationTest {
             filter(absentDay, absentDay, null, null, null, null, null, null));
 
     assertThat(sourceIds(absentPlatformFeed))
-        .containsExactlyInAnyOrder(
-            nullCompany.getId(),
-            superadmin.getId(),
-            adminSettings.getId(),
-            adminRoles.getId(),
-            targetCompany.getId());
+        .containsExactlyInAnyOrder(nullCompany.getId(), superadmin.getId(), targetCompany.getId());
     assertThat(companyCodesBySourceId(absentPlatformFeed))
         .containsEntry(nullCompany.getId(), null)
         .containsEntry(superadmin.getId(), tenantA.getCode())
-        .containsEntry(adminSettings.getId(), tenantA.getCode())
-        .containsEntry(adminRoles.getId(), tenantA.getCode())
         .containsEntry(targetCompany.getId(), "TENANT-B");
 
     Company platformCompany = dataSeeder.ensureCompany(platformCode, "Platform Company");

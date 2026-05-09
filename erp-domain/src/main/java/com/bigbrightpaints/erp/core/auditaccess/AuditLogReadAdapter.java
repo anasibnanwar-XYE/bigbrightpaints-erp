@@ -204,7 +204,7 @@ public class AuditLogReadAdapter {
     Page<AuditLog> page =
         auditLogRepository.findAll(spec, PageRequest.of(safePage, safeSize, sort()));
     List<AuditLog> logs = page.getContent();
-    Map<Long, String> companyCodes = resolveFallbackCompanyCodes(logs);
+    Map<Long, String> companyCodes = resolveCompanyCodesForLogs(logs);
     return new AuditFeedSlice(
         logs.stream().map(log -> toDto(log, null, companyCodes)).toList(), page.getTotalElements());
   }
@@ -243,20 +243,20 @@ public class AuditLogReadAdapter {
     Page<AuditLog> page =
         auditLogRepository.findAll(spec, PageRequest.of(safePage, safeSize, sort()));
     List<AuditLog> logs = page.getContent();
-    Map<Long, String> companyCodes = resolveFallbackCompanyCodes(logs);
+    Map<Long, String> companyCodes = resolveCompanyCodesForLogs(logs);
     return new AuditFeedSlice(
         logs.stream().map(log -> toDto(log, null, companyCodes)).toList(), page.getTotalElements());
   }
 
   private AuditFeedItemDto toDto(
-      AuditLog log, String currentCompanyCode, Map<Long, String> fallbackCompanyCodes) {
+      AuditLog log, String currentCompanyCode, Map<Long, String> companyCodesById) {
     Map<String, String> metadata = metadata(log);
-    String fallbackCompanyCode =
-        log.getCompanyId() == null ? null : fallbackCompanyCodes.get(log.getCompanyId());
+    String companyCodeFromId =
+        log.getCompanyId() == null ? null : companyCodesById.get(log.getCompanyId());
     String companyCode =
         currentCompanyCode != null
             ? currentCompanyCode
-            : firstNonBlank(metadata.get("targetCompanyCode"), fallbackCompanyCode);
+            : firstNonBlank(metadata.get("targetCompanyCode"), companyCodeFromId);
     String entityType = entityTypeFor(log, metadata);
     String entityId = entityIdFor(log, metadata);
     return new AuditFeedItemDto(
@@ -311,7 +311,7 @@ public class AuditLogReadAdapter {
     return firstNonBlank(firstMetadataValue(metadata, REFERENCE_METADATA_KEYS), entityId);
   }
 
-  private Map<Long, String> resolveFallbackCompanyCodes(List<AuditLog> logs) {
+  private Map<Long, String> resolveCompanyCodesForLogs(List<AuditLog> logs) {
     Set<Long> companyIds =
         logs.stream()
             .filter(log -> !StringUtils.hasText(metadata(log).get("targetCompanyCode")))
@@ -376,20 +376,20 @@ public class AuditLogReadAdapter {
       }
       matches.add(cb.and(cb.not(knownPath), resourceTypeMatch));
       if ("ACCOUNTING".equals(normalizedModule)) {
-        Predicate accountingFallbackMatch = accountingFailureMatch;
+        Predicate accountingCategoryMatch = accountingFailureMatch;
         if (categoryMatch != null) {
-          accountingFallbackMatch = cb.or(categoryMatch, accountingFailureMatch);
+          accountingCategoryMatch = cb.or(categoryMatch, accountingFailureMatch);
         }
         matches.add(
-            cb.and(cb.not(knownPath), cb.not(resourceTypePresent), accountingFallbackMatch));
+            cb.and(cb.not(knownPath), cb.not(resourceTypePresent), accountingCategoryMatch));
       } else if ("SECURITY".equals(normalizedModule) && categoryMatch != null) {
         matches.add(categoryMatch);
       } else if (categoryMatch != null) {
-        Predicate fallbackCategoryMatch = categoryMatch;
+        Predicate categoryOnlyMatch = categoryMatch;
         if ("SYSTEM".equals(normalizedModule)) {
-          fallbackCategoryMatch = cb.and(categoryMatch, cb.not(accountingFailureMatch));
+          categoryOnlyMatch = cb.and(categoryMatch, cb.not(accountingFailureMatch));
         }
-        matches.add(cb.and(cb.not(knownPath), cb.not(resourceTypePresent), fallbackCategoryMatch));
+        matches.add(cb.and(cb.not(knownPath), cb.not(resourceTypePresent), categoryOnlyMatch));
       }
       return cb.or(matches.toArray(Predicate[]::new));
     };

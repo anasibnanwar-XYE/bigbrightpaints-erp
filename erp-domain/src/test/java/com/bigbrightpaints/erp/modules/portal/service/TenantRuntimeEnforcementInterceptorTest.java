@@ -74,8 +74,7 @@ class TenantRuntimeEnforcementInterceptorTest {
   }
 
   @Test
-  void preHandle_skipsLegacyPortalRuntimeChecks_whenCanonicalAdmissionAlreadyApplied()
-      throws Exception {
+  void preHandle_skipsPortalRuntimeChecksWhenCanonicalAdmissionAlreadyApplied() throws Exception {
     interceptor = newInterceptor();
     MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/portal/dashboard");
     request.setAttribute(TenantRuntimeRequestAttributes.CANONICAL_ADMISSION_APPLIED, Boolean.TRUE);
@@ -104,13 +103,13 @@ class TenantRuntimeEnforcementInterceptorTest {
     interceptor.afterCompletion(request, response, new Object(), null);
 
     assertThat(allowed).isTrue();
-    assertThat(request.getAttribute(TenantRuntimeRequestAttributes.INTERCEPTOR_FALLBACK_ADMISSION))
+    assertThat(request.getAttribute(TenantRuntimeRequestAttributes.INTERCEPTOR_ADMISSION))
         .isSameAs(admission);
     verify(tenantRuntimeRequestAdmissionService).completeRequest(admission, 200);
   }
 
   @Test
-  void preHandle_passesTrimmedAuthenticatedActorToFallbackAdmission() throws Exception {
+  void preHandle_passesTrimmedAuthenticatedActorToInterceptorAdmission() throws Exception {
     interceptor = newInterceptor();
     Company company = company(55L, "ACME");
     when(companyContextService.requireCurrentCompany()).thenReturn(company);
@@ -410,7 +409,7 @@ class TenantRuntimeEnforcementInterceptorTest {
   }
 
   @Test
-  void admissionException_leavesFallbackStateDetailsNullWhenAdmissionMetadataIsBlank() {
+  void admissionException_leavesStateDetailsNullWhenAdmissionMetadataIsBlank() {
     interceptor = newInterceptor();
     TenantRuntimeEnforcementService.TenantRequestAdmission rejected =
         admission(
@@ -519,7 +518,7 @@ class TenantRuntimeEnforcementInterceptorTest {
   }
 
   @Test
-  void admissionException_degradesToNullFallbackStateDetailsWhenSnapshotLookupFails() {
+  void admissionException_degradesToNullStateDetailsWhenSnapshotLookupFails() {
     interceptor = newInterceptor();
     TenantRuntimeEnforcementService.TenantRequestAdmission rejected =
         admission(
@@ -553,7 +552,7 @@ class TenantRuntimeEnforcementInterceptorTest {
   }
 
   @Test
-  void afterCompletion_ignoresRequestsWithoutInterceptorFallbackAdmission() {
+  void afterCompletion_ignoresRequestsWithoutInterceptorAdmission() {
     interceptor = newInterceptor();
     MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/portal/dashboard");
 

@@ -279,13 +279,13 @@ class SettlementControllerIdempotencyHeaderParityTest {
   }
 
   @Test
-  void settleDealer_rejectsRetiredLegacyHeader() {
+  void settleDealer_rejectsRetiredIdempotencyHeader() {
     SettlementController controller = controller();
 
     assertThatThrownBy(
             () ->
                 controller.settleDealer(
-                    dealerSettlementRequest(null), null, "legacy-settlement-header"))
+                    dealerSettlementRequest(null), null, "retired-settlement-header"))
         .hasMessageContaining("X-Idempotency-Key is not supported for dealer settlements");
     verifyNoInteractions(accountingFacade);
   }
